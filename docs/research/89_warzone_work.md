@@ -138,10 +138,15 @@ Consequences:
 - Converter (fork 9e3abdde): `physics_limit_detail` per instance (default: the value of `physics_limit`), written
   into the two detailed numbers. The editor writes the key only when it differs, so earlier builds stay byte-identical.
 - Warzone objects: a verified definition of `common_br_mp` (the buy station `br_plunder_box`, `brloot_rock`, two ammo
-  boxes, the assassination tablet) is placed **by name** on a map made for the br game type (worldspawn `iw8r_br` or a
-  `br_prematch_insertion_point`), and left out with the reason on any other map. This rests on the game loading
-  `common_br_mp` for a br match on an own map, which is not known (the exe names that zone only in its shader
-  preload list; the level load list is data).
+  boxes, the assassination tablet) is accepted on a map made for the br game type (worldspawn `iw8r_br` or a
+  `br_prematch_insertion_point`), and left out with the reason on any other map. **Corrected 2026-11-12 (research
+  93)**: a custom map never loads `common_br_mp`, in any game type: the extra zone of a map is chosen by its name in
+  `mp/levelZoneParents.csv` (11 of 12 rows are Warzone maps), and a map without a row gets `common_core_mp`. So the
+  definition is now **carried** from `common_br_mp` into the map zone (Real stock scripted objects, on by default).
+  Proof: a copy of `out/scr-br` with one `br_plunder_box` built through `IW8Radiant.exe --compile`: "46 stock asset(s)
+  added to the map zone, 1 instance(s) given their definition", ACTS loads the map zone with 0 failed and exports the
+  definition `br_plunder_box` from it. One material the definition names (`mo/offhand_vm_stim_body`) is not carried
+  (the converter warns).
 - Extraction sites (`brloot_plunder_extraction_site_01`) live in stock map zones and are carried like doors; the
   converter warns that four of their assets (map menu icons, one effect, two models) are only in `common_br_mp`.
 
@@ -254,8 +259,11 @@ the editor adds boxes of its own:
 
 ## 8. Open
 
-1. Whether `common_br_mp` loads for an own map in a br match (buy stations, loot items and two ATV textures depend on
-   it), and whether the vehicles drive (nothing of this is seen in game).
+1. `common_br_mp` does not load for an own map (research 93): buy stations are carried now; the loot item
+   definitions (`brloot_*`, 240 in that zone) the loot tables spawn on loot points are not, so an own map's loot
+   points may give no items; two ATV tyre textures are missing. Whether the vehicles drive is not seen in game.
+   The map script's "no circle" switch no longer calls `br_gametypes::disablefeature` (research 92: that far call
+   cannot link and would break the map at load); `level.br_circle_disabled = 1` stays.
 2. (Zones and clusters on a custom map: done offline, section 6d.)
 3. (New clusters and zones on a stock map: done offline, section 6d.) Removing a placed object, and moving or adding one that has a dynamic entity (doors, extraction sites).
 4. Verdansk in the reference view: its world is 749 streamed zones; the view loads one zone.

@@ -306,8 +306,9 @@ There are two kinds:
 - **Always loaded**: `hardpoint_chevron`, the marker of a Hardpoint zone, and `scriptable_auto_ascender`. They are
   placed by name and always build.
 - **Warzone objects**: the buy station `br_plunder_box` (also `brloot_rock`, `brloot_ammo_762`, `brloot_ammo_919`,
-  `brloot_assassination_tablet`). They live in the game's Warzone file, so the build accepts them only on a map made
-  for the Warzone game type (Tools > Game Modes) and places them by name.
+  `brloot_assassination_tablet`). They live in the game's Warzone file, which a custom map does not load, so the build
+  copies them into the map (Edit > Preferences > Real stock scripted objects, on by default). It accepts them only on
+  a map made for the Warzone game type (Tools > Game Modes).
 - **From a stock map**: doors, traffic cones, cars, tyres, radios, signs, fences and other world objects (502
   definitions). Their
   definitions live inside stock map files. The build copies the definition with its models, collision and

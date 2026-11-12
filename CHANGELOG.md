@@ -16,7 +16,7 @@ Warzone and stock maps:
   offline on mp_br_tut and mp_br_quarry. The same entities work on your own maps (several clusters and named
   zones instead of one zone over every point). Not seen in game.
 - **Buy stations.** File > Edit Placed Objects moves and copies the buy stations of a stock map; own Warzone maps
-  place `br_plunder_box` by name. The scriptable physics limits rule (two definition flag pairs, exact on 21 stock
+  carry `br_plunder_box` into the map (a custom map never loads the Warzone zone: research 93). The scriptable physics limits rule (two definition flag pairs, exact on 21 stock
   maps) makes 509 stock scripted objects buildable (was 317). Not seen in game.
 - **Vehicles.** Vehicle spawn entities (ATV, tactical rover, SUV, cargo truck, helicopter) on an own map carry the
   stock vehicle and its model from mp_br_quarry. Not seen in game.
@@ -33,6 +33,9 @@ Warzone and stock maps:
 - **Mode rules.** Tools > Game Modes > Rules: max health, move speed, one weapon instead of the loadout and
   infinite ammo, applied to every player at each spawn by the map's own script, which runs after the game type's start
   (read from the game exe: docs/research/91). Built through the real pipeline offline; not seen in game.
+- **Fix: "no circle" no longer breaks a Warzone map.** The generated map script called
+  `br_gametypes::disablefeature`, a far call that cannot link (research 92) and would drop the match or exit the game
+  at load. The map now sets only `level.br_circle_disabled`.
 - **Build preflight fix**: methods called on `self` (`self takeallweapons()`) are no longer flagged as unknown
   functions.
 - **Game mode presets** with the private server's playlist settings, carried in a map or sent at F5.

@@ -1450,8 +1450,8 @@ TEST(compile_iw8_game_mode_settings_in_map_script) {
     const size_t d1 = gsc.find("setdvar(\"iw8r:scr_br_teamsize\", \"1\");"), d2 = gsc.find("setdvar(\"iw8r:scr_br_gulag\", \"0\");");
     CHECK(load != std::string::npos && d1 != std::string::npos && d2 != std::string::npos && d1 > load && d2 > d1);
     CHECK(gsc.find("bad name") == std::string::npos);
-    CHECK(gsc.find("level.br_circle_disabled = 1;") != std::string::npos &&
-          gsc.find("scripts\\mp\\gametypes\\br_gametypes::disablefeature(\"circle\");") != std::string::npos);
+    // Research 92: no far call into br_gametypes (it cannot link and would break the map at load).
+    CHECK(gsc.find("level.br_circle_disabled = 1;") != std::string::npos && gsc.find("disablefeature") == std::string::npos);
     CHECK(gsc.find("level.usegulag = 0;") != std::string::npos && gsc.find("level.skipprematchdropspawn = 1;") != std::string::npos);
     bool dvars = false, br = false, bad = false;
     for (const auto& w : rep.warnings) {
@@ -1715,22 +1715,40 @@ TEST(compile_iw8_scriptable_br_zone_and_limits) {
         for (const std::string& w : rep.warnings) reason |= w.find("br_plunder_box") != std::string::npos && w.find("common_br_mp") != std::string::npos;
         CHECK(reason);
     }
-    // The same map with the prematch area of a Warzone map: the buy station is placed by name (no carry zone).
+    // The same map with the prematch area of a Warzone map. Research 93: a custom map never loads common_br_mp (its
+    // extra zone follows the map name), so the definition is carried from that zone; without carrying it is left out.
+    const std::string brText = text + placed + ent("script_struct", kv("targetname", "br_prematch_insertion_point") + kv("origin", "0 0 64"));
     {
         Id next = 1;
-        ParseResult pr = parseMap(text + placed + ent("script_struct", kv("targetname", "br_prematch_insertion_point") + kv("origin", "0 0 64")), next);
+        ParseResult pr = parseMap(brText, next);
         CHECK(pr.map.has_value());
         if (!pr.map) return;
-        const std::string out = scratch("scriptables_br_on");
+        const std::string out = scratch("scriptables_br_nocarry");
         CompileReport rep;
         CHECK(compileIw8Extraction(*pr.map, out, opt, rep, &err));
         const std::string col = readAll((fs::path(out) / "extracted" / "maps" / "mp" / (std::string(kSampleId) + ".d3dbsp.replay-collision.json")).string());
-        CHECK(col.find("{\"definition\":\"br_plunder_box\",\"origin\":[64,32,0],\"angles\":[0,0,0],\"server_instanced_parts\":1,\"usable_parts\":1,"
+        CHECK(col.find("br_plunder_box") == std::string::npos);
+        bool reason = false;
+        for (const std::string& w : rep.warnings)
+            reason |= w.find("br_plunder_box") != std::string::npos && w.find("Real stock scripted objects") != std::string::npos;
+        CHECK(reason);
+    }
+    {
+        Id next = 1;
+        ParseResult pr = parseMap(brText, next);
+        CHECK(pr.map.has_value());
+        if (!pr.map) return;
+        CompileOptions carryOpt = opt;
+        carryOpt.carryScriptables = true;
+        const std::string out = scratch("scriptables_br_on");
+        CompileReport rep;
+        CHECK(compileIw8Extraction(*pr.map, out, carryOpt, rep, &err));
+        const std::string col = readAll((fs::path(out) / "extracted" / "maps" / "mp" / (std::string(kSampleId) + ".d3dbsp.replay-collision.json")).string());
+        CHECK(col.find("{\"definition\":\"br_plunder_box\",\"origin\":[64,32,0],\"angles\":[0,0,0],\"carry_zone\":\"common_br_mp\",\"server_instanced_parts\":1,\"usable_parts\":1,"
                        "\"physics_limit\":true,\"max_dynent_parts\":16,\"instance_dynent\":false,\"sparse_occluder\":false,\"collision_flags\":0,"
                        "\"physics_dynents\":0}") != std::string::npos);
-        CHECK(col.find("carry_zone") == std::string::npos);
         bool noted = false;
-        for (const std::string& w : rep.warnings) noted |= w.find("1 scriptable instance(s) name a definition of the Warzone zone") != std::string::npos;
+        for (const std::string& w : rep.warnings) noted |= w.find("1 scriptable instance(s) use a definition of the Warzone zone (common_br_mp), carried") != std::string::npos;
         CHECK(noted);
     }
 }

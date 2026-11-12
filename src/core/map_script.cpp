@@ -443,7 +443,10 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
     for (const auto& [name, value] : extras.modeDvars)
         // "iw8r:" lets the name through the converter's dvar filter (iw3compat_setdvar drops every other name).
         if (validModeDvarName(name) && validModeDvarValue(value)) s += "    setdvar(\"iw8r:" + name + "\", \"" + value + "\");\n";
-    if (extras.brNoCircle) s += "    level.br_circle_disabled = 1;\n    scripts\\mp\\gametypes\\br_gametypes::disablefeature(\"circle\");\n";
+    // Research 92: a far call into br_gametypes::disablefeature cannot link (the stock file defines the name as a
+    // string, gsc-tool writes a token id), and a call that fails to link drops the match or exits the game at load.
+    // The level flag alone switches the circle off (br_circle reads it).
+    if (extras.brNoCircle) s += "    level.br_circle_disabled = 1;\n";
     if (extras.brNoGulag) s += "    level.usegulag = 0;\n";
     if (extras.brSkipDrop) s += "    level.skipprematchdropspawn = 1;\n";
     if (!extras.modeRules.empty()) s += "    level thread iw8r_mode_rules();\n";

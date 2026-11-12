@@ -658,7 +658,7 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 
 ### Buy stations and vehicles
 
-- Buy station on your own map: a `scriptable` entity with `scriptable` set to `br_plunder_box`. The build places it by name on a map made for the Warzone game type. The build log says "1 scriptable instance(s) name a definition of the Warzone zone". Whether the game loads the Warzone zone for an own map is not known. (not yet seen in game)
+- Buy station on your own map: a `scriptable` entity with `scriptable` set to `br_plunder_box`. A custom map never loads the game's Warzone zone (read from the game exe, research 93), so the build copies the buy station's definition, models and materials into the map. Built offline and checked with ACTS. (not yet seen in game)
 - Buy stations on a stock map: File > Edit Placed Objects turns the buy stations (120 on Quarry and 120 on Verdansk) into `scriptable` entities. Move one, or copy one to add another. A station cannot be removed. Doors and other objects with moving parts cannot be edited this way yet. (not yet seen in game)
 
 ![File > Edit Placed Objects on mp_br_tut: the buy station br_plunder_box selected (drawn yellow) in the camera, with its keys in the Entity dock](img/buy_stations.png)
@@ -798,6 +798,6 @@ Open items from the roadmap and the research notes. Only the open items are list
 - Navigation blockers and traversal authoring (row 6.23).
 - Camera angle sync, live atmosphere and in-game screenshots and probe capture (rows 7.3, 7.9, 7.11). The live atmosphere channel was removed.
 - Prefabs: convert a plain `.map` to a bundle, zip import of bundles, and the placement hints (wall, ceiling and yaw step).
-- Warzone: new game type scripts under a new name (row 13.6; mode rules on stock game types are built). Whether the game loads the Warzone zone for an own map is not known.
+- Warzone: new game type scripts under a new name (row 13.6; mode rules on stock game types are built). Loot items on an own map: the loot item definitions live in the Warzone zone, which a custom map does not load (research 93), and are not copied yet.
 - Stock maps: removal of stock world geometry (row 11.5), sun and sky relight (row 11.6), and maps beyond 6v6 scale, such as Ground War scale and co-op maps (row 11.10).
 - Installer test on a clean machine (owner action, row 9.9).
