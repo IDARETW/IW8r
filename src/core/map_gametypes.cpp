@@ -1,6 +1,8 @@
 // IW8 Radiant Suite - game types of a map (see map_gametypes.h).
 #include "map_gametypes.h"
 
+#include "gametype_script.h"
+
 #include <cctype>
 #include <map>
 #include <set>
@@ -138,6 +140,18 @@ std::string detectedGameTypes(const MapFile& map) {
     return list.empty() ? "war" : list;
 }
 
+namespace {
+// 13.6: the game type of the map's own game type script (worldspawn iw8r_gametype_script) joins the list.
+void addOwnGameType(const Entity* world, MapGameTypes& r) {
+    const std::string* gp = world ? world->value(kGameTypeScriptKey) : nullptr;
+    const std::string name = gp ? gameTypeNameOfScript(*gp) : std::string();
+    if (name.empty()) return;
+    if ((" " + r.list + " ").find(" " + name + " ") != std::string::npos) return;
+    r.list += (r.list.empty() ? "" : " ") + name;
+    r.notes.push_back("game type '" + name + "' of the map's own game type script is listed");
+}
+}  // namespace
+
 MapGameTypes mapGameTypes(const MapFile& map) {
     MapGameTypes r;
     const std::vector<GameTypeCheck> checks = gameTypeChecks(map);
@@ -161,6 +175,7 @@ MapGameTypes mapGameTypes(const MapFile& map) {
                 if (!g.supported && padded.find(" " + g.gametype + " ") != std::string::npos)
                     r.notes.push_back(g.gametype + " (" + g.title + ") is listed but the map lacks: " + g.missing.front() +
                                       (g.missing.size() > 1 ? " and " + std::to_string(g.missing.size() - 1) + " more" : ""));
+            addOwnGameType(world, r);
             return r;
         }
         r.notes.push_back("worldspawn iw8r_gametypes '" + *key + "' is not a list of game type names (lower-case names of up to 11 "
@@ -187,6 +202,7 @@ MapGameTypes mapGameTypes(const MapFile& map) {
             r.notes.push_back(g.gametype + " (" + g.title + ") is not offered; the map lacks: " + g.missing.front() +
                               (g.missing.size() > 1 ? " and " + std::to_string(g.missing.size() - 1) + " more" : ""));
     }
+    addOwnGameType(world, r);
     return r;
 }
 

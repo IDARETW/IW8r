@@ -264,6 +264,9 @@ public:
     // Adds what the br game type needs to start on a small map: spawn points and one prematch insertion point around
     // the 2D view centre. Returns the number of entities added.
     int insertWarzoneStart();
+    // 13.6: writes the game type template <map folder>/gametypes/<name>.gsc (kept when it exists) and points worldspawn
+    // iw8r_gametype_script at it. Returns the file, or "" with *err.
+    QString newGameTypeScript(const QString& name, QString* err = nullptr);
     void restoreStockMap();
     QString stockBackupDir(const QString& zone) const;
     QString stockZone() const { return stockZone_; }

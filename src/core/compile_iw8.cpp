@@ -3414,6 +3414,31 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     extras.userScript = text;
                 if (!extras.userScript.empty()) warn.push_back("map script includes " + p.filename().string() + " (user_main runs after the load script)");
             }
+            // 13.6 (research 91 / 92): a new game type script the map carries (worldspawn iw8r_gametype_script, relative
+            // to the map folder). Checked here; the converter compiles it into the map zone as it is.
+            if (const std::string* gp = worldspawn->value(kGameTypeScriptKey); gp && !gp->empty()) {
+                fs::path p(*gp);
+                if (p.is_relative() && !opt.mapDir.empty()) p = fs::path(opt.mapDir) / p;
+                const std::string name = gameTypeNameOfScript(p.filename().string());
+                std::string text;
+                if (!readFile(p.string(), text)) {
+                    warn.push_back(std::string(kGameTypeScriptKey) + " '" + *gp + "' cannot be read; no game type script is built");
+                } else if (!opt.stockScripts) {
+                    warn.push_back("game type script " + p.filename().string() + " left out: the stock script index "
+                                   "(data/generated/iw8_stock_scripts.tsv) was not found, so its calls cannot be checked");
+                } else {
+                    const std::vector<std::string> problems = checkGameTypeScript(text, name, *opt.stockScripts);
+                    if (!problems.empty()) {
+                        warn.push_back("game type script " + p.filename().string() + " left out (" + std::to_string(problems.size()) +
+                                       " problem(s); a match with it would end at load):");
+                        for (const std::string& pr : problems) warn.push_back("  " + pr);
+                    } else {
+                        customFiles.push_back({root / "extracted" / "scripts" / "mp" / "gametypes" / (name + ".gsc"), text});
+                        warn.push_back("game type '" + name + "' built into the map (scripts/mp/gametypes/" + name +
+                                       ".gsc; start a match with ui_gametype " + name + "; research 91 / 92; not seen in game)");
+                    }
+                }
+            }
         }
         if (opt.prefabScripts) extras.prefabScripts = *opt.prefabScripts;  // prefab bundles (the prefab step fills it)
         if (const std::string gsc = mapScriptGsc(atmo.fog, fx, sounds, extras); !gsc.empty()) customFiles.push_back({mapDir / (id + ".gsc"), gsc});

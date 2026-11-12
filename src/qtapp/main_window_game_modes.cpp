@@ -7,7 +7,9 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QFormLayout>
+#include <QInputDialog>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -21,6 +23,7 @@
 
 #include "devmap_launch.h"
 #include "game_modes.h"
+#include "gametype_script.h"
 #include "map_gametypes.h"
 
 namespace iw8r::qt {
@@ -59,6 +62,38 @@ bool MainWindow::bakeGameMode(const GameModePreset& preset) {
                             .arg(qs(preset.title)).arg(preset.dvars.size()).arg(br.empty() ? QString() : " and the Warzone switches (" + qs(br) + ")")
                             .arg(rules.empty() ? QString() : "; rules at every spawn: " + qs(rules)));
     return true;
+}
+
+QString MainWindow::newGameTypeScript(const QString& name, QString* err) {
+    const std::string n = gameTypeNameOfScript(name.toStdString() + ".gsc");
+    if (n.empty() || n != name.toStdString()) {
+        if (err) *err = "The name must be 1 to 11 characters of a-z, 0-9 and _.";
+        return {};
+    }
+    if (ctx_.doc.path().empty()) {
+        if (err) *err = "Save the map first: the script is written beside it.";
+        return {};
+    }
+    const QString dir = QFileInfo(qs(ctx_.doc.path())).absolutePath();
+    const QString rel = "gametypes/" + name + ".gsc";
+    const QString path = dir + "/" + rel;
+    if (!QFileInfo::exists(path)) {
+        QDir().mkpath(dir + "/gametypes");
+        QFile f(path);
+        const std::string text = gameTypeScriptTemplate(n);
+        if (!f.open(QIODevice::WriteOnly) || f.write(text.data(), qint64(text.size())) != qint64(text.size())) {
+            if (err) *err = "Cannot write " + path;
+            return {};
+        }
+    }
+    for (const Entity& e : ctx_.doc.map().entities)
+        if (e.isWorldspawn()) {
+            ctx_.doc.setKeyValue(e.id, kGameTypeScriptKey, rel.toStdString());
+            ctx_.documentEdited("Game type script " + rel + " is carried by the map (worldspawn " + QString(kGameTypeScriptKey) + ")");
+            return path;
+        }
+    if (err) *err = "The open document has no worldspawn.";
+    return {};
 }
 
 int MainWindow::insertWarzoneStart() {
@@ -143,9 +178,12 @@ void MainWindow::showGameModes() {
     auto* useF5 = new QPushButton("Use for F5", &dlg);
     auto* bake = new QPushButton("Carry in this map", &dlg);
     auto* start = new QPushButton("Insert Warzone start entities", &dlg);
+    auto* newType = new QPushButton("New game type script...", &dlg);
+    newType->setToolTip("A game type of your own under a new name, carried in the map (research 91 / 92): writes a "
+                        "template beside the map and points worldspawn iw8r_gametype_script at it");
     auto* save = new QPushButton("Save as my preset", &dlg);
     auto* del = new QPushButton("Delete my preset", &dlg);
-    for (QPushButton* b : {useF5, bake, start, save, del}) buttons->addWidget(b);
+    for (QPushButton* b : {useF5, bake, start, newType, save, del}) buttons->addWidget(b);
     auto* close = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
     side->addWidget(close);
     connect(close, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
@@ -221,6 +259,17 @@ void MainWindow::showGameModes() {
         if (!bakeGameMode(p)) QMessageBox::warning(this, "Game Modes", "The open document has no worldspawn.");
     });
     connect(start, &QPushButton::clicked, &dlg, [this] { insertWarzoneStart(); });
+    connect(newType, &QPushButton::clicked, &dlg, [this] {
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, "New Game Type Script", "Game type name (1 to 11 of a-z, 0-9, _; not a stock one):",
+                                                   QLineEdit::Normal, "teamkills", &ok).trimmed().toLower();
+        if (!ok || name.isEmpty()) return;
+        QString err;
+        const QString file = newGameTypeScript(name, &err);
+        if (file.isEmpty()) return void(QMessageBox::warning(this, "New Game Type Script", err));
+        ctx_.setStatus("Game type script " + file + ": edit it, build, then start a match with game type " + name +
+                       " (Use for F5 with that game type). The build checks its calls.");
+    });
     connect(save, &QPushButton::clicked, &dlg, [=, this] {
         GameModePreset p;
         QString err;

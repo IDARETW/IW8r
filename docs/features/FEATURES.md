@@ -677,7 +677,7 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 
 ### Not built for Warzone
 
-- A new game type script under a new name is not built. From the game exe (research 91): a map zone cannot replace a stock game type script, but a new name can be started and would be loaded from the map zone. It still needs a second script file in the map zone and calls into stock scripts, whose resolution is not known. Mode rules and behaviour in the map's own script work under every stock game type.
+- New game type scripts: Tools > Game Modes > New game type script writes a team-kills template beside the map (worldspawn `iw8r_gametype_script`); the build checks it (a new name, `main()`, calls only into stock scripts the game stores by number: research 92) and compiles it into the map zone; `map.json` lists the name. Built and ACTS-checked offline; whether the lobby offers it and the match runs is not seen in game.
 
 ## 13. Asset tools
 
@@ -801,6 +801,6 @@ Open items from the roadmap and the research notes. Only the open items are list
 - Navigation blockers and traversal authoring (row 6.23).
 - Camera angle sync, live atmosphere and in-game screenshots and probe capture (rows 7.3, 7.9, 7.11). The live atmosphere channel was removed.
 - Prefabs: convert a plain `.map` to a bundle, zip import of bundles, and the placement hints (wall, ceiling and yaw step).
-- Warzone: new game type scripts under a new name (row 13.6; mode rules on stock game types are built). Loot items on an own map are carried from the Warzone zone (research 93) but not yet seen in game.
+- Game types: what the lobby shows for a game type of the map's own (row 13.6; built offline, not seen in game). Loot items on an own map are carried from the Warzone zone (research 93) but not yet seen in game.
 - Stock maps: removal of stock world geometry (row 11.5), sun and sky relight (row 11.6), and maps beyond 6v6 scale, such as Ground War scale and co-op maps (row 11.10).
 - Installer test on a clean machine (owner action, row 9.9).

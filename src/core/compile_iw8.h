@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "collision_layout.h"
+#include "gametype_script.h"
 #include "stock_loot.h"
 #include "stock_vehicles.h"
 #include "scriptable_catalog.h"
@@ -53,6 +54,9 @@ struct CompileOptions {
     // The loot item tables (stock_loot.h BrLootItemTables): a map with loot points carries the brloot_* definitions
     // of its loot table from common_br_mp (a custom map never loads that zone, research 93). Needs carryScriptables.
     const BrLootItemTables* lootItems = nullptr;
+    // Stock script index (gametype_script.h): checks the far calls of a map's game type script (worldspawn
+    // iw8r_gametype_script). Without it such a script is left out.
+    const StockScriptIndex* stockScripts = nullptr;
     const StockModelZones* stockModelZones = nullptr;
     // Carry stock definitions (doors, cones, cars: definitions that live in stock map zones): the instance names the
     // stock zone and the converter copies the definition with everything it uses into the map. Off: such an entity

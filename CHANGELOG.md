@@ -30,6 +30,9 @@ Warzone and stock maps:
 - **Stock terrain textured on every map.** The terrain blend materials of a stock map (`tw4/`, `twc4/`, named per
   map) are read from the map's own zone; they were checkered on maps outside the material catalogue (mp_br_tut: 346
   materials).
+- **New game types.** Tools > Game Modes > New game type script: a game type of your own under a new name, compiled
+  into the map zone (converter c5e182f3). Every build checks its far calls against the stock script index (only files
+  the game stores by number link: research 92). Built and ACTS-checked offline; not seen in game.
 - **Mode rules.** Tools > Game Modes > Rules: max health, move speed, one weapon instead of the loadout and
   infinite ammo, applied to every player at each spawn by the map's own script, which runs after the game type's start
   (read from the game exe: docs/research/91). Built through the real pipeline offline; not seen in game.

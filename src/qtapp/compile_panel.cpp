@@ -820,6 +820,7 @@ bool CompilePanel::runExtraction() {
         static VehicleCatalog vehicleCatalog;
         static StockModelZones modelZones;
         static BrLootItemTables lootItemTables;
+        static StockScriptIndex stockScriptIndex;
         static bool catalogsLoaded = false;
         if (!catalogsLoaded) {
             catalogsLoaded = true;
@@ -829,12 +830,14 @@ bool CompilePanel::runExtraction() {
                     vehicleCatalog.load(d.filePath("data/asset_catalog/iw8_vehicles.tsv").toStdString());
                     modelZones.load(d.filePath("data/asset_catalog/iw8_models.tsv").toStdString());
                     lootItemTables.load(d.filePath("data/asset_catalog/iw8_br_loot_items.tsv").toStdString());
+                    stockScriptIndex.load(d.filePath("data/generated/iw8_stock_scripts.tsv").toStdString());
                     break;
                 }
         }
         if (vehicleCatalog.size()) opt.vehicles = &vehicleCatalog;
         if (modelZones.size()) opt.stockModelZones = &modelZones;
         if (lootItemTables.size()) opt.lootItems = &lootItemTables;
+        if (stockScriptIndex.size()) opt.stockScripts = &stockScriptIndex;
         // The folders the library came from (the placed bundles' material folders are among them): the build can
         // then load one library that also holds the materials of a bundle it finds inside another prefab.
         opt.materialRoots = roots;

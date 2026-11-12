@@ -224,3 +224,22 @@ INFERRED from the code paths; neither was seen in the game.
 - Whether the order in which scripts are queued at map start puts the game type's scripts before the map script.
   That decides between the drop and the exit in section 2.5.
 - Why the gsc-tool source in `E:\mw124\acts-perf` (no `.gsc` for IW8) differs from the 1.6.2 binary (writes `.gsc`).
+
+## Built on this (2026-11-12)
+
+- `data/generated/iw8_stock_scripts.tsv` (`tools/build_stock_script_index.py`): the 632 stock GSC files of
+  `common_base_mp` and `global_mp`, 391 stored by number (path from gsc-tool's token table) and 241 by name.
+- New game type scripts (roadmap 13.6, core `gametype_script.*`): worldspawn `iw8r_gametype_script` names a GSC file
+  beside the map; its file name is the game type name. The build refuses it (and says why, with line numbers) when the
+  name is not new or not 1 to 11 of a-z 0-9 _, when there is no `main()`, or when a far call goes to a stock file stored
+  by name or to no stock file. Converter (x64-zt c5e182f3) compiles `extracted/scripts/mp/gametypes/<name>.gsc` as it is
+  into the map zone; `map.json` lists the name. Tools > Game Modes > New game type script writes a template (team kills
+  with the Team Deathmatch spawns) that calls only numbered files.
+- The "no circle" switch no longer writes the `br_gametypes::disablefeature` call, and the converter's stock call list
+  no longer has it (x64-zt e57497bd).
+- Proof: core tests `gametype_script_*`; the sample room with the template built through `IW8Radiant.exe --compile`:
+  "compiled game type script scripts/mp/gametypes/teamkills.gsc (1225 bytes gscbin)", ACTS loads the map zone with 0
+  failed and exports both scripts; the compiled file holds no path string and the numeric ids 1857 (globallogic, 2
+  calls), 1851, 1852, 1912 (spawnlogic, 25) and 2398 (utility/game, 12). Whether the lobby offers the name and the
+  match runs is not seen in game.
+

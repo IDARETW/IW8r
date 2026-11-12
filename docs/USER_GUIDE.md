@@ -385,6 +385,13 @@ playlist settings by itself, so a preset brings them:
 - **Carry in this map**: the map itself sets them at every start (worldspawn keys `iw8r_mode_dvars` and `iw8r_br`).
   Use this for a map that is meant for one mode.
 - **Save as my preset** keeps your own mode: change the id, title, game type and the `name=value` lines first.
+- **New game type script** makes a game type of your own: it writes `gametypes/<name>.gsc` beside the map (a team
+  game where kills score up to the score limit) and points worldspawn `iw8r_gametype_script` at it. Edit it, build,
+  and start a match with that game type (Use for F5 with the name as game type). Every build checks the script: the
+  name must be new (a map cannot replace a stock game type), it needs `main()`, and it may call only stock scripts the
+  game stores by number (`scripts\mp\globallogic`, `gameobjects`, `gamescore`, `spawnlogic`, `utility\game`, ...);
+  a call into `scripts\mp\gametypes\...` would end the match at load, so the build leaves such a script out and says
+  which line.
 - **Rules** change how the game type plays, for every player at each spawn: `health=50` (max health), `speed=1.2`
   (move speed), `weapon=iw8_pi_golf21_mp` (only this weapon instead of the loadout), `ammo=infinite`. Separate them
   with `;`. Rules work only when the map carries them (Carry in this map, worldspawn `iw8r_mode_rules`): the map's
