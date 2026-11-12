@@ -98,3 +98,9 @@ try that kept the layout and added assets gave 16 failed assets in the ACTS load
    its physics asset are in the zone, in the level model table, placed in the entity text, ACTS tests the zone like
    the stock one, the techsets zone loads with 0 failed) and a GUI check of the plan.
 5. The Warzone maps with the same command (research 87).
+6. Done 2026-11-12: a hidden prop loses its collision too. `editzone` `remove_static_model_collision`
+   [{model, origin}] (fork 63d4f338) removes the instance of that model at that place (half a unit) from the
+   collision map's static model collision lists (model names compared without their folder: the world says
+   `tm/<name>`, the lists `<name>`); the editor sends the hidden props of the stock reference. Proof:
+   `tools/smodel_collision_remove_test.py` on mp_shipment (3 of 4085 instances removed, exactly those, the props at
+   scale 0, ACTS like stock). The big maps keep this collision in their collision tiles (research 90), not edited.

@@ -135,7 +135,7 @@ std::vector<uint32_t> stockEditHiddenProps(const MapFile& map) {
 
 std::string stockEditJson(const std::string& entitiesPath, const std::vector<uint32_t>& hiddenProps,
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints, const std::string* placedObjects,
-                          const std::vector<StockPatchOverride>* stockPatches) {
+                          const std::vector<StockPatchOverride>* stockPatches, const std::vector<StockPropCollision>* removeCollision) {
     std::string json = "{";
     bool first = true;
     const auto sep = [&] {
@@ -167,6 +167,16 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
     if (placedObjects && !placedObjects->empty()) {
         sep();
         json += "\"scriptable_instances\":" + *placedObjects;
+    }
+    if (removeCollision && !removeCollision->empty()) {
+        sep();
+        json += "\"remove_static_model_collision\":[";
+        for (size_t i = 0; i < removeCollision->size(); ++i) {
+            const StockPropCollision& c = (*removeCollision)[i];
+            json += std::string(i ? "," : "") + "{\"model\":" + jsonText(c.model) + ",\"origin\":[" + formatNumber(c.origin[0]) + "," +
+                    formatNumber(c.origin[1]) + "," + formatNumber(c.origin[2]) + "]}";
+        }
+        json += "]";
     }
     if (stockPatches && !stockPatches->empty()) {
         sep();

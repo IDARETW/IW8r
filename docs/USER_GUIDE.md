@@ -264,7 +264,8 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
    takes the edit out again.
 
 6. To hide stock props: draw a brush around them, select it and use File > Hide Stock Props In Selection. The props
-   leave the view and the rebuilt map draws them at size zero; their collision stays. File > Show All Stock Props
+   leave the view and the rebuilt map draws them at size zero; their collision is taken out too (on the small maps;
+   a Warzone map keeps prop collision in its collision tiles, which stay as they are). File > Show All Stock Props
    brings them back. The helper brush is not built into the stock map (the Console says so); delete it when you
    are done.
 

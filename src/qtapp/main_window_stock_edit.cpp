@@ -181,7 +181,21 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
         if (!catalogue.size()) *notes << "data/asset_catalog/iw8_models.tsv was not found: models added from other maps are not carried";
     }
     const std::vector<uint32_t> hidden = stockEditHiddenProps(ctx_.doc.map());
-    if (notes && !hidden.empty()) *notes << QString("%1 stock prop(s) are hidden (scale 0; their collision stays)").arg(hidden.size());
+    // 11.5: their collision goes too, found by model and place in the collision map (the props of the stock
+    // reference say which model stands where).
+    std::vector<StockPropCollision> removeCollision;
+    if (!hidden.empty() && refProps_ && refPropZone_ == stockZone_) {
+        std::map<uint32_t, const StockModelInstance*> byIndex;
+        for (const StockModelInstance& in : *refProps_) byIndex[in.index] = &in;
+        for (const uint32_t i : hidden)
+            if (const auto it = byIndex.find(i); it != byIndex.end())
+                removeCollision.push_back({it->second->model, {it->second->origin.x, it->second->origin.y, it->second->origin.z}});
+    }
+    if (notes && !hidden.empty())
+        *notes << QString("%1 stock prop(s) are hidden (scale 0)%2").arg(hidden.size()).arg(
+            removeCollision.size() == hidden.size()
+                ? QString(" and their collision is taken out (a big map keeps it in its collision tiles)")
+                : QString("; their collision stays (load the map's props in the reference view first to take it out)"));
 
     // 13.5: the loot points, when the document holds some (File > Edit Loot Points): the whole list replaces the map's.
     // No loot point entity (never made, or taken out again by Undo) leaves the map's loot alone; only the worldspawn
@@ -231,7 +245,7 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
     const QString editsPath = work + "/edits.json";
     QFile jf(editsPath);
     const std::string json = stockEditJson(QDir::toNativeSeparators(entsPath).toStdString(), hidden, carry, writeLoot ? &loot : nullptr,
-                                           &placed.json, &stockPatches);
+                                           &placed.json, &stockPatches, &removeCollision);
     if (!jf.open(QIODevice::WriteOnly) || jf.write(json.data(), qint64(json.size())) != qint64(json.size())) {
         if (err) *err = "Cannot write " + editsPath;
         return false;

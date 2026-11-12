@@ -64,10 +64,19 @@ std::vector<uint32_t> stockEditHiddenProps(const MapFile& map);
 // The edits file. `entitiesPath` is the entity text file ("" = the entities are not replaced). `lootPoints` is the
 // JSON list of lootPointsJson (stock_loot.h); null = the loot points of the map stay as they are. `placedObjects` is
 // PlacedObjectEdits::json (stock_placed.h); null or empty = the placed objects stay as they are.
+// A hidden stock prop whose collision is taken out too (editzone "remove_static_model_collision"): its model and
+// place, as the world's static model table has them.
+struct StockPropCollision {
+    std::string model;
+    double origin[3] = {0, 0, 0};
+};
+// `removeCollision`: the hidden props whose collision goes too (a small map keeps it in its collision map; a big map in
+// its collision tiles, which this does not change).
 // `stockPatches` (stock_install.h): the saved stock patches of the edits that are installed in the game; the
 // converter then reads those zones as the stock game has them, not as the installed edit left them.
 std::string stockEditJson(const std::string& entitiesPath, const std::vector<uint32_t>& hiddenProps,
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints = nullptr,
-                          const std::string* placedObjects = nullptr, const std::vector<StockPatchOverride>* stockPatches = nullptr);
+                          const std::string* placedObjects = nullptr, const std::vector<StockPatchOverride>* stockPatches = nullptr,
+                          const std::vector<StockPropCollision>* removeCollision = nullptr);
 
 }  // namespace iw8r

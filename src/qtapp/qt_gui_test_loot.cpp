@@ -181,6 +181,9 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
         const QByteArray json = jf.open(QIODevice::ReadOnly) ? jf.readAll() : QByteArray();
         const QByteArray ents = ef.open(QIODevice::ReadOnly) ? ef.readAll() : QByteArray();
         check(prepared && json.contains("\"hide_static_models\":[3,7,40]"), "the edits file lists the hidden rows: " + err);
+        check(json.contains("\"remove_static_model_collision\":[{\"model\":\"test_prop\",\"origin\":[0,0,0]},{\"model\":\"test_prop\",\"origin\":[10,10,10]},"
+                            "{\"model\":\"test_prop\",\"origin\":[20,-20,5]}]"),
+              "and takes their collision out by model and place");
         check(!ents.isEmpty() && !ents.contains("caulk") && !ents.contains("func_group"), "the helper brush left in the document is not written into the entity text");
         check(notes.join("; ").contains("1 brush(es)"), "the rebuild notes say the brush is left out");
         check(w.showAllStockProps() == 3, "File > Show All Stock Props brings them back");

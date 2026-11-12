@@ -306,6 +306,9 @@
     StockOverlayPlan / overlayMapText / runStockEdit (the helper map mp_iw8rovl is built with IW8Radiant.exe
     --compile, then edits.json gets its package folder). Proof tools/stock_overlay_test.py; GUI check in
     qt_gui_test_loot.cpp.
+    HIDDEN PROPS LOSE COLLISION (research 88 step 6): converter live at 63d4f338 (old exe zonetool_9f1472de.exe):
+    editzone remove_static_model_collision; editor sends the hidden props of the stock reference
+    (StockPropCollision). Proof tools/smodel_collision_remove_test.py.
     REPOSITORY: the project is in the private GitHub repo IDARETW/IW8r (branch main); commit and push finished work
     there, no co-author trailer. docs/features/FEATURES.md is the feature list; its pictures come from
     IW8Radiant.exe --feature-shots (src/qtapp/feature_shots.cpp, real fonts, off screen).
