@@ -275,7 +275,13 @@ the editor adds boxes of its own:
    instance angles for every door-like entry (864 of 868 on Quarry; the other 4 are physics entries naming buy
    stations). What blocks a move is the precomputed spatial population: entries are chained into buckets through
    spatialNode.spatialNodeNext with a spatialPartitionIndex (0 .. about 150 on Quarry), and which tree defines those
-   partitions is not known yet; a move inside its partition would only need the pose written.
+   partitions: MapEnts.dynEntSpatialPopulation.tree (Quarry: 173 nodes, 87 leaves, 173 buckets; node i: axis 3 = leaf,
+   else origin[axis] < dist -> i + 1, else rightChild). 89 entries are in the no-spatial list (index 0,
+   dynEntNoSpatialCount 89); of the other 843, walking the tree from the origin gives the stored index for 523; the
+   rest are stored at an internal node (axis 0..2), so placement goes by the entity's bounds (an entity that straddles a
+   split stays at that node). Next step for door moves: the bounds of each dynamic entity (its model at the pose) and a
+   recompute that reproduces all 843 stock indices and the bucket chains (spatialNode.spatialNodeNext) before it is
+   used on an edited zone.
 4. Verdansk in the reference view: its world is 749 streamed zones; the view loads one zone.
 5. New game type scripts (roadmap 13.6). Read from the recompiled game exe with its linker map (`tools/dw_disasm.py`,
    read only): `G_ScrMP_LoadGameTypeScript_Shared` formats `scripts/mp/gametypes/<type>.gsc` (cp: `scripts/cp/...`)
