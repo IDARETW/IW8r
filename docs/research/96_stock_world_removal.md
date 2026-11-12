@@ -8,8 +8,8 @@ Nothing in this file has been seen in game. Everything below is proven offline w
 
 ## Result
 
-`editzone` key `remove_world_surfaces` (fork branch `iw8radiant/scriptables`, commits 373d6ad2 and 626bfcc9, new file
-`src/convert/iw3_iw8/stock_world_remove.{h,cpp}`):
+`editzone` key `remove_world_surfaces` (fork branch `iw8radiant/scriptables`, commits 373d6ad2, 626bfcc9 and 78f04f41
+(occlusion), new file `src/convert/iw3_iw8/stock_world_remove.{h,cpp}`):
 
 ```json
 "remove_world_surfaces": {
@@ -17,6 +17,7 @@ Nothing in this file has been seen in game. Everything below is proven offline w
   "surfaces": [n, ...],
   "collision": true,
   "rebake_sun_shadow": false,
+  "occlusion": "auto",
   "acts": "<acts.exe>"
 }
 ```
@@ -26,6 +27,7 @@ Nothing in this file has been seen in game. Everything below is proven offline w
 | Render | every world triangle whose three vertices lie inside one box (of any surface); every triangle of the listed surfaces | the triangle's indices become (i0, i0, i0) in a copy of the transient zone's index buffer |
 | Collision | the triangles and convex shapes (brush hulls) of the world Havok mesh that lie inside a box (all their vertices) | in place, as Havok's own primitive removal does it (below) |
 | Sun shadow | with `rebake_sun_shadow`, the removed triangles stop casting | the existing `sun.direction` bake (fork f9c14d9f, `stock_sun.*`) runs at the stock direction; it skips degenerate triangles |
+| Occlusion | the Umbra occlusion of every occluder (map-wide; below) when a removed triangle belongs to an occluder surface | the stock Umbra tome is replaced by the converter's conservative tome with the stock objects |
 
 A box with `"render": false` takes only the collision (a walk-through wall), one with `"collision": false` only the
 triangles (an invisible wall). The report (`<zone>.edit-report.json`) lists the triangles removed, the surfaces that
@@ -106,6 +108,80 @@ The bake is the converter's, not the stock one: on mp_shipment 88.3 MB (stock 50
 tolerance (research 88 explains the choice). The control bake in the proof (same direction, nothing removed) shows
 that the removal changes it: 417,230 caster triangles against 417,644.
 
+## Occlusion (Umbra)
+
+### What it is
+
+Replay 1.20 has no other occlusion data for a stock world: `GfxWorld.dpvsPlanes` holds one DPVS cell on mp_shipment
+(`cells`, `cellCasterBits` one entry each), and the visibility of world surfaces, static models, primary lights,
+reflection probes and decal collections comes from the Umbra 3 query over the precomputed tome
+`GfxWorld.umbraTomeData` (the query consumer at 0x18CCA80 sets the dpvs visibility bits by the object's user-ID class:
+0 surface, 1 static model, 3 volumetric, 4 primary light, 5 probe, 6 decal collection; see `replay_render.cpp`). The
+GPU passes cull again afterwards (frustum, Hi-Z, LOD).
+
+The tome is an Umbra 3 `ImpTome` (version 0xD6000014; the field names of the IW7 headers, `src/games/iw7/structs.hpp`
+`Umbra::ImpTome` / `ImpTile`, match its offsets). mp_shipment: 5,614,672 bytes; 10,483 objects (1,024 surfaces,
+9,413 static model placements, 22 primary lights, 18 probe instances, 6 decal collections), one user ID per object;
+4,089 tiles in a k-d tree (2,045 leaf tiles of 512 units with their own view tree, cells and portals; 238 coarser LOD
+tiles of 1,024 and 2,048 units used at distance); 3,440 clusters; no gates; computation string `SO2 0.4 SH 4.000 BF 100
+F 0`; checksum field 0xD15AB1ED ("disabled": the stock tomes carry no CRC).
+
+The occluders are not a list in the tome: when the map was built, the surfaces with `GFX_SURF_IS_UMBRA_OCCLUDER`
+(flag 64) and the static model collections with `STATIC_MODEL_COLLECTION_FLAG_UMBRA_OCCLUDER` (128) were voxelized and
+the empty space between them became cells joined by portals. A query walks from the camera's cell through the portals;
+what lies beyond solid space (no portal) is hidden. The records that make the proof's pallet an occluder:
+
+- the occluder flag on 5 of its 6 surfaces: 22 `tw/dam_metal_black_dirty_01`, 229
+  `tw/metal_aluminum_insulation_panels_01`, 409 `tw/fabric_insulation_fiberglass_01_yellow`, 411 `twc4/296n_297`, 544
+  `twc4/47n_48n` (flags 67 = sun shadow + sun0 + occluder); surface 1 `tw/shadowcaster` has flags 3 (no occluder);
+- the cells and portals of the tiles around the box, baked with those surfaces as solid: leaf tiles 2181
+  (`-1024,1536,0..-512,2048,512`, 16 cells) and 2227 (`-1024,2048,0..-512,2560,512`, 10 cells), LOD tiles 1142 (13
+  cells), 1156 (20 cells) and 654 (3 cells);
+- the surfaces are also Umbra objects (targets: 1121, 3607, 3498, 3045, 3042), which only decides whether they are
+  drawn; their triangles are degenerate now, so that no longer matters.
+
+### What changes
+
+The cells and portals cannot be edited for one object: their encoding (cell nodes, portal records, view trees, the
+cluster graph and the LOD tiles that repeat the same space) is not decoded, and a wrong portal would hide or show
+wrong things everywhere without anything offline to catch it. So `remove_world_surfaces` takes the safest switch the
+converter already runs in game with: `"occlusion"`
+
+| Value | What happens |
+|---|---|
+| `"auto"` (default) | when a removed triangle belongs to an occluder surface (flag 64), the stock tome is replaced (below); otherwise it stays |
+| `"open"` | always replaced |
+| `"stock"` | never replaced (the removed geometry keeps occluding) |
+
+The new tome is `replayrender::BuildConservativeUmbraTome`, split out of `BuildUmbraTome` (the tome of every converted
+map; the proof's Python port of it rebuilds the tome of a converted map written before the split, mp_scrtest, byte for
+byte, and the editzone tome equals that port): the stock objects with the
+stock user IDs in the stock order, one tile and one cell over the stock tome bounds (`m_treeMin`/`m_treeMax`), every
+object spanning the whole tome, a valid CRC32C. Umbra then finds every object visible from anywhere; the GPU passes
+do all culling. A tome with gates (`GfxWorld.numUmbraGates`, the tome's `m_numGates`), tome collections or several
+user IDs per object is refused (the conservative tome has none; Warzone maps are not edited anyway).
+
+Every other GfxWorld field stays stock, the surface flags too: a degenerate triangle draws nothing in any pass, so the
+flag on an emptied surface has no effect, and the flag is a bake input (research 54: stock sets the static model bit
+on 6,745 placements). mp_shipment: the tome goes from 5,614,672 to 648,000 bytes.
+
+### Cost
+
+- Map-wide, not local: nothing anywhere on the map is hidden by Umbra any more, and its object-contribution cull
+  (small far objects) is gone too. The GPU passes (frustum, Hi-Z occlusion from the depth of what is drawn, LOD)
+  still cull every surface and placement exactly, so the picture is right; the CPU submits more draws, lights, probes
+  and decal collections each frame. All converted maps run this way; on mp_shipment (10,483 objects) it is the
+  configuration the converted maps already have. Not measured in game.
+- The primary lights, reflection probe instances and decal collections are always passed on (their vis bits come
+  only from the query), so the light binning and the decal pass get all of them every frame.
+- `"occlusion": "stock"` keeps the stock culling and the stale occluder (the old limitation).
+
+Not chosen: clearing the occluder flag (the tome is baked; the flag changes nothing at run time for the removed
+triangles); widening `ImpTile.m_portalExpand` of the tiles around the box (portals grow in their own plane only, so a
+view through the removed object is not reliably opened, and its run-time use is not traced); replacing only the tiles
+around the box with one-cell tiles (needs the portal and cluster encoding: the next step if the map-wide cost shows in
+game).
+
 ## Editor
 
 - Core (`src/core/stock_zone_edit.*`): class `iw8r_remove_world` (`kRemoveWorldClass`, `isRemoveWorldClass`); each
@@ -119,7 +195,7 @@ that the removal changes it: 417,230 caster triangles against 417,644.
   `docs/KEYS_REFERENCE.md` (section "Stock world removal").
 - The Qt side (`prepareStockEdit`) is not wired yet; see the owner notes in the session report.
 
-## Proof (`tools/stock_world_remove_test.py <work> --exe <zonetool.exe>`, mp_shipment, 24 checks, RESULT: PASS)
+## Proof (`tools/stock_world_remove_test.py <work> --exe <zonetool.exe>`, mp_shipment, 35 checks, RESULT: PASS)
 
 The box `(-960, 1815, 17.5)..(-820, 2140, 125)` holds a stack of insulation rolls on a pallet frame baked into the world:
 414 triangles of 6 surfaces (`tw/fabric_insulation_fiberglass_01_yellow` 106 of 106, `twc4/47n_48n` 256 of 256,
@@ -135,18 +211,23 @@ zone:
 - `"render": false` gives the same collision and no render change; `"collision": false` the same render change and
   the stock collision bytes;
 - the re-bake keeps the stock sun vector, leaves visions and worldspawn alone, and differs from a control bake;
+- occlusion: the stock tome is read (0xD6000014, checksum disabled, no gates) and the box's occluder surfaces and
+  tiles are listed (section "Occlusion"); the report opens the occlusion for exactly the 5 occluder surfaces; the
+  written tome equals the conservative tome rebuilt in Python from the stock user IDs and bounds (648,000 bytes): one
+  tile, one cell, all 10,483 stock user IDs in the stock order, valid CRC32C, no gates; every other GfxWorld field
+  is stock (the ACTS export without runtime addresses); `"render": false` and `"occlusion": "stock"` keep the stock
+  tome byte for byte, `"collision": false` writes the same tome as the full removal, `"occlusion": "open"` writes it
+  for a box that removes nothing, and the sun control bake (nothing removed, `"auto"`) keeps the stock tome;
 - ACTS `--test` gives the stock result for every written zone (51 tested, 0 failed, 1 unavailable).
 
 About 1 minute; it writes only into the work folder.
 
 ## What stays (limitations)
 
-1. **Umbra occlusion.** The stock tome (`GfxWorld.umbraTomeData`, mp_shipment 5.6 MB) is baked with the removed
-   geometry as an occluder (the proof object's surfaces have `GFX_SURF_IS_UMBRA_OCCLUDER`, flag 64). From a view
-   where only the removed object hid something, that something can still be culled: it may pop in late or not be
-   drawn through the gap. The tome is opaque Umbra data; the converter's own tome (`BuildUmbraTome`, one conservative
-   cell) is built for converted maps and would need every stock object id to replace a stock tome. Not done; the
-   first thing to watch in game.
+1. **Umbra occlusion is opened map-wide, not locally.** With an occluder removed (`"occlusion": "auto"`), the stock
+   tome is replaced by the conservative one: nothing behind the removed object is culled wrongly any more, but Umbra
+   culls nothing anywhere (section "Occlusion", Cost); the GPU passes still cull. The frame cost on stock maps is not
+   measured in game; a local edit of the stock cells and portals is not built.
 2. **Baked lighting.** Lightmaps, the light grid and reflection probes keep the removed object's contact shadow and
    bounce light (a dark patch on the ground where it stood).
 3. **Holes.** The stock compiler did not keep faces hidden by the object (the ground under a crate, a wall behind

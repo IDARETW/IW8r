@@ -158,7 +158,10 @@ texture. Each brush or patch is one box. File > Rebuild Stock Zone takes out the
 every world triangle whose three vertices are all inside a box stops drawing, and the world collision triangles and
 brush hulls inside it go. A triangle that reaches outside the box stays, so make the box a little larger than the
 object, but keep the ground out of it. Props (static models) are not world geometry; hide them with Hide Stock Props
-In Selection. The entity never goes into the entity text. Not seen in game.
+In Selection. The entity never goes into the entity text. When a removed triangle was part of the map's occlusion
+(the precomputed Umbra data treats it as a wall), the rebuild replaces that data with the open, single-cell version that
+converted maps use, so nothing behind the removed object is hidden; the map then culls by view only (more draws per
+frame; research 96, Occlusion). Not seen in game.
 
 | Class / key | Value format | Example | What it does |
 |---|---|---|---|

@@ -14,6 +14,11 @@ outside) is removed with editzone. Read back with ACTS from the written zone:
 - a box with "render": false takes only the collision, one with "collision": false only the triangles;
 - the stock sun shadow is untouched without "rebake_sun_shadow"; with it (and a control bake of the same stock
   direction that removes nothing) the sun direction stays stock and the bake differs from the control;
+- occlusion: the removed surfaces are Umbra occluders (GFX_SURF_IS_UMBRA_OCCLUDER) and the stock Umbra tome's tiles
+  around the box were baked with them; the written tome is the converter's conservative tome (one cell holding every
+  stock object with its stock user ID, in the stock order: no object can be hidden behind anything), byte-identical to
+  a rebuild of it from the stock objects; every other GfxWorld field is stock; "occlusion": "stock" and a box with
+  "render": false keep the stock tome;
 - ACTS tests every written zone like the stock one.
 
 Usage: py -3 -I tools/stock_world_remove_test.py <work folder> [--zone mp_shipment] [--exe <zonetool.exe>] [--no-sun]
@@ -30,6 +35,130 @@ NOTHING = {'mins': [200000.0, 200000.0, 200000.0], 'maxs': [200001.0, 200001.0, 
 
 def inside(box, p):
     return all(box['mins'][a] <= p[a] <= box['maxs'][a] for a in range(3))
+
+
+GFX_SURF_IS_UMBRA_OCCLUDER = 64
+
+
+def f32(x):
+    return struct.unpack('<f', struct.pack('<f', x))[0]
+
+
+def crc32c(data):
+    table = []
+    for i in range(256):
+        c = i
+        for _ in range(8):
+            c = (c >> 1) ^ (0x82F63B78 if c & 1 else 0)
+        table.append(c)
+    crc = 0xFFFFFFFF
+    for b in data:
+        crc = (crc >> 8) ^ table[(crc ^ b) & 0xFF]
+    return crc ^ 0xFFFFFFFF
+
+
+def tome_header(d):
+    """The Umbra 3 ImpTome header fields the checks need (names as in the IW7 structs, Umbra::ImpTome)."""
+    u = lambda o: struct.unpack_from('<I', d, o)[0]
+    n = u(0x40)
+    # 0xD15AB1ED ("disabled"): the stock tomes carry no checksum.
+    crc = 'valid' if u(4) == crc32c(d[8:]) else 'disabled' if u(4) == 0xD15AB1ED else 'invalid'
+    return {'version': u(0), 'crc': crc, 'size': u(8), 'min': list(struct.unpack_from('<3f', d, 0x14)),
+            'max': list(struct.unpack_from('<3f', d, 0x20)), 'objects': n, 'user_id_starts': u(0x4C), 'gates': u(0x68),
+            'clusters': u(0x7C), 'leaf_tiles': u(0x8C), 'tiles': u(0x90), 'tomes': u(0xB0),
+            'user_ids': list(struct.unpack_from('<%dI' % n, d, u(0x50))), 'tile_table': u(0xA0), 'lod_levels': u(0x9C)}
+
+
+def tome_tiles_in(d, box):
+    """Tiles (leaf: flags 5, LOD: flags 4) whose bounds meet the box, with their cell counts."""
+    h = tome_header(d)
+    out = []
+    for i in range(h['tiles']):
+        off = struct.unpack_from('<I', d, h['tile_table'] + 4 * i)[0]
+        if not off:
+            continue
+        mn, mx = struct.unpack_from('<3f', d, off), struct.unpack_from('<3f', d, off + 12)
+        if all(mn[a] <= box['maxs'][a] and mx[a] >= box['mins'][a] for a in range(3)):
+            flags = struct.unpack_from('<I', d, off + 0x2C)[0] & 0xFF
+            cells = struct.unpack_from('<I', d, off + 0x34)[0] & 0xFFFF
+            lod = struct.unpack_from('<f', d, h['lod_levels'] + 4 * i)[0]
+            out.append({'tile': i, 'leaf': flags == 5, 'lod': lod, 'cells': cells, 'min': list(mn), 'max': list(mx)})
+    return out
+
+
+def conservative_tome(ids, mn, mx):
+    """Python port of the converter's replayrender::BuildConservativeUmbraTome (the tome of every converted map; it
+    reproduces converted-map tomes written before the function was split out of BuildUmbraTome byte for byte)."""
+    n = len(ids)
+    width = 1
+    while width < 31 and (1 << width) < n:
+        width += 1
+    packed = bytearray((n * width + 31) // 32 * 4)
+    bit = 0
+    for o in range(n):
+        for b in range(width):
+            if o & (1 << b):
+                packed[(bit + b) >> 3] |= 1 << ((bit + b) & 7)
+        bit += width
+    t = bytearray(0x170)
+    p32 = lambda o, v: struct.pack_into('<I', t, o, v & 0xFFFFFFFF)
+    pf = lambda o, v: struct.pack_into('<f', t, o, v)
+
+    def alloc(size):
+        t.extend(b'\0' * ((-len(t)) % 16))
+        o = len(t)
+        t.extend(b'\0' * size)
+        return o
+    mn, mx = [f32(v) for v in mn], [f32(v) for v in mx]
+    p32(0, 0xD6000014); pf(0x0C, 128.0); p32(0x40, n); p32(0x54, width); p32(0x5C, n); p32(0x8C, 1); p32(0x90, 1)
+    for base, v in ((0x14, mn), (0x20, mx), (0x150, mn), (0x15C, mx)):
+        struct.pack_into('<3f', t, base, *v)
+    top_tree = alloc(4); p32(top_tree, 3)
+    top_map = alloc(4); p32(top_map, 0)
+    p32(0x2C, 33); p32(0x30, top_tree); p32(0x34, top_map)
+    ob, od = alloc(n * 24), alloc(n * 32)
+    mid = [f32(f32(mn[a] + mx[a]) * 0.5) for a in range(3)]
+    half = [f32(f32(mx[a] - mn[a]) * 0.5) for a in range(3)]
+    omin, omax = [f32(mid[a] - half[a]) for a in range(3)], [f32(mid[a] + half[a]) for a in range(3)]
+    for o in range(n):
+        struct.pack_into('<6f', t, ob + 24 * o, *omin, *omax)
+        struct.pack_into('<8f', t, od + 32 * o, *omin, 0.0, *omax, float('inf'))
+    p32(0x44, ob); p32(0x48, od)
+    uid = alloc(n * 4); struct.pack_into('<%dI' % n, t, uid, *ids); p32(0x50, uid)
+    ol = alloc(len(packed)); t[ol:ol + len(packed)] = packed; p32(0x58, ol)
+    cs = alloc(8); p32(cs, 0); p32(cs + 4, 1); p32(0x88, cs)
+    lod = alloc(4); pf(lod, 1.0); p32(0x9C, lod)
+    offs = alloc(4); p32(0xA0, offs)
+    pe = alloc(4); pf(pe, 0.0); p32(0x14C, pe)
+    tile = alloc(0x60)
+    struct.pack_into('<3f', t, tile, *mn); struct.pack_into('<3f', t, tile + 12, *mx)
+    p32(tile + 0x18, 33); pf(tile + 0x30, 0.0); p32(tile + 0x34, 1)
+    required = max(mx[a] - mn[a] for a in range(3)) / 65536.0
+    scale = f32(required)
+    if scale < required:
+        scale = struct.unpack('<f', struct.pack('<I', struct.unpack('<I', struct.pack('<f', scale))[0] + 1))[0]
+    pf(tile + 0x44, scale); pf(tile + 0x48, f32(1.0 / scale)); pf(0x168, scale)
+    tt = alloc(4); p32(tt, 3); p32(tile + 0x1C, tt - tile)
+    tm = alloc(8); p32(tm, 0); p32(tile + 0x20, tm - tile)
+    ci = alloc(8); p32(ci, 0); p32(ci + 4, 0xFFFFFFFF); p32(tile + 0x40, ci - tile)
+    cell = alloc(36)
+    for off, v in ((8, 0), (0xC, n), (0x10, 0xFFFFFFFF), (0x14, 0x80000000), (0x18, 0), (0x1C, 0xFFFF), (0x20, 0xFFFFFFFF)):
+        p32(cell + off, v)
+    p32(tile + 0x38, cell - tile)
+    t.extend(b'\0' * ((-len(t)) % 16))
+    p32(tile + 0x2C, ((len(t) - tile) << 8) | 3)
+    p32(offs, tile)
+    p32(0x08, len(t))
+    p32(0x04, crc32c(bytes(t[8:])))
+    return bytes(t)
+
+
+def without_addresses(v):
+    if isinstance(v, dict):
+        return {k: without_addresses(x) for k, x in v.items() if k != 'address'}
+    if isinstance(v, list):
+        return [without_addresses(x) for x in v]
+    return v
 
 
 def export(zone_file, kinds, out):
@@ -56,6 +185,11 @@ def world(zone_file, out):
     sun = draw.get('compressedSunShadow') or {}
     sun_bytes = bytes.fromhex(sun.get('bytes') or '')
     params = draw.get('compressedSunShadowParams') or {}
+    tome = bytes.fromhex((f.get('umbraTomeData') or {}).get('bytes') or '')
+    gates = f.get('numUmbraGates')
+    # Every GfxWorld field but the tome (runtime addresses left out): the occlusion edit must leave them stock.
+    rest = without_addresses({k: v for k, v in f.items() if k not in ('umbraTomeData', 'umbraTomeSize')})
+    rest = hashlib.sha256(json.dumps(rest, sort_keys=True).encode()).hexdigest()
     del f
     tz = t.fields(files['gfx_map_trzone'])['drawVerts']
     pos = bytes.fromhex(tz['posData']['bytes'])
@@ -63,7 +197,16 @@ def world(zone_file, out):
     del tz
     shutil.rmtree(out, ignore_errors=True)
     return {'surfaces': surfs, 'opaque_end': opaque_end, 'pos': pos, 'idx': idx, 'sun': hashlib.sha256(sun_bytes).hexdigest(), 'sun_size': len(sun_bytes),
-            'sun_dir': [round(v, 6) for v in ((params.get('sunDirection') or {}).get('v') or [])]}
+            'sun_dir': [round(v, 6) for v in ((params.get('sunDirection') or {}).get('v') or [])],
+            'tome': tome, 'gates': gates, 'rest': rest}
+
+
+def tome_of(zone_file, out):
+    """The Umbra tome bytes of a zone's GfxWorld."""
+    files = export(zone_file, ['gfx_map'], out)
+    tome = bytes.fromhex((t.fields(files['gfx_map']).get('umbraTomeData') or {}).get('bytes') or '')
+    shutil.rmtree(out, ignore_errors=True)
+    return tome
 
 
 def collision(exe, zone_file, out):
@@ -145,6 +288,25 @@ def main():
           (sum(stock_tris.values()), sum(stock_convex.values()), sum(tri_in.values()), sum(convex_in.values())))
     check(sum(tri_in.values()) > 0 and sum(convex_in.values()) > 0, 'the box holds collision triangles and convex shapes')
 
+    # Occlusion in the stock zone: the records that make the box's geometry an occluder.
+    stock_tome = stock['tome']
+    th = tome_header(stock_tome)
+    occluders = sorted(i for i in by_surface if stock['surfaces'][i][2] & GFX_SURF_IS_UMBRA_OCCLUDER)
+    surface_objects = {uid: k for k, uid in enumerate(th['user_ids']) if uid >> 28 == 0}
+    box_tiles = tome_tiles_in(stock_tome, BOX)
+    print('stock Umbra tome: %d bytes, %d objects (%s by class), %d tiles (%d leaf), %d clusters, %d gates; checksum %s' %
+          (len(stock_tome), th['objects'], dict(sorted(collections.Counter(u >> 28 for u in th['user_ids']).items())), th['tiles'],
+           th['leaf_tiles'], th['clusters'], th['gates'], th['crc']))
+    print('  occluder surfaces in the box (flag %d): %s' % (GFX_SURF_IS_UMBRA_OCCLUDER,
+          ['%d %s (object %s)' % (i, stock['surfaces'][i][1], surface_objects.get(i)) for i in occluders]))
+    for tile in box_tiles:
+        print('  tile %d (%s, lod %g): %d cells over %s..%s' % (tile['tile'], 'leaf' if tile['leaf'] else 'LOD', tile['lod'], tile['cells'],
+              tile['min'], tile['max']))
+    check(th['version'] == 0xD6000014 and th['crc'] in ('valid', 'disabled') and th['gates'] == 0 and th['tomes'] == 0 and th['user_id_starts'] == 0,
+          'the stock tome is a Replay 1.20 Umbra tome (0xD6000014, checksum %s, no gates, no tome collection)' % th['crc'])
+    check(occluders and all(i in surface_objects for i in occluders) and any(t_['leaf'] and t_['cells'] > 1 for t_ in box_tiles),
+          'the box holds %d Umbra occluder surfaces (Umbra objects too), and leaf tiles with several cells cover it' % len(occluders))
+
     # 1. Removal without the sun.
     code, log, rep = t.editzone(exe, zone, {'remove_world_surfaces': {'boxes': [BOX]}, 'patch': False}, os.path.join(work, 'out'))
     if code != 0:
@@ -173,6 +335,23 @@ def main():
     check(drawn == 0, 'no triangle inside the box still has an area (%d)' % drawn)
     check(edited['sun'] == stock['sun'], 'without rebake_sun_shadow the compressed sun shadow is stock (%d bytes)' % stock['sun_size'])
 
+    # Occlusion: the stock tome replaced by the conservative one built from the stock objects.
+    o = r.get('occlusion') or {}
+    eh = tome_header(edited['tome']) if len(edited['tome']) >= 0x170 else {}
+    check(o.get('opened') is True and o.get('occluder_surfaces_touched') == occluders and o.get('objects') == th['objects']
+          and o.get('tome_bytes_before') == len(stock_tome) and o.get('tome_bytes_after') == len(edited['tome']),
+          'the report opens the occlusion for the occluder surfaces %s (%s objects, tome %s -> %s bytes)' %
+          (o.get('occluder_surfaces_touched'), o.get('objects'), o.get('tome_bytes_before'), o.get('tome_bytes_after')))
+    check(edited['tome'] == conservative_tome(th['user_ids'], th['min'], th['max']),
+          'the written tome is the conservative tome rebuilt from the stock objects and bounds (%d bytes)' % len(edited['tome']))
+    check(eh.get('crc') == 'valid' and eh.get('tiles') == 1 and eh.get('leaf_tiles') == 1 and eh.get('clusters') == 0 and eh.get('gates') == 0
+          and eh.get('user_ids') == th['user_ids'] and eh.get('min') == th['min'] and eh.get('max') == th['max'],
+          'it has one tile and one cell with all %d stock user IDs in the stock order, over the stock bounds; checksum valid' % th['objects'])
+    open_tiles = tome_tiles_in(edited['tome'], BOX) if eh else []
+    check(open_tiles and all(t_['cells'] == 1 for t_ in open_tiles) and edited['gates'] == stock['gates'] == 0,
+          'no cell boundary is left around the box (the one cell spans the whole tome), no gates')
+    check(edited['rest'] == stock['rest'], 'every other GfxWorld field is stock (runtime addresses left out)')
+
     blob, tris, convex = collision(exe, out_file, os.path.join(work, 'out_col'))
     left_in = sum(n for k, n in tris.items() if all(inside(BOX, k[c:c + 3]) for c in (0, 3, 6)))
     convex_left = sum(n for k, n in convex.items() if inside(BOX, k[0]) and inside(BOX, k[1]))
@@ -199,13 +378,27 @@ def main():
         code, log, rep = t.editzone(exe, zone, {'remove_world_surfaces': {'boxes': [box]}, 'patch': False}, os.path.join(work, 'only'))
         r = rep.get('remove_world_surfaces') or {}
         only_blob = collision(exe, os.path.join(work, 'only', zone + '.ff'), os.path.join(work, 'only_col'))[0] if code == 0 else b''
+        only_tome = tome_of(os.path.join(work, 'only', zone + '.ff'), os.path.join(work, 'only_tome')) if code == 0 else b''
         if flag == 'render':
             check(code == 0 and r.get('triangles_removed') == 0 and (r.get('collision') or {}).get('triangles_removed') == sum(tri_in.values())
                   and only_blob == blob, '"render": false removes no triangle and the same collision (%s)' % r.get('collision'))
+            check(only_tome == stock_tome and (r.get('occlusion') or {}).get('opened') is False,
+                  '"render": false keeps the stock Umbra tome (the geometry still draws and still occludes)')
         else:
             check(code == 0 and r.get('triangles_removed') == len(expected) and 'collision' not in r and only_blob == stock_blob,
                   '"collision": false removes the %s triangles and keeps the stock collision' % r.get('triangles_removed'))
+            check(only_tome == edited['tome'], '"collision": false opens the occlusion as the full removal does')
         shutil.rmtree(os.path.join(work, 'only'), ignore_errors=True)
+
+    # "occlusion": "stock" keeps the stock tome; "open" opens it even for a box that removes nothing.
+    for mode, box, want in (('stock', BOX, stock_tome), ('open', NOTHING, edited['tome'])):
+        code, log, rep = t.editzone(exe, zone, {'remove_world_surfaces': {'boxes': [box], 'occlusion': mode}, 'patch': False},
+                                    os.path.join(work, 'mode'))
+        o = (rep.get('remove_world_surfaces') or {}).get('occlusion') or {}
+        got = tome_of(os.path.join(work, 'mode', zone + '.ff'), os.path.join(work, 'mode_tome')) if code == 0 else b''
+        check(code == 0 and got == want and o.get('opened') is (mode == 'open'),
+              '"occlusion": "%s" %s' % (mode, 'keeps the stock tome' if mode == 'stock' else 'writes the conservative tome without a removal'))
+        shutil.rmtree(os.path.join(work, 'mode'), ignore_errors=True)
 
     # 3. The sun shadow baked again at the stock direction, with a control bake that removes nothing.
     if sun:
@@ -226,6 +419,8 @@ def main():
                 shutil.rmtree(os.path.join(work, 'test'), ignore_errors=True)
             shutil.rmtree(os.path.join(work, 'sun_' + name), ignore_errors=True)
         control, removed = bakes['control'][0], bakes['removed'][0]
+        check(control['tome'] == stock_tome and removed['tome'] == edited['tome'],
+              'the control bake (nothing removed, "occlusion": "auto") keeps the stock tome; the re-baked removal opens it')
         check(control['sun_dir'] == stock['sun_dir'] == removed['sun_dir'], 'the baked shadow keeps the stock sun direction %s' % stock['sun_dir'])
         cw = bakes['control'][1]['sun_shadow']['world_triangles']
         rw = bakes['removed'][1]['sun_shadow']['world_triangles']

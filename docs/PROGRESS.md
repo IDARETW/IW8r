@@ -66,6 +66,10 @@
   decompressed zone, probes.iw8rprb), WorldCache probesFile / probesReady, render.cpp stockProbeLight (box parallax,
   priority order, feather, two mips), game_look_assets (ggx_env_brdf_lut from the install via ACTS, cached in
   AppLocalData/game_look). Ground War (11.10) deferred by the owner's scope decision.
+- Then occlusion for removals (x64-zt 78f04f41, live; old exe zonetool_626bfcc9.exe): when removed triangles belong
+  to Umbra occluder surfaces (flag 64), editzone replaces the Umbra tome with the converter's conservative one-cell tome
+  (replayrender::BuildConservativeUmbraTome, stock objects and user ids kept); key "occlusion" auto / open / stock.
+  Local tile editing needs the Umbra portal encoding decoded (not done).
 - Tests at the last commit: core 139,820 checks / 0, GUI 948 / 0.
 - Open (in scope): copying or removing a placed object that has a dynamic entity;
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.
