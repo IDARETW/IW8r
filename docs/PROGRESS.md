@@ -24,8 +24,10 @@
   is 5ecee331. Package and installer rebuilt (out/package/IW8RadiantSuite-20261112.zip, out/installer).
 - Then: traversals for bots (Primitives > Traversal For Bots, core traversal.*, nine stock animations). All eleven
   offline proofs pass against the live converter (tools/run_offline_proofs.py <work>; ~5 min). Installer rebuilt.
-- Tests at the last commit: core 139,788 checks / 0, GUI 945 / 0.
-- Open (in scope): removing a placed object on a stock map (indices in dynamic entities and the spatial tree);
+- Then: removing placed objects (buy stations) from stock maps (converter aacfad65, live; tools/
+  warzone_instances_remove_test.py); door moves researched (tools/dynent_pose_rules.py, research 89 section 8 item 3).
+- Tests at the last commit: core 139,788 checks / 0, GUI 947 / 0.
+- Open (in scope): moving or copying a placed object that has a dynamic entity (doors: spatial buckets);
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.
 - Disk: E: had 3.5 GB free; this session's scratch output under out/ was deleted (owner copies kept).
 
