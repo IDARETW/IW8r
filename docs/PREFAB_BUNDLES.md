@@ -357,6 +357,6 @@ What the window does with bundles (`docs/USER_GUIDE.md`, section "Prefabs", is t
    takes "<name>.iw8prefab/" folders or one bundle's files at the top, never replaces an existing bundle and checks
    each bundle before it lands in the prefab folder. Core `prefabBundleFromPlainMap`, `exportPrefabBundleZip`,
    `importPrefabBundleZip`; `extractZip` inflates with stb.)
-4. **Core**: the map package must pack bundle folders (`map_package.cpp`), the build cache should notice a changed
-   bundle script or manifest (`build_cache.cpp`), the entity class `scriptable` and the catalogue of scriptable
-   definitions, and a `docs\KEYS_REFERENCE.md` entry for `iw8r_pid`.
+4. (Checked 2026-11-12: done.) The map package packs whole bundle folders (`map_package.cpp`); a changed bundle
+   script or manifest changes the extraction, whose hash is the zone reuse key (`compile_panel.cpp zonesKey`); the
+   entity class `scriptable` and its catalogue exist; `iw8r_pid` is in `docs\KEYS_REFERENCE.md`.

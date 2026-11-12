@@ -7162,6 +7162,81 @@
             "war dm",
             "war dom sd"
           ]
+        },
+        "iw8r_script": {
+          "type": "string",
+          "default": "",
+          "description": "The map's own GSC file (relative to the map folder). It must define user_main(), which runs after the load script. Edited in the Script dock.",
+          "required": false,
+          "examples": [
+            "mp_mymap_logic.gsc"
+          ]
+        },
+        "iw8r_mode_dvars": {
+          "type": "string",
+          "default": "",
+          "description": "Game mode settings the map's script sets at every start, 'name=value; name=value' (Tools > Game Modes > Carry in this map). Not seen in game.",
+          "required": false,
+          "examples": [
+            "scr_br_teamsize=3; loot_table_name=mp/loot_item_defs_s3.csv"
+          ]
+        },
+        "iw8r_mode_rules": {
+          "type": "string",
+          "default": "",
+          "description": "Game mode rules applied to every player at each spawn by the map's script, which runs after the game type's own start (research 91): health=<1..1000>; speed=<0.2..3>; weapon=<name>; ammo=infinite. Not seen in game.",
+          "required": false,
+          "examples": [
+            "health=50; speed=1.2; weapon=iw8_pi_golf21_mp; ammo=infinite"
+          ]
+        },
+        "iw8r_gametype_script": {
+          "type": "string",
+          "default": "",
+          "description": "A game type of the map's own (research 91 / 92): a GSC file beside the map whose file name is the game type name. The build checks it (a new name, main(), calls only into stock scripts stored by number) and compiles it into the map zone; map.json lists the name. Tools > Game Modes > New game type script writes a template. Not seen in game.",
+          "required": false,
+          "examples": [
+            "gametypes/teamkills.gsc"
+          ]
+        },
+        "iw8r_br": {
+          "type": "string",
+          "default": "",
+          "description": "What a small map switches off in the Warzone (br) game type: nocircle, nogulag, skipdrop (Tools > Game Modes). Also marks the map as a Warzone map for scriptables and vehicles.",
+          "required": false,
+          "examples": [
+            "nocircle nogulag skipdrop"
+          ]
+        },
+        "iw8r_loot_zone": {
+          "type": "string",
+          "default": "map_quarry",
+          "description": "The loot zone name of the map's loot points when no iw8r_loot_zone brush entity names one; the loot tables pick the loot by it (research 87).",
+          "required": false,
+          "examples": [
+            "map_quarry",
+            "tutorial_scavenger"
+          ]
+        },
+        "iw8r_no_loot": {
+          "type": "int",
+          "default": "0",
+          "description": "1 writes an empty loot list (removes all loot points of a stock Warzone map on Rebuild Stock Zone).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "iw8r_collision": {
+          "type": "string",
+          "default": "auto",
+          "description": "How the build keeps the map's collision: auto (streamed tiles for a map wider than 20000 units), one (one piece; also full) or tiles (the game's streamed collision tiles, research 90). Overrides Edit > Preferences > Build: collision.",
+          "required": false,
+          "examples": [
+            "auto",
+            "one",
+            "tiles"
+          ]
         }
       }
     }
