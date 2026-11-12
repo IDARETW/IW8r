@@ -232,4 +232,9 @@ as decoded `values` instead of hex `bytes` (5 of 12 tiles tried); the reader tak
 3. New clusters or zones on a stock map (today a new point can only join an existing box). Removing a placed
    object, and moving or adding one that has a dynamic entity (doors, extraction sites).
 4. Verdansk in the reference view: its world is 749 streamed zones; the view loads one zone.
-5. New game type scripts (roadmap 13.6).
+5. New game type scripts (roadmap 13.6). Read from the recompiled game exe with its linker map (`tools/dw_disasm.py`,
+   read only): `G_ScrMP_LoadGameTypeScript_Shared` formats `scripts/mp/gametypes/<type>.gsc` (cp: `scripts/cp/...`)
+   and loads it with `AddScriptAndLabel` by that name, the same lookup as any script asset, after the level zones
+   are loaded. So a map zone that held a script asset of that name would offer it; whether it wins over the stock
+   one of the same name (both loaded), and how a new type name gets into the game type list
+   (`Com_GameInfo_LoadGameTypesList`, a string table of `code_post_gfx`), still needs the game.
