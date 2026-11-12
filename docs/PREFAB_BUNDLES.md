@@ -342,10 +342,10 @@ What the window does with bundles (`docs/USER_GUIDE.md`, section "Prefabs", is t
 
 ## Still open
 
-1. **Drawing in the Camera** (`src\viewport\scene.cpp`, `buildPrefab`): a prefab's brushes are drawn in one flat colour
-   and every point entity inside it, a model included, as a 16 unit box. Wanted: the model meshes of `misc_model`,
-   `script_model`, `dynamic_prop` and `scriptable` entities inside a prefab (through the scene's `modelSource`), the
-   materials of its brush faces, and a see-through look for the drag preview.
+1. (Checked 2026-11-12: done.) **Drawing in the Camera**: `buildPrefab` / `addPrefabContents` (`scene.cpp`) draw a
+   prefab's brush faces with their materials and texture coordinates, and its `misc_model`, `script_model`,
+   `dynamic_prop` and `scriptable` entities as their model meshes (through the scene's `modelSource`); a box stands
+   in only until a model arrives.
 2. (Done 2026-11-12) **Placement hints**: Insert Prefab uses `placement.surface`: a `wall` prefab placed on a wall
    turns its +X out of the wall (yaw from the face normal, rounded to `placement.yaw_step`), `snap` snaps x and y (and
    the height on a wall); the status bar says when the surface does not fit. File > Rotate Selected Prefab turns a
