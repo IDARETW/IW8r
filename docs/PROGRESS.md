@@ -26,8 +26,10 @@
   offline proofs pass against the live converter (tools/run_offline_proofs.py <work>; ~5 min). Installer rebuilt.
 - Then: removing placed objects (buy stations) from stock maps (converter aacfad65, live; tools/
   warzone_instances_remove_test.py); door moves researched (tools/dynent_pose_rules.py, research 89 section 8 item 3).
+- Then: moving placed objects with dynamic entities (converter e7d8d0e3 / 1396c861, live): ordinary ones get pose,
+  partition and chain; doors move inside their area. tools/dynent_move_test.py. Installer rebuilt.
 - Tests at the last commit: core 139,788 checks / 0, GUI 947 / 0.
-- Open (in scope): moving or copying a placed object that has a dynamic entity (doors: spatial buckets);
+- Open (in scope): copying or removing a placed object that has a dynamic entity;
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.
 - Disk: E: had 3.5 GB free; this session's scratch output under out/ was deleted (owner copies kept).
 
