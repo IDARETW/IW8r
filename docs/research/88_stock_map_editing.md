@@ -51,9 +51,8 @@ try that kept the layout and added assets gave 16 failed assets in the ACTS load
 
 ## What an edited stock map still cannot do
 
-- New world geometry (brushes) inside the stock world. The route that fits this design: build the added brushes as a
-  custom model with collision through the normal map build, load that small zone with the fork's loader and add its
-  assets to the stock zone the same way stock assets are carried. Not done.
+- New world geometry inside the stock world itself. Added brushes are built as models instead (done 2026-11-12,
+  next step 4 below), which draws and collides the same for a player.
 - New static models in the world's own tables, new scriptable instances, lights. A new prop is a `script_model`.
 - Playing the result without replacing the stock file: the owner's client takes a stock map of the same name over a
   package ("A stock map of the same name always wins", `DW_MapAvailability.cpp:468`). Giving the edited map a new id
@@ -89,5 +88,13 @@ try that kept the layout and added assets gave 16 failed assets in the ACTS load
    folders; a stock patch of the same name is saved as `<name>.stock` in the app data folder `stock_backup\<zone>`).
    Only the owner runs them; the session never writes to the game folder itself. This replaces the "installed over
    the stock file" note above.
-4. Added brushes as a carried custom model.
+4. Done 2026-11-12: added brushes as a carried custom model. File > Rebuild Stock Zone turns the visible brushes and
+   patches of the worldspawn and of each func_group into one Y-up OBJ model each (core `stockOverlayModels`; tool-only
+   brushes such as a caulk helper and other brush entities are left out with a note), writes a helper map
+   (`mp_iw8rovl`: a room, the spawn set a build needs, one targeted `script_model` per model so it stays a live model
+   of its own name with its physics) and builds it with the editor's own headless build (stock textures, collision).
+   Then `editzone` carries each model from the helper package (carry entry with `folder`, fork 9f1472de) and a
+   `script_model` places it at the brushes' centre. Proof: `tools/stock_overlay_test.py` on mp_br_tut (the model and
+   its physics asset are in the zone, in the level model table, placed in the entity text, ACTS tests the zone like
+   the stock one, the techsets zone loads with 0 failed) and a GUI check of the plan.
 5. The Warzone maps with the same command (research 87).

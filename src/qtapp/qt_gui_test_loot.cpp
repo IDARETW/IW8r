@@ -192,6 +192,46 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
         for (int i = 0; i < 12 && ctx.doc.modified(); ++i) ctx.doc.undo();
         check(ctx.doc.text() == stockText, "Undo returns the document to the stock text");
     }
+
+    // 11.4: a visible brush added to the stock map is built as a model of a helper map and placed by a script_model.
+    section("brushes added to a stock map (11.4)");
+    {
+        AABB box;
+        box.add(Vec3{96, 0, 0});
+        box.add(Vec3{160, 64, 48});
+        const auto prim = makeBrushPrimitive(makeBox(box, " tm2co/me_curb_stone_01 128 128 0 0 0 0"), "\n");
+        check(prim.has_value(), "a brush is made");
+        if (!prim) return;
+        ctx.doc.addEntity({{"classname", "func_group"}}, {*prim}, "Added brush");
+        QString program, err;
+        QStringList args, notes;
+        const bool withoutPlan = w.prepareStockEdit(work + "/brush_noplan", &program, &args, &err, &notes);
+        check(withoutPlan && notes.join("; ").contains("left out: only File > Rebuild Stock Zone builds them"),
+              "without a build plan the brushes are left out with a note");
+        MainWindow::StockOverlayPlan plan;
+        notes.clear();
+        const bool prepared = w.prepareStockEdit(work + "/brush", &program, &args, &err, &notes, &plan);
+        check(prepared && QFileInfo(plan.map).isFile() && plan.models.size() == 1 && !plan.resultDir.isEmpty(),
+              "Rebuild Stock Zone plans a helper map with one model: " + plan.models.join(", ") + err);
+        if (plan.models.size() == 1) {
+            const QString model = plan.models.front();
+            check(QFileInfo(QFileInfo(plan.map).absolutePath() + "/models/" + model + ".obj").isFile(), "the model's OBJ file is written beside the helper map");
+            QFile mf(plan.map), jf(work + "/brush/edits.json"), ef(work + "/brush/edit.ents");
+            const QByteArray mapText = mf.open(QIODevice::ReadOnly) ? mf.readAll() : QByteArray();
+            const QByteArray json = jf.open(QIODevice::ReadOnly) ? jf.readAll() : QByteArray();
+            const QByteArray ents = ef.open(QIODevice::ReadOnly) ? ef.readAll() : QByteArray();
+            check(mapText.contains("\"model\" \"" + model.toUtf8() + "\"") && mapText.contains("\"target\" \"" + model.toUtf8() + "\"") &&
+                      mapText.contains("mp_tdm_spawn_allies_start"),
+                  "the helper map places the model on a targeted script_model, with the spawns a build needs");
+            check(json.contains("{\"zone\":\"mp_iw8rovl\",\"type\":\"xmodel\",\"name\":\"" + model.toUtf8() + "\",\"folder\":\"@IW8R_OVERLAY_PACKAGE@\"}"),
+                  "the edits file carries the model from the helper map's package (filled in after its build)");
+            check(ents.contains("212 \"script_model\"\n652 \"" + model.toUtf8() + "\"\n709 \"128 32 24\""),
+                  "the entity text places it where the brush was (its centre)");
+            check(notes.join("; ").contains("12 triangles"), "the notes say what was built");
+        }
+        for (int i = 0; i < 12 && ctx.doc.modified(); ++i) ctx.doc.undo();
+        check(ctx.doc.text() == stockText, "Undo takes the added brush out again");
+    }
 }
 
 }  // namespace iw8r::qt

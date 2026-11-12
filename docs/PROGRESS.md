@@ -301,6 +301,11 @@
     VEHICLES (research 89 section 6b): converter live at 94ac6fea (old exe zonetool_44d21398.exe): collision JSON
     carry_assets; editor core stock_vehicles.* + data/asset_catalog/iw8_vehicles.tsv, entity classes
     script_struct_mp_atv / tacrover / jeep / cargotruck / littlebird. Proof tools/vehicle_carry_test.py.
+    ADDED BRUSHES ON STOCK MAPS (research 88 step 4): converter live at 9f1472de (old exe zonetool_94ac6fea.exe):
+    carry entries may name a "folder". Editor: core stockOverlayModels (compile_iw8.cpp), main_window_stock_edit.cpp
+    StockOverlayPlan / overlayMapText / runStockEdit (the helper map mp_iw8rovl is built with IW8Radiant.exe
+    --compile, then edits.json gets its package folder). Proof tools/stock_overlay_test.py; GUI check in
+    qt_gui_test_loot.cpp.
     REPOSITORY: the project is in the private GitHub repo IDARETW/IW8r (branch main); commit and push finished work
     there, no co-author trailer. docs/features/FEATURES.md is the feature list; its pictures come from
     IW8Radiant.exe --feature-shots (src/qtapp/feature_shots.cpp, real fonts, off screen).

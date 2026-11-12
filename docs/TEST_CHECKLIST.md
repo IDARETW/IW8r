@@ -167,7 +167,10 @@ Everything else in this list can wait. This one cannot be settled without the ga
 - [ ] File > Rebuild Stock Zone: a few seconds, the status line ends with "checked (ACTS, 0 failed)".
 - [ ] Close the game. File > Install Edited Stock Map Into Game: the dialog lists `mp_shipment.fp` (and
       `techsets_mp_shipment.fp`). Confirm.
-- [ ] Start Shipment in the game: say whether it loads and whether the added model and the moved spawn are there.
+- [ ] Draw a box brush with a stock material somewhere open on Shipment before the rebuild. The Console says "added
+      brushes (entity 0): 12 triangles ... built as model iw8r_ovl_...".
+- [ ] Start Shipment in the game: say whether it loads and whether the added model, the box (can you stand on it?)
+      and the moved spawn are there.
 - [ ] File > Restore Stock Map In Game puts the stock map back (do this before playing online or with others).
 - [ ] Loot of a Warzone map: File > Open IW8 Stock Map > mp_br_quarry (or mp_br_tut, which is small). File > Edit
       Loot Points: green points appear (Quarry 2,924). Delete the points of one building and add a few in another

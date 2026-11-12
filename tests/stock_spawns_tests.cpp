@@ -1,15 +1,20 @@
 // Stock spawn editing (6.1): spawn records as document entities and the split back into entity string + spawnList.
+#include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <filesystem>
 #include <string>
 #include <vector>
 
+#include "compile_iw8.h"
 #include "iw8_mapents.h"
+#include "model_import.h"
 #include "map_text.h"
 #include "stock_spawns.h"
 #include "test_harness.h"
 
 using namespace iw8r;
+namespace fs = std::filesystem;
 
 namespace {
 const std::string kActsJson =
@@ -71,6 +76,7 @@ TEST(stock_spawns_split_leaves_brushes_out) {
     CHECK(ents.find("caulk") == std::string::npos && ents.find(" ( ") == std::string::npos && ents.find("func_group") == std::string::npos);
     CHECK(ents.find("worldspawn") != std::string::npos && ents.find("\"fog\" \"1\"") != std::string::npos && ents.find("crate") != std::string::npos);
     CHECK(err.find("2 brush(es)") != std::string::npos);
+    CHECK(err.find("not part of the entity text") != std::string::npos);
     // The text parses again as two entities without primitives.
     Id next2 = 1;
     ParseResult again = parseMap(ents, next2);
@@ -122,4 +128,42 @@ TEST(stock_spawns_shipment_round_trip) {
         }
     }
     CHECK(mismatched == 0);
+}
+
+// 11.4 (research 88): the brushes added to a stock map as model files: one per worldspawn / func_group, centred,
+// Y-up OBJ that the model importer reads back with the same triangles; tool-only brushes and other brush entities
+// are left out with a note.
+TEST(stock_overlay_models_from_brushes) {
+    const auto box = [](int x0, int y0, int z0, int x1, int y1, int z1, const std::string& m) {
+        const auto v = [](int a, int b, int c) { return "( " + std::to_string(a) + " " + std::to_string(b) + " " + std::to_string(c) + " )"; };
+        const std::string s = " " + m + " 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0\n";
+        return "{\n " + v(x1, y1, z0) + " " + v(x0, y1, z0) + " " + v(x0, y0, z0) + s + " " + v(x0, y0, z1) + " " + v(x0, y1, z1) + " " + v(x1, y1, z1) + s +
+               " " + v(x0, y0, z1) + " " + v(x1, y0, z1) + " " + v(x1, y0, z0) + s + " " + v(x1, y1, z1) + " " + v(x0, y1, z1) + " " + v(x0, y1, z0) + s +
+               " " + v(x1, y0, z1) + " " + v(x1, y1, z1) + " " + v(x1, y1, z0) + s + " " + v(x0, y1, z1) + " " + v(x0, y0, z1) + " " + v(x0, y0, z0) + s + "}\n";
+    };
+    const std::string text = "iwmap 4\n{\n\"classname\" \"worldspawn\"\n" + box(100, 0, 0, 164, 64, 64, "tm2co/me_curb_stone_01") +
+                             box(0, 0, 0, 16, 16, 16, "caulk") + "}\n" + "{\n\"classname\" \"func_group\"\n" + box(-64, -64, 0, 0, 0, 32, "pfm_wall") + "}\n" +
+                             "{\n\"classname\" \"trigger_multiple\"\n" + box(0, 0, 0, 8, 8, 8, "trigger") + "}\n";
+    Id next = 1;
+    ParseResult pr = parseMap(text, next);
+    CHECK(pr.map.has_value());
+    if (!pr.map) return;
+    std::vector<std::string> notes;
+    const std::vector<StockOverlayModel> models = stockOverlayModels(*pr.map, 4, &notes);
+    CHECK(models.size() == 2);
+    if (models.size() != 2) return;
+    CHECK(models[0].entity == 0 && models[0].centre == Vec3(132, 32, 32) && models[0].triangles == 12 && models[0].materials.size() == 1 &&
+          models[0].materials.count("tm2co/me_curb_stone_01"));
+    CHECK(models[1].entity == 1 && models[1].centre == Vec3(-32, -32, 16) && models[1].triangles == 12);
+    CHECK(notes.size() == 2);
+    // The importer reads it back: 12 triangles, centred (the box spans -32..32 on X and, Y-up, -32..32 on Z).
+    const fs::path file = fs::path(iw8r::test::tmpDir()) / "overlay_box.obj";
+    std::ofstream(file, std::ios::binary) << models[0].obj;
+    ImportedModel im;
+    std::string err;
+    CHECK(importModelFile(file.string(), im, &err));
+    size_t tris = 0;
+    for (const auto& mesh : im.meshes) tris += mesh.idx.size() / 3;
+    CHECK(tris == 12 && im.meshes.size() == 1 && im.meshes[0].material == "tm2co/me_curb_stone_01");
+    CHECK(im.bounds.valid() && std::abs(im.bounds.mins.x + 32) < 1e-6 && std::abs(im.bounds.maxs.x - 32) < 1e-6 && std::abs(im.bounds.maxs.y - 32) < 1e-6);
 }

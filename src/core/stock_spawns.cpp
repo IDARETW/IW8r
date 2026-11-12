@@ -81,7 +81,7 @@ void splitStockDocument(const MapFile& map, std::string& entityString, std::vect
         r.index = uint16_t(spawns.size());
         spawns.push_back(r);
     }
-    if (brushes && err) *err += std::to_string(brushes) + " brush(es) or patch(es) of the document are not built into a stock map; left out\n";
+    if (brushes && err) *err += std::to_string(brushes) + " brush(es) or patch(es) of the document are not part of the entity text (File > Rebuild Stock Zone builds the visible ones as models)\n";
     entityString = rest.text();
 }
 

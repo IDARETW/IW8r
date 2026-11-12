@@ -227,8 +227,18 @@ public:
     bool prepareStockRebuild(const QString& work, QStringList* args, QString* err);
     // The fast path (converter editzone, research 88): writes <work>/edit.ents and <work>/edits.json and gives the
     // converter call. `notes`: what the rebuild will carry or hide, and warnings.
-    bool prepareStockEdit(const QString& work, QString* program, QStringList* args, QString* err, QStringList* notes = nullptr);
+    // 11.4: the brushes added to a stock map are built first as models of a small helper map (the editor's own
+    // headless build), then carried into the stock zone. `overlay` (optional) gets that build: the helper map and the
+    // folder for its result; without it brushes are left out with a note.
+    struct StockOverlayPlan {
+        QString map;        // the helper map (empty: no brushes to build)
+        QString resultDir;  // --out of the headless build (compile-result.txt names the package folder)
+        QStringList models;
+    };
+    bool prepareStockEdit(const QString& work, QString* program, QStringList* args, QString* err, QStringList* notes = nullptr,
+                          StockOverlayPlan* overlay = nullptr);
     void rebuildStockZoneFast();
+    void runStockEdit(const QString& work, const QString& program, const QStringList& args);  // the editzone step
     // 11.5: the stock props (static models of the reference) whose origin lies inside the selection bounds are
     // hidden in the rebuilt map (worldspawn iw8r_hide_smodels) and leave the reference display. Returns how many
     // were added; -1 without a stock reference or a selection.

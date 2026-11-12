@@ -39,6 +39,9 @@ bool isAlwaysLoadedZone(const std::string& zone);
 
 struct StockEditCarry {
     std::string zone, type, name;
+    // The folder that holds `zone` ("" = the game's zone folder): a zone the editor built, such as the brushes added
+    // to a stock map (research 88).
+    std::string folder;
     bool operator==(const StockEditCarry& o) const { return zone == o.zone && type == o.type && name == o.name; }
 };
 

@@ -157,7 +157,7 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
         json += "\"carry\":[";
         for (size_t i = 0; i < carry.size(); ++i)
             json += std::string(i ? "," : "") + "{\"zone\":" + jsonText(carry[i].zone) + ",\"type\":" + jsonText(carry[i].type) +
-                    ",\"name\":" + jsonText(carry[i].name) + "}";
+                    ",\"name\":" + jsonText(carry[i].name) + (carry[i].folder.empty() ? std::string() : ",\"folder\":" + jsonText(carry[i].folder)) + "}";
         json += "]";
     }
     if (lootPoints) {

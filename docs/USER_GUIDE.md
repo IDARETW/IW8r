@@ -282,7 +282,11 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
    Console counts what was moved and added. A station cannot be removed (move it out of the way), and doors and other
    objects with moving parts cannot be edited this way yet.
 
-Not possible yet: new brushes inside a stock map. Not seen in game.
+10. New brushes: draw brushes and patches as usual (in the worldspawn or grouped in func_groups). File > Rebuild
+    Stock Zone builds the visible ones as one model per group (with collision) and places it where you drew it; the
+    first part of the rebuild is a normal build of a small helper map, so it takes a minute or two. Brushes made only
+    of tool materials (caulk, clip, nodraw), such as the helper brush for hiding props, are not built. Not seen in
+    game.
 
 ### Stock scripted objects (scriptables)
 

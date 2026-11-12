@@ -148,6 +148,20 @@ struct CompileReport {
 // Writes the extraction folder. Nothing is written when validation or compilation fails.
 // Refuses an existing non-empty outDir unless it is a previous extraction (has a `complete` file and
 // holds only the entries complete / skeleton / extracted); existing files of the extraction are overwritten.
+// 11.4 (research 88): the brushes and patches added to a stock map. A stock map's world is compiled data, so they are
+// built as custom models: one per entity that holds them (the worldspawn, each func_group), as a Y-up OBJ text (the
+// custom model format: x, z, -y; usemtl = the editor material) centred on `centre`. Brushes whose faces are all tool
+// materials (caulk, clip, nodraw, ...) draw nothing and are left out; other brush entities (triggers, brush models)
+// are not geometry and are left out too. `notes` says what was left out.
+struct StockOverlayModel {
+    size_t entity = 0;   // index into map.entities
+    std::string obj;     // Y-up OBJ text
+    Vec3 centre;         // world position of the model origin
+    size_t triangles = 0;
+    std::set<std::string> materials;
+};
+std::vector<StockOverlayModel> stockOverlayModels(const MapFile& map, int patchSubdiv, std::vector<std::string>* notes = nullptr);
+
 bool compileIw8Extraction(const MapFile& map, const std::string& outDir, const CompileOptions& opt, CompileReport& report,
                           std::string* err);
 

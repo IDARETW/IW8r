@@ -1322,6 +1322,77 @@ bool compileIw8ExtractionBrushVisuals(const MapFile& mapIn, const std::string& o
     return ok;
 }
 
+std::vector<StockOverlayModel> stockOverlayModels(const MapFile& map, int patchSubdiv, std::vector<std::string>* notes) {
+    std::vector<StockOverlayModel> out;
+    std::vector<std::string> warn;
+    size_t otherEntities = 0, toolOnly = 0;
+    for (size_t ei = 0; ei < map.entities.size(); ++ei) {
+        const Entity& e = map.entities[ei];
+        size_t prims = 0;
+        for (const auto& it : e.items) prims += it.prim() ? 1 : 0;
+        if (!prims) continue;
+        const std::string cls = lower(e.classname());
+        if (cls != "worldspawn" && cls != "func_group") {
+            ++otherEntities;
+            continue;
+        }
+        Gather g;
+        g.subdiv = std::clamp(patchSubdiv, 1, 32);
+        g.warnings = &warn;
+        size_t group = 0;
+        for (const auto& it : e.items) {
+            const Primitive* p = it.prim();
+            if (!p) continue;
+            const size_t before = g.chunks.size();
+            if (p->kind == PrimKind::Brush) gatherBrush(*p, ei, group++, g);
+            else if (p->kind == PrimKind::Patch) gatherPatch(*p, ei, group++, g);
+            if (g.chunks.size() == before) ++toolOnly;
+        }
+        AABB box;
+        for (const Chunk& c : g.chunks)
+            for (const RenderVertex& v : c.verts) box.add(v.pos);
+        if (g.chunks.empty() || !box.valid()) continue;
+        StockOverlayModel m;
+        m.entity = ei;
+        m.centre = box.center();
+        std::string& o = m.obj;
+        o = "# IW8 Radiant: brushes added to a stock map (entity " + std::to_string(ei) + ")\n";
+        size_t base = 1;
+        std::map<std::string, std::vector<const Chunk*>> byMaterial;
+        for (const Chunk& c : g.chunks) byMaterial[c.editorMaterial].push_back(&c);
+        for (const auto& [material, chunks] : byMaterial) {
+            m.materials.insert(material);
+            o += "g " + (material.empty() ? std::string("default") : material) + "\nusemtl " + material + "\n";
+            for (const Chunk* c : chunks) {
+                for (const RenderVertex& v : c->verts) {
+                    const Vec3 p = v.pos - m.centre;
+                    o += "v " + formatNumber(p.x) + " " + formatNumber(p.z) + " " + formatNumber(-p.y) + "\n";
+                    o += "vn " + formatNumber(v.normal.x) + " " + formatNumber(v.normal.z) + " " + formatNumber(-v.normal.y) + "\n";
+                    o += "vt " + formatNumber(v.u) + " " + formatNumber(v.v) + "\n";
+                }
+                for (size_t i = 0; i + 2 < c->idx.size(); i += 3) {
+                    o += "f";
+                    for (int k = 0; k < 3; ++k) {
+                        const std::string n = std::to_string(base + c->idx[i + size_t(k)]);
+                        o += " " + n + "/" + n + "/" + n;
+                    }
+                    o += "\n";
+                    ++m.triangles;
+                }
+                base += c->verts.size();
+            }
+        }
+        if (m.triangles) out.push_back(std::move(m));
+    }
+    if (notes) {
+        if (toolOnly) notes->push_back(std::to_string(toolOnly) + " brush(es) of tool materials only (caulk, clip, nodraw, ...) draw nothing and are not built");
+        if (otherEntities)
+            notes->push_back(std::to_string(otherEntities) + " brush entit" + (otherEntities == 1 ? "y" : "ies") +
+                             " other than the worldspawn and func_group (triggers, brush models) are not built into a stock map");
+    }
+    return out;
+}
+
 // Models that move without scripting (iw8r_spin / iw8r_bob / iw8r_lift, map_script.h) must be live script_models with
 // a targetname: a misc_model with one of the keys is built as a script_model, and a nameless one gets a name.
 bool isMoverModel(const Entity& e) {
