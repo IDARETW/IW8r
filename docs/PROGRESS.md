@@ -42,6 +42,13 @@
   lighting"; --viewport-bench has game_still / game_moving (synth_10000: 11.5 ms still, 8.0 ms moving; textured 10.7 /
   7.1). The owner asked for game-like frame rates (about 200 fps on Shipment). Not compared with the game: the
   absolute calibration (EV 10, +1.5 EV base, light window scale 1) is INFERRED (research 95).
+- Then stock maps in Game Lighting: core stock_lightmap (decompressed-zone root scan, BC4/BC5/R11G11B10F/RGBA8,
+  lightmap.iw8rlm cache), stock_world lightmapUv, WorldCache lightmap job (requestLightmap / lightmapReady), reference
+  vertices with UVs, render.cpp stock branch (batchFlags2.z/.w, setStockLightmap half floats), core game_look
+  stockMapLooks (shipped maps' sun + auto exposure) and the renderer's metering pass (setGameMetering,
+  takeMeteredLuminance). Bench reference scene loads the zone's lightmap. Open: Warzone (type 0, BC6H, streamed);
+  AB_LIGHTING's extra channels; own brushes inside a stock edit are baked in editor units, not the stock map's;
+  stock probes / specular / retro-reflective diffuse are not drawn.
 - Tests at the last commit: core 139,820 checks / 0, GUI 948 / 0.
 - Open (in scope): copying or removing a placed object that has a dynamic entity;
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.

@@ -18,6 +18,11 @@ Lighting:
   formula (lightmap, sun and its shadows, light entities in the game's units) and the game's exposure and ACES tone
   curve (research 95). Cost about 0.8 ms per frame over the textured view on a 2-million-triangle scene at 1920 x 1080
   (8 ms moving); the small sample room draws in 0.35 ms. Not compared with the game yet.
+- **Game Lighting on stock maps.** With a stock map shown (View > Stock Map Reference or a stock edit), Game Lighting
+  draws the stock world with the map's own baked lightmap (read from the zone once, cached as
+  `world_cache/<zone>/lightmap.iw8rlm`), the map's own sun, and its vision's auto exposure, measured from the frame and
+  adapting over time as in game. Backlot2's 363k-triangle world draws in about 0.6 ms per frame. Warzone maps
+  (streamed lightmaps) are not supported yet and say so.
 
 Warzone and stock maps:
 

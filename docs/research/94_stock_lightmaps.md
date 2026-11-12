@@ -53,6 +53,10 @@ Survey of the editor's world cache (`%LOCALAPPDATA%\IW8 Radiant Suite\...\world_
 | mp_backlot2, mp_village2 | AB_LIGHTING | 2048x1024 | 10, 72 |
 | mp_donetsk (Warzone) | REGULAR | 258 lightmaps, 64x64 to 1024x512, 868 transient zones | 26,221 |
 
+Correction (2026-11-12, core stock_lightmap on the zone): mp_donetsk's main zone holds one root with one lightmap of
+type 0 whose irradiance plane is BC6H (format 42); the others are in the streamed zones. The editor refuses it with
+that reason. Shipment and Backlot2 read back with the numbers below (C mean, max, D mean) exactly.
+
 ### 1.2 Pixel planes (VERIFIED from the decompressed zones)
 
 `GfxLightmapAtlasDataTemp` (S:12517, 0xF10 bytes): `transientZone, numLightmaps, firstLightmapIndex, lightmapType`,
