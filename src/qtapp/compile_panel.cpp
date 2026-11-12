@@ -53,6 +53,7 @@
 #include "iw8_contents.h"
 #include "texture_decode.h"
 #include <QCheckBox>
+#include <QSignalBlocker>
 #include <QImage>
 #include <QDirIterator>
 #include <map>
@@ -319,6 +320,24 @@ CompilePanel::CompilePanel(EditorContext* ctx, ToolPathFn toolPath, QWidget* par
     stockTextures_->setToolTip("Build stock IW8 materials with their colour textures (from the ACTS material cache) instead of grey");
     stockTextures_->setChecked(true);
     top->addWidget(stockTextures_);
+    bakeLightmaps_ = new QCheckBox("Bake lightmaps", this);
+    bakeLightmaps_->setObjectName("compileBakeLightmaps");
+    bakeLightmaps_->setToolTip("Worldspawn iw8r_bake_lightmaps: the build bakes the world's lightmap (sky light, bounce, sun "
+                               "visibility; the game adds the sun and the lights live). View > Game Lighting shows the same bake");
+    top->addWidget(bakeLightmaps_);
+    connect(bakeLightmaps_, &QCheckBox::toggled, this, [this](bool on) {
+        Entity* w = ctx_->doc.worldspawn();
+        if (!w) return;
+        const std::string* cur = w->value("iw8r_bake_lightmaps");
+        const bool was = cur && *cur == "1";
+        if (was == on) return;
+        const Id wid = w->id;
+        ctx_->doc.beginGroup(on ? "Bake lightmaps on" : "Bake lightmaps off");
+        if (on) ctx_->doc.setKeyValue(wid, "iw8r_bake_lightmaps", "1");
+        else ctx_->doc.removeKey(wid, "iw8r_bake_lightmaps");
+        ctx_->doc.endGroup();
+        ctx_->documentEdited(on ? "The build bakes lightmaps (worldspawn iw8r_bake_lightmaps 1)" : "The build makes no lightmap");
+    });
     auto* info = new QPushButton("Map Info...", this);
     info->setObjectName("compileMapInfo");
     info->setToolTip("Title, description, compass rotation, minimap scale and exposure written to map.json");
@@ -362,6 +381,7 @@ CompilePanel::CompilePanel(EditorContext* ctx, ToolPathFn toolPath, QWidget* par
     connect(cancel_, &QPushButton::clicked, this, &CompilePanel::cancel);
     connect(mapId_, &QLineEdit::textEdited, this, [this] { userEditedId_ = true; });
     connect(ctx_, &EditorContext::documentChanged, this, &CompilePanel::refreshMapId);
+    connect(ctx_, &EditorContext::documentChanged, this, &CompilePanel::syncBakeLightmaps);
     refreshMapId();
 }
 
@@ -379,6 +399,14 @@ void CompilePanel::refreshMapId() {
 }
 
 QString CompilePanel::mapId() const { return sanitizeMapId(mapId_->text()); }
+
+void CompilePanel::syncBakeLightmaps() {
+    if (!bakeLightmaps_) return;
+    const Entity* w = ctx_->doc.worldspawn();
+    const std::string* v = w ? w->value("iw8r_bake_lightmaps") : nullptr;
+    const QSignalBlocker block(bakeLightmaps_);
+    bakeLightmaps_->setChecked(v && *v == "1");
+}
 
 QString CompilePanel::buildRoot() const {
     const QString path = qs(ctx_->doc.path());

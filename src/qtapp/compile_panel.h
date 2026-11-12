@@ -182,6 +182,9 @@ private:
     std::function<void()> beforeExtraction_;
     std::function<qint64(const QString&)> stockSurface_;
     class QCheckBox* stockTextures_ = nullptr;
+    // Worldspawn iw8r_bake_lightmaps (5.11): checked = the build bakes the world's lightmap.
+    class QCheckBox* bakeLightmaps_ = nullptr;
+    void syncBakeLightmaps();
     QString lastInstalled_, lastBackup_;  // for undoDeploy
 };
 

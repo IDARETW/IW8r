@@ -2365,6 +2365,26 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         // The preview bake runs in the background; the camera shades with the game's world shader and post chain.
         QAction* game = w.action("ToggleGameLighting");
         r.check(game && game->isCheckable(), "View > Game Lighting is a checkable command");
+        if (auto* bake = w.compilePanel() ? w.compilePanel()->findChild<QCheckBox*>("compileBakeLightmaps") : nullptr) {
+            const auto key = [&] {
+                const Entity* ws = ctx.doc.worldspawn();
+                const std::string* v = ws ? ws->value("iw8r_bake_lightmaps") : nullptr;
+                return v ? *v : std::string();
+            };
+            const bool was = bake->isChecked();
+            bake->setChecked(true);
+            const std::string on = key();
+            bake->setChecked(false);
+            const std::string off = key();
+            ctx.doc.undo();  // back to on
+            ctx.documentEdited();
+            const bool followsUndo = bake->isChecked();
+            bake->setChecked(was);
+            r.check(on == "1" && off.empty() && followsUndo,
+                    "Compile > Bake lightmaps sets and clears worldspawn iw8r_bake_lightmaps and follows undo");
+        } else {
+            r.check(false, "the Compile panel has a Bake lightmaps checkbox");
+        }
         const bool texWas = ctx.texturedView;
         if (!texWas && w.action("CameraModeTextured")) w.action("CameraModeTextured")->trigger();
         ctx.cam.pos = iw8r::Vec3{0, -200, 120};
