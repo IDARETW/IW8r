@@ -541,7 +541,11 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
     {
         const std::string before = ctx.doc.text();
         const size_t pos = ctx.doc.undoPosition();
-        const QString mat = w.materialBrowser()->anyMaterialWithImage();
+        // A material that draws: shadow-only materials (nodraw, e.g. ~tm/shadowcaster) leave the camera untextured.
+        const QString mat = w.materialBrowser()->anyMaterialWithImage([&w](const QString& m) {
+            const auto e = w.materialCache()->lookup(m);
+            return e && !e->failed && !e->colorDds.isEmpty() && !(e->surfaceFlags >= 0 && (e->surfaceFlags & 0x80)) && !m.contains("shadowcaster") && !m.contains("missing");
+        });
         r.check(!mat.isEmpty(), "a stock material with an exported colour image exists: " + mat);
         if (!mat.isEmpty()) {
             selectPillar();
@@ -4333,6 +4337,8 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             {
                 const std::string before = ctx.doc.text();
                 const bool wasTextured = ctx.texturedView;
+                const std::string boxMat0 = ctx.currentMaterial;
+                ctx.currentMaterial = "tm2co/me_curb_stone_01";  // textured (an earlier section may leave any material current)
                 if (QAction* m = w.action("CameraModeTextured")) m->trigger();
                 for (int i = 0; i < 600; ++i) {
                     ctx.doc.deselectAll();
@@ -4358,6 +4364,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                             QString("scene batches over 4096 triangles are culled by chunk (%1 looking at them, %2 looking away)").arg(sceneCulled).arg(away));
                 else
                     r.text += "  info scene chunk culling not checked (the box material has no texture here)\n";
+                ctx.currentMaterial = boxMat0;
                 while (ctx.doc.text() != before && ctx.doc.undo()) {}
                 ctx.doc.deselectAll();
                 ctx.documentEdited();

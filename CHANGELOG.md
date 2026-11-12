@@ -23,6 +23,9 @@ Warzone and stock maps:
 - **Hidden props lose their collision** on the small stock maps. Not seen in game.
 - **Stock patch files.** The game ships patch files with real map data; every stock edit starts from the stock map
   with its own patch, also while an earlier edit is installed.
+- **Stock terrain textured on every map.** The terrain blend materials of a stock map (`tw4/`, `twc4/`, named per
+  map) are read from the map's own zone; they were checkered on maps outside the material catalogue (mp_br_tut: 346
+  materials).
 - **Game mode presets** with the private server's playlist settings, carried in a map or sent at F5.
 
 Building:
@@ -32,6 +35,11 @@ Building:
   `iw8r_collision`. The private client currently loads only the combined package of a custom map. Not seen in game.
 - **Converter fixes**: a fresh rewrite of a stock zone kept every asset (Quarry lost a killstreak definition before);
   zone headers keep their transient file type.
+
+Documentation:
+
+- **Feature list pictures redone** (docs/features): taken on the real window system by `IW8Radiant.exe
+  --feature-shots --out <dir>` (45 pictures, readable text, every view settled before the picture).
 
 Tools for this work (read only on the game folder): `zonetool havokinfo`, `zonetool streaminfo`,
 `tools/dw_disasm.py` (reads the recompiled game exe with its linker map), and one offline proof script per feature

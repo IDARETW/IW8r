@@ -6689,6 +6689,7 @@ void MainWindow::loadStockReference(const QString& zone) {
         return;
     }
     ctx_.setStatus("Loading " + zone + " world geometry...");
+    matCache_->addMapZone(zone);  // its own terrain blends are not in the material catalog
     // Parsing takes a few seconds (hundreds of MB of JSON): off the UI thread, then hand the triangles to the camera.
     QPointer<MainWindow> self(this);
     WorldCache* cache = worldCache_;

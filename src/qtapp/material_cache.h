@@ -50,6 +50,10 @@ public:
 
     std::optional<Entry> lookup(const QString& material) const;  // on-disk index and seeds only (instant)
     void request(const QStringList& materials);                  // async; de-duplicated; batched per zone
+    // A stock map shown as the reference: materials the catalog does not list are looked up in this zone (and its
+    // techsets zone). The per-map terrain blends (tw4/..., twc4/...) are named per map, and the catalog lists only
+    // those of the traced zones. Materials that failed as "not listed" are tried again.
+    void addMapZone(const QString& zone);
     bool busy() const;
     QString cacheRoot() const;
     // "<path> (WxH)" for a cached DDS, "none" for an empty path (Material Info).
@@ -87,6 +91,7 @@ private:
         QString file, error;  // file: absolute path under images/ once done
     };
 
+    QStringList mapZones_;  // addMapZone, newest first
     void loadIndex();
     void loadSeeds();
     void loadCatalog();

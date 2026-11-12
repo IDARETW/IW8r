@@ -58,6 +58,7 @@
 #include "theme.h"
 #include <QTextStream>
 #include "model_cache.h"
+#include "feature_shots.h"
 #include "qt_gui_test.h"
 #include "settings.h"
 #include "world_cache.h"
@@ -573,6 +574,7 @@ int main(int argc, char** argv) {
     QString benchMap, benchReference;
     QString propsZone;       // --stock-props-test
     bool chainTest = false;  // --model-chain-test
+    bool featureShots = false;  // --feature-shots (feature_shots.h)
     for (int i = 1; i < argc; ++i) {
         const QString a = QString::fromLocal8Bit(argv[i]);
         if (a == "--keys" && i + 1 < argc) keysPath = QString::fromLocal8Bit(argv[++i]);
@@ -590,6 +592,7 @@ int main(int argc, char** argv) {
         else if (a == "--stock-sky-test" && i + 1 < argc) skyTest = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--stock-props-test" && i + 1 < argc) propsZone = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--model-chain-test") chainTest = true;
+        else if (a == "--feature-shots") featureShots = true;
         else if (a == "--asset-audit" && i + 1 < argc) auditKind = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--thumb-pack" && i + 1 < argc) thumbPackKind = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--limit" && i + 1 < argc) auditLimit = std::atoi(argv[++i]);
@@ -715,7 +718,7 @@ int main(int argc, char** argv) {
     }
     const bool bench = !benchMap.isEmpty();
     const bool guiTest = !guiTestSample.isEmpty() || bench;  // the benchmark runs like the GUI test: off-screen, volatile settings
-    const bool smoke = !smokeFile.isEmpty() || !compileFile.isEmpty() || !propsZone.isEmpty();
+    const bool smoke = !smokeFile.isEmpty() || !compileFile.isEmpty() || !propsZone.isEmpty() || featureShots;
     if (guiTest) qputenv("QT_QPA_PLATFORM", "offscreen");
     if (bench) {
         // The benchmark never writes the mapper's caches: without the overrides it uses (empty) scratch caches under
@@ -849,6 +852,10 @@ int main(int argc, char** argv) {
             QTimer::singleShot(300, &w, [&] { app.exit(runViewportBench(w, benchMap, outDir, benchReference)); });
         } else if (guiTest) {
             QTimer::singleShot(300, &w, [&] { app.exit(iw8r::qt::runQtGuiTest(w, guiTestSample, outDir)); });
+        } else if (featureShots) {
+            QTimer::singleShot(300, &w, [&] {
+                app.exit(iw8r::qt::runFeatureShots(w, outDir.isEmpty() ? QCoreApplication::applicationDirPath() + "/feature_shots" : outDir));
+            });
         } else if (!propsZone.isEmpty()) {
             QTimer::singleShot(300, &w, [&] { app.exit(runStockPropsTest(w, propsZone, outDir)); });
         } else if (smoke) {

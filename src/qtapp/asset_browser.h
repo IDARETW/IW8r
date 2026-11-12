@@ -55,7 +55,15 @@ public:
     QString visibleName(int row) const;
     // Colour image of a stock material from the exported stock assets (empty when not exported).
     QString colorImageFile(const QString& material) const { return imageFiles_.value(material); }
-    QString anyMaterialWithImage() const { return imageFiles_.isEmpty() ? QString() : imageFiles_.constBegin().key(); }
+    // Any material with a colour image; `usable` can pass over some (the GUI test skips draw-less shadow casters).
+    template <class Pred = bool (*)(const QString&)>
+    QString anyMaterialWithImage(Pred usable = [](const QString&) { return true; }) const {
+        QStringList names = imageFiles_.keys();
+        names.sort();  // the same choice on every run, whatever the hash order
+        for (const QString& m : names)
+            if (usable(m)) return m;
+        return {};
+    }
     // The mapper's custom materials (name, colour image), listed first with their own thumbnails.
     void setCustomMaterials(const QList<QPair<QString, QString>>& materials);
     // Models: the preview pane beside the list (an image and a caption; a null image shows the caption only).

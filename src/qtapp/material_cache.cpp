@@ -104,6 +104,13 @@ void MaterialCache::request(const QStringList& materials) {
     if (added && !running_) startBatch();
 }
 
+void MaterialCache::addMapZone(const QString& zone) {
+    if (zone.isEmpty() || mapZones_.contains(zone)) return;
+    mapZones_.prepend(zone);
+    for (auto it = index_.begin(); it != index_.end();)
+        it = it->second.failed && it->second.error.contains("not listed") ? index_.erase(it) : std::next(it);
+}
+
 bool MaterialCache::busy() const { return running_ || !pending_.isEmpty(); }
 
 QString MaterialCache::cacheRoot() const { return root_; }
@@ -143,6 +150,8 @@ void MaterialCache::loadIndex() {
         e.error = o.value("error").toString();
         // A body that was in no zone is retried once per session: the colour-image-by-name fallback may resolve it.
         if (e.failed && (e.error.contains("not in zone") || e.error.contains("body not found"))) continue;
+        // Not listed in the catalog: a stock map reference may name its zone (addMapZone), so try again.
+        if (e.failed && e.error.contains("not listed")) continue;
         // Images looked up only in the material's zone (streamed images live in global_stream_mp, shared ones in
         // common zones): resolve again, the image catalog now adds the zones that hold the image data.
         if (e.colorDds.isEmpty() && e.error.contains("not exported") && o.value("maskRules").toInt() < 2) continue;
@@ -295,7 +304,8 @@ void MaterialCache::startBatch() {
     for (const QString& m : mats) {
         Work w;
         w.material = m;
-        const QStringList zones = catalog_.count(m) ? catalog_.at(m) : QStringList();
+        QStringList zones = catalog_.count(m) ? catalog_.at(m) : QStringList();
+        if (zones.isEmpty()) zones = mapZones_;  // a stock map's own materials (addMapZone)
         if (zones.isEmpty()) w.error = "not listed in iw8_materials.tsv";
         w.bodyZones = candidates(zones, true);
         w.imageZones = candidates(zones, false);
