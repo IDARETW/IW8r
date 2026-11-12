@@ -1039,6 +1039,39 @@ void MainWindow::buildMenus() {
     addCommand(file, "Open", "&Open...", QKeySequence("Ctrl+O"), [this] { openDialog(); });
     addCommand(file, "OpenStockZone", "Open IW8 Stock &Map (ACTS)...", QKeySequence("Ctrl+Shift+O"), [this] { openStockZoneDialog(); });
     addCommand(file, "RelightStockMap", "Relight Stock Map (Fog / Vision)...", QKeySequence(), [this] { relightStockMapDialog(); });
+    addCommand(file, "RelightStockSky", "Relight Stock Map Sky (another map's sky)...", QKeySequence(), [this] {
+        // 11.6: worldspawn iw8r_sky_from; File > Rebuild Stock Zone carries that map's sky material and puts it on this
+        // map's sky surfaces (converter replace_materials "@sky").
+        const Entity* world = nullptr;
+        for (const Entity& e : ctx_.doc.map().entities)
+            if (e.isWorldspawn()) {
+                world = &e;
+                break;
+            }
+        if (!world || stockZone_.isEmpty()) return ctx_.setStatus("Relight Sky: open a stock map first (File > Open IW8 Stock Map)");
+        QStringList ids;
+        {
+            QDir d(QCoreApplication::applicationDirPath());
+            for (int up = 0; up < 4 && !QFileInfo::exists(d.filePath("data/asset_catalog/iw8_stock_maps.tsv")); ++up) d.cdUp();
+            QFile f(d.filePath("data/asset_catalog/iw8_stock_maps.tsv"));
+            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream in(&f);
+                while (!in.atEnd()) {
+                    const QStringList c = in.readLine().split('\t');
+                    if (c.size() < 7 || c[0].startsWith('#') || c[0] == "map_id" || c[6] != "yes" || c[0] == stockZone_) continue;
+                    ids << c[0];
+                }
+            }
+        }
+        ids.prepend("(this map's own sky)");
+        bool ok = false;
+        const QString pick = QInputDialog::getItem(this, "Relight Stock Map Sky", "Use the sky of:", ids, 0, false, &ok);
+        if (!ok) return;
+        if (pick.startsWith("(")) ctx_.doc.removeKey(world->id, "iw8r_sky_from");
+        else ctx_.doc.setKeyValue(world->id, "iw8r_sky_from", pick.toStdString());
+        ctx_.documentEdited(pick.startsWith("(") ? QString("The map keeps its own sky")
+                                                 : "The sky of " + pick + " is used; File > Rebuild Stock Zone writes it (the sky's lighting stays)");
+    });
     addCommand(file, "RelightStockSun", "Relight Stock Map Sun (Colour / Intensity)...", QKeySequence(), [this] {
         // 11.6: worldspawn iw8r_sun_color (linear) and iw8r_sun_intensity; File > Rebuild Stock Zone writes them.
         const Entity* world = nullptr;

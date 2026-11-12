@@ -1675,6 +1675,15 @@
             "7.5"
           ],
           "description": "Stock maps (11.6): the sun's new intensity (stock: mp_shipment 8.6, mp_br_tut 30.7). Rebuild Stock Zone writes it. Not seen in game."
+        },
+        "iw8r_sky_from": {
+          "type": "string",
+          "default": "",
+          "required": false,
+          "examples": [
+            "mp_backlot2"
+          ],
+          "description": "Stock maps (11.6): use another stock map's sky (File > Relight Stock Map Sky). Rebuild Stock Zone carries its sky material (tw/sky_<map>) and puts it on this map's sky surfaces. The baked lighting stays. Not seen in game."
         }
       }
     },

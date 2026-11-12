@@ -258,3 +258,26 @@ TEST(stock_sun_edit_json) {
     const std::string sun = "{\"intensity\":12}";
     CHECK(stockEditJson("", {}, {}, nullptr, nullptr, nullptr, nullptr, nullptr, &sun) == "{\"sun\":{\"intensity\":12}}");
 }
+
+// 11.6: another stock map's sky (worldspawn iw8r_sky_from) becomes a carry entry and a replace_materials list.
+TEST(stock_sky_edit_json) {
+    const auto mapOf = [](const std::string& keys) {
+        Id next = 1;
+        ParseResult pr = parseMap("iwmap 4\n{\n\"classname\" \"worldspawn\"\n" + keys + "}\n", next);
+        return pr.map ? *pr.map : MapFile{};
+    };
+    StockEditCarry carry;
+    std::string replace;
+    std::vector<std::string> notes;
+    CHECK(!stockSkyEdit(mapOf(""), "mp_shipment", carry, replace, &notes) && replace.empty());
+    CHECK(stockSkyEdit(mapOf("\"iw8r_sky_from\" \"MP_Backlot2\"\n"), "mp_shipment", carry, replace, &notes));
+    CHECK(carry.zone == "techsets_mp_backlot2" && carry.type == "material" && carry.name == "tw/sky_mp_backlot2");
+    CHECK(replace == "[{\"from\":\"@sky\",\"to\":\"tw/sky_mp_backlot2\"}]");
+    // Its own sky, or not a map id: nothing.
+    std::string r2;
+    CHECK(!stockSkyEdit(mapOf("\"iw8r_sky_from\" \"mp_shipment\"\n"), "mp_shipment", carry, r2));
+    notes.clear();
+    CHECK(!stockSkyEdit(mapOf("\"iw8r_sky_from\" \"../evil\"\n"), "mp_shipment", carry, r2, &notes) && notes.size() == 1);
+    CHECK(stockEditJson("", {}, {}, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &replace) ==
+          "{\"replace_materials\":" + replace + "}");
+}

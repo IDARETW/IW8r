@@ -310,6 +310,9 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
     of tool materials (caulk, clip, nodraw), such as the helper brush for hiding props, are not built. Not seen in
     game.
 
+**Sky of a stock map**: File > Relight Stock Map Sky picks another stock map whose sky this map uses (worldspawn
+`iw8r_sky_from`); File > Rebuild Stock Zone carries that sky in. The map's baked lighting stays as it was.
+
 **Sun of a stock map**: File > Relight Stock Map Sun picks a new colour and intensity for the stock sun (worldspawn
 `iw8r_sun_color`, linear, and `iw8r_sun_intensity`); File > Rebuild Stock Zone writes them. The sun keeps its direction,
 because the stock map's baked sun shadows hold it. The rebuild report in the Console shows the old values.

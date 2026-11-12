@@ -603,6 +603,7 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
   offline)
 - File > Install Edited Stock Map Into Game copies the patch files after a confirmation that lists them. A stock patch of the same name is saved first. Close the game first. File > Restore Stock Map In Game takes the edit out again. Only the owner runs these. (not yet seen in game)
 - File > Hide Stock Props In Selection: draw a brush around props, select it and use this command. Each stock prop inside the selection leaves the view. The rebuilt map draws them at size zero. On the small stock maps their collision is removed too (the converter's `remove_static_model_collision`); on the big maps collision stays. File > Show All Stock Props brings them back. The helper brush is not built into the stock map. Whether scale zero hides a model in game is not known. (not yet seen in game)
+- File > Relight Stock Map Sky gives a stock map the sky of another stock map (worldspawn `iw8r_sky_from`); File > Rebuild Stock Zone carries that sky material in and puts it on this map's sky. The baked lighting stays. (tested offline; not yet seen in game)
 - File > Relight Stock Map Sun sets the colour and intensity of a stock map's sun (worldspawn `iw8r_sun_color`, linear, and `iw8r_sun_intensity`); File > Rebuild Stock Zone writes them. The direction stays: the stock map's baked sun shadows hold it. (tested offline; not yet seen in game)
 - File > Relight Stock Map (Fog / Vision) changes a stock zone's fog start, density, colour and maximum opacity. The rebuilt zone is checked by ACTS. (not yet seen in game)
 - View > Stock Reference to Model: the stock triangles inside the selection bounds become a custom model, placed where they were. The copy carries the stock texture coordinates and materials. (not yet seen in game)
@@ -805,5 +806,5 @@ Open items from the roadmap and the research notes. Only the open items are list
 - Navigation blockers and traversal authoring (row 6.23).
 - Camera angle sync, live atmosphere and in-game screenshots and probe capture (rows 7.3, 7.9, 7.11). The live atmosphere channel was removed.
 - Game types: what the lobby shows for a game type of the map's own (row 13.6; built offline, not seen in game). Loot items on an own map are carried from the Warzone zone (research 93) but not yet seen in game.
-- Stock maps: removal of stock world geometry (row 11.5), the sky and the sun direction of a stock map (row 11.6), and maps beyond 6v6 scale, such as Ground War scale and co-op maps (row 11.10).
+- Stock maps: removal of stock world geometry (row 11.5), the sun direction of a stock map (row 11.6), and maps beyond 6v6 scale, such as Ground War scale and co-op maps (row 11.10).
 - Installer test on a clean machine (owner action, row 9.9).

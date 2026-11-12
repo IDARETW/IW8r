@@ -11,7 +11,7 @@ set_warnings("all")
 set_targetdir("$(projectdir)/bin/$(mode)")
 
 if is_plat("windows") then
-    add_cxflags("/utf-8", "/permissive-", "/Zc:__cplusplus")
+    add_cxflags("/utf-8", "/permissive-", "/Zc:__cplusplus", "/bigobj")
     add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN", "_CRT_SECURE_NO_WARNINGS")
     if is_mode("release") then
         set_symbols("debug") -- keep PDBs for crash triage

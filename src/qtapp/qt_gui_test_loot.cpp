@@ -260,6 +260,7 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
         ctx.doc.beginGroup("Relight Sun");
         ctx.doc.setKeyValue(world, "iw8r_sun_color", "1 0.55 0.35");
         ctx.doc.setKeyValue(world, "iw8r_sun_intensity", "7.5");
+        ctx.doc.setKeyValue(world, "iw8r_sky_from", "mp_backlot2");
         ctx.doc.endGroup();
         QString program, err;
         QStringList args, notes;
@@ -269,6 +270,9 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
         const QByteArray ents = ef.open(QIODevice::ReadOnly) ? ef.readAll() : QByteArray();
         check(prepared && json.contains("\"sun\":{\"color\":[1,0.55,0.35],\"intensity\":7.5}"), "the sun colour and intensity reach the edits file: " + err);
         check(notes.join("; ").contains("the stock sun gets a new colour or intensity") && w.action("RelightStockSun"), "the rebuild notes say so, and the command exists");
+        check(json.contains("{\"zone\":\"techsets_mp_backlot2\",\"type\":\"material\",\"name\":\"tw/sky_mp_backlot2\"}") &&
+                  json.contains("\"replace_materials\":[{\"from\":\"@sky\",\"to\":\"tw/sky_mp_backlot2\"}]") && w.action("RelightStockSky"),
+              "another map's sky reaches the edits file (carry and replace_materials)");
         for (int i = 0; i < 4 && ctx.doc.modified(); ++i) ctx.doc.undo();
         check(ctx.doc.text() == stockText, "Undo takes the sun keys out again");
     }

@@ -139,7 +139,7 @@ std::vector<uint32_t> stockEditHiddenProps(const MapFile& map) {
 std::string stockEditJson(const std::string& entitiesPath, const std::vector<uint32_t>& hiddenProps,
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints, const std::string* placedObjects,
                           const std::vector<StockPatchOverride>* stockPatches, const std::vector<StockPropCollision>* removeCollision,
-                          const std::string* lootBoxes, const std::string* sun) {
+                          const std::string* lootBoxes, const std::string* sun, const std::string* replaceMaterials) {
     std::string json = "{";
     bool first = true;
     const auto sep = [&] {
@@ -163,6 +163,10 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
             json += std::string(i ? "," : "") + "{\"zone\":" + jsonText(carry[i].zone) + ",\"type\":" + jsonText(carry[i].type) +
                     ",\"name\":" + jsonText(carry[i].name) + (carry[i].folder.empty() ? std::string() : ",\"folder\":" + jsonText(carry[i].folder)) + "}";
         json += "]";
+    }
+    if (replaceMaterials && !replaceMaterials->empty()) {
+        sep();
+        json += "\"replace_materials\":" + *replaceMaterials;
     }
     if (sun && !sun->empty()) {
         sep();
@@ -232,6 +236,31 @@ std::string stockSunJson(const MapFile& map, std::vector<std::string>* notes) {
             notes->push_back("iw8r_sun_intensity '" + *i + "' is not a number 0 to 1000000; the sun intensity is not changed");
     }
     return json.empty() ? std::string() : "{" + json + "}";
+}
+
+bool stockSkyEdit(const MapFile& map, const std::string& thisZone, StockEditCarry& carry, std::string& replaceMaterials,
+                  std::vector<std::string>* notes) {
+    const Entity* world = nullptr;
+    for (const Entity& e : map.entities)
+        if (e.isWorldspawn()) {
+            world = &e;
+            break;
+        }
+    const std::string* v = world ? world->value("iw8r_sky_from") : nullptr;
+    if (!v || v->empty()) return false;
+    std::string id;
+    for (const char c : *v) id += char(std::tolower(static_cast<unsigned char>(c)));
+    const bool valid = id.size() > 3 && id.size() <= 40 && id.rfind("mp_", 0) == 0 &&
+                       std::all_of(id.begin(), id.end(), [](unsigned char c) { return std::islower(c) || std::isdigit(c) || c == '_'; });
+    if (!valid) {
+        if (notes) notes->push_back("iw8r_sky_from '" + *v + "' is not a stock map id (mp_...); the sky stays");
+        return false;
+    }
+    if (id == thisZone) return false;
+    carry = {"techsets_" + id, "material", "tw/sky_" + id, ""};
+    replaceMaterials = "[{\"from\":\"@sky\",\"to\":\"tw/sky_" + id + "\"}]";
+    if (notes) notes->push_back("the sky of " + id + " replaces this map's sky (tw/sky_" + id + " carried from techsets_" + id + ")");
+    return true;
 }
 
 }  // namespace iw8r

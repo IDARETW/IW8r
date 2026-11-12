@@ -48,6 +48,8 @@ Warzone and stock maps:
   at load. The map now sets only `level.br_circle_disabled`.
 - **Build preflight fix**: methods called on `self` (`self takeallweapons()`) are no longer flagged as unknown
   functions.
+- **Stock map sky.** File > Relight Stock Map Sky: another stock map's sky, carried in and put on this map's sky
+  surfaces (converter replace_materials). Not seen in game.
 - **Stock sun colour and intensity.** File > Relight Stock Map Sun; Rebuild Stock Zone writes them into the stock
   sun light (converter 5ecee331). The direction stays (baked sun shadows). Not seen in game.
 - **Game mode presets** with the private server's playlist settings, carried in a map or sent at F5.
