@@ -1,3 +1,4 @@
+#include "game_lightmap.h"
 #include "vision_editor_dialog.h"
 #include "material_replace.h"
 #include "techset_export.h"
@@ -1938,6 +1939,7 @@ void MainWindow::buildMenus() {
         camera_->setReferenceTexInstances({}, {});
         camera_->setReferenceTextured({});
         camera_->setGameStockMap("");
+        camera_->setStockLightmap(nullptr);
         ctx_.referencePlans.clear();
         stockWorld_.reset();
         referenceProps_.clear();
@@ -6763,12 +6765,39 @@ void MainWindow::updateStockPropLabel() {
     }
 }
 
+void MainWindow::loadStockLightmap(const QString& zone) {
+    const std::optional<QString> file = worldCache_ ? worldCache_->lightmapFile(zone) : std::nullopt;
+    if (!file) return;
+    QPointer<MainWindow> self(this);
+    const std::string path = file->toStdString();
+    std::thread([self, zone, path] {
+        StockLightmap lm;
+        std::string err;
+        std::shared_ptr<const app::StockLightmapLayers> layers;
+        if (readStockLightmapCache(path, lm, &err)) layers = app::stockLightmapLayers(lm);
+        QMetaObject::invokeMethod(qApp, [self, zone, layers, err] {
+            if (!self || self->referenceZone_ != zone) return;
+            if (layers && layers->width > 0) {
+                self->camera_->setStockLightmap(layers);
+                self->ctx_.setStatus(QString("Stock lightmap of %1: %2 x %3 (View > Game Lighting uses it)").arg(zone).arg(layers->width).arg(layers->height));
+            } else {
+                self->ctx_.setStatus("Stock lightmap of " + zone + " not read: " + QString::fromStdString(err));
+            }
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
 void MainWindow::loadStockReference(const QString& zone) {
     if (!worldCache_) {
         worldCache_ = new WorldCache([this](const QString& k) { return toolPath(k); }, this);
         connect(worldCache_, &WorldCache::progress, this, [this](const QString& m) { ctx_.setStatus(m); });
         connect(worldCache_, &WorldCache::ready, this, [this](const QString& z) {
             if (z == referenceZone_) loadStockReference(z);
+        });
+        connect(worldCache_, &WorldCache::lightmapReady, this, [this](const QString& z) {
+            if (z != referenceZone_) return;
+            if (worldCache_->lightmapFile(z)) loadStockLightmap(z);
+            else ctx_.setStatus("Stock lightmap of " + z + ": " + worldCache_->lightmapErrorOf(z));
         });
     }
     referenceZone_ = zone;
@@ -6859,6 +6888,10 @@ void MainWindow::loadStockReference(const QString& zone) {
             self->stockWorld_ = world;
             self->camera_->setReferenceTextured(std::move(*texBatches));
             self->camera_->setGameStockMap(zone.toStdString());
+            // Game Lighting draws the stock world with its own lightmap (research 94): cached, or made now.
+            self->camera_->setStockLightmap(nullptr);
+            if (self->worldCache_->lightmapFile(zone)) self->loadStockLightmap(zone);
+            else if (self->worldCache_->lightmapErrorOf(zone).isEmpty()) self->worldCache_->requestLightmap(zone);
             self->ctx_.referencePlans = std::move(*plans);
             self->ctx_.cameraMoved();  // repaints the 2D views too
             if (n == 0) {

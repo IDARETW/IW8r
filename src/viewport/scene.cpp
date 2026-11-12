@@ -1457,7 +1457,11 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
     const Vec3 light = normalize(Vec3{0.35, 0.55, 0.75});
     std::map<std::string, size_t> byMaterial;
     size_t tris = 0;
-    for (const auto& m : world.meshes) {
+    for (size_t mi = 0; mi < world.meshes.size(); ++mi) {
+        const auto& m = world.meshes[mi];
+        // Its stock lightmap UVs (research 94; (-1, -1) where the surface has none).
+        const std::vector<std::array<float, 2>>* lmuv =
+            mi < world.lightmapUv.size() && world.lightmapUv[mi].size() == m.pos.size() ? &world.lightmapUv[mi] : nullptr;
         std::string lm = m.material;
         for (char& c : lm) c = char(std::tolower(static_cast<unsigned char>(c)));
         if (skipSky && lm.find("sky") != std::string::npos) continue;
@@ -1476,6 +1480,7 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
                 // ImportedMesh::uv is OBJ convention (v flipped); the textured camera uses the game's v.
                 GpuTexVertex v{float(m.pos[k].x), float(m.pos[k].y), float(m.pos[k].z), m.uv[k][0], 1.0f - m.uv[k][1], rgba};
                 v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
+                if (lmuv && (*lmuv)[k][0] >= 0) v.lu = (*lmuv)[k][0], v.lv = (*lmuv)[k][1];
                 dst.push_back(v);
             }
             ++tris;

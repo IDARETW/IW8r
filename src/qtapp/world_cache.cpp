@@ -10,14 +10,19 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMap>
+#include <QPointer>
+#include <QProcess>
 #include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QStorageInfo>
 #include <QTimer>
 
+#include <thread>
 #include <utility>
 
 #include "acts_runner.h"
+#include "stock_lightmap.h"
 
 namespace iw8r::qt {
 namespace {
@@ -28,6 +33,13 @@ constexpr qint64 kXpakMinBytes = 64 * 1024;
 // mp_shipment: the two JSON exports are 387 MB for a 188 MB zone (about 2.1x). The estimate uses 2.5x.
 constexpr double kExportPerZoneByte = 2.5;
 constexpr qint64 kMaxExportBytes = 2LL * 1024 * 1024 * 1024;
+// Lightmap job (research 94 section 5): the decompressed zone is about 2.05x the .ff (mp_shipment 188 -> 385 MB); a
+// zone with a .fp patch gets two such files (.ff.dec and .fp.patched.dec). The free space asked for is 2.5x per file
+// plus a margin.
+constexpr const char* kLightmapFile = "lightmap.iw8rlm";
+constexpr double kDecPerZoneByte = 2.5;
+constexpr qint64 kLightmapMarginBytes = 256LL * 1024 * 1024;
+constexpr int kLightmapActsTimeoutMs = 10 * 60 * 1000;
 
 qint64 folderBytes(const QString& dir) {
     qint64 bytes = 0;
@@ -55,6 +67,14 @@ WorldCache::~WorldCache() {
     // gone). The runner does not call back for an owner that is gone.
     blockSignals(true);
     if (QCoreApplication::instance()) ActsRunner::shared()->cancel(this);
+    // A lightmap decompression in progress: end it and remove its 300+ MB scratch now. (A scan already on its worker
+    // thread removes the scratch itself; its answer is dropped, see lightmapActsEnded.)
+    if (lmProc_) {
+        lmProc_->disconnect(this);
+        lmProc_->kill();
+        lmProc_->waitForFinished(3000);
+        if (!lmScratch_.isEmpty()) QDir(lmScratch_).removeRecursively();
+    }
 }
 
 std::optional<QString> WorldCache::lookup(const QString& zone) const {
@@ -70,12 +90,29 @@ QString WorldCache::errorOf(const QString& zone) const {
 
 void WorldCache::request(const QString& zone) {
     const QString z = zone.trimmed();
-    if (z.isEmpty() || lookup(z) || queue_.contains(z) || z == zone_) return;
+    if (z.isEmpty() || queue_.contains(z) || z == zone_) return;
+    if (lookup(z)) {
+        requestLightmap(z);  // cached before lightmaps existed: only the small lightmap job
+        return;
+    }
     queue_.append(z);
     if (!running_) startNext();
 }
 
-bool WorldCache::busy() const { return running_ || !queue_.isEmpty(); }
+bool WorldCache::busy() const { return running_ || !queue_.isEmpty() || !lmZone_.isEmpty() || !lmQueue_.isEmpty(); }
+
+std::optional<QString> WorldCache::lightmapFile(const QString& zone) const {
+    const auto dir = lookup(zone);
+    if (!dir) return std::nullopt;
+    const QString f = *dir + "/" + kLightmapFile;
+    if (!QFileInfo::exists(f)) return std::nullopt;
+    return f;
+}
+
+QString WorldCache::lightmapErrorOf(const QString& zone) const {
+    const auto it = index_.find(zone);
+    return it == index_.end() ? QString() : it->second.lightmapError;
+}
 
 QString WorldCache::cacheRoot() const { return root_; }
 
@@ -108,6 +145,7 @@ void WorldCache::loadIndex() {
         e.error = o.value("error").toString();
         e.bytes = qint64(o.value("bytes").toDouble());
         e.actsMs = qint64(o.value("acts_ms").toDouble());
+        e.lightmapError = o.value("lightmap_error").toString();
         if (!e.failed) {
             e.dir = QDir(root_).filePath(o.value("dir").toString());
             if (!QFileInfo::exists(e.dir + "/assets")) continue;  // removed by hand: resolve again
@@ -126,6 +164,7 @@ void WorldCache::writeIndex() const {
         o.insert("acts_ms", double(e.actsMs));
         o.insert("failed", e.failed);
         if (!e.error.isEmpty()) o.insert("error", e.error);
+        if (!e.lightmapError.isEmpty()) o.insert("lightmap_error", e.lightmapError);
         zones.insert(zone, o);
     }
     QJsonObject top;
@@ -161,6 +200,7 @@ void WorldCache::fail(QString zone, const QString& why) {
     running_ = false;
     zone_.clear();
     startNext();
+    startNextLightmap();
 }
 
 void WorldCache::startNext() {
@@ -246,7 +286,9 @@ void WorldCache::finishRun(const ActsResult& result) {
     running_ = false;
     zone_.clear();
     emit ready(zone);
+    requestLightmap(zone);  // waits until no geometry export runs
     startNext();
+    startNextLightmap();
 }
 
 void WorldCache::requestStreamed(const QString& zone, const QStringList& tiles) {
@@ -316,6 +358,161 @@ void WorldCache::startNextStreamed() {
             startNextStreamed();
         }
     });
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Lightmap jobs (research 94 section 5)
+
+void WorldCache::requestLightmap(const QString& zone) {
+    const QString z = zone.trimmed();
+    if (z.isEmpty() || !lookup(z) || lightmapFile(z) || !lightmapErrorOf(z).isEmpty() || lmSkip_.contains(z) ||
+        lmQueue_.contains(z) || z == lmZone_)
+        return;
+    lmQueue_.append(z);
+    startNextLightmap();
+}
+
+void WorldCache::startNextLightmap() {
+    // One job at a time, and only while no geometry export runs or waits (the user is waiting for that one).
+    if (!lmZone_.isEmpty() || lmQueue_.isEmpty() || running_ || !queue_.isEmpty()) return;
+    const QString zone = lmQueue_.takeFirst();
+    if (!lookup(zone) || lightmapFile(zone)) return startNextLightmap();
+
+    const QString acts = tools_("acts"), replay = tools_("replay"), oodle = tools_("oodle");
+    for (const QString& f : {acts, replay, oodle})
+        if (!QFileInfo::exists(f)) {
+            // Environment problem, not a property of the zone: nothing is recorded.
+            emit progress("Missing tool, no stock lightmaps: " + f);
+            for (const QString& z : lmQueue_) lmSkip_.insert(z);
+            lmSkip_.insert(zone);
+            lmQueue_.clear();
+            emit lightmapReady(zone);
+            return;
+        }
+    const QString ff = replayZoneDir() + "/" + zone + ".ff";
+    if (!QFileInfo::exists(ff)) {
+        lmZone_ = zone;
+        return endLightmap(zone, false, "no zone .ff at " + ff, true);
+    }
+    const qint64 ffBytes = QFileInfo(ff).size();
+    const bool patched = QFileInfo::exists(replayZoneDir() + "/" + zone + ".fp");
+    const qint64 need = qint64(double(ffBytes) * kDecPerZoneByte * (patched ? 2 : 1)) + kLightmapMarginBytes;
+    const qint64 freeBytes = QStorageInfo(root_).bytesAvailable();
+    if (freeBytes >= 0 && freeBytes < need) {
+        lmZone_ = zone;
+        return endLightmap(zone, false,
+                           QString("needs %1 MB free for the decompressed zone, %2 MB free").arg(need / 1048576).arg(freeBytes / 1048576),
+                           false);
+    }
+
+    lmZone_ = zone;
+    lmScratch_ = root_ + "/w/lightmap_" + zone;
+    QDir(lmScratch_).removeRecursively();
+    QDir().mkpath(lmScratch_);
+    // The game folder is only read; every file ACTS writes goes to the scratch folder (-o, the working folder, the log).
+    const QStringList args{"--noUpdater", "fastfile", "-r", "mw19replay", "-g", replay, "--oodle", oodle, "-d", "--noAssetDump",
+                           "-l", "-o", QDir::toNativeSeparators(lmScratch_), QDir::toNativeSeparators(ff)};
+    lmProc_ = new QProcess(this);
+    lmProc_->setProgram(acts);
+    lmProc_->setArguments(args);
+    lmProc_->setWorkingDirectory(lmScratch_);
+    lmProc_->setProcessChannelMode(QProcess::MergedChannels);  // stderr goes to the same log file
+    lmProc_->setStandardOutputFile(lmScratch_ + "/acts.log");
+    connect(lmProc_, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus) { lightmapActsEnded(exitCode, false); });
+    connect(lmProc_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
+        if (e == QProcess::FailedToStart) lightmapActsEnded(-1, true);
+    });
+    // A hung ACTS must not hold the queue for ever.
+    QPointer<QProcess> proc = lmProc_;
+    QTimer::singleShot(kLightmapActsTimeoutMs, this, [proc] {
+        if (proc && proc->state() != QProcess::NotRunning) proc->kill();  // finished() follows
+    });
+    emit progress("ACTS decompress " + zone + " for its lightmap");
+    lmTimer_.start();
+    lmProc_->start();
+}
+
+void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
+    if (!lmProc_) return;  // finished() after errorOccurred(FailedToStart), or the reverse
+    QProcess* proc = lmProc_;
+    lmProc_ = nullptr;
+    proc->disconnect(this);
+    proc->deleteLater();
+    const QString zone = lmZone_, scratch = lmScratch_;
+    const QString dec = scratch + "/" + zone + ".ff.dec";
+    if (startFailed || !QFileInfo::exists(dec)) {
+        QString log;
+        QFile f(scratch + "/acts.log");
+        if (f.open(QIODevice::ReadOnly)) log = tailOf(f.readAll());
+        QDir(scratch).removeRecursively();
+        return endLightmap(zone, false,
+                           startFailed ? QString("acts.exe did not start")
+                                       : QString("ACTS exit %1, no %2.ff.dec: %3").arg(exitCode).arg(zone, log),
+                           false);
+    }
+
+    // The scan reads 300+ MB: off the UI thread. The worker deletes the scratch (every .dec) as soon as the scan
+    // ends, before it writes the small cache file. Its answer is dropped when this cache is gone by then.
+    const auto dir = lookup(zone);
+    if (!dir) {
+        QDir(scratch).removeRecursively();
+        return endLightmap(zone, false, "zone left the world cache", false);
+    }
+    const QString target = *dir + "/" + kLightmapFile;
+    QPointer<WorldCache> self(this);
+    emit progress("Reading the " + zone + " lightmap...");
+    std::thread([self, zone, scratch, dec, target] {
+        iw8r::StockLightmap lm;
+        std::string err;
+        bool ok = iw8r::extractStockLightmapFromDecompressedZone(dec.toStdString(), lm, &err);
+        QDir(scratch).removeRecursively();
+        // Only a verdict on the zone's data is kept (no root, N lightmaps, unknown formats); a file that could not be
+        // read or written is tried again in the next session.
+        const bool persist = !ok && err.rfind("cannot read", 0) != 0 && err.rfind("read error", 0) != 0;
+        QString summary;
+        if (ok) {
+            double c[3] = {0, 0, 0};
+            const size_t n = size_t(lm.width) * size_t(lm.height);
+            for (size_t i = 0; i < n; ++i)
+                for (int k = 0; k < 3; ++k) c[k] += lm.irradiance[3 * i + k];
+            summary = QString("%1x%2, type %3, C mean (%4, %5, %6)")
+                          .arg(lm.width)
+                          .arg(lm.height)
+                          .arg(lm.type)
+                          .arg(n ? c[0] / double(n) : 0.0, 0, 'f', 2)
+                          .arg(n ? c[1] / double(n) : 0.0, 0, 'f', 2)
+                          .arg(n ? c[2] / double(n) : 0.0, 0, 'f', 2);
+            if (!iw8r::writeStockLightmapCache(target.toStdString(), lm, &err)) {
+                ok = false;  // disk full or similar: not a verdict on the zone
+                QFile::remove(target);
+            }
+        }
+        QMetaObject::invokeMethod(qApp, [self, zone, ok, err, summary, persist] {
+            if (!self) return;
+            self->endLightmap(zone, ok, ok ? summary : QString::fromStdString(err), persist);
+        });
+    }).detach();
+}
+
+void WorldCache::endLightmap(const QString& zone, bool ok, const QString& error, bool persistError) {
+    const qint64 ms = lmTimer_.isValid() ? lmTimer_.elapsed() : 0;
+    if (ok) {
+        emit progress(QString("world cache: %1 lightmap cached (%2), %3 ms").arg(zone, error).arg(ms));
+    } else {
+        if (persistError) {
+            if (auto it = index_.find(zone); it != index_.end() && !it->second.failed) {
+                it->second.lightmapError = error;
+                writeIndex();
+            }
+        } else {
+            lmSkip_.insert(zone);
+        }
+        emit progress("world cache: " + zone + " lightmap failed: " + error);
+    }
+    lmZone_.clear();
+    lmScratch_.clear();
+    emit lightmapReady(zone);
+    startNextLightmap();
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -419,6 +616,20 @@ int runWorldCacheTest(const QString& zone, const QString& outDir) {
             lines << QString("cache_bytes=%1").arg(folderBytes(*dir));
             lines << QString("request_ms=%1 (ACTS run, 0 or near 0 when cached) parse_ms=%2").arg(wallMs).arg(parseMs);
             for (const std::string& w : world->warnings) lines << "warning: " + QString::fromStdString(w);
+            size_t lmVerts = 0;
+            for (const auto& l : world->lightmapUv)
+                for (const auto& uv : l) lmVerts += (uv[0] != -1.0f || uv[1] != -1.0f) ? 1 : 0;
+            lines << QString("lightmap_uv vertices=%1 surfaces=%2").arg(lmVerts).arg(world->lightmapSurfaces);
+            if (const auto lmf = cache.lightmapFile(zone)) {
+                iw8r::StockLightmap lm;
+                std::string lerr;
+                if (iw8r::readStockLightmapCache(lmf->toStdString(), lm, &lerr))
+                    lines << QString("lightmap=%1 bytes=%2 type=%3 size=%4x%5").arg(*lmf).arg(QFileInfo(*lmf).size()).arg(lm.type).arg(lm.width).arg(lm.height);
+                else
+                    lines << "ERROR lightmap read: " + QString::fromStdString(lerr);
+            } else {
+                lines << "lightmap=none " + cache.lightmapErrorOf(zone);
+            }
             for (const ImportedMesh& m : world->meshes)
                 lines << QString("  material %1 vertices=%2 triangles=%3").arg(QString::fromStdString(m.material)).arg(m.pos.size()).arg(m.idx.size() / 3);
         }

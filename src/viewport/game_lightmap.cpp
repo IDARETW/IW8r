@@ -38,6 +38,28 @@ bool GameLightmap::uvFor(const Vec3& pos, const Vec3& normal, const Vec3& centro
     return true;
 }
 
+std::shared_ptr<StockLightmapLayers> stockLightmapLayers(const StockLightmap& lm) {
+    auto out = std::make_shared<StockLightmapLayers>();
+    const size_t n = size_t(std::max(lm.width, 0)) * size_t(std::max(lm.height, 0));
+    if (!n || lm.irradiance.size() < n * 3 || lm.ambientFraction.size() < n || lm.direction.size() < n * 3) return out;
+    out->width = lm.width, out->height = lm.height;
+    out->a.resize(n * 4), out->b.resize(n * 4), out->d.resize(n * 4);
+    for (size_t i = 0; i < n; ++i) {
+        const float f = std::clamp(lm.ambientFraction[i], 0.0f, 1.0f);
+        const float dz = std::max(lm.direction[i * 3 + 2], 0.001f);
+        for (int c = 0; c < 3; ++c) {
+            const float C = lm.irradiance[i * 3 + c];
+            out->a[i * 4 + c] = f * C;
+            out->b[i * 4 + c] = (1.0f - f) * C / dz;
+            out->d[i * 4 + c] = lm.direction[i * 3 + c];
+        }
+        out->a[i * 4 + 3] = 1.0f;
+        out->b[i * 4 + 3] = 0.0f;
+        out->d[i * 4 + 3] = 0.0f;
+    }
+    return out;
+}
+
 GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(const std::string&)>& drawClassFor) {
     GameBakeInput in;
     uint64_t key = 1469598103934665603ull;

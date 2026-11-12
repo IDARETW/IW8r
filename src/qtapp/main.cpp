@@ -163,6 +163,22 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             report << QString("reference %1 flat_triangles=%2 textured_triangles=%3 textured_batches=%4").arg(QFileInfo(referenceDir).fileName()).arg(n).arg(nt).arg(tex.size());
             cam->setReference(std::move(tris));
             if (qEnvironmentVariableIntValue("IW8R_BENCH_REFERENCE_FLAT") <= 0) cam->setReferenceTextured(std::move(tex));
+            // Game Lighting: the zone's own lightmap when the world cache has made it (lightmap.iw8rlm), and the map's
+            // sun and exposure (core game_look).
+            const QString zone = QFileInfo(referenceDir).fileName();
+            cam->setGameStockMap(zone.toStdString());
+            iw8r::StockLightmap slm;
+            std::string lerr;
+            const QString lmFile = QDir(referenceDir).filePath("lightmap.iw8rlm");
+            if (QFileInfo::exists(lmFile) && iw8r::readStockLightmapCache(lmFile.toStdString(), slm, &lerr)) {
+                cam->setStockLightmap(iw8r::app::stockLightmapLayers(slm));
+                size_t withUv = 0, all = 0;
+                for (const auto& v : world.lightmapUv)
+                    for (const auto& uv : v) withUv += uv[0] >= 0 ? 1 : 0, ++all;
+                report << QString("stock_lightmap %1x%2 type=%3 vertices_with_uv=%4/%5").arg(slm.width).arg(slm.height).arg(slm.type).arg(withUv).arg(all);
+            } else {
+                report << QString("stock_lightmap none (%1)").arg(QFileInfo::exists(lmFile) ? QString::fromStdString(lerr) : "not cached");
+            }
         } else {
             report << QString("reference FAILED: %1").arg(QString::fromStdString(err));
         }

@@ -25,11 +25,26 @@ namespace fs = std::filesystem;
 constexpr uint32_t kPosStride = 12;  // float3, verified from the surface offsets (docs/research/30)
 constexpr uint32_t kUvLayerStride = 8;  // float2 per texture layer, layer 0 first, layers interleaved per vertex
 constexpr uint32_t kNoUv = 0xFFFFFFFFu;  // vertex key part for vertices without texture coordinates
+constexpr uint32_t kLmapStride = 8;     // float2 lightmap UV per vertex (research 94 section 2)
+constexpr int64_t kNoLightmap = 510;    // GfxSurface.lightmapIndex of a surface without a lightmap
 
 // The per-surface fields of GfxWorldSurfData (gfx_map surfaces.surfData) that the reader needs.
 struct SurfData {
     int64_t layerCount = 0;
     int64_t texCoordOffset = 0;  // aux stream byte offset of vertex 0, layer 0 (0 when absent)
+    int64_t xyzOffset = -1;      // posData byte offset of the block's vertex 0 (-1 when absent)
+    int64_t lmapCoordOffset = 0; // aux stream byte offset of the block's vertex 0 lightmap UV (0 when absent)
+};
+
+// Mesh vertex key: (position stream offset, texture stream offset) and the lightmap UV stream offset. All are byte
+// offsets in the zone's streams, so vertices shared between surfaces of one vertex block merge and nothing else does.
+struct VertexKey {
+    uint64_t posUv = 0;
+    uint32_t lmap = 0;
+    bool operator==(const VertexKey& o) const { return posUv == o.posUv && lmap == o.lmap; }
+};
+struct VertexKeyHash {
+    size_t operator()(const VertexKey& k) const { return std::hash<uint64_t>()(k.posUv ^ (uint64_t(k.lmap) * 0x9E3779B97F4A7C15ull)); }
 };
 
 // The GfxWorld / GfxWorldTransientZone asset object: root.asset.fields.
@@ -176,20 +191,23 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
             SurfData d;
             d.layerCount = int64_t(num(r.get("layerCount"), 0));
             d.texCoordOffset = int64_t(num(r.get("texCoordOffset"), 0));
+            d.xyzOffset = int64_t(num(r.get("xyzOffset"), -1));
+            d.lmapCoordOffset = int64_t(num(r.get("lmapCoordOffset"), 0));
             surfData.push_back(d);
         }
     }
 
     out.meshes.clear();
+    out.lightmapUv.clear();
     out.bounds = AABB();
     out.warnings.clear();
-    // Per mesh: (position stream offset, texture stream offset) -> mesh vertex. Both are byte offsets in the zone's
-    // streams, so vertices shared between surfaces of one vertex block merge and nothing else does.
-    std::vector<std::unordered_map<uint64_t, uint32_t>> vmap;
+    // Per mesh: VertexKey (position, texture and lightmap stream offsets) -> mesh vertex.
+    std::vector<std::unordered_map<VertexKey, uint32_t, VertexKeyHash>> vmap;
     std::map<std::string, size_t> byMaterial;
     std::map<int64_t, size_t> missingZone;                      // transient zone -> surfaces skipped
     size_t surfacesUsed = 0, trisBad = 0, surfacesBad = 0;
     size_t uvNoAux = 0, uvUnresolved = 0;                       // surfaces whose texture coordinates are not read
+    size_t lightmapSurfaces = 0;                                // surfaces with lightmap UVs
 
     for (const Value& s : surfs->arr) {
         const Value* tris = s.get("tris");
@@ -229,9 +247,11 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
             byMaterial[name] = mi;
             out.meshes.emplace_back();
             out.meshes.back().material = name;
+            out.lightmapUv.emplace_back();
             vmap.emplace_back();
         }
         ImportedMesh& m = out.meshes[mi];
+        auto& lmUv = out.lightmapUv[mi];
         auto& vm = vmap[mi];
         ++surfacesUsed;
 
@@ -257,6 +277,22 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
             }
         }
 
+        // Lightmap UV (research 94 section 2): float2 at lmapCoordOffset + 8 * (firstVertex + j), firstVertex the
+        // surface's first vertex in its block ((posOffset - xyzOffset) / 12, 0 on every stock surface seen). None for
+        // lightmapIndex 510 (shadow casters, sky), a record without lmapCoordOffset or a transient zone without aux data.
+        int64_t lmBase = -1;  // aux offset of this surface's vertex 0 lightmap UV (-1: none)
+        if (surfDataIndex >= 0 && surfDataIndex < int64_t(surfData.size()) && !z.aux.empty() &&
+            int64_t(num(s.get("lightmapIndex"), 0)) != kNoLightmap) {
+            const SurfData& sdr = surfData[size_t(surfDataIndex)];
+            int64_t firstVertex = 0;
+            if (sdr.xyzOffset >= 0 && posOffset >= sdr.xyzOffset && (posOffset - sdr.xyzOffset) % kPosStride == 0)
+                firstVertex = (posOffset - sdr.xyzOffset) / kPosStride;
+            const int64_t base = sdr.lmapCoordOffset + int64_t(kLmapStride) * firstVertex;
+            if (sdr.lmapCoordOffset > 0 && uint64_t(base) + uint64_t(kLmapStride) * uint64_t(vertexCount) <= z.aux.size())
+                lmBase = base;
+        }
+        if (lmBase >= 0) ++lightmapSurfaces;
+
         for (int64_t j = 0; j < triCount; ++j) {
             const uint16_t* t = &z.idx[size_t(baseIndex + 3 * j)];
             if (t[0] >= vertexCount || t[1] >= vertexCount || t[2] >= vertexCount) {
@@ -267,7 +303,8 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
             for (int c = 0; c < 3; ++c) {
                 const uint32_t posKey = uint32_t(posOffset) + kPosStride * t[c];  // stream byte offset: shared across surfaces
                 const uint32_t uvKey = uvBase >= 0 ? uint32_t(uvBase + uvStride * t[c]) : kNoUv;
-                const uint64_t key = uint64_t(posKey) << 32 | uvKey;
+                const uint32_t lmKey = lmBase >= 0 ? uint32_t(lmBase + int64_t(kLmapStride) * t[c]) : kNoUv;
+                const VertexKey key{uint64_t(posKey) << 32 | uvKey, lmKey};
                 auto it = vm.find(key);
                 if (it == vm.end()) {
                     const size_t at = posKey;
@@ -275,6 +312,9 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
                     it = vm.emplace(key, uint32_t(m.pos.size())).first;
                     m.pos.push_back(p);
                     m.uv.push_back(uvBase >= 0 ? stockUv(z.aux, uvKey) : std::array<double, 2>{0, 0});
+                    // Stored as is: v = 0 is the first row of the lightmap image (no flip, unlike uv).
+                    lmUv.push_back(lmBase >= 0 ? std::array<float, 2>{readF32(z.aux, lmKey), readF32(z.aux, lmKey + 4)}
+                                               : std::array<float, 2>{-1.0f, -1.0f});
                     out.bounds.add(p);
                 }
                 corner[c] = it->second;
@@ -301,10 +341,21 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
             n = len > 1e-12 ? n * (1.0 / len) : Vec3{0, 0, 1};
         }
     }
-    // Empty meshes (every triangle skipped) are dropped.
-    out.meshes.erase(std::remove_if(out.meshes.begin(), out.meshes.end(),
-                                    [](const ImportedMesh& m) { return m.idx.empty(); }),
-                     out.meshes.end());
+    // Empty meshes (every triangle skipped) are dropped, with their lightmap UV lists.
+    {
+        size_t keep = 0;
+        for (size_t i = 0; i < out.meshes.size(); ++i) {
+            if (out.meshes[i].idx.empty()) continue;
+            if (keep != i) {
+                out.meshes[keep] = std::move(out.meshes[i]);
+                out.lightmapUv[keep] = std::move(out.lightmapUv[i]);
+            }
+            ++keep;
+        }
+        out.meshes.resize(keep);
+        out.lightmapUv.resize(keep);
+    }
+    out.lightmapSurfaces = lightmapSurfaces;
 
     if (missingZone.size() > 4) {
         size_t surfaces = 0;

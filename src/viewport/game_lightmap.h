@@ -18,6 +18,7 @@
 
 #include "geometry.h"
 #include "lightmap_bake.h"
+#include "stock_lightmap.h"
 
 namespace iw8r::app {
 
@@ -55,6 +56,14 @@ struct GameLightmap {
 // stock draw class of a material (0 drawn, 1 shadow only, 2 hidden), null = all drawn. The scene's sun / sky / lights
 // are set by the caller.
 GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(const std::string&)>& drawClassFor);
+
+// A stock map's own lightmap (core stock_lightmap, research 94) as the renderer's three layers
+// (SceneRenderer::setStockLightmap): a = (f C, 1), b = ((1 - f) C / max(D.z, .001), 0), d = (D, 0), D in tangent space.
+struct StockLightmapLayers {
+    int width = 0, height = 0;
+    std::vector<float> a, b, d;
+};
+std::shared_ptr<StockLightmapLayers> stockLightmapLayers(const StockLightmap& lm);
 
 // Bakes (any thread). Never null; `error` is set when nothing could be baked.
 std::shared_ptr<GameLightmap> bakeGameLightmap(const GameBakeInput& in, const std::function<void(double)>& progress = {});

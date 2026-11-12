@@ -343,3 +343,93 @@ TEST(stock_world_skips_streamed_trzone_stubs) {
     CHECK(err.empty());
     CHECK(w.meshes.size() == 2);
 }
+
+namespace {
+
+// gfxJsonUv plus lightmapIndex: the floor (lightmapIndex 0) reads lightmap UVs from surfData 0 (lmapCoordOffset 20),
+// the wall has lightmapIndex 510 (none). A third surface draws the floor's block again through surfData 2, which has
+// the same texCoordOffset (52) but its own lightmap UVs at 180: its vertices must not merge with the floor's.
+std::string gfxJsonLm() {
+    std::string s = R"({"format":"mw19-asset-json-v1","asset":{"name":"maps/mp/test.d3dbsp","fields":{"surfaces":{"surfaces":{"values":[)";
+    s += R"({"tris":{"posOffset":4,"vertexCount":4,"triCount":2,"baseIndex":0},"material":{"name":"tw/floor"},"transientZone":0,"surfDataIndex":0,"lightmapIndex":0})";
+    s += R"(,{"tris":{"posOffset":16,"vertexCount":3,"triCount":1,"baseIndex":6},"material":{"name":"tw/wall"},"transientZone":0,"surfDataIndex":1,"lightmapIndex":510})";
+    s += R"(,{"tris":{"posOffset":4,"vertexCount":4,"triCount":2,"baseIndex":0},"material":{"name":"tw/floor"},"transientZone":0,"surfDataIndex":2,"lightmapIndex":0})";
+    s += R"(]},"surfData":{"values":[)";
+    s += R"({"transientZone":0,"layerCount":1,"xyzOffset":4,"tangentFrameOffset":4,"lmapCoordOffset":20,"colorOffset":0,"texCoordOffset":52})";
+    s += R"(,{"transientZone":0,"layerCount":2,"xyzOffset":16,"tangentFrameOffset":84,"lmapCoordOffset":96,"colorOffset":0,"texCoordOffset":120,"normalTransformOffset":[168,0,0,0,0,0,0]})";
+    s += R"(,{"transientZone":0,"layerCount":1,"xyzOffset":4,"tangentFrameOffset":4,"lmapCoordOffset":180,"colorOffset":0,"texCoordOffset":52})";
+    s += R"(]}}}}})";
+    return s;
+}
+
+// auxSample with real lightmap UVs: block 0 at 20 (vertex j: (0.1 + 0.2 j, 0.2 + 0.2 j)) and surfData 2's at 180
+// (vertex j: (0.9 - 0.1 j, 0.05 j)).
+std::vector<uint8_t> auxSampleLm() {
+    std::vector<uint8_t> a = auxSample();
+    std::vector<uint8_t> lm;
+    for (int j = 0; j < 4; ++j) {
+        putF(lm, 0.1f + 0.2f * float(j));
+        putF(lm, 0.2f + 0.2f * float(j));
+    }
+    for (size_t i = 0; i < lm.size(); ++i) a[20 + i] = lm[i];
+    for (int j = 0; j < 4; ++j) {
+        putF(a, 0.9f - 0.1f * float(j));
+        putF(a, 0.05f * float(j));
+    }
+    return a;
+}
+
+}  // namespace
+
+TEST(stock_world_lightmap_uvs) {
+    const Sample s = sample();
+    StockWorld w;
+    std::string err;
+    CHECK(parseStockWorld(gfxJsonLm(), {trzJson(s.pos, s.idx, 0, auxSampleLm())}, w, &err));
+    CHECK(err.empty());
+    CHECK(w.meshes.size() == 2);
+    CHECK(w.lightmapUv.size() == w.meshes.size());
+    if (w.meshes.size() != 2 || w.lightmapUv.size() != 2) return;
+    for (size_t m = 0; m < 2; ++m) CHECK(w.lightmapUv[m].size() == w.meshes[m].pos.size());
+    CHECK(w.lightmapSurfaces == 2);
+
+    // The floor mesh: 4 vertices from surfData 0 and 4 more from surfData 2 (same position and texture records,
+    // other lightmap records), so no lightmap UV is lost to the vertex sharing.
+    const ImportedMesh& floor = w.meshes[0];
+    CHECK(floor.pos.size() == 8);
+    CHECK(floor.idx.size() == 12);
+    const auto lmAt = [&](const Vec3& p, float u, float v) {
+        for (size_t k = 0; k < floor.pos.size(); ++k)
+            if (floor.pos[k] == p && std::fabs(w.lightmapUv[0][k][0] - u) < 1e-6f && std::fabs(w.lightmapUv[0][k][1] - v) < 1e-6f)
+                return true;
+        return false;
+    };
+    // Stored as is (no V flip): vertex 1 (100,0,0) of block 0 is (0.3, 0.4); of surfData 2 it is (0.8, 0.05).
+    CHECK(lmAt(Vec3{0, 0, 0}, 0.1f, 0.2f));
+    CHECK(lmAt(Vec3{100, 0, 0}, 0.3f, 0.4f));
+    CHECK(lmAt(Vec3{100, 100, 0}, 0.7f, 0.8f));
+    CHECK(lmAt(Vec3{100, 0, 0}, 0.8f, 0.05f));
+    CHECK(lmAt(Vec3{100, 100, 0}, 0.6f, 0.15f));
+    // The texture coordinates are unchanged by the extra key.
+    std::array<double, 2> uv{};
+    CHECK(uvAt(floor, Vec3{100, 0, 0}, uv));
+    CHECK(uv[0] == 0.5 && uv[1] == 0.75);
+
+    // The wall has lightmapIndex 510: no lightmap UV.
+    for (const auto& l : w.lightmapUv[1]) CHECK(l[0] == -1.0f && l[1] == -1.0f);
+
+    // No aux stream: every vertex has (-1, -1), and the vertex count is the old one.
+    StockWorld n;
+    CHECK(parseStockWorld(gfxJsonUv(false), {trzJson(s.pos, s.idx)}, n, &err));
+    CHECK(n.lightmapUv.size() == n.meshes.size());
+    CHECK(n.lightmapSurfaces == 0);
+    for (size_t m = 0; m < n.lightmapUv.size() && m < n.meshes.size(); ++m) {
+        CHECK(n.lightmapUv[m].size() == n.meshes[m].pos.size());
+        for (const auto& l : n.lightmapUv[m]) CHECK(l[0] == -1.0f && l[1] == -1.0f);
+    }
+    // gfx_map without surfData records at all (the oldest export shape): lists still parallel.
+    StockWorld o;
+    CHECK(parseStockWorld(gfxJson(false, true), {trzJson(s.pos, s.idx)}, o, &err));
+    CHECK(o.lightmapUv.size() == o.meshes.size());
+    for (size_t m = 0; m < o.lightmapUv.size() && m < o.meshes.size(); ++m) CHECK(o.lightmapUv[m].size() == o.meshes[m].pos.size());
+}
