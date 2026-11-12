@@ -23,6 +23,7 @@
 
 #include "acts_runner.h"
 #include "stock_lightmap.h"
+#include "stock_probes.h"
 
 namespace iw8r::qt {
 namespace {
@@ -37,6 +38,7 @@ constexpr qint64 kMaxExportBytes = 2LL * 1024 * 1024 * 1024;
 // zone with a .fp patch gets two such files (.ff.dec and .fp.patched.dec). The free space asked for is 2.5x per file
 // plus a margin.
 constexpr const char* kLightmapFile = "lightmap.iw8rlm";
+constexpr const char* kProbesFile = "probes.iw8rprb";
 constexpr double kDecPerZoneByte = 2.5;
 constexpr qint64 kLightmapMarginBytes = 256LL * 1024 * 1024;
 constexpr int kLightmapActsTimeoutMs = 10 * 60 * 1000;
@@ -114,6 +116,27 @@ QString WorldCache::lightmapErrorOf(const QString& zone) const {
     return it == index_.end() ? QString() : it->second.lightmapError;
 }
 
+std::optional<QString> WorldCache::probesFile(const QString& zone) const {
+    const auto dir = lookup(zone);
+    if (!dir) return std::nullopt;
+    const QString f = *dir + "/" + kProbesFile;
+    if (!QFileInfo::exists(f)) return std::nullopt;
+    return f;
+}
+
+QString WorldCache::probesErrorOf(const QString& zone) const {
+    const auto it = index_.find(zone);
+    return it == index_.end() ? QString() : it->second.probesError;
+}
+
+bool WorldCache::needsLightmap(const QString& zone) const {
+    return lookup(zone) && !lightmapFile(zone) && lightmapErrorOf(zone).isEmpty();
+}
+
+bool WorldCache::needsProbes(const QString& zone) const {
+    return lookup(zone) && !probesFile(zone) && probesErrorOf(zone).isEmpty();
+}
+
 QString WorldCache::cacheRoot() const { return root_; }
 
 std::optional<StockWorld> WorldCache::load(const QString& zone, QString* err) const {
@@ -146,6 +169,7 @@ void WorldCache::loadIndex() {
         e.bytes = qint64(o.value("bytes").toDouble());
         e.actsMs = qint64(o.value("acts_ms").toDouble());
         e.lightmapError = o.value("lightmap_error").toString();
+        e.probesError = o.value("probes_error").toString();
         if (!e.failed) {
             e.dir = QDir(root_).filePath(o.value("dir").toString());
             if (!QFileInfo::exists(e.dir + "/assets")) continue;  // removed by hand: resolve again
@@ -165,6 +189,7 @@ void WorldCache::writeIndex() const {
         o.insert("failed", e.failed);
         if (!e.error.isEmpty()) o.insert("error", e.error);
         if (!e.lightmapError.isEmpty()) o.insert("lightmap_error", e.lightmapError);
+        if (!e.probesError.isEmpty()) o.insert("probes_error", e.probesError);
         zones.insert(zone, o);
     }
     QJsonObject top;
@@ -365,8 +390,7 @@ void WorldCache::startNextStreamed() {
 
 void WorldCache::requestLightmap(const QString& zone) {
     const QString z = zone.trimmed();
-    if (z.isEmpty() || !lookup(z) || lightmapFile(z) || !lightmapErrorOf(z).isEmpty() || lmSkip_.contains(z) ||
-        lmQueue_.contains(z) || z == lmZone_)
+    if (z.isEmpty() || (!needsLightmap(z) && !needsProbes(z)) || lmSkip_.contains(z) || lmQueue_.contains(z) || z == lmZone_)
         return;
     lmQueue_.append(z);
     startNextLightmap();
@@ -376,7 +400,7 @@ void WorldCache::startNextLightmap() {
     // One job at a time, and only while no geometry export runs or waits (the user is waiting for that one).
     if (!lmZone_.isEmpty() || lmQueue_.isEmpty() || running_ || !queue_.isEmpty()) return;
     const QString zone = lmQueue_.takeFirst();
-    if (!lookup(zone) || lightmapFile(zone)) return startNextLightmap();
+    if (!needsLightmap(zone) && !needsProbes(zone)) return startNextLightmap();
 
     const QString acts = tools_("acts"), replay = tools_("replay"), oodle = tools_("oodle");
     for (const QString& f : {acts, replay, oodle})
@@ -387,6 +411,7 @@ void WorldCache::startNextLightmap() {
             lmSkip_.insert(zone);
             lmQueue_.clear();
             emit lightmapReady(zone);
+            emit probesReady(zone);
             return;
         }
     const QString ff = replayZoneDir() + "/" + zone + ".ff";
@@ -427,7 +452,7 @@ void WorldCache::startNextLightmap() {
     QTimer::singleShot(kLightmapActsTimeoutMs, this, [proc] {
         if (proc && proc->state() != QProcess::NotRunning) proc->kill();  // finished() follows
     });
-    emit progress("ACTS decompress " + zone + " for its lightmap");
+    emit progress("ACTS decompress " + zone + " for its lightmap and reflection probes");
     lmTimer_.start();
     lmProc_->start();
 }
@@ -458,40 +483,96 @@ void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
         QDir(scratch).removeRecursively();
         return endLightmap(zone, false, "zone left the world cache", false);
     }
-    const QString target = *dir + "/" + kLightmapFile;
+    const QString lmTarget = *dir + "/" + kLightmapFile;
+    const QString prTarget = *dir + "/" + kProbesFile;
+    // Only what is missing (a zone cached with a lightmap gets only its probes, and the reverse).
+    const bool wantLm = needsLightmap(zone), wantPr = needsProbes(zone);
+    const QString gfxJson = QString::fromStdString(iw8r::findStockGfxMapJson(dir->toStdString()));
     QPointer<WorldCache> self(this);
-    emit progress("Reading the " + zone + " lightmap...");
-    std::thread([self, zone, scratch, dec, target] {
+    emit progress("Reading the " + zone + (wantLm && wantPr ? " lightmap and reflection probes..." : wantLm ? " lightmap..." : " reflection probes..."));
+    std::thread([self, zone, scratch, dec, lmTarget, prTarget, wantLm, wantPr, gfxJson] {
+        // Only a verdict on the zone's data is kept (no root, N lightmaps, unknown formats, no probe image); a file
+        // that could not be read or written is tried again in the next session.
+        const auto verdict = [](const std::string& e) { return e.rfind("cannot read", 0) != 0 && e.rfind("read error", 0) != 0; };
+        // Lightmap.
         iw8r::StockLightmap lm;
-        std::string err;
-        bool ok = iw8r::extractStockLightmapFromDecompressedZone(dec.toStdString(), lm, &err);
-        QDir(scratch).removeRecursively();
-        // Only a verdict on the zone's data is kept (no root, N lightmaps, unknown formats); a file that could not be
-        // read or written is tried again in the next session.
-        const bool persist = !ok && err.rfind("cannot read", 0) != 0 && err.rfind("read error", 0) != 0;
-        QString summary;
-        if (ok) {
+        std::string lmErr;
+        bool lmOk = wantLm && iw8r::extractStockLightmapFromDecompressedZone(dec.toStdString(), lm, &lmErr);
+        // Probes: the records from the cached gfx_map export, the images from the decompressed zone.
+        iw8r::StockProbeSet probes;
+        std::string prErr;
+        bool prOk = false, prPersist = false;
+        if (wantPr) {
+            if (gfxJson.isEmpty()) {
+                prErr = "no gfx_map JSON in the zone's world cache folder";
+            } else if (!iw8r::readStockProbeRecords(gfxJson.toStdString(), probes, &prErr)) {
+                prPersist = verdict(prErr);  // a map without probes is a verdict
+            } else {
+                prOk = iw8r::extractStockProbeImages(dec.toStdString(), probes, &prErr);
+                prPersist = !prOk && verdict(prErr);
+            }
+        }
+        QDir(scratch).removeRecursively();  // every .dec, before the cache files are written
+        const bool lmPersist = wantLm && !lmOk && verdict(lmErr);
+        QString lmSummary, prSummary;
+        if (lmOk) {
             double c[3] = {0, 0, 0};
             const size_t n = size_t(lm.width) * size_t(lm.height);
             for (size_t i = 0; i < n; ++i)
                 for (int k = 0; k < 3; ++k) c[k] += lm.irradiance[3 * i + k];
-            summary = QString("%1x%2, type %3, C mean (%4, %5, %6)")
-                          .arg(lm.width)
-                          .arg(lm.height)
-                          .arg(lm.type)
-                          .arg(n ? c[0] / double(n) : 0.0, 0, 'f', 2)
-                          .arg(n ? c[1] / double(n) : 0.0, 0, 'f', 2)
-                          .arg(n ? c[2] / double(n) : 0.0, 0, 'f', 2);
-            if (!iw8r::writeStockLightmapCache(target.toStdString(), lm, &err)) {
-                ok = false;  // disk full or similar: not a verdict on the zone
-                QFile::remove(target);
+            lmSummary = QString("%1x%2, type %3, C mean (%4, %5, %6)")
+                            .arg(lm.width)
+                            .arg(lm.height)
+                            .arg(lm.type)
+                            .arg(n ? c[0] / double(n) : 0.0, 0, 'f', 2)
+                            .arg(n ? c[1] / double(n) : 0.0, 0, 'f', 2)
+                            .arg(n ? c[2] / double(n) : 0.0, 0, 'f', 2);
+            if (!iw8r::writeStockLightmapCache(lmTarget.toStdString(), lm, &lmErr)) {
+                lmOk = false;  // disk full or similar: not a verdict on the zone
+                QFile::remove(lmTarget);
             }
         }
-        QMetaObject::invokeMethod(qApp, [self, zone, ok, err, summary, persist] {
+        if (prOk) {
+            prSummary = QString("%1 probes, %2 boxes, %3x%3 BC6H, %4 levels")
+                            .arg(probes.probes.size())
+                            .arg(probes.boxes.size())
+                            .arg(probes.size)
+                            .arg(probes.mipCount);
+            if (!iw8r::writeStockProbeCache(prTarget.toStdString(), probes, &prErr)) {
+                prOk = false;
+                QFile::remove(prTarget);
+            }
+        }
+        QMetaObject::invokeMethod(qApp, [self, zone, wantLm, wantPr, lmOk, prOk, lmPersist, prPersist, lmSummary, prSummary,
+                                         lmErr, prErr] {
             if (!self) return;
-            self->endLightmap(zone, ok, ok ? summary : QString::fromStdString(err), persist);
+            if (wantLm) self->noteExtraction(zone, false, lmOk, lmOk ? lmSummary : QString::fromStdString(lmErr), lmPersist);
+            if (wantPr) self->noteExtraction(zone, true, prOk, prOk ? prSummary : QString::fromStdString(prErr), prPersist);
+            self->lmZone_.clear();
+            self->lmScratch_.clear();
+            emit self->lightmapReady(zone);
+            emit self->probesReady(zone);
+            self->startNextLightmap();
         });
     }).detach();
+}
+
+void WorldCache::noteExtraction(const QString& zone, bool probes, bool ok, const QString& message, bool persistError) {
+    const qint64 ms = lmTimer_.isValid() ? lmTimer_.elapsed() : 0;
+    const QString what = probes ? "reflection probes" : "lightmap";
+    if (ok) {
+        emit progress(QString("world cache: %1 %2 cached (%3), %4 ms").arg(zone, what, message).arg(ms));
+        return;
+    }
+    if (persistError) {
+        if (auto it = index_.find(zone); it != index_.end() && !it->second.failed) {
+            (probes ? it->second.probesError : it->second.lightmapError) = message;
+            writeIndex();
+        }
+    } else {
+        lmSkip_.insert(zone);
+    }
+    emit progress("world cache: " + zone + " " + what + " failed: " + message);
 }
 
 void WorldCache::endLightmap(const QString& zone, bool ok, const QString& error, bool persistError) {
@@ -500,18 +581,21 @@ void WorldCache::endLightmap(const QString& zone, bool ok, const QString& error,
         emit progress(QString("world cache: %1 lightmap cached (%2), %3 ms").arg(zone, error).arg(ms));
     } else {
         if (persistError) {
+            // A verdict on the zone (no .ff): neither output can be made.
             if (auto it = index_.find(zone); it != index_.end() && !it->second.failed) {
-                it->second.lightmapError = error;
+                if (needsLightmap(zone)) it->second.lightmapError = error;
+                if (needsProbes(zone)) it->second.probesError = error;
                 writeIndex();
             }
         } else {
             lmSkip_.insert(zone);
         }
-        emit progress("world cache: " + zone + " lightmap failed: " + error);
+        emit progress("world cache: " + zone + " lightmap / probes failed: " + error);
     }
     lmZone_.clear();
     lmScratch_.clear();
     emit lightmapReady(zone);
+    emit probesReady(zone);
     startNextLightmap();
 }
 
@@ -629,6 +713,22 @@ int runWorldCacheTest(const QString& zone, const QString& outDir) {
                     lines << "ERROR lightmap read: " + QString::fromStdString(lerr);
             } else {
                 lines << "lightmap=none " + cache.lightmapErrorOf(zone);
+            }
+            if (const auto prf = cache.probesFile(zone)) {
+                iw8r::StockProbeSet ps;
+                std::string perr;
+                if (iw8r::readStockProbeCache(prf->toStdString(), ps, &perr))
+                    lines << QString("probes=%1 bytes=%2 count=%3 boxes=%4 size=%5 mips=%6")
+                                 .arg(*prf)
+                                 .arg(QFileInfo(*prf).size())
+                                 .arg(ps.probes.size())
+                                 .arg(ps.boxes.size())
+                                 .arg(ps.size)
+                                 .arg(ps.mipCount);
+                else
+                    lines << "ERROR probes read: " + QString::fromStdString(perr);
+            } else {
+                lines << "probes=none " + cache.probesErrorOf(zone);
             }
             for (const ImportedMesh& m : world->meshes)
                 lines << QString("  material %1 vertices=%2 triangles=%3").arg(QString::fromStdString(m.material)).arg(m.pos.size()).arg(m.idx.size() / 3);

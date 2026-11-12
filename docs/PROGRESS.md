@@ -60,6 +60,12 @@
   gitignored build/convert-iw3-iw8.vcxproj got stock_sun.cpp by hand, as the worktree's): editzone sun.direction,
   src/convert/iw3_iw8/stock_sun.*, replay_sunshadow Bake tolerance; editor iw8r_sun_direction, Relight dialog field;
   tools/stock_sun_direction_test.py in run_offline_proofs.py. Compile panel Bake lightmaps checkbox.
+- Then stock world removal (x64-zt 373d6ad2 / 626bfcc9, live; old exe zonetool_f9c14d9f.exe; live vcxproj got
+  stock_world_remove.cpp by hand): iw8r_remove_world brush class, editzone remove_world_surfaces, research 96,
+  tools/stock_world_remove_test.py in the proofs. Stock reflections: core stock_probes (BC6H probes from the
+  decompressed zone, probes.iw8rprb), WorldCache probesFile / probesReady, render.cpp stockProbeLight (box parallax,
+  priority order, feather, two mips), game_look_assets (ggx_env_brdf_lut from the install via ACTS, cached in
+  AppLocalData/game_look). Ground War (11.10) deferred by the owner's scope decision.
 - Tests at the last commit: core 139,820 checks / 0, GUI 948 / 0.
 - Open (in scope): copying or removing a placed object that has a dynamic entity;
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.

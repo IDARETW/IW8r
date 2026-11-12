@@ -27,6 +27,10 @@ struct ID3D11BlendState;
 struct ID3D11SamplerState;
 struct ID3D11Texture3D;
 
+namespace iw8r {
+struct StockProbeSet;  // stock_probes.h
+}
+
 namespace iw8r::app {
 
 // Section timers for the viewport benchmark (off unless Prof::on is set; a scope costs two clock reads when on).
@@ -263,6 +267,11 @@ public:
     // The stock world shader's environment BRDF table (64 x 64, A and B as R8G8; game_look_assets.h fetches it from the
     // owner's install). null = the analytic fit.
     void setEnvBrdfLut(int width, int height, const uint8_t* rg);
+    // The stock reference's reflection probes (core stock_probes, research 95 "Indirect specular"): every probe's
+    // octahedral BC6H image as one array slice (all levels) and the influence boxes, drawn highest priority first.
+    // null clears them.
+    void setStockProbes(const iw8r::StockProbeSet* set);
+    size_t stockProbeCount() const { return stockProbeSlices_; }
     bool hasEnvBrdfLut() const { return envBrdfSrv_ != nullptr; }
     // The game's tone map LUT (core game_look buildGameTonemapLut): size^3 RGBA8, red fastest.
     void setGameTonemapLut(int size, const uint8_t* rgba);
@@ -426,6 +435,11 @@ private:
     ID3D11Texture2D* stockLmTex_[3] = {nullptr, nullptr, nullptr};
     ID3D11ShaderResourceView* stockLmSrv_[3] = {nullptr, nullptr, nullptr};
     ID3D11Texture2D* envBrdfTex_ = nullptr;
+    ID3D11Texture2D* probeArrTex_ = nullptr;
+    ID3D11ShaderResourceView* probeArrSrv_ = nullptr;
+    ID3D11Buffer* cbProbes_ = nullptr;
+    size_t stockProbeSlices_ = 0;
+    static constexpr int kMaxProbeBoxes = 128;
     ID3D11ShaderResourceView* envBrdfSrv_ = nullptr;
     void writeGameCb();
     ID3D11Texture3D* gameLutTex_ = nullptr;

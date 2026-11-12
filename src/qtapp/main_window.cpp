@@ -1966,6 +1966,7 @@ void MainWindow::buildMenus() {
         camera_->setReferenceTextured({});
         camera_->setGameStockMap("");
         camera_->setStockLightmap(nullptr);
+        camera_->setStockProbes(nullptr);
         ctx_.referencePlans.clear();
         stockWorld_.reset();
         referenceProps_.clear();
@@ -6813,12 +6814,34 @@ void MainWindow::loadStockLightmap(const QString& zone) {
     }).detach();
 }
 
+void MainWindow::loadStockProbes(const QString& zone) {
+    const std::optional<QString> file = worldCache_ ? worldCache_->probesFile(zone) : std::nullopt;
+    if (!file) return;
+    QPointer<MainWindow> self(this);
+    const std::string path = file->toStdString();
+    std::thread([self, zone, path] {
+        auto set = std::make_shared<StockProbeSet>();
+        std::string err;
+        const bool ok = readStockProbeCache(path, *set, &err, false);  // the GPU takes the BC6H blocks as they are
+        QMetaObject::invokeMethod(qApp, [self, zone, set, ok, err] {
+            if (!self || self->referenceZone_ != zone) return;
+            if (ok) self->camera_->setStockProbes(set);
+            else self->ctx_.setStatus("Stock reflection probes of " + zone + " not read: " + QString::fromStdString(err));
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
 void MainWindow::loadStockReference(const QString& zone) {
     if (!worldCache_) {
         worldCache_ = new WorldCache([this](const QString& k) { return toolPath(k); }, this);
         connect(worldCache_, &WorldCache::progress, this, [this](const QString& m) { ctx_.setStatus(m); });
         connect(worldCache_, &WorldCache::ready, this, [this](const QString& z) {
             if (z == referenceZone_) loadStockReference(z);
+        });
+        connect(worldCache_, &WorldCache::probesReady, this, [this](const QString& z) {
+            if (z != referenceZone_) return;
+            if (worldCache_->probesFile(z)) loadStockProbes(z);
+            else if (!worldCache_->probesErrorOf(z).isEmpty()) ctx_.setStatus("Stock reflection probes of " + z + ": " + worldCache_->probesErrorOf(z));
         });
         connect(worldCache_, &WorldCache::lightmapReady, this, [this](const QString& z) {
             if (z != referenceZone_) return;
@@ -6916,8 +6939,12 @@ void MainWindow::loadStockReference(const QString& zone) {
             self->camera_->setGameStockMap(zone.toStdString());
             // Game Lighting draws the stock world with its own lightmap (research 94): cached, or made now.
             self->camera_->setStockLightmap(nullptr);
+            self->camera_->setStockProbes(nullptr);
             if (self->worldCache_->lightmapFile(zone)) self->loadStockLightmap(zone);
-            else if (self->worldCache_->lightmapErrorOf(zone).isEmpty()) self->worldCache_->requestLightmap(zone);
+            if (self->worldCache_->probesFile(zone)) self->loadStockProbes(zone);
+            const bool needLm = !self->worldCache_->lightmapFile(zone) && self->worldCache_->lightmapErrorOf(zone).isEmpty();
+            const bool needProbes = !self->worldCache_->probesFile(zone) && self->worldCache_->probesErrorOf(zone).isEmpty();
+            if (needLm || needProbes) self->worldCache_->requestLightmap(zone);
             self->ctx_.referencePlans = std::move(*plans);
             self->ctx_.cameraMoved();  // repaints the 2D views too
             if (n == 0) {

@@ -7,6 +7,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 Warzone and stock maps (later the same day):
 
+- **Remove stock world geometry.** An `iw8r_remove_world` box on a stock map removes the world inside it (walls,
+  crates baked into the world) from drawing and from collision when the zone is rebuilt, and bakes the sun shadow
+  again without it. Baked lighting and occlusion keep the old geometry. Proven offline on Shipment
+  (tools/stock_world_remove_test.py). Not seen in game.
+- **Stock reflections and specular in Game Lighting.** The stock world shows its own reflection probes (read from the
+  zone once, cached), the game's environment BRDF table (read from the install) and the GGX sun highlight, as the
+  stock world shader does. About 2.2 ms per frame on Backlot2 at 1920 x 1080.
+
 - **Turn a stock map's sun.** File > Relight Stock Map Sun takes a direction (pitch yaw). Rebuild Stock Zone turns
   the sun, re-bakes its shadows from the stock world and props, and turns the sun-tinted fog with it. The baked
   bounce light of the lightmaps keeps the old sun. Proven offline on Shipment (tools/stock_sun_direction_test.py).

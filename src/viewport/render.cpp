@@ -1,4 +1,5 @@
 #include "render.h"
+#include "stock_probes.h"
 
 #include <algorithm>
 #include <d3d11.h>
@@ -201,6 +202,48 @@ Texture2D gameLmD : register(t8);
 Texture3D gameLut : register(t9);
 // The stock world shader's ggx_env_brdf_lut (A, B by N.V across and gloss down; research 95), when the editor has it.
 Texture2D envBrdf : register(t10);
+// The stock reference's reflection probes (setStockProbes): octahedral, world space, 4-texel gutter at every level.
+Texture2DArray stockProbes : register(t11);
+struct ProbeBox { float4 centerSlice; float4 axisX; float4 axisY; float4 axisZ; float4 originFeather; };
+cbuffer Probes : register(b5) { float4 probeCount; ProbeBox probeBoxes[128]; };
+float3 probeAt(float slice, float3 dir, float mip) {
+    float3 a = abs(dir);
+    float2 o = dir.xy / max(a.x + a.y + a.z, 1e-6);
+    if (dir.z < 0) o = (1.0 - abs(o.yx)) * float2(o.x >= 0 ? 1 : -1, o.y >= 0 ? 1 : -1);
+    float g = float(4u << uint(mip));
+    float2 uv = (o * 0.5 + 0.5) * (1.0 - g / 128.0) + g / 256.0;
+    return stockProbes.SampleLevel(lutSamp, float3(uv, slice), mip).rgb;
+}
+// The stock shader's probe term (research 95): the boxes front to back by priority, each with its box-parallax
+// direction and a feathered fade, until the weights reach 1; two levels around 5 - 5 g'.
+float3 stockProbeLight(float3 p, float3 R, float gp) {
+    float mip = clamp(5.0 - 5.0 * gp, 0.0, 5.0);
+    float m0 = floor(mip), mf = mip - m0, m1 = min(m0 + 1.0, 5.0);
+    float3 sum = 0;
+    float wsum = 0;
+    int n = int(probeCount.x);
+    for (int k = 0; k < n && wsum < 0.999; ++k) {
+        ProbeBox b = probeBoxes[k];
+        float3 d = p - b.centerSlice.xyz;
+        float3 lp = float3(dot(d, b.axisX.xyz), dot(d, b.axisY.xyz), dot(d, b.axisZ.xyz));
+        float3 h = float3(b.axisX.w, b.axisY.w, b.axisZ.w);
+        float3 rem = h - abs(lp);
+        if (rem.x < 0 || rem.y < 0 || rem.z < 0) continue;
+        float fade = saturate(min(rem.x, min(rem.y, rem.z)) / max(b.originFeather.w, 1.0));
+        // Box parallax: where the reflection ray leaves the box, seen from the probe's capture origin.
+        float3 lr = float3(dot(R, b.axisX.xyz), dot(R, b.axisY.xyz), dot(R, b.axisZ.xyz));
+        float3 t1 = (h - lp) / (abs(lr) > 1e-6 ? lr : 1e-6), t2 = (-h - lp) / (abs(lr) > 1e-6 ? lr : 1e-6);
+        float3 tf = max(t1, t2);
+        float t = min(tf.x, min(tf.y, tf.z));
+        float3 dir = (p + R * max(t, 0.0)) - b.originFeather.xyz;
+        if (dot(dir, dir) < 1e-6) dir = R;
+        float w = fade * (1.0 - wsum);
+        float3 c = lerp(probeAt(b.centerSlice.w, dir, m0), probeAt(b.centerSlice.w, dir, m1), mf);
+        sum += c * w;
+        wsum += w;
+    }
+    return wsum > 1e-4 ? sum / wsum : float3(0, 0, 0);
+}
 float2 gameEnvBrdf(float nv, float g) {
     if (game0.w > 0.5) return envBrdf.SampleLevel(lutSamp, float2(nv, g) * (63.0 / 64.0) + 0.5 / 64.0, 0).rg;
     // Without the table: Karis's fit of the split-sum GGX table (roughness 1 - g).
@@ -309,7 +352,14 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             float fq = 1.05 * (1.0 - pow(1.0 - nv, 5.0));
             float kd = lerp(fq, cq * (cq + min(4.0 * tq * tq, 1.0)) * max(1.25 - 1.6 * tq, 0.55 - 0.2 * tq), tq) + 0.38 * tq * tq;
             float fmax = max(Fenv.r, max(Fenv.g, Fenv.b));
-            c = albedo * indirect * kd * (1.0 - fmax) + Fenv * Lr;
+            float3 S = Lr;
+            if (probeCount.x > 0.5) {
+                // Probes are luminance-normalised: relit by the lightmap along the reflection (research 95).
+                float3 P = stockProbeLight(i.w, R, gp) * dot(Lr, float3(0.2126, 0.7152, 0.0722));
+                float3 mixed = lerp(P, Lr, 0.85);
+                S = lerp(0.18 * mixed, P, 1.0);  // specular occlusion 1: no GTAO here
+            }
+            c = albedo * indirect * kd * (1.0 - fmax) + Fenv * S;
             float3 Ls = gameSun.xyz;
             float nl = dot(N, Ls);
             if (nl > 0) {
@@ -489,6 +539,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(gameLutTex_);
     for (int k = 0; k < 3; ++k) safeRelease(stockLmSrv_[k]), safeRelease(stockLmTex_[k]);
     safeRelease(envBrdfSrv_), safeRelease(envBrdfTex_);
+    safeRelease(probeArrSrv_), safeRelease(probeArrTex_), safeRelease(cbProbes_);
     safeRelease(meterSrv_), safeRelease(meterRtv_), safeRelease(meterTex_);
     for (auto*& s : meterStage_) safeRelease(s);
     safeRelease(invGreySrv_), safeRelease(invGreyTex_);
@@ -832,6 +883,75 @@ void SceneRenderer::setEnvBrdfLut(int width, int height, const uint8_t* rg) {
         safeRelease(envBrdfTex_);
 }
 
+void SceneRenderer::setStockProbes(const StockProbeSet* set) {
+    safeRelease(probeArrSrv_), safeRelease(probeArrTex_);
+    stockProbeSlices_ = 0;
+    if (!dev_) return;
+    if (!cbProbes_) {
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = 16 + 80 * kMaxProbeBoxes;
+        bd.Usage = D3D11_USAGE_DEFAULT;
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        if (FAILED(dev_->CreateBuffer(&bd, nullptr, &cbProbes_))) return;
+    }
+    std::vector<float> cb(size_t(4 + 20 * kMaxProbeBoxes), 0.0f);
+    const auto upload = [&] { ctx_->UpdateSubresource(cbProbes_, 0, nullptr, cb.data(), 0, 0); };
+    if (!set || set->probes.empty() || set->size < 16 || set->mipCount < 1) {
+        upload();
+        return;
+    }
+    const size_t perProbe = bc6hBytesPerProbe(set->size, set->mipCount);
+    for (const auto& p : set->probes)
+        if (p.bc6h.size() < perProbe) {
+            upload();
+            return;
+        }
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = td.Height = UINT(set->size);
+    td.MipLevels = UINT(set->mipCount);
+    td.ArraySize = UINT(set->probes.size());
+    td.Format = DXGI_FORMAT_BC6H_UF16;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_IMMUTABLE;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    std::vector<D3D11_SUBRESOURCE_DATA> init;
+    for (const auto& p : set->probes) {
+        size_t off = 0;
+        for (int m = 0; m < set->mipCount; ++m) {
+            const int s = std::max(set->size >> m, 4);
+            const size_t blocksRow = size_t(s + 3) / 4;
+            init.push_back({p.bc6h.data() + off, UINT(blocksRow * 16), 0});
+            off += blocksRow * blocksRow * 16;
+        }
+    }
+    if (FAILED(dev_->CreateTexture2D(&td, init.data(), &probeArrTex_)) || FAILED(dev_->CreateShaderResourceView(probeArrTex_, nullptr, &probeArrSrv_))) {
+        safeRelease(probeArrTex_);
+        upload();
+        return;
+    }
+    stockProbeSlices_ = set->probes.size();
+    // Boxes, highest priority first (the fallback box, priority -FLT_MAX, last).
+    std::vector<size_t> order(set->boxes.size());
+    for (size_t k = 0; k < order.size(); ++k) order[k] = k;
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return set->boxes[a].priority > set->boxes[b].priority; });
+    size_t n = 0;
+    for (size_t k : order) {
+        const StockProbeBox& b = set->boxes[k];
+        if (b.imageIndex < 0 || size_t(b.imageIndex) >= set->probes.size() || n >= size_t(kMaxProbeBoxes)) continue;
+        float* e = cb.data() + 4 + 20 * n;
+        e[0] = b.center[0], e[1] = b.center[1], e[2] = b.center[2], e[3] = float(b.imageIndex);
+        for (int a = 0; a < 3; ++a) {
+            e[4 + 4 * a] = b.axes[a][0], e[5 + 4 * a] = b.axes[a][1], e[6 + 4 * a] = b.axes[a][2];
+            e[7 + 4 * a] = b.halfSize[a];
+        }
+        e[16] = b.position[0], e[17] = b.position[1], e[18] = b.position[2];
+        e[19] = std::max({b.feather[0], b.feather[1], b.feather[2], 1.0f});
+        ++n;
+    }
+    cb[0] = float(n);
+    upload();
+}
+
 void SceneRenderer::writeGameCb() {
     if (!cbGame_) return;
     const bool on = game_.on && gameLutSrv_ != nullptr;
@@ -841,8 +961,9 @@ void SceneRenderer::writeGameCb() {
                          game_.sky[0], game_.sky[1], game_.sky[2], 0};
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
-    ID3D11ShaderResourceView* gl[2] = {gameLutSrv_, envBrdfSrv_};
-    ctx_->PSSetShaderResources(9, 2, gl);
+    ID3D11ShaderResourceView* gl[3] = {gameLutSrv_, envBrdfSrv_, probeArrSrv_};
+    ctx_->PSSetShaderResources(9, 3, gl);
+    if (cbProbes_) ctx_->PSSetConstantBuffers(5, 1, &cbProbes_);
     if (lutSampler_) ctx_->PSSetSamplers(2, 1, &lutSampler_);
 }
 

@@ -10,6 +10,8 @@
 #include <set>
 #include <sstream>
 
+#include "brush_ops.h"
+
 namespace iw8r {
 
 namespace {
@@ -140,7 +142,8 @@ std::vector<uint32_t> stockEditHiddenProps(const MapFile& map) {
 std::string stockEditJson(const std::string& entitiesPath, const std::vector<uint32_t>& hiddenProps,
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints, const std::string* placedObjects,
                           const std::vector<StockPatchOverride>* stockPatches, const std::vector<StockPropCollision>* removeCollision,
-                          const std::string* lootBoxes, const std::string* sun, const std::string* replaceMaterials) {
+                          const std::string* lootBoxes, const std::string* sun, const std::string* replaceMaterials,
+                          const std::string* removeWorld) {
     std::string json = "{";
     bool first = true;
     const auto sep = [&] {
@@ -168,6 +171,10 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
     if (replaceMaterials && !replaceMaterials->empty()) {
         sep();
         json += "\"replace_materials\":" + *replaceMaterials;
+    }
+    if (removeWorld && !removeWorld->empty()) {
+        sep();
+        json += "\"remove_world_surfaces\":" + *removeWorld;
     }
     if (sun && !sun->empty()) {
         sep();
@@ -201,6 +208,91 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
         for (size_t i = 0; i < stockPatches->size(); ++i)
             json += std::string(i ? "," : "") + jsonText((*stockPatches)[i].name) + ":" + jsonText((*stockPatches)[i].stockFile);
         json += "}";
+    }
+    return json + "}";
+}
+
+bool isRemoveWorldClass(const std::string& classname) { return lowerOf(classname) == kRemoveWorldClass; }
+
+std::vector<WorldRemovalBox> documentWorldRemovals(const MapFile& map, std::vector<std::string>* notes) {
+    std::vector<WorldRemovalBox> out;
+    size_t empty = 0, flat = 0, idle = 0;
+    const auto off = [](const Entity& e, const char* key) {
+        const std::string* v = e.value(key);
+        return v && (*v == "0" || lowerOf(*v) == "false" || lowerOf(*v) == "no");
+    };
+    for (const Entity& e : map.entities) {
+        if (!isRemoveWorldClass(e.classname())) continue;
+        WorldRemovalBox base;
+        base.render = !off(e, "render");
+        base.collision = !off(e, "collision");
+        if (!base.render && !base.collision) {
+            ++idle;
+            continue;
+        }
+        size_t boxes = 0;
+        for (const EntityItem& it : e.items) {
+            const Primitive* p = it.prim();
+            if (!p) continue;
+            AABB box;
+            if (p->kind == PrimKind::Brush) {
+                const AABB b = brushBounds(brushFromPrimitive(*p));
+                if (b.valid()) box.add(b);
+            } else {
+                for (const PatchVertex& v : p->verts) box.add(v.pos);
+            }
+            if (!box.valid() || box.maxs.x <= box.mins.x || box.maxs.y <= box.mins.y || box.maxs.z <= box.mins.z) {
+                ++flat;
+                continue;
+            }
+            WorldRemovalBox r = base;
+            r.mins = box.mins;
+            r.maxs = box.maxs;
+            out.push_back(r);
+            ++boxes;
+        }
+        if (!boxes) ++empty;
+    }
+    if (notes) {
+        if (empty) notes->push_back(std::to_string(empty) + " iw8r_remove_world entit" + (empty == 1 ? "y has" : "ies have") + " no box and remove nothing");
+        if (flat) notes->push_back(std::to_string(flat) + " flat iw8r_remove_world brush(es) are left out");
+        if (idle) notes->push_back(std::to_string(idle) + " iw8r_remove_world entit" + (idle == 1 ? "y keeps" : "ies keep") + " both render and collision (render 0, collision 0) and remove nothing");
+    }
+    return out;
+}
+
+bool stockWorldRemovalRebakesSun(const MapFile& map) {
+    for (const Entity& e : map.entities)
+        if (e.isWorldspawn()) {
+            const std::string* v = e.value("iw8r_remove_world_sun");
+            return !v || lowerOf(*v) != "keep";
+        }
+    return true;
+}
+
+std::string stockWorldRemovalJson(const std::vector<WorldRemovalBox>& boxes, bool rebakeSunShadow, const std::string& acts) {
+    if (boxes.empty()) return {};
+    const auto num = [](double v) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.9g", v);
+        return std::string(buf);
+    };
+    const auto vec = [&](const Vec3& v) { return "[" + num(v.x) + "," + num(v.y) + "," + num(v.z) + "]"; };
+    std::string json = "{\"boxes\":[";
+    bool rendered = false;
+    for (size_t i = 0; i < boxes.size(); ++i) {
+        const WorldRemovalBox& b = boxes[i];
+        json += std::string(i ? "," : "") + "{\"mins\":" + vec(b.mins) + ",\"maxs\":" + vec(b.maxs);
+        if (!b.render) json += ",\"render\":false";
+        if (!b.collision) json += ",\"collision\":false";
+        json += "}";
+        rendered |= b.render;
+    }
+    json += "]";
+    // Only removed triangles change the sun shadow.
+    if (rebakeSunShadow && rendered) {
+        json += ",\"rebake_sun_shadow\":true";
+        if (!acts.empty()) json += ",\"acts\":" + jsonText(acts);
     }
     return json + "}";
 }

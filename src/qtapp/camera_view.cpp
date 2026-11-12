@@ -151,6 +151,11 @@ void CameraView::render() {
         texInstDirty_ = false;
         texInstPending_ = refPollDue_ = true;
     }
+    if (probesDirty_) {
+        renderer_.setStockProbes(pendingProbes_.get());
+        pendingProbes_.reset();
+        probesDirty_ = false;
+    }
     if (stockLmDirty_) {
         const auto& l = pendingStockLm_;
         if (l && l->width > 0) renderer_.setStockLightmap(l->width, l->height, l->a.data(), l->b.data(), l->d.data());

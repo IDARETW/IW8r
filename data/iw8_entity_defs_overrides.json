@@ -2527,6 +2527,36 @@
           ]
         }
       }
+    },
+    "iw8r_remove_world": {
+      "description": "Stock maps: takes the stock world geometry inside this entity's brushes out on File > Rebuild Stock Zone (research 96). Each brush (or patch) is a box; every world triangle whose three vertices lie inside a box stops drawing in every pass, and the world collision triangles and brush hulls inside it go. The stock sun shadow is baked again without them (worldspawn iw8r_remove_world_sun keep: not). Static models are not world geometry: hide them with Hide Stock Props In Selection. What stays: the baked lighting under and around it, and the stock occlusion data (something behind a removed wall can be culled from some views). Use a tool texture. Not kept in the entity text; not built into own maps. Not seen in game.",
+      "kind": "brush",
+      "color": [
+        0.95,
+        0.25,
+        0.25
+      ],
+      "buildAccepted": false,
+      "keys": {
+        "render": {
+          "type": "bool",
+          "default": "1",
+          "description": "0 keeps the triangles drawn: only the collision inside the boxes goes (a walk-through wall).",
+          "required": false,
+          "examples": [
+            "0"
+          ]
+        },
+        "collision": {
+          "type": "bool",
+          "default": "1",
+          "description": "0 keeps the collision: only the triangles inside the boxes stop drawing (an invisible wall).",
+          "required": false,
+          "examples": [
+            "0"
+          ]
+        }
+      }
     }
   }
 }

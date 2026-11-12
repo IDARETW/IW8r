@@ -5,6 +5,7 @@
 
 #include <memory>
 
+#include "stock_probes.h"
 #include "game_lightmap.h"
 #include "vfx_sim.h"
 #include "atmosphere.h"
@@ -163,6 +164,13 @@ public slots:
     }
     bool hasStockLightmap() const { return renderer_.hasStockLightmap(); }
     bool hasEnvBrdfLut() const { return renderer_.hasEnvBrdfLut(); }
+    // The stock reference's reflection probes (null clears), sent to the renderer on the next frame.
+    void setStockProbes(std::shared_ptr<const StockProbeSet> set) {
+        pendingProbes_ = std::move(set);
+        probesDirty_ = true;
+        update();
+    }
+    size_t stockProbeCount() const { return renderer_.stockProbeCount(); }
     double gameExposure() const { return gameExposure_; }
     // Stock map reference geometry (View > Stock Map Reference), uploaded on the next frame. Empty clears it.
     void setReference(std::vector<app::GpuVertex> tris) {
@@ -363,6 +371,8 @@ private:
     int pendingEnvBrdfW_ = 0, pendingEnvBrdfH_ = 0;
     std::shared_ptr<const app::StockLightmapLayers> pendingStockLm_;
     bool stockLmDirty_ = false;
+    std::shared_ptr<const StockProbeSet> pendingProbes_;
+    bool probesDirty_ = false;
     double gameExposure_ = 0, gameExposureTarget_ = 0;
     QElapsedTimer gameExposureClock_;
     uint64_t gameBakeRev_ = ~0ull, gameSeenRev_ = ~0ull;

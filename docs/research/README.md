@@ -23,6 +23,9 @@ not guessed. The target build throughout is MW2019 Replay 1.20.4.7623265
 | 29 | [Probes, static models and sky](29_probes_models_sky.md) | Reflection probes per entity, `misc_model` placements and sky limits in the x64-zt extraction |
 | 32 | [Game-mode objects](32_gamemode_objects.md) | DOM, hardpoint, S&D, CTF classnames/keys from the stock map_ents; backs `src/core/gamemode_templates.*` |
 | 33 | [Sky route](33_sky_route.md) | What x64-zt needs for `world.sky` (legacy cube DDS), the stock hemi-octahedral BC6H skies, conversion and build check |
+| 94 | [Stock lightmaps](94_stock_lightmaps.md) | Where a stock map's lightmap lives, its three planes and per-vertex UVs |
+| 95 | [Lit shader math](95_lit_shader_math.md) | The stock world shader, the post chain, and the converter's world shader for editor maps (Game Lighting) |
+| 96 | [Stock world removal](96_stock_world_removal.md) | Removing stock world triangles from drawing, Havok collision and the sun shadow |
 
 ## Third-party "iw8 level maker" (report 13)
 

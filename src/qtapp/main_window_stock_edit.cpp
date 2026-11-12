@@ -302,6 +302,24 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
         }
     }
 
+    // 11.5: world geometry removed inside iw8r_remove_world boxes (drawing and collision; the sun shadow re-baked
+    // unless worldspawn iw8r_remove_world_sun is keep). Research 96.
+    std::vector<std::string> rmNotes;
+    const auto rmBoxes = documentWorldRemovals(ctx_.doc.map(), &rmNotes);
+    const bool rmRebake = stockWorldRemovalRebakesSun(ctx_.doc.map());
+    const std::string removeWorld = stockWorldRemovalJson(rmBoxes, rmRebake, QDir::toNativeSeparators(sunActs).toStdString());
+    if (notes) {
+        for (const std::string& n : rmNotes) *notes << qs(n);
+        if (!rmBoxes.empty()) {
+            *notes << QString("%1 world removal box(es): the stock world inside them stops drawing and colliding%2; the baked "
+                              "lighting and the occlusion data keep it (things behind it may still be culled from some views)")
+                          .arg(rmBoxes.size())
+                          .arg(rmRebake ? ", and the sun shadow is baked again without it" : "");
+            if (rmRebake && (sunActs.isEmpty() || !QFileInfo::exists(sunActs)))
+                *notes << "ACTS is not set, so the converter looks for IW8_ACTS; without it the rebuild stops at the sun shadow";
+        }
+    }
+
     // 13.5: placed objects (buy stations) that were moved or added as `scriptable` entities.
     const PlacedObjectEdits placed =
         placedObjectEdits(ctx_.doc.map(), stockPlaced_, ScriptableCatalog::shared(QCoreApplication::applicationDirPath().toStdString()));
@@ -322,7 +340,8 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
     const QString editsPath = work + "/edits.json";
     QFile jf(editsPath);
     const std::string json = stockEditJson(QDir::toNativeSeparators(entsPath).toStdString(), hidden, carry, writeLoot ? &loot : nullptr,
-                                           &placed.json, &stockPatches, &removeCollision, &lootBoxes, &sun, &replaceMaterials);
+                                           &placed.json, &stockPatches, &removeCollision, &lootBoxes, &sun, &replaceMaterials,
+                                           &removeWorld);
     if (!jf.open(QIODevice::WriteOnly) || jf.write(json.data(), qint64(json.size())) != qint64(json.size())) {
         if (err) *err = "Cannot write " + editsPath;
         return false;

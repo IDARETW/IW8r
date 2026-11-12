@@ -20,6 +20,13 @@
 // the UI thread and deletes the whole scratch folder at once, before the cache file is written. A zone the scan
 // rejects (Warzone: "258 lightmaps: not supported yet") keeps its error in index.json ("lightmap_error") and is never
 // tried again; an ACTS or disk-space failure is not retried in this session. Runs only while no geometry export runs.
+//
+// Stock reflection probes (core stock_probes.h): the same job, from the same decompression, also makes
+//   <zone>/probes.iw8rprb    the probe records (from the cached gfx_map export) and their BC6H octahedral images,
+//                            probesFile(zone); read it with iw8r::readStockProbeCache
+// The job runs when either file is missing and has no recorded error, and makes only the missing one(s): a zone
+// cached with a lightmap but no probes gets its probes on the next requestLightmap (one decompression). A probe
+// verdict on the data is kept as "probes_error". Both lightmapReady and probesReady are emitted when the job ends.
 #pragma once
 
 #include <QElapsedTimer>
@@ -63,9 +70,14 @@ public:
     // or nullopt when the zone is not cached or has no lightmap (yet). Does not start a job.
     std::optional<QString> lightmapFile(const QString& zone) const;
     QString lightmapErrorOf(const QString& zone) const;  // why the lightmap job failed ("" when made, pending or never run)
-    // Queues the lightmap job of a cached zone (async; nothing when it has one, failed before or is queued).
-    // lightmapReady(zone) when it ends either way.
+    // Queues the lightmap + probes job of a cached zone (async; nothing when it has both files (or their recorded
+    // errors) or is queued). lightmapReady(zone) and probesReady(zone) when it ends either way.
     void requestLightmap(const QString& zone);
+
+    // The zone's reflection probe cache file (<zone cache folder>/probes.iw8rprb), or nullopt when the zone is not
+    // cached or has no probes (yet). Does not start a job (requestLightmap does).
+    std::optional<QString> probesFile(const QString& zone) const;
+    QString probesErrorOf(const QString& zone) const;  // why the probe extraction failed ("" when made, pending or never run)
 
     // Big maps (research 90 / 87 section 1.2): exports the streamed world tiles `tiles` (zone names such as
     // mp_donetsk_00587_tr) of a cached zone into <cache>/<zone>/streamed/<tile>, one ACTS run each, skipping those
@@ -77,6 +89,7 @@ signals:
     void ready(const QString& zone);  // lookup() or errorOf() now answers for this zone
     void streamedReady(const QString& zone, int loaded, int failed);
     void lightmapReady(const QString& zone);  // lightmapFile() or lightmapErrorOf() now answers for this zone
+    void probesReady(const QString& zone);    // probesFile() or probesErrorOf() now answers for this zone
     void progress(const QString& message);
 
 private:
@@ -87,7 +100,11 @@ private:
         bool failed = false;
         QString error;
         QString lightmapError;  // the lightmap scan rejected this zone (not tried again)
+        QString probesError;    // the probe extraction rejected this zone (not tried again)
     };
+    // The lightmap / probes job still has something to make for this cached zone.
+    bool needsLightmap(const QString& zone) const;
+    bool needsProbes(const QString& zone) const;
 
     void loadIndex();
     void writeIndex() const;
@@ -113,7 +130,11 @@ private:
     // Lightmap jobs: zones still to do, the one running (ACTS process, then the scan on a worker thread).
     void startNextLightmap();
     void lightmapActsEnded(int exitCode, bool startFailed);
+    // The whole job failed before the scans (ACTS, disk space, no .ff): both outputs share the verdict.
     void endLightmap(const QString& zone, bool ok, const QString& error, bool persistError);
+    // One output's scan result (the probes when `probes`, else the lightmap): progress line, and a failure is kept
+    // in index.json (persistError) or in lmSkip_. Emits no ready signal.
+    void noteExtraction(const QString& zone, bool probes, bool ok, const QString& message, bool persistError);
     QStringList lmQueue_;
     QString lmZone_;           // zone of the job in progress ("" when idle)
     QString lmScratch_;        // root_/w/lightmap_<zone> while it runs

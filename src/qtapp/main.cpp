@@ -179,6 +179,15 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             } else {
                 report << QString("stock_lightmap none (%1)").arg(QFileInfo::exists(lmFile) ? QString::fromStdString(lerr) : "not cached");
             }
+            const QString prFile = QDir(referenceDir).filePath("probes.iw8rprb");
+            auto probes = std::make_shared<iw8r::StockProbeSet>();
+            std::string perr;
+            if (QFileInfo::exists(prFile) && iw8r::readStockProbeCache(prFile.toStdString(), *probes, &perr, false)) {
+                report << QString("stock_probes %1 probes, %2 boxes").arg(probes->probes.size()).arg(probes->boxes.size());
+                cam->setStockProbes(probes);
+            } else {
+                report << QString("stock_probes none (%1)").arg(QFileInfo::exists(prFile) ? QString::fromStdString(perr) : "not cached");
+            }
         } else {
             report << QString("reference FAILED: %1").arg(QString::fromStdString(err));
         }

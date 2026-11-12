@@ -9,6 +9,7 @@
 #include "audio_zones.h"
 #include "sound_settings.h"
 #include "stock_loot.h"
+#include "stock_zone_edit.h"
 #include <chrono>
 #include "lightmap_bake.h"
 #include "custom_sounds.h"
@@ -1335,6 +1336,7 @@ std::vector<StockOverlayModel> stockOverlayModels(const MapFile& map, int patchS
         if (!prims) continue;
         const std::string cls = lower(e.classname());
         if (isLootBoxClass(cls)) continue;  // loot boxes go to the edits file (stock_loot.h)
+        if (isRemoveWorldClass(cls)) continue;  // world removal boxes go to the edits file (stock_zone_edit.h)
         if (cls != "worldspawn" && cls != "func_group") {
             ++otherEntities;
             continue;
@@ -1594,6 +1596,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             // hulls with trigger contents and no render surfaces; script_brushmodel gets both.
             const bool trigger = startsWith(lcls, "trigger_") && acceptedPointClass(lcls);
             if (isLootBoxClass(lcls)) continue;  // loot clusters and zones: boxes of the collision json (below)
+            if (isRemoveWorldClass(lcls)) continue;  // stock map edits only (stock_zone_edit.h): nothing in an own map
             if (!trigger && lcls != "script_brushmodel") {
                 ++skippedBrushEntities[cls];
                 continue;

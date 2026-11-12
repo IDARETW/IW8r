@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "geometry.h"
 #include "map_text.h"
 #include "stock_install.h"
 
@@ -79,7 +80,38 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints = nullptr,
                           const std::string* placedObjects = nullptr, const std::vector<StockPatchOverride>* stockPatches = nullptr,
                           const std::vector<StockPropCollision>* removeCollision = nullptr, const std::string* lootBoxes = nullptr,
-                          const std::string* sun = nullptr, const std::string* replaceMaterials = nullptr);
+                          const std::string* sun = nullptr, const std::string* replaceMaterials = nullptr,
+                          const std::string* removeWorld = nullptr);
+
+// 11.5: stock world geometry taken out (docs/research/96_stock_world_removal.md). An iw8r_remove_world brush entity's
+// brushes (and patches) each give a world-space box; on File > Rebuild Stock Zone the converter (editzone
+// "remove_world_surfaces") stops drawing every world triangle whose three vertices lie inside a box, and takes the
+// collision triangles and brush hulls inside it out of the world collision. Keys of the entity: "render" 0 keeps the
+// triangles (only the collision goes), "collision" 0 keeps the collision. The entity never goes into the entity text.
+// Static models are not world geometry: hide them with Hide Stock Props In Selection.
+inline constexpr const char* kRemoveWorldClass = "iw8r_remove_world";
+bool isRemoveWorldClass(const std::string& classname);
+
+struct WorldRemovalBox {
+    Vec3 mins, maxs;
+    bool render = true, collision = true;
+    bool operator==(const WorldRemovalBox& o) const {
+        return mins == o.mins && maxs == o.maxs && render == o.render && collision == o.collision;
+    }
+};
+
+// The boxes of the document's iw8r_remove_world entities, one per brush or patch, in document order. An entity
+// without brushes, a flat box and an entity with "render" 0 and "collision" 0 are left out (noted).
+std::vector<WorldRemovalBox> documentWorldRemovals(const MapFile& map, std::vector<std::string>* notes = nullptr);
+
+// Whether the removal bakes the stock sun shadow again without the removed triangles: worldspawn
+// iw8r_remove_world_sun "rebake" (the default) or "keep" (the stock shadow stays, with the removed geometry's shadow).
+bool stockWorldRemovalRebakesSun(const MapFile& map);
+
+// The edits file's "remove_world_surfaces" object ({"boxes":[{"mins":[..],"maxs":[..]}, ...], "rebake_sun_shadow":
+// true, "acts": ...}); "" when there is no box. `acts` (acts.exe) is written with the re-bake: the converter exports
+// the static models' streamed geometry with it.
+std::string stockWorldRemovalJson(const std::vector<WorldRemovalBox>& boxes, bool rebakeSunShadow, const std::string& acts = {});
 
 // 11.6: another stock map's sky for this stock map (worldspawn iw8r_sky_from "<map id>", e.g. mp_backlot2): the carry
 // entry for its sky material (tw/sky_<map id> from techsets_<map id>) and the edits file's "replace_materials" list
