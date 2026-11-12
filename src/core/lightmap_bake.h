@@ -1,0 +1,102 @@
+// IW8 Radiant Suite - lightmap baking for the editor's own maps (roadmap 5.11 / 5.21; docs/research/94 and 95).
+//
+// The game lights a world texel from three planes (research 94): an irradiance colour C, an ambient fraction f and a
+// tangent-space direction D, as  (1 - f) C / max(D.z, .001) sat(N.D) + f C  (the stock world pixel shader, as the
+// converter reads it). The converter already writes those planes from an extraction's lightmap pair in the IW7 layout
+// (an ambient layer A and a directional layer B with the direction's slopes, log encoded; iw3_render_assets.cpp
+// EncodeNativeLightmapPixel with constant_ambient: C = A + B D.z, f = lum(A) / lum(C)). This file bakes A, B and D:
+//   - charts: the triangles of each surface grown into charts of near-equal normal, projected on the chart plane,
+//     packed into one square atlas (the converter's native path takes one lightmap);
+//   - texels: the position, normal and tangent frame of the triangle under each texel centre; border texels are filled
+//     from their neighbours so bilinear filtering does not bleed;
+//   - light: the sun and point / spot lights with shadow rays (B and D: the luminance-weighted direction of the direct
+//     light), the sky and one bounce of the sun from cosine-weighted hemisphere rays (A).
+// Light values are in the build's light units (the sun gives sunColour * sunIntensity on a surface facing it).
+// Pure core code; multithreaded.
+#pragma once
+
+#include <array>
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
+#include "geometry.h"
+#include "ray_bvh.h"
+
+namespace iw8r {
+
+struct BakeVertex {
+    Vec3 pos, normal, tangent;
+};
+struct BakeSurface {
+    std::vector<BakeVertex> verts;
+    std::vector<uint32_t> idx;  // triangles
+    bool lit = true;            // false: no lightmap (sky, tool surfaces); still casts shadows
+};
+
+struct BakeLight {
+    Vec3 pos;
+    Vec3 color{1, 1, 1};
+    double intensity = 1, radius = 256;
+    bool spot = false;
+    Vec3 dir{0, 0, -1};         // spot direction
+    double cosInner = 1, cosOuter = 0.7;
+};
+
+struct BakeSettings {
+    double texelSize = 16;      // world units per texel (grows when the atlas does not fit)
+    int maxSize = 2048;         // the atlas side limit
+    int padding = 2;            // texels around each chart
+    int skyRays = 32;           // hemisphere rays per texel
+    double bounceAlbedo = 0.45; // the bounce surface reflectance
+    int threads = 0;            // 0: all cores
+    double chartNormalDot = 0.95;
+};
+
+struct BakeScene {
+    std::vector<BakeSurface> surfaces;          // the surfaces to light (also occluders)
+    std::vector<RayBvh::Triangle> extraOccluders;  // models and other geometry that only casts shadows
+    Vec3 sunDir{0, 0, 1};                       // unit vector toward the sun
+    Vec3 sunColor{1, 1, 1};
+    double sunIntensity = 0;                    // 0: no sun
+    Vec3 skyColor{0.55, 0.65, 0.8};
+    double skyIntensity = 0.35;                 // irradiance of an open sky on an upward surface, in sun units
+    std::vector<BakeLight> lights;
+};
+
+struct BakeResult {
+    bool ok = false;
+    std::string error;
+    int width = 0, height = 0;
+    double texelSize = 0;  // the size used
+    size_t charts = 0, texelsLit = 0;
+    // Per surface, per vertex (after the split below): the lightmap UV in [0, 1].
+    std::vector<std::vector<std::array<float, 2>>> uv;
+    // Surfaces with vertices split where one vertex belonged to two charts (indices remapped).
+    std::vector<BakeSurface> surfaces;
+    // Per texel (row-major, width * height): ambient and directional light (rgb) and the direction of the directional
+    // light in the texel's tangent frame (unit, z >= 0); covered: 1 where a triangle lies under the texel.
+    std::vector<std::array<float, 3>> ambient, directional, direction;
+    std::vector<uint8_t> covered;
+};
+
+// Bakes the scene. `progress` (optional) is called with 0..1.
+BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, const std::function<void(double)>& progress = {});
+
+// The extraction's lightmap pair for the converter (IW7 layout, log encoding: byte = 255 log2(1 + s v) / log2(1 + s M)):
+//   primary: width * height bytes (255: no IW3 sun mask);
+//   secondary: width * (2 * height) BGRA bytes, the ambient layer (BGR + direction slope X in alpha) above the
+//   directional layer (BGR + direction slope Y), slopes D.x / D.z and D.y / D.z encoded as the converter decodes them.
+// `logScale` and `maximum` are the world's "lightmap_encoding".
+struct EncodedLightmap {
+    std::vector<uint8_t> primary, secondary;
+    double logScale = 16, maximum = 1;
+};
+EncodedLightmap encodeLightmapPair(const BakeResult& r, double logScale = 16);
+
+// Decodes one texel of an encoded pair back to the game's plane values (C, f, D) as the converter computes them
+// (tests and the viewport preview).
+void decodeLightmapTexel(const EncodedLightmap& e, int width, int height, int x, int y, float c[3], float& f, float d[3]);
+
+}  // namespace iw8r
