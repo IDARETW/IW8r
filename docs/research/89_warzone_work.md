@@ -218,6 +218,27 @@ as decoded `values` instead of hex `bytes` (5 of 12 tiles tried); the reader tak
   the reference grows from 9,663 to 285,919 triangles; 258 streamed zones listed), core test
   `stock_world_streamed_zones`.
 
+## 6d. New loot clusters and zones on a stock map (2026-11-12)
+
+The clusters and zones of a stock map are authored boxes (section 3); a new point could only join one of them. Now
+the editor adds boxes of its own:
+
+- Editor: brush entities `iw8r_loot_cluster` and `iw8r_loot_zone` (key `name`, lower-case; empty: the map's first zone
+  name). Their brushes give the box. Core `documentLootBoxes` / `lootBoxesJson` (stock_loot.*); they never enter the
+  entity text and are not built as added brushes.
+- Converter (x64-zt 6980d996): editzone `"loot_boxes": {"clusters": [{mid, half}], "zones": [{name, mid, half}]}`
+  appends the boxes after the stock ones, before `loot_points` is applied, so "auto" points find them (the stock
+  boxes still win where they overlap: first box rule). A new cluster's `zone` field is the first zone whose box holds
+  its middle (1-based, the field the stock clusters carry); a zone name becomes a script string of the zone.
+- A zone name is what the loot tables pick the loot by, so a new zone should reuse a name of the map's tables
+  (`map_quarry`, `map_hospital`, ... on Quarry; `tutorial_scavenger` on mp_br_tut). Whether a new name with no table
+  rows gives loot is not known.
+- Proof: `tools/warzone_loot_boxes_test.py` (mp_br_tut and mp_br_quarry: one zone and one cluster added, three new
+  points and a cache point; the stock boxes and lists unchanged, the new cluster takes the new zone and lists the
+  three points, the new zone lists them and the cluster but not the cache point, counts +4, ACTS tests the zone as
+  the stock zone); core test `stock_loot_new_boxes`; GUI section "new loot clusters and zones on a stock map"; the
+  editor's edits file run through the converter (`loot_clusters_added` 1, `loot_zones_added` 1). Not seen in game.
+
 ## 7. Tests
 
 - Core: `tests/stock_loot_tests.cpp` (reader for both export forms, entities and edits, the edits file),
@@ -229,8 +250,7 @@ as decoded `values` instead of hex `bytes` (5 of 12 tiles tried); the reader tak
 1. Whether `common_br_mp` loads for an own map in a br match (buy stations, loot items and two ATV textures depend on
    it), and whether the vehicles drive (nothing of this is seen in game).
 2. Zones and clusters on a custom map (one zone box over the map would match the tutorial maps).
-3. New clusters or zones on a stock map (today a new point can only join an existing box). Removing a placed
-   object, and moving or adding one that has a dynamic entity (doors, extraction sites).
+3. (New clusters and zones on a stock map: done offline, section 6d.) Removing a placed object, and moving or adding one that has a dynamic entity (doors, extraction sites).
 4. Verdansk in the reference view: its world is 749 streamed zones; the view loads one zone.
 5. New game type scripts (roadmap 13.6). Read from the recompiled game exe with its linker map (`tools/dw_disasm.py`,
    read only): `G_ScrMP_LoadGameTypeScript_Shared` formats `scripts/mp/gametypes/<type>.gsc` (cp: `scripts/cp/...`)

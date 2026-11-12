@@ -235,6 +235,37 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
         for (int i = 0; i < 12 && ctx.doc.modified(); ++i) ctx.doc.undo();
         check(ctx.doc.text() == stockText, "Undo takes the added brush out again");
     }
+
+    // New loot clusters and zones (research 89 section 9): box brush entities that go to the edits file as loot_boxes,
+    // never into the entity text and never built as models.
+    section("new loot clusters and zones on a stock map (13.5)");
+    {
+        AABB cbox, zbox;
+        cbox.add(Vec3{-64, -64, 0});
+        cbox.add(Vec3{64, 64, 64});
+        zbox.add(Vec3{-512, -512, -64});
+        zbox.add(Vec3{512, 512, 256});
+        const auto cprim = makeBrushPrimitive(makeBox(cbox, " caulk 128 128 0 0 0 0"), "\n");
+        const auto zprim = makeBrushPrimitive(makeBox(zbox, " caulk 128 128 0 0 0 0"), "\n");
+        check(cprim.has_value() && zprim.has_value(), "two box brushes are made");
+        if (!cprim || !zprim) return;
+        ctx.doc.addEntity({{"classname", "iw8r_loot_zone"}, {"name", "tutorial_scavenger"}}, {*zprim}, "Loot zone");
+        ctx.doc.addEntity({{"classname", "iw8r_loot_cluster"}}, {*cprim}, "Loot cluster");
+        QString program, err;
+        QStringList args, notes;
+        MainWindow::StockOverlayPlan plan;
+        const bool prepared = w.prepareStockEdit(work + "/boxes", &program, &args, &err, &notes, &plan);
+        QFile jf(work + "/boxes/edits.json"), ef(work + "/boxes/edit.ents");
+        const QByteArray json = jf.open(QIODevice::ReadOnly) ? jf.readAll() : QByteArray();
+        const QByteArray ents = ef.open(QIODevice::ReadOnly) ? ef.readAll() : QByteArray();
+        check(prepared && json.contains("\"loot_boxes\":{\"clusters\":[{\"mid\":[0,0,32],\"half\":[64,64,32]}],"
+                                        "\"zones\":[{\"name\":\"tutorial_scavenger\",\"mid\":[0,0,96],\"half\":[512,512,160]}]}"),
+              "the new cluster and zone reach the edits file as loot_boxes: " + err);
+        check(!ents.contains("iw8r_loot") && plan.models.isEmpty(), "they are not in the entity text and not built as models");
+        check(notes.join("; ").contains("1 new loot cluster(s) and 1 new loot zone(s) are added"), "the rebuild notes count them");
+        for (int i = 0; i < 12 && ctx.doc.modified(); ++i) ctx.doc.undo();
+        check(ctx.doc.text() == stockText, "Undo takes the loot boxes out again");
+    }
 }
 
 }  // namespace iw8r::qt

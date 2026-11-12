@@ -29,6 +29,10 @@ inline constexpr uint16_t kLootFreePoint = 0xFFFD;   // outside every cluster
 inline constexpr uint16_t kLootCachePoint = 0xFFFB;  // a loot cache (supply box) point
 inline constexpr uint16_t kLootNoCluster = 0xFFFF;
 inline constexpr const char* kLootPointClass = "iw8r_loot_point";
+// New loot boxes (research 89 section 9): brush entities whose brushes give the box. A cluster groups the points
+// inside it; a zone (key "name") is what the loot tables pick the loot by. They are added after the map's own boxes.
+inline constexpr const char* kLootClusterClass = "iw8r_loot_cluster";
+inline constexpr const char* kLootZoneClass = "iw8r_loot_zone";
 inline constexpr size_t kLootPointLimit = 65000;     // the converter's limit (u16 indices)
 
 struct LootBox {
@@ -55,6 +59,27 @@ struct StockLoot {
 bool readStockLoot(const std::string& assetJson, const std::string& scriptStringsJson, StockLoot& out, std::string* err = nullptr);
 
 bool isLootPointClass(const std::string& classname);
+bool isLootBoxClass(const std::string& classname);  // iw8r_loot_cluster or iw8r_loot_zone
+
+// A new loot box of the document: the bounds of its entity's brushes (and patches); `name` for a zone.
+struct LootBoxEdit {
+    Vec3 mid, half;
+    std::string name;
+    bool operator==(const LootBoxEdit& o) const { return mid == o.mid && half == o.half && name == o.name; }
+};
+struct LootBoxEdits {
+    std::vector<LootBoxEdit> clusters, zones;
+    bool empty() const { return clusters.empty() && zones.empty(); }
+};
+
+// The new loot boxes of the document, in document order. A box entity without brushes is left out (noted); a zone
+// without a name gets `defaultZoneName` (noted); a name that is not lower-case letters, digits and '_' is lowered and
+// cleaned (noted).
+LootBoxEdits documentLootBoxes(const MapFile& map, const std::string& defaultZoneName = "map_quarry",
+                               std::vector<std::string>* notes = nullptr);
+
+// {"clusters":[{"mid":[..],"half":[..]}],"zones":[{"name":"..","mid":[..],"half":[..]}]} for the edits file.
+std::string lootBoxesJson(const LootBoxEdits& boxes);
 
 // Key/values of the document entity for one loot point: classname, origin, angles, loot_cluster ("free", "cache" or
 // the cluster number), loot_zone (the zone number, 0 = none) and, when known, loot_zone_name (information only).

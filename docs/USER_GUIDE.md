@@ -274,6 +274,9 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
    rebuild writes them back and the Console says how many. A point you move out of its area finds its new cluster and
    zone by position; `loot_cluster` `cache` makes a supply box point. If you undo back to no loot point entity, the
    map keeps its own loot; worldspawn `iw8r_no_loot` `1` is the way to remove all of it.
+   New loot areas: draw a brush (or several) where the area should be, make it an `iw8r_loot_cluster` (a group of
+   points) or an `iw8r_loot_zone` entity (an area the loot tables know by its `name`; reuse one of the map's own zone
+   names such as `map_quarry`). Loot points inside it then belong to it. The map's own areas win where they overlap.
 
 8. Vehicles, buy stations and other placed things of a Warzone map: vehicle spawns are ordinary entities
    (`script_struct_mp_atv`, `_tacrover`, `_jeep`, `_cargotruck`, `_littlebird`; Quarry has 183). Copy one, move the

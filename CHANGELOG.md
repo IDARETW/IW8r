@@ -11,6 +11,9 @@ Warzone and stock maps:
   Verdansk 23,446); moved, added and deleted points are written back with the stock rules for clusters, zones and
   counts. Own maps take `iw8r_loot_point` entities, in one loot zone named by worldspawn `iw8r_loot_zone` (default
   `map_quarry`). Not seen in game.
+- **New loot areas on stock maps.** `iw8r_loot_cluster` and `iw8r_loot_zone` brush entities add loot clusters and
+  named loot zones after the map's own (converter editzone `loot_boxes`); loot points inside them join them. Proven
+  offline on mp_br_tut and mp_br_quarry. Not seen in game.
 - **Buy stations.** File > Edit Placed Objects moves and copies the buy stations of a stock map; own Warzone maps
   place `br_plunder_box` by name. The scriptable physics limits rule (two definition flag pairs, exact on 21 stock
   maps) makes 509 stock scripted objects buildable (was 317). Not seen in game.

@@ -228,6 +228,20 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
         }
     }
 
+    // New loot clusters and zones (iw8r_loot_cluster / iw8r_loot_zone brush entities, research 89 section 9).
+    std::string lootBoxes;
+    {
+        std::vector<std::string> boxNotes;
+        const LootBoxEdits boxes = documentLootBoxes(ctx_.doc.map(), stockLoot_.zoneNames.empty() || stockLoot_.zoneNames[0].empty()
+                                                                         ? std::string("map_quarry") : stockLoot_.zoneNames[0], &boxNotes);
+        if (!boxes.empty()) {
+            lootBoxes = lootBoxesJson(boxes);
+            if (notes) *notes << QString("%1 new loot cluster(s) and %2 new loot zone(s) are added").arg(boxes.clusters.size()).arg(boxes.zones.size());
+        }
+        if (notes)
+            for (const std::string& n : boxNotes) *notes << qs(n);
+    }
+
     // 13.5: placed objects (buy stations) that were moved or added as `scriptable` entities.
     const PlacedObjectEdits placed =
         placedObjectEdits(ctx_.doc.map(), stockPlaced_, ScriptableCatalog::shared(QCoreApplication::applicationDirPath().toStdString()));
@@ -248,7 +262,7 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
     const QString editsPath = work + "/edits.json";
     QFile jf(editsPath);
     const std::string json = stockEditJson(QDir::toNativeSeparators(entsPath).toStdString(), hidden, carry, writeLoot ? &loot : nullptr,
-                                           &placed.json, &stockPatches, &removeCollision);
+                                           &placed.json, &stockPatches, &removeCollision, &lootBoxes);
     if (!jf.open(QIODevice::WriteOnly) || jf.write(json.data(), qint64(json.size())) != qint64(json.size())) {
         if (err) *err = "Cannot write " + editsPath;
         return false;

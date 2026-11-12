@@ -452,6 +452,17 @@
         }
       }
     },
+    "iw8r_loot_cluster": {
+      "description": "A new loot cluster on a Warzone stock map: a box (the bounds of this entity's brushes) that groups the loot points inside it. File > Rebuild Stock Zone adds it after the map's own clusters; loot points inside it whose cluster is auto join it. The map's own clusters win where boxes overlap. Not kept in the entity text. Not seen in game.",
+      "kind": "brush",
+      "color": [
+        0.2,
+        0.9,
+        0.35
+      ],
+      "buildAccepted": true,
+      "keys": {}
+    },
     "iw8r_loot_point": {
       "description": "A loot point: a place where the battle royale scripts may put loot (a weapon, armour, cash, a supply box). On a Warzone stock map, File > Edit Loot Points turns the map's own points into these entities; move, add or delete them and File > Rebuild Stock Zone writes them back. On your own map, place them where loot should appear under the battle royale game type. Not kept in the entity text: the build writes them into the map's loot table. Not seen in game.",
       "kind": "point",
@@ -519,6 +530,29 @@
           "description": "Information only: the name of the stock zone the point was in when it was read.",
           "required": false,
           "examples": []
+        }
+      }
+    },
+    "iw8r_loot_zone": {
+      "description": "A new named loot zone on a Warzone stock map: a box (the bounds of this entity's brushes) whose name the loot tables pick the loot by. File > Rebuild Stock Zone adds it after the map's own zones; loot points and new clusters inside it take it. Use a name the map's loot tables know (a zone name of the map, e.g. map_quarry). Not kept in the entity text. Not seen in game.",
+      "kind": "brush",
+      "color": [
+        0.95,
+        0.75,
+        0.2
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "name": {
+          "type": "string",
+          "default": "",
+          "description": "The zone name the loot tables pick the loot by (lower-case letters, digits and '_'). Empty: the map's first zone name.",
+          "required": false,
+          "examples": [
+            "map_quarry",
+            "map_hospital",
+            "tutorial_scavenger"
+          ]
         }
       }
     },

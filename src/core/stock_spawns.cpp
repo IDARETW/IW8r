@@ -47,6 +47,7 @@ void splitStockDocument(const MapFile& map, std::string& entityString, std::vect
     size_t brushes = 0;
     for (const Entity& e : map.entities) {
         if (isLootPointClass(e.classname())) continue;  // loot points go to the edits file, never into the text (stock_loot.h)
+        if (isLootBoxClass(e.classname())) continue;    // so do new loot boxes
         if (lowerStr(e.classname()) == kPlacedObjectClass) continue;  // placed objects too (stock_placed.h)
         if (!isSpawnListClass(e.classname())) {
             // Brushes and patches are not built into a stock map (its world is compiled), so they never enter the

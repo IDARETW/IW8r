@@ -7,6 +7,7 @@
 #include <limits>
 #include <optional>
 
+#include "brush_ops.h"
 #include "json_lite.h"
 
 namespace iw8r {
@@ -200,6 +201,76 @@ std::vector<std::pair<std::string, std::string>> lootPointEntityKeys(const LootP
     return kv;
 }
 
+bool isLootBoxClass(const std::string& classname) {
+    std::string c;
+    for (const char ch : classname) c += char(std::tolower(static_cast<unsigned char>(ch)));
+    return c == kLootClusterClass || c == kLootZoneClass;
+}
+
+LootBoxEdits documentLootBoxes(const MapFile& map, const std::string& defaultZoneName, std::vector<std::string>* notes) {
+    LootBoxEdits out;
+    size_t empty = 0, unnamed = 0, renamed = 0;
+    for (const Entity& e : map.entities) {
+        if (!isLootBoxClass(e.classname())) continue;
+        AABB box;
+        for (const EntityItem& it : e.items) {
+            const Primitive* p = it.prim();
+            if (!p) continue;
+            if (p->kind == PrimKind::Brush) {
+                const AABB b = brushBounds(brushFromPrimitive(*p));
+                if (b.valid()) box.add(b);
+            } else {
+                for (const PatchVertex& v : p->verts) box.add(v.pos);
+            }
+        }
+        if (!box.valid() || box.maxs.x <= box.mins.x || box.maxs.y <= box.mins.y || box.maxs.z <= box.mins.z) {
+            ++empty;
+            continue;
+        }
+        LootBoxEdit edit;
+        edit.mid = (box.mins + box.maxs) * 0.5;
+        edit.half = (box.maxs - box.mins) * 0.5;
+        std::string c;
+        for (const char ch : e.classname()) c += char(std::tolower(static_cast<unsigned char>(ch)));
+        if (c == kLootClusterClass) {
+            out.clusters.push_back(edit);
+            continue;
+        }
+        const std::string* name = e.value("name");
+        std::string clean;
+        for (const char ch : name ? *name : std::string()) {
+            const char l = char(std::tolower(static_cast<unsigned char>(ch)));
+            if (std::islower(static_cast<unsigned char>(l)) || std::isdigit(static_cast<unsigned char>(l)) || l == '_') clean += l;
+        }
+        if (clean.empty()) {
+            ++unnamed;
+            clean = defaultZoneName;
+        } else if (clean != *name) {
+            ++renamed;
+        }
+        edit.name = clean;
+        out.zones.push_back(edit);
+    }
+    if (notes) {
+        if (empty) notes->push_back(std::to_string(empty) + " loot box entit" + (empty == 1 ? "y has" : "ies have") + " no brush and are left out");
+        if (unnamed) notes->push_back(std::to_string(unnamed) + " loot zone(s) without a name are named " + defaultZoneName);
+        if (renamed) notes->push_back(std::to_string(renamed) + " loot zone name(s) were lowered to letters, digits and '_'");
+    }
+    return out;
+}
+
+std::string lootBoxesJson(const LootBoxEdits& boxes) {
+    const auto vec = [](const Vec3& v) { return "[" + num(v.x) + "," + num(v.y) + "," + num(v.z) + "]"; };
+    std::string json = "{\"clusters\":[";
+    for (size_t i = 0; i < boxes.clusters.size(); ++i)
+        json += std::string(i ? "," : "") + "{\"mid\":" + vec(boxes.clusters[i].mid) + ",\"half\":" + vec(boxes.clusters[i].half) + "}";
+    json += "],\"zones\":[";
+    for (size_t i = 0; i < boxes.zones.size(); ++i)
+        json += std::string(i ? "," : "") + "{\"name\":\"" + boxes.zones[i].name + "\",\"mid\":" + vec(boxes.zones[i].mid) +
+                ",\"half\":" + vec(boxes.zones[i].half) + "}";
+    return json + "]}";
+}
+
 bool hasLootPoints(const MapFile& map) {
     for (const Entity& e : map.entities)
         if (isLootPointClass(e.classname())) return true;
@@ -210,7 +281,7 @@ MapFile withoutLootPoints(const MapFile& map) {
     MapFile rest = map;
     rest.entities.clear();
     for (const Entity& e : map.entities)
-        if (!isLootPointClass(e.classname())) rest.entities.push_back(e);
+        if (!isLootPointClass(e.classname()) && !isLootBoxClass(e.classname())) rest.entities.push_back(e);
     return rest;
 }
 

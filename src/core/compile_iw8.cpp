@@ -1332,6 +1332,7 @@ std::vector<StockOverlayModel> stockOverlayModels(const MapFile& map, int patchS
         for (const auto& it : e.items) prims += it.prim() ? 1 : 0;
         if (!prims) continue;
         const std::string cls = lower(e.classname());
+        if (isLootBoxClass(cls)) continue;  // loot boxes go to the edits file (stock_loot.h)
         if (cls != "worldspawn" && cls != "func_group") {
             ++otherEntities;
             continue;

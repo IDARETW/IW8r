@@ -642,6 +642,9 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
   it (default `map_quarry`, a zone of the stock loot tables). (tested offline; not yet seen in game)
 - Worldspawn `iw8r_no_loot` set to 1 removes all loot from the map.
 - Loot on a stock map: File > Edit Loot Points turns the map's loot points into green `iw8r_loot_point` entities. mp_br_quarry has 2,924 points and mp_donetsk (Verdansk) has 23,446. Move, delete or copy them. The Rebuild Stock Zone command writes them back. A point that is moved out of its area finds its new cluster and zone by position. (not yet seen in game)
+- New loot areas on a stock map: an `iw8r_loot_cluster` or `iw8r_loot_zone` brush entity (the box of its brushes;
+  a zone has a `name` the loot tables know) is added after the map's own clusters and zones, and the loot points
+  inside it join it. Proven offline on mp_br_tut and mp_br_quarry. (not yet seen in game)
 
 ![File > Edit Loot Points on mp_br_tut: three of its loot points, selected, close up in the camera (the red boxes by the barrier and the vehicle) and in the top view, with the keys of one in the Entity dock](img/loot_points.png)
 
@@ -790,6 +793,6 @@ Open items from the roadmap and the research notes. Only the open items are list
 - Camera angle sync, live atmosphere and in-game screenshots and probe capture (rows 7.3, 7.9, 7.11). The live atmosphere channel was removed.
 - Bridge two faces (row 2.23). The exposed-parameter editor and bake-to-model for prefabs (row 8.8). Slope blend colour on patches (row 8.14).
 - Prefabs: convert a plain `.map` to a bundle, zip import of bundles, and the placement hints (wall, ceiling and yaw step).
-- Warzone: new clusters and zones on stock maps, and new game mode scripts (row 13.6). Whether the game loads the Warzone zone for an own map is not known.
+- Warzone: new game mode scripts (row 13.6). Whether the game loads the Warzone zone for an own map is not known.
 - Stock maps: removal of stock world geometry (row 11.5), sun and sky relight (row 11.6), and maps beyond 6v6 scale, such as Ground War scale and co-op maps (row 11.10).
 - Installer test on a clean machine (owner action, row 9.9).

@@ -77,6 +77,6 @@ struct StockPropCollision {
 std::string stockEditJson(const std::string& entitiesPath, const std::vector<uint32_t>& hiddenProps,
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints = nullptr,
                           const std::string* placedObjects = nullptr, const std::vector<StockPatchOverride>* stockPatches = nullptr,
-                          const std::vector<StockPropCollision>* removeCollision = nullptr);
+                          const std::vector<StockPropCollision>* removeCollision = nullptr, const std::string* lootBoxes = nullptr);
 
 }  // namespace iw8r

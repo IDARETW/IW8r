@@ -187,3 +187,56 @@ TEST(stock_loot_entities_and_edits) {
     CHECK(stockEditJson("", {4}, {}, &none) == "{\"hide_static_models\":[4],\"loot_points\":[]}");
     CHECK(stockEditJson("e.ents", {}, {}).find("loot_points") == std::string::npos);
 }
+
+TEST(stock_loot_new_boxes) {
+    // A cluster from two brushes (their union), a zone with a messy name, a zone without a name, a box entity without
+    // brushes, and an ordinary loot point beside them.
+    const auto brush = [](int x0, int y0, int z0, int x1, int y1, int z1) {
+        const auto f = [](const std::string& a, const std::string& b, const std::string& c) {
+            return " ( " + a + " ) ( " + b + " ) ( " + c + " ) caulk 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0\n";
+        };
+        const auto v = [](int x, int y, int z) { return std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z); };
+        return "{\n" + f(v(x1, y1, z0), v(x0, y1, z0), v(x0, y0, z0)) + f(v(x0, y0, z1), v(x0, y1, z1), v(x1, y1, z1)) +
+               f(v(x0, y0, z0), v(x0, y0, z1), v(x1, y0, z1)) + f(v(x1, y0, z0), v(x1, y0, z1), v(x1, y1, z1)) +
+               f(v(x1, y1, z0), v(x1, y1, z1), v(x0, y1, z1)) + f(v(x0, y1, z0), v(x0, y1, z1), v(x0, y0, z1)) + "}\n";
+    };
+    const std::string box = brush(0, 0, 0, 256, 128, 64), far = brush(1000, 0, 0, 1064, 64, 32);
+    std::string text = "iwmap 4\n{\n\"classname\" \"worldspawn\"\n}\n";
+    text += "{\n\"classname\" \"iw8r_loot_cluster\"\n" + box + far + "}\n";
+    text += "{\n\"classname\" \"iw8r_loot_zone\"\n\"name\" \"Map Hospital\"\n" + box + "}\n";
+    text += "{\n\"classname\" \"IW8R_LOOT_ZONE\"\n" + far + "}\n";
+    text += "{\n\"classname\" \"iw8r_loot_zone\"\n\"name\" \"x\"\n}\n";
+    text += "{\n\"classname\" \"iw8r_loot_point\"\n\"origin\" \"10 10 0\"\n}\n";
+    Id next = 1;
+    ParseResult pr = parseMap(text, next);
+    CHECK(pr.map.has_value());
+    if (!pr.map) return;
+    CHECK(isLootBoxClass("iw8r_loot_cluster") && isLootBoxClass("IW8R_Loot_Zone") && !isLootBoxClass("iw8r_loot_point"));
+    std::vector<std::string> notes;
+    const LootBoxEdits boxes = documentLootBoxes(*pr.map, "map_quarry", &notes);
+    CHECK(boxes.clusters.size() == 1 && boxes.zones.size() == 2);
+    if (boxes.clusters.size() != 1 || boxes.zones.size() != 2) return;
+    CHECK(boxes.clusters[0].mid == Vec3(532, 64, 32) && boxes.clusters[0].half == Vec3(532, 64, 32));  // both brushes
+    CHECK(boxes.zones[0].name == "maphospital" && boxes.zones[0].mid == Vec3(128, 64, 32) && boxes.zones[0].half == Vec3(128, 64, 32));
+    CHECK(boxes.zones[1].name == "map_quarry" && boxes.zones[1].mid == Vec3(1032, 32, 16));
+    CHECK(notes.size() == 3);  // no brush, unnamed, renamed
+    CHECK(lootBoxesJson(boxes) ==
+          "{\"clusters\":[{\"mid\":[532,64,32],\"half\":[532,64,32]}],\"zones\":[{\"name\":\"maphospital\",\"mid\":[128,64,32],"
+          "\"half\":[128,64,32]},{\"name\":\"map_quarry\",\"mid\":[1032,32,16],\"half\":[32,32,16]}]}");
+    CHECK(lootBoxesJson({}) == "{\"clusters\":[],\"zones\":[]}");
+
+    // Never in the entity text, never counted as brushes of the document, gone with the loot points.
+    std::string ents;
+    std::vector<SpawnRecord> spawns;
+    std::string err;
+    splitStockDocument(*pr.map, ents, spawns, &err);
+    CHECK(ents.find("iw8r_loot") == std::string::npos && ents.find("IW8R_LOOT") == std::string::npos && err.empty());
+    CHECK(withoutLootPoints(*pr.map).entities.size() == 1);
+
+    // The edits file carries the boxes before the points (the converter adds boxes first either way).
+    const std::string json = lootBoxesJson(boxes), pts = "[]";
+    const std::string edits = stockEditJson("", {}, {}, &pts, nullptr, nullptr, nullptr, &json);
+    CHECK(edits == "{\"loot_boxes\":" + json + ",\"loot_points\":[]}");
+    const std::string empty;
+    CHECK(stockEditJson("", {}, {}, nullptr, nullptr, nullptr, nullptr, &empty) == "{}");
+}

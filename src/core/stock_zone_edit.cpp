@@ -135,7 +135,8 @@ std::vector<uint32_t> stockEditHiddenProps(const MapFile& map) {
 
 std::string stockEditJson(const std::string& entitiesPath, const std::vector<uint32_t>& hiddenProps,
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints, const std::string* placedObjects,
-                          const std::vector<StockPatchOverride>* stockPatches, const std::vector<StockPropCollision>* removeCollision) {
+                          const std::vector<StockPatchOverride>* stockPatches, const std::vector<StockPropCollision>* removeCollision,
+                          const std::string* lootBoxes) {
     std::string json = "{";
     bool first = true;
     const auto sep = [&] {
@@ -159,6 +160,10 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
             json += std::string(i ? "," : "") + "{\"zone\":" + jsonText(carry[i].zone) + ",\"type\":" + jsonText(carry[i].type) +
                     ",\"name\":" + jsonText(carry[i].name) + (carry[i].folder.empty() ? std::string() : ",\"folder\":" + jsonText(carry[i].folder)) + "}";
         json += "]";
+    }
+    if (lootBoxes && !lootBoxes->empty()) {
+        sep();
+        json += "\"loot_boxes\":" + *lootBoxes;
     }
     if (lootPoints) {
         sep();
