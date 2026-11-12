@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
+#include <QRegularExpression>
 #include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
@@ -248,6 +249,75 @@ void WorldCache::finishRun(const ActsResult& result) {
     startNext();
 }
 
+void WorldCache::requestStreamed(const QString& zone, const QStringList& tiles) {
+    const auto dir = lookup(zone);
+    if (!dir) return;
+    for (const QString& t : tiles) {
+        static const QRegularExpression safe("^[a-z0-9_]+_tr$");
+        if (!safe.match(t).hasMatch()) continue;
+        if (QFileInfo(*dir + "/streamed/" + t).isDir()) continue;
+        bool queued = false;
+        for (const auto& q : streamQueue_) queued |= q.second == t;
+        if (!queued) streamQueue_.push_back({zone, t});
+    }
+    if (streamQueue_.empty() && !streamRunning_) {
+        emit streamedReady(zone, 0, 0);
+        return;
+    }
+    startNextStreamed();
+}
+
+void WorldCache::startNextStreamed() {
+    if (streamRunning_) return;
+    if (streamQueue_.empty()) return;
+    const auto [zone, tile] = streamQueue_.front();
+    streamQueue_.pop_front();
+    const auto dir = lookup(zone);
+    const QString ff = replayZoneDir() + "/" + tile + ".ff";
+    if (!dir || !QFileInfo::exists(ff)) {
+        ++streamFailed_;
+        if (streamQueue_.empty()) {
+            emit streamedReady(zone, streamLoaded_, streamFailed_);
+            streamLoaded_ = streamFailed_ = 0;
+        } else {
+            startNextStreamed();
+        }
+        return;
+    }
+    streamRunning_ = true;
+    const QString scratch = *dir + "/streamed/w";
+    QDir(scratch).removeRecursively();
+    QDir().mkpath(scratch);
+    ActsRequest request;
+    request.zone = tile;
+    request.types = "gfx_map_trzone";
+    request.outDir = QDir::toNativeSeparators(scratch);
+    emit progress(QString("ACTS streamed world tile %1 (%2 more)").arg(tile).arg(streamQueue_.size()));
+    ActsRunner::shared()->submit(tools_, request, this, [this, zone, tile, scratch, dir = *dir](const ActsResult&) {
+        const QString exported = scratch + "/mw19replay/" + tile;
+        const QString dest = dir + "/streamed/" + tile;
+        bool ok = false;
+        QDirIterator it(exported, {"*.json"}, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext())
+            if (it.next().contains("gfx_map_trzone")) ok = true;
+        if (ok) {
+            QDir(dest).removeRecursively();
+            ok = QDir().rename(exported, dest);
+        }
+        QDir(scratch).removeRecursively();
+        ok ? ++streamLoaded_ : ++streamFailed_;
+        streamRunning_ = false;
+        if (streamQueue_.empty()) {
+            emit progress(QString("world cache: %1 streamed tile(s) of %2 exported%3").arg(streamLoaded_).arg(zone).arg(
+                streamFailed_ ? QString(", %1 failed").arg(streamFailed_) : QString()));
+            emit streamedReady(zone, streamLoaded_, streamFailed_);
+            streamLoaded_ = streamFailed_ = 0;
+        } else {
+            startNextStreamed();
+        }
+    });
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Headless test (main.cpp --world-cache-test)
 
@@ -267,6 +337,13 @@ int runWorldCacheTest(const QString& zone, const QString& outDir) {
     WorldCache cache(tools);
     QStringList log;
     QObject::connect(&cache, &WorldCache::progress, &cache, [&](const QString& m) { log << m; });
+    // IW8R_STREAM_AT="x y radius [limit]": after the zone, the streamed world tiles near that point are exported too
+    // (big maps), and the load below includes them.
+    bool streamDone = true;
+    QObject::connect(&cache, &WorldCache::streamedReady, &cache, [&](const QString&, int loaded, int failed) {
+        log << QString("streamed tiles: %1 exported, %2 failed").arg(loaded).arg(failed);
+        streamDone = true;
+    });
 
     QEventLoop loop;
     QTimer poll;
@@ -281,6 +358,31 @@ int runWorldCacheTest(const QString& zone, const QString& outDir) {
     poll.start();
     cache.request(zone);
     loop.exec();
+    if (const QStringList at = qEnvironmentVariable("IW8R_STREAM_AT").split(' ', Qt::SkipEmptyParts); at.size() >= 3)
+        if (const auto dir = cache.lookup(zone)) {
+            std::vector<StreamedWorldZone> zones;
+            std::string serr;
+            if (readStreamedWorldZones(dir->toStdString(), zones, &serr)) {
+                const auto near = streamedZonesNear(zones, at[0].toDouble(), at[1].toDouble(), at[2].toDouble(),
+                                                    at.size() > 3 ? size_t(at[3].toInt()) : 40);
+                log << QString("streamed zones: %1 in the map, %2 near the point").arg(zones.size()).arg(near.size());
+                QStringList tiles;
+                for (const StreamedWorldZone& z : near) tiles << QString::fromStdString(z.name);
+                streamDone = false;
+                cache.requestStreamed(zone, tiles);
+                QEventLoop wait;
+                QTimer tick;
+                tick.setInterval(200);
+                QObject::connect(&tick, &QTimer::timeout, &wait, [&] {
+                    if (streamDone) wait.quit();
+                });
+                QTimer::singleShot(60 * 60 * 1000, &wait, &QEventLoop::quit);
+                tick.start();
+                wait.exec();
+            } else {
+                log << "streamed zones: " + QString::fromStdString(serr);
+            }
+        }
     const qint64 wallMs = wall.elapsed();
 
     QStringList lines;

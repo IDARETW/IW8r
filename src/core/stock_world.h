@@ -57,8 +57,26 @@ bool parseStockWorld(const std::string& gfxMapJson, const std::vector<std::strin
                      std::string* err = nullptr);
 
 // Reads an ACTS export folder: <zoneDir>/assets/gfx_map/**/*.json (exactly one) and
-// <zoneDir>/assets/gfx_map_trzone/**/*.json (one or more). zoneDir is <out>/mw19replay/<zone>.
+// <zoneDir>/assets/gfx_map_trzone/**/*.json (one or more). zoneDir is <out>/mw19replay/<zone>. The streamed tiles a
+// big map was given (exports of its _tr zones under <zoneDir>/streamed/**/gfx_map_trzone) are read too.
 bool readStockWorld(const std::string& zoneDir, StockWorld& out, std::string* err = nullptr);
+
+// The streamed world tiles of a big map (mp_br_quarry, mp_donetsk; research 87 section 1.2): a surface of the main
+// zone names its transient zone, and every transient zone whose buffers the export does not hold is streamed from
+// <map>_<NNNNN>_tr.ff (<map> = the folder name of zoneDir). For each: its index, that zone name (without .ff) and the
+// bounds of the surfaces that use it (gfx_map surfaceBounds, one 56-byte record per surface: Bounds midPoint, halfSize
+// first). Sorted by index.
+struct StreamedWorldZone {
+    int64_t index = 0;
+    std::string name;
+    AABB bounds;
+    size_t surfaces = 0;
+};
+bool readStreamedWorldZones(const std::string& zoneDir, std::vector<StreamedWorldZone>& out, std::string* err = nullptr);
+
+// The streamed zones whose surfaces come within `radius` of `centre` on X and Y, nearest first, at most `limit`.
+std::vector<StreamedWorldZone> streamedZonesNear(const std::vector<StreamedWorldZone>& zones, double x, double y, double radius,
+                                                 size_t limit);
 
 // Decodes one PackedTexCoords word: u = IEEE binary16 in the low 16 bits, v = IEEE binary16 in the high 16 bits
 // (x64-zt Vec2PackTexCoords / Vec2UnpackTexCoords). Zero, normal, subnormal, infinite and NaN halves are all handled

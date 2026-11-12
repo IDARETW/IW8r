@@ -20,6 +20,9 @@
 #include "scriptable_catalog.h"
 #include "stock_loot.h"
 #include "stock_placed.h"
+#include "stock_world.h"
+#include "world_cache.h"
+#include "settings.h"
 #include "stock_install.h"
 #include "stock_spawns.h"
 #include "stock_zone_edit.h"
@@ -440,6 +443,47 @@ QString MainWindow::stockZoneForReading(const QString& zone, QString* tempDir, Q
     EditorLog::instance().add(LogLevel::Info, "stock", "an edit of " + name + " is installed in the game: the stock map is read from a copy with "
                                                            "the stock patch saved at install");
     return copy;
+}
+
+int MainWindow::loadStreamedWorldAroundCamera() {
+    if (referenceZone_.isEmpty() || !worldCache_) {
+        ctx_.setStatus("Load Streamed World: open a stock map with its reference first (File > Open IW8 Stock Map)");
+        return -1;
+    }
+    const auto dir = worldCache_->lookup(referenceZone_);
+    if (!dir) {
+        ctx_.setStatus("Load Streamed World: the stock reference is still being read; try again when it is drawn");
+        return -1;
+    }
+    std::vector<StreamedWorldZone> zones;
+    std::string err;
+    if (!readStreamedWorldZones(dir->toStdString(), zones, &err)) {
+        ctx_.setStatus("Load Streamed World: " + qs(err));
+        return -1;
+    }
+    if (zones.empty()) {
+        ctx_.setStatus("Load Streamed World: " + referenceZone_ + " has no streamed world tiles (all of it is drawn already)");
+        return 0;
+    }
+    const double radius = Settings::instance().value("stock/streamRadius", 12000.0).toDouble();
+    const int limit = Settings::instance().value("stock/streamLimit", 48).toInt();
+    const auto near = streamedZonesNear(zones, ctx_.cam.pos.x, ctx_.cam.pos.y, radius, size_t(std::max(1, limit)));
+    QStringList tiles;
+    for (const StreamedWorldZone& z : near) tiles << qs(z.name);
+    static bool connected = false;
+    if (!connected) {
+        connected = true;
+        connect(worldCache_, &WorldCache::streamedReady, this, [this](const QString& zone, int loaded, int failed) {
+            if (zone != referenceZone_) return;
+            ctx_.setStatus(QString("Streamed world: %1 tile(s) added%2; redrawing the reference").arg(loaded).arg(
+                failed ? QString(", %1 failed").arg(failed) : QString()));
+            loadStockReference(zone);
+        });
+    }
+    worldCache_->requestStreamed(referenceZone_, tiles);
+    ctx_.setStatus(QString("Load Streamed World: %1 of %2 tiles within %3 units of the camera are being read (a few seconds each)")
+                       .arg(tiles.size()).arg(zones.size()).arg(radius));
+    return int(tiles.size());
 }
 
 QString MainWindow::stockBackupDir(const QString& zone) const {

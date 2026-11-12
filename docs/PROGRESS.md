@@ -309,6 +309,9 @@
     HIDDEN PROPS LOSE COLLISION (research 88 step 6): converter live at 63d4f338 (old exe zonetool_9f1472de.exe):
     editzone remove_static_model_collision; editor sends the hidden props of the stock reference
     (StockPropCollision). Proof tools/smodel_collision_remove_test.py.
+    STREAMED WORLD (research 89 section 6c): core readStreamedWorldZones / streamedZonesNear, WorldCache::
+    requestStreamed (tiles kept under <world_cache>/<zone>/streamed), File > Load Streamed World Around Camera.
+    Proof: IW8R_STREAM_AT="x y radius [limit]" with --world-cache-test.
     REPOSITORY: the project is in the private GitHub repo IDARETW/IW8r (branch main); commit and push finished work
     there, no co-author trailer. docs/features/FEATURES.md is the feature list; its pictures come from
     IW8Radiant.exe --feature-shots (src/qtapp/feature_shots.cpp, real fonts, off screen).

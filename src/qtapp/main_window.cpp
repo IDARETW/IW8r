@@ -1041,6 +1041,7 @@ void MainWindow::buildMenus() {
     addCommand(file, "EditStockSpawns", "Edit Compiled Spawns (stock map)", QKeySequence(), [this] { editStockSpawns(); });
     addCommand(file, "EditLootPoints", "Edit Loot Points (Warzone stock map)", QKeySequence(), [this] { editLootPoints(); });
     addCommand(file, "EditPlacedObjects", "Edit Placed Objects (Warzone buy stations)", QKeySequence(), [this] { editPlacedObjects(); });
+    addCommand(file, "LoadStreamedWorld", "Load Streamed World Around Camera (Warzone maps)", QKeySequence(), [this] { loadStreamedWorldAroundCamera(); });
     addCommand(file, "RebuildStockEntities", "Rebuild Stock Map With These Entities...", QKeySequence(), [this] {
         // 6.10: the M2 path from the menu: the open stock entity text (iw8-ents / .ents) is rebuilt into the stock
         // zone (tools/m2_rebuild_mapents.ps1: ACTS export, entity swap, x64-zt rebuild, ACTS --test) under out/.

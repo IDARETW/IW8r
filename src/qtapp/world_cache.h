@@ -46,8 +46,15 @@ public:
     // Parses the cached export. nullopt with err set when the zone is not cached.
     std::optional<StockWorld> load(const QString& zone, QString* err = nullptr) const;
 
+    // Big maps (research 90 / 87 section 1.2): exports the streamed world tiles `tiles` (zone names such as
+    // mp_donetsk_00587_tr) of a cached zone into <cache>/<zone>/streamed/<tile>, one ACTS run each, skipping those
+    // already there; load() then includes them. streamedReady(zone) when the list is done.
+    void requestStreamed(const QString& zone, const QStringList& tiles);
+    int streamedPending() const { return int(streamQueue_.size()) + (streamRunning_ ? 1 : 0); }
+
 signals:
     void ready(const QString& zone);  // lookup() or errorOf() now answers for this zone
+    void streamedReady(const QString& zone, int loaded, int failed);
     void progress(const QString& message);
 
 private:
@@ -75,6 +82,11 @@ private:
     QString scratch_;          // root_/w/<zone> while running
     bool running_ = false;
     QElapsedTimer runTimer_;
+    // Streamed tiles: (zone, tile) still to export.
+    void startNextStreamed();
+    std::deque<std::pair<QString, QString>> streamQueue_;
+    bool streamRunning_ = false;
+    int streamLoaded_ = 0, streamFailed_ = 0;
 };
 
 // Headless --world-cache-test <zone>: requests the zone, waits, loads the export and writes

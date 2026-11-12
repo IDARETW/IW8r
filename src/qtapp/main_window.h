@@ -249,6 +249,9 @@ public:
     // Owner actions (File menu): copy the patch files of the last stock rebuild into the game's zone folder (a stock
     // patch of the same name is backed up first), and take them out again. Both ask before they write.
     void installEditedStockMap();
+    // Big maps (Quarry, Verdansk): the streamed world tiles around the camera are exported and drawn in the stock
+    // reference (View > Load Streamed World Around Camera). Returns how many tiles were asked for; -1 without a big map.
+    int loadStreamedWorldAroundCamera();
     // The zone file to read the stock map `zone` (a file of the game's zone folder) from: the file itself, or, while
     // an edit of it is installed (the patch beside it is ours), a copy with the saved stock patch under the app data
     // folder; `*tempDir` then names the folder to delete afterwards. "" (and *err) when the copy cannot be made.

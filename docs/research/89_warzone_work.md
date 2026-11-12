@@ -196,6 +196,23 @@ vehicles); `common_br_mp` one. A definition does not name its model: script spaw
   failed for the map and techsets zones). Two tyre textures of the ATV come from `common_br_mp` (a Warzone match loads
   it; the converter warns). Carrying the ATV into the stock tutorial map with `editzone`: 107 + 14 assets, 0 failed.
 
+## 6c. The streamed world of Verdansk and Quarry in the reference view (2026-11-12)
+
+A surface of a big map's `gfx_map` names its transient zone (`transientZone` 0 .. 303 on Verdansk); every zone whose
+buffers the main zone does not hold is streamed from `<map>_<NNNNN>_tr.ff` (checked: surface zone 30 is in
+`mp_donetsk_00030_tr`, whose `gfx_map_trzone` has `transientZoneIndex` 30; the main zone's empty records 587 .. 867
+are something else). `surfaceBounds` (56 bytes per surface, Bounds first) places each tile. ACTS writes a small array
+as decoded `values` instead of hex `bytes` (5 of 12 tiles tried); the reader takes both.
+
+- Core `readStreamedWorldZones` / `streamedZonesNear` (stock_world.*); `readStockWorld` also reads tiles exported to
+  `<cache>/<zone>/streamed/<tile>`.
+- Editor: File > Load Streamed World Around Camera exports the tiles within `stock/streamRadius` (default 12000 units,
+  at most `stock/streamLimit` = 48) of the camera, one ACTS run each, keeps them in the world cache and redraws the
+  reference.
+- Proof: `IW8R_STREAM_AT="0 0 8000 12" IW8Radiant.exe --world-cache-test mp_donetsk` (12 tiles around the centre:
+  the reference grows from 9,663 to 285,919 triangles; 258 streamed zones listed), core test
+  `stock_world_streamed_zones`.
+
 ## 7. Tests
 
 - Core: `tests/stock_loot_tests.cpp` (reader for both export forms, entities and edits, the edits file),

@@ -4,12 +4,14 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <limits>
 #include <map>
+#include <set>
 #include <unordered_map>
 
 #include "json_lite.h"
@@ -90,6 +92,40 @@ bool extractTrz(const std::string& text, int64_t& zoneIndex, TrzData& out, std::
     const Value* posBytes = dv && dv->get("posData") ? dv->get("posData")->get("bytes") : nullptr;
     const Value* idxBytes = dv && dv->get("indices") ? dv->get("indices")->get("bytes") : nullptr;
     const Value* auxBytes = dv && dv->get("auxData") ? dv->get("auxData")->get("bytes") : nullptr;
+    // ACTS writes a small array as decoded "values" instead of hex "bytes" (some streamed world tiles of mp_donetsk).
+    const auto valuesOf = [&](const char* key) -> const Value* {
+        const Value* node = dv ? dv->get(key) : nullptr;
+        const Value* v = node ? node->get("values") : nullptr;
+        return v && v->type == Value::Type::Array ? v : nullptr;
+    };
+    if (dv && (!posBytes || !idxBytes) && (posBytes || valuesOf("posData")) && (idxBytes || valuesOf("indices"))) {
+        zoneIndex = int64_t(num(f->get("transientZoneIndex"), 0));
+        if (posBytes && posBytes->string()) {
+            if (!unhex(*posBytes->string(), out.pos)) {
+                if (err) *err = "gfx_map_trzone posData bytes are not hex";
+                return false;
+            }
+        } else {
+            for (const Value& b : valuesOf("posData")->arr) out.pos.push_back(uint8_t(num(&b, 0)));
+        }
+        if (idxBytes && idxBytes->string()) {
+            std::vector<uint8_t> raw;
+            if (!unhex(*idxBytes->string(), raw) || raw.size() % 2) {
+                if (err) *err = "gfx_map_trzone indices bytes are not hex";
+                return false;
+            }
+            for (size_t i = 0; i + 1 < raw.size(); i += 2) out.idx.push_back(uint16_t(raw[i] | raw[i + 1] << 8));
+        } else {
+            for (const Value& i : valuesOf("indices")->arr) out.idx.push_back(uint16_t(num(&i, 0)));
+        }
+        if (const Value* aux = valuesOf("auxData"))
+            for (const Value& b : aux->arr) out.aux.push_back(uint8_t(num(&b, 0)));
+        else if (auxBytes && auxBytes->string() && !unhex(*auxBytes->string(), out.aux)) {
+            if (err) *err = "gfx_map_trzone auxData bytes are not hex";
+            return false;
+        }
+        return true;
+    }
     if (empty) *empty = false;
     if (dv && num(dv->get("posDataSize"), -1) == 0 && num(dv->get("indexCount"), -1) == 0) {
         zoneIndex = int64_t(num(f->get("transientZoneIndex"), 0));
@@ -347,6 +383,96 @@ double halfToDouble(uint16_t h) {
 
 }  // namespace
 
+bool readStreamedWorldZones(const std::string& zoneDir, std::vector<StreamedWorldZone>& out, std::string* err) {
+    out.clear();
+    const fs::path base = fs::path(zoneDir) / "assets";
+    const auto gfx = jsonFilesUnder(base / "gfx_map");
+    if (gfx.size() != 1) {
+        if (err) *err = "expected one gfx_map JSON under " + (base / "gfx_map").string();
+        return false;
+    }
+    // The transient zones whose buffers this export holds (index 0 is the map zone itself). Every other transient zone
+    // a surface names is streamed from <map>_<index, 5 digits>_tr.ff (checked on mp_donetsk: surface zone 30 is in
+    // mp_donetsk_00030_tr, whose gfx_map_trzone has transientZoneIndex 30; the main zone's empty records 587 .. 867
+    // are not world tiles).
+    std::set<int64_t> resident{0};
+    for (const fs::path& p : jsonFilesUnder(base / "gfx_map_trzone")) {
+        std::string text;
+        if (!readFile(p, text, err)) return false;
+        std::string jerr;
+        const auto root = json::parse(text, &jerr);
+        if (!root) continue;
+        const Value* f = fieldsOf(*root);
+        const Value* dv = f ? f->get("drawVerts") : nullptr;
+        if (dv && num(dv->get("posDataSize"), 0) > 0) resident.insert(int64_t(num(f->get("transientZoneIndex"), 0)));
+    }
+    const std::string mapName = fs::path(zoneDir).filename().string();
+    std::map<int64_t, StreamedWorldZone> byIndex;
+    std::string gfxText;
+    if (!readFile(gfx.front(), gfxText, err)) return false;
+    std::string jerr;
+    const auto root = json::parse(gfxText, &jerr);
+    if (!root) {
+        if (err) *err = "gfx_map JSON: " + jerr;
+        return false;
+    }
+    const Value* f = fieldsOf(*root);
+    const Value* surfaces = f && f->get("surfaces") ? f->get("surfaces") : nullptr;
+    const Value* surfs = surfaces && surfaces->get("surfaces") ? surfaces->get("surfaces")->get("values") : nullptr;
+    const Value* bounds = surfaces && surfaces->get("surfaceBounds") ? surfaces->get("surfaceBounds")->get("bytes") : nullptr;
+    if (!bounds) bounds = f && f->get("surfaceBounds") ? f->get("surfaceBounds")->get("bytes") : nullptr;
+    if (!surfs || surfs->type != Value::Type::Array || !bounds || !bounds->string()) {
+        if (err) *err = "gfx_map has no surfaces or surfaceBounds";
+        return false;
+    }
+    std::vector<uint8_t> raw;
+    if (!unhex(*bounds->string(), raw) || raw.size() / 56 < surfs->arr.size()) {
+        if (err) *err = "gfx_map surfaceBounds do not cover the surfaces";
+        return false;
+    }
+    for (size_t i = 0; i < surfs->arr.size(); ++i) {
+        const int64_t zone = int64_t(num(surfs->arr[i].get("transientZone"), -1));
+        if (zone < 0 || zone > 99999 || resident.count(zone)) continue;
+        auto it = byIndex.find(zone);
+        if (it == byIndex.end()) {
+            char name[32];
+            std::snprintf(name, sizeof(name), "_%05lld_tr", static_cast<long long>(zone));
+            StreamedWorldZone z;
+            z.index = zone;
+            z.name = mapName + name;
+            it = byIndex.emplace(zone, z).first;
+        }
+        const Vec3 mid{readF32(raw, i * 56), readF32(raw, i * 56 + 4), readF32(raw, i * 56 + 8)};
+        const Vec3 half{readF32(raw, i * 56 + 12), readF32(raw, i * 56 + 16), readF32(raw, i * 56 + 20)};
+        if (!std::isfinite(mid.x) || !std::isfinite(half.x)) continue;
+        it->second.bounds.add(mid - half);
+        it->second.bounds.add(mid + half);
+        ++it->second.surfaces;
+    }
+    for (auto& [index, z] : byIndex)
+        if (z.surfaces) out.push_back(z);
+    return true;
+}
+
+std::vector<StreamedWorldZone> streamedZonesNear(const std::vector<StreamedWorldZone>& zones, double x, double y, double radius,
+                                                 size_t limit) {
+    std::vector<std::pair<double, const StreamedWorldZone*>> near;
+    for (const StreamedWorldZone& z : zones) {
+        if (!z.bounds.valid()) continue;
+        const double dx = std::max({z.bounds.mins.x - x, 0.0, x - z.bounds.maxs.x});
+        const double dy = std::max({z.bounds.mins.y - y, 0.0, y - z.bounds.maxs.y});
+        const double d = std::sqrt(dx * dx + dy * dy);
+        if (d <= radius) near.push_back({d, &z});
+    }
+    std::stable_sort(near.begin(), near.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::vector<StreamedWorldZone> out;
+    for (const auto& [d, z] : near) {
+        if (out.size() >= limit) break;
+        out.push_back(*z);
+    }
+    return out;
+}
+
 void unpackStockTexCoords(uint32_t packed, double& u, double& v) {
     u = halfToDouble(uint16_t(packed & 0xFFFF));
     v = halfToDouble(uint16_t(packed >> 16));
@@ -366,7 +492,18 @@ bool readStockWorld(const std::string& zoneDir, StockWorld& out, std::string* er
     }
     // One transient zone text at a time: the largest parse holds a hex copy of its buffers, so peak memory stays low.
     std::map<int64_t, TrzData> trz;
-    for (const fs::path& p : trzFiles) {
+    std::vector<fs::path> allTrz = trzFiles;
+    {
+        // Streamed tiles exported later (WorldCache::requestStreamed): <zoneDir>/streamed/<tile>/.../gfx_map_trzone.
+        std::error_code ec;
+        const fs::path streamed = fs::path(zoneDir) / "streamed";
+        if (fs::is_directory(streamed, ec))
+            for (fs::recursive_directory_iterator it(streamed, ec), end; !ec && it != end; it.increment(ec))
+                if (it->is_regular_file(ec) && it->path().extension() == ".json" &&
+                    it->path().string().find("gfx_map_trzone") != std::string::npos)
+                    allTrz.push_back(it->path());
+    }
+    for (const fs::path& p : allTrz) {
         std::string text;
         if (!readFile(p, text, err)) return false;
         int64_t zone = 0;
