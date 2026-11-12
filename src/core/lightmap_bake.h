@@ -42,6 +42,9 @@ struct BakeLight {
     bool spot = false;
     Vec3 dir{0, 0, -1};         // spot direction
     double cosInner = 1, cosOuter = 0.7;
+    // false: the game draws this light in real time (a converted primary light), so the lightmap keeps only its
+    // bounce; true: its direct light is baked too.
+    bool direct = true;
 };
 
 struct BakeSettings {
@@ -60,6 +63,9 @@ struct BakeScene {
     Vec3 sunDir{0, 0, 1};                       // unit vector toward the sun
     Vec3 sunColor{1, 1, 1};
     double sunIntensity = 0;                    // 0: no sun
+    // false: the game draws the sun in real time (the converter's world shader adds visibility x N.L x sun on top of
+    // the lightmap), so the lightmap keeps only its bounce and the sun visibility.
+    bool sunDirect = true;
     Vec3 skyColor{0.55, 0.65, 0.8};
     double skyIntensity = 0.35;                 // irradiance of an open sky on an upward surface, in sun units
     std::vector<BakeLight> lights;
@@ -75,17 +81,22 @@ struct BakeResult {
     std::vector<std::vector<std::array<float, 2>>> uv;
     // Surfaces with vertices split where one vertex belonged to two charts (indices remapped).
     std::vector<BakeSurface> surfaces;
+    // Per surface, per vertex: the vertex of the input surface it copies (identity for vertices that were not split).
+    std::vector<std::vector<uint32_t>> sourceVertex;
     // Per texel (row-major, width * height): ambient and directional light (rgb) and the direction of the directional
     // light in the texel's tangent frame (unit, z >= 0); covered: 1 where a triangle lies under the texel.
     std::vector<std::array<float, 3>> ambient, directional, direction;
     std::vector<uint8_t> covered;
+    // Per texel: the sun's visibility (1 lit, 0 shadowed; the IW3 primary-light mask the converter's shader falls back
+    // on where its baked sun depth does not reach).
+    std::vector<float> sunVisibility;
 };
 
 // Bakes the scene. `progress` (optional) is called with 0..1.
 BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, const std::function<void(double)>& progress = {});
 
 // The extraction's lightmap pair for the converter (IW7 layout, log encoding: byte = 255 log2(1 + s v) / log2(1 + s M)):
-//   primary: width * height bytes (255: no IW3 sun mask);
+//   primary: width * height bytes, the sun visibility (255 lit; all 255 when the result has none);
 //   secondary: width * (2 * height) BGRA bytes, the ambient layer (BGR + direction slope X in alpha) above the
 //   directional layer (BGR + direction slope Y), slopes D.x / D.z and D.y / D.z encoded as the converter decodes them.
 // `logScale` and `maximum` are the world's "lightmap_encoding".

@@ -31,6 +31,7 @@ proofs = [
     ('dynent_move_test', ['--exe', exe]),
     ('stock_sky_swap_test', ['--exe', exe]),
     ('stock_retexture_test', ['--exe', exe]),
+    ('lightmap_bake_build_test', []),  # an editor map through --compile (the editor exe, not --exe)
     ('warzone_custom_loot_test', None),
     ('warzone_custom_loot_boxes_test', None),
     ('scriptable_limits_test', None),

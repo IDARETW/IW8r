@@ -81,6 +81,12 @@ TEST(lightmap_bake_floor_sun_and_shadow) {
     float c[3], f, d[3];
     decodeLightmapTexel(e, r.width, r.height, int(lit % r.width), int(lit / r.width), c, f, d);
     CHECK(std::fabs(c[0] - 2.0f) < 0.05f && std::fabs(c[2] - 1.6f) < 0.05f && f < 0.02f && d[2] > 0.99f);
+    // The sun visibility: the primary byte (the IW3 mask the converter's shader reads).
+    CHECK(r.sunVisibility[lit] == 1.0f && r.sunVisibility[shadowed] == 0.0f && e.primary[lit] == 255 && e.primary[shadowed] == 0);
+    // A real-time sun (the game adds it on top of the lightmap): no direct sun in the lightmap, the visibility stays.
+    scene.sunDirect = false;
+    const BakeResult rt = bakeLightmap(scene, settings);
+    CHECK(rt.ok && rt.directional[lit][0] < 1e-6 && rt.sunVisibility[lit] == 1.0f && rt.sunVisibility[shadowed] == 0.0f);
 }
 
 TEST(lightmap_bake_sky_and_bounce) {
@@ -103,6 +109,16 @@ TEST(lightmap_bake_sky_and_bounce) {
     addBox(scene.extraOccluders, Vec3(-1000, -1000, 64), Vec3(1000, 1000, 80));
     BakeResult roofed = bakeLightmap(scene, settings);
     CHECK(roofed.ok && roofed.ambient[i][0] < 0.5f * 0.5f);
+    // A real-time light under the roof: not in the directional layer, but its bounce off the roof reaches the floor.
+    scene.skyIntensity = 0;
+    BakeLight l;
+    l.pos = Vec3(0, 0, 32);
+    l.radius = 400;
+    l.intensity = 4;
+    l.direct = false;
+    scene.lights.push_back(l);
+    BakeResult bounced = bakeLightmap(scene, settings);
+    CHECK(bounced.ok && bounced.directional[i][0] < 1e-6 && bounced.ambient[i][0] > 0.01f);
 }
 
 TEST(lightmap_bake_charts_split_vertices) {
@@ -119,4 +135,5 @@ TEST(lightmap_bake_charts_split_vertices) {
     settings.threads = 1;
     const BakeResult r = bakeLightmap(scene, settings);
     CHECK(r.ok && r.charts == 2 && r.surfaces[0].verts.size() == 6 && r.uv[0].size() == 6);
+    CHECK(r.sourceVertex[0].size() == 6 && r.sourceVertex[0][4] < 4 && r.sourceVertex[0][5] < 4);
 }

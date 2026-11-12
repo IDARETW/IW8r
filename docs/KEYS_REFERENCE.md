@@ -95,6 +95,10 @@ The map's global settings. There is one worldspawn per map.
 
 | Key | Value format | Example | What it does |
 |---|---|---|---|
+| `iw8r_bake_lightmaps` | `1` to bake | `1` | Bakes a lightmap for the world when the map is built: the sky light and the bounce of the sun and lights, plus where the sun is blocked. The game still draws the sun and the lights live on top. Proven offline; not yet seen in game. |
+| `iw8r_bake_sky` | `r g b intensity` | `0.55 0.65 0.8 0.35` | Sets the sky light used by the bake. The default is a pale blue at 0.35 times `sunlight`. |
+| `iw8r_lightmap_texel` | world units per texel (default 16) | `8` | Sets the lightmap's detail. Smaller is sharper and bigger. The build makes it coarser by itself if the atlas would pass 2048 x 2048. |
+| `iw8r_bake_rays` | sky rays per texel (default 32, at most 1024) | `64` | More rays make a smoother ambient but a slower bake. |
 | `iw8r_sun_shadow_range` | two cascade multipliers (default `3 2`), or `0` | `4 3` or `0` | Sets how far sun shadows reach. Sent to every player. Longer values push sun shadows further. `0` turns it off. |
 | `iw8r_reverb` | `<room> [dry wet fade]` | `iw8_ext_open_space_med_1` | The map's reverb everywhere outside audio zones. Uses one of the 59 stock room types. In game not verified. |
 | `iw8r_audio_interior` | 0 or 1 (default 0) | `1` | 1 uses the stock "interior" occlusion and filter presets. 0 uses the stock "default" presets. In game not verified. |

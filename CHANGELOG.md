@@ -5,6 +5,15 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-12
 
+Lighting:
+
+- **Baked lightmaps for own maps.** Worldspawn `iw8r_bake_lightmaps 1` bakes the world's lightmap when the map is
+  built: charts packed into one atlas, the sky light and one bounce of the sun and lights, and where the sun is
+  blocked. The game draws the sun and the lights live on top, as it does for converted maps, so they are not baked
+  twice. `iw8r_bake_sky`, `iw8r_lightmap_texel` and `iw8r_bake_rays` tune it. The converter turns it into the
+  game's lightmap and every world surface uses it (tools/lightmap_bake_build_test.py: build, ACTS, the built
+  world's lightmap table). Not seen in game.
+
 Warzone and stock maps:
 
 - **Loot points.** File > Edit Loot Points shows the loot points of a Warzone stock map as entities (Quarry 2,924,

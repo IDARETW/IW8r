@@ -1503,6 +1503,43 @@
             "1"
           ]
         },
+        "iw8r_bake_lightmaps": {
+          "type": "string",
+          "default": "0",
+          "required": false,
+          "examples": [
+            "1"
+          ],
+          "description": "1: the build bakes a lightmap for the world (5.11): the sky and the bounce of the sun and lights (the game draws the sun and the lights in real time on top), and the sun visibility. The converter turns it into the game's lightmap (offline proof tools/lightmap_bake_build_test.py; not seen in game)."
+        },
+        "iw8r_bake_sky": {
+          "type": "string",
+          "default": "",
+          "required": false,
+          "examples": [
+            "0.55 0.65 0.8 0.35"
+          ],
+          "description": "Lightmap bake: the sky light as \"r g b intensity\" (default a pale blue at 0.35 x sunlight)."
+        },
+        "iw8r_lightmap_texel": {
+          "type": "float",
+          "default": "16",
+          "required": false,
+          "examples": [
+            "8",
+            "32"
+          ],
+          "description": "Lightmap bake: world units per lightmap texel (grows by itself when the atlas does not fit 2048 x 2048)."
+        },
+        "iw8r_bake_rays": {
+          "type": "float",
+          "default": "32",
+          "required": false,
+          "examples": [
+            "64"
+          ],
+          "description": "Lightmap bake: sky rays per texel (more rays: smoother ambient, slower bake; at most 1024)."
+        },
         "iw8r_sun_shadow_range": {
           "type": "string",
           "default": "3 2",

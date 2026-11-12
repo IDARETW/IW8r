@@ -88,6 +88,11 @@ bool pack(std::vector<Chart>& charts, int side) {
 BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, const std::function<void(double)>& progress) {
     BakeResult r;
     r.surfaces = scene.surfaces;
+    r.sourceVertex.resize(r.surfaces.size());
+    for (size_t si = 0; si < r.surfaces.size(); ++si) {
+        r.sourceVertex[si].resize(r.surfaces[si].verts.size());
+        for (size_t v = 0; v < r.sourceVertex[si].size(); ++v) r.sourceVertex[si][v] = uint32_t(v);
+    }
     // ---- charts: grow over shared edges while the normals stay close
     std::vector<Chart> charts;
     for (size_t si = 0; si < r.surfaces.size(); ++si) {
@@ -149,7 +154,10 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                     vertexChart.emplace(vi, chartOf[t]);
                 } else if (it->second != chartOf[t]) {
                     const auto [ci, fresh] = copies.emplace(std::make_pair(vi, chartOf[t]), uint32_t(s.verts.size()));
-                    if (fresh) s.verts.push_back(s.verts[vi]);
+                    if (fresh) {
+                        s.verts.push_back(s.verts[vi]);
+                        r.sourceVertex[si].push_back(r.sourceVertex[si][vi]);
+                    }
                     vi = ci->second;
                 }
             }
@@ -253,6 +261,7 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
     r.ambient.assign(n, {0, 0, 0});
     r.directional.assign(n, {0, 0, 0});
     r.direction.assign(n, {0, 0, 1});
+    r.sunVisibility.assign(n, 1.0f);
     std::vector<size_t> work;
     for (size_t i = 0; i < n; ++i)
         if (r.covered[i]) work.push_back(i);
@@ -278,13 +287,16 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                 Vec3 E{0, 0, 0}, dirSum{0, 0, 0};
                 if (sun) {
                     const double ndl = dot(N, sunDir);
-                    if (ndl > 0 && !bvh.occluded(P, sunDir, 0.05, 1e6)) {
+                    const bool visible = ndl > 0 && !bvh.occluded(P, sunDir, 0.05, 1e6);
+                    r.sunVisibility[i] = visible ? 1.0f : 0.0f;
+                    if (visible && scene.sunDirect) {
                         const Vec3 e = sunE * ndl;
                         E = E + e;
                         dirSum = dirSum + sunDir * lumV(e);
                     }
                 }
                 for (const BakeLight& l : scene.lights) {
+                    if (!l.direct) continue;
                     const Vec3 d = l.pos - P;
                     const double dist = length(d);
                     if (dist >= l.radius || dist < 1e-3) continue;
@@ -335,6 +347,21 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                         const double ndl = dot(Nh, sunDir);
                         if (ndl > 0 && !bvh.occluded(H, sunDir, 0.05, 1e6)) Eh = Eh + sunE * ndl;
                     }
+                    // The light entities' direct light at the bounce point (real-time lights bounce too).
+                    for (const BakeLight& l : scene.lights) {
+                        const Vec3 d = l.pos - H;
+                        const double dist = length(d);
+                        if (dist >= l.radius || dist < 1e-3) continue;
+                        const Vec3 L = d * (1.0 / dist);
+                        const double ndl = dot(Nh, L);
+                        if (ndl <= 0) continue;
+                        double att = 1.0 - dist / l.radius;
+                        att *= att;
+                        if (l.spot)
+                            att *= std::clamp((dot(L * -1.0, l.dir) - l.cosOuter) / std::max(1e-4, l.cosInner - l.cosOuter), 0.0, 1.0);
+                        if (att <= 0 || bvh.occluded(H, L, 0.05, dist - 0.5)) continue;
+                        Eh = Eh + l.color * (l.intensity * att * ndl);
+                    }
                     A = A + Eh * settings.bounceAlbedo;
                 }
                 A = A * (1.0 / rays);
@@ -361,6 +388,7 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                 const size_t i = size_t(y) * side + x;
                 if (have[i] || texels[i].chart < 0) continue;
                 std::array<float, 3> a{0, 0, 0}, b{0, 0, 0}, d{0, 0, 0};
+                float vis = 0;
                 int count = 0;
                 const int dx[4] = {1, -1, 0, 0}, dy[4] = {0, 0, 1, -1};
                 for (int k = 0; k < 4; ++k) {
@@ -373,6 +401,7 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                         b[c] += r.directional[j][c];
                         d[c] += r.direction[j][c];
                     }
+                    vis += r.sunVisibility[j];
                     ++count;
                 }
                 if (!count) continue;
@@ -381,6 +410,7 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                     r.directional[i][c] = b[c] / count;
                     d[c] /= count;
                 }
+                r.sunVisibility[i] = vis / count;
                 const double dl = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
                 r.direction[i] = dl > 1e-6 ? std::array<float, 3>{float(d[0] / dl), float(d[1] / dl), float(d[2] / dl)} : std::array<float, 3>{0, 0, 1};
                 next[i] = 1;
@@ -405,6 +435,8 @@ EncodedLightmap encodeLightmapPair(const BakeResult& r, double logScale) {
         return uint8_t(std::clamp(std::lround(255.0 * std::log2(1.0 + logScale * v) / denom), 0L, 255L));
     };
     e.primary.assign(n, 255);
+    for (size_t i = 0; i < n && i < r.sunVisibility.size(); ++i)
+        e.primary[i] = uint8_t(std::clamp(std::lround(255.0 * r.sunVisibility[i]), 0L, 255L));
     e.secondary.assign(n * 8, 0);
     for (size_t i = 0; i < n; ++i) {
         const auto& a = r.ambient[i];

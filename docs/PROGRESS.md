@@ -30,7 +30,14 @@
   partition and chain; doors move inside their area. tools/dynent_move_test.py. Installer rebuilt.
 - Then: stock sky from another map (iw8r_sky_from) and retexturing (iw8r_stock_retexture), converter 2594f62e
   replace_materials (live); xmake now passes /bigobj (main_window.cpp hit the section limit).
-- Tests at the last commit: core 139,800 checks / 0, GUI 948 / 0.
+- Then (owner asked: lightmap baking plus a viewport that matches the game): core ray_bvh.* and lightmap_bake.*
+  (charts, atlas, sun / lights / sky / one bounce, IW3 pair encoding), the build hook (worldspawn iw8r_bake_lightmaps,
+  compile_iw8.cpp before the surface JSON). Editor maps draw with the converter's own world shader
+  (map_surface_realtime.hlsl, not the stock tw/ shader): light = lightmap (A N.z + B sat(N.D)) + realtime sun x
+  visibility + realtime local lights, so the bake leaves the direct sun and lights out (research 95 section "Editor
+  maps in game"). Proof tools/lightmap_bake_build_test.py (in run_offline_proofs.py). Next: the viewport renders with
+  that shader's math and the baked lightmap.
+- Tests at the last commit: core 139,820 checks / 0, GUI 948 / 0.
 - Open (in scope): copying or removing a placed object that has a dynamic entity;
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.
 - Disk: E: had 3.5 GB free; this session's scratch output under out/ was deleted (owner copies kept).

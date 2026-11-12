@@ -321,3 +321,32 @@ if wanted.
   `cb3[0].x/zw` and `cb3[3].zw`, and the meaning of the `1.0390625` sun specular factor (a constant, purpose unknown).
 - The local-light and decal parts were read for their structure only; their per-record layouts (t49 96 B, t56 256 B)
   are not fully decoded.
+
+## Editor maps in game: the converter's world shader (VERIFIED from the converter source and a built map)
+
+The sections above are the **stock** world shader. An editor-built map does not draw its world with it. The editor's
+maps go through the converter's IW3 route (doc 55), and with a lightmap present that route gives every world surface a
+generated native world material `w/mw120r_<map>_world_<id>` (the built gfx_map of tools/lightmap_bake_build_test.py:
+all world surfaces on lightmapIndex 0 with these materials). Its pixel shader is
+`x64-zt src/convert/iw3_iw8/resources/map_surface_realtime.hlsl`, built with `MAP_SOURCE_SUN_MASK 1`,
+`MAP_SOURCE_CHANNELS 1`, `MAP_NATIVE_WORLD`, `MAP_LIGHTMAP_TEXTURES` (+ `MAP_LIGHTMAP_LOG` for log-encoded pairs) and,
+in the iw8 style, `MAP_IW8_LIGHTING` and `MAP_LIGHT_UNIT_SCALE` (iw3_vision.cpp). The source is in the fork, so the
+viewport can follow it line by line. Its light (main, around line 1336-1615):
+
+- Lightmap (`SourceIndirect`): the two IW3 layers sampled bilinear at the lightmap UV (A rgb + slope X in A.a, B rgb +
+  slope Y in B.a), log-decoded `(2^(x log2(1 + sM)) - 1) / s`; slope `(a * 4.08 - 2.08, b * 4.0645 - 2.0645)`;
+  `indirect = A * Nt.z + B * sat(dot(normalize(slope, 1), Nt))` with Nt the tangent-space shading normal; times
+  `MAP_INDIRECT_GAIN` (1).
+- Sun visibility: the baked sun depth where it covers the point, else min(visibility, the primary byte) (the IW3 sun
+  mask; the editor writes its sun visibility there).
+- Specular (iw8 style): F0 .04 and gloss .15 unless the material gives a specular map; probe reflection scaled by the
+  indirect luminance, specular occlusion LUT, environment BRDF; indirect diffuse times 1 - max(F).
+- `indirect *= cb[43].z * gtao / bounce`; `light = indirect + visibility * (N.L + transmitted) * sun` with
+  `sun = cb[57] / MAP_LIGHT_UNIT_SCALE` (the realtime sun), colour = albedo x light, plus the realtime local lights
+  `(albedo x diffuse + specular) / MAP_LIGHT_UNIT_SCALE`, then fog, then `x MAP_LIGHT_UNIT_SCALE x cb[42].x` into the
+  stock post chain (exposure and tonemap of the sections above).
+
+Consequence for the bake: the sun and the converted lights are realtime, so the lightmap holds only the sky, their
+bounce and the sun visibility (`BakeScene::sunDirect = false`, `BakeLight::direct = false` for the lights within the
+primary light limit). Consequence for the viewport: a 1-to-1 preview of an editor map follows this shader (the
+lightmap formula above, the realtime sun with the visibility, the local lights), then the stock exposure and tonemap.
