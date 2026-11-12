@@ -99,7 +99,12 @@ bool readStockPlacedObjects(const std::string& assetJson, std::vector<StockPlace
     return true;
 }
 
-bool editablePlacedDefinition(const ScriptableDefinition& def) { return def.verified && !def.instanceDynent && def.physicsDynents == 0; }
+// Every number a copy or a removal changes is known for a verified definition: the instance counts and limits from the
+// catalogue, and the converter copies or drops the instance's dynamic entities itself (research 89 section 8: ordinary
+// radial entries, doors, no-spatial and physics entries). What it still refuses depends on the instance, not on the
+// definition (a streamed entry, an entry placed apart from its instance, a removal on a map whose streamed zones name
+// later instances): the rebuild then stops with the reason.
+bool editablePlacedDefinition(const ScriptableDefinition& def) { return def.verified; }
 bool movablePlacedDefinition(const ScriptableDefinition& def) { return def.verified; }
 
 std::vector<std::pair<std::string, std::string>> placedObjectEntityKeys(const StockPlacedObject& o) {
@@ -168,7 +173,7 @@ PlacedObjectEdits placedObjectEdits(const MapFile& map, const std::vector<StockP
             continue;
         }
         if (!editablePlacedDefinition(*def)) {
-            ++leftOut["'" + def->name + "' has physics entries of its own: a stock map cannot take a new one yet"];
+            ++leftOut["'" + def->name + "': its numbers are not known (not verified in the catalogue), so a stock map cannot take a new one"];
             continue;
         }
         const auto like = firstOf.find(key);
@@ -184,24 +189,18 @@ PlacedObjectEdits placedObjectEdits(const MapFile& map, const std::vector<StockP
     }
     if (!any) return out;
     // Stock objects of an editable kind whose entity is gone: removed (with the definition's numbers for the counts).
+    // (A definition whose numbers are not known never becomes an entity, so its instances stay.)
     std::string removes;
-    size_t keptDeleted = 0;
     for (const StockPlacedObject& o : stock) {
         if (seen.count(o.index)) continue;
         const ScriptableDefinition* def = catalog.find(o.definition);
-        if (!def || !editablePlacedDefinition(*def)) {
-            if (def && movablePlacedDefinition(*def)) ++keptDeleted;
-            continue;
-        }
+        if (!def || !editablePlacedDefinition(*def)) continue;
         removes += std::string(out.removed ? "," : "") + "{\"index\":" + std::to_string(o.index) + ",\"server_instanced_parts\":" +
                    std::to_string(def->serverInstancedParts) + ",\"usable_parts\":" + std::to_string(def->usableParts) +
                    ",\"physics_limit\":" + (def->physicsLimit ? "true" : "false") + ",\"physics_limit_detail\":" +
                    (def->physicsLimitDetail ? "true" : "false") + "}";
         ++out.removed;
     }
-    if (keptDeleted)
-        out.notes.push_back(std::to_string(keptDeleted) + " placed object(s) with a dynamic entity were deleted in the document: those can be moved but "
-                            "not removed yet; they stay");
     for (const auto& [reason, n] : leftOut) out.notes.push_back(std::to_string(n) + " placed object(s) left out: " + reason);
     if (out.moved || out.added || out.removed) {
         out.json = "{";

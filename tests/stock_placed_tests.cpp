@@ -35,6 +35,7 @@ const char* kCatalog =
     "br_plunder_box\tcommon_br_mp\t0\t1\t1\t1\t16\t0\t0\t0\t0\t1\t0x43E266\tkiosk_rig\tobserved\t1\t1\n"
     "scriptable_door_x\tmp_backlot2\t0\t1\t1\t1\t2\t0\t1\t1\t1\t1\t0x48E2C7\tdoor_x\tobserved\t1\t1\n"
     "brloot_rock\tcommon_br_mp\t0\t1\t0\t0\t1\t0\t0\t0\t0\t0\t0x400046\trock\tobserved\t1\t0\n"
+    "com_car_x\tmp_shipment\t0\t3\t1\t0\t5\t3\t1\t0\t0\t1\t0x406046\tcar\tobserved\t1\t0\n"
     "guess_thing\tcommon_br_mp\t0\t1\t0\t0\t1\t0\t0\t0\t0\t0\t0x400046\tthing\tderived\t0\t0\n";
 
 std::string mapWith(const std::vector<std::vector<std::pair<std::string, std::string>>>& entities) {
@@ -64,8 +65,11 @@ TEST(stock_placed_read_and_entities) {
 
     ScriptableCatalog catalog;
     CHECK(catalog.parse(kCatalog));
+    // Verified definitions are editable whatever dynamic entities their instances have (the converter copies and drops
+    // them: research 89 section 8); one whose numbers are not known is not.
     CHECK(editablePlacedDefinition(*catalog.find("br_plunder_box")) && editablePlacedDefinition(*catalog.find("brloot_rock")));
-    CHECK(!editablePlacedDefinition(*catalog.find("scriptable_door_x")) && !editablePlacedDefinition(*catalog.find("guess_thing")));
+    CHECK(editablePlacedDefinition(*catalog.find("scriptable_door_x")) && editablePlacedDefinition(*catalog.find("com_car_x")));
+    CHECK(!editablePlacedDefinition(*catalog.find("guess_thing")) && !movablePlacedDefinition(*catalog.find("guess_thing")));
 
     // A map without instances, a count that does not match, a broken file.
     CHECK(readStockPlacedObjects(writeTmp("placed_none.json", "{\"asset\":{\"fields\":{\"scriptableMapEnts\":{\"mapInstanceCount\":0,\"mapInstances\":null}}}}"),
@@ -108,7 +112,8 @@ TEST(stock_placed_edits) {
         CHECK(ents.find("br_plunder_box") == std::string::npos && ents.find("worldspawn") != std::string::npos);
     }
     // One moved, a pasted copy (same index key: a new object), a new one without the key, the other stock one deleted,
-    // a door (has a dynamic entity), an unknown name, a kind the map does not have, one without an origin.
+    // a new door (copied with its dynamic entity) while the stock door is deleted, an unknown name, a kind the map does
+    // not have, one without an origin.
     {
         auto moved = placedObjectEntityKeys(stock[0]);
         moved[2].second = "164 200 36";
@@ -125,19 +130,22 @@ TEST(stock_placed_edits) {
                                         {{"classname", "scriptable"}, {"origin", "3 3 3"}}}));
         CHECK(pr.map.has_value());
         const PlacedObjectEdits e = placedObjectEdits(*pr.map, stock, catalog);
-        CHECK(e.moved == 1 && e.added == 2 && e.removed == 1);
+        CHECK(e.moved == 1 && e.added == 3 && e.removed == 2);
         CHECK(e.json ==
               "{\"move\":[{\"index\":0,\"origin\":[164,200,36],\"angles\":[0,90,0]}],"
               "\"add\":[{\"like\":0,\"origin\":[100,328,36],\"angles\":[0,45,0],\"server_instanced_parts\":1,\"usable_parts\":1,"
               "\"physics_limit\":true,\"physics_limit_detail\":true},"
               "{\"like\":0,\"origin\":[-156,200,44],\"angles\":[0,0,0],\"server_instanced_parts\":1,\"usable_parts\":1,"
+              "\"physics_limit\":true,\"physics_limit_detail\":true},"
+              "{\"like\":1,\"origin\":[8,8,8],\"angles\":[0,0,0],\"server_instanced_parts\":1,\"usable_parts\":1,"
               "\"physics_limit\":true,\"physics_limit_detail\":true}],"
-              "\"remove\":[{\"index\":2,\"server_instanced_parts\":1,\"usable_parts\":1,\"physics_limit\":true,\"physics_limit_detail\":true}]}");
-        bool counted = false, deleted = false, door = false, unknown = false, none = false, noOrigin = false, noKey = false;
+              "\"remove\":[{\"index\":1,\"server_instanced_parts\":1,\"usable_parts\":1,\"physics_limit\":true,\"physics_limit_detail\":true},"
+              "{\"index\":2,\"server_instanced_parts\":1,\"usable_parts\":1,\"physics_limit\":true,\"physics_limit_detail\":true}]}");
+        bool counted = false, deleted = false, door = true, unknown = false, none = false, noOrigin = false, noKey = false;
         for (const std::string& n : e.notes) {
-            counted |= n == "1 placed object(s) moved, 2 added, 1 removed";
+            counted |= n == "1 placed object(s) moved, 3 added, 2 removed";
             deleted = true;
-            door |= n.find("scriptable_door_x") != std::string::npos && n.find("physics entries") != std::string::npos;
+            door &= n.find("scriptable_door_x") == std::string::npos;  // the door is no longer left out
             unknown |= n.find("made_up") != std::string::npos;
             none |= n.find("brloot_rock") != std::string::npos && n.find("none to copy from") != std::string::npos;
             noOrigin |= n.find("without an origin") != std::string::npos;
@@ -157,4 +165,47 @@ TEST(stock_placed_edits) {
         const PlacedObjectEdits e = placedObjectEdits(*pr.map, stock, catalog);
         CHECK(e.moved == 1 && e.json.find("\"move\":[{\"index\":1,\"origin\":[64,0,0]") != std::string::npos);
     }
+}
+
+// Research 89 section 8: instances with dynamic entities (a door, a car with physics entries) are copied and removed like
+// the buy stations; the converter rebuilds their dynamic entities. A definition whose numbers are not known is left out,
+// and its deleted instance stays.
+TEST(stock_placed_dynamic_entity_copy_and_remove) {
+    const auto inst = [](const std::string& def, const std::string& origin) {
+        return "{\"initialDef\":{\"name\":\"" + def + "\"},\"initialOrigin\":{\"v\":[" + origin + "]},\"initialAngles\":{\"v\":[0,0,0]}}";
+    };
+    const std::string text = "{\"asset\":{\"fields\":{\"scriptableMapEnts\":{\"mapInstanceCount\":4,\"mapInstances\":{\"values\":[" +
+                             inst("scriptable_door_x", "0,0,0") + "," + inst("com_car_x", "100,0,0") + "," + inst("guess_thing", "200,0,0") + "," +
+                             inst("com_car_x", "300,0,0") + "]}}}}}";
+    std::vector<StockPlacedObject> stock;
+    CHECK(readStockPlacedObjects(writeTmp("placed_dyn.json", text), stock));
+    if (stock.size() != 4) return;
+    ScriptableCatalog catalog;
+    CHECK(catalog.parse(kCatalog));
+    // The door and the first car kept, the second car and the unverified thing deleted, a door and a car copied (pasted).
+    auto doorCopy = placedObjectEntityKeys(stock[0]);
+    doorCopy[2].second = "0 96 0";
+    auto carCopy = placedObjectEntityKeys(stock[1]);
+    carCopy[2].second = "100 -200 0";
+    carCopy[3].second = "0 90 0";
+    Id next = 1;
+    ParseResult pr = parseMap(mapWith({placedObjectEntityKeys(stock[0]), placedObjectEntityKeys(stock[1]), doorCopy, carCopy,
+                                       {{"classname", "scriptable"}, {"scriptable", "guess_thing"}, {"origin", "5 5 5"}}}),
+                              next);
+    CHECK(pr.map.has_value());
+    if (!pr.map) return;
+    const PlacedObjectEdits e = placedObjectEdits(*pr.map, stock, catalog);
+    CHECK(e.moved == 0 && e.added == 2 && e.removed == 1);
+    CHECK(e.json ==
+          "{\"add\":[{\"like\":0,\"origin\":[0,96,0],\"angles\":[0,0,0],\"server_instanced_parts\":1,\"usable_parts\":1,"
+          "\"physics_limit\":true,\"physics_limit_detail\":true},"
+          "{\"like\":1,\"origin\":[100,-200,0],\"angles\":[0,90,0],\"server_instanced_parts\":1,\"usable_parts\":0,"
+          "\"physics_limit\":true,\"physics_limit_detail\":false}],"
+          "\"remove\":[{\"index\":3,\"server_instanced_parts\":1,\"usable_parts\":0,\"physics_limit\":true,\"physics_limit_detail\":false}]}");
+    bool unknownNumbers = false, counted = false;
+    for (const std::string& n : e.notes) {
+        unknownNumbers |= n.find("guess_thing") != std::string::npos && n.find("not known") != std::string::npos;
+        counted |= n == "0 placed object(s) moved, 2 added, 1 removed";
+    }
+    CHECK(unknownNumbers && counted && e.notes.size() == 2);
 }

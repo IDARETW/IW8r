@@ -88,7 +88,8 @@ def main():
         g = got[len(stock) + k]
         check(g['definition'] == stock[first]['definition'] and g['classname'] == stock[first]['classname'] and g['flags'] == stock[first]['flags'] and
               g['origin'] == tuple(float(v) for v in add['origin']) and g['angles'] == tuple(float(v) for v in add.get('angles', [0, 0, 0])) and
-              g['names'] == (0, 0, 0, 0, 0), 'copy %d: the definition and class name of the buy station at its place, no names' % (k + 1))
+              g['names'] == (0, stock[first]['names'][1], 0, 0, stock[first]['names'][4]),
+              'copy %d: the definition and class name of the buy station at its place, its targetname and script_noteworthy, no links' % (k + 1))
     n = len(adds)
     want = dict(counts)
     want['mapInstanceCount'] += n
@@ -112,7 +113,7 @@ def main():
     if other is None:
         other = next(i for i, s in enumerate(stock) if i not in boxes)
     code, log, rep = t.editzone(exe, zone, {'scriptable_instances': {'move': [{'index': other, 'origin': [0, 0, 0]}]}, 'patch': False}, os.path.join(work, 'b'))
-    refused = code != 0 and ('dynamic entity of its own' in log or 'sparse occluder' in log or 'placed apart' in log)
+    refused = code != 0 and ('dynamic entity of its own' in log or 'sparse occluder' in log or 'placed apart' in log or 'would leave its area' in log)
     if code == 0:
         print('       note: instance %d (%s) has no dynamic entity in this zone' % (other, stock[other]['definition']))
     check(refused, 'moving instance %d (%s) is refused with the reason' % (other, stock[other]['definition']))

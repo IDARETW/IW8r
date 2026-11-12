@@ -49,6 +49,13 @@
   takeMeteredLuminance). Bench reference scene loads the zone's lightmap. Open: Warzone (type 0, BC6H, streamed);
   AB_LIGHTING's extra channels; own brushes inside a stock edit are baked in editor units, not the stock map's;
   stock probes / specular / retro-reflective diffuse are not drawn.
+- Then copy / remove of placed objects with dynamic entities (x64-zt 45112b43 + 8ed35d9a, live; old exe
+  out/zt_backup/zonetool_2594f62e.exe): core stock_placed allows them, tools/dynent_copy_remove_test.py (in
+  run_offline_proofs.py); warzone_instances_remove_test / _edit_test updated for the new behaviour. Doors follow an
+  exact walk of MapEnts.dynEntSpatialPopulation[1] (319 of 319 on Quarry), so the door-move area box could be replaced.
+  Checked: an editzone output of Quarry loads one asset fewer than the stock zone in ACTS (73054 vs 73055) because
+  ACTS loads the stock .ff plus its .fp, whose patched scriptable is counted twice (base + override); the rebuilt zone
+  holds the patched copy once. The exported scriptable lists are identical (62 / 62): not a loss.
 - Tests at the last commit: core 139,820 checks / 0, GUI 948 / 0.
 - Open (in scope): copying or removing a placed object that has a dynamic entity;
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.

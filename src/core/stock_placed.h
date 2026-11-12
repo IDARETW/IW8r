@@ -1,15 +1,16 @@
 // IW8 Radiant Suite - the placed scripted objects of a stock map (roadmap 13.5, docs/research/89 section 6).
 //
 // A stock map keeps its scriptable instances (doors, signs, the Warzone buy stations) in MapEnts
-// scriptableMapEnts.mapInstances, not in the entity text. Most of them also have a dynamic entity that holds a second
-// copy of the placement, and those entities name their instance by index, so the list cannot be reordered or shortened.
-// What can be edited safely is an instance whose definition has no dynamic entity at all: the Warzone buy station
-// (br_plunder_box; 120 on Quarry and on Verdansk) and a few others. The editor turns those into `scriptable` entities
+// scriptableMapEnts.mapInstances, not in the entity text. Most of them also have dynamic entities that hold a second
+// copy of the placement and name their instance by index. The converter's editzone "scriptable_instances" moves, copies
+// and removes instances together with their dynamic entities (research 89 section 8: the entries, their spatial
+// partitions and bucket chains, the counts and the GfxWorld client arrays are rebuilt; proof tools/
+// dynent_copy_remove_test.py). The editor turns the instances of verified definitions into `scriptable` entities
 // (File > Edit Placed Objects); on a rebuild a moved one is written as a move, a new one as a copy of an existing
-// instance of the same definition (the converter's editzone "scriptable_instances"). A deleted one is removed (the
-// converter renumbers the dynamic entities that name later instances; checked on Quarry, tools/
-// warzone_instances_remove_test.py). Removals happen only when the document holds placed objects at all (File > Edit
-// Placed Objects was used), so a document without them never drops anything.
+// instance of the same definition, a deleted one as a removal. What the converter refuses depends on the instance (a
+// streamed entry, an entry placed apart from its instance, a door moved out of its area, a removal on a map whose
+// streamed zones name later instances): the rebuild stops with the reason. Removals happen only when the document holds
+// placed objects at all (File > Edit Placed Objects was used), so a document without them never drops anything.
 // Pure core code.
 #pragma once
 
@@ -37,12 +38,12 @@ struct StockPlacedObject {
 // instances gives an empty list and true.
 bool readStockPlacedObjects(const std::string& assetJson, std::vector<StockPlacedObject>& out, std::string* err = nullptr);
 
-// True for a definition whose instances can be moved and copied on a stock map: every number is known and an
-// instance gets no dynamic entity.
+// True for a definition whose instances can be copied and removed on a stock map: every number is known (verified).
+// The converter copies or drops the instance's dynamic entities (signs, fences, props, doors, physics entries).
 bool editablePlacedDefinition(const ScriptableDefinition& def);
-// True for a definition whose instances can be moved (not copied or removed): every number is known. The instance's
-// dynamic entity follows the move (research 89 section 8); a door moves only inside the area of the stock doors that
-// share its spatial index, and the converter refuses a move out of it or an instance whose entity is placed apart.
+// True for a definition whose instances can be moved: every number is known. The instance's dynamic entities follow
+// the move (research 89 section 8); a door moves only inside the area of the stock doors that share its spatial
+// index, and the converter refuses a move out of it or an instance whose entity is placed apart.
 bool movablePlacedDefinition(const ScriptableDefinition& def);
 
 // Key/values of the document entity for one placed object: classname scriptable, scriptable <definition>, origin,
@@ -62,7 +63,7 @@ struct PlacedObjectEdits {
 // instance of the same definition is that instance: a changed origin or angles is a move. Every other entity is a
 // new object: a copy of the first stock instance of its definition, with the definition's numbers from the
 // catalogue. A stock instance of an editable kind with no entity left is removed. Notes say what cannot be done: a
-// definition that is unknown, has dynamic entities or is not on the map yet.
+// definition that is unknown, whose numbers are not known, or that is not on the map yet.
 PlacedObjectEdits placedObjectEdits(const MapFile& map, const std::vector<StockPlacedObject>& stock, const ScriptableCatalog& catalog);
 
 }  // namespace iw8r

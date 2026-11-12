@@ -295,6 +295,19 @@ the editor adds boxes of its own:
    buckets / bucketTails and spatialNode.spatialNodeNext) list exactly the entries of each index on stock zones;
    (2) doors need the structure their index names found first (sparse occluder data of the GfxWorld or the clipMap is
    the likely place).
+   Update (2026-11-12, x64-zt 45112b43 / 8ed35d9a): copying and removing instances WITH dynamic entities is built.
+   Remove drops the instance and every entry naming it (the 64 reserved 500000 entries and clutter stay); add copies
+   the entries of "like" with the new pose, instance index and walked partition, inserted before the reserved block.
+   Every entry index reference is rebuilt (no-spatial chain, both populations' bucket chains in descending order with
+   tails; a bucket is added for a new partition, an empty one dropped), counts follow (list counts, currentPopulation,
+   MapEnts totals, no-spatial and pose-part counts, the GfxWorld dynamic entity client arrays: clients = MapEnts total
+   + 10 on 4 maps). Doors: their entries follow an exact walk of the SECOND tree (MapEnts.dynEntSpatialPopulation[1]),
+   319 of 319 on Quarry, so doors copy and remove with the same code. Node extents hold their entries (z = the range
+   of the origins); copies and moves grow them along their path. Copies keep targetname and script_noteworthy.
+   Proof tools/dynent_copy_remove_test.py: Quarry 21 PASS (4 removals incl. a door and a no-spatial extraction site,
+   6 copies incl. two doors and a new bucket, 860 renumbered entries name the same instances, all chains exact, ACTS as
+   stock), Shipment 20 PASS. Refused: streamed entries; removals on maps whose transient zones name later instances
+   (the converter checks every <zone>_<id>_tr.ff; Verdansk); entries placed apart from their instance.
 4. Verdansk in the reference view: its world is 749 streamed zones; the view loads one zone.
 5. New game type scripts (roadmap 13.6). Read from the recompiled game exe with its linker map (`tools/dw_disasm.py`,
    read only): `G_ScrMP_LoadGameTypeScript_Shared` formats `scripts/mp/gametypes/<type>.gsc` (cp: `scripts/cp/...`)

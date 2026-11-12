@@ -5,6 +5,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-12
 
+Warzone and stock maps (later the same day):
+
+- **Copy and delete placed objects with physics.** File > Edit Placed Objects now lets you copy and delete doors,
+  signs, fences, props and extraction sites too, not only buy stations; Rebuild Stock Zone writes them with their
+  dynamic entities (renumbered, spatial chains and counts rebuilt). Copies keep the group names scripts look for.
+  Proven offline on Quarry and Shipment (tools/dynent_copy_remove_test.py). Verdansk removals are refused (its
+  streamed zones point at later objects). Not seen in game.
+
 Lighting:
 
 - **Baked lightmaps for own maps.** Worldspawn `iw8r_bake_lightmaps 1` bakes the world's lightmap when the map is

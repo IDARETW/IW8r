@@ -4,7 +4,7 @@ Warzone buy stations (br_plunder_box, no dynamic entity of their own) are droppe
 - the instance list equals the stock list without those two (order kept);
 - the counts and the six physics limits fall by the definition's numbers;
 - every scriptable dynamic entity still names the same instance (same definition and origin) after the renumbering;
-- ACTS tests the zone like the stock one; removing an instance that has a dynamic entity is refused.
+- ACTS tests the zone like the stock one; an instance that has a dynamic entity is removed too.
 
 Usage: py -3 -I tools/warzone_instances_remove_test.py <work folder> [--zone mp_br_quarry] [--exe <zonetool.exe>]
 Nothing is written outside the work folder. The game folder is only read."""
@@ -92,10 +92,11 @@ def main():
     test = [l for l in t.acts(['--test', '-o', os.path.join(work, 'r_test'), out_file]) if l.startswith('Replay:')]
     stock_test = [l for l in t.acts(['--test', '-o', os.path.join(work, 'stock_test'), stock_file]) if l.startswith('Replay:')]
     check(results(test) is not None and results(test) == results(stock_test), 'ACTS tests the edited zone like the stock zone: %s' % test)
-    # An instance with a dynamic entity is refused.
+    # An instance with a dynamic entity is removed too since x64-zt 45112b43 (its entries go with it; checked in detail
+    # by tools/dynent_copy_remove_test.py).
     with_dyn = next(r[2] for r in stock_refs if r[2] < len(stock))
     code2, log2, _ = t.editzone(exe, zone, {'scriptable_instances': {'remove': [dict(index=with_dyn, **numbers)]}, 'patch': False}, os.path.join(work, 'x'))
-    check(code2 != 0 and 'dynamic entity' in log2, 'removing instance %d (it has a dynamic entity) is refused with the reason' % with_dyn)
+    check(code2 == 0, 'removing instance %d (it has a dynamic entity) works%s' % (with_dyn, '' if code2 == 0 else ': ' + log2[-300:]))
     for f in glob.glob(os.path.join(work, '*', zone + '.ff')):
         os.remove(f)
     print('RESULT: %s (%d failed)' % ('PASS' if not failures else 'FAIL', len(failures)))

@@ -476,11 +476,11 @@ int MainWindow::editPlacedObjects() {
     }
     ctx_.doc.endGroup();
     if (n == 0) {
-        ctx_.setStatus(QString("Edit Placed Objects: none of the %1 placed objects of this map can be edited (doors cannot yet)").arg(stockPlaced_.size()));
+        ctx_.setStatus(QString("Edit Placed Objects: none of the %1 placed objects of this map can be edited (their definitions are not verified)").arg(stockPlaced_.size()));
         return 0;
     }
-    ctx_.documentEdited(QString("%1 of %2 placed objects are now entities (class scriptable): move them; objects without a dynamic entity "
-                                "(buy stations) can also be copied or deleted; a door moves only a little (inside its area). Rebuild Stock Zone writes it")
+    ctx_.documentEdited(QString("%1 of %2 placed objects are now entities (class scriptable): move, copy or delete them (doors, signs, "
+                                "props and buy stations; a door moves only a little, inside its area). Rebuild Stock Zone writes it")
                             .arg(n).arg(stockPlaced_.size()));
     return int(n);
 }
