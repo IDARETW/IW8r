@@ -644,6 +644,9 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 - Loot on your own map: `iw8r_loot_point` entities are written into the map's loot table. A free point is a point where loot can lie. With `loot_cluster` set to `cache` it is a supply box point. (not yet seen in game)
 - The loot points of your own map form one loot zone, which picks the loot tables. Worldspawn `iw8r_loot_zone` names
   it (default `map_quarry`, a zone of the stock loot tables). (tested offline; not yet seen in game)
+- Loot items on your own map: a custom map never loads the game's Warzone zone (research 93), so the build copies the
+  loot item definitions of the map's loot table (mode dvar `loot_table_name`, default `mp/loot_item_defs.csv`; the
+  Trios table has 142 items, about 35 MB) into the map. (tested offline; not yet seen in game)
 - Several loot areas on your own map: `iw8r_loot_cluster` and `iw8r_loot_zone` brush entities (as on stock maps)
   give each point the first cluster and zone whose box holds it. (tested offline; not yet seen in game)
 - Worldspawn `iw8r_no_loot` set to 1 removes all loot from the map.
@@ -798,6 +801,6 @@ Open items from the roadmap and the research notes. Only the open items are list
 - Navigation blockers and traversal authoring (row 6.23).
 - Camera angle sync, live atmosphere and in-game screenshots and probe capture (rows 7.3, 7.9, 7.11). The live atmosphere channel was removed.
 - Prefabs: convert a plain `.map` to a bundle, zip import of bundles, and the placement hints (wall, ceiling and yaw step).
-- Warzone: new game type scripts under a new name (row 13.6; mode rules on stock game types are built). Loot items on an own map: the loot item definitions live in the Warzone zone, which a custom map does not load (research 93), and are not copied yet.
+- Warzone: new game type scripts under a new name (row 13.6; mode rules on stock game types are built). Loot items on an own map are carried from the Warzone zone (research 93) but not yet seen in game.
 - Stock maps: removal of stock world geometry (row 11.5), sun and sky relight (row 11.6), and maps beyond 6v6 scale, such as Ground War scale and co-op maps (row 11.10).
 - Installer test on a clean machine (owner action, row 9.9).

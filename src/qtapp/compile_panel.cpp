@@ -819,6 +819,7 @@ bool CompilePanel::runExtraction() {
         // 13.4: stock vehicles (and the stock model catalogue that says which vehicle models every match has).
         static VehicleCatalog vehicleCatalog;
         static StockModelZones modelZones;
+        static BrLootItemTables lootItemTables;
         static bool catalogsLoaded = false;
         if (!catalogsLoaded) {
             catalogsLoaded = true;
@@ -827,11 +828,13 @@ bool CompilePanel::runExtraction() {
                 if (QFileInfo::exists(d.filePath("data/asset_catalog/iw8_vehicles.tsv"))) {
                     vehicleCatalog.load(d.filePath("data/asset_catalog/iw8_vehicles.tsv").toStdString());
                     modelZones.load(d.filePath("data/asset_catalog/iw8_models.tsv").toStdString());
+                    lootItemTables.load(d.filePath("data/asset_catalog/iw8_br_loot_items.tsv").toStdString());
                     break;
                 }
         }
         if (vehicleCatalog.size()) opt.vehicles = &vehicleCatalog;
         if (modelZones.size()) opt.stockModelZones = &modelZones;
+        if (lootItemTables.size()) opt.lootItems = &lootItemTables;
         // The folders the library came from (the placed bundles' material folders are among them): the build can
         // then load one library that also holds the materials of a bundle it finds inside another prefab.
         opt.materialRoots = roots;

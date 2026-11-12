@@ -259,9 +259,8 @@ the editor adds boxes of its own:
 
 ## 8. Open
 
-1. `common_br_mp` does not load for an own map (research 93): buy stations are carried now; the loot item
-   definitions (`brloot_*`, 240 in that zone) the loot tables spawn on loot points are not, so an own map's loot
-   points may give no items; two ATV tyre textures are missing. Whether the vehicles drive is not seen in game.
+1. `common_br_mp` does not load for an own map (research 93): buy stations and the loot item definitions of
+   the map's loot table are carried now (research 93, "Built on this"); two ATV tyre textures are missing. Whether the vehicles drive is not seen in game.
    The map script's "no circle" switch no longer calls `br_gametypes::disablefeature` (research 92: that far call
    cannot link and would break the map at load); `level.br_circle_disabled = 1` stays.
 2. (Zones and clusters on a custom map: done offline, section 6d.)

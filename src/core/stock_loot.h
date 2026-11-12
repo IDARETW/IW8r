@@ -16,6 +16,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -110,5 +111,22 @@ MapFile withoutLootPoints(const MapFile& map);
 
 // The JSON list for the edits file: [{"origin":[x,y,z],"angles":[p,y,r],"cluster":...,"zone":...}, ...].
 std::string lootPointsJson(const std::vector<LootPointEdit>& points);
+
+// The loot item tables (data/asset_catalog/iw8_br_loot_items.tsv, tools/build_br_loot_items.py): the brloot_*
+// scriptables each stock loot item table (code_post_gfx mp/loot_item_defs*.csv) spawns on loot points. A custom map
+// never loads common_br_mp, which holds them (research 93), so a build with loot points carries the items of the
+// map's table (dvar loot_table_name; default kDefaultLootItemTable).
+inline constexpr const char* kDefaultLootItemTable = "mp/loot_item_defs.csv";
+class BrLootItemTables {
+public:
+    bool parse(const std::string& text);  // "table<TAB>scriptable" lines; '#' lines are comments
+    bool load(const std::string& path, std::string* err = nullptr);
+    // The items of a table (name as the dvar gives it, case-insensitive, "mp/" optional); nullptr when unknown.
+    const std::vector<std::string>* items(const std::string& table) const;
+    size_t size() const { return tables_.size(); }
+
+private:
+    std::map<std::string, std::vector<std::string>> tables_;
+};
 
 }  // namespace iw8r

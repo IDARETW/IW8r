@@ -126,3 +126,21 @@ Verdansk loads `common_br_mp` in any game type** (INFERRED from the code path; n
   wrong for custom map ids; the condition is the map's id being a `common_br_mp` row of `mp/levelZoneParents.csv`.
 - Unchanged: on stock BR maps edited in place (`mp_donetsk`, `mp_br_quarry`, `mp_br_tut`, `mp_bm_tut`)
   `common_br_mp` is loaded in every game type, so by-name references there are fine.
+
+## Built on this (2026-11-12)
+
+- Buy stations and the other `common_br_mp` scriptables placed on a custom Warzone map are **carried** from
+  `common_br_mp` into the map zone (Real stock scripted objects), not placed by name.
+- Loot items: a map with loot points carries the `brloot_*` definitions of its loot table (worldspawn mode dvar
+  `loot_table_name`, default `mp/loot_item_defs.csv`) from `common_br_mp`. The item lists of the 13 stock tables are in
+  `data/asset_catalog/iw8_br_loot_items.tsv` (`tools/build_br_loot_items.py` from the `code_post_gfx` export); items the
+  zone does not hold (6 in three old tables) are left out with a count.
+- Converter (x64-zt 43d1d757): scriptable definitions can be carried without placed instances (the zone write refused
+  a carried definition when the map had no scriptable instance).
+- Proof: `tools/br_loot_items_carry_test.py` (the `_s3` table, 142 items: 530 assets into the map zone and 89 into the
+  techsets zone, map zone 35 MB, ACTS 0 failed, all 142 definitions in the zone); an end-to-end build of the Warzone
+  test map with four loot points and `loot_table_name=mp/loot_item_defs_s3.csv` through `IW8Radiant.exe --compile`
+  (same numbers, ACTS 0 failed); core test `compile_iw8_loot_points`. Four materials the cash items name
+  (`mo/mtl_lm_cash_stack_01`, the `lm_accessory_don_currency_01_a` pair, `mo/offhand_vm_stim_body`) are not carried
+  (the converter warns). Whether loot then appears in a match is not seen in game.
+

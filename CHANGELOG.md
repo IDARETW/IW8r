@@ -33,6 +33,8 @@ Warzone and stock maps:
 - **Mode rules.** Tools > Game Modes > Rules: max health, move speed, one weapon instead of the loadout and
   infinite ammo, applied to every player at each spawn by the map's own script, which runs after the game type's start
   (read from the game exe: docs/research/91). Built through the real pipeline offline; not seen in game.
+- **Loot items on own maps.** A map with loot points carries the loot item definitions of its loot table from the
+  Warzone zone, which a custom map never loads (research 93). Built and ACTS-checked offline; not seen in game.
 - **Fix: "no circle" no longer breaks a Warzone map.** The generated map script called
   `br_gametypes::disablefeature`, a far call that cannot link (research 92) and would drop the match or exit the game
   at load. The map now sets only `level.br_circle_disabled`.

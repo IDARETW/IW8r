@@ -2168,6 +2168,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     // the converter writes as MapEnts.spawnGroupLoot (no clusters and no zones, as the small stock maps with loot).
     // loot_cluster "cache" makes a loot cache point; every other point is a free point.
     std::string lootJson, lootZone, lootBoxes;
+    std::vector<StockEditCarry> lootCarry;  // the loot item definitions of the map's loot table (research 93)
     size_t lootCount = 0;
     {
         size_t tooMany = 0;
@@ -2203,6 +2204,35 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                         warn.push_back("worldspawn iw8r_loot_zone '" + *z + "' is not a lower-case name; map_quarry is used");
                 }
         }
+        // The loot item definitions (research 93): the loot system spawns brloot_* scriptables of common_br_mp on the
+        // points, and a custom map never loads that zone, so the items of the map's loot table are carried from it.
+        if (lootCount) {
+            std::string table = kDefaultLootItemTable;
+            if (worldspawn)
+                if (const std::string* dv = worldspawn->value("iw8r_mode_dvars"))
+                    for (const auto& [name, value] : parseModeDvars(*dv))
+                        if (lower(name) == "loot_table_name") table = lower(value);
+            if (!opt.lootItems) {
+                warn.push_back("loot points: the loot item table catalogue (data/asset_catalog/iw8_br_loot_items.tsv) was not found, so no "
+                               "loot item is carried; a custom map does not load the Warzone zone that holds them (research 93)");
+            } else if (!opt.carryScriptables) {
+                warn.push_back("loot points: the loot items live in the Warzone zone (common_br_mp), which a custom map does not load "
+                               "(research 93); turn on Edit > Preferences > Real stock scripted objects to carry them, or the points stay empty");
+            } else if (const std::vector<std::string>* items = opt.lootItems->items(table)) {
+                size_t skipped = 0;
+                for (const std::string& item : *items) {
+                    const ScriptableDefinition* def = opt.scriptables ? opt.scriptables->find(item) : nullptr;
+                    if (def && def->brZone()) lootCarry.push_back({"common_br_mp", "scriptable", item, ""});
+                    else ++skipped;
+                }
+                warn.push_back(std::to_string(lootCarry.size()) + " loot item definition(s) of " + table +
+                               " carried from common_br_mp (a custom map does not load it, research 93)" +
+                               (skipped ? "; " + std::to_string(skipped) + " item(s) of the table are not in that zone and are left out" : std::string()) +
+                               "; not seen in game");
+            } else {
+                warn.push_back("loot points: loot_table_name '" + table + "' is not one of the stock loot item tables; no loot item is carried");
+            }
+        }
         // Authored loot clusters and zones (iw8r_loot_cluster / iw8r_loot_zone brush entities, research 89 section
         // 6d): with zones, each point takes the first box that holds it and iw8r_loot_zone only names unnamed zones.
         if (lootCount) {
@@ -2222,7 +2252,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     {
         std::vector<std::string> notes;
         size_t placed = 0;
-        const std::vector<StockEditCarry> carry =
+        std::vector<StockEditCarry> carry =
             opt.vehicles ? vehicleCarryList(map, *opt.vehicles, opt.stockModelZones, &notes, &placed) : std::vector<StockEditCarry>{};
         if (!opt.vehicles)
             for (const Entity* pe : points)
@@ -2242,6 +2272,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                 warn.push_back("vehicle spawns are used by the Warzone (br) scripts only: make the map a Warzone map (Tools > Game Modes) or "
                                "the vehicles do not appear");
         }
+        carry.insert(carry.end(), lootCarry.begin(), lootCarry.end());
         if (!carry.empty()) carryAssets = carryAssetsJson(carry);
     }
     // Dynamic props (6.15, research 41): `dynamic_prop` point entities (model, origin, angles, mass in kg, material

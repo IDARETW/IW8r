@@ -1,6 +1,9 @@
 #include "stock_loot.h"
 
+#include <algorithm>
 #include <cctype>
+#include <fstream>
+#include <sstream>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -199,6 +202,48 @@ std::vector<std::pair<std::string, std::string>> lootPointEntityKeys(const LootP
     if (block && p.zone && size_t(p.zone - 1) < block->zoneNames.size() && !block->zoneNames[size_t(p.zone - 1)].empty())
         kv.push_back({"loot_zone_name", block->zoneNames[size_t(p.zone - 1)]});
     return kv;
+}
+
+bool BrLootItemTables::parse(const std::string& text) {
+    tables_.clear();
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t end = text.find('\n', pos);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(pos, end - pos);
+        pos = end + 1;
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+        const size_t tab = line.find('\t');
+        if (tab == std::string::npos || tab == 0 || tab + 1 >= line.size()) continue;
+        std::string table = line.substr(0, tab);
+        for (char& c : table) c = char(std::tolower(static_cast<unsigned char>(c)));
+        auto& list = tables_[table];
+        const std::string item = line.substr(tab + 1);
+        if (std::find(list.begin(), list.end(), item) == list.end()) list.push_back(item);
+    }
+    return !tables_.empty();
+}
+
+bool BrLootItemTables::load(const std::string& path, std::string* err) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) {
+        if (err) *err = "cannot read " + path;
+        return false;
+    }
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    if (parse(ss.str())) return true;
+    if (err) *err = "no loot item table in " + path;
+    return false;
+}
+
+const std::vector<std::string>* BrLootItemTables::items(const std::string& table) const {
+    std::string key;
+    for (const char c : table) key += char(std::tolower(static_cast<unsigned char>(c)));
+    if (key.rfind("mp/", 0) != 0) key = "mp/" + key;
+    const auto it = tables_.find(key);
+    return it == tables_.end() ? nullptr : &it->second;
 }
 
 bool isLootBoxClass(const std::string& classname) {

@@ -1665,6 +1665,48 @@ TEST(compile_iw8_loot_points) {
         notCompiled |= w.find("iw8r_loot") != std::string::npos && w.find("not compiled") != std::string::npos;
     }
     CHECK(boxesNoted && !notCompiled);
+
+    // Research 93: a custom map never loads common_br_mp, so the loot items of the map's loot table are carried from it
+    // (with carryScriptables); an item the zone does not hold is left out with a count; the table follows the
+    // worldspawn's loot_table_name mode dvar.
+    BrLootItemTables tables;
+    CHECK(tables.parse("# comment\nmp/loot_item_defs.csv\tbrloot_ammo_762\nmp/loot_item_defs.csv\tbrloot_gone\n"
+                       "mp/loot_item_defs_s3.csv\tbrloot_ammo_919\n"));
+    CHECK(tables.size() == 2 && tables.items("MP/Loot_Item_Defs_S3.csv") && tables.items("loot_item_defs.csv") &&
+          tables.items("loot_item_defs.csv")->size() == 2 && !tables.items("mp/nothing.csv"));
+    ScriptableCatalog lootCatalog;
+    CHECK(lootCatalog.parse(
+        "name\tzones\talways_loaded\tparts\tserver_instanced_parts\tusable_parts\tmax_dynent_parts\tphysics_dynents\tinstance_dynent\tsparse_occluder\tcollision_flags\tphysics_limit\tflags\tmodel\tsource\tverified\tphysics_limit_detail\n"
+        "brloot_ammo_762\tcommon_br_mp\t0\t2\t2\t1\t4\t0\t0\t0\t0\t0\t0x0\tammo\tobserved\t1\t0\n"
+        "brloot_ammo_919\tcommon_br_mp\t0\t2\t2\t1\t4\t0\t0\t0\t0\t0\t0x0\tammo\tobserved\t1\t0\n"));
+    CompileOptions lootOpt = opt;
+    lootOpt.scriptables = &lootCatalog;
+    lootOpt.lootItems = &tables;
+    lootOpt.carryScriptables = true;
+    const auto carryOf = [&](const std::string& mapText, const std::string& name, CompileReport& r) {
+        Id n = 1;
+        ParseResult p = parseMap(mapText, n);
+        if (!p.map) return std::string();
+        const std::string o = scratch(name);
+        if (!compileIw8Extraction(*p.map, o, lootOpt, r, &err)) return std::string();
+        return readAll((fs::path(o) / "extracted" / "maps" / "mp" / (std::string(kSampleId) + ".d3dbsp.replay-collision.json")).string());
+    };
+    CompileReport rep4;
+    const std::string col4 = carryOf(text, "loot_items_default", rep4);
+    CHECK(col4.find("\"carry_assets\":[{\"zone\":\"common_br_mp\",\"type\":\"scriptable\",\"name\":\"brloot_ammo_762\"}]") != std::string::npos);
+    bool counted = false;
+    for (const std::string& w : rep4.warnings)
+        counted |= w.find("1 loot item definition(s) of mp/loot_item_defs.csv carried") != std::string::npos && w.find("1 item(s)") != std::string::npos;
+    CHECK(counted);
+    // The Trios table through the mode dvars.
+    std::string s3 = text;
+    s3.insert(s3.find("\"classname\" \"worldspawn\"") + std::string("\"classname\" \"worldspawn\"").size(),
+              eol + "\"iw8r_mode_dvars\" \"loot_table_name=mp/loot_item_defs_s3.csv\"");
+    CompileReport rep5;
+    CHECK(carryOf(s3, "loot_items_s3", rep5).find("\"name\":\"brloot_ammo_919\"") != std::string::npos);
+    // A map without loot points carries no loot item.
+    CompileReport rep6;
+    CHECK(carryOf(base, "loot_items_none", rep6).find("brloot_") == std::string::npos);
 }
 
 // 13.4 (research 89): a definition of the Warzone zone (common_br_mp) is placed by name on a map made for the br
