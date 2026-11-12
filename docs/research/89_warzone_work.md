@@ -238,6 +238,13 @@ the editor adds boxes of its own:
   three points, the new zone lists them and the cluster but not the cache point, counts +4, ACTS tests the zone as
   the stock zone); core test `stock_loot_new_boxes`; GUI section "new loot clusters and zones on a stock map"; the
   editor's edits file run through the converter (`loot_clusters_added` 1, `loot_zones_added` 1). Not seen in game.
+- Own maps (x64-zt 66abea4e): the same entities become the collision JSON `loot_boxes`; the converter gives every
+  point the first cluster and zone whose box holds it, and writes the clusters (40-byte records: zone, pointCount,
+  points, bounds) and zones (56 bytes) with their lists by the stock rules (section 3). Without boxes the single zone
+  of worldspawn `iw8r_loot_zone` stays. Proof: `tools/warzone_custom_loot_boxes_test.py out/scr-br/iw8build/mp_scrbr/extraction
+  mp_scrbr <work>` (two zones, two clusters, six points incl. a cache point and one outside: every cluster, zone and
+  list as wanted, names read back, ACTS 0 failed); `tools/warzone_custom_loot_test.py` still passes (a map without
+  loot byte-identical); core test `compile_iw8_loot_points`.
 
 ## 7. Tests
 
@@ -249,7 +256,7 @@ the editor adds boxes of its own:
 
 1. Whether `common_br_mp` loads for an own map in a br match (buy stations, loot items and two ATV textures depend on
    it), and whether the vehicles drive (nothing of this is seen in game).
-2. Zones and clusters on a custom map (one zone box over the map would match the tutorial maps).
+2. (Zones and clusters on a custom map: done offline, section 6d.)
 3. (New clusters and zones on a stock map: done offline, section 6d.) Removing a placed object, and moving or adding one that has a dynamic entity (doors, extraction sites).
 4. Verdansk in the reference view: its world is 749 streamed zones; the view loads one zone.
 5. New game type scripts (roadmap 13.6). Read from the recompiled game exe with its linker map (`tools/dw_disasm.py`,

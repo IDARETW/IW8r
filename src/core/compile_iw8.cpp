@@ -1591,6 +1591,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             // Brush entities the converter accepts become brush model *N (doc 15 §3.5): triggers get collision
             // hulls with trigger contents and no render surfaces; script_brushmodel gets both.
             const bool trigger = startsWith(lcls, "trigger_") && acceptedPointClass(lcls);
+            if (isLootBoxClass(lcls)) continue;  // loot clusters and zones: boxes of the collision json (below)
             if (!trigger && lcls != "script_brushmodel") {
                 ++skippedBrushEntities[cls];
                 continue;
@@ -2155,7 +2156,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     // Loot points (13.5, research 89): `iw8r_loot_point` point entities become the collision json's loot_points, which
     // the converter writes as MapEnts.spawnGroupLoot (no clusters and no zones, as the small stock maps with loot).
     // loot_cluster "cache" makes a loot cache point; every other point is a free point.
-    std::string lootJson, lootZone;
+    std::string lootJson, lootZone, lootBoxes;
     size_t lootCount = 0;
     {
         size_t tooMany = 0;
@@ -2190,6 +2191,18 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     else
                         warn.push_back("worldspawn iw8r_loot_zone '" + *z + "' is not a lower-case name; map_quarry is used");
                 }
+        }
+        // Authored loot clusters and zones (iw8r_loot_cluster / iw8r_loot_zone brush entities, research 89 section
+        // 6d): with zones, each point takes the first box that holds it and iw8r_loot_zone only names unnamed zones.
+        if (lootCount) {
+            std::vector<std::string> boxNotes;
+            const LootBoxEdits boxes = documentLootBoxes(map, lootZone, &boxNotes);
+            for (const std::string& n : boxNotes) warn.push_back(n);
+            if (!boxes.empty()) {
+                lootBoxes = lootBoxesJson(boxes);
+                warn.push_back(std::to_string(boxes.clusters.size()) + " loot cluster(s) and " + std::to_string(boxes.zones.size()) +
+                               " loot zone(s) written (each point takes the first box that holds it; not seen in game)");
+            }
         }
     }
     // Vehicles (13.4, research 89): vehicle spawn structs make the converter carry the stock vehicle definition and
@@ -2823,6 +2836,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
            dynModelsJson + "],\"dynamic_brushes\":[]" +
            (scriptableCount ? ",\"scriptable_instances\":[" + scriptablesJson + "]" : std::string()) +
            (lootCount ? ",\"loot_points\":[" + lootJson + "],\"loot_zone\":\"" + lootZone + "\"" : std::string()) +
+           (lootBoxes.empty() ? std::string() : ",\"loot_boxes\":" + lootBoxes) +
            (collisionTiles ? ",\"collision_tiles\":true" : "") +
            (carryAssets.empty() ? std::string() : ",\"carry_assets\":" + carryAssets) + "}";
 

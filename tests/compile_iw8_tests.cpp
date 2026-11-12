@@ -1634,6 +1634,37 @@ TEST(compile_iw8_loot_points) {
     CHECK(compileIw8Extraction(*pr2.map, out2, opt, rep2, &err));
     const std::string col2 = readAll((fs::path(out2) / "extracted" / "maps" / "mp" / (std::string(kSampleId) + ".d3dbsp.replay-collision.json")).string());
     CHECK(!col2.empty() && col2.find("loot_points") == std::string::npos);
+
+    // Authored loot boxes (research 89 section 6d): a zone and a cluster brush entity become loot_boxes; they are not
+    // built as brush models and draw no "not compiled" warning. An unnamed zone takes the worldspawn iw8r_loot_zone.
+    AABB zb, cb;
+    zb.add(Vec3{-256, -256, 0});
+    zb.add(Vec3{256, 256, 128});
+    cb.add(Vec3{0, 0, 0});
+    cb.add(Vec3{128, 64, 32});
+    const auto zp = makeBrushPrimitive(makeBox(zb, " caulk 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0"), eol);
+    const auto cp = makeBrushPrimitive(makeBox(cb, " caulk 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0"), eol);
+    CHECK(zp.has_value() && cp.has_value());
+    if (!zp || !cp) return;
+    std::string boxed = text;
+    boxed += "{" + eol + "\"classname\" \"iw8r_loot_zone\"" + eol + zp->text() + "}" + eol;
+    boxed += "{" + eol + "\"classname\" \"iw8r_loot_cluster\"" + eol + cp->text() + "}" + eol;
+    Id next3 = 1;
+    ParseResult pr3 = parseMap(boxed, next3);
+    CHECK(pr3.map.has_value());
+    if (!pr3.map) return;
+    const std::string out3 = scratch("loot_points_boxes");
+    CompileReport rep3;
+    CHECK(compileIw8Extraction(*pr3.map, out3, opt, rep3, &err));
+    const std::string col3 = readAll((fs::path(out3) / "extracted" / "maps" / "mp" / (std::string(kSampleId) + ".d3dbsp.replay-collision.json")).string());
+    CHECK(col3.find("\"loot_zone\":\"map_quarry\",\"loot_boxes\":{\"clusters\":[{\"mid\":[64,32,16],\"half\":[64,32,16]}],"
+                    "\"zones\":[{\"name\":\"map_quarry\",\"mid\":[0,0,64],\"half\":[256,256,64]}]}") != std::string::npos);
+    bool boxesNoted = false, notCompiled = false;
+    for (const std::string& w : rep3.warnings) {
+        boxesNoted |= w.find("1 loot cluster(s) and 1 loot zone(s) written") != std::string::npos;
+        notCompiled |= w.find("iw8r_loot") != std::string::npos && w.find("not compiled") != std::string::npos;
+    }
+    CHECK(boxesNoted && !notCompiled);
 }
 
 // 13.4 (research 89): a definition of the Warzone zone (common_br_mp) is placed by name on a map made for the br

@@ -640,6 +640,8 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 - Loot on your own map: `iw8r_loot_point` entities are written into the map's loot table. A free point is a point where loot can lie. With `loot_cluster` set to `cache` it is a supply box point. (not yet seen in game)
 - The loot points of your own map form one loot zone, which picks the loot tables. Worldspawn `iw8r_loot_zone` names
   it (default `map_quarry`, a zone of the stock loot tables). (tested offline; not yet seen in game)
+- Several loot areas on your own map: `iw8r_loot_cluster` and `iw8r_loot_zone` brush entities (as on stock maps)
+  give each point the first cluster and zone whose box holds it. (tested offline; not yet seen in game)
 - Worldspawn `iw8r_no_loot` set to 1 removes all loot from the map.
 - Loot on a stock map: File > Edit Loot Points turns the map's loot points into green `iw8r_loot_point` entities. mp_br_quarry has 2,924 points and mp_donetsk (Verdansk) has 23,446. Move, delete or copy them. The Rebuild Stock Zone command writes them back. A point that is moved out of its area finds its new cluster and zone by position. (not yet seen in game)
 - New loot areas on a stock map: an `iw8r_loot_cluster` or `iw8r_loot_zone` brush entity (the box of its brushes;
