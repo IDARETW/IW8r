@@ -43,7 +43,6 @@ __pycache__/
 /*.log
 
 # screenshots folder still being written by another worker (to be committed later)
-/docs/features/
 
 # secrets and local state
 *.pem
