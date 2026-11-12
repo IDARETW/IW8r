@@ -2427,6 +2427,17 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             after.save(QString::fromLocal8Bit(shot));
             before.save(QString::fromLocal8Bit(shot).replace(".png", "_editor.png"));
         }
+        // The stock world shader's environment BRDF table comes from the install once (ACTS, game_look_assets.h).
+        {
+            QElapsedTimer bt;
+            bt.start();
+            while (!cv->hasEnvBrdfLut() && bt.elapsed() < 20000) {
+                cv->renderImage(160, 90, true, 0, 0);
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+                QThread::msleep(20);
+            }
+            r.check(cv->hasEnvBrdfLut(), QString("the game's environment BRDF table is read from the install (%1 ms)").arg(bt.elapsed()));
+        }
         // A stock map's look: its sun and its vision's auto exposure, metered from the frames (core game_look).
         {
             const double manual = cv->gameExposure();

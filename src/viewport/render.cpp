@@ -199,6 +199,15 @@ Texture2D gameLmA : register(t6);
 Texture2D gameLmB : register(t7);
 Texture2D gameLmD : register(t8);
 Texture3D gameLut : register(t9);
+// The stock world shader's ggx_env_brdf_lut (A, B by N.V across and gloss down; research 95), when the editor has it.
+Texture2D envBrdf : register(t10);
+float2 gameEnvBrdf(float nv, float g) {
+    if (game0.w > 0.5) return envBrdf.SampleLevel(lutSamp, float2(nv, g) * (63.0 / 64.0) + 0.5 / 64.0, 0).rg;
+    // Without the table: Karis's fit of the split-sum GGX table (roughness 1 - g).
+    float4 r = float4(-1, -0.0275, -0.572, 0.022) * (1.0 - g) + float4(1, 0.0425, 1.04, -0.04);
+    float a004 = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
+    return float2(-1.04, 1.04) * a004 + r.zw;
+}
 Texture2D tex0 : register(t0);
 Texture2D nrm0 : register(t1);
 SamplerState samp0 : register(s0);
@@ -257,6 +266,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             N = normalize(T * slope.x + B * slope.y + Nf);
         }
         float3 indirect = gameSky.rgb * (0.6 + 0.4 * saturate(N.z));
+        float3 stockDw = Nf, stockB = 0;  // the stock lightmap's directional part, for E(R) below
         float visibility = 1.0;
         if ((stockRef ? batchFlags2.w > 0.5 : game0.z > 0.5) && i.lm.x >= 0) {
             float4 a = gameLmA.SampleLevel(lutSamp, i.lm, 0);
@@ -272,6 +282,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 float s = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-20));
                 float3 Dw = normalize(T * s * d.x + B * s * d.y + Nf * d.z + 1e-6);
                 indirect = a.rgb + b * saturate(dot(N, Dw));
+                stockDw = Dw, stockB = b;
             } else {
                 indirect = a.rgb * saturate(dot(N, Nf)) + b * saturate(dot(normalize(d + 1e-6), N));
                 visibility = a.a;
@@ -279,8 +290,44 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         }
         // The sun: the baked sun depth where it covers the point (here the sun shadow map), else the lightmap's mask.
         if (litParams.y > 0.5) visibility = sunShadow(i.w);
-        float3 light = indirect + visibility * saturate(dot(N, gameSun.xyz)) * gameSunCol.rgb;
-        float3 c = albedo * light;
+        float3 c;
+        if (stockRef) {
+            // The stock world PS (research 95 sections 2 "Ambient combine" and "Sun"): a dielectric (F0 .04) of the
+            // material's default gloss (the reference has no gloss maps here), retro-reflective diffuse kd, the
+            // environment term from the lightmap along the reflection (probes later) and the GGX sun.
+            float3 Vs = normalize(eyeStart.xyz - i.w);
+            const float3 f0 = 0.04;
+            const float gp = 1.0 - sqrt(1.0 - 0.3);
+            float a2 = 2.0 / (2.0 + exp2(20.0 * gp));
+            float nv = saturate(dot(N, Vs));
+            float2 ab = gameEnvBrdf(nv, gp);
+            float3 Fenv = f0 * ab.x + ab.y;
+            float3 R = reflect(-Vs, N);
+            float3 Lr = (indirect - stockB * saturate(dot(N, stockDw))) + stockB * saturate(dot(R, stockDw));
+            float tq = ((-0.442435 * gp + 1.7905) * gp - 2.24983) * gp + 0.948867;
+            float cq = sqrt(0.5 * nv + 0.5);
+            float fq = 1.05 * (1.0 - pow(1.0 - nv, 5.0));
+            float kd = lerp(fq, cq * (cq + min(4.0 * tq * tq, 1.0)) * max(1.25 - 1.6 * tq, 0.55 - 0.2 * tq), tq) + 0.38 * tq * tq;
+            float fmax = max(Fenv.r, max(Fenv.g, Fenv.b));
+            c = albedo * indirect * kd * (1.0 - fmax) + Fenv * Lr;
+            float3 Ls = gameSun.xyz;
+            float nl = dot(N, Ls);
+            if (nl > 0) {
+                float3 H = normalize(Ls + Vs);
+                float nh = saturate(dot(N, H));
+                float dd = nh * nh * (a2 - 1.0) + 1.0;
+                float Dg = a2 / max(dd * dd, 1e-8);
+                float Vg = 1.0 / ((abs(nl) + sqrt(a2 + (1.0 - a2) * nl * nl)) * (nv + sqrt(a2 + (1.0 - a2) * nv * nv)));
+                float3 F = f0 + (1.0 - f0) * pow(1.0 - abs(dot(Vs, H)), 5.0);
+                float2 abl = gameEnvBrdf(saturate(nl), gp);
+                float3 fl = f0 * abl.x + abl.y;
+                c += gameSunCol.rgb * visibility * saturate(nl) *
+                     (albedo * (1.0 - max(fl.r, max(fl.g, fl.b))) + F * Dg * Vg * 1.0390625);
+            }
+        } else {
+            float3 light = indirect + visibility * saturate(dot(N, gameSun.xyz)) * gameSunCol.rgb;
+            c = albedo * light;
+        }
         // Local lights (LocalLighting): colour x game intensity / d^2 x w^2 (3 - 2w), w = (1 - d / r) x spot cone;
         // specular as the iw3 style's (F0 .04, gloss .3).
         float3 V = normalize(eyeStart.xyz - i.w);
@@ -441,6 +488,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(gameLutSrv_);
     safeRelease(gameLutTex_);
     for (int k = 0; k < 3; ++k) safeRelease(stockLmSrv_[k]), safeRelease(stockLmTex_[k]);
+    safeRelease(envBrdfSrv_), safeRelease(envBrdfTex_);
     safeRelease(meterSrv_), safeRelease(meterRtv_), safeRelease(meterTex_);
     for (auto*& s : meterStage_) safeRelease(s);
     safeRelease(invGreySrv_), safeRelease(invGreyTex_);
@@ -769,17 +817,32 @@ void SceneRenderer::setStockLightmap(int width, int height, const float* a, cons
     }
 }
 
+void SceneRenderer::setEnvBrdfLut(int width, int height, const uint8_t* rg) {
+    safeRelease(envBrdfSrv_), safeRelease(envBrdfTex_);
+    if (!dev_ || width < 2 || height < 2 || !rg) return;
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = UINT(width), td.Height = UINT(height);
+    td.MipLevels = td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_R8G8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_IMMUTABLE;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA init{rg, UINT(width) * 2, 0};
+    if (FAILED(dev_->CreateTexture2D(&td, &init, &envBrdfTex_)) || FAILED(dev_->CreateShaderResourceView(envBrdfTex_, nullptr, &envBrdfSrv_)))
+        safeRelease(envBrdfTex_);
+}
+
 void SceneRenderer::writeGameCb() {
     if (!cbGame_) return;
     const bool on = game_.on && gameLutSrv_ != nullptr;
-    const float g[16] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, 0,
+    const float g[16] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
                          game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], 0,
                          game_.sunColor[0], game_.sunColor[1], game_.sunColor[2], 0,
                          game_.sky[0], game_.sky[1], game_.sky[2], 0};
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
-    ID3D11ShaderResourceView* gl = gameLutSrv_;
-    ctx_->PSSetShaderResources(9, 1, &gl);
+    ID3D11ShaderResourceView* gl[2] = {gameLutSrv_, envBrdfSrv_};
+    ctx_->PSSetShaderResources(9, 2, gl);
     if (lutSampler_) ctx_->PSSetSamplers(2, 1, &lutSampler_);
 }
 

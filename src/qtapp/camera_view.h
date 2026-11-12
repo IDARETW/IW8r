@@ -131,6 +131,8 @@ public:
     MoveParams& moveParams() { return params_; }
     const CollisionWorld& collisionWorld() const { return world_; }
 
+    // Tool paths for game data Game Lighting reads from the install (game_look_assets.h); set by the main window.
+    void setToolPathSource(std::function<QString(const QString&)> fn) { toolPathFn_ = std::move(fn); }
 public slots:
     void requestRender() { update(); }
     // Perf tests: how often the whole camera geometry was made again, how often it was brought up to date at all,
@@ -160,6 +162,7 @@ public slots:
         update();
     }
     bool hasStockLightmap() const { return renderer_.hasStockLightmap(); }
+    bool hasEnvBrdfLut() const { return renderer_.hasEnvBrdfLut(); }
     double gameExposure() const { return gameExposure_; }
     // Stock map reference geometry (View > Stock Map Reference), uploaded on the next frame. Empty clears it.
     void setReference(std::vector<app::GpuVertex> tris) {
@@ -354,6 +357,10 @@ private:
     std::shared_ptr<const app::GameLightmap> gameLm_;
     bool gameBaking_ = false, gameLutReady_ = false, gameWasOn_ = false, gameMetering_ = false;
     std::string gameStockMap_;
+    std::function<QString(const QString&)> toolPathFn_;
+    bool envBrdfAsked_ = false;
+    std::shared_ptr<std::vector<uint8_t>> pendingEnvBrdf_;
+    int pendingEnvBrdfW_ = 0, pendingEnvBrdfH_ = 0;
     std::shared_ptr<const app::StockLightmapLayers> pendingStockLm_;
     bool stockLmDirty_ = false;
     double gameExposure_ = 0, gameExposureTarget_ = 0;

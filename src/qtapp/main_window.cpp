@@ -209,6 +209,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     customMaterials_ = std::make_unique<MaterialLibrary>();
     matCache_ = new MaterialCache([this](const QString& k) { return toolPath(k); }, this);
     connect(matCache_, &MaterialCache::materialReady, this, [this](const QString&) { camera_->materialImagesChanged(); });
+    camera_->setToolPathSource([this](const QString& k) { return toolPath(k); });
     connect(matCache_, &MaterialCache::progress, this, [this](const QString& m) { ctx_.setStatus(m); });
     camera_->setCustomTintSource([this](const std::string& m) -> std::optional<std::array<double, 3>> {
         const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr;

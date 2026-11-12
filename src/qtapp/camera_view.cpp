@@ -43,6 +43,7 @@
 #include "custom_materials.h"
 #include "texture_decode.h"
 #include "game_look.h"
+#include "game_look_assets.h"
 #include <QPointer>
 #include <thread>
 
@@ -1596,6 +1597,29 @@ void CameraView::prepareGameLook() {
             const std::vector<uint8_t> lut = buildGameTonemapLut(64);
             renderer_.setGameTonemapLut(64, lut.data());
             gameLutReady_ = true;
+        }
+        // The stock world shader's environment BRDF table, read from the install once (ACTS, a few seconds, cached).
+        if (!envBrdfAsked_ && toolPathFn_) {
+            envBrdfAsked_ = true;
+            QPointer<CameraView> self(this);
+            auto tools = toolPathFn_;
+            std::thread([self, tools] {
+                EnvBrdfLut lut = loadEnvBrdfLut(tools);
+                QMetaObject::invokeMethod(qApp, [self, lut] {
+                    if (!self) return;
+                    if (lut.width > 0) {
+                        self->pendingEnvBrdf_ = std::make_shared<std::vector<uint8_t>>(lut.rg);
+                        self->pendingEnvBrdfW_ = lut.width, self->pendingEnvBrdfH_ = lut.height;
+                        self->update();
+                    } else {
+                        emit self->ctx_->statusMessage("Game Lighting: " + lut.error + " (an approximation is used)");
+                    }
+                }, Qt::QueuedConnection);
+            }).detach();
+        }
+        if (pendingEnvBrdf_) {
+            renderer_.setEnvBrdfLut(pendingEnvBrdfW_, pendingEnvBrdfH_, pendingEnvBrdf_->data());
+            pendingEnvBrdf_.reset();
         }
         const Vec3& t = ctx_->scene.sunToward;
         // A stock map: its own sun (colour x intensity) and its vision's auto exposure; an own map: suncolor and the

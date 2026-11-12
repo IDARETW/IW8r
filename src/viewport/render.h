@@ -260,6 +260,10 @@ public:
     // direction D, 0). The reference vertices carry its UVs. null = none.
     void setStockLightmap(int width, int height, const float* a, const float* b, const float* d);
     bool hasStockLightmap() const { return stockLmSrv_[0] != nullptr; }
+    // The stock world shader's environment BRDF table (64 x 64, A and B as R8G8; game_look_assets.h fetches it from the
+    // owner's install). null = the analytic fit.
+    void setEnvBrdfLut(int width, int height, const uint8_t* rg);
+    bool hasEnvBrdfLut() const { return envBrdfSrv_ != nullptr; }
     // The game's tone map LUT (core game_look buildGameTonemapLut): size^3 RGBA8, red fastest.
     void setGameTonemapLut(int size, const uint8_t* rgba);
     // Auto exposure metering (stock maps' visions meter the frame, research 95): after each game-look frame a small
@@ -421,6 +425,8 @@ private:
     ID3D11ShaderResourceView* gameLmSrv_[3] = {nullptr, nullptr, nullptr};
     ID3D11Texture2D* stockLmTex_[3] = {nullptr, nullptr, nullptr};
     ID3D11ShaderResourceView* stockLmSrv_[3] = {nullptr, nullptr, nullptr};
+    ID3D11Texture2D* envBrdfTex_ = nullptr;
+    ID3D11ShaderResourceView* envBrdfSrv_ = nullptr;
     void writeGameCb();
     ID3D11Texture3D* gameLutTex_ = nullptr;
     ID3D11ShaderResourceView* gameLutSrv_ = nullptr;
