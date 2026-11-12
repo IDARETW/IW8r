@@ -307,6 +307,32 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
         for (int i = 0; i < 12 && ctx.doc.modified(); ++i) ctx.doc.undo();
         check(ctx.doc.text() == stockText, "Undo takes the loot boxes out again");
     }
+
+    // Stock world removal (11.5, research 96): an iw8r_remove_world box goes to the edits file as
+    // remove_world_surfaces, never into the entity text and never built as a model.
+    section("stock world removal boxes (11.5)");
+    {
+        AABB rbox;
+        rbox.add(Vec3{-32, -32, 0});
+        rbox.add(Vec3{32, 32, 64});
+        const auto rprim = makeBrushPrimitive(makeBox(rbox, " caulk 128 128 0 0 0 0"), "\n");
+        check(rprim.has_value(), "a box brush is made");
+        if (!rprim) return;
+        ctx.doc.addEntity({{"classname", "iw8r_remove_world"}}, {*rprim}, "Remove world");
+        QString program, err;
+        QStringList args, notes;
+        MainWindow::StockOverlayPlan plan;
+        const bool prepared = w.prepareStockEdit(work + "/remove_world", &program, &args, &err, &notes, &plan);
+        QFile jf(work + "/remove_world/edits.json"), ef(work + "/remove_world/edit.ents");
+        const QByteArray json = jf.open(QIODevice::ReadOnly) ? jf.readAll() : QByteArray();
+        const QByteArray ents = ef.open(QIODevice::ReadOnly) ? ef.readAll() : QByteArray();
+        check(prepared && json.contains("\"remove_world_surfaces\"") && json.contains("[-32,-32,0]") && json.contains("[32,32,64]"),
+              "the box reaches the edits file as remove_world_surfaces: " + err + " " + QString::fromUtf8(json.mid(json.indexOf("remove_world"), 200)));
+        check(!ents.contains("iw8r_remove_world") && plan.models.isEmpty(), "it is not in the entity text and not built as a model");
+        check(notes.join("; ").contains("1 world removal box(es)"), "the rebuild notes count it");
+        for (int i = 0; i < 12 && ctx.doc.modified(); ++i) ctx.doc.undo();
+        check(ctx.doc.text() == stockText, "Undo takes the removal box out again");
+    }
 }
 
 }  // namespace iw8r::qt
