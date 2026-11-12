@@ -439,7 +439,7 @@ int MainWindow::editPlacedObjects() {
         return 0;
     }
     ctx_.documentEdited(QString("%1 of %2 placed objects are now entities (class scriptable): move them; objects without a dynamic entity "
-                                "(buy stations) can also be copied or deleted. Rebuild Stock Zone writes it. Doors cannot be edited yet")
+                                "(buy stations) can also be copied or deleted; a door moves only a little (inside its area). Rebuild Stock Zone writes it")
                             .arg(n).arg(stockPlaced_.size()));
     return int(n);
 }

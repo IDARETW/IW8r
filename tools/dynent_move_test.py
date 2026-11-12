@@ -136,9 +136,25 @@ def main():
     test = [l for l in t.acts(['--test', '-o', os.path.join(work, 'm_test'), out_file]) if l.startswith('Replay:')]
     stock_test = [l for l in t.acts(['--test', '-o', os.path.join(work, 'stock_test'), stock_file]) if l.startswith('Replay:')]
     check(results(test) is not None and results(test) == results(stock_test), 'ACTS tests the edited zone like the stock zone: %s' % test)
-    code3, log3, _ = t.editzone(exe, zone, {'scriptable_instances': {'move': [{'index': doors[0], 'origin': list(inst[doors[0]]['origin'])}]}, 'patch': False},
-                                os.path.join(work, 'd'))
-    check(code3 != 0 and 'sparse occluder' in log3, 'moving door %d is refused with the reason' % doors[0])
+    # Doors (sparse occluders): a small move inside the area of the stock doors that share its index keeps the area.
+    door = doors[0]
+    d_entry = per[door][0]
+    od = inst[door]['origin']
+    door_to = [od[0] + 8.0, od[1], od[2]]
+    code3, log3, rep3 = t.editzone(exe, zone, {'scriptable_instances': {'move': [{'index': door, 'origin': door_to, 'angles': [0, 90, 0]}]}, 'patch': False},
+                                   os.path.join(work, 'd'))
+    check(code3 == 0, 'a door moved 8 units is accepted (%s)' % rep3.get('scriptable_instances_moved_with_dynamic_entity'))
+    if code3 == 0:
+        inst3, dyn3, _ = load(os.path.join(work, 'd', zone + '.ff'), work, 'd')
+        e3 = dyn3['dynEntDefList'][0]['values'][d_entry]
+        check(all(abs(a - b) < 1e-3 for a, b in zip(e3['initialPose']['origin']['v'], door_to)) and same_rotation(e3['initialPose']['quat']['v'], quat(0, 90, 0)),
+              'its dynamic entity follows (origin and turn)')
+        check(e3['spatialPartitionIndex'] == ents[d_entry]['spatialPartitionIndex'], 'it keeps its door area %d' % e3['spatialPartitionIndex'])
+        good3, total3, _ = chains_ok(dyn3)
+        check(good3 == total3, 'the ordinary chains are untouched (%d of %d)' % (good3, total3))
+    far_door = [od[0] + 100000.0, od[1], od[2]]
+    code4, log4, _ = t.editzone(exe, zone, {'scriptable_instances': {'move': [{'index': door, 'origin': far_door}]}, 'patch': False}, os.path.join(work, 'd2'))
+    check(code4 != 0 and 'leave its area' in log4, 'a door moved out of its area is refused with the reason')
     for f in glob.glob(os.path.join(work, '*', zone + '.ff')):
         os.remove(f)
     print('RESULT: %s (%d failed)' % ('PASS' if not failures else 'FAIL', len(failures)))

@@ -97,7 +97,7 @@ TEST(stock_placed_edits) {
     }
     // The two buy stations as entities, unchanged: nothing to do.
     {
-        ParseResult pr = parse(mapWith({placedObjectEntityKeys(stock[0]), placedObjectEntityKeys(stock[2])}));
+        ParseResult pr = parse(mapWith({placedObjectEntityKeys(stock[0]), placedObjectEntityKeys(stock[1]), placedObjectEntityKeys(stock[2])}));
         CHECK(pr.map.has_value());
         const PlacedObjectEdits e = placedObjectEdits(*pr.map, stock, catalog);
         CHECK(e.json.empty() && e.moved == 0 && e.added == 0 && e.notes.empty() && hasPlacedObjects(*pr.map));
@@ -148,13 +148,13 @@ TEST(stock_placed_edits) {
         const std::string empty;
         CHECK(stockEditJson("e.ents", {}, {}, nullptr, &empty) == "{\"entities\":\"e.ents\"}");
     }
-    // A stock door moved in the document stays (its dynamic entity holds the placement too).
+    // A stock door moved in the document is written as a move (the converter moves its dynamic entity, inside its area).
     {
         auto door = placedObjectEntityKeys(stock[1]);
         door[2].second = "64 0 0";
         ParseResult pr = parse(mapWith({door, placedObjectEntityKeys(stock[0]), placedObjectEntityKeys(stock[2])}));
         CHECK(pr.map.has_value());
         const PlacedObjectEdits e = placedObjectEdits(*pr.map, stock, catalog);
-        CHECK(e.json.empty() && e.notes.size() == 1 && e.notes[0].find("it stays where it was") != std::string::npos);
+        CHECK(e.moved == 1 && e.json.find("\"move\":[{\"index\":1,\"origin\":[64,0,0]") != std::string::npos);
     }
 }

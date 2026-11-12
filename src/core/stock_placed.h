@@ -40,9 +40,9 @@ bool readStockPlacedObjects(const std::string& assetJson, std::vector<StockPlace
 // True for a definition whose instances can be moved and copied on a stock map: every number is known and an
 // instance gets no dynamic entity.
 bool editablePlacedDefinition(const ScriptableDefinition& def);
-// True for a definition whose instances can be moved (not copied or removed): every number is known and it is not a
-// sparse occluder (a door). An ordinary dynamic entity of the instance follows the move (research 89 section 8; the
-// converter refuses an instance whose dynamic entity is placed apart from it).
+// True for a definition whose instances can be moved (not copied or removed): every number is known. The instance's
+// dynamic entity follows the move (research 89 section 8); a door moves only inside the area of the stock doors that
+// share its spatial index, and the converter refuses a move out of it or an instance whose entity is placed apart.
 bool movablePlacedDefinition(const ScriptableDefinition& def);
 
 // Key/values of the document entity for one placed object: classname scriptable, scriptable <definition>, origin,

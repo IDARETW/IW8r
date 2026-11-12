@@ -100,7 +100,7 @@ bool readStockPlacedObjects(const std::string& assetJson, std::vector<StockPlace
 }
 
 bool editablePlacedDefinition(const ScriptableDefinition& def) { return def.verified && !def.instanceDynent && def.physicsDynents == 0; }
-bool movablePlacedDefinition(const ScriptableDefinition& def) { return def.verified && !def.sparseOccluder; }
+bool movablePlacedDefinition(const ScriptableDefinition& def) { return def.verified; }
 
 std::vector<std::pair<std::string, std::string>> placedObjectEntityKeys(const StockPlacedObject& o) {
     return {{"classname", kPlacedObjectClass},
@@ -155,7 +155,7 @@ PlacedObjectEdits placedObjectEdits(const MapFile& map, const std::vector<StockP
             seen.insert(own->index);
             if (near(*origin, own->origin) && near(angles, own->angles)) continue;  // unchanged
             if (!def || !(editablePlacedDefinition(*def) || movablePlacedDefinition(*def))) {
-                ++leftOut["'" + *dv + "' was moved, but it is a door or another sparse occluder (or not in the catalogue): it stays where it was"];
+                ++leftOut["'" + *dv + "' was moved, but it is not in the catalogue: it stays where it was"];
                 continue;
             }
             moves += std::string(out.moved ? "," : "") + "{\"index\":" + std::to_string(own->index) + ",\"origin\":" + vecJson(*origin) +
