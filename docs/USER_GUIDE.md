@@ -565,6 +565,14 @@ Turn on **View > Behaviour Preview**. The camera then moves the models that the 
 `iw8r_spin` or `iw8r_bob`, and brush models with `iw8r_lift`, `iw8r_bob`, `iw8r_door` or a yaw `iw8r_spin`. Doors open,
 hold and close in a loop. Your own map script is not previewed. Use the preview to check the motion before a build.
 
+### Traversals for bots
+
+Bots find their way on the navigation mesh the build makes from the floors. For a drop, a climb, a gap or a ladder
+they need a traversal: Primitives > Traversal For Bots asks for the animation (one of the nine the stock maps use) and
+the facing, and places a `node_negotiation_begin` with its `node_negotiation_end` at the 2D view centre. Move the begin
+node to the edge where the bot starts and the end node to where it lands. Check Map warns about a begin without an
+end or without an animation.
+
 ### Triggers for the map script
 
 The map script tests players against the trigger volumes itself. A script gets a trigger with

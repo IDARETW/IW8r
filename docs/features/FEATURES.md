@@ -334,6 +334,7 @@ Shipped bundles:
 - Tools > Generate Spawns builds a spawn set over the walkable floors. Free-for-all, team and domination spawns are placed by farthest-point spacing. Allies and axis starts go on opposite sides. The command `iw8r generate-spawns` does the same.
 - Stock map spawns can be made into entities and moved: File > Edit Compiled Spawns. See section 11. (not yet seen in game)
 
+- Traversals for bots: Primitives > Traversal For Bots places a begin / end node pair with one of the nine animations the stock maps use (jump down 40 / 80 / 136 / 160, climb up 40 / 80, jump across 100, ladder up, window ledge); move the nodes to the edge and the landing. The build writes it into the navigation mesh; Check Map flags a begin node without an animation. (tested offline; bots not seen in game)
 ### Triggers
 
 - Primitives > Triggers: multiple, hurt (damage 25), use, use-touch, and radius (a point entity with a radius and height). The trigger is made on the selection bounds or on a 128 box. One undo step. (owner confirmed: trigger placement)

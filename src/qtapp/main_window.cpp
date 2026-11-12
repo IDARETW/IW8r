@@ -122,6 +122,7 @@
 #include "texture_decode.h"
 #include "model_cache.h"
 #include "tool_commands.h"
+#include "traversal.h"
 #include <QDateTime>
 #include "atmosphere_dialog.h"
 #include "sun_sky_dialog.h"
@@ -2738,6 +2739,36 @@ void MainWindow::buildMenus() {
             if (!changed) return ctx_.setStatus("Select misc_model entities to turn them into physics props");
             ctx_.scene.invalidate();
             ctx_.documentEdited(QString("%1 physics prop(s): set mass (kg) and material (wood, metal, plastic, glass, paper, rubber, brick)").arg(changed));
+        });
+        addCommand(prims, "MakeTraversal", "Traversal For Bots (jump / climb / ladder)...", QKeySequence(), [this] {
+            // 6.23: a node_negotiation_begin / _end pair with one of the nine stock animations, at the 2D view centre.
+            QStringList items;
+            for (const TraversalAnim& a : stockTraversalAnims()) items << QString("%1  (%2)").arg(a.title, a.name);
+            bool ok = false;
+            const QString picked = QInputDialog::getItem(this, "Traversal For Bots", "Animation the bot plays:", items, 0, false, &ok);
+            if (!ok) return;
+            const TraversalAnim* anim = nullptr;
+            for (const TraversalAnim& a : stockTraversalAnims())
+                if (picked.contains(QString("(%1)").arg(a.name))) anim = &a;
+            if (!anim) return;
+            const double yaw = QInputDialog::getDouble(this, "Traversal For Bots", "Facing (yaw, degrees):", 0, -360, 360, 0, &ok);
+            if (!ok) return;
+            std::set<std::string> names;
+            for (const Entity& e : ctx_.doc.map().entities)
+                if (const std::string* n = e.value("targetname")) names.insert(*n);
+            std::string name;
+            for (int i = 1; name.empty() || names.count(name) || names.count(name + "_end"); ++i) name = "traverse_" + std::to_string(i);
+            const auto [beginKeys, endKeys] = traversalPairKeys(*anim, placementPoint(), yaw, name);
+            ctx_.doc.beginGroup("Traversal For Bots");
+            const Id b = ctx_.doc.addEntity(beginKeys, {}, "Traversal begin");
+            const Id e = ctx_.doc.addEntity(endKeys, {}, "Traversal end");
+            ctx_.doc.endGroup();
+            ctx_.doc.deselectAll();
+            ctx_.doc.select({b, kNoId}, false);
+            ctx_.doc.select({e, kNoId}, true);
+            ctx_.scene.invalidate();
+            ctx_.documentEdited(QString("Traversal %1 (%2): move the begin node to the edge and the end node to where the bot lands; "
+                                        "the build writes it into the navigation mesh").arg(QString::fromStdString(name), anim->name));
         });
         addCommand(prims, "AddVolumetricBox", "Volumetric Box (iw8r_volume)", QKeySequence(), [this] {
             const Vec3 at = placementPoint();

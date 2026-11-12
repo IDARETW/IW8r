@@ -71,6 +71,8 @@
 #include "devmap_launch.h"
 #include "tool_commands.h"
 #include "vertex_paint.h"
+#include "traversal.h"
+#include "link_graph.h"
 #include "web_server.h"
 #include <QMenu>
 #include <QToolBar>
@@ -3472,6 +3474,26 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             r.check(!w.jumpToScriptLine("warning: nothing about scripts here"), "other lines are left to entity selection");
         }
         while (ctx.doc.text() != before && ctx.doc.undo()) {}
+        ctx.documentEdited();
+    }
+
+    r.section("traversals for bots (6.23)");
+    {
+        const size_t pos = ctx.doc.undoPosition();
+        const TraversalAnim* anim = findTraversalAnim("jump_up_40");
+        if (anim) {
+            const auto [bk, ek] = traversalPairKeys(*anim, Vec3(0, 0, 0), 180, "traverse_gui");
+            ctx.doc.beginGroup("Traversal For Bots");
+            ctx.doc.addEntity(bk, {}, "Traversal begin");
+            ctx.doc.addEntity(ek, {}, "Traversal end");
+            ctx.doc.endGroup();
+        }
+        bool flagged = false;
+        for (const auto& i : checkLinks(ctx.doc.map(), buildLinkGraph(ctx.doc.map())))
+            if (const Entity* e = ctx.doc.findEntity(i.entity); e && e->classname().rfind("node_negotiation", 0) == 0) flagged = true;
+        r.check(anim && ctx.doc.undoPosition() == pos + 1 && !flagged && w.action("MakeTraversal"),
+                "a traversal pair (jump_up_40) is one undo step and passes the link checks; the command exists");
+        while (ctx.doc.undoPosition() > pos && ctx.doc.undo()) {}
         ctx.documentEdited();
     }
 

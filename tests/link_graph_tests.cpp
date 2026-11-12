@@ -158,7 +158,7 @@ TEST(link_graph_script_linkto) {
 }
 
 TEST(link_graph_negotiation_pair) {
-    const MapFile good = parseText(ent({{"classname", "node_negotiation_begin"}, {"targetname", "nb"}, {"target", "ne"}}) +
+    const MapFile good = parseText(ent({{"classname", "node_negotiation_begin"}, {"targetname", "nb"}, {"target", "ne"}, {"animscript", "jump_down_40"}}) +
                                    ent({{"classname", "node_negotiation_end"}, {"targetname", "ne"}}));
     if (good.entities.size() != 2) {
         CHECK(false);
@@ -169,9 +169,9 @@ TEST(link_graph_negotiation_pair) {
     CHECK(checkLinks(good, gg).empty());
 
     // Begin aimed at a non-end, and a begin with no target: both lack a matching end.
-    const MapFile bad = parseText(ent({{"classname", "node_negotiation_begin"}, {"targetname", "nb2"}, {"target", "s"}}) +
+    const MapFile bad = parseText(ent({{"classname", "node_negotiation_begin"}, {"targetname", "nb2"}, {"target", "s"}, {"animscript", "jump_up_40"}}) +
                                   ent({{"classname", "script_struct"}, {"targetname", "s"}}) +
-                                  ent({{"classname", "node_negotiation_begin"}, {"targetname", "nb3"}}));
+                                  ent({{"classname", "node_negotiation_begin"}, {"targetname", "nb3"}, {"animscript", "ladder_up"}}));
     if (bad.entities.size() != 3) {
         CHECK(false);
         return;

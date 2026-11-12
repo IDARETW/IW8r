@@ -1,6 +1,8 @@
 // IW8 Radiant Suite - link graph over target/targetname and script_linkto/script_linkname (see link_graph.h).
 #include "link_graph.h"
 
+#include "traversal.h"
+
 #include <algorithm>
 #include <functional>
 #include <set>
@@ -95,6 +97,16 @@ std::vector<LinkIssue> checkLinks(const MapFile& map, const LinkGraph& graph) {
         });
         if (cls == "node_negotiation_begin" && !pairedBegins.count(e.id))
             out.push_back({e.id, true, "node_negotiation_begin has no matching node_negotiation_end"});
+        // 6.23: the animation a bot plays. Empty: the converter leaves the traversal out; not one of the nine the stock
+        // maps use: whether bots have it is not known.
+        if (cls == "node_negotiation_begin") {
+            const std::string* anim = e.value("animscript");
+            if (!anim || anim->empty())
+                out.push_back({e.id, true, "node_negotiation_begin has no animscript (the build leaves the traversal out)"});
+            else if (!findTraversalAnim(*anim))
+                out.push_back({e.id, false, "animscript '" + *anim + "' is not one of the stock traversal animations (jump_down_80, "
+                                            "jump_up_40, ladder_up, ...): bots may not have it"});
+        }
     }
 
     // Self-targets: a key whose value is the entity's own targetname.

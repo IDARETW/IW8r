@@ -23,9 +23,9 @@ proofs = [
     ('stock_edit_test', ['--exe', exe]),
     ('stock_patch_test', ['--exe', exe]),
     ('smodel_collision_remove_test', ['--exe', exe]),
-    ('warzone_loot_edit_test', ['--zone', 'mp_br_tut', '--exe', exe]),
+    ('warzone_loot_edit_test', ['--exe', exe]),  # Quarry: it deletes ten points
     ('warzone_loot_boxes_test', ['--exe', exe]),
-    ('warzone_instances_edit_test', ['--zone', 'mp_br_tut', '--exe', exe]),
+    ('warzone_instances_edit_test', ['--exe', exe]),  # Quarry's buy stations
     ('stock_sun_edit_test', ['--exe', exe]),
     ('warzone_custom_loot_test', None),
     ('warzone_custom_loot_boxes_test', None),
