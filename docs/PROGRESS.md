@@ -289,6 +289,18 @@
     document used to be written into it); GUI check for Hide Stock Props (MainWindow::setReferencePropsForTest).
     The editor window left open for the owner (mp_iw8r_show2.map, started 2026-11-12 00:16) runs an older build:
     restart it to get File > Edit Loot Points / Edit Placed Objects.
+    STOCK PATCHES + COLLISION TILES (2026-11-12 late, roadmap L14, research 90): converter live at 44d21398 (old exes
+    zonetool_927eb63a / 9a86b345.exe). editzone "stock_patches" reads a zone with the saved stock patch while an edit
+    is installed (stock maps ship .fp files with real map data); the editor passes the saved patches
+    (installedStockPatchOverrides) and opens stock maps from a clean copy while an edit is installed
+    (stockZoneForReading). Collision tiles: collision JSON "collision_tiles" (converter cuts the 32 x 32 grid, writes
+    1,024 tile zones + <map>_cg_ls_tr + streaminginfo); editor core collision_layout.*, worldspawn iw8r_collision,
+    Preferences "Build: collision", package/validation of the tile zones. New converter commands: havokinfo,
+    streaminfo; tools/dw_disasm.py reads the recompiled game exe with its linker map (read only). FINDING: the
+    private client accepts only <map>_cg_ls_tr of a custom map's tile zones (research 90 section 7).
+    REPOSITORY: the project is in the private GitHub repo IDARETW/IW8r (branch main); commit and push finished work
+    there, no co-author trailer. docs/features/FEATURES.md is the feature list; its pictures come from
+    IW8Radiant.exe --feature-shots (src/qtapp/feature_shots.cpp, real fonts, off screen).
     OPEN for Warzone now: vehicles, whether common_br_mp loads for an own map, zones / clusters on an own map, new
     clusters or zones on a stock map, Verdansk streamed zones in the reference view, new game type scripts (13.6).
   - Still open: impacts (F.12), the script-played loop of an own sound (F.6), reverb, probes, game modes, killstreak

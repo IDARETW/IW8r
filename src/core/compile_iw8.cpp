@@ -2662,6 +2662,22 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         for (size_t k = 0; k < bm.brushes.size(); ++k) leaves += (k ? "," : "") + std::to_string(bm.brushes[k]);
         leaves += "],\"children\":[0,0],\"count\":" + std::to_string(bm.brushes.size()) + "}";
     }
+    // The collision layout (14.1, research 90): one piece, or the game's streamed tiles for a big map. The converter
+    // cuts the tiles itself; the editor only asks for them.
+    bool collisionTiles = false;
+    {
+        CollisionLayout wanted = opt.collisionLayout;
+        if (worldspawn)
+            if (const std::string* key = worldspawn->value("iw8r_collision"); key && !key->empty()) {
+                bool known = true;
+                const CollisionLayout fromKey = parseCollisionLayout(*key, &known);
+                if (known) wanted = fromKey;
+                else warn.push_back("worldspawn iw8r_collision '" + *key + "' not understood (auto, one, tiles); using " + collisionLayoutName(wanted));
+            }
+        const CollisionLayoutChoice choice = chooseCollisionLayout(wanted, bounds);
+        collisionTiles = choice.tiles;
+        for (const std::string& n : choice.notes) warn.push_back(n);
+    }
     std::string col = "{\"schema\":1,\"name\":" + quote(mapName) + ",\"submodel_count\":" + std::to_string(brushModels.size() + 1) +
                       ",\"submodels\":[" + submodels + "],\"leaf_brush_nodes\":[" + leaves + "],\"brushes\":[";
     for (size_t bi = 0; bi < g.brushes.size(); ++bi) {
@@ -2692,7 +2708,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
            "\"dynamic_model_count\":" + std::to_string(dynModelCount) + ",\"dynamic_brush_count\":0,\"dynamic_models\":[" +
            dynModelsJson + "],\"dynamic_brushes\":[]" +
            (scriptableCount ? ",\"scriptable_instances\":[" + scriptablesJson + "]" : std::string()) +
-           (lootCount ? ",\"loot_points\":[" + lootJson + "]" : std::string()) + "}";
+           (lootCount ? ",\"loot_points\":[" + lootJson + "]" : std::string()) + (collisionTiles ? ",\"collision_tiles\":true" : "") + "}";
 
     std::string comworld =
         "{\"schema\":1,\"name\":" + quote(mapName) +

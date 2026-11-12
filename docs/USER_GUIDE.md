@@ -381,6 +381,20 @@ floor). The build then lists the map for `br`. Such a map has no circle, no gula
 them into the map's loot table. For a buy station, place a `scriptable` entity with `scriptable` `br_plunder_box`.
 Vehicles are not built yet. Not seen in game.
 
+### Big maps: collision in tiles
+
+A Warzone-size map keeps its collision the way the stock big maps do: cut into the game's grid of 32 x 32 tiles of
+8192 units. A client loads the tiles near the player; a host loads the combined package. The editor makes the tiles
+by itself from the same brushes and models.
+
+- Edit > Preferences > Build: collision. Automatic (the default) uses tiles for a map wider than 20000 units on X or
+  Y and one piece for anything smaller. You can also pick always one piece or always tiles.
+- A map can decide for itself: worldspawn key `iw8r_collision` with `auto`, `one` or `tiles`.
+- The build log says which layout was used. A tiled map's package has 1,024 more small files and one combined
+  package; they are copied with the map.
+- The private client currently loads only the combined package of a custom map; that is enough to play. Not seen in
+  game.
+
 ### Game modes of your map
 
 The game offers a custom map in the modes that its `map.json` lists. The editor writes that list after every

@@ -150,6 +150,13 @@ Everything else in this list can wait. This one cannot be settled without the ga
       stands there and opens. If the map fails to load with it, that is the answer to "does the game load the
       Warzone file for an own map": remove the entity and tell me.
 
+## In game: a map with collision in tiles (2026-11-12), not seen in game
+
+- [ ] Open any small map, set worldspawn `iw8r_collision` to `tiles`, build (F7). The log has "collision is built as
+      streamed tiles"; the package folder has `<map>_cg_ls_tr.ff` and 1,024 `<map>_cg_NNNNN_tr.ff`.
+- [ ] Play it (F5): walk on the floor, jump on boxes, shoot walls. Say whether you fall through anything. If the map
+      does not load, set the key to `one` and build again, and tell me.
+
 ## In game: an edited stock map (2026-11-12), not seen in game
 
 - [ ] File > Open IW8 Stock Map > mp_shipment. Map > Edit Compiled Spawns. Move one spawn a little, add a

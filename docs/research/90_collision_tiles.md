@@ -82,18 +82,46 @@ tiles). The private client keeps this and only falls back to tiles on Verdansk w
 The converter's zone writer reproduces stock tile zones: `IW8_REWRITE=1 verifyzone` gives byte-equal data for
 `mp_br_quarry_cg_00000_tr`, `_cg_00692_tr` and `_cg_ls_tr`; `IW8_REWRITE=fresh` loads with the same assets.
 
-## 6. Build plan (converter)
+## 6. What was built (2026-11-12)
 
-1. `BakeCollision` with tiles: world hulls and mesh triangles are assigned to the tile of their centre; anything
-   wider than a tile stays in slot 0. One Havok blob per non-empty tile (same builder as the world shape, rooted at
-   the shape), one shared tag table, then the world list with the extra slots.
-2. Zones: all 1,024 `<map>_cg_NNNNN_tr.ff` and `<map>_cg_ls_tr.ff` from `CollisionTile` structures through the
-   generic writer.
-3. A `streaminginfo` asset in the main zone: files (map, tiles, combined), costs by the formulas above, the
-   `collisiontile` transient assets, the tile count.
-4. Editor: collision layout "one piece" (today) or "tiles" (automatic for a map wider than a set size, or forced);
-   the package and the install carry the extra files.
+Converter (fork 44d21398, live):
 
-Open before it can be trusted in game: static model collision in tile mode (stock keeps it in the tiles; the
-converter keeps its lists in `col_map`), edge lists per tile, and whether a custom map's streaming info is honoured
-the same way as a stock one.
+1. `BakeCollision` with `tiles`: every world hull and mesh triangle goes to the tile of its centre; anything wider
+   than a tile or outside the grid stays in slot 0 (if nothing would stay there, the first tile's collision does:
+   the list needs one shape). One Havok blob per tile with collision (rooted at its compressed mesh shape), one shared
+   tag table, then the world list with one slot per tile (`shape_list_entry` without a shape; `add_shape_list`
+   writes only real shapes into `shapes` / `shapeNames`).
+2. All 1,024 `<map>_cg_NNNNN_tr.ff` and `<map>_cg_ls_tr.ff` from `CollisionTile` structures (index, grid, centre,
+   data, slot), written through the generic writer with xfile version 0xFF3 and transient file type 3 as stock
+   (`fastfile::transient_type`, kept by every rewrite now).
+3. A `streaminginfo` in the main zone: the map, the 1,024 tiles and the package as files with costs from the written
+   block sizes, `collisiontile0..1023` as transient assets, the tile count.
+4. Switch: collision JSON `"collision_tiles": true`. The package check accepts all tile zones or none.
+
+Editor: worldspawn `iw8r_collision` (`auto`, `one`, `tiles`) or Edit > Preferences > Build: collision (default
+automatic: tiles for a map wider than 20000 units on X or Y; core `collision_layout.*`). The build log says which
+layout was chosen and why. The package (deploy) carries the tile zones; validation tests the combined package (it
+holds every tile) and treats the main zone's single "streaminginfo" failure as the known loader-test limit (the same
+on stock `mp_br_quarry` and `mp_donetsk`), any other failure still fails the build.
+
+Proofs: `tools/collision_tiles_test.py` (37 checks: byte-identical without the switch; with it the slots hold
+exactly the one-piece build's vertices, triangles and hulls, every tile and the package read back with ACTS, header
+type 3, streaming info files / costs / assets, 0 failed besides the known one), core tests
+`collision_layout_*` and `compile_iw8_collision_tiles_switch`, and an editor build of a test map with
+`iw8r_collision tiles` through the F7 path (1,031 files, build ok).
+
+## 7. The private client accepts only the combined package of a custom map (finding)
+
+The private client checks every unsigned zone it loads (`integration/replay/DB_ResetFileReader.cpp`,
+`DB_IsNativeUnsignedReplayPackage`, read only): a zone must have a stored `IWffc100` header, version 11, xfile
+0xFF7 and transient type 0 or 1, except a file ending in `_cg_ls_tr.ff` with xfile 0xFF3 and type 3. The built
+tiles have exactly that header, so a custom map's **combined package passes and its numbered tile zones would be
+refused**. The game's level load asks for the combined package (mode 2) before anything else, and only a client
+that reaches its first frame with no mode set asks for tiles, so with this client the combined package is what
+loads. Letting numbered tiles of custom maps load needs a one-line change in the client (also accept
+`_cg_NNNNN_tr.ff` with 0xFF3 / type 3); that is the owner's project, not changed here.
+
+## 8. Open
+
+Static model collision stays in `col_map` in tile mode (stock keeps it in the tiles), edge lists stay in the main
+zone, and nothing of this has been seen in game.

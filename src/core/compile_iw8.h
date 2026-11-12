@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "collision_layout.h"
 #include "scriptable_catalog.h"
 #include "custom_materials.h"
 #include "geometry.h"
@@ -40,6 +41,9 @@ struct CompileOptions {
     // Stock scriptable definitions (scriptable_catalog.h). A `scriptable` point entity whose definition is placeable
     // is written to the collision JSON's scriptable_instances; without a catalogue every such entity is left out.
     const ScriptableCatalog* scriptables = nullptr;
+    // How the collision is laid out (collision_layout.h): Auto cuts a map wider than 20000 units into the game's
+    // streamed collision tiles and keeps a smaller one in one piece. Worldspawn iw8r_collision overrides this.
+    CollisionLayout collisionLayout = CollisionLayout::Auto;
     // Carry stock definitions (doors, cones, cars: definitions that live in stock map zones): the instance names the
     // stock zone and the converter copies the definition with everything it uses into the map. Off: such an entity
     // is left out with a warning. Built like the stock map's own data, not seen in game.

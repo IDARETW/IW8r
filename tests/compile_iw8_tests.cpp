@@ -1703,3 +1703,72 @@ TEST(compile_iw8_scriptable_br_zone_and_limits) {
         CHECK(noted);
     }
 }
+
+// 14.1 (research 90): the collision JSON asks the converter for streamed tiles when the worldspawn says so (or the
+// map is wide); a small map says nothing and keeps its collision in one piece.
+TEST(compile_iw8_collision_tiles_switch) {
+    std::string text;
+    CHECK(readFile(samplePath(), text));
+    if (text.empty()) return;
+    const std::string eol = text.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    const auto build = [&](const std::string& mapText, const std::string& name, CollisionLayout layout, std::string& col, CompileReport& rep) {
+        Id next = 1;
+        ParseResult pr = parseMap(mapText, next);
+        CHECK(pr.map.has_value());
+        if (!pr.map) return false;
+        const std::string out = scratch(name);
+        CompileOptions opt;
+        opt.mapId = kSampleId;
+        opt.collisionLayout = layout;
+        std::string err;
+        const bool ok = compileIw8Extraction(*pr.map, out, opt, rep, &err);
+        col = readAll((fs::path(out) / "extracted" / "maps" / "mp" / (std::string(kSampleId) + ".d3dbsp.replay-collision.json")).string());
+        return ok;
+    };
+    const auto noted = [](const CompileReport& rep, const char* what) {
+        for (const std::string& w : rep.warnings)
+            if (w.find(what) != std::string::npos) return true;
+        return false;
+    };
+    // The sample room is small: automatic keeps one piece and adds no key.
+    {
+        std::string col;
+        CompileReport rep;
+        CHECK(build(text, "tiles_auto", CollisionLayout::Auto, col, rep));
+        CHECK(!col.empty() && col.find("collision_tiles") == std::string::npos && !noted(rep, "streamed tiles"));
+    }
+    // The build option asks for tiles.
+    {
+        std::string col;
+        CompileReport rep;
+        CHECK(build(text, "tiles_option", CollisionLayout::Tiles, col, rep));
+        CHECK(col.find(",\"collision_tiles\":true}") != std::string::npos && noted(rep, "collision is built as streamed tiles (asked for"));
+    }
+    // The worldspawn key wins over the option, both ways; an unknown value is reported and ignored.
+    const size_t at = text.find("\"classname\" \"worldspawn\"");
+    CHECK(at != std::string::npos);
+    if (at == std::string::npos) return;
+    const auto withKey = [&](const std::string& value) {
+        std::string t2 = text;
+        t2.insert(at, "\"iw8r_collision\" \"" + value + "\"" + eol);
+        return t2;
+    };
+    {
+        std::string col;
+        CompileReport rep;
+        CHECK(build(withKey("tiles"), "tiles_key", CollisionLayout::OnePiece, col, rep));
+        CHECK(col.find(",\"collision_tiles\":true}") != std::string::npos);
+    }
+    {
+        std::string col;
+        CompileReport rep;
+        CHECK(build(withKey("one"), "tiles_key_one", CollisionLayout::Tiles, col, rep));
+        CHECK(col.find("collision_tiles") == std::string::npos);
+    }
+    {
+        std::string col;
+        CompileReport rep;
+        CHECK(build(withKey("sometimes"), "tiles_key_bad", CollisionLayout::Auto, col, rep));
+        CHECK(col.find("collision_tiles") == std::string::npos && noted(rep, "iw8r_collision 'sometimes' not understood"));
+    }
+}
