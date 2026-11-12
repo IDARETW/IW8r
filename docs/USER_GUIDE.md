@@ -47,6 +47,12 @@ arrow points at the sun).
   generates terrain (Create Terrain, Noise, Smooth). **Terrain Brush** (Patch menu) sculpts in the XY view: Raise
   (Shift lowers), Smooth, Flatten, Noise; Radius Larger/Smaller. Patches are drawn from both sides. To turn that off,
   set worldspawn `iw8r_patch_one_sided` to 1.
+- **Bevel and bridge** (Brush menu): Chamfer All Edges, Inset Selected Face (border and recess), and Bridge Two
+  Faces: select two brush faces (Ctrl+Shift+click in the camera) and a new brush spans them, with the first face's
+  material (a beam between two walls, a ramp between two ledges). One undo step each.
+- **Terrain blending**: Patch > Height Map > Blend By Slope writes the terrain's slope into its vertex alpha (flat up
+  to one angle, fully blended from another), so a layered material shows its second layer on the steep parts. Colours
+  you painted (Patch > Vertex Paint Mode) keep their red, green and blue.
 - **Brush flags**: Ctrl+M makes a brush detail (does not seal), Brush > Make Structural, Toggle Non-Colliding.
 - **Tool materials**: Brush > Tool Material applies caulk, nodraw, clip, player/weapon/AI-sight clip, **ladder**
   (climbable), water (non-solid; Replay has no swim volumes), trigger, hint, skip or sky.
@@ -132,6 +138,14 @@ contents are written into the bundle folder by hand for now (`docs/PREFAB_BUNDLE
   placement at the copy. The map must be saved first.
 - **Save Selection As Plain .map Prefab** writes the old single-file form. **Insert Prefab** places a `.map` file or a
   bundle (pick the `prefab.json` in its folder).
+- **Sharing**: Export Prefab Bundle As Zip writes one bundle folder into a zip; Import Prefab Bundles From Zip puts the
+  bundles of a zip into your prefab folder (zips made by Windows or other tools work too). An import never replaces a
+  bundle you already have, and each bundle is checked before it lands.
+- **Convert Plain .map Prefab To Bundle** wraps an old single-file prefab into a bundle beside it, with your own
+  material and model files and the same origin, so existing placements line up.
+- **Placement hints**: a bundle whose `prefab.json` says `"placement": {"surface": "wall", "yaw_step": 90}` turns to
+  face out of the wall it is placed on (aim the camera at the wall and Insert Prefab). **Rotate Selected Prefab** turns
+  a placement by its bundle's yaw step (90 for a plain prefab).
 
 **Building**: the Compile panel passes the bundles' own material, model, sound and effect folders to the build. The
 log has one line per bundle, for example `prefab bundle 'jump_pad' (jump_pad.iw8prefab): 2 placement(s), main contents`,
@@ -294,6 +308,10 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
     first part of the rebuild is a normal build of a small helper map, so it takes a minute or two. Brushes made only
     of tool materials (caulk, clip, nodraw), such as the helper brush for hiding props, are not built. Not seen in
     game.
+
+**Sun of a stock map**: File > Relight Stock Map Sun picks a new colour and intensity for the stock sun (worldspawn
+`iw8r_sun_color`, linear, and `iw8r_sun_intensity`); File > Rebuild Stock Zone writes them. The sun keeps its direction,
+because the stock map's baked sun shadows hold it. The rebuild report in the Console shows the old values.
 
 ### Stock scripted objects (scriptables)
 
