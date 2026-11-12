@@ -16,7 +16,8 @@ Warzone and stock maps:
   offline on mp_br_tut and mp_br_quarry. The same entities work on your own maps (several clusters and named
   zones instead of one zone over every point). Not seen in game.
 - **Move other placed objects** of a stock map (signs, fences, props with physics): their physics entry follows the
-  move (pose, spatial partition and chain; checked on Quarry, tools/dynent_move_test.py). Doors stay. Not seen in game.
+  move (pose, spatial partition and chain; checked on Quarry, tools/dynent_move_test.py). Doors move inside their area
+  (the box of the stock doors that share their spatial index). Not seen in game.
 - **Remove buy stations** from a stock Warzone map: delete the entity after Edit Placed Objects; the rebuild drops
   the instance and renumbers the dynamic entities after it (converter aacfad65). Not seen in game.
 - **Buy stations.** File > Edit Placed Objects moves and copies the buy stations of a stock map; own Warzone maps

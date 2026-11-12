@@ -287,7 +287,10 @@ the editor adds boxes of its own:
    walked partition, unlink / relink in descending order with the tails; refused for sparse occluders, transient
    entries, an entry placed apart from its instance (the 4 buy-station physics entries of Quarry) and a partition
    without a bucket. Proof tools/dynent_move_test.py on Quarry (a short and a far move: pose, partition, all chains
-   exact, everything else unchanged, ACTS as stock, a door refused). Earlier plan: (1) moving an ordinary entry = new pose (origin, AnglesToQuat) + the walked
+   exact, everything else unchanged, ACTS as stock). Doors: their index names an area of about 20 doors (16 areas on
+   Quarry, a kd split this tool could not reproduce exactly); a door moves only inside the box of the stock doors of its
+   area (+64) and keeps the index (proof: an 8-unit door move accepted with its pose and area, a far one refused).
+   Earlier plan: (1) moving an ordinary entry = new pose (origin, AnglesToQuat) + the walked
    index + relinking its spatial bucket chain, after a check that the chains (DynEntityList.dynEntSpatialPopulation
    buckets / bucketTails and spatialNode.spatialNodeNext) list exactly the entries of each index on stock zones;
    (2) doors need the structure their index names found first (sparse occluder data of the GfxWorld or the clipMap is
