@@ -37,6 +37,11 @@ Warzone and stock maps:
   functions.
 - **Game mode presets** with the private server's playlist settings, carried in a map or sent at F5.
 
+Editing:
+
+- **Bridge Two Faces** (Brush menu): a new brush that spans two selected faces.
+- **Blend By Slope** (Patch > Height Map): the terrain's slope written into its vertex alpha for layered materials.
+
 Building:
 
 - **Collision tiles.** Maps can keep their collision in one piece or as the game's streamed tiles (1,024 tile zones

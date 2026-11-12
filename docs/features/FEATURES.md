@@ -55,7 +55,7 @@ Date: 2026-11-12
 - Clipper (toolbar): 2-point and 3-point clips. Enter keeps one side. The key for keeping both halves is given differently in the user guide (Ctrl+Enter) and the roadmap (Shift+Enter). Flip is in the same tool.
 - CSG Hollow (toolbar), Subtract (Shift+U) and CSG Merge.
 - Extrude Selected Face: `Brush > Extrude Selected Face`, by a grid distance.
-- Chamfer All Edges and Inset Selected Face: `Brush` menu. A bridge between two faces is not built.
+- Chamfer All Edges, Inset Selected Face and Bridge Two Faces: `Brush` menu. Bridge takes two selected brush faces (Ctrl+Shift+click) and adds the convex brush that spans them, with the first face's material (a beam or a ramp between two walls).
 - Rotate 90 and flip. Arbitrary Rotation and Scale are in the `Brush` menu, with texture lock applied.
 - Auto Caulk: `Brush > Auto Caulk` sets the faces that touch other brushes to caulk.
 - Brush flags: Ctrl+M makes a brush detail (it does not seal the map). `Brush > Make Structural` and `Brush > Toggle Non-Colliding` are also there.
@@ -78,7 +78,7 @@ Date: 2026-11-12
 - Patch Inspector: `Patch > Patch Inspector` lists every control point as x, y, z, s and t. Changes are one undo step.
 - Terrain: `Patch > Create Terrain`, `Terrain Noise` and `Terrain Smooth`. `Patch > Convert to Terrain Mesh` changes a mesh patch.
 - Terrain Brush: `Patch` menu. It raises (Shift lowers), smooths, flattens and adds noise in the XY view. Radius Larger and Smaller change the brush size.
-- Height map: `Patch > Height Map` imports a PNG, TGA, JPG or 8- or 16-bit PGM onto a terrain, exports 16-bit PGM, and runs thermal and hydraulic erosion. Slope blend values are computed but not written as vertex colour.
+- Height map: `Patch > Height Map` imports a PNG, TGA, JPG or 8- or 16-bit PGM onto a terrain, exports 16-bit PGM, and runs thermal and hydraulic erosion. Blend By Slope writes the slope into the terrain's vertex alpha (flat up to one angle, fully blended from another), so the second layer of a layered material shows on the steep parts; colours already painted keep their red, green and blue.
 - Road: `Patch > Road Through Selected Points` drapes a road patch over the terrain through the selected points. It can flatten the terrain under the road.
 - Patches draw from both sides. Worldspawn `iw8r_patch_one_sided` set to 1 turns that off. (owner confirmed in game)
 - Vertex paint: `Patch > Vertex Paint Mode` paints control point colour and alpha in the camera. (owner confirmed in game: the colour or alpha shows.) How Replay's layered materials use the colour is not verified.
@@ -797,7 +797,6 @@ Open items from the roadmap and the research notes. Only the open items are list
 - PA speakers and custom music states (row 6.22).
 - Navigation blockers and traversal authoring (row 6.23).
 - Camera angle sync, live atmosphere and in-game screenshots and probe capture (rows 7.3, 7.9, 7.11). The live atmosphere channel was removed.
-- Bridge two faces (row 2.23). The exposed-parameter editor and bake-to-model for prefabs (row 8.8). Slope blend colour on patches (row 8.14).
 - Prefabs: convert a plain `.map` to a bundle, zip import of bundles, and the placement hints (wall, ceiling and yaw step).
 - Warzone: new game type scripts under a new name (row 13.6; mode rules on stock game types are built). Whether the game loads the Warzone zone for an own map is not known.
 - Stock maps: removal of stock world geometry (row 11.5), sun and sky relight (row 11.6), and maps beyond 6v6 scale, such as Ground War scale and co-op maps (row 11.10).

@@ -1,7 +1,10 @@
 #include "bevel_ops.h"
 
 #include <cmath>
+#include <iterator>
 #include <utility>
+
+#include "convex_hull.h"
 
 namespace iw8r {
 
@@ -203,6 +206,35 @@ size_t chamferSelection(Document& doc, double size) {
     if (edits.empty()) return 0;
     if (!doc.editPrimitives(edits, "Chamfer Edges")) return 0;
     return edits.size();
+}
+
+std::optional<ConvexBrush> bridgeFaces(const Primitive& a, size_t faceA, const Primitive& b, size_t faceB) {
+    if (a.kind != PrimKind::Brush || b.kind != PrimKind::Brush || faceA >= a.faces.size() || faceB >= b.faces.size()) return std::nullopt;
+    const std::vector<Winding> wa = faceWindingsOf(a), wb = faceWindingsOf(b);
+    if (faceA >= wa.size() || faceB >= wb.size() || wa[faceA].size() < 3 || wb[faceB].size() < 3) return std::nullopt;
+    std::vector<Vec3> points(wa[faceA].begin(), wa[faceA].end());
+    points.insert(points.end(), wb[faceB].begin(), wb[faceB].end());
+    const std::vector<Plane> planes = convexHullPlanes(points, 0.5);
+    if (planes.size() < 4) return std::nullopt;
+    ConvexBrush out;
+    for (const Plane& pl : planes) out.push_back(BrushFaceSpec{pl, a.faces[faceA].suffix});
+    if (!isValidBrush(out)) return std::nullopt;
+    return out;
+}
+
+bool bridgeSelectedFaces(Document& doc) {
+    if (doc.faceSelection().size() != 2) return false;
+    const FaceRef fa = *doc.faceSelection().begin(), fb = *std::next(doc.faceSelection().begin());
+    const EntityItem* ia = doc.findItem(fa.entity, fa.item);
+    const EntityItem* ib = doc.findItem(fb.entity, fb.item);
+    const Primitive* pa = ia ? ia->prim() : nullptr;
+    const Primitive* pb = ib ? ib->prim() : nullptr;
+    if (!pa || !pb) return false;
+    const auto brush = bridgeFaces(*pa, fa.face, *pb, fb.face);
+    if (!brush) return false;
+    auto prim = makeBrushPrimitive(*brush, doc.eol());
+    if (!prim) return false;
+    return doc.editPrimitives({{fa.entity, kNoId, std::move(prim)}}, "Bridge Faces");
 }
 
 bool insetSelectedFace(Document& doc, const FaceRef& face, double inset, double depth) {

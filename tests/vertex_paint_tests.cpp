@@ -317,3 +317,43 @@ TEST(vertex_paint_round_trip_through_map_text) {
     CHECK(sameColour(painted[5], kDefaultVertexRgba));
     CHECK(length(back->verts[7].pos - Vec3{64, 128, 0}) < 1e-9);
 }
+
+// Roadmap 8.14: the slope blend goes into the vertex alpha; red, green and blue stay.
+TEST(vertex_paint_slope_blend_alpha) {
+    // Flat mesh: every control point is flat, so alpha 0 everywhere (white stays white).
+    Primitive flat = meshPatch();
+    CHECK(applySlopeBlendAlpha(flat, 20, 40) == 9);
+    for (const Rgba8& c : readPatchColours(flat)) CHECK(c[0] == 255 && c[1] == 255 && c[2] == 255 && c[3] == 0);
+    CHECK(applySlopeBlendAlpha(flat, 20, 40) == 0);  // nothing changes a second time
+    Primitive inv = meshPatch();
+    CHECK(applySlopeBlendAlpha(inv, 20, 40, true) == 9);
+    for (const Rgba8& c : readPatchColours(inv)) CHECK(c[3] == 255);
+
+    // A painted colour keeps its red, green and blue.
+    Primitive painted = meshPatch();
+    CHECK(setPatchVertexColour(painted, 4, Rgba8{10, 20, 30, 200}));
+    CHECK(applySlopeBlendAlpha(painted, 20, 40) == 9);
+    CHECK(readPatchColours(painted)[4] == (Rgba8{10, 20, 30, 0}));
+
+    // A steep mesh (the last row raised 128 over 64: about 63 degrees) blends fully where it is steep.
+    PatchGrid g;
+    g.rows = 3;
+    g.cols = 3;
+    g.keyword = "mesh";
+    g.material = "tm2co/test";
+    for (int r = 0; r < 3; ++r)
+        for (int c = 0; c < 3; ++c) {
+            g.pos.push_back({64.0 * c, 64.0 * r, r == 2 ? 128.0 : 0.0});
+            g.st.push_back({0.0, 0.0});
+        }
+    auto steep = parseOnePrim(makePatchPrimitive(g, "\n", "// patch").text());
+    CHECK(steep.has_value());
+    if (!steep) return;
+    CHECK(applySlopeBlendAlpha(*steep, 20, 40) > 0);
+    const auto cs = readPatchColours(*steep);
+    CHECK(cs.size() == 9 && cs[0][3] == 0 && cs[7][3] == 255);
+
+    // Not a patch, or angles the wrong way round: nothing.
+    Primitive bad = meshPatch();
+    CHECK(applySlopeBlendAlpha(bad, 40, 20) == -1);
+}

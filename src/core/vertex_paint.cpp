@@ -1,5 +1,7 @@
 // IW8 Radiant Suite - per-vertex colour and alpha painting on patch control points. See vertex_paint.h.
 #include "vertex_paint.h"
+#include "heightmap.h"
+#include "patch_ops.h"
 #include "patch_tess.h"
 
 #include <algorithm>
@@ -202,6 +204,25 @@ std::vector<Rgba8> tessellatePatchColours(const Primitive& p, int subdiv) {
     for (size_t i = 0; i < out.size(); ++i)
         out[i] = Rgba8{c8(a.points[i].x), c8(a.points[i].y), c8(a.points[i].z), c8(b.points[i].x)};
     return out;
+}
+
+int applySlopeBlendAlpha(Primitive& patch, double startDeg, double endDeg, bool invert) {
+    if (patch.kind != PrimKind::Patch) return -1;
+    const auto grid = patchGrid(patch);
+    if (!grid) return -1;
+    const std::vector<float> weights = slopeBlendAlpha(*grid, startDeg, endDeg);
+    if (weights.size() != patch.verts.size()) return -1;
+    const std::vector<Rgba8> colours = readPatchColours(patch);
+    int changed = 0;
+    for (size_t i = 0; i < weights.size(); ++i) {
+        const double w = std::clamp(double(invert ? 1.0f - weights[i] : weights[i]), 0.0, 1.0);
+        Rgba8 c = i < colours.size() ? colours[i] : kDefaultVertexRgba;
+        const auto alpha = static_cast<std::uint8_t>(std::lround(w * 255.0));
+        if (c[3] == alpha && hasPatchColour(patch, i)) continue;
+        c[3] = alpha;
+        if (setPatchVertexColour(patch, i, c)) ++changed;
+    }
+    return changed;
 }
 
 }  // namespace iw8r

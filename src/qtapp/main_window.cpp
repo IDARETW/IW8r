@@ -2442,6 +2442,12 @@ void MainWindow::buildMenus() {
         QString err;
         if (!bakeSelectionToModel(&err)) ctx_.setStatus("Convert to Static Model: " + err);
     });
+    addCommand(brush, "BridgeFaces", "Bridge Two Faces", QKeySequence(), [this] {
+        if (ctx_.doc.faceSelection().size() != 2) return ctx_.setStatus("Bridge: select exactly two brush faces first (Ctrl+Shift+click in the camera)");
+        if (!bridgeSelectedFaces(ctx_.doc)) return ctx_.setStatus("Bridge: the two faces lie in one plane (nothing to span)");
+        ctx_.scene.invalidate();
+        ctx_.documentEdited("Bridged two faces with a new brush (one undo step)");
+    });
     addCommand(brush, "InsetFace", "Inset Selected Face (recess)...", QKeySequence(), [this] {
         if (ctx_.doc.faceSelection().size() != 1) return ctx_.setStatus("Select exactly one brush face first (Ctrl+Shift+click in the camera)");
         bool ok = false;
@@ -2852,6 +2858,18 @@ void MainWindow::buildMenus() {
         addCommand(hm, "TerrainErodeHydraulic", "Hydraulic Erosion (rain carves)", QKeySequence(), [this, patchCmd] {
             ctx_.scene.invalidate();
             patchCmd(erodeSelectedPatches(ctx_, true, 30), "Hydraulic erosion");
+        });
+        addCommand(hm, "TerrainSlopeBlend", "Blend By Slope (vertex alpha)...", QKeySequence(), [this] {
+            bool ok = false;
+            const double lo = QInputDialog::getDouble(this, "Blend By Slope", "Flat up to (degrees, alpha 0):", 25, 0, 89, 1, &ok);
+            if (!ok) return;
+            const double hi = QInputDialog::getDouble(this, "Blend By Slope", "Fully blended from (degrees, alpha 255):", 45, lo + 0.5, 90, 1, &ok);
+            if (!ok) return;
+            const int n = slopeBlendSelectedPatches(ctx_, lo, hi, false);
+            if (!n) return ctx_.setStatus("Blend By Slope: select terrain patches first (nothing changed)");
+            ctx_.scene.invalidate();
+            ctx_.documentEdited(QString("Blend By Slope: %1 patch(es), vertex alpha from the slope (%2 to %3 degrees); the second layer of a "
+                                        "layered material shows on the steep parts (one undo step)").arg(n).arg(lo).arg(hi));
         });
     }
     addCommand(patch, "PatchWeld", "Weld Two Patches", QKeySequence(), [this, patchCmd] { patchCmd(weldSelectedPatches(ctx_), "Welded patches"); });

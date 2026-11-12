@@ -70,6 +70,7 @@
 #include "devmap_cover.h"
 #include "devmap_launch.h"
 #include "tool_commands.h"
+#include "vertex_paint.h"
 #include "web_server.h"
 #include <QMenu>
 #include <QToolBar>
@@ -871,6 +872,16 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         const std::string flat = ctx.doc.text();
         w.action("TerrainNoise")->trigger();
         r.check(ctx.doc.selection().size() == 1 && ctx.doc.text() != flat, "Create Terrain then Terrain Noise changes the new patch");
+        {
+            // 8.14: Blend By Slope writes the slope into the vertex alpha of the selected terrain (one undo step).
+            const size_t up = ctx.doc.undoPosition();
+            const int blended = slopeBlendSelectedPatches(ctx, 5, 30, false);
+            bool coloured = false;
+            for (const auto& sr : ctx.doc.selection())
+                if (const EntityItem* it = ctx.doc.findItem(sr.entity, sr.item); it && it->prim()) coloured |= patchHasColours(*it->prim());
+            r.check(blended == 1 && coloured && ctx.doc.undoPosition() == up + 1 && w.action("TerrainSlopeBlend"),
+                    QString("Blend By Slope writes vertex alpha into the noisy terrain (%1 patch, one undo step)").arg(blended));
+        }
         // Rope between the two TDM start spawns; drop a raised spawn back to the floor.
         QTest::keyClick(&w, Qt::Key_Escape);
         std::vector<Id> spawns;

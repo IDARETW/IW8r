@@ -177,6 +177,19 @@ bool erodeSelectedPatches(EditorContext& ctx, bool hydraulic, int iterations) {
     return !edits.empty() && ctx.doc.editPrimitives(edits, hydraulic ? "Hydraulic Erosion" : "Thermal Erosion");
 }
 
+int slopeBlendSelectedPatches(EditorContext& ctx, double startDeg, double endDeg, bool invert) {
+    std::vector<Document::PrimEdit> edits;
+    for (const auto& r : ctx.doc.selection()) {
+        const EntityItem* it = r.item ? ctx.doc.findItem(r.entity, r.item) : nullptr;
+        const Primitive* p = it ? it->prim() : nullptr;
+        if (!p || p->kind != PrimKind::Patch) continue;
+        Primitive copy = *p;
+        if (applySlopeBlendAlpha(copy, startDeg, endDeg, invert) > 0) edits.push_back({r.entity, r.item, copy});
+    }
+    if (edits.empty() || !ctx.doc.editPrimitives(edits, "Slope Blend")) return 0;
+    return int(edits.size());
+}
+
 bool capSelectedPatches(EditorContext& ctx) {
     std::vector<Document::PrimEdit> edits;
     for (const auto& sp : selectedPatchGrids(ctx))

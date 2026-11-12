@@ -27,6 +27,9 @@ bool smoothSelectedPatches(EditorContext& ctx, int iterations);
 bool importHeightMapToSelectedPatch(EditorContext& ctx, const QString& file, double zMin, double zMax, QString* err);
 bool exportSelectedPatchHeightMap(EditorContext& ctx, const QString& file, QString* err);
 bool erodeSelectedPatches(EditorContext& ctx, bool hydraulic, int iterations);
+// Roadmap 8.14: the slope blend of every selected terrain patch written into its vertex alpha (one undo step).
+// Returns how many patches changed.
+int slopeBlendSelectedPatches(EditorContext& ctx, double startDeg, double endDeg, bool invert);
 
 bool createRope(EditorContext& ctx);                 // between the first two selected point entities (or primitives' centres)
 size_t scatterModels(EditorContext& ctx, const QString& model, int count, double radius, uint32_t seed);

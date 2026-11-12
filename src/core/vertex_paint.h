@@ -63,6 +63,12 @@ bool setPatchVertexColour(Primitive& p, size_t index, const Rgba8& c);
 // (a control point whose rounded colour stays the same is not counted or rewritten).
 int paintPatchVertices(Primitive& patch, const Vec3& center, const PaintBrush& b);
 
+// Roadmap 8.14: the slope blend of a terrain patch written into the vertex alpha (the layer blend of a layered
+// material): alpha 0 where the surface is flatter than startDeg, 255 where it is steeper than endDeg, linear between
+// (heightmap.h slopeBlendAlpha); `invert` swaps them. Red, green and blue stay. Returns how many control points
+// changed; -1 when the patch is not a complete grid or the angles are not valid (endDeg > startDeg).
+int applySlopeBlendAlpha(Primitive& patch, double startDeg, double endDeg, bool invert = false);
+
 // True when any control point of the patch has a colour block (painted or authored).
 bool patchHasColours(const Primitive& p);
 // Per-point colours of tessellatePrimitive(p, subdiv), interpolated with the same Bezier grid as the positions (the

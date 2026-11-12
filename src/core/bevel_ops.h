@@ -36,6 +36,16 @@ std::optional<ConvexBrush> chamferAllEdges(const ConvexBrush& b, double size);
 // The outer silhouette is the brush's own walls, so sloped walls are kept. Pieces that come out invalid are dropped.
 std::vector<ConvexBrush> insetFace(const ConvexBrush& b, size_t faceIndex, double inset, double depth);
 
+// Bridge two faces: the convex brush that spans two brush faces, the convex hull of the corners of both faces (when
+// the faces look at each other they are its two caps, as a connecting tunnel or beam). Every face of the new brush
+// takes the suffix (material, texture scale and lightmap settings) of the first face. nullopt when either face does
+// not contribute or the corners are flat (the faces lie in one plane).
+std::optional<ConvexBrush> bridgeFaces(const Primitive& a, size_t faceA, const Primitive& b, size_t faceB);
+
+// The two selected brush faces bridged into a new brush of the first face's entity, as ONE undo step (the new brush is
+// selected). False when the face selection is not exactly two brush faces or the bridge is flat.
+bool bridgeSelectedFaces(Document& doc);
+
 // Chamfers all edges of every selected brush as ONE undo step. Brushes whose chamfer fails are left alone. Returns the
 // number of brushes changed (0 changes nothing).
 size_t chamferSelection(Document& doc, double size);

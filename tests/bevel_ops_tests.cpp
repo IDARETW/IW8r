@@ -249,3 +249,67 @@ TEST(bevel_selection_inset_one_undo_step) {
     CHECK(doc.text() == before);
     CHECK(doc.undoPosition() == p0);
 }
+
+// Bridge two faces: two cubes 64 apart along x; bridging the +x face of the first and the -x face of the second gives
+// the 64 x 64 x 64 box between them, with the first face's material.
+TEST(bevel_bridge_two_faces) {
+    AABB a, b;
+    a.add(Vec3(0, 0, 0));
+    a.add(Vec3(64, 64, 64));
+    b.add(Vec3(128, 0, 0));
+    b.add(Vec3(192, 64, 64));
+    const auto pa = makeBrushPrimitive(makeBox(a, kMat), "\n");
+    const auto pb = makeBrushPrimitive(makeBox(b, " tm2co/other 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0"), "\n");
+    CHECK(pa.has_value() && pb.has_value());
+    if (!pa || !pb) return;
+    // Primitive face indices of +x on a and -x on b.
+    const auto faceAlong = [](const Primitive& p, const Vec3& n) {
+        for (size_t i = 0; i < p.faces.size(); ++i)
+            if (const auto pl = facePlane(p, i); pl && dot(pl->n, n) > 0.99) return i;
+        return p.faces.size();
+    };
+    const size_t fa = faceAlong(*pa, Vec3(1, 0, 0)), fb = faceAlong(*pb, Vec3(-1, 0, 0));
+    const auto bridge = bridgeFaces(*pa, fa, *pb, fb);
+    CHECK(bridge.has_value());
+    if (!bridge) return;
+    const AABB bb = brushBounds(*bridge);
+    CHECK(bb.mins == Vec3(64, 0, 0) && bb.maxs == Vec3(128, 64, 64) && bridge->size() == 6);
+    for (const BrushFaceSpec& f : *bridge) CHECK(f.suffix == kMat);
+    // Faces in one plane (the +z faces of both cubes) have nothing to span.
+    const size_t ta = faceAlong(*pa, Vec3(0, 0, 1)), tb = faceAlong(*pb, Vec3(0, 0, 1));
+    CHECK(!bridgeFaces(*pa, ta, *pb, tb).has_value());
+    // A sloped bridge: the +x face of a to the -x face of a raised cube is a convex ramp-like beam.
+    AABB c;
+    c.add(Vec3(128, 0, 64));
+    c.add(Vec3(192, 64, 128));
+    const auto pc = makeBrushPrimitive(makeBox(c, kMat), "\n");
+    CHECK(pc.has_value());
+    if (!pc) return;
+    const auto ramp = bridgeFaces(*pa, fa, *pc, faceAlong(*pc, Vec3(-1, 0, 0)));
+    CHECK(ramp.has_value() && isValidBrush(*ramp));
+    if (ramp) {
+        const AABB rb = brushBounds(*ramp);
+        CHECK(rb.mins == Vec3(64, 0, 0) && rb.maxs == Vec3(128, 64, 128));
+    }
+
+    // In a document: the two selected faces give one new brush in one undo step.
+    Document doc;
+    Id next = 1;
+    std::string text = "iwmap 4\n{\n\"classname\" \"worldspawn\"\n" + pa->text() + pb->text() + "}\n";
+    std::string err;
+    CHECK(doc.loadFromText(text, "", &err));
+    const Entity& world = doc.map().entities[0];
+    std::vector<Id> items;
+    for (const auto& it : world.items)
+        if (it.prim()) items.push_back(it.id);
+    CHECK(items.size() == 2);
+    if (items.size() != 2) return;
+    doc.selectFace({world.id, items[0], uint32_t(fa)}, false);
+    doc.selectFace({world.id, items[1], uint32_t(fb)}, true);
+    const size_t pos = doc.undoPosition();
+    CHECK(bridgeSelectedFaces(doc));
+    size_t prims = 0;
+    for (const auto& it : doc.map().entities[0].items) prims += it.prim() ? 1 : 0;
+    CHECK(prims == 3 && doc.undoPosition() == pos + 1);
+    (void)next;
+}
