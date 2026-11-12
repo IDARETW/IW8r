@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_1_body_pull_elbow"
+"origin" "0.037537 -30.463018 -20"
+"angles" "-0.001236 -89.998764 0.002142"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_1_straight_32"
+"origin" "0.070943 -32.520849 -20"
+"angles" "90 -89.997917 0"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_03"
+"origin" "0 0 0"
+"angles" "-0.000905 0 89.996622"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_in"
+"origin" "-8.954465 27.509122 -9"
+"angles" "0.002142 89.997858 0.001236"
+"modelscale" "1"
+}

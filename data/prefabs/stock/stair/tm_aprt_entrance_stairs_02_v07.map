@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/aprt_entrance_stairs_02"
+"origin" "0 0 0"
+"angles" "-0.000846 0 0.002324"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/door_wood_single_frame_white"
+"origin" "101.950784 -39.98263 64.5"
+"angles" "-0.000846 0 0.002324"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-67.077623 0.023596 60.5"
+"angles" "0.002241 90.002061 -0.001045"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "60.973708 0.014137 60.5"
+"angles" "0.002241 90.002061 -0.001045"
+"modelscale" "1"
+}

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IW8 Radiant Web</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <strong>IW8 Radiant</strong>
+  <span id="map">-</span>
+  <span class="sep"></span>
+  <label>View <select id="axis"><option value="0">Top (XY)</option><option value="1">Front (XZ)</option><option value="2">Side (YZ)</option><option value="3">3D</option></select></label>
+  <button id="fit" title="Frame the whole map">Fit</button>
+  <button id="undo" title="Undo (shared with the editor)">Undo</button>
+  <button id="redo">Redo</button>
+  <button id="save">Save</button>
+  <button id="compile" title="Compile Map (F7 in the editor)">Compile</button>
+  <button id="deploy" title="Install the last build into Replay's custom maps">Deploy</button>
+  <button id="build" title="Build, deploy and start it in the game (F5 in the editor)">Build &amp; Play</button>
+  <button id="loadGame" title="Start the deployed map in the running game">Load in Game</button>
+  <span id="state"></span>
+</header>
+<main>
+  <section id="viewWrap">
+    <canvas id="view"></canvas>
+    <canvas id="view3d" hidden></canvas>
+    <div id="hint">Drag: pan (empty space) or move the selection &middot; Wheel: zoom &middot; Click: select (Shift adds)</div>
+  </section>
+  <aside>
+    <div class="panel">
+      <h2>Entities <input id="filter" placeholder="filter class or key"></h2>
+      <ul id="entities"></ul>
+    </div>
+    <div class="panel">
+      <h2>Inspector <span id="inspTitle"></span></h2>
+      <table id="keys"></table>
+      <form id="addKey"><input id="newKey" placeholder="key"><input id="newValue" placeholder="value"><button>Set</button></form>
+    </div>
+    <div class="panel assets">
+      <h2>Assets
+        <select id="assetKind"><option value="materials">Materials</option><option value="models">Models</option><option value="effects">Effects</option><option value="sounds">Sounds</option></select>
+        <input id="assetQuery" placeholder="search"></h2>
+      <div id="assetHint">Click a material to apply it to the selection; a model, effect or sound to place it at the view centre.</div>
+      <ul id="assetList"></ul>
+      <div id="assetMore"></div>
+    </div>
+    <div class="panel log">
+      <h2>Log</h2>
+      <pre id="log"></pre>
+    </div>
+  </aside>
+</main>
+<footer id="status">Connecting...</footer>
+<script src="app.js"></script>
+<script src="view3d.js"></script>
+</body>
+</html>

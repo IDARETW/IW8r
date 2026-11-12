@@ -1,0 +1,47 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/street_concrete_barrier_cube_01"
+"origin" "-0.014919 -31.499671 0"
+"angles" "0.000932 -179.995419 0.002291"
+"modelscale" "1.04"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/street_concrete_barrier_cube_01"
+"origin" "0 0 0"
+"angles" "0.002291 0 -0.000932"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/street_concrete_barrier_cube_01"
+"origin" "0 0 42"
+"angles" "0.00229 -0.026632 -0.000932"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/street_concrete_barrier_cube_01"
+"origin" "32.984567 -32.015991 0"
+"angles" "0.000932 179.970145 0.00229"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/street_concrete_barrier_cube_01"
+"origin" "32.999486 -0.516321 0"
+"angles" "0.00229 -0.029855 -0.000932"
+"modelscale" "1.04"
+}

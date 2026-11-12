@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/cosecho_barrier_02"
+"origin" "0 0 0"
+"angles" "1.518335 0 0.051078"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/cosecho_barrier_02"
+"origin" "1.252019 -0.07362 47.983154"
+"angles" "0.050686 -89.998427 -1.51868"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/cosecho_barrier_02_dirt_a"
+"origin" "0 0 0"
+"angles" "1.518335 0 0.051078"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/cosecho_barrier_02_dirt_a"
+"origin" "1.252019 -0.07362 47.983154"
+"angles" "0.050686 -89.998427 -1.51868"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/industrial_barricade_metal_gate_long_01"
+"origin" "-11.027233 -35.662753 10.167969"
+"angles" "0.00234 5.750346 0.000798"
+"modelscale" "0.8"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/industrial_barricade_metal_gate_post_01"
+"origin" "-11.027233 -35.662753 10.167969"
+"angles" "0.00234 5.750346 0.000798"
+"modelscale" "0.8"
+}

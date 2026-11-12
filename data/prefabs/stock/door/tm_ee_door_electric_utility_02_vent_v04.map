@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_door_electric_utility_02_vent"
+"origin" "0 0 0"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_door_electric_utility_02_vent"
+"origin" "0 -80 0"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/ee_door_electric_utility_02_vent"
+"origin" "55 56 0"
+"angles" "-0.001749 -90.001749 0.001749"
+"modelscale" "1"
+}

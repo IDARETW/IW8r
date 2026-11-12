@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_metal_single_frame_b_01_grey"
+"origin" "0 0 0"
+"angles" "-0.000323 0 0.002452"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-63.994033 -0.24431 20"
+"angles" "-0.001962 89.99718 0.001505"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "61.996728 -0.255762 20"
+"angles" "-0.001962 89.99718 0.001505"
+"modelscale" "1"
+}

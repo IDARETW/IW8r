@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_holder_01"
+"origin" "0 0 0"
+"angles" "0.001142 0 0.002193"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_withcage_01"
+"origin" "9.536774 -1.02583 0"
+"angles" "21.61709 -0.000888 0.001041"
+"modelscale" "1.5"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128_thin"
+"origin" "-15.937392 -2.537363 -1"
+"angles" "0 -89.998858 90"
+"modelscale" "0.94"
+}

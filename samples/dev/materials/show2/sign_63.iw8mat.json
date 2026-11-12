@@ -1,0 +1,9 @@
+{
+ "name": "show2/sign_63",
+ "color": "sign_63_c.png",
+ "surface": "metal",
+ "scale": [
+  192,
+  64
+ ]
+}

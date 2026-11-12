@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_wall_large_01_corner_beige"
+"origin" "45.5 10.299805 -28.25"
+"angles" "0.002473 0 0"
+"modelscale" "0.5"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_wall_large_01_corner_beige"
+"origin" "45.5 10.299805 -14.5"
+"angles" "0.002473 0 0"
+"modelscale" "0.5"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_doors_garage_sectional_01_open"
+"origin" "-82.25 0.299805 0.5"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_doors_garage_sectional_01_track_left"
+"origin" "0 0 0"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}

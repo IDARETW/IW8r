@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/furniture_chair_wooden_fabric_01_hero"
+"origin" "-0.993805 -22.519766 0"
+"angles" "-0.00064 0 0.002389"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/furniture_chair_wooden_fabric_01_hero"
+"origin" "0 0 0"
+"angles" "-0.00064 0 0.002389"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/furniture_chair_wooden_fabric_01_hero"
+"origin" "3.98078 -22.504898 39"
+"angles" "0.000723 -176.001915 179.997635"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/furniture_chair_wooden_fabric_01_hero"
+"origin" "4.972894 0.015845 39"
+"angles" "0.000723 -176.001915 179.997635"
+"modelscale" "1"
+}

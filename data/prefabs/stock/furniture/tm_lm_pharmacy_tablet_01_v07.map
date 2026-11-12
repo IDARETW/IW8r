@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_tablet_01"
+"origin" "-42.995531 20.825851 0"
+"angles" "0.002331 53.8684 -0.000825"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_tablet_01"
+"origin" "0 0 0"
+"angles" "-0.001704 0 0.001792"
+"modelscale" "1.3"
+}

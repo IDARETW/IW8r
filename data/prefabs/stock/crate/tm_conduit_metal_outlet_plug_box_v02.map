@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/conduit_metal_outlet_plug_box"
+"origin" "0 0 0"
+"angles" "-0.002285 0 -179.999054"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/conduit_metal_outlet_plug_cover"
+"origin" "-6.50155 -0.000589 -19.75"
+"angles" "-0.000946 -180 179.997715"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/conduit_metal_outlet_plug_cover"
+"origin" "-0.532056 -0.031425 -19.75"
+"angles" "-0.000946 -180 179.997715"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/conduit_metal_outlet_plug_cover"
+"origin" "5.43761 -0.062434 -19.75"
+"angles" "-0.000946 -180 179.997715"
+"modelscale" "1"
+}

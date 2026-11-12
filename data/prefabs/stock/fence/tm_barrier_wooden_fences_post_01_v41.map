@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/barrier_wooden_fences_post_01"
+"origin" "0 0 0"
+"angles" "0 0 0.002473"
+"modelscale" "1.18"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/barrier_wooden_fences_post_01"
+"origin" "10.300741 -21.698774 1.75"
+"angles" "0.001749 -89.999276 0.001749"
+"modelscale" "1.05"
+}

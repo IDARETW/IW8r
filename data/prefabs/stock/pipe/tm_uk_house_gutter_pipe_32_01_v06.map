@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_32_01"
+"origin" "0 0 0"
+"angles" "0.002086 0 179.998671"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_32_end_01"
+"origin" "0 0 -24"
+"angles" "-0.000535 -90.000534 0.002414"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_bracket_01"
+"origin" "0.057126 -2.012525 -24"
+"angles" "-0.000535 -90.000534 0.002414"
+"modelscale" "1.1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_bracket_01"
+"origin" "0.057126 -2.012525 0"
+"angles" "-0.000535 -90.000534 0.002414"
+"modelscale" "1.1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_bracket_01"
+"origin" "0.057126 -2.012525 31.25"
+"angles" "-0.000535 -90.000534 0.002414"
+"modelscale" "1.1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-0.764879 -43.998705 2.75"
+"angles" "0 -90.002086 -90"
+"modelscale" "0.75"
+}

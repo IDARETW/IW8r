@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_electrical_light_switch_01"
+"origin" "15.576803 32.4891 26.5"
+"angles" "0.002463 90.001642 0.000216"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "-36.003582 1.981496 2"
+"angles" "0.000216 -179.998358 -90.002463"
+"modelscale" "0.25"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "-1.974622 -1.987138 -4"
+"angles" "90 -89.99841 0"
+"modelscale" "0.25"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "0 0 0"
+"angles" "-0.001894 0 0.00159"
+"modelscale" "0.25"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "0.047055 -2.039142 -2"
+"angles" "0 -89.99841 90"
+"modelscale" "0.25"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "-36.003582 1.981496 2"
+"angles" "0.000216 -179.998358 89.997537"
+"modelscale" "0.25"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "-1.98793 1.975754 0"
+"angles" "0.002463 90.001642 0.000216"
+"modelscale" "0.25"
+}

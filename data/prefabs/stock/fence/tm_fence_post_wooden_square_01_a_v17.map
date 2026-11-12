@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/fence_post_wooden_square_01_a"
+"origin" "-31.999236 0.00003 -16"
+"angles" "-31.142706 0 89.996358"
+"modelscale" "1.25"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/fence_post_wooden_square_01_a"
+"origin" "-15.999523 -0.000359 -8"
+"angles" "-31.142706 0 89.996358"
+"modelscale" "1.25"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/fence_post_wooden_square_01_a"
+"origin" "0 0 0"
+"angles" "-31.142706 0 89.996358"
+"modelscale" "1.25"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/fence_post_wooden_square_01_a"
+"origin" "15.500357 0.000356 8"
+"angles" "-89.819329 -179.766933 -90.238516"
+"modelscale" "1.25"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/fence_post_wooden_square_01_a"
+"origin" "30.999669 -0.000189 0"
+"angles" "-66.000425 0.000291 90.000153"
+"modelscale" "1.25"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/fence_post_wooden_square_01_a"
+"origin" "47.000427 0.000323 -8"
+"angles" "-66.000425 0.000291 90.000153"
+"modelscale" "1.25"
+}

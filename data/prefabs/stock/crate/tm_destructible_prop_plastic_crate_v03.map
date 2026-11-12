@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/destructible_prop_plastic_crate"
+"origin" "-0.024977 -38.203947 -8.25"
+"angles" "0.002473 0 0.00002"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/destructible_prop_plastic_crate"
+"origin" "0 0 -8.25"
+"angles" "0.002473 0 0.00002"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/destructible_prop_plastic_crate"
+"origin" "0 0 0"
+"angles" "0.002473 0 0.00002"
+"modelscale" "1"
+}

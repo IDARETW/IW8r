@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/oil_drum_big_01_grey"
+"origin" "0 0 0"
+"angles" "0.002469 0 0.000129"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/oil_drum_big_green_01"
+"origin" "-3.43335 29.520537 0"
+"angles" "-0.001686 -99.999214 0.001809"
+"modelscale" "1"
+}

@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/lm_structural_window_frame_res_02_b"
+"origin" "0 0 0"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "4 -10 56"
+"angles" "-0.001749 89.998251 0.001749"
+"modelscale" "0.5"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05"
+"origin" "36 38 73"
+"angles" "0 180 2.000629"
+"modelscale" "0.5"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_shelf_01"
+"origin" "4 -25.5 0"
+"angles" "0 0 -90"
+"modelscale" "0.5"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_shelf_01"
+"origin" "4 25.5 0"
+"angles" "0 0 90"
+"modelscale" "0.5"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "3 0 -39"
+"angles" "0 0 0.002473"
+"modelscale" "0.75"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "3 0 38.5"
+"angles" "0 0 179.997527"
+"modelscale" "0.75"
+}

@@ -1,0 +1,47 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_electrical_light_switch_01"
+"origin" "-34.002498 12.009625 27.5"
+"angles" "0.001671 179.996506 0.001823"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "1.996085 1.934934 0"
+"angles" "0.00247 89.998516 0.000108"
+"modelscale" "0.25"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "1.996085 1.934934 0"
+"angles" "-0.000108 -90.001484 0.00247"
+"modelscale" "0.25"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "33.99859 1.944219 0"
+"angles" "-0.000108 -90.001484 0.00247"
+"modelscale" "0.25"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_32"
+"origin" "0 0 0"
+"angles" "0.001823 0 179.998329"
+"modelscale" "0.25"
+}

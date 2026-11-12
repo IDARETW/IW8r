@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_short_01"
+"origin" "-22.207084 40.013863 -7"
+"angles" "0.002003 17.001482 0.00145"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_short_01"
+"origin" "-12.373946 -13.861139 27"
+"angles" "0.001364 179.999458 7.700194"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_short_01"
+"origin" "-7.81153 -23.978879 17"
+"angles" "0.002173 2.191405 0.00118"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_short_01"
+"origin" "2.040684 -37.957338 2.5"
+"angles" "-0.001138 180 0.002195"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_sp_long_01"
+"origin" "-16.30685 -16.265123 1.5"
+"angles" "-0.001138 180 0.002195"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_sp_long_01"
+"origin" "-16.30685 -16.265123 31"
+"angles" "-0.001138 180 0.002195"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_mp_01"
+"origin" "0 0 0"
+"angles" "0.002195 0 0.001138"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_mp_02"
+"origin" "-8.198465 25.172764 0.5"
+"angles" "-0.000782 162.041142 0.002346"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_mp_02"
+"origin" "-7.383679 -11.567352 -9"
+"angles" "-0.00102 173.899882 0.002253"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_mp_02"
+"origin" "-6.172669 9.107065 12.5"
+"angles" "-0.001198 -176.854581 0.002163"
+"modelscale" "1.2"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_02"
+"origin" "-12.19652 32.753971 1.5"
+"angles" "0.002195 0 0.001138"
+"modelscale" "1"
+}

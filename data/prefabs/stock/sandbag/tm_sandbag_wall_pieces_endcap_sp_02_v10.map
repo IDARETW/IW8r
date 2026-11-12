@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_metal_roller_01_frames_large"
+"origin" "5.048335 -18.97555 -13.379883"
+"angles" "0 -15.717687 -8.001217"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_short_01"
+"origin" "-5.395014 -28.399231 -1.379883"
+"angles" "-0.850699 166.725411 -4.681908"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_mp_01"
+"origin" "-0.922174 10.753469 -0.060059"
+"angles" "-1.127647 2.542924 2.88483"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_01"
+"origin" "-6.764565 25.797106 -3"
+"angles" "0.866065 -22.906164 0.691426"
+"modelscale" "0.800699"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_01"
+"origin" "9.086235 -12.01013 7.630127"
+"angles" "-42.746746 159.430024 9.913467"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_02"
+"origin" "-10.927488 -46.580321 -0.570068"
+"angles" "0.371182 -19.395497 0.772385"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_02"
+"origin" "0 0 0"
+"angles" "-0.867336 0 0.65914"
+"modelscale" "1"
+}

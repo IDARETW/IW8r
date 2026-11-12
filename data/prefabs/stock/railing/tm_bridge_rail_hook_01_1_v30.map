@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "0 0 0"
+"angles" "9.037252 0 0.000426"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/door_wood_single_frame_white"
+"origin" "58.489525 8.472854 12.5"
+"angles" "0.002463 -179.998826 0.000216"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "14.503818 -23.476546 -0.5"
+"angles" "-0.000215 -0.003753 0.002463"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_in"
+"origin" "14.49773 8.510392 -0.5"
+"angles" "0.00159 -90.000468 0.001894"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "14.512672 -47.441724 -0.5"
+"angles" "-0.000215 -0.003753 0.002463"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_64"
+"origin" "62.491027 8.477338 -0.5"
+"angles" "0.00159 -90.003952 0.001894"
+"modelscale" "1"
+}

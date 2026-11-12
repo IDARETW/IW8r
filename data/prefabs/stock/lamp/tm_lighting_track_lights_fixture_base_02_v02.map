@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/lighting_track_lights_fixture_base_01"
+"origin" "-27.514879 -5.804259 0"
+"angles" "-0.00002 -71.844112 0.002473"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lighting_track_lights_fixture_base_01"
+"origin" "4.336154 4.588611 0"
+"angles" "-0.00002 -71.844112 0.002473"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lighting_track_lights_fixture_base_02"
+"origin" "-30.854599 -3.802671 0"
+"angles" "0.002262 154.834617 0.000998"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/lighting_track_lights_fixture_base_02"
+"origin" "0 0 0"
+"angles" "-0.001467 0 0.001991"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/lighting_track_lights_fixture_off_01"
+"origin" "-28.626358 -8.974495 -4.5"
+"angles" "56.086366 -25.168919 -0.002179"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/lighting_track_lights_fixture_off_01"
+"origin" "-3.770866 4.066088 -5"
+"angles" "59.973175 179.995193 0.002303"
+"modelscale" "1"
+}

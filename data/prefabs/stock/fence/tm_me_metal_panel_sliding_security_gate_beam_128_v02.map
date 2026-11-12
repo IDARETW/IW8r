@@ -1,0 +1,815 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 13
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 14
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 15
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 16
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 17
+{
+"classname" "misc_model"
+"model" "~tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 18
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 19
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 20
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 21
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 22
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 23
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 24
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 25
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 26
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 27
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 28
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 29
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 30
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 31
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 32
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 33
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 34
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 35
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 36
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 37
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 38
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 39
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 40
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 41
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 42
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 43
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 44
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 45
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 46
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 47
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 48
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 49
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 50
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 51
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 52
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 53
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 54
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 55
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 56
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 57
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 58
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 59
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 60
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 61
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 62
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 63
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 64
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 65
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 66
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 67
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 68
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 69
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 70
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 71
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 72
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 73
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 74
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 75
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 76
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 77
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 78
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 79
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 80
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 81
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 82
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 83
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 84
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 85
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 86
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 87
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 88
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 89
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 90
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 91
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 92
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 93
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 94
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 95
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 96
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 97
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_128"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 98
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_64"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 99
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_64"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 100
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_64"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 101
+{
+"classname" "misc_model"
+"model" "~tm/uk_brick_wall_top_trim_01_64"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}

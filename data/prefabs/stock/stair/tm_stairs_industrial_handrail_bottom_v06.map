@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c"
+"origin" "-78.075191 -0.485729 58"
+"angles" "0.002179 0 0.001169"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c"
+"origin" "-48.064995 -0.4791 38"
+"angles" "0.002179 0 0.001169"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c"
+"origin" "-18.055881 -0.470844 18"
+"angles" "0.002179 0 0.001169"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bottom"
+"origin" "0 0 0"
+"angles" "0.002179 0 0.001169"
+"modelscale" "1"
+}

@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_64_01_tin"
+"origin" "-0.101562 0.000003 0.022949"
+"angles" "1.198513 -89.950563 2.498409"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_bracket_01_tin"
+"origin" "-0.000043 -1.699219 -1.101074"
+"angles" "0 -90.001434 4.533781"
+"modelscale" "1.35"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_elbow_section_02"
+"origin" "0 0 0"
+"angles" "-2.698443 0 1.201583"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_funnel_01_tin"
+"origin" "-32.000043 -1.698418 35.61792"
+"angles" "0.800115 -90.002353 6.601351"
+"modelscale" "1"
+}

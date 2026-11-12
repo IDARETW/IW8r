@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_railing_32_worn"
+"origin" "49.991896 0.069601 0"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_railing_64_worn"
+"origin" "0 0 0"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}

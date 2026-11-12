@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "-60.108922 46.798939 71.3479"
+"angles" "9.036298 -90.001458 0.001736"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "40.974953 46.800114 72.265869"
+"angles" "9.036298 -90.001458 0.001736"
+"modelscale" "0.75"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_platform_64_01"
+"origin" "32.02018 0.001574 1"
+"angles" "-0.001671 0 0.001823"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_worn_02_4step"
+"origin" "-47.984105 0.007805 32"
+"angles" "-0.001671 0 0.001823"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_worn_02_4step"
+"origin" "0 0 0"
+"angles" "-0.001671 0 0.001823"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_worn_02_4step"
+"origin" "31.99324 -79.9957 -40"
+"angles" "0.000108 -90.003457 0.00247"
+"modelscale" "1"
+}

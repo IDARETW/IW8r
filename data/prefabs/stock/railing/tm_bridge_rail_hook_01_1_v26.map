@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "0 0 0"
+"angles" "9.037252 0 0.000426"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/door_wood_single_frame_white"
+"origin" "6.98305 3.439349 13"
+"angles" "-0.001894 89.999532 0.00159"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lm_structural_window_frame_res_02_b"
+"origin" "10.984892 3.445757 -55"
+"angles" "0.002463 -179.998826 0.000216"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_128"
+"origin" "14.983628 -4.571519 0"
+"angles" "-0.000216 0.001174 0.002463"
+"modelscale" "1"
+}

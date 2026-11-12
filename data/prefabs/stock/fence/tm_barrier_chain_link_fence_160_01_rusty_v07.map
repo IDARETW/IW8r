@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/barrier_chain_link_fence_160_01_rusty"
+"origin" "0 0 0"
+"angles" "0.610072 0 1.691305"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/barrier_chain_link_fence_160_01_rusty"
+"origin" "0.503929 3.999291 0.113037"
+"angles" "1.692623 -90.044074 -0.609271"
+"modelscale" "1"
+}

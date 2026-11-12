@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_02"
+"origin" "0 0 0"
+"angles" "0.002142 0 0.001236"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "6.018848 -1.026617 90.5"
+"angles" "0.00064 89.998458 0.002389"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "0 0 38.5"
+"angles" "0 -89.997858 90"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_64x96_01"
+"origin" "-14.059552 28.95037 38.5"
+"angles" "0.002142 0 0.001236"
+"modelscale" "0.75"
+}

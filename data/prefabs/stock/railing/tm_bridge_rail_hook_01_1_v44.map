@@ -1,0 +1,47 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "0 0 0"
+"angles" "-0.00002 0 0.002473"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_sign_frame_02_128_black"
+"origin" "-6.555276 45.512063 -8.5"
+"angles" "-0.00002 0 0.002473"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "12.939772 8.488151 0.5"
+"angles" "-0.00002 0 0.002473"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "13.034579 32.489824 0.5"
+"angles" "-0.00002 0 0.002473"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_8_corner_in"
+"origin" "12.946514 -15.515188 0.5"
+"angles" "-0.00002 0 0.002473"
+"modelscale" "1"
+}

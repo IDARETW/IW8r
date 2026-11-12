@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/lm_structural_window_frame_res_02_b"
+"origin" "3.990879 -0.049234 36.5"
+"angles" "-0.001823 0 0.001671"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "7.991954 7.933167 91.5"
+"angles" "-0.001823 -0.003494 0.001671"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-0.008671 64.947185 -27.5"
+"angles" "0.001671 179.996506 0.001823"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-0.00485 -63.040311 -27.5"
+"angles" "0.001671 179.996506 0.001823"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-0.002334 1.004025 -27.5"
+"angles" "0.001671 179.996506 0.001823"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_windows_sill_concrete_01"
+"origin" "0 0 0"
+"angles" "-0.001823 0 0.001671"
+"modelscale" "1"
+}

@@ -1,0 +1,191 @@
+# 89. Warzone: working record (game modes, small maps, loot points)
+
+Date: 2026-11-12. Owner decision (asked which large features the finished product must include): "Stock map editing,
+warzone-specific editing and map/mode creation". Research 87 is the survey; research 88 is the stock map half. This
+file records what was built for Warzone, how each part was checked, and what is still open.
+
+Nothing in this file has been seen in game.
+
+## 1. Game modes (roadmap 13.1 to 13.3)
+
+A mode is a game type script plus settings (dvars). The four Warzone playlists are all the script `br`.
+
+- Core `src/core/game_modes.*`: 12 built-in presets (six core game types, four Warzone variants, two for small maps)
+  and user presets (`<id>.iw8mode.json` in the app data folder `game_modes`). The Warzone presets hold the dvars of the
+  private server's playlist catalogue entry for entry.
+- Tools > Game Modes: Use for F5 (the editor sends `set <dvar> <value>` lines before it starts the match), Carry in
+  this map (worldspawn `iw8r_mode_dvars`, `iw8r_br`; the generated map script sets them right after the load script).
+- Converter: `iw3compat_setdvar` passes names the editor marks with `iw8r:`, letter case kept (fork bee970c0,
+  6270d567); the map script may call `br_gametypes::disablefeature` (f8b4d871).
+
+## 2. A small map in the Warzone game type (roadmap 13.4)
+
+Built: eight `mp_dm_spawn_start`, one `script_struct` `br_prematch_insertion_point` (Tools > Game Modes > Insert
+Warzone start entities), the switches the stock tutorial map uses for a map without circle, gulag or plane, the map
+listed for `br` in `map.json`, and now loot points (section 4). Test map `out/scr-br/mp_scrbr.map`.
+
+Open: buy stations and vehicles (scriptables that live in `common_br_mp`; whether the game loads that zone for a custom
+map is not known), and everything only the game can show (does the match start, does loot appear).
+
+## 3. The loot block of a map
+
+`MapEnts.spawnGroupLoot` (research 87 section 2.4) is compiled data, not entity text:
+
+| Part | Record | Meaning |
+|---|---|---|
+| points | 28 bytes: origin, angles, `u16 cluster`, `u16 zone` | a place where loot may appear |
+| clusters | `u16 zone`, point list, box | authored boxes that group points |
+| zones | name (script string), point list, cluster list, box | authored named boxes (`map_quarry`, `map_dam`, ...) |
+
+Cluster values of a point: an index, `0xFFFD` (a free point outside every cluster), `0xFFFB` (a loot cache point),
+`0xFFFF` (one point of mp_br_tut). Zone value: 0 = none, else the zone number (1-based).
+
+Rules, checked with `tools/warzone_loot_rules.py` and the scripts quoted in this session on mp_br_tut (5 points),
+mp_bm_tut (1), mp_backlot2 (7), mp_br_quarry (2,924) and mp_donetsk (Verdansk, 23,446):
+
+1. The boxes of clusters and zones are authored volumes: they are not the bounds of their points.
+2. A cluster lists exactly the points that name it, ascending.
+3. A zone lists exactly the points that name it **and are not cache points**. Stock cache points name a zone they are
+   not inside (Quarry 81, Verdansk 606, the tutorial map 1); with that rule every zone list of all five maps is
+   reproduced exactly.
+4. A zone lists the clusters whose first point names it.
+5. Every clustered point is inside its cluster's box; every zoned point that is not a cache point is inside its
+   zone's box; "the first box that holds the point" gives the stock cluster of every clustered point and the stock
+   zone of every such zoned point (Quarry: 2,480 of 2,480 and 2,428 of 2,428).
+6. `ScriptableMapEnts.lootInstanceCount` equals the point count, and `serverInstanceCount`, `serverFixedPartCount`
+   and `serverUsablePartCount` include it (all 21 exported maps). `ffMemCost` is 1240 on every stock map.
+7. Small maps differ in shape: mp_backlot2 has 3 clusters and no zone, the two tutorial maps have one zone and no
+   cluster.
+
+## 4. Editing loot points
+
+### Stock maps (converter `editzone`, fork 93b027ba and 5798fb0e)
+
+`"loot_points": [{"origin": [x, y, z], "angles": [p, y, r], "cluster": n | "free" | "cache" | "auto",
+"zone": n | "auto"}]` in the edits file replaces the map's points. Clusters and zones stay as authored; their lists
+are rebuilt by rules 2 to 4; `"auto"` applies rule 5; the four counts of rule 6 move by the difference.
+
+Editor (`src/core/stock_loot.*`, `src/qtapp/main_window_stock_edit.cpp`):
+
+- Opening a stock map reads the loot block from the same ACTS export as the entities (values or raw bytes).
+- File > Edit Loot Points turns the points into entities of class `iw8r_loot_point` (keys `loot_cluster`, `loot_zone`,
+  `loot_zone_name` for information).
+- File > Rebuild Stock Zone writes every loot point entity of the document into `loot_points`. A point moved out of
+  its cluster's or zone's box, or with a number the map does not have, is written as `"auto"` (the Console says how
+  many). A cache point keeps its zone. Loot point entities never enter the entity text.
+- A document without loot point entities leaves the map's loot as it is; only worldspawn `iw8r_no_loot 1` writes an
+  empty list. (So Undo after Edit Loot Points cannot remove the loot of a map by accident.)
+
+Proof, `tools/warzone_loot_edit_test.py <work> [--zone ...]` (19 checks each, all pass):
+
+| | mp_br_quarry | mp_donetsk |
+|---|---|---|
+| stock points passed back unchanged | points, every cluster list, every zone point list, every zone cluster list, boxes, names and counts equal the stock block | the same, 23,446 points |
+| 10 deleted, 1 moved, 2 added | lists follow, the far point is free, the near point gets the zone of its neighbour, counts move by -8 | the same |
+| ACTS loader test | same per-asset results as the stock zone | the same |
+| install patch | 4.1 MB | 81 MB |
+
+### A writer fault found on the way (fork 93b027ba)
+
+A fresh rewrite of mp_br_quarry lost the scriptable `ks_ac130_mp` and three effects it uses: the stock zone holds
+that name twice, as a name stub used early and as the full definition later, and the writer pointed the definition at
+the stub. The writer now writes a definition whose stub came first. `IW8_REWRITE=fresh zonetool verifyzone` reports
+"the written zone loads with the same assets" for mp_br_quarry, mp_shipment and mp_br_tut, and names differing assets
+when it fails. Every edit of Quarry or Verdansk made before this fix lacked that killstreak definition.
+
+### Custom maps (fork 6e1b1eb5)
+
+`iw8r_loot_point` entities of an own map become `loot_points` of the collision JSON
+(`{"origin", "angles", "cache"}`), and the converter writes them as `spawnGroupLoot` with no cluster and no zone:
+free points, or cache points for `loot_cluster` `cache`. The counts follow rule 6.
+
+Proof, `tools/warzone_custom_loot_test.py <extraction> <map id> <work>` on `out/scr-br` (all pass): a map without
+loot points is byte-identical between the old and the new converter; with five points ACTS reads them back (origin,
+angles, free or cache), the loot count is 5, the three server counts rise by 5, every other field of `map_ents` is
+unchanged, and the zone loads with 0 failed.
+
+Not known: whether the br scripts put loot on points of a map that has no zone and no cluster (stock maps always have
+one of the two), and whether the loot item definitions are loaded for a custom map. `ffMemCost` is written as 216
+(the converter's value for any scriptable data), stock is 1240.
+
+## 5. Scriptable physics limits, and Warzone objects on an own map
+
+`ScriptableMapEnts.physicsLimits` has six numbers (client and server: main rigid bodies, detailed rigid bodies,
+motions). Research 86 had a rule only for the core maps ("each limit = the door instances"), and the Warzone maps
+did not fit, so no definition seen only on those maps could be built. `tools/scriptable_limits_study.py` tried every
+definition property against the stored limits of the 21 exported maps. Exact on all 21:
+
+| Limit | Counts the instances whose definition has |
+|---|---|
+| main rigid bodies and motions (four of the six numbers) | flag bits 13 and 14 (`flags & 0x6000 == 0x6000`) |
+| detailed rigid bodies (two numbers) | flag bits 13 and 15 (`flags & 0xA000 == 0xA000`) |
+
+Doors have all three bits (so the old rule held on core maps); signs and fences count only in the main limits; the
+two limits differ on Quarry (540 / 517) and Verdansk (5,138 / 4,127). An equivalent form of the first rule is "bit 13
+and a collision event".
+
+Consequences:
+
+- The catalogue (`tools/build_scriptable_catalog.py`) checks the rule on every map, writes `physics_limit` and the new
+  last column `physics_limit_detail` from the flags, and marks every observed definition verified: 509 instead of 317.
+  No definition that was verified before changed a number. 502 definitions can now be carried from a stock map, and
+  `scriptable_auto_ascender` joins `hardpoint_chevron` as placeable by name.
+- Converter (fork 9e3abdde): `physics_limit_detail` per instance (default: the value of `physics_limit`), written
+  into the two detailed numbers. The editor writes the key only when it differs, so earlier builds stay byte-identical.
+- Warzone objects: a verified definition of `common_br_mp` (the buy station `br_plunder_box`, `brloot_rock`, two ammo
+  boxes, the assassination tablet) is placed **by name** on a map made for the br game type (worldspawn `iw8r_br` or a
+  `br_prematch_insertion_point`), and left out with the reason on any other map. This rests on the game loading
+  `common_br_mp` for a br match on an own map, which is not known (the exe names that zone only in its shader
+  preload list; the level load list is data).
+- Extraction sites (`brloot_plunder_extraction_site_01`) live in stock map zones and are carried like doors; the
+  converter warns that four of their assets (map menu icons, one effect, two models) are only in `common_br_mp`.
+
+Proofs: `tools/scriptable_limits_test.py` (main-only, both and no limit: the six numbers read back as 2 / 1; the buy
+station reads back as a name reference; 0 failed), `tools/scriptable_carry_test.py` with a sign, an extraction site
+and a pot plant (each definition read back equals the stock one), `tools/scriptable_offline_test.py` (maps without
+scriptables byte-identical), core test `compile_iw8_scriptable_br_zone_and_limits`.
+
+## 6. Buy stations on a stock map (the converter source calls this "section 8")
+
+The placed scriptables of a stock map are `ScriptableMapEnts.mapInstances` (72-byte records: definition, origin,
+angles, class name and five name strings, flags). Most instances also have a dynamic entity with a second copy of the
+placement, and dynamic entities name their instance by index (Verdansk keeps 208 dynamic entity lists in transient
+zones), so the list cannot be shortened or reordered. The spatial tree of the block is a tree of the map's space, not
+a list of instances (research 86), so a new record needs no tree change.
+
+An instance whose definition has no dynamic entity is only that record. On the Warzone maps that is the buy station
+`br_plunder_box` (120 on Quarry, 120 on Verdansk, 1 on the tutorial map), the ammo boxes of the tutorial map and two
+gas tanks on Verdansk.
+
+- Converter (fork 927eb63a), `editzone` `"scriptable_instances": {"move": [{"index", "origin", "angles"}], "add":
+  [{"like", "origin", "angles", "server_instanced_parts", "usable_parts", "physics_limit", "physics_limit_detail"}]}`.
+  A move rewrites origin and angles of a record. An added record copies the definition, class name and flags of
+  instance `like` (its five names are cleared); the instance count, the three server counts and the six physics limits
+  rise by the definition's numbers. An instance that a dynamic entity of the zone names is refused with the reason.
+- Editor (`src/core/stock_placed.*`): opening a stock map reads the instances; File > Edit Placed Objects makes
+  `scriptable` entities (key `iw8r_stock_index`) of those whose definition is verified and has no dynamic entity.
+  On a rebuild a changed origin or angles is a move, an entity without a valid index (a pasted copy included) is a new
+  object copied from the first stock instance of its definition, and everything that cannot be done is said in the
+  Console (deleted objects stay; doors and other objects with physics entries cannot be moved or added).
+  `scriptable` entities never enter the entity text of a stock map.
+
+Proof, `tools/warzone_instances_edit_test.py <work>` on mp_br_quarry (13 checks pass): one buy station moved and two
+added read back in place, the other 983 instances are unchanged, counts 984 -> 986 and +2 on the server counts, limits
+540 / 517 -> 542 / 519, ACTS tests the zone like the stock one, a door index and an index beyond the list are refused.
+The edits file the editor writes for mp_br_tut goes through the converter the same way (GUI check, then by hand).
+
+## 7. Tests
+
+- Core: `tests/stock_loot_tests.cpp` (reader for both export forms, entities and edits, the edits file),
+  `compile_iw8_loot_points` in `tests/compile_iw8_tests.cpp`, `tests/game_modes_tests.cpp`.
+- GUI: `src/qtapp/qt_gui_test_loot.cpp` (mp_br_tut through ACTS: read, Edit Loot Points, edit, the edits file, Undo).
+
+## 8. Open
+
+1. Whether `common_br_mp` loads for an own map in a br match (buy stations and loot items depend on it); vehicles
+   (`script_struct_mp_<vehicle>` entities, research 87).
+2. Zones and clusters on a custom map (one zone box over the map would match the tutorial maps).
+3. New clusters or zones on a stock map (today a new point can only join an existing box). Removing a placed
+   object, and moving or adding one that has a dynamic entity (doors, extraction sites).
+4. Verdansk in the reference view: its world is 749 streamed zones; the view loads one zone.
+5. New game type scripts (roadmap 13.6).

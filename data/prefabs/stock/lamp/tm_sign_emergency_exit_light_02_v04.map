@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/sign_emergency_exit_light_02"
+"origin" "-14.021492 -2.523575 0.5"
+"angles" "0.002285 -180 0.000946"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/sign_emergency_exit_light_02"
+"origin" "0 0 0"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}

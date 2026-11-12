@@ -1,0 +1,10 @@
+{
+ "name": "show2/blend",
+ "color": "blend_c.png",
+ "blend": true,
+ "twoSided": true,
+ "scale": [
+  64,
+  64
+ ]
+}

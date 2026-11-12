@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01a_straight"
+"origin" "-18.953155 0.026788 0"
+"angles" "0.00064 0 0.002389"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01b_straight"
+"origin" "-65.951404 0.02716 0"
+"angles" "0.00064 0 0.002389"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01b_straight"
+"origin" "6.873421 38.492509 0"
+"angles" "-0.001236 90.001542 0.002142"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_endcap_01b_straight"
+"origin" "0 0 0"
+"angles" "0.00064 0 0.002389"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-88.801103 70.203598 -41.570068"
+"angles" "0.00064 0 0.002389"
+"modelscale" "0.9"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "7.165271 70.185488 -41.570068"
+"angles" "0.00064 0 0.002389"
+"modelscale" "0.9"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "15.719574 85.169544 -51.5"
+"angles" "0.002389 180 -0.00064"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-36.327433 79.715463 -10"
+"angles" "0.002142 -89.998458 0.001236"
+"modelscale" "0.5"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-33.324414 79.717247 -1.5"
+"angles" "0.002142 -89.998458 0.001236"
+"modelscale" "0.53"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "14.659191 125.204443 -10"
+"angles" "0.002389 180 -0.00064"
+"modelscale" "0.5"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "15.139134 126.173922 -1"
+"angles" "0.00064 0 0.002389"
+"modelscale" "0.5"
+}

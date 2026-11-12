@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c"
+"origin" "55.992286 33.018531 55"
+"angles" "0.002142 -180 0.001236"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bottom"
+"origin" "1.961621 33.001546 13"
+"angles" "0.002142 -180 0.001236"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_4"
+"origin" "0 0 0"
+"angles" "-0.001236 0 0.002142"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_4"
+"origin" "47.940054 -0.035248 32"
+"angles" "-0.001236 0 0.002142"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_4"
+"origin" "95.966372 -0.020693 64"
+"angles" "-0.001236 0 0.002142"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_02"
+"origin" "29.927794 -50.041137 8"
+"angles" "0.002389 89.998458 -0.00064"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "29.432347 -49.979865 48"
+"angles" "0 -179.999154 90"
+"modelscale" "1"
+}

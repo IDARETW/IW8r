@@ -1,0 +1,111 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_wood_single_frame_white"
+"origin" "0 0 0"
+"angles" "0.002463 0 0.000216"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lm_structural_window_frame_res_02_b"
+"origin" "48.070137 39.960671 -68"
+"angles" "-0.000216 180 0.002463"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lm_structural_window_frame_res_02_b"
+"origin" "48.070137 39.960671 60"
+"angles" "-0.000216 180 0.002463"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "-84.004595 19.993191 -13"
+"angles" "0.00159 89.994874 0.001894"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "24.040816 87.962422 -13"
+"angles" "-0.001894 -90.001642 0.00159"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "44.015694 31.943327 -13"
+"angles" "-0.000215 179.995073 0.002463"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_in"
+"origin" "44.061038 -0.050649 -13"
+"angles" "0.00159 89.998358 0.001894"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_out"
+"origin" "-75.99869 19.900339 -13"
+"angles" "0.002463 -0.002248 0.000215"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_out"
+"origin" "4.032142 87.936647 -13"
+"angles" "-0.000216 180 0.002463"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "-52.00248 -0.070158 -13"
+"angles" "0.00159 89.994874 0.001894"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "43.978478 55.913592 -13"
+"angles" "-0.000215 179.995073 0.002463"
+"modelscale" "1"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_64"
+"origin" "-3.961591 -0.01144 -13"
+"angles" "0.00159 89.994874 0.001894"
+"modelscale" "1"
+}
+// entity 13
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_8_corner_in"
+"origin" "-75.955448 -0.009277 -13"
+"angles" "0.002463 -0.002248 0.000215"
+"modelscale" "1"
+}

@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_stairs_bottom_worn"
+"origin" "-47.93963 0.000525 -32"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_stairs_middle_worn"
+"origin" "0 0 0"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_stairs_middle_worn"
+"origin" "96.028415 -0.001052 64"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}

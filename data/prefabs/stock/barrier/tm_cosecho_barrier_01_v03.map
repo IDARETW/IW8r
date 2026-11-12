@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/cosecho_barrier_01"
+"origin" "0 0 0"
+"angles" "0.001962 0 0.001505"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/cosecho_barrier_01"
+"origin" "46.063241 0.025664 0"
+"angles" "0.001962 0 0.001505"
+"modelscale" "1"
+}

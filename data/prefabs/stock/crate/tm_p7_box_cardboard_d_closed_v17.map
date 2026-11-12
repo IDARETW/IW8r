@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_d_closed"
+"origin" "-25.248573 23.32341 -0.5"
+"angles" "-0.001687 -171.858264 0.001808"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_d_closed"
+"origin" "-24.585204 24.999698 -19.5"
+"angles" "-0.001742 -168.318345 0.001755"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_d_closed"
+"origin" "-3.737306 27.934853 -0.5"
+"angles" "-0.001742 -168.314848 0.001755"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_d_closed"
+"origin" "-2.445105 26.677786 -19.5"
+"angles" "-0.001742 -168.318345 0.001755"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_d_closed"
+"origin" "-0.663368 -1.676288 -19"
+"angles" "0.001755 11.681655 0.001742"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_d_closed"
+"origin" "0 0 0"
+"angles" "0.001923 0 0.001555"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_d_closed"
+"origin" "0.777154 -5.050868 38"
+"angles" "0.00178 10.013444 0.001716"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_d_closed"
+"origin" "1.496161 -3.158908 19"
+"angles" "0.001775 10.349177 0.001722"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_d_closed"
+"origin" "5.451611 -29.716661 -19"
+"angles" "0.001511 26.780542 0.001958"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_d_closed"
+"origin" "5.681725 -27.929506 0"
+"angles" "0.001702 15.102148 0.001794"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_d_closed"
+"origin" "7.40718 -29.297439 19"
+"angles" "0.001697 15.438032 0.001799"
+"modelscale" "1"
+}

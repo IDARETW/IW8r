@@ -1,0 +1,87 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "-92.100134 46.802615 70.348145"
+"angles" "9.037513 -90.001749 0"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "9.001428 46.79953 71.266113"
+"angles" "9.037513 -90.001749 0"
+"modelscale" "0.75"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_church_wood_roof_shingles_horizontal_64"
+"origin" "66.502036 66.698166 82.458008"
+"angles" "0 89.998251 44.998343"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_church_wood_roof_shingles_vertical_64"
+"origin" "65.299951 -27.202188 82.993164"
+"angles" "0 89.998251 42.297301"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_church_wood_roof_shingles_vertical_64"
+"origin" "65.301019 7.797812 83.493164"
+"angles" "0 89.998251 42.297301"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_church_wood_roof_shingles_vertical_64"
+"origin" "65.302972 71.797812 82.993164"
+"angles" "0 89.998251 42.297301"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_platform_64_01"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_worn_02_4step"
+"origin" "-80 0.002441 31"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_worn_02_4step"
+"origin" "-32 0.000977 -1"
+"angles" "0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_worn_02_4step"
+"origin" "-0.002441 -80 -41"
+"angles" "0.002473 -90.001749 0"
+"modelscale" "1"
+}

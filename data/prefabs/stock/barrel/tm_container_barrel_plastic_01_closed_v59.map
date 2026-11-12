@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed"
+"origin" "0 0 0"
+"angles" "-1.372818 0 4.389236"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white"
+"origin" "6.708877 -32.12613 -1.733887"
+"angles" "6.394396 -89.463473 1.466427"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white"
+"origin" "40.09363 -25.758335 -0.733887"
+"angles" "-0.414928 0.042604 6.0883"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "7.775599 18.239045 21.75"
+"angles" "-0.000805 -120.007656 0.002338"
+"modelscale" "1"
+}

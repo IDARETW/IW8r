@@ -1,0 +1,103 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_brick_wall_trim_01_64"
+"origin" "6.647436 -32.52822 17.088867"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05_03"
+"origin" "-87.962672 -28.003497 23"
+"angles" "-0.002285 -89.998745 179.999054"
+"modelscale" "2.08"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "0 0 -54"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "0 0 0"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_03"
+"origin" "2.477641 -0.494395 -54"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_03"
+"origin" "2.477641 -0.494395 0"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_32x32_01"
+"origin" "-2.969115 -16.547988 -85"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_32x32_01"
+"origin" "-2.969115 -16.547988 -31"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_32x32_01"
+"origin" "0.494603 -16.476135 -85"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_32x32_01"
+"origin" "0.494603 -16.476135 -31"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_80x56_01"
+"origin" "-21.494081 47.518169 55"
+"angles" "-0.000946 90.001255 0.002285"
+"modelscale" "1"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_80x56_inset_01"
+"origin" "-21.494081 47.518169 58"
+"angles" "-0.000946 90.001255 0.002285"
+"modelscale" "1"
+}

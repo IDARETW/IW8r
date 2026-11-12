@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-1.997085 -95.500061 7.5"
+"angles" "0.002473 89.999276 0"
+"modelscale" "0.5"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "0 0 0"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "0.5"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "9.999893 3.500305 -18.5"
+"angles" "0.002473 89.999276 0"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-6.497482 -82.500198 -35.5"
+"angles" "0 90.001749 90"
+"modelscale" "0.65"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-0.000302 9.900391 94.5"
+"angles" "-0.002473 0.001749 -90"
+"modelscale" "0.63"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "0.00145 -47.5 22.5"
+"angles" "0.001749 -179.996503 0.001749"
+"modelscale" "0.5"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "3.999893 3.500122 -70.5"
+"angles" "0 -89.998251 90"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "55.999832 5.501709 22.5"
+"angles" "0 -89.998251 0.002473"
+"modelscale" "0.5"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "-6.998886 -36.500214 -23.5"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "0.75"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "-4.998886 -36.500153 -46.5"
+"angles" "11.797528 0.000155 0.001593"
+"modelscale" "0.75"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "-3.998154 -60.500122 -23.5"
+"angles" "-17.400197 -179.996717 0.001534"
+"modelscale" "0.75"
+}

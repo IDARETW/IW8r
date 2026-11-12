@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "-1.497342 -61.000065 1"
+"angles" "9.037708 0 -0.000197"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "0 0 0"
+"angles" "9.037708 0 -0.000197"
+"modelscale" "0.75"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_128"
+"origin" "14.502309 -52.999368 -1.5"
+"angles" "0.002473 0.000023 0"
+"modelscale" "1"
+}

@@ -1,0 +1,47 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_01"
+"origin" "-0.000411 37.476659 28"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_02"
+"origin" "-0.000274 25.030475 0"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_03"
+"origin" "0.06904 1.20153 27.035889"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_04"
+"origin" "-0.00046 42.001038 3"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_05"
+"origin" "0 0 0"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}

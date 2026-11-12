@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/foliage_flower_hollyhock_planter_box_long_group_01_c"
+"origin" "0 0 0"
+"angles" "2.539541 0 -2.730352"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/foliage_flower_hollyhock_planter_box_long_group_01_c"
+"origin" "31.993924 0.073274 0"
+"angles" "2.539541 0 -2.730352"
+"modelscale" "1"
+}

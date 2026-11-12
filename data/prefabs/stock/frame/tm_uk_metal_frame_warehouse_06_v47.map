@@ -1,0 +1,111 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_metal_single_frame_a_01_grey"
+"origin" "-0.997543 -80.50003 2.5"
+"angles" "0 -89.998251 0.002473"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-15.999786 -7.000488 -31"
+"angles" "0 -89.998251 0.002473"
+"modelscale" "0.5"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-10.999802 -6.500336 -49.5"
+"angles" "0.001749 -180 0.001749"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-9.999432 -18.599915 -30.309082"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "0.5"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "35.000491 -16.098541 -24.309082"
+"angles" "-0.001712 -0.000036 2.355475"
+"modelscale" "0.5"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-62.999802 -6.501923 -8.5"
+"angles" "0 -89.998251 0.002473"
+"modelscale" "0.5"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-10.000076 2.499695 -8.5"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "0.5"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-9.997147 -93.500305 -8.5"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "0.5"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-5.999954 -1.500183 63.5"
+"angles" "0 -89.998251 -90"
+"modelscale" "0.63"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "0 0 0"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "0.53"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "48.000229 -7.498535 -8.5"
+"angles" "0 -89.998251 0.002473"
+"modelscale" "0.5"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "93.499924 2.502853 -8.5"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "0.5"
+}
+// entity 13
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "93.5 0.002853 0"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "0.53"
+}

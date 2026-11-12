@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_metal_beams_exterior_frame_piece_01"
+"origin" "-0.433997 -62.729156 -0.170898"
+"angles" "70.000441 0 0.003052"
+"modelscale" "1.04"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_metal_beams_exterior_frame_piece_01"
+"origin" "0 0 0"
+"angles" "70.000441 0 -179.996948"
+"modelscale" "1.04"
+}

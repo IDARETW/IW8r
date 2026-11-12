@@ -1,0 +1,135 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_debris_pile_03"
+"origin" "76.522319 -23.575234 -3"
+"angles" "0.001505 -104.603227 0.001962"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_01"
+"origin" "79.431628 11.345159 -4"
+"angles" "-0.000323 -14.600406 0.002452"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_02"
+"origin" "-22.187627 37.79279 -4"
+"angles" "-0.000323 -14.600406 0.002452"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_l_01"
+"origin" "41.601654 -10.867393 0"
+"angles" "-0.000042 -27.635311 0.002472"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_l_01_white"
+"origin" "-59.967973 15.666605 0"
+"angles" "0.000715 -63.209149 0.002367"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_l_01_white"
+"origin" "-59.967973 15.666605 54"
+"angles" "-0.000018 -28.77535 0.002473"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01_white"
+"origin" "-61.950905 16.103511 0"
+"angles" "-0.000799 8.09048 0.00234"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01_white"
+"origin" "-61.950905 16.103511 54"
+"angles" "-0.00074 5.236139 0.002359"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01_white"
+"origin" "0 0 0"
+"angles" "-0.000632 0 0.002391"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01_white"
+"origin" "0 0 54"
+"angles" "-0.000565 -3.17334 0.002407"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_drawer_01"
+"origin" "-63.890543 0.643437 27.5"
+"angles" "-0.00023 -14.601636 3.317644"
+"modelscale" "1"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_drawer_01"
+"origin" "-61.132377 11.268314 36.25"
+"angles" "-0.000323 -14.600406 0.002452"
+"modelscale" "1"
+}
+// entity 13
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_drawer_01"
+"origin" "-59.967973 15.666605 44.5"
+"angles" "-0.000323 -14.600406 0.002452"
+"modelscale" "1"
+}
+// entity 14
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_drawer_01"
+"origin" "-31.90306 0.527984 36.25"
+"angles" "-0.000323 -14.600406 0.002452"
+"modelscale" "1"
+}
+// entity 15
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_drawer_01"
+"origin" "-31.367286 2.523822 28"
+"angles" "-0.000323 -14.600406 0.002452"
+"modelscale" "1"
+}
+// entity 16
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_drawer_01"
+"origin" "-30.385711 6.336364 44.5"
+"angles" "-0.000323 -14.600406 0.002452"
+"modelscale" "1"
+}

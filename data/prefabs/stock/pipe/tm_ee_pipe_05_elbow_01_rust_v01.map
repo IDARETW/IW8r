@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_256"
+"origin" "3.001405 -8.999555 0.314209"
+"angles" "0.001107 179.998725 131.996877"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_elbow_01_rust"
+"origin" "0 0 0"
+"angles" "-0.000744 0 -92.001721"
+"modelscale" "1"
+}

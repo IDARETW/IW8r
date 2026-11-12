@@ -1,0 +1,79 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01b_mrr"
+"origin" "-11.993372 -0.024542 14"
+"angles" "0.001904 0 0.001578"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "-95.994955 0.005299 70"
+"angles" "0.001904 0 0.001578"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "-65.987536 -0.034163 50"
+"angles" "0.001904 0 0.001578"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "-35.998945 0.026177 30"
+"angles" "0.001904 0 0.001578"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "23.50537 -0.043716 -9.5"
+"angles" "0.001904 0 0.001578"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "53.493961 0.016624 -29.5"
+"angles" "0.001904 0 0.001578"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "83.501018 -0.020918 -49.5"
+"angles" "0.001904 0 0.001578"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bottom_01_mrr"
+"origin" "0 0 0"
+"angles" "0.001904 0 0.001578"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_top_01_mrr"
+"origin" "5.501522 0.020224 -3.5"
+"angles" "0.001904 0 0.001578"
+"modelscale" "1"
+}

@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_holder_01"
+"origin" "-3.296875 -0.000143 -23.77002"
+"angles" "8.001044 0 -0.000174"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_holder_01"
+"origin" "0 0 0"
+"angles" "8.001044 0 -0.000174"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_holder_01"
+"origin" "0.001043 -24 0"
+"angles" "8.001044 0 -0.000174"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_withcage_01"
+"origin" "6.300781 0.000274 -24.919922"
+"angles" "15.056106 -0.000048 -0.000335"
+"modelscale" "1.5"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_withcage_01"
+"origin" "9.800781 0.000426 -1.169922"
+"angles" "15.669544 -0.000053 -0.00035"
+"modelscale" "1.5"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_withcage_01"
+"origin" "9.801825 -23.999574 -1.169922"
+"angles" "28.566679 -0.000238 -0.000695"
+"modelscale" "1.5"
+}

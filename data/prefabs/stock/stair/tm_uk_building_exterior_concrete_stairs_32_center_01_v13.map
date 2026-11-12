@@ -1,0 +1,71 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_32_center_01"
+"origin" "0 0 0"
+"angles" "0.002427 0 -0.000472"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_32_center_01"
+"origin" "23.990518 -63.971954 -16"
+"angles" "0.002427 0 -0.000472"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_64_center_01"
+"origin" "0.0258 -64.052673 0"
+"angles" "0.002427 0 -0.000472"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_64_center_01"
+"origin" "24.018954 -32.034243 -16"
+"angles" "0.002427 0 -0.000472"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_8_left_01"
+"origin" "-0.008373 32.028166 0"
+"angles" "0.002427 0 -0.000472"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_8_left_01"
+"origin" "23.992927 32.018339 -16"
+"angles" "0.002427 0 -0.000472"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_8_right_01"
+"origin" "0.0258 -64.052673 0"
+"angles" "0.002427 0 -0.000472"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_8_right_01"
+"origin" "23.990518 -63.971954 -16"
+"angles" "0.002427 0 -0.000472"
+"modelscale" "1"
+}

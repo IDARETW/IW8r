@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "0 0 0"
+"angles" "0.00064 0 0.002389"
+"modelscale" "0.5"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "95.505318 -2.016373 -7.5"
+"angles" "0.002142 -90.001836 0.001236"
+"modelscale" "0.5"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-54.972036 -49.98443 15"
+"angles" "0.002389 180 -0.00064"
+"modelscale" "0.5"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-49.957298 4.527793 17"
+"angles" "-90 90.002389 0"
+"modelscale" "0.64"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-48.985228 -1.956497 15"
+"angles" "-0.001236 90.001542 0.002142"
+"modelscale" "0.5"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "12.991086 4.498849 -43"
+"angles" "0 0.003684 90"
+"modelscale" "0.65"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "48.010906 -1.95741 15"
+"angles" "-0.001236 90.001542 0.002142"
+"modelscale" "0.5"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "34.95783 2.053252 -31"
+"angles" "-17.399657 89.999539 0.001238"
+"modelscale" "0.75"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "58.968359 5.063707 -31"
+"angles" "0.002142 -89.998458 0.001236"
+"modelscale" "0.75"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "59.002752 3.004185 -54"
+"angles" "11.799787 -89.997675 -0.000766"
+"modelscale" "0.75"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_64x96_01"
+"origin" "23.0345 8.103199 -78"
+"angles" "0.002142 -89.998458 0.001236"
+"modelscale" "0.75"
+}

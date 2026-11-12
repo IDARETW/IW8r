@@ -1,0 +1,79 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_wood_single_frame_white"
+"origin" "100 36 0"
+"angles" "0.001749 90.001749 0.001749"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lm_structural_window_frame_res_02_b"
+"origin" "60 84 60"
+"angles" "-0.001749 -90.001749 0.001749"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_4"
+"origin" "8 46 115"
+"angles" "0.002473 -0.002473 0"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_worn_02_4step"
+"origin" "-96 0 64"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_worn_02_4step"
+"origin" "-48 0 32"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_worn_02_4step"
+"origin" "0 0 0"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-67 88 -4"
+"angles" "0.001749 90.001749 0.001749"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-3 88 -4"
+"angles" "0.001749 90.001749 0.001749"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "61 88 -4"
+"angles" "0.001749 90.001749 0.001749"
+"modelscale" "1"
+}

@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/un_stairs_exterior_concrete_128_2_step_dark"
+"origin" "0 0 0"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/un_stairs_exterior_concrete_128_2_step_dark"
+"origin" "0.001654 -24.041631 -16"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/un_stairs_exterior_concrete_128_2_step_dark"
+"origin" "0.075118 -48.011441 -32"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/un_stairs_exterior_concrete_128_2_step_dark"
+"origin" "0.076772 -72.053071 -48"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}

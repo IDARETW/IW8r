@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_light_fixture_wall_mounted_04"
+"origin" "17.991966 21.073961 34.5"
+"angles" "-0.002086 90.002086 0.001329"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "-1.988472 4.017506 30"
+"angles" "-0.001329 89.998671 179.997914"
+"modelscale" "0.25"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "0 0 -32"
+"angles" "0.000535 89.998602 -90.002414"
+"modelscale" "0.25"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "0 0 28"
+"angles" "0.000535 -90.001398 89.997586"
+"modelscale" "0.25"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "-17.961148 4.073694 30"
+"angles" "-0.001329 -89.997914 179.997914"
+"modelscale" "0.25"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "0 0 -32"
+"angles" "0 0 90"
+"modelscale" "0.25"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "0.056667 -2.009043 -34"
+"angles" "0.000535 0.001551 179.997586"
+"modelscale" "0.25"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_16"
+"origin" "0 0 24"
+"angles" "0 0 90"
+"modelscale" "0.25"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_32"
+"origin" "0 0 16"
+"angles" "0 0 90"
+"modelscale" "0.25"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_64"
+"origin" "-1.988472 4.017506 30"
+"angles" "-0.001329 -89.997914 179.997914"
+"modelscale" "0.25"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_64"
+"origin" "0 0 0"
+"angles" "0 0 90"
+"modelscale" "0.25"
+}

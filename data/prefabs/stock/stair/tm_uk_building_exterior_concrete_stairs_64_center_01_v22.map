@@ -1,0 +1,87 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_32_center_01"
+"origin" "-48.012476 -32.031635 31.5"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_32_center_01"
+"origin" "-24.041806 15.981455 15.5"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_32_center_01"
+"origin" "-0.070084 -32.031109 0"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_64_center_01"
+"origin" "-48.083261 -0.000527 31.5"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_64_center_01"
+"origin" "-24.039724 -47.941274 15.5"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_64_center_01"
+"origin" "0 0 0"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_8_left_01"
+"origin" "-24.042156 47.942129 15.5"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_8_right_01"
+"origin" "-48.013528 63.994019 31.5"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_8_right_01"
+"origin" "-48.012476 -32.031635 31.5"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_8_right_01"
+"origin" "-0.070084 -32.031109 0"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}

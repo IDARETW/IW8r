@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_corner_01"
+"origin" "0.01509 72.47752 0"
+"angles" "0.00247 -180 0.000108"
+"modelscale" "0.8"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_corner_03"
+"origin" "0 0 0"
+"angles" "-0.000108 0 0.00247"
+"modelscale" "0.6"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_edge_03"
+"origin" "-0.011648 35.4366 -0.5"
+"angles" "-0.134917 -178.350902 179.977302"
+"modelscale" "0.9"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_edge_03"
+"origin" "0.036485 55.508761 -47.5"
+"angles" "0.00247 -180 0.000108"
+"modelscale" "0.9"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_edge_04"
+"origin" "-0.02082 24.999257 -49"
+"angles" "0.00247 -180 0.000108"
+"modelscale" "0.9"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_80x56_01"
+"origin" "0.019834 36.939574 -50"
+"angles" "0.001671 -89.998516 0.001823"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_80x56_inset_01"
+"origin" "0.019834 36.939574 -47"
+"angles" "0.001671 -89.998516 0.001823"
+"modelscale" "1"
+}

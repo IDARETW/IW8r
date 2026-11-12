@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/electrical_light_switch_01"
+"origin" "0 0 0"
+"angles" "-0.00002 0 0.002473"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lm_pipes_high_pressure_64"
+"origin" "-8.970455 7.948964 -17"
+"angles" "-90 0.001065 0"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lm_pipes_high_pressure_corner"
+"origin" "-8.970455 7.948964 -20"
+"angles" "-90 0.001065 0"
+"modelscale" "1"
+}

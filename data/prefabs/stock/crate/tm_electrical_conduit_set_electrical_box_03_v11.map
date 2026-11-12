@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_1_body_pull_elbow"
+"origin" "3.354762 -3.435549 8.117188"
+"angles" "-0.001894 -90.00159 0.00159"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_1_straight_4"
+"origin" "3.354762 -3.435549 6.117188"
+"angles" "-0.00159 89.998411 179.998106"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_03"
+"origin" "0 0 0"
+"angles" "0 0 -90"
+"modelscale" "1.25"
+}

@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/building_door_wood_worn_out_frame_02"
+"origin" "-6.859849 -5.549308 5.052002"
+"angles" "-0.000707 -90.001922 0.00237"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/building_horse_window_frame_hinge_01"
+"origin" "-3.640315 61.071841 73.541992"
+"angles" "0.00237 89.998078 0.000707"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/building_horse_window_frame_hinge_01"
+"origin" "-1.902662 25.389729 73.541992"
+"angles" "-0.000707 -90.001922 0.00237"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/ee_fence_modular_metal_gate_01"
+"origin" "-0.610607 -67.015033 -0.02002"
+"angles" "0.688173 0 -0.000932"
+"modelscale" "1.05"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/ee_fence_modular_metal_gate_02"
+"origin" "-0.66697 7.010806 -0.02002"
+"angles" "0.688173 0 -0.000932"
+"modelscale" "1.05"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/ee_fence_modular_metal_gate_door"
+"origin" "0 0 0"
+"angles" "-0.688173 0 0.000932"
+"modelscale" "1.05"
+}

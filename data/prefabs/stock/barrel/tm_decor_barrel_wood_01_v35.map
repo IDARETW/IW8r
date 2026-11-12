@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/decor_barrel_wood_01"
+"origin" "-19 -21 0"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/decor_barrel_wood_01"
+"origin" "0 -3 36.5"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/decor_barrel_wood_01"
+"origin" "0 0 0"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/decor_barrel_wood_01"
+"origin" "9 22 11.5"
+"angles" "-90 -17.720719 0"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_big_destr_s1_f2"
+"origin" "13.299805 -32.5 -24.75"
+"angles" "89.994471 -159.712469 -57.157429"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_big_destr_s1_f2"
+"origin" "15.5 17 -24.75"
+"angles" "-2.175373 180 -90"
+"modelscale" "1"
+}

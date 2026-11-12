@@ -1,0 +1,87 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white_middle"
+"origin" "-25.684165 21.600553 -1.197998"
+"angles" "-3.056714 0 0.458597"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white_middle"
+"origin" "0 0 0"
+"angles" "-3.056714 0 0.458597"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white_middle"
+"origin" "2.748688 0.98522 -44.910889"
+"angles" "3.056714 180 -0.458597"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white_middle"
+"origin" "13.288689 -30.078981 0.467041"
+"angles" "1.79041 133.962477 -2.517052"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white_middle"
+"origin" "40.973798 -12.508022 2.086182"
+"angles" "-3.073527 2.697148 0.316799"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white_top_bottom"
+"origin" "-25.684165 21.600553 -1.197998"
+"angles" "-3.056714 0 0.458597"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white_top_bottom"
+"origin" "0 0 0"
+"angles" "-3.056714 0 0.458597"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white_top_bottom"
+"origin" "2.748688 0.98522 -44.910889"
+"angles" "3.056714 180 -0.458597"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white_top_bottom"
+"origin" "13.288689 -30.078981 0.467041"
+"angles" "1.79041 133.962477 -2.517052"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white_top_bottom"
+"origin" "40.973798 -12.508022 2.086182"
+"angles" "-3.073527 2.697148 0.316799"
+"modelscale" "1"
+}

@@ -1,0 +1,15 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/debris_junk_tire_01"
+"origin" "0 0 0"
+"angles" "0 0 0"
+"modelscale" "1"
+}

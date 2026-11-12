@@ -1,0 +1,11 @@
+IESNA:LM-63-2002
+[TEST] IW8 Radiant synthetic profile
+[MANUFAC] IW8 Radiant (generated)
+[LUMCAT] iw8r_spot_narrow
+[LUMINAIRE] Narrow spot (cos^40 lobe, about 20 degrees wide)
+TILT=NONE
+1 -1 1 37 1 1 2 0 0 0
+1 1 0
+0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100 105 110 115 120 125 130 135 140 145 150 155 160 165 170 175 180
+0
+1000.0 858.6 542.1 249.9 83.1 19.5 3.2 0.3 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0

@@ -1,0 +1,87 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_debris_pile_03"
+"origin" "5.846602 16.053821 -0.03418"
+"angles" "-0.001962 -136.997659 0.001505"
+"modelscale" "0.7"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_price_list_02"
+"origin" "-8.851039 25.590136 37.71582"
+"angles" "-0.000323 133.001694 0.002452"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_price_list_02"
+"origin" "6.472589 9.127222 17.71582"
+"angles" "-0.000287 133.000716 -15.944545"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_price_list_02"
+"origin" "29.522359 -29.537268 0.21582"
+"angles" "0 95.798635 -90"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_price_list_03"
+"origin" "0.361346 15.719746 37.71582"
+"angles" "0.000064 133.000463 13.10043"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_price_list_03"
+"origin" "25.576775 -32.552699 0.21582"
+"angles" "0 -131.335744 -90"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_tablet_01"
+"origin" "-13.702591 13.202123 0"
+"angles" "0.002099 1.798218 0.001307"
+"modelscale" "1.2"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_tablet_01"
+"origin" "-8.636509 17.945933 0"
+"angles" "0.002411 -87.602344 -0.000548"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_tablet_01"
+"origin" "0 0 0"
+"angles" "0.00212 0 0.001274"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_tablet_01"
+"origin" "33.822874 -23.139437 0"
+"angles" "0.002472 -64.30401 -0.00005"
+"modelscale" "1.3"
+}

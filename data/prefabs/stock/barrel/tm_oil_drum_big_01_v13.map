@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/oil_drum_big_01"
+"origin" "-2.000946 30.999939 0"
+"angles" "0.002469 83.722605 -0.000135"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/oil_drum_big_01"
+"origin" "0 0 0"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_shipping_crate_wood_side_panel_01"
+"origin" "1.799875 -34.300726 -32.875"
+"angles" "81.829236 -87.79976 0.010584"
+"modelscale" "1"
+}

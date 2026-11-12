@@ -1,0 +1,9 @@
+{
+ "name": "show2/unlit",
+ "color": "unlit_c.png",
+ "unlit": true,
+ "scale": [
+  64,
+  64
+ ]
+}

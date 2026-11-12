@@ -1,0 +1,119 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_wood_single_frame_white"
+"origin" "47.996713 39.968379 -60"
+"angles" "0.001671 179.996506 0.001823"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/door_wood_single_frame_white"
+"origin" "47.996713 39.968379 68"
+"angles" "0.001671 179.996506 0.001823"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lm_structural_window_frame_res_02_b"
+"origin" "0 0 0"
+"angles" "-0.001823 0 0.001671"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "4.000904 7.980456 55"
+"angles" "-0.001823 -0.003494 0.001671"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "23.999268 -47.97574 55"
+"angles" "0.00247 89.998516 0.000108"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "44.000231 -63.979307 55"
+"angles" "-0.001823 -0.003494 0.001671"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_in"
+"origin" "3.998368 -48.031351 55"
+"angles" "-0.001823 -0.003494 0.001671"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_in"
+"origin" "4.002162 40.002623 55"
+"angles" "-0.000108 -90.001484 0.00247"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_out"
+"origin" "43.991655 -48.017413 55"
+"angles" "-0.001823 -0.003494 0.001671"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "3.999626 -16.009183 55"
+"angles" "-0.001823 -0.003494 0.001671"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_64"
+"origin" "52.006174 40.01947 55"
+"angles" "-0.000108 -90.006425 0.00247"
+"modelscale" "1"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-4.005945 -62.990183 -64"
+"angles" "0.001671 179.996506 0.001823"
+"modelscale" "1"
+}
+// entity 13
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-3.999551 64.996419 -64"
+"angles" "0.001671 179.996506 0.001823"
+"modelscale" "1"
+}
+// entity 14
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-3.99387 1.051356 -64"
+"angles" "0.001671 179.996506 0.001823"
+"modelscale" "1"
+}

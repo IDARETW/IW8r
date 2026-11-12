@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/oil_drum_big_01_blue"
+"origin" "-30.065587 -0.245905 -0.5"
+"angles" "-0.000335 102.249239 0.00245"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/oil_drum_big_01_blue"
+"origin" "2.12657 29.526317 0"
+"angles" "0.00245 -77.750761 0.000335"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/oil_drum_big_01_yellow"
+"origin" "-27.968195 28.781264 0"
+"angles" "-0.001799 180 0.001697"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/oil_drum_big_01_yellow"
+"origin" "0 0 0"
+"angles" "0.001697 0 0.001799"
+"modelscale" "1"
+}

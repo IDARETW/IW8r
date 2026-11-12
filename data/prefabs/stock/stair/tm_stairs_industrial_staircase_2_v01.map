@@ -1,0 +1,127 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01a_straight"
+"origin" "-13.001129 36.999603 -16"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01a_straight"
+"origin" "-13.001129 36.999603 112"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01a_straight"
+"origin" "25.998871 37.000793 -16"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01a_straight"
+"origin" "25.998871 37.000793 112"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01a_straight"
+"origin" "64.998871 37.001984 -16"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01a_straight"
+"origin" "103.998871 37.003174 -16"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bottom"
+"origin" "-29.001007 32.999115 -9"
+"angles" "0.001749 -179.996503 0.001749"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bottom"
+"origin" "-29.001007 32.999115 119"
+"angles" "0.001749 -179.996503 0.001749"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_2"
+"origin" "0 0 -128"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_2"
+"origin" "0 0 0"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_2"
+"origin" "0 0 128"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_4"
+"origin" "38 0.00116 -104"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 13
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_4"
+"origin" "38 0.00116 24"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 14
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_bottom"
+"origin" "-14 -0.000427 -12"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 15
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_bottom"
+"origin" "-14 -0.000427 116"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}

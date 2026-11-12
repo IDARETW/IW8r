@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_128"
+"origin" "11.061812 0.036193 0"
+"angles" "90 -0.000553 0"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_clamps"
+"origin" "-18.954848 0.025204 11"
+"angles" "-0.001236 0 0.002142"
+"modelscale" "1.3"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_elbow_01"
+"origin" "0 0 0"
+"angles" "-0.001236 0 0.002142"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_joint_coupling_01"
+"origin" "11.061812 0.036193 -21.5"
+"angles" "-90 -90.001236 0"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_joint_coupling_01"
+"origin" "12.030515 18.958462 -21.5"
+"angles" "-90 -90.001236 0"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_valve_01"
+"origin" "-9.005675 -0.003687 11"
+"angles" "-0.001236 0 0.002142"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/street_concrete_barrier_cube_01"
+"origin" "12.541991 7.471929 -22.5"
+"angles" "-0.002142 -179.996622 179.998764"
+"modelscale" "1.2"
+}

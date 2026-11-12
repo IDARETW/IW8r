@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_fence_modular_metal_gate_01"
+"origin" "0.5 -22.5 0"
+"angles" "0.68993 0 0"
+"modelscale" "1.05"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_fence_modular_metal_gate_02"
+"origin" "0 0 0"
+"angles" "0.68993 0 0"
+"modelscale" "1.05"
+}

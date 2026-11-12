@@ -1,0 +1,183 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01a_straight"
+"origin" "74.953768 -41.011372 -40"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01a_straight"
+"origin" "74.953768 -41.011372 88"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "-43.062717 -33.023187 -11"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "-7.000272 -33.022792 -115"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "-7.000272 -33.022792 13"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "28.921305 -33.022398 -91"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "28.921305 -33.022398 37"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "64.983751 -33.022003 -67"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "64.983751 -33.022003 61"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "100.903947 -33.020229 -43"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bottom_01_mrr"
+"origin" "-67.033913 -33.093884 -33"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bottom_01_mrr"
+"origin" "-67.033913 -33.093884 95"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 13
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_endcap_01b_straight"
+"origin" "-71.983573 -41.012982 -40"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 14
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_endcap_01b_straight"
+"origin" "-71.983573 -41.012982 88"
+"angles" "0.000946 -180 0.002285"
+"modelscale" "1"
+}
+// entity 15
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_2"
+"origin" "-38.042897 -0.000417 -24"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 16
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_2"
+"origin" "-38.042897 -0.000417 104"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 17
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_4"
+"origin" "0 0 -128"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 18
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_4"
+"origin" "0 0 0"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 19
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_4"
+"origin" "0 0 128"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 20
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_bottom"
+"origin" "-52.044164 -0.00057 -36"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 21
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_bottom"
+"origin" "-52.044164 -0.00057 92"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 22
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_top"
+"origin" "119.926415 0.001314 -44"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}

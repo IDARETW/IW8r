@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "-90 0 0"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "1.033041 -4.266515 0"
+"angles" "-90 -89.996748 0"
+"modelscale" "0.75"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05_02"
+"origin" "-25.201426 -25.804808 51.25"
+"angles" "-0.000137 -45.000406 11.30006"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05_03"
+"origin" "26.729981 -0.558612 -47.75"
+"angles" "-0.001776 -89.998279 179.998279"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05_03"
+"origin" "26.789518 -5.559211 -47.75"
+"angles" "0.001721 90.001721 179.998224"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05_04"
+"origin" "-4.293532 9.271982 -47.5"
+"angles" "-0.000039 0.00078 179.997528"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05_04"
+"origin" "-4.284079 8.971349 15.25"
+"angles" "0.000039 0.00078 0.002472"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05_04"
+"origin" "0.710259 9.230008 -47.5"
+"angles" "-0.002472 -179.99922 -179.999961"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05_04"
+"origin" "0.716643 9.026983 15.25"
+"angles" "0.002472 -179.99922 -0.000039"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05_04"
+"origin" "10.219225 -0.475928 15.25"
+"angles" "0.001776 -89.998279 0.001721"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05_04"
+"origin" "10.278763 -5.476527 15.25"
+"angles" "-0.001721 90.001721 0.001776"
+"modelscale" "1"
+}

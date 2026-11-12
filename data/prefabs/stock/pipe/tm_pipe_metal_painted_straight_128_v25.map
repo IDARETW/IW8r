@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "0 0 0"
+"angles" "-0.000323 0 -90.002452"
+"modelscale" "0.25"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "0 0 32"
+"angles" "-0.000323 0 -90.002452"
+"modelscale" "0.25"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_wood_stud_frame_01_2x120"
+"origin" "24.460969 8.004495 -3"
+"angles" "0.000323 -90 0.002452"
+"modelscale" "0.75"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_wood_stud_frame_01_2x120"
+"origin" "27.978532 8.014924 -3"
+"angles" "0.000323 -90 0.002452"
+"modelscale" "0.75"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_wood_stud_frame_01_2x120"
+"origin" "36.056927 8.005972 -3"
+"angles" "0.000323 -90 0.002452"
+"modelscale" "0.75"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_wood_stud_frame_01_32x120"
+"origin" "26.539011 -15.973998 -2"
+"angles" "0.000323 -90 0.002452"
+"modelscale" "1.11"
+}

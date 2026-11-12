@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/lm_pipes_high_pressure_corner"
+"origin" "0 0 0"
+"angles" "0.000451 0 179.997569"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lm_pipes_high_pressure_valve_8"
+"origin" "-0.083334 -9.983355 0"
+"angles" "-0.002038 90.000015 0.001401"
+"modelscale" "1"
+}

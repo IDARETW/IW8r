@@ -1,0 +1,135 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01b"
+"origin" "-24 0 16"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01b_mrr"
+"origin" "-24 60 16"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c"
+"origin" "0 0 0"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c"
+"origin" "30 0 -20"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c"
+"origin" "60 0 -40"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "0 60 0"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "30 60 -20"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01c_mrr"
+"origin" "60 60 -40"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bottom"
+"origin" "78 0 -58"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bottom_01_mrr"
+"origin" "78 60 -58"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_top"
+"origin" "-36 0 18"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_top_01_mrr"
+"origin" "-36 60 18"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 13
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_128"
+"origin" "-42 70 8"
+"angles" "0.002473 180 0"
+"modelscale" "1"
+}
+// entity 14
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_128"
+"origin" "-2 -18 8"
+"angles" "0.001749 -89.998251 0.001749"
+"modelscale" "1"
+}
+// entity 15
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_128"
+"origin" "-10 -2 79"
+"angles" "-0.001749 89.998251 0.001749"
+"modelscale" "1"
+}
+// entity 16
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_64"
+"origin" "86 -2 79"
+"angles" "-0.001749 89.998251 0.001749"
+"modelscale" "1"
+}

@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_metal_corrugated_corner_88_02_light_blue"
+"origin" "34.200195 0.001476 45.75"
+"angles" "0.001749 -179.995779 0.001749"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_metal_panel_sliding_security_gate_beam_256"
+"origin" "0 0 0"
+"angles" "0 0 90"
+"modelscale" "0.74"
+}

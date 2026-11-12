@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_wood_single_frame_white"
+"origin" "-33.603252 24.557514 3"
+"angles" "0.001749 92.501936 0.001749"
+"modelscale" "0.95"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_gate_exterior_metal_damaged_01"
+"origin" "0 0 0"
+"angles" "0.002472 0 -0.000054"
+"modelscale" "0.65"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/me_gate_exterior_metal_frame_01"
+"origin" "-4.288286 52.362779 -15"
+"angles" "0.002473 2.500187 0"
+"modelscale" "0.65"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/me_gate_exterior_metal_frame_01"
+"origin" "-1.910851 -2.085341 -15"
+"angles" "0.002473 2.500187 0"
+"modelscale" "0.65"
+}

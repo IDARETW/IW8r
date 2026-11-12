@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/sandbag_02"
+"origin" "-1.964088 -13.978759 22"
+"angles" "0.000192 -179.998132 -7.998942"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_long_01"
+"origin" "0 0 0"
+"angles" "0.00062 0 0.002394"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_corner_sp_01"
+"origin" "4.03929 10.029695 28"
+"angles" "0.002414 -126.001319 0.000535"
+"modelscale" "1"
+}

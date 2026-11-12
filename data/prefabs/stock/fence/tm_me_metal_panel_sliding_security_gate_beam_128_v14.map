@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "-0.000131 4.524379 -60.5"
+"angles" "-0.002285 0.002285 89.999054"
+"modelscale" "1.1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "-0.000131 4.524379 -22"
+"angles" "-0.002285 0.002285 89.999054"
+"modelscale" "1.1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/me_metal_panel_sliding_security_gate_beam_128"
+"origin" "0 0 0"
+"angles" "0 0 -90"
+"modelscale" "1.1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-0.000057 1.983214 12"
+"angles" "0.000946 -89.997715 179.997715"
+"modelscale" "0.85"
+}

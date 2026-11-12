@@ -1,0 +1,111 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_4"
+"origin" "-24.012314 -0.006789 -20"
+"angles" "0.002142 0 0.001236"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_top"
+"origin" "0 0 0"
+"angles" "0.002142 0 0.001236"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "11.987947 -48.964241 106"
+"angles" "0.00064 89.998458 0.002389"
+"modelscale" "0.5"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "12.025082 48.973698 106"
+"angles" "0.00064 89.998458 0.002389"
+"modelscale" "0.5"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "7.480771 -61.958605 -61"
+"angles" "0 90.002142 90"
+"modelscale" "0.65"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "7.480771 -61.958605 63"
+"angles" "0 90.002142 90"
+"modelscale" "0.65"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "7.495944 -0.983478 2"
+"angles" "-90 -179.999154 0"
+"modelscale" "0.64"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "7.495944 -0.983478 123"
+"angles" "-90 -179.999154 0"
+"modelscale" "0.64"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "7.526583 61.964906 -61"
+"angles" "0 90.002142 90"
+"modelscale" "0.65"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "7.526583 61.964906 63"
+"angles" "0 90.002142 90"
+"modelscale" "0.65"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "13.98026 -0.011583 121"
+"angles" "-0.001236 180 0.002142"
+"modelscale" "0.5"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_64x96_01"
+"origin" "3.922503 72.008416 28"
+"angles" "0.002142 0 0.001236"
+"modelscale" "0.75"
+}
+// entity 13
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_64x96_01"
+"origin" "3.930921 -120.010594 28"
+"angles" "0.002142 0 0.001236"
+"modelscale" "0.75"
+}

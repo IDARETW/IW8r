@@ -1,0 +1,71 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_debris_pile_03"
+"origin" "-45.577759 12.647775 -3"
+"angles" "-0.001962 -108.487442 0.001505"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_debris_pile_03"
+"origin" "-27.83338 8.222862 28"
+"angles" "0.001505 71.509091 0.001962"
+"modelscale" "0.7"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_debris_pile_08"
+"origin" "-57.636238 -35.609073 -4"
+"angles" "-0.000854 -173.076983 0.002321"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_01"
+"origin" "-19.574728 39.209348 -4"
+"angles" "0.002452 -18.488089 0.000323"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_l_01"
+"origin" "-58.767771 19.696431 0"
+"angles" "0.002466 -24.939818 0.000184"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_l_01"
+"origin" "74.697547 -24.960582 0"
+"angles" "0.002459 -21.521044 0.000258"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01"
+"origin" "-60.661555 20.349849 0"
+"angles" "0.002411 -7.788692 0.00055"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01"
+"origin" "0 0 0"
+"angles" "0.002368 0 0.000712"
+"modelscale" "1"
+}

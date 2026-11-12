@@ -1,0 +1,28 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "storage_shelf_beam_wood_plank"
+"origin" "0 0 0"
+"angles" "0 0 0"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "container_paint_can_01"
+"origin" "-20 0 40"
+"angles" "0 0 0"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/container_water_jug_01_blue"
+"origin" "20 0 40"
+"angles" "0 0 0"
+}

@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/sign_emergency_exit_light_02"
+"origin" "0 0 0"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-10.960568 25.38622 -8.070068"
+"angles" "-0.002285 -180 179.999054"
+"modelscale" "0.82"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-10.890012 -26.586819 -8.070068"
+"angles" "-0.002285 -180 179.999054"
+"modelscale" "0.8"
+}

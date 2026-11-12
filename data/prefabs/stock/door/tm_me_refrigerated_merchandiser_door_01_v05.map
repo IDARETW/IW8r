@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_refrigerated_merchandiser_door_01"
+"origin" "-74.237975 -35.182887 23.718994"
+"angles" "-54.283174 37.992142 -31.408611"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_refrigerated_merchandiser_door_01"
+"origin" "0 0 0"
+"angles" "0.002452 0 0.000323"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/me_refrigerated_merchandiser_door_01"
+"origin" "35.924091 0.002496 0"
+"angles" "0.002452 0 0.000323"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/me_refrigerated_merchandiser_door_01"
+"origin" "70.902509 -0.052992 0"
+"angles" "0.002452 0 0.000323"
+"modelscale" "1"
+}

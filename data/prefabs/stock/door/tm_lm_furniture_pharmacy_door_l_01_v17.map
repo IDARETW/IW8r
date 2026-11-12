@@ -1,0 +1,111 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_debris_pile_03"
+"origin" "48.041894 71.627758 28"
+"angles" "-0.001962 12.058365 0.001505"
+"modelscale" "0.7"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_03"
+"origin" "-32.145713 -7.870106 -4"
+"angles" "0.001505 -167.945102 0.001962"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_03"
+"origin" "30.522334 5.48987 -4"
+"angles" "0.001505 -167.945102 0.001962"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_divider_01"
+"origin" "-69.120221 16.951236 44"
+"angles" "0.001505 -167.945102 0.001962"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_divider_01"
+"origin" "-7.057687 30.211799 44"
+"angles" "0.001505 -167.945102 0.001962"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_divider_01"
+"origin" "55.105852 43.477926 44"
+"angles" "0.001505 -167.945102 0.001962"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_top_01"
+"origin" "-32.145713 -7.870106 -4"
+"angles" "0.001505 -167.945102 0.001962"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_top_01"
+"origin" "30.522334 5.48987 -4"
+"angles" "0.001505 -167.945102 0.001962"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_l_01"
+"origin" "-63.075104 -13.479369 0"
+"angles" "-0.001749 -2.920428 0.001748"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_l_01"
+"origin" "0 0 0"
+"angles" "-0.001793 0 0.001703"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01"
+"origin" "-2.530097 -0.52117 0"
+"angles" "-0.001962 12.058365 0.001505"
+"modelscale" "1"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01"
+"origin" "55.105852 43.477926 0"
+"angles" "-0.000712 -59.454194 0.002368"
+"modelscale" "1"
+}
+// entity 13
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01"
+"origin" "60.545481 12.948397 0"
+"angles" "0.002353 51.215256 -0.000761"
+"modelscale" "1"
+}

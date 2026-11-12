@@ -1,0 +1,47 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "0 0 0"
+"angles" "0 0 90"
+"modelscale" "0.12"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "0 0 -17.320068"
+"angles" "0 90.003314 -90"
+"modelscale" "0.12"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "0 0 -1.929932"
+"angles" "0 90.003314 -90"
+"modelscale" "0.12"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_16"
+"origin" "0 0 -0.01001"
+"angles" "0 90.003314 -90"
+"modelscale" "0.12"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_32"
+"origin" "-4.807498 0.001242 0.929932"
+"angles" "0.000946 90.002285 179.997715"
+"modelscale" "0.12"
+}

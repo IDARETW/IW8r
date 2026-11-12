@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_128"
+"origin" "18.922289 -0.968294 21.5"
+"angles" "90 90.000683 0"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_elbow_01"
+"origin" "18.958721 -12.030106 21.5"
+"angles" "-0.001236 90.001236 0.002142"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_joint_coupling_01"
+"origin" "0 0 0"
+"angles" "-90 0 0"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_joint_coupling_01"
+"origin" "18.922289 -0.968294 0"
+"angles" "-90 0 0"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_valve_01"
+"origin" "18.962603 -21.035781 32.5"
+"angles" "-0.001236 90.001236 0.002142"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/street_concrete_barrier_cube_01"
+"origin" "11.486522 0.511723 -1"
+"angles" "-0.002142 -89.995386 179.998764"
+"modelscale" "1.2"
+}

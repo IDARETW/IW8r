@@ -1,0 +1,9 @@
+{
+ "name": "show2/solid",
+ "color": "solid_c.png",
+ "surface": "metal",
+ "scale": [
+  64,
+  64
+ ]
+}

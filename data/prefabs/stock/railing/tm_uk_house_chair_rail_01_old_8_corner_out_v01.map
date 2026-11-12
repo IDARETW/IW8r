@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_16"
+"origin" "-23.985134 -15.987507 -21"
+"angles" "-0.001065 -90.001269 0.002232"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_32"
+"origin" "-32.019537 -0.026788 -21"
+"angles" "0.002232 89.998731 0.001065"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8"
+"origin" "-11.99937 -16.009413 -21"
+"angles" "-0.001065 -90.001269 0.002232"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8"
+"origin" "-11.979464 0.014127 -21"
+"angles" "0.002232 89.998731 0.001065"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8_corner_out"
+"origin" "-0.019906 -16.023541 -21"
+"angles" "-0.001065 -90.001269 0.002232"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8_corner_out"
+"origin" "0 0 -21"
+"angles" "0.002331 0 -0.000825"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_64"
+"origin" "-47.993597 -0.005139 0"
+"angles" "0.002232 89.998731 0.001065"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_8"
+"origin" "-11.979464 0.014127 0"
+"angles" "0.002232 89.998731 0.001065"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_8_corner_out"
+"origin" "0 0 0"
+"angles" "0.002331 0 -0.000825"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_4"
+"origin" "8.04209 42.027718 -42"
+"angles" "0.002331 0 -0.000825"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_64"
+"origin" "8.038002 8.02788 -42"
+"angles" "0.002331 0 -0.000825"
+"modelscale" "1"
+}

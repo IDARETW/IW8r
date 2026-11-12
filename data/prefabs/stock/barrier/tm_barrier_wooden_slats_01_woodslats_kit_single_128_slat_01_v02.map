@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/barrier_wooden_slats_01_woodslats_kit_single_128_slat_01"
+"origin" "-1.046481 17.973864 -23"
+"angles" "0.000238 0 -143.240878"
+"modelscale" "0.85"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/barrier_wooden_slats_01_woodslats_kit_single_128_slat_01"
+"origin" "0 0 0"
+"angles" "0.000238 0 -143.240878"
+"modelscale" "0.85"
+}

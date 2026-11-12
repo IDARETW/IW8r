@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed"
+"origin" "29.324987 9.945255 1.25"
+"angles" "0.002075 90.539277 0.001345"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/decor_barrel_wood_01"
+"origin" "0 0 0"
+"angles" "-0.340919 0 -1.40882"
+"modelscale" "1"
+}

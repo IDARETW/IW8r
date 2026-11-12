@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_metal_single_frame_b_01_grey"
+"origin" "0.233973 51.018054 -64"
+"angles" "0.000825 -89.998731 0.002331"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_signs_industrial_close_the_door"
+"origin" "0 0 0"
+"angles" "-0.001065 0 0.002232"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/ee_signs_industrial_do_not_block"
+"origin" "-0.030942 6.537115 -15"
+"angles" "-0.001065 0 0.002232"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "-32.015215 -27.473098 59"
+"angles" "0.002232 -180 0.001065"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_64"
+"origin" "-32.027656 12.535782 59"
+"angles" "0.002232 -180 0.001065"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_8_corner_in"
+"origin" "-32.0367 -43.447312 59"
+"angles" "0.002331 90.001269 -0.000825"
+"modelscale" "1"
+}

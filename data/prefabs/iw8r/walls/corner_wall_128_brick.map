@@ -1,0 +1,25 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+// brush 0
+{
+ ( 64 8 0 ) ( -64 8 0 ) ( -64 -8 0 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -64 -8 128 ) ( -64 8 128 ) ( 64 8 128 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -64 -8 128 ) ( 64 -8 128 ) ( 64 -8 0 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 64 8 128 ) ( -64 8 128 ) ( -64 8 0 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 64 -8 128 ) ( 64 8 128 ) ( 64 8 0 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -64 8 128 ) ( -64 -8 128 ) ( -64 -8 0 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 1
+{
+ ( 8 64 0 ) ( -8 64 0 ) ( -8 -64 0 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -8 -64 128 ) ( -8 64 128 ) ( 8 64 128 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -8 -64 128 ) ( 8 -64 128 ) ( 8 -64 0 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 8 64 128 ) ( -8 64 128 ) ( -8 64 0 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 8 -64 128 ) ( 8 64 128 ) ( 8 64 0 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -8 64 128 ) ( -8 -64 128 ) ( -8 -64 0 ) tm2co/un_wall_set_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+}

@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "0 0 0"
+"angles" "9.037252 0 0.000426"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "14.50257 43.033964 -0.5"
+"angles" "-0.000215 -0.003753 0.002463"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "34.498792 -12.988283 -0.5"
+"angles" "-0.001894 89.999532 0.00159"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "54.491834 -29.003839 -0.5"
+"angles" "-0.000215 -0.003753 0.002463"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_in"
+"origin" "14.490118 -13.014467 -0.5"
+"angles" "-0.000216 0.001174 0.002463"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_out"
+"origin" "54.497367 -12.960317 -0.5"
+"angles" "-0.000216 0.001174 0.002463"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "14.511424 19.068787 -0.5"
+"angles" "-0.000215 -0.003753 0.002463"
+"modelscale" "1"
+}

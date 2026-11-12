@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_01"
+"origin" "0.00005 -4.524379 25"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_02"
+"origin" "0.000186 -16.970563 -3"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_02"
+"origin" "0.068856 18.033986 -2"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_03"
+"origin" "0.0695 -40.799508 24.035889"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_04"
+"origin" "0 0 0"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_05"
+"origin" "0.00046 -42.001038 -3"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_medium"
+"origin" "-0.003222 42.0038 -16.5"
+"angles" "0.000946 0 0.002285"
+"modelscale" "1"
+}

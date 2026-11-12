@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_handrails_painted_metal_ornate_64"
+"origin" "-4 3.75 0"
+"angles" "0.001749 89.998251 179.998251"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_handrails_painted_metal_ornate_64"
+"origin" "0 0 0"
+"angles" "0 0 179.997527"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/me_plaster_barrier_fence_wall_ornate_collumn_cap_01"
+"origin" "-2 -2 1"
+"angles" "-0.001749 89.998251 0.001749"
+"modelscale" "0.4"
+}

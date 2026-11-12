@@ -1,0 +1,9 @@
+{
+ "name": "show2/pad_lighting",
+ "color": "pad_lighting_c.png",
+ "surface": "concrete",
+ "scale": [
+  192,
+  192
+ ]
+}

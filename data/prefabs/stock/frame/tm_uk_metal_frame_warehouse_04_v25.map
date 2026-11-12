@@ -1,0 +1,103 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_02"
+"origin" "-0.301023 5.600573 -92"
+"angles" "-0.001749 -89.999276 0.001749"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-3.500432 9.999849 18.5"
+"angles" "-0.001749 -89.999276 0.001749"
+"modelscale" "0.5"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "0 0 0"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "4.003776 -87.499827 19"
+"angles" "-0.001749 -89.999276 0.001749"
+"modelscale" "0.5"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-86.000712 16.496288 -17"
+"angles" "0 0.002473 90"
+"modelscale" "0.65"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-51.000432 9.997799 41"
+"angles" "0.001749 90.004221 0.001749"
+"modelscale" "0.5"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-0.000259 6 -52"
+"angles" "0 -179.997527 90"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "2.001985 -45.999914 41"
+"angles" "0 -179.997527 0.002473"
+"modelscale" "0.5"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "-64.000604 13.997238 -5"
+"angles" "-17.400197 90.004007 0.001534"
+"modelscale" "0.75"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "-40.000734 16.998274 -5"
+"angles" "-0.001749 -89.999276 0.001749"
+"modelscale" "0.75"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "-40.000647 14.998274 -28"
+"angles" "11.797528 -89.99912 0.001593"
+"modelscale" "0.75"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_64x96_01"
+"origin" "-76.000863 19.99672 -52"
+"angles" "-0.001749 -89.999276 0.001749"
+"modelscale" "0.75"
+}

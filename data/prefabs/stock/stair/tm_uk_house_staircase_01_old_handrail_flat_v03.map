@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_128"
+"origin" "113.785621 -26.271935 0"
+"angles" "-0.00002 179.997547 0.002473"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_2"
+"origin" "113.716194 42.738485 0"
+"angles" "-0.00002 179.997547 0.002473"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_4"
+"origin" "39.754481 51.753433 0"
+"angles" "-0.001763 -90.000698 0.001734"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_4"
+"origin" "113.768544 39.737222 0"
+"angles" "-0.00002 179.997547 0.002473"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_64"
+"origin" "73.759774 51.797323 0"
+"angles" "-0.001763 -90.000698 0.001734"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8"
+"origin" "33.753687 51.754189 0"
+"angles" "-0.001763 -90.000698 0.001734"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8_corner_in"
+"origin" "113.764196 51.738908 0"
+"angles" "-0.00002 179.997547 0.002473"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8_corner_out"
+"origin" "21.751969 51.747888 0"
+"angles" "-0.00002 179.997547 0.002473"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_house_staircase_01_old_handrail_flat"
+"origin" "0 0 0"
+"angles" "0.002473 0 0.00002"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_house_staircase_01_old_handrail_flat_damaged"
+"origin" "-110.009806 0.304176 0"
+"angles" "0.002473 0 0.00002"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/uk_house_staircase_01_old_handrail_flat_damaged"
+"origin" "-39.009553 -0.262631 0"
+"angles" "-0.00002 179.997547 0.002473"
+"modelscale" "1"
+}

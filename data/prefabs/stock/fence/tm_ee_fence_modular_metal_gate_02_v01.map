@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/building_door_wood_worn_out_frame_02"
+"origin" "-6.09237 -12.46971 5.209961"
+"angles" "-0.178788 -89.994185 -0.880682"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_fence_modular_metal_gate_02"
+"origin" "0 0 0"
+"angles" "1.570246 0 -0.181305"
+"modelscale" "1.05"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/ee_fence_modular_metal_gate_door"
+"origin" "0.777947 -7.059909 0.030029"
+"angles" "0.194441 0.003559 -0.179723"
+"modelscale" "1.05"
+}

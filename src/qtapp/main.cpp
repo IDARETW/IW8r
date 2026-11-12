@@ -1,0 +1,983 @@
+// IW8 Radiant Suite - Qt 6 + Qt Advanced Docking System shell.
+//   IW8Radiant.exe [file.map | file.ents | <ACTS map_ents>.asset.json] [--keys iw8_canonical_keys.tsv]
+//   IW8Radiant.exe --gui-test <iw8_sample_room.map> [--out <dir>]   scripted end-to-end UI test on Qt's offscreen
+//                                                                    platform; exit code 0 = pass
+//   IW8Radiant.exe --material-cache-test <material>[,<material>...] --out <dir>   headless stock texture cache run
+//                                                                    (writes <dir>/material-cache-test.txt)
+//   IW8Radiant.exe --thumb-pack materials|models [--limit N] [--batch N]   full browser thumbnail pack (thumb_pack.h)
+//   IW8Radiant.exe --model-cache-test <model>[,<model>...] --out <dir>   headless stock LOD0 model cache run
+//                                                                    (writes <dir>/model-cache-test.txt)
+//   IW8Radiant.exe --world-cache-test <zone> --out <dir>             headless stock world geometry (gfx_map + trzone)
+//                                                                    (writes <dir>/world-cache-test.txt)
+//   IW8Radiant.exe --stock-sky-test <sky> --out <dir>               headless stock sky export (doc 33)
+//                                                                    (writes <dir>/stock-sky-test.txt)
+//   IW8Radiant.exe --smoke-test <file> [--out <dir>]                  opens the file, renders the D3D11 camera view,
+//                                                                    counts drawn pixels; exit code 0 = geometry drawn
+//   IW8Radiant.exe --stock-props-test <zone> --out <dir>             opens a stock map as File > Open IW8 Stock Map
+//                                                                    does and waits until every prop model is fetched
+//                                                                    (writes <dir>/stock-props-test.txt, screenshots)
+//   IW8Radiant.exe --model-chain-test --out <dir>                    model fetch chain against a failing cache, no
+//                                                                    game needed (writes <dir>/model-chain-test.txt)
+//   IW8Radiant.exe --viewport-bench <map file> --out <dir> [--reference <stock world export folder>]
+//                                                                    camera renderer timings and screenshots at
+//                                                                    1920 x 1080 on Qt's offscreen platform (writes
+//                                                                    <dir>/viewport-bench.txt; docs/research/85)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <d3d11.h>
+
+#include <QApplication>
+#include <QThread>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QGuiApplication>
+#include <QPainter>
+#include <QPalette>
+#include <QPixmap>
+#include <QScreen>
+#include <QStyleFactory>
+#include <QTimer>
+
+#include "devmap_cover.h"
+#include "devmap_launch.h"
+#include "cache_manager.h"
+#include "thumb_pack.h"
+#include "camera_view.h"
+#include "editor_log.h"
+#include "main_window.h"
+#include "map_text.h"
+#include "material_cache.h"
+#include "asset_audit.h"
+#include "web_server.h"
+#include "theme.h"
+#include <QTextStream>
+#include "model_cache.h"
+#include "qt_gui_test.h"
+#include "settings.h"
+#include "world_cache.h"
+#include "crash_handler.h"
+#include "compile_panel.h"
+#include "grid_view.h"
+#include <QStandardPaths>
+#include <QElapsedTimer>
+#ifdef _WIN32
+#include <windows.h>
+#include <psapi.h>
+#endif
+#include <QDateTime>
+#include "stock_sky.h"
+#include "scene.h"
+#include "stock_world.h"
+#include <algorithm>
+#include <cmath>
+#include <functional>
+#include <vector>
+
+namespace {
+
+void applyDarkTheme(QApplication& app) {
+    app.setStyle(QStyleFactory::create("Fusion"));
+    QPalette p;
+    const QColor base(37, 39, 43), window(45, 47, 52), text(220, 222, 226), disabled(120, 120, 128), accent(64, 128, 220);
+    p.setColor(QPalette::Window, window);
+    p.setColor(QPalette::WindowText, text);
+    p.setColor(QPalette::Base, base);
+    p.setColor(QPalette::AlternateBase, QColor(42, 44, 49));
+    p.setColor(QPalette::ToolTipBase, window);
+    p.setColor(QPalette::ToolTipText, text);
+    p.setColor(QPalette::Text, text);
+    p.setColor(QPalette::Button, window);
+    p.setColor(QPalette::ButtonText, text);
+    p.setColor(QPalette::BrightText, Qt::red);
+    p.setColor(QPalette::Highlight, accent);
+    p.setColor(QPalette::HighlightedText, Qt::white);
+    p.setColor(QPalette::PlaceholderText, disabled);
+    p.setColor(QPalette::Disabled, QPalette::Text, disabled);
+    p.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
+    p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
+    app.setPalette(p);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// --viewport-bench (docs/research/85_viewport_performance.md): times the camera renderer on one map, off-screen.
+// Each scenario runs IW8R_BENCH_FRAMES frames (default 120). Per frame: `sync` is SceneCache::sync after a document
+// change, `other` the rest of the change (the document command and the other panels' refresh), `cpu` the time inside
+// CameraView::render(), `total` render() plus the wait until the GPU has finished the frame.
+struct BenchSeries {
+    std::vector<double> sync, other, cpu, total;
+    size_t builds = 0;  // camera geometry rebuilds during the scenario
+    size_t relayouts = 0, inPlace = 0, shadowPasses = 0, uploadBytes = 0;  // sums over the scenario's frames
+};
+
+double benchMedian(std::vector<double> v) {
+    if (v.empty()) return 0;
+    std::sort(v.begin(), v.end());
+    return v[v.size() / 2];
+}
+
+double benchMax(const std::vector<double>& v) { return v.empty() ? 0 : *std::max_element(v.begin(), v.end()); }
+
+int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QString& outDir, const QString& referenceDir) {
+    using iw8r::Vec3;
+    QDir().mkpath(outDir);
+    QStringList report;
+    QElapsedTimer t;
+    t.start();
+    w.openPath(mapFile);
+    QApplication::processEvents();
+    auto& ctx = w.context();
+    iw8r::qt::CameraView* cam = w.cameraView();
+    if (!cam || ctx.doc.path().empty()) return 3;
+    const double openMs = t.nsecsElapsed() / 1e6;
+    cam->setFixedRenderSize(1920, 1080);
+    cam->setWindTime(0);
+    cam->setEffectTime(0);
+    const int frames = std::max(8, qEnvironmentVariableIsSet("IW8R_BENCH_FRAMES") ? qEnvironmentVariableIntValue("IW8R_BENCH_FRAMES") : 120);
+    iw8r::app::Prof::on = qEnvironmentVariableIntValue("IW8R_BENCH_PROFILE") > 0;  // section timers in the report
+    const QString only = qEnvironmentVariable("IW8R_BENCH_ONLY");  // "" = every scenario, else a comma list of names
+
+    ctx.scene.sync(ctx.doc);
+    iw8r::AABB all;
+    for (const auto* g : ctx.scene.items())
+        if (g->bounds.valid()) all.add(g->bounds);
+    if (!all.valid()) all.add(Vec3{-256, -256, 0}), all.add(Vec3{256, 256, 256});
+    const Vec3 centre = all.center();
+    const double R = std::max(256.0, iw8r::length(all.maxs - all.mins) * 0.5);
+
+    if (!referenceDir.isEmpty()) {
+        // Stock reference path: the cached world export is only read (core readStockWorld), never the cache object.
+        iw8r::StockWorld world;
+        std::string err;
+        if (iw8r::readStockWorld(referenceDir.toStdString(), world, &err)) {
+            std::vector<iw8r::app::GpuVertex> tris;
+            const size_t n = iw8r::app::buildReferenceTris(world, tris);
+            std::vector<iw8r::app::ReferenceTexBatch> tex;
+            const size_t nt = iw8r::app::buildReferenceTexBatches(world, tex);
+            report << QString("reference %1 flat_triangles=%2 textured_triangles=%3 textured_batches=%4").arg(QFileInfo(referenceDir).fileName()).arg(n).arg(nt).arg(tex.size());
+            cam->setReference(std::move(tris));
+            if (qEnvironmentVariableIntValue("IW8R_BENCH_REFERENCE_FLAT") <= 0) cam->setReferenceTextured(std::move(tex));
+        } else {
+            report << QString("reference FAILED: %1").arg(QString::fromStdString(err));
+        }
+    }
+
+    const auto setCam = [&](const Vec3& pos, double yaw, double pitch) {
+        ctx.cam.pos = pos;
+        ctx.cam.yaw = yaw;
+        ctx.cam.pitch = pitch;
+        ctx.cam.fov = 90;
+    };
+    // Fixed cameras: `a` sees the whole map from a corner, `b` stands inside it near the middle.
+    const auto camA = [&] { setCam(centre + Vec3{-0.45 * R, -0.45 * R, 0.35 * R}, 45, -28.8); };
+    const auto camB = [&] { setCam(Vec3{centre.x + 40, centre.y - 150, all.mins.z + 88}, 30, -5); };
+    const auto trigger = [&](const char* name) {
+        if (QAction* a = w.action(name)) a->trigger();
+    };
+    const auto setLit = [&](bool on) {
+        if (ctx.scene.litPreview != on) trigger("ToggleLitPreview");
+    };
+    const auto frame = [&](BenchSeries* s) {
+        QElapsedTimer ft;
+        ft.start();
+        cam->renderNow();
+        const double cpu = ft.nsecsElapsed() / 1e6;
+        cam->finishGpu();
+        const double total = ft.nsecsElapsed() / 1e6;
+        if (s) {
+            s->cpu.push_back(cpu), s->total.push_back(total);
+            s->shadowPasses += cam->frameStats().shadowPasses;
+            s->uploadBytes += cam->frameStats().uploadBytes;
+        }
+    };
+    // After a mode change: frames until the streamed textures are in (a few loads per frame), at most 30 s.
+    const auto settle = [&] {
+        QElapsedTimer st;
+        st.start();
+        int calm = 0;
+        while (calm < 4 && st.elapsed() < 30000) {
+            frame(nullptr);
+            QApplication::processEvents(QEventLoop::AllEvents, 5);
+            calm = cam->texturesPending() ? 0 : calm + 1;
+        }
+    };
+    const auto edited = [&](BenchSeries& s, QElapsedTimer& op) {
+        // The viewport's share (SceneCache::sync) apart from the document command and the other panels.
+        const double before = op.nsecsElapsed() / 1e6;
+        QElapsedTimer st;
+        st.start();
+        ctx.scene.sync(ctx.doc);
+        const double sync = st.nsecsElapsed() / 1e6;
+        st.restart();
+        ctx.documentEdited();
+        s.sync.push_back(sync);
+        s.other.push_back(before + st.nsecsElapsed() / 1e6);
+    };
+    const auto line = [&](const QString& name, const BenchSeries& s) {
+        report << QString("%1 frames=%2 cpu_med=%3 cpu_max=%4 total_med=%5 total_max=%6 sync_med=%7 sync_max=%8 other_med=%9 other_max=%10 geometry_builds=%11 "
+                          "relayouts=%12 items_in_place=%13 shadow_passes=%14 upload_kb_per_frame=%15")
+                      .arg(name, -18).arg(s.cpu.size())
+                      .arg(benchMedian(s.cpu), 0, 'f', 3).arg(benchMax(s.cpu), 0, 'f', 3)
+                      .arg(benchMedian(s.total), 0, 'f', 3).arg(benchMax(s.total), 0, 'f', 3)
+                      .arg(benchMedian(s.sync), 0, 'f', 3).arg(benchMax(s.sync), 0, 'f', 3)
+                      .arg(benchMedian(s.other), 0, 'f', 3).arg(benchMax(s.other), 0, 'f', 3).arg(s.builds)
+                      .arg(s.relayouts).arg(s.inPlace).arg(s.shadowPasses).arg(double(s.uploadBytes) / 1024.0 / double(std::max<size_t>(1, s.cpu.size())), 0, 'f', 1);
+    };
+    const auto wanted = [&](const char* name) { return only.isEmpty() || only.split(',').contains(name); };
+    const auto counts = [&](const QString& name) {
+        const auto& st = cam->frameStats();
+        report << QString("%1 triangles=%2 lines=%3 batches=%4 draw_calls=%5 shadow_draw_calls=%6 upload_bytes=%7 textures=%8")
+                      .arg(name, -18).arg(st.triangles).arg(st.lines).arg(st.batches).arg(st.drawCalls).arg(st.shadowDrawCalls).arg(st.uploadBytes)
+                      .arg(cam->loadedTextures());
+    };
+    const auto shot = [&](const QString& name) {
+        frame(nullptr);
+        cam->grabFrame().save(QDir(outDir).filePath(name + ".png"));
+    };
+    const auto run = [&](const char* name, const std::function<void(int, BenchSeries&)>& before) {
+        if (!wanted(name)) return;
+        BenchSeries s;
+        frame(nullptr);  // warm-up: whatever the scenario's first state needs is built here, not in the numbers
+        iw8r::app::Prof::dump();
+        const size_t b0 = cam->geometryBuilds(), r0 = cam->geometryRelayouts(), p0 = cam->itemsUpdatedInPlace();
+        for (int i = 0; i < frames; ++i) {
+            if (before) before(i, s);
+            frame(&s);
+        }
+        s.builds = cam->geometryBuilds() - b0;
+        s.relayouts = cam->geometryRelayouts() - r0;
+        s.inPlace = cam->itemsUpdatedInPlace() - p0;
+        line(name, s);
+        // The kept geometry must equal a fresh build, and a frame from it must equal a frame after a forced rebuild.
+        {
+            const QString diff = cam->geometrySelfCheck();
+            const QImage kept = cam->grabFrame();
+            cam->invalidateGeometry();
+            frame(nullptr);
+            const QImage fresh = cam->grabFrame();
+            report << QString("  check_%1 geometry=%2 picture=%3").arg(name, diff.isEmpty() ? QString("same") : "DIFFERENT: " + diff,
+                                                                         kept == fresh ? "same" : "DIFFERENT");
+        }
+        if (iw8r::app::Prof::on) report << QString("  profile_%1 (sum over %2 frames):%3").arg(name).arg(frames).arg(QString::fromStdString(iw8r::app::Prof::dump()));
+    };
+
+    // First frame, then the textured view with everything loaded.
+    ctx.doc.deselectAll();
+    trigger("CameraModeTextured");
+    setLit(false);
+    camA();
+    t.restart();
+    frame(nullptr);
+    const double firstMs = t.nsecsElapsed() / 1e6;
+    settle();
+    report << QString("map %1 items=%2 entities=%3 open_ms=%4 first_frame_ms=%5 radius=%6")
+                  .arg(QFileInfo(mapFile).fileName()).arg(ctx.scene.items().size()).arg(ctx.doc.map().entities.size())
+                  .arg(openMs, 0, 'f', 0).arg(firstMs, 0, 'f', 0).arg(R, 0, 'f', 0);
+
+    // Screenshots: one per mode from both cameras, then a selection and a face selection.
+    struct Mode {
+        const char* name;
+        const char* action;
+        bool lit;
+    };
+    const Mode modes[] = {{"textured", "CameraModeTextured", false}, {"lit", "CameraModeTextured", true},
+                          {"wireframe", "CameraModeWireframe", false}, {"flat", "CameraModeFlat", false}};
+    for (const Mode& m : modes) {
+        trigger(m.action);
+        setLit(m.lit);
+        camA();
+        settle();
+        shot(QString("%1_a").arg(m.name));
+        counts(QString("counts_%1_a").arg(m.name));
+        camB();
+        settle();
+        shot(QString("%1_b").arg(m.name));
+        counts(QString("counts_%1_b").arg(m.name));
+    }
+    trigger("CameraModeTextured");
+    setLit(false);
+    // The items the scenarios select and move: brushes spread over the document, and a few models.
+    std::vector<iw8r::SelRef> brushes, others;
+    for (const auto* g : ctx.scene.items()) (g->kind == iw8r::app::PrimGeom::Brush && !g->brushEntity && !g->volume ? brushes : others).push_back(g->ref);
+    const auto pick = [&](int i) -> iw8r::SelRef {
+        if (brushes.empty()) return others.empty() ? iw8r::SelRef{} : others[size_t(i) % others.size()];
+        if (i % 4 == 3 && !others.empty()) return others[(size_t(i) * 7919) % others.size()];
+        return brushes[(size_t(i) * 7919) % brushes.size()];
+    };
+    if (!brushes.empty() || !others.empty()) {
+        camB();
+        ctx.doc.select(pick(0), false);
+        ctx.doc.select(pick(1), true);
+        ctx.doc.select(pick(3), true);
+        ctx.documentEdited();
+        settle();
+        shot("selected_b");
+        camA();
+        shot("selected_a");
+        if (!brushes.empty()) {
+            ctx.doc.selectFace(iw8r::FaceRef{brushes[0].entity, brushes[0].item, 1}, false);
+            ctx.documentEdited();
+            shot("face_a");
+        }
+        ctx.doc.deselectAll();
+        ctx.documentEdited();
+    }
+
+    // Scenarios, in the textured view unless named otherwise.
+    camA();
+    settle();
+    run("still", nullptr);
+    counts("counts_still");
+    camB();
+    run("still_inside", nullptr);
+    run("moving", [&](int i, BenchSeries&) {
+        // First half: a circle around the map looking at its middle. Second half: a flight through it at head height.
+        const int half = frames / 2;
+        if (i < half) {
+            const double a = 2 * 3.14159265358979 * i / half;
+            const Vec3 pos = centre + Vec3{std::cos(a) * 0.4 * R, std::sin(a) * 0.4 * R, 0.2 * R};
+            setCam(pos, a * 180 / 3.14159265358979 + 180, -26.6);
+        } else {
+            const double f = double(i - half) / std::max(1, frames - half - 1);
+            setCam(Vec3{centre.x + (f - 0.5) * 0.8 * R, centre.y + 24, all.mins.z + 88}, 0, 0);
+        }
+    });
+    camA();
+    run("select", [&](int i, BenchSeries& s) {
+        QElapsedTimer op;
+        op.start();
+        if (i % 2 == 0) ctx.doc.select(pick(i / 2), false);
+        else ctx.doc.deselectAll();
+        edited(s, op);
+    });
+    ctx.doc.deselectAll();
+    ctx.documentEdited();
+    if (!brushes.empty() && wanted("edit")) {
+        ctx.doc.select(brushes[brushes.size() / 2], false);
+        ctx.documentEdited();
+        run("edit", [&](int i, BenchSeries& s) {
+            QElapsedTimer op;
+            op.start();
+            ctx.doc.translateSelection(Vec3{i % 2 == 0 ? 16.0 : -16.0, 0, 0});
+            edited(s, op);
+        });
+        ctx.doc.deselectAll();
+        ctx.documentEdited();
+    }
+    run("toggle_modes", [&](int i, BenchSeries& s) {
+        QElapsedTimer op;
+        op.start();
+        const Mode& m = modes[i % 3];
+        trigger(m.action);
+        setLit(m.lit);
+        s.sync.push_back(0);
+        s.other.push_back(op.nsecsElapsed() / 1e6);
+    });
+    trigger("CameraModeTextured");
+    setLit(true);
+    camA();
+    settle();
+    run("still_lit", nullptr);
+    run("select_lit", [&](int i, BenchSeries& s) {
+        QElapsedTimer op;
+        op.start();
+        if (i % 2 == 0) ctx.doc.select(pick(i / 2), false);
+        else ctx.doc.deselectAll();
+        edited(s, op);
+    });
+    ctx.doc.deselectAll();
+    ctx.documentEdited();
+    if (!brushes.empty() && wanted("edit_lit")) {
+        ctx.doc.select(brushes[brushes.size() / 2], false);
+        ctx.documentEdited();
+        run("edit_lit", [&](int i, BenchSeries& s) {
+            QElapsedTimer op;
+            op.start();
+            ctx.doc.translateSelection(Vec3{i % 2 == 0 ? 16.0 : -16.0, 0, 0});
+            edited(s, op);
+        });
+        ctx.doc.deselectAll();
+        ctx.documentEdited();
+    }
+    setLit(false);
+    trigger("CameraModeWireframe");
+    settle();
+    run("still_wireframe", nullptr);
+    camB();
+    run("wireframe_inside", nullptr);
+    trigger("CameraModeTextured");
+#ifdef _WIN32
+    {
+        PROCESS_MEMORY_COUNTERS pmc{};
+        if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
+            report << QString("memory working_set_mb=%1 peak_working_set_mb=%2 peak_pagefile_mb=%3")
+                          .arg(pmc.WorkingSetSize / 1048576.0, 0, 'f', 0).arg(pmc.PeakWorkingSetSize / 1048576.0, 0, 'f', 0)
+                          .arg(pmc.PeakPagefileUsage / 1048576.0, 0, 'f', 0);
+    }
+#endif
+    QFile f(QDir(outDir).filePath("viewport-bench.txt"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return 4;
+    f.write(report.join(QChar(10)).toUtf8() + QByteArray(1, char(10)));
+    return 0;
+}
+
+}  // namespace
+
+namespace {
+
+// --stock-props-test <zone>: File > Open IW8 Stock Map as the owner does it, then waits until every prop model of
+// the map is in the model cache (or failed, or the time limit IW8R_PROPS_TIMEOUT_MS passes, default 20 minutes) and
+// writes <out>/stock-props-test.txt (models wanted / ready / failed with their errors / missing, seconds) plus
+// screenshot-fetching.png (taken while models are still being fetched: the markers) and screenshot.png (the end).
+// Honours IW8R_CAMERA, IW8R_SMOKE_TEXTURED and IW8R_SMOKE_SETTLE_MS like --smoke-test. Use IW8R_MODEL_CACHE_ROOT for
+// a scratch model cache. Exit code 0: the reference is shown and no model is left missing. docs/research/84.
+int runStockPropsTest(iw8r::qt::MainWindow& w, const QString& zoneArg, const QString& outDir) {
+    using iw8r::qt::MainWindow;
+    QDir().mkpath(outDir);
+    QStringList report;
+    report << "# stock-props-test";
+    const auto write = [&] {
+        QFile f(QDir(outDir).filePath("stock-props-test.txt"));
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(report.join(QChar(10)).toUtf8() + QByteArray(1, char(10)));
+    };
+    const QString replay = iw8r::qt::Settings::instance().value("tools/replay", "E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe").toString();
+    const QString zonePath = zoneArg.endsWith(".ff", Qt::CaseInsensitive) ? zoneArg : QFileInfo(replay).absolutePath() + "/zone/" + zoneArg + ".ff";
+    const QString zone = QFileInfo(zonePath).completeBaseName();
+    QElapsedTimer total;
+    total.start();
+    QString err;
+    const bool opened = w.openStockZone(zonePath, &err);
+    QApplication::processEvents();
+    report << QString("zone=%1 opened=%2 entities=%3").arg(zone, opened ? "yes" : "NO").arg(w.context().doc.map().entities.size());
+    if (!opened) {
+        report << "error=" + err.simplified();
+        write();
+        return 3;
+    }
+    // Opening a stock map is expected to show its world and props without a second command.
+    const bool byOpen = w.stockPropStatus().zone == zone;
+    if (!byOpen) w.loadStockReference(zone);
+    report << QString("reference_loaded_by_open=%1").arg(byOpen ? "yes" : "NO (the test asked for it, as View > Stock Map Reference does)");
+
+    if (const QStringList p = qEnvironmentVariable("IW8R_CAMERA").split(' ', Qt::SkipEmptyParts); p.size() == 5) {
+        w.context().cam.pos = iw8r::Vec3{p[0].toDouble(), p[1].toDouble(), p[2].toDouble()};
+        w.context().cam.pitch = p[3].toDouble();
+        w.context().cam.yaw = p[4].toDouble();
+    }
+    if (qEnvironmentVariableIntValue("IW8R_SMOKE_TEXTURED") > 0)
+        if (QAction* m = w.action("CameraModeTextured")) m->trigger();
+    const auto frame = [&] {
+        w.cameraView()->renderAndCount();  // a real frame: update() alone does not paint here
+        QApplication::processEvents(QEventLoop::AllEvents, 30);
+        QThread::msleep(15);
+    };
+    const auto shot = [&](const QString& name) {
+        // Composite: Qt widgets plus the D3D camera frame (which grab() cannot see).
+        QPixmap pix = w.grab();
+        QPainter painter(&pix);
+        const QImage img = w.cameraView()->grabFrame();
+        const QPoint at = w.cameraView()->mapTo(&w, QPoint(0, 0));
+        if (!img.isNull()) painter.drawImage(QRect(at, w.cameraView()->size()), img);
+        painter.end();
+        pix.save(QDir(outDir).filePath(name));
+    };
+
+    const qint64 limitMs = qEnvironmentVariableIsSet("IW8R_PROPS_TIMEOUT_MS") ? qEnvironmentVariableIntValue("IW8R_PROPS_TIMEOUT_MS") : 20 * 60 * 1000;
+    qint64 loadedMs = -1, doneMs = -1;
+    bool midShot = false;
+    MainWindow::StockPropStatus s, first;
+    while (total.elapsed() < limitMs) {
+        frame();
+        s = w.stockPropStatus();
+        if (!s.loaded) {
+            if (s.zone.isEmpty()) break;  // the world export or its load failed
+            continue;
+        }
+        if (loadedMs < 0) {
+            loadedMs = total.elapsed();
+            first = s;
+        }
+        if (!midShot && s.fetching && s.placeholders > 0 && total.elapsed() - loadedMs > 1200) {
+            midShot = true;
+            shot("screenshot-fetching.png");
+            report << "label_while_fetching=" + s.line;
+        }
+        if (!s.fetching) {
+            doneMs = total.elapsed();
+            break;
+        }
+    }
+    if (loadedMs >= 0 && doneMs >= 0) {
+        // The props are redrawn a moment after the last batch: wait for that pass (markers left = failed placements).
+        QElapsedTimer t;
+        t.start();
+        while (t.elapsed() < 15000 && !s.stalled && w.stockPropStatus().placeholders != s.counts.placementsFailed) frame();
+        const int settle = qEnvironmentVariableIntValue("IW8R_SMOKE_SETTLE_MS");
+        t.restart();
+        while (t.elapsed() < settle) frame();
+        s = w.stockPropStatus();
+    }
+    frame();
+    shot("screenshot.png");
+    // IW8R_SMOKE_LIT=1: then the lit preview is switched on. Markers are editor-only and the lit preview draws sun
+    // shadows, so the markers must be gone after the toggle and back after the second one.
+    if (qEnvironmentVariableIntValue("IW8R_SMOKE_LIT") > 0 && s.loaded && !w.context().scene.litPreview) {
+        if (QAction* a = w.action("ToggleLitPreview")) {
+            const size_t before = w.stockPropStatus().placeholders;
+            QElapsedTimer t;
+            a->trigger();
+            for (t.start(); t.elapsed() < 1500;) frame();
+            const size_t lit = w.stockPropStatus().placeholders;
+            shot("screenshot-lit.png");
+            a->trigger();
+            for (t.restart(); t.elapsed() < 1500;) frame();
+            report << QString("lit_preview: markers before=%1 in the lit preview=%2 after=%3").arg(before).arg(lit).arg(w.stockPropStatus().placeholders);
+        }
+    }
+
+    const auto& c = s.counts;
+    report << QString("world_loaded=%1 world_triangles=%2 seconds_to_world=%3").arg(s.loaded ? "yes" : "NO").arg(s.worldTriangles)
+                  .arg(loadedMs < 0 ? -1.0 : loadedMs / 1000.0, 0, 'f', 1);
+    report << QString("first_pass: models=%1 ready=%2 failed=%3 missing=%4 markers=%5").arg(first.counts.models).arg(first.counts.ready)
+                  .arg(first.counts.failed).arg(first.counts.missing).arg(first.placeholders);
+    report << QString("end: models=%1 ready=%2 failed=%3 missing=%4").arg(c.models).arg(c.ready).arg(c.failed).arg(c.missing);
+    report << QString("end: placements=%1 ready=%2 failed=%3 missing=%4 markers=%5 drawn_as_meshes=%6 gpu_instances=%7")
+                  .arg(c.placements).arg(c.placementsReady).arg(c.placementsFailed).arg(c.placementsMissing).arg(s.placeholders)
+                  .arg(w.referencePropMeshes()).arg(w.cameraView()->referenceInstances());
+    report << QString("fetch_finished=%1 stalled=%2 seconds_fetching=%3 seconds_total=%4")
+                  .arg(doneMs >= 0 && !s.stalled ? "yes" : "NO", s.stalled ? "YES: " + s.stallReason : QString("no"))
+                  .arg(s.fetchMs < 0 ? 0.0 : s.fetchMs / 1000.0, 0, 'f', 1).arg(total.elapsed() / 1000.0, 0, 'f', 1);
+    report << "label=" + s.line;
+    for (const auto& [model, error] : s.failures) report << "failed\t" + model + "\t" + error.simplified();
+    const bool ok = s.loaded && doneMs >= 0 && !s.stalled && c.missing == 0;
+    report << QString("# %1").arg(ok ? "ok" : "FAIL");
+    write();
+    return ok ? 0 : 1;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    QString auditKind, webUser;
+    QString thumbPackKind;
+    int auditLimit = 0, auditBatch = 100;
+    bool auditReverse = false;
+    bool coverCheck = false;
+    bool f5Check = false;
+    QString compileFile, openFile, keysPath, guiTestSample, smokeFile, outDir, materialTest, modelTest, worldTest, skyTest;
+    QString benchMap, benchReference;
+    QString propsZone;       // --stock-props-test
+    bool chainTest = false;  // --model-chain-test
+    for (int i = 1; i < argc; ++i) {
+        const QString a = QString::fromLocal8Bit(argv[i]);
+        if (a == "--keys" && i + 1 < argc) keysPath = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--gui-test" && i + 1 < argc) guiTestSample = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--smoke-test" && i + 1 < argc) smokeFile = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--viewport-bench" && i + 1 < argc) benchMap = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--reference" && i + 1 < argc) benchReference = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--cover-check") coverCheck = true;
+        else if (a == "--f5-check") f5Check = true;
+        else if (a == "--compile" && i + 1 < argc) compileFile = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--out" && i + 1 < argc) outDir = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--material-cache-test" && i + 1 < argc) materialTest = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--model-cache-test" && i + 1 < argc) modelTest = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--world-cache-test" && i + 1 < argc) worldTest = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--stock-sky-test" && i + 1 < argc) skyTest = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--stock-props-test" && i + 1 < argc) propsZone = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--model-chain-test") chainTest = true;
+        else if (a == "--asset-audit" && i + 1 < argc) auditKind = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--thumb-pack" && i + 1 < argc) thumbPackKind = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--limit" && i + 1 < argc) auditLimit = std::atoi(argv[++i]);
+        else if (a == "--batch" && i + 1 < argc) auditBatch = std::atoi(argv[++i]);
+        else if (a == "--reverse") auditReverse = true;
+        else if (a == "--set-web-credentials" && i + 1 < argc) webUser = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--safe-mode") continue;
+        else if (!a.startsWith("-")) openFile = a;
+    }
+    if (!materialTest.isEmpty()) {
+        // Headless: no window, no D3D device. Same app names as the editor so the cache sits in the same folder.
+        QCoreApplication core(argc, argv);
+        QCoreApplication::setApplicationName("IW8 Radiant Suite");
+        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/material-cache-test";
+        return iw8r::qt::runMaterialCacheTest(materialTest.split(',', Qt::SkipEmptyParts), outDir);
+    }
+    if (!modelTest.isEmpty()) {
+        // Headless like --material-cache-test: the model cache under the same AppLocalData folder as the editor.
+        QCoreApplication core(argc, argv);
+        QCoreApplication::setApplicationName("IW8 Radiant Suite");
+        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/model-cache-test";
+        return iw8r::qt::runModelCacheTest(modelTest.split(',', Qt::SkipEmptyParts), outDir);
+    }
+    if (!webUser.isEmpty()) {
+        // --set-web-credentials <user>: the password is read from stdin (never from the command line) and stored as a
+        // salted hash in the editor settings (web_server.h).
+        QCoreApplication core(argc, argv);
+        QCoreApplication::setApplicationName("IW8 Radiant Suite");
+        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        QTextStream in(stdin);
+        const QString pass = in.readLine();
+        if (pass.size() < 8) {
+            std::fprintf(stderr, "password must be at least 8 characters\n");
+            return 2;
+        }
+        iw8r::qt::WebServer::setCredentials(webUser, pass);
+        std::printf("web credentials set for %s\n", qPrintable(webUser));
+        // --web-enable: also turn on the server with LAN and UPnP (remote access) on its port (default 8780).
+        for (int i = 1; i < argc; ++i)
+            if (QString::fromLocal8Bit(argv[i]) == "--web-enable") {
+                auto& s = iw8r::qt::Settings::instance();
+                s.setValue("web/enabled", true);
+                s.setValue("web/lan", true);
+                s.setValue("web/upnp", true);
+                if (s.value("web/port").toInt() <= 0) s.setValue("web/port", 8780);
+                std::printf("web server enabled: LAN + UPnP, port %d\n", s.value("web/port").toInt());
+            }
+        return 0;
+    }
+    if (!thumbPackKind.isEmpty()) {
+        // 4.13: full thumbnail packs (thumb_pack.h). A GUI application: models are rendered with QPainter.
+        QGuiApplication gui(argc, argv);
+        QCoreApplication::setApplicationName("IW8 Radiant Suite");
+        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        return iw8r::qt::runThumbPack(thumbPackKind, auditLimit, auditBatch);
+    }
+    if (!auditKind.isEmpty()) {
+        // Headless stock asset availability audit (asset_audit.h); --out is the status TSV.
+        QCoreApplication core(argc, argv);
+        QCoreApplication::setApplicationName("IW8 Radiant Suite");
+        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/iw8_" + auditKind + "_status.tsv";
+        return iw8r::qt::runAssetAudit(auditKind, outDir, auditLimit, auditBatch, auditReverse);
+    }
+    if (!skyTest.isEmpty()) {
+        // Headless: exports one stock sky into the material cache images/ folder (doc 33).
+        QCoreApplication core(argc, argv);
+        QCoreApplication::setApplicationName("IW8 Radiant Suite");
+        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/stock-sky-test";
+        return iw8r::qt::runStockSkyTest(skyTest, outDir);
+    }
+    if (chainTest) {
+        // Headless, no game needed: the model fetch chain against a cache that cannot deliver (model_cache.h).
+        QCoreApplication core(argc, argv);
+        QCoreApplication::setApplicationName("IW8 Radiant Suite");
+        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/model-chain-test";
+        return iw8r::qt::runModelCacheChainTest(outDir);
+    }
+    if (!worldTest.isEmpty()) {
+        // Headless like --model-cache-test: the world cache under the editor's AppLocalData folder.
+        QCoreApplication core(argc, argv);
+        QCoreApplication::setApplicationName("IW8 Radiant Suite");
+        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/world-cache-test";
+        return iw8r::qt::runWorldCacheTest(worldTest, outDir);
+    }
+    if (f5Check) {
+        // What F5 would do before it starts the game, against the real install: which exe it picks, whether that exe
+        // takes the start request, and whether the local host answers the health probe. Starts nothing, writes only
+        // the report (--out <file>, default f5-check.txt beside the exe).
+        QCoreApplication core(argc, argv);
+        QCoreApplication::setApplicationName("IW8 Radiant Suite");
+        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        using iw8r::qt::DevmapRunner;
+        const QString replay = iw8r::qt::Settings::instance().value("tools/replay", "E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe").toString();
+        QString note;
+        const QString exe = DevmapRunner::chooseLaunchExe(iw8r::qt::Settings::instance().value("tools/launch").toString(), replay, &note);
+        QStringList report;
+        report << "exe: " + exe << "note: " + note;
+        report << QString("exe exists: %1").arg(QFileInfo::exists(exe) ? "yes" : "NO");
+        report << QString("client start request (DW_DEVMAP marker): %1").arg(DevmapRunner::exeHasClientRequest(exe) ? "yes" : "no");
+        const QString host = DevmapRunner::localHostOf(exe);
+        report << "local host named by the exe's ini: " + (host.isEmpty() ? QString("(none)") : host);
+        report << "health address: " + DevmapRunner::hostHealthSetting();
+        const bool up = DevmapRunner::probeHost(DevmapRunner::hostHealthSetting());
+        report << QString("host answers the probe: %1").arg(up ? "yes" : "NO");
+        report << "host command: " + (DevmapRunner::hostCommandSetting().isEmpty() ? QString("(none)") : DevmapRunner::hostCommandSetting());
+        const QString out = outDir.isEmpty() ? QCoreApplication::applicationDirPath() + "/f5-check.txt" : outDir;
+        QFile f(out);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(report.join(QChar(10)).toUtf8() + QByteArray(1, char(10)));
+        return QFileInfo::exists(exe) && (host.isEmpty() || up) ? 0 : 1;
+    }
+    if (coverCheck) {
+        // The F5 cover card on the real desktop (devmap_cover.h); --out is the report file.
+        QApplication app(argc, argv);
+        QCoreApplication::setApplicationName("IW8 Radiant Suite");
+        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        return iw8r::qt::DevmapCover::runRealCheck(outDir.isEmpty() ? QCoreApplication::applicationDirPath() + "/cover-check.txt" : outDir);
+    }
+    const bool bench = !benchMap.isEmpty();
+    const bool guiTest = !guiTestSample.isEmpty() || bench;  // the benchmark runs like the GUI test: off-screen, volatile settings
+    const bool smoke = !smokeFile.isEmpty() || !compileFile.isEmpty() || !propsZone.isEmpty();
+    if (guiTest) qputenv("QT_QPA_PLATFORM", "offscreen");
+    if (bench) {
+        // The benchmark never writes the mapper's caches: without the overrides it uses (empty) scratch caches under
+        // --out. tools/make_perf_maps.py makes copies of the entries the benchmark maps need.
+        if (outDir.isEmpty()) outDir = "viewport-bench";
+        outDir = QDir(outDir).absolutePath();
+        if (!qEnvironmentVariableIsSet("IW8R_MODEL_CACHE_ROOT")) qputenv("IW8R_MODEL_CACHE_ROOT", (outDir + "/cache/model_cache").toLocal8Bit());
+        if (!qEnvironmentVariableIsSet("IW8R_MATERIAL_CACHE_ROOT")) qputenv("IW8R_MATERIAL_CACHE_ROOT", (outDir + "/cache/material_cache").toLocal8Bit());
+    }
+
+    QApplication app(argc, argv);
+    iw8r::qt::EditorLog::installQtMessageHandler();  // Qt warnings also go to the Console dock
+    QApplication::setApplicationName("IW8 Radiant Suite");
+    QApplication::setOrganizationName("IW8 Radiant Suite");
+    // Crash reports (stack with file:line + minidump) under the app data folder; see crash_handler.h.
+    // (The benchmark keeps its crash reports with its other output, not in the mapper's folder.)
+    iw8r::qt::installCrashHandler(bench ? outDir + "/crashes" : QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/crashes");
+    applyDarkTheme(app);  // replaced by the saved theme once settings are known (below)
+    if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath();
+    if (guiTest || smoke) iw8r::qt::Settings::instance().setVolatile(true);
+    if (bench) {
+        // No tool runs and no autosave during the benchmark (settings are in memory only here).
+        iw8r::qt::Settings::instance().setValue("tools/acts", outDir + "/no-acts.exe");
+        iw8r::qt::Settings::instance().setValue("autosave/minutes", 0);
+    }
+    // Safe mode (9.5): --safe-mode, or Shift held at start: default settings in memory only (no saved layout, window
+    // position, web server or other preferences), nothing written back.
+    bool safeMode = false;
+    for (int i = 1; i < argc; ++i) safeMode |= QString::fromLocal8Bit(argv[i]) == "--safe-mode";
+    if (!guiTest && !smoke && (QGuiApplication::queryKeyboardModifiers() & Qt::ShiftModifier)) safeMode = true;
+    if (safeMode) {
+        iw8r::qt::Settings::instance().setVolatile(true);
+        qputenv("IW8R_SAFE_MODE", "1");
+    }
+    // UI theme (9.2): View > Theme; tests keep the dark default.
+    if (!guiTest && !smoke)
+        iw8r::qt::applyTheme(iw8r::qt::Settings::instance().value("ui/theme", "Dark").toString(),
+                             QColor(iw8r::qt::Settings::instance().value("ui/accent").toString()));
+
+    // One D3D11 device for every viewport.
+    ID3D11Device* device = nullptr;
+    ID3D11DeviceContext* context = nullptr;
+    const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0};
+    HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 1,
+                                   D3D11_SDK_VERSION, &device, nullptr, &context);
+    if (FAILED(hr))
+        hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 1, D3D11_SDK_VERSION,
+                               &device, nullptr, &context);
+
+    // IW8 canonical key table: --keys, else <repo>/data/generated beside the exe tree.
+    if (keysPath.isEmpty()) {
+        QDir d(QCoreApplication::applicationDirPath());
+        for (int up = 0; up < 3 && keysPath.isEmpty(); ++up) {
+            if (QFileInfo::exists(d.filePath("data/generated/iw8_canonical_keys.tsv"))) keysPath = d.filePath("data/generated/iw8_canonical_keys.tsv");
+            d.cdUp();
+        }
+    }
+    if (!keysPath.isEmpty()) iw8r::KeyTable::global().loadTsv(keysPath.toStdString());
+
+    // 4.13: cache purges, a move to another drive and the size cap, before any cache index is read.
+    if (!guiTest && !smoke)
+        if (const QString note = iw8r::qt::runCacheStartupTasks(); !note.isEmpty()) std::fprintf(stderr, "caches: %s\n", qPrintable(note));
+
+    int rc = 0;
+    {
+        iw8r::qt::MainWindow w(device, context);
+        if (smoke) {
+            // Keep the smoke-test window off every monitor and never activate it.
+            w.setAttribute(Qt::WA_ShowWithoutActivating);
+            QRect virt;
+            for (QScreen* s : QGuiApplication::screens()) virt = virt.united(s->geometry());
+            w.move(virt.left() - 1800, virt.top() + 40);
+        }
+        w.show();
+        if (!guiTest && !smoke) {
+            // A crash since the last start: say where its report is (crash_handler.h).
+            const QString crashes = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/crashes";
+            const qint64 seen = iw8r::qt::Settings::instance().value("crash/lastSeen", 0).toLongLong();
+            if (const QString r = iw8r::qt::newestCrashReport(crashes, seen + 1); !r.isEmpty()) {
+                w.context().setStatus("The editor crashed last time; report: " + r);
+                iw8r::qt::Settings::instance().setValue("crash/lastSeen", QDateTime::currentMSecsSinceEpoch());
+            }
+        }
+        // First-run setup at startup when the Replay exe is missing; never in the scripted GUI and smoke runs.
+        if (!guiTest && !smoke) QTimer::singleShot(0, &w, [&w] { w.showFirstRunSetup(true); });
+        // Browser access (L10): the web server starts with the editor when Settings web/enabled is on.
+        if (!guiTest && !smoke) QTimer::singleShot(500, &w, [&w] { w.applyWebServerSettings(); });
+        if (!openFile.isEmpty()) w.openPath(openFile);
+        if (!compileFile.isEmpty()) {
+            // Headless F7 of a map through the editor's own path (stock textures/models, sky, gsc-tool, ACTS
+            // validation): writes <out>/compile-log.txt and <out>/compile-result.txt (ok/FAIL, map id, package folder).
+            QTimer::singleShot(300, &w, [&] {
+                w.openPath(compileFile);
+                if (w.context().doc.path().empty()) {
+                    app.exit(3);
+                    return;
+                }
+                // IW8R_CAPTURE_PROBES=1: capture the reflection probes with the camera renderer first (5.5).
+                if (qEnvironmentVariableIntValue("IW8R_CAPTURE_PROBES") > 0) {
+                    if (QAction* m = w.action("CameraModeTextured")) m->trigger();
+                    QElapsedTimer settle;
+                    settle.start();
+                    while (settle.elapsed() < qEnvironmentVariableIntValue("IW8R_CAPTURE_SETTLE_MS")) {
+                        w.cameraView()->renderAndCount();  // a real frame: update() alone does not paint here
+                        QApplication::processEvents(QEventLoop::AllEvents, 30);
+                        QThread::msleep(15);
+                    }
+                    w.captureReflectionProbes();
+                }
+                // Stock models / materials the map uses are fetched first, so one headless build is complete
+                // (IW8R_PREFETCH_MS caps the wait, default 10 minutes; 0 skips it).
+                QString prefetch;
+                {
+                    const int ms = qEnvironmentVariableIsSet("IW8R_PREFETCH_MS") ? qEnvironmentVariableIntValue("IW8R_PREFETCH_MS") : 600000;
+                    if (ms > 0) prefetch = w.prefetchStockAssets(ms);
+                }
+                QDir().mkpath(outDir);
+                iw8r::qt::CompilePanel* cp = w.compilePanel();
+                QObject::connect(cp, &iw8r::qt::CompilePanel::finished, &w, [&, cp, prefetch](bool ok) {
+                    QFile lf(QDir(outDir).filePath("compile-log.txt"));
+                    if (lf.open(QIODevice::WriteOnly | QIODevice::Truncate)) lf.write((prefetch + "\n" + cp->logText()).toUtf8());
+                    QFile rf(QDir(outDir).filePath("compile-result.txt"));
+                    if (rf.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                        rf.write(QString("%1 map=%2 package=%3\n").arg(ok ? "ok" : "FAIL", cp->mapId(), cp->zonesDir()).toUtf8());
+                    app.exit(ok ? 0 : 1);
+                });
+                cp->run({iw8r::qt::CompilePanel::Stage::Extraction, iw8r::qt::CompilePanel::Stage::Zones,
+                         iw8r::qt::CompilePanel::Stage::Validate});
+            });
+        } else if (bench) {
+            QTimer::singleShot(300, &w, [&] { app.exit(runViewportBench(w, benchMap, outDir, benchReference)); });
+        } else if (guiTest) {
+            QTimer::singleShot(300, &w, [&] { app.exit(iw8r::qt::runQtGuiTest(w, guiTestSample, outDir)); });
+        } else if (!propsZone.isEmpty()) {
+            QTimer::singleShot(300, &w, [&] { app.exit(runStockPropsTest(w, propsZone, outDir)); });
+        } else if (smoke) {
+            QTimer::singleShot(300, &w, [&] {
+                QElapsedTimer openTimer;
+                openTimer.start();
+                w.openPath(smokeFile);
+                QApplication::processEvents();
+                const qint64 openMs = openTimer.elapsed();
+                // IW8R_SMOKE_REFERENCE=<zone>: also draw a cached stock world (View > Stock Map Reference) from above.
+                if (const QString zone = qEnvironmentVariable("IW8R_SMOKE_REFERENCE"); !zone.isEmpty()) {
+                    iw8r::qt::WorldCache wc([](const QString&) { return QString(); });
+                    QString err;
+                    if (wc.lookup(zone)) {
+                        w.loadStockReference(zone);  // the editor's own path: world triangles plus prop boxes (async)
+                        const QStringList p = qEnvironmentVariable("IW8R_SMOKE_CAMERA").split(' ', Qt::SkipEmptyParts);
+                        if (p.size() == 5) {
+                            w.context().cam.pos = iw8r::Vec3{p[0].toDouble(), p[1].toDouble(), p[2].toDouble()};
+                            w.context().cam.pitch = p[3].toDouble();
+                            w.context().cam.yaw = p[4].toDouble();
+                        }
+                    } else {
+                        std::fprintf(stderr, "reference %s: %s\n", qPrintable(zone), qPrintable(err));
+                    }
+                }
+                // Performance (9.4): first frame (scene build), then steady frames with and without an edit in between.
+                // IW8R_CAMERA="x y z pitch yaw": camera for the screenshot (any map).
+                if (const QStringList p = qEnvironmentVariable("IW8R_CAMERA").split(' ', Qt::SkipEmptyParts); p.size() == 5) {
+                    w.context().cam.pos = iw8r::Vec3{p[0].toDouble(), p[1].toDouble(), p[2].toDouble()};
+                    w.context().cam.pitch = p[3].toDouble();
+                    w.context().cam.yaw = p[4].toDouble();
+                }
+                QElapsedTimer frameTimer;
+                frameTimer.start();
+                const size_t pixels = w.cameraView()->renderAndCount();
+                const qint64 firstMs = frameTimer.elapsed();
+                frameTimer.restart();
+                for (int i = 0; i < 10; ++i) w.cameraView()->renderAndCount();
+                const double steadyMs = frameTimer.elapsed() / 10.0;
+                frameTimer.restart();
+                for (int i = 0; i < 5; ++i) {
+                    w.context().doc.deselectAll();
+                    w.context().documentEdited();
+                    w.cameraView()->renderAndCount();
+                }
+                const double editMs = frameTimer.elapsed() / 5.0;
+                double workingMb = -1, peakMb = -1;
+#ifdef _WIN32
+                {
+                    PROCESS_MEMORY_COUNTERS pmc{};
+                    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+                        workingMb = pmc.WorkingSetSize / 1048576.0;
+                        peakMb = pmc.PeakWorkingSetSize / 1048576.0;
+                    }
+                }
+#endif
+                // 2D grid view: zoomed out to see the whole map, repaint timed (QPainter, offscreen grab).
+                double gridMs = -1;
+                if (iw8r::qt::GridView* g = w.gridView()) {
+                    // Zoom out to the whole map (all items' bounds).
+                    iw8r::AABB all;
+                    for (const auto* it : w.context().scene.items()) all.add(it->bounds);
+                    if (all.valid()) {
+                        auto& c = w.context();
+                        c.gridCenterH = (all.mins[c.axisH()] + all.maxs[c.axisH()]) / 2;
+                        c.gridCenterV = (all.mins[c.axisV()] + all.maxs[c.axisV()]) / 2;
+                        c.gridScale = std::max(0.01, 0.9 * g->width() / std::max(1.0, all.maxs[c.axisH()] - all.mins[c.axisH()]));
+                    }
+                    g->grab();
+                    frameTimer.restart();
+                    for (int i = 0; i < 5; ++i) g->grab();
+                    gridMs = frameTimer.elapsed() / 5.0;
+                }
+                {
+                    QFile pf(QDir(outDir).filePath("perf.txt"));
+                    if (pf.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                        pf.write(QString("open_ms=%1 first_frame_ms=%2 steady_frame_ms=%3 frame_after_edit_ms=%4 items=%5 grid_frame_ms=%6 working_set_mb=%7 peak_working_set_mb=%8\n")
+                                     .arg(openMs).arg(firstMs).arg(steadyMs, 0, 'f', 1).arg(editMs, 0, 'f', 1)
+                                     .arg(w.context().scene.items().size()).arg(gridMs, 0, 'f', 1).arg(workingMb, 0, 'f', 1).arg(peakMb, 0, 'f', 1).toUtf8());
+                }
+                const bool ok = w.cameraView()->hasSwapChain() && pixels > 1000;
+                // IW8R_SMOKE_SETTLE_MS=<ms>: keep the event loop and the camera running so streamed textures (a few
+                // decodes per frame, ACTS exports in the background) appear in the screenshot.
+                // IW8R_SMOKE_NORMALMAPS=0: the textured shot without normal maps (A/B for 3.2); not saved to settings.
+                if (qEnvironmentVariable("IW8R_SMOKE_NORMALMAPS") == "0") w.context().normalMaps = false;
+                // IW8R_SMOKE_WIND=1: the wind preview on (foliage sway shader).
+                if (qEnvironmentVariableIntValue("IW8R_SMOKE_WIND") > 0 && !w.context().windPreview)
+                    if (QAction* a = w.action("WindPreview")) a->trigger();
+                if (const QString t = qEnvironmentVariable("IW8R_SMOKE_WIND_TIME"); !t.isEmpty() && w.cameraView())
+                    w.cameraView()->setWindTime(t.toDouble());
+                if (qEnvironmentVariableIntValue("IW8R_SMOKE_LIT") > 0 && !w.context().scene.litPreview)
+                    if (QAction* a = w.action("ToggleLitPreview")) a->trigger();
+                if (qEnvironmentVariableIntValue("IW8R_SMOKE_TEXTURED") > 0)
+                    if (QAction* m = w.action("CameraModeTextured")) m->trigger();
+                if (const int settle = qEnvironmentVariableIntValue("IW8R_SMOKE_SETTLE_MS"); settle > 0) {
+                    QElapsedTimer t;
+                    t.start();
+                    while (t.elapsed() < settle) {
+                        w.cameraView()->renderAndCount();  // a real frame: update() alone does not paint here
+                        QApplication::processEvents(QEventLoop::AllEvents, 30);
+                        QThread::msleep(15);
+                    }
+                }
+                // Composite screenshot: Qt widgets plus the D3D camera frame (which grab() cannot see).
+                QPixmap shot = w.grab();
+                {
+                    QPainter painter(&shot);
+                    const QImage frame = w.cameraView()->grabFrame();
+                    const QPoint at = w.cameraView()->mapTo(&w, QPoint(0, 0));
+                    if (!frame.isNull()) painter.drawImage(QRect(at, w.cameraView()->size()), frame);
+                }
+                shot.save(QDir(outDir).filePath("screenshot.png"));
+                QFile f(QDir(outDir).filePath("smoke-test.txt"));
+                if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                    f.write(QString("%1 swapchain=%2 drawn_pixels=%3 entities=%4 textures=%6 normal_maps=%7 title=%5\n")
+                                .arg(ok ? "ok" : "FAIL")
+                                .arg(w.cameraView()->hasSwapChain() ? "yes" : "no")
+                                .arg(pixels)
+                                .arg(w.context().doc.map().entities.size())
+                                .arg(w.windowTitle())
+                                .arg(w.cameraView()->loadedTextures())
+                                .arg(w.cameraView()->loadedNormalMaps())
+                                .toUtf8());
+                app.exit(ok ? 0 : 2);
+            });
+        }
+        rc = app.exec();
+    }
+    if (context) context->Release();
+    if (device) device->Release();
+    return rc;
+}

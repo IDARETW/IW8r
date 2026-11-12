@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_128"
+"origin" "-72.199219 53.25 0"
+"angles" "-0.001749 -90.001749 0.001749"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8_corner_out"
+"origin" "-0.199219 53.25 0"
+"angles" "-0.001749 -90.001749 0.001749"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_staircase_01_old_handrail_flat"
+"origin" "1.5 38 0"
+"angles" "-0.001749 -90.001749 0.001749"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_staircase_01_old_handrail_flat_corner"
+"origin" "0 0 0"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_staircase_01_old_handrail_flat_damaged"
+"origin" "32 1.75 0"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_staircase_01_old_handrail_flat_damaged"
+"origin" "103 1.25 0"
+"angles" "0 179.997527 0.002473"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/window_office_frame_com_01_mp"
+"origin" "-83 57.75 60"
+"angles" "0 -180 0.002473"
+"modelscale" "1"
+}

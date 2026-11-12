@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/barrier_concrete_block_01"
+"origin" "0 0 0"
+"angles" "0.00247 0 -0.000108"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_short_01"
+"origin" "-43.44567 6.669373 -2.5"
+"angles" "0.002471 1.138378 -0.000083"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_short_01"
+"origin" "-15.195166 -7.613103 42"
+"angles" "0.002473 4.999192 0"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_short_01"
+"origin" "-0.55762 7.54015 42"
+"angles" "0 -175.003281 0.002473"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_short_01"
+"origin" "42.985063 -16.286133 -1"
+"angles" "0.002471 1.138378 -0.000083"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_mp_01"
+"origin" "41.78711 19.194397 -1.5"
+"angles" "0.002471 1.138378 -0.000083"
+"modelscale" "1"
+}

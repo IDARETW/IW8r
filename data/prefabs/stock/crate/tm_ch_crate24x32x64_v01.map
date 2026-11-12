@@ -1,0 +1,47 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ch_crate24x32x64"
+"origin" "-30.011694 0.013439 0"
+"angles" "-0.616779 -179.996908 -0.33268"
+"modelscale" "0.9"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ch_crate24x32x64"
+"origin" "0 0 0"
+"angles" "0.616779 0 0.332659"
+"modelscale" "0.9"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/un_industrial_wooden_pallet_01"
+"origin" "-14.482509 -2.952074 29.5"
+"angles" "0.002386 176.230702 0.000651"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/un_industrial_wooden_pallet_01"
+"origin" "-13.013277 -0.444556 21.5"
+"angles" "-0.000765 1.731284 0.002352"
+"modelscale" "1.08"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/un_industrial_wooden_pallet_stack_01"
+"origin" "-16.332516 0.36669 -33.091797"
+"angles" "0.165155 -89.917449 -0.646255"
+"modelscale" "1.05"
+}

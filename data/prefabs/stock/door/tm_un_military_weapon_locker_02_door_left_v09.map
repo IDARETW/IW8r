@@ -1,0 +1,79 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_sign_frame_02_128_black"
+"origin" "45.146794 -1.795789 -23.295166"
+"angles" "-0.001763 -147.898827 0.001734"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_debris_pile_03"
+"origin" "-32.181614 86.65127 -1.295166"
+"angles" "-0.001763 -147.898827 0.001734"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "-42.742745 12.132947 -14.295166"
+"angles" "-0.00002 122.101871 0.002473"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "-22.41299 24.894662 -14.295166"
+"angles" "-0.00002 122.101871 0.002473"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "-19.069887 64.780236 -14.295166"
+"angles" "-0.001763 -147.898827 0.001734"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_4"
+"origin" "-51.196716 6.78785 -14.295166"
+"angles" "-0.00002 122.101871 0.002473"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_8_corner_in"
+"origin" "-2.083235 37.656378 -14.295166"
+"angles" "-0.00002 122.101871 0.002473"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "-41.50748 -28.371185 -1.295166"
+"angles" "0.001734 32.101173 0.001763"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_left"
+"origin" "0 0 0"
+"angles" "0 0 90"
+"modelscale" "1"
+}

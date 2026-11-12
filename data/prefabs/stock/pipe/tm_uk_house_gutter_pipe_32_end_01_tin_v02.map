@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_32_end_01_tin"
+"origin" "0 0 0"
+"angles" "3.100765 0 1.198207"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_bracket_01_tin"
+"origin" "-1.199179 -2.798845 -19.748047"
+"angles" "0.002473 -89.999195 0"
+"modelscale" "1.35"
+}

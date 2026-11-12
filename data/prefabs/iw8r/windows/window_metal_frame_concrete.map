@@ -1,0 +1,59 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+// brush 0
+{
+ ( -48 8 0 ) ( -128 8 0 ) ( -128 -8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -8 128 ) ( -128 8 128 ) ( -48 8 128 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -8 128 ) ( -48 -8 128 ) ( -48 -8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -48 8 128 ) ( -128 8 128 ) ( -128 8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -48 -8 128 ) ( -48 8 128 ) ( -48 8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 8 128 ) ( -128 -8 128 ) ( -128 -8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 1
+{
+ ( 128 8 0 ) ( 48 8 0 ) ( 48 -8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 48 -8 128 ) ( 48 8 128 ) ( 128 8 128 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 48 -8 128 ) ( 128 -8 128 ) ( 128 -8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 8 128 ) ( 48 8 128 ) ( 48 8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 -8 128 ) ( 128 8 128 ) ( 128 8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 48 8 128 ) ( 48 -8 128 ) ( 48 -8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 2
+{
+ ( 48 8 120 ) ( -48 8 120 ) ( -48 -8 120 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -48 -8 128 ) ( -48 8 128 ) ( 48 8 128 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -48 -8 128 ) ( 48 -8 128 ) ( 48 -8 120 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 48 8 128 ) ( -48 8 128 ) ( -48 8 120 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 48 -8 128 ) ( 48 8 128 ) ( 48 8 120 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -48 8 128 ) ( -48 -8 128 ) ( -48 -8 120 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 3
+{
+ ( 48 8 0 ) ( -48 8 0 ) ( -48 -8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -48 -8 40 ) ( -48 8 40 ) ( 48 8 40 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -48 -8 40 ) ( 48 -8 40 ) ( 48 -8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 48 8 40 ) ( -48 8 40 ) ( -48 8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 48 -8 40 ) ( 48 8 40 ) ( 48 8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -48 8 40 ) ( -48 -8 40 ) ( -48 -8 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 4
+{
+ ( 48 2 40 ) ( -48 2 40 ) ( -48 -2 40 ) tmo/ee_light_fixture_lamp_short_glass 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -48 -2 120 ) ( -48 2 120 ) ( 48 2 120 ) tmo/ee_light_fixture_lamp_short_glass 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -48 -2 120 ) ( 48 -2 120 ) ( 48 -2 40 ) tmo/ee_light_fixture_lamp_short_glass 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 48 2 120 ) ( -48 2 120 ) ( -48 2 40 ) tmo/ee_light_fixture_lamp_short_glass 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 48 -2 120 ) ( 48 2 120 ) ( 48 2 40 ) tmo/ee_light_fixture_lamp_short_glass 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -48 2 120 ) ( -48 -2 120 ) ( -48 -2 40 ) tmo/ee_light_fixture_lamp_short_glass 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_window_frame_metal_white_medium_clean_c"
+"origin" "0 0 80"
+"angles" "0 0 0"
+}

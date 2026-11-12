@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_long_01_brown"
+"origin" "-44.716492 -11.50134 -7"
+"angles" "-0.000946 108.902353 0.002285"
+"modelscale" "0.9"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_01_brown"
+"origin" "0 0 0"
+"angles" "0.001309 0 0.002098"
+"modelscale" "1"
+}

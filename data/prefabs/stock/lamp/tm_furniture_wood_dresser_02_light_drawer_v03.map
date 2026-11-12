@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/furniture_wood_dresser_02_light_drawer"
+"origin" "-2.699693 -0.095481 -8.899902"
+"angles" "12.626175 -0.051128 -0.418503"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/furniture_wood_dresser_02_light_drawer"
+"origin" "-1.301677 -0.200159 -17"
+"angles" "0.626983 -0.00059 -0.406163"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/furniture_wood_dresser_02_light_drawer"
+"origin" "0 0 0"
+"angles" "0.626386 0 9.347033"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/furniture_wood_dresser_02_light_empty"
+"origin" "-4.392543 -0.198059 -20.900879"
+"angles" "0.002377 -0.003122 -0.000682"
+"modelscale" "1"
+}

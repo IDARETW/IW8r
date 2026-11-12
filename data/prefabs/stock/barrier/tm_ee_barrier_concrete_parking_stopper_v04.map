@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_barrier_concrete_parking_stopper"
+"origin" "0 0 0"
+"angles" "-0.001784 0 0.001712"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_barrier_concrete_parking_stopper"
+"origin" "17.984746 -0.740883 0"
+"angles" "0.001774 175.929111 0.001722"
+"modelscale" "1"
+}

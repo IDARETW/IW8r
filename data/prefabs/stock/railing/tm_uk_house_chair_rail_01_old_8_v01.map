@@ -1,0 +1,103 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_16"
+"origin" "-16.000366 11.999512 -21"
+"angles" "0.001749 -180 0.001749"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_32"
+"origin" "-0.00061 20 -21"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_64"
+"origin" "-16.001587 51.999512 -21"
+"angles" "0.001749 -180 0.001749"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8"
+"origin" "-16 -0.000488 -21"
+"angles" "0.001749 -180 0.001749"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8"
+"origin" "0 0 -21"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8_corner_out"
+"origin" "-15.999634 -12.000488 -21"
+"angles" "0.001749 -180 0.001749"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8_corner_out"
+"origin" "0.000366 -12 -21"
+"angles" "0 -90.000724 0.002473"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_64"
+"origin" "-0.001099 36 0"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_8"
+"origin" "0 0 0"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_8_corner_out"
+"origin" "0.000366 -12 0"
+"angles" "0 -89.998251 0.002473"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_4"
+"origin" "42.00061 -19.998718 -42"
+"angles" "0 -90.000724 0.002473"
+"modelscale" "1"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_64"
+"origin" "8.00061 -19.999756 -42"
+"angles" "0 -90.000724 0.002473"
+"modelscale" "1"
+}

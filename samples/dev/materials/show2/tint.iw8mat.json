@@ -1,0 +1,14 @@
+{
+ "name": "show2/tint",
+ "color": "tint_c.png",
+ "surface": "metal",
+ "tint": [
+  1,
+  0.35,
+  0.35
+ ],
+ "scale": [
+  64,
+  64
+ ]
+}

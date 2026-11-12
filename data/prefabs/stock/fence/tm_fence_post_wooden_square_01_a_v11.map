@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/fence_post_wooden_square_01_a"
+"origin" "0 0 0"
+"angles" "-0.000067 0 93.098787"
+"modelscale" "0.55"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/fence_post_wooden_square_01_a"
+"origin" "1.500022 0.499935 -0.333984"
+"angles" "-0.002473 179.997546 -90.835824"
+"modelscale" "0.55"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/furniture_painting_frame_04_light_large_02"
+"origin" "11.498783 -28.199715 -4.177979"
+"angles" "0.001749 -0.000723 0.001749"
+"modelscale" "1.5"
+}

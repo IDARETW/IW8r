@@ -1,0 +1,35 @@
+{
+  "format": "iw8r-prefab-1",
+  "id": "stock_door_wood_single",
+  "title": "Stock door, painted wood, single",
+  "description": "The wooden door of Talsik Backlot. Use opens it away from you and closes it again. It is the game's real door, copied from the stock map into yours (Edit > Preferences > Real stock scripted objects, on by default). With that switch off it is built from the stock door's own parts (model, sounds, timing, prompt words) and a script.",
+  "category": "doors",
+  "tags": ["door", "interactive", "stock", "scriptable"],
+  "author": "IW8 Radiant",
+  "version": 1,
+  "pivot": "hinge, floor level; the door leaf runs 52 units along +X",
+  "bounds": {"mins": [-4, -8, 0], "maxs": [56, 8, 96]},
+  "placement": {"surface": "floor", "yaw_step": 90},
+  "names": {
+    "local": ["door", "door_use"]
+  },
+  "requires": {
+    "scriptable_defs": [
+      {"name": "scriptable_door_wooden_panel_03_painted_mp", "zones": ["mp_backlot2", "mp_hideout", "mp_village2"]}
+    ],
+    "stock_models": [
+      {"name": "door_wooden_panel_03_painted_left_mp_nophysics", "zones": ["mp_backlot2", "mp_hideout", "mp_village2"]},
+      {"name": "tm/door_frame_wooden_panel_03_painted_mp", "zones": ["mp_backlot2", "mp_hideout", "mp_village2"]}
+    ],
+    "stock_sounds": ["scrpt_door_wood_single_open", "scrpt_door_wood_single_close", "scrpt_door_wood_single_bash"],
+    "stock_strings": ["MP/DOOR_USE_OPEN", "MP/DOOR_USE_CLOSE"],
+    "stock_scripts": ["scripts/engine/scriptable_door::system_init"],
+    "build": ["scriptable_instances", "scriptable_def_carry", "stock_script_calls"]
+  },
+  "fallback": {
+    "when_missing": ["scriptable_instances", "scriptable_def_carry"],
+    "map": "fallback.map",
+    "script": "fallback.gsc",
+    "note": "stock door built as a scripted door from stock parts (Real stock scripted objects is off in Preferences)"
+  }
+}

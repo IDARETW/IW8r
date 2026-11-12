@@ -1,0 +1,28 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+// brush 0
+{
+ ( 256 256 -16 ) ( -256 256 -16 ) ( -256 -256 -16 ) tmco/concrete_tile_ribbed_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 0 ) ( -256 256 0 ) ( 256 256 0 ) tmco/concrete_tile_ribbed_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 0 ) ( 256 -256 0 ) ( 256 -256 -16 ) tmco/concrete_tile_ribbed_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 256 0 ) ( -256 256 0 ) ( -256 256 -16 ) tmco/concrete_tile_ribbed_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -256 0 ) ( 256 256 0 ) ( 256 256 -16 ) tmco/concrete_tile_ribbed_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 256 0 ) ( -256 -256 0 ) ( -256 -256 -16 ) tmco/concrete_tile_ribbed_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+}
+// entity 1
+{
+"classname" "mp_tdm_spawn"
+"origin" "-192 0 16"
+"angles" "0 0 0"
+}
+// entity 2
+{
+"classname" "mp_tdm_spawn"
+"origin" "192 0 16"
+"angles" "0 180 0"
+}

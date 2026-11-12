@@ -1,0 +1,25 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+// brush 0
+{
+ ( 96 12 0 ) ( -96 12 0 ) ( -96 -12 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -96 -12 48 ) ( -96 12 48 ) ( 96 12 48 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -96 -12 48 ) ( 96 -12 48 ) ( 96 -12 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 96 12 48 ) ( -96 12 48 ) ( -96 12 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 96 -12 48 ) ( 96 12 48 ) ( 96 12 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -96 12 48 ) ( -96 -12 48 ) ( -96 -12 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 1
+{
+ ( 100 16 48 ) ( -100 16 48 ) ( -100 -16 48 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -100 -16 56 ) ( -100 16 56 ) ( 100 16 56 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -100 -16 56 ) ( 100 -16 56 ) ( 100 -16 48 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 100 16 56 ) ( -100 16 56 ) ( -100 16 48 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 100 -16 56 ) ( 100 16 56 ) ( 100 16 48 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -100 16 56 ) ( -100 -16 56 ) ( -100 -16 48 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+}

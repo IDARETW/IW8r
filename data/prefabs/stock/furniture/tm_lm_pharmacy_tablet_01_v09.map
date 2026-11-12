@@ -1,0 +1,71 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_price_list_02"
+"origin" "-3.468963 -20.536758 37.677002"
+"angles" "-0.000821 27.999879 -15.947049"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_price_list_02"
+"origin" "15.448901 -10.462714 17.677002"
+"angles" "0.001505 27.998596 0.001962"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_price_list_03"
+"origin" "-10.1462 -24.069361 17.677002"
+"angles" "0.000857 28.000286 -14.121948"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_price_list_03"
+"origin" "8.412657 -14.211503 37.677002"
+"angles" "-0.001757 28.001559 13.102001"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_tablet_01"
+"origin" "0 0 0"
+"angles" "0.001935 0 0.001539"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_tablet_01"
+"origin" "4.081232 -1.233121 0"
+"angles" "-0.000093 107.296823 0.002471"
+"modelscale" "1.3"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_tablet_01"
+"origin" "14.496362 -5.889864 0"
+"angles" "0.002143 -17.102993 0.001234"
+"modelscale" "1.3"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/lm_pharmacy_tablet_01"
+"origin" "42.894598 9.801194 0"
+"angles" "-0.001234 162.897007 0.002143"
+"modelscale" "1.3"
+}

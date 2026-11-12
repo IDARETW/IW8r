@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_metal_beams_exterior_frame_piece_01"
+"origin" "0 0 0"
+"angles" "70.000441 0 0.003052"
+"modelscale" "1.04"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_metal_beams_exterior_frame_piece_01"
+"origin" "0.09143 62.784564 0"
+"angles" "70.000441 0 -179.996948"
+"modelscale" "1.04"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/me_metal_beams_gate_02"
+"origin" "8.441869 -2.20874 -22.232178"
+"angles" "70.000441 0 -179.996948"
+"modelscale" "2.25"
+}

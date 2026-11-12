@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/construction_doors_metal_frame_b_02_mp"
+"origin" "59.767582 -54.046365 4"
+"angles" "-0.001383 89.999047 0.00205"
+"modelscale" "0.99"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_stairs_connector_02_worn"
+"origin" "0 0 0"
+"angles" "0.000472 0 0.002427"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_stairs_top_worn"
+"origin" "4.495768 80.009918 -27.5"
+"angles" "0.00205 -90.000952 0.001383"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_support_brace_angle_92x96"
+"origin" "48.509572 11.939483 -74.999756"
+"angles" "0.002427 180 -0.000472"
+"modelscale" "0.7"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "56.016156 7.961822 90.5"
+"angles" "0.00205 -90.000952 0.001383"
+"modelscale" "0.8"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_64x72_01"
+"origin" "82.111512 78.797266 4"
+"angles" "5.407965 179.997761 -0.000427"
+"modelscale" "0.8"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_64x96_01"
+"origin" "75.632973 59.247714 4.5"
+"angles" "5.404476 179.999008 89.999018"
+"modelscale" "0.8"
+}

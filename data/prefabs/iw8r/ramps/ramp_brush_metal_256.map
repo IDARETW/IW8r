@@ -1,0 +1,15 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+// brush 0
+{
+ ( -128 -64 0 ) ( 128 -64 0 ) ( -128 64 0 ) tmco/metal_painted_base_01a 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -64 0 ) ( -128 64 0 ) ( 128 -64 96 ) tmco/metal_painted_base_01a 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -64 0 ) ( 128 -64 96 ) ( 128 -64 0 ) tmco/metal_painted_base_01a 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 64 0 ) ( 128 64 0 ) ( 128 64 96 ) tmco/metal_painted_base_01a 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 -64 0 ) ( 128 -64 96 ) ( 128 64 0 ) tmco/metal_painted_base_01a 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+}

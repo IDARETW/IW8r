@@ -1,0 +1,35 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/building_support_pillar_24x24_01_tan"
+"origin" "-60 -60 0"
+"angles" "0 0 0"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/building_support_pillar_24x24_01_tan"
+"origin" "-60 60 0"
+"angles" "0 0 0"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/building_support_pillar_24x24_01_tan"
+"origin" "60 -60 0"
+"angles" "0 0 0"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/building_support_pillar_24x24_01_tan"
+"origin" "60 60 0"
+"angles" "0 0 0"
+}

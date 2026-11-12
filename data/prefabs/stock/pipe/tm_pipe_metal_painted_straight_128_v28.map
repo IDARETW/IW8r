@@ -1,0 +1,79 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_light_ceiling_fluorescent_tube_bulb_small"
+"origin" "-20.999772 -43.032964 1"
+"angles" "0.00247 -90 0.000108"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "-2.000024 -0.025029 -34"
+"angles" "90 -90.000187 0"
+"modelscale" "0.25"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "0 0 32"
+"angles" "0 -90.000187 90"
+"modelscale" "0.25"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_bend_90_sml"
+"origin" "0.009817 8.02969 36"
+"angles" "0 89.999813 -90"
+"modelscale" "0.25"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "0 0 -32"
+"angles" "0.000108 0 89.99753"
+"modelscale" "0.25"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_128"
+"origin" "0 0 0"
+"angles" "0.000108 0 89.99753"
+"modelscale" "0.25"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_16"
+"origin" "0.005008 2.007199 34"
+"angles" "-90 -0.000108 0"
+"modelscale" "0.25"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/pipe_metal_painted_straight_64"
+"origin" "0.009817 8.02969 36"
+"angles" "0 -90.000187 90"
+"modelscale" "0.25"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_128"
+"origin" "7.999673 -1.501646 44"
+"angles" "-0.000108 89.995059 0.00247"
+"modelscale" "1"
+}

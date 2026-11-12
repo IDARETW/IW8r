@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "0 0 0"
+"angles" "9.037708 0 -0.000197"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_church_wood_roof_shingles_vertical_64"
+"origin" "-26.001285 29.498867 18"
+"angles" "-0.001281 -89.999619 27.597928"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_church_wood_roof_shingles_vertical_64"
+"origin" "-25.998497 -34.501133 18"
+"angles" "-0.001281 -89.999619 27.597928"
+"modelscale" "1"
+}

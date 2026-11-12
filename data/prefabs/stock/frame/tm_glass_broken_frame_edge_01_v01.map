@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_corner_03"
+"origin" "0.444385 0.537088 51"
+"angles" "0 -176.387048 -90"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_edge_01"
+"origin" "0 0 0"
+"angles" "-2.314199 0 -88.959009"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_edge_02"
+"origin" "-2.268549 35.449691 -21.5"
+"angles" "3.608665 1.294979 0.89602"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_edge_05"
+"origin" "-3.278587 59.904867 20"
+"angles" "0 -176.387048 90"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_edge_05"
+"origin" "-1.223714 26.986772 65"
+"angles" "0.000744 -176.388912 179.997642"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_edge_07"
+"origin" "-1.650952 50.477187 21"
+"angles" "0 3.612952 90"
+"modelscale" "1"
+}

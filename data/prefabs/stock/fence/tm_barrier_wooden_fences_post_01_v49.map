@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/barrier_wooden_fences_post_01"
+"origin" "-54.398666 7.49834 0"
+"angles" "0.001749 -180 0.001749"
+"modelscale" "1.05"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/barrier_wooden_fences_post_01"
+"origin" "0 0 0"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "1.05"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/barrier_wooden_fences_post_01"
+"origin" "17.800073 23.200739 0"
+"angles" "0.002473 89.999276 0"
+"modelscale" "1.18"
+}

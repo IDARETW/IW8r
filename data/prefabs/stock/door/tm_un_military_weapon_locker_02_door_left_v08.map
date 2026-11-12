@@ -1,0 +1,71 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_metal_single_frame_b_01_grey"
+"origin" "-59.726139 -31.425843 -4"
+"angles" "-0.00002 90.000698 0.002473"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/shell_casings_ar_01"
+"origin" "4.470223 -50.480426 -4"
+"angles" "0.002188 -35.356944 0.001153"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_128"
+"origin" "-39.439797 28.548594 -17"
+"angles" "0.002473 -89.999302 0.00002"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_128"
+"origin" "88.577454 28.552263 -17"
+"angles" "0.002473 -89.999302 0.00002"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "-51.408564 0.041687 -4"
+"angles" "0.001734 0 0.001763"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "-2.999597 0.049163 -4"
+"angles" "0.001734 0 0.001763"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "45.007048 0.061279 -4"
+"angles" "0.001734 0 0.001763"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_left"
+"origin" "0 0 0"
+"angles" "0.001734 0 0.001763"
+"modelscale" "1"
+}

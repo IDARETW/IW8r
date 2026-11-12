@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_16"
+"origin" "0 0 0"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_32"
+"origin" "0.000262 23.900762 0"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_8"
+"origin" "-0.000132 -12.020815 0"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_8_corner_in"
+"origin" "-0.000263 -24.041631 0"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}

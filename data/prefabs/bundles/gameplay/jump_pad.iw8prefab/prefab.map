@@ -1,0 +1,43 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_manhole_cover_02"
+"origin" "0 0 0"
+"angles" "0 0 0"
+}
+// entity 2
+{
+"classname" "trigger_multiple"
+"targetname" "jump_pad_trigger"
+"iw8r_jump" "0 0 700"
+// brush 0
+{
+ ( 32 32 0 ) ( -32 32 0 ) ( -32 -32 0 ) trigger 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 -32 24 ) ( -32 32 24 ) ( 32 32 24 ) trigger 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 -32 24 ) ( 32 -32 24 ) ( 32 -32 0 ) trigger 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 32 32 24 ) ( -32 32 24 ) ( -32 32 0 ) trigger 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 32 -32 24 ) ( 32 32 24 ) ( 32 32 0 ) trigger 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 32 24 ) ( -32 -32 24 ) ( -32 -32 0 ) trigger 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+}
+// entity 3
+{
+"classname" "fx_origin"
+"fx" "vfx/core/mp/core/vfx_marker_base_cyan_pulse"
+"origin" "0 0 2"
+"angles" "0 0 0"
+}
+// entity 4
+{
+"classname" "sound_emitter"
+"soundalias" "emt_light_fluorescent_hum1_int"
+"loop" "1"
+"origin" "0 0 8"
+}

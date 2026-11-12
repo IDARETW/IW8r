@@ -1,0 +1,71 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_128_open_worn"
+"origin" "111.948114 0.255389 31.5"
+"angles" "0.001671 90.001484 0.001823"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_railing_128_worn"
+"origin" "111.965231 -47.748538 31.5"
+"angles" "-0.000108 180 0.00247"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_railing_64_worn"
+"origin" "80.169127 59.259373 31.5"
+"angles" "-0.000108 180 0.00247"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_railing_64_worn"
+"origin" "80.210253 48.253963 31.5"
+"angles" "0.00247 0 0.000108"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_stairs_middle_worn"
+"origin" "-96.064558 0.001116 -64"
+"angles" "0.00247 0 0.000108"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_stairs_top_worn"
+"origin" "-0.053453 107.252498 0"
+"angles" "0.00247 0 0.000108"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_stairs_top_worn"
+"origin" "0 0 0"
+"angles" "0.00247 0 0.000108"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_01"
+"origin" "44.92579 58.005454 31"
+"angles" "-0.000108 180 0.00247"
+"modelscale" "0.75"
+}

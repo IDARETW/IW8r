@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_16"
+"origin" "-10.922282 30.489004 -28"
+"angles" "0.001329 -0.040105 0.002086"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_32"
+"origin" "21.017435 10.490349 -28"
+"angles" "-0.000535 89.95936 0.002414"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_4"
+"origin" "-10.923698 20.555915 -28"
+"angles" "0.001329 -0.040105 0.002086"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8"
+"origin" "1.061721 10.541478 -28"
+"angles" "-0.000535 89.95936 0.002414"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_8_corner_in"
+"origin" "-10.970814 10.534233 -28"
+"angles" "0.001329 -0.040105 0.002086"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_gutter_pipe_32_end_01_tin"
+"origin" "0 0 0"
+"angles" "-1.191139 0 1.17744"
+"modelscale" "1"
+}

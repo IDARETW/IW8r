@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_plaster_barrier_fence_wall_ornate_cap_128"
+"origin" "-5.73544 4.83858 -11"
+"angles" "0.002452 136.003704 0.000323"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_plaster_barrier_fence_wall_ornate_cap_256"
+"origin" "-0.563103 -7.803236 -24"
+"angles" "0.00064 -88.997952 0.002389"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/me_plaster_barrier_fence_wall_ornate_cap_corner"
+"origin" "0 0 0"
+"angles" "-0.001218 0 0.002152"
+"modelscale" "0.75"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/me_plaster_barrier_fence_wall_ornate_cap_corner"
+"origin" "0 0 0"
+"angles" "0.002152 -180 0.001218"
+"modelscale" "0.75"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/me_plaster_barrier_fence_wall_ornate_cap_corner"
+"origin" "0 0 0"
+"angles" "0.000661 -89.997346 0.002383"
+"modelscale" "0.75"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/me_plaster_barrier_fence_wall_ornate_cap_corner"
+"origin" "0 0 0"
+"angles" "0.002383 90.002654 -0.000661"
+"modelscale" "0.75"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/me_plaster_barrier_fence_wall_ornate_collumn_cap_01"
+"origin" "0 0 4"
+"angles" "0.000661 -89.997346 0.002383"
+"modelscale" "1"
+}

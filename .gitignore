@@ -1,0 +1,51 @@
+# build outputs
+/build/
+/bin/
+/.xmake/
+/out/
+*.pdb
+*.ilk
+
+# local, machine-specific data (generated from GPL sources or game files; never distributed)
+/data/generated/
+/data/stock_dumps/
+
+# reference checkout (has its own git history)
+/reference/
+
+# editor state
+IW8Radiant.ini
+IW8Radiant_layout.ini
+*.iw8r-tmp
+*.bak
+
+# first-commit additions: build output and caches anywhere
+iw8build/
+__pycache__/
+*.pyc
+*.obj
+*.exe
+*.dll
+*.lib
+*.exp
+*.ilk
+*.pdb
+
+# game data files anywhere (never distributed)
+*.ff
+*.fp
+*.xpak
+*.sabs
+*.fc
+
+# logs and stray files at the top level
+/aqtinstall.log
+/*.log
+
+# screenshots folder still being written by another worker (to be committed later)
+/docs/features/
+
+# secrets and local state
+*.pem
+*.key
+.env

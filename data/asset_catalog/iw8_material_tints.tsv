@@ -1,0 +1,9 @@
+# Stock material colour tints (constant 9, RRGGBB multiplier, FFFFFF = neutral and not listed). tools/build_material_tints.py
+mo/me_traffic_cone_01_base	808080	techsets_mp_donetsk
+mo/me_traffic_cone_01_top	ED370F	techsets_mp_donetsk
+tmco/me_traffic_cone_01_top	ED370F	techsets_mp_shipment
+tmo/me_traffic_cone_01_base	808080	techsets_mp_donetsk
+tmo/me_traffic_cone_01_top	ED370F	techsets_mp_donetsk
+twc/concrete_rough_ridges_01_tan_rvl2	FFEBCF	techsets_mp_donetsk
+twc/plaster_blue_dmg_02_rvl	4A8BBE	techsets_mp_donetsk
+twc4/1307n_331n	FFEBCF	techsets_mp_donetsk

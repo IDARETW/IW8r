@@ -1,0 +1,47 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "-0.061292 37.952483 -27.5"
+"angles" "-0.000661 180 0.002383"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "0.000547 -26.017212 -27.5"
+"angles" "-0.000661 180 0.002383"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_brick_base_trim_top_64"
+"origin" "0.011083 -90.072288 -27.5"
+"angles" "-0.000661 180 0.002383"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_windows_sill_concrete_01"
+"origin" "-0.036583 -55.976523 0"
+"angles" "0.002383 0 0.000661"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_windows_sill_concrete_01"
+"origin" "0 0 0"
+"angles" "0.002383 0 0.000661"
+"modelscale" "1"
+}

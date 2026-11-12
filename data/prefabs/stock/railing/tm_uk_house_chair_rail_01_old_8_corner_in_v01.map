@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_32"
+"origin" "-0.001036 24 0"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_32"
+"origin" "23.997928 48.001036 0"
+"angles" "0.001749 -89.999276 0.001749"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_32"
+"origin" "24 0.001036 0"
+"angles" "-0.001749 90.000724 0.001749"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_32"
+"origin" "47.998964 24.002072 0"
+"angles" "0.002473 180 0"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_8_corner_in"
+"origin" "-0.002072 48 0"
+"angles" "0.001749 -89.999276 0.001749"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_8_corner_in"
+"origin" "0 0 0"
+"angles" "0 0 0.002473"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_8_corner_in"
+"origin" "48 0.002072 0"
+"angles" "-0.001749 90.000724 0.001749"
+"modelscale" "1"
+}

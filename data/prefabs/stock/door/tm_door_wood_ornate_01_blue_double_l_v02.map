@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_wood_ornate_01_blue_double_frame"
+"origin" "11.768365 24.380876 0"
+"angles" "-0.000697 150.000542 0.002372"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/door_wood_ornate_01_blue_double_l"
+"origin" "0 0 0"
+"angles" "0.002111 0 0.001288"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/door_wood_ornate_01_blue_double_r"
+"origin" "26.503667 45.891296 0"
+"angles" "0.002472 -59.999208 0.00006"
+"modelscale" "1"
+}

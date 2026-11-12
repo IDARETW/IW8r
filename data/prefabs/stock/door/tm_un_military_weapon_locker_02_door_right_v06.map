@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "-59.765138 -45.238517 -4"
+"angles" "0.001329 -143.995621 0.002086"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "-20.582527 -16.736083 -4"
+"angles" "0.001329 -143.995621 0.002086"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "36.453423 24.712649 -4"
+"angles" "0.001329 -143.995621 0.002086"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "75.27911 52.942734 -4"
+"angles" "0.001329 -143.995621 0.002086"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_left"
+"origin" "-62.16684 -47.028647 0"
+"angles" "0.001329 -143.995621 0.002086"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_left"
+"origin" "33.576032 22.2172 0"
+"angles" "0.002131 162.002262 0.001255"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_left"
+"origin" "54.768362 75.644561 -2.75"
+"angles" "0.000535 -143.999105 89.997586"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_left"
+"origin" "72.877781 51.150687 0"
+"angles" "0.001329 -143.995621 0.002086"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_right"
+"origin" "-68.453532 -23.598601 -2.5"
+"angles" "0.000034 -168.208066 89.995054"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_right"
+"origin" "0 0 0"
+"angles" "-0.001573 0 0.001908"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_right"
+"origin" "38.954447 26.52408 0"
+"angles" "0.001329 -143.995621 0.002086"
+"modelscale" "1"
+}

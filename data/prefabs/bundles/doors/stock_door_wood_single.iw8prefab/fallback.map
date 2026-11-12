@@ -1,0 +1,29 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_frame_wooden_panel_03_painted_mp"
+"origin" "26 0 0"
+"angles" "0 0 0"
+}
+// entity 2
+{
+"classname" "script_model"
+"model" "door_wooden_panel_03_painted_left_mp_nophysics"
+"targetname" "door"
+"origin" "0 0 0"
+"angles" "0 0 0"
+}
+// entity 3
+{
+"classname" "script_origin"
+"targetname" "door_use"
+"target" "door"
+"origin" "45 0 35"
+}

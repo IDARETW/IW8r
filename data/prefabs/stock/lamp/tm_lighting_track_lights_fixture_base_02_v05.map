@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/lighting_track_lights_fixture_base_01"
+"origin" "2.099417 6.300845 0"
+"angles" "0.002285 135.002376 0.000946"
+"modelscale" "0.8"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lighting_track_lights_fixture_base_02"
+"origin" "0 0 0"
+"angles" "-0.001749 0 0.001749"
+"modelscale" "0.8"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lighting_track_lights_fixture_off_01"
+"origin" "3.499893 3.500107 -5"
+"angles" "33.4277 -65.784703 -60.35066"
+"modelscale" "0.8"
+}

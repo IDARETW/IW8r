@@ -1,0 +1,103 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_01"
+"origin" "-7.92035 6.790798 28"
+"angles" "0.002285 -180 0.000946"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_01"
+"origin" "0.000136 12.446184 28"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_02"
+"origin" "-7.990648 19.304655 0"
+"angles" "0.002285 -180 0.000946"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_02"
+"origin" "-7.919215 -15.697131 1"
+"angles" "0.002285 -180 0.000946"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_02"
+"origin" "0 0 0"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_02"
+"origin" "0.072199 35.001785 1"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_03"
+"origin" "-0.001643 -23.899381 27.035889"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_04"
+"origin" "-7.990833 2.334092 3"
+"angles" "0.002285 -180 0.000946"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_04"
+"origin" "0.000186 16.970563 3"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_05"
+"origin" "-7.988992 44.336511 0"
+"angles" "0.002285 -180 0.000946"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_05"
+"origin" "-0.000274 -25.030475 0"
+"angles" "-0.000946 0 0.002285"
+"modelscale" "1"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/electrical_conduit_set_electrical_box_medium"
+"origin" "-7.991294 -39.666946 -13.5"
+"angles" "0.002285 -180 0.000946"
+"modelscale" "1"
+}

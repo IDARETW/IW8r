@@ -1,0 +1,4 @@
+index	name	lightdef	array	texels	levels	peak	half_texel	zero_texel	lookup_strip	source	shape
+0	white			128	8	255			*ieslookup	replay_ies.cpp:70	flat 255 (no profile; lights without one sample segment 0)
+1	IES_16	flashlight	kIes16	128	8	255	91	127	*ieslookup	replay_ies.cpp:144,59; replay_ies_data.inc	peak 0xFF at texel 0; half at texel 91 (coord 0.357); zero from texel 127
+2	ies_nvg_flashlight	light_ies_nvg_flashlight	kIesNvgFlashlight	128	8	255	6	73	*ieslookup	replay_ies.cpp:145,60; replay_ies_data.inc	peak 0xFF at texel 0; half at texel 6 (coord 0.024); zero from texel 73

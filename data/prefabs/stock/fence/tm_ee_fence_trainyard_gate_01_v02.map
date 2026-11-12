@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_fence_trainyard_gate_01"
+"origin" "0 0 0"
+"angles" "0.00226 0 -0.001004"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_fence_trainyard_gate_02"
+"origin" "48.002713 0.022488 0"
+"angles" "0.002312 6.399995 -0.000876"
+"modelscale" "1"
+}

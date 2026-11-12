@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_buildings_industrial_radiotower_ladder_top_01"
+"origin" "0 0 0"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_metal_corrugated_corner_40_01_light_blue"
+"origin" "-2.700195 -43.5 -1.5"
+"angles" "0 -180 0.002473"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_metal_corrugated_corner_40_01_light_blue"
+"origin" "-2.5 43 -1.5"
+"angles" "-0.001749 -90.001749 0.001749"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_metal_corrugated_corner_40_01_light_blue"
+"origin" "20.799805 43 -1.5"
+"angles" "0.002473 0 0"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_top_metal_yellow_16"
+"origin" "8.799805 29 0.5"
+"angles" "0.002473 0 0"
+"modelscale" "0.9"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_top_metal_yellow_16"
+"origin" "8.799805 -42.799805 0.5"
+"angles" "0.002473 0 0"
+"modelscale" "0.9"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_top_metal_yellow_64"
+"origin" "8.799805 -28.5 0.5"
+"angles" "0.002473 0 0"
+"modelscale" "0.9"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/trim_metal_top_yellow_end"
+"origin" "9 44.200195 1"
+"angles" "0 -180 0.002473"
+"modelscale" "0.9"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/trim_metal_top_yellow_end"
+"origin" "9 44.200195 1"
+"angles" "0.002473 0 0"
+"modelscale" "0.9"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/trim_metal_top_yellow_end"
+"origin" "9 -45 1"
+"angles" "0.002473 0 0"
+"modelscale" "0.9"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/trim_metal_top_yellow_end"
+"origin" "9 -45 1"
+"angles" "0 -180 0.002473"
+"modelscale" "0.9"
+}

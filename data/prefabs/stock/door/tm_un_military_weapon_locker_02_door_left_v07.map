@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "-51.252313 30.407198 -1.25"
+"angles" "0.001329 0.003484 0.002086"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "-26.310962 -21.16484 -1.25"
+"angles" "-0.000535 90 0.002414"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "-26.29426 -69.168709 -1.25"
+"angles" "-0.000535 90 0.002414"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "-3.249269 30.42213 -1.25"
+"angles" "0.001329 0.003484 0.002086"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "44.7546 30.438832 -1.25"
+"angles" "0.001329 0.003484 0.002086"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_left"
+"origin" "-0.253214 30.460414 2.75"
+"angles" "0.001329 0.003484 0.002086"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_left"
+"origin" "0 0 0"
+"angles" "0.000535 0 89.997586"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_left"
+"origin" "48.549251 30.766346 2.75"
+"angles" "0.002131 -53.998633 0.001255"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_right"
+"origin" "-26.275196 -71.494219 2.75"
+"angles" "-0.000535 90 0.002414"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_right"
+"origin" "41.666496 30.443467 2.75"
+"angles" "0.001329 0.003484 0.002086"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_right"
+"origin" "88.771746 29.004313 2.75"
+"angles" "-0.001573 143.999105 0.001908"
+"modelscale" "1"
+}

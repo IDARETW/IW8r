@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_siding_metal_corrugated_01_88_corner_2sided_light_blue"
+"origin" "0 0 0"
+"angles" "-0.001749 0 179.998251"
+"modelscale" "0.5"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_siding_metal_corrugated_01_88_corner_2sided_light_blue"
+"origin" "0 0 0"
+"angles" "0 89.998251 0.002473"
+"modelscale" "0.5"
+}

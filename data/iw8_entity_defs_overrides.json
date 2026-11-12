@@ -1,0 +1,1950 @@
+{
+  "_comment": "Editor-authored entity definitions merged over the generated ones by tools/gen_iw8_entity_defs.py (a class here replaces the generated class whole). Edit here, not in iw8_entity_defs.json.",
+  "classes": {
+    "light": {
+      "description": "Light: an omni, or a spot when it has a target or a fov key; built as a primary light (5.1); optional IES profile for spots.",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          -8
+        ],
+        [
+          8,
+          8,
+          8
+        ]
+      ],
+      "color": [
+        1.0,
+        1.0,
+        0.5
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "_color": {
+          "type": "vec3",
+          "default": "1 1 1",
+          "description": "Light colour r g b, 0 to 1 (or 0 to 255); built into the primary light (compile_iw8.cpp localPrimaryLights).",
+          "required": false,
+          "examples": []
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units.",
+          "required": true,
+          "examples": []
+        },
+        "radius": {
+          "type": "float",
+          "default": "400",
+          "description": "Reach in map units.",
+          "required": false,
+          "examples": []
+        },
+        "intensity": {
+          "type": "float",
+          "default": "1",
+          "description": "Multiplies the colour.",
+          "required": false,
+          "examples": []
+        },
+        "target": {
+          "type": "string",
+          "default": "",
+          "description": "Aim the spot at the entity with this targetname.",
+          "required": false,
+          "examples": []
+        },
+        "angles": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Aim (pitch yaw roll) when there is no target.",
+          "required": false,
+          "examples": []
+        },
+        "fov_outer": {
+          "type": "float",
+          "default": "90",
+          "description": "Full outer cone angle in degrees (1 to 170).",
+          "required": false,
+          "examples": []
+        },
+        "fov_inner": {
+          "type": "float",
+          "default": "60",
+          "description": "Full inner cone angle in degrees (below fov_outer).",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_ies": {
+          "type": "string",
+          "default": "",
+          "description": "LM-63 .ies light profile (absolute or relative to the map folder). The build writes it as the spot's own light definition (Replay IES segment, docs/research/38); in-game look not verified.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_bulb_radius": {
+          "type": "float",
+          "default": "1",
+          "description": "Bulb radius in map units, above 0 (converter default 1). Written as bulb_radius; widens the light's volume.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_shadow_bias": {
+          "type": "float",
+          "default": "0.75",
+          "description": "Shadow map bias (converter default 0.75). Written as shadow_bias.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_falloff": {
+          "type": "float",
+          "default": "0.2",
+          "description": "Distance falloff, above 0 (converter default 0.2). Written as distance_falloff.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_fade": {
+          "type": "string",
+          "default": "",
+          "description": "Fade range 'near far': two numbers (converter default 0 0). Written as fade_offset.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_shadows": {
+          "type": "bool",
+          "default": "0",
+          "description": "1 gives the light a shadow map. Spot lights only; an omni ignores it. Written as can_use_shadow_map.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_intensity_units": {
+          "type": "float",
+          "default": "",
+          "description": "Intensity in light units, 0 or more. Written as intensity: the converter uses it and skips the radius brightness calibration. Unset: calibrated from the radius.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_uv_intensity": {
+          "type": "float",
+          "default": "0",
+          "description": "UV vision intensity (converter default 0). Written as uv_intensity.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_ir_intensity": {
+          "type": "float",
+          "default": "0",
+          "description": "Thermal vision intensity (converter default 0). Written as ir_intensity.",
+          "required": false,
+          "examples": []
+        }
+      }
+    },
+    "light_spot": {
+      "description": "Spot light: built as a primary light (5.1) aimed at its target or along its angles; optional IES profile.",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          -8
+        ],
+        [
+          8,
+          8,
+          8
+        ]
+      ],
+      "color": [
+        1.0,
+        1.0,
+        0.5
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "_color": {
+          "type": "vec3",
+          "default": "1 1 1",
+          "description": "Light colour r g b, 0 to 1 (or 0 to 255); built into the primary light (compile_iw8.cpp localPrimaryLights).",
+          "required": false,
+          "examples": []
+        },
+        "angles": {
+          "type": "angles",
+          "default": "0 0 0",
+          "description": "Aim (pitch yaw roll) when there is no target.",
+          "required": false,
+          "examples": []
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units.",
+          "required": true,
+          "examples": []
+        },
+        "radius": {
+          "type": "float",
+          "default": "400",
+          "description": "Reach in map units.",
+          "required": false,
+          "examples": []
+        },
+        "intensity": {
+          "type": "float",
+          "default": "1",
+          "description": "Multiplies the colour.",
+          "required": false,
+          "examples": []
+        },
+        "target": {
+          "type": "string",
+          "default": "",
+          "description": "Aim the spot at the entity with this targetname.",
+          "required": false,
+          "examples": []
+        },
+        "fov_outer": {
+          "type": "float",
+          "default": "90",
+          "description": "Full outer cone angle in degrees (1 to 170).",
+          "required": false,
+          "examples": []
+        },
+        "fov_inner": {
+          "type": "float",
+          "default": "60",
+          "description": "Full inner cone angle in degrees (below fov_outer).",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_ies": {
+          "type": "string",
+          "default": "",
+          "description": "LM-63 .ies light profile (absolute or relative to the map folder). The build writes it as the spot's own light definition (Replay IES segment, docs/research/38); in-game look not verified.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_bulb_radius": {
+          "type": "float",
+          "default": "1",
+          "description": "Bulb radius in map units, above 0 (converter default 1). Written as bulb_radius; widens the light's volume.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_shadow_bias": {
+          "type": "float",
+          "default": "0.75",
+          "description": "Shadow map bias (converter default 0.75). Written as shadow_bias.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_falloff": {
+          "type": "float",
+          "default": "0.2",
+          "description": "Distance falloff, above 0 (converter default 0.2). Written as distance_falloff.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_fade": {
+          "type": "string",
+          "default": "",
+          "description": "Fade range 'near far': two numbers (converter default 0 0). Written as fade_offset.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_shadows": {
+          "type": "bool",
+          "default": "0",
+          "description": "1 gives the light a shadow map. Spot lights only; an omni ignores it. Written as can_use_shadow_map.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_intensity_units": {
+          "type": "float",
+          "default": "",
+          "description": "Intensity in light units, 0 or more. Written as intensity: the converter uses it and skips the radius brightness calibration. Unset: calibrated from the radius.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_uv_intensity": {
+          "type": "float",
+          "default": "0",
+          "description": "UV vision intensity (converter default 0). Written as uv_intensity.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_ir_intensity": {
+          "type": "float",
+          "default": "0",
+          "description": "Thermal vision intensity (converter default 0). Written as ir_intensity.",
+          "required": false,
+          "examples": []
+        }
+      }
+    },
+    "dynamic_prop": {
+      "description": "Physics prop (editor class, 6.15): the build writes it as converter clutter (a dynamic model with a physics preset) that falls and can be knocked around. In-game behaviour not verified yet.",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          0
+        ],
+        [
+          8,
+          8,
+          16
+        ]
+      ],
+      "color": [
+        1.0,
+        0.6,
+        0.2
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units.",
+          "required": true,
+          "examples": []
+        },
+        "angles": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Pitch yaw roll in degrees.",
+          "required": false,
+          "examples": []
+        },
+        "model": {
+          "type": "string",
+          "default": "",
+          "description": "A custom model (models folder) or an exported stock model.",
+          "required": true,
+          "examples": []
+        },
+        "mass": {
+          "type": "float",
+          "default": "10",
+          "description": "Mass in kilograms; props up to 2 kg are debris.",
+          "required": false,
+          "examples": []
+        },
+        "material": {
+          "type": "string",
+          "default": "wood",
+          "description": "Physics material word: wood, metal, plastic, glass, paper, rubber, brick, ...",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_material": {
+          "type": "string",
+          "default": "",
+          "description": "One material on every surface of this model (drag a material from the Materials browser onto the model). The build makes a copy of the stock model with that material; custom models keep their own materials.",
+          "required": false,
+          "examples": [
+            "tm2co/me_curb_stone_01"
+          ]
+        }
+      }
+    },
+    "iw8r_volume": {
+      "description": "Volumetric box (editor class, 5.7): written as a world volumetric (lit fog / light shafts inside the box). Density and falloff units and the in-game look are not verified yet.",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          -8
+        ],
+        [
+          8,
+          8,
+          8
+        ]
+      ],
+      "color": [
+        0.6,
+        0.8,
+        1.0
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Box anchor in map units.",
+          "required": true,
+          "examples": []
+        },
+        "mins": {
+          "type": "vec3",
+          "default": "-128 -128 -128",
+          "description": "Box corner relative to the origin.",
+          "required": false,
+          "examples": []
+        },
+        "maxs": {
+          "type": "vec3",
+          "default": "128 128 128",
+          "description": "Opposite box corner relative to the origin.",
+          "required": false,
+          "examples": []
+        },
+        "angles": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Box rotation, pitch yaw roll.",
+          "required": false,
+          "examples": []
+        },
+        "density": {
+          "type": "float",
+          "default": "0.2",
+          "description": "Fog density (0 or more).",
+          "required": false,
+          "examples": []
+        },
+        "falloff": {
+          "type": "float",
+          "default": "64",
+          "description": "Edge falloff (above 0).",
+          "required": false,
+          "examples": []
+        },
+        "color": {
+          "type": "vec3",
+          "default": "1 1 1",
+          "description": "Scatter colour r g b, 0 to 1.",
+          "required": false,
+          "examples": []
+        },
+        "height_fade": {
+          "type": "float",
+          "default": "0",
+          "description": "Fade with height.",
+          "required": false,
+          "examples": []
+        },
+        "anisotropy": {
+          "type": "float",
+          "default": "0",
+          "description": "Forward scattering (-1 to 1).",
+          "required": false,
+          "examples": []
+        }
+      }
+    },
+    "misc_model": {
+      "description": "Static model placement: built as a world static model (custom or exported stock model) with convex hull collision.",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          -8
+        ],
+        [
+          8,
+          8,
+          8
+        ]
+      ],
+      "color": [
+        0.6,
+        0.6,
+        0.9
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "angles": {
+          "type": "angles",
+          "default": "0 0 0",
+          "description": "Pitch yaw roll in degrees. Stock values use the middle (yaw) slot (inferred from stock values).",
+          "required": false,
+          "examples": []
+        },
+        "model": {
+          "type": "model",
+          "default": "",
+          "description": "xmodel name for point models; '*N' selects brush model N and is written by the compiler (inferred from stock values).",
+          "required": true,
+          "examples": []
+        },
+        "modelscale": {
+          "type": "float",
+          "default": "",
+          "description": "Model scale factor (inferred from stock values).",
+          "required": false,
+          "examples": []
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units (inferred from stock values).",
+          "required": true,
+          "examples": []
+        },
+        "lod_scale": {
+          "type": "float",
+          "default": "1",
+          "description": "Scales this placement's LOD switch distances (Replay per-placement table: 0.25 to 4; stock maps often use 4). Written as the placement's lod_scale (research 54).",
+          "required": false,
+          "examples": [
+            "2",
+            "4"
+          ]
+        },
+        "no_shadow": {
+          "type": "bool",
+          "default": "0",
+          "description": "1: the model casts no shadow: none from local (primary) lights (shadow_lights empty) and none from the sun (the fork's no_sun_shadow; research 54 / 60).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "ground_lighting": {
+          "type": "string",
+          "default": "",
+          "description": "Ground lighting: the placement is lit by one flat colour instead of the light grid. \"1\" = the converter's default grey; \"r g b\" (0..1, or 0..255) sets the colour (model_flags 1 + ground_lighting, research 54). Colour channel order in game NOT VERIFIED.",
+          "required": false,
+          "examples": [
+            "1",
+            "0.4 0.35 0.3",
+            "90 80 70"
+          ]
+        },
+        "iw8r_spin": {
+          "type": "string",
+          "default": "",
+          "description": "Spins without scripting: \"<seconds per turn> [yaw|pitch|roll]\". The map script turns it one full circle every that many seconds. A misc_model with this key is built as a live script_model; a missing targetname is filled in.",
+          "required": false,
+          "examples": [
+            "4",
+            "2 roll"
+          ]
+        },
+        "iw8r_bob": {
+          "type": "string",
+          "default": "",
+          "description": "Bobs without scripting: \"<height> [seconds]\". The map script moves it up that many units and back down, once every seconds (default 2). A misc_model with this key is built as a live script_model; a missing targetname is filled in.",
+          "required": false,
+          "examples": [
+            "16 2",
+            "48 4"
+          ]
+        },
+        "iw8r_material": {
+          "type": "string",
+          "default": "",
+          "description": "One material on every surface of this model (drag a material from the Materials browser onto the model). The build makes a copy of the stock model with that material; custom models keep their own materials.",
+          "required": false,
+          "examples": [
+            "tm2co/me_curb_stone_01"
+          ]
+        },
+        "iw8r_no_collision": {
+          "type": "string",
+          "default": "",
+          "description": "1: the model has no player collision (it stays a live script_model; bullets still hit it). Used by Make Ladder so the ladder model does not stand between the player and the climbable brush. A misc_model with this key is built as a script_model.",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        }
+      }
+    },
+    "script_brushmodel": {
+      "description": "Brush model whose surfaces scripts use, referenced as '*N' (contract 15 s3.5).",
+      "kind": "brush",
+      "color": [
+        0.4,
+        0.7,
+        1.0
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "footprint_mask_group": {
+          "type": "string",
+          "default": "default",
+          "description": "Footprint mask group name (inferred from stock values; stock value 'default').",
+          "required": false,
+          "examples": [
+            "default"
+          ]
+        },
+        "model": {
+          "type": "model",
+          "default": "",
+          "description": "xmodel name for point models; '*N' selects brush model N and is written by the compiler (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "*1",
+            "*4",
+            "*5"
+          ]
+        },
+        "nophysics": {
+          "type": "bool",
+          "default": "",
+          "description": "Disables physics on the entity (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "-66 0 2432",
+            "-8544 9312 0",
+            "-8710 10150 132"
+          ]
+        },
+        "physasset": {
+          "type": "string",
+          "default": "",
+          "description": "Physics asset name (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "ScriptBrushModelDummyDefault",
+            "ScriptBrushModelDummyFixed"
+          ]
+        },
+        "script_gameobjectname": {
+          "type": "string",
+          "default": "",
+          "description": "Gameobject or objective id read by gsc gameobjects.gsc:17. Values such as bombzone and sd are inferred from stock values.",
+          "required": false,
+          "examples": [
+            "bombzone",
+            "cyber",
+            "dd_bombzone"
+          ]
+        },
+        "script_noteworthy": {
+          "type": "string",
+          "default": "",
+          "description": "Free-form tag that gametype code branches on (gsc gametypes/arena.gsc:509-527, ammorestock.gsc:22-25).",
+          "required": false,
+          "examples": [
+            "heli_height_mesh"
+          ]
+        },
+        "spawnflags": {
+          "type": "int",
+          "default": "0",
+          "description": "Bit flags. Scripts test single bits (gsc gametypes/br_quest_util.gsc:1795, gametypes/br_dom_quest.gsc:71); per-class bit meanings are not sourced.",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "targetname": {
+          "type": "targetname",
+          "default": "",
+          "description": "Name that other entities use to find this one (gsc ammorestock.gsc:8).",
+          "required": false,
+          "examples": [
+            "heli_pilot_mesh",
+            "care_package_col",
+            "smoke_grenade_sight_clip_256"
+          ]
+        },
+        "iw8r_door": {
+          "type": "string",
+          "default": "",
+          "description": "Door without scripting. \"hinge <angle> [time]\": hangs on a hinge at one end and swings away from the player who presses Use near it; it stays open until used again. \"rotate <angle> [time] [hold]\": the same swing, closing by itself after the hold time. \"slide <x> <y> <z> [time] [hold]\": slides and comes back. Needs a targetname. A trigger_use or trigger_multiple whose target is the door opens it; without one the door gets its own use area (its bounds grown by 40 units).",
+          "required": false,
+          "examples": [
+            "hinge 100 0.6",
+            "rotate 90 1 3",
+            "slide 0 0 96 1.5 3"
+          ]
+        },
+        "iw8r_lift": {
+          "type": "string",
+          "default": "",
+          "description": "Lift without scripting: \"<dz> [time] [wait]\". Needs a targetname; the map script moves it up dz units over time seconds, waits, moves it back down and repeats.",
+          "required": false,
+          "examples": [
+            "128 2 2",
+            "256 3 1"
+          ]
+        },
+        "iw8r_spin": {
+          "type": "string",
+          "default": "",
+          "description": "Spins without scripting: \"<seconds per turn> [yaw|pitch|roll]\". The map script turns it one full circle every that many seconds. A misc_model with this key is built as a live script_model; a missing targetname is filled in.",
+          "required": false,
+          "examples": [
+            "4",
+            "2 roll"
+          ]
+        },
+        "iw8r_bob": {
+          "type": "string",
+          "default": "",
+          "description": "Bobs without scripting: \"<height> [seconds]\". The map script moves it up that many units and back down, once every seconds (default 2). A misc_model with this key is built as a live script_model; a missing targetname is filled in.",
+          "required": false,
+          "examples": [
+            "16 2",
+            "48 4"
+          ]
+        },
+        "iw8r_brush_visual": {
+          "type": "string",
+          "default": "1",
+          "description": "Moving brush models are drawn by a generated model that the map script links to them (their own surfaces did not show in game). 0 turns this off for this brush model.",
+          "required": false,
+          "examples": [
+            "0"
+          ]
+        },
+        "iw8r_hinge": {
+          "type": "string",
+          "default": "",
+          "description": "Where a hinged door (iw8r_door hinge / rotate) turns. Without it the hinge is the end of the door's longer side with the lower coordinate. \"far\" takes the other end; \"x y z\" names the hinge point itself.",
+          "required": false,
+          "examples": [
+            "far",
+            "128 64 0"
+          ]
+        }
+      }
+    },
+    "script_model": {
+      "description": "Point model placed by script. The model must exist as xmodel/<name>.json (contract 15 s3.6).",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          -8
+        ],
+        [
+          8,
+          8,
+          8
+        ]
+      ],
+      "color": [
+        0.4,
+        0.7,
+        1.0
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "angles": {
+          "type": "angles",
+          "default": "0 0 0",
+          "description": "Pitch yaw roll in degrees. Stock values use the middle (yaw) slot (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "0 360 0",
+            "0 270 0",
+            "0 90 0"
+          ]
+        },
+        "footprint_mask_group": {
+          "type": "string",
+          "default": "default",
+          "description": "Footprint mask group name (inferred from stock values; stock value 'default').",
+          "required": false,
+          "examples": [
+            "default"
+          ]
+        },
+        "lgvmerge": {
+          "type": "string",
+          "default": "",
+          "description": "LGV merge group (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "bldg20_a4"
+          ]
+        },
+        "model": {
+          "type": "model",
+          "default": "",
+          "description": "xmodel name for point models; '*N' selects brush model N and is written by the compiler (inferred from stock values).",
+          "required": true,
+          "examples": [
+            "ee_fence_trainyard_gate_left_animated",
+            "ee_fence_trainyard_gate_right_animated",
+            "metal_chain_01_wrapped"
+          ]
+        },
+        "modelscale": {
+          "type": "float",
+          "default": "",
+          "description": "Model scale factor (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1",
+            "2"
+          ]
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units (inferred from stock values).",
+          "required": true,
+          "examples": [
+            "-107 2548.25 59.75",
+            "-108 2548.25 59.75",
+            "-107.5 2546.75 89.25"
+          ]
+        },
+        "receivevolumedecals": {
+          "type": "bool",
+          "default": "",
+          "description": "Receives volume decals (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1",
+            "0"
+          ]
+        },
+        "script_exploder": {
+          "type": "string",
+          "default": "",
+          "description": "Exploder id, stored as exploderindex (gsc gametypes/btm.gsc:1830-1832).",
+          "required": false,
+          "examples": [
+            "pf1195_2",
+            "pf1197_2",
+            "pf1198_2"
+          ]
+        },
+        "script_gameobjectname": {
+          "type": "string",
+          "default": "",
+          "description": "Gameobject or objective id read by gsc gameobjects.gsc:17. Values such as bombzone and sd are inferred from stock values.",
+          "required": false,
+          "examples": [
+            "ctf",
+            "bombzone",
+            "sd"
+          ]
+        },
+        "sound_csv_include": {
+          "type": "string",
+          "default": "",
+          "description": "Sound CSV include path (inferred from one stock value).",
+          "required": false,
+          "examples": [
+            "destruct/destruct_water_barrel"
+          ]
+        },
+        "spawnflags": {
+          "type": "int",
+          "default": "0",
+          "description": "Bit flags. Scripts test single bits (gsc gametypes/br_quest_util.gsc:1795, gametypes/br_dom_quest.gsc:71); per-class bit meanings are not sourced.",
+          "required": false,
+          "examples": [
+            "4",
+            "0"
+          ]
+        },
+        "target": {
+          "type": "targetname",
+          "default": "",
+          "description": "targetname of the entity or struct this one points to (gsc ammorestock.gsc:12).",
+          "required": false,
+          "examples": [
+            "pf1195_auto2",
+            "pf1197_auto2",
+            "pf1214_auto2"
+          ]
+        },
+        "targetname": {
+          "type": "targetname",
+          "default": "",
+          "description": "Name that other entities use to find this one (gsc ammorestock.gsc:8).",
+          "required": false,
+          "examples": [
+            "infil_door_left",
+            "infil_door_right",
+            "infil_door_chain"
+          ]
+        },
+        "iw8r_anim": {
+          "type": "string",
+          "default": "",
+          "description": "Stock animation (xanim name) played on this model in game (scriptmodelplayanim). The model must be live: a targetname that something targets (Brush > Make Scripted). Research 61.",
+          "required": false,
+          "examples": [
+            "desktop_fan_fn_01_loop"
+          ]
+        },
+        "iw8r_anim_loop": {
+          "type": "float",
+          "default": "0",
+          "description": "Replay the animation every N seconds; 0 plays it once.",
+          "required": false,
+          "examples": [
+            "2"
+          ]
+        },
+        "iw8r_spin": {
+          "type": "string",
+          "default": "",
+          "description": "Spins without scripting: \"<seconds per turn> [yaw|pitch|roll]\". The map script turns it one full circle every that many seconds. A misc_model with this key is built as a live script_model; a missing targetname is filled in.",
+          "required": false,
+          "examples": [
+            "4",
+            "2 roll"
+          ]
+        },
+        "iw8r_bob": {
+          "type": "string",
+          "default": "",
+          "description": "Bobs without scripting: \"<height> [seconds]\". The map script moves it up that many units and back down, once every seconds (default 2). A misc_model with this key is built as a live script_model; a missing targetname is filled in.",
+          "required": false,
+          "examples": [
+            "16 2",
+            "48 4"
+          ]
+        },
+        "iw8r_material": {
+          "type": "string",
+          "default": "",
+          "description": "One material on every surface of this model (drag a material from the Materials browser onto the model). The build makes a copy of the stock model with that material; custom models keep their own materials.",
+          "required": false,
+          "examples": [
+            "tm2co/me_curb_stone_01"
+          ]
+        },
+        "iw8r_no_collision": {
+          "type": "string",
+          "default": "",
+          "description": "1: the model has no player collision (it stays a live script_model; bullets still hit it). Used by Make Ladder so the ladder model does not stand between the player and the climbable brush. A misc_model with this key is built as a script_model.",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        }
+      }
+    },
+    "trigger_multiple": {
+      "description": "Brush trigger volume. Scripts check its classname (gsc bots/bots_gametype_common.gsc:148).",
+      "kind": "brush",
+      "color": [
+        0.9,
+        0.3,
+        0.3
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "footprint_mask_group": {
+          "type": "string",
+          "default": "default",
+          "description": "Footprint mask group name (inferred from stock values; stock value 'default').",
+          "required": false,
+          "examples": [
+            "default"
+          ]
+        },
+        "model": {
+          "type": "model",
+          "default": "",
+          "description": "xmodel name for point models; '*N' selects brush model N and is written by the compiler (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "?1",
+            "?3",
+            "?4"
+          ]
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1732 -1374 2868",
+            "-7424 8960 256",
+            "-9984 8704 512"
+          ]
+        },
+        "physasset": {
+          "type": "string",
+          "default": "",
+          "description": "Physics asset name (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "triggermodeldummydefault",
+            "TriggerModelStaticDummyDefault"
+          ]
+        },
+        "script_gameobjectname": {
+          "type": "string",
+          "default": "",
+          "description": "Gameobject or objective id read by gsc gameobjects.gsc:17. Values such as bombzone and sd are inferred from stock values.",
+          "required": false,
+          "examples": [
+            "hardpoint",
+            "grnd",
+            "sd"
+          ]
+        },
+        "script_label": {
+          "type": "string",
+          "default": "",
+          "description": "Label for a gameobject trigger (gsc gameobjects.gsc:4432-4435; gametypes/arena.gsc:2165-2177 compares '1', '2', '3').",
+          "required": false,
+          "examples": [
+            "3",
+            "2",
+            "1"
+          ]
+        },
+        "script_linkname": {
+          "type": "string",
+          "default": "",
+          "description": "Link name read by gsc-raw animation_suite.gsc:124; role inferred from stock values.",
+          "required": false,
+          "examples": [
+            "pf14_2",
+            "pf14_3",
+            "pf14_4"
+          ]
+        },
+        "script_noteworthy": {
+          "type": "string",
+          "default": "",
+          "description": "Free-form tag that gametype code branches on (gsc gametypes/arena.gsc:509-527, ammorestock.gsc:22-25).",
+          "required": false,
+          "examples": [
+            "laundry",
+            "gas_station",
+            "destroyed"
+          ]
+        },
+        "target": {
+          "type": "targetname",
+          "default": "",
+          "description": "targetname of the entity or struct this one points to (gsc ammorestock.gsc:12).",
+          "required": false,
+          "examples": [
+            "hardpoint_03_chevrons",
+            "hardpoint_02_chevrons",
+            "hardpoint_01_chevrons"
+          ]
+        },
+        "targetname": {
+          "type": "targetname",
+          "default": "",
+          "description": "Name that other entities use to find this one (gsc ammorestock.gsc:8).",
+          "required": false,
+          "examples": [
+            "OutOfBounds",
+            "callout_area",
+            "hardpoint_zone"
+          ]
+        },
+        "iw8r_vision": {
+          "type": "string",
+          "default": "",
+          "description": "Vision / fog inside this volume: \"name=value; ...\" Replay vision fields (as worldspawn iw8r_vision). Needs a targetname. A player inside sees it; leaving restores the map's vision. Research 63.",
+          "required": false,
+          "examples": [
+            "tonemapExposure=2.5"
+          ]
+        },
+        "iw8r_teleport": {
+          "type": "string",
+          "default": "",
+          "description": "Teleporter: the targetname of the destination (a script_origin). Needs its own targetname; a player touching the trigger moves to the destination's origin and angles.",
+          "required": false,
+          "examples": [
+            "tp_exit_1"
+          ]
+        },
+        "iw8r_jump": {
+          "type": "string",
+          "default": "",
+          "description": "Jump pad: \"<vx> <vy> <vz>\" launch velocity (units per second). Needs a targetname; a player touching the trigger is launched.",
+          "required": false,
+          "examples": [
+            "0 0 700",
+            "400 0 500"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "Damage zone: \"<amount> [interval]\". Needs a targetname; a player inside takes amount damage every interval seconds (default 1).",
+          "required": false,
+          "examples": [
+            "10 1",
+            "200"
+          ]
+        },
+        "iw8r_audio_zone": {
+          "type": "string",
+          "default": "",
+          "description": "Audio zone: a lower-case zone name. Inside this trigger's box the zone's reverb (iw8r_reverb) applies; written to the sound table and client triggers (research 63). In game NOT VERIFIED.",
+          "required": false,
+          "examples": [
+            "hall",
+            "tunnel_east"
+          ]
+        },
+        "iw8r_reverb": {
+          "type": "string",
+          "default": "",
+          "description": "Reverb room type (one of the 59 stock types, e.g. iw8_md_room, iw8_ext_open_space_med_1; Help lists them in research 63) and optional dry wet fade: \"<room> [dry wet fade]\". The build writes the map sound table (in game NOT VERIFIED).",
+          "required": false,
+          "examples": [
+            "iw8_ext_open_space_med_1",
+            "iw8_md_room",
+            "iw8_lg_room_warehouse",
+            "iw8_sm_hallway",
+            "iw8_md_cave",
+            "underwater"
+          ]
+        },
+        "iw8r_audio_priority": {
+          "type": "float",
+          "default": "30",
+          "description": "Audio zone priority where zones overlap (higher wins; the map-wide zone is 0).",
+          "required": false,
+          "examples": [
+            "30",
+            "50"
+          ]
+        },
+        "iw8r_audio_interior": {
+          "type": "bool",
+          "default": "0",
+          "description": "1: the zone uses the stock \"interior\" occlusion and filter presets (sounds behind walls muffled as indoors); 0: the stock \"default\" ones. Written to the sound table (research 63). In game NOT VERIFIED.",
+          "required": false
+        },
+        "iw8r_ambient": {
+          "type": "string",
+          "default": "",
+          "description": "Ambient bed of the zone: the name of one of the map's own sounds (<map dir>/sounds/<name>.wav or .mp3), built into the map sound bank and played as a 2D loop while in the zone. Stock aliases cannot be used here (silent in the map bank); use a looping sound_emitter for those. In game NOT VERIFIED.",
+          "required": false,
+          "examples": [
+            "wind_bed",
+            "factory_hum"
+          ]
+        },
+        "iw8r_ambient_oneshots": {
+          "type": "string",
+          "default": "",
+          "description": "Ambient one-shots of the zone: \"<min s> <max s> <sound>[:weight] ...\" with the map's own sounds (<map dir>/sounds); one of them plays at random every min..max seconds while in the zone. In game NOT VERIFIED.",
+          "required": false,
+          "examples": [
+            "6 12 bird_call:3 dog_bark"
+          ]
+        }
+      }
+    },
+    "worldspawn": {
+      "description": "World geometry and global map settings. One per map (contract 15 s3.1).",
+      "kind": "brush",
+      "color": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "__smuid": {
+          "type": "string",
+          "default": "",
+          "description": "Stable entity id written by the tooling (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "_e0"
+          ]
+        },
+        "_color": {
+          "type": "vec3",
+          "default": "",
+          "description": "Editor draw colour r g b, 0 to 1 (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1 1 1"
+          ]
+        },
+        "_csm_bound_center": {
+          "type": "vec3",
+          "default": "",
+          "description": "Cascaded shadow map bounds centre (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "-605.625000 44.500000 -110.500000"
+          ]
+        },
+        "_csm_bound_halfsize": {
+          "type": "vec3",
+          "default": "",
+          "description": "Cascaded shadow map bounds half size (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "10668.125000 9251.250000 1513.250000"
+          ]
+        },
+        "_primarylightcount": {
+          "type": "string",
+          "default": "",
+          "description": "Primary light counts, four integers (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "2 0 0 0",
+            "1 0 0 0"
+          ]
+        },
+        "ambient": {
+          "type": "float",
+          "default": "",
+          "description": "Ambient light level (inferred from stock values; kept by the IW3 converter, contract 15 s3.2).",
+          "required": false,
+          "examples": [
+            "0"
+          ]
+        },
+        "audio_compile_umbra": {
+          "type": "bool",
+          "default": "",
+          "description": "Audio umbra compile flag (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "csm_enable": {
+          "type": "bool",
+          "default": "",
+          "description": "Cascaded shadow maps enable (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "csm_max_resolution": {
+          "type": "int",
+          "default": "",
+          "description": "Cascaded shadow map max resolution (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "256"
+          ]
+        },
+        "csm_sample_size": {
+          "type": "int",
+          "default": "",
+          "description": "Cascaded shadow map sample size (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "2",
+            "1"
+          ]
+        },
+        "dustmaterial": {
+          "type": "material",
+          "default": "",
+          "description": "Dust material (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "skl_sand_dune_01_blend"
+          ]
+        },
+        "forwardplus": {
+          "type": "bool",
+          "default": "",
+          "description": "Forward+ lighting enable (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "generatenavmesh": {
+          "type": "bool",
+          "default": "",
+          "description": "Generate a navmesh at compile (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "highresgpulightgrid": {
+          "type": "bool",
+          "default": "",
+          "description": "High-resolution GPU light grid (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "lightmapcount": {
+          "type": "int",
+          "default": "",
+          "description": "Lightmap count (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "4"
+          ]
+        },
+        "lmapblurpass": {
+          "type": "int",
+          "default": "",
+          "description": "Lightmap blur passes (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "0"
+          ]
+        },
+        "northyaw": {
+          "type": "float",
+          "default": "",
+          "description": "North yaw. The IW3 converter drops it and always writes 90 (contract 15 s3.2, s3.4).",
+          "required": false,
+          "examples": [
+            "90",
+            "180"
+          ]
+        },
+        "objectgroupcost": {
+          "type": "int",
+          "default": "",
+          "description": "Object group cost (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "0"
+          ]
+        },
+        "outdoor_only_maxs": {
+          "type": "vec3",
+          "default": "",
+          "description": "Outdoor-only bounds maximum (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1984 4736 1064"
+          ]
+        },
+        "outdoor_only_mins": {
+          "type": "vec3",
+          "default": "",
+          "description": "Outdoor-only bounds minimum (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "-3016 8 -104"
+          ]
+        },
+        "precomputed_sky_illumination_bounce_count": {
+          "type": "int",
+          "default": "",
+          "description": "Precomputed sky illumination bounce count (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "precomputed_sky_illumination_diffuse_reflectance": {
+          "type": "float",
+          "default": "",
+          "description": "Precomputed sky illumination diffuse reflectance (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "0.5"
+          ]
+        },
+        "rayguidemode": {
+          "type": "int",
+          "default": "",
+          "description": "Ray guide mode (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1",
+            "2"
+          ]
+        },
+        "skycolor": {
+          "type": "vec3",
+          "default": "",
+          "description": "Sky colour r g b (kept by the IW3 converter, contract 15 s3.2; inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1 1 1"
+          ]
+        },
+        "skydomelighting": {
+          "type": "bool",
+          "default": "",
+          "description": "Sky dome lighting enable (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "skylight": {
+          "type": "bool",
+          "default": "",
+          "description": "Sky light enable (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "0"
+          ]
+        },
+        "skyrotation": {
+          "type": "angles",
+          "default": "",
+          "description": "Sky rotation (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "0 158 0",
+            "0 -15.4 0",
+            "0 -46 0"
+          ]
+        },
+        "smallesthole": {
+          "type": "float",
+          "default": "",
+          "description": "Smallest hole size (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "4",
+            "2"
+          ]
+        },
+        "smallestoccluder": {
+          "type": "float",
+          "default": "",
+          "description": "Smallest occluder size (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "16",
+            "24",
+            "64"
+          ]
+        },
+        "suncolor": {
+          "type": "vec3",
+          "default": "",
+          "description": "Sun colour r g b (kept by the IW3 converter, contract 15 s3.2; inferred from stock values).",
+          "required": false,
+          "examples": [
+            "0.992 1 0.996",
+            "1 0.9764 0.945",
+            "0.9843 0.9921 1"
+          ]
+        },
+        "sundirection": {
+          "type": "angles",
+          "default": "",
+          "description": "Sun direction (kept by the IW3 converter, contract 15 s3.2; inferred from stock values).",
+          "required": false,
+          "examples": [
+            "-44.5 162 0",
+            "-20.261 -15.4 0",
+            "-45 -46 0"
+          ]
+        },
+        "sunisprimarylight": {
+          "type": "bool",
+          "default": "",
+          "description": "Sun is the primary light (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "sunlight": {
+          "type": "float",
+          "default": "",
+          "description": "Sun intensity (kept by the IW3 converter, contract 15 s3.2; inferred from stock values).",
+          "required": false,
+          "examples": [
+            "63.89",
+            "27.118",
+            "84.582"
+          ]
+        },
+        "tu0bakechanges": {
+          "type": "bool",
+          "default": "",
+          "description": "Stock flag, meaning unknown (inferred from one stock value).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "uselmapcompression": {
+          "type": "bool",
+          "default": "",
+          "description": "Lightmap compression enable (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "0"
+          ]
+        },
+        "usemightconnectflag": {
+          "type": "bool",
+          "default": "",
+          "description": "Might-connect flag (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "iw8r_sun_shadow_range": {
+          "type": "string",
+          "default": "3 2",
+          "description": "Sun shadow cascade size multipliers sent to every player (sm_sunCascadeSizeMultiplier1 / 2); \"0\" turns it off. Longer values push sun shadows further.",
+          "required": false,
+          "examples": [
+            "3 2",
+            "4 3",
+            "0"
+          ]
+        },
+        "iw8r_reverb": {
+          "type": "string",
+          "default": "",
+          "description": "The map's reverb everywhere outside audio zones. Reverb room type (one of the 59 stock types, e.g. iw8_md_room, iw8_ext_open_space_med_1; Help lists them in research 63) and optional dry wet fade: \"<room> [dry wet fade]\". The build writes the map sound table (in game NOT VERIFIED).",
+          "required": false,
+          "examples": [
+            "iw8_ext_open_space_med_1",
+            "iw8_md_room",
+            "iw8_lg_room_warehouse",
+            "iw8_sm_hallway",
+            "iw8_md_cave",
+            "underwater"
+          ]
+        },
+        "iw8r_audio_interior": {
+          "type": "bool",
+          "default": "0",
+          "description": "1: the zone uses the stock \"interior\" occlusion and filter presets (sounds behind walls muffled as indoors); 0: the stock \"default\" ones. Written to the sound table (research 63). In game NOT VERIFIED.",
+          "required": false
+        },
+        "iw8r_ambient": {
+          "type": "string",
+          "default": "",
+          "description": "Ambient bed of the zone: the name of one of the map's own sounds (<map dir>/sounds/<name>.wav or .mp3), built into the map sound bank and played as a 2D loop while in the zone. Stock aliases cannot be used here (silent in the map bank); use a looping sound_emitter for those. In game NOT VERIFIED.",
+          "required": false,
+          "examples": [
+            "wind_bed",
+            "factory_hum"
+          ]
+        },
+        "iw8r_ambient_oneshots": {
+          "type": "string",
+          "default": "",
+          "description": "Ambient one-shots of the zone: \"<min s> <max s> <sound>[:weight] ...\" with the map's own sounds (<map dir>/sounds); one of them plays at random every min..max seconds while in the zone. In game NOT VERIFIED.",
+          "required": false,
+          "examples": [
+            "6 12 bird_call:3 dog_bark"
+          ]
+        },
+        "iw8r_sun_sprite": {
+          "type": "string",
+          "default": "",
+          "description": "Sun sprite and flare: \"<size 1..64> [flare alpha 0..1] [blind darken 0..1] [glare lighten 0..1]\". Draws a sun disc in the sky in the sundirection (size in 480-line virtual pixels, CoD-style), a lens flare when looking at it, and the blind / glare strength. Written to extracted/sun/<map>.sun (research 39). In game NOT VERIFIED.",
+          "required": false,
+          "examples": [
+            "16 0.5",
+            "20 0.7 0.5 0.3"
+          ]
+        },
+        "iw8r_airspace": {
+          "type": "string",
+          "default": "6144 2048",
+          "description": "How far the map's visibility cell reaches above (first number) and around (second number) the map's geometry, in units. Aircraft killstreaks and their cameras fly there; with a cell that ends at the geometry they were not drawn. \"0\" keeps the tight cell.",
+          "required": false,
+          "examples": [
+            "6144 2048",
+            "0"
+          ]
+        },
+        "iw8r_gametypes": {
+          "type": "string",
+          "default": "",
+          "description": "The game modes the game offers for this map, as ui_gametype names with spaces between them (war dm dom sd ctf ...). Left out, the editor lists the modes the map has spawns and objects for. Written to map.json as gameTypes; needs a client that reads it.",
+          "required": false,
+          "examples": [
+            "war dm",
+            "war dom sd"
+          ]
+        }
+      }
+    },
+    "fx_origin": {
+      "description": "Stock effect placement: the map script plays the 'fx' (loadfx + playfx / triggerfx), repeating every 'delay' seconds.",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          -8
+        ],
+        [
+          8,
+          8,
+          8
+        ]
+      ],
+      "color": [
+        1.0,
+        0.5,
+        0.2
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "angles": {
+          "type": "angles",
+          "default": "0 0 0",
+          "description": "Pitch yaw roll in degrees. Stock values use the middle (yaw) slot (inferred from stock values).",
+          "required": false,
+          "examples": []
+        },
+        "delay": {
+          "type": "float",
+          "default": "",
+          "description": "Seconds between repeats; empty plays once (effects) or loops (sounds with loop 1).",
+          "required": false,
+          "examples": []
+        },
+        "fx": {
+          "type": "string",
+          "default": "",
+          "description": "Stock effect name (vfx/...), from the Effects browser.",
+          "required": false,
+          "examples": []
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units (inferred from stock values).",
+          "required": false,
+          "examples": []
+        },
+        "soundalias": {
+          "type": "string",
+          "default": "",
+          "description": "A sound played at the effect: one of the map's own sounds (sounds folder) or a stock alias. Loops unless sound_loop is 0.",
+          "required": false,
+          "examples": [
+            "fire_loop"
+          ]
+        },
+        "sound_loop": {
+          "type": "string",
+          "default": "1",
+          "description": "1: the effect's sound loops. 0: it plays once each time the effect's delay passes (once only without a delay).",
+          "required": false,
+          "examples": [
+            "0",
+            "1"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "The effect hurts: \"<amount> [radius] [interval seconds]\". A player within the radius (default 48) takes that damage every interval (default 1 second). No trigger is needed.",
+          "required": false,
+          "examples": [
+            "10 48 0.5"
+          ]
+        }
+      }
+    },
+    "iw8r_decal": {
+      "description": "A decal: a picture projected onto the surfaces inside a box (stains, paint, markings). The box is placed at the origin; its forward (X) axis is the direction the picture is projected and must point into the surface. Needs a converter with the decal producer (research 80 and 82). Not seen in game.",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          -8
+        ],
+        [
+          8,
+          8,
+          8
+        ]
+      ],
+      "color": [
+        0.6,
+        0.8,
+        1.0
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "origin": {
+          "type": "vec3",
+          "default": "",
+          "description": "The centre of the box.",
+          "required": true,
+          "examples": [
+            "0 0 4"
+          ]
+        },
+        "angles": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Pitch, yaw, roll. Forward is the projection direction: for a floor decal use 90 0 0 (pointing down).",
+          "required": false,
+          "examples": [
+            "90 0 0",
+            "0 90 0"
+          ]
+        },
+        "size": {
+          "type": "vec3",
+          "default": "8 64 64",
+          "description": "Depth, width and height of the box in map units. Depth is along the projection direction.",
+          "required": false,
+          "examples": [
+            "8 64 64",
+            "16 128 128"
+          ]
+        },
+        "material": {
+          "type": "string",
+          "default": "",
+          "description": "The decal picture: a material of your custom library (its alpha is the decal's shape), or the name of a stock decal material the game always has loaded.",
+          "required": true,
+          "examples": [
+            "my/arrow_decal",
+            "i/vfx_decal_surface_scorch_1"
+          ]
+        },
+        "opacity": {
+          "type": "float",
+          "default": "1",
+          "description": "How strong the decal is, 0 to 1.",
+          "required": false,
+          "examples": [
+            "1",
+            "0.6"
+          ]
+        },
+        "feather": {
+          "type": "float",
+          "default": "0",
+          "description": "Soft fade toward the front and back of the box, 0 to 1.",
+          "required": false,
+          "examples": [
+            "0",
+            "0.25"
+          ]
+        },
+        "draw_order": {
+          "type": "int",
+          "default": "0",
+          "description": "Which decal draws on top where two overlap: -4 to 3, higher on top.",
+          "required": false,
+          "examples": [
+            "0",
+            "2"
+          ]
+        },
+        "uv_rotate": {
+          "type": "float",
+          "default": "0",
+          "description": "Turns the picture, in degrees.",
+          "required": false,
+          "examples": [
+            "0",
+            "90"
+          ]
+        },
+        "uv_scale": {
+          "type": "string",
+          "default": "1 1",
+          "description": "Tiling of the picture across the box: two numbers above 0.",
+          "required": false,
+          "examples": [
+            "1 1",
+            "2 2"
+          ]
+        },
+        "uv_shift": {
+          "type": "string",
+          "default": "0 0",
+          "description": "Shifts the picture: two numbers.",
+          "required": false,
+          "examples": [
+            "0 0",
+            "0.5 0"
+          ]
+        }
+      }
+    },
+    "scriptable": {
+      "description": "A stock scripted object (a scriptable): the game's own object with built-in behaviour, placed by the name of its stock definition. A definition the game always has loaded is placed by name: hardpoint_chevron (the Hardpoint zone marker). Doors, traffic cones, cars and other world objects live in stock map zones: with Edit > Preferences > Real stock scripted objects turned on the build copies the stock definition with its models, collision and materials into your map; with it off they are left out with a warning. Every stock definition is listed in data/asset_catalog/iw8_scriptables.tsv. Needs a converter with scriptable instances (research 86). The Warzone buy station br_plunder_box (and the few other objects of the game's Warzone file) is placed by name on a map made for the Warzone game type. On a stock map, File > Edit Placed Objects shows the buy stations as these entities: move one, or copy one for an extra station. Not seen in game.",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          -8
+        ],
+        [
+          8,
+          8,
+          8
+        ]
+      ],
+      "color": [
+        1.0,
+        0.75,
+        0.2
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "origin": {
+          "type": "vec3",
+          "default": "",
+          "description": "Where the object stands.",
+          "required": true,
+          "examples": [
+            "0 0 16"
+          ]
+        },
+        "angles": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Pitch, yaw, roll.",
+          "required": false,
+          "examples": [
+            "0 90 0"
+          ]
+        },
+        "scriptable": {
+          "type": "string",
+          "default": "hardpoint_chevron",
+          "description": "The stock definition's name (data/asset_catalog/iw8_scriptables.tsv).",
+          "required": true,
+          "examples": [
+            "hardpoint_chevron"
+          ]
+        },
+        "targetname": {
+          "type": "string",
+          "default": "",
+          "description": "Name that script uses to find it. Stock Hardpoint chevrons carry the name of their zone's marker group.",
+          "required": false,
+          "examples": [
+            "hp_zone_1_chevrons"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "default": "",
+          "description": "Optional target name.",
+          "required": false,
+          "examples": []
+        },
+        "script_noteworthy": {
+          "type": "string",
+          "default": "",
+          "description": "Optional script label.",
+          "required": false,
+          "examples": []
+        },
+        "script_linkname": {
+          "type": "string",
+          "default": "",
+          "description": "Optional link name.",
+          "required": false,
+          "examples": []
+        },
+        "script_linkto": {
+          "type": "string",
+          "default": "",
+          "description": "Optional link target.",
+          "required": false,
+          "examples": []
+        }
+      }
+    },
+    "iw8r_loot_point": {
+      "description": "A loot point: a place where the battle royale scripts may put loot (a weapon, armour, cash, a supply box). On a Warzone stock map, File > Edit Loot Points turns the map's own points into these entities; move, add or delete them and File > Rebuild Stock Zone writes them back. On your own map, place them where loot should appear under the battle royale game type. Not kept in the entity text: the build writes them into the map's loot table. Not seen in game.",
+      "kind": "point",
+      "size": [
+        [
+          -6,
+          -6,
+          0
+        ],
+        [
+          6,
+          6,
+          12
+        ]
+      ],
+      "color": [
+        0.2,
+        0.9,
+        0.35
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "origin": {
+          "type": "vec3",
+          "default": "",
+          "description": "Where the loot lies (on the floor).",
+          "required": true,
+          "examples": [
+            "0 0 0"
+          ]
+        },
+        "angles": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Pitch, yaw, roll of the loot item or box.",
+          "required": false,
+          "examples": [
+            "0 90 0"
+          ]
+        },
+        "loot_cluster": {
+          "type": "string",
+          "default": "auto",
+          "description": "auto: the build picks the cluster by position (a free point when no cluster box holds it). free: a single point outside every cluster. cache: a loot cache (supply box) point. A number: that cluster of the stock map; a point moved out of its cluster's box is treated as auto. Your own maps have no clusters: only cache matters.",
+          "required": false,
+          "examples": [
+            "auto",
+            "free",
+            "cache"
+          ]
+        },
+        "loot_zone": {
+          "type": "string",
+          "default": "auto",
+          "description": "auto: the build picks the named zone of the stock map by position. A number: that zone (0 = none). Not used on your own maps.",
+          "required": false,
+          "examples": [
+            "auto",
+            "0"
+          ]
+        },
+        "loot_zone_name": {
+          "type": "string",
+          "default": "",
+          "description": "Information only: the name of the stock zone the point was in when it was read.",
+          "required": false,
+          "examples": []
+        }
+      }
+    }
+  }
+}

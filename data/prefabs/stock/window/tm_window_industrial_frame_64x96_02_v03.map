@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/shell_casings_ar_01"
+"origin" "51.026915 9.021615 -24"
+"angles" "-0.001236 90.001542 0.002142"
+"modelscale" "0.7"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/shell_casings_ar_06"
+"origin" "9.583166 -23.797058 -23.5"
+"angles" "0.00064 0 0.002389"
+"modelscale" "0.7"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "7.79758 76.094072 -51.649902"
+"angles" "-0.00071 90.00063 1.193149"
+"modelscale" "0.5"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "7.813428 28.067753 -51.649902"
+"angles" "-0.00071 90.00063 1.193149"
+"modelscale" "0.5"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "9.53086 24.093191 -26"
+"angles" "0.00064 0 0.002389"
+"modelscale" "0.5"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "10.026757 77.033813 37"
+"angles" "-0.002142 -179.998458 -90.001236"
+"modelscale" "0.63"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "10.027564 74.032485 37"
+"angles" "-0.002142 -179.998458 -90.001236"
+"modelscale" "0.63"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "59.005252 -22.397983 -26.5"
+"angles" "0.002142 -89.998458 0.001236"
+"modelscale" "0.53"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "66.981166 -22.411781 -35"
+"angles" "0.002142 -89.998458 0.001236"
+"modelscale" "0.5"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "9.016165 58.784626 -1.5"
+"angles" "-7.999322 -0.000425 -0.001024"
+"modelscale" "0.75"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_64x96_02"
+"origin" "0 0 0"
+"angles" "0.00064 0 0.002389"
+"modelscale" "0.75"
+}

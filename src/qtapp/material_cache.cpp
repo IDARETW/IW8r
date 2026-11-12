@@ -1,0 +1,643 @@
+#include "material_cache.h"
+
+#include "material_blend.h"
+
+#include <QCoreApplication>
+#include <QDir>
+#include <QDirIterator>
+#include <QElapsedTimer>
+#include <QEventLoop>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMap>
+#include <QSaveFile>
+#include <QSettings>
+#include <QStandardPaths>
+#include <QTextStream>
+#include <QTimer>
+
+#include <utility>
+
+#include "acts_runner.h"
+#include "texture_decode.h"
+
+namespace iw8r::qt {
+namespace {
+
+constexpr const char* kIndexFormat = "iw8r-material-cache-1";
+// Zone XPaks with a payload are far larger than the 32 KiB headers that most zones carry.
+constexpr qint64 kXpakMinBytes = 64 * 1024;
+
+QString safeFileName(const QString& name) {
+    QString out;
+    out.reserve(name.size());
+    for (const QChar c : name) {
+        const bool keep = (c.unicode() < 128 && c.isLetterOrNumber()) || c == '_' || c == '-' || c == '.';
+        out += keep ? c : QChar('_');
+    }
+    return out;
+}
+
+// Material JSON writes name-only references with a leading ','.
+QString bareName(QString name) {
+    if (name.startsWith(',')) name.remove(0, 1);
+    return name;
+}
+
+bool isPlaceholder(const QString& name) { return name.isEmpty() || name.startsWith('$'); }
+
+// The repo's data folder: the first "data/stock_assets" found walking up from the exe.
+QString repoDataDir() {
+    QDir d(QCoreApplication::applicationDirPath());
+    for (int up = 0; up < 4; ++up, d.cdUp())
+        if (QFileInfo::exists(d.filePath("data/stock_assets"))) return d.filePath("data");
+    return {};
+}
+
+QString readAll(const QString& path) {
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+}
+
+QString reasonOf(const QJsonObject& rec) {
+    if (rec.isEmpty()) return "not in zone";
+    return QString("%1 %2 %3")
+        .arg(rec.value("status").toString(), rec.value("reason").toString(), rec.value("error").toString())
+        .trimmed();
+}
+
+}  // namespace
+
+MaterialCache::MaterialCache(ToolPathFn tools, QObject* parent) : QObject(parent), tools_(std::move(tools)) {
+    root_ = qEnvironmentVariable("IW8R_MATERIAL_CACHE_ROOT",  // the asset audit uses a scratch root
+                                 QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/material_cache");
+    QDir().mkpath(root_ + "/images");
+    QDir(root_ + "/w").removeRecursively();  // scratch left behind by a crash
+    loadIndex();
+    loadSeeds();
+}
+
+MaterialCache::~MaterialCache() {
+    // Shutting down: runs that end from now on must not reach finishRun (it touches widgets that are already
+    // gone). Queued requests are dropped; the runner does not call back for an owner that is gone.
+    blockSignals(true);
+    if (QCoreApplication::instance()) ActsRunner::shared()->cancel(this);
+}
+
+std::optional<MaterialCache::Entry> MaterialCache::lookup(const QString& material) const {
+    if (auto it = index_.find(material); it != index_.end()) return it->second;
+    if (auto it = seeds_.find(material); it != seeds_.end()) return it->second;
+    return std::nullopt;
+}
+
+void MaterialCache::request(const QStringList& materials) {
+    bool added = false;
+    for (QString m : materials) {
+        m = m.trimmed();
+        if (m.isEmpty() || lookup(m) || queued_.count(m)) continue;
+        queued_.insert(m);
+        pending_.append(m);
+        added = true;
+    }
+    if (added && !running_) startBatch();
+}
+
+bool MaterialCache::busy() const { return running_ || !pending_.isEmpty(); }
+
+QString MaterialCache::cacheRoot() const { return root_; }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Index, seeds and catalog
+
+void MaterialCache::loadIndex() {
+    QFile f(root_ + "/index.json");
+    if (!f.open(QIODevice::ReadOnly)) return;
+    const QJsonObject mats = QJsonDocument::fromJson(f.readAll()).object().value("materials").toObject();
+    for (auto it = mats.begin(); it != mats.end(); ++it) {
+        const QJsonObject o = it.value().toObject();
+        Entry e;
+        e.material = it.key();
+        e.zone = o.value("zone").toString();
+        e.techset = o.value("techset").toString();
+        const QString color = o.value("color").toString();
+        const QString normal = o.value("normal").toString();
+        e.colorDds = color.isEmpty() ? QString() : QDir(root_).filePath(color);
+        e.normalDds = normal.isEmpty() ? QString() : QDir(root_).filePath(normal);
+        const QString mask = o.value("mask").toString();
+        e.maskDds = mask.isEmpty() ? QString() : QDir(root_).filePath(mask);
+        const QString emissive = o.value("emissive").toString();
+        e.emissiveDds = emissive.isEmpty() ? QString() : QDir(root_).filePath(emissive);
+        for (const QJsonValue& t : o.value("textures").toArray()) e.textures << t.toString();
+        e.surfaceFlags = o.contains("surfaceFlags") ? qint64(o.value("surfaceFlags").toDouble()) : -1;
+        e.materialType = o.value("materialType").toString();
+        e.sortKey = o.value("sortKey").toInt(-1);
+        e.failed = o.value("failed").toBool();
+        // Images removed by the Cache Manager's size cap (4.13) or by hand: resolve again.
+        if (!e.failed && !e.colorDds.isEmpty() && !QFileInfo::exists(e.colorDds)) continue;
+        // Resolved before cut-out masks were recorded: resolve again once (images already cached are reused).
+        if (!e.failed && !o.contains("mask")) continue;
+        // Resolved before slot-27 opacity masks and the body flags were kept (research 66): resolve again once.
+        if (!e.failed && o.value("maskRules").toInt() < 4) continue;  // 4: + emissive (slot 18)
+        e.error = o.value("error").toString();
+        // A body that was in no zone is retried once per session: the colour-image-by-name fallback may resolve it.
+        if (e.failed && (e.error.contains("not in zone") || e.error.contains("body not found"))) continue;
+        // Images looked up only in the material's zone (streamed images live in global_stream_mp, shared ones in
+        // common zones): resolve again, the image catalog now adds the zones that hold the image data.
+        if (e.colorDds.isEmpty() && e.error.contains("not exported") && o.value("maskRules").toInt() < 2) continue;
+        index_[e.material] = e;
+    }
+}
+
+// data/stock_assets/<zone>/index.json (tools/acts_asset_index.py) already holds the colour of 371 materials.
+void MaterialCache::loadSeeds() {
+    const QString data = repoDataDir();
+    if (data.isEmpty()) return;
+    const QDir stock(QDir(data).filePath("stock_assets"));
+    for (const QString& zone : stock.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        const QJsonObject root = QJsonDocument::fromJson(readAll(stock.filePath(zone + "/index.json")).toUtf8()).object();
+        if (root.isEmpty()) continue;
+        QMap<QString, QString> imageFile;  // image name -> path relative to the zone folder
+        for (const QJsonValue& v : root.value("images").toArray())
+            imageFile.insert(v.toObject().value("name").toString(), v.toObject().value("file").toString());
+        for (const QJsonValue& v : root.value("materials").toArray()) {
+            const QJsonObject m = v.toObject();
+            const QString name = m.value("name").toString();
+            if (name.isEmpty() || index_.count(name)) continue;
+            Entry e;
+            e.material = name;
+            e.zone = zone;
+            e.techset = m.value("techset").toString();
+            const QString color = m.value("color_image_file").toString();
+            if (!color.isEmpty() && QFileInfo::exists(stock.filePath(zone + "/" + color)))
+                e.colorDds = stock.filePath(zone + "/" + color);
+            const QString slot9 = m.value("images").toObject().value("slot_9").toString();
+            if (!isPlaceholder(slot9) && imageFile.contains(slot9)) {
+                const QString path = stock.filePath(zone + "/" + imageFile.value(slot9));
+                if (QFileInfo::exists(path)) e.normalDds = path;
+            }
+            seeds_[name] = e;
+        }
+    }
+}
+
+void MaterialCache::loadCatalog() {
+    catalogLoaded_ = true;
+    const QString data = repoDataDir();
+    if (data.isEmpty()) return;
+    QFile f(QDir(data).filePath("asset_catalog/iw8_materials.tsv"));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+    QTextStream in(&f);
+    in.readLine();  // header; names themselves may start with '#'
+    while (!in.atEnd()) {
+        const QString line = in.readLine();
+        const int tab = line.indexOf('\t');
+        if (tab <= 0) continue;
+        catalog_[line.left(tab)] = line.mid(tab + 1).trimmed().split(',', Qt::SkipEmptyParts);
+    }
+}
+
+void MaterialCache::writeIndex() const {
+    QJsonObject mats;
+    const QDir root(root_);
+    for (const auto& [name, e] : index_) {
+        QJsonObject o;
+        o.insert("zone", e.zone);
+        o.insert("techset", e.techset);
+        o.insert("color", e.colorDds.isEmpty() ? QString() : root.relativeFilePath(e.colorDds));
+        o.insert("normal", e.normalDds.isEmpty() ? QString() : root.relativeFilePath(e.normalDds));
+        if (!e.failed) o.insert("mask", e.maskDds.isEmpty() ? QString() : root.relativeFilePath(e.maskDds));
+        if (!e.failed) o.insert("maskRules", 4);  // 3: slot-27 opacity masks + body flags (research 66); 4: + emissive
+        if (!e.failed && !e.emissiveDds.isEmpty()) o.insert("emissive", root.relativeFilePath(e.emissiveDds));
+        if (e.surfaceFlags >= 0) o.insert("surfaceFlags", double(e.surfaceFlags));
+        if (!e.materialType.isEmpty()) o.insert("materialType", e.materialType);
+        if (e.sortKey >= 0) o.insert("sortKey", e.sortKey);
+        if (!e.textures.isEmpty()) o.insert("textures", QJsonArray::fromStringList(e.textures));
+        o.insert("failed", e.failed);
+        if (!e.error.isEmpty()) o.insert("error", e.error);
+        mats.insert(name, o);
+    }
+    QJsonObject top;
+    top.insert("format", kIndexFormat);
+    top.insert("materials", mats);
+    QSaveFile f(root_ + "/index.json");
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(QJsonDocument(top).toJson(QJsonDocument::Indented));
+        f.commit();
+    }
+}
+
+QString MaterialCache::replayZoneDir() const { return QFileInfo(tools_("replay")).absolutePath() + "/zone"; }
+
+// Body and image zones for the catalog zones of one material. A material body is usually in techsets_<zone>.ff
+// (the catalog names the map zone that references it); images are usually in the map zone itself.
+QStringList MaterialCache::candidates(const QStringList& zones, bool bodies) const {
+    const QString dir = replayZoneDir();
+    QStringList out;
+    const auto add = [&](const QString& z) {
+        if (!out.contains(z) && QFileInfo::exists(dir + "/" + z + ".ff")) out << z;
+    };
+    for (const QString& z : zones) {
+        const QString techZone = z.startsWith("techsets_") ? z : "techsets_" + z;
+        if (bodies) {
+            add(techZone);
+            add(z);
+        } else {
+            add(z);
+            add(techZone);
+        }
+    }
+    return out;
+}
+
+// Zone XPaks that carry payloads. Stream keys are spread over several of them (see docs/research/20).
+QList<QFileInfo> MaterialCache::xpaks() const {
+    QList<QFileInfo> out;
+    for (const QFileInfo& f : QDir(replayZoneDir()).entryInfoList({"*.xpak"}, QDir::Files, QDir::Name))
+        if (f.size() >= kXpakMinBytes) out << f;
+    return out;
+}
+
+QString MaterialCache::imagePath(const QString& imageName) const {
+    return root_ + "/images/" + safeFileName(imageName) + ".dds";
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Batches
+
+void MaterialCache::startBatch() {
+    running_ = true;
+    works_.clear();
+    images_.clear();
+    queue_.clear();
+    imagesListed_ = false;
+    imagePhase_ = false;
+    if (!catalogLoaded_) loadCatalog();
+
+    // At most kBatchMaterials per batch: a stock map reference asks for ~2,000 materials, and nothing is reported
+    // ready until a batch ends, so small batches let textures appear progressively (the rest start right after).
+    constexpr int kBatchMaterials = 64;
+    const QStringList mats = pending_.mid(0, kBatchMaterials);
+    pending_ = pending_.mid(kBatchMaterials);
+    const QString acts = tools_("acts"), replay = tools_("replay"), oodle = tools_("oodle");
+    for (const QString& f : {acts, replay, oodle})
+        if (!QFileInfo::exists(f)) {
+            // Environment problem, not a property of the material: nothing is cached.
+            emit progress("Missing tool, material cache idle: " + f);
+            for (const QString& m : mats) queued_.erase(m);
+            for (const QString& m : pending_) queued_.erase(m);
+            pending_.clear();
+            running_ = false;
+            return;
+        }
+
+    for (const QString& m : mats) {
+        Work w;
+        w.material = m;
+        const QStringList zones = catalog_.count(m) ? catalog_.at(m) : QStringList();
+        if (zones.isEmpty()) w.error = "not listed in iw8_materials.tsv";
+        w.bodyZones = candidates(zones, true);
+        w.imageZones = candidates(zones, false);
+        if (w.bodyZones.isEmpty() && w.error.isEmpty()) w.error = "no zone .ff in the replay zone folder for: " + zones.join(",");
+        works_.push_back(w);
+    }
+    emit progress(QString("cache: %1 material(s) to resolve").arg(mats.size()));
+    pump();
+}
+
+void MaterialCache::buildBodyRound() {
+    std::map<QString, QStringList> groups;
+    for (const Work& w : works_)
+        if (!w.found && w.attempt < w.bodyZones.size()) groups[w.bodyZones[w.attempt]] << w.material;
+    for (const auto& [zone, names] : groups) queue_.push_back(Run{false, zone, names});
+}
+
+void MaterialCache::loadImageCatalog() {
+    imageCatalogLoaded_ = true;
+    const QString data = repoDataDir();
+    if (data.isEmpty()) return;
+    QFile f(QDir(data).filePath("asset_catalog/iw8_images.tsv"));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+    QTextStream in(&f);
+    while (!in.atEnd()) {
+        const QString line = in.readLine();
+        const int tab = line.indexOf('	');
+        if (tab <= 0 || line.startsWith('#')) continue;
+        const QString name = line.left(tab);
+        imageZonesByName_[name.toLower()] = line.mid(tab + 1).trimmed().split(',', Qt::SkipEmptyParts);
+        const int amp = name.indexOf('&');
+        const QString stem = (amp > 0 ? name.left(amp) : name).toLower();
+        if (!stem.endsWith("_c")) continue;
+        colorByStem_.emplace(stem, std::make_pair(name, line.mid(tab + 1).trimmed().split(',', Qt::SkipEmptyParts)));
+    }
+}
+
+void MaterialCache::buildImageRound() {
+    if (!imagesListed_) {
+        // Bodies exhausted without a match: use the colour image named after the material (mo/<x> -> <x>_c&...).
+        for (Work& w : works_) {
+            if (w.found || (w.attempt < w.bodyZones.size() && !w.bodyZones.isEmpty())) continue;
+            if (!imageCatalogLoaded_) loadImageCatalog();
+            const QString stem = w.material.section('/', -1).toLower() + "_c";
+            const auto it = colorByStem_.find(stem);
+            if (it == colorByStem_.end()) continue;
+            w.found = true;
+            w.color = it->second.first;
+            w.normal.clear();
+            w.techset = "(colour image by name; material body not found)";
+            w.imageZones = candidates(it->second.second, false);
+            w.error.clear();
+        }
+        imagesListed_ = true;
+        for (const Work& w : works_) {
+            if (!w.found) continue;
+            for (const QString& name : {w.color, w.normal, w.mask, w.emissive}) {
+                if (name.isEmpty() || images_.count(name)) continue;
+                Image im;
+                im.zones = w.imageZones;
+                if (!imageCatalogLoaded_) loadImageCatalog();
+                if (const auto z = imageZonesByName_.find(name.toLower()); z != imageZonesByName_.end())
+                    for (const QString& zone : candidates(z->second, false))
+                        if (!im.zones.contains(zone)) im.zones << zone;
+                const QString file = imagePath(name);
+                if (QFileInfo::exists(file)) {  // shared with an earlier material
+                    im.done = true;
+                    im.file = file;
+                }
+                images_[name] = im;
+            }
+        }
+    }
+    std::map<QString, QStringList> groups;
+    for (const auto& [name, im] : images_)
+        if (!im.done && im.attempt < im.zones.size()) groups[im.zones[im.attempt]] << name;
+    for (const auto& [zone, names] : groups) queue_.push_back(Run{true, zone, names});
+}
+
+void MaterialCache::pump() {
+    for (;;) {
+        if (!queue_.empty()) {
+            // The whole round at once: the runner gives each zone to a server that holds it (or loads it), several
+            // zones at a time. The next round is built when the last answer is in.
+            const std::deque<Run> round = std::move(queue_);
+            queue_.clear();
+            outstanding_ = int(round.size());
+            for (const Run& run : round) startRun(run);
+            return;
+        }
+        if (!imagePhase_) {
+            buildBodyRound();
+            if (!queue_.empty()) continue;
+            imagePhase_ = true;
+        }
+        buildImageRound();
+        if (queue_.empty()) break;
+    }
+    finishBatch();
+}
+
+void MaterialCache::startRun(const Run& run) {
+    const QString dir = QDir::toNativeSeparators(root_ + "/w/" + QString::number(++runSeq_));
+    QDir().mkpath(dir);
+
+    ActsRequest request;
+    request.zone = run.zone;
+    request.types = run.images ? "image" : "material";
+    request.names = run.names;
+    request.outDir = dir;
+    request.xpaks = run.images;  // bodies are resident in the fastfile; image payloads are streamed from the XPaks
+    emit progress(QString("ACTS %1 %2: %3 name(s)")
+                      .arg(QString(run.images ? "images" : "materials"), run.zone)
+                      .arg(run.names.size()));
+    ActsRunner::shared()->submit(tools_, request, this, [this, run, dir](const ActsResult& result) { finishRun(run, dir, result); });
+}
+
+bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jsonPath) const {
+    QFile f(jsonPath);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    const QJsonObject fields = QJsonDocument::fromJson(f.readAll()).object().value("asset").toObject().value("fields").toObject();
+    if (fields.isEmpty()) return false;
+    work.zone = zone;
+    work.techset = fields.value("techniqueSet").toObject().value("name").toString();
+    work.surfaceFlags = fields.contains("surfaceFlags") ? qint64(fields.value("surfaceFlags").toDouble()) : -1;
+    work.materialType = fields.value("materialType").toObject().value("name").toString();
+    work.sortKey = fields.value("sortKey").toInt(-1);
+    // Research 66: slot 27 is the opacity source of every alpha-tested (alt) set and of blended (bad / bar) sets: a
+    // one-channel image (_sdf, _opacity, _a, _m, ...) or a colour image whose alpha is the opacity.
+    const MaterialBlend blend = materialBlendFromTechset(work.techset.toStdString());
+    const bool opacitySlot = blend != MaterialBlend::Opaque;
+    for (const QJsonValue& v : fields.value("textureTable").toObject().value("values").toArray()) {
+        const QJsonObject t = v.toObject();
+        const int slot = t.value("index").toInt(-1);
+        const QString name = bareName(t.value("image").toObject().value("name").toString());
+        if (isPlaceholder(name)) continue;
+        work.textures << QString::number(slot) + "=" + name;
+        if (slot == 0 && work.color.isEmpty()) work.color = name;  // colour (albedo) slot
+        if (slot == 9 && work.normal.isEmpty()) work.normal = name;  // normal slot
+        if (slot == 27 && opacitySlot) work.mask = name;              // opacity slot (wins over a name match)
+        if (slot == 18 && work.emissive.isEmpty()) work.emissive = name;  // emissive slot
+        // Cut-out mask: Replay alpha-tested materials carry a signed-distance-field image (`<x>_sdf~hash`); the colour
+        // image's alpha is specular (`_c&_s` packing), not opacity.
+        // Foliage cards cut out with a plain opacity image instead (`<x>_alpha~hash`; their colour has no alpha).
+        if (work.mask.isEmpty() && (name.section('~', 0, 0).endsWith("_sdf") || name.section('~', 0, 0).endsWith("_alpha")))
+            work.mask = name;
+    }
+    work.found = true;
+    return true;
+}
+
+void MaterialCache::finishRun(const Run& run, const QString& dir, const ActsResult& result) {
+    const int exitCode = result.started ? result.exitCode : -1;
+    const QString zoneDir = dir + "/mw19replay/" + run.zone;
+    std::map<QString, QJsonObject> recs;
+    QFile journal(zoneDir + "/assets.jsonl");
+    const bool hasJournal = journal.open(QIODevice::ReadOnly);
+    if (hasJournal) {
+        const QString want = run.images ? "image" : "material";
+        while (!journal.atEnd()) {
+            const QJsonObject o = QJsonDocument::fromJson(journal.readLine()).object();
+            if (o.value("type").toString() == want) recs[o.value("name").toString()] = o;
+        }
+        journal.close();  // open files block the scratch cleanup below on Windows
+    }
+    const QString logTail = QString::fromLocal8Bit(result.log.right(600)).trimmed();
+
+    for (const QString& name : run.names) {
+        const auto it = recs.find(name);
+        const QJsonObject rec = it == recs.end() ? QJsonObject() : it->second;
+        const bool ok = rec.value("status").toString() == "ok" && !rec.value("file").toString().isEmpty();
+        QString reason = !hasJournal ? QString("ACTS wrote no journal (exit %1): %2").arg(exitCode).arg(logTail)
+                                     : reasonOf(rec);
+
+        if (!run.images) {
+            Work* w = nullptr;
+            for (Work& x : works_)
+                if (x.material == name) w = &x;
+            if (!w) continue;
+            if (ok && loadBody(*w, run.zone, zoneDir + "/" + rec.value("file").toString())) continue;
+            w->attempt++;
+            w->error = run.zone + ": " + reason;
+        } else {
+            Image& im = images_[name];
+            if (ok) {
+                const QString dest = imagePath(name);
+                QFile::remove(dest);
+                if (QFile::rename(zoneDir + "/" + rec.value("file").toString(), dest)) {
+                    im.done = true;
+                    im.file = dest;
+                    continue;
+                }
+                reason = "cannot move exported DDS to the cache";
+            }
+            im.attempt++;
+            im.error = run.zone + ": " + reason;
+        }
+    }
+    QDir(dir).removeRecursively();
+    if (--outstanding_ <= 0) pump();
+}
+
+void MaterialCache::finishBatch() {
+    QStringList done;
+    for (const Work& w : works_) {
+        Entry e;
+        e.material = w.material;
+        if (w.found) {
+            e.zone = w.zone;
+            e.techset = w.techset;
+            e.textures = w.textures;
+            e.surfaceFlags = w.surfaceFlags;
+            e.materialType = w.materialType;
+            e.sortKey = w.sortKey;
+            if (!w.color.isEmpty()) {
+                const Image& im = images_.at(w.color);
+                if (im.done) e.colorDds = im.file;
+                else e.error += "colour " + w.color + " not exported (" + im.error + "); ";
+            }
+            if (!w.normal.isEmpty()) {
+                const Image& im = images_.at(w.normal);
+                if (im.done) e.normalDds = im.file;
+                else e.error += "normal " + w.normal + " not exported (" + im.error + "); ";
+            }
+            if (!w.mask.isEmpty()) {
+                const Image& im = images_.at(w.mask);
+                if (im.done) e.maskDds = im.file;
+                else e.error += "mask " + w.mask + " not exported (" + im.error + "); ";
+            }
+            if (!w.emissive.isEmpty() && images_.count(w.emissive)) {
+                const Image& im = images_.at(w.emissive);
+                if (im.done) e.emissiveDds = im.file;  // optional: a failed emissive export is not an error
+            }
+        } else {
+            e.failed = true;
+            e.error = w.error.isEmpty() ? QStringLiteral("material body not found in any candidate zone") : w.error;
+        }
+        index_[w.material] = e;
+        done << w.material;
+    }
+    writeIndex();
+    works_.clear();
+    images_.clear();
+    queue_.clear();
+    running_ = false;
+    for (const QString& m : done) queued_.erase(m);
+    emit progress(QString("cache: %1 material(s) resolved").arg(done.size()));
+    for (const QString& m : done) emit materialReady(m);
+    if (!pending_.isEmpty()) startBatch();
+    else if (!running_) QDir(root_ + "/w").removeRecursively();
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Headless test (main.cpp --material-cache-test)
+
+namespace {
+
+QString describeDds(const QString& path) {
+    if (path.isEmpty()) return "none";
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return path + " (missing)";
+    const QByteArray bytes = f.readAll();
+    app::Rgba8Image img;
+    std::string err;
+    if (!app::decodeDds(std::string(bytes.constData(), size_t(bytes.size())), img, &err))
+        return QString("%1 (decode failed: %2)").arg(path, QString::fromStdString(err));
+    return QString("%1 (%2x%3)").arg(path).arg(img.width).arg(img.height);
+}
+
+}  // namespace
+
+QString MaterialCache::describeImage(const QString& ddsPath) { return describeDds(ddsPath); }
+
+int runMaterialCacheTest(const QStringList& materials, const QString& outDir) {
+    QDir().mkpath(outDir);
+    QSettings ini(QDir(QCoreApplication::applicationDirPath()).filePath("IW8Radiant.ini"), QSettings::IniFormat);
+    const auto tools = [&ini](const QString& key) -> QString {
+        // The editor's Tool Paths (IW8Radiant.ini) with the MainWindow::toolPath defaults.
+        static const QMap<QString, QString> defaults = {
+            {"acts", "E:/mw124/atian-cod-tools/build/bin/Release/acts.exe"},
+            {"replay", "E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe"},
+            {"oodle", "E:/IW8/Builds/1.20-replay/oo2core_7_win64.dll"},
+        };
+        return ini.value("tools/" + key, defaults.value(key)).toString();
+    };
+
+    MaterialCache cache(tools);
+    QStringList log;
+    int actsRuns = 0;
+    QObject::connect(&cache, &MaterialCache::progress, &cache, [&](const QString& m) {
+        log << m;
+        if (m.startsWith("ACTS ")) ++actsRuns;
+    });
+
+    QEventLoop loop;
+    QTimer poll;
+    poll.setInterval(100);
+    QObject::connect(&poll, &QTimer::timeout, &loop, [&] {
+        if (!cache.busy()) loop.quit();
+    });
+    QTimer::singleShot(30 * 60 * 1000, &loop, &QEventLoop::quit);
+
+    QElapsedTimer timer;
+    timer.start();
+    poll.start();
+    cache.request(materials);
+    loop.exec();
+    const qint64 wallMs = timer.elapsed();
+
+    QStringList lines;
+    int bad = 0;
+    lines << "# material-cache-test";
+    lines << "# cache_root=" + cache.cacheRoot();
+    for (const QString& m : materials) {
+        const auto e = cache.lookup(m.trimmed());
+        if (!e) {
+            lines << m + "\tERROR no entry";
+            ++bad;
+        } else if (e->failed) {
+            lines << m + "\tFAILED\terror=" + e->error;
+            ++bad;
+        } else {
+            QString line = m + "\tzone=" + e->zone + "\tcolour=" + describeDds(e->colorDds) + "\tnormal=" + describeDds(e->normalDds);
+            if (!e->error.isEmpty()) line += "\terror=" + e->error;
+            lines << line;
+        }
+    }
+    qint64 bytes = 0;
+    int files = 0;
+    QDirIterator it(cache.cacheRoot(), QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        it.next();
+        bytes += it.fileInfo().size();
+        ++files;
+    }
+    lines << QString("# wall_ms=%1 acts_runs=%2 requested=%3 unresolved=%4").arg(wallMs).arg(actsRuns).arg(materials.size()).arg(bad);
+    lines << QString("# cache_files=%1 cache_bytes=%2").arg(files).arg(bytes);
+    for (const QString& l : log) lines << "# progress: " + l;
+
+    QFile out(QDir(outDir).filePath("material-cache-test.txt"));
+    if (out.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) out.write((lines.join('\n') + '\n').toUtf8());
+    return bad ? 1 : 0;
+}
+
+}  // namespace iw8r::qt

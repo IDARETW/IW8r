@@ -1,0 +1,10 @@
+{
+ "name": "show2/multiply",
+ "color": "multiply_c.png",
+ "blendMode": "multiply",
+ "twoSided": true,
+ "scale": [
+  64,
+  64
+ ]
+}

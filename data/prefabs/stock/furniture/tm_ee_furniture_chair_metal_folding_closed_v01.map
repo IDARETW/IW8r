@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_furniture_chair_metal_folding_closed"
+"origin" "0 0 0"
+"angles" "-7.862554 0 -0.000113"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/p7_cai_work_table_metal_04_white"
+"origin" "-25.918172 -0.872056 -0.25"
+"angles" "-0.001763 -90.000443 0.001734"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/window_frames_wood_single_white"
+"origin" "25.108959 18.59083 25.75"
+"angles" "-0.001763 -90.000443 0.001734"
+"modelscale" "1"
+}

@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Generate src/core/vision_fields.inc (roadmap 5.6) from the x64-zt converter's vision tables.
+
+Reads (read only):
+  replay_vision_fields.inc        the 218-entry field table (token, kind, comment with the dev name)
+  replay_vision_names.inc         {dev name, token} pairs, used when a field comment has no name
+  replay_vision_iw8_template.inc  {token, default text} for the fields the stock template sets
+
+Writes one line per field: {"name", "type", "default text", "group"},
+where type is the converter's kind word (scalar, vector, gradingClut, image, fogSpline).
+Standard library only. Usage:
+  python tools/gen_vision_fields.py [converter_dir] [output_file]
+"""
+import os
+import re
+import sys
+
+DEFAULT_SRC = r"E:\mw124\x64-zt\src\convert\iw3_iw8"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_OUT = os.path.join(REPO, "src", "core", "vision_fields.inc")
+
+FIELD_RE = re.compile(r'^\s*\{"([A-Za-z0-9_]+)",\s*VisionFieldKind::(\w+),')
+FIELD_COMMENT_RE = re.compile(r"^\s*(\d+)\s+(\S+)")
+NAME_PAIR_RE = re.compile(r'\{"([A-Za-z0-9_]+)",\s*"([A-Za-z0-9_]+)"\}')
+TEMPLATE_RE = re.compile(r'^\s*\{"([A-Za-z0-9_]+)",\s*"([^"]*)"\}')
+
+# Group keywords, checked in this order against the lower-cased dev name. Unnamed fields (token only) are "misc".
+GROUP_RULES = [
+    ("fog", ("fog",)),
+    ("sky", ("sky",)),
+    ("sun", ("sun",)),
+    ("tonemap", ("tonemap", "tone")),
+    ("exposure", ("exposure",)),
+    ("bloom", ("bloom",)),
+    ("grade", ("grade", "grading", "clut")),
+    ("film", ("film",)),
+    ("dof", ("dof", "depthoffield", "focus")),
+]
+
+
+def read_text(path):
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def group_for(name, named):
+    if not named:
+        return "misc"
+    low = name.lower()
+    for group, words in GROUP_RULES:
+        if any(w in low for w in words):
+            return group
+    return "misc"
+
+
+def c_escape(text):
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def main(argv):
+    src = argv[1] if len(argv) > 1 else DEFAULT_SRC
+    out_path = argv[2] if len(argv) > 2 else DEFAULT_OUT
+    fields_path = os.path.join(src, "replay_vision_fields.inc")
+    names_path = os.path.join(src, "replay_vision_names.inc")
+    template_path = os.path.join(src, "replay_vision_iw8_template.inc")
+    for p in (fields_path, names_path, template_path):
+        if not os.path.isfile(p):
+            print("error: missing converter file " + p, file=sys.stderr)
+            return 1
+
+    # Pass 1: the field table, in line order (the index is the order of the entries).
+    fields = []  # list of dicts: token, kind, name, named
+    for line in read_text(fields_path).splitlines():
+        m = FIELD_RE.match(line)
+        if not m:
+            continue
+        token, kind = m.group(1), m.group(2)
+        name, named = token, False
+        cm = FIELD_COMMENT_RE.search(line.split("//", 1)[1] if "//" in line else "")
+        # A dev name has lower-case letters. Some comments hold another field's token (all capitals): treat as unnamed.
+        if cm and cm.group(2) != "(unnamed)" and re.search(r"[a-z]", cm.group(2)):
+            name, named = cm.group(2), True
+        fields.append({"token": token, "kind": kind, "name": name, "named": named})
+
+    if not fields:
+        print("error: no fields found in " + fields_path, file=sys.stderr)
+        return 1
+
+    # Pass 2: the names table fills dev names that the field comments do not give.
+    token_to_dev = {}
+    for dev, token in NAME_PAIR_RE.findall(read_text(names_path)):
+        token_to_dev.setdefault(token, dev)
+    by_token = {f["token"]: f for f in fields}
+    for token, dev in token_to_dev.items():
+        f = by_token.get(token)
+        if f is None:
+            print("warning: names table token %s (%s) is not in the field table" % (token, dev), file=sys.stderr)
+        elif not f["named"]:
+            f["name"], f["named"] = dev, True
+        elif f["name"] != dev:
+            print("warning: %s named %s in the field table and %s in the names table" % (token, f["name"], dev),
+                  file=sys.stderr)
+
+    # Pass 3: default text from the stock template, matched by token.
+    defaults = {}
+    for line in read_text(template_path).splitlines():
+        m = TEMPLATE_RE.match(line)
+        if m:
+            defaults[m.group(1)] = m.group(2)
+    unmatched = [t for t in defaults if t not in by_token]
+    for t in unmatched:
+        print("warning: template token %s is not in the field table" % t, file=sys.stderr)
+
+    # Names must be unique, case-insensitively, because lookups ignore case.
+    seen = {}
+    for f in fields:
+        key = f["name"].lower()
+        if key in seen:
+            print("error: duplicate field name %s (%s and %s)" % (f["name"], seen[key], f["token"]), file=sys.stderr)
+            return 1
+        seen[key] = f["token"]
+
+    lines = [
+        "// Generated by tools/gen_vision_fields.py from the x64-zt converter tables. Do not edit by hand.",
+        "// Columns: name, type (the converter's kind word), default text (\"\" when the stock template does not set it),",
+        "// group. Unnamed fields use their token as the name, which the converter also accepts in overrides.",
+    ]
+    filled = 0
+    named_count = 0
+    for f in fields:
+        default = defaults.get(f["token"], "")
+        if default:
+            filled += 1
+        if f["named"]:
+            named_count += 1
+        group = group_for(f["name"], f["named"])
+        lines.append('    {"%s", "%s", "%s", "%s"},' % (c_escape(f["name"]), c_escape(f["kind"]), c_escape(default),
+                                                       group))
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8", newline="\n") as out:
+        out.write("\n".join(lines) + "\n")
+
+    print("wrote %d fields to %s" % (len(fields), out_path))
+    print("named: %d, unnamed (token name): %d" % (named_count, len(fields) - named_count))
+    print("defaults filled from the template: %d of %d" % (filled, len(fields)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

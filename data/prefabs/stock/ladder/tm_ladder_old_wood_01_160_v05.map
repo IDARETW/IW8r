@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_church_wood_roof_shingles_horizontal_64"
+"origin" "16.418421 -25.552602 36"
+"angles" "2.265905 0.933514 26.295522"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ladder_old_wood_01_160"
+"origin" "0 0 0"
+"angles" "1.112367 0 -89.733617"
+"modelscale" "1"
+}

@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ladder_old_wood_01_160"
+"origin" "-29.724194 -33.02458 0"
+"angles" "-89.997527 -162.498927 -163.500424"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ladder_old_wood_01_160"
+"origin" "0 0 0"
+"angles" "-90 0 0"
+"modelscale" "1"
+}

@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_handrails_painted_metal_ornate_slope_64"
+"origin" "0 0 0"
+"angles" "0.002377 0 -0.000682"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_handrails_painted_metal_ornate_slope_post"
+"origin" "-0.494105 -0.002172 0"
+"angles" "0.002377 0 -0.000682"
+"modelscale" "1"
+}

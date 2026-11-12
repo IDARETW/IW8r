@@ -1,0 +1,71 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "-51.447943 -0.060621 -4"
+"angles" "0.001329 0 0.002086"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "-2.995232 -0.036332 -4"
+"angles" "0.001329 0 0.002086"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "45.991285 -0.041159 -4"
+"angles" "0.001329 0 0.002086"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02"
+"origin" "93.995155 -0.027376 -4"
+"angles" "0.001329 0 0.002086"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_left"
+"origin" "0 0 0"
+"angles" "0.001329 0 0.002086"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_right"
+"origin" "-77.93689 -1.500266 0"
+"angles" "-0.001573 143.995621 0.001908"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_right"
+"origin" "-8.687525 -22.649866 -2.5"
+"angles" "0.000034 -24.212445 89.995054"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/un_military_weapon_locker_02_door_right"
+"origin" "42.01258 -0.06065 0"
+"angles" "0.001329 0 0.002086"
+"modelscale" "1"
+}

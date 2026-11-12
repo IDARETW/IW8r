@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_door_hatch_door_01"
+"origin" "0 0 0"
+"angles" "-0.001681 0 175.674841"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_door_hatch_roof_01"
+"origin" "-0.001044 -33 -10.5"
+"angles" "0.001749 -0.000065 0.001749"
+"modelscale" "0.75"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "-30.002785 -87.999051 -22.5"
+"angles" "0.001749 -0.000065 0.001749"
+"modelscale" "1"
+}

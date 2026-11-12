@@ -1,0 +1,9 @@
+{
+ "name": "show2/pad_models",
+ "color": "pad_models_c.png",
+ "surface": "concrete",
+ "scale": [
+  192,
+  192
+ ]
+}

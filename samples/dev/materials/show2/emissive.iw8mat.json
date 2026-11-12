@@ -1,0 +1,9 @@
+{
+ "name": "show2/emissive",
+ "color": "emissive_c.png",
+ "emission": 8,
+ "scale": [
+  64,
+  64
+ ]
+}

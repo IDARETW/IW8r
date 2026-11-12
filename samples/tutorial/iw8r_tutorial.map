@@ -1,0 +1,494 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+"iw8r_title" "IW8 Radiant tutorial arena"
+"skyname" "sky_mp_shipment"
+"sundirection" "-40 235 0"
+"suncolor" "1 0.95 0.85"
+"iw8r_fog" "768 9000 0.62 0.66 0.72"
+// brush 0
+{
+ ( 1024 1024 -16 ) ( -1024 1024 -16 ) ( -1024 -1024 -16 ) tmo/concrete_tile_interlocking_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1024 -1024 0 ) ( -1024 1024 0 ) ( 1024 1024 0 ) tmo/concrete_tile_interlocking_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1024 -1024 0 ) ( 1024 -1024 0 ) ( 1024 -1024 -16 ) tmo/concrete_tile_interlocking_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1024 1024 0 ) ( -1024 1024 0 ) ( -1024 1024 -16 ) tmo/concrete_tile_interlocking_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1024 -1024 0 ) ( 1024 1024 0 ) ( 1024 1024 -16 ) tmo/concrete_tile_interlocking_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1024 1024 0 ) ( -1024 -1024 0 ) ( -1024 -1024 -16 ) tmo/concrete_tile_interlocking_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 1
+{
+ ( -1024 1024 0 ) ( -1040 1024 0 ) ( -1040 -1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1040 -1024 512 ) ( -1040 1024 512 ) ( -1024 1024 512 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1040 -1024 512 ) ( -1024 -1024 512 ) ( -1024 -1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1024 1024 512 ) ( -1040 1024 512 ) ( -1040 1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1024 -1024 512 ) ( -1024 1024 512 ) ( -1024 1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1040 1024 512 ) ( -1040 -1024 512 ) ( -1040 -1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 2
+{
+ ( 1040 1024 0 ) ( 1024 1024 0 ) ( 1024 -1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1024 -1024 512 ) ( 1024 1024 512 ) ( 1040 1024 512 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1024 -1024 512 ) ( 1040 -1024 512 ) ( 1040 -1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1040 1024 512 ) ( 1024 1024 512 ) ( 1024 1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1040 -1024 512 ) ( 1040 1024 512 ) ( 1040 1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1024 1024 512 ) ( 1024 -1024 512 ) ( 1024 -1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 3
+{
+ ( 1024 -1024 0 ) ( -1024 -1024 0 ) ( -1024 -1040 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1024 -1040 512 ) ( -1024 -1024 512 ) ( 1024 -1024 512 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1024 -1040 512 ) ( 1024 -1040 512 ) ( 1024 -1040 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1024 -1024 512 ) ( -1024 -1024 512 ) ( -1024 -1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1024 -1040 512 ) ( 1024 -1024 512 ) ( 1024 -1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1024 -1024 512 ) ( -1024 -1040 512 ) ( -1024 -1040 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 4
+{
+ ( 1024 1040 0 ) ( -1024 1040 0 ) ( -1024 1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1024 1024 512 ) ( -1024 1040 512 ) ( 1024 1040 512 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1024 1024 512 ) ( 1024 1024 512 ) ( 1024 1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1024 1040 512 ) ( -1024 1040 512 ) ( -1024 1040 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1024 1024 512 ) ( 1024 1040 512 ) ( 1024 1040 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1024 1040 512 ) ( -1024 1024 512 ) ( -1024 1024 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 5
+{
+ ( 1040 1040 512 ) ( -1040 1040 512 ) ( -1040 -1040 512 ) sky 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1040 -1040 528 ) ( -1040 1040 528 ) ( 1040 1040 528 ) sky 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1040 -1040 528 ) ( 1040 -1040 528 ) ( 1040 -1040 512 ) sky 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1040 1040 528 ) ( -1040 1040 528 ) ( -1040 1040 512 ) sky 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 1040 -1040 528 ) ( 1040 1040 528 ) ( 1040 1040 512 ) sky 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -1040 1040 528 ) ( -1040 -1040 528 ) ( -1040 -1040 512 ) sky 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 6
+{
+ ( 256 -240 0 ) ( -256 -240 0 ) ( -256 -256 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 160 ) ( -256 -240 160 ) ( 256 -240 160 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 160 ) ( 256 -256 160 ) ( 256 -256 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -240 160 ) ( -256 -240 160 ) ( -256 -240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -256 160 ) ( 256 -240 160 ) ( 256 -240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -240 160 ) ( -256 -256 160 ) ( -256 -256 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 7
+{
+ ( 256 256 0 ) ( -256 256 0 ) ( -256 240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 240 160 ) ( -256 256 160 ) ( 256 256 160 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 240 160 ) ( 256 240 160 ) ( 256 240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 256 160 ) ( -256 256 160 ) ( -256 256 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 240 160 ) ( 256 256 160 ) ( 256 256 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 256 160 ) ( -256 240 160 ) ( -256 240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 8
+{
+ ( -240 -48 0 ) ( -256 -48 0 ) ( -256 -240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -240 160 ) ( -256 -48 160 ) ( -240 -48 160 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -240 160 ) ( -240 -240 160 ) ( -240 -240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -240 -48 160 ) ( -256 -48 160 ) ( -256 -48 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -240 -240 160 ) ( -240 -48 160 ) ( -240 -48 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -48 160 ) ( -256 -240 160 ) ( -256 -240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 9
+{
+ ( -240 240 0 ) ( -256 240 0 ) ( -256 48 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 48 160 ) ( -256 240 160 ) ( -240 240 160 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 48 160 ) ( -240 48 160 ) ( -240 48 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -240 240 160 ) ( -256 240 160 ) ( -256 240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -240 48 160 ) ( -240 240 160 ) ( -240 240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 240 160 ) ( -256 48 160 ) ( -256 48 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 10
+{
+ ( -240 48 112 ) ( -256 48 112 ) ( -256 -48 112 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -48 160 ) ( -256 48 160 ) ( -240 48 160 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -48 160 ) ( -240 -48 160 ) ( -240 -48 112 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -240 48 160 ) ( -256 48 160 ) ( -256 48 112 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -240 -48 160 ) ( -240 48 160 ) ( -240 48 112 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 48 160 ) ( -256 -48 160 ) ( -256 -48 112 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 11
+{
+ ( 256 -48 0 ) ( 240 -48 0 ) ( 240 -240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 240 -240 160 ) ( 240 -48 160 ) ( 256 -48 160 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 240 -240 160 ) ( 256 -240 160 ) ( 256 -240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -48 160 ) ( 240 -48 160 ) ( 240 -48 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -240 160 ) ( 256 -48 160 ) ( 256 -48 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 240 -48 160 ) ( 240 -240 160 ) ( 240 -240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 12
+{
+ ( 256 240 0 ) ( 240 240 0 ) ( 240 48 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 240 48 160 ) ( 240 240 160 ) ( 256 240 160 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 240 48 160 ) ( 256 48 160 ) ( 256 48 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 240 160 ) ( 240 240 160 ) ( 240 240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 48 160 ) ( 256 240 160 ) ( 256 240 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 240 240 160 ) ( 240 48 160 ) ( 240 48 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 13
+{
+ ( 256 48 112 ) ( 240 48 112 ) ( 240 -48 112 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 240 -48 160 ) ( 240 48 160 ) ( 256 48 160 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 240 -48 160 ) ( 256 -48 160 ) ( 256 -48 112 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 48 160 ) ( 240 48 160 ) ( 240 48 112 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -48 160 ) ( 256 48 160 ) ( 256 48 112 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 240 48 160 ) ( 240 -48 160 ) ( 240 -48 112 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 14
+{
+ ( 256 256 160 ) ( -256 256 160 ) ( -256 -256 160 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 176 ) ( -256 256 176 ) ( 256 256 176 ) tmo/building_metal_corrugated_set_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 176 ) ( 256 -256 176 ) ( 256 -256 160 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 256 176 ) ( -256 256 176 ) ( -256 256 160 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -256 176 ) ( 256 256 176 ) ( 256 256 160 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 256 176 ) ( -256 -256 176 ) ( -256 -256 160 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 15
+{
+ ( -256 -256 0 ) ( -704 -256 0 ) ( -704 -384 0 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -704 -384 0 ) ( -256 -384 176 ) ( -256 -384 0 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 0 ) ( -256 -256 176 ) ( -704 -256 0 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -384 176 ) ( -256 -256 176 ) ( -256 -256 0 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -704 -256 0 ) ( -256 -256 176 ) ( -256 -384 176 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 16
+{
+ ( -544 396 0 ) ( -736 396 0 ) ( -736 372 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -736 372 48 ) ( -736 396 48 ) ( -544 396 48 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -736 372 48 ) ( -544 372 48 ) ( -544 372 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -544 396 48 ) ( -736 396 48 ) ( -736 396 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -544 372 48 ) ( -544 396 48 ) ( -544 396 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -736 396 48 ) ( -736 372 48 ) ( -736 372 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 17
+{
+ ( 736 -372 0 ) ( 544 -372 0 ) ( 544 -396 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 544 -396 48 ) ( 544 -372 48 ) ( 736 -372 48 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 544 -396 48 ) ( 736 -396 48 ) ( 736 -396 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 736 -372 48 ) ( 544 -372 48 ) ( 544 -372 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 736 -396 48 ) ( 736 -372 48 ) ( 736 -372 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 544 -372 48 ) ( 544 -396 48 ) ( 544 -396 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 18
+{
+ ( -544 -628 0 ) ( -736 -628 0 ) ( -736 -652 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -736 -652 48 ) ( -736 -628 48 ) ( -544 -628 48 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -736 -652 48 ) ( -544 -652 48 ) ( -544 -652 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -544 -628 48 ) ( -736 -628 48 ) ( -736 -628 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -544 -652 48 ) ( -544 -628 48 ) ( -544 -628 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -736 -628 48 ) ( -736 -652 48 ) ( -736 -652 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 19
+{
+ ( 736 652 0 ) ( 544 652 0 ) ( 544 628 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 544 628 48 ) ( 544 652 48 ) ( 736 652 48 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 544 628 48 ) ( 736 628 48 ) ( 736 628 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 736 652 48 ) ( 544 652 48 ) ( 544 652 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 736 628 48 ) ( 736 652 48 ) ( 736 652 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 544 652 48 ) ( 544 628 48 ) ( 544 628 0 ) tmo/building_wall_corner_brick_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+}
+// entity 1
+{
+"classname" "misc_prefab"
+"model" "prefabs/crate_stack.map"
+"origin" "-480 0 0"
+"angles" "0 0 0"
+}
+// entity 2
+{
+"classname" "misc_prefab"
+"model" "prefabs/crate_stack.map"
+"origin" "480 128 0"
+"angles" "0 90 0"
+}
+// entity 3
+{
+"classname" "misc_prefab"
+"model" "prefabs/lamp_post.map"
+"origin" "-768 768 0"
+"angles" "0 0 0"
+}
+// entity 4
+{
+"classname" "misc_prefab"
+"model" "prefabs/lamp_post.map"
+"origin" "768 -768 0"
+"angles" "0 0 0"
+}
+// entity 5
+{
+"classname" "misc_prefab"
+"model" "prefabs/cover_wall.map"
+"origin" "0 640 0"
+"angles" "0 0 0"
+}
+// entity 6
+{
+"classname" "misc_prefab"
+"model" "prefabs/cover_wall.map"
+"origin" "0 -640 0"
+"angles" "0 0 0"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed"
+"origin" "-320 320 0"
+"angles" "0 0 0"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed"
+"origin" "-290 350 0"
+"angles" "0 40 0"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/com_pallet_2"
+"origin" "320 -320 0"
+"angles" "0 15 0"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/furniture_cafe_table_02"
+"origin" "0 0 0"
+"angles" "0 0 0"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/furniture_cafe_chair_01"
+"origin" "48 0 0"
+"angles" "0 180 0"
+}
+// entity 12
+{
+"classname" "light"
+"origin" "0 0 136"
+"_color" "1 0.92 0.8"
+"radius" "384"
+"intensity" "1.4"
+}
+// entity 13
+{
+"classname" "reflection_probe"
+"origin" "0 0 64"
+"mins" "-240 -240 -64"
+"maxs" "240 240 96"
+}
+// entity 14
+{
+"classname" "sound_emitter"
+"soundalias" "emt_light_fluorescent_hum1_int"
+"loop" "1"
+"origin" "0 0 140"
+}
+// entity 15
+{
+"classname" "fx_origin"
+"fx" "vfx/iw8/veh/scriptables/vfx_smoke_light_ch"
+"origin" "640 640 8"
+}
+// entity 16
+{
+"classname" "mp_tdm_spawn_allies_start"
+"origin" "-880 -192 16"
+"angles" "0 0 0"
+}
+// entity 17
+{
+"classname" "mp_tdm_spawn_axis_start"
+"origin" "880 -192 16"
+"angles" "0 180 0"
+}
+// entity 18
+{
+"classname" "mp_tdm_spawn_allies_start"
+"origin" "-880 -64 16"
+"angles" "0 0 0"
+}
+// entity 19
+{
+"classname" "mp_tdm_spawn_axis_start"
+"origin" "880 -64 16"
+"angles" "0 180 0"
+}
+// entity 20
+{
+"classname" "mp_tdm_spawn_allies_start"
+"origin" "-880 64 16"
+"angles" "0 0 0"
+}
+// entity 21
+{
+"classname" "mp_tdm_spawn_axis_start"
+"origin" "880 64 16"
+"angles" "0 180 0"
+}
+// entity 22
+{
+"classname" "mp_tdm_spawn_allies_start"
+"origin" "-880 192 16"
+"angles" "0 0 0"
+}
+// entity 23
+{
+"classname" "mp_tdm_spawn_axis_start"
+"origin" "880 192 16"
+"angles" "0 180 0"
+}
+// entity 24
+{
+"classname" "mp_tdm_spawn"
+"origin" "-800 -800 16"
+"angles" "0 45 0"
+}
+// entity 25
+{
+"classname" "mp_dm_spawn"
+"origin" "-560 -560 16"
+"angles" "0 45 0"
+}
+// entity 26
+{
+"classname" "mp_tdm_spawn"
+"origin" "800 -800 16"
+"angles" "0 135 0"
+}
+// entity 27
+{
+"classname" "mp_dm_spawn"
+"origin" "560 -560 16"
+"angles" "0 135 0"
+}
+// entity 28
+{
+"classname" "mp_tdm_spawn"
+"origin" "800 800 16"
+"angles" "0 225 0"
+}
+// entity 29
+{
+"classname" "mp_dm_spawn"
+"origin" "560 560 16"
+"angles" "0 225 0"
+}
+// entity 30
+{
+"classname" "mp_tdm_spawn"
+"origin" "-800 800 16"
+"angles" "0 315 0"
+}
+// entity 31
+{
+"classname" "mp_dm_spawn"
+"origin" "-560 560 16"
+"angles" "0 315 0"
+}
+// entity 32
+{
+"classname" "mp_tdm_spawn"
+"origin" "0 -880 16"
+"angles" "0 90 0"
+}
+// entity 33
+{
+"classname" "mp_dm_spawn"
+"origin" "0 -616 16"
+"angles" "0 90 0"
+}
+// entity 34
+{
+"classname" "mp_tdm_spawn"
+"origin" "0 880 16"
+"angles" "0 270 0"
+}
+// entity 35
+{
+"classname" "mp_dm_spawn"
+"origin" "0 616 16"
+"angles" "0 270 0"
+}
+// entity 36
+{
+"classname" "mp_tdm_spawn"
+"origin" "-880 0 16"
+"angles" "0 0 0"
+}
+// entity 37
+{
+"classname" "mp_dm_spawn"
+"origin" "-616 0 16"
+"angles" "0 0 0"
+}
+// entity 38
+{
+"classname" "mp_tdm_spawn"
+"origin" "880 0 16"
+"angles" "0 180 0"
+}
+// entity 39
+{
+"classname" "mp_dm_spawn"
+"origin" "616 0 16"
+"angles" "0 180 0"
+}
+// entity 40
+{
+"classname" "mp_dom_spawn_allies_start"
+"origin" "-880 448 16"
+"angles" "0 0 0"
+}
+// entity 41
+{
+"classname" "mp_dom_spawn_axis_start"
+"origin" "880 -448 16"
+"angles" "0 180 0"
+}
+// entity 42
+{
+"classname" "info_player_start"
+"origin" "-960 0 16"
+"angles" "0 0 0"
+}
+// entity 43
+{
+"classname" "mp_global_intermission"
+"origin" "-900 -900 600"
+"angles" "30 45 0"
+}
+// entity 44
+{
+"classname" "trigger_radius"
+"origin" "-640 0 0"
+"radius" "120"
+"height" "128"
+"script_gameobjectname" "dom"
+"script_label" "_a"
+"targetname" "flag_primary"
+}
+// entity 45
+{
+"classname" "trigger_radius"
+"origin" "0 0 0"
+"radius" "120"
+"height" "128"
+"script_gameobjectname" "dom"
+"script_label" "_b"
+"targetname" "flag_primary"
+}
+// entity 46
+{
+"classname" "trigger_radius"
+"origin" "640 0 0"
+"radius" "120"
+"height" "128"
+"script_gameobjectname" "dom"
+"script_label" "_c"
+"targetname" "flag_primary"
+}

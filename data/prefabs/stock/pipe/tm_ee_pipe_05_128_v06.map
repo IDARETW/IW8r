@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_128"
+"origin" "0 0 0"
+"angles" "0 0 -90"
+"modelscale" "0.75"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_elbow_01"
+"origin" "-27.982222 0.041938 8"
+"angles" "0.002452 0.004326 0.000323"
+"modelscale" "0.75"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_elbow_01"
+"origin" "-11.99742 0.004014 8"
+"angles" "0.000323 -179.995674 179.997548"
+"modelscale" "0.75"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/ee_pipe_05_t"
+"origin" "-5.98098 0.049324 0"
+"angles" "-0.001505 0.001505 -90.001962"
+"modelscale" "0.75"
+}

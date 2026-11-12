@@ -1,0 +1,55 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/me_window_wood_single_ornate_01"
+"origin" "-0.002686 -88 1.5"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.76"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_window_wood_single_ornate_01"
+"origin" "0 0 1.5"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.76"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/me_window_wood_single_ornate_01"
+"origin" "0.002686 88 1.5"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.76"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/me_window_wood_single_ornate_arch_frame_01"
+"origin" "-0.002686 -88 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.76"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/me_window_wood_single_ornate_arch_frame_01"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.76"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/me_window_wood_single_ornate_arch_frame_01"
+"origin" "0.002686 88 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.76"
+}

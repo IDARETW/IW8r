@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/decor_coir_door_mat_small"
+"origin" "0 0 0"
+"angles" "0.000964 0 0.002277"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/p7_picture_frame_large_02"
+"origin" "18.170857 53.822569 59.5"
+"angles" "0.002285 -179.093419 -0.000946"
+"modelscale" "1"
+}

@@ -1,0 +1,87 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-10.001556 -50.999695 -41"
+"angles" "0.002473 -90.004221 0"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-0.00145 -47.5 -22.5"
+"angles" "-0.001749 179.996503 0.001749"
+"modelscale" "0.5"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "2.001465 47.999939 -15"
+"angles" "0.002473 -90.004221 0"
+"modelscale" "0.5"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-56.001617 -52.998291 0"
+"angles" "0 89.998251 0.002473"
+"modelscale" "0.5"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-0.001752 -57.400391 72"
+"angles" "-0.002473 179.998251 -90"
+"modelscale" "0.63"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "0 0 0"
+"angles" "0.001749 0 0.001749"
+"modelscale" "0.5"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "6.501068 34.999802 -58"
+"angles" "0 -90.001749 90"
+"modelscale" "0.65"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "4.000397 12.999878 -46"
+"angles" "-17.400197 -0.000214 0.001534"
+"modelscale" "0.75"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "4.999664 -11.000153 -69"
+"angles" "11.797528 179.996658 0.001593"
+"modelscale" "0.75"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "6.999664 -11.000214 -46"
+"angles" "-0.001749 179.996503 0.001749"
+"modelscale" "0.75"
+}

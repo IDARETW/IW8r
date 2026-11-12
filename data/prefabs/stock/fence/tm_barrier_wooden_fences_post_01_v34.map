@@ -1,0 +1,47 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/barrier_wooden_fences_post_01"
+"origin" "0 0 0"
+"angles" "0.002026 0 0.001418"
+"modelscale" "1.18"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/barrier_wooden_slats_01_woodslats_kit_single_128_slat_01"
+"origin" "-39.414958 10.342154 37.25"
+"angles" "0.002026 0 0.001418"
+"modelscale" "0.6"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_16"
+"origin" "56.143154 -5.135841 -3"
+"angles" "0.002026 0 0.001418"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_8"
+"origin" "56.147399 -17.138648 -3"
+"angles" "0.002026 0 0.001418"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_8_corner_in"
+"origin" "56.151808 -29.130483 -3"
+"angles" "0.002026 0 0.001418"
+"modelscale" "1"
+}

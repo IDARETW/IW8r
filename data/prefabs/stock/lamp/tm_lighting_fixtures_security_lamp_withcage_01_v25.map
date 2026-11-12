@@ -1,0 +1,87 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_holder_01"
+"origin" "-12.989288 -0.020823 -22.610107"
+"angles" "7.998939 0.000256 0.000241"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_holder_01"
+"origin" "-9.673144 23.957739 1.149902"
+"angles" "7.998939 0.000256 0.000241"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_holder_01"
+"origin" "-9.644887 -24.014 1.149902"
+"angles" "7.998939 0.000256 0.000241"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_holder_01"
+"origin" "-9.624317 0.006225 1.149902"
+"angles" "7.998939 0.000256 0.000241"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_holder_01"
+"origin" "-6.328743 -0.035438 24.919922"
+"angles" "7.998939 0.000256 0.000241"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_withcage_01"
+"origin" "-3.621503 -0.057786 -23.940186"
+"angles" "13.508083 0.001425 0.000932"
+"modelscale" "1.5"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_withcage_01"
+"origin" "-0.051588 23.948752 0"
+"angles" "15.056722 0.001925 0.001549"
+"modelscale" "1.5"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_withcage_01"
+"origin" "-0.02057 -24.020225 0"
+"angles" "15.056722 0.001925 0.001549"
+"modelscale" "1.5"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_withcage_01"
+"origin" "0 0 0"
+"angles" "10.988184 0 0.000126"
+"modelscale" "1.5"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/lighting_fixtures_security_lamp_withcage_01"
+"origin" "3.414001 -0.021978 23.75"
+"angles" "28.568249 0.000672 0.001224"
+"modelscale" "1.5"
+}

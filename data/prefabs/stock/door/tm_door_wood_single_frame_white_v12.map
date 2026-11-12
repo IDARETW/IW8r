@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_wood_single_frame_white"
+"origin" "0 0 0"
+"angles" "-0.001894 0 0.00159"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_128"
+"origin" "-47.93087 80.037766 -13"
+"angles" "-0.001894 0 0.00159"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_128"
+"origin" "40.024744 -7.970844 -13"
+"angles" "-0.000215 -90.003285 0.002463"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "-39.952828 -31.948745 -13"
+"angles" "-0.001894 0 0.00159"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_in"
+"origin" "-47.923573 0.020368 -13"
+"angles" "-0.001894 0 0.00159"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_in"
+"origin" "-39.992654 -7.978141 -13"
+"angles" "-0.000216 -89.998358 0.002463"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16_corner_in"
+"origin" "92.001568 0.026418 -13"
+"angles" "0.002463 89.999394 0.000215"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "-39.932391 -56.018067 -13"
+"angles" "-0.001894 0 0.00159"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "-3.962722 -0.012346 -13"
+"angles" "0.002463 89.996715 0.000215"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_4"
+"origin" "-29.954833 0.000793 -13"
+"angles" "0.002463 89.996715 0.000215"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_64"
+"origin" "44.077995 0.046786 -13"
+"angles" "0.002463 89.996715 0.000215"
+"modelscale" "1"
+}

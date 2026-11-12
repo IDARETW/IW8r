@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/military_crate_slim_stackable_03"
+"origin" "0 0 0"
+"angles" "0.002232 0 -0.001065"
+"modelscale" "0.9"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/military_crate_slim_stackable_03_lid"
+"origin" "3.990498 -0.014614 10.5"
+"angles" "0.002306 8.60066 -0.000894"
+"modelscale" "0.95"
+}

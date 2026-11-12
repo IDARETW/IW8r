@@ -1,0 +1,11 @@
+{
+ "name": "show2/decal",
+ "color": "decal_c.png",
+ "blend": true,
+ "sortKey": 12,
+ "polygonOffset": 1,
+ "scale": [
+  64,
+  64
+ ]
+}

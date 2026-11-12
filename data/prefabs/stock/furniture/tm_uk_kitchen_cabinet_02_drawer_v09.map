@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_kitchen_cabinet_02_drawer"
+"origin" "-2.004462 0.015524 -7.5"
+"angles" "-0.001522 0 0.001949"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_kitchen_cabinet_02_drawer"
+"origin" "-2.004462 0.015524 7.5"
+"angles" "-0.001522 0 0.001949"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_kitchen_cabinet_02_drawer"
+"origin" "-0.990774 -0.039704 -15"
+"angles" "-0.001522 0 0.001949"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_kitchen_cabinet_02_drawer"
+"origin" "0 0 0"
+"angles" "-0.001522 0 0.001949"
+"modelscale" "1"
+}

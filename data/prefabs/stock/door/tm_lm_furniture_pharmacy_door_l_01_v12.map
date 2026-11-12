@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_debris_pile_03"
+"origin" "36.831273 4.939571 -3"
+"angles" "0.001505 -76.967915 0.001962"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_01"
+"origin" "23.211134 37.225632 -4"
+"angles" "-0.000323 13.034905 0.002452"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_display_02"
+"origin" "-79.082707 13.520771 -4"
+"angles" "-0.000323 13.034905 0.002452"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_l_01"
+"origin" "0 0 0"
+"angles" "-0.000042 0 0.002472"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_l_01"
+"origin" "62.353389 14.469034 0"
+"angles" "-0.000184 6.583175 0.002466"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01"
+"origin" "60.407196 14.035545 0"
+"angles" "-0.00055 23.734302 0.002411"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01_white"
+"origin" "-41.896404 -9.668981 0"
+"angles" "-0.000632 27.635311 0.002391"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_door_r_01_white"
+"origin" "-41.896404 -9.668981 54"
+"angles" "-0.000565 24.461971 0.002407"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_drawer_01"
+"origin" "-71.754721 -18.149655 44.5"
+"angles" "-0.000323 13.034905 0.002452"
+"modelscale" "1"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_drawer_01"
+"origin" "-70.855898 -21.982551 28"
+"angles" "-0.000323 13.034905 0.002452"
+"modelscale" "1"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/lm_furniture_pharmacy_drawer_01"
+"origin" "-70.404797 -23.999213 36.25"
+"angles" "-0.000323 13.034905 0.002452"
+"modelscale" "1"
+}

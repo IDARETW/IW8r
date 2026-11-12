@@ -1,0 +1,135 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01a_straight"
+"origin" "0 0 0"
+"angles" "0.002389 0 -0.00064"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01a_straight"
+"origin" "31.046421 0.027224 0"
+"angles" "0.002389 0 -0.00064"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_bars_01b_straight"
+"origin" "46.990301 68.007886 0"
+"angles" "0.002142 90.001542 0.001236"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_handrail_top"
+"origin" "46.995686 99.997805 0"
+"angles" "0.002142 90.001542 0.001236"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_4"
+"origin" "13.940076 114.051803 -21"
+"angles" "-0.001236 -89.998458 0.002142"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/stairs_industrial_staircase_top"
+"origin" "13.948488 90.037798 -1"
+"angles" "-0.001236 -89.998458 0.002142"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-36.52524 -22.935604 -30"
+"angles" "-0.001236 -90.001836 0.002142"
+"modelscale" "0.5"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-32.019298 -12.943423 -49"
+"angles" "0.00064 -180 0.002389"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-22.057943 1.005936 -39.570068"
+"angles" "0.002142 89.998164 0.001236"
+"modelscale" "0.9"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-22.009815 81.518336 -39.570068"
+"angles" "0.002142 89.998164 0.001236"
+"modelscale" "0.9"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-83.970823 -22.961213 -8"
+"angles" "-0.001236 -89.998458 0.002142"
+"modelscale" "0.5"
+}
+// entity 12
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-33.045753 -18.962298 -101"
+"angles" "0 0.003684 90"
+"modelscale" "1"
+}
+// entity 13
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-31.983726 28.993976 -8"
+"angles" "0.002389 0 -0.00064"
+"modelscale" "0.5"
+}
+// entity 14
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-26.391884 -23.088512 64"
+"angles" "0 90.002389 -90"
+"modelscale" "0.63"
+}
+// entity 15
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_112x48_01"
+"origin" "-98.03145 -35.005839 27"
+"angles" "0.002142 90.001542 0.001236"
+"modelscale" "1.5"
+}
+// entity 16
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_64x96_01"
+"origin" "-61.995744 -33.02263 -101"
+"angles" "0.002142 90.001542 0.001236"
+"modelscale" "0.75"
+}

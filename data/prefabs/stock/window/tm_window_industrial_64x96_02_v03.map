@@ -1,0 +1,95 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_02"
+"origin" "9.312931 39.671913 -64"
+"angles" "0.002142 -0.000782 0.001236"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "3.001792 -59.002874 54"
+"angles" "0.00064 89.997675 0.002389"
+"modelscale" "0.5"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "5.022039 36.502362 46.5"
+"angles" "0.002142 -0.00416 0.001236"
+"modelscale" "0.5"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "14.979333 40.056502 28"
+"angles" "0.00064 89.997675 0.002389"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "-1.49653 -46.011605 11"
+"angles" "0 90.001359 90"
+"modelscale" "0.65"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "4.96115 -10.992048 69"
+"angles" "-0.001236 179.999218 0.002142"
+"modelscale" "0.5"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_06"
+"origin" "8.976677 40.055131 -24"
+"angles" "0 -89.998641 90"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "-2.059523 -0.03431 23"
+"angles" "0.002142 -0.000782 0.001236"
+"modelscale" "0.75"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "0 0 0"
+"angles" "11.799787 0 -0.000766"
+"modelscale" "0.75"
+}
+// entity 10
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_64x96_02"
+"origin" "0.949958 -24.044961 23"
+"angles" "-17.399657 179.997214 0.001238"
+"modelscale" "0.75"
+}
+// entity 11
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_64x96_01"
+"origin" "-5.100473 -35.968046 -24"
+"angles" "0.002142 -0.000782 0.001236"
+"modelscale" "0.75"
+}

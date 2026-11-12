@@ -1,0 +1,21 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_stairs_modular_2step"
+"origin" "-32 0 0"
+"angles" "0 0 0"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_stairs_modular_2step"
+"origin" "32 0 32"
+"angles" "0 0 0"
+}

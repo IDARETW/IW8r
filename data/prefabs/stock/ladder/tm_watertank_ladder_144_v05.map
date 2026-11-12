@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/watertank_ladder_144"
+"origin" "0 0 0"
+"angles" "-0.002086 0 0.001329"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/watertank_ladder_36"
+"origin" "0 0 -36"
+"angles" "-0.002086 0 0.001329"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/watertank_ladder_top_horizontal"
+"origin" "-0.061078 -15.750849 37.5"
+"angles" "-0.002086 0 0.001329"
+"modelscale" "1"
+}

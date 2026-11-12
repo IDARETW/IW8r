@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_railing_128_worn"
+"origin" "0 0 0"
+"angles" "-0.001383 0 0.00205"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_support_brace_ibeam_01"
+"origin" "-4.521521 -51.008344 -9.5"
+"angles" "-0.001383 0 0.00205"
+"modelscale" "0.95"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse"
+"origin" "38.499668 -43.494701 -9.5"
+"angles" "0.002427 90.000953 -0.000472"
+"modelscale" "1"
+}

@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/bridge_rail_hook_01_1"
+"origin" "0 0 0"
+"angles" "-1.549941 0 0.000391"
+"modelscale" "1.6"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/lm_window_frame_metal_03_a_ah"
+"origin" "11.745268 -52.75728 -25.25"
+"angles" "-0.000946 0.000789 0.002285"
+"modelscale" "1"
+}

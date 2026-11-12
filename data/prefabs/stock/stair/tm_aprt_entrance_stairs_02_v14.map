@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/aprt_entrance_stairs_02"
+"origin" "0 0 0"
+"angles" "-0.000169 0 0.002467"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/door_metal_single_frame_b_01_grey"
+"origin" "-1.950882 -0.235679 40"
+"angles" "-0.000169 0 0.002467"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_wood_stud_frame_01_24x120"
+"origin" "45.000623 -8.930977 40"
+"angles" "-0.000169 0 0.002467"
+"modelscale" "1.06"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_wood_stud_frame_01_24x120"
+"origin" "60.304855 -58.991246 40.25"
+"angles" "-0.001864 89.999588 0.001625"
+"modelscale" "1.06"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_wood_stud_frame_01_32x120"
+"origin" "-58.607226 -8.470905 51"
+"angles" "-90 0.001212 0"
+"modelscale" "0.8"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_wood_stud_frame_01_32x120"
+"origin" "-48.003897 -7.713216 40"
+"angles" "0.002467 -180 0.000169"
+"modelscale" "1.06"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/uk_wall_wood_stud_frame_01_32x120"
+"origin" "60.303712 -26.790722 40.25"
+"angles" "-0.001864 89.999588 0.001625"
+"modelscale" "1.06"
+}

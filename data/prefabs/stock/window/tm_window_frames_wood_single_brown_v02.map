@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/window_frames_metal_single_02_white"
+"origin" "-7.007271 -0.007246 0"
+"angles" "0.000237 -180 0.002461"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/window_frames_wood_single_brown"
+"origin" "0 0 0"
+"angles" "0.002461 0 -0.000237"
+"modelscale" "1"
+}

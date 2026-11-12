@@ -1,0 +1,47 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_house_baseboard_01_old_128"
+"origin" "-0.002806 -47.998378 -21"
+"angles" "-0.001065 0 0.002232"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_house_chair_rail_01_old_128"
+"origin" "0 0 0"
+"angles" "-0.001065 0 0.002232"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_16"
+"origin" "2.829438 36.007062 -42"
+"angles" "-0.001065 0 0.002232"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_32"
+"origin" "0.014017 7.991016 -42"
+"angles" "-0.001065 0 0.002232"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/uk_house_molding_01_old_64"
+"origin" "0.01244 -40.00888 -42"
+"angles" "-0.001065 0 0.002232"
+"modelscale" "1"
+}

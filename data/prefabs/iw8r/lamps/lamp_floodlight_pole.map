@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/com_floodlight_em"
+"origin" "0 0 0"
+"angles" "0 0 0"
+}
+// entity 2
+{
+"classname" "light"
+"_color" "1 1 0.9"
+"radius" "512"
+"intensity" "2"
+"origin" "0 -24 192"
+"angles" "0 0 0"
+}

@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_metal_roller_01_roller_large_01"
+"origin" "20.965906 1.517454 -24.5"
+"angles" "0.001236 -180 0.002142"
+"modelscale" "1.35"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-3.588561 88.78643 0"
+"angles" "0 89.997858 90"
+"modelscale" "0.65"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_04"
+"origin" "-3.56355 -86.971178 0"
+"angles" "0 89.997858 90"
+"modelscale" "0.65"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_05"
+"origin" "0 0 0"
+"angles" "0.002142 0 -0.001236"
+"modelscale" "1"
+}

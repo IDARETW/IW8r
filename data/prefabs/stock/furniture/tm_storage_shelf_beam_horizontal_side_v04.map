@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/storage_shelf_beam_horizontal_side"
+"origin" "0 0 0"
+"angles" "0.001664 0 0.001829"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/storage_shelf_beam_vertical_corner"
+"origin" "-0.001129 32.947093 -8"
+"angles" "0.00247 -90.021794 0.000116"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/storage_shelf_beam_vertical_middle"
+"origin" "-0.022077 -31.034076 -8"
+"angles" "0.00247 -89.999446 0.000116"
+"modelscale" "1"
+}

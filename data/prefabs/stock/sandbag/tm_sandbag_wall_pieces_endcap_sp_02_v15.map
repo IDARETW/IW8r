@@ -1,0 +1,79 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_arrey_mp_short_01"
+"origin" "1.9981 22.948863 1.139893"
+"angles" "3.091237 175.862184 -7.836871"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_01"
+"origin" "-26.364235 -29.603524 13.319824"
+"angles" "9.599791 -83.551636 1.296732"
+"modelscale" "0.800699"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_01"
+"origin" "-26.027972 -31.269138 7.069824"
+"angles" "-5.078327 91.784261 22.786782"
+"modelscale" "0.800699"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_01"
+"origin" "1.399734 -4.91991 10.25"
+"angles" "-1.672654 179.363687 -40.278375"
+"modelscale" "0.800699"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_01"
+"origin" "4.805644 31.2686 4.839844"
+"angles" "-10.554395 -168.829514 -4.612932"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_01"
+"origin" "9.835278 -16.887645 -4.610107"
+"angles" "0.001922 179.363262 0.001555"
+"modelscale" "0.800699"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_02"
+"origin" "-31.636806 -31.279686 -1.680176"
+"angles" "0.371182 97.735955 0.772385"
+"modelscale" "1"
+}
+// entity 8
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_02"
+"origin" "-0.338187 45.634384 -1.52002"
+"angles" "-5.425476 9.078421 2.830062"
+"modelscale" "1"
+}
+// entity 9
+{
+"classname" "misc_model"
+"model" "tm/sandbag_wall_pieces_endcap_sp_02"
+"origin" "0 0 0"
+"angles" "-14.011992 0 -1.491161"
+"modelscale" "1"
+}

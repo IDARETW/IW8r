@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_wood_double_frame_white"
+"origin" "59.963558 -31.960017 8.5"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/furniture_painting_frame_04_brown_large"
+"origin" "-74.953659 -31.963567 65.5"
+"angles" "-0.000396 89.999914 0.899163"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_worn_02_4step"
+"origin" "0 0 0"
+"angles" "0.002285 0 -0.000946"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_worn_02_8step"
+"origin" "-79.690733 32.031617 32.5"
+"angles" "-0.000946 -89.998745 0.002285"
+"modelscale" "1"
+}

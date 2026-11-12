@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_stairs_connector_02_worn"
+"origin" "79.97345 -4.598451 27.5"
+"angles" "0.000946 89.998745 0.002285"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_stairs_middle_worn"
+"origin" "-95.95522 -0.069383 -64"
+"angles" "0.002285 0 0.000946"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_stairs_top_worn"
+"origin" "0 0 0"
+"angles" "0.002285 0 0.000946"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_support_base_01"
+"origin" "68.023552 39.456366 -96.5"
+"angles" "0.002285 0 0.000946"
+"modelscale" "0.8"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_support_brace_angle_92x96"
+"origin" "68.023602 43.980744 -47.5"
+"angles" "0.002285 -90.001255 -0.000946"
+"modelscale" "0.7"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_support_brace_ibeam_01"
+"origin" "-10.041088 59.961936 69"
+"angles" "0 -179.998971 90"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/mout_catwalk_support_brace_ibeam_96"
+"origin" "-16.26412 65.47799 33.5"
+"angles" "0 6.715589 -90"
+"modelscale" "1"
+}

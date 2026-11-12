@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_metal_roller_01_frames_large"
+"origin" "0.049503 3.481981 -7"
+"angles" "0.001045 89.998955 0.002241"
+"modelscale" "1.65"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_metal_panel_sliding_security_gate_beam_256"
+"origin" "0 0 0"
+"angles" "0 0 -90"
+"modelscale" "1"
+}

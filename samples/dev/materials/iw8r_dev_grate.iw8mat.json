@@ -1,0 +1,7 @@
+{
+ "name": "iw8r_dev/grate",
+ "color": "iw8r_dev_grate_c.png",
+ "surface": "metal",
+ "alphaTest": true,
+ "twoSided": true
+}

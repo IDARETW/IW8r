@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_frame_wooden_panel_04_old_exterior_mp"
+"origin" "-24.88921 42.063689 18.5"
+"angles" "-0.000614 88.579899 0.002396"
+"modelscale" "1.1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_building_exterior_concrete_stairs_worn_02"
+"origin" "0 0 0"
+"angles" "0.409245 0 0.517692"
+"modelscale" "1.15"
+}

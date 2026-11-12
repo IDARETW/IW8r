@@ -1,0 +1,846 @@
+# iw8_scriptables.tsv: stock Replay 1.20 scriptable definitions (tools/build_scriptable_catalog.py, docs/research/86).
+# always_loaded=1: in a zone every multiplayer match has loaded (common_core_mp, common_base_mp, common_mp, global_core_mp): a map can place it by name.
+# instance_dynent / sparse_occluder / collision_flags / physics_dynents: the dynamic entities one instance gets;
+# source=observed: read from stock map instances; derived: a guess (no stock map places it, and the rule for
+# instance_dynent is not known). physics_limit / physics_limit_detail: the definition counts in the main /
+# detailed scriptable physics limits of a map (flag bits 13+14 / 13+15; the rule gives the stored limits of all 21
+# exported stock maps, research 89). verified=1: observed, so every number is known. The editor builds a verified definition:
+# by name when always_loaded, else (with Real stock scripted objects on) carried from its first mp_ zone.
+name	zones	always_loaded	parts	server_instanced_parts	usable_parts	max_dynent_parts	physics_dynents	instance_dynent	sparse_occluder	collision_flags	physics_limit	flags	model	source	verified	physics_limit_detail
+accessory_accessory_scale_lab	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	accessory_accessory_scale_lab	observed	1	0
+accessory_fire_sprinkler_ceiling_vintage	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400280	accessory_fire_sprinkler_ceiling_vintage	observed	1	0
+accessory_table_vintage_ashtray	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	accessory_table_vintage_ashtray	observed	1	0
+bathroom_toiletries_bottle_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400281	bathroom_toiletries_bottle_01	observed	1	0
+bathroom_toiletries_tube_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400281	bathroom_toiletries_tube_01	observed	1	0
+body_usmc_ar_br_infil	common_br_mp	0	1	1	0	1	0	1	0	0	0	0x400246		derived	0	0
+bolt_gas	common_base_mp	1	2	2	0	1	0	0	0	0	0	0x400046		derived	0	0
+bolt_semtex	common_base_mp	1	2	2	0	1	0	1	0	0	0	0x400047		derived	0	0
+bolt_thermite	common_base_mp	1	2	2	0	1	0	1	0	0	0	0x400247		derived	0	0
+bomb_c4_large_double_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400281	bomb_c4_large_double_01	observed	1	0
+br_loot_cache	common_br_mp	0	1	1	1	22	0	0	0	0	1	0x43E266	military_loot_crate_01_br	derived	0	1
+br_loot_cache_lege	common_br_mp	0	1	1	1	22	0	0	0	0	1	0x43E266	military_loot_crate_01_br_legendary_01	derived	0	1
+br_name_fx	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	0	0x400047		derived	0	0
+br_plunder_box	common_br_mp	0	1	1	1	16	0	0	0	0	1	0x43E266	military_purchase_kiosk_01_rig_skeleton	observed	1	1
+br_scavenger_quest_cache	common_br_mp	0	1	1	1	1	0	0	0	0	0	0x43C266	military_loot_crate_01_br_scavenger_01	derived	0	0
+br_supplemental_gas	mp_br_quarry	0	1	1	0	1	0	1	0	0	0	0x400047		derived	0	0
+brloot_access_card_blue	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	electronics_keycard_office_01	derived	0	0
+brloot_access_card_green	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	electronics_keycard_office_01_green	derived	0	0
+brloot_access_card_red	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	electronics_keycard_office_01_red	derived	0	0
+brloot_ammo_12g	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_loot_ammo_shotgun_01	derived	0	0
+brloot_ammo_50cal	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_loot_ammo_marksman_sniper_01	derived	0	0
+brloot_ammo_762	common_br_mp	0	1	1	1	1	0	0	0	0	0	0x432246	lm_ammo_box_ar_01	observed	1	0
+brloot_ammo_919	common_br_mp	0	1	1	1	1	0	0	0	0	0	0x432246	lm_loot_ammo_pistol_smg_01	observed	1	0
+brloot_ammo_rocket	common_br_mp	0	1	1	1	2	0	1	0	0	0	0x432246	loot_ammo_rocket	derived	0	0
+brloot_armor_helmet_1	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_loot_helmet_basic_01_nophys	derived	0	0
+brloot_armor_helmet_2	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_loot_helmet_basic_01_nophys	derived	0	0
+brloot_armor_helmet_3	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_loot_helmet_basic_01_nophys	derived	0	0
+brloot_armor_plate	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_loot_wm_armor_plate	derived	0	0
+brloot_assassination_tablet	common_br_mp	0	1	1	1	1	0	0	0	0	0	0x432246	mission_tablet_01_assassination	observed	1	0
+brloot_blueprintextract_tablet	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x422246		derived	0	0
+brloot_collection_tablet	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	mission_tablet_01	derived	0	0
+brloot_domination_tablet	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	mission_tablet_01_domination	derived	0	0
+brloot_equip_gasmask	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	prop_gasmask_lm	derived	0	0
+brloot_health_adrenaline	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_heal_stim_syringe_01	derived	0	0
+brloot_killstreak_clusterstrike	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	killstreak_tablet_01_clusterstrike	derived	0	0
+brloot_killstreak_precision_airstrike	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	killstreak_tablet_01_precision_airstrike	derived	0	0
+brloot_killstreak_recondrone	common_br_mp	0	1	1	1	20	0	1	0	0	0	0x432246	veh8_mil_air_malfa_small_noscript	derived	0	0
+brloot_killstreak_shieldturret	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	killstreak_tablet_01_turret	derived	0	0
+brloot_killstreak_uav	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	killstreak_tablet_01_uav	derived	0	0
+brloot_mission_tablet	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	mission_tablet_01	derived	0	0
+brloot_offhand_advancedsupplydrop	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_offhand_wm_airdrop_marker	derived	0	0
+brloot_offhand_atmine	common_br_mp	0	1	1	1	6	0	1	0	0	0	0x432246	lm_offhand_wm_at_mine	derived	0	0
+brloot_offhand_c4	common_br_mp	0	1	1	1	9	0	1	0	0	0	0x432246	lm_offhand_wm_c4	derived	0	0
+brloot_offhand_claymore	common_br_mp	0	1	1	1	14	0	1	0	0	0	0x432246	lm_offhand_wm_claymore	derived	0	0
+brloot_offhand_concussion	common_br_mp	0	1	1	1	9	0	1	0	0	0	0x432246	lm_offhand_wm_grenade_concussion	derived	0	0
+brloot_offhand_decoy	common_br_mp	0	1	1	1	6	0	1	0	0	0	0x432246	offhand_vm_grenade_decoy	derived	0	0
+brloot_offhand_flash	common_br_mp	0	1	1	1	4	0	1	0	0	0	0x432246	lm_offhand_wm_grenade_flash	derived	0	0
+brloot_offhand_frag	common_br_mp	0	1	1	1	7	0	1	0	0	0	0x432246	lm_offhand_wm_grenade_mike67	derived	0	0
+brloot_offhand_gas	common_br_mp	0	1	1	1	9	0	1	0	0	0	0x432246	offhand_wm_grenade_teargas	derived	0	0
+brloot_offhand_heartbeatsensor	common_br_mp	0	1	1	1	12	0	1	0	0	0	0x432246	offhand_wm_tablet	derived	0	0
+brloot_offhand_molotov	common_br_mp	0	1	1	1	7	0	1	0	0	0	0x432246	lm_offhand_wm_molotov	derived	0	0
+brloot_offhand_semtex	common_br_mp	0	1	1	1	4	0	1	0	0	0	0x432246	lm_offhand_wm_grenade_semtex	derived	0	0
+brloot_offhand_smoke	common_br_mp	0	1	1	1	4	0	1	0	0	0	0x432246	lm_offhand_wm_grenade_smoke	derived	0	0
+brloot_offhand_snapshot	common_br_mp	0	1	1	1	12	0	1	0	0	0	0x432246	lm_offhand_wm_grenade_snapshot	derived	0	0
+brloot_offhand_taccover	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_offhand_wm_tac_cover	derived	0	0
+brloot_offhand_thermite	common_br_mp	0	1	1	1	4	0	1	0	0	0	0x432246	offhand_wm_grenade_thermite_br	derived	0	0
+brloot_offhand_throwingknife	common_br_mp	0	1	1	1	5	0	1	0	0	0	0x432246	lm_weapon_wm_knife_offhand_thrown	derived	0	0
+brloot_offhand_trophysystem	common_br_mp	0	1	1	1	20	0	1	0	0	0	0x432246	offhand_wm_trophy_system_br	derived	0	0
+brloot_perk_point	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	accessory_ui_perk_patch_01_battle_hardened	derived	0	0
+brloot_plate_pouch	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_armor_vest_01	derived	0	0
+brloot_plunder_cash_common_1	common_br_mp	0	1	1	1	2	0	1	0	0	0	0x432246	lm_cash_stack_pile_sm_01	derived	0	0
+brloot_plunder_cash_epic_1	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	accessory_money_bag_medium	derived	0	0
+brloot_plunder_cash_epic_2	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	accessory_money_bag_medium_full	derived	0	0
+brloot_plunder_cash_legendary_1	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	accessory_money_bag_large	derived	0	0
+brloot_plunder_cash_rare_1	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	accessory_money_pile_large	derived	0	0
+brloot_plunder_cash_rare_2	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	accessory_money_bag_small	derived	0	0
+brloot_plunder_cash_uncommon_1	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	accessory_money_pile_tiny	derived	0	0
+brloot_plunder_cash_uncommon_2	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	accessory_money_pile_small	derived	0	0
+brloot_plunder_cash_uncommon_3	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	accessory_money_pile_medium	derived	0	0
+brloot_plunder_extract	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_plunder_extract_backpack	derived	0	0
+brloot_plunder_extraction_site_01	mp_bm_tut,mp_br_quarry,mp_donetsk	0	1	1	1	11	0	1	0	0	1	0x60E046	br_plunder_extraction_01	observed	1	1
+brloot_plunder_extraction_site_02	mp_br_quarry,mp_donetsk	0	1	1	1	11	0	1	0	0	1	0x60E046	br_plunder_extraction_02	observed	1	1
+brloot_quest_extract_site	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x600246		derived	0	0
+brloot_quest_tablet	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x622246	p7_desk_metal_military_03_tablet	derived	0	0
+brloot_respawn_token	common_br_mp	0	1	1	1	2	0	1	0	0	0	0x432246	art_loot_coin_respawn_01	derived	0	0
+brloot_rock	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x422246	rock_small_scotland_dirt_09	observed	1	0
+brloot_scavenger_tablet	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	mission_tablet_01_scavenger	derived	0	0
+brloot_self_revive	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	lm_heal_stim_syringe_01_blue	derived	0	0
+brloot_super_armorbox	common_br_mp	0	1	1	1	20	0	1	0	0	0	0x432246	offhand_wm_supportbox_br	derived	0	0
+brloot_super_deadsilence	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	perk_manual_01_dead_silence	derived	0	0
+brloot_super_empdrone	common_br_mp	0	1	1	1	5	0	1	0	0	0	0x432246	offhand_wm_air_bombing_drone_emp_br	derived	0	0
+brloot_super_munitionsbox	common_br_mp	0	1	1	1	20	0	1	0	0	0	0x432246	offhand_wm_supportbox_br	derived	0	0
+brloot_super_stoppingpower	common_br_mp	0	1	1	1	20	0	1	0	0	0	0x432246	offhand_wm_supportbox_stopping_power	derived	0	0
+brloot_super_tacinsert	common_br_mp	0	1	1	1	6	0	1	0	0	0	0x432246	misc_wm_flarestick_br	derived	0	0
+brloot_super_weapondrop	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	military_crate_field_upgrade_02	derived	0	0
+brloot_timedrun_tablet	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	mission_tablet_01_timedrun	derived	0	0
+brloot_vip_tablet	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	mission_tablet_01_vip	derived	0	0
+brloot_weapon_ak47_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_ak47_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_ak47_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_ak47_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_as50_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_as50_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_aug_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_aug_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_bizon_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_bizon_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_carlg_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_citori_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_citori_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_citori_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_crossbow_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_deagle_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_deagle_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_deagle_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_deagle_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_deagle_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_dp12_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_dp12_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_dp12_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_dp12_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_dp12_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_dragunov_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_dragunov_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_dragunov_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_fal_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_fal_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_famas_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_famas_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_famas_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_famas_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_famas_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_g21_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_generic_ar	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_generic_dm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_generic_kn	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_generic_la	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_generic_lm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_generic_me	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_generic_pi	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_generic_sh	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_generic_sm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_generic_sn	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_grau_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_hdr_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_hdr_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_holger_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_holger_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_juliet_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_kar98_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_kar98_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_kar98_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_kar98_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_kar98_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_kilo141_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_kilo141_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m14_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m14_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m14_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m1911_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m1911_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m1911_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m4_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m4_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m4_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m4_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m4_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m870_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m870_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m870_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m870_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m870_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m91_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m91_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_m91_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_magnum_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_magnum_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_magnum_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_magnum_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_magnum_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_marlin_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_marlin_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_marlin_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_marlin_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_marlin_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mcx_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mcx_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mcx_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mcx_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mcx_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mg34_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mg34_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mg34_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mg34_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mg34_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mgl32_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mike26_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mp5_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mp5_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mp5_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mp5_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mp5_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mp7_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mp7_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mp7_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mp7_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_mp7_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_oden_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_oden_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_oden_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_oden_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_oden_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_origin12_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_origin12_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_p320_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_p320_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_p320_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_p90_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_p90_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_p90_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_p90_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_pkm_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_pkm_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_pkm_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_pkm_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_ram7_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_ram7_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_riotshield_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_rpg7_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_rpg7_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_scarh_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_scarh_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_scarh_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_striker_epic	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_striker_lege	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_uzi_comm	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_uzi_rare	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+brloot_weapon_uzi_unco	common_br_mp	0	1	1	1	1	0	1	0	0	0	0x432246	carepackage_base	derived	0	0
+bucket_rusted_empty_01	mp_donetsk	0	1	0	0	1	0	1	0	0	0	0x400281	bucket_rusted_empty_01	observed	1	0
+building_metal_sliding_door_01_trials	mp_t_reflex,mp_t_sn_reflex	0	1	1	0	1	0	1	0	0	0	0x402247	building_metal_sliding_door_01_trials	observed	1	0
+cardboard_box_small_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	cardboard_box_small_01	observed	1	0
+cinderblock_01_01	mp_hideout,mp_m_speed,mp_t_gun_course,mp_t_reflex,mp_t_sn_reflex	0	1	0	0	1	0	1	0	0	0	0x400080	cinderblock_01_01	observed	1	0
+cinderblock_01_02	mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400080	cinderblock_01_02	observed	1	0
+cinderblock_wall_endcap_01_24	mp_hideout,mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400080	cinderblock_wall_endcap_01_24	observed	1	0
+cinderblock_wall_topper_01_16	mp_hideout,mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400080	cinderblock_wall_topper_01_16	observed	1	0
+com_computer_mouse	mp_m_speed	0	1	0	0	2	0	1	0	0	0	0x400281	com_computer_mouse	observed	1	0
+com_floodlight	mp_donetsk	0	1	0	0	3	0	1	0	0	0	0x400080	com_floodlight	observed	1	0
+com_junktire	mp_backlot2,mp_br_quarry,mp_donetsk,mp_m_speed,mp_shipment	0	1	0	0	2	0	1	0	0	0	0x400081	com_junktire	observed	1	0
+com_junktire_dirty	mp_rust	0	1	0	0	2	0	1	0	0	0	0x400081	com_junktire_dirty	observed	1	0
+com_magazine_english_stack_04	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	com_magazine_english_stack_04	observed	1	0
+com_office_book_set1	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400080	com_office_book_set1	observed	1	0
+com_trafficcone_01	mp_hideout,mp_m_speed,mp_shipment,mp_t_gun_course	0	1	1	0	1	1	1	0	0	0	0x4020C7	com_trafficcone_01_dyn	observed	1	0
+computer_pc_tower_01	mp_hideout,mp_m_fork,mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400081	computer_pc_tower_01	observed	1	0
+computer_pc_tower_01_broken	mp_hideout,mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400081	computer_pc_tower_01_broken	observed	1	0
+computer_server_rack_unit_02	mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400080	computer_server_rack_unit_02	observed	1	0
+computer_server_rack_unit_10	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	computer_server_rack_unit_10	observed	1	0
+conduit_metal_outlet_switch	mp_emporium,mp_hideout,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400080	conduit_metal_outlet_switch	observed	1	0
+construction_hardhat_lowres_01_blue	mp_rust	0	1	0	0	2	0	1	0	0	0	0x400281	construction_hardhat_lowres_01_blue	observed	1	0
+construction_hardhat_lowres_01_yellow	mp_rust	0	1	0	0	2	0	1	0	0	0	0x400281	construction_hardhat_lowres_01_yellow	observed	1	0
+container_gas_tank_01	mp_hideout,mp_rust	0	1	1	0	1	0	0	0	0	0	0x4016C7	container_gas_tank_01	observed	1	0
+container_nitrate_bag_flat_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400280	container_nitrate_bag_flat_01	observed	1	0
+container_paint_can_01	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400081	container_paint_can_01	observed	1	0
+container_trash_can_plastic_kitchen_01	mp_t_gun_course	0	1	0	0	1	0	1	0	0	0	0x400080	container_trash_can_plastic_kitchen_01	observed	1	0
+container_water_jug_01_blue	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400281	container_water_jug_01_blue	observed	1	0
+cop_marker	common_core_mp	1	1	1	0	1	0	1	0	0	0	0x400246		derived	0	0
+corpsetable	common_base_mp	1	3	2	0	1	0	1	0	0	0	0x400246		derived	0	0
+cp_disco_bar_stool_01	mp_hideout	0	1	1	0	1	0	0	0	0	0	0x404087	cp_disco_bar_stool_01	observed	1	0
+cp_disco_glass_beer_bottle_fn_01	mp_m_speedball	0	1	0	0	1	0	1	0	0	0	0x400081	cp_disco_glass_beer_bottle_fn_01	observed	1	0
+cp_disco_wall_fan	mp_emporium,mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	cp_disco_wall_fan	observed	1	0
+crate_plastic_sml_01_dirt_green	mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400281	crate_plastic_sml_01_dirt_green	observed	1	0
+crossbow_arrow	common_mp	1	1	1	0	1	0	0	0	0	0	0x400046		derived	0	0
+decor_ashtray_cigarette_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	decor_ashtray_cigarette_01	observed	1	0
+decor_blankets_01_single_pattern_1_01	mp_hideout	0	1	0	0	1	1	1	0	0	0	0x400081	decor_blankets_01_single_pattern_1_01	observed	1	0
+decor_cafe_planters_01	mp_hideout	0	1	1	0	1	0	0	0	0	0	0x4040C6	decor_cafe_planters_01	observed	1	0
+decor_cafe_sheesha	mp_hideout	0	1	1	0	1	0	0	0	0	0	0x404086	decor_cafe_sheesha	observed	1	0
+decor_containers_01_large_darkblue	mp_hideout,mp_m_speed	0	1	0	0	2	0	1	0	0	0	0x400081	decor_containers_01_large_darkblue	observed	1	0
+decor_containers_01_small_blue	mp_hideout,mp_m_fork,mp_m_speed,mp_t_gun_course,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	decor_containers_01_small_blue	observed	1	0
+decor_drying_rack_01_cup_01	mp_hideout,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	decor_drying_rack_01_cup_01	observed	1	0
+decor_drying_rack_01_cup_01_static	mp_hideout,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400080	decor_drying_rack_01_cup_01	observed	1	0
+decor_drying_rack_01_plate_01	mp_hideout,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	decor_drying_rack_01_plate_01	observed	1	0
+decor_drying_rack_01_plate_01_static	mp_hideout,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400080	decor_drying_rack_01_plate_01	observed	1	0
+decor_drying_rack_01_plate_02	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	decor_drying_rack_01_plate_02	observed	1	0
+decor_drying_rack_01_plate_02_static	mp_hideout,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400080	decor_drying_rack_01_plate_02	observed	1	0
+decor_drying_rack_01_plate_03	mp_hideout,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	decor_drying_rack_01_plate_03	observed	1	0
+decor_drying_rack_01_plate_03_static	mp_hideout,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400080	decor_drying_rack_01_plate_03	observed	1	0
+decor_misc_props_01_bottle	mp_hideout,mp_m_fork,mp_m_king,mp_m_speed	0	1	0	0	2	0	1	0	0	0	0x400081	decor_misc_props_01_bottle	observed	1	0
+decor_misc_props_01_bucket_metal	mp_hideout,mp_village2	0	1	0	0	2	0	1	0	0	0	0x400281	decor_misc_props_01_bucket_metal	observed	1	0
+decor_misc_props_01_jar_big	mp_village2	0	1	0	0	2	0	1	0	0	0	0x400081	decor_misc_props_01_jar_big	observed	1	0
+decor_misc_props_01_jar_small	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400081	decor_misc_props_01_jar_small	observed	1	0
+decor_misc_props_01_styrofoam_single	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	decor_misc_props_01_styrofoam_single	observed	1	0
+decor_misc_props_01_styrofoam_stacked	mp_hideout	0	1	1	0	2	0	0	0	0	0	0x404086	decor_misc_props_01_styrofoam_stacked	observed	1	0
+decor_plastic_buckets_01_big_blue	mp_m_fork	0	2	0	0	1	0	1	0	0	0	0x400281	decor_plastic_buckets_01_big_blue	observed	1	0
+decor_plastic_buckets_01_big_red	mp_hideout,mp_m_fork	0	2	0	0	1	0	1	0	0	0	0x400281	decor_plastic_buckets_01_big_red	observed	1	0
+decor_plastic_buckets_01_big_white	mp_hideout,mp_m_fork,mp_village2	0	2	0	0	1	0	1	0	0	0	0x400281	decor_plastic_buckets_01_big_white	observed	1	0
+decor_plastic_buckets_01_small_white	mp_hideout,mp_m_fork,mp_m_king,mp_m_speed,mp_t_gun_course,mp_village2	0	2	0	0	2	0	1	0	0	0	0x400281	decor_plastic_buckets_01_small_white	observed	1	0
+decor_propane_tank_01_en	mp_donetsk,mp_hideout	0	1	1	0	2	0	0	0	0	0	0x405687	decor_propane_tank_01_en_d1	observed	1	0
+decor_radiator_01	mp_hideout	0	1	0	0	1	1	1	0	0	0	0x400080	decor_radiator_01	observed	1	0
+decor_rope_thick_coiled_01	mp_shipment	0	1	1	0	2	0	0	0	0	0	0x4102E6	decor_rope_thick_coiled_01	observed	1	0
+decor_rope_thick_draped_01	mp_m_speed	0	1	1	0	1	0	0	0	0	0	0x4102E6	decor_rope_thick_draped_01	observed	1	0
+decor_rope_thick_pile_01	mp_shipment	0	1	1	0	1	0	0	0	0	0	0x4102E6	decor_rope_thick_pile_01	observed	1	0
+decor_serving_tray_01_single_gray	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	decor_serving_tray_01_single_gray	observed	1	0
+decor_shoes_01_sandals_male_brown_left	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	decor_shoes_01_sandals_male_brown_left	observed	1	0
+decor_shoes_01_sandals_male_brown_right	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	decor_shoes_01_sandals_male_brown_right	observed	1	0
+decor_tea_cup_01	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400080	decor_tea_cup_01	observed	1	0
+decor_trash_can_plastic_office_01	mp_emporium,mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400281	decor_trash_can_plastic_office_01	observed	1	0
+desktop_fan_fn_01	mp_hideout	0	2	2	0	2	0	0	0	0	0	0x4102E7	desktop_fan_fn_01	observed	1	0
+dinnerware_cup_ornate_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	dinnerware_cup_ornate_01	observed	1	0
+dns_tool_hammer01_iw6	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	dns_tool_hammer01_iw6	observed	1	0
+dom_flag	common_base_mp	1	2	2	0	1	0	1	0	0	0	0x400246		derived	0	0
+dz_flare	common_core_mp	1	2	2	0	1	0	1	0	0	0	0x400246		derived	0	0
+ee_book_office_folder_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	ee_book_office_folder_01	observed	1	0
+ee_book_office_folder_02_stack_sml	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	ee_book_office_folder_02_stack_sml	observed	1	0
+ee_book_office_folder_pile_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	ee_book_office_folder_pile_01	observed	1	0
+ee_book_office_folder_pile_02	mp_emporium,mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	ee_book_office_folder_pile_02	observed	1	0
+ee_can_paint_closed_01	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400281	ee_can_paint_closed_01	observed	1	0
+ee_cardboard_box_01	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	ee_cardboard_box_01	observed	1	0
+ee_clock_wall_mounted	mp_hideout,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	ee_clock_wall_mounted	observed	1	0
+ee_clock_wall_mounted_modern	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	ee_clock_wall_mounted_modern	observed	1	0
+ee_clock_wall_mounted_modern_dirty_glass	mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400081	ee_clock_wall_mounted_modern_dirty_glass	observed	1	0
+ee_clothing_price_boots_01_left	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	ee_clothing_price_boots_01_left	observed	1	0
+ee_clothing_price_boots_01_right	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	ee_clothing_price_boots_01_right	observed	1	0
+ee_construction_tool_box_metal_01	mp_hideout,mp_village2	0	1	0	0	3	0	1	0	0	0	0x400081	ee_construction_tool_box_metal_01_destr	observed	1	0
+ee_decor_graveyard_bells_01	mp_village2	0	1	1	0	4	0	0	0	0	0	0x4102E6	ee_decor_graveyard_bells_01_anim	observed	1	0
+ee_decor_wood_oar_02	mp_m_speed	0	1	0	0	2	0	1	0	0	0	0x400080	ee_decor_wood_oar_02	observed	1	0
+ee_electronics_pos_cash	mp_emporium	0	1	0	0	6	0	1	0	0	0	0x400081	ee_electronics_pos_cash	observed	1	0
+ee_electronics_television_wall_mounted_large	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400080	ee_electronics_television_wall_mounted_large	observed	1	0
+ee_electronics_television_wall_mounted_large_mp	mp_emporium	0	1	1	0	2	0	0	0	0	0	0x4002D6	ee_electronics_television_wall_mounted_large	observed	1	0
+ee_electronics_television_wall_mounted_medium	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400080	ee_electronics_television_wall_mounted_medium	observed	1	0
+ee_fence_lace_01_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x60C6	ee_fence_lace_01_lm	observed	1	0
+ee_fence_lace_02_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_fence_lace_02_lm	observed	1	1
+ee_fence_lace_pool_individual_01_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_fence_lace_pool_individual_01_lm	observed	1	1
+ee_food_bread_basket_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	ee_food_bread_basket_01	observed	1	0
+ee_food_bread_basket_02	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	ee_food_bread_basket_02	observed	1	0
+ee_food_bread_basket_03	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	ee_food_bread_basket_03	observed	1	0
+ee_food_fruit_cardboard_box_01	mp_hideout,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	ee_food_fruit_cardboard_box_01	observed	1	0
+ee_light_fixture_lamp_short_02_off	mp_m_fork	0	1	1	0	2	0	0	0	0	0	0x404097	ee_light_fixture_lamp_short_02	observed	1	0
+ee_machinery_control_reservoir_01	mp_rust	0	1	0	0	1	0	1	0	0	0	0x400080	ee_machinery_control_reservoir_01_no_needles	observed	1	0
+ee_machinery_wind_turbine_02	mp_donetsk	0	1	0	0	1	0	1	0	0	0	0x400281	ee_machinery_wind_turbine_blades_02	observed	1	0
+ee_pipe_05_valve_01	mp_rust	0	1	0	0	1	0	1	0	0	0	0x400080	ee_pipe_05_valve_01	observed	1	0
+ee_road_sign_road_end_01_lm	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x60C6	ee_road_sign_road_end_01_lm	observed	1	0
+ee_sign_commercial_pharmacy_dropoff	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400081	ee_sign_commercial_pharmacy_dropoff_destr	observed	1	0
+ee_sign_commercial_pharmacy_pickup	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400081	ee_sign_commercial_pharmacy_pickup_destr	observed	1	0
+ee_sign_construction_hills_01_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x60C6	ee_sign_construction_hills_01_lm	observed	1	0
+ee_sign_street_airport_01_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_airport_01	observed	1	1
+ee_sign_street_bus_lane_02_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_bus_lane_02_01	observed	1	1
+ee_sign_street_bus_stop_lm	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_bus_stop_01	observed	1	1
+ee_sign_street_cariageway_ramp_01_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x60C6	ee_sign_street_cariageway_ramp_01_lm	observed	1	0
+ee_sign_street_carriageway_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_carriageway_01	observed	1	1
+ee_sign_street_caution_01	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_caution_01	observed	1	1
+ee_sign_street_caution_01_lm	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_caution_01	observed	1	1
+ee_sign_street_give_way_01	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_give_way_pole	observed	1	1
+ee_sign_street_give_way_01_lm	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_give_way_pole	observed	1	1
+ee_sign_street_keep_right_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_keep_right_01	observed	1	1
+ee_sign_street_lanes_01_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_lanes_01_pole	observed	1	1
+ee_sign_street_lanes_02_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_lanes_02_pole	observed	1	1
+ee_sign_street_left_turn_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_left_turn_01	observed	1	1
+ee_sign_street_merger_01_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_merger_01_pole	observed	1	1
+ee_sign_street_merger_02_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_merger_02_pole	observed	1	1
+ee_sign_street_motorway_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_motorway_01	observed	1	1
+ee_sign_street_no_car_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_no_car_01	observed	1	1
+ee_sign_street_no_entry_lm	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_no_entry_01	observed	1	1
+ee_sign_street_no_entry_right_turn_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x60C6	ee_sign_street_no_entry_right_turn_lm	observed	1	0
+ee_sign_street_no_parking_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_no_parking_01	observed	1	1
+ee_sign_street_no_parking_pole_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_no_parking_01	observed	1	1
+ee_sign_street_no_stopping_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_no_stopping_01	observed	1	1
+ee_sign_street_no_turn_left_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_no_turn_left_01	observed	1	1
+ee_sign_street_no_turn_right_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x40E0C6	ee_sign_street_no_turn_right_01	observed	1	1
+ee_sign_street_one_way_01_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_one_way_01_pole	observed	1	1
+ee_sign_street_one_way_02_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_one_way_02_pole	observed	1	1
+ee_sign_street_one_way_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_one_way_pole	observed	1	1
+ee_sign_street_parking_lm	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_parking_01	observed	1	1
+ee_sign_street_pedestrian_01_lm	mp_donetsk,mp_emporium	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_pedestrian_01_pole	observed	1	1
+ee_sign_street_pedestrian_03_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_pedestrian_03_pole	observed	1	1
+ee_sign_street_priority_road_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_priority_road_01	observed	1	1
+ee_sign_street_railway_lm	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_railway_01	observed	1	1
+ee_sign_street_right_turn_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_right_turn_01	observed	1	1
+ee_sign_street_roundabout_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_roundabout_01	observed	1	1
+ee_sign_street_speed_limit_lm	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_speed_limit_01	observed	1	1
+ee_sign_street_speed_limit_no_parking_lm	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x60C6	ee_sign_street_speed_limit_no_parking_lm	observed	1	0
+ee_sign_street_stop_01_lm	mp_br_quarry,mp_donetsk,mp_emporium	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_stop_01	observed	1	1
+ee_sign_street_stop_crossing_01_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x60C6	ee_sign_street_stop_crossing_01_lm	observed	1	0
+ee_sign_street_straight_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_straight_01	observed	1	1
+ee_sign_street_straight_turn_01_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_straight_turn_01_pole	observed	1	1
+ee_sign_street_straight_turn_02_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_straight_turn_02_pole	observed	1	1
+ee_sign_street_two_way_01_lm	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_two_way_01_pole	observed	1	1
+ee_sign_street_vehicle_only_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_vehicle_only_01	observed	1	1
+ee_sign_street_work_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	ee_sign_street_work_01	observed	1	1
+ee_stool_wood_01	mp_donetsk	0	1	0	0	2	0	1	0	0	0	0x400081	ee_stool_wood_01	observed	1	0
+ee_tool_wood_scrub_brush_01	mp_hideout,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	ee_tool_wood_scrub_brush_01	observed	1	0
+ee_utility_pole_sign_pedestrian_02	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x40E0C6	ee_utility_pole_sign_pedestrian_02	observed	1	1
+ee_utility_pole_sign_pedestrian_02_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x60C6	ee_utility_pole_sign_pedestrian_02	observed	1	0
+electrical_box_rusted_01	mp_bm_tut,mp_br_tut,mp_hideout,mp_m_speed,mp_m_speedball,mp_rust	0	1	0	0	3	0	1	0	0	0	0x400081	electrical_box_rusted_01_destr	observed	1	0
+electrical_conduit_set_electrical_box_01	mp_hideout,mp_rust	0	1	0	0	1	0	1	0	0	0	0x400280	electrical_conduit_set_electrical_box_01	observed	1	0
+electrical_conduit_set_electrical_box_02	mp_br_quarry,mp_donetsk,mp_emporium,mp_hideout,mp_rust,mp_t_reflex	0	1	0	0	1	0	1	0	0	0	0x400280	electrical_conduit_set_electrical_box_02	observed	1	0
+electrical_conduit_set_electrical_box_03	mp_backlot2,mp_emporium,mp_hideout,mp_rust,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400280	electrical_conduit_set_electrical_box_03	observed	1	0
+electrical_conduit_set_electrical_box_04	mp_hideout,mp_rust	0	1	0	0	1	0	1	0	0	0	0x400280	electrical_conduit_set_electrical_box_04	observed	1	0
+electrical_conduit_set_electrical_box_05	mp_hideout,mp_rust	0	1	0	0	1	0	1	0	0	0	0x400280	electrical_conduit_set_electrical_box_05	observed	1	0
+electrical_conduit_set_electrical_box_big	mp_hideout,mp_t_reflex,mp_t_sn_reflex	0	1	0	0	2	0	1	0	0	0	0x400081	electrical_conduit_set_electrical_box_big	observed	1	0
+electrical_conduit_set_electrical_box_medium	mp_emporium,mp_hideout,mp_m_speed,mp_rust,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400280	electrical_conduit_set_electrical_box_medium	observed	1	0
+electrical_interior_outlet_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400080	electrical_interior_outlet_01	observed	1	0
+electrical_light_switch_01	mp_emporium,mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	electrical_light_switch_01	observed	1	0
+electrical_light_switch_exposed_01	mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400080	electrical_light_switch_exposed_01	observed	1	0
+electrical_phone_jack_01	mp_emporium,mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	electrical_phone_jack_01	observed	1	0
+electronics_cellphone_pile_02	mp_m_fork	0	1	0	0	2	1	1	0	0	0	0x400081	electronics_cellphone_pile_02	observed	1	0
+electronics_fire_alarm_bell_01	mp_emporium,mp_m_king,mp_rust	0	1	0	0	2	0	1	0	0	0	0x400080	electronics_fire_alarm_bell_01_lod0	observed	1	0
+electronics_game_console_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	electronics_game_console_01	observed	1	0
+electronics_headphones_02	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400081	electronics_headphones_02	observed	1	0
+electronics_smartphone_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	electronics_smartphone_01	observed	1	0
+electronics_un_office_cellphone_pile_03	mp_hideout,mp_m_fork	0	1	0	0	2	1	1	0	0	0	0x400081	electronics_un_office_cellphone_pile_03	observed	1	0
+emporium_computer_monitor_01_169	mp_emporium	0	1	0	0	4	0	1	0	0	0	0x400081	emporium_computer_monitor_01_169	observed	1	0
+emporium_computer_monitor_02_169	mp_emporium	0	1	0	0	4	0	1	0	0	0	0x400081	emporium_computer_monitor_02_169	observed	1	0
+equip_at_mine_mp	common_base_mp	1	9	9	1	1	0	1	0	0	0	0x400647		derived	0	0
+equip_c4_mp	common_base_mp	1	2	2	0	1	0	1	0	0	0	0x400646		derived	0	0
+equip_c4_mp_p	common_base_mp	1	3	3	1	1	0	1	0	0	0	0x400646		derived	0	0
+equip_claymore_mp	common_base_mp	1	8	8	1	1	0	1	0	0	0	0x400247		derived	0	0
+equip_decoy_mp	common_base_mp	1	5	5	0	1	0	1	0	0	0	0x400247		derived	0	0
+equip_flare_br	common_br_mp	0	5	5	0	1	0	1	0	0	0	0x400247		derived	0	0
+equip_fulton_mp	common_br_mp	0	2	2	1	1	0	1	0	0	0	0x400246		derived	0	0
+equip_gas_cloud_mp	common_base_mp	1	1	1	0	1	0	0	0	0	0	0x400046		derived	0	0
+equip_molotov_mp	common_base_mp	1	2	2	0	1	0	1	0	0	0	0x400447		derived	0	0
+equip_molotov_pool_mp	common_base_mp	1	4	4	0	1	0	1	0	0	0	0x400247		derived	0	0
+equip_molotov_pool_mp_p	common_base_mp	1	1	1	0	3	0	1	0	0	0	0x402247	tag_origin	derived	0	0
+equip_snapshot_marker_mp	common_base_mp	1	1	1	0	1	0	1	0	0	0	0x400247		derived	0	0
+equip_snapshot_mp	common_base_mp	1	6	6	0	1	0	0	0	0	0	0x410267		derived	0	0
+equip_support_box_mp	common_base_mp	1	6	6	0	1	0	0	0	0	0	0x410667		derived	0	0
+equip_tac_insert_mp	common_base_mp	1	3	3	0	1	0	1	0	0	0	0x400247		derived	0	0
+equip_tactical_cover_mp	common_base_mp,mp_frontend,mp_frontend1,mp_frontend3	1	12	12	0	1	8	0	0	0	0	0x410266	offhand_wm_deployable_cover_panel1_dst	derived	0	0
+equip_thermite_mp	common_base_mp	1	2	2	0	1	0	1	0	0	0	0x400247		derived	0	0
+equip_throwing_knife_fire_mp	common_base_mp	1	3	3	0	1	0	1	0	0	0	0x400246		derived	0	0
+equip_throwing_knife_mp	common_base_mp	1	1	1	0	1	0	1	0	0	0	0x400246		derived	0	0
+equip_trophy_explode_mp	common_base_mp	1	2	2	0	1	0	1	0	0	0	0x400647		derived	0	0
+equip_trophy_mp	common_base_mp	1	8	8	1	1	0	0	0	0	0	0x410267		derived	0	0
+equip_weapon_drop	common_base_mp	1	3	3	0	1	0	1	0	0	0	0x400047		derived	0	0
+equipment_ac_unit_01	mp_hideout,mp_rust	0	1	0	0	1	0	1	0	0	0	0x400081	equipment_ac_unit_01_dstr	observed	1	0
+equipment_box_fan	mp_backlot2,mp_hideout,mp_m_fork,mp_village2	0	1	1	0	47	0	0	0	0	0	0x4102E7	equipment_box_fan_anim	observed	1	0
+equipment_hand_dolly_01	mp_emporium	0	1	0	0	3	0	1	0	0	0	0x400081	equipment_hand_dolly_01	observed	1	0
+equipment_industrial_hand_clamp_01	mp_m_king,mp_m_speed	0	1	0	0	1	1	1	0	0	0	0x400080	equipment_industrial_hand_clamp_01	observed	1	0
+equipment_military_radio_old_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	equipment_military_radio_old_01	observed	1	0
+equipment_military_radio_old_02	mp_shipment	0	1	0	0	2	0	1	0	0	0	0x400281	equipment_military_radio_old_02	observed	1	0
+equipment_military_radio_old_03	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	equipment_military_radio_old_03	observed	1	0
+equipment_military_radio_old_04	mp_m_fork	0	1	0	0	2	0	1	0	0	0	0x400281	equipment_military_radio_old_04	observed	1	0
+equipment_military_radio_old_06	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400281	equipment_military_radio_old_06	observed	1	0
+equipment_mortar_shell_improvised_01	mp_hideout,mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400081	equipment_mortar_shell_improvised_01	observed	1	0
+equipment_mortar_shell_improvised_02_bare	mp_hideout,mp_m_king,mp_m_speed,mp_t_reflex,mp_t_sn_reflex	0	1	0	0	1	1	1	0	0	0	0x400081	equipment_mortar_shell_improvised_02_bare	observed	1	0
+equipment_propane_burner_stove_01_red	mp_village2	0	1	1	0	2	0	0	0	0	0	0x4016C7	equipment_propane_burner_stove_01_red	observed	1	0
+equipment_propane_burner_stove_01_white	mp_hideout,mp_m_king,mp_t_reflex,mp_t_sn_reflex	0	1	1	0	2	0	0	0	0	0	0x4016C7	equipment_propane_burner_stove_01_white	observed	1	0
+equipment_push_broom_01	mp_emporium	0	1	1	0	1	0	0	0	0	0	0x4000C6	equipment_push_broom_01	observed	1	0
+equipment_roof_vent_medium	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400281	equipment_roof_vent_medium	observed	1	0
+equipment_satellite_dish_01_med	mp_rust	0	1	1	0	1	2	0	0	0	0	0x404087	equipment_satellite_dish_01_med	observed	1	0
+equipment_satellite_dish_01_sml	mp_hideout,mp_m_speed	0	1	0	0	2	0	1	0	0	0	0x400081	equipment_satellite_dish_01_sml	observed	1	0
+equipment_toolbox_01_green	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	equipment_toolbox_01_green	observed	1	0
+equipment_toolbox_02_orange	mp_hideout,mp_m_king,mp_m_speed,mp_m_speedball,mp_t_reflex,mp_t_sn_reflex	0	1	0	0	2	0	1	0	0	0	0x400081	equipment_toolbox_02_orange_destr	observed	1	0
+equipment_tv_01	mp_hideout,mp_village2	0	1	1	0	2	0	0	0	0	0	0x4002D6	equipment_tv_01	observed	1	0
+equipment_tv_01_off	mp_backlot2,mp_hideout,mp_m_fork	0	1	1	0	2	0	0	0	0	0	0x4000C6	equipment_tv_01	observed	1	0
+equipment_whiteboard_eraser	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	equipment_whiteboard_eraser	observed	1	0
+equipment_whiteboard_marker_black	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	equipment_whiteboard_marker_black	observed	1	0
+fabric_pool_towel_hanging_01_dirty	mp_village2	0	1	1	0	10	0	0	0	0	0	0x4102E6	fabric_pool_towel_hanging_01_rig_dirty	observed	1	0
+fence_wood_planks_01_128_damaged_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	fence_wood_planks_01_128_damaged_lm	observed	1	1
+fence_wood_planks_01_128_damaged_paint_blue_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	fence_wood_planks_01_128_damaged_paint_blue_lm	observed	1	1
+fence_wood_planks_01_128_damaged_paint_red	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	fence_wood_planks_01_128_damaged_paint_red_scr	observed	1	1
+fence_wood_planks_01_128_damaged_paint_white_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	fence_wood_planks_01_128_damaged_paint_white_lm	observed	1	1
+fence_wood_planks_01_128_lm	mp_br_quarry,mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x60C6	fence_wood_planks_01_128_lm	observed	1	0
+fence_wood_planks_01_128_paint_blue_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	fence_wood_planks_01_128_paint_blue_lm	observed	1	1
+fence_wood_planks_01_128_paint_red_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	fence_wood_planks_01_128_paint_red_lm	observed	1	1
+fence_wood_planks_01_128_paint_white_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0xE0C6	fence_wood_planks_01_128_paint_white_lm	observed	1	1
+fence_wood_planks_01_256_damaged_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x60C6	fence_wood_planks_01_256_damaged_lm	observed	1	0
+fence_wood_planks_02_128_lm	mp_donetsk	0	1	1	0	1	0	1	0	0	1	0x60C6	fence_wood_planks_02_128_lm	observed	1	0
+flower_shop_planter_04	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	flower_shop_planter_04	observed	1	0
+flower_shop_planter_04_with_plant	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	flower_shop_planter_04_with_plant	observed	1	0
+flower_shop_planter_05	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	flower_shop_planter_05	observed	1	0
+flower_shop_planter_05_with_plant	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	flower_shop_planter_05_with_plant	observed	1	0
+flower_shop_stand_01_flowerpot	mp_village2	0	1	0	0	2	0	1	0	0	0	0x400081	flower_shop_stand_01_flowerpot	observed	1	0
+foliage_pot_plant_decorative_01_lrg	mp_emporium	0	1	1	0	1	0	0	0	0	0	0x40C086	foliage_pot_plant_decorative_01_lrg	observed	1	0
+foliage_pot_plant_decorative_01_med	mp_emporium	0	1	1	0	1	0	0	0	0	0	0x40C086	foliage_pot_plant_decorative_01_med	observed	1	0
+food_cans_bottles_and_jars_can_01	mp_hideout,mp_m_speed,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	food_cans_bottles_and_jars_can_01	observed	1	0
+food_cans_bottles_and_jars_can_02	mp_m_king,mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400281	food_cans_bottles_and_jars_can_02	observed	1	0
+food_cans_bottles_and_jars_can_03	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	food_cans_bottles_and_jars_can_03	observed	1	0
+food_cans_bottles_and_jars_can_04	mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400281	food_cans_bottles_and_jars_can_04	observed	1	0
+food_cans_bottles_and_jars_can_05	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	food_cans_bottles_and_jars_can_05	observed	1	0
+food_cans_bottles_and_jars_can_06	mp_hideout,mp_m_fork,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	food_cans_bottles_and_jars_can_06	observed	1	0
+food_cans_bottles_and_jars_jar_01	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	food_cans_bottles_and_jars_jar_01	observed	1	0
+food_cans_bottles_and_jars_jar_02	mp_emporium,mp_hideout,mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400281	food_cans_bottles_and_jars_jar_02	observed	1	0
+food_cans_bottles_and_jars_jar_03	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	food_cans_bottles_and_jars_jar_03	observed	1	0
+food_honey_jar_01_empty	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400080	food_honey_jar_01_empty	observed	1	0
+food_honey_jar_01_filled	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400080	food_honey_jar_01_filled	observed	1	0
+food_trash_bag_paper_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400080	food_trash_bag_paper_01	observed	1	0
+food_trash_bottle_soda_01	mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400281	food_trash_bottle_soda_01	observed	1	0
+food_trash_burger_box_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	food_trash_burger_box_01	observed	1	0
+food_trash_burger_box_01_open	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	food_trash_burger_box_01_open	observed	1	0
+food_trash_container_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	food_trash_container_01	observed	1	0
+food_trash_container_01_wide_open	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	food_trash_container_01_wide_open	observed	1	0
+food_trash_container_02	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	food_trash_container_02	observed	1	0
+food_trash_container_03	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	food_trash_container_03	observed	1	0
+food_trash_cup_soda_lrg_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400080	food_trash_cup_soda_lrg_01	observed	1	0
+food_trash_cup_soda_lrg_01a	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400080	food_trash_cup_soda_lrg_01a	observed	1	0
+food_trash_cup_soda_lrg_01a_stack2	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400080	food_trash_cup_soda_lrg_01a_stack2	observed	1	0
+food_trash_cup_soda_med_01a_stack	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400080	food_trash_cup_soda_med_01a_stack	observed	1	0
+food_trash_plate3	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	food_trash_plate3	observed	1	0
+food_trash_soda_03	mp_bm_tut,mp_br_tut,mp_emporium,mp_hideout,mp_m_speedball	0	1	0	0	1	0	1	0	0	0	0x400281	food_trash_soda_03	observed	1	0
+furniture_cafe_chair_01	mp_m_fork	0	1	1	0	1	0	0	0	0	0	0x404086	furniture_cafe_chair_01	observed	1	0
+furniture_fan_destroyed_01	mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400080	furniture_fan_destroyed_01	observed	1	0
+furniture_fan_intact_01	mp_hideout,mp_m_fork,mp_village2	0	1	1	0	2	0	0	0	0	0	0x4142E6	furniture_fan_anim_rotating	observed	1	0
+furniture_plastic_chair_01_white	mp_hideout	0	1	1	0	1	0	0	0	0	0	0x404087	furniture_plastic_chair_01_white	observed	1	0
+furniture_plastic_stool_white	mp_village2	0	1	1	0	1	0	0	0	0	0	0x404086	furniture_plastic_stool_white	observed	1	0
+furniture_wooden_basket_01	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	furniture_wooden_basket_01	observed	1	0
+genericrigscriptable	common_base_mp	1	15	15	0	1	0	1	0	0	0	0x400A47		derived	0	0
+glass_beer_bottle_fn_01	mp_hideout,mp_m_king,mp_t_reflex,mp_t_sn_reflex	0	1	0	0	1	0	1	0	0	0	0x400081	glass_beer_bottle_fn_01	observed	1	0
+grind_flag	common_core_mp	1	2	2	0	1	0	1	0	0	0	0x400246		derived	0	0
+hardpoint_chevron	common_core_mp,mp_br_tut	1	4	4	0	5	0	1	0	0	0	0x402246	hp_chevron_rig	observed	1	0
+hardpoint_chevron_hack	common_core_mp	1	1	1	0	1	0	1	0	0	0	0x402246		derived	0	0
+intel	common_br_mp	0	2	2	1	1	0	0	0	0	0	0x402046	misc_vm_ghost_coin_static	derived	0	0
+iw8_chicken_01	mp_hideout,mp_village2	0	2	2	0	33	0	0	0	0	0	0x4102E6	iw8_chicken_01	observed	1	0
+kitchen_01_hanging_metal_spoon_clusters_02	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	kitchen_01_hanging_metal_spoon_clusters_02	observed	1	0
+kitchen_01_metal_dish_food_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	kitchen_01_metal_dish_food_01	observed	1	0
+kitchen_01_pan_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	kitchen_01_pan_01	observed	1	0
+kitchen_01_pan_food_01	mp_emporium,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	kitchen_01_pan_food_01	observed	1	0
+kitchen_01_pot_food_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	kitchen_01_pot_food_01	observed	1	0
+kitchen_01_teapot_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400081	kitchen_01_teapot_01	observed	1	0
+kitchen_knife_set_01	mp_emporium,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	kitchen_knife_set_01	observed	1	0
+kitchen_knife_shears_01	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	kitchen_knife_shears_01	observed	1	0
+ks_ac130_mp	common_core_mp,mp_br_quarry,mp_donetsk	1	20	20	0	1	0	1	0	0	0	0x400247		derived	0	0
+ks_ac130_target_mp	common_core_mp	1	3	3	0	1	0	1	0	0	0	0x400247		derived	0	0
+ks_airdrop_chute_mp	common_core_mp,common_br_mp	1	1	1	0	1	0	1	0	0	0	0x400047		derived	0	0
+ks_airdrop_crate_br	common_base_mp	1	11	11	0	1	0	0	0	0	0	0x230267		derived	0	0
+ks_airdrop_crate_mp	common_core_mp,mp_frontend,mp_frontend1,mp_frontend3	1	5	5	0	1	0	0	0	0	0	0x410267		derived	0	0
+ks_airdrop_heli_mp	common_base_mp	1	2	2	0	1	0	1	0	0	0	0x400247		derived	0	0
+ks_airstrike_audio_mp	common_base_mp	1	3	3	0	1	0	1	0	0	0	0x400047		derived	0	0
+ks_airstrike_marker_mp	common_base_mp	1	2	2	0	1	0	1	0	0	0	0x400247		derived	0	0
+ks_airstrike_mp	common_base_mp	1	4	4	0	1	0	1	0	0	0	0x400047		derived	0	0
+ks_airstrike_target_mp	common_base_mp	1	36	36	0	1	0	1	0	0	0	0x400447		derived	0	0
+ks_apache_mp	common_core_mp	1	17	17	0	1	0	1	0	0	0	0x400246		derived	0	0
+ks_auav_mp	common_base_mp	1	1	1	0	1	0	1	0	0	0	0x400047		derived	0	0
+ks_chopper_gunner_mp	common_core_mp	1	17	17	0	1	0	1	0	0	0	0x246		derived	0	0
+ks_chopper_support_mp	common_base_mp	1	8	8	0	1	0	1	0	0	0	0x246		derived	0	0
+ks_crate_marker_mp	common_base_mp	1	1	1	0	1	0	1	0	0	0	0x400047		derived	0	0
+ks_cruise_predator_mp	common_core_mp,mp_br_quarry,mp_donetsk	1	9	9	0	1	0	1	0	0	0	0x400246		derived	0	0
+ks_manual_turret_marker_mp	common_core_mp	1	1	1	0	1	0	1	0	0	0	0x400047		derived	0	0
+ks_manual_turret_mp	common_core_mp,common_br_mp	1	16	16	0	1	20	0	0	0	0	0x400046	weapon_vm_mg_mobile_turret_gun	derived	0	0
+ks_marker_mp	common_core_mp	1	1	1	0	1	0	1	0	0	0	0x400247		derived	0	0
+ks_minefield_mp	common_core_mp	1	2	2	0	1	0	0	0	0	0	0x400046		derived	0	0
+ks_nuke_mp	common_base_mp	1	4	4	0	1	0	1	0	0	0	0x400047		derived	0	0
+ks_pac_sentry_mp	common_core_mp	1	7	7	0	1	0	0	0	0	0	0x400446		derived	0	0
+ks_radar_drone_delivery_mp	common_base_mp	1	9	9	0	1	0	1	0	0	0	0x247		derived	0	0
+ks_radar_drone_overwatch_mp	common_base_mp	1	8	8	0	1	0	1	0	0	0	0x247		derived	0	0
+ks_radar_drone_recon_mp	common_base_mp	1	9	9	0	1	0	1	0	0	0	0x247		derived	0	0
+ks_scrambler_drone_mp	common_core_mp	1	7	7	0	1	0	1	0	0	0	0x400247		derived	0	0
+ks_sentry_turret_mp	common_core_mp	1	2	2	0	1	12	0	0	0	0	0x400046	weapon_vm_mg_sentry_turret_gun	derived	0	0
+ks_toma_strike_cluster_mp	common_base_mp	1	1	1	0	1	0	0	0	0	0	0x400446		derived	0	0
+ks_toma_strike_marker_mp	common_base_mp	1	1	1	0	1	0	1	0	0	0	0x400247		derived	0	0
+ks_toma_strike_missile_mp	common_base_mp	1	4	4	0	1	0	1	0	0	0	0x400047		derived	0	0
+ks_toma_strike_mp	common_core_mp	1	1	1	0	1	0	0	0	0	0	0x400046		derived	0	0
+ks_uav_mp	common_base_mp	1	1	1	0	1	0	1	0	0	0	0x400047		derived	0	0
+ks_vtol_jet_mp	common_core_mp	1	12	12	0	1	0	1	0	0	0	0x246		derived	0	0
+ks_white_phosphorus_mp	common_core_mp	1	8	8	0	1	0	1	0	0	0	0x400247		derived	0	0
+ks_white_phosphorus_mp_p	common_base_mp	1	7	7	0	1	0	1	0	0	0	0x2246		derived	0	0
+lag_portable_radio	mp_emporium,mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400080	lag_portable_radio	observed	1	0
+light_blinking_slow_br_infil	mp_br_quarry,mp_donetsk	0	1	1	0	3	0	1	0	0	0	0x402256	tag_origin	observed	1	0
+light_exterior_wall_cafe_light_fixtures_off	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400081	light_exterior_wall_cafe_light_fixtures_off	observed	1	0
+light_flicker_emergency_lm	mp_donetsk	0	4	4	0	1	0	1	0	0	0	0x402256	sign_emergency_exit_light_03	observed	1	0
+light_flicker_emergency_offset_lm	mp_donetsk	0	4	0	0	1	0	1	0	0	0	0x402210	sign_emergency_exit_light_03	observed	1	0
+light_flicker_fluorescent_lm	mp_donetsk	0	4	0	0	1	0	1	0	0	0	0x402210	me_light_ceiling_fluorescent_tube	observed	1	0
+light_flicker_fluorescent_offset_lm	mp_donetsk	0	4	0	0	1	0	1	0	0	0	0x402210	me_light_ceiling_fluorescent_tube	observed	1	0
+light_flicker_fluorescent_small_lm	mp_donetsk	0	4	0	0	1	0	1	0	0	0	0x402210	me_light_ceiling_fluorescent_tube_bulb_small	observed	1	0
+light_flicker_industrial_lm	mp_br_quarry,mp_donetsk	0	4	0	0	3	0	1	0	0	0	0x402210	uk_industrial_light_01	observed	1	0
+light_helicopter_lights_lm	mp_donetsk	0	1	1	0	2	0	1	0	0	0	0x402256	ee_light_mounted_exterior_industrial_caged_02	observed	1	0
+light_radiotower_lm	mp_donetsk	0	1	1	0	2	0	1	0	0	0	0x402256	ee_light_mounted_exterior_industrial_caged_02	observed	1	0
+light_strobing_cool_slow_01_lm	mp_donetsk	0	6	0	0	1	0	1	0	0	0	0x402210	uk_lighting_interior_office_ceiling_tile_01	observed	1	0
+light_strobing_cool_slow_02_lm	mp_donetsk	0	4	0	0	1	0	1	0	0	0	0x402210	uk_lighting_interior_office_ceiling_tile_01	observed	1	0
+light_strobing_cool_slow_03_lm	mp_donetsk	0	4	0	0	1	0	1	0	0	0	0x402210	uk_lighting_interior_office_ceiling_tile_01	observed	1	0
+light_tv_flicker_02	mp_donetsk	0	1	1	0	3	0	1	0	0	0	0x402256	tag_origin	observed	1	0
+lighting_fixtures_security_lamp_withcage_01	mp_bm_tut,mp_br_tut,mp_hideout,mp_m_king,mp_m_speedball,mp_rust	0	1	0	0	3	0	1	0	0	0	0x400080	lighting_fixtures_security_lamp_withcage_01	observed	1	0
+london_coffee_machine_cup	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400081	london_coffee_machine_cup	observed	1	0
+london_computer_monitor_broken_stage_1	mp_emporium,mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	london_computer_monitor_broken_stage_1	observed	1	0
+maphint_computer	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_keypad	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_keypad_bunker_11	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone_code	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone_morse_0	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone_morse_1	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone_morse_2	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone_morse_3	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone_morse_4	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone_morse_5	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone_morse_6	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone_morse_7	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone_morse_8	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+maphint_phone_morse_9	common_br_mp	0	1	1	1	3	0	0	0	0	0	0x402046	tag_origin	derived	0	0
+me_appliance_vending_machine_snack_a	mp_donetsk	0	1	0	0	1	0	1	0	0	0	0x400080	me_appliance_vending_machine_snack_a	observed	1	0
+me_construction_plank_bridge_a_04_pieces_a	mp_br_quarry,mp_donetsk	0	1	0	0	1	0	1	0	0	0	0x400080	me_construction_plank_bridge_a_04_pieces_a	observed	1	0
+me_construction_plank_bridge_a_04_pieces_b	mp_br_quarry,mp_donetsk	0	1	0	0	1	0	1	0	0	0	0x400080	me_construction_plank_bridge_a_04_pieces_b	observed	1	0
+me_decor_bee_hive_lid	mp_aniyah_tac	0	1	0	0	1	0	1	0	0	0	0x400281	me_decor_bee_hive_lid	observed	1	0
+me_decor_wood_container_02	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	me_decor_wood_container_02	observed	1	0
+me_electric_generator_01	mp_m_fork	0	1	0	0	2	0	1	0	0	0	0x400080	me_electric_generator_01	observed	1	0
+me_electrical_box_small_01	mp_hideout,mp_m_speedball	0	1	0	0	2	0	1	0	0	0	0x400080	me_electrical_box_small_01	observed	1	0
+me_food_bread_molded_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	me_food_bread_molded_01	observed	1	0
+me_food_bread_pile_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	me_food_bread_pile_01	observed	1	0
+me_food_bread_pile_02	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	me_food_bread_pile_02	observed	1	0
+me_food_bread_pile_03	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	me_food_bread_pile_03	observed	1	0
+me_food_bread_pile_04	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	me_food_bread_pile_04	observed	1	0
+me_hardware_harddrive_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	me_hardware_harddrive_01	observed	1	0
+me_hardware_plywood_bare_a_seg_03_scr	mp_m_speed	0	1	0	0	3	0	1	0	0	0	0x400080	me_hardware_playwood_bare_a_seg_03	observed	1	0
+me_hardware_plywood_bare_a_seg_05_scr	mp_m_speed	0	1	0	0	3	0	1	0	0	0	0x400080	me_hardware_playwood_bare_a_seg_05	observed	1	0
+me_kitchen_coffee_cup_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400081	me_kitchen_coffee_cup_01	observed	1	0
+me_kitchen_coffee_plate_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400081	me_kitchen_coffee_plate_01	observed	1	0
+me_kitchen_coffee_set_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400081	me_kitchen_coffee_set_01	observed	1	0
+me_kitchen_tea_cup_01_pot_single	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400081	me_kitchen_tea_cup_01_pot_single	observed	1	0
+me_light_ceiling_fluorescent_tube	mp_emporium,mp_t_gun_course	0	1	0	0	1	0	1	0	0	0	0x400090	me_light_ceiling_fluorescent_tube_bulbs	observed	1	0
+me_light_ceiling_fluorescent_tube_on_cool_flicker_village2	mp_village2	0	1	1	0	1	0	0	0	0	0	0x400256	me_light_ceiling_fluorescent_tube_cage	observed	1	0
+me_lighting_fixtures_marketplace_total_01_large	mp_m_fork	0	1	0	0	3	0	1	0	0	0	0x400281	me_lighting_fixtures_marketplace_total_01_large	observed	1	0
+me_machinery_oil_pumpjack_01_mp_anim	mp_rust	0	1	1	0	9	0	0	0	0	0	0x410263	me_machinery_oil_pumpjack_01_mp	observed	1	0
+me_pottery_vase_ornate_02	mp_hideout	0	1	1	0	1	0	0	0	0	0	0x404086	me_pottery_vase_ornate_02	observed	1	0
+me_rubble_concrete_plaster_chunk_01	mp_aniyah_tac	0	1	0	0	1	0	1	0	0	0	0x400281	me_rubble_concrete_plaster_chunk_01	observed	1	0
+me_rubble_concrete_plaster_chunk_08	mp_aniyah_tac	0	1	0	0	2	0	1	0	0	0	0x400281	me_rubble_concrete_plaster_chunk_08	observed	1	0
+me_sign_office_wf_calendar2	mp_emporium	0	1	0	0	4	0	1	0	0	0	0x400080	me_sign_office_wf_calendar2	observed	1	0
+me_snack_package_bread_cardboard_box_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	me_snack_package_bread_cardboard_box_01	observed	1	0
+me_tools_axe	mp_village2	0	1	0	0	2	0	1	0	0	0	0x400281	me_tools_axe	observed	1	0
+medical_bottle_01	mp_emporium,mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	medical_bottle_01	observed	1	0
+medical_bottle_02	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	medical_bottle_02	observed	1	0
+medical_bottle_03	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	medical_bottle_03	observed	1	0
+medical_bottle_05	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	medical_bottle_05	observed	1	0
+medical_bottle_06	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	medical_bottle_06	observed	1	0
+medical_centrifuge_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400081	medical_centrifuge_01	observed	1	0
+medical_clipboard_wall_a	mp_emporium	0	1	1	0	5	3	0	0	0	0	0x4000C7	medical_clipboard_wall_a	observed	1	0
+medical_oxygen_tank_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	medical_oxygen_tank_01	observed	1	0
+military_ammo_restock	common_br_mp,mp_frontend,mp_frontend1	0	1	1	1	1	0	0	0	0	0	0x400046		derived	0	0
+military_bullet_223_frontend	mp_frontend,mp_frontend1,mp_frontend3	0	2	2	0	1	0	0	0	0	0	0x410267	military_bullet_223_frontend	derived	0	0
+military_dogtags_iw8	common_base_mp	1	2	2	0	2	0	1	0	0	0	0x4002C7	military_dogtags_iw8	derived	0	0
+military_hq_crate_01_cp_spawnable	common_br_mp	0	1	1	0	1	0	0	0	0	0	0x410266		derived	0	0
+military_target_firingrange_metal_01	mp_bm_tut,mp_br_tut,mp_m_speed,mp_m_speedball	0	1	0	0	7	0	1	0	0	0	0x400081	military_target_firingrange_metal_01	observed	1	0
+military_target_firingrangebody_metal_01	mp_m_speed	0	1	0	0	3	0	1	0	0	0	0x400081	military_target_firingrangebody_metal_01	observed	1	0
+military_target_firingrangebody_metal_01_aim_01	mp_m_king,mp_m_speed,mp_m_speedball	0	1	0	0	1	0	1	0	0	0	0x400281	military_target_firingrangebody_metal_01_aim_01	observed	1	0
+military_target_firingrangebody_metal_01_aim_02	mp_m_king,mp_m_speed,mp_m_speedball	0	1	0	0	1	0	1	0	0	0	0x400281	military_target_firingrangebody_metal_01_aim_02	observed	1	0
+milk_crate_iw6	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	milk_crate_iw6	observed	1	0
+misc_computer_mouse_black_01	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400080	misc_computer_mouse_black_01	observed	1	0
+misc_keyboard_black_01	mp_emporium,mp_hideout,mp_m_fork,mp_m_speed	0	1	0	0	2	0	1	0	0	0	0x400281	misc_keyboard_black_01	observed	1	0
+misc_tools_wrench_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400281	misc_tools_wrench_01	observed	1	0
+misc_wall_mounted_loudspeaker_01	mp_rust	0	1	0	0	1	0	1	0	0	0	0x400080	misc_wall_mounted_loudspeaker_01	observed	1	0
+mpclientcharacterscriptabledef	global_core_mp	1	15	15	0	1	0	1	0	0	0	0x400A46		derived	0	0
+office_trash_can_01	mp_hideout,mp_m_speed,mp_t_gun_course	0	1	0	0	1	0	1	0	0	0	0x400281	office_trash_can_01	observed	1	0
+oil_drum_big_01	mp_backlot2	0	1	1	0	1	0	0	0	0	0	0x404086	oil_drum_big_01	observed	1	0
+p7_box_cardboard_a_open02	mp_br_quarry,mp_donetsk	0	1	0	0	1	0	1	0	0	0	0x400081	p7_box_cardboard_a_open02	observed	1	0
+p7_box_cardboard_c_closed	mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400281	p7_box_cardboard_c_closed	observed	1	0
+p7_box_cardboard_c_open01	mp_m_fork	0	1	0	0	3	0	1	0	0	0	0x400281	p7_box_cardboard_c_open01	observed	1	0
+p7_box_cardboard_d_open02	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	p7_box_cardboard_d_open02	observed	1	0
+p7_chemistry_kit_beaker_sm	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	p7_chemistry_kit_beaker_sm	observed	1	0
+p7_chemistry_kit_flask	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	p7_chemistry_kit_flask_dyn	observed	1	0
+p7_chemistry_kit_test_tube_rack	mp_hideout	0	1	0	0	1	1	1	0	0	0	0x400081	p7_chemistry_kit_test_tube_rack	observed	1	0
+p7_diner_table_napkin	mp_emporium,mp_village2	0	2	0	0	1	0	1	0	0	0	0x400281	p7_diner_table_napkin_clean	observed	1	0
+p7_diner_table_pepper	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400080	p7_diner_table_pepper	observed	1	0
+p7_diner_table_salt	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400080	p7_diner_table_salt	observed	1	0
+p7_picture_frame_square_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	p7_picture_frame_square_01	observed	1	0
+p7_picture_frame_square_03	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	p7_picture_frame_square_03	observed	1	0
+phone_01	mp_m_fork	0	1	0	0	2	0	1	0	0	0	0x400281	phone_01	observed	1	0
+phone_02	mp_m_fork	0	1	0	0	2	0	1	0	0	0	0x400281	phone_02	observed	1	0
+phone_03	mp_m_fork	0	1	0	0	2	0	1	0	0	0	0x400281	phone_03	observed	1	0
+phone_04	mp_m_fork	0	1	0	0	2	0	1	0	0	0	0x400281	phone_04	observed	1	0
+phone_05	mp_m_fork	0	1	0	0	2	0	1	0	0	0	0x400281	phone_05	observed	1	0
+phone_06	mp_m_fork	0	1	0	0	2	0	1	0	0	0	0x400281	phone_06	observed	1	0
+phone_07	mp_m_fork	0	1	0	0	2	0	1	0	0	0	0x400281	phone_07	observed	1	0
+player_death_fx	mp_backlot2,mp_br_quarry,mp_donetsk,mp_hideout,mp_m_speed,mp_m_speedball	0	1	1	0	1	0	0	0	0	0	0x400046		derived	0	0
+prop_uav_radio	mp_m_speed,mp_t_gun_course	0	1	0	0	1	0	1	0	0	0	0x400281	prop_uav_radio	observed	1	0
+school_locker_door_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	school_locker_door_01	observed	1	0
+school_textbooks_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	school_textbooks_01	observed	1	0
+scr_smoke_grenade	common_br_mp	0	1	1	0	1	0	1	0	0	0	0x400047		derived	0	0
+scriptable_auto_ascender	common_mp	1	1	1	1	3	0	1	0	0	0	0x402046	tag_origin	observed	1	0
+scriptable_auto_descender	mp_br_quarry,mp_donetsk	0	1	1	1	3	0	1	0	0	0	0x402046	tag_origin	observed	1	0
+scriptable_construction_doors_metal_b_02_mp	mp_br_quarry,mp_donetsk,mp_emporium	0	1	1	1	2	0	1	1	1	1	0x48E2C7	construction_doors_metal_b_02_mp_nophysics	observed	1	1
+scriptable_construction_doors_metal_b_02_mp_blue	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	construction_doors_metal_b_02_mp_blue_nophysics	observed	1	1
+scriptable_door_glass_metal_01_mp	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_glass_metal_01_mp_nophysics	observed	1	1
+scriptable_door_glass_metal_01_mp_reinforced_glass	mp_br_quarry,mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_glass_metal_01_mp_reinforced_glass_nophysics	observed	1	1
+scriptable_door_industrial_metal_mp_01	mp_br_quarry,mp_donetsk,mp_t_gun_course	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_industrial_metal_mp_01_nophysics	observed	1	1
+scriptable_door_metal_04_flat_painted_clean_mp	mp_br_quarry,mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_metal_04_flat_painted_clean_mp_nophysics	observed	1	1
+scriptable_door_metal_04_flat_painted_mp_tan	mp_backlot2,mp_donetsk,mp_hideout	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_metal_04_flat_painted_mp_tan_nophysics	observed	1	1
+scriptable_door_metal_panel_01_mp	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_metal_panel_01_mp_nophysics	observed	1	1
+scriptable_door_metal_panel_01_mp_hero	mp_br_quarry,mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_metal_panel_01_mp_hero_nophysics	observed	1	1
+scriptable_door_metal_panel_01_mp_lightblue	mp_hideout	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_metal_panel_01_mp_lightblue_nophysics	observed	1	1
+scriptable_door_metal_panel_01_mp_tan	mp_hideout	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_metal_panel_01_mp_tan_nophysics	observed	1	1
+scriptable_door_metal_panel_03_left_mp	mp_br_quarry,mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_metal_panel_03_left_mp_nophysics	observed	1	1
+scriptable_door_metal_panel_03_right_mp	mp_br_quarry,mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_metal_panel_03_right_mp_nophysics	observed	1	1
+scriptable_door_metal_panel_03_right_mp_tan	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_metal_panel_03_right_mp_tan_nophysics	observed	1	1
+scriptable_door_metal_panel_04_painted_rusty_mp	mp_br_quarry,mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_metal_panel_04_painted_rusty_mp_nophysics	observed	1	1
+scriptable_door_metal_panel_04_painted_rusty_mp_hero	mp_br_quarry,mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_metal_panel_04_painted_rusty_mp_hero_nophysics	observed	1	1
+scriptable_door_metal_single_b_02_grey	mp_br_quarry,mp_donetsk	0	1	1	1	1	0	1	1	1	1	0x48E2C7	door_metal_single_b_02_grey_nophysics	observed	1	1
+scriptable_door_prison_cell_metal_lm	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_prison_cell_metal_mp_nophysics	observed	1	1
+scriptable_door_tvstation	mp_donetsk,mp_emporium	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_tvstation_nophysics	observed	1	1
+scriptable_door_wood_ornate_01_blue_double_l	mp_aniyah_tac,mp_backlot2,mp_hideout	0	1	1	1	2	0	1	1	1	1	0x50E2C7	door_wood_ornate_01_blue_double_l_nophysics	observed	1	1
+scriptable_door_wood_ornate_01_blue_double_r	mp_aniyah_tac,mp_backlot2,mp_hideout	0	1	1	1	2	0	1	1	1	1	0x50E2C7	door_wood_ornate_01_blue_double_r_nophysics	observed	1	1
+scriptable_door_wood_ornate_01_green_double_l	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x50E2C7	door_wood_ornate_01_green_double_l_nophysics	observed	1	1
+scriptable_door_wood_ornate_01_green_double_r	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x50E2C7	door_wood_ornate_01_green_double_r_nophysics	observed	1	1
+scriptable_door_wood_ornate_01_orange_double_l	mp_backlot2,mp_br_quarry,mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x50E2C7	door_wood_ornate_01_orange_02_double_l_nophysics	observed	1	1
+scriptable_door_wood_ornate_01_orange_double_r	mp_backlot2,mp_br_quarry,mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x50E2C7	door_wood_ornate_01_orange_02_double_r_nophysics	observed	1	1
+scriptable_door_wood_ornate_01_white_double_l	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x50E2C7	door_wood_ornate_01_blue_double_l_white_nophysics	observed	1	1
+scriptable_door_wood_ornate_01_white_double_r	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x50E2C7	door_wood_ornate_01_blue_double_r_white_nophysics	observed	1	1
+scriptable_door_wooden_hollow_mp_01	mp_br_quarry,mp_donetsk,mp_emporium	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_wooden_hollow_mp_01_nophysics	observed	1	1
+scriptable_door_wooden_office_01_mp	mp_br_quarry,mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_wooden_office_01_mp_nophysics	observed	1	1
+scriptable_door_wooden_panel_03_painted_left_mp_tint_02	mp_village2	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_wooden_panel_03_painted_left_mp_tint_02_nophysics	observed	1	1
+scriptable_door_wooden_panel_03_painted_mp	mp_backlot2,mp_hideout,mp_village2	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_wooden_panel_03_painted_left_mp_nophysics	observed	1	1
+scriptable_door_wooden_panel_03_painted_mp_tint	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_wooden_panel_03_painted_left_mp_tint_nophysics	observed	1	1
+scriptable_door_wooden_panel_03_painted_mp_tint_02	mp_village2	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_wooden_panel_03_painted_left_mp_tint_02_nophysics	observed	1	1
+scriptable_door_wooden_panel_03_painted_mp_tint_r	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_wooden_panel_03_painted_right_mp_tint_nophysics	observed	1	1
+scriptable_door_wooden_panel_03_painted_mp_tint_r_02	mp_village2	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_wooden_panel_03_painted_right_mp_tint_02_nophysics	observed	1	1
+scriptable_door_wooden_panel_mp_01	mp_br_quarry,mp_donetsk,mp_m_speed,mp_village2	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_wooden_panel_mp_01_nophysics	observed	1	1
+scriptable_door_wooden_panel_mp_01_green	mp_m_speed	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_wooden_panel_mp_01_green_nophysics	observed	1	1
+scriptable_door_wooden_panel_mp_01_white	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	door_wooden_panel_mp_01_white_nophysics	observed	1	1
+scriptable_dyn_door_metal_single_b_01_grey	mp_backlot2,mp_br_quarry,mp_donetsk,mp_hideout	0	1	1	1	1	0	1	1	1	1	0x48E2C7	dyn_door_metal_single_b_01_grey_nophysics	observed	1	1
+scriptable_ee_door_wooden_entrance_01_mp	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	ee_door_wooden_entrance_01_mp_nophysics	observed	1	1
+scriptable_fence_gate_01_mp	mp_donetsk	0	1	1	1	1	0	1	1	1	1	0x48E2C7	fence_gate_01_mp_nophysics	observed	1	1
+scriptable_lm_door_glass_metal_frame_l_brkn_mp	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	lm_door_glass_metal_frame_l_brkn_mp_nophysics	observed	1	1
+scriptable_lm_door_glass_metal_frame_l_brkn_plank_mp	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	lm_door_glass_metal_frame_l_brkn_plank_mp_nophysics	observed	1	1
+scriptable_lm_door_glass_metal_frame_r_brkn_mp	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	lm_door_glass_metal_frame_r_brkn_mp_nophysics	observed	1	1
+scriptable_lm_door_glass_metal_frame_r_brkn_plank_mp	mp_donetsk	0	1	1	1	2	0	1	1	1	1	0x48E2C7	lm_door_glass_metal_frame_r_brkn_plank_mp_nophysics	observed	1	1
+security_monitor_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	security_monitor_01	observed	1	0
+security_monitor_02	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400080	security_monitor_02	observed	1	0
+sign_clock_04	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	ee_clock_wall_mounted_modern	observed	1	0
+speaker_public_iw6	mp_rust	0	1	0	0	1	0	1	0	0	0	0x400081	speaker_public_iw6	observed	1	0
+stationary_trainyard_signal_lights_01_spdball	mp_m_speedball	0	1	1	0	2	0	0	0	0	0	0x400046	stationary_trainyard_signal_lights_01_red_spdball	observed	1	0
+super_scramble_mp	common_core_mp	1	1	1	0	1	0	1	0	0	0	0x400247		derived	0	0
+tarps_mp_faridah_03	mp_m_fork	0	1	1	0	154	0	0	0	0	0	0x410266	tarp_mp_faridah_03	observed	1	0
+tool_bow_rake_01	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	tool_bow_rake_01	observed	1	0
+tool_pipe_wrench_01	mp_hideout,mp_rust	0	1	0	0	1	0	1	0	0	0	0x400281	tool_pipe_wrench_01	observed	1	0
+tool_rake_shovel_01	mp_donetsk,mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	tool_rake_shovel_01	observed	1	0
+tool_screwdriver_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	tool_screwdriver_01	observed	1	0
+toy_nursery_hanging_mobile_01	mp_emporium	0	1	0	0	11	0	1	0	0	0	0x400081	toy_nursery_hanging_mobile_01_dyn	observed	1	0
+toy_riding_horse_01	mp_emporium,mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400081	toy_riding_horse_01	observed	1	0
+toy_stuffed_animal_bear_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400281	toy_stuffed_animal_bear_01	observed	1	0
+tur_light_tank_mp	mp_br_quarry,mp_donetsk	0	6	6	0	1	0	1	0	0	0	0x400646		derived	0	0
+uk_accessory_workout_bag_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	uk_accessory_workout_bag_01	observed	1	0
+uk_appliance_microwave_02	mp_emporium,mp_village2	0	1	0	0	2	0	1	0	0	0	0x400081	uk_appliance_microwave_02	observed	1	0
+uk_battery_charger_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	uk_battery_charger_01	observed	1	0
+uk_bottle_oil_med_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	uk_bottle_oil_med_01	observed	1	0
+uk_bottle_oil_small_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	uk_bottle_oil_small_01	observed	1	0
+uk_car_body_paint_filler_01	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400081	uk_car_body_paint_filler_01_destr	observed	1	0
+uk_car_detailer_spray_bottle	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400081	uk_car_detailer_spray_bottle	observed	1	0
+uk_chair_folding_01_closed	mp_emporium,mp_m_fork	0	1	0	0	2	0	1	0	0	0	0x400081	uk_chair_folding_01_closed	observed	1	0
+uk_chair_folding_01_open	mp_emporium,mp_m_speed,mp_t_gun_course	0	1	0	0	3	0	1	0	0	0	0x400081	uk_chair_folding_01_open_destr	observed	1	0
+uk_clothing_sporting_goods_hat_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	uk_clothing_sporting_goods_hat_01	observed	1	0
+uk_debris_wheel_hubcap_03	mp_hideout,mp_m_speed	0	1	0	0	2	0	1	0	0	0	0x400281	uk_debris_wheel_hubcap_03	observed	1	0
+uk_desk_office_01_drawer_a	mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400081	uk_desk_office_01_drawer_a	observed	1	0
+uk_desk_office_01_drawer_b	mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400081	uk_desk_office_01_drawer_b	observed	1	0
+uk_desk_office_01_drawer_c	mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400081	uk_desk_office_01_drawer_c	observed	1	0
+uk_electrical_box_medium_01	mp_m_king,mp_m_speed,mp_t_gun_course,mp_village2	0	1	0	0	2	0	1	0	0	0	0x400281	uk_electrical_box_medium_01	observed	1	0
+uk_file_cabinet_garage_01_drawer_a_green	mp_hideout	0	1	0	0	1	1	1	0	0	0	0x400081	uk_file_cabinet_garage_01_drawer_a_green	observed	1	0
+uk_file_cabinet_garage_01_drawer_b_green	mp_hideout	0	1	0	0	1	1	1	0	0	0	0x400081	uk_file_cabinet_garage_01_drawer_b_green	observed	1	0
+uk_file_cabinet_garage_05_drawer_a_green	mp_hideout	0	1	0	0	1	1	1	0	0	0	0x400081	uk_file_cabinet_garage_05_drawer_a_green	observed	1	0
+uk_file_cabinet_garage_05_drawer_b_green	mp_hideout	0	1	0	0	1	1	1	0	0	0	0x400081	uk_file_cabinet_garage_05_drawer_b_green	observed	1	0
+uk_file_cabinet_garage_big_01_drawer_a	mp_hideout	0	1	0	0	1	1	1	0	0	0	0x400081	uk_file_cabinet_garage_big_01_drawer_a	observed	1	0
+uk_file_cabinet_garage_big_01_drawer_b	mp_hideout	0	1	0	0	1	1	1	0	0	0	0x400081	uk_file_cabinet_garage_big_01_drawer_b	observed	1	0
+uk_file_cabinet_garage_big_01_drawer_c	mp_hideout	0	1	0	0	1	1	1	0	0	0	0x400081	uk_file_cabinet_garage_big_01_drawer_c	observed	1	0
+uk_file_cabinet_garage_big_01_drawer_d	mp_hideout	0	1	0	0	1	1	1	0	0	0	0x400081	uk_file_cabinet_garage_big_01_drawer_d	observed	1	0
+uk_fire_extinguisher_small_01	mp_hideout,mp_rust,mp_village2	0	1	1	0	1	0	0	0	0	0	0x400687	uk_fire_extinguisher_small_01	observed	1	0
+uk_foliage_plant_potted_fern_01_hanging	mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400081	uk_foliage_plant_potted_fern_01_hanging	observed	1	0
+uk_furniture_lw_headphones_box_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	uk_furniture_lw_headphones_box_01	observed	1	0
+uk_gas_tank_thin_cylinder	mp_m_king,mp_rust,mp_t_reflex,mp_t_sn_reflex	0	1	1	0	1	0	0	0	0	0	0x401687	uk_gas_tank_thin_cylinder	observed	1	0
+uk_gas_tank_thin_cylinder_2	mp_donetsk,mp_hideout,mp_rust	0	1	1	0	1	0	0	0	0	0	0x401487	uk_gas_tank_thin_cylinder_2	observed	1	0
+uk_industrial_light_01	mp_hideout	0	1	0	0	3	0	1	0	0	0	0x400081	uk_industrial_light_01	observed	1	0
+uk_janitor_mop_bucket_01	mp_emporium	0	1	1	0	1	0	0	0	0	0	0x404087	uk_janitor_mop_bucket_01	observed	1	0
+uk_lighting_ceiling_fixture_02_on_flicker_mp_village2	mp_village2	0	1	1	0	1	0	0	0	0	0	0x400256	uk_lighting_ceiling_fixture_02_off	observed	1	0
+uk_misc_car_parts_crate_01	mp_hideout,mp_m_speedball	0	1	0	0	1	0	1	0	0	0	0x400081	uk_misc_car_parts_crate_01	observed	1	0
+uk_plastic_container_filled_01	mp_hideout,mp_m_fork,mp_m_king,mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400081	uk_plastic_container_filled_01	observed	1	0
+uk_portable_radio_01	mp_donetsk	0	1	0	0	2	0	1	0	0	0	0x400080	uk_portable_radio_01	observed	1	0
+uk_security_camera_redlight_01	mp_emporium,mp_hideout,mp_m_fork,mp_shipment	0	1	0	0	2	0	1	0	0	0	0x400081	uk_security_camera_redlight_01	observed	1	0
+uk_security_camera_redlight_head_01	mp_m_king,mp_m_speed,mp_t_gun_course	0	1	0	0	1	0	1	0	0	0	0x400081	uk_security_camera_redlight_head_01	observed	1	0
+uk_sign_label_electronics_store_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400081	uk_sign_label_electronics_store_01	observed	1	0
+uk_spray_bottle_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400281	uk_spray_bottle_01	observed	1	0
+uk_tool_box_small_01	mp_rust	0	1	0	0	2	1	1	0	0	0	0x400081	uk_tool_box_small_01	observed	1	0
+uk_tv_vcr_player_01	mp_emporium,mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400281	uk_tv_vcr_player_01	observed	1	0
+uk_tv_vcr_player_01_remote	mp_emporium,mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400281	uk_tv_vcr_player_01_remote	observed	1	0
+uk_yellow_component_bin_filled_01	mp_hideout,mp_m_fork,mp_m_king,mp_m_speed,mp_m_speedball,mp_t_reflex	0	1	0	0	2	0	1	0	0	0	0x400081	uk_yellow_component_bin_filled_01	observed	1	0
+un_appliance_water_cooler_dirty_01	mp_hideout	0	1	0	0	2	1	1	0	0	0	0x400081	un_appliance_water_gallon_dirty_01	observed	1	0
+un_appliance_water_gallon_01	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400081	un_appliance_water_gallon_01	observed	1	0
+un_military_duffle_bag_small_04	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400281	un_military_duffle_bag_small_04	observed	1	0
+un_office_binder_01	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400281	un_office_binder_01	observed	1	0
+un_office_binder_open_01	mp_emporium,mp_m_speed	0	1	0	0	2	0	1	0	0	0	0x400281	un_office_binder_open_01	observed	1	0
+un_office_binder_open_02	mp_emporium,mp_m_king,mp_m_speed,mp_t_reflex,mp_t_sn_reflex	0	1	0	0	2	0	1	0	0	0	0x400281	un_office_binder_open_02	observed	1	0
+un_office_binder_set_01	mp_emporium,mp_m_speed	0	1	0	0	2	0	1	0	0	0	0x400281	un_office_binder_set_01	observed	1	0
+un_office_computer_monitor_01	mp_hideout,mp_m_fork	0	1	0	0	3	1	1	0	0	0	0x400081	un_office_computer_monitor_01	observed	1	0
+un_office_computer_monitor_01_169	mp_emporium	0	1	0	0	4	0	1	0	0	0	0x400081	un_office_computer_monitor_01_169	observed	1	0
+un_office_computer_monitor_02	mp_m_speed	0	1	0	0	2	0	1	0	0	0	0x400081	un_office_computer_monitor_02	observed	1	0
+un_office_computer_monitor_03_ent	mp_emporium	0	2	2	0	8	0	0	0	0	0	0x4000D7	un_office_computer_monitor_03_ent	observed	1	0
+un_office_copier_machine_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400280	un_office_copier_machine_01	observed	1	0
+un_office_desk_phone_01	mp_emporium,mp_hideout,mp_m_fork	0	1	0	0	2	2	1	0	0	0	0x400081	un_office_desk_phone_01	observed	1	0
+un_office_hard_drive_01_beige	mp_m_fork	0	1	0	0	2	0	1	0	0	0	0x400081	un_office_hard_drive_01_beige	observed	1	0
+un_office_paper_shredder_01	mp_emporium	0	2	2	0	2	1	0	0	0	0	0x4000C6	un_office_paper_shredder_01	observed	1	0
+un_office_paper_shredder_01_trash_can	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400281	un_office_paper_shredder_01_trash_can	observed	1	0
+un_office_paper_stack_01	mp_donetsk,mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400080	un_office_paper_stack_01	observed	1	0
+un_office_passport_01	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400080	un_office_passport_01	observed	1	0
+un_office_passport_01_open	mp_hideout	0	1	0	0	2	0	1	0	0	0	0x400080	un_office_passport_01_open	observed	1	0
+un_office_pen_pencil_holder_01	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400281	un_office_pen_pencil_holder_01	observed	1	0
+un_office_pen_pencil_holder_01_empty	mp_hideout	0	1	0	0	1	0	1	0	0	0	0x400281	un_office_pen_pencil_holder_01_empty	observed	1	0
+un_office_queue_post_01	mp_emporium	0	1	0	0	2	0	1	0	0	0	0x400081	un_office_queue_post_01	observed	1	0
+un_office_server_rack_01_black	mp_hideout	0	1	1	0	1	0	0	0	0	0	0x4002C6	un_office_server_rack_01_black	observed	1	0
+un_office_server_rack_large_01_black	mp_hideout	0	1	1	0	1	0	0	0	0	0	0x4002C6	un_office_server_rack_large_01_black	observed	1	0
+un_office_stapler_01	mp_emporium,mp_m_speed	0	1	0	0	2	0	1	0	0	0	0x400281	un_office_stapler_01	observed	1	0
+un_office_storage_box_01	mp_emporium,mp_m_fork	0	1	0	0	1	0	1	0	0	0	0x400281	un_office_storage_box_01	observed	1	0
+un_office_storage_box_01_damaged	mp_donetsk,mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	un_office_storage_box_01_damaged	observed	1	0
+un_office_storage_box_open_01	mp_emporium	0	1	0	0	1	0	1	0	0	0	0x400281	un_office_storage_box_open_01	observed	1	0
+un_office_tape_01	mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400281	un_office_tape_01	observed	1	0
+veh8_civ_lnd_coscar_burn_static	mp_t_gun_course	0	5	5	0	4	0	0	0	0	0	0x102E6	veh8_civ_lnd_coscar_burn_static_rig	observed	1	0
+veh8_civ_lnd_decho_rebel_brown	mp_hideout	0	30	29	0	47	3	0	0	0	0	0x4156E6	veh8_civ_lnd_decho_rebel_brown	observed	1	0
+veh8_civ_lnd_decho_rebel_darkblue	mp_shipment	0	30	29	0	47	3	0	0	0	0	0x156E6	veh8_civ_lnd_decho_rebel_darkblue	observed	1	0
+veh8_civ_lnd_mindia_burn_static	mp_t_gun_course	0	6	6	0	5	0	0	0	0	0	0x4102E6	veh8_civ_lnd_mindia_burn_static_rig	observed	1	0
+veh8_civ_lnd_palfa_infil	mp_backlot2,mp_hideout	0	2	2	0	1	0	0	0	0	0	0x401046		derived	0	0
+veh8_civ_lnd_secho_mp_black	mp_backlot2	0	23	23	0	38	2	0	0	0	0	0x4146E6	veh8_civ_lnd_secho_mp_black	observed	1	0
+veh8_civ_lnd_secho_mp_grey	mp_backlot2	0	23	23	0	38	2	0	0	0	0	0x4146E6	veh8_civ_lnd_secho_mp_grey	observed	1	0
+veh8_civ_lnd_victor40_police_holdexplode	mp_shipment	0	34	32	0	39	5	0	0	0	0	0x4156E6	veh8_civ_lnd_victor40_police	observed	1	0
+veh8_civ_lnd_walfa_mp	mp_backlot2	0	24	24	0	39	1	0	0	0	0	0x4156E6	veh8_civ_lnd_walfa_mp	observed	1	0
+veh8_civ_lnd_walfa_mp_blue	mp_hideout	0	24	24	0	39	1	0	0	0	0	0x4156E6	veh8_civ_lnd_walfa_mp_blue	observed	1	0
+veh8_civ_lnd_walfa_mp_red	mp_hideout	0	24	24	0	39	1	0	0	0	0	0x156E6	veh8_civ_lnd_walfa_mp_red	observed	1	0
+veh8_civ_lnd_walfa_mp_yellow	mp_backlot2	0	24	24	0	39	1	0	0	0	0	0x4156E6	veh8_civ_lnd_walfa_mp_yellow	observed	1	0
+veh8_civ_lnd_zuniform	mp_hideout	0	25	24	0	58	5	0	0	0	0	0x4156E6	veh8_civ_lnd_zuniform	observed	1	0
+veh8_mil_air_acharlie130	common_br_mp	0	3	3	0	1	0	1	0	0	0	0x400246		derived	0	0
+veh8_mil_air_blima	mp_aniyah_tac,mp_hideout	0	6	6	0	1	0	0	0	0	0	0x410267		derived	0	0
+veh8_mil_air_lbravo	common_base_mp	1	4	4	0	1	0	1	0	0	0	0x400047		derived	0	0
+veh8_mil_air_lbravo_flyable	mp_backlot2,mp_br_quarry,mp_donetsk,mp_hideout,mp_m_speed,mp_m_speedball	0	10	10	1	1	0	1	0	0	0	0x400246		derived	0	0
+veh8_mil_air_mindia8	mp_br_quarry,mp_donetsk	0	17	17	0	1	0	1	0	0	0	0x400047		derived	0	0
+veh8_mil_air_mindia8_plunder	common_br_mp	0	6	6	0	1	0	0	0	0	0	0x46		derived	0	0
+veh8_mil_air_mindia8_turret	common_core_mp	1	1	1	0	1	0	1	0	0	0	0x400247		derived	0	0
+veh8_mil_lnd_pindia	mp_t_gun_course	0	14	14	0	58	5	0	0	0	0	0x4156E6	veh8_mil_lnd_pindia	observed	1	0
+veh8_mil_lnd_umike_scr	mp_hideout,mp_t_reflex	0	9	9	0	1	0	1	0	0	0	0x4002C6		derived	0	0
+veh_apc_rus_mp	mp_br_quarry,mp_donetsk	0	8	8	1	1	0	1	0	0	0	0x400247		derived	0	0
+veh_atv_mp	mp_backlot2,mp_br_quarry,mp_donetsk,mp_hideout,mp_m_speed,mp_m_speedball	0	8	8	1	1	0	1	0	0	0	0x400247		derived	0	0
+veh_cargo_truck_mp	mp_br_quarry,mp_donetsk	0	8	8	1	1	0	1	0	0	0	0x400247		derived	0	0
+veh_cop_car_mp	mp_br_quarry,mp_donetsk	0	11	11	4	1	0	1	0	0	0	0x400247		derived	0	0
+veh_hoopty_mp	mp_br_quarry,mp_donetsk	0	12	12	5	1	0	1	0	0	0	0x400247		derived	0	0
+veh_hoopty_truck_mp	mp_br_quarry,mp_donetsk	0	12	12	5	1	0	1	0	0	0	0x400247		derived	0	0
+veh_jeep_mp	mp_br_quarry,mp_donetsk	0	9	9	1	1	1	1	0	0	0	0x400247	veh8_civ_lnd_decho_hood_dst_blue	derived	0	0
+veh_large_transport_mp	mp_br_quarry,mp_donetsk	0	14	14	7	1	0	1	0	0	0	0x400247		derived	0	0
+veh_light_tank_mp	mp_br_quarry,mp_donetsk	0	7	7	1	1	0	1	0	0	0	0x400246		derived	0	0
+veh_med_transport_mp	mp_br_quarry,mp_donetsk	0	13	13	6	1	0	1	0	0	0	0x400047		derived	0	0
+veh_pickup_truck_mp	mp_br_quarry,mp_donetsk	0	10	10	3	1	0	1	0	0	0	0x400247		derived	0	0
+veh_tac_rover_mp	mp_br_quarry,mp_donetsk	0	8	8	1	1	0	1	0	0	0	0x400247		derived	0	0
+veh_technical_mp	mp_br_quarry,mp_donetsk	0	7	7	1	1	0	1	0	0	0	0x400247		derived	0	0
+veh_van_mp	mp_br_quarry,mp_donetsk	0	13	13	6	1	0	1	0	0	0	0x400247		derived	0	0
+vfx_frontend_mp_battle_preview	mp_frontend3	0	1	1	0	1	0	0	0	0	0	0x400046		observed	1	0
+vfx_frontend_mp_faction_buddy_cop	mp_frontend,mp_frontend1,mp_frontend3	0	1	1	0	1	0	0	0	0	0	0x400046		observed	1	0
+vfx_frontend_mp_faction_east	mp_frontend,mp_frontend1,mp_frontend3	0	1	1	0	1	0	0	0	0	0	0x400046		observed	1	0
+vfx_frontend_mp_faction_west	mp_frontend,mp_frontend1,mp_frontend3	0	1	1	0	1	0	0	0	0	0	0x400046		observed	1	0
+vfx_frontend_mp_gunsmith	mp_frontend	0	1	1	0	1	0	0	0	0	0	0x400046		observed	1	0
+vfx_frontend_mp_gunsmith_s1	mp_frontend1	0	1	1	0	1	0	0	0	0	0	0x400046		observed	1	0
+vfx_frontend_mp_gunview	mp_frontend,mp_frontend1,mp_frontend3	0	1	1	0	1	0	0	0	0	0	0x400046		observed	1	0
+vfx_frontend_mp_lobby	mp_frontend	0	1	1	0	1	0	0	0	0	0	0x400246		observed	1	0
+vfx_frontend_mp_lobby_s1	mp_frontend1	0	1	1	0	1	0	0	0	0	0	0x400046		observed	1	0
+vfx_frontend_mp_lobby_s3	mp_frontend3	0	1	1	0	1	0	0	0	0	0	0x400046		observed	1	0
+vfx_frontend_mp_store	mp_frontend,mp_frontend1,mp_frontend3	0	1	1	0	1	0	0	0	0	0	0x400046		observed	1	0
+wheel_tire_rim_01	mp_hideout,mp_m_speed	0	1	0	0	1	0	1	0	0	0	0x400281	wheel_tire_rim_01	observed	1	0
+zmb_broom_01_old	mp_village2	0	1	0	0	1	0	1	0	0	0	0x400081	zmb_broom_01_old	observed	1	0

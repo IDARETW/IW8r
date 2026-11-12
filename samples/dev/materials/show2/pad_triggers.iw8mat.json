@@ -1,0 +1,9 @@
+{
+ "name": "show2/pad_triggers",
+ "color": "pad_triggers_c.png",
+ "surface": "concrete",
+ "scale": [
+  192,
+  192
+ ]
+}

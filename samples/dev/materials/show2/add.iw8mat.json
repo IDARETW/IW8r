@@ -1,0 +1,16 @@
+{
+ "name": "show2/add",
+ "color": "add_c.png",
+ "blendMode": "add",
+ "unlit": true,
+ "twoSided": true,
+ "tint": [
+  1,
+  0.6,
+  0.2
+ ],
+ "scale": [
+  64,
+  64
+ ]
+}

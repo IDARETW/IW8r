@@ -1,0 +1,39 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_church_wood_roof_shingles_vertical_32"
+"origin" "19.299672 25.700052 119.25"
+"angles" "0 -179.997527 0.947098"
+"modelscale" "1.08"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/ee_trim_church_wood_roof_shingles_vertical_64"
+"origin" "-15.501381 31.999331 117.75"
+"angles" "0 -179.997527 0.947098"
+"modelscale" "1.08"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/furniture_painting_frame_04_light_large_02"
+"origin" "50.002408 -55.798623 43.5"
+"angles" "0 -180 0.002473"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/uk_stairs_int_wood_platform_2_01"
+"origin" "0 0 0"
+"angles" "0.002473 0 0"
+"modelscale" "1.2"
+}

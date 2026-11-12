@@ -1,0 +1,15 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/periph_rock_foliage_bush_02_mp_spear"
+"origin" "0 0 0"
+"angles" "0 0 0"
+"modelscale" "1"
+}

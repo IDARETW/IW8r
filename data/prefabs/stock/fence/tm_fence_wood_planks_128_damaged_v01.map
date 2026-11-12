@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/fence_wood_planks_01_post"
+"origin" "-0.142371 -2.082376 6.39209"
+"angles" "-2.046679 88.385563 0.209041"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/fence_wood_planks_128_damaged"
+"origin" "0 0 0"
+"angles" "2.045256 0 1.753717"
+"modelscale" "1"
+}

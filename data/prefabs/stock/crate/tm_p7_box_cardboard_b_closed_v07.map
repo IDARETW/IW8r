@@ -1,0 +1,47 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_a_closed"
+"origin" "-16.712375 18.737149 -9.920898"
+"angles" "0.001069 151.911919 0.00223"
+"modelscale" "0.52"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_a_open01"
+"origin" "-16.801547 20.982513 4.988037"
+"angles" "0.000946 158.150233 0.002285"
+"modelscale" "0.3"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_a_open01"
+"origin" "1.452137 9.32155 9.560059"
+"angles" "0.00222 75.449345 0.00109"
+"modelscale" "0.4"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_b_closed"
+"origin" "-32.281335 22.847548 -9.920898"
+"angles" "0.000862 162.350767 0.002318"
+"modelscale" "0.6"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/p7_box_cardboard_b_closed"
+"origin" "0 0 0"
+"angles" "89.995054 0 -66.84914"
+"modelscale" "1"
+}

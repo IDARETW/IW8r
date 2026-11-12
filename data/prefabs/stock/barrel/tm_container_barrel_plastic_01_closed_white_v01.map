@@ -1,0 +1,63 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/com_pallet_2"
+"origin" "-3.972928 -17.003498 -24.01416"
+"angles" "-0.076627 128.471656 0.002169"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/com_pallet_2"
+"origin" "-3.591966 -19.038999 -16.016113"
+"angles" "-0.00038 -141.53004 -0.075207"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/com_pallet_2"
+"origin" "-2.704039 -21.041875 -8.019043"
+"angles" "0.074208 -49.54723 0.001656"
+"modelscale" "1"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white"
+"origin" "-24.838597 -18.603125 0.001953"
+"angles" "0.073809 -56.601932 -0.007845"
+"modelscale" "1"
+}
+// entity 5
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white"
+"origin" "-4.947522 -41.082543 -0.037109"
+"angles" "0.06543 -22.304396 0.035397"
+"modelscale" "1"
+}
+// entity 6
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white"
+"origin" "0 0 0"
+"angles" "0.046766 0 0.0589"
+"modelscale" "1"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "tm/container_barrel_plastic_01_closed_white"
+"origin" "21.168601 -24.018246 -0.041992"
+"angles" "-0.074201 130.897909 -0.001944"
+"modelscale" "1"
+}

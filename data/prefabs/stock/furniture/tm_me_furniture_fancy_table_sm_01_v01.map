@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/furniture_cafe_chair_01"
+"origin" "20.450643 -41.534611 0"
+"angles" "-0.001578 -158.010558 0.001904"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/me_furniture_fancy_table_sm_01"
+"origin" "0 0 0"
+"angles" "0.00217 0 0.001186"
+"modelscale" "1"
+}

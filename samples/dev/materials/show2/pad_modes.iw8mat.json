@@ -1,0 +1,9 @@
+{
+ "name": "show2/pad_modes",
+ "color": "pad_modes_c.png",
+ "surface": "concrete",
+ "scale": [
+  192,
+  192
+ ]
+}

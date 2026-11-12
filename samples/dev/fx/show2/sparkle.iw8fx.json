@@ -1,0 +1,79 @@
+{
+  "name": "show2/sparkle",
+  "elements": [
+    {
+      "name": "sparks",
+      "image": "",
+      "additive": true,
+      "looping": true,
+      "interval_ms": 80,
+      "count": 2,
+      "life_ms": 900,
+      "life_var_ms": 300,
+      "radius": 4,
+      "velocity_min": [
+        -30,
+        -30,
+        80
+      ],
+      "velocity_max": [
+        30,
+        30,
+        160
+      ],
+      "gravity": 1,
+      "size_start": 4,
+      "size_end": 1,
+      "color_start": [
+        1,
+        0.8,
+        0.3,
+        1
+      ],
+      "color_end": [
+        1,
+        0.3,
+        0.05,
+        0
+      ],
+      "spin": 0
+    },
+    {
+      "name": "smoke",
+      "image": "",
+      "additive": false,
+      "looping": true,
+      "interval_ms": 300,
+      "count": 1,
+      "life_ms": 2000,
+      "life_var_ms": 400,
+      "radius": 6,
+      "velocity_min": [
+        -5,
+        -5,
+        30
+      ],
+      "velocity_max": [
+        5,
+        5,
+        50
+      ],
+      "gravity": -0.02,
+      "size_start": 10,
+      "size_end": 36,
+      "color_start": [
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      "color_end": [
+        0.4,
+        0.4,
+        0.4,
+        0
+      ],
+      "spin": 0.3
+    }
+  ]
+}

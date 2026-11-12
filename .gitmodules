@@ -1,0 +1,6 @@
+[submodule "third_party/qtads"]
+	path = third_party/qtads
+	url = https://github.com/githubuser0xFFFF/Qt-Advanced-Docking-System
+[submodule "third_party/bcdec"]
+	path = third_party/bcdec
+	url = https://github.com/iOrange/bcdec

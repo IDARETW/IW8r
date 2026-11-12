@@ -1,0 +1,9 @@
+{
+ "name": "show2/pad_scripted",
+ "color": "pad_scripted_c.png",
+ "surface": "concrete",
+ "scale": [
+  192,
+  192
+ ]
+}

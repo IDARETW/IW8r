@@ -1,0 +1,23 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/door_old_rusted_metal_01"
+"origin" "0 0 0"
+"angles" "-0.001236 0 0.002142"
+"modelscale" "0.86"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/uk_metal_frame_warehouse_02"
+"origin" "-41.464232 69.013934 -12"
+"angles" "0.002389 90.001836 -0.00064"
+"modelscale" "1"
+}

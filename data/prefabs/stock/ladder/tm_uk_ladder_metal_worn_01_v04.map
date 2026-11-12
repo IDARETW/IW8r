@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/uk_ladder_metal_worn_01"
+"origin" "0 0 0"
+"angles" "-9.290383 0 94.270676"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_80x56_01"
+"origin" "-18.958236 13.959931 -12.5"
+"angles" "0.001202 -84.731134 0.002161"
+"modelscale" "1"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/window_industrial_frame_80x56_inset_01"
+"origin" "-18.958236 13.959931 -9.5"
+"angles" "0.001202 -84.731134 0.002161"
+"modelscale" "1"
+}

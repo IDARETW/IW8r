@@ -1,0 +1,66 @@
+// IW8 Radiant Suite - map atmosphere (doc 31): exponential fog and film grade, stored as editor-owned worldspawn keys
+// and written by the compiler as the extraction files x64-zt reads:
+//   iw8r_fog  "start halfway r g b"           -> extracted/maps/mp/<id>.gsc   main() { setExpFog(start, halfway, r, g, b); }
+//   iw8r_film "contrast brightness desaturation invert lr lg lb dr dg db"
+//                                             -> extracted/vision/<id>.vision  r_film* keys only (other tokens are ignored)
+// Exposure stays `iw8r_exposure_adjust` (metadata exposureAdjust, -8..8 EV), handled by the compile panel.
+// The native world.json fog object is not used: it and setExpFog together make the converter throw (doc 31 section 6).
+#pragma once
+
+#include <optional>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "geometry.h"
+#include "map_text.h"
+
+namespace iw8r {
+
+struct ExpFog {
+    double start = 0;       // >= 0, converter clamps to 0..20000
+    double halfway = 1800;  // > 0, converter clamps to 1..70000
+    Vec3 color{0.55, 0.60, 0.70};  // 0..1
+};
+
+struct FilmGrade {
+    double contrast = 1, brightness = 0, desaturation = 0;
+    bool invert = false;
+    Vec3 lightTint{1, 1, 1}, darkTint{1, 1, 1};
+    // The converter drops an identity film (V:326-327).
+    bool isIdentity() const;
+};
+
+struct Atmosphere {
+    std::optional<ExpFog> fog;
+    std::optional<FilmGrade> film;
+    std::string lut;  // iw8r_lut: .cube path ("" = none); a film grade wins over it in the converter
+    std::string vision;  // iw8r_vision: "name=value; name=x y z" Replay vision overrides ("" = none)
+};
+
+inline constexpr const char* kFogKey = "iw8r_fog";
+inline constexpr const char* kFilmKey = "iw8r_film";
+// Colour grading LUT (doc 31 section 3.4): path of an Adobe/Resolve .cube 3D LUT, absolute or relative to the map.
+inline constexpr const char* kLutKey = "iw8r_lut";
+// Vision field overrides (5.6): "name=value;name=value", name a Replay vision dev name (tonemapExposure, ...) or token,
+// value a number or "x y z". Written as extracted/vision/<id>.overrides.json (x64-zt fork applies it last).
+inline constexpr const char* kVisionKey = "iw8r_vision";
+// Parses kVisionKey text into the overrides JSON object text ("" when empty or malformed; `err` says why).
+std::string visionOverridesJson(const std::string& text, std::string* err = nullptr);
+
+// Parses a .cube 3D LUT (LUT_3D_SIZE N, N^3 rows of "r g b", red fastest, DOMAIN_MIN/MAX honoured) into the
+// converter's grading CLUT: N^3 RGBA8 texels, red fastest, alpha 255. N must be 2..256.
+bool parseCubeLut(const std::string& text, int& size, std::vector<uint8_t>& rgba, std::string* err = nullptr);
+
+// Parses the worldspawn keys; malformed values are treated as absent and reported through `warn` when given.
+Atmosphere readAtmosphere(const Entity& worldspawn, std::string* warn = nullptr);
+std::string formatFog(const ExpFog& f);
+std::string formatFilm(const FilmGrade& f);
+std::optional<ExpFog> parseFog(const std::string& v);
+std::optional<FilmGrade> parseFilm(const std::string& v);
+
+// Extraction file bodies. Values are clamped to the converter's accepted ranges.
+std::string fogGsc(const ExpFog& f);
+std::string filmVision(const FilmGrade& f);
+
+}  // namespace iw8r

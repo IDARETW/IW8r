@@ -1,0 +1,31 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_debris_pile_06"
+"origin" "41.176731 9.648152 -60.894043"
+"angles" "0.002231 104.524305 0.001067"
+"modelscale" "1"
+}
+// entity 2
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_edge_04"
+"origin" "0 0 0"
+"angles" "0.828964 0 -89.97062"
+"modelscale" "0.5"
+}
+// entity 3
+{
+"classname" "misc_model"
+"model" "tm/glass_broken_frame_edge_05"
+"origin" "-1.063489 -51.405413 -12.400146"
+"angles" "0.190208 -0.191991 -0.00186"
+"modelscale" "0.35"
+}

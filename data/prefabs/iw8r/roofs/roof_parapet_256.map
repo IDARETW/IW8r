@@ -1,0 +1,52 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+// brush 0
+{
+ ( 128 128 128 ) ( -128 128 128 ) ( -128 -128 128 ) tmco/metal_bare_roof_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -128 144 ) ( -128 128 144 ) ( 128 128 144 ) tmco/metal_bare_roof_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -128 144 ) ( 128 -128 144 ) ( 128 -128 128 ) tmco/metal_bare_roof_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 128 144 ) ( -128 128 144 ) ( -128 128 128 ) tmco/metal_bare_roof_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 -128 144 ) ( 128 128 144 ) ( 128 128 128 ) tmco/metal_bare_roof_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 128 144 ) ( -128 -128 144 ) ( -128 -128 128 ) tmco/metal_bare_roof_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 1
+{
+ ( 128 -120 144 ) ( -128 -120 144 ) ( -128 -128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -128 176 ) ( -128 -120 176 ) ( 128 -120 176 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -128 176 ) ( 128 -128 176 ) ( 128 -128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 -120 176 ) ( -128 -120 176 ) ( -128 -120 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 -128 176 ) ( 128 -120 176 ) ( 128 -120 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -120 176 ) ( -128 -128 176 ) ( -128 -128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 2
+{
+ ( 128 128 144 ) ( -128 128 144 ) ( -128 120 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 120 176 ) ( -128 128 176 ) ( 128 128 176 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 120 176 ) ( 128 120 176 ) ( 128 120 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 128 176 ) ( -128 128 176 ) ( -128 128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 120 176 ) ( 128 128 176 ) ( 128 128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 128 176 ) ( -128 120 176 ) ( -128 120 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 3
+{
+ ( -120 128 144 ) ( -128 128 144 ) ( -128 -128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -128 176 ) ( -128 128 176 ) ( -120 128 176 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -128 176 ) ( -120 -128 176 ) ( -120 -128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -120 128 176 ) ( -128 128 176 ) ( -128 128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -120 -128 176 ) ( -120 128 176 ) ( -120 128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 128 176 ) ( -128 -128 176 ) ( -128 -128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 4
+{
+ ( 128 128 144 ) ( 120 128 144 ) ( 120 -128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 120 -128 176 ) ( 120 128 176 ) ( 128 128 176 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 120 -128 176 ) ( 128 -128 176 ) ( 128 -128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 128 176 ) ( 120 128 176 ) ( 120 128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 -128 176 ) ( 128 128 176 ) ( 128 128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 120 128 176 ) ( 120 -128 176 ) ( 120 -128 144 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+}

@@ -1,0 +1,15 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+}
+// entity 1
+{
+"classname" "misc_model"
+"model" "tm/ee_sign_public_bathroom_small_m_03"
+"origin" "0 0 0"
+"angles" "0 0 0"
+"modelscale" "1"
+}

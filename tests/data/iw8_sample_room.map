@@ -1,0 +1,151 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+"editor_note" "unknown keys must survive"
+// brush 0
+{
+layer "000_Global/Floors"
+ ( 256 256 -16 ) ( -256 256 -16 ) ( -256 -256 -16 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 0 ) ( -256 256 0 ) ( 256 256 0 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 0 ) ( 256 -256 0 ) ( 256 -256 -16 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 256 0 ) ( -256 256 0 ) ( -256 256 -16 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -256 0 ) ( 256 256 0 ) ( 256 256 -16 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 256 0 ) ( -256 -256 0 ) ( -256 -256 -16 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 1
+{
+ contents detail;
+ ( 256 -256 0 ) ( -256 -256 0 ) ( -256 -272 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -272 128 ) ( -256 -256 128 ) ( 256 -256 128 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -272 128 ) ( 256 -272 128 ) ( 256 -272 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -256 128 ) ( -256 -256 128 ) ( -256 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -272 128 ) ( 256 -256 128 ) ( 256 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 128 ) ( -256 -272 128 ) ( -256 -272 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 2
+{
+ ( 256 272 0 ) ( -256 272 0 ) ( -256 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 256 128 ) ( -256 272 128 ) ( 256 272 128 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 256 128 ) ( 256 256 128 ) ( 256 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 272 128 ) ( -256 272 128 ) ( -256 272 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 256 128 ) ( 256 272 128 ) ( 256 272 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 272 128 ) ( -256 256 128 ) ( -256 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 3
+{
+ ( -256 256 0 ) ( -272 256 0 ) ( -272 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -272 -256 128 ) ( -272 256 128 ) ( -256 256 128 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -272 -256 128 ) ( -256 -256 128 ) ( -256 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 256 128 ) ( -272 256 128 ) ( -272 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 128 ) ( -256 256 128 ) ( -256 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -272 256 128 ) ( -272 -256 128 ) ( -272 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 4
+{
+ ( 272 256 0 ) ( 256 256 0 ) ( 256 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -256 128 ) ( 256 256 128 ) ( 272 256 128 ) tm2co/ee_trim_beam_airport_concrete 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -256 128 ) ( 272 -256 128 ) ( 272 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 272 256 128 ) ( 256 256 128 ) ( 256 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 272 -256 128 ) ( 272 256 128 ) ( 272 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 256 128 ) ( 256 -256 128 ) ( 256 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 5
+{
+ ( 32 32 0 ) ( -32 32 0 ) ( -32 -32 0 ) tm2co/ee_trim_beam_airport_concrete 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 -32 96 ) ( -32 32 96 ) ( 32 32 96 ) tm2co/ee_trim_beam_airport_concrete 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 -32 96 ) ( 32 -32 96 ) ( 32 -32 0 ) tm2co/ee_trim_beam_airport_concrete 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 32 32 96 ) ( -32 32 96 ) ( -32 32 0 ) tm2co/ee_trim_beam_airport_concrete 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 32 -32 96 ) ( 32 32 96 ) ( 32 32 0 ) tm2co/ee_trim_beam_airport_concrete 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 32 96 ) ( -32 -32 96 ) ( -32 -32 0 ) tm2co/ee_trim_beam_airport_concrete 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 6
+{
+ mesh
+ {
+  toolFlags splitGeo;
+  tm2co/ee_trim_beam_airport_concrete
+  lightmap_gray
+  2 2 16 8
+  (
+	v 64 128 0 t 0 0 0 0
+	v 64 128 64 t 0 -64 0 4
+  )
+  (
+	v 128 128 0 c 255 255 255 255 t 64 0 4 0
+	v 128 128 64 t 64 -64 4 4
+  )
+ }
+}
+}
+// entity 1
+{
+"origin" "0 -192 16"
+"angles" "0 90 0"
+"classname" "info_player_start"
+}
+// entity 2
+{
+"origin" "0 0 256"
+"angles" "45 0 0"
+"classname" "mp_global_intermission"
+}
+// entity 3
+{
+"origin" "-192 -192 16"
+"angles" "0 45 0"
+"classname" "mp_tdm_spawn_allies_start"
+}
+// entity 4
+{
+"origin" "192 192 16"
+"angles" "0 225 0"
+"classname" "mp_tdm_spawn_axis_start"
+}
+// entity 5
+{
+"origin" "-192 192 16"
+"angles" "0 315 0"
+"classname" "mp_tdm_spawn"
+}
+// entity 6
+{
+"origin" "192 -192 16"
+"angles" "0 135 0"
+"classname" "mp_dm_spawn_start"
+}
+// entity 7
+{
+"origin" "160 -96 0"
+"angles" "0 180 0"
+"model" "automotive_truck_loading_ramp_short"
+"classname" "script_model"
+"targetname" "ramp"
+}
+// entity 8
+{
+"origin" "0 0 64"
+"classname" "reflection_probe"
+}
+// entity 9
+{
+"origin" "-128 0 32"
+"targetname" "room_center"
+"classname" "script_origin"
+}
+// entity 10
+{
+"classname" "trigger_multiple"
+"targetname" "room_trigger"
+// brush 0
+{
+ ( -32 128 0 ) ( -96 128 0 ) ( -96 64 0 ) tm2co/destruction_debris_plaster_concrete_edge_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -96 64 64 ) ( -96 128 64 ) ( -32 128 64 ) tm2co/destruction_debris_plaster_concrete_edge_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -96 64 64 ) ( -32 64 64 ) ( -32 64 0 ) tm2co/destruction_debris_plaster_concrete_edge_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 128 64 ) ( -96 128 64 ) ( -96 128 0 ) tm2co/destruction_debris_plaster_concrete_edge_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 64 64 ) ( -32 128 64 ) ( -32 128 0 ) tm2co/destruction_debris_plaster_concrete_edge_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -96 128 64 ) ( -96 64 64 ) ( -96 64 0 ) tm2co/destruction_debris_plaster_concrete_edge_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+}

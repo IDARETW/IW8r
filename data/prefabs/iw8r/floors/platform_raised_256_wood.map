@@ -1,0 +1,52 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+// brush 0
+{
+ ( 128 128 112 ) ( -128 128 112 ) ( -128 -128 112 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -128 128 ) ( -128 128 128 ) ( 128 128 128 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 -128 128 ) ( 128 -128 128 ) ( 128 -128 112 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 128 128 ) ( -128 128 128 ) ( -128 128 112 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 128 -128 128 ) ( 128 128 128 ) ( 128 128 112 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -128 128 128 ) ( -128 -128 128 ) ( -128 -128 112 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 1
+{
+ ( -104 -104 0 ) ( -120 -104 0 ) ( -120 -120 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -120 -120 112 ) ( -120 -104 112 ) ( -104 -104 112 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -120 -120 112 ) ( -104 -120 112 ) ( -104 -120 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -104 -104 112 ) ( -120 -104 112 ) ( -120 -104 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -104 -120 112 ) ( -104 -104 112 ) ( -104 -104 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -120 -104 112 ) ( -120 -120 112 ) ( -120 -120 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 2
+{
+ ( -104 120 0 ) ( -120 120 0 ) ( -120 104 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -120 104 112 ) ( -120 120 112 ) ( -104 120 112 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -120 104 112 ) ( -104 104 112 ) ( -104 104 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -104 120 112 ) ( -120 120 112 ) ( -120 120 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -104 104 112 ) ( -104 120 112 ) ( -104 120 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -120 120 112 ) ( -120 104 112 ) ( -120 104 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 3
+{
+ ( 120 -104 0 ) ( 104 -104 0 ) ( 104 -120 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 104 -120 112 ) ( 104 -104 112 ) ( 120 -104 112 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 104 -120 112 ) ( 120 -120 112 ) ( 120 -120 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 120 -104 112 ) ( 104 -104 112 ) ( 104 -104 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 120 -120 112 ) ( 120 -104 112 ) ( 120 -104 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 104 -104 112 ) ( 104 -120 112 ) ( 104 -120 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 4
+{
+ ( 120 120 0 ) ( 104 120 0 ) ( 104 104 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 104 104 112 ) ( 104 120 112 ) ( 120 120 112 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 104 104 112 ) ( 120 104 112 ) ( 120 104 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 120 120 112 ) ( 104 120 112 ) ( 104 120 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 120 104 112 ) ( 120 120 112 ) ( 120 120 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 104 120 112 ) ( 104 104 112 ) ( 104 104 0 ) twc/wood_varnished_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+}
