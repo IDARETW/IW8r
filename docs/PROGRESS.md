@@ -22,7 +22,9 @@
   deflate, plain .map to bundle, wall placement, rotate by yaw step), stock sun colour / intensity (converter
   5ecee331, File > Relight Stock Map Sun), worldspawn keys documented (entity defs + KEYS_REFERENCE). Live converter
   is 5ecee331. Package and installer rebuilt (out/package/IW8RadiantSuite-20261112.zip, out/installer).
-- Tests at the last commit: core 139,781 checks / 0, GUI 944 / 0.
+- Then: traversals for bots (Primitives > Traversal For Bots, core traversal.*, nine stock animations). All eleven
+  offline proofs pass against the live converter (tools/run_offline_proofs.py <work>; ~5 min). Installer rebuilt.
+- Tests at the last commit: core 139,788 checks / 0, GUI 945 / 0.
 - Open (in scope): removing a placed object on a stock map (indices in dynamic entities and the spatial tree);
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.
 - Disk: E: had 3.5 GB free; this session's scratch output under out/ was deleted (owner copies kept).
