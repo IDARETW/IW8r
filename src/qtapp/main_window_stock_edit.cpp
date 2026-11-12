@@ -283,12 +283,23 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
             for (const std::string& n : skyNotes) *notes << qs(n);
     }
 
-    // 11.6: the stock sun's colour and intensity (worldspawn iw8r_sun_color / iw8r_sun_intensity).
+    // 11.6: the stock sun's colour, intensity and direction (worldspawn iw8r_sun_color / iw8r_sun_intensity /
+    // iw8r_sun_direction). A new direction is baked into the zone's sun shadow again; the converter runs ACTS for the
+    // static models' streamed geometry.
     std::vector<std::string> sunNotes;
-    const std::string sun = stockSunJson(ctx_.doc.map(), &sunNotes);
+    const QString sunActs = toolPath("acts");
+    const std::string sun = stockSunJson(ctx_.doc.map(), &sunNotes, QDir::toNativeSeparators(sunActs).toStdString());
     if (notes) {
         for (const std::string& n : sunNotes) *notes << qs(n);
-        if (!sun.empty()) *notes << "the stock sun gets a new colour or intensity (its direction stays: the baked sun shadows hold it)";
+        if (sun.find("\"color\"") != std::string::npos || sun.find("\"intensity\"") != std::string::npos)
+            *notes << "the stock sun gets a new colour or intensity";
+        if (sun.find("\"direction\"") != std::string::npos) {
+            *notes << "the stock sun gets a new direction: the rebuild bakes the map's sun shadow again (the static models "
+                      "through ACTS) and turns the vision's sun fog with it; the baked lightmaps and light grid keep the old "
+                      "sun's bounce light";
+            if (sunActs.isEmpty() || !QFileInfo::exists(sunActs))
+                *notes << "ACTS is not set, so the converter looks for IW8_ACTS; without it the rebuild stops at the sun shadow";
+        }
     }
 
     // 13.5: placed objects (buy stations) that were moved or added as `scriptable` entities.

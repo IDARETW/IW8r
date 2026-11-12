@@ -56,6 +56,10 @@
   Checked: an editzone output of Quarry loads one asset fewer than the stock zone in ACTS (73054 vs 73055) because
   ACTS loads the stock .ff plus its .fp, whose patched scriptable is counted twice (base + override); the rebuilt zone
   holds the patched copy once. The exported scriptable lists are identical (62 / 62): not a loss.
+- Then stock sun direction (x64-zt f9c14d9f, live; old exe out/zt_backup/zonetool_8ed35d9a.exe; the live checkout's
+  gitignored build/convert-iw3-iw8.vcxproj got stock_sun.cpp by hand, as the worktree's): editzone sun.direction,
+  src/convert/iw3_iw8/stock_sun.*, replay_sunshadow Bake tolerance; editor iw8r_sun_direction, Relight dialog field;
+  tools/stock_sun_direction_test.py in run_offline_proofs.py. Compile panel Bake lightmaps checkbox.
 - Tests at the last commit: core 139,820 checks / 0, GUI 948 / 0.
 - Open (in scope): copying or removing a placed object that has a dynamic entity;
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.

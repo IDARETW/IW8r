@@ -96,9 +96,16 @@ size_t stockRetextureEdits(const MapFile& map, const std::function<std::string(c
                            std::vector<StockEditCarry>& carry, std::vector<std::string>& replaceEntries,
                            std::vector<std::string>* notes = nullptr);
 
-// 11.6: the stock sun the document asks for (worldspawn iw8r_sun_color "r g b", linear 0..16, and iw8r_sun_intensity
-// 0..1000000) as the edits file's "sun" object; "" when neither key is set. A bad value is left out with a note. The
-// direction is never changed (the stock zone's baked sun shadows hold it).
-std::string stockSunJson(const MapFile& map, std::vector<std::string>* notes = nullptr);
+// 11.6: the stock sun the document asks for (worldspawn iw8r_sun_color "r g b", linear 0..16, iw8r_sun_intensity
+// 0..1000000 and iw8r_sun_direction "pitch yaw" in degrees, the sundirection convention: toward the sun
+// (cos p cos y, cos p sin y, -sin p), a negative pitch above the horizon, -90 to -1) as the edits file's "sun" object;
+// "" when no key is set. A bad value is left out with a note. A new direction makes the converter bake the stock
+// zone's sun shadow again, which needs ACTS for the static models' streamed geometry: `acts` (acts.exe) is written
+// as "acts" beside the direction when it is not empty.
+std::string stockSunJson(const MapFile& map, std::vector<std::string>* notes = nullptr, const std::string& acts = {});
+
+// iw8r_sun_direction / sundirection text "pitch yaw [roll]" -> pitch and yaw (the roll is ignored); false when it is
+// not two or three numbers or the pitch is not -90 to -1 (the sun above the horizon).
+bool parseStockSunDirection(const std::string& text, double& pitch, double& yaw);
 
 }  // namespace iw8r

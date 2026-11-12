@@ -1,5 +1,6 @@
 #include "stock_zone_edit.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -204,7 +205,18 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
     return json + "}";
 }
 
-std::string stockSunJson(const MapFile& map, std::vector<std::string>* notes) {
+bool parseStockSunDirection(const std::string& text, double& pitch, double& yaw) {
+    double v[3] = {0, 0, 0};
+    char tail = 0;
+    const int n = std::sscanf(text.c_str(), "%lf %lf %lf %c", &v[0], &v[1], &v[2], &tail);
+    if ((n != 2 && n != 3) || !std::isfinite(v[0]) || !std::isfinite(v[1]) || !std::isfinite(v[2]) || v[0] < -90 || v[0] > -1)
+        return false;
+    pitch = v[0];
+    yaw = v[1];
+    return true;
+}
+
+std::string stockSunJson(const MapFile& map, std::vector<std::string>* notes, const std::string& acts) {
     const Entity* world = nullptr;
     for (const Entity& e : map.entities)
         if (e.isWorldspawn()) {
@@ -234,6 +246,15 @@ std::string stockSunJson(const MapFile& map, std::vector<std::string>* notes) {
             json += std::string(json.empty() ? "" : ",") + "\"intensity\":" + num(v);
         else if (notes)
             notes->push_back("iw8r_sun_intensity '" + *i + "' is not a number 0 to 1000000; the sun intensity is not changed");
+    }
+    if (const std::string* d = world->value("iw8r_sun_direction"); d && !d->empty()) {
+        double pitch = 0, yaw = 0;
+        if (parseStockSunDirection(*d, pitch, yaw)) {
+            json += std::string(json.empty() ? "" : ",") + "\"direction\":[" + num(pitch) + "," + num(yaw) + "]";
+            if (!acts.empty()) json += ",\"acts\":" + jsonText(acts);
+        } else if (notes)
+            notes->push_back("iw8r_sun_direction '" + *d +
+                             "' is not \"pitch yaw\" with a pitch of -90 to -1 (above the horizon); the sun direction is not changed");
     }
     return json.empty() ? std::string() : "{" + json + "}";
 }

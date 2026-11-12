@@ -7,6 +7,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 Warzone and stock maps (later the same day):
 
+- **Turn a stock map's sun.** File > Relight Stock Map Sun takes a direction (pitch yaw). Rebuild Stock Zone turns
+  the sun, re-bakes its shadows from the stock world and props, and turns the sun-tinted fog with it. The baked
+  bounce light of the lightmaps keeps the old sun. Proven offline on Shipment (tools/stock_sun_direction_test.py).
+  Not seen in game.
+- **Bake lightmaps checkbox** in the Compile panel (worldspawn `iw8r_bake_lightmaps`).
+
 - **Copy and delete placed objects with physics.** File > Edit Placed Objects now lets you copy and delete doors,
   signs, fences, props and extraction sites too, not only buy stations; Rebuild Stock Zone writes them with their
   dynamic entities (renumbered, spatial chains and counts rebuilt). Copies keep the group names scripts look for.

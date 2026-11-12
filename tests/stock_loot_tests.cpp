@@ -259,6 +259,39 @@ TEST(stock_sun_edit_json) {
     CHECK(stockEditJson("", {}, {}, nullptr, nullptr, nullptr, nullptr, nullptr, &sun) == "{\"sun\":{\"intensity\":12}}");
 }
 
+// 11.6: the stock sun's direction (worldspawn iw8r_sun_direction "pitch yaw", the sundirection convention), with the
+// ACTS path the converter needs to bake the sun shadow again.
+TEST(stock_sun_direction_json) {
+    const auto mapOf = [](const std::string& keys) {
+        Id next = 1;
+        ParseResult pr = parseMap("iwmap 4\n{\n\"classname\" \"worldspawn\"\n" + keys + "}\n", next);
+        return pr.map ? *pr.map : MapFile{};
+    };
+    std::vector<std::string> notes;
+    // Stock mp_shipment's own sundirection; no ACTS path: the converter falls back to IW8_ACTS.
+    CHECK(stockSunJson(mapOf("\"iw8r_sun_direction\" \"-20.261 -15.4\"\n"), &notes) == "{\"direction\":[-20.261,-15.4]}" &&
+          notes.empty());
+    // A roll (sundirection's third number) is ignored; the ACTS path is escaped.
+    CHECK(stockSunJson(mapOf("\"iw8r_sun_direction\" \"-45 120 0\"\n"), &notes, "C:\\tools\\acts.exe") ==
+          "{\"direction\":[-45,120],\"acts\":\"C:\\\\tools\\\\acts.exe\"}");
+    // With the colour and the intensity: one object.
+    CHECK(stockSunJson(mapOf("\"iw8r_sun_color\" \"1 0.55 0.35\"\n\"iw8r_sun_intensity\" \"7.5\"\n\"iw8r_sun_direction\" \"-60 30\"\n"),
+                       &notes, "acts.exe") == "{\"color\":[1,0.55,0.35],\"intensity\":7.5,\"direction\":[-60,30],\"acts\":\"acts.exe\"}");
+    CHECK(notes.empty());
+    // Below the horizon, at it, one number, words: left out with a note each.
+    for (const char* bad : {"10 45", "-0.5 45", "-91 0", "-30", "up 45", "-30 45 0 1"}) {
+        notes.clear();
+        CHECK(stockSunJson(mapOf(std::string("\"iw8r_sun_direction\" \"") + bad + "\"\n"), &notes, "acts.exe").empty() &&
+              notes.size() == 1);
+    }
+    double pitch = 0, yaw = 0;
+    CHECK(parseStockSunDirection("-90 0", pitch, yaw) && pitch == -90 && yaw == 0);
+    CHECK(parseStockSunDirection("-1 -180 5", pitch, yaw) && pitch == -1 && yaw == -180);
+    CHECK(!parseStockSunDirection("", pitch, yaw) && !parseStockSunDirection("nan 0", pitch, yaw));
+    const std::string sun = "{\"direction\":[-45,120]}";
+    CHECK(stockEditJson("", {}, {}, nullptr, nullptr, nullptr, nullptr, nullptr, &sun) == "{\"sun\":{\"direction\":[-45,120]}}");
+}
+
 // 11.6: another stock map's sky (worldspawn iw8r_sky_from) becomes a carry entry and a replace_materials list.
 TEST(stock_sky_edit_json) {
     const auto mapOf = [](const std::string& keys) {

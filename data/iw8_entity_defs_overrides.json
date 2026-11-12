@@ -1702,7 +1702,17 @@
           "examples": [
             "1 0.55 0.35"
           ],
-          "description": "Stock maps (11.6): the sun's new colour, linear r g b 0 to 16 (File > Relight Stock Map Sun). Rebuild Stock Zone writes it; the direction stays (baked sun shadows). Not seen in game."
+          "description": "Stock maps (11.6): the sun's new colour, linear r g b 0 to 16 (File > Relight Stock Map Sun). Rebuild Stock Zone writes it. Not seen in game."
+        },
+        "iw8r_sun_direction": {
+          "type": "string",
+          "default": "",
+          "required": false,
+          "examples": [
+            "-20.261 -15.4",
+            "-45 120"
+          ],
+          "description": "Stock maps (11.6): the sun's new direction, pitch yaw in degrees as sundirection (pitch -90 to -1, negative = above the horizon; stock mp_shipment -20.261 -15.4) (File > Relight Stock Map Sun). Rebuild Stock Zone turns the sun light and the vision's sun fog and bakes the map's sun shadow again (ACTS exports the static models); the lightmaps keep the old sun's bounce light. A wide map whose new shadow does not fit is cropped to the play space and a margin. Not seen in game."
         },
         "iw8r_sun_intensity": {
           "type": "float",

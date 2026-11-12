@@ -1073,8 +1073,9 @@ void MainWindow::buildMenus() {
         ctx_.documentEdited(pick.startsWith("(") ? QString("The map keeps its own sky")
                                                  : "The sky of " + pick + " is used; File > Rebuild Stock Zone writes it (the sky's lighting stays)");
     });
-    addCommand(file, "RelightStockSun", "Relight Stock Map Sun (Colour / Intensity)...", QKeySequence(), [this] {
-        // 11.6: worldspawn iw8r_sun_color (linear) and iw8r_sun_intensity; File > Rebuild Stock Zone writes them.
+    addCommand(file, "RelightStockSun", "Relight Stock Map Sun (Colour / Intensity / Direction)...", QKeySequence(), [this] {
+        // 11.6: worldspawn iw8r_sun_color (linear), iw8r_sun_intensity and iw8r_sun_direction ("pitch yaw");
+        // File > Rebuild Stock Zone writes them (a new direction bakes the sun shadow again).
         const Entity* world = nullptr;
         for (const Entity& e : ctx_.doc.map().entities)
             if (e.isWorldspawn()) {
@@ -1091,14 +1092,38 @@ void MainWindow::buildMenus() {
         bool ok = false;
         const double in = QInputDialog::getDouble(this, "Relight Sun", "Sun intensity (stock: mp_shipment 8.6, mp_br_tut 30.7; the rebuild report shows the old value):", intensity, 0, 1000, 2, &ok);
         if (!ok) return;
+        // The direction: "pitch yaw" in degrees as the worldspawn sundirection (negative pitch = above the horizon);
+        // empty keeps the stock direction. The stock map's own sundirection is the starting text.
+        QString dirText;
+        if (const std::string* d = world->value("iw8r_sun_direction")) dirText = QString::fromStdString(*d);
+        else if (const std::string* s = world->value("sundirection")) dirText = QString::fromStdString(*s).section(' ', 0, 1, QString::SectionSkipEmpty);
+        QString direction;
+        for (;;) {
+            direction = QInputDialog::getText(this, "Relight Sun",
+                                              "Sun direction \"pitch yaw\" in degrees (pitch -90 to -1, negative = above the horizon; "
+                                              "stock mp_shipment -20.261 -15.4). Empty keeps the stock direction. A new direction "
+                                              "bakes the sun shadow again when the zone is rebuilt:",
+                                              QLineEdit::Normal, dirText, &ok).trimmed();
+            if (!ok) return;
+            double pitch = 0, yaw = 0;
+            if (direction.isEmpty() || parseStockSunDirection(direction.toStdString(), pitch, yaw)) break;
+            QMessageBox::warning(this, "Relight Sun", "\"" + direction + "\" is not \"pitch yaw\" with a pitch of -90 to -1.");
+            dirText = direction;
+        }
         const auto toL = [](int v) { return std::pow(v / 255.0, 2.2); };
         const std::string color = formatNumber(toL(picked.red())) + " " + formatNumber(toL(picked.green())) + " " + formatNumber(toL(picked.blue()));
+        const Id worldId = world->id;  // the entity list may move while the keys change
+        const bool hadDirection = world->value("iw8r_sun_direction") != nullptr;
         ctx_.doc.beginGroup("Relight Sun");
-        ctx_.doc.setKeyValue(world->id, "iw8r_sun_color", color);
-        ctx_.doc.setKeyValue(world->id, "iw8r_sun_intensity", formatNumber(in));
+        ctx_.doc.setKeyValue(worldId, "iw8r_sun_color", color);
+        ctx_.doc.setKeyValue(worldId, "iw8r_sun_intensity", formatNumber(in));
+        if (!direction.isEmpty()) ctx_.doc.setKeyValue(worldId, "iw8r_sun_direction", direction.simplified().toStdString());
+        else if (hadDirection) ctx_.doc.removeKey(worldId, "iw8r_sun_direction");
         ctx_.doc.endGroup();
         ctx_.documentEdited("Stock sun set (colour " + QString::fromStdString(color) + ", intensity " + QString::number(in) +
-                            "); File > Rebuild Stock Zone writes it. The direction stays (baked sun shadows)");
+                            (direction.isEmpty() ? QString(", stock direction") : ", direction " + direction.simplified()) +
+                            "); File > Rebuild Stock Zone writes it" +
+                            (direction.isEmpty() ? QString() : QString(" and bakes the sun shadow again")));
     });
     addCommand(file, "EditStockSpawns", "Edit Compiled Spawns (stock map)", QKeySequence(), [this] { editStockSpawns(); });
     addCommand(file, "EditLootPoints", "Edit Loot Points (Warzone stock map)", QKeySequence(), [this] { editLootPoints(); });
