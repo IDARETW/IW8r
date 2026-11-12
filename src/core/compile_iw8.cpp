@@ -2594,13 +2594,11 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         scene.sunDirect = false;
         scene.sunDir = sunDir;
         scene.sunColor = Vec3{sunColor[0], sunColor[1], sunColor[2]};
+        // The game's sun is the comworld sun light's colour (suncolor; the converter takes the compiled light over
+        // worldspawn sunlight, iw3_fastfile.cpp ReadSun), so the bake's sun is suncolor x 1.
         scene.sunIntensity = 1.0;
-        if (const std::string* sl = worldspawn->value("sunlight")) {
-            double v = 0;
-            if (parseNumber(*sl, v) && v >= 0) scene.sunIntensity = v;
-        }
         // The sky: worldspawn iw8r_bake_sky "r g b intensity" (default a pale blue at 0.35 of the sun).
-        scene.skyIntensity = 0.35 * scene.sunIntensity;
+        scene.skyIntensity = 0.35;
         if (const std::string* sk = worldspawn->value("iw8r_bake_sky")) {
             double v[4] = {0, 0, 0, 0};
             if (std::sscanf(sk->c_str(), "%lf %lf %lf %lf", &v[0], &v[1], &v[2], &v[3]) == 4) {

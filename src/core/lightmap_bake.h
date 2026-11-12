@@ -35,10 +35,14 @@ struct BakeSurface {
     bool lit = true;            // false: no lightmap (sky, tool surfaces); still casts shadows
 };
 
+// A light entity in the game's units (core game_look): colour x intensity is the IW3 colour (the _color and
+// intensity keys); the converter turns the radius and a reference distance into the game light's intensity, which
+// falls off as 1 / d^2 inside a smooth window to the radius.
 struct BakeLight {
     Vec3 pos;
     Vec3 color{1, 1, 1};
     double intensity = 1, radius = 256;
+    double reference = 0;  // the converter's reference distance; 0: radius / 2 (omni) or the spot axis's first hit
     bool spot = false;
     Vec3 dir{0, 0, -1};         // spot direction
     double cosInner = 1, cosOuter = 0.7;

@@ -7099,7 +7099,7 @@
           "examples": [
             "0.55 0.65 0.8 0.35"
           ],
-          "description": "Lightmap bake: the sky light as \"r g b intensity\" (default a pale blue at 0.35 x sunlight)."
+          "description": "Lightmap bake: the sky light as \"r g b intensity\" (default a pale blue at 0.35 of the sun)."
         },
         "iw8r_lightmap_texel": {
           "type": "float",

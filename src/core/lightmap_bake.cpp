@@ -1,5 +1,7 @@
 #include "lightmap_bake.h"
 
+#include "game_look.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -270,6 +272,25 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
     const bool sun = scene.sunIntensity > 0;
     const Vec3 sunE = scene.sunColor * scene.sunIntensity;
     const Vec3 skyE = scene.skyColor * scene.skyIntensity;
+    // The game intensity of each light (convert.cpp): the reference is radius / 2, or for a spot the distance along its
+    // axis to the first surface (at most radius / 2).
+    std::vector<double> gameIntensity;
+    for (const BakeLight& l : scene.lights) {
+        double ref = l.reference;
+        if (ref <= 0) {
+            ref = l.radius * 0.5;
+            RayBvh::Hit h;
+            if (l.spot && bvh.intersect(l.pos, safeNormalize(l.dir, Vec3{0, 0, -1}), 1.0, ref, h)) ref = h.t;
+        }
+        gameIntensity.push_back(gameLightIntensity(l.radius, ref));
+    }
+    // A light's attenuation at distance dist toward L (unit, surface to light): the game falloff and the spot cone.
+    const auto lightAtt = [&](size_t li, double dist, const Vec3& L) {
+        const BakeLight& l = scene.lights[li];
+        double spot = 1.0;
+        if (l.spot) spot = std::clamp((dot(L * -1.0, l.dir) - l.cosOuter) / std::max(1e-4, l.cosInner - l.cosOuter), 0.0, 1.0);
+        return gameLightAttenuation(gameIntensity[li], l.radius, dist, spot);
+    };
     std::atomic<size_t> next{0}, done{0};
     const auto worker = [&] {
         for (;;) {
@@ -295,7 +316,8 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                         dirSum = dirSum + sunDir * lumV(e);
                     }
                 }
-                for (const BakeLight& l : scene.lights) {
+                for (size_t li = 0; li < scene.lights.size(); ++li) {
+                    const BakeLight& l = scene.lights[li];
                     if (!l.direct) continue;
                     const Vec3 d = l.pos - P;
                     const double dist = length(d);
@@ -303,14 +325,9 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                     const Vec3 L = d * (1.0 / dist);
                     const double ndl = dot(N, L);
                     if (ndl <= 0) continue;
-                    double att = 1.0 - dist / l.radius;
-                    att *= att;
-                    if (l.spot) {
-                        const double cs = dot(L * -1.0, l.dir);
-                        att *= std::clamp((cs - l.cosOuter) / std::max(1e-4, l.cosInner - l.cosOuter), 0.0, 1.0);
-                    }
-                    if (att <= 0 || bvh.occluded(P, L, 0.05, dist - 0.5)) continue;
-                    const Vec3 e = l.color * (l.intensity * att * ndl);
+                    const double a = lightAtt(li, dist, L);
+                    if (a <= 0 || bvh.occluded(P, L, 0.05, dist - 0.5)) continue;
+                    const Vec3 e = l.color * (l.intensity * a * ndl);
                     E = E + e;
                     dirSum = dirSum + L * lumV(e);
                 }
@@ -348,19 +365,17 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                         if (ndl > 0 && !bvh.occluded(H, sunDir, 0.05, 1e6)) Eh = Eh + sunE * ndl;
                     }
                     // The light entities' direct light at the bounce point (real-time lights bounce too).
-                    for (const BakeLight& l : scene.lights) {
+                    for (size_t li = 0; li < scene.lights.size(); ++li) {
+                        const BakeLight& l = scene.lights[li];
                         const Vec3 d = l.pos - H;
                         const double dist = length(d);
                         if (dist >= l.radius || dist < 1e-3) continue;
                         const Vec3 L = d * (1.0 / dist);
                         const double ndl = dot(Nh, L);
                         if (ndl <= 0) continue;
-                        double att = 1.0 - dist / l.radius;
-                        att *= att;
-                        if (l.spot)
-                            att *= std::clamp((dot(L * -1.0, l.dir) - l.cosOuter) / std::max(1e-4, l.cosInner - l.cosOuter), 0.0, 1.0);
-                        if (att <= 0 || bvh.occluded(H, L, 0.05, dist - 0.5)) continue;
-                        Eh = Eh + l.color * (l.intensity * att * ndl);
+                        const double a = lightAtt(li, dist, L);
+                        if (a <= 0 || bvh.occluded(H, L, 0.05, dist - 0.5)) continue;
+                        Eh = Eh + l.color * (l.intensity * a * ndl);
                     }
                     A = A + Eh * settings.bounceAlbedo;
                 }
