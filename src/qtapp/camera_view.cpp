@@ -1092,8 +1092,17 @@ QString CameraView::geometrySelfCheck() {
         if (a.texture != b.texture || a.normalTexture != b.normalTexture || a.emissiveTexture != b.emissiveTexture || a.blend != b.blend ||
             a.sway != b.sway || a.baseZ != b.baseZ)
             return QString("textured batch %1: settings differ").arg(k);
-        if (a.tris.size() != b.tris.size() || (!a.tris.empty() && std::memcmp(a.tris.data(), b.tris.data(), a.tris.size() * sizeof(app::GpuTexVertex)) != 0))
-            return QString("textured batch %1: vertices differ (%2 / %3)").arg(k).arg(a.tris.size()).arg(b.tris.size());
+        if (a.tris.size() != b.tris.size() || (!a.tris.empty() && std::memcmp(a.tris.data(), b.tris.data(), a.tris.size() * sizeof(app::GpuTexVertex)) != 0)) {
+            QString where;
+            for (size_t i = 0; i < std::min(a.tris.size(), b.tris.size()); ++i)
+                if (std::memcmp(&a.tris[i], &b.tris[i], sizeof(app::GpuTexVertex)) != 0) {
+                    const app::GpuTexVertex &p = a.tris[i], &q = b.tris[i];
+                    where = QString(", first at %1: rgba %2/%3 uv %4,%5/%6,%7 lm %8,%9/%10,%11").arg(i).arg(p.rgba, 0, 16).arg(q.rgba, 0, 16)
+                                .arg(p.u).arg(p.v).arg(q.u).arg(q.v).arg(p.lu).arg(p.lv).arg(q.lu).arg(q.lv);
+                    break;
+                }
+            return QString("textured batch %1: vertices differ (%2 / %3%4)").arg(k).arg(a.tris.size()).arg(b.tris.size()).arg(where);
+        }
     }
     return {};
 }

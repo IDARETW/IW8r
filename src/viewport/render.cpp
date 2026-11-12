@@ -241,8 +241,11 @@ float4 ps_tex(PSIn i) : SV_TARGET {
     else outA = t.a > 0.99 ? 0.6 : t.a;
     if (game0.x > 0.5) {
         // View > Game Lighting: map_surface_realtime.hlsl (the converter's world shader, iw3 style) and the post chain.
-        float3 albedo = srgbToLinear3(t.rgb) * i.col.rgb;  // i.col: selection and brush entity tints (white otherwise)
-        if (i.col.a < 0.5) return float4(gamePost(albedo), 1.0);  // sky box: unlit
+        // batchFlags2.z: the stock reference world (its vertex colours are an editor shade, not a tint), .w: its own
+        // lightmap is bound (the stock world shader's formula, tangent-space direction).
+        const bool stockRef = batchFlags2.z > 0.5;
+        float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? float3(1, 1, 1) : i.col.rgb);  // i.col: selection and brush entity tints
+        if (!stockRef && i.col.a < 0.5) return float4(gamePost(albedo), 1.0);  // sky box: unlit
         float3 Nf = dot(i.n, i.n) > 0.5 ? normalize(i.n) : normalize(cross(ddx(i.w), ddy(i.w)));
         float3 N = Nf;
         if (batchFlags.x > 0.5 && dot(i.n, i.n) > 0.5) {
@@ -255,12 +258,24 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         }
         float3 indirect = gameSky.rgb * (0.6 + 0.4 * saturate(N.z));
         float visibility = 1.0;
-        if (game0.z > 0.5 && i.lm.x >= 0) {
+        if ((stockRef ? batchFlags2.w > 0.5 : game0.z > 0.5) && i.lm.x >= 0) {
             float4 a = gameLmA.SampleLevel(lutSamp, i.lm, 0);
             float3 b = gameLmB.SampleLevel(lutSamp, i.lm, 0).rgb;
             float3 d = gameLmD.SampleLevel(lutSamp, i.lm, 0).xyz;
-            indirect = a.rgb * saturate(dot(N, Nf)) + b * saturate(dot(normalize(d + 1e-6), N));
-            visibility = a.a;
+            if (stockRef) {
+                // Stock: light = f C + (1 - f) C / D.z x sat(N . Dw), D in the surface's tangent frame (here the texture
+                // frame from the derivatives; on a flat normal N . Dw = D.z whatever the frame).
+                float3 dp1 = ddx(i.w), dp2 = ddy(i.w);
+                float2 du1 = ddx(i.uv), du2 = ddy(i.uv);
+                float3 p2 = cross(dp2, Nf), p1 = cross(Nf, dp1);
+                float3 T = p2 * du1.x + p1 * du2.x, B = p2 * du1.y + p1 * du2.y;
+                float s = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-20));
+                float3 Dw = normalize(T * s * d.x + B * s * d.y + Nf * d.z + 1e-6);
+                indirect = a.rgb + b * saturate(dot(N, Dw));
+            } else {
+                indirect = a.rgb * saturate(dot(N, Nf)) + b * saturate(dot(normalize(d + 1e-6), N));
+                visibility = a.a;
+            }
         }
         // The sun: the baked sun depth where it covers the point (here the sun shadow map), else the lightmap's mask.
         if (litParams.y > 0.5) visibility = sunShadow(i.w);
@@ -378,6 +393,24 @@ float4 ps_meter(V i) : SV_TARGET {
 }
 )";
 
+// IEEE binary16 from float (round to nearest; the lightmap values are finite and positive or small).
+uint16_t floatToHalf(float f) {
+    uint32_t x;
+    std::memcpy(&x, &f, 4);
+    const uint32_t sign = (x >> 16) & 0x8000u;
+    int exp = int((x >> 23) & 0xff) - 127 + 15;
+    uint32_t mant = x & 0x7fffffu;
+    if (exp <= 0) {
+        if (exp < -10) return uint16_t(sign);
+        mant |= 0x800000u;
+        const uint32_t shift = uint32_t(14 - exp);
+        return uint16_t(sign | ((mant + (1u << (shift - 1))) >> shift));
+    }
+    if (exp >= 31) return uint16_t(sign | 0x7bffu);  // clamp to the largest finite half
+    const uint32_t h = sign | (uint32_t(exp) << 10) | (mant >> 13);
+    return uint16_t(h + ((mant >> 12) & 1u));
+}
+
 template <class T>
 void safeRelease(T*& p) {
     if (p) {
@@ -407,6 +440,7 @@ SceneRenderer::~SceneRenderer() {
     for (int k = 0; k < 3; ++k) safeRelease(gameLmSrv_[k]), safeRelease(gameLmTex_[k]);
     safeRelease(gameLutSrv_);
     safeRelease(gameLutTex_);
+    for (int k = 0; k < 3; ++k) safeRelease(stockLmSrv_[k]), safeRelease(stockLmTex_[k]);
     safeRelease(meterSrv_), safeRelease(meterRtv_), safeRelease(meterTex_);
     for (auto*& s : meterStage_) safeRelease(s);
     safeRelease(invGreySrv_), safeRelease(invGreyTex_);
@@ -709,6 +743,44 @@ void SceneRenderer::setGameLightmap(int width, int height, const float* a, const
             return;
         }
     }
+}
+
+void SceneRenderer::setStockLightmap(int width, int height, const float* a, const float* b, const float* d) {
+    for (int k = 0; k < 3; ++k) safeRelease(stockLmSrv_[k]), safeRelease(stockLmTex_[k]);
+    if (!dev_ || width < 1 || height < 1 || !a || !b || !d) return;
+    const float* src[3] = {a, b, d};
+    for (int k = 0; k < 3; ++k) {
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = UINT(width), td.Height = UINT(height);
+        td.MipLevels = td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_IMMUTABLE;
+        td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        // Half floats: a 2048 x 1024 stock lightmap is 16 MB per plane in float32.
+        std::vector<uint16_t> half(size_t(width) * size_t(height) * 4);
+        for (size_t i = 0; i < half.size(); ++i) half[i] = floatToHalf(src[k][i]);
+        D3D11_SUBRESOURCE_DATA init{half.data(), UINT(width) * 8, 0};
+        if (FAILED(dev_->CreateTexture2D(&td, &init, &stockLmTex_[k])) ||
+            FAILED(dev_->CreateShaderResourceView(stockLmTex_[k], nullptr, &stockLmSrv_[k]))) {
+            for (int j = 0; j < 3; ++j) safeRelease(stockLmSrv_[j]), safeRelease(stockLmTex_[j]);
+            return;
+        }
+    }
+}
+
+void SceneRenderer::writeGameCb() {
+    if (!cbGame_) return;
+    const bool on = game_.on && gameLutSrv_ != nullptr;
+    const float g[16] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, 0,
+                         game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], 0,
+                         game_.sunColor[0], game_.sunColor[1], game_.sunColor[2], 0,
+                         game_.sky[0], game_.sky[1], game_.sky[2], 0};
+    ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
+    ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
+    ID3D11ShaderResourceView* gl = gameLutSrv_;
+    ctx_->PSSetShaderResources(9, 1, &gl);
+    if (lutSampler_) ctx_->PSSetSamplers(2, 1, &lutSampler_);
 }
 
 void SceneRenderer::setGameTonemapLut(int size, const uint8_t* rgba) {
@@ -1424,16 +1496,9 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ctx_->VSSetConstantBuffers(3, 1, &cbWind_);
         }
         if (cbGame_) {
-            const bool on = game_.on && gameLutSrv_ != nullptr;
-            const float g[16] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, 0,
-                                 game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], 0,
-                                 game_.sunColor[0], game_.sunColor[1], game_.sunColor[2], 0,
-                                 game_.sky[0], game_.sky[1], game_.sky[2], 0};
-            ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
-            ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
-            ID3D11ShaderResourceView* gs[4] = {gameLmSrv_[0], gameLmSrv_[1], gameLmSrv_[2], gameLutSrv_};
-            ctx_->PSSetShaderResources(6, 4, gs);
-            if (lutSampler_) ctx_->PSSetSamplers(2, 1, &lutSampler_);
+            writeGameCb();
+            ID3D11ShaderResourceView* gs[3] = {gameLmSrv_[0], gameLmSrv_[1], gameLmSrv_[2]};
+            ctx_->PSSetShaderResources(6, 3, gs);
         }
         if (cbLights_) {
             struct {
@@ -1514,8 +1579,13 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         ctx_->OMSetDepthStencilState(dsWrite_, 0);
         ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ctx_->IASetVertexBuffers(0, 1, &vbRefTex_, &tstride, &offset);
+        writeGameCb();
+        {
+            ID3D11ShaderResourceView* sl[3] = {stockLmSrv_[0], stockLmSrv_[1], stockLmSrv_[2]};
+            ctx_->PSSetShaderResources(6, 3, sl);
+        }
         if (cbBatch_) {
-            const float flags[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+            const float flags[8] = {0, 0, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};
             ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
             ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
             ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);

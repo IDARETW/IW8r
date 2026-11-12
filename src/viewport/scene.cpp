@@ -1,4 +1,5 @@
 #include "brush_flags.h"
+#include "game_lightmap.h"
 #include "scene.h"
 #include "texel_density.h"
 #include "patch_ops.h"
@@ -1095,7 +1096,11 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
             double shade = mode == CameraMode::Fullbright ? 1.0 : 0.55 + 0.45 * std::fabs(dot(n, light));
             Vec3 lit{1, 1, 1};
             Vec3 sunLit;  // the sun's part of lit (the shadow map removes it where the sun is blocked)
-            if (scene.litPreview) {
+            // View > Game Lighting: the renderer lights textured faces; colours carry only tints (camera_geometry.cpp).
+            const bool litMode = scene.litPreview && !scene.gameLook;
+            const bool encodedMode = scene.litEncoded() && !scene.gameLook;
+            const GameLightmap* gameLm = scene.gameLook ? scene.gameLightmap.get() : nullptr;
+            if (litMode) {
                 Vec3 c;
                 for (const auto& v : w) c += v;
                 c = c * (1.0 / double(std::max<size_t>(1, w.size())));
@@ -1129,8 +1134,8 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
                 shade = 1.0;
             }
             auto litColor = [&](uint32_t base) {
-                if (!scene.litPreview) return scaleColor(base, shade);
-                if (!scene.litEncoded()) {
+                if (!litMode) return scaleColor(base, shade);
+                if (!encodedMode) {
                     auto c1 = [&](int shift, double s) { return uint32_t(std::clamp(((base >> shift) & 0xff) * s, 0.0, 255.0)); };
                     return c1(0, lit.x) | (c1(8, lit.y) << 8) | (c1(16, lit.z) << 16) | (0xffu << 24);
                 }
@@ -1149,6 +1154,7 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
                 texId = tc->second;
             }
             if (texId >= 0) {
+                if (scene.gameLook) shade = 1.0;
                 // Brush entities keep a hint of their class colour; selection tints red.
                 uint32_t c = litColor(i < g->polyTint.size() ? g->polyTint[i] : 0xffffffffu);
                 if (g->brushEntity) c = mixColor(c, g->color, 0.35);
@@ -1193,10 +1199,19 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
                     const double det = du1 * dv2 - du2 * dv1;
                     if (std::fabs(det) > 1e-12) tan = normalize((e1 * dv2 - e2 * dv1) * (1.0 / det));
                 }
+                Vec3 centre;
+                if (gameLm) {
+                    for (const auto& p : w) centre += p;
+                    centre = centre * (1.0 / double(std::max<size_t>(1, w.size())));
+                }
                 auto tv = [&](size_t k) {
                     GpuTexVertex v{float(w[k].x), float(w[k].y), float(w[k].z), uv[k][0], uv[k][1], c};
                     v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
                     v.tx = float(tan.x), v.ty = float(tan.y), v.tz = float(tan.z);
+                    if (gameLm) {
+                        float luv[2];
+                        if (gameLm->uvFor(w[k], n, centre, luv)) v.lu = luv[0], v.lv = luv[1];
+                    }
                     return v;
                 };
                 for (size_t k = 1; k + 1 < w.size(); ++k) {
@@ -1227,7 +1242,7 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
                 const bool tool = i < g->polyMaterial.size() && isIw8ToolMaterial(g->polyMaterial[i]);
                 auto& dst = marker || tool || g->volume ? noCast : tris;
                 // Not in the game: no sun shadow falls on it either (sun share 0 in the lit encoding).
-                if (&dst == &noCast && scene.litEncoded()) c = (c & 0x00ffffffu) | 0x80000000u;
+                if (&dst == &noCast && encodedMode) c = (c & 0x00ffffffu) | 0x80000000u;
                 for (size_t k = 1; k + 1 < w.size(); ++k) {
                     dst.push_back(gv(w[0], c));
                     dst.push_back(gv(w[k], c));
