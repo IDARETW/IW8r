@@ -13,6 +13,7 @@
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11Texture2D;
+struct ID3D11Texture1D;
 struct ID3D11RenderTargetView;
 struct ID3D11DepthStencilView;
 struct ID3D11ShaderResourceView;
@@ -256,6 +257,13 @@ public:
     bool hasGameLightmap() const { return gameLmSrv_[0] != nullptr; }
     // The game's tone map LUT (core game_look buildGameTonemapLut): size^3 RGBA8, red fastest.
     void setGameTonemapLut(int size, const uint8_t* rgba);
+    // Auto exposure metering (stock maps' visions meter the frame, research 95): after each game-look frame a small
+    // pass turns the shown pixels back into scene luminance (inverseGrey: 256 LUT inputs for display greys 0..1, from
+    // core gameTonemapInverseGrey, divided by lutScale) and averages their logarithm, centre-weighted. The result is read
+    // back a few frames later without waiting for the GPU. null turns it off.
+    void setGameMetering(const float* inverseGrey256);
+    // The latest metered log-average luminance (false until one is available). Each value is returned once.
+    bool takeMeteredLuminance(double& avg);
     void setLightGain(float g) { lightGain_ = g; }
     // Lit preview: vertex colours carry light / 2 and the sun's share in alpha (scene.cpp); decode 2 turns that on, 1 is
     // the plain unlit modes. exposure scales the result before a soft shoulder.
@@ -387,6 +395,23 @@ private:
     float grade_[12] = {1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0};  // contrast brightness desat _, light tint + lut size, dark tint
     int gradeFlags_ = 0;  // 1 film, 2 invert, 4 lut
     GameLook game_;
+    bool metering_ = false;
+    ID3D11Texture2D* meterTex_ = nullptr;
+    ID3D11RenderTargetView* meterRtv_ = nullptr;
+    ID3D11ShaderResourceView* meterSrv_ = nullptr;
+    ID3D11Texture2D* meterStage_[3] = {nullptr, nullptr, nullptr};
+    bool meterStageBusy_[3] = {false, false, false};
+    unsigned meterNext_ = 0;
+    ID3D11Texture1D* invGreyTex_ = nullptr;
+    ID3D11ShaderResourceView* invGreySrv_ = nullptr;
+    ID3D11VertexShader* meterVs_ = nullptr;
+    ID3D11PixelShader* meterPs_ = nullptr;
+    ID3D11Buffer* cbMeter_ = nullptr;
+    bool meterReady_ = false;
+    double meterValue_ = 0;
+    bool meterHas_ = false;
+    bool createMeterResources();
+    void meterFrame();
     ID3D11Texture2D* gameLmTex_[3] = {nullptr, nullptr, nullptr};
     ID3D11ShaderResourceView* gameLmSrv_[3] = {nullptr, nullptr, nullptr};
     ID3D11Texture3D* gameLutTex_ = nullptr;

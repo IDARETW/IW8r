@@ -161,6 +161,89 @@ std::vector<uint8_t> buildGameTonemapLut(int size) {
     return lut;
 }
 
+double gameExposureFor(const GameExposure& e, double avgLuminance) {
+    const double manualCap = 180.0 * std::exp2(2.84 - e.maxEv);
+    if (!e.autoExposure) return std::min(gameManualExposure(e.ev, e.exposureAdjust), manualCap);
+    const double avg = std::max(avgLuminance, 1e-6);
+    const auto L = [](double ev) { return 0.001 * std::exp2(ev - 2.84); };
+    const auto k = [](double adjust) { return std::pow(0.18 * std::exp2(adjust), 1.0 / 2.2); };
+    const double Ld = L(e.darkEv), Ll = L(std::max(e.lightEv, e.darkEv + 0.01)), Lm = L(e.midEv);
+    const double kd = k(e.darkAdjust), kl = k(e.lightAdjust), km = k(e.midAdjust);
+    const double span = std::log(Ll / Ld);
+    const double t = std::max(std::log(avg / Ld) / span, 0.0);
+    const double tm = std::clamp(std::log(Lm / Ld) / span, 1e-4, 1.0 - 1e-4);
+    const double ratio = std::clamp((km - kd) / (kl - kd), 1e-4, 1.0 - 1e-4);
+    const double p = std::log(ratio) / std::log(tm);
+    double key = std::pow(std::pow(t, p) * (kl - kd) + kd, 2.2);
+    key = std::clamp(key, 0.18 * std::exp2(e.minAdjust), 0.18 * std::exp2(e.maxAdjust));
+    return std::min(key / avg * std::exp2(e.exposureAdjust), manualCap);
+}
+
+double gameAdaptExposure(double current, double target, double dt, double adaptSpeed) {
+    if (!(current > 0) || !(target > 0)) return target;
+    const double a = 1.0 - std::exp(-std::max(dt, 0.0) * std::max(adaptSpeed, 0.01) * 4.0);
+    return std::exp(std::log(current) + (std::log(target) - std::log(current)) * a);
+}
+
+namespace {
+GameExposure autoExposure(double ev, double adjust, double adapt, double dark, double mid, double light, double dAdj, double mAdj,
+                          double lAdj) {
+    GameExposure e;
+    e.autoExposure = true;
+    e.ev = ev, e.exposureAdjust = adjust, e.adaptSpeed = adapt;
+    e.darkEv = dark, e.midEv = mid, e.lightEv = light;
+    e.darkAdjust = dAdj, e.midAdjust = mAdj, e.lightAdjust = lAdj;
+    return e;
+}
+}  // namespace
+
+const std::vector<StockMapLook>& stockMapLooks() {
+    // Fields 63-76 in order: mode 3, auto 1, curve 1, exposure, auto adjust 0, max EV -10, exposure adjust, adapt speed,
+    // dark / mid / light EV, dark / mid / light adjust (the converter's table, same order).
+    static const std::vector<StockMapLook> looks = {
+        {"mp_m_king", 1.55685, {1.2781, 0.952621, 0.650445}, autoExposure(6, 0, 0.075, 4.56, 6.605912, 8.57, -1.6, -0.279, 1.28)},
+        {"mp_emporium", 3.39796, {1.4395, 0.9178, 0.520111}, autoExposure(8.5, 0, 0.075, 5.6, 8.229471, 11.9, -2, -0.6758758, 1.5)},
+        {"mp_shipment", 8.63193, {1.04877, 0.993345, 0.922306}, autoExposure(10.5, 0.6, 0.75, 6.1, 12.14071, 15, -2, -0.3869346, 1.5)},
+        {"mp_village2", 11.0536, {0.983046, 1.00121, 1.0379}, autoExposure(10, 0, 0.075, 8, 11, 14, -1.5, 0, 1.5)},
+        {"mp_br_quarry", 11.512, {1.14193, 0.976265, 0.817178}, autoExposure(12, 0, 0.15, 9, 11.75, 16, -1, 0.15, 2)},
+        {"mp_rust", 11.6969, {1.11411, 0.989194, 0.771041}, autoExposure(10, 0, 0.06, 7.53, 10.3, 14, -3, -1, 1.3)},
+        {"mp_backlot2", 20.3368, {0.98634, 1.00452, 0.995408}, autoExposure(12, -0.1, 0.075, 6.2, 11.23978, 16, -5, -0.9157199, 3.2)},
+        {"mp_m_fork", 23.7478, {1.02338, 0.996126, 0.969523}, autoExposure(11.5, 0, 0.075, 5.6, 10.31878, 14.5, -2.38, -1.024797, 1.5)},
+        {"mp_m_speed", 23.9449, {0.97691, 1.00372, 1.03118}, autoExposure(14, 0, 0.075, 7, 11.34573, 15.6, -1, 0.05577891, 1.6)},
+        {"mp_aniyah_tac", 24.6499, {0.994142, 1.00325, 0.985086}, autoExposure(12, 0, 0.075, 8.6, 12.49304, 16.2, -3.2, -0.7722935, 2.2)},
+        {"mp_t_gun_course", 25.8181, {1.13566, 0.979416, 0.804427}, autoExposure(14, 0, 0.1, 11.5, 13.25, 15, -0.25, 0.4, 0.75)},
+        {"mp_hideout", 26.9233, {0.984644, 1.00247, 1.02072}, autoExposure(12, 0, 0.075, 9, 10.7015, 15, -3, -0.9118453, 2)},
+        {"mp_m_speedball", 30.6723, {1.00331, 1.00331, 0.95747}, autoExposure(13, 0.65, 0.075, 10.8, 13.21207, 14.6, -0.5, 0.04669083, 1.5)},
+    };
+    return looks;
+}
+
+const StockMapLook* stockMapLook(const std::string& map) {
+    for (const StockMapLook& l : stockMapLooks())
+        if (map == l.map) return &l;
+    return nullptr;
+}
+
+std::vector<float> gameTonemapInverseGrey(int n) {
+    // The grey curve sampled on a log grid, then inverted by search (it rises monotonically).
+    std::vector<double> xs, ds;
+    for (double lx = -10; lx <= 10; lx += 0.01) {
+        const double x = std::exp2(lx), in[3] = {x, x, x};
+        double out[3];
+        gameTonemap(in, out);
+        xs.push_back(x), ds.push_back(out[1]);
+    }
+    std::vector<float> inv(size_t(std::max(n, 2)));
+    for (size_t i = 0; i < inv.size(); ++i) {
+        const double d = std::min(double(i) / double(inv.size() - 1), 0.995);
+        size_t k = 0;
+        while (k + 1 < ds.size() && ds[k + 1] < d) ++k;
+        const double t = k + 1 < ds.size() && ds[k + 1] > ds[k] ? std::clamp((d - ds[k]) / (ds[k + 1] - ds[k]), 0.0, 1.0) : 0.0;
+        inv[i] = float(k + 1 < xs.size() ? xs[k] + (xs[k + 1] - xs[k]) * t : xs.back());
+    }
+    return inv;
+}
+
 double srgbToLinear(double c) { return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4); }
 
 double gameLightIntensity(double radius, double reference) {

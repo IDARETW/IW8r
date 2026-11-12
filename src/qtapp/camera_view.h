@@ -146,6 +146,10 @@ public slots:
     std::shared_ptr<const app::GameLightmap> gameLightmap() const { return gameLm_; }
     bool gameBaking() const { return gameBaking_; }
     void rebakeGameLighting() { gameBakeRev_ = ~0ull; gameSeenAt_.invalidate(); update(); }
+    // The stock map shown as the reference ("" = none): Game Lighting then uses that map's sun and auto exposure
+    // (core game_look stockMapLook).
+    void setGameStockMap(const std::string& zone) { gameStockMap_ = zone; update(); }
+    double gameExposure() const { return gameExposure_; }
     // Stock map reference geometry (View > Stock Map Reference), uploaded on the next frame. Empty clears it.
     void setReference(std::vector<app::GpuVertex> tris) {
         pendingRef_ = std::move(tris);
@@ -337,7 +341,10 @@ private:
     std::vector<app::SceneRenderer::PixelLight> pixelLightScratch_;
     // View > Game Lighting (game_lightmap.h): the preview bake, made again in the background once edits settle.
     std::shared_ptr<const app::GameLightmap> gameLm_;
-    bool gameBaking_ = false, gameLutReady_ = false, gameWasOn_ = false;
+    bool gameBaking_ = false, gameLutReady_ = false, gameWasOn_ = false, gameMetering_ = false;
+    std::string gameStockMap_;
+    double gameExposure_ = 0, gameExposureTarget_ = 0;
+    QElapsedTimer gameExposureClock_;
     uint64_t gameBakeRev_ = ~0ull, gameSeenRev_ = ~0ull;
     QElapsedTimer gameSeenAt_;
     bool gameLookOn() const;

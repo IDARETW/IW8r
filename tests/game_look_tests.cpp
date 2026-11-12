@@ -42,6 +42,31 @@ TEST(game_look_tonemap_curve) {
     CHECK(lut.size() == size_t(64) * 64 * 64 * 4 && lut[0] < 6 && lut[lut.size() - 4] > 240 && lut[3] == 255);
 }
 
+TEST(game_look_auto_exposure) {
+    const StockMapLook* ship = stockMapLook("mp_shipment");
+    CHECK(ship && ship->exposure.autoExposure && std::fabs(ship->sunIntensity - 8.63193) < 1e-9 && !stockMapLook("mp_nowhere"));
+    if (!ship) return;
+    // At the mid EV's luminance the key is the mid key (0.18 x 2^midAdjust), times 2^exposureAdjust.
+    const GameExposure& e = ship->exposure;
+    const double Lmid = 0.001 * std::exp2(e.midEv - 2.84);
+    const double expected = 0.18 * std::exp2(e.midAdjust) / Lmid * std::exp2(e.exposureAdjust);
+    CHECK(std::fabs(gameExposureFor(e, Lmid) / expected - 1.0) < 1e-6);
+    // Brighter scenes get less exposure; the product (the displayed key) still rises.
+    const double dim = gameExposureFor(e, Lmid * 0.25), bright = gameExposureFor(e, Lmid * 4);
+    CHECK(dim > bright && bright * Lmid * 4 > dim * Lmid * 0.25);
+    // Manual exposure ignores the luminance; adaptation moves toward the target and never past it.
+    GameExposure m;
+    CHECK(std::fabs(gameExposureFor(m, 5.0) - gameManualExposure(10.0)) < 1e-12);
+    // The grey inverse undoes the curve (display -> exposed value -> display).
+    const std::vector<float> inv = gameTonemapInverseGrey(256);
+    const double x = inv[128], in[3] = {x, x, x};
+    double out[3];
+    gameTonemap(in, out);
+    CHECK(inv.size() == 256 && std::fabs(out[1] - 128.0 / 255.0) < 0.01 && inv[200] > inv[100] && inv[0] < 0.01);
+    const double a = gameAdaptExposure(1.0, 4.0, 0.1, 1.0);
+    CHECK(a > 1.0 && a < 4.0 && std::fabs(gameAdaptExposure(1.0, 4.0, 100.0, 1.0) - 4.0) < 1e-6);
+}
+
 TEST(game_look_local_lights) {
     // convert.cpp's log of the lmproof map: IW3 radius 300, reference 150 -> intensity 11250.
     CHECK(std::fabs(gameLightIntensity(300, 150) - 11250.0) < 1e-6);

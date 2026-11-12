@@ -12,6 +12,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace iw8r {
@@ -27,6 +28,38 @@ double gameLutCoordinate(double x, int size = 64);
 void gameTonemap(const double in[3], double out[3]);
 // The LUT itself: size^3 RGBA8 texels, red fastest, indexed by gameLutCoordinate per channel.
 std::vector<uint8_t> buildGameTonemapLut(int size = 64);
+// The curve's inverse for greys: n LUT inputs (exposed linear values) whose display grey is i / (n - 1); the top
+// entries stop where the curve flattens (a clipped pixel reads as that brightest value).
+std::vector<float> gameTonemapInverseGrey(int n = 256);
+
+// A map's exposure (the vision's tonemap fields; research 95 section 3). Manual: 180 x 2^(2.84 - ev + exposureAdjust).
+// Auto: metered from the frame's log-average luminance between the dark / mid / light EVs and their adjustments.
+struct GameExposure {
+    bool autoExposure = false;
+    double ev = 10.0, exposureAdjust = 0.0, maxEv = -10.0;
+    double darkEv = 6.0, midEv = 11.0, lightEv = 15.0;
+    double darkAdjust = -2.0, midAdjust = 0.0, lightAdjust = 1.5;
+    double minAdjust = -10.0, maxAdjust = 10.0;  // the key's clamp (defaults INFERRED)
+    double adaptSpeed = 1.0;
+};
+// The exposure for a frame whose log-average luminance (Rec.709) is avgLuminance: the manual value, or the auto
+// exposure's target (key / avg). Without the +1.5 EV base.
+double gameExposureFor(const GameExposure& e, double avgLuminance);
+// Moves the shown exposure toward the target over dt seconds at the vision's adapt speed (in log space; the rate is
+// INFERRED).
+double gameAdaptExposure(double current, double target, double dt, double adaptSpeed);
+
+// A shipped map's lighting (ACTS dumps of each zone's ComWorld sun and <map>.vision tonemap fields 63-76, the x64-zt
+// converter's kIw8LightingReferences, iw3_vision.cpp): the sun intensity and colour and the auto exposure.
+struct StockMapLook {
+    const char* map;
+    double sunIntensity;
+    double sunColor[3];
+    GameExposure exposure;
+};
+// The known shipped maps; null for others.
+const StockMapLook* stockMapLook(const std::string& map);
+const std::vector<StockMapLook>& stockMapLooks();
 
 // sRGB texture value to linear (the game samples colour maps as sRGB).
 double srgbToLinear(double c);

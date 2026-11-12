@@ -1937,6 +1937,7 @@ void MainWindow::buildMenus() {
         camera_->setReferenceInstances({});
         camera_->setReferenceTexInstances({}, {});
         camera_->setReferenceTextured({});
+        camera_->setGameStockMap("");
         ctx_.referencePlans.clear();
         stockWorld_.reset();
         referenceProps_.clear();
@@ -6857,6 +6858,7 @@ void MainWindow::loadStockReference(const QString& zone) {
             if (!self || self->referenceZone_ != zone) return;
             self->stockWorld_ = world;
             self->camera_->setReferenceTextured(std::move(*texBatches));
+            self->camera_->setGameStockMap(zone.toStdString());
             self->ctx_.referencePlans = std::move(*plans);
             self->ctx_.cameraMoved();  // repaints the 2D views too
             if (n == 0) {

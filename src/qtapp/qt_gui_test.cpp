@@ -2407,6 +2407,28 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             after.save(QString::fromLocal8Bit(shot));
             before.save(QString::fromLocal8Bit(shot).replace(".png", "_editor.png"));
         }
+        // A stock map's look: its sun and its vision's auto exposure, metered from the frames (core game_look).
+        {
+            const double manual = cv->gameExposure();
+            cv->setGameStockMap("mp_shipment");
+            cv->renderImage(320, 180, true, 0, 0);
+            const double guess = cv->gameExposure();
+            QElapsedTimer mt;
+            mt.start();
+            double last = guess;
+            while (mt.elapsed() < 4000) {
+                cv->renderImage(320, 180, true, 0, 0);
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                last = cv->gameExposure();
+            }
+            const QImage stockLook = cv->renderImage(320, 180, true, 0, 0);
+            r.check(guess > 0 && last > 0 && std::isfinite(last) && std::fabs(std::log(last / manual)) > 0.05,
+                    QString("a stock map's look meters its exposure (fixed %1, first guess %2, after 4 s %3)")
+                        .arg(manual, 0, 'f', 3).arg(guess, 0, 'f', 3).arg(last, 0, 'f', 3));
+            const QByteArray shot2 = qgetenv("IW8R_GAME_LOOK_SHOT");
+            if (!shot2.isEmpty()) stockLook.save(QString::fromLocal8Bit(shot2).replace(".png", "_stocklook.png"));
+            cv->setGameStockMap("");
+        }
         if (game) game->trigger();
         r.check(!ctx.scene.gameLook, "Ctrl+Alt+L again turns it off");
         if (!texWas && w.action("CameraModeFlat")) w.action("CameraModeFlat")->trigger();
