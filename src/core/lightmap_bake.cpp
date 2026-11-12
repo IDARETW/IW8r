@@ -264,6 +264,7 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
     r.directional.assign(n, {0, 0, 0});
     r.direction.assign(n, {0, 0, 1});
     r.sunVisibility.assign(n, 1.0f);
+    r.directionWorld.assign(n, {0, 0, 1});
     std::vector<size_t> work;
     for (size_t i = 0; i < n; ++i)
         if (r.covered[i]) work.push_back(i);
@@ -341,6 +342,8 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                 const Vec3 Bc = E * (1.0 / dz);
                 r.directional[i] = {float(Bc.x), float(Bc.y), float(Bc.z)};
                 r.direction[i] = {float(sx * dz), float(sy * dz), float(dz)};
+                const Vec3 dw = safeNormalize(T * (sx * dz) + B * (sy * dz) + N * dz, N);
+                r.directionWorld[i] = {float(dw.x), float(dw.y), float(dw.z)};
                 // Ambient: the sky and one bounce of the sun, cosine-weighted.
                 Vec3 A{0, 0, 0};
                 const int rays = std::max(1, settings.skyRays);
@@ -404,6 +407,7 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                 if (have[i] || texels[i].chart < 0) continue;
                 std::array<float, 3> a{0, 0, 0}, b{0, 0, 0}, d{0, 0, 0};
                 float vis = 0;
+                std::array<float, 3> dwSum{0, 0, 0};
                 int count = 0;
                 const int dx[4] = {1, -1, 0, 0}, dy[4] = {0, 0, 1, -1};
                 for (int k = 0; k < 4; ++k) {
@@ -417,6 +421,7 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                         d[c] += r.direction[j][c];
                     }
                     vis += r.sunVisibility[j];
+                    for (int c = 0; c < 3; ++c) dwSum[c] += r.directionWorld[j][c];
                     ++count;
                 }
                 if (!count) continue;
@@ -426,6 +431,8 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                     d[c] /= count;
                 }
                 r.sunVisibility[i] = vis / count;
+                const double dwl = std::sqrt(dwSum[0] * dwSum[0] + dwSum[1] * dwSum[1] + dwSum[2] * dwSum[2]);
+                if (dwl > 1e-6) r.directionWorld[i] = {float(dwSum[0] / dwl), float(dwSum[1] / dwl), float(dwSum[2] / dwl)};
                 const double dl = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
                 r.direction[i] = dl > 1e-6 ? std::array<float, 3>{float(d[0] / dl), float(d[1] / dl), float(d[2] / dl)} : std::array<float, 3>{0, 0, 1};
                 next[i] = 1;

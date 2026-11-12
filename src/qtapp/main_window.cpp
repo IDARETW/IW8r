@@ -1908,6 +1908,14 @@ void MainWindow::buildMenus() {
         ctx_.cameraMoved();
     });
     litToggle->setCheckable(true);
+    QAction* gameToggle = addCommand(view, "ToggleGameLighting", "Game Lighting (as the built map looks in game)", QKeySequence("Ctrl+Alt+L"), [this] {
+        // research 95 "Editor maps in game": the converter's world shader, the editor's lightmap bake (background,
+        // again after edits), the game's sun / lights / exposure / tone map.
+        ctx_.scene.gameLook = !ctx_.scene.gameLook;
+        if (QAction* a = action("ToggleGameLighting")) a->setChecked(ctx_.scene.gameLook);
+        ctx_.cameraMoved();
+    });
+    gameToggle->setCheckable(true);
     addCommand(view, "StockReference", "Stock Map Reference...", QKeySequence(), [this] {
         const QDir zoneDir(QFileInfo(toolPath("replay")).absolutePath() + "/zone");
         QStringList zones;

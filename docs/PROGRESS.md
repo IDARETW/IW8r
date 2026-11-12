@@ -35,8 +35,13 @@
   compile_iw8.cpp before the surface JSON). Editor maps draw with the converter's own world shader
   (map_surface_realtime.hlsl, not the stock tw/ shader): light = lightmap (A N.z + B sat(N.D)) + realtime sun x
   visibility + realtime local lights, so the bake leaves the direct sun and lights out (research 95 section "Editor
-  maps in game"). Proof tools/lightmap_bake_build_test.py (in run_offline_proofs.py). Next: the viewport renders with
-  that shader's math and the baked lightmap.
+  maps in game"). Proof tools/lightmap_bake_build_test.py (in run_offline_proofs.py).
+- Then View > Game Lighting (Ctrl+Alt+L): core game_look (exposure, ACES LUT, converter light units), viewport
+  game_lightmap.* (background bake of the camera's polygons, UVs found by position / normal / polygon centre),
+  render.cpp ps_tex game branch (b4, t6-t9), camera_view prepareGameLook / maybeBakeGameLook. GUI test section "game
+  lighting"; --viewport-bench has game_still / game_moving (synth_10000: 11.5 ms still, 8.0 ms moving; textured 10.7 /
+  7.1). The owner asked for game-like frame rates (about 200 fps on Shipment). Not compared with the game: the
+  absolute calibration (EV 10, +1.5 EV base, light window scale 1) is INFERRED (research 95).
 - Tests at the last commit: core 139,820 checks / 0, GUI 948 / 0.
 - Open (in scope): copying or removing a placed object that has a dynamic entity;
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.

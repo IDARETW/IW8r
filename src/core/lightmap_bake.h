@@ -94,6 +94,8 @@ struct BakeResult {
     // Per texel: the sun's visibility (1 lit, 0 shadowed; the IW3 primary-light mask the converter's shader falls back
     // on where its baked sun depth does not reach).
     std::vector<float> sunVisibility;
+    // Per texel: the direction of `direction` in world space (the viewport shades in world space).
+    std::vector<std::array<float, 3>> directionWorld;
 };
 
 // Bakes the scene. `progress` (optional) is called with 0..1.

@@ -42,6 +42,9 @@
 #include "compile_iw8.h"
 #include "custom_materials.h"
 #include "texture_decode.h"
+#include "game_look.h"
+#include <QPointer>
+#include <thread>
 
 namespace iw8r::qt {
 
@@ -327,7 +330,9 @@ void CameraView::render() {
         // Light entities per pixel on textured surfaces while the lit preview is on (3.14).
         std::vector<app::SceneRenderer::PixelLight>& pl = pixelLightScratch_;  // kept: no allocation per frame
         pl.clear();
-        ctx_->scene.pixelLights = ctx_->scene.litPreview && ctx_->texturedView && !ctx_->scene.captureMode;
+        prepareGameLook();
+        const bool game = gameLookOn();
+        ctx_->scene.pixelLights = (ctx_->scene.litPreview || game) && ctx_->texturedView && !ctx_->scene.captureMode;
         if (ctx_->scene.pixelLights)
             for (const auto& L : ctx_->scene.lights) {
                 if (pl.size() >= size_t(app::SceneRenderer::kMaxPixelLights)) break;
@@ -336,6 +341,18 @@ void CameraView::render() {
                 p.color[0] = float(L.color.x), p.color[1] = float(L.color.y), p.color[2] = float(L.color.z);
                 p.cosOuter = float(L.cosOuter), p.cosInner = float(L.cosInner);
                 p.dir[0] = float(L.dir.x), p.dir[1] = float(L.dir.y), p.dir[2] = float(L.dir.z);
+                if (game) {
+                    // The converter's light units (core game_look): the reference is radius / 2, or a spot's axis to the
+                    // first surface (convert.cpp traces the render triangles; here the collision world).
+                    double ref = L.radius * 0.5;
+                    if (L.cosOuter > -1.5)
+                        if (const CollisionWorld* cw = ctx_->scene.shadowWorld(ctx_->doc)) {
+                            const double f = cw->traceRay(L.pos, L.pos + L.dir * ref).fraction;
+                            if (f < 1.0) ref = std::max(1.0, f * ref);
+                        }
+                    const double gi = gameLightIntensity(L.radius, ref);
+                    for (float& c : p.color) c = float(c * gi);
+                }
                 pl.push_back(p);
             }
         mix(ctx_->scene.pixelLights ? 11 : 5);
@@ -344,7 +361,7 @@ void CameraView::render() {
         // Lit preview: encoded light (headroom to 2x) with exposure, and a sun shadow map over the map's bounds.
         const bool enc = ctx_->scene.litEncoded() && !ctx_->scene.captureMode;
         renderer_.setLitDecode(enc ? 2.0f : 1.0f, float(ctx_->scene.exposure));
-        ctx_->scene.gpuShadows = enc && ctx_->scene.litShadows;
+        ctx_->scene.gpuShadows = (enc || game) && ctx_->scene.litShadows;
         mix(ctx_->scene.gpuShadows ? 0x5d0u : 0x5d1u);
         if (!ctx_->scene.gpuShadows) {  // (with shadows on, the matrix is set after the geometry update below)
             const float id[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
@@ -422,6 +439,7 @@ void CameraView::render() {
         geomDirty_ = moreToLoad_;  // textures still arriving: build again next frame
         ++geometryUpdates_;
     }
+    maybeBakeGameLook();
     extraBatches_.clear();
     if (ctx_->scene.skyActive)
         for (auto& sb : skyBatches_) extraBatches_.push_back(sb.get());
@@ -1526,6 +1544,119 @@ size_t CameraView::referenceTexturesResolved() const {
     size_t n = 0;
     for (bool b : refTexResolved_) n += b ? 1 : 0;
     return n;
+}
+
+// ---- View > Game Lighting (game_lightmap.h, core game_look; research 95 "Editor maps in game")
+
+bool CameraView::gameLookOn() const { return ctx_->scene.gameLook && ctx_->texturedView && !ctx_->scene.captureMode; }
+
+namespace {
+// The worldspawn's "r g b intensity" sky for the bake (iw8r_bake_sky), default a pale blue at 0.35 of the sun.
+iw8r::Vec3 gameSkyOf(const iw8r::Document& doc) {
+    iw8r::Vec3 sky{0.55 * 0.35, 0.65 * 0.35, 0.8 * 0.35};
+    for (const auto& e : doc.map().entities)
+        if (e.isWorldspawn()) {
+            if (const std::string* s = e.value("iw8r_bake_sky")) {
+                double v[4];
+                if (std::sscanf(s->c_str(), "%lf %lf %lf %lf", &v[0], &v[1], &v[2], &v[3]) == 4) sky = iw8r::Vec3{v[0] * v[3], v[1] * v[3], v[2] * v[3]};
+            }
+            break;
+        }
+    return sky;
+}
+}  // namespace
+
+void CameraView::prepareGameLook() {
+    const bool game = gameLookOn();
+    if (game != gameWasOn_) {
+        gameWasOn_ = game;
+        geomDirty_ = true;  // vertex colours and lightmap UVs change
+    }
+    ctx_->scene.gameLightmap = game ? gameLm_ : nullptr;
+    app::SceneRenderer::GameLook g;
+    g.on = game;
+    if (game) {
+        if (!gameLutReady_) {
+            const std::vector<uint8_t> lut = buildGameTonemapLut(64);
+            renderer_.setGameTonemapLut(64, lut.data());
+            gameLutReady_ = true;
+        }
+        const Vec3& t = ctx_->scene.sunToward;
+        const Vec3& c = ctx_->scene.sunColor;
+        g.sunToward[0] = float(t.x), g.sunToward[1] = float(t.y), g.sunToward[2] = float(t.z);
+        g.sunColor[0] = float(c.x), g.sunColor[1] = float(c.y), g.sunColor[2] = float(c.z);
+        const Vec3 sky = gameSkyOf(ctx_->doc);
+        g.sky[0] = float(sky.x), g.sky[1] = float(sky.y), g.sky[2] = float(sky.z);
+        g.lutScale = float(gameLutInputScale(10.0));
+    }
+    renderer_.setGameLook(g);
+}
+
+void CameraView::maybeBakeGameLook() {
+    if (!gameLookOn() || gameBaking_) return;
+    const uint64_t rev = ctx_->doc.revision() * 1000003ull ^ ctx_->scene.generation();
+    if (rev == gameBakeRev_) return;
+    if (rev != gameSeenRev_) {
+        gameSeenRev_ = rev;
+        gameSeenAt_.restart();
+    }
+    // Wait until edits settle (a drag changes the revision every frame); the first bake starts at once.
+    if (gameLm_ && gameSeenAt_.isValid() && gameSeenAt_.elapsed() < 600) {
+        QTimer::singleShot(650, this, [this] { update(); });
+        return;
+    }
+    app::GameBakeInput in = app::gatherGameBake(ctx_->scene, ctx_->scene.drawClassFor);
+    // The game draws the sun (suncolor) and the lights in real time; the bake holds the sky, their bounce and the sun
+    // visibility, as the build's bake (compile_iw8.cpp) does.
+    in.scene.sunDir = ctx_->scene.sunToward;
+    in.scene.sunColor = ctx_->scene.sunColor;
+    in.scene.sunIntensity = 1.0;
+    in.scene.sunDirect = false;
+    const Vec3 sky = gameSkyOf(ctx_->doc);
+    in.scene.skyColor = sky;
+    in.scene.skyIntensity = 1.0;
+    for (const auto& L : ctx_->scene.lights) {
+        BakeLight b;
+        b.pos = L.pos;
+        b.color = L.color;
+        b.radius = L.radius;
+        b.spot = L.cosOuter > -1.5;
+        b.dir = L.dir;
+        b.cosOuter = L.cosOuter, b.cosInner = L.cosInner;
+        b.direct = in.scene.lights.size() >= 254;  // past the real-time limit: baked whole
+        in.scene.lights.push_back(b);
+    }
+    for (const auto& e : ctx_->doc.map().entities)
+        if (e.isWorldspawn()) {
+            if (const std::string* ts = e.value("iw8r_lightmap_texel")) in.settings.texelSize = std::max(1.0, std::atof(ts->c_str()));
+            if (const std::string* rs = e.value("iw8r_bake_rays")) in.settings.skyRays = std::clamp(std::atoi(rs->c_str()), 1, 1024);
+            break;
+        }
+    gameBaking_ = true;
+    gameBakeRev_ = rev;
+    emit ctx_->statusMessage(QString("Game lighting: baking %1 faces...").arg(in.polys.size()));
+    QPointer<CameraView> self(this);
+    std::thread([self, in = std::move(in)]() {
+        std::shared_ptr<const app::GameLightmap> lm = app::bakeGameLightmap(in);
+        QMetaObject::invokeMethod(qApp, [self, lm]() {
+            if (self) self->gameBakeDone(lm);
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
+void CameraView::gameBakeDone(std::shared_ptr<const app::GameLightmap> lm) {
+    gameBaking_ = false;
+    if (!lm) return;
+    if (!lm->error.empty()) {
+        emit ctx_->statusMessage(QString("Game lighting: %1").arg(QString::fromStdString(lm->error)));
+    } else {
+        renderer_.setGameLightmap(lm->width, lm->height, lm->a.data(), lm->b.data(), lm->d.data());
+        emit ctx_->statusMessage(QString("Game lighting: baked %1 x %2 lightmap, %3 faces, %4 units per texel, %5 s")
+                                     .arg(lm->width).arg(lm->height).arg(lm->polys).arg(lm->texelSize).arg(lm->seconds, 0, 'f', 1));
+    }
+    gameLm_ = lm;
+    geomDirty_ = true;
+    update();
 }
 
 }  // namespace iw8r::qt

@@ -65,6 +65,8 @@ struct GpuTexVertex {
     // Surface normal and texture tangent (world), for normal-mapped shading (3.2); zero for surfaces without one.
     float nx = 0, ny = 0, nz = 0;
     float tx = 0, ty = 0, tz = 0;
+    // View > Game Lighting: the vertex's lightmap UV in the preview bake (game_lightmap.h); negative = none.
+    float lu = -1, lv = -1;
 };
 
 // 3.20 instanced static models: one model's triangles (model space) drawn once per instance. Each instance is three
@@ -228,13 +230,32 @@ public:
         fog_[4] = color[0], fog_[5] = color[1], fog_[6] = color[2], fog_[7] = halfway;
     }
     // Per-pixel light preview on textured surfaces (3.14): up to kMaxPixelLights omni / spot lights.
-    static constexpr int kMaxPixelLights = 16;
+    static constexpr int kMaxPixelLights = 64;
     struct PixelLight {
         float pos[3], radius;
         float color[3], cosOuter;  // cosOuter < -1.5: omni
         float dir[3], cosInner;
     };
     void setPixelLights(const std::vector<PixelLight>& lights) { pixelLights_ = lights; }
+    // View > Game Lighting (research 95, "Editor maps in game"): textured surfaces shade as the converter's world
+    // shader shades a built map: albedo (sRGB decoded) x (lightmap A N.z + B sat(N.D) + sun visibility x N.L x
+    // suncolor) + albedo x local lights in the game's units (pixel lights: colour already x the game intensity,
+    // falloff 1 / d^2 in a smooth window), then the game's exposure (lutScale) and tone map LUT. `sky`: the light of
+    // surfaces without a lightmap texel (models; the game's light grid, approximated by the sky and sun).
+    struct GameLook {
+        bool on = false;
+        float sunToward[3] = {0, 0, 1};
+        float sunColor[3] = {1, 1, 1};
+        float sky[3] = {0.2f, 0.2f, 0.2f};
+        float lutScale = 1.0f;
+    };
+    void setGameLook(const GameLook& g) { game_ = g; }
+    bool gameLookOn() const { return game_.on; }
+    // The preview lightmap: width x height texels of four floats each (a, b, d as GameLightmap). null = none.
+    void setGameLightmap(int width, int height, const float* a, const float* b, const float* d);
+    bool hasGameLightmap() const { return gameLmSrv_[0] != nullptr; }
+    // The game's tone map LUT (core game_look buildGameTonemapLut): size^3 RGBA8, red fastest.
+    void setGameTonemapLut(int size, const uint8_t* rgba);
     void setLightGain(float g) { lightGain_ = g; }
     // Lit preview: vertex colours carry light / 2 and the sun's share in alpha (scene.cpp); decode 2 turns that on, 1 is
     // the plain unlit modes. exposure scales the result before a soft shoulder.
@@ -365,6 +386,12 @@ private:
     float fog_[8] = {};
     float grade_[12] = {1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0};  // contrast brightness desat _, light tint + lut size, dark tint
     int gradeFlags_ = 0;  // 1 film, 2 invert, 4 lut
+    GameLook game_;
+    ID3D11Texture2D* gameLmTex_[3] = {nullptr, nullptr, nullptr};
+    ID3D11ShaderResourceView* gameLmSrv_[3] = {nullptr, nullptr, nullptr};
+    ID3D11Texture3D* gameLutTex_ = nullptr;
+    ID3D11ShaderResourceView* gameLutSrv_ = nullptr;
+    ID3D11Buffer* cbGame_ = nullptr;
     ID3D11ShaderResourceView* lutSrv_ = nullptr;
     ID3D11Texture3D* lutTex_ = nullptr;
     ID3D11SamplerState* lutSampler_ = nullptr;

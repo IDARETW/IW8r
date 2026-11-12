@@ -379,6 +379,43 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         s.sync.push_back(0);
         s.other.push_back(op.nsecsElapsed() / 1e6);
     });
+    // View > Game Lighting: the preview bake first (background), then the same still and moving scenarios.
+    if (wanted("game_still") || wanted("game_moving")) {
+        trigger("CameraModeTextured");
+        setLit(false);
+        if (!ctx.scene.gameLook) trigger("ToggleGameLighting");
+        camA();
+        QElapsedTimer bt;
+        bt.start();
+        while (bt.elapsed() < 600000) {
+            frame(nullptr);
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (cam->gameLightmap() && !cam->gameBaking()) break;
+        }
+        const auto lm = cam->gameLightmap();
+        report << QString("game_bake ms=%1 lightmap=%2x%3 faces=%4 bake_s=%5 %6").arg(bt.elapsed()).arg(lm ? lm->width : 0)
+                      .arg(lm ? lm->height : 0).arg(lm ? lm->polys : 0).arg(lm ? lm->seconds : 0, 0, 'f', 2)
+                      .arg(lm && !lm->error.empty() ? QString::fromStdString(lm->error) : QString());
+        settle();
+        shot("game_a");
+        run("game_still", nullptr);
+        counts("counts_game");
+        run("game_moving", [&](int i, BenchSeries&) {
+            const int half = frames / 2;
+            if (i < half) {
+                const double a = 2 * 3.14159265358979 * i / half;
+                const Vec3 pos = centre + Vec3{std::cos(a) * 0.4 * R, std::sin(a) * 0.4 * R, 0.2 * R};
+                setCam(pos, a * 180 / 3.14159265358979 + 180, -26.6);
+            } else {
+                const double f = double(i - half) / std::max(1, frames - half - 1);
+                setCam(Vec3{centre.x + (f - 0.5) * 0.8 * R, centre.y + 24, all.mins.z + 88}, 0, 0);
+            }
+        });
+        camB();
+        settle();
+        shot("game_b");
+        trigger("ToggleGameLighting");
+    }
     trigger("CameraModeTextured");
     setLit(true);
     camA();

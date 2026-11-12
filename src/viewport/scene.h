@@ -85,6 +85,8 @@ uint32_t colorForClass(const std::string& classname);
 // at half or less, red at twice or more; patches, models and entities grey.
 enum class CameraMode { Textured, Flat, Wireframe, Fullbright, Normals, Contents, Density, Collision };
 
+struct GameLightmap;  // game_lightmap.h
+
 class SceneCache {
 public:
     // Rebuilds only items whose id/rev changed since the last sync.
@@ -109,6 +111,10 @@ public:
     };
     bool litPreview = false;
     bool litShadows = true;
+    // View > Game Lighting (game_lightmap.h): textured faces are shaded by the renderer as the game shades them; vertex
+    // colours carry only tints, and vertices of baked polygons carry their lightmap UV.
+    bool gameLook = false;
+    std::shared_ptr<const GameLightmap> gameLightmap;
     // The renderer's sun shadow map handles sun shadows per pixel (set by the camera); the per-face ray test is skipped.
     bool gpuShadows = false;
     // Set by buildCameraGeometry: the first N flat triangle vertices cast sun shadows; the rest are markers, tool faces

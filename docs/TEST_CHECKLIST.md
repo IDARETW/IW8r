@@ -11,6 +11,8 @@ Mark each line OK / wrong (with a screenshot) and send it back.
 
 - [x] The map opens; the camera shows textured rows (stock textures may fill in over a few seconds on first open).
 - [x] View > Camera Mode: Wireframe / Flat / Fullbright / Normals all draw; Ctrl+L lit preview shows sun shadows and the yellow sun arrow.
+- [ ] Optional, only if you want to check it: a map with worldspawn `iw8r_bake_lightmaps 1` in game next to View > Game
+      Lighting (Ctrl+Alt+L) in the editor from the same spot: brightness, shadows, light pools and colours should match.
 - [ ] Models browser: selecting a model shows the 3D preview; Prefabs dock lists prefabs (if any); Effects dock places
       an fx_origin (double-click). (wrong 2026-11-11: the model browser works; the Prefabs dock thumbnails are cut off with no names, and prefabs cannot be placed)
 - [x] P (play preview): walk, sprint, slide, mantle the 24/40/56/72 ledges (row ladder_and_mantle), climb the ladder tower.

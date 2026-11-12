@@ -34,7 +34,10 @@ models, sky, stock world geometry) is cached under `%LOCALAPPDATA%\IW8 Radiant S
 
 Camera: hold right mouse to look, W A S D to fly, mouse wheel for speed. **View > Camera Mode** switches Textured, Flat,
 Wireframe, Fullbright and Normals. **Ctrl+L** turns on the lit preview (sun, light entities and sun shadows; the yellow
-arrow points at the sun).
+arrow points at the sun). **Ctrl+Alt+L** (View > Game Lighting) shows the map as the built map looks in game: the
+editor bakes the world's lightmap in the background (again a moment after each edit; the status bar says when) and
+shades with the game's own formula: the lightmap, the sun with its shadows, the light entities in the game's units, then
+the game's exposure and tone curve. Worldspawn `iw8r_bake_lightmaps 1` puts the same bake into the build.
 
 ## 3. Building geometry
 

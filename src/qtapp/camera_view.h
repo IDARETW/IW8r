@@ -5,6 +5,7 @@
 
 #include <memory>
 
+#include "game_lightmap.h"
 #include "vfx_sim.h"
 #include "atmosphere.h"
 #include "foliage_sway.h"
@@ -141,6 +142,10 @@ public slots:
     // Changes when something that casts a sun shadow moved, appeared or went: the shadow map is drawn again then.
     uint64_t shadowCasterVersion() const { return geo_.casterVersion(); }
     void invalidateGeometry() { geomDirty_ = true; filesDue_ = true; update(); }
+    // View > Game Lighting: the last preview bake (null until one finished) and a forced re-bake.
+    std::shared_ptr<const app::GameLightmap> gameLightmap() const { return gameLm_; }
+    bool gameBaking() const { return gameBaking_; }
+    void rebakeGameLighting() { gameBakeRev_ = ~0ull; gameSeenAt_.invalidate(); update(); }
     // Stock map reference geometry (View > Stock Map Reference), uploaded on the next frame. Empty clears it.
     void setReference(std::vector<app::GpuVertex> tris) {
         pendingRef_ = std::move(tris);
@@ -330,6 +335,15 @@ private:
     qint64 activeProbeMtime_ = 0;
     void scanProbes();
     std::vector<app::SceneRenderer::PixelLight> pixelLightScratch_;
+    // View > Game Lighting (game_lightmap.h): the preview bake, made again in the background once edits settle.
+    std::shared_ptr<const app::GameLightmap> gameLm_;
+    bool gameBaking_ = false, gameLutReady_ = false, gameWasOn_ = false;
+    uint64_t gameBakeRev_ = ~0ull, gameSeenRev_ = ~0ull;
+    QElapsedTimer gameSeenAt_;
+    bool gameLookOn() const;
+    void prepareGameLook();
+    void maybeBakeGameLook();
+    void gameBakeDone(std::shared_ptr<const app::GameLightmap> lm);
     EffectSource effectSource_;
     size_t fxParticles_ = 0;
     double fxTimeOverride_ = -1;

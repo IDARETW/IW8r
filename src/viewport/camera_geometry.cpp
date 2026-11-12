@@ -2,6 +2,7 @@
 //
 // The per-item code below makes exactly what buildCameraGeometry (scene.cpp) makes for one item; the GUI test
 // compares the two (CameraGeometry::flatten against buildCameraGeometry) in every camera mode.
+#include "game_lightmap.h"
 #include "scene.h"
 
 #include <algorithm>
@@ -216,8 +217,9 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
     std::vector<GpuVertex>& edgeDst = sel ? out.sel : lines;
     const std::string* lastMat = nullptr;
     MatInfo* lastInfo = nullptr;
-    const bool lit = sc.litPreview;
-    const bool encoded = sc.litEncoded();
+    const bool lit = sc.litPreview && !sc.gameLook;
+    const bool encoded = sc.litEncoded() && !sc.gameLook;
+    const GameLightmap* gameLm = sc.gameLook ? sc.gameLightmap.get() : nullptr;
     for (size_t i = 0; i < g->polys.size(); ++i) {
         const bool hasMat = i < g->polyMaterial.size();
         MatInfo* mi = nullptr;
@@ -314,6 +316,7 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
         }
         if (texId >= 0) {
             const std::string& m = g->polyMaterial[i];
+            if (sc.gameLook) shade = 1.0;  // the renderer lights textured faces
             // Brush entities keep a hint of their class colour; selection tints red.
             uint32_t c = litColor(i < g->polyTint.size() ? g->polyTint[i] : 0xffffffffu);
             if (g->brushEntity) c = mixColor(c, g->color, 0.35);
@@ -345,10 +348,19 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
                 const double det = du1 * dv2 - du2 * dv1;
                 if (std::fabs(det) > 1e-12) tan = normalize((e1 * dv2 - e2 * dv1) * (1.0 / det));
             }
+            Vec3 centre;
+            if (gameLm) {
+                for (const auto& p : w) centre += p;
+                centre = centre * (1.0 / double(std::max<size_t>(1, w.size())));
+            }
             auto tv = [&](size_t k) {
                 GpuTexVertex v{float(w[k].x), float(w[k].y), float(w[k].z), uv[k][0], uv[k][1], c};
                 v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
                 v.tx = float(tan.x), v.ty = float(tan.y), v.tz = float(tan.z);
+                if (gameLm) {
+                    float luv[2];
+                    if (gameLm->uvFor(w[k], n, centre, luv)) v.lu = luv[0], v.lv = luv[1];
+                }
                 return v;
             };
             for (size_t k = 1; k + 1 < w.size(); ++k) {

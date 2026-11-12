@@ -13,6 +13,11 @@ Lighting:
   twice. `iw8r_bake_sky`, `iw8r_lightmap_texel` and `iw8r_bake_rays` tune it. The converter turns it into the
   game's lightmap and every world surface uses it (tools/lightmap_bake_build_test.py: build, ACTS, the built
   world's lightmap table). Not seen in game.
+- **View > Game Lighting (Ctrl+Alt+L).** The camera shows the map as the built map looks in game: the editor bakes the
+  lightmap in the background with the build's baker (again after edits) and shades with the converter's world shader
+  formula (lightmap, sun and its shadows, light entities in the game's units) and the game's exposure and ACES tone
+  curve (research 95). Cost about 0.8 ms per frame over the textured view on a 2-million-triangle scene at 1920 x 1080
+  (8 ms moving); the small sample room draws in 0.35 ms. Not compared with the game yet.
 
 Warzone and stock maps:
 

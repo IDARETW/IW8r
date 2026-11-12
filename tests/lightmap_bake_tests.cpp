@@ -72,7 +72,7 @@ TEST(lightmap_bake_floor_sun_and_shadow) {
     const size_t lit = texelAt(-128, 0), shadowed = texelAt(128, 0);
     // Lit: the sun straight down on a flat floor: directional = sun colour * intensity, direction (0, 0, 1).
     CHECK(std::fabs(r.directional[lit][0] - 2.0f) < 1e-3 && std::fabs(r.directional[lit][2] - 1.6f) < 1e-3);
-    CHECK(std::fabs(r.direction[lit][2] - 1.0f) < 1e-4);
+    CHECK(std::fabs(r.direction[lit][2] - 1.0f) < 1e-4 && std::fabs(r.directionWorld[lit][2] - 1.0f) < 1e-4);
     // Shadowed: no direct light.
     CHECK(r.directional[shadowed][0] < 1e-6);
     // Encoded and decoded as the converter does: C = A + B D.z with f = lum(A) / lum(C).
