@@ -8,42 +8,34 @@ data, not as an IW3 or IW7 conversion front end.
 MD5 `1c238fe327f2ecc3b0db924c5b425439` (`E:\IW8\Builds\1.20-replay`). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 for why this build and which evidence ties formats and addresses to it.
 
-**Status:** milestone 1 (edit → save → reopen) is done and tested. The editor now also builds a map into the five
-Replay 1.20 zones and validates them offline (M5.1). In-game loading of editor output has *not* been verified yet;
-see [docs/MILESTONES.md](docs/MILESTONES.md).
+**Status (2026-11-12):** a complete editor and build tool. It edits maps (brushes, patches, entities, prefabs,
+materials, models, lights, effects, sound, scripts without code), builds them into the game's own zones and checks
+them with the game's loaders offline, starts them in the game (F5), and edits the stock maps, Warzone included
+(entities, spawns, loot, buy stations, added models and brushes, installed as patch files). Many newer features are
+built and checked offline but **not yet seen in game**; the feature list says which.
 
 | Document | What it holds |
 |---|---|
-| [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md) | Mapper-facing parity matrix: every workflow with its IW8 path, dependencies, a concrete mapper test, and status |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Target build and evidence, standalone-vs-extend decision, components, IW8 format facts, licensing |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | The remaining work split into dependency layers (L1 in-game ground truth through L9 polish), each with an exit test |
-| [docs/MILESTONES.md](docs/MILESTONES.md) | Milestone 1 definition and results, the roadmap, in-game verification tracker, next concrete task |
-| [docs/research/](docs/research/) | Evidence reports (iw3xo audit, map grammar, build pipelines, IW8 asset access, 1.20 runtime symbols, test assets, editor feel, x64-zt, IW8 render features, IW8 entity inventory) |
+| [docs/features/FEATURES.md](docs/features/FEATURES.md) | **The full feature list, with screenshots** |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | How to use each feature |
+| [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md) | The in-game checks that only the game can answer |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Every item with its status (done, partial, open) and where its proof is |
+| [docs/PROGRESS.md](docs/PROGRESS.md) | Working notes for whoever continues the work |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Target build and evidence, components, IW8 format facts, licensing |
+| [docs/research/](docs/research/) | Evidence reports (game formats, converter work, Warzone, stock map editing, collision tiles, ...) |
 
-## What works today
+## What it does (short)
 
-- **Qt 6 editor** (`IW8Radiant.exe`): dockable Camera (Direct3D 11), 2D Grid (XY/XZ/YZ), Entity inspector,
-  Undo History, IW8 Spawns, rebindable Hotkeys (stock CoD Radiant defaults), recent files, drag-and-drop open.
-- **Lossless documents**: Radiant-grammar `.map` sources and IW8 runtime entity strings (`.ents`, canonical numeric
-  keys such as `212 "worldspawn"`) round-trip **byte for byte**; untouched brushes, materials, layers, `contents`,
-  `toolFlags`, vertex colours and unknown keys are never re-encoded.
-- **Real IW8 data**: opens stock Replay 1.20 `MapEnts` (ACTS `mw19-asset-json` dumps), resolves all canonical key ids,
-  decodes the compiled `spawnList` (IW8 keeps spawns there, not in the entity string) and shows it as an overlay.
-- **Editing**: on-grid move (drag, Alt+arrow nudge), Shift+click select in 2D and 3D, clone (Space), delete
-  (Backspace), invert (I), entity key/value edit/add/remove, exact undo/redo (Ctrl+Z / Ctrl+Y), Save / Save As / Save a Copy.
-- **Brush tools**: create by drag, face-drag resize, clipper (X, Enter / Shift+Enter / Ctrl+Enter), CSG hollow and
-  subtract, rotate/flip, n-sided prism, make brush entity / ungroup, vertex mode (V) for brush corners and patch control
-  points, Surface panel for texture fields, apply/pick material (Shift+M / Ctrl+Shift+M).
-- **Patch tools** (Patch menu): simple mesh (Shift+P), cylinder, bevel, endcap, invert (Ctrl+I), transpose, natural
-  texture, insert/delete rows and columns, thicken; curves render tessellated.
-- **Prefabs** (File menu): insert a `misc_prefab` (drawn with its contents), explode it (one undo step), save the
-  selection as a prefab.
-- **Find / Replace materials** (Ctrl+F), Select All Of Type (Shift+A), Check Map (Tools).
-- **Asset browsers**: 46k stock IW8 materials and 15k models from Replay 1.20, search, placement.
-- **Compile** (Compile menu / F7): native IW8 extraction → x64-zt `buildextraction` → five Replay zones + `map.json` →
-  ACTS `--test` on each zone, in a dock that does not block editing. Compile > Deploy installs the package into the
-  proxy's custom-map folder with a backup; Undo Last Deploy restores it.
-- **`iw8r` CLI** for scripting and tests: `info`, `roundtrip`, `diff`, `edit`, `iw8-ents`, `compile`.
+- **Editor**: Qt 6 with dockable views; Direct3D 11 camera with textured, lit (sun shadows), fog, wind and effect
+  previews; 2D views; Radiant-style brush, patch, clipper, CSG, vertex, UV and terrain tools; lossless `.map` files.
+- **Assets**: browsers for every stock material, model, image, effect and sound of the game; custom materials,
+  models (OBJ / glTF), sounds and effects; prefab bundles with parameters.
+- **Gameplay**: spawns and every core game mode's objects, Warzone game mode presets, loot points, buy stations,
+  vehicles, triggers, doors, lifts and other behaviours without scripting, stock scripted objects (doors, cones, cars).
+- **Build**: F7 builds the map into the game's zones (x64-zt converter), with collision in one piece or as the game's
+  streamed tiles for big maps, and tests every zone with the game's own loaders (ACTS); F5 plays it.
+- **Stock maps**: open any stock map with its world and props, change entities, spawns, loot points, buy stations,
+  add models and brushes, hide props, rebuild in seconds, install as patch files and restore.
 
 ## Build
 
@@ -110,7 +102,7 @@ Backspace delete, Esc deselect, I invert, N entity inspector, End frame selectio
 Build a map (needs the x64-zt `buildextraction` build, branch `iw8radiant/build-extraction`, and ACTS; set the paths in
 *Tools → Tool Paths*): open the map, press **F7**, and watch the Compile dock. Zones go to the x64-zt output folder
 (default `%LOCALAPPDATA%\IW8 Radiant Suite\...\x64zt_output\<map id>`). Then *Compile → Deploy to Replay Custom Maps*,
-start Replay, Local Play, **F6**, and pick the map. Every surface currently uses one grey material; see
+start Replay, Local Play, **F6**, and pick the map (or press **F5**, which does all of it); see
 [docs/MILESTONES.md](docs/MILESTONES.md) M5.1 for the limits.
 
 The same extraction from the command line:
