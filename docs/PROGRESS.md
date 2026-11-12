@@ -17,12 +17,14 @@
   the "no circle" switch no longer writes the unlinkable br_gametypes::disablefeature call; Bridge Two Faces; Blend By
   Slope; terrain blends of stock maps textured (material cache map zone fallback); the feature list pictures redone
   (IW8Radiant.exe --feature-shots); preflight no longer flags methods called on self.
-- Tests at the last commit: core 139,719 checks / 0, GUI 935 / 0.
-- Open (in scope): 13.6 a new game type script under a new name (research 92 says calls into numbered stock scripts
-  link; needs a second script file in the map zone and a far-call preflight); removing a placed object on a stock map
-  (indices in dynamic entities and the spatial tree); 11.5 removing stock world geometry; 11.6 sun and sky relight.
-  Prefabs: zip import / export of bundles (map_package extractZip handles stored entries only; stb has an inflater),
-  convert a plain .map to a bundle, placement hints (manifest surface and yaw_step are parsed, unused).
+- Later the same afternoon: new game type scripts (worldspawn iw8r_gametype_script, core gametype_script.*, converter
+  c5e182f3; far calls checked against data/generated/iw8_stock_scripts.tsv), prefab sharing (bundle zips with
+  deflate, plain .map to bundle, wall placement, rotate by yaw step), stock sun colour / intensity (converter
+  5ecee331, File > Relight Stock Map Sun), worldspawn keys documented (entity defs + KEYS_REFERENCE). Live converter
+  is 5ecee331. Package and installer rebuilt (out/package/IW8RadiantSuite-20261112.zip, out/installer).
+- Tests at the last commit: core 139,781 checks / 0, GUI 944 / 0.
+- Open (in scope): removing a placed object on a stock map (indices in dynamic entities and the spatial tree);
+  11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.
 - Disk: E: had 3.5 GB free; this session's scratch output under out/ was deleted (owner copies kept).
 
 ## Resume here (2026-11-11, after the owner playtest)
