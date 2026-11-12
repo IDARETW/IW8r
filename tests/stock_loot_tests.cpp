@@ -281,3 +281,23 @@ TEST(stock_sky_edit_json) {
     CHECK(stockEditJson("", {}, {}, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &replace) ==
           "{\"replace_materials\":" + replace + "}");
 }
+
+// Retexturing a stock map: pairs become carry entries (techsets companion of the listed zone) and replace entries.
+TEST(stock_retexture_edits) {
+    Id next = 1;
+    ParseResult pr = parseMap("iwmap 4\n{\n\"classname\" \"worldspawn\"\n\"iw8r_stock_retexture\" \"a/one=b/two; c/three = techsets_x/four ; bad; d/five=common/six; e/seven=gone/eight\"\n}\n", next);
+    CHECK(pr.map.has_value());
+    if (!pr.map) return;
+    const auto zoneOf = [](const std::string& m) -> std::string {
+        if (m == "b/two") return "mp_backlot2";
+        if (m == "techsets_x/four") return "techsets_mp_hideout";
+        if (m == "common/six") return "common_mp";
+        return "";
+    };
+    std::vector<StockEditCarry> carry;
+    std::vector<std::string> entries, notes;
+    CHECK(stockRetextureEdits(*pr.map, zoneOf, carry, entries, &notes) == 2);
+    CHECK(carry.size() == 2 && carry[0].zone == "techsets_mp_backlot2" && carry[0].name == "b/two" && carry[1].zone == "techsets_mp_hideout");
+    CHECK(entries.size() == 2 && entries[0] == "{\"from\":\"a/one\",\"to\":\"b/two\"}" && entries[1] == "{\"from\":\"c/three\",\"to\":\"techsets_x/four\"}");
+    CHECK(notes.size() == 4);  // bad pair, always-loaded zone, unknown material, the count
+}

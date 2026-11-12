@@ -1,6 +1,8 @@
 // MainWindow: rebuilding the open stock map through the converter's editzone command (roadmap 11.2 / 11.4 / 11.5,
 // docs/research/88_stock_map_editing.md). Kept out of main_window.cpp, which is at the compiler's section limit.
 #include "main_window.h"
+#include <map>
+#include <QTextStream>
 
 #include <algorithm>
 
@@ -248,6 +250,35 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
         std::vector<std::string> skyNotes;
         StockEditCarry skyCarry;
         if (stockSkyEdit(ctx_.doc.map(), stockZone_.toStdString(), skyCarry, replaceMaterials, &skyNotes)) carry.push_back(skyCarry);
+        // Retexturing (worldspawn iw8r_stock_retexture): the catalogue says which stock zone holds each new material.
+        static std::map<std::string, std::string> catalogue;
+        if (catalogue.empty()) {
+            QDir d(QCoreApplication::applicationDirPath());
+            for (int up = 0; up < 4 && !QFileInfo::exists(d.filePath("data/asset_catalog/iw8_materials.tsv")); ++up) d.cdUp();
+            QFile f(d.filePath("data/asset_catalog/iw8_materials.tsv"));
+            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream in(&f);
+                while (!in.atEnd()) {
+                    const QString line = in.readLine();
+                    const int tab = line.indexOf('\t');
+                    if (tab <= 0 || line.startsWith('#')) continue;
+                    catalogue.emplace(line.left(tab).toStdString(), line.mid(tab + 1).section(',', 0, 0).trimmed().toStdString());
+                }
+            }
+        }
+        std::vector<std::string> entries;
+        stockRetextureEdits(
+            ctx_.doc.map(),
+            [](const std::string& m) {
+                const auto it = catalogue.find(m);
+                return it == catalogue.end() ? std::string() : it->second;
+            },
+            carry, entries, &skyNotes);
+        if (!entries.empty()) {
+            std::string list = replaceMaterials.empty() ? std::string("[") : replaceMaterials.substr(0, replaceMaterials.size() - 1) + ",";
+            for (size_t i = 0; i < entries.size(); ++i) list += (i ? "," : "") + entries[i];
+            replaceMaterials = list + "]";
+        }
         if (notes)
             for (const std::string& n : skyNotes) *notes << qs(n);
     }

@@ -310,6 +310,10 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
     of tool materials (caulk, clip, nodraw), such as the helper brush for hiding props, are not built. Not seen in
     game.
 
+**Retexture a stock map**: set worldspawn `iw8r_stock_retexture` to `from=to` pairs (stock material names, `;` between
+pairs); File > Rebuild Stock Zone swaps them on the world surfaces. Replace like with like (a terrain blend with a blend):
+the surfaces keep their vertex data. Material Info in the Materials browser shows a material's name.
+
 **Sky of a stock map**: File > Relight Stock Map Sky picks another stock map whose sky this map uses (worldspawn
 `iw8r_sky_from`); File > Rebuild Stock Zone carries that sky in. The map's baked lighting stays as it was.
 

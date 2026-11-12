@@ -9,6 +9,7 @@
 // Pure core code.
 #pragma once
 
+#include <functional>
 #include <cstdint>
 #include <map>
 #include <set>
@@ -85,6 +86,15 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
 // ([{"from":"@sky","to":"tw/sky_<map id>"}]). False (nothing) when the key is unset, not a map id, or this map's own.
 bool stockSkyEdit(const MapFile& map, const std::string& thisZone, StockEditCarry& carry, std::string& replaceMaterials,
                   std::vector<std::string>* notes = nullptr);
+
+// Retexturing a stock map (worldspawn iw8r_stock_retexture "from=to; from=to"): every world surface of material `from`
+// gets material `to`. `zoneOf` names the stock zone the catalogue lists for a material ("" when unknown); a material
+// of a map zone is carried from its techsets companion (techsets_<zone>), one listed in a techsets zone from that zone.
+// Appends the carry entries and the replace_materials entries (JSON objects, no brackets) and returns how many pairs
+// were taken; a pair whose material is unknown or held only by an always-loaded zone is left out with a note.
+size_t stockRetextureEdits(const MapFile& map, const std::function<std::string(const std::string&)>& zoneOf,
+                           std::vector<StockEditCarry>& carry, std::vector<std::string>& replaceEntries,
+                           std::vector<std::string>* notes = nullptr);
 
 // 11.6: the stock sun the document asks for (worldspawn iw8r_sun_color "r g b", linear 0..16, and iw8r_sun_intensity
 // 0..1000000) as the edits file's "sun" object; "" when neither key is set. A bad value is left out with a note. The

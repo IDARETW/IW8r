@@ -263,4 +263,55 @@ bool stockSkyEdit(const MapFile& map, const std::string& thisZone, StockEditCarr
     return true;
 }
 
+size_t stockRetextureEdits(const MapFile& map, const std::function<std::string(const std::string&)>& zoneOf,
+                           std::vector<StockEditCarry>& carry, std::vector<std::string>& replaceEntries, std::vector<std::string>* notes) {
+    const Entity* world = nullptr;
+    for (const Entity& e : map.entities)
+        if (e.isWorldspawn()) {
+            world = &e;
+            break;
+        }
+    const std::string* v = world ? world->value("iw8r_stock_retexture") : nullptr;
+    if (!v || v->empty()) return 0;
+    const auto trim = [](std::string t) {
+        const auto a = t.find_first_not_of(" \t"), b = t.find_last_not_of(" \t");
+        return a == std::string::npos ? std::string() : t.substr(a, b - a + 1);
+    };
+    const auto validName = [](const std::string& n) {
+        return !n.empty() && n.size() < 128 && std::all_of(n.begin(), n.end(), [](unsigned char c) {
+            return std::isalnum(c) || c == '_' || c == '/' || c == '-' || c == '.' || c == '~' || c == '&' || c == '#';
+        });
+    };
+    size_t taken = 0;
+    size_t at = 0;
+    while (at <= v->size()) {
+        const size_t semi = v->find(';', at);
+        const std::string part = trim(v->substr(at, semi == std::string::npos ? std::string::npos : semi - at));
+        at = semi == std::string::npos ? v->size() + 1 : semi + 1;
+        if (part.empty()) continue;
+        const size_t eq = part.find('=');
+        const std::string from = eq == std::string::npos ? std::string() : trim(part.substr(0, eq));
+        const std::string to = eq == std::string::npos ? std::string() : trim(part.substr(eq + 1));
+        if (!validName(from) || !validName(to)) {
+            if (notes) notes->push_back("iw8r_stock_retexture '" + part + "' is not 'from=to' (material names); left out");
+            continue;
+        }
+        const std::string zone = zoneOf ? zoneOf(to) : std::string();
+        std::string source;
+        if (zone.rfind("techsets_", 0) == 0) source = zone;
+        else if (zone.rfind("mp_", 0) == 0) source = "techsets_" + zone;
+        if (source.empty()) {
+            if (notes)
+                notes->push_back("material '" + to + "' is " + (zone.empty() ? std::string("not in the material catalogue") : "held by " + zone + " only") +
+                                 ": it cannot be carried into a stock map yet; '" + from + "' stays");
+            continue;
+        }
+        carry.push_back({source, "material", to, ""});
+        replaceEntries.push_back("{\"from\":\"" + from + "\",\"to\":\"" + to + "\"}");
+        ++taken;
+    }
+    if (notes && taken) notes->push_back(std::to_string(taken) + " stock material(s) replaced on the world surfaces (iw8r_stock_retexture)");
+    return taken;
+}
+
 }  // namespace iw8r

@@ -108,6 +108,7 @@ The map's global settings. There is one worldspawn per map.
 | `iw8r_br` | words `nocircle`, `nogulag`, `skipdrop` | `nocircle nogulag skipdrop` | What a small map switches off in the Warzone (br) game type; also marks the map as a Warzone map. |
 | `iw8r_loot_zone` | lower-case name (default `map_quarry`) | `tutorial_scavenger` | The loot zone name of the map's loot points when no `iw8r_loot_zone` brush entity names one. The loot tables pick the loot by it. |
 | `iw8r_no_loot` | 0 or 1 | `1` | 1 writes an empty loot list (all loot of a stock Warzone map is removed on Rebuild Stock Zone). |
+| `iw8r_stock_retexture` | `from=to; from=to` (material names) | `tm2co/a=tm2co/b` | Stock maps: world material swaps on Rebuild Stock Zone; each new material is carried from its catalogue zone. Not seen in game. |
 | `iw8r_sky_from` | a stock map id | `mp_backlot2` | Stock maps: use that map's sky (File > Relight Stock Map Sky); Rebuild Stock Zone carries it in. Not seen in game. |
 | `iw8r_sun_color` | linear `r g b`, 0 to 16 | `1 0.55 0.35` | Stock maps: the sun's new colour (File > Relight Stock Map Sun); Rebuild Stock Zone writes it. The direction stays. Not seen in game. |
 | `iw8r_sun_intensity` | number 0 to 1000000 | `7.5` | Stock maps: the sun's new intensity (stock: mp_shipment 8.6, mp_br_tut 30.7). Not seen in game. |

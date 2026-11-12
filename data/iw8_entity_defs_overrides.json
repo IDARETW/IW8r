@@ -1684,6 +1684,15 @@
             "mp_backlot2"
           ],
           "description": "Stock maps (11.6): use another stock map's sky (File > Relight Stock Map Sky). Rebuild Stock Zone carries its sky material (tw/sky_<map>) and puts it on this map's sky surfaces. The baked lighting stays. Not seen in game."
+        },
+        "iw8r_stock_retexture": {
+          "type": "string",
+          "default": "",
+          "required": false,
+          "examples": [
+            "tm2co/me_curb_stone_01=tm2co/me_plaster_barrier_fence_wall"
+          ],
+          "description": "Stock maps: 'from=to; from=to' material swaps on the world surfaces. Rebuild Stock Zone carries each new material from the zone the material catalogue names (map materials only). Not seen in game."
         }
       }
     },
