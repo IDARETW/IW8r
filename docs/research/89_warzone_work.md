@@ -270,7 +270,12 @@ the editor adds boxes of its own:
    spatial tree holds split planes only. `tools/warzone_instances_remove_test.py` on Quarry: two of 120 buy stations
    removed, counts and the six physics limits -2, all 864 renumbered dynamic entities still name the same instance, ACTS
    as stock, an instance with a dynamic entity refused.) Moving or adding one that has a dynamic entity (doors,
-   extraction sites) is open.
+   extraction sites) is open. Found (tools/dynent_pose_rules.py, mp_backlot2, mp_shipment, mp_br_tut, mp_br_quarry):
+   the dynamic entity's initialPose origin equals the instance origin and its quaternion is AnglesToQuat of the
+   instance angles for every door-like entry (864 of 868 on Quarry; the other 4 are physics entries naming buy
+   stations). What blocks a move is the precomputed spatial population: entries are chained into buckets through
+   spatialNode.spatialNodeNext with a spatialPartitionIndex (0 .. about 150 on Quarry), and which tree defines those
+   partitions is not known yet; a move inside its partition would only need the pose written.
 4. Verdansk in the reference view: its world is 749 streamed zones; the view loads one zone.
 5. New game type scripts (roadmap 13.6). Read from the recompiled game exe with its linker map (`tools/dw_disasm.py`,
    read only): `G_ScrMP_LoadGameTypeScript_Shared` formats `scripts/mp/gametypes/<type>.gsc` (cp: `scripts/cp/...`)
