@@ -300,8 +300,8 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
    near the camera are read (a few seconds each, kept for next time) and drawn.
 10. Buy stations: File > Edit Placed Objects turns the buy stations of the map into `scriptable` entities (Quarry and
    Verdansk have 120 each). Move one, or copy one and move the copy for an extra station; the rebuild writes it and the
-   Console counts what was moved, added and removed. Delete a station's entity to remove it from the map. Doors and other
-   objects with moving parts cannot be edited this way yet.
+   Console counts what was moved, added and removed. Delete a station's entity to remove it from the map. Other placed
+   objects (signs, fences, props with physics) become entities too and can be moved; doors cannot be edited yet.
 
 11. New brushes: draw brushes and patches as usual (in the worldspawn or grouped in func_groups). File > Rebuild
     Stock Zone builds the visible ones as one model per group (with collision) and places it where you drew it; the

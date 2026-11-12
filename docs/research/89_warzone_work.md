@@ -281,7 +281,13 @@ the editor adds boxes of its own:
    other 320 are not on the walked path at all. 319 of them are the doors (priority DYNENT_PRIORITY_SPARSE_OCCLUDER;
    16 distinct values 6 .. 36 on Quarry, no insertion radius reproduces them): for a sparse occluder the index names
    another structure, not this tree. The ordinary entries (DYNENT_RADIAL_PRIORITY_LEVEL_LOW: signs, fences, props)
-   follow the walk, 523 of 524. Next steps: (1) moving an ordinary entry = new pose (origin, AnglesToQuat) + the walked
+   follow the walk, 523 of 524, and the 46 bucket chains of DynEntityList.dynEntSpatialPopulation (partitionIds[b] =
+   the partition of bucket b) list exactly the ordinary entries of each partition in descending entry order, the tail
+   the last (all 46 on Quarry). Built (x64-zt, "move" of an instance with ordinary dynamic entities): new pose, the
+   walked partition, unlink / relink in descending order with the tails; refused for sparse occluders, transient
+   entries, an entry placed apart from its instance (the 4 buy-station physics entries of Quarry) and a partition
+   without a bucket. Proof tools/dynent_move_test.py on Quarry (a short and a far move: pose, partition, all chains
+   exact, everything else unchanged, ACTS as stock, a door refused). Earlier plan: (1) moving an ordinary entry = new pose (origin, AnglesToQuat) + the walked
    index + relinking its spatial bucket chain, after a check that the chains (DynEntityList.dynEntSpatialPopulation
    buckets / bucketTails and spatialNode.spatialNodeNext) list exactly the entries of each index on stock zones;
    (2) doors need the structure their index names found first (sparse occluder data of the GfxWorld or the clipMap is

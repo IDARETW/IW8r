@@ -429,18 +429,18 @@ int MainWindow::editPlacedObjects() {
     ctx_.doc.beginGroup("Edit Placed Objects");
     for (const StockPlacedObject& o : stockPlaced_) {
         const ScriptableDefinition* def = catalog.find(o.definition);
-        if (!def || !editablePlacedDefinition(*def)) continue;
+        if (!def || !(editablePlacedDefinition(*def) || movablePlacedDefinition(*def))) continue;
         ctx_.doc.addEntity(placedObjectEntityKeys(o), {}, "Placed object " + o.definition);
         ++n;
     }
     ctx_.doc.endGroup();
     if (n == 0) {
-        ctx_.setStatus(QString("Edit Placed Objects: none of the %1 placed objects of this map can be edited (only objects without physics "
-                               "entries of their own, such as the Warzone buy station)").arg(stockPlaced_.size()));
+        ctx_.setStatus(QString("Edit Placed Objects: none of the %1 placed objects of this map can be edited (doors cannot yet)").arg(stockPlaced_.size()));
         return 0;
     }
-    ctx_.documentEdited(QString("%1 of %2 placed objects are now entities (class scriptable): move them, or copy one for a new object; "
-                                "Rebuild Stock Zone writes it. They cannot be removed").arg(n).arg(stockPlaced_.size()));
+    ctx_.documentEdited(QString("%1 of %2 placed objects are now entities (class scriptable): move them; objects without a dynamic entity "
+                                "(buy stations) can also be copied or deleted. Rebuild Stock Zone writes it. Doors cannot be edited yet")
+                            .arg(n).arg(stockPlaced_.size()));
     return int(n);
 }
 

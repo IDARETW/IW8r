@@ -28,6 +28,7 @@ proofs = [
     ('warzone_instances_edit_test', ['--exe', exe]),  # Quarry's buy stations
     ('stock_sun_edit_test', ['--exe', exe]),
     ('warzone_instances_remove_test', ['--exe', exe]),
+    ('dynent_move_test', ['--exe', exe]),
     ('warzone_custom_loot_test', None),
     ('warzone_custom_loot_boxes_test', None),
     ('scriptable_limits_test', None),

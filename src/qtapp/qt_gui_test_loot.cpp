@@ -109,7 +109,7 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
     section("placed objects of a Warzone stock map (13.5: buy stations)");
     check(w.stockPlacedObjectCount() == 90, QString("the map's scriptable instances are read: %1").arg(w.stockPlacedObjectCount()));
     const int made = w.editPlacedObjects();
-    check(made == 4 && hasPlacedObjects(ctx.doc.map()), QString("File > Edit Placed Objects adds the %1 objects without physics entries").arg(made));
+    check(made == 90 && hasPlacedObjects(ctx.doc.map()), QString("File > Edit Placed Objects adds the %1 movable objects (none of this map is a door)").arg(made));
     check(w.editPlacedObjects() == 0, "a second call adds nothing");
     Id kiosk = kNoId;
     std::string kioskIndex;

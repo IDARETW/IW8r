@@ -666,7 +666,7 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 ### Buy stations and vehicles
 
 - Buy station on your own map: a `scriptable` entity with `scriptable` set to `br_plunder_box`. A custom map never loads the game's Warzone zone (read from the game exe, research 93), so the build copies the buy station's definition, models and materials into the map. Built offline and checked with ACTS. (not yet seen in game)
-- Buy stations on a stock map: File > Edit Placed Objects turns the buy stations (120 on Quarry and 120 on Verdansk) into `scriptable` entities. Move one, copy one to add another, or delete one to remove it (the rebuild renumbers the dynamic entities after it; checked on Quarry). Doors and other objects with moving parts cannot be edited this way yet. (not yet seen in game)
+- Buy stations on a stock map: File > Edit Placed Objects turns the buy stations (120 on Quarry and 120 on Verdansk) into `scriptable` entities. Move one, copy one to add another, or delete one to remove it (the rebuild renumbers the dynamic entities after it; checked on Quarry). Signs, fences and other placed objects with an ordinary physics entry can be moved too (the entry follows). Doors and other objects with moving parts cannot be edited this way yet. (not yet seen in game)
 
 ![File > Edit Placed Objects on mp_br_tut: the buy station br_plunder_box selected (drawn yellow) in the camera, with its keys in the Entity dock](img/buy_stations.png)
 

@@ -112,7 +112,7 @@ def main():
     if other is None:
         other = next(i for i, s in enumerate(stock) if i not in boxes)
     code, log, rep = t.editzone(exe, zone, {'scriptable_instances': {'move': [{'index': other, 'origin': [0, 0, 0]}]}, 'patch': False}, os.path.join(work, 'b'))
-    refused = code != 0 and 'dynamic entity of its own' in log
+    refused = code != 0 and ('dynamic entity of its own' in log or 'sparse occluder' in log or 'placed apart' in log)
     if code == 0:
         print('       note: instance %d (%s) has no dynamic entity in this zone' % (other, stock[other]['definition']))
     check(refused, 'moving instance %d (%s) is refused with the reason' % (other, stock[other]['definition']))

@@ -100,6 +100,7 @@ bool readStockPlacedObjects(const std::string& assetJson, std::vector<StockPlace
 }
 
 bool editablePlacedDefinition(const ScriptableDefinition& def) { return def.verified && !def.instanceDynent && def.physicsDynents == 0; }
+bool movablePlacedDefinition(const ScriptableDefinition& def) { return def.verified && !def.sparseOccluder; }
 
 std::vector<std::pair<std::string, std::string>> placedObjectEntityKeys(const StockPlacedObject& o) {
     return {{"classname", kPlacedObjectClass},
@@ -153,8 +154,8 @@ PlacedObjectEdits placedObjectEdits(const MapFile& map, const std::vector<StockP
         if (own) {
             seen.insert(own->index);
             if (near(*origin, own->origin) && near(angles, own->angles)) continue;  // unchanged
-            if (!def || !editablePlacedDefinition(*def)) {
-                ++leftOut["'" + *dv + "' was moved, but it has physics entries of its own (or is not in the catalogue): it stays where it was"];
+            if (!def || !(editablePlacedDefinition(*def) || movablePlacedDefinition(*def))) {
+                ++leftOut["'" + *dv + "' was moved, but it is a door or another sparse occluder (or not in the catalogue): it stays where it was"];
                 continue;
             }
             moves += std::string(out.moved ? "," : "") + "{\"index\":" + std::to_string(own->index) + ",\"origin\":" + vecJson(*origin) +
@@ -184,16 +185,23 @@ PlacedObjectEdits placedObjectEdits(const MapFile& map, const std::vector<StockP
     if (!any) return out;
     // Stock objects of an editable kind whose entity is gone: removed (with the definition's numbers for the counts).
     std::string removes;
+    size_t keptDeleted = 0;
     for (const StockPlacedObject& o : stock) {
         if (seen.count(o.index)) continue;
         const ScriptableDefinition* def = catalog.find(o.definition);
-        if (!def || !editablePlacedDefinition(*def)) continue;
+        if (!def || !editablePlacedDefinition(*def)) {
+            if (def && movablePlacedDefinition(*def)) ++keptDeleted;
+            continue;
+        }
         removes += std::string(out.removed ? "," : "") + "{\"index\":" + std::to_string(o.index) + ",\"server_instanced_parts\":" +
                    std::to_string(def->serverInstancedParts) + ",\"usable_parts\":" + std::to_string(def->usableParts) +
                    ",\"physics_limit\":" + (def->physicsLimit ? "true" : "false") + ",\"physics_limit_detail\":" +
                    (def->physicsLimitDetail ? "true" : "false") + "}";
         ++out.removed;
     }
+    if (keptDeleted)
+        out.notes.push_back(std::to_string(keptDeleted) + " placed object(s) with a dynamic entity were deleted in the document: those can be moved but "
+                            "not removed yet; they stay");
     for (const auto& [reason, n] : leftOut) out.notes.push_back(std::to_string(n) + " placed object(s) left out: " + reason);
     if (out.moved || out.added || out.removed) {
         out.json = "{";
