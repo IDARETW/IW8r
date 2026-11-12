@@ -242,6 +242,14 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
             for (const std::string& n : boxNotes) *notes << qs(n);
     }
 
+    // 11.6: the stock sun's colour and intensity (worldspawn iw8r_sun_color / iw8r_sun_intensity).
+    std::vector<std::string> sunNotes;
+    const std::string sun = stockSunJson(ctx_.doc.map(), &sunNotes);
+    if (notes) {
+        for (const std::string& n : sunNotes) *notes << qs(n);
+        if (!sun.empty()) *notes << "the stock sun gets a new colour or intensity (its direction stays: the baked sun shadows hold it)";
+    }
+
     // 13.5: placed objects (buy stations) that were moved or added as `scriptable` entities.
     const PlacedObjectEdits placed =
         placedObjectEdits(ctx_.doc.map(), stockPlaced_, ScriptableCatalog::shared(QCoreApplication::applicationDirPath().toStdString()));
@@ -262,7 +270,7 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
     const QString editsPath = work + "/edits.json";
     QFile jf(editsPath);
     const std::string json = stockEditJson(QDir::toNativeSeparators(entsPath).toStdString(), hidden, carry, writeLoot ? &loot : nullptr,
-                                           &placed.json, &stockPatches, &removeCollision, &lootBoxes);
+                                           &placed.json, &stockPatches, &removeCollision, &lootBoxes, &sun);
     if (!jf.open(QIODevice::WriteOnly) || jf.write(json.data(), qint64(json.size())) != qint64(json.size())) {
         if (err) *err = "Cannot write " + editsPath;
         return false;

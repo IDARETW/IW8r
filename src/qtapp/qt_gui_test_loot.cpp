@@ -236,6 +236,28 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
         check(ctx.doc.text() == stockText, "Undo takes the added brush out again");
     }
 
+    // 11.6: worldspawn iw8r_sun_color / iw8r_sun_intensity reach the edits file as "sun".
+    section("stock sun colour and intensity (11.6)");
+    {
+        Id world = kNoId;
+        for (const Entity& e : ctx.doc.map().entities)
+            if (e.isWorldspawn()) world = e.id;
+        ctx.doc.beginGroup("Relight Sun");
+        ctx.doc.setKeyValue(world, "iw8r_sun_color", "1 0.55 0.35");
+        ctx.doc.setKeyValue(world, "iw8r_sun_intensity", "7.5");
+        ctx.doc.endGroup();
+        QString program, err;
+        QStringList args, notes;
+        const bool prepared = w.prepareStockEdit(work + "/sun", &program, &args, &err, &notes);
+        QFile jf(work + "/sun/edits.json"), ef(work + "/sun/edit.ents");
+        const QByteArray json = jf.open(QIODevice::ReadOnly) ? jf.readAll() : QByteArray();
+        const QByteArray ents = ef.open(QIODevice::ReadOnly) ? ef.readAll() : QByteArray();
+        check(prepared && json.contains("\"sun\":{\"color\":[1,0.55,0.35],\"intensity\":7.5}"), "the sun colour and intensity reach the edits file: " + err);
+        check(notes.join("; ").contains("the stock sun gets a new colour or intensity") && w.action("RelightStockSun"), "the rebuild notes say so, and the command exists");
+        for (int i = 0; i < 4 && ctx.doc.modified(); ++i) ctx.doc.undo();
+        check(ctx.doc.text() == stockText, "Undo takes the sun keys out again");
+    }
+
     // New loot clusters and zones (research 89 section 9): box brush entities that go to the edits file as loot_boxes,
     // never into the entity text and never built as models.
     section("new loot clusters and zones on a stock map (13.5)");

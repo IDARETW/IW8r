@@ -1038,6 +1038,33 @@ void MainWindow::buildMenus() {
     addCommand(file, "Open", "&Open...", QKeySequence("Ctrl+O"), [this] { openDialog(); });
     addCommand(file, "OpenStockZone", "Open IW8 Stock &Map (ACTS)...", QKeySequence("Ctrl+Shift+O"), [this] { openStockZoneDialog(); });
     addCommand(file, "RelightStockMap", "Relight Stock Map (Fog / Vision)...", QKeySequence(), [this] { relightStockMapDialog(); });
+    addCommand(file, "RelightStockSun", "Relight Stock Map Sun (Colour / Intensity)...", QKeySequence(), [this] {
+        // 11.6: worldspawn iw8r_sun_color (linear) and iw8r_sun_intensity; File > Rebuild Stock Zone writes them.
+        const Entity* world = nullptr;
+        for (const Entity& e : ctx_.doc.map().entities)
+            if (e.isWorldspawn()) {
+                world = &e;
+                break;
+            }
+        if (!world || stockZone_.isEmpty()) return ctx_.setStatus("Relight Sun: open a stock map first (File > Open IW8 Stock Map)");
+        double lin[3] = {1.0, 0.95, 0.9}, intensity = 8.6;  // about the stock suns (mp_shipment 1.05 0.99 0.92, 8.63)
+        if (const std::string* c = world->value("iw8r_sun_color")) std::sscanf(c->c_str(), "%lf %lf %lf", &lin[0], &lin[1], &lin[2]);
+        if (const std::string* i = world->value("iw8r_sun_intensity")) intensity = std::atof(i->c_str());
+        const auto toS = [](double v) { return int(std::lround(std::pow(std::clamp(v, 0.0, 1.0), 1.0 / 2.2) * 255.0)); };
+        const QColor picked = QColorDialog::getColor(QColor(toS(lin[0]), toS(lin[1]), toS(lin[2])), this, "Sun colour");
+        if (!picked.isValid()) return;
+        bool ok = false;
+        const double in = QInputDialog::getDouble(this, "Relight Sun", "Sun intensity (stock: mp_shipment 8.6, mp_br_tut 30.7; the rebuild report shows the old value):", intensity, 0, 1000, 2, &ok);
+        if (!ok) return;
+        const auto toL = [](int v) { return std::pow(v / 255.0, 2.2); };
+        const std::string color = formatNumber(toL(picked.red())) + " " + formatNumber(toL(picked.green())) + " " + formatNumber(toL(picked.blue()));
+        ctx_.doc.beginGroup("Relight Sun");
+        ctx_.doc.setKeyValue(world->id, "iw8r_sun_color", color);
+        ctx_.doc.setKeyValue(world->id, "iw8r_sun_intensity", formatNumber(in));
+        ctx_.doc.endGroup();
+        ctx_.documentEdited("Stock sun set (colour " + QString::fromStdString(color) + ", intensity " + QString::number(in) +
+                            "); File > Rebuild Stock Zone writes it. The direction stays (baked sun shadows)");
+    });
     addCommand(file, "EditStockSpawns", "Edit Compiled Spawns (stock map)", QKeySequence(), [this] { editStockSpawns(); });
     addCommand(file, "EditLootPoints", "Edit Loot Points (Warzone stock map)", QKeySequence(), [this] { editLootPoints(); });
     addCommand(file, "EditPlacedObjects", "Edit Placed Objects (Warzone buy stations)", QKeySequence(), [this] { editPlacedObjects(); });

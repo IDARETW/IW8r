@@ -7237,6 +7237,24 @@
             "one",
             "tiles"
           ]
+        },
+        "iw8r_sun_color": {
+          "type": "string",
+          "default": "",
+          "required": false,
+          "examples": [
+            "1 0.55 0.35"
+          ],
+          "description": "Stock maps (11.6): the sun's new colour, linear r g b 0 to 16 (File > Relight Stock Map Sun). Rebuild Stock Zone writes it; the direction stays (baked sun shadows). Not seen in game."
+        },
+        "iw8r_sun_intensity": {
+          "type": "float",
+          "default": "",
+          "required": false,
+          "examples": [
+            "7.5"
+          ],
+          "description": "Stock maps (11.6): the sun's new intensity (stock: mp_shipment 8.6, mp_br_tut 30.7). Rebuild Stock Zone writes it. Not seen in game."
         }
       }
     }

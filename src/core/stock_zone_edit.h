@@ -77,6 +77,12 @@ struct StockPropCollision {
 std::string stockEditJson(const std::string& entitiesPath, const std::vector<uint32_t>& hiddenProps,
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints = nullptr,
                           const std::string* placedObjects = nullptr, const std::vector<StockPatchOverride>* stockPatches = nullptr,
-                          const std::vector<StockPropCollision>* removeCollision = nullptr, const std::string* lootBoxes = nullptr);
+                          const std::vector<StockPropCollision>* removeCollision = nullptr, const std::string* lootBoxes = nullptr,
+                          const std::string* sun = nullptr);
+
+// 11.6: the stock sun the document asks for (worldspawn iw8r_sun_color "r g b", linear 0..16, and iw8r_sun_intensity
+// 0..1000000) as the edits file's "sun" object; "" when neither key is set. A bad value is left out with a note. The
+// direction is never changed (the stock zone's baked sun shadows hold it).
+std::string stockSunJson(const MapFile& map, std::vector<std::string>* notes = nullptr);
 
 }  // namespace iw8r

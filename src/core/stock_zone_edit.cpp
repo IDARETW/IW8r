@@ -1,5 +1,8 @@
 #include "stock_zone_edit.h"
 
+#include <cstdio>
+#include <cstdlib>
+
 #include <algorithm>
 #include <cctype>
 #include <fstream>
@@ -136,7 +139,7 @@ std::vector<uint32_t> stockEditHiddenProps(const MapFile& map) {
 std::string stockEditJson(const std::string& entitiesPath, const std::vector<uint32_t>& hiddenProps,
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints, const std::string* placedObjects,
                           const std::vector<StockPatchOverride>* stockPatches, const std::vector<StockPropCollision>* removeCollision,
-                          const std::string* lootBoxes) {
+                          const std::string* lootBoxes, const std::string* sun) {
     std::string json = "{";
     bool first = true;
     const auto sep = [&] {
@@ -160,6 +163,10 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
             json += std::string(i ? "," : "") + "{\"zone\":" + jsonText(carry[i].zone) + ",\"type\":" + jsonText(carry[i].type) +
                     ",\"name\":" + jsonText(carry[i].name) + (carry[i].folder.empty() ? std::string() : ",\"folder\":" + jsonText(carry[i].folder)) + "}";
         json += "]";
+    }
+    if (sun && !sun->empty()) {
+        sep();
+        json += "\"sun\":" + *sun;
     }
     if (lootBoxes && !lootBoxes->empty()) {
         sep();
@@ -191,6 +198,40 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
         json += "}";
     }
     return json + "}";
+}
+
+std::string stockSunJson(const MapFile& map, std::vector<std::string>* notes) {
+    const Entity* world = nullptr;
+    for (const Entity& e : map.entities)
+        if (e.isWorldspawn()) {
+            world = &e;
+            break;
+        }
+    if (!world) return {};
+    std::string json;
+    const auto num = [](double v) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.6g", v);
+        return std::string(buf);
+    };
+    if (const std::string* c = world->value("iw8r_sun_color"); c && !c->empty()) {
+        double v[3] = {0, 0, 0};
+        char tail = 0;
+        if (std::sscanf(c->c_str(), "%lf %lf %lf %c", &v[0], &v[1], &v[2], &tail) == 3 && v[0] >= 0 && v[1] >= 0 && v[2] >= 0 &&
+            v[0] <= 16 && v[1] <= 16 && v[2] <= 16)
+            json += "\"color\":[" + num(v[0]) + "," + num(v[1]) + "," + num(v[2]) + "]";
+        else if (notes)
+            notes->push_back("iw8r_sun_color '" + *c + "' is not three numbers 0 to 16 (linear); the sun colour is not changed");
+    }
+    if (const std::string* i = world->value("iw8r_sun_intensity"); i && !i->empty()) {
+        char* endp = nullptr;
+        const double v = std::strtod(i->c_str(), &endp);
+        if (endp && *endp == 0 && v >= 0 && v <= 1000000)
+            json += std::string(json.empty() ? "" : ",") + "\"intensity\":" + num(v);
+        else if (notes)
+            notes->push_back("iw8r_sun_intensity '" + *i + "' is not a number 0 to 1000000; the sun intensity is not changed");
+    }
+    return json.empty() ? std::string() : "{" + json + "}";
 }
 
 }  // namespace iw8r

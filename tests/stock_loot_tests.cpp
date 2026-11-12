@@ -240,3 +240,21 @@ TEST(stock_loot_new_boxes) {
     const std::string empty;
     CHECK(stockEditJson("", {}, {}, nullptr, nullptr, nullptr, nullptr, &empty) == "{}");
 }
+
+// 11.6: the stock sun's colour and intensity from worldspawn keys, into the edits file.
+TEST(stock_sun_edit_json) {
+    const auto mapOf = [](const std::string& keys) {
+        Id next = 1;
+        ParseResult pr = parseMap("iwmap 4\n{\n\"classname\" \"worldspawn\"\n" + keys + "}\n", next);
+        return pr.map ? *pr.map : MapFile{};
+    };
+    std::vector<std::string> notes;
+    CHECK(stockSunJson(mapOf(""), &notes).empty() && notes.empty());
+    CHECK(stockSunJson(mapOf("\"iw8r_sun_color\" \"1 0.55 0.35\"\n\"iw8r_sun_intensity\" \"7.5\"\n"), &notes) ==
+          "{\"color\":[1,0.55,0.35],\"intensity\":7.5}");
+    CHECK(stockSunJson(mapOf("\"iw8r_sun_intensity\" \"12\"\n")) == "{\"intensity\":12}");
+    notes.clear();
+    CHECK(stockSunJson(mapOf("\"iw8r_sun_color\" \"red\"\n\"iw8r_sun_intensity\" \"-1\"\n"), &notes).empty() && notes.size() == 2);
+    const std::string sun = "{\"intensity\":12}";
+    CHECK(stockEditJson("", {}, {}, nullptr, nullptr, nullptr, nullptr, nullptr, &sun) == "{\"sun\":{\"intensity\":12}}");
+}
