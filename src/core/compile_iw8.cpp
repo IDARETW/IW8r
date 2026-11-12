@@ -2154,7 +2154,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     // Loot points (13.5, research 89): `iw8r_loot_point` point entities become the collision json's loot_points, which
     // the converter writes as MapEnts.spawnGroupLoot (no clusters and no zones, as the small stock maps with loot).
     // loot_cluster "cache" makes a loot cache point; every other point is a free point.
-    std::string lootJson;
+    std::string lootJson, lootZone;
     size_t lootCount = 0;
     {
         size_t tooMany = 0;
@@ -2177,6 +2177,19 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         if (lootCount)
             warn.push_back(std::to_string(lootCount) + " loot point(s) written for the battle royale game type (needs a converter with loot points, "
                            "research 89; not seen in game)");
+        // The loot tables choose what lies on a point by its zone's name (research 87 section 2.4): one zone over
+        // every point, named by worldspawn iw8r_loot_zone (default map_quarry, a zone of the stock Warzone tables).
+        if (lootCount) {
+            lootZone = "map_quarry";
+            if (worldspawn)
+                if (const std::string* z = worldspawn->value("iw8r_loot_zone"); z && !z->empty()) {
+                    const std::string name = lower(*z);
+                    if (std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::islower(c) || std::isdigit(c) || c == '_'; }))
+                        lootZone = name;
+                    else
+                        warn.push_back("worldspawn iw8r_loot_zone '" + *z + "' is not a lower-case name; map_quarry is used");
+                }
+        }
     }
     // Vehicles (13.4, research 89): vehicle spawn structs make the converter carry the stock vehicle definition and
     // its model (collision json carry_assets).
@@ -2808,7 +2821,8 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
            "\"dynamic_model_count\":" + std::to_string(dynModelCount) + ",\"dynamic_brush_count\":0,\"dynamic_models\":[" +
            dynModelsJson + "],\"dynamic_brushes\":[]" +
            (scriptableCount ? ",\"scriptable_instances\":[" + scriptablesJson + "]" : std::string()) +
-           (lootCount ? ",\"loot_points\":[" + lootJson + "]" : std::string()) + (collisionTiles ? ",\"collision_tiles\":true" : "") +
+           (lootCount ? ",\"loot_points\":[" + lootJson + "],\"loot_zone\":\"" + lootZone + "\"" : std::string()) +
+           (collisionTiles ? ",\"collision_tiles\":true" : "") +
            (carryAssets.empty() ? std::string() : ",\"carry_assets\":" + carryAssets) + "}";
 
     std::string comworld =

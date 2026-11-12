@@ -1616,7 +1616,7 @@ TEST(compile_iw8_loot_points) {
     const std::string col = readAll((mp / (std::string(kSampleId) + ".d3dbsp.replay-collision.json")).string());
     CHECK(col.find("\"loot_points\":[{\"origin\":[64,32,16],\"angles\":[0,90,0],\"cache\":false},"
                    "{\"origin\":[-64,32.5,16],\"angles\":[0,0,0],\"cache\":true},"
-                   "{\"origin\":[0,0,8],\"angles\":[0,0,0],\"cache\":false}]}") != std::string::npos);
+                   "{\"origin\":[0,0,8],\"angles\":[0,0,0],\"cache\":false}],\"loot_zone\":\"map_quarry\"}") != std::string::npos);
     bool noted = false;
     for (const std::string& w : rep.warnings) noted |= w.find("3 loot point(s) written") != std::string::npos;
     CHECK(noted);

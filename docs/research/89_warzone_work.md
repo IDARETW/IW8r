@@ -104,6 +104,11 @@ loot points is byte-identical between the old and the new converter; with five p
 angles, free or cache), the loot count is 5, the three server counts rise by 5, every other field of `map_ents` is
 unchanged, and the zone loads with 0 failed.
 
+2026-11-12 later: the build also writes one loot zone over the points (fork c34c7188, collision JSON `loot_zone`, editor
+worldspawn `iw8r_loot_zone`, default `map_quarry`), because the loot tables pick the loot set by the zone name: points
+have zone 1, the zone lists every point except the cache points, its box holds them all
+(`tools/warzone_custom_loot_test.py`, 0 failed).
+
 Not known: whether the br scripts put loot on points of a map that has no zone and no cluster (stock maps always have
 one of the two), and whether the loot item definitions are loaded for a custom map. `ffMemCost` is written as 216
 (the converter's value for any scriptable data), stock is 1240.

@@ -77,6 +77,7 @@ def main():
     col_path = os.path.join(copy, 'extracted', 'maps', 'mp', map_id + '.d3dbsp.replay-collision.json')
     col = json.load(open(col_path, encoding='utf-8'))
     col['loot_points'] = POINTS
+    col['loot_zone'] = 'map_quarry'
     json.dump(col, open(col_path, 'w', encoding='utf-8'))
     out = os.path.join(work, 'loot')
     code, log = t.build(new, copy, map_id, out, os.path.join(work, 'metadata.json'))
@@ -98,10 +99,23 @@ def main():
     raw = rules.array(loot.get('points'), '<6f2H', 28)
     got = [(tuple(rules.vec(p['origin'])), tuple(rules.vec(p['angles'])), p['cluster'], p['zone']) if isinstance(p, dict)
            else (tuple(p[0:3]), tuple(p[3:6]), p[6], p[7]) for p in raw]
-    want = [(tuple(float(v) for v in p['origin']), tuple(float(v) for v in p.get('angles', [0, 0, 0])), 0xFFFB if p.get('cache') else 0xFFFD, 0)
+    want = [(tuple(float(v) for v in p['origin']), tuple(float(v) for v in p.get('angles', [0, 0, 0])), 0xFFFB if p.get('cache') else 0xFFFD, 1)
             for p in POINTS]
-    check(loot['pointCount'] == len(POINTS) and got == want, 'the %d points read back: origin, angles, free or cache, no zone' % len(POINTS))
-    check(loot['clusterCount'] == 0 and loot['clusters'] is None and loot['zoneCount'] == 0 and loot['zones'] is None, 'no clusters and no zones')
+    check(loot['pointCount'] == len(POINTS) and got == want, 'the %d points read back: origin, angles, free or cache, zone 1' % len(POINTS))
+    check(loot['clusterCount'] == 0 and loot['clusters'] is None, 'no clusters')
+    zones = (loot.get('zones') or {}).get('values') or []
+    check(loot['zoneCount'] == 1 and len(zones) == 1, 'one loot zone')
+    if zones:
+        z = zones[0]
+        tables = glob.glob(os.path.join(work, 'acts_loot', '**', 'script_strings.json'), recursive=True)
+        strings = json.load(open(tables[0], encoding='utf-8')) if tables else []
+        name = z['name']['value']
+        listed = rules.u16s(z.get('points'))
+        mid, half = rules.bounds_of(z['bounds'])
+        inside = all(abs(p[0][a] - mid[a]) <= half[a] for p in got for a in range(3))
+        check(name < len(strings) and strings[name] == 'map_quarry', 'named map_quarry (a zone of the stock loot tables): %s' % (strings[name] if name < len(strings) else name))
+        check(listed == [i for i, p in enumerate(POINTS) if not p.get('cache')], 'it lists every point except the cache point: %s' % listed)
+        check(inside and z['clusterCount'] == 0, 'its box holds every point')
     sm, sb = me['scriptableMapEnts'], base['scriptableMapEnts']
     n = len(POINTS)
     check(sm['lootInstanceCount'] == n and sb['lootInstanceCount'] == 0, 'lootInstanceCount is %d (0 without loot)' % sm['lootInstanceCount'])

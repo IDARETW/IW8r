@@ -386,7 +386,8 @@ For a small map of your own in the Warzone game type: pick "Warzone on a small m
 Insert Warzone start entities (eight start spawns and a prematch area at the 2D view centre; move the spawns onto the
 floor). The build then lists the map for `br`. Such a map has no circle, no gulag and no plane. For loot, place
 `iw8r_loot_point` entities where items should lie (`loot_cluster` `cache` for a supply box point); the build writes
-them into the map's loot table. For a buy station, place a `scriptable` entity with `scriptable` `br_plunder_box`.
+them into the map's loot table, in one loot zone named by worldspawn `iw8r_loot_zone` (default `map_quarry`: the loot
+tables choose the items by the zone name). For a buy station, place a `scriptable` entity with `scriptable` `br_plunder_box`.
 For vehicles, place `script_struct_mp_atv`, `_tacrover`, `_jeep`, `_cargotruck` or `_littlebird` entities (their keys
 are filled in); the build copies the stock vehicle and its model into your map. Not seen in game.
 
