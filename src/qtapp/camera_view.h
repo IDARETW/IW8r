@@ -148,7 +148,11 @@ public slots:
     void rebakeGameLighting() { gameBakeRev_ = ~0ull; gameSeenAt_.invalidate(); update(); }
     // The stock map shown as the reference ("" = none): Game Lighting then uses that map's sun and auto exposure
     // (core game_look stockMapLook).
-    void setGameStockMap(const std::string& zone) { gameStockMap_ = zone; update(); }
+    void setGameStockMap(const std::string& zone) {
+        if (zone != gameStockMap_) gameBakeRev_ = ~0ull;  // the preview bake follows that map's sun
+        gameStockMap_ = zone;
+        update();
+    }
     // The stock reference's own lightmap (null clears it), sent to the renderer on the next frame.
     void setStockLightmap(std::shared_ptr<const app::StockLightmapLayers> layers) {
         pendingStockLm_ = std::move(layers);

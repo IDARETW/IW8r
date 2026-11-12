@@ -1663,6 +1663,14 @@ void CameraView::maybeBakeGameLook() {
     const Vec3 sky = gameSkyOf(ctx_->doc);
     in.scene.skyColor = sky;
     in.scene.skyIntensity = 1.0;
+    // Brushes added to a stock map are lit in that map's units: its sun (colour x intensity) and a sky in the same
+    // proportion, so they sit next to the stock world's own lightmap (whose sky light is in those units too).
+    if (const StockMapLook* stock = gameStockMap_.empty() ? nullptr : stockMapLook(gameStockMap_)) {
+        in.scene.sunColor = Vec3{stock->sunColor[0], stock->sunColor[1], stock->sunColor[2]};
+        in.scene.sunIntensity = stock->sunIntensity;
+        in.scene.skyIntensity = stock->sunIntensity;
+        in.key ^= 0x5157u;
+    }
     for (const auto& L : ctx_->scene.lights) {
         BakeLight b;
         b.pos = L.pos;
