@@ -379,7 +379,8 @@ Insert Warzone start entities (eight start spawns and a prematch area at the 2D 
 floor). The build then lists the map for `br`. Such a map has no circle, no gulag and no plane. For loot, place
 `iw8r_loot_point` entities where items should lie (`loot_cluster` `cache` for a supply box point); the build writes
 them into the map's loot table. For a buy station, place a `scriptable` entity with `scriptable` `br_plunder_box`.
-Vehicles are not built yet. Not seen in game.
+For vehicles, place `script_struct_mp_atv`, `_tacrover`, `_jeep`, `_cargotruck` or `_littlebird` entities (their keys
+are filled in); the build copies the stock vehicle and its model into your map. Not seen in game.
 
 ### Big maps: collision in tiles
 

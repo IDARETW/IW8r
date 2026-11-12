@@ -1945,6 +1945,396 @@
           "examples": []
         }
       }
+    },
+    "script_struct_mp_atv": {
+      "description": "A Warzone vehicle spawn: a ATV (quad bike) appears here in a Warzone (br) match, as on the stock Warzone maps. The build carries the stock vehicle and its model from mp_br_quarry into your map. Keep the keys as they are; set origin and angles. Not seen in game.",
+      "kind": "point",
+      "size": [
+        [
+          -48,
+          -48,
+          0
+        ],
+        [
+          48,
+          48,
+          64
+        ]
+      ],
+      "color": [
+        0.3,
+        0.7,
+        1.0
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "origin": {
+          "type": "vec3",
+          "default": "",
+          "description": "Where the vehicle stands (on the ground).",
+          "required": true,
+          "examples": [
+            "0 0 0"
+          ]
+        },
+        "angles": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Which way it faces.",
+          "required": false,
+          "examples": [
+            "0 90 0"
+          ]
+        },
+        "vehicletype": {
+          "type": "string",
+          "default": "atango_physics_mp",
+          "description": "The stock vehicle definition.",
+          "required": true,
+          "examples": [
+            "atango_physics_mp"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "default": "veh8_mil_lnd_atango_physics_mp",
+          "description": "The vehicle model.",
+          "required": true,
+          "examples": [
+            "veh8_mil_lnd_atango_physics_mp"
+          ]
+        },
+        "targetname": {
+          "type": "string",
+          "default": "atv_spawn",
+          "description": "The name the Warzone scripts look for.",
+          "required": true,
+          "examples": [
+            "atv_spawn"
+          ]
+        },
+        "script_gameobjectname": {
+          "type": "string",
+          "default": "br",
+          "description": "The game types it belongs to.",
+          "required": false,
+          "examples": [
+            "br"
+          ]
+        }
+      }
+    },
+    "script_struct_mp_tacrover": {
+      "description": "A Warzone vehicle spawn: a tactical rover appears here in a Warzone (br) match, as on the stock Warzone maps. The build carries the stock vehicle and its model from mp_br_quarry into your map. Keep the keys as they are; set origin and angles. Not seen in game.",
+      "kind": "point",
+      "size": [
+        [
+          -48,
+          -48,
+          0
+        ],
+        [
+          48,
+          48,
+          64
+        ]
+      ],
+      "color": [
+        0.3,
+        0.7,
+        1.0
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "origin": {
+          "type": "vec3",
+          "default": "",
+          "description": "Where the vehicle stands (on the ground).",
+          "required": true,
+          "examples": [
+            "0 0 0"
+          ]
+        },
+        "angles": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Which way it faces.",
+          "required": false,
+          "examples": [
+            "0 90 0"
+          ]
+        },
+        "vehicletype": {
+          "type": "string",
+          "default": "tromeo_physics_mp",
+          "description": "The stock vehicle definition.",
+          "required": true,
+          "examples": [
+            "tromeo_physics_mp"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "default": "veh8_mil_lnd_tromeo_physics_mp",
+          "description": "The vehicle model.",
+          "required": true,
+          "examples": [
+            "veh8_mil_lnd_tromeo_physics_mp"
+          ]
+        },
+        "targetname": {
+          "type": "string",
+          "default": "tacrover_spawn",
+          "description": "The name the Warzone scripts look for.",
+          "required": true,
+          "examples": [
+            "tacrover_spawn"
+          ]
+        },
+        "script_gameobjectname": {
+          "type": "string",
+          "default": "br",
+          "description": "The game types it belongs to.",
+          "required": false,
+          "examples": [
+            "br"
+          ]
+        }
+      }
+    },
+    "script_struct_mp_jeep": {
+      "description": "A Warzone vehicle spawn: a SUV appears here in a Warzone (br) match, as on the stock Warzone maps. The build carries the stock vehicle and its model from mp_br_quarry into your map. Keep the keys as they are; set origin and angles. Not seen in game.",
+      "kind": "point",
+      "size": [
+        [
+          -48,
+          -48,
+          0
+        ],
+        [
+          48,
+          48,
+          64
+        ]
+      ],
+      "color": [
+        0.3,
+        0.7,
+        1.0
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "origin": {
+          "type": "vec3",
+          "default": "",
+          "description": "Where the vehicle stands (on the ground).",
+          "required": true,
+          "examples": [
+            "0 0 0"
+          ]
+        },
+        "angles": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Which way it faces.",
+          "required": false,
+          "examples": [
+            "0 90 0"
+          ]
+        },
+        "vehicletype": {
+          "type": "string",
+          "default": "decho_physics_mp",
+          "description": "The stock vehicle definition.",
+          "required": true,
+          "examples": [
+            "decho_physics_mp"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "default": "veh8_civ_lnd_decho_vm_dirty_blue_physics_mp",
+          "description": "The vehicle model.",
+          "required": true,
+          "examples": [
+            "veh8_civ_lnd_decho_vm_dirty_blue_physics_mp"
+          ]
+        },
+        "targetname": {
+          "type": "string",
+          "default": "jeep_spawn",
+          "description": "The name the Warzone scripts look for.",
+          "required": true,
+          "examples": [
+            "jeep_spawn"
+          ]
+        },
+        "script_gameobjectname": {
+          "type": "string",
+          "default": "br",
+          "description": "The game types it belongs to.",
+          "required": false,
+          "examples": [
+            "br"
+          ]
+        }
+      }
+    },
+    "script_struct_mp_cargotruck": {
+      "description": "A Warzone vehicle spawn: a cargo truck appears here in a Warzone (br) match, as on the stock Warzone maps. The build carries the stock vehicle and its model from mp_br_quarry into your map. Keep the keys as they are; set origin and angles. Not seen in game.",
+      "kind": "point",
+      "size": [
+        [
+          -48,
+          -48,
+          0
+        ],
+        [
+          48,
+          48,
+          64
+        ]
+      ],
+      "color": [
+        0.3,
+        0.7,
+        1.0
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "origin": {
+          "type": "vec3",
+          "default": "",
+          "description": "Where the vehicle stands (on the ground).",
+          "required": true,
+          "examples": [
+            "0 0 0"
+          ]
+        },
+        "angles": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Which way it faces.",
+          "required": false,
+          "examples": [
+            "0 90 0"
+          ]
+        },
+        "vehicletype": {
+          "type": "string",
+          "default": "mkilo_physics_mp",
+          "description": "The stock vehicle definition.",
+          "required": true,
+          "examples": [
+            "mkilo_physics_mp"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "default": "veh8_mil_lnd_mkilo23_physics_mp",
+          "description": "The vehicle model.",
+          "required": true,
+          "examples": [
+            "veh8_mil_lnd_mkilo23_physics_mp"
+          ]
+        },
+        "targetname": {
+          "type": "string",
+          "default": "cargotruck_spawn",
+          "description": "The name the Warzone scripts look for.",
+          "required": true,
+          "examples": [
+            "cargotruck_spawn"
+          ]
+        },
+        "script_gameobjectname": {
+          "type": "string",
+          "default": "br",
+          "description": "The game types it belongs to.",
+          "required": false,
+          "examples": [
+            "br"
+          ]
+        }
+      }
+    },
+    "script_struct_mp_littlebird": {
+      "description": "A Warzone vehicle spawn: a helicopter appears here in a Warzone (br) match, as on the stock Warzone maps. The build carries the stock vehicle and its model from mp_br_quarry into your map. Keep the keys as they are; set origin and angles. Not seen in game.",
+      "kind": "point",
+      "size": [
+        [
+          -48,
+          -48,
+          0
+        ],
+        [
+          48,
+          48,
+          64
+        ]
+      ],
+      "color": [
+        0.3,
+        0.7,
+        1.0
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "origin": {
+          "type": "vec3",
+          "default": "",
+          "description": "Where the vehicle stands (on the ground).",
+          "required": true,
+          "examples": [
+            "0 0 0"
+          ]
+        },
+        "angles": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Which way it faces.",
+          "required": false,
+          "examples": [
+            "0 90 0"
+          ]
+        },
+        "vehicletype": {
+          "type": "string",
+          "default": "lbravo_physics",
+          "description": "The stock vehicle definition.",
+          "required": true,
+          "examples": [
+            "lbravo_physics"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "default": "veh8_mil_air_lbravo",
+          "description": "The vehicle model.",
+          "required": true,
+          "examples": [
+            "veh8_mil_air_lbravo"
+          ]
+        },
+        "targetname": {
+          "type": "string",
+          "default": "littlebird_spawn",
+          "description": "The name the Warzone scripts look for.",
+          "required": true,
+          "examples": [
+            "littlebird_spawn"
+          ]
+        },
+        "script_gameobjectname": {
+          "type": "string",
+          "default": "br",
+          "description": "The game types it belongs to.",
+          "required": false,
+          "examples": [
+            "br"
+          ]
+        }
+      }
     }
   }
 }

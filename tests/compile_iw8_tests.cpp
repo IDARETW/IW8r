@@ -1772,3 +1772,39 @@ TEST(compile_iw8_collision_tiles_switch) {
         CHECK(col.find("collision_tiles") == std::string::npos && noted(rep, "iw8r_collision 'sometimes' not understood"));
     }
 }
+
+// 13.4 (research 89): a vehicle spawn struct is written into the entities and the collision json asks the converter
+// to carry the vehicle and its model; a map that is not a Warzone map is warned.
+TEST(compile_iw8_vehicle_spawns) {
+    std::string text;
+    CHECK(readFile(samplePath(), text));
+    if (text.empty()) return;
+    const std::string eol = text.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    text += "{" + eol + "\"classname\" \"script_struct_mp_atv\"" + eol + "\"vehicletype\" \"atango_physics_mp\"" + eol +
+            "\"model\" \"veh8_mil_lnd_atango_physics_mp\"" + eol + "\"targetname\" \"atv_spawn\"" + eol + "\"origin\" \"0 64 0\"" + eol + "}" + eol;
+    Id next = 1;
+    ParseResult pr = parseMap(text, next);
+    CHECK(pr.map.has_value());
+    if (!pr.map) return;
+    VehicleCatalog vehicles;
+    CHECK(vehicles.parse("atango_physics_mp\tmp_br_quarry\t0\n"));
+    const std::string out = scratch("vehicles");
+    CompileOptions opt;
+    opt.mapId = kSampleId;
+    opt.vehicles = &vehicles;
+    CompileReport rep;
+    std::string err;
+    CHECK(compileIw8Extraction(*pr.map, out, opt, rep, &err));
+    const fs::path mp = fs::path(out) / "extracted" / "maps" / "mp";
+    const std::string col = readAll((mp / (std::string(kSampleId) + ".d3dbsp.replay-collision.json")).string());
+    CHECK(col.find(",\"carry_assets\":[{\"zone\":\"mp_br_quarry\",\"type\":\"vehicle\",\"name\":\"atango_physics_mp\"},"
+                   "{\"zone\":\"mp_br_quarry\",\"type\":\"xmodel\",\"name\":\"veh8_mil_lnd_atango_physics_mp\"}]}") != std::string::npos);
+    const std::string ents = readAll((mp / (std::string(kSampleId) + ".d3dbsp.ents")).string());
+    CHECK(ents.find("script_struct_mp_atv") != std::string::npos && ents.find("atango_physics_mp") != std::string::npos);
+    bool counted = false, notBr = false;
+    for (const std::string& w : rep.warnings) {
+        counted |= w.find("1 vehicle spawn(s); 2 stock asset(s) carried") != std::string::npos;
+        notBr |= w.find("used by the Warzone (br) scripts only") != std::string::npos;
+    }
+    CHECK(counted && notBr);
+}

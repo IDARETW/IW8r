@@ -816,6 +816,22 @@ bool CompilePanel::runExtraction() {
         opt.carryScriptables = PrefabBrowser::realScriptables();
         // 14.1: the collision layout for maps that do not say it themselves (worldspawn iw8r_collision).
         opt.collisionLayout = parseCollisionLayout(Settings::instance().value("build/collisionLayout", "auto").toString().toStdString());
+        // 13.4: stock vehicles (and the stock model catalogue that says which vehicle models every match has).
+        static VehicleCatalog vehicleCatalog;
+        static StockModelZones modelZones;
+        static bool catalogsLoaded = false;
+        if (!catalogsLoaded) {
+            catalogsLoaded = true;
+            QDir d(QCoreApplication::applicationDirPath());
+            for (int up = 0; up < 4; ++up, d.cdUp())
+                if (QFileInfo::exists(d.filePath("data/asset_catalog/iw8_vehicles.tsv"))) {
+                    vehicleCatalog.load(d.filePath("data/asset_catalog/iw8_vehicles.tsv").toStdString());
+                    modelZones.load(d.filePath("data/asset_catalog/iw8_models.tsv").toStdString());
+                    break;
+                }
+        }
+        if (vehicleCatalog.size()) opt.vehicles = &vehicleCatalog;
+        if (modelZones.size()) opt.stockModelZones = &modelZones;
         // The folders the library came from (the placed bundles' material folders are among them): the build can
         // then load one library that also holds the materials of a bundle it finds inside another prefab.
         opt.materialRoots = roots;

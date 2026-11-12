@@ -12,8 +12,8 @@ Sources: `data/iw8_entity_defs.json` (classes and keys) and `docs/research/10_iw
 
 ## Summary
 
-- 105 classes in 9 categories.
-- 95 kept by the build, 10 dropped.
+- 110 classes in 9 categories.
+- 100 kept by the build, 10 dropped.
 - Stock usage is listed for 35 classes, from the two zones in the inventory (mp_shipment and mp_backlot2).
 
 ## Reading the entries
@@ -28,7 +28,7 @@ Sources: `data/iw8_entity_defs.json` (classes and keys) and `docs/research/10_iw
 
 **[Spawns](#spawns)** (46 classes): [`info_player_start`](#info_player_start), [`mp_arena_spawn_allies_start`](#mp_arena_spawn_allies_start), [`mp_arena_spawn_axis_start`](#mp_arena_spawn_axis_start), [`mp_ball_spawn`](#mp_ball_spawn), [`mp_ball_spawn_allies_start`](#mp_ball_spawn_allies_start), [`mp_ball_spawn_axis_start`](#mp_ball_spawn_axis_start), [`mp_ball_spawn_secondary`](#mp_ball_spawn_secondary), [`mp_ctf_spawn`](#mp_ctf_spawn), [`mp_ctf_spawn_allies_start`](#mp_ctf_spawn_allies_start), [`mp_ctf_spawn_axis_start`](#mp_ctf_spawn_axis_start), [`mp_ctf_spawn_secondary`](#mp_ctf_spawn_secondary), [`mp_cyber_spawn_allies`](#mp_cyber_spawn_allies), [`mp_cyber_spawn_axis`](#mp_cyber_spawn_axis), [`mp_dd_spawn_attacker`](#mp_dd_spawn_attacker), [`mp_dd_spawn_attacker_a`](#mp_dd_spawn_attacker_a), [`mp_dd_spawn_attacker_b`](#mp_dd_spawn_attacker_b), [`mp_dd_spawn_attacker_start`](#mp_dd_spawn_attacker_start), [`mp_dd_spawn_defender`](#mp_dd_spawn_defender), [`mp_dd_spawn_defender_a`](#mp_dd_spawn_defender_a), [`mp_dd_spawn_defender_b`](#mp_dd_spawn_defender_b), [`mp_dd_spawn_defender_start`](#mp_dd_spawn_defender_start), [`mp_dm_spawn`](#mp_dm_spawn), [`mp_dm_spawn_secondary`](#mp_dm_spawn_secondary), [`mp_dm_spawn_start`](#mp_dm_spawn_start), [`mp_dom_spawn`](#mp_dom_spawn), [`mp_dom_spawn_allies_start`](#mp_dom_spawn_allies_start), [`mp_dom_spawn_axis_start`](#mp_dom_spawn_axis_start), [`mp_dom_spawn_secondary`](#mp_dom_spawn_secondary), [`mp_front_spawn_allies`](#mp_front_spawn_allies), [`mp_front_spawn_axis`](#mp_front_spawn_axis), [`mp_koth_spawn`](#mp_koth_spawn), [`mp_koth_spawn_allies_start`](#mp_koth_spawn_allies_start), [`mp_koth_spawn_axis_start`](#mp_koth_spawn_axis_start), [`mp_koth_spawn_secondary`](#mp_koth_spawn_secondary), [`mp_rugby_spawn_allies`](#mp_rugby_spawn_allies), [`mp_rugby_spawn_allies_secondary`](#mp_rugby_spawn_allies_secondary), [`mp_rugby_spawn_allies_start`](#mp_rugby_spawn_allies_start), [`mp_rugby_spawn_axis`](#mp_rugby_spawn_axis), [`mp_rugby_spawn_axis_secondary`](#mp_rugby_spawn_axis_secondary), [`mp_rugby_spawn_axis_start`](#mp_rugby_spawn_axis_start), [`mp_sd_spawn_attacker`](#mp_sd_spawn_attacker), [`mp_sd_spawn_defender`](#mp_sd_spawn_defender), [`mp_tdm_spawn`](#mp_tdm_spawn), [`mp_tdm_spawn_allies_start`](#mp_tdm_spawn_allies_start), [`mp_tdm_spawn_axis_start`](#mp_tdm_spawn_axis_start), [`mp_tdm_spawn_secondary`](#mp_tdm_spawn_secondary)
 
-**[Game modes](#game-modes)** (5 classes): [`script_struct_infil_lbravo_alpha`](#script_struct_infil_lbravo_alpha), [`script_struct_infil_van_hackney_alpha`](#script_struct_infil_van_hackney_alpha), [`script_struct_mp_rugby_endzone`](#script_struct_mp_rugby_endzone), [`script_struct_mp_rugby_jugg_crate`](#script_struct_mp_rugby_jugg_crate), [`trigger_multiple_mp_rugby_endzone`](#trigger_multiple_mp_rugby_endzone)
+**[Game modes](#game-modes)** (10 classes): [`script_struct_infil_lbravo_alpha`](#script_struct_infil_lbravo_alpha), [`script_struct_infil_van_hackney_alpha`](#script_struct_infil_van_hackney_alpha), [`script_struct_mp_atv`](#script_struct_mp_atv), [`script_struct_mp_cargotruck`](#script_struct_mp_cargotruck), [`script_struct_mp_jeep`](#script_struct_mp_jeep), [`script_struct_mp_littlebird`](#script_struct_mp_littlebird), [`script_struct_mp_rugby_endzone`](#script_struct_mp_rugby_endzone), [`script_struct_mp_rugby_jugg_crate`](#script_struct_mp_rugby_jugg_crate), [`script_struct_mp_tacrover`](#script_struct_mp_tacrover), [`trigger_multiple_mp_rugby_endzone`](#trigger_multiple_mp_rugby_endzone)
 
 **[Triggers](#triggers)** (27 classes): [`trigger_damage`](#trigger_damage), [`trigger_hurt`](#trigger_hurt), [`trigger_multiple`](#trigger_multiple), [`trigger_multiple_bcs_backalley`](#trigger_multiple_bcs_backalley), [`trigger_multiple_bcs_center`](#trigger_multiple_bcs_center), [`trigger_multiple_bcs_chickens`](#trigger_multiple_bcs_chickens), [`trigger_multiple_bcs_compound`](#trigger_multiple_bcs_compound), [`trigger_multiple_bcs_construction`](#trigger_multiple_bcs_construction), [`trigger_multiple_bcs_containers`](#trigger_multiple_bcs_containers), [`trigger_multiple_bcs_courtyard`](#trigger_multiple_bcs_courtyard), [`trigger_multiple_bcs_destroyedbldg`](#trigger_multiple_bcs_destroyedbldg), [`trigger_multiple_bcs_dumpster`](#trigger_multiple_bcs_dumpster), [`trigger_multiple_bcs_electronicstore`](#trigger_multiple_bcs_electronicstore), [`trigger_multiple_bcs_forklift`](#trigger_multiple_bcs_forklift), [`trigger_multiple_bcs_garage`](#trigger_multiple_bcs_garage), [`trigger_multiple_bcs_junkyard`](#trigger_multiple_bcs_junkyard), [`trigger_multiple_bcs_laundromat`](#trigger_multiple_bcs_laundromat), [`trigger_multiple_bcs_mainstreet`](#trigger_multiple_bcs_mainstreet), [`trigger_multiple_bcs_rugshop`](#trigger_multiple_bcs_rugshop), [`trigger_multiple_bcs_shippingarea`](#trigger_multiple_bcs_shippingarea), [`trigger_multiple_bcs_shops`](#trigger_multiple_bcs_shops), [`trigger_multiple_bcs_tireshop`](#trigger_multiple_bcs_tireshop), [`trigger_multiple_bcs_tower`](#trigger_multiple_bcs_tower), [`trigger_multiple_bcs_warehouse`](#trigger_multiple_bcs_warehouse), [`trigger_radius`](#trigger_radius), [`trigger_use`](#trigger_use), [`trigger_use_touch`](#trigger_use_touch)
 
@@ -696,7 +696,7 @@ Spawn point for TDM (secondary). Description inferred from the class name.
 
 ## Game modes
 
-5 classes.
+10 classes.
 
 ### `script_struct_infil_lbravo_alpha`
 
@@ -744,6 +744,78 @@ Infil van start struct (inferred from stock values).
 | `target` | targetname: any text, the name other entities use | none | no | targetname of the entity or struct this one points to (gsc ammorestock.gsc:12). Examples: `pf16_auto3135`, `pf2137_auto3135`, `pf2137_auto3218`. |
 | `targetname` | targetname: any text, the name other entities use | none | no | Name that other entities use to find this one (gsc ammorestock.gsc:8). Examples: `mp_infil`. |
 
+### `script_struct_mp_atv`
+
+A Warzone vehicle spawn: a ATV (quad bike) appears here in a Warzone (br) match, as on the stock Warzone maps. The build carries the stock vehicle and its model from mp_br_quarry into your map. Keep the keys as they are; set origin and angles. Not seen in game.
+
+- **Kind:** point entity.
+- **Box:** from (-48, -48, 0) to (48, 48, 64), in map units.
+- **Editor colour:** `#4CB2FF` (RGB 0.3, 0.7, 1).
+- **Build:** kept by the converter. The build carries the stock vehicle and its model from mp_br_quarry into your map.
+
+| Key | Type / values | Default | Required | Help |
+|---|---|---|---|---|
+| `angles` | vec3: three numbers, x y z | `0 0 0` | no | Which way it faces. Examples: `0 90 0`. |
+| `model` | string: any text | `veh8_mil_lnd_atango_physics_mp` | yes | The vehicle model. Examples: `veh8_mil_lnd_atango_physics_mp`. |
+| `origin` | vec3: three numbers, x y z | none | yes | Where the vehicle stands (on the ground). Examples: `0 0 0`. |
+| `script_gameobjectname` | string: any text | `br` | no | The game types it belongs to. Examples: `br`. |
+| `targetname` | string: any text | `atv_spawn` | yes | The name the Warzone scripts look for. Examples: `atv_spawn`. |
+| `vehicletype` | string: any text | `atango_physics_mp` | yes | The stock vehicle definition. Examples: `atango_physics_mp`. |
+
+### `script_struct_mp_cargotruck`
+
+A Warzone vehicle spawn: a cargo truck appears here in a Warzone (br) match, as on the stock Warzone maps. The build carries the stock vehicle and its model from mp_br_quarry into your map. Keep the keys as they are; set origin and angles. Not seen in game.
+
+- **Kind:** point entity.
+- **Box:** from (-48, -48, 0) to (48, 48, 64), in map units.
+- **Editor colour:** `#4CB2FF` (RGB 0.3, 0.7, 1).
+- **Build:** kept by the converter. The build carries the stock vehicle and its model from mp_br_quarry into your map.
+
+| Key | Type / values | Default | Required | Help |
+|---|---|---|---|---|
+| `angles` | vec3: three numbers, x y z | `0 0 0` | no | Which way it faces. Examples: `0 90 0`. |
+| `model` | string: any text | `veh8_mil_lnd_mkilo23_physics_mp` | yes | The vehicle model. Examples: `veh8_mil_lnd_mkilo23_physics_mp`. |
+| `origin` | vec3: three numbers, x y z | none | yes | Where the vehicle stands (on the ground). Examples: `0 0 0`. |
+| `script_gameobjectname` | string: any text | `br` | no | The game types it belongs to. Examples: `br`. |
+| `targetname` | string: any text | `cargotruck_spawn` | yes | The name the Warzone scripts look for. Examples: `cargotruck_spawn`. |
+| `vehicletype` | string: any text | `mkilo_physics_mp` | yes | The stock vehicle definition. Examples: `mkilo_physics_mp`. |
+
+### `script_struct_mp_jeep`
+
+A Warzone vehicle spawn: a SUV appears here in a Warzone (br) match, as on the stock Warzone maps. The build carries the stock vehicle and its model from mp_br_quarry into your map. Keep the keys as they are; set origin and angles. Not seen in game.
+
+- **Kind:** point entity.
+- **Box:** from (-48, -48, 0) to (48, 48, 64), in map units.
+- **Editor colour:** `#4CB2FF` (RGB 0.3, 0.7, 1).
+- **Build:** kept by the converter. The build carries the stock vehicle and its model from mp_br_quarry into your map.
+
+| Key | Type / values | Default | Required | Help |
+|---|---|---|---|---|
+| `angles` | vec3: three numbers, x y z | `0 0 0` | no | Which way it faces. Examples: `0 90 0`. |
+| `model` | string: any text | `veh8_civ_lnd_decho_vm_dirty_blue_physics_mp` | yes | The vehicle model. Examples: `veh8_civ_lnd_decho_vm_dirty_blue_physics_mp`. |
+| `origin` | vec3: three numbers, x y z | none | yes | Where the vehicle stands (on the ground). Examples: `0 0 0`. |
+| `script_gameobjectname` | string: any text | `br` | no | The game types it belongs to. Examples: `br`. |
+| `targetname` | string: any text | `jeep_spawn` | yes | The name the Warzone scripts look for. Examples: `jeep_spawn`. |
+| `vehicletype` | string: any text | `decho_physics_mp` | yes | The stock vehicle definition. Examples: `decho_physics_mp`. |
+
+### `script_struct_mp_littlebird`
+
+A Warzone vehicle spawn: a helicopter appears here in a Warzone (br) match, as on the stock Warzone maps. The build carries the stock vehicle and its model from mp_br_quarry into your map. Keep the keys as they are; set origin and angles. Not seen in game.
+
+- **Kind:** point entity.
+- **Box:** from (-48, -48, 0) to (48, 48, 64), in map units.
+- **Editor colour:** `#4CB2FF` (RGB 0.3, 0.7, 1).
+- **Build:** kept by the converter. The build carries the stock vehicle and its model from mp_br_quarry into your map.
+
+| Key | Type / values | Default | Required | Help |
+|---|---|---|---|---|
+| `angles` | vec3: three numbers, x y z | `0 0 0` | no | Which way it faces. Examples: `0 90 0`. |
+| `model` | string: any text | `veh8_mil_air_lbravo` | yes | The vehicle model. Examples: `veh8_mil_air_lbravo`. |
+| `origin` | vec3: three numbers, x y z | none | yes | Where the vehicle stands (on the ground). Examples: `0 0 0`. |
+| `script_gameobjectname` | string: any text | `br` | no | The game types it belongs to. Examples: `br`. |
+| `targetname` | string: any text | `littlebird_spawn` | yes | The name the Warzone scripts look for. Examples: `littlebird_spawn`. |
+| `vehicletype` | string: any text | `lbravo_physics` | yes | The stock vehicle definition. Examples: `lbravo_physics`. |
+
 ### `script_struct_mp_rugby_endzone`
 
 Rugby endzone struct (inferred from stock values). Not accepted by the converter.
@@ -780,6 +852,24 @@ Rugby juggernaut crate struct (inferred from stock values). Not accepted by the 
 | `model` | model: a model name, or a brush model index written as \*N | none | no | xmodel name for point models; '\*N' selects brush model N and is written by the compiler (inferred from stock values). Examples: `military_crate_large_stackable_01_jugg`. |
 | `origin` | vec3: three numbers, x y z | `0 0 0` | yes | Position x y z in map units (inferred from stock values). Examples: `256 6 57`, `1338 122 62`, `-586 -161 65`. |
 | `targetname` | targetname: any text, the name other entities use | none | no | Name that other entities use to find this one (gsc ammorestock.gsc:8). Examples: `rugby_jugg_crate`. |
+
+### `script_struct_mp_tacrover`
+
+A Warzone vehicle spawn: a tactical rover appears here in a Warzone (br) match, as on the stock Warzone maps. The build carries the stock vehicle and its model from mp_br_quarry into your map. Keep the keys as they are; set origin and angles. Not seen in game.
+
+- **Kind:** point entity.
+- **Box:** from (-48, -48, 0) to (48, 48, 64), in map units.
+- **Editor colour:** `#4CB2FF` (RGB 0.3, 0.7, 1).
+- **Build:** kept by the converter. The build carries the stock vehicle and its model from mp_br_quarry into your map.
+
+| Key | Type / values | Default | Required | Help |
+|---|---|---|---|---|
+| `angles` | vec3: three numbers, x y z | `0 0 0` | no | Which way it faces. Examples: `0 90 0`. |
+| `model` | string: any text | `veh8_mil_lnd_tromeo_physics_mp` | yes | The vehicle model. Examples: `veh8_mil_lnd_tromeo_physics_mp`. |
+| `origin` | vec3: three numbers, x y z | none | yes | Where the vehicle stands (on the ground). Examples: `0 0 0`. |
+| `script_gameobjectname` | string: any text | `br` | no | The game types it belongs to. Examples: `br`. |
+| `targetname` | string: any text | `tacrover_spawn` | yes | The name the Warzone scripts look for. Examples: `tacrover_spawn`. |
+| `vehicletype` | string: any text | `tromeo_physics_mp` | yes | The stock vehicle definition. Examples: `tromeo_physics_mp`. |
 
 ### `trigger_multiple_mp_rugby_endzone`
 

@@ -556,7 +556,8 @@ bool acceptedPointClass(const std::string& lcls) {
         // source-only markers: x64-zt reads them (bot navigation pathnodes and traversal links, iw3_fastfile.cpp
         // ~12849-12867) and projects them out of the runtime entities without error (doc 15 section 3.3)
         "node_pathnode", "node_negotiation_begin", "node_negotiation_end", "fx_origin"};
-    return known.count(lcls) || startsWith(lcls, "trigger_multiple_bcs_");
+    // script_struct_mp_*: the structs of the stock Warzone maps (vehicle spawns, spawn selection, ladder tops).
+    return known.count(lcls) || startsWith(lcls, "trigger_multiple_bcs_") || isWarzoneStructClass(lcls);
 }
 
 // ---------------------------------------------------------------- reflection probes and static models (doc 29)
@@ -2106,6 +2107,34 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             warn.push_back(std::to_string(lootCount) + " loot point(s) written for the battle royale game type (needs a converter with loot points, "
                            "research 89; not seen in game)");
     }
+    // Vehicles (13.4, research 89): vehicle spawn structs make the converter carry the stock vehicle definition and
+    // its model (collision json carry_assets).
+    std::string carryAssets;
+    {
+        std::vector<std::string> notes;
+        size_t placed = 0;
+        const std::vector<StockEditCarry> carry =
+            opt.vehicles ? vehicleCarryList(map, *opt.vehicles, opt.stockModelZones, &notes, &placed) : std::vector<StockEditCarry>{};
+        if (!opt.vehicles)
+            for (const Entity* pe : points)
+                if (const std::string* v = pe->value("vehicletype"); v && !v->empty()) ++placed;
+        for (const std::string& n : notes) warn.push_back(n);
+        if (placed) {
+            bool brMap = worldspawn && worldspawn->value("iw8r_br");
+            for (const Entity* pe : points)
+                if (const std::string* tn = pe->value("targetname"); tn && *tn == "br_prematch_insertion_point") brMap = true;
+            if (!opt.vehicles)
+                warn.push_back(std::to_string(placed) + " vehicle spawn(s): the vehicle catalogue (data/asset_catalog/iw8_vehicles.tsv) was not "
+                               "found, so no vehicle is carried into the map");
+            else
+                warn.push_back(std::to_string(placed) + " vehicle spawn(s); " + std::to_string(carry.size()) +
+                               " stock asset(s) carried for them (definitions and models). Not seen in game");
+            if (!brMap)
+                warn.push_back("vehicle spawns are used by the Warzone (br) scripts only: make the map a Warzone map (Tools > Game Modes) or "
+                               "the vehicles do not appear");
+        }
+        if (!carry.empty()) carryAssets = carryAssetsJson(carry);
+    }
     // Dynamic props (6.15, research 41): `dynamic_prop` point entities (model, origin, angles, mass in kg, material
     // word for the physics material: wood, metal, plastic, glass, paper, rubber, brick...) become the collision json's
     // dynamic_models (the converter's clutter route, iw3_fastfile.cpp ReadDynamicEntities) with a physic/<preset> file
@@ -2708,7 +2737,8 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
            "\"dynamic_model_count\":" + std::to_string(dynModelCount) + ",\"dynamic_brush_count\":0,\"dynamic_models\":[" +
            dynModelsJson + "],\"dynamic_brushes\":[]" +
            (scriptableCount ? ",\"scriptable_instances\":[" + scriptablesJson + "]" : std::string()) +
-           (lootCount ? ",\"loot_points\":[" + lootJson + "]" : std::string()) + (collisionTiles ? ",\"collision_tiles\":true" : "") + "}";
+           (lootCount ? ",\"loot_points\":[" + lootJson + "]" : std::string()) + (collisionTiles ? ",\"collision_tiles\":true" : "") +
+           (carryAssets.empty() ? std::string() : ",\"carry_assets\":" + carryAssets) + "}";
 
     std::string comworld =
         "{\"schema\":1,\"name\":" + quote(mapName) +

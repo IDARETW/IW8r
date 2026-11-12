@@ -174,6 +174,28 @@ added read back in place, the other 983 instances are unchanged, counts 984 -> 9
 540 / 517 -> 542 / 519, ACTS tests the zone like the stock one, a door index and an index beyond the list are refused.
 The edits file the editor writes for mp_br_tut goes through the converter the same way (GUI check, then by hand).
 
+## 6b. Vehicles on an own map (2026-11-12)
+
+The stock Warzone maps place vehicles with structs in their entity text (no compiled data): `script_struct_mp_atv`,
+`_tacrover`, `_jeep`, `_cargotruck`, `_littlebird`, each with `model`, `vehicletype`, `targetname` `<kind>_spawn` and
+`script_gameobjectname` `br` (66 / 50 / 36 / 20 / 11 on Quarry and on Verdansk). The battle royale scripts spawn the
+vehicle there. On a stock map they are ordinary entities and were already editable.
+
+The drivable vehicle definitions (17: `atango_physics_mp`, `tromeo_physics_mp`, `decho_physics_mp`, ...) are in the
+map zones of `mp_br_quarry` / `mp_donetsk`; `common_base_mp` (always loaded) holds 15 others (killstreak and support
+vehicles); `common_br_mp` one. A definition does not name its model: script spawns the model by name with the type.
+
+- Converter (fork 94ac6fea): collision JSON `carry_assets` [{zone, type, name}] carries any stock asset with
+  everything it uses (the machinery of the stock scriptables); a carried model that an entity names joins the level
+  model table. `script_struct_mp_*` classes are accepted.
+- Editor (`src/core/stock_vehicles.*`, `data/asset_catalog/iw8_vehicles.tsv`): every entity with a `vehicletype`
+  makes the build carry the definition and its model from the definition's stock zone (`lbravo_physics` resolves to
+  `lbravo_physics_mp`); entity classes for the five kinds; a warning when the map is not a Warzone map.
+- Proof: `tools/vehicle_carry_test.py` (maps without vehicles byte-identical; with one ATV the definition reads back
+  equal to the stock one with strings resolved, the model is in the zone and in the level model table, ACTS 0
+  failed for the map and techsets zones). Two tyre textures of the ATV come from `common_br_mp` (a Warzone match loads
+  it; the converter warns). Carrying the ATV into the stock tutorial map with `editzone`: 107 + 14 assets, 0 failed.
+
 ## 7. Tests
 
 - Core: `tests/stock_loot_tests.cpp` (reader for both export forms, entities and edits, the edits file),
@@ -182,8 +204,8 @@ The edits file the editor writes for mp_br_tut goes through the converter the sa
 
 ## 8. Open
 
-1. Whether `common_br_mp` loads for an own map in a br match (buy stations and loot items depend on it); vehicles
-   (`script_struct_mp_<vehicle>` entities, research 87).
+1. Whether `common_br_mp` loads for an own map in a br match (buy stations, loot items and two ATV textures depend on
+   it), and whether the vehicles drive (nothing of this is seen in game).
 2. Zones and clusters on a custom map (one zone box over the map would match the tutorial maps).
 3. New clusters or zones on a stock map (today a new point can only join an existing box). Removing a placed
    object, and moving or adding one that has a dynamic entity (doors, extraction sites).

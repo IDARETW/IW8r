@@ -145,6 +145,9 @@ Everything else in this list can wait. This one cannot be settled without the ga
       editor sends its settings before it starts the match.
 - [ ] Loot on your own map: place a few `iw8r_loot_point` entities on the floor (one with `loot_cluster` `cache`),
       build, start with br. Say whether items or a supply box appear there.
+- [ ] Vehicles on your own Warzone map: place a `script_struct_mp_atv` and a `script_struct_mp_jeep` on open ground.
+      Build: the log says "2 vehicle spawn(s); 4 stock asset(s) carried". In a br match, say whether the vehicles
+      are there and drive.
 - [ ] Buy station on your own Warzone map: a `scriptable` entity with `scriptable` `br_plunder_box`. Build: the log
       says "1 scriptable instance(s) name a definition of the Warzone zone". In a br match, say whether the station
       stands there and opens. If the map fails to load with it, that is the answer to "does the game load the

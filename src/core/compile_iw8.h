@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "collision_layout.h"
+#include "stock_vehicles.h"
 #include "scriptable_catalog.h"
 #include "custom_materials.h"
 #include "geometry.h"
@@ -44,6 +45,11 @@ struct CompileOptions {
     // How the collision is laid out (collision_layout.h): Auto cuts a map wider than 20000 units into the game's
     // streamed collision tiles and keeps a smaller one in one piece. Worldspawn iw8r_collision overrides this.
     CollisionLayout collisionLayout = CollisionLayout::Auto;
+    // Stock vehicles (stock_vehicles.h): a vehicle spawn struct (script_struct_mp_atv, ...) makes the build carry the
+    // vehicle definition and its model from the stock Warzone map that holds them. Without the catalogue the structs
+    // are written and nothing is carried (warned). Not owned.
+    const VehicleCatalog* vehicles = nullptr;
+    const StockModelZones* stockModelZones = nullptr;
     // Carry stock definitions (doors, cones, cars: definitions that live in stock map zones): the instance names the
     // stock zone and the converter copies the definition with everything it uses into the map. Off: such an entity
     // is left out with a warning. Built like the stock map's own data, not seen in game.

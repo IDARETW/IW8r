@@ -298,6 +298,9 @@
     Preferences "Build: collision", package/validation of the tile zones. New converter commands: havokinfo,
     streaminfo; tools/dw_disasm.py reads the recompiled game exe with its linker map (read only). FINDING: the
     private client accepts only <map>_cg_ls_tr of a custom map's tile zones (research 90 section 7).
+    VEHICLES (research 89 section 6b): converter live at 94ac6fea (old exe zonetool_44d21398.exe): collision JSON
+    carry_assets; editor core stock_vehicles.* + data/asset_catalog/iw8_vehicles.tsv, entity classes
+    script_struct_mp_atv / tacrover / jeep / cargotruck / littlebird. Proof tools/vehicle_carry_test.py.
     REPOSITORY: the project is in the private GitHub repo IDARETW/IW8r (branch main); commit and push finished work
     there, no co-author trailer. docs/features/FEATURES.md is the feature list; its pictures come from
     IW8Radiant.exe --feature-shots (src/qtapp/feature_shots.cpp, real fonts, off screen).

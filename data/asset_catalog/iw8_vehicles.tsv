@@ -1,0 +1,37 @@
+# iw8_vehicles.tsv: stock Replay 1.20 vehicle definitions and the zones that hold them (ACTS exports, tools/vehicle_carry_test.py).
+# always_loaded=1: in common_base_mp, which every multiplayer match loads. Others are carried from their first zone into a map
+# that places them (collision JSON carry_assets); common_br_mp is loaded for Warzone matches only.
+name	zones	always_loaded
+asierra_physics_mp	mp_br_quarry	0
+atango_physics_mp	mp_br_quarry	0
+decho_physics_mp	mp_br_quarry	0
+hindia_physics_mp	mp_br_quarry	0
+lbravo_infil_mp	mp_br_quarry	0
+lbravo_physics_mp	mp_br_quarry	0
+mi8_infil_mp	mp_br_quarry	0
+mkilo_physics_mp	mp_br_quarry	0
+palfa_physics_mp	mp_br_quarry	0
+pindia_physics_mp	mp_br_quarry	0
+rcplane_physics_mp	common_base_mp	1
+skilo_police_physics_mp	mp_br_quarry	0
+techo_physics_mp	mp_br_quarry	0
+tromeo_physics_mp	mp_br_quarry	0
+umike_physics_mp	mp_br_quarry	0
+veh_airdrop_mp	common_base_mp	1
+veh_apache_mp	common_base_mp	1
+veh_apache_plunder_mp	common_br_mp	0
+veh_blima_gunner_proto_mp	common_base_mp	1
+veh_bradley_mp	mp_br_quarry	0
+veh_chopper_support_dmz_mp	common_base_mp	1
+veh_chopper_support_mp	common_base_mp	1
+veh_cruise_predator_mp	common_base_mp	1
+veh_delivery_drone_recon_mp	common_base_mp	1
+veh_hover_jet_mp	common_base_mp	1
+veh_pac_sentry_mp	common_base_mp	1
+veh_radar_drone_escort_mp	common_base_mp	1
+veh_radar_drone_overwatch_mp	common_base_mp	1
+veh_radar_drone_recon_mp	common_base_mp	1
+veh_scrambler_drone_guard_mp	common_base_mp	1
+veh_toma_drone_mp	common_base_mp	1
+vindia_physics_mp	mp_br_quarry	0
+zuniform_physics_mp	mp_br_quarry	0
