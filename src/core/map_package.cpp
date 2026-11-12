@@ -14,6 +14,10 @@
 namespace fs = std::filesystem;
 
 namespace iw8r {
+namespace detail {
+bool inflateRaw(const char* data, size_t compressedSize, size_t size, std::string& out);  // stb_image_impl.cpp
+}  // namespace detail
+
 namespace {
 
 constexpr int kMaxPrefabDepth = 8;
@@ -292,6 +296,8 @@ struct ZipEntry {
     bool isDir = false;
     size_t dataAt = 0;
     uint32_t size = 0;
+    std::string inflated;  // a deflated entry, decompressed (its bytes; dataAt is not used)
+    bool deflated = false;
 };
 
 }  // namespace
@@ -489,10 +495,12 @@ bool extractZip(const std::string& zipPath, const std::string& destDir, std::vec
         pos = nameAt + nlen + xlen + clen;
 
         if (flags & 1u) return fail("encrypted entry is not supported: " + rawName);
-        if (method != 0)
-            return fail("entry '" + rawName + "' is compressed (method " + std::to_string(method) +
-                        "); only stored entries are supported");
-        if (csize != usize) return fail("corrupt zip: size mismatch for " + rawName);
+        if (method != 0 && method != 8)
+            return fail("entry '" + rawName + "' is compressed with method " + std::to_string(method) +
+                        "; only stored and deflated entries are supported");
+        if (method == 0 && csize != usize) return fail("corrupt zip: size mismatch for " + rawName);
+        // A zip bomb guard: one entry at most 512 MB unpacked.
+        if (usize > 512u * 1024u * 1024u) return fail("entry '" + rawName + "' is larger than 512 MB unpacked");
 
         if (!rawName.empty() && (rawName[0] == '/' || rawName[0] == '\\'))
             return fail("unsafe entry name (absolute path): " + rawName);
@@ -507,10 +515,18 @@ bool extractZip(const std::string& zipPath, const std::string& destDir, std::vec
         if (static_cast<uint64_t>(localOff) + 30 > n || get32(buf, localOff) != 0x04034B50u)
             return fail("corrupt zip: bad local header for " + rawName);
         const size_t dataAt = static_cast<size_t>(localOff) + 30 + get16(buf, localOff + 26) + get16(buf, localOff + 28);
-        if (dataAt + usize > cdOff) return fail("corrupt zip: data out of range for " + rawName);
-        if (crc32Of(buf.data() + dataAt, usize) != crc) return fail("CRC mismatch for " + rawName);
+        if (dataAt + csize > cdOff) return fail("corrupt zip: data out of range for " + rawName);
+        ZipEntry entry{joinParts(parts), isDir, dataAt, usize};
+        if (method == 8) {
+            if (!detail::inflateRaw(buf.data() + dataAt, csize, usize, entry.inflated))
+                return fail("corrupt zip: cannot inflate " + rawName);
+            entry.deflated = true;
+            if (crc32Of(entry.inflated.data(), usize) != crc) return fail("CRC mismatch for " + rawName);
+        } else if (crc32Of(buf.data() + dataAt, usize) != crc) {
+            return fail("CRC mismatch for " + rawName);
+        }
 
-        entries.push_back({joinParts(parts), isDir, dataAt, usize});
+        entries.push_back(std::move(entry));
     }
 
     // Destination check: every target must stay inside destDir.
@@ -537,7 +553,7 @@ bool extractZip(const std::string& zipPath, const std::string& destDir, std::vec
         fs::create_directories(target.parent_path(), ec);
         std::ofstream f(target, std::ios::binary | std::ios::trunc);
         if (!f) return fail("cannot create " + toUtf8(target));
-        f.write(buf.data() + e.dataAt, static_cast<std::streamsize>(e.size));
+        f.write(e.deflated ? e.inflated.data() : buf.data() + e.dataAt, static_cast<std::streamsize>(e.size));
         f.close();
         if (f.fail()) return fail("write failed: " + toUtf8(target));
         if (extracted) extracted->push_back(toUtf8(target));

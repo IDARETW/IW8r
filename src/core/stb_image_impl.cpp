@@ -25,4 +25,13 @@ bool stbDecodeRgba(const std::string& path, int& w, int& h, std::vector<uint8_t>
     return true;
 }
 
+// Raw deflate (zip method 8) of a known size, with stb_image's inflater (map_package.cpp extractZip).
+bool inflateRaw(const char* data, size_t compressedSize, size_t size, std::string& out) {
+    if (compressedSize > 0x7FFFFFFF || size > 0x7FFFFFFF) return false;
+    out.assign(size, '\0');
+    if (size == 0) return true;
+    const int got = stbi_zlib_decode_noheader_buffer(out.data(), int(size), data, int(compressedSize));
+    return got == int(size);
+}
+
 }  // namespace iw8r::detail

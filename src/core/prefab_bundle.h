@@ -309,4 +309,35 @@ PrefabSaveResult prefabBundleFromSelection(const Document& doc, const PrefabSave
 // holds a prefab.json and overwrite is false.
 bool writePrefabBundleFolder(const std::string& folder, const PrefabSaveResult& result, std::string* err, bool overwrite = false);
 
+// ------------------------------------------------------------------ sharing and converting
+
+// A plain .map prefab as a bundle: the file is read into a document, everything is selected and saved as with Save
+// Selection As Prefab, with the pivot at the file's own origin (placements of the old file and the bundle line up).
+// opt.name / opt.id default to the file name. ok false (and error) when the file cannot be read or holds nothing.
+PrefabSaveResult prefabBundleFromPlainMap(const std::string& mapPath, PrefabSaveOptions opt);
+
+// Zip of one bundle folder (stored entries): every file under it as "<folder name>/<path>". Fails when the folder is
+// not a bundle (no prefab.json and no prefab.map).
+bool exportPrefabBundleZip(const std::string& folder, const std::string& zipPath, std::string* err = nullptr);
+
+// Extracts the bundles of a zip into destRoot. The zip holds one or more "<name>.iw8prefab/" folders at its top, or the
+// files of one bundle at its top (the folder is then named after the zip file). A bundle folder that already exists in
+// destRoot is not replaced (the import fails and writes nothing). Each bundle is loaded once extracted; one that does
+// not load is removed again and fails the import. `bundles` receives the folders written.
+bool importPrefabBundleZip(const std::string& zipPath, const std::string& destRoot, std::vector<std::string>* bundles = nullptr,
+                           std::string* err = nullptr);
+
+// Placement hints of a manifest (placement.surface, placement.yaw_step, placement.snap) for a placement at `hit` on a
+// surface with outward `normal` (when known):
+//   wall    the prefab's +X points out of the wall: yaw from the wall normal, rounded to yaw_step (0: exact);
+//   ceiling / floor / free   the origin is the hit point, yaw 0;
+//   snap    x and y (and z on a wall) on that grid.
+// `note` says when the surface does not fit the hint (a wall prefab on a floor).
+struct PrefabPlacement {
+    Vec3 origin;
+    double yaw = 0;
+    std::string note;
+};
+PrefabPlacement prefabPlacementFor(const PrefabManifest& m, const Vec3& hit, const std::optional<Vec3>& normal);
+
 }  // namespace iw8r

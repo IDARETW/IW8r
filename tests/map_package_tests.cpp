@@ -209,17 +209,26 @@ TEST(map_package_extract_rejects_compressed_entry) {
     std::string err;
     CHECK(writeZip(zip.string(), {{src.string(), "stored.txt"}}, &err));
 
-    // Flip the method of the single entry to 8 (deflate) in both the local and central headers.
-    std::string bytes = readAll(zip);
-    CHECK(bytes.size() > 22);
-    const size_t cdOff = u32at(bytes, bytes.size() - 22 + 16);
-    bytes[8] = 8;
-    bytes[cdOff + 10] = 8;
+    // Flip the method of the single entry to 12 (bzip2, not supported) in both the local and central headers.
+    const std::string stored = readAll(zip);
+    CHECK(stored.size() > 22);
+    const size_t cdOff = u32at(stored, stored.size() - 22 + 16);
+    std::string bytes = stored;
+    bytes[8] = 12;
+    bytes[cdOff + 10] = 12;
     writeBytes(zip, bytes);
 
     std::vector<std::string> extracted;
     CHECK(!extractZip(zip.string(), (t.root / "dst").string(), &extracted, &err));
-    CHECK(err.find("compressed") != std::string::npos);
+    CHECK(err.find("compressed with method 12") != std::string::npos);
+    // Method 8 (deflate) is read, but these stored bytes are not deflate data: refused, nothing written.
+    bytes = stored;
+    bytes[8] = 8;
+    bytes[cdOff + 10] = 8;
+    writeBytes(zip, bytes);
+    CHECK(!extractZip(zip.string(), (t.root / "dst8").string(), &extracted, &err));
+    CHECK(err.find("cannot inflate") != std::string::npos || err.find("CRC") != std::string::npos);
+    CHECK(!fs::exists(t.root / "dst8" / "stored.txt"));
 }
 
 TEST(map_package_write_fails_on_unreadable_source) {

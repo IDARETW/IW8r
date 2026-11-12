@@ -3475,6 +3475,56 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         ctx.documentEdited();
     }
 
+    r.section("prefab sharing: plain .map to bundle, zip, wall placement, yaw step (8.5)");
+    {
+        const QString dir = QDir(outDir).absoluteFilePath("prefab_share");
+        QDir(dir).removeRecursively();
+        QDir().mkpath(dir);
+        QFile pf(dir + "/Wall Sign.map");
+        if (pf.open(QIODevice::WriteOnly)) {
+            pf.write("iwmap 4\n{\n\"classname\" \"worldspawn\"\n}\n{\n\"classname\" \"script_origin\"\n\"origin\" \"0 0 32\"\n\"targetname\" \"sign\"\n}\n");
+            pf.close();
+        }
+        QString err;
+        const QString folder = w.convertPlainPrefabToBundle(dir + "/Wall Sign.map", &err);
+        r.check(!folder.isEmpty() && QFileInfo::exists(folder + "/prefab.json") && QFileInfo::exists(folder + "/prefab.map"),
+                "a plain .map prefab becomes a bundle beside it: " + QFileInfo(folder).fileName() + err);
+        r.check(w.convertPlainPrefabToBundle(dir + "/Wall Sign.map", &err).isEmpty() && err.contains("already exists"),
+                "a second conversion does not replace the bundle");
+        err.clear();
+        const QString zip = dir + "/wall_sign.zip";
+        r.check(!folder.isEmpty() && w.exportPrefabBundleAsZip(folder, zip, &err) && QFileInfo(zip).size() > 100,
+                "the bundle exports as a zip: " + err);
+        // Placement hints: a wall prefab placed on a wall facing +y turns its +X out of the wall; Rotate turns it by the step.
+        QFile mf(folder + "/prefab.json");
+        QByteArray manifest = mf.open(QIODevice::ReadOnly) ? mf.readAll() : QByteArray();
+        mf.close();
+        const int brace = manifest.lastIndexOf('}');
+        if (brace > 0) {
+            manifest.insert(brace, ",\n  \"placement\": {\"surface\": \"wall\", \"yaw_step\": 45}\n");
+            if (mf.open(QIODevice::WriteOnly | QIODevice::Truncate)) mf.write(manifest);
+            mf.close();
+        }
+        err.clear();
+        const size_t pos = ctx.doc.undoPosition();
+        const Id placed = w.addPrefabPlacement(folder, Vec3(64, 128, 48), &err, Vec3(0, 1, 0));
+        const Entity* pe = placed != kNoId ? ctx.doc.findEntity(placed) : nullptr;
+        const std::string* angles = pe ? pe->value("angles") : nullptr;
+        r.check(angles && *angles == "0 90 0", QString("a wall prefab on a wall facing +y gets yaw 90 (angles '%1') %2")
+                                                    .arg(angles ? QString::fromStdString(*angles) : QString("none"), err));
+        ctx.doc.deselectAll();
+        if (placed != kNoId) ctx.doc.select({placed, kNoId}, false);
+        const int turned = w.rotateSelectedPrefabsByStep();
+        pe = placed != kNoId ? ctx.doc.findEntity(placed) : nullptr;
+        angles = pe ? pe->value("angles") : nullptr;
+        r.check(turned == 1 && angles && *angles == "0 135 0", "Rotate Selected Prefab turns it by the bundle's yaw step (45)");
+        while (ctx.doc.undoPosition() > pos && ctx.doc.undo()) {}
+        ctx.doc.deselectAll();
+        ctx.documentEdited();
+        r.check(w.action("ImportPrefabZip") && w.action("ExportPrefabZip") && w.action("ConvertPrefabMap") && w.action("RotatePrefabStep"),
+                "the four prefab sharing commands exist");
+    }
+
     r.section("prefab parameters: per-instance overrides (8.8)");
     {
         // A prefab with one light and a brush, placed once; override the light colour and swap the material.

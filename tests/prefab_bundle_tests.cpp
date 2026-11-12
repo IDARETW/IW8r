@@ -16,6 +16,7 @@
 #include "map_script.h"
 #include "prefab.h"
 #include "prefab_bundle.h"
+#include "map_package.h"
 #include "script_check.h"
 #include "test_harness.h"
 
@@ -1506,4 +1507,109 @@ TEST(prefab_bundle_shipped_bundles_load_validate_and_build) {
     CHECK(hasLine(rep.warnings, "fallback contents built: stock door built as a scripted door from stock parts (Real stock scripted objects is off "
                                 "in Preferences) (missing build feature(s): scriptable_instances, scriptable_def_carry)"));
     CHECK(!hasLine(rep.warnings, "which is not in the stock catalogue") && !hasLine(rep.warnings, "iw8r_pid") && !hasLine(rep.warnings, "script:"));
+}
+
+// ------------------------------------------------------------------ sharing and converting (8.5 rest)
+
+namespace {
+fs::path repoFile(const std::string& rel) {
+    fs::path p = fs::current_path();
+    for (int up = 0; up < 6; ++up, p = p.parent_path())
+        if (fs::exists(p / rel)) return p / rel;
+    return {};
+}
+}  // namespace
+
+TEST(prefab_bundle_zip_round_trip_and_deflate) {
+    const fs::path root = scratch("zip_share");
+    // A bundle folder with a manifest, contents and an asset file in a subfolder.
+    const fs::path b = root / "src" / "crate.iw8prefab";
+    put(b / "prefab.json", "{\n  \"format\": \"iw8r-prefab-1\",\n  \"id\": \"crate\"\n}\n");
+    put(b / "prefab.map", "iwmap 4\n{\n\"classname\" \"worldspawn\"\n" + box(AABB{{0, 0, 0}, {32, 32, 32}}, "caulk") + "}\n");
+    put(b / "materials" / "crate.iw8mat.json", "{}\n");
+    std::string err;
+    const fs::path zip = root / "crate.zip";
+    CHECK(exportPrefabBundleZip(b.string(), zip.string(), &err));
+    // Import into another root: the bundle comes back whole; a second import does not replace it.
+    std::vector<std::string> written;
+    CHECK(importPrefabBundleZip(zip.string(), (root / "dest").string(), &written, &err));
+    CHECK(written.size() == 1 && fs::exists(root / "dest" / "crate.iw8prefab" / "materials" / "crate.iw8mat.json"));
+    CHECK(slurp(root / "dest" / "crate.iw8prefab" / "prefab.map") == slurp(b / "prefab.map"));
+    CHECK(!importPrefabBundleZip(zip.string(), (root / "dest").string(), &written, &err) && has(err, "not replaced"));
+    // Nothing of the scratch extraction is left behind.
+    size_t leftovers = 0;
+    for (const auto& e : fs::directory_iterator(root / "dest"))
+        if (e.path().filename().string().rfind(".import-", 0) == 0) ++leftovers;
+    CHECK(leftovers == 0);
+    // A folder that is not a bundle is refused.
+    CHECK(!exportPrefabBundleZip((root / "src").string(), (root / "x.zip").string(), &err));
+    // A zip made by another tool with deflated entries (tests/data/deflated_bundle.zip, Python zipfile ZIP_DEFLATED).
+    const fs::path deflated = repoFile("tests/data/deflated_bundle.zip");
+    CHECK(!deflated.empty());
+    if (!deflated.empty()) {
+        CHECK(importPrefabBundleZip(deflated.string(), (root / "dest2").string(), &written, &err));
+        CHECK(written.size() == 1 && has(slurp(root / "dest2" / "deflated_crate.iw8prefab" / "prefab.map"), "crate_pos"));
+    }
+    // A zip with one bundle's files at its top: the folder is named after the zip.
+    std::vector<PackageFile> flat = {{(b / "prefab.json").string(), "prefab.json"}, {(b / "prefab.map").string(), "prefab.map"}};
+    CHECK(writeZip((root / "flatbox.zip").string(), flat, &err));
+    CHECK(importPrefabBundleZip((root / "flatbox.zip").string(), (root / "dest3").string(), &written, &err));
+    CHECK(written.size() == 1 && fs::exists(root / "dest3" / "flatbox.iw8prefab" / "prefab.map"));
+    // A zip without a bundle.
+    std::vector<PackageFile> none = {{(b / "materials" / "crate.iw8mat.json").string(), "readme.txt"}};
+    CHECK(writeZip((root / "none.zip").string(), none, &err));
+    CHECK(!importPrefabBundleZip((root / "none.zip").string(), (root / "dest4").string(), &written, &err) && has(err, "no prefab bundle"));
+}
+
+TEST(prefab_bundle_from_plain_map_keeps_origin) {
+    const fs::path root = scratch("plain_convert");
+    const fs::path map = root / "Wooden Crate.map";
+    put(map, "iwmap 4\n{\n\"classname\" \"worldspawn\"\n" + box(AABB{{16, 16, 0}, {48, 48, 32}}, "caulk") +
+                 "}\n{\n\"classname\" \"script_origin\"\n\"origin\" \"32 32 40\"\n\"targetname\" \"lid\"\n}\n");
+    PrefabSaveOptions opt;
+    const PrefabSaveResult r = prefabBundleFromPlainMap(map.string(), opt);
+    CHECK(r.ok);
+    CHECK(r.manifest.id == "wooden_crate" && r.pivot == Vec3(0, 0, 0));
+    // The contents keep their coordinates (pivot at the file's own origin).
+    CHECK(has(r.mapText, "\"origin\" \"32 32 40\"") && has(r.mapText, "script_origin"));
+    std::string err;
+    CHECK(writePrefabBundleFolder((root / "wooden_crate.iw8prefab").string(), r, &err));
+    PrefabBundle loaded;
+    CHECK(loadPrefabBundle((root / "wooden_crate.iw8prefab").string(), loaded, &err) && loaded.manifest.id == "wooden_crate");
+    // An empty or missing file.
+    put(root / "empty.map", "iwmap 4\n{\n\"classname\" \"worldspawn\"\n}\n");
+    CHECK(!prefabBundleFromPlainMap((root / "empty.map").string(), opt).ok);
+    CHECK(!prefabBundleFromPlainMap((root / "missing.map").string(), opt).ok);
+}
+
+TEST(prefab_bundle_placement_hints) {
+    PrefabManifest wall;
+    wall.surface = "wall";
+    wall.yawStep = 90;
+    // A wall facing +y: the prefab's +X turns to +y (yaw 90).
+    PrefabPlacement p = prefabPlacementFor(wall, Vec3(10, 20, 30), Vec3(0, 1, 0));
+    CHECK(p.yaw == 90 && p.origin == Vec3(10, 20, 30) && p.note.empty());
+    // A slightly skewed wall rounds to the yaw step; without a step it is exact.
+    p = prefabPlacementFor(wall, Vec3(0, 0, 0), Vec3(-0.996, 0.087, 0));
+    CHECK(p.yaw == 180);
+    wall.yawStep = 0;
+    p = prefabPlacementFor(wall, Vec3(0, 0, 0), Vec3(0, -1, 0));
+    CHECK(std::fabs(p.yaw - 270) < 1e-9);
+    // On a floor a wall prefab keeps yaw 0 and says why.
+    p = prefabPlacementFor(wall, Vec3(0, 0, 0), Vec3(0, 0, 1));
+    CHECK(p.yaw == 0 && has(p.note, "walls"));
+    // Snap: x, y (and the height on a wall); the depth stays on the wall.
+    wall.snap = 16;
+    wall.yawStep = 90;
+    p = prefabPlacementFor(wall, Vec3(7, 33.5, 50), Vec3(-1, 0, 0));
+    CHECK(p.origin == Vec3(7, 32, 48) && p.yaw == 180);
+    PrefabManifest floor;
+    floor.snap = 8;
+    p = prefabPlacementFor(floor, Vec3(3, 13, 5), Vec3(0, 0, 1));
+    CHECK(p.origin == Vec3(0, 16, 5) && p.yaw == 0 && p.note.empty());
+    PrefabManifest ceiling;
+    ceiling.surface = "ceiling";
+    CHECK(prefabPlacementFor(ceiling, Vec3(0, 0, 0), Vec3(0, 0, -1)).note.empty());
+    CHECK(has(prefabPlacementFor(ceiling, Vec3(0, 0, 0), Vec3(0, 0, 1)).note, "ceilings"));
+    CHECK(prefabPlacementFor(ceiling, Vec3(1, 2, 3), std::nullopt).origin == Vec3(1, 2, 3));
 }

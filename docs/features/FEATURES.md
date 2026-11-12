@@ -287,6 +287,8 @@ Date: 2026-11-12
 - Make Selected Prefab Unique copies the prefab under a new id and points this one placement at the copy. The map must be saved first.
 - Open Bundle Folder of Selected Prefab shows the folder in Explorer.
 - Per-placement overrides: a `misc_prefab` can carry `iw8r_ovr:` keys and `iw8r_mat:` keys to change the contents of one placement. File > Prefab Parameters lists every key of every prefab entity, with this placement's overrides. (tested offline only)
+- Sharing: File > Export Prefab Bundle As Zip, and Import Prefab Bundles From Zip (also zips made by Windows or other tools; an existing bundle is never replaced). File > Convert Plain .map Prefab To Bundle wraps an old single-file prefab, keeping its origin.
+- Placement hints: a bundle made for walls (`placement.surface` `wall`) turns to face out of the wall it is placed on; File > Rotate Selected Prefab turns a placement by the bundle's yaw step.
 - Save Selection As Plain .map Prefab writes the old single-file form. Insert Prefab places a `.map` file or a bundle.
 - Names per placement: a name that is local to the prefab becomes `<placement id>_<name>`. A name in the global list is never changed.
 - Scripts in a bundle: one script per prefab kind, started once per placement. Its functions start with `prefab_`.
@@ -800,7 +802,6 @@ Open items from the roadmap and the research notes. Only the open items are list
 - PA speakers and custom music states (row 6.22).
 - Navigation blockers and traversal authoring (row 6.23).
 - Camera angle sync, live atmosphere and in-game screenshots and probe capture (rows 7.3, 7.9, 7.11). The live atmosphere channel was removed.
-- Prefabs: convert a plain `.map` to a bundle, zip import of bundles, and the placement hints (wall, ceiling and yaw step).
 - Game types: what the lobby shows for a game type of the map's own (row 13.6; built offline, not seen in game). Loot items on an own map are carried from the Warzone zone (research 93) but not yet seen in game.
 - Stock maps: removal of stock world geometry (row 11.5), sun and sky relight (row 11.6), and maps beyond 6v6 scale, such as Ground War scale and co-op maps (row 11.10).
 - Installer test on a clean machine (owner action, row 9.9).

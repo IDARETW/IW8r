@@ -346,10 +346,17 @@ What the window does with bundles (`docs/USER_GUIDE.md`, section "Prefabs", is t
    and every point entity inside it, a model included, as a 16 unit box. Wanted: the model meshes of `misc_model`,
    `script_model`, `dynamic_prop` and `scriptable` entities inside a prefab (through the scene's `modelSource`), the
    materials of its brush faces, and a see-through look for the drag preview.
-2. **Placement hints**: `placement.surface` (`wall`, `ceiling`) and `placement.yaw_step` are read but not used; a drop
-   always lands on the surface point with the prefab upright.
+2. (Done 2026-11-12) **Placement hints**: Insert Prefab uses `placement.surface`: a `wall` prefab placed on a wall
+   turns its +X out of the wall (yaw from the face normal, rounded to `placement.yaw_step`), `snap` snaps x and y (and
+   the height on a wall); the status bar says when the surface does not fit. File > Rotate Selected Prefab turns a
+   placement by its `yaw_step` (90 for a plain prefab). Core `prefabPlacementFor`.
 3. **No editor for parameters, script and fallback**: they are written into `prefab.json` and the bundle folder by
-   hand. **Convert To Bundle** (wrap a plain `.map`) and importing a `<name>.iw8prefab.zip` do not exist yet.
+   hand. (Done 2026-11-12: File > Convert Plain .map Prefab To Bundle wraps a plain `.map` with the pivot at its own
+   origin, as Save Selection As Prefab does with the mapper's own assets; File > Export Prefab Bundle As Zip and Import
+   Prefab Bundles From Zip share bundles: the import reads stored and deflated zips (Windows "Compressed folder"),
+   takes "<name>.iw8prefab/" folders or one bundle's files at the top, never replaces an existing bundle and checks
+   each bundle before it lands in the prefab folder. Core `prefabBundleFromPlainMap`, `exportPrefabBundleZip`,
+   `importPrefabBundleZip`; `extractZip` inflates with stb.)
 4. **Core**: the map package must pack bundle folders (`map_package.cpp`), the build cache should notice a changed
    bundle script or manifest (`build_cache.cpp`), the entity class `scriptable` and the catalogue of scriptable
    definitions, and a `docs\KEYS_REFERENCE.md` entry for `iw8r_pid`.

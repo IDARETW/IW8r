@@ -273,6 +273,14 @@ public:
     // Prefabs (also used by --gui-test): a misc_prefab at the 2D view centre, explode, save selection.
     // `file` is a plain .map prefab, or a prefab bundle (its .iw8prefab folder, or a file inside it).
     bool insertPrefab(const QString& file, QString* err = nullptr);
+    // The document edit of insertPrefab. `normal`: the outward normal of the surface at `at` (placement hints).
+    Id addPrefabPlacement(const QString& file, const Vec3& at, QString* err, const std::optional<Vec3>& normal = std::nullopt);
+    // Prefab sharing (placement hints, zip, plain map to bundle). Return "" / false with *err on failure.
+    QString convertPlainPrefabToBundle(const QString& mapPath, QString* err = nullptr);  // the bundle folder written
+    bool exportPrefabBundleAsZip(const QString& bundleFolder, const QString& zipPath, QString* err = nullptr);
+    QStringList importPrefabBundlesFromZip(const QString& zipPath, QString* err = nullptr);  // the bundle folders written
+    // Turns the selected misc_prefab placements by their bundle's yaw step (90 for a plain prefab); one undo step.
+    int rotateSelectedPrefabsByStep();
     bool explodeSelectedPrefab(QString* err = nullptr);
     bool saveSelectionAsPrefab(const QString& file, QString* err = nullptr);  // the old form: one plain .map file
 
@@ -566,7 +574,8 @@ private:
     QString bundleRootsKey() const;
     void updateBundleRoots();              // works bundleRoots_ out again
     void bundleRootsMayHaveChanged();      // after a document change: reloads the custom assets when they did change
-    Id addPrefabPlacement(const QString& file, const Vec3& at, QString* err);  // the document edit of insertPrefab
+    // The outward normal of the brush face of `hit` nearest to `point` (nullopt for a patch or no hit).
+    std::optional<Vec3> surfaceNormalAt(const SelRef& hit, const Vec3& point) const;
     void saveSelectionAsMapPrefabDialog();  // the old "save as one .map file" dialog
     QWidget* makeEntityDockHost();          // the bundle panel above the entity inspector
     void prefabDragHover(const QString& file, const QPointF& pos);  // a prefab dragged over the camera

@@ -49,8 +49,8 @@ PackageResult collectMapPackage(const std::string& mapPath, const std::vector<st
 // written; a partially written output is removed. Limited to non-zip64 sizes (under 4 GiB, under 65535 entries).
 bool writeZip(const std::string& zipPath, const std::vector<PackageFile>& files, std::string* err = nullptr);
 
-// Extracts a zip written by writeZip (stored entries only). Compressed or encrypted entries are rejected with a
-// clear message, as are entries whose name is absolute, contains "..", or contains a drive/stream colon. Every
+// Extracts a zip: stored and deflated entries (zips from writeZip, Windows "Send to > Compressed folder" and most
+// tools). Other compression methods and encrypted entries are rejected with a clear message, as are entries whose name is absolute, contains "..", or contains a drive/stream colon. Every
 // entry is validated (structure, CRC, destination) before anything is written, so a rejected zip leaves nothing
 // behind. `extracted` receives the paths of the files written (directories are created, not listed).
 bool extractZip(const std::string& zipPath, const std::string& destDir, std::vector<std::string>* extracted = nullptr,

@@ -48,6 +48,8 @@ Warzone and stock maps:
 Editing:
 
 - **Bridge Two Faces** (Brush menu): a new brush that spans two selected faces.
+- **Prefab sharing**: export and import prefab bundles as zips (deflated zips too), convert a plain `.map` prefab to a
+  bundle, wall placement and Rotate Selected Prefab by the bundle's yaw step.
 - **Blend By Slope** (Patch > Height Map): the terrain's slope written into its vertex alpha for layered materials.
 
 Building:

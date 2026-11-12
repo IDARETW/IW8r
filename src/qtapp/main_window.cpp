@@ -1265,6 +1265,35 @@ void MainWindow::buildMenus() {
     addCommand(file, "SaveSelectionAsPrefab", "Save Selection As Prefab...", QKeySequence(), [this] { saveSelectionAsBundleDialog(); });
     addCommand(file, "SaveSelectionAsMapPrefab", "Save Selection As Plain .map Prefab...", QKeySequence(), [this] { saveSelectionAsMapPrefabDialog(); });
     addCommand(file, "OpenBundleFolder", "Open Bundle Folder of Selected Prefab", QKeySequence(), [this] { openSelectedBundleFolder(); });
+    addCommand(file, "RotatePrefabStep", "Rotate Selected Prefab (its yaw step)", QKeySequence(), [this] {
+        if (!rotateSelectedPrefabsByStep()) ctx_.setStatus("Rotate Prefab: select misc_prefab placements first");
+    });
+    addCommand(file, "ConvertPrefabMap", "Convert Plain .map Prefab To Bundle...", QKeySequence(), [this] {
+        const QString f = QFileDialog::getOpenFileName(this, "Convert Prefab To Bundle", prefabSaveFolder(), "Prefab maps (*.map)");
+        if (f.isEmpty()) return;
+        QString err;
+        const QString folder = convertPlainPrefabToBundle(f, &err);
+        if (folder.isEmpty()) return void(QMessageBox::warning(this, "Convert Prefab To Bundle", err));
+        ctx_.setStatus("Bundle written: " + QDir::toNativeSeparators(folder) + " (the .map file is kept)");
+    });
+    addCommand(file, "ExportPrefabZip", "Export Prefab Bundle As Zip...", QKeySequence(), [this] {
+        const QString folder = QFileDialog::getExistingDirectory(this, "Prefab bundle folder (.iw8prefab)", prefabSaveFolder());
+        if (folder.isEmpty()) return;
+        const QString zip = QFileDialog::getSaveFileName(this, "Export Prefab Bundle", folder + ".zip", "Zip (*.zip)");
+        if (zip.isEmpty()) return;
+        QString err;
+        if (!exportPrefabBundleAsZip(folder, zip, &err)) return void(QMessageBox::warning(this, "Export Prefab Bundle", err));
+        ctx_.setStatus("Prefab bundle exported: " + QDir::toNativeSeparators(zip));
+    });
+    addCommand(file, "ImportPrefabZip", "Import Prefab Bundles From Zip...", QKeySequence(), [this] {
+        const QString zip = QFileDialog::getOpenFileName(this, "Import Prefab Bundles", QString(), "Zip (*.zip)");
+        if (zip.isEmpty()) return;
+        QString err;
+        const QStringList bundles = importPrefabBundlesFromZip(zip, &err);
+        if (bundles.isEmpty()) return void(QMessageBox::warning(this, "Import Prefab Bundles", err));
+        if (prefabs_) prefabs_->refresh();
+        ctx_.setStatus(QString("Imported %1 prefab bundle(s) into %2").arg(bundles.size()).arg(QDir::toNativeSeparators(prefabSaveFolder())));
+    });
     addCommand(file, "MakePrefabUnique", "Make Selected Prefab Unique", QKeySequence(), [this] {
         QString err;
         if (!makeSelectedPrefabUnique(&err)) QMessageBox::warning(this, "Make Prefab Unique", err);
