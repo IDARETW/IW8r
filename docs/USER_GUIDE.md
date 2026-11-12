@@ -384,6 +384,10 @@ playlist settings by itself, so a preset brings them:
 - **Carry in this map**: the map itself sets them at every start (worldspawn keys `iw8r_mode_dvars` and `iw8r_br`).
   Use this for a map that is meant for one mode.
 - **Save as my preset** keeps your own mode: change the id, title, game type and the `name=value` lines first.
+- **Rules** change how the game type plays, for every player at each spawn: `health=50` (max health), `speed=1.2`
+  (move speed), `weapon=iw8_pi_golf21_mp` (only this weapon instead of the loadout), `ammo=infinite`. Separate them
+  with `;`. Rules work only when the map carries them (Carry in this map, worldspawn `iw8r_mode_rules`): the map's
+  own script applies them after the game type has started.
 
 For a small map of your own in the Warzone game type: pick "Warzone on a small map", press Carry in this map, then
 Insert Warzone start entities (eight start spawns and a prematch area at the 2D view centre; move the spawns onto the

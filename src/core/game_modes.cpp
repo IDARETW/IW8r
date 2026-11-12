@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -158,14 +159,68 @@ void parseModeBr(const std::string& text, bool& noCircle, bool& noGulag, bool& s
     }
 }
 
+std::string modeRulesText(const ModeRules& r) {
+    std::string out;
+    const auto add = [&](const std::string& part) { out += (out.empty() ? "" : "; ") + part; };
+    if (r.health > 0) add("health=" + std::to_string(r.health));
+    if (r.speed > 0) {
+        std::ostringstream ss;
+        ss << r.speed;
+        add("speed=" + ss.str());
+    }
+    if (!r.weapon.empty()) add("weapon=" + r.weapon);
+    if (r.infiniteAmmo) add("ammo=infinite");
+    return out;
+}
+
+ModeRules parseModeRules(const std::string& text, std::vector<std::string>* notes) {
+    ModeRules r;
+    std::string part;
+    std::istringstream in(text);
+    const auto trim = [](std::string s) {
+        const auto a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
+        return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
+    };
+    while (std::getline(in, part, ';')) {
+        part = trim(part);
+        if (part.empty()) continue;
+        const size_t eq = part.find('=');
+        std::string name = trim(part.substr(0, eq)), value = eq == std::string::npos ? std::string() : trim(part.substr(eq + 1));
+        for (char& c : name) c = char(std::tolower(static_cast<unsigned char>(c)));
+        for (char& c : value) c = char(std::tolower(static_cast<unsigned char>(c)));
+        char* end = nullptr;
+        if (name == "health") {
+            const long v = std::strtol(value.c_str(), &end, 10);
+            if (!value.empty() && *end == 0 && v >= 1 && v <= 1000) r.health = int(v);
+            else if (notes) notes->push_back("rule health=" + value + ": a number 1 to 1000");
+        } else if (name == "speed") {
+            const double v = std::strtod(value.c_str(), &end);
+            if (!value.empty() && *end == 0 && v >= 0.2 && v <= 3.0) r.speed = v;
+            else if (notes) notes->push_back("rule speed=" + value + ": a scale 0.2 to 3");
+        } else if (name == "weapon") {
+            const bool ok = !value.empty() && value.size() <= 64 &&
+                            std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::islower(c) || std::isdigit(c) || c == '_'; });
+            if (ok) r.weapon = value;
+            else if (notes) notes->push_back("rule weapon=" + value + ": a weapon name of a-z, 0-9 and _");
+        } else if (name == "ammo") {
+            if (value == "infinite") r.infiniteAmmo = true;
+            else if (notes) notes->push_back("rule ammo=" + value + ": only ammo=infinite");
+        } else if (notes) {
+            notes->push_back("unknown rule '" + name + "' (health, speed, weapon, ammo)");
+        }
+    }
+    return r;
+}
+
 std::string gameModePresetJson(const GameModePreset& p) {
     std::string json = "{\n  \"id\": " + quote(p.id) + ",\n  \"title\": " + quote(p.title) + ",\n  \"gametype\": " + quote(p.gametype) +
                        ",\n  \"description\": " + quote(p.description) + ",\n  \"dvars\": {";
     for (size_t i = 0; i < p.dvars.size(); ++i)
         json += std::string(i ? "," : "") + "\n    " + quote(p.dvars[i].first) + ": " + quote(p.dvars[i].second);
     json += std::string(p.dvars.empty() ? "" : "\n  ") + "},\n  \"br\": {\"no_circle\": " + (p.brNoCircle ? "true" : "false") +
-            ", \"no_gulag\": " + (p.brNoGulag ? "true" : "false") + ", \"skip_drop\": " + (p.brSkipDrop ? "true" : "false") + "}\n}\n";
-    return json;
+            ", \"no_gulag\": " + (p.brNoGulag ? "true" : "false") + ", \"skip_drop\": " + (p.brSkipDrop ? "true" : "false") + "}";
+    if (!p.rules.empty()) json += ",\n  \"rules\": " + quote(modeRulesText(p.rules));
+    return json + "\n}\n";
 }
 
 bool parseGameModePreset(const std::string& text, GameModePreset& out, std::string* err) {
@@ -207,6 +262,11 @@ bool parseGameModePreset(const std::string& text, GameModePreset& out, std::stri
             return v && v->type == json::Value::Type::Bool && v->b;
         };
         p.brNoCircle = flag("no_circle"), p.brNoGulag = flag("no_gulag"), p.brSkipDrop = flag("skip_drop");
+    }
+    if (const std::string rules = str("rules"); !rules.empty()) {
+        std::vector<std::string> notes;
+        p.rules = parseModeRules(rules, &notes);
+        if (!notes.empty()) return fail(notes.front());
     }
     out = std::move(p);
     return true;

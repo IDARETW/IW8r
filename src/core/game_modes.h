@@ -18,6 +18,21 @@
 
 namespace iw8r {
 
+// Rules a mode adds to its game type (roadmap 13.6, research 91): the map script runs after the game type's main
+// (VERIFIED order), so a map can change how the stock game type plays. Applied to every player at each spawn, a frame
+// after the game type's own spawn handling: max health, move speed scale, one weapon instead of the loadout, and a
+// clip that refills itself. Carried by the map (worldspawn iw8r_mode_rules); 0 / "" / false = unchanged.
+struct ModeRules {
+    int health = 0;          // 1 .. 1000
+    double speed = 0;        // move speed scale 0.2 .. 3
+    std::string weapon;      // a weapon name (a-z, 0-9, _; 1 to 64), e.g. iw8_pi_golf21_mp
+    bool infiniteAmmo = false;
+    bool empty() const { return health == 0 && speed == 0 && weapon.empty() && !infiniteAmmo; }
+    bool operator==(const ModeRules& o) const {
+        return health == o.health && speed == o.speed && weapon == o.weapon && infiniteAmmo == o.infiniteAmmo;
+    }
+};
+
 struct GameModePreset {
     std::string id;           // [a-z0-9_], 1 to 24 characters
     std::string title;
@@ -26,6 +41,7 @@ struct GameModePreset {
     std::string description;
     // For the br game type on a map that has no circle data, no gulag arena or no plane path.
     bool brNoCircle = false, brNoGulag = false, brSkipDrop = false;
+    ModeRules rules;
     bool builtin = false;
 };
 
@@ -52,6 +68,11 @@ const GameModePreset* findGameMode(const std::vector<GameModePreset>& modes, con
 // "name=value; name=value" (the worldspawn iw8r_mode_dvars form) and back; bad pairs are dropped and named in `notes`.
 std::string modeDvarsText(const std::vector<std::pair<std::string, std::string>>& dvars);
 std::vector<std::pair<std::string, std::string>> parseModeDvars(const std::string& text, std::vector<std::string>* notes = nullptr);
+
+// "health=50; speed=1.2; weapon=iw8_pi_golf21_mp; ammo=infinite" (the worldspawn iw8r_mode_rules form) and back; a bad
+// or unknown rule is dropped and named in `notes`.
+std::string modeRulesText(const ModeRules& rules);
+ModeRules parseModeRules(const std::string& text, std::vector<std::string>* notes = nullptr);
 
 // The worldspawn iw8r_br words of a preset ("nocircle nogulag skipdrop"; "" for none) and back.
 std::string modeBrText(const GameModePreset& preset);

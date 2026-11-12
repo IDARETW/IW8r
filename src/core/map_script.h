@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "atmosphere.h"
+#include "game_modes.h"
 #include "geometry.h"
 
 namespace iw8r {
@@ -62,6 +63,9 @@ struct MapScriptExtras {
     // iw8r_br: nocircle, nogulag, skipdrop; research 87 section 6).
     std::vector<std::pair<std::string, std::string>> modeDvars;
     bool brNoCircle = false, brNoGulag = false, brSkipDrop = false;
+    // Game mode rules carried by the map (worldspawn iw8r_mode_rules, game_modes.h ModeRules; research 91: the map
+    // script runs after the game type's main): applied to every player a frame after each spawn.
+    ModeRules modeRules;
     std::vector<std::string> solidTargetnames;
     std::string userScript;
     // Hot update (roadmap 7.4): a thread that applies the dvar iw8r_hot ("seq targetname x y z pitch yaw roll") to the

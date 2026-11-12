@@ -446,6 +446,7 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
     if (extras.brNoCircle) s += "    level.br_circle_disabled = 1;\n    scripts\\mp\\gametypes\\br_gametypes::disablefeature(\"circle\");\n";
     if (extras.brNoGulag) s += "    level.usegulag = 0;\n";
     if (extras.brSkipDrop) s += "    level.skipprematchdropspawn = 1;\n";
+    if (!extras.modeRules.empty()) s += "    level thread iw8r_mode_rules();\n";
     if (fog) {
         const double start = std::clamp(fog->start, 0.0, 20000.0), halfway = std::clamp(fog->halfway, 1.0, 70000.0);
         const auto c01 = [](double v) { return std::clamp(v, 0.0, 1.0); };
@@ -693,6 +694,26 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
              "                player setclientdvar(\"sm_sunCascadeSizeMultiplier2\", \"" + num(extras.sunShadowRange[1]) + "\");\n"
              "                player setclientdvar(\"sm_sunDistantShadows\", \"1\");\n"
              "            }\n        }\n        wait 1;\n    }\n}\n";
+    if (!extras.modeRules.empty()) {
+        const ModeRules& r = extras.modeRules;
+        s += "\n// Game mode rules (worldspawn iw8r_mode_rules: " + modeRulesText(r) +
+             "): every player, a frame after each spawn (after the game type's own spawn handling).\n"
+             "iw8r_mode_rules()\n{\n    for (;;)\n    {\n        level waittill(\"connected\", player);\n"
+             "        player thread iw8r_mode_rules_player();\n    }\n}\n"
+             "\niw8r_mode_rules_player()\n{\n    self endon(\"disconnect\");\n    for (;;)\n    {\n"
+             "        self waittill(\"spawned_player\");\n        wait 0.05;\n        if (!isalive(self))\n            continue;\n";
+        if (r.health > 0) s += "        self.maxhealth = " + std::to_string(r.health) + ";\n        self.health = " + std::to_string(r.health) + ";\n";
+        if (r.speed > 0) s += "        self setmovespeedscale(" + num(r.speed) + ");\n";
+        if (!r.weapon.empty() && validModeDvarValue(r.weapon))
+            s += "        weapon = makeweapon(\"" + r.weapon + "\");\n        self takeallweapons();\n        self giveweapon(weapon);\n"
+                 "        self switchtoweaponimmediate(weapon);\n";
+        if (r.infiniteAmmo) s += "        self thread iw8r_mode_ammo();\n";
+        s += "    }\n}\n";
+        if (r.infiniteAmmo)
+            s += "\niw8r_mode_ammo()\n{\n    self endon(\"disconnect\");\n    self endon(\"death\");\n    for (;;)\n    {\n"
+                 "        wait 0.5;\n        weapon = self getcurrentweapon();\n        if (isdefined(weapon))\n"
+                 "            self setweaponammoclip(weapon, weaponclipsize(weapon));\n    }\n}\n";
+    }
     if (!extras.userScript.empty()) s += "\n// ---- map script (worldspawn iw8r_script) ----\n" + extras.userScript + "\n";
     if (!prefabScripts.empty()) {
         s += "\n// Prefab bundles: what the entry function of a prefab script gets for one placement.\n"

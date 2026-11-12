@@ -234,6 +234,15 @@ TEST(preflight_unknown_method_is_error) {
     CHECK(countIssues(v, true, "script", "unknown method 'frobnicate()'") == 1);
 }
 
+// self / level are entities: a builtin method called on them is fine, an unknown one is an unknown method.
+TEST(preflight_methods_on_self_and_level) {
+    std::string gsc = kGoodGsc;
+    gsc.insert(gsc.find("    playfx("), "    self solid();\n    self moveto((0, 0, 8), 1);\n    level frobnicate();\n");
+    const auto v = run(makeBuild("self_methods", gsc));
+    CHECK(errorCount(v) == 1);
+    CHECK(countIssues(v, true, "script", "unknown method 'frobnicate()' called on 'level'") == 1);
+}
+
 TEST(preflight_comments_and_strings_are_not_calls) {
     std::string gsc = kGoodGsc;
     gsc.insert(gsc.find("    playfx("),

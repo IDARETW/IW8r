@@ -3104,6 +3104,14 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     warn.push_back(std::to_string(extras.modeDvars.size()) + " game mode dvar(s) are set by the map script at start (" +
                                    modeDvarsText(extras.modeDvars) + ")");
             }
+            if (const std::string* rules = worldspawn->value("iw8r_mode_rules")) {
+                std::vector<std::string> notes;
+                extras.modeRules = parseModeRules(*rules, &notes);
+                for (const std::string& n : notes) warn.push_back("iw8r_mode_rules: " + n);
+                if (!extras.modeRules.empty())
+                    warn.push_back("game mode rules applied by the map script at every spawn (" + modeRulesText(extras.modeRules) +
+                                   "; research 91; not seen in game)");
+            }
             if (const std::string* br = worldspawn->value("iw8r_br")) {
                 parseModeBr(*br, extras.brNoCircle, extras.brNoGulag, extras.brSkipDrop);
                 if (extras.brNoCircle || extras.brNoGulag || extras.brSkipDrop)

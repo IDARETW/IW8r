@@ -45,6 +45,9 @@ bool MainWindow::bakeGameMode(const GameModePreset& preset) {
     else ctx_.doc.setKeyValue(id, "iw8r_mode_dvars", dvars);
     if (br.empty()) ctx_.doc.removeKey(id, "iw8r_br");
     else ctx_.doc.setKeyValue(id, "iw8r_br", br);
+    const std::string rules = modeRulesText(preset.rules);
+    if (rules.empty()) ctx_.doc.removeKey(id, "iw8r_mode_rules");
+    else ctx_.doc.setKeyValue(id, "iw8r_mode_rules", rules);
     // A hand-written game type list gets the preset's game type too; a detected list finds it by itself.
     if (const Entity* now = ctx_.doc.findEntity(id))
         if (const std::string* list = now->value("iw8r_gametypes")) {
@@ -52,8 +55,9 @@ bool MainWindow::bakeGameMode(const GameModePreset& preset) {
             if (normalizeGameTypeList(joined, clean) && clean != *list) ctx_.doc.setKeyValue(id, "iw8r_gametypes", clean);
         }
     ctx_.doc.endGroup();
-    ctx_.documentEdited(QString("Game mode '%1' is carried by the map: %2 dvar(s)%3 are set by the map script at start")
-                            .arg(qs(preset.title)).arg(preset.dvars.size()).arg(br.empty() ? QString() : " and the Warzone switches (" + qs(br) + ")"));
+    ctx_.documentEdited(QString("Game mode '%1' is carried by the map: %2 dvar(s)%3 are set by the map script at start%4")
+                            .arg(qs(preset.title)).arg(preset.dvars.size()).arg(br.empty() ? QString() : " and the Warzone switches (" + qs(br) + ")")
+                            .arg(rules.empty() ? QString() : "; rules at every spawn: " + qs(rules)));
     return true;
 }
 
@@ -121,13 +125,18 @@ void MainWindow::showGameModes() {
     form->addRow("Game type script", typeEdit);
     form->addRow("Dvars", dvarEdit);
     form->addRow("Warzone on a small map", brRow);
+    auto* rulesEdit = new QLineEdit(&dlg);
+    rulesEdit->setObjectName("gameModeRules");
+    rulesEdit->setPlaceholderText("health=50; speed=1.2; weapon=iw8_pi_golf21_mp; ammo=infinite   (applied at every spawn)");
+    form->addRow("Rules", rulesEdit);
     form->addRow("Notes", descEdit);
     auto* info = new QLabel(&dlg);
     info->setWordWrap(true);
     info->setStyleSheet("color: gray");
     info->setText("A mode is a game type script plus dvars: Warzone Trios, Quads and Blood Money are all the script \"br\" with different "
                   "dvars. A private match applies none by itself, so: \"Use for F5\" sends them when the editor starts the match, and "
-                  "\"Carry in this map\" makes the map's own script set them at every start. Not seen in game.");
+                  "\"Carry in this map\" makes the map's own script set them at every start. Rules change how the game type plays "
+                  "(the map's script runs after the game type's own start, research 91); they work only carried in the map. Not seen in game.");
     side->addWidget(info);
     auto* buttons = new QHBoxLayout;
     side->addLayout(buttons);
@@ -166,6 +175,7 @@ void MainWindow::showGameModes() {
         p.brNoCircle = noCircle->isChecked(), p.brNoGulag = noGulag->isChecked(), p.brSkipDrop = skipDrop->isChecked();
         std::vector<std::string> notes;
         p.dvars = parseModeDvars(dvarEdit->toPlainText().replace('\n', ';').toStdString(), &notes);
+        p.rules = parseModeRules(rulesEdit->text().toStdString(), &notes);
         // Through the JSON form: the same checks a preset file gets.
         GameModePreset checked;
         std::string perr;
@@ -193,6 +203,7 @@ void MainWindow::showGameModes() {
         noCircle->setChecked(m.brNoCircle);
         noGulag->setChecked(m.brNoGulag);
         skipDrop->setChecked(m.brSkipDrop);
+        rulesEdit->setText(qs(modeRulesText(m.rules)));
         del->setEnabled(!m.builtin);
     });
     connect(useF5, &QPushButton::clicked, &dlg, [=, this] {

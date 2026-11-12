@@ -272,7 +272,8 @@ void checkScript(const std::string& text, const std::string& file, const std::st
             while (pb > 0 && identChar(code[pb - 1])) --pb;
             if (identStart(code[pb])) prev = lowerStr(code.substr(pb, pe - pb));
         }
-        if (!prev.empty() && !keywords().count(prev)) {
+        // self / level / game are entities: `self takeallweapons()` is a method call.
+        if (!prev.empty() && (!keywords().count(prev) || prev == "self" || prev == "level" || prev == "game")) {
             if (!cat.methods.count(lname))
                 out.push_back({true, "script", where + ": unknown method '" + name + "()' called on '" + prev + "'"});
         } else if (!defined.count(lname) && !cat.functions.count(lname) && !cat.converterFunctions.count(lname)) {

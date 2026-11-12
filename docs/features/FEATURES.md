@@ -626,6 +626,10 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 - Edit a preset, Save as my preset (kept as `<id>.iw8mode.json`), or Delete your own preset.
 - Use for F5: F5 starts that game type. The editor sends the preset's settings before the match starts. (not yet seen in game)
 - Carry in this map: the map sets its mode settings at every start (worldspawn `iw8r_mode_dvars` and `iw8r_br`). Use it for a map that is meant for one mode. (not yet seen in game)
+- Mode rules: a preset can change how its game type plays, for every player at each spawn: max health, move speed, one
+  weapon instead of the loadout, infinite ammo (Rules line; worldspawn `iw8r_mode_rules`). The map script runs after
+  the game type's own start (read from the game exe, research 91), so the rules apply on top of it. Built through the
+  real pipeline offline. (not yet seen in game)
 
 ### A small map in the Warzone game type
 
@@ -670,7 +674,7 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 
 ### Not built for Warzone
 
-- New game mode scripts (a mode that is more than dvars) are not built. The engine loads `scripts/mp/gametypes/<name>.gsc`. Whether a script inside a map zone is found as a game type is not known. Behaviour in the map's own script works under every game type.
+- A new game type script under a new name is not built. From the game exe (research 91): a map zone cannot replace a stock game type script, but a new name can be started and would be loaded from the map zone. It still needs a second script file in the map zone and calls into stock scripts, whose resolution is not known. Mode rules and behaviour in the map's own script work under every stock game type.
 
 ## 13. Asset tools
 
@@ -795,6 +799,6 @@ Open items from the roadmap and the research notes. Only the open items are list
 - Camera angle sync, live atmosphere and in-game screenshots and probe capture (rows 7.3, 7.9, 7.11). The live atmosphere channel was removed.
 - Bridge two faces (row 2.23). The exposed-parameter editor and bake-to-model for prefabs (row 8.8). Slope blend colour on patches (row 8.14).
 - Prefabs: convert a plain `.map` to a bundle, zip import of bundles, and the placement hints (wall, ceiling and yaw step).
-- Warzone: new game mode scripts (row 13.6). Whether the game loads the Warzone zone for an own map is not known.
+- Warzone: new game type scripts under a new name (row 13.6; mode rules on stock game types are built). Whether the game loads the Warzone zone for an own map is not known.
 - Stock maps: removal of stock world geometry (row 11.5), sun and sky relight (row 11.6), and maps beyond 6v6 scale, such as Ground War scale and co-op maps (row 11.10).
 - Installer test on a clean machine (owner action, row 9.9).

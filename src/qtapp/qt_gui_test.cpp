@@ -3984,6 +3984,28 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                     QString("the Warzone start adds 8 spawns and a prematch area, and the map then counts as a br map (%1 added)").arg(added));
             while (ctx.doc.undoPosition() > pos && ctx.doc.undo()) {}
             ctx.documentEdited();
+            // 13.6 (research 91): a preset's rules are carried as worldspawn iw8r_mode_rules; a preset without rules takes the
+            // key away again.
+            {
+                GameModePreset ruled = *findGameMode(modes, "war");
+                ruled.rules.health = 150;
+                ruled.rules.weapon = "iw8_pi_golf21_mp";
+                const size_t rpos = ctx.doc.undoPosition();
+                const auto rulesKey = [&] {
+                    for (const Entity& e : ctx.doc.map().entities)
+                        if (e.isWorldspawn())
+                            if (const std::string* v = e.value("iw8r_mode_rules")) return *v;
+                    return std::string();
+                };
+                const bool bakedRules = w.bakeGameMode(ruled);
+                const std::string carried = rulesKey();
+                const bool bakedPlain = w.bakeGameMode(*findGameMode(modes, "war"));
+                r.check(bakedRules && carried == "health=150; weapon=iw8_pi_golf21_mp" && bakedPlain && rulesKey().empty(),
+                        QString("a preset's rules are carried by the map (iw8r_mode_rules '%1') and taken away by a preset without rules")
+                            .arg(QString::fromStdString(carried)));
+                while (ctx.doc.undoPosition() > rpos && ctx.doc.undo()) {}
+                ctx.documentEdited();
+            }
             // The F5 preset: stored, read back as dvars, and restored to what it was.
             Settings& st = Settings::instance();
             const QVariant oldPreset = st.value("devmap/modePreset"), oldDvars = st.value("devmap/modeDvars"), oldType = st.value("devmap/gametype");
