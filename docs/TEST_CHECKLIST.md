@@ -341,7 +341,17 @@ Separate maps (also built):
 - [ ] Animated model: a live script_model with iw8r_anim plays the stock animation (try desktop_fan_fn_01_loop).
 - [ ] Live Link > Quick match picks the map and mode with bots in the lobby; Live Link > Screenshot saves the game view.
 
+## Optional in-game looks (2026-11-12, later): all proven offline, none seen in game
+
+- [ ] Compile panel > Bake lightmaps, build, then stand in game and in View > Game Lighting (Ctrl+Alt+L) at the same
+      spot: brightness, shadows, light pools and colours should match.
+- [ ] A stock map rebuilt with an `iw8r_remove_world` box: the object is gone, you walk through where it was, nothing
+      behind it pops out of view.
+- [ ] A stock map with a new sun direction (File > Relight Stock Map Sun): shadows follow the new sun.
+- [ ] Quarry with copied loot rocks, doors and an extraction site (File > Edit Placed Objects): they work like the
+      originals; a deleted door is gone.
+
 ## What is not expected to work yet
 
-Decal volumes, volumetrics, native scriptables, custom music states, custom fonts and LUI (research 36), light bakes
-(docs/ROADMAP.md lists every item).
+Decal volumes, volumetrics, custom music states, custom fonts and LUI (research 36) (docs/ROADMAP.md lists every
+item).

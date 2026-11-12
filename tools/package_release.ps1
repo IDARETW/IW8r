@@ -59,7 +59,8 @@ No game data, game executables, x64-zt, ACTS or Oodle binaries are included; the
 $docs = Join-Path $dest 'docs'
 New-Item -ItemType Directory -Force $docs | Out-Null
 foreach ($d in 'README.md', 'docs\USER_GUIDE.md', 'docs\TUTORIAL.md', 'docs\ROADMAP.md', 'docs\MILESTONES.md', 'docs\ENTITY_REFERENCE.md',
-           'docs\AGENT_MAP_GUIDE.md', 'docs\TEST_CHECKLIST.md', 'docs\FEATURE_MATRIX.md') {
+           'docs\AGENT_MAP_GUIDE.md', 'docs\TEST_CHECKLIST.md', 'docs\FEATURE_MATRIX.md',
+           'docs\HANDOVER.md', 'docs\KEYS_REFERENCE.md', 'CHANGELOG.md') {
     $p = Join-Path $root $d
     if (Test-Path $p) { Copy-Item $p $docs }
 }
