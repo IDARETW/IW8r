@@ -182,23 +182,27 @@ PlacedObjectEdits placedObjectEdits(const MapFile& map, const std::vector<StockP
         ++out.added;
     }
     if (!any) return out;
-    // Stock objects of an editable kind whose entity is gone: they cannot be dropped.
-    size_t deleted = 0;
+    // Stock objects of an editable kind whose entity is gone: removed (with the definition's numbers for the counts).
+    std::string removes;
     for (const StockPlacedObject& o : stock) {
         if (seen.count(o.index)) continue;
         const ScriptableDefinition* def = catalog.find(o.definition);
-        if (def && editablePlacedDefinition(*def)) ++deleted;
+        if (!def || !editablePlacedDefinition(*def)) continue;
+        removes += std::string(out.removed ? "," : "") + "{\"index\":" + std::to_string(o.index) + ",\"server_instanced_parts\":" +
+                   std::to_string(def->serverInstancedParts) + ",\"usable_parts\":" + std::to_string(def->usableParts) +
+                   ",\"physics_limit\":" + (def->physicsLimit ? "true" : "false") + ",\"physics_limit_detail\":" +
+                   (def->physicsLimitDetail ? "true" : "false") + "}";
+        ++out.removed;
     }
-    if (deleted)
-        out.notes.push_back(std::to_string(deleted) + " placed object(s) were deleted in the document: a stock map cannot drop them (other objects "
-                            "are numbered after them); they stay where they were. Move one out of the way instead");
     for (const auto& [reason, n] : leftOut) out.notes.push_back(std::to_string(n) + " placed object(s) left out: " + reason);
-    if (out.moved || out.added) {
+    if (out.moved || out.added || out.removed) {
         out.json = "{";
         if (out.moved) out.json += "\"move\":[" + moves + "]";
         if (out.added) out.json += std::string(out.moved ? "," : "") + "\"add\":[" + adds + "]";
+        if (out.removed) out.json += std::string(out.moved || out.added ? "," : "") + "\"remove\":[" + removes + "]";
         out.json += "}";
-        out.notes.insert(out.notes.begin(), std::to_string(out.moved) + " placed object(s) moved, " + std::to_string(out.added) + " added");
+        out.notes.insert(out.notes.begin(), std::to_string(out.moved) + " placed object(s) moved, " + std::to_string(out.added) + " added" +
+                                                (out.removed ? ", " + std::to_string(out.removed) + " removed" : std::string()));
     }
     return out;
 }

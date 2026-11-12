@@ -264,7 +264,13 @@ the editor adds boxes of its own:
    The map script's "no circle" switch no longer calls `br_gametypes::disablefeature` (research 92: that far call
    cannot link and would break the map at load); `level.br_circle_disabled = 1` stays.
 2. (Zones and clusters on a custom map: done offline, section 6d.)
-3. (New clusters and zones on a stock map: done offline, section 6d.) Removing a placed object, and moving or adding one that has a dynamic entity (doors, extraction sites).
+3. (New clusters and zones on a stock map: done offline, section 6d.) (Removing a placed object without a dynamic entity:
+   done offline 2026-11-12, x64-zt aacfad65: editzone `scriptable_instances.remove` drops the records and renumbers the
+   dynamic entities that name later instances; the 64 reserved physics entries name 500000, no instance, and stay; the
+   spatial tree holds split planes only. `tools/warzone_instances_remove_test.py` on Quarry: two of 120 buy stations
+   removed, counts and the six physics limits -2, all 864 renumbered dynamic entities still name the same instance, ACTS
+   as stock, an instance with a dynamic entity refused.) Moving or adding one that has a dynamic entity (doors,
+   extraction sites) is open.
 4. Verdansk in the reference view: its world is 749 streamed zones; the view loads one zone.
 5. New game type scripts (roadmap 13.6). Read from the recompiled game exe with its linker map (`tools/dw_disasm.py`,
    read only): `G_ScrMP_LoadGameTypeScript_Shared` formats `scripts/mp/gametypes/<type>.gsc` (cp: `scripts/cp/...`)

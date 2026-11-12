@@ -6,7 +6,10 @@
 // What can be edited safely is an instance whose definition has no dynamic entity at all: the Warzone buy station
 // (br_plunder_box; 120 on Quarry and on Verdansk) and a few others. The editor turns those into `scriptable` entities
 // (File > Edit Placed Objects); on a rebuild a moved one is written as a move, a new one as a copy of an existing
-// instance of the same definition (the converter's editzone "scriptable_instances"). Nothing is removed.
+// instance of the same definition (the converter's editzone "scriptable_instances"). A deleted one is removed (the
+// converter renumbers the dynamic entities that name later instances; checked on Quarry, tools/
+// warzone_instances_remove_test.py). Removals happen only when the document holds placed objects at all (File > Edit
+// Placed Objects was used), so a document without them never drops anything.
 // Pure core code.
 #pragma once
 
@@ -46,16 +49,16 @@ std::vector<std::pair<std::string, std::string>> placedObjectEntityKeys(const St
 bool hasPlacedObjects(const MapFile& map);
 
 struct PlacedObjectEdits {
-    std::string json;  // {"move":[...],"add":[...]} for the edits file; "" when nothing changed
-    size_t moved = 0, added = 0;
+    std::string json;  // {"move":[...],"add":[...],"remove":[...]} for the edits file; "" when nothing changed
+    size_t moved = 0, added = 0, removed = 0;
     std::vector<std::string> notes;
 };
 
 // Compares the `scriptable` entities of the document with the stock list. An entity with the index of a stock
 // instance of the same definition is that instance: a changed origin or angles is a move. Every other entity is a
 // new object: a copy of the first stock instance of its definition, with the definition's numbers from the
-// catalogue. Notes say what cannot be done: a definition that is unknown, has dynamic entities or is not on the
-// map yet, and stock objects that were deleted in the document (they stay).
+// catalogue. A stock instance of an editable kind with no entity left is removed. Notes say what cannot be done: a
+// definition that is unknown, has dynamic entities or is not on the map yet.
 PlacedObjectEdits placedObjectEdits(const MapFile& map, const std::vector<StockPlacedObject>& stock, const ScriptableCatalog& catalog);
 
 }  // namespace iw8r

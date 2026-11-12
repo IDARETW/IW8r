@@ -145,6 +145,21 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
               "a moved buy station and a new one reach the edits file: " + err);
         check(notes.join("\n").contains("1 placed object(s) moved, 1 added"), "the rebuild notes count them");
     }
+    // Deleting the buy station's entity removes it (the converter renumbers the dynamic entities after it).
+    ctx.doc.deselectAll();
+    ctx.doc.select(SelRef{kiosk, kNoId}, false);
+    ctx.doc.deleteSelection();
+    {
+        QString program, err;
+        QStringList args, notes;
+        const bool prepared = w.prepareStockEdit(work + "/placed_removed", &program, &args, &err, &notes);
+        QFile jf(work + "/placed_removed/edits.json");
+        const QByteArray json = jf.open(QIODevice::ReadOnly) ? jf.readAll() : QByteArray();
+        const QByteArray index = QByteArray::fromStdString(kioskIndex);
+        check(prepared && json.contains("\"remove\":[{\"index\":" + index + ",\"server_instanced_parts\":1,\"usable_parts\":1,"),
+              "a deleted buy station reaches the edits file as a removal: " + err);
+        check(notes.join("\n").contains("1 removed"), "the rebuild notes count the removal");
+    }
     for (int i = 0; i < 12 && ctx.doc.modified(); ++i) ctx.doc.undo();
     check(ctx.doc.text() == stockText, "Undo takes the placed object entities out again");
 

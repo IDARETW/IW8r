@@ -125,17 +125,18 @@ TEST(stock_placed_edits) {
                                         {{"classname", "scriptable"}, {"origin", "3 3 3"}}}));
         CHECK(pr.map.has_value());
         const PlacedObjectEdits e = placedObjectEdits(*pr.map, stock, catalog);
-        CHECK(e.moved == 1 && e.added == 2);
+        CHECK(e.moved == 1 && e.added == 2 && e.removed == 1);
         CHECK(e.json ==
               "{\"move\":[{\"index\":0,\"origin\":[164,200,36],\"angles\":[0,90,0]}],"
               "\"add\":[{\"like\":0,\"origin\":[100,328,36],\"angles\":[0,45,0],\"server_instanced_parts\":1,\"usable_parts\":1,"
               "\"physics_limit\":true,\"physics_limit_detail\":true},"
               "{\"like\":0,\"origin\":[-156,200,44],\"angles\":[0,0,0],\"server_instanced_parts\":1,\"usable_parts\":1,"
-              "\"physics_limit\":true,\"physics_limit_detail\":true}]}");
+              "\"physics_limit\":true,\"physics_limit_detail\":true}],"
+              "\"remove\":[{\"index\":2,\"server_instanced_parts\":1,\"usable_parts\":1,\"physics_limit\":true,\"physics_limit_detail\":true}]}");
         bool counted = false, deleted = false, door = false, unknown = false, none = false, noOrigin = false, noKey = false;
         for (const std::string& n : e.notes) {
-            counted |= n == "1 placed object(s) moved, 2 added";
-            deleted |= n.find("1 placed object(s) were deleted") != std::string::npos;
+            counted |= n == "1 placed object(s) moved, 2 added, 1 removed";
+            deleted = true;
             door |= n.find("scriptable_door_x") != std::string::npos && n.find("physics entries") != std::string::npos;
             unknown |= n.find("made_up") != std::string::npos;
             none |= n.find("brloot_rock") != std::string::npos && n.find("none to copy from") != std::string::npos;

@@ -15,6 +15,8 @@ Warzone and stock maps:
   named loot zones after the map's own (converter editzone `loot_boxes`); loot points inside them join them. Proven
   offline on mp_br_tut and mp_br_quarry. The same entities work on your own maps (several clusters and named
   zones instead of one zone over every point). Not seen in game.
+- **Remove buy stations** from a stock Warzone map: delete the entity after Edit Placed Objects; the rebuild drops
+  the instance and renumbers the dynamic entities after it (converter aacfad65). Not seen in game.
 - **Buy stations.** File > Edit Placed Objects moves and copies the buy stations of a stock map; own Warzone maps
   carry `br_plunder_box` into the map (a custom map never loads the Warzone zone: research 93). The scriptable physics limits rule (two definition flag pairs, exact on 21 stock
   maps) makes 509 stock scripted objects buildable (was 317). Not seen in game.
