@@ -624,6 +624,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(rsShadow_);
     safeRelease(cbBatch_);
     safeRelease(cbLayer_);
+    safeRelease(rsDecal_);
     safeRelease(cbWind_);
     safeRelease(cbLights_);
     safeRelease(cbGame_);
@@ -1266,6 +1267,17 @@ void SceneRenderer::resize(int w, int h) {
     dev_->CreateDepthStencilView(depth_, nullptr, &dsv_);
 }
 
+void SceneRenderer::setReferenceDecal(size_t batch, int sortKey, int revealTexture, const float params[16]) {
+    if (batch >= refLayers_.size()) return;
+    RefLayer& L = refLayers_[batch];
+    L.decal = true;
+    L.sortKey = sortKey;
+    L.ready = true;
+    L.reveal = revealTexture;
+    std::memcpy(L.params, params, sizeof(L.params));
+    refDecalDirty_ = true;
+}
+
 void SceneRenderer::setReferenceLayer(size_t batch, int revealTexture, const float params[16]) {
     if (batch >= refLayers_.size() || refLayers_[batch].layer <= 0) return;
     RefLayer& L = refLayers_[batch];
@@ -1278,6 +1290,18 @@ bool SceneRenderer::setReferenceTextured(const std::vector<std::vector<GpuTexVer
     refLayers_.assign(batches.size(), RefLayer{});
     refNrmIds_.assign(batches.size(), -1);
     refLayerOrder_.clear();
+    refDecalOrder_.clear();
+    refDecalDirty_ = false;
+    if (!rsDecal_ && dev_) {
+        // Decals lie on the surface below: pulled toward the camera a little (research 98: polygon offset).
+        D3D11_RASTERIZER_DESC rd{};
+        rd.FillMode = D3D11_FILL_SOLID;
+        rd.CullMode = D3D11_CULL_NONE;
+        rd.DepthClipEnable = TRUE;
+        rd.DepthBias = -16;
+        rd.SlopeScaledDepthBias = -1.0f;
+        dev_->CreateRasterizerState(&rd, &rsDecal_);
+    }
     if (flatNrmTex_ < 0 && dev_) {
         const uint8_t flat[16] = {128, 128, 255, 128, 128, 128, 255, 128, 128, 128, 255, 128, 128, 128, 255, 128};
         flatNrmTex_ = createTexture(flat, 2, 2);
@@ -1916,7 +1940,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             }
             ctx_->IASetVertexBuffers(0, 1, &vbRefTex_, &tstride, &offset);
             for (size_t k = 0; k < refTexIds_.size(); ++k) {
-                if (k < refLayers_.size() && refLayers_[k].layer > 0) continue;  // layers: drawn blended after the bases
+                if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal)) continue;  // layers, decals: later
                 const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
                 if (id < 0 || size_t(id) >= textures_.size()) continue;
                 ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]);
@@ -2064,7 +2088,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         refCulledLast_ = 0;
         ID3D11ShaderResourceView* bound = nullptr;
         for (size_t k = 0; k < refTexIds_.size(); ++k) {
-            if (k < refLayers_.size() && refLayers_[k].layer > 0) continue;  // layers: drawn blended below
+            if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal)) continue;  // layers, decals: below
             const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
             if (id < 0 || size_t(id) >= textures_.size()) continue;
             const auto bind = [&] {
@@ -2085,14 +2109,33 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         }
         // The layers of layered stock materials (terrain): over their base, in layer order, blended by the layer's
         // weight and reveal map, depth-tested against the base (same vertices, same depth) without writing it.
-        if (!refLayerOrder_.empty() && cbLayer_) {
+        if ((!refLayerOrder_.empty() || refDecalDirty_ || !refDecalOrder_.empty()) && cbLayer_) {
             if (cbBatch_) {
                 const float flags[8] = {refNormals ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};  // y = 1: blended, no clip
                 ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
             }
             ctx_->OMSetDepthStencilState(dsTest_, 0);
             ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);
-            for (size_t k : refLayerOrder_) {
+            if (refDecalDirty_) {
+                refDecalDirty_ = false;
+                refDecalOrder_.clear();
+                for (size_t k = 0; k < refLayers_.size(); ++k)
+                    if (refLayers_[k].decal) refDecalOrder_.push_back(k);
+                std::stable_sort(refDecalOrder_.begin(), refDecalOrder_.end(), [&](size_t a, size_t b) {
+                    const RefLayer &x = refLayers_[a], &y = refLayers_[b];
+                    return x.sortKey != y.sortKey ? x.sortKey < y.sortKey : x.layer < y.layer;
+                });
+            }
+            // Opaque layers first, then the decals (their layers with them) with a small depth offset.
+            std::vector<size_t> passOrder;
+            passOrder.reserve(refLayerOrder_.size() + refDecalOrder_.size());
+            for (size_t k : refLayerOrder_)
+                if (!refLayers_[k].decal) passOrder.push_back(k);
+            const size_t firstDecal = passOrder.size();
+            passOrder.insert(passOrder.end(), refDecalOrder_.begin(), refDecalOrder_.end());
+            for (size_t pi = 0; pi < passOrder.size(); ++pi) {
+                const size_t k = passOrder[pi];
+                if (pi == firstDecal && rsDecal_) ctx_->RSSetState(rsDecal_);
                 const RefLayer& L = refLayers_[k];
                 if (!L.ready || refTexIds_[k] < 0 || size_t(refTexIds_[k]) >= textures_.size()) continue;
                 const int rv = L.reveal >= 0 && size_t(L.reveal) < textures_.size() ? L.reveal : whiteFullTex_;
@@ -2119,6 +2162,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ID3D11ShaderResourceView* noRev = nullptr;
             ctx_->PSSetShaderResources(12, 1, &noRev);
             ctx_->PSSetShaderResources(1, 1, &noRev);
+            ctx_->RSSetState(rsTris_);
             ctx_->OMSetDepthStencilState(texOpaqueDs, 0);
         }
         ID3D11ShaderResourceView* none2[1] = {nullptr};

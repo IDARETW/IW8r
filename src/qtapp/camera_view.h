@@ -83,6 +83,17 @@ public:
     // ImageLookup as "<material>\x01<L>" (colour) and "<material>\x02<L>" (alpha + reveal).
     using LayerLookup = std::function<std::optional<StockLayeredMaterial>(const std::string& material)>;
     void setMaterialLayers(LayerLookup lookup) { layerLookup_ = std::move(lookup); }
+    // Stock material facts the reference needs: a decal's sort key (0 = not a decal) and the colour tint (RRGGBB, -1
+    // none; applied when no tint mask limits it). nullopt while the material is not resolved.
+    struct StockMaterialFacts {
+        int decalSortKey = 0;
+        int tint = -1;
+        bool tintMasked = false;
+        std::string tintMaskFile;  // slot 59 DDS: the tint applies by its red channel
+        StockLayeredMaterial constants;  // layer 0 at least when the body has a pixel constant buffer
+    };
+    using FactsLookup = std::function<std::optional<StockMaterialFacts>(const std::string& material)>;
+    void setMaterialFacts(FactsLookup lookup) { factsLookup_ = std::move(lookup); }
     // Cut-out mask of a stock material ("" = none): a stock colour image's alpha is specular (`_c&_s`), so without a
     // mask the camera draws it opaque; with one (`_sdf`, foliage `_alpha`) the mask is the alpha.
     using MaskLookup = std::function<QString(const std::string& material)>;
@@ -325,6 +336,8 @@ private:
     std::vector<std::string> refTexMaterials_;
     std::vector<int> refTexLayer_;  // parallel: 0 base, L >= 1 a layer batch of refTexMaterials_[k]
     LayerLookup layerLookup_;
+    FactsLookup factsLookup_;
+    bool resolveReferenceDecal(size_t k, int textureId);  // true when settled
     bool resolveReferenceLayer(size_t k);  // true when settled (drawn or left out)
     std::vector<bool> refTexResolved_;
     bool refTexDirty_ = false;

@@ -241,6 +241,10 @@ void CameraView::render() {
                         continue;
                     }
                     if (nid >= 0) renderer_.setReferenceNormal(k, nid);
+                    if (id >= 0 && id != checkerTex_ && !resolveReferenceDecal(k, id)) {
+                        pending = true;
+                        continue;
+                    }
                     refTexResolved_[k] = true;
                 } else {
                     pending = true;
@@ -852,10 +856,38 @@ bool CameraView::resolveReferenceLayer(size_t k) {
     const int nid = normalFor(ck);
     if (!nrmIds_.count(ck)) return false;  // waits for the per-frame budget
     if (nid >= 0) renderer_.setReferenceNormal(k, nid);
+    // A decal material's layers draw with the decal, in its sort order (research 98).
+    if (factsLookup_)
+        if (const auto f = factsLookup_(base); f && f->decalSortKey > 0) {
+            const float p[16] = {1.0f, float(lc.flags), lc.sharpness, lc.colorMode == 1 ? 1.0f : 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,
+                                 lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
+            renderer_.setReferenceTexture(k, cid);
+            renderer_.setReferenceDecal(k, f->decalSortKey, rid == checkerTex_ ? -1 : rid, p);
+            return true;
+        }
     const float p[16] = {1.0f, float(lc.flags), lc.sharpness, lc.colorMode == 1 ? 1.0f : 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,
                          lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
     renderer_.setReferenceTexture(k, cid);
     renderer_.setReferenceLayer(k, rid == checkerTex_ ? -1 : rid, p);
+    return true;
+}
+
+bool CameraView::resolveReferenceDecal(size_t k, int textureId) {
+    if (!factsLookup_ || k >= refTexMaterials_.size()) return true;
+    const std::string& base = refTexMaterials_[k];
+    const auto f = factsLookup_(base);
+    if (!f) return true;  // the colour resolved, so the material is known: no facts = not a decal
+    if (f->decalSortKey <= 0) return true;
+    // Layer 0's alpha + reveal map (slot 27) and its blend constants.
+    const std::string rk = base + '\x02' + "0";
+    const int rid = textureFor(rk);
+    if (!texIds_.count(rk)) return false;
+    StockLayerConstants lc;
+    if (!f->constants.layer.empty()) lc = f->constants.layer[0];
+    const float p[16] = {1.0f, float(lc.flags), lc.sharpness, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+                         1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f};  // layer 0: its tint is in the image already
+    (void)textureId;
+    renderer_.setReferenceDecal(k, f->decalSortKey, rid == checkerTex_ ? -1 : rid, p);
     return true;
 }
 
@@ -999,8 +1031,35 @@ int CameraView::textureFor(const std::string& material) {
     if (decoded) {
         // A stock material's colour tint (core material_tints): the camera shows what the build bakes in.
         if (const auto tint = MaterialTints::shared(QCoreApplication::applicationDirPath().toStdString()).find(material);
-            tint && img.pixels.size() >= size_t(img.width) * size_t(img.height) * 4)
+            tint && img.pixels.size() >= size_t(img.width) * size_t(img.height) * 4) {
             applyMaterialTint(img.pixels.data(), size_t(img.width) * size_t(img.height), *tint);
+        } else if (factsLookup_ && material.find_first_of("\x01\x02") == std::string::npos &&
+                   img.pixels.size() >= size_t(img.width) * size_t(img.height) * 4) {
+            // The material's own tint (constant 9) when no tint mask limits it: painted walls and roofs (owner
+            // comparison 2026-11-12: Speedball's REMONT building came out white instead of green wood and a red roof).
+            if (const auto f = factsLookup_(material); f && f->tint >= 0) {
+                // The tint multiplies linear albedo; the image is sRGB: its 1/2.2 power in display terms.
+                const double t[3] = {std::pow(double(f->tint >> 16 & 255) / 255.0, 1.0 / 2.2), std::pow(double(f->tint >> 8 & 255) / 255.0, 1.0 / 2.2),
+                                     std::pow(double(f->tint & 255) / 255.0, 1.0 / 2.2)};
+                app::Rgba8Image mask;
+                const bool masked = f->tintMasked && !f->tintMaskFile.empty() &&
+                                    app::loadDdsPreview(f->tintMaskFile, std::max(img.width, img.height), mask) && mask.width > 0 && mask.height > 0;
+                if (!f->tintMasked || masked) {
+                    // albedo x lerp(1, tint, mask.r) (research 95); a masked tint without its mask image is left out.
+                    for (int y = 0; y < img.height; ++y)
+                        for (int x = 0; x < img.width; ++x) {
+                            double m = 1.0;
+                            if (masked) {
+                                const int mx = std::min(mask.width - 1, x * mask.width / std::max(1, img.width));
+                                const int my = std::min(mask.height - 1, y * mask.height / std::max(1, img.height));
+                                m = mask.pixels[(size_t(my) * size_t(mask.width) + size_t(mx)) * 4] / 255.0;
+                            }
+                            uint8_t* q = &img.pixels[(size_t(y) * size_t(img.width) + size_t(x)) * 4];
+                            for (int c = 0; c < 3; ++c) q[c] = uint8_t(std::clamp(q[c] * (1.0 + (t[c] - 1.0) * m), 0.0, 255.0));
+                        }
+                }
+            }
+        }
         texSizes_[material] = {fullW, fullH};
         const int side = textureSideNow();
         if (side < kViewTextureSide) ++budgetReduced_;

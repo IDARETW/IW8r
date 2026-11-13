@@ -2,6 +2,7 @@
 
 #include "material_blend.h"
 
+#include <cstring>
 #include <QRegularExpression>
 #include <QCoreApplication>
 #include <QDir>
@@ -111,6 +112,15 @@ std::vector<MaterialCache::LayerImages> MaterialCache::layerImages(const QString
     return e->layers;
 }
 
+std::optional<StockLayeredMaterial> MaterialCache::materialConstants(const QString& material) const {
+    const auto e = lookup(material);
+    if (!e || e->failed || e->psData.isEmpty()) return std::nullopt;
+    const std::vector<uint8_t> bytes(e->psData.begin(), e->psData.end());
+    StockLayeredMaterial m;
+    if (!decodeStockLayeredMaterial(bytes, std::clamp(e->layerCount, 1, 8), m)) return std::nullopt;
+    return m;
+}
+
 std::vector<QString> MaterialCache::layerColorImages(const QString& material) const {
     std::vector<QString> out;
     for (const LayerImages& l : layerImages(material)) out.push_back(l.colorDds);
@@ -184,10 +194,15 @@ void MaterialCache::loadIndex() {
             e.layers.push_back(li);
         }
         e.psData = QByteArray::fromHex(o.value("psData").toString().toLatin1());
+        e.tint = o.contains("tint") ? o.value("tint").toString().toInt(nullptr, 16) : -1;
+        e.tintMasked = o.value("tintMasked").toBool();
+        if (const QString tm = o.value("tintMask").toString(); !tm.isEmpty()) e.tintMaskDds = QDir(root_).filePath(tm);
         e.surfaceFlags = o.contains("surfaceFlags") ? qint64(o.value("surfaceFlags").toDouble()) : -1;
         e.materialType = o.value("materialType").toString();
         e.sortKey = o.value("sortKey").toInt(-1);
         e.failed = o.value("failed").toBool();
+        // Resolved before every body's constants and tint were kept (decals, painted materials): resolve again once.
+        if (!e.failed && o.value("tintRules").toInt() < 2) continue;  // 2: tint from psData row 2, the slot-59 mask
         // Images removed by the Cache Manager's size cap (4.13) or by hand: resolve again.
         if (!e.failed && !e.colorDds.isEmpty() && !QFileInfo::exists(e.colorDds)) continue;
         // Resolved before cut-out masks were recorded: resolve again once (images already cached are reused).
@@ -287,6 +302,10 @@ void MaterialCache::writeIndex() const {
         }
         if (!e.psData.isEmpty()) o.insert("psData", QString::fromLatin1(e.psData.toHex()));
         if (!e.failed) o.insert("layerRules", 1);  // 1: layer images and psData of layered bodies (research 97)
+        if (!e.failed) o.insert("tintRules", 2);   // 2: every body's psData, tint (psData row 2) and its mask image
+        if (!e.tintMaskDds.isEmpty()) o.insert("tintMask", root.relativeFilePath(e.tintMaskDds));
+        if (e.tint >= 0) o.insert("tint", QString("%1").arg(e.tint, 6, 16, QChar('0')));
+        if (e.tintMasked) o.insert("tintMasked", true);
         o.insert("failed", e.failed);
         if (!e.error.isEmpty()) o.insert("error", e.error);
         mats.insert(name, o);
@@ -429,6 +448,7 @@ void MaterialCache::buildImageRound() {
         for (const Work& w : works_) {
             if (!w.found) continue;
             QStringList names{w.color, w.normal, w.mask, w.emissive};
+            if (w.tintMasked && w.tint >= 0) names << w.tintMask;  // only a tinted material needs its mask
             names << w.layerColor << w.layerNormal << w.layerReveal;  // layered materials (research 97)
             for (const QString& name : names) {
                 if (name.isEmpty() || images_.count(name)) continue;
@@ -519,12 +539,33 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
             work.layerNormal << QString();
             work.layerReveal << QString();
         }
-        // The first buffer with pixel data: displacement layers (`..._129dn_...`, slot 96) have a vertex-only buffer 0
-        // and the pixel constants in buffer 1.
-        for (const QJsonValue& b : fields.value("constantBufferTable").toObject().value("values").toArray()) {
-            work.psData = QByteArray::fromHex(b.toObject().value("psData").toObject().value("bytes").toString().toLatin1());
-            if (!work.psData.isEmpty()) break;
-        }
+    }
+    // The first buffer with pixel data (every material: a decal's flags and ramp, research 98): displacement layers
+    // (`..._129dn_...`, slot 96) have a vertex-only buffer 0 and the pixel constants in buffer 1.
+    for (const QJsonValue& b : fields.value("constantBufferTable").toObject().value("values").toArray()) {
+        work.psData = QByteArray::fromHex(b.toObject().value("psData").toObject().value("bytes").toString().toLatin1());
+        if (!work.psData.isEmpty()) break;
+    }
+    // The colour tint: psData row 2 .x bytes 0..2 (research 95; models use the same rows), the mask with row 1 .x bit 6;
+    // else constant 9's literal (tools/build_material_tints.py). White = neutral.
+    work.tint = -1;
+    work.tintMasked = false;
+    work.tintMask.clear();
+    if (work.psData.size() >= 48) {
+        const auto* p = reinterpret_cast<const uint8_t*>(work.psData.constData());
+        if (!(p[32] == 255 && p[33] == 255 && p[34] == 255)) work.tint = (p[32] << 16) | (p[33] << 8) | p[34];
+        work.tintMasked = (p[16] & 64) != 0;
+    }
+    for (const QJsonValue& cv : fields.value("constantTable").toObject().value("values").toArray()) {
+        const QJsonObject c = cv.toObject();
+        if (c.value("index").toInt(-1) != 9) continue;
+        const QJsonArray v = c.value("literal").toObject().value("v").toArray();
+        if (v.isEmpty() || !v[0].isDouble()) break;
+        const float f = float(v[0].toDouble());
+        uint8_t b[4];
+        std::memcpy(b, &f, 4);
+        if (work.tint < 0 && b[3] == 0 && !(b[0] == 255 && b[1] == 255 && b[2] == 255)) work.tint = (b[0] << 16) | (b[1] << 8) | b[2];
+        break;
     }
     for (const QJsonValue& v : fields.value("textureTable").toObject().value("values").toArray()) {
         const QJsonObject t = v.toObject();
@@ -541,6 +582,7 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
         if (slot == 9 && work.normal.isEmpty()) work.normal = name;  // normal slot
         if (slot == 27 && opacitySlot) work.mask = name;              // opacity slot (wins over a name match)
         if (slot == 18 && work.emissive.isEmpty()) work.emissive = name;  // emissive slot
+        if (slot == 59 && work.tintMask.isEmpty()) work.tintMask = name;  // tint mask (research 95)
         // Cut-out mask: Replay alpha-tested materials carry a signed-distance-field image (`<x>_sdf~hash`); the colour
         // image's alpha is specular (`_c&_s` packing), not opacity.
         // Foliage cards cut out with a plain opacity image instead (`<x>_alpha~hash`; their colour has no alpha).
@@ -635,6 +677,12 @@ void MaterialCache::finishBatch() {
             }
             e.layerCount = w.layerCount;
             e.psData = w.psData;
+            e.tint = w.tint;
+            e.tintMasked = w.tintMasked;
+            if (!w.tintMask.isEmpty() && images_.count(w.tintMask)) {
+                const Image& im = images_.at(w.tintMask);
+                if (im.done) e.tintMaskDds = im.file;  // optional, as the emissive map
+            }
             for (int l = 0; l < w.layerColor.size(); ++l) {
                 const auto file = [&](const QString& name, const char* what) -> QString {
                     const auto it = name.isEmpty() ? images_.end() : images_.find(name);

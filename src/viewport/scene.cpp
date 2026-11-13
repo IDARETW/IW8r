@@ -1485,7 +1485,9 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
                 }
                 layerDst.push_back(&out[lit->second].tris);
             }
-        const std::vector<uint32_t>* vcol = layered && mi < world.vertexColor.size() && world.vertexColor[mi].size() == m.pos.size() ? &world.vertexColor[mi] : nullptr;
+        const std::vector<uint32_t>* vcol = mi < world.vertexColor.size() && world.vertexColor[mi].size() == m.pos.size() ? &world.vertexColor[mi] : nullptr;
+        // Layer 0's weight (decals, research 98): twc4 byte 0, twc the vertex alpha, others 1.
+        const bool twc4 = lm.rfind("twc4/", 0) == 0, twc = !twc4 && lm.rfind("twc/", 0) == 0;
         const std::vector<uint32_t>* vcolHi =
             layered && mi < world.vertexColorHigh.size() && world.vertexColorHigh[mi].size() == m.pos.size() ? &world.vertexColorHigh[mi] : nullptr;
         for (size_t i = 0; i + 2 < m.idx.size(); i += 3) {
@@ -1519,7 +1521,12 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
                 // ImportedMesh::uv is OBJ convention (v flipped); the textured camera uses the game's v.
                 GpuTexVertex v{float(m.pos[k].x), float(m.pos[k].y), float(m.pos[k].z), m.uv[k][0], 1.0f - m.uv[k][1], rgba};
                 v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
-                v.tx = float(tan0.x), v.ty = float(tan0.y), v.tz = float(tan0.z);
+                {
+                    const uint32_t col = vcol ? (*vcol)[k] : 0xFFFFFFFFu;
+                    const double w0 = twc4 ? double(col & 0xFF) / 255.0 : twc ? double(col >> 24) / 255.0 : 1.0;
+                    const Vec3 t0 = tan0 * (1.0 + w0);  // length 1 + weight, as the layers
+                    v.tx = float(t0.x), v.ty = float(t0.y), v.tz = float(t0.z);
+                }
                 if (lmuv && (*lmuv)[k][0] >= 0) {
                     const int li = lmidx ? (*lmidx)[k] : 0;
                     if (li >= 0) v.lu = float(li) + std::min((*lmuv)[k][0], 0.99994f), v.lv = (*lmuv)[k][1];

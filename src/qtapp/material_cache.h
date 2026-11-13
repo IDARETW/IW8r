@@ -61,7 +61,12 @@ public:
         // the per-layer blend constants. Empty for single-layer materials, seeds and entries cached before 2026-11-12.
         int layerCount = 0;
         std::vector<LayerImages> layers;
-        QByteArray psData;
+        QByteArray psData;  // the body's first pixel constant buffer (every material since tintRules 1)
+        // The colour tint (material constant 9, RRGGBB; -1 = neutral or unknown) and whether a tint mask (texture slot
+        // 59) limits it (research 95: albedo x lerp(1, tint, mask)).
+        int tint = -1;
+        bool tintMasked = false;
+        QString tintMaskDds;  // slot 59 (red = where the tint applies); empty when none or not exported
         bool failed = false;
         QString error;
     };
@@ -75,6 +80,9 @@ public:
     // The per-layer blend constants (flags, UV transform, tint, reveal sharpness, specular / gloss remaps), decoded from
     // the cached psData; nullopt when the material is not layered, not resolved, or its psData is missing or short.
     std::optional<StockLayeredMaterial> layerConstants(const QString& material) const;
+    // The same for any stock material with a pixel constant buffer (single-layer world materials: layer 0 only), e.g.
+    // a decal's flags and reveal sharpness (research 98).
+    std::optional<StockLayeredMaterial> materialConstants(const QString& material) const;
     void request(const QStringList& materials);                  // async; de-duplicated; batched per zone
     // A stock map shown as the reference: materials the catalog does not list are looked up in this zone (and its
     // techsets zone). The per-map terrain blends (tw4/..., twc4/...) are named per map, and the catalog lists only
@@ -118,7 +126,10 @@ private:
         int layerCount = 0;     // body layerCount (0 when absent)
         // Per layer L (index L; layer 0 = color / normal): image names, empty when absent or a placeholder.
         QStringList layerColor, layerNormal, layerReveal;
-        QByteArray psData;      // constantBufferTable[0].psData of a layered body
+        QByteArray psData;      // the body's first pixel constant buffer
+        int tint = -1;          // psData row 2 bytes 0-2 (else constant 9), RRGGBB; -1 = neutral / none
+        bool tintMasked = false;
+        QString tintMask;       // slot 59 image name, if any
         QString error;
     };
     struct Image {  // one colour or normal image in the current batch

@@ -191,6 +191,10 @@ public:
     // A layer batch's blend (research 97): reveal = its alpha + reveal texture (-1: none, white), params = flags, reveal
     // sharpness k, tint RGB, UV transform (cos, sin, scale u, scale v, offset u, offset v); see the shader's cbuffer Layer.
     void setReferenceLayer(size_t batch, int revealTexture, const float params[16]);
+    // A batch of a stock decal material (sortKey 10-17, techset blend `_bad_`; research 98): blended over the opaque
+    // world (premultiplied by its coverage B, depth tested with a small offset, no depth write), in sortKey order.
+    // Layer 0 (layer == 0) takes params / reveal as a layer would (its weight is in the tangent length too).
+    void setReferenceDecal(size_t batch, int sortKey, int revealTexture, const float params[16]);
     // A stock batch's normal map (the flat one until then).
     // Layer batches of the stock reference: {all, ready to draw, multiply, with a normal map} (benchmark report).
     std::array<size_t, 4> referenceLayerStats() const {
@@ -450,11 +454,16 @@ private:
     struct RefLayer {
         int layer = 0;  // 0 = a base batch
         bool ready = false;
+        bool decal = false;  // a decal material's batch (research 98): drawn after every opaque batch and layer
+        int sortKey = 0;
         int reveal = -1;
         float params[16] = {};
     };
     std::vector<RefLayer> refLayers_;
     std::vector<size_t> refLayerOrder_;  // layer batches by layer, then batch
+    std::vector<size_t> refDecalOrder_;  // decal batches by sortKey, layer, batch
+    bool refDecalDirty_ = false;
+    ID3D11RasterizerState* rsDecal_ = nullptr;
     std::vector<int> refNrmIds_;         // per stock batch: its normal map texture, -1 = the flat one
     int flatNrmTex_ = -1;
     int whiteFullTex_ = -1;

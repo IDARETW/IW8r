@@ -230,6 +230,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
                 if (e->failed) return QString();
                 const auto imgs = matCache_->layerImages(base);
                 const int L = std::atoi(m.c_str() + sep + 1);
+                if (L == 0 && m[sep] == '\x02') return e->maskDds;  // a decal's layer 0 alpha + reveal: slot 27
                 if (L < 0 || size_t(L) >= imgs.size()) return QString();
                 return m[sep] == '\x01' ? imgs[size_t(L)].colorDds : imgs[size_t(L)].revealDds;
             }
@@ -257,6 +258,21 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             return std::nullopt;
         },
         [this](const std::string& m) { matCache_->request({qs(m.substr(0, m.find_first_of("\x01\x02")))}); });
+    camera_->setMaterialFacts([this](const std::string& m) -> std::optional<CameraView::StockMaterialFacts> {
+        const auto e = matCache_->lookup(qs(m));
+        if (!e || e->failed) return std::nullopt;
+        CameraView::StockMaterialFacts f;
+        // Decals: the blended world techsets (`_bad_` blend token; research 98), sortKey 10-17 on Speedball.
+        const QString ts = e->techset.section('/', -1);
+        if ((ts.contains("_bad_") || (e->sortKey >= 10 && e->sortKey <= 17 && (ts.startsWith("lit") || e->techset.startsWith("tw")))) &&
+            (e->techset.startsWith("tw/") || e->techset.startsWith("twc/") || e->techset.startsWith("tw4/") || e->techset.startsWith("twc4/")))
+            f.decalSortKey = std::max(1, e->sortKey);
+        f.tint = e->tint;
+        f.tintMasked = e->tintMasked;
+        f.tintMaskFile = e->tintMaskDds.toStdString();
+        if (auto c = matCache_->materialConstants(qs(m))) f.constants = *c;
+        return f;
+    });
     camera_->setMaterialLayers([this](const std::string& m) -> std::optional<StockLayeredMaterial> {
         const auto e = matCache_->lookup(qs(m));
         if (!e) return std::nullopt;
