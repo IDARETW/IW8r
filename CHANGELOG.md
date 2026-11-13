@@ -5,6 +5,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Displaced surfaces.** Stone walls, cobbles and other displaced stock surfaces get their relief: their meshes are subdivided and moved by the game's own height maps (a few inches, as in game). Village, Aniyah Tac and Backlot use it most.
+- **Missing stock images** draw plain grey on the stock reference instead of the magenta checker.
+- **Converted maps' sky** proven offline to sit at infinity in game (the converter's six sky faces, drawn camera-relative).
 - **Decals on props.** Stock decal volumes that find no world surface (stencils on crates, paint on the concrete
   barriers) are projected on the props, drawn in view within 4,000 units.
 - **Viewport speed on big stock maps.** Hideout went from 56 ms to 17 ms a frame (Speedball 4.4 ms): layer and decal
