@@ -373,7 +373,8 @@ void CameraView::render() {
         renderer_.setPixelLights(pl);
         renderer_.setLightGain(float(ctx_->scene.lightGain));
         // Lit preview: encoded light (headroom to 2x) with exposure, and a sun shadow map over the map's bounds.
-        const bool enc = ctx_->scene.litEncoded() && !ctx_->scene.captureMode;
+        // Game Lighting takes over from the lit preview: vertex colours carry no encoded light then (camera_geometry.cpp).
+        const bool enc = ctx_->scene.litEncoded() && !ctx_->scene.captureMode && !game;
         renderer_.setLitDecode(enc ? 2.0f : 1.0f, float(ctx_->scene.exposure));
         ctx_->scene.gpuShadows = (enc || game) && ctx_->scene.litShadows;
         mix(ctx_->scene.gpuShadows ? 0x5d0u : 0x5d1u);

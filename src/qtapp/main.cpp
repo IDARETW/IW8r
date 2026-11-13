@@ -472,7 +472,9 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
     // View > Game Lighting: the preview bake first (background), then the same still and moving scenarios.
     if (wanted("game_still") || wanted("game_moving")) {
         trigger("CameraModeTextured");
-        setLit(false);
+        // The owner works with the lit preview and Game Lighting both on: the benchmark does too (IW8R_BENCH_GAME_LIT=0
+        // turns the lit preview off for Game Lighting alone).
+        setLit(qEnvironmentVariable("IW8R_BENCH_GAME_LIT") != "0");
         if (!ctx.scene.gameLook) trigger("ToggleGameLighting");
         camA();
         QElapsedTimer bt;
