@@ -230,10 +230,16 @@ float3 gameFogApply(float3 c, float3 w, bool sky) {
     float b = a + dir.z * d / gameFog[4].y;
     float hf = abs(b - a) > 1e-3 ? (exp2(-a) - exp2(-b)) / ((b - a) * 0.693147) : exp2(-a);
     float amount = min(1.0 - exp2(-dd / gameFog[0].y * max(hf, 0.0)), gameFog[0].z);
-    if (sky) amount *= gameFog[4].w;
     float g = gameFog[2].w, mu = dot(dir, gameSun.xyz);
     float hg = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * mu, 1e-4), 1.5);
     float3 inscatter = gameFog[1].rgb * lerp(gameFog[2].rgb, gameFog[3].rgb * hg, gameFog[1].w);
+    if (sky) {
+        // The sky's haze: brighter or dimmer by fogSkyIntensity, over the band of zenith angles fogSkyMin/MaxAngle.
+        float zenith = degrees(acos(clamp(dir.z, -1.0, 1.0)));
+        amount *= saturate((zenith - gameFog[5].y) / max(gameFog[5].z - gameFog[5].y, 1e-3));
+        inscatter *= gameFog[4].w;
+    }
+    amount = saturate(amount);
     float l = dot(c, float3(0.2126, 0.7152, 0.0722));
     c = lerp(c, l.xxx, gameFog[3].w * amount);
     return lerp(c, inscatter, amount);

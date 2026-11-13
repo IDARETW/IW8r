@@ -100,6 +100,10 @@ struct GameFog {
     double heightBase = 0, heightHalf = 1e9, desaturation = 0, inscatterEv = 18;
     double color[3] = {1, 1, 1}, rayleigh[3] = {1, 1, 1}, mie[3] = {1, 1, 1};
     double mieAnisotropy = 0.4, mieBlend = 0;
+    // The sky's fog: brightness (fogSkyIntensity scales the inscattered light seen on the sky; Hideout 10, Speedball
+    // 0.5) and the band of zenith angles it covers (fogSkyMinAngle .. fogSkyMaxAngle, degrees from straight up: none at
+    // the min, full at the max; Hideout 59 .. 100.8 keeps its haze to the horizon).
+    double skyMinAngle = -90, skyMaxAngle = 90;
 };
 // Reads the vision text (`TOKEN "value"` lines). `on` only when the atmospheric fog fields are there.
 GameFog gameFogFromVision(const std::string& visionText);

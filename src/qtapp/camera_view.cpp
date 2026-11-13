@@ -1795,7 +1795,7 @@ void CameraView::prepareGameLook() {
                                      {float(f.rayleigh[0]), float(f.rayleigh[1]), float(f.rayleigh[2]), float(f.mieAnisotropy)},
                                      {float(f.mie[0]), float(f.mie[1]), float(f.mie[2]), float(f.desaturation)},
                                      {float(f.heightBase), float(f.heightHalf), float(f.skyDistance), float(f.skyIntensity)},
-                                     {float(f.maxDistance), 0, 0, 0}};
+                                     {float(f.maxDistance), float(f.skyMinAngle), float(f.skyMaxAngle), 0}};
             std::memcpy(g.fog, fog, sizeof(fog));
         }
         // The sky preview is an 8-bit copy of the HDR stock sky times its conversion exposure: undo it, so the sky has
@@ -1805,11 +1805,13 @@ void CameraView::prepareGameLook() {
             for (int k = 0; k < 3; ++k) g.sky[k] = stockMeanLight_[size_t(k)];
             g.skyIsStock = true;
         }
-        // Stock maps: the exposure their vision gives a mid-bright scene (its mid EV), held fixed. Metering the frame
-        // counted the editor's own empty background and markers (the game meters its sky and world only), which drove
-        // the exposure up and washed the world out, and it kept the view repainting.
-        exposure.autoExposure = false;
-        if (stock) exposure.ev = stock->exposure.midEv, exposure.exposureAdjust = stock->exposure.midAdjust + stock->exposure.exposureAdjust;
+        // Stock maps: their vision's auto exposure (metered from the frame, as the game does) while the stock sky fills
+        // the background; without it the frame would count the editor's empty background, so the exposure their vision
+        // gives a mid-bright scene (its mid EV) is held instead. Owner 2026-11-12: Hideout's desert (mid EV 10.7, adapting
+        // up to 15 in the sun) came out washed out at its mid EV.
+        const bool meterStock = stock && stock->exposure.autoExposure && ctx_->scene.skyActive;
+        exposure.autoExposure = meterStock;
+        if (stock && !meterStock) exposure.ev = stock->exposure.midEv, exposure.exposureAdjust = stock->exposure.midAdjust + stock->exposure.exposureAdjust;
         if (exposure.autoExposure != gameMetering_) {
             gameMetering_ = exposure.autoExposure;
             if (gameMetering_) {
@@ -1819,11 +1821,15 @@ void CameraView::prepareGameLook() {
                 renderer_.setGameMetering(nullptr);
             }
             gameExposure_ = 0;
+            gameExposureSnap_ = true;
         }
         // Auto exposure: the metered log-average of the frames before (one or two frames late, as the game's own),
         // adapted over time at the vision's speed; until a measurement arrives, the exposure of a mid-grey scene.
         double avg = 0;
-        if (renderer_.takeMeteredLuminance(avg)) gameExposureTarget_ = gameExposureFor(exposure, avg);
+        if (renderer_.takeMeteredLuminance(avg)) {
+            gameExposureTarget_ = gameExposureFor(exposure, avg);
+            if (gameExposureSnap_) gameExposure_ = gameExposureTarget_, gameExposureSnap_ = false;  // a map just opened
+        }
         if (!exposure.autoExposure || gameExposureTarget_ <= 0)
             gameExposureTarget_ = gameExposureFor(exposure, 0.001 * std::exp2(exposure.midEv - 2.84));
         const double dt = gameExposureClock_.isValid() ? gameExposureClock_.restart() / 1000.0 : 0.0;

@@ -170,7 +170,7 @@ public slots:
     // The stock map shown as the reference ("" = none): Game Lighting then uses that map's sun and auto exposure
     // (core game_look stockMapLook).
     void setGameStockMap(const std::string& zone) {
-        if (zone != gameStockMap_) gameBakeRev_ = ~0ull, stockSunKnown_ = false, stockFog_ = GameFog{}, stockSkyIntensity_ = 0, stockGrade_.reset(), gameLutReady_ = false;  // the bake follows the sun
+        if (zone != gameStockMap_) gameBakeRev_ = ~0ull, stockSunKnown_ = false, stockFog_ = GameFog{}, stockSkyIntensity_ = 0, stockGrade_.reset(), gameLutReady_ = false, gameExposureSnap_ = true;  // the bake follows the sun
         if (zone != gameStockMap_) {
             // Layered world materials are numbered per map (tw4/..., twc4/...: MaterialCache::mapLocalName): another
             // map's textures under the same names are not this map's.
@@ -185,6 +185,8 @@ public slots:
     // The sky preview: conversion exposure and the HDR source mean / 99.5th percentile luminance (diagnosis).
     std::array<float, 3> skyLuminance() const { return {skyExposure_, skyMeanLum_, skyHighLum_}; }
     std::array<size_t, 4> referenceLayerStats() const { return renderer_.referenceLayerStats(); }
+    // Game Lighting's exposure now, its target, and whether the frame is metered (benchmark report).
+    std::array<double, 3> gameExposureState() const { return {gameExposure_, gameExposureTarget_, gameMetering_ ? 1.0 : 0.0}; }
     // The stock map's grading CLUT (its vision's): baked into the colour LUT.
     void setGameStockGrading(std::shared_ptr<const GameGradingClut> grade) {
         stockGrade_ = std::move(grade);
@@ -426,6 +428,7 @@ private:
     GameFog stockFog_;
     double stockSkyIntensity_ = 0;
     std::shared_ptr<const GameGradingClut> stockGrade_;
+    bool gameExposureSnap_ = true;  // the first metered exposure after a map opens is taken at once
     double stockSunIntensity_ = 0;
     Vec3 stockSunColor_{1, 1, 1}, stockSunToward_{0, 0, 1};
     // The stock map's look for Game Lighting: its own entry, else the shipped map with the nearest sun.

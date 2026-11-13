@@ -390,6 +390,9 @@ GameFog gameFogFromVision(const std::string& text) {
     num("NRTMTRQTRQ", f.maxDistance);                              // fogMaxDistance
     num("NLQKSSPMKP", f.skyDistance);                              // fogSkyDistance
     num("NORQKLTPTR", f.skyIntensity);                             // fogSkyIntensity
+    num("LOROLOTNMP", f.skyMinAngle);                              // fogSkyMinAngle
+    num("SPQNRNKQR", f.skyMaxAngle);                               // fogSkyMaxAngle
+    if (f.skyMaxAngle <= f.skyMinAngle) f.skyMaxAngle = f.skyMinAngle + 1;
     num("NOSTLRKPQ", f.heightBase);                                // fogHeightFogBaseHeight
     num("POKSTQPPQ", f.heightHalf);                                // fogHeightFogHalfPlaneDistance
     num("MKQSQRPPQR", f.desaturation);                             // fogExtinctionDesaturation
