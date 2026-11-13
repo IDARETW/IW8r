@@ -6720,6 +6720,14 @@ void MainWindow::rebuildReferenceProps() {
             } else if (auto im = modelCacheStock_->loadModel(qs(in.model))) {
                 auto fresh = std::make_shared<RefPropMesh>();
                 for (const auto& ms : im->meshes) fresh->tris += ms.idx.size() / 3;
+                // Foliage (grass, weeds, plants, trees) stops drawing past its last LOD distance in game. Other props
+                // keep drawing: the map can override their LOD-out per placement, which the editor does not read.
+                {
+                    const QString lower = qs(in.model).toLower();
+                    if (lower.contains("foliage") || lower.contains("grass") || lower.contains("weed"))
+                        if (const auto detail = modelCacheStock_->loadDetail(qs(in.model)); detail && !detail->lods.empty())
+                            fresh->lodOut = std::max(0.0, detail->lods.back().distance);
+                }
                 {
                     std::vector<app::GpuVertex>& plain = fresh->plain;
                     const auto zup = [](const Vec3& p) { return Vec3{p.x, -p.z, p.y}; };  // glTF Y-up -> Z-up
@@ -6773,6 +6781,7 @@ void MainWindow::rebuildReferenceProps() {
                 for (const auto& [material, tris] : built->tex) {
                     app::InstancedTexMesh tm;
                     tm.tris = tris;
+                    tm.lodOut = float(built->lodOut);
                     mm.tex.push_back(int(texInstanced.size()));
                     texInstanced.push_back(std::move(tm));
                     texMaterials.push_back(material);

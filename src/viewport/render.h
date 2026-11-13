@@ -92,6 +92,9 @@ struct InstancedMesh {
 struct InstancedTexMesh {
     std::vector<GpuTexVertex> tris;
     std::vector<float> rows;  // 12 floats per instance
+    // Stock foliage: the model's last LOD distance (inches). The game stops drawing a placement beyond it (the grass
+    // dissolves there with a dither); 0 = always drawn.
+    float lodOut = 0;
 };
 
 struct TexturedBatch {
@@ -457,6 +460,7 @@ private:
         // a dynamic buffer of the placements that pass (drawn instead of `inst` while culling is on).
         std::vector<float> rows;
         float centre[3] = {0, 0, 0}, radius = 0;
+        float lodOut = 0;  // InstancedTexMesh::lodOut
         ID3D11Buffer* visInst = nullptr;
         unsigned visible = 0;
     };

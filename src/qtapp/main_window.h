@@ -437,6 +437,7 @@ private:
         std::vector<app::GpuVertex> plain;                                           // untextured surfaces
         std::vector<std::pair<std::string, std::vector<app::GpuTexVertex>>> tex;     // material, its triangles
         size_t tris = 0;
+        double lodOut = 0;  // foliage: the last LOD distance (not drawn beyond it, as in game); 0 = always
     };
     std::map<std::string, std::shared_ptr<const RefPropMesh>> refPropBuilt_;
     size_t refPropBoxed_ = 0;  // models drawn as stand-in boxes (past the triangle budget) in the last rebuild

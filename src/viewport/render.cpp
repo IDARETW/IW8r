@@ -406,8 +406,21 @@ float4 ps_tex(PSIn i) : SV_TARGET {
     float outA = 1.0;
     // Cut-outs: the stock alpha-tested shaders keep opacity above 128 / 255 (research 100); the editor's own materials
     // keep the editor's 0.3.
-    if (batchFlags.y < 0.5) clip(t.a - (game0.x > 0.5 && batchFlags2.z > 0.5 ? 0.5 : 0.3));
-    else outA = t.a > 0.99 ? 0.6 : t.a;
+    if (batchFlags.y < 0.5) {
+        const float cutAt = game0.x > 0.5 && batchFlags2.z > 0.5 ? 0.5 : 0.3;
+        if (batchFlags.y < -0.5) {
+            // Placed props (blend mode -1): the cut-out edge is anti-aliased from the alpha's screen slope and blended,
+            // depth still written. The game's TAA smooths its sub-pixel grass blades the same way; a hard cut leaves
+            // speckled noise (Speedball grass: 2.7x the in-game pixel-to-pixel contrast).
+            const float cov = saturate((t.a - cutAt) / max(fwidth(t.a), 1e-4) + 0.5);
+            clip(cov - 1.0 / 255.0);
+            outA = cov;
+        } else {
+            clip(t.a - cutAt);
+        }
+    } else {
+        outA = t.a > 0.99 ? 0.6 : t.a;
+    }
     if (layerB >= 0.0) outA = layerB;
     // Colour mode multiply (layerP.w = 1; puddles, edge wear): below x lerp(1, layer, b), drawn with a multiplying blend
     // over the shaded result (in display space: the factor's 1/2.2 power, as the post chain is close to a gamma there).
@@ -1591,6 +1604,9 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                 const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
                 static const float k = std::getenv("IW8R_INST_CULL_PX") ? std::max(0.5f, float(std::atof(std::getenv("IW8R_INST_CULL_PX")))) : 4.0f;  // 4: Verdansk 37 -> 15.5 ms, 106 pixels differ
                 out = dist > rad && rad < dist * pixelAngle * k;  // radius under k pixels: the game drops or LODs these
+                // Stock foliage past its last LOD distance: the game does not draw it (research 100 section 3.3).
+                static const bool noLodOut = std::getenv("IW8R_NO_FOLIAGE_LOD_OUT") != nullptr;
+                if (!noLodOut && g.lodOut > 0 && dist > g.lodOut) out = true;
             }
             if (out) {
                 ++instCulledLast_;
@@ -1632,6 +1648,7 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
                     g.instances = unsigned(count);
                     g.visible = g.instances;
                     g.rows = m.rows;
+                    g.lodOut = m.lodOut;
                     // The model's bounding sphere (box centre, half diagonal).
                     float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
                     for (const GpuTexVertex& v : m.tris) {
@@ -1661,8 +1678,18 @@ void SceneRenderer::drawReferenceTexInstances() {
     ctx_->VSSetShader(vsTexInst_, nullptr, 0);
     ctx_->PSSetShader(texPsOverride_ ? texPsOverride_ : psTex_, nullptr, 0);
     ctx_->PSSetSamplers(0, 1, &sampler_);
+    static const bool hardCut = std::getenv("IW8R_HARD_CUTOUT") != nullptr;
+    const bool soft = !texPsOverride_ && !hardCut && blend_;
+    ID3D11BlendState* prevBlend = nullptr;
+    float prevFactor[4] = {0, 0, 0, 0};
+    UINT prevMask = 0xffffffff;
+    ctx_->OMGetBlendState(&prevBlend, prevFactor, &prevMask);
+    if (soft) {
+        const float bf[4] = {0, 0, 0, 0};
+        ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
+    }
     if (cbBatch_) {
-        const float flags[8] = {0, 0, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};
+        const float flags[8] = {0, soft ? -1.0f : 0.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};
         ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
         ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
         ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
@@ -1688,6 +1715,8 @@ void SceneRenderer::drawReferenceTexInstances() {
     ctx_->IASetInputLayout(layout_);
     ctx_->VSSetShader(vs_, nullptr, 0);
     ctx_->PSSetShader(ps_, nullptr, 0);
+    ctx_->OMSetBlendState(prevBlend, prevFactor, prevMask);
+    if (prevBlend) prevBlend->Release();
 }
 
 void SceneRenderer::drawReferenceTexInstancesShadow() {

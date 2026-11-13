@@ -5,6 +5,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Softer grass and cut-out edges.** Placed props' cut-out edges (grass blades, fences, grates) are anti-aliased instead
+  of hard-cut, which removes most of the black speckle in Speedball's grass. Stock foliage also stops drawing past its
+  last LOD distance, as in game. `IW8R_HARD_CUTOUT=1` / `IW8R_NO_FOLIAGE_LOD_OUT=1` turn these off.
 - **Verdansk ground up close.** Within about 6,000 units of the camera the editor now blends the terrain's real ground
   materials (dirt, grass, sand, rock) with the game's own per-layer weight images and reveal ramp (research 103),
   instead of the blurry baked colour. The patch follows the camera (rebuilt in the background when you move 2,000

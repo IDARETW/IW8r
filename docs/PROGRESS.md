@@ -15,6 +15,12 @@
   coarse far mesh. Bench check "picture=DIFFERENT" now prints max / over8: every map gives max 1-4, over8 0 % (auto
   exposure drift between the kept and the rebuilt frame, not a geometry fault). IW8R_BENCH_NEAR=<r> lists the scene
   items near a fixed bench camera. Stock MP maps keep spawns outside the entity string: use "ent node_pathnode N".
+- Speedball vs the owner's shot, whole ground (out/agent/grass_cmp.py <png>): dirt median 123 vs 125, haze band
+  130/136/143 vs 131/137/136. Grass reads brighter and noisier, but dirt shows the same 2.25x pixel-to-pixel contrast
+  (17.8 vs 7.9) while plain concrete matches (4.0 vs 4.9): the game image is softened overall by TAA, not a grass
+  shading fault. Not imitated (a post blur would blur editing). Placed props now use a soft cut-out (coverage from
+  fwidth(alpha), blended, depth written; batch flag y = -1) and foliage LOD-out (last LOD distance; instance cull).
+- out/agent/mp_cinderrail is a kept map project (TEST_ME.md for the owner), not scratch.
 - Re-checked 2026-11-13 at eye level (Game Lighting): King 2.3 ms, Shipment 4.6, Hideout 9.6, Speedball 5.7. Speedball
   vs the owner's shot (same features): lit concrete +3..9 %, dirt +3 %, far field +10 % (haze), grass -15 %.
 - Later on 2026-11-13: displacement drawn (research 101); Warzone super terrain drawn (ACTS fork 8b5ee11d deployed:
