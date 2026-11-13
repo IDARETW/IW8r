@@ -2,6 +2,24 @@
 
 ## Latest (2026-11-13)
 
+- M1.6 part 1 (2026-11-13, research 106): core stock_lights (parseStockPrimaryLights, parseStockLightDef,
+  packStockLight = Replay's 96-byte t49 record, evalStockLightDiffuse CPU reference; tests against research 106 5.6:
+  lights 82 / 118 / 9). MainWindow::loadStockSun also packs the spots / omnis, exports the lightdefs and the *ieslookup
+  strip once (world_cache/<zone>/lights, "done"), CameraView::setStockLocalLights. Renderer: nearest 256 in view
+  (frustum + distance), StructuredBuffer t20, IES Texture1D t21, CPU-binned 32-px tile masks (8 words) t22, b11
+  localInfo; ps_tex stockRef branch loops the tile's bits (gameLocalLight = research 106 5.3, no shadow yet).
+  IW8R_NO_STOCK_LIGHTS for A/B; bench line stock_lights. Hideout floor under light 82 (camera "-128 392 268 0 -89
+  100"): mean 37 -> 80. Hideout 13.2 ms; Aniyah 23.2 with lights, 23.5 without (lights cost nothing measurable).
+- GPU profiler: IW8R_BENCH_PROFILE=1 IW8R_BENCH_GPU=1 adds gpu.<scope> timestamp times to the bench profile lines (a
+  stall per frame, bench only). New scopes d.props / d.props_pre. Aniyah per frame: props 10.2 ms (30 M triangles: all
+  props at LOD0), pre-pass 4.8, world 2.8, AO 0.7; SSR, probes, cut-out mode, AO and the prop light grid each change the
+  props pass by < 0.3 ms. So Aniyah's 23.5 ms (budget 20; 18.1 at M0) is geometry: plan 1.13 (prop LODs).
+- M1.5b part 1 (2026-11-13): Warzone tile light grids. WorldCache tile job also cuts the tile's LGV block
+  (streamed/<tile>/lightgrid.iw8rlg + lightgrid.done "ok <transientZoneIndex> <volumes>"), re-run for tiles that lack
+  it (MainWindow::updateStreamedTiles asks once per tile per session, requestTileLightmap); tileLightGrids(zone);
+  MainWindow::loadStockTileLightGrids -> refPropTileLight_ by transient index, props pick their grid by worldTransient
+  (debounced rebuild). Verdansk main zone: 17,737 of 255,682 placements from transient 0; raised camera 27.3 ms.
+  Research 107 (shading terms) and 108 (Warzone probes) landed.
 - M1.4 gtso_lut (2026-11-13): game_look_assets cachedCodePostImage (shared ACTS export of a code_post_gfx image into
   AppLocalData/game_look), loadGtsoLut + decodeBc4VolumeDds (16x16x16 BC4 -> R8), SceneRenderer::setGtsoLut (Texture3D
   R8 at t18, gameSun.w = 1 when bound). ps_tex: so = gtsoLut(max(sqrt(1-ao), sqrt(1-cavity)), a2, sat(Nf . R)) with the

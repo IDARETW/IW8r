@@ -10,6 +10,7 @@
 #include "dirty_ranges.h"
 #include "draw_chunks.h"
 #include "reference_markers.h"
+#include "stock_lights.h"
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -42,6 +43,9 @@ struct Prof {
     static bool on;
     static void add(const char* name, long long ns);
     static std::string dump();
+    // IW8R_BENCH_GPU=1 with on: the renderer drawing the frame also times every scope on the GPU (timestamp queries,
+    // read back at the end of the frame, a stall the benchmark accepts); they are listed as "gpu.<name>".
+    static void (*gpuMark)(const char* name, bool begin);
 };
 struct ProfScope {
     const char* name;
@@ -393,6 +397,14 @@ public:
     // The stock world shader's environment BRDF table (64 x 64, A and B as R8G8; game_look_assets.h fetches it from the
     // owner's install). null = the analytic fit.
     void setEnvBrdfLut(int width, int height, const uint8_t* rg);
+    // Stock local lights (research 106): the map's packed spot / omni records (core stock_lights.h). Each frame the
+    // nearest 256 in view are uploaded (t20) and binned to 32-pixel screen tiles (t22); Game Lighting shades the stock
+    // reference and its props with them. Empty = none. IW8R_NO_STOCK_LIGHTS turns them off (A/B).
+    void setStockLocalLights(std::vector<iw8r::StockGameLight> lights) { stockLights_ = std::move(lights); }
+    size_t stockLocalLightCount() const { return stockLights_.size(); }
+    size_t stockLocalLightsDrawn() const { return stockLightsDrawn_; }
+    // The map's IES strip (*ieslookup level 0: width R8 texels, texel 0 white), t21. null = every light white.
+    void setIesStrip(int width, const uint8_t* r8);
     // The stock specular occlusion table (gtso_lut, one byte per texel, x fastest; research 95), t18.
     void setGtsoLut(int width, int height, int depth, const uint8_t* r);
     bool hasGtsoLut() const { return gtsoSrv_ != nullptr; }
@@ -673,6 +685,21 @@ private:
     ID3D11Texture2D* envBrdfTex_ = nullptr;
     ID3D11Texture3D* gtsoTex_ = nullptr;
     ID3D11ShaderResourceView* gtsoSrv_ = nullptr;
+    // Stock local lights (setStockLocalLights): all of the map's; per frame the drawn ones and the tile masks.
+    void prepareStockLocalLights(const float* viewProj);
+    std::vector<iw8r::StockGameLight> stockLights_;
+    size_t stockLightsDrawn_ = 0;
+    bool stockLightsOn_ = false;
+    std::vector<std::pair<float, uint32_t>> stockLightOrder_;
+    std::vector<uint32_t> stockTileMask_;
+    ID3D11Buffer* stockLightBuf_ = nullptr;
+    ID3D11ShaderResourceView* stockLightSrv_ = nullptr;
+    ID3D11Buffer* stockTileBuf_ = nullptr;
+    ID3D11ShaderResourceView* stockTileSrv_ = nullptr;
+    size_t stockTileCap_ = 0;  // uints
+    ID3D11Buffer* cbLocal_ = nullptr;
+    ID3D11Texture1D* iesTex_ = nullptr;
+    ID3D11ShaderResourceView* iesSrv_ = nullptr;
     // Game Lighting's depth pre-pass (the game shader is costly and its alpha clip stops early depth rejection): depth
     // first through the clip shader with colour writes off, then the shading pass tests depth without writing it.
     struct ID3D11BlendState* blendNoColor_ = nullptr;

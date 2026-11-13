@@ -146,6 +146,20 @@ bool decodeBc4VolumeDds(const QByteArray& dds, GtsoLut& out) {
     return true;
 }
 
+std::vector<uint8_t> decodeR8StripDds(const QByteArray& dds) {
+    const auto u32 = [&](int o) {
+        uint32_t v = 0;
+        for (int k = 0; k < 4; ++k) v |= uint32_t(uint8_t(dds[o + k])) << (8 * k);
+        return v;
+    };
+    if (dds.size() < 148 || std::memcmp(dds.constData(), "DDS ", 4) != 0 || std::memcmp(dds.constData() + 84, "DX10", 4) != 0)
+        return {};
+    const uint32_t h = u32(12), w = u32(16);
+    if (u32(128) != 61 || h != 1 || w < 2 || w > 65536 || size_t(dds.size()) < 148 + size_t(w)) return {};  // DXGI R8_UNORM
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(dds.constData()) + 148;
+    return std::vector<uint8_t>(p, p + w);
+}
+
 GtsoLut loadGtsoLut(const std::function<QString(const QString&)>& toolPath) {
     GtsoLut lut;
     QString err;

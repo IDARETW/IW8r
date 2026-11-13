@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Stock maps' own lamps light the scene in Game Lighting.** Every spot and point light of a stock map (124 on Hideout,
+  267 on Aniyah Tac) now lights the world and the props as the game draws them at runtime (research 106): their
+  falloff, cone, bulb size and tube shape, their IES beam profile (read once from your install) and their highlights
+  on glossy surfaces. Rooms under lamps are lit as in game instead of only by the baked light; the game's lightmap does
+  not contain this light. The nearest 256 in view are drawn, as the game does. Shadows from these lights come next.
+- **Verdansk props lit per tile.** Props in Verdansk's streamed tiles take their light from their own tile's light grid
+  (read with the tile's lightmap, in the background), so props in the town get the same treatment as on the 6v6 maps.
 - **The game's specular occlusion table.** Reflections in corners, creases and under props now fade exactly as the
   game's own table (gtso_lut, read once from your install like the BRDF table) says, from the ambient occlusion, the
   material's cavity, its gloss and the reflection angle. The change is small and mostly on glossy surfaces.

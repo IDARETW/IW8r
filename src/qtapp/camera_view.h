@@ -260,6 +260,15 @@ public slots:
         stockFog_ = gameFogFromVision(visionText);
         update();
     }
+    // The stock map's local lights (core stock_lights.h, research 106) and its IES strip (R8 texels; empty = white), sent
+    // to the renderer on the next Game Lighting frame. null clears them.
+    void setStockLocalLights(std::shared_ptr<const std::vector<StockGameLight>> lights, std::shared_ptr<const std::vector<uint8_t>> ies) {
+        pendingLights_ = lights ? std::move(lights) : std::make_shared<const std::vector<StockGameLight>>();
+        pendingIes_ = std::move(ies);
+        update();
+    }
+    size_t stockLocalLightCount() const { return renderer_.stockLocalLightCount(); }
+    size_t stockLocalLightsDrawn() const { return renderer_.stockLocalLightsDrawn(); }
     // The stock map's own sun (its ComWorld sun light: intensity, linear colour, direction toward the sun).
     void setGameStockSun(double intensity, const Vec3& color, const Vec3& toward) {
         stockSunKnown_ = intensity > 0;
@@ -521,6 +530,8 @@ private:
     bool envBrdfAsked_ = false;
     bool gtsoAsked_ = false;
     std::shared_ptr<GtsoLut> pendingGtso_;
+    std::shared_ptr<const std::vector<StockGameLight>> pendingLights_;
+    std::shared_ptr<const std::vector<uint8_t>> pendingIes_;
     std::shared_ptr<std::vector<uint8_t>> pendingEnvBrdf_;
     int pendingEnvBrdfW_ = 0, pendingEnvBrdfH_ = 0;
     std::shared_ptr<const app::StockLightmapLayers> pendingStockLm_;

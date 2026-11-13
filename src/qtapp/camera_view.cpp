@@ -2010,6 +2010,12 @@ void CameraView::prepareGameLook() {
             renderer_.setGtsoLut(pendingGtso_->width, pendingGtso_->height, pendingGtso_->depth, pendingGtso_->r.data());
             pendingGtso_.reset();
         }
+        if (pendingLights_) {
+            renderer_.setStockLocalLights(*pendingLights_);
+            renderer_.setIesStrip(pendingIes_ ? int(pendingIes_->size()) : 0, pendingIes_ && !pendingIes_->empty() ? pendingIes_->data() : nullptr);
+            pendingLights_.reset();
+            pendingIes_.reset();
+        }
         const Vec3 t = gameSunToward();
         // A stock map: its own sun (read from its ComWorld, else the shipped table) and the exposure of its vision (or
         // of the shipped map with the nearest sun); an own map: suncolor and the converter's fixed exposure (EV 10).

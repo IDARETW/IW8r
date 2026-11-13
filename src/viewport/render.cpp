@@ -2,6 +2,7 @@
 #include "stock_probes.h"
 
 #include <algorithm>
+#include <memory>
 #include <d3d11_1.h>
 #include <d3dcompiler.h>
 
@@ -14,6 +15,7 @@
 namespace iw8r::app {
 
 bool Prof::on = false;
+void (*Prof::gpuMark)(const char*, bool) = nullptr;
 
 bool perfOff(const char* name) {
     static const std::string list = [] {
@@ -62,10 +64,97 @@ std::string Prof::dump() {
     return out;
 }
 
-ProfScope::ProfScope(const char* n) : name(n), t0(Prof::on ? profNow() : 0) {}
-ProfScope::~ProfScope() {
-    if (Prof::on) Prof::add(name, profNow() - t0);
+ProfScope::ProfScope(const char* n) : name(n), t0(Prof::on ? profNow() : 0) {
+    if (Prof::on && Prof::gpuMark) Prof::gpuMark(n, true);
 }
+ProfScope::~ProfScope() {
+    if (Prof::on) {
+        Prof::add(name, profNow() - t0);
+        if (Prof::gpuMark) Prof::gpuMark(name, false);
+    }
+}
+
+// GPU scope timing of one frame (Prof::gpuMark): timestamp queries in pairs, inside one disjoint query.
+namespace {
+struct GpuProfState {
+    ID3D11Device* dev = nullptr;
+    ID3D11DeviceContext* ctx = nullptr;
+    ID3D11Query* disjoint = nullptr;
+    std::vector<ID3D11Query*> pool;
+    size_t used = 0;
+    struct Rec {
+        const char* name;
+        size_t q0, q1;
+    };
+    std::vector<Rec> recs;
+    std::vector<size_t> stack;
+};
+GpuProfState& gpuProf() {
+    static GpuProfState s;
+    return s;
+}
+size_t gpuQuery() {
+    GpuProfState& g = gpuProf();
+    if (g.used == g.pool.size()) {
+        D3D11_QUERY_DESC qd{D3D11_QUERY_TIMESTAMP, 0};
+        ID3D11Query* q = nullptr;
+        if (FAILED(g.dev->CreateQuery(&qd, &q))) return size_t(-1);
+        g.pool.push_back(q);
+    }
+    g.ctx->End(g.pool[g.used]);
+    return g.used++;
+}
+void gpuMarkImpl(const char* name, bool begin) {
+    GpuProfState& g = gpuProf();
+    if (begin) {
+        g.recs.push_back({name, gpuQuery(), size_t(-1)});
+        g.stack.push_back(g.recs.size() - 1);
+    } else if (!g.stack.empty()) {
+        g.recs[g.stack.back()].q1 = gpuQuery();
+        g.stack.pop_back();
+    }
+}
+const char* gpuName(const char* name) {
+    static std::vector<std::unique_ptr<std::string>> names;
+    for (const auto& n : names)
+        if (n->compare(4, std::string::npos, name) == 0) return n->c_str();
+    names.push_back(std::make_unique<std::string>(std::string("gpu.") + name));
+    return names.back()->c_str();
+}
+}  // namespace
+
+struct GpuProfFrame {
+    bool active = false;
+    GpuProfFrame(ID3D11Device* dev, ID3D11DeviceContext* ctx) {
+        static const bool want = std::getenv("IW8R_BENCH_GPU") != nullptr;
+        if (!want || !Prof::on || !dev || !ctx || Prof::gpuMark) return;
+        GpuProfState& g = gpuProf();
+        g.dev = dev, g.ctx = ctx;
+        if (!g.disjoint) {
+            D3D11_QUERY_DESC qd{D3D11_QUERY_TIMESTAMP_DISJOINT, 0};
+            if (FAILED(dev->CreateQuery(&qd, &g.disjoint))) return;
+        }
+        g.used = 0, g.recs.clear(), g.stack.clear();
+        ctx->Begin(g.disjoint);
+        Prof::gpuMark = gpuMarkImpl;
+        active = true;
+    }
+    ~GpuProfFrame() {
+        if (!active) return;
+        Prof::gpuMark = nullptr;
+        GpuProfState& g = gpuProf();
+        g.ctx->End(g.disjoint);
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT dj{};
+        while (g.ctx->GetData(g.disjoint, &dj, sizeof(dj), 0) == S_FALSE) {}
+        if (dj.Disjoint || dj.Frequency == 0) return;
+        std::vector<UINT64> t(g.used, 0);
+        for (size_t i = 0; i < g.used; ++i)
+            while (g.ctx->GetData(g.pool[i], &t[i], sizeof(UINT64), 0) == S_FALSE) {}
+        for (const auto& r : g.recs)
+            if (r.q0 < g.used && r.q1 < g.used && t[r.q1] >= t[r.q0])
+                Prof::add(gpuName(r.name), (long long)(double(t[r.q1] - t[r.q0]) * 1e9 / double(dj.Frequency)));
+    }
+};
 
 namespace {
 
@@ -427,6 +516,65 @@ void ps_prepass(PSIn i) {
     if (!rawSpecAlpha()) clip(tex0.Sample(samp0, i.uv).a - (game0.x > 0.5 && batchFlags2.z > 0.5 ? 0.5 : 0.3));
     if (gameTerrainCut.w > 0.5 && batchFlags2.z > 0.5 && i.col.a > 0.99 && i.col.a < 0.998 && distance(i.w.xy, gameTerrainCut.xy) < gameTerrainCut.z) discard;
 }
+// Stock local lights (research 106): Replay's packed records (96 bytes), the nearest 256 in view; per 32-pixel screen
+// tile 8 words of bits (bit k = record k). localInfo = (on, tiles across, tile size, IES strip bound).
+struct GameLight { float3 diffuse; float collimationOffset; float3 dir; uint packed; float3 bulbDir; float bulbRadius;
+                   float3 pos; float invRadius; float4 spot; float3 uvIrHeat; uint iesLookup; };
+StructuredBuffer<GameLight> gameLights : register(t20);
+Texture1D<float> iesStrip : register(t21);
+StructuredBuffer<uint> lightTiles : register(t22);
+cbuffer LocalLights : register(b11) { float4 localInfo; };
+float3 glSegPoint(GameLight l, float3 p) {
+    return l.pos + clamp(dot(p - l.pos, l.bulbDir) / max(dot(l.bulbDir, l.bulbDir), 1e-20), -1.0, 1.0) * l.bulbDir;
+}
+// One light (research 106 section 3.2 / 5.3, world space): tube closest point, spot apex, IES, smoothstep window,
+// bulb-capped diffuse at a representative point, GGX specular toward the tube with the sphere-light normalisation.
+void gameLocalLight(GameLight l, float3 P, float3 N, float3 V, float3 diffuseColor, float3 f0, float gp, float cavity,
+                    inout float3 diffSum, inout float3 specSum) {
+    const float3 Q = glSegPoint(l, P), v = Q - P;
+    const float d = length(v);
+    if (d * l.invRadius >= 1.0 || d < 1e-4) return;
+    const float3 L = v / d;
+    const bool isSpot = ((l.packed >> 8) & 3u) == 2u;
+    const float3 Lc = isSpot ? normalize(Q + l.dir * l.spot.z - P) : L;
+    const float front = (!isSpot || dot(v, l.dir) > 0.0) ? 1.0 : 0.0;
+    const float cosA = dot(l.dir, Lc), s2a = 1.0 - min(cosA * cosA, 1.0);
+    const float u = cosA > 0.0 ? 0.5 * s2a : 1.0 - 0.5 * s2a;
+    float prof = 1.0;
+    if (localInfo.w > 0.5 && l.iesLookup != 0u) {
+        const float2 ies = f16tof32(uint2(l.iesLookup & 0xffffu, l.iesLookup >> 16));
+        prof = iesStrip.SampleLevel(lutSamp, ies.x + u * ies.y, 0);
+    }
+    const float spotF = saturate(cosA * l.spot.x + l.spot.y);
+    const float w = saturate(l.spot.w * (1.0 - d * l.invRadius)) * (isSpot ? spotF : 1.0);
+    const float att = prof * front * w * w * (3.0 - 2.0 * w);  // no shadow yet (research 106 section 4)
+    if (att <= 0.0) return;
+    const float3 X = P + (N + L) * (d / max(1.0 + dot(N, L), 1e-3));
+    const float3 vd = glSegPoint(l, X) - P;
+    const float dd = max(length(vd), 1e-4);
+    const float3 Ld = vd / dd;
+    const float NdotL = dot(N, Ld), s2 = l.bulbRadius * l.bulbRadius / (dd * dd), y = NdotL * rsqrt(s2);
+    const float E = att * ((1.0 - y * y > 0.0) ? pow(saturate(s2 * (0.5 + 0.5 * y)), 1.5) : saturate(NdotL * s2));
+    if (E <= 0.0) return;
+    const float3 R = reflect(-V, N), QP = Q - P;
+    const float aR = dot(l.bulbDir, R);
+    float t = clamp((aR * dot(R, QP) - dot(l.bulbDir, QP)) / max(dot(l.bulbDir, l.bulbDir) - aR * aR, 1e-12), -1.5, 1.5);
+    t -= t * t * t * (4.0 / 27.0);
+    const float3 S = QP + t * l.bulbDir, perp = R * dot(S, R) - S;
+    float x = l.bulbRadius * rsqrt(max(dot(perp, perp), 1e-8));
+    x *= rsqrt(x * x + 0.125);
+    const float3 Hs = normalize(normalize(S + perp * x) + V);
+    const float a2 = 2.0 / (2.0 + exp2(20.0 * gp)), NdotH = dot(N, Hs), NdotV = saturate(dot(N, V));
+    const float dq = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    const float D = a2 / max(dq * dq, 1e-8);
+    const float Vis = 1.0 / ((abs(NdotL) + sqrt(a2 + (1.0 - a2) * NdotL * NdotL)) * (NdotV + sqrt(a2 + (1.0 - a2) * NdotV * NdotV)));
+    const float ap = pow(a2, 0.748925), norm = ap / (ap + 0.375892 * l.bulbRadius * rsqrt(max(dot(S, S), 1e-8)));
+    const float3 F = f0 + (1.0 - f0) * pow(1.0 - abs(dot(V, normalize(Ld + V))), 5.0);
+    const float2 AB = gameEnvBrdf(saturate(NdotL), gp);
+    const float3 Fl = f0 * AB.x + AB.y;
+    diffSum += diffuseColor * l.diffuse * E * (1.0 - max(Fl.r, max(Fl.g, Fl.b)));
+    specSum += l.diffuse * F * (D * Vis * norm * E * cavity);
+}
 Texture2D revealTex : register(t12);
 // vs_tex_inst: a prop lit from its light grid box carries that light in t (no tangent) and lm = (-2, -2).
 bool propLit(PSIn i) { return i.lm.x < -1.5; }
@@ -631,9 +779,13 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 : min(aoV, cavS);
             float3 S = lerp(0.18 * Lr, Lr, so);
             const bool probesOnLayers = gameSkyScale.w > 0.5;  // IW8R_PERF_OFF=layerprobes turns it off
-            if (probeCount.x > 0.5 && (layerP.x < 0.5 || (probesOnLayers && layerUvO.w < 0.5))) {  // every pass but the terrain patch (research 95)
+            // The rough-surface fallback (research 107 section 4.2: cb7[186] = (-10, 2) on every map): below g' 0.1 the
+            // probe is not read at all (the result is then the plain S above), up to g' 0.2 it fades in.
+            const float probeFb = saturate(2.0 - 10.0 * gp);
+            if (probeFb < 1.0 && probeCount.x > 0.5 && (layerP.x < 0.5 || (probesOnLayers && layerUvO.w < 0.5))) {  // every pass but the terrain patch (research 95)
                 // Probes are luminance-normalised: relit by the lightmap along the reflection (research 95).
                 float3 P = stockProbeLight(i.w, R, gp) * dot(Lr, float3(0.2126, 0.7152, 0.0722));
+                P = lerp(P, Lr, probeFb);
                 float3 mixed = lerp(P, Lr, 0.85);
                 S = lerp(0.18 * mixed, P, so);  // so: the specular occlusion above
             }
@@ -704,6 +856,21 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 float3 fl = f0 * abl.x + abl.y;
                 c += gameSunCol.rgb * visibility * saturate(nl) *
                      (diffAlbedo * (1.0 - max(fl.r, max(fl.g, fl.b))) + F * Dg * Vg * 1.0390625 * (baseMat ? nmCavity : 1.0));
+            }
+            // The map's local lights (research 106): the drawn ones of this pixel's 32-pixel tile; no AO, as the game.
+            if (localInfo.x > 0.5) {
+                const uint2 tile = uint2(i.pos.xy) / uint(localInfo.z);
+                const uint base = (tile.y * uint(localInfo.y) + tile.x) * 8u;
+                float3 dSum = 0, sSum = 0;
+                [loop] for (uint wd = 0; wd < 8u; ++wd) {
+                    uint bits = lightTiles[base + wd];
+                    [loop] while (bits != 0u) {
+                        const uint b = firstbitlow(bits);
+                        bits &= bits - 1u;
+                        gameLocalLight(gameLights[wd * 32u + b], i.w, N, Vs, diffAlbedo, f0, gp, baseMat ? nmCavity : 1.0, dSum, sSum);
+                    }
+                }
+                c += dSum + sSum;
             }
         } else {
             float3 light = indirect * aoV + visibility * saturate(dot(N, gameSun.xyz)) * gameSunCol.rgb;
@@ -1001,6 +1168,9 @@ SceneRenderer::~SceneRenderer() {
     for (int k = 0; k < 3; ++k) safeRelease(stockLmSrv_[k]), safeRelease(stockLmTex_[k]);
     safeRelease(envBrdfSrv_), safeRelease(envBrdfTex_);
     safeRelease(gtsoSrv_), safeRelease(gtsoTex_);
+    safeRelease(stockLightSrv_), safeRelease(stockLightBuf_), safeRelease(stockTileSrv_), safeRelease(stockTileBuf_);
+    safeRelease(cbLocal_), safeRelease(iesSrv_), safeRelease(iesTex_);
+    stockTileCap_ = 0;
     safeRelease(probeArrSrv_), safeRelease(probeArrTex_), safeRelease(cbProbes_), safeRelease(cbLmRects_);
     safeRelease(probeGridSrv_), safeRelease(probeGridTex_);
     safeRelease(meterSrv_), safeRelease(meterRtv_), safeRelease(meterTex_);
@@ -1599,6 +1769,131 @@ void SceneRenderer::setStockLightmap(int width, int height, const float* a, cons
     }
 }
 
+void SceneRenderer::setIesStrip(int width, const uint8_t* r8) {
+    safeRelease(iesSrv_), safeRelease(iesTex_);
+    if (!dev_ || width < 2 || !r8) return;
+    D3D11_TEXTURE1D_DESC td{};
+    td.Width = UINT(width);
+    td.MipLevels = td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_R8_UNORM;
+    td.Usage = D3D11_USAGE_IMMUTABLE;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA init{r8, UINT(width), 0};
+    if (FAILED(dev_->CreateTexture1D(&td, &init, &iesTex_)) || FAILED(dev_->CreateShaderResourceView(iesTex_, nullptr, &iesSrv_)))
+        safeRelease(iesTex_);
+}
+
+void SceneRenderer::prepareStockLocalLights(const float* M) {
+    constexpr uint32_t kMaxLights = 256, kTile = 32;
+    stockLightsOn_ = false;
+    stockLightsDrawn_ = 0;
+    if (!dev_) return;
+    if (!cbLocal_) {
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = 16;
+        bd.Usage = D3D11_USAGE_DEFAULT;
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        if (FAILED(dev_->CreateBuffer(&bd, nullptr, &cbLocal_))) return;
+    }
+    float info[4] = {0, 0, float(kTile), iesSrv_ ? 1.0f : 0.0f};
+    static const bool off = std::getenv("IW8R_NO_STOCK_LIGHTS") != nullptr;
+    const auto done = [&] { ctx_->UpdateSubresource(cbLocal_, 0, nullptr, info, 0, 0); };
+    if (off || !game_.on || stockLights_.empty() || !M || w_ <= 0 || h_ <= 0) return done();
+    // The game's rule (research 106 section 2.1): the lights in view, nearest to the camera first, at most 256.
+    const iw8r::Frustum fr = iw8r::frustumFromViewProj(M);
+    const float* eye = fog_;
+    stockLightOrder_.clear();
+    for (uint32_t i = 0; i < uint32_t(stockLights_.size()); ++i) {
+        const iw8r::StockGameLight& l = stockLights_[i];
+        const float r = l.invRadius > 0 ? 1.0f / l.invRadius : 0.0f;
+        bool out = false;
+        for (const auto& pl : fr.planes)
+            if (pl.n.x * l.pos[0] + pl.n.y * l.pos[1] + pl.n.z * l.pos[2] - pl.d > r) {
+                out = true;
+                break;
+            }
+        if (out) continue;
+        const float dx = l.pos[0] - eye[0], dy = l.pos[1] - eye[1], dz = l.pos[2] - eye[2];
+        stockLightOrder_.push_back({dx * dx + dy * dy + dz * dz, i});
+    }
+    if (stockLightOrder_.empty()) return done();
+    const size_t n = std::min<size_t>(stockLightOrder_.size(), kMaxLights);
+    std::partial_sort(stockLightOrder_.begin(), stockLightOrder_.begin() + ptrdiff_t(n), stockLightOrder_.end());
+    if (!stockLightBuf_) {
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = UINT(kMaxLights * sizeof(iw8r::StockGameLight));
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        bd.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        bd.StructureByteStride = UINT(sizeof(iw8r::StockGameLight));
+        if (FAILED(dev_->CreateBuffer(&bd, nullptr, &stockLightBuf_)) ||
+            FAILED(dev_->CreateShaderResourceView(stockLightBuf_, nullptr, &stockLightSrv_))) {
+            safeRelease(stockLightBuf_);
+            return done();
+        }
+    }
+    const uint32_t tx = (uint32_t(w_) + kTile - 1) / kTile, ty = (uint32_t(h_) + kTile - 1) / kTile;
+    const size_t words = size_t(tx) * ty * 8;
+    if (words > stockTileCap_) {
+        safeRelease(stockTileSrv_), safeRelease(stockTileBuf_);
+        stockTileCap_ = 0;
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = UINT(words * 4);
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        bd.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        bd.StructureByteStride = 4;
+        if (FAILED(dev_->CreateBuffer(&bd, nullptr, &stockTileBuf_)) ||
+            FAILED(dev_->CreateShaderResourceView(stockTileBuf_, nullptr, &stockTileSrv_))) {
+            safeRelease(stockTileBuf_);
+            return done();
+        }
+        stockTileCap_ = words;
+    }
+    // Each light's screen rectangle: its bounding box projected (the whole screen when a corner is behind the eye).
+    stockTileMask_.assign(words, 0u);
+    D3D11_MAPPED_SUBRESOURCE ml;
+    if (FAILED(ctx_->Map(stockLightBuf_, 0, D3D11_MAP_WRITE_DISCARD, 0, &ml))) return done();
+    auto* dst = static_cast<iw8r::StockGameLight*>(ml.pData);
+    for (size_t k = 0; k < n; ++k) {
+        const iw8r::StockGameLight& l = stockLights_[stockLightOrder_[k].second];
+        dst[k] = l;
+        const float r = 1.0f / l.invRadius;
+        float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
+        bool behind = false;
+        for (int c = 0; c < 8 && !behind; ++c) {
+            const float p[3] = {l.pos[0] + ((c & 1) ? r : -r), l.pos[1] + ((c & 2) ? r : -r), l.pos[2] + ((c & 4) ? r : -r)};
+            const float cx = p[0] * M[0] + p[1] * M[4] + p[2] * M[8] + M[12];
+            const float cy = p[0] * M[1] + p[1] * M[5] + p[2] * M[9] + M[13];
+            const float cw = p[0] * M[3] + p[1] * M[7] + p[2] * M[11] + M[15];
+            if (cw <= 1e-3f) {
+                behind = true;
+                break;
+            }
+            const float sx = (cx / cw * 0.5f + 0.5f) * float(w_), sy = (0.5f - 0.5f * cy / cw) * float(h_);
+            x0 = std::min(x0, sx), x1 = std::max(x1, sx), y0 = std::min(y0, sy), y1 = std::max(y1, sy);
+        }
+        if (behind) x0 = 0, y0 = 0, x1 = float(w_ - 1), y1 = float(h_ - 1);
+        x0 = std::max(x0, 0.0f), y0 = std::max(y0, 0.0f), x1 = std::min(x1, float(w_ - 1)), y1 = std::min(y1, float(h_ - 1));
+        if (x0 > x1 || y0 > y1) continue;
+        const uint32_t a0 = uint32_t(x0) / kTile, a1 = uint32_t(x1) / kTile, b0 = uint32_t(y0) / kTile, b1 = uint32_t(y1) / kTile;
+        const uint32_t bit = 1u << (k & 31u), word = uint32_t(k >> 5);
+        for (uint32_t ty2 = b0; ty2 <= b1; ++ty2)
+            for (uint32_t tx2 = a0; tx2 <= a1; ++tx2) stockTileMask_[(size_t(ty2) * tx + tx2) * 8 + word] |= bit;
+    }
+    ctx_->Unmap(stockLightBuf_, 0);
+    D3D11_MAPPED_SUBRESOURCE mt;
+    if (FAILED(ctx_->Map(stockTileBuf_, 0, D3D11_MAP_WRITE_DISCARD, 0, &mt))) return done();
+    std::memcpy(mt.pData, stockTileMask_.data(), words * 4);
+    ctx_->Unmap(stockTileBuf_, 0);
+    info[0] = 1, info[1] = float(tx);
+    stockLightsOn_ = true;
+    stockLightsDrawn_ = n;
+    done();
+}
+
 void SceneRenderer::setGtsoLut(int width, int height, int depth, const uint8_t* r) {
     safeRelease(gtsoSrv_), safeRelease(gtsoTex_);
     if (!dev_ || width < 2 || height < 2 || depth < 2 || !r) return;
@@ -1802,6 +2097,11 @@ void SceneRenderer::writeGameCb() {
     ID3D11ShaderResourceView* ao = on && aoValid_ ? aoSrv_[1] : nullptr;
     ctx_->PSSetShaderResources(14, 1, &ao);
     ctx_->PSSetShaderResources(18, 1, &gtsoSrv_);
+    {
+        ID3D11ShaderResourceView* ll[3] = {stockLightsOn_ ? stockLightSrv_ : nullptr, iesSrv_, stockLightsOn_ ? stockTileSrv_ : nullptr};
+        ctx_->PSSetShaderResources(20, 3, ll);
+        if (cbLocal_) ctx_->PSSetConstantBuffers(11, 1, &cbLocal_);
+    }
     if (cbProbes_) ctx_->PSSetConstantBuffers(5, 1, &cbProbes_);
     if (cbLmRects_) ctx_->PSSetConstantBuffers(6, 1, &cbLmRects_);
     if (lutSampler_) ctx_->PSSetSamplers(2, 1, &lutSampler_);
@@ -2473,6 +2773,7 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
 
 void SceneRenderer::drawReferenceTexInstances() {
     if (refTexInst_.empty() || !vsTexInst_ || !layoutTexInst_ || !psTex_) return;
+    IW8R_PROF(texPsOverride_ ? "d.props_pre" : "d.props");
     ctx_->IASetInputLayout(layoutTexInst_);
     ctx_->VSSetShader(vsTexInst_, nullptr, 0);
     ctx_->PSSetShader(texPsOverride_ ? texPsOverride_ : psTex_, nullptr, 0);
@@ -2860,6 +3161,7 @@ SceneRenderer::StreamGpu* SceneRenderer::syncBatch(SceneBatch& b) {
 
 void SceneRenderer::drawFrame(const FrameInput& in) {
     if (!rtv_ || !in.viewProj || !in.clear) return;
+    GpuProfFrame gpuFrame(dev_, ctx_);  // IW8R_BENCH_GPU: every scope below timed on the GPU too
     IW8R_PROF("d.total");
     ++frame_;
     streamsSeen_ = 0;
@@ -2869,6 +3171,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     // Game Lighting draws the lit scene into the HDR target (IW8R_NO_HDR: straight into the frame, as before).
     static const bool noHdr = std::getenv("IW8R_NO_HDR") != nullptr;
     hdrFrame_ = game_.on && gameLutSrv_ && hdrRtv_ && postVs_ && postPs_ && !noHdr && !in.capture;
+    prepareStockLocalLights(viewProj);
     if (!hdrFrame_) prevValid_ = false;
     sceneRtv_ = hdrFrame_ ? hdrRtv_ : rtv_;
     {

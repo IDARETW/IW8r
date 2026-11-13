@@ -474,6 +474,11 @@ private:
     // then the first-order slots 0, 2 and 3), null when not read; refPropVolLightZone_ is its zone.
     std::shared_ptr<const std::vector<float>> refPropVolLight_;
     QString refPropVolLightZone_;
+    // The same per streamed tile (Warzone), by transientZoneIndex (StockModelInstance::worldTransient).
+    std::map<int, std::shared_ptr<const std::vector<float>>> refPropTileLight_;
+    std::set<int> refPropTileLightAsked_;
+    std::set<QString> streamExtrasAsked_;  // exported tiles whose lightmap / light grid job was asked for this session
+    bool refPropRebuildQueued_ = false;
     size_t refPropLit_ = 0, refPropLitOf_ = 0;  // propLightStats
     size_t refPropBoxed_ = 0;  // models drawn as stand-in boxes (past the triangle budget) in the last rebuild
     // The stock map's decal volumes with their materials and masks (appendStockDecalVolumes), kept to project them on
@@ -601,6 +606,9 @@ public:
     // The reference zone's static-model light grid (world cache lightgrid.iw8rlg, research 105): each box's light at
     // its centre into refPropVolLight_, read off the UI thread; the props are rebuilt with it.
     void loadStockLightGrid(const QString& zone);
+    // Warzone: the streamed tiles' light grids (WorldCache::tileLightGrids) not read yet, into refPropTileLight_; the
+    // props are rebuilt once they arrive.
+    void loadStockTileLightGrids(const QString& zone);
     // The stock map's sun (its ComWorld sun light, through ACTS once; cached beside the world export) into the camera.
     // skyMaterial: the world's own sky material (tw/sky_mp_speed_midday on mp_m_speed); "" = tw/sky_<zone>.
     void loadStockSun(const QString& zone, const QString& skyMaterial = QString());

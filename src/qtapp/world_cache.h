@@ -48,7 +48,11 @@
 //                            lightGridFile(zone). Read it with iw8r::parseStockLgvBlock.
 // Missing, with no recorded error, it alone re-runs the job for a zone cached before it existed. A verdict on the data
 // (no volumes, no atlas found) is kept as "lightgrid_error". lightGridReady(zone) when the job ends either way.
-// Warzone tiles hold their own grids (not extracted yet: their props fall back to the probes).
+// Warzone tiles hold their own grids: the tile job (below) also writes
+//   <zone>/streamed/<tile>/lightgrid.iw8rlg  the tile's block (same format), for the props whose worldTransient is the
+//                                           tile's transientZoneIndex
+//   <zone>/streamed/<tile>/lightgrid.done    "ok <transientZoneIndex> <volumes>", or "error <why>" (a verdict, not
+//                                           tried again); tileLightGrids(zone) lists the made ones.
 #pragma once
 
 #include <QElapsedTimer>
@@ -116,6 +120,8 @@ public:
     QString lightGridErrorOf(const QString& zone) const;  // why it was not made ("" when made, pending or never run)
     // requestLightmap has something to make for this cached zone (a lightmap, probes or the light grid).
     bool needsLightmapJob(const QString& zone) const;
+    // The streamed tiles' light grid files of a zone: transientZoneIndex -> lightgrid.iw8rlg path. Starts no job.
+    std::map<int, QString> tileLightGrids(const QString& zone) const;
 
     // Big maps (research 90 / 87 section 1.2): exports the streamed world tiles `tiles` (zone names such as
     // mp_donetsk_00587_tr) of a cached zone into <cache>/<zone>/streamed/<tile>, one ACTS run each, skipping those
@@ -123,6 +129,8 @@ public:
     // exported before) then gets its tile lightmap job (see above) unless it has lightmap.done.
     void requestStreamed(const QString& zone, const QStringList& tiles);
     int streamedPending() const { return int(streamQueue_.size()) + (streamRunning_ ? 1 : 0); }
+    // An exported tile's lightmap / light grid job, when it lacks either verdict (nothing otherwise).
+    void requestTileLightmap(const QString& zone, const QString& tile) { queueTileLightmap(zone, tile); }
     // Tile lightmap jobs queued or running.
     int tileLightmapsPending() const { return int(tileLmQueue_.size()) + (lmTile_.isEmpty() ? 0 : 1); }
 
@@ -179,7 +187,8 @@ private:
     // Tile lightmap jobs (lmTile_ set while one runs).
     void queueTileLightmap(const QString& zone, const QString& tile);
     void startTileLightmap(const QString& zone, const QString& tile);
-    void endTileLightmap(const QString& zone, const QString& tile, bool ok, const QString& message, bool persist);
+    void endTileLightmap(const QString& zone, const QString& tile, bool ok, const QString& message, bool persist,
+                         bool lightGridOnly = false);
     std::deque<std::pair<QString, QString>> tileLmQueue_;  // (zone, tile)
     QString lmTile_;           // tile of the tile lightmap job in progress ("" for none or for a main-zone job)
     // The whole job failed before the scans (ACTS, disk space, no .ff): both outputs share the verdict.

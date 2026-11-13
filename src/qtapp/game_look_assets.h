@@ -36,4 +36,8 @@ GtsoLut loadGtsoLut(const std::function<QString(const QString&)>& toolPath);
 // anything else. Exposed for the tests.
 bool decodeBc4VolumeDds(const QByteArray& dds, GtsoLut& out);
 
+// A stock map's IES strip (`*ieslookup`: DX10 header R8_UNORM, width x 1): level 0, one byte per texel. Empty on
+// anything else.
+std::vector<uint8_t> decodeR8StripDds(const QByteArray& dds);
+
 }  // namespace iw8r::qt
