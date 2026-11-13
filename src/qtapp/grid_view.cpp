@@ -45,7 +45,27 @@ GridView::GridView(EditorContext* ctx, QWidget* parent) : QWidget(parent), ctx_(
     setMinimumSize(64, 64);
     setAttribute(Qt::WA_OpaquePaintEvent);
     connect(ctx_, &EditorContext::documentChanged, this, qOverload<>(&QWidget::update));
-    connect(ctx_, &EditorContext::cameraChanged, this, qOverload<>(&QWidget::update));
+    connect(ctx_, &EditorContext::cameraChanged, this, &GridView::cameraChangedRepaint);
+}
+
+QRect GridView::cameraMarkerRect() const {
+    const AxisScope axisScope(const_cast<GridView*>(this));
+    const int H = ctx_->axisH(), V = ctx_->axisV();
+    const QPointF c = worldToWidget(ctx_->cam.pos[H], ctx_->cam.pos[V]);
+    return QRect(int(c.x()) - 30, int(c.y()) - 30, 61, 61);  // the dot (4) and the heading line (24), with the pen
+}
+
+void GridView::cameraChangedRepaint() {
+    const double now[5] = {ctx_->cam.pos.x, ctx_->cam.pos.y, ctx_->cam.pos.z, ctx_->cam.yaw, ctx_->cam.pitch};
+    bool moved = false;
+    for (int k = 0; k < 5; ++k) moved |= now[k] != lastCam_[k];
+    const QRect marker = cameraMarkerRect();
+    // Only the marker moved: the rest of the view is as it was. The light-overlap heat map follows the camera height,
+    // so it repaints whole.
+    if (moved && !lastCameraMarker_.isNull() && !(ctx_->heatMap == 1 && now[2] != lastCam_[2])) update(QRegion(lastCameraMarker_) + QRegion(marker));
+    else update();
+    for (int k = 0; k < 5; ++k) lastCam_[k] = now[k];
+    lastCameraMarker_ = marker;
 }
 
 QPointF GridView::worldToWidget(double h, double v) const {
@@ -203,7 +223,15 @@ void GridView::paintEvent(QPaintEvent*) {
                 for (const auto& [a, b] : g->edges) p.drawLine(worldToWidget(a[H], a[V]), worldToWidget(b[H], b[V]));
                 continue;
             }
-            for (const auto& w : g->polys) {
+            // Models (thousands of triangles each; a stock map holds about a thousand) are their bounding box here unless
+            // selected: drawing every triangle made each camera step repaint millions of polygons (5 fps on mp_rust).
+            if (g->mesh && !sel) {
+                p.drawRect(QRectF(worldToWidget(g->bounds.mins[H], g->bounds.maxs[V]), worldToWidget(g->bounds.maxs[H], g->bounds.mins[V])));
+                continue;
+            }
+            for (size_t pi = 0; pi < g->polys.size(); ++pi) {
+                if (!sel && g->meshPoly(pi)) continue;  // a prefab's models: its box (dashed, above) stands for them
+                const auto& w = g->polys[pi];
                 QPolygonF poly;
                 poly.reserve(int(w.size()));
                 for (const auto& v : w) poly << worldToWidget(v[H], v[V]);

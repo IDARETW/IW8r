@@ -47,6 +47,13 @@ protected:
     void keyReleaseEvent(QKeyEvent*) override;
 
 private:
+    // A camera move repaints only around the old and the new camera marker; any other camera notification (also used
+    // as "repaint every view") repaints the whole view.
+    void cameraChangedRepaint();
+    QRect cameraMarkerRect() const;
+    QRect lastCameraMarker_;
+    double lastCam_[5] = {0, 0, 0, 0, 0};
+
     int fixedAxis_ = -1;
     // Heat map cache (View > Heat Map): rebuilt when the mode, the document or (light overlap) the camera height changes.
 public:

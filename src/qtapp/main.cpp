@@ -130,11 +130,43 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
     QStringList report;
     QElapsedTimer t;
     t.start();
-    w.openPath(mapFile);
+    // "stock:<zone .ff path>" opens a stock zone as the editor's File > Open Stock Zone does (with its reference world,
+    // props, textures, lightmap and probes, all from the real caches), then waits up to two minutes for them.
+    const bool stockZone = mapFile.startsWith("stock:");
+    if (stockZone) {
+        QString err;
+        if (!w.openStockZone(mapFile.mid(6), &err)) {
+            QFile f(QDir(outDir).filePath("viewport-bench.txt"));
+            if (f.open(QIODevice::WriteOnly)) f.write(("stock zone not opened: " + err).toUtf8());
+            return 3;
+        }
+    } else {
+        w.openPath(mapFile);
+    }
     QApplication::processEvents();
     auto& ctx = w.context();
     iw8r::qt::CameraView* cam = w.cameraView();
-    if (!cam || ctx.doc.path().empty()) return 3;
+    if (!cam || (!stockZone && ctx.doc.path().empty())) {  // a stock zone's document has no file path
+        QFile f(QDir(outDir).filePath("viewport-bench.txt"));
+        if (f.open(QIODevice::WriteOnly)) f.write("no document opened");
+        return 3;
+    }
+    if (stockZone) {
+        QElapsedTimer wt;
+        wt.start();
+        while (wt.elapsed() < 120000 && cam->referenceTriangles() == 0) {
+            cam->renderNow();
+            QApplication::processEvents(QEventLoop::AllEvents, 50);
+        }
+        while (wt.elapsed() < 120000) {  // props, textures, lightmap and probes keep arriving: give them time
+            cam->renderNow();
+            QApplication::processEvents(QEventLoop::AllEvents, 50);
+            if (wt.elapsed() > 30000 && !cam->texturesPending()) break;
+        }
+        report << QString("stock zone %1 opened, reference %2 triangles after %3 ms, stock lightmap %4, probes %5")
+                      .arg(mapFile.mid(6)).arg(cam->referenceTriangles()).arg(wt.elapsed()).arg(cam->hasStockLightmap() ? "yes" : "no")
+                      .arg(cam->stockProbeCount());
+    }
     const double openMs = t.nsecsElapsed() / 1e6;
     cam->setFixedRenderSize(1920, 1080);
     cam->setWindTime(0);
@@ -383,6 +415,29 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             setCam(Vec3{centre.x + (f - 0.5) * 0.8 * R, centre.y + 24, all.mins.z + 88}, 0, 0);
         }
     });
+    // The editor's own camera flight: every step notifies the window (grid views, docks) and the event loop paints them,
+    // as when flying with W A S D. Measured as wall time per step (frame() also renders the camera).
+    if (wanted("moving_window")) {
+        BenchSeries s;
+        const int half = frames / 2;
+        for (int i = 0; i < frames; ++i) {
+            QElapsedTimer st;
+            st.start();
+            if (i < half) {
+                const double a = 2 * 3.14159265358979 * i / half;
+                setCam(centre + Vec3{std::cos(a) * 0.4 * R, std::sin(a) * 0.4 * R, 0.2 * R}, a * 180 / 3.14159265358979 + 180, -26.6);
+            } else {
+                const double f = double(i - half) / std::max(1, frames - half - 1);
+                setCam(Vec3{centre.x + (f - 0.5) * 0.8 * R, centre.y + 24, all.mins.z + 88}, 0, 0);
+            }
+            ctx.cameraMoved();
+            QApplication::processEvents(QEventLoop::AllEvents, 1);
+            frame(nullptr);
+            const double ms = st.nsecsElapsed() / 1e6;
+            s.cpu.push_back(ms), s.total.push_back(ms), s.sync.push_back(0), s.other.push_back(0);
+        }
+        line("moving_window", s);
+    }
     camA();
     run("select", [&](int i, BenchSeries& s) {
         QElapsedTimer op;
@@ -813,7 +868,8 @@ int main(int argc, char** argv) {
     if (guiTest || smoke) iw8r::qt::Settings::instance().setVolatile(true);
     if (bench) {
         // No tool runs and no autosave during the benchmark (settings are in memory only here).
-        iw8r::qt::Settings::instance().setValue("tools/acts", outDir + "/no-acts.exe");
+        // (A stock zone bench, stock:<zone>, needs ACTS to open the zone, as the editor does.)
+        if (!benchMap.startsWith("stock:")) iw8r::qt::Settings::instance().setValue("tools/acts", outDir + "/no-acts.exe");
         iw8r::qt::Settings::instance().setValue("autosave/minutes", 0);
     }
     // Safe mode (9.5): --safe-mode, or Shift held at start: default settings in memory only (no saved layout, window
