@@ -160,6 +160,13 @@ public slots:
     // (core game_look stockMapLook).
     void setGameStockMap(const std::string& zone) {
         if (zone != gameStockMap_) gameBakeRev_ = ~0ull, stockSunKnown_ = false, stockFog_ = GameFog{}, stockSkyIntensity_ = 0;  // the bake follows the sun
+        if (zone != gameStockMap_) {
+            // Layered world materials are numbered per map (tw4/..., twc4/...: MaterialCache::mapLocalName): another
+            // map's textures under the same names are not this map's.
+            const auto local = [](const std::string& m) { return m.rfind("tw4/", 0) == 0 || m.rfind("twc4/", 0) == 0; };
+            for (auto it = texIds_.begin(); it != texIds_.end();) it = local(it->first) ? texIds_.erase(it) : std::next(it);
+            for (auto it = requested_.begin(); it != requested_.end();) it = local(*it) ? requested_.erase(it) : std::next(it);
+        }
         gameStockMap_ = zone;
         update();
     }

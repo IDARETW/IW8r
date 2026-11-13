@@ -465,6 +465,7 @@ void CameraView::render() {
         ++geometryUpdates_;
     }
     maybeBakeGameLook();
+    updateSkyBox();  // follows the camera
     extraBatches_.clear();
     if (ctx_->scene.skyActive)
         for (auto& sb : skyBatches_) extraBatches_.push_back(sb.get());
@@ -1226,9 +1227,10 @@ std::optional<Vec3> CameraView::surfacePoint(const QPointF& p, SelRef* hit) cons
 
 void CameraView::updateSkyBox() {
     if (!ctx_->scene.skyActive || skyTex_.size() != 6) return;
-    // A box centred on the map, far enough that its parallax is small, inside the 131072 far plane.
-    const AABB& world = geo_.sceneBounds();
-    const Vec3 c = world.valid() ? world.center() : Vec3{};
+    // A box centred on the camera, inside the 131072 far plane: the sky is infinitely far, as in game (the stock sky
+    // shader samples by view direction), so moving never slides the image (owner report 2026-11-12: the map's own box
+    // made the image look bound to the cube). Re-centred every frame; only a moved camera uploads its 72 vertices.
+    const Vec3 c = ctx_->cam.pos;
     const double R = 60000;
     while (skyBatches_.size() < 6) skyBatches_.push_back(std::make_unique<app::SceneBatch>());
     for (int f = 0; f < 6; ++f) {

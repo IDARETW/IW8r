@@ -80,6 +80,12 @@ public:
     // techsets zone). The per-map terrain blends (tw4/..., twc4/...) are named per map, and the catalog lists only
     // those of the traced zones. Materials that failed as "not listed" are tried again.
     void addMapZone(const QString& zone);
+    // Layered world materials are numbered per map (tw4/29n_4n_4n, twc4/12n_13n_35n): the same name is a different
+    // material on every map, so they are resolved in the stock map's own zones only and cached per map
+    // ("<map zone>|<name>"). Owner report 2026-11-12: mp_m_speedball's ground took mp_bm_tut's and backlot2's
+    // same-named blends (a metal base showing through, grass missing).
+    static bool mapLocalName(const QString& material);
+    QString indexKey(const QString& material) const;
     bool busy() const;
     QString cacheRoot() const;
     // "<path> (WxH)" for a cached DDS, "none" for an empty path (Material Info).
@@ -97,6 +103,7 @@ private:
     };
     struct Work {  // one requested material in the current batch
         QString material;
+        QString key;  // index key (indexKey: per map for map-local names)
         QStringList bodyZones, imageZones;  // candidate zones, tried in order
         int attempt = 0;                    // next index into bodyZones
         bool found = false;

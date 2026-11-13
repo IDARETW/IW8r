@@ -2,6 +2,7 @@
 
 #include "material_blend.h"
 
+#include <QRegularExpression>
 #include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
@@ -87,9 +88,20 @@ MaterialCache::~MaterialCache() {
     if (QCoreApplication::instance()) ActsRunner::shared()->cancel(this);
 }
 
+bool MaterialCache::mapLocalName(const QString& material) {
+    static const QRegularExpression re(QStringLiteral("^twc?4/\\d+d?n(_\\d+d?n)*$"), QRegularExpression::CaseInsensitiveOption);
+    return re.match(material.trimmed()).hasMatch();
+}
+
+QString MaterialCache::indexKey(const QString& material) const {
+    return mapLocalName(material) && !mapZones_.isEmpty() ? mapZones_.first() + "|" + material.trimmed() : material.trimmed();
+}
+
 std::optional<MaterialCache::Entry> MaterialCache::lookup(const QString& material) const {
-    if (auto it = index_.find(material); it != index_.end()) return it->second;
-    if (auto it = seeds_.find(material); it != seeds_.end()) return it->second;
+    const bool local = mapLocalName(material);
+    if (local && mapZones_.isEmpty()) return std::nullopt;  // which map's blend: unknown without a stock map
+    if (auto it = index_.find(indexKey(material)); it != index_.end()) return it->second;
+    if (auto it = local ? seeds_.end() : seeds_.find(material); it != seeds_.end()) return it->second;
     return std::nullopt;
 }
 
@@ -118,8 +130,9 @@ void MaterialCache::request(const QStringList& materials) {
     bool added = false;
     for (QString m : materials) {
         m = m.trimmed();
-        if (m.isEmpty() || lookup(m) || queued_.count(m)) continue;
-        queued_.insert(m);
+        if (m.isEmpty() || lookup(m) || queued_.count(indexKey(m))) continue;
+        if (mapLocalName(m) && mapZones_.isEmpty()) continue;  // no stock map: nothing to resolve it in
+        queued_.insert(indexKey(m));
         pending_.append(m);
         added = true;
     }
@@ -147,7 +160,7 @@ void MaterialCache::loadIndex() {
     for (auto it = mats.begin(); it != mats.end(); ++it) {
         const QJsonObject o = it.value().toObject();
         Entry e;
-        e.material = it.key();
+        e.material = it.key().section('|', -1);  // "<map zone>|<name>" for map-local names
         e.zone = o.value("zone").toString();
         e.techset = o.value("techset").toString();
         const QString color = o.value("color").toString();
@@ -194,7 +207,9 @@ void MaterialCache::loadIndex() {
         // Images looked up only in the material's zone (streamed images live in global_stream_mp, shared ones in
         // common zones): resolve again, the image catalog now adds the zones that hold the image data.
         if (e.colorDds.isEmpty() && e.error.contains("not exported") && o.value("maskRules").toInt() < 2) continue;
-        index_[e.material] = e;
+        // A map-local name cached before it was keyed per map: whichever map the catalog named first. Dropped.
+        if (mapLocalName(e.material) && !it.key().contains('|')) continue;
+        index_[it.key()] = e;
     }
 }
 
@@ -343,8 +358,8 @@ void MaterialCache::startBatch() {
         if (!QFileInfo::exists(f)) {
             // Environment problem, not a property of the material: nothing is cached.
             emit progress("Missing tool, material cache idle: " + f);
-            for (const QString& m : mats) queued_.erase(m);
-            for (const QString& m : pending_) queued_.erase(m);
+            for (const QString& m : mats) queued_.erase(indexKey(m));
+            for (const QString& m : pending_) queued_.erase(indexKey(m));
             pending_.clear();
             running_ = false;
             return;
@@ -353,8 +368,10 @@ void MaterialCache::startBatch() {
     for (const QString& m : mats) {
         Work w;
         w.material = m;
-        QStringList zones = catalog_.count(m) ? catalog_.at(m) : QStringList();
-        if (zones.isEmpty()) zones = mapZones_;  // a stock map's own materials (addMapZone)
+        w.key = indexKey(m);
+        // A map-local name only in the stock map's own zones; others from the catalog, else the map's zones.
+        QStringList zones = mapLocalName(m) ? QStringList() : catalog_.count(m) ? catalog_.at(m) : QStringList();
+        if (zones.isEmpty()) zones = mapLocalName(m) && !mapZones_.isEmpty() ? QStringList{mapZones_.first()} : mapZones_;
         if (zones.isEmpty()) w.error = "not listed in iw8_materials.tsv";
         w.bodyZones = candidates(zones, true);
         w.imageZones = candidates(zones, false);
@@ -636,8 +653,9 @@ void MaterialCache::finishBatch() {
             e.failed = true;
             e.error = w.error.isEmpty() ? QStringLiteral("material body not found in any candidate zone") : w.error;
         }
-        index_[w.material] = e;
+        index_[w.key.isEmpty() ? w.material : w.key] = e;
         done << w.material;
+        queued_.erase(w.key);
     }
     writeIndex();
     works_.clear();
