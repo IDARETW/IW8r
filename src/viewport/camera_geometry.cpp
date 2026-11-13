@@ -2,6 +2,7 @@
 //
 // The per-item code below makes exactly what buildCameraGeometry (scene.cpp) makes for one item; the GUI test
 // compares the two (CameraGeometry::flatten against buildCameraGeometry) in every camera mode.
+#include "game_mode_view.h"
 #include "game_lightmap.h"
 #include "scene.h"
 
@@ -996,7 +997,9 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
             d.mOverlay.push_back(gv(scene.pointfile[i + 1], 0xff20d0ffu));
         }
         if (showSpawns) {
+            const GameModeView* mode = findGameModeView(scene.gameMode);
             for (const auto& s : scene.spawns) {
+                if (mode && !gameModeKeepsSpawn(*mode, s.name)) continue;
                 const uint32_t c = 0xff40ff40u;
                 const Vec3 o = s.origin;
                 const Vec3 mn = o + Vec3{-16, -16, 0}, mx = o + Vec3{16, 16, 72};

@@ -137,6 +137,7 @@ public:
     // none; applied when no tint mask limits it). nullopt while the material is not resolved.
     struct StockMaterialFacts {
         int decalSortKey = 0;
+        int propDecalSortKey = 0;  // a model material that is a decal (blended `_bad_`, sort key up to 17); 0 = not
         bool ssr = false;  // its techset traces screen-space reflections (research 104)
         int tint = -1;
         bool tintMasked = false;

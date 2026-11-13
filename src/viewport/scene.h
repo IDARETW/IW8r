@@ -174,6 +174,9 @@ public:
     std::set<Id> hidden;
     std::set<Id> hiddenByLayer;  // items of layers switched off in the Layers dock
     std::set<Id> hiddenByRegion; // primitives and point entities outside the active Region (see core/region.h)
+    // View > Game Mode (core game_mode_view): the gametype shown ("" = every mode) and the entities it removes.
+    std::string gameMode;
+    std::set<Id> hiddenByMode;
     std::vector<std::string> hiddenClassPrefixes;
     void invalidate() { docRevision_ = 0; }
     uint64_t generation() const { return generation_; }  // bumps whenever sync() rebuilds the item list

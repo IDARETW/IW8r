@@ -342,6 +342,19 @@ public:
     void setReferenceInstNormal(size_t mesh, int textureId) {
         if (mesh < refTexInst_.size()) refTexInst_[mesh].normal = textureId;
     }
+    // A prop mesh whose material is a decal (paint bands, stencils and grime laid over the model's own surface): drawn
+    // after the other props, pulled toward the camera, without writing depth, casting no shadow. Drawn as an opaque
+    // mesh it fought the surface under it (owner 2026-11-13: a yellow band on mp_rust flickered with every move).
+    void setReferenceInstDecal(size_t mesh, int sortKey) {
+        if (mesh < refTexInst_.size()) refTexInst_[mesh].decal = sortKey;
+    }
+    // A stock material's draw class (materialDrawFor: 0 drawn, 1 shadow only, 2 never) for a reference batch / prop mesh.
+    void setReferenceDrawClass(size_t batch, int cls) {
+        if (batch < refLayers_.size() && refLayers_[batch].drawClass != cls) refLayers_[batch].drawClass = cls, shadowDirty_ = nearDirty_ = true;
+    }
+    void setReferenceInstDrawClass(size_t mesh, int cls) {
+        if (mesh < refTexInst_.size() && refTexInst_[mesh].drawClass != cls) refTexInst_[mesh].drawClass = cls, shadowDirty_ = nearDirty_ = true;
+    }
     void setReferenceInstParams(size_t mesh, const float params[16]) {
         if (mesh >= refTexInst_.size()) return;
         std::memcpy(refTexInst_[mesh].params, params, sizeof(refTexInst_[mesh].params));
@@ -610,6 +623,8 @@ private:
         int lodGroup = -1;          // InstancedTexMesh::lodGroup / lodNear / lodFar
         float lodNear = 0, lodFar = 0;
         int normal = -1;            // setReferenceInstNormal
+        int decal = 0;              // setReferenceInstDecal: the material's decal sort key (0 = not a decal)
+        int drawClass = 0;          // setReferenceInstDrawClass: 1 shadow only, 2 never drawn
         float params[16] = {};      // setReferenceInstParams
         float extra[16] = {};       // setReferenceInstExtra (RefLayer::extra)
         int emissive = -1, transmission = -1;
@@ -677,6 +692,9 @@ private:
         int layer = 0;  // 0 = a base batch
         bool ready = false;
         bool decal = false;  // a decal material's batch (research 98): drawn after every opaque batch and layer
+        // Research 66 (materialDrawFor): 1 = shadow only (tw/shadowcaster: its "Shadow" image showed on mp_rust's
+        // walls and floors), 2 = never drawn.
+        int drawClass = 0;
         int sortKey = 0;
         int reveal = -1;
         float params[16] = {};

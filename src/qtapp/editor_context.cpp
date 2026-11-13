@@ -6,6 +6,7 @@
 #include "brush_ops2.h"
 #include "decal_tools.h"
 #include "editor_log.h"
+#include "game_mode_view.h"
 #include "region.h"
 
 namespace iw8r::qt {
@@ -23,8 +24,20 @@ void EditorContext::refreshRegion() {
     }
 }
 
+void EditorContext::refreshGameMode() {
+    std::set<Id> out;
+    if (const GameModeView* mode = findGameModeView(scene.gameMode))
+        for (const auto& e : doc.map().entities)
+            if (!e.isWorldspawn() && !gameModeKeepsEntity(*mode, e.classname(), e.value("script_gameobjectname"))) out.insert(e.id);
+    if (out != scene.hiddenByMode) {
+        scene.hiddenByMode = std::move(out);
+        scene.invalidate();
+    }
+}
+
 void EditorContext::documentEdited(const QString& status) {
     refreshRegion();
+    refreshGameMode();
     scene.sync(doc);
     if (!status.isEmpty()) setStatus(status);
     emit documentChanged();

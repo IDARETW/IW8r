@@ -2402,6 +2402,35 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         r.check(gm && gm->findChildren<QMenu*>().size() >= 1, "the Game Lighting Options menu has its Debug View submenu");
     }
 
+    r.section("game mode view (View > Game Mode, research 40)");
+    {
+        // A domination flag and a bomb site: each mode shows only its own; All Modes shows both again.
+        const Id flag = ctx.doc.addEntity({{"classname", "trigger_radius"}, {"origin", "0 0 0"}, {"script_gameobjectname", "dom onslaught"},
+                                           {"radius", "120"}, {"height", "128"}}, {}, "t");
+        const Id site = ctx.doc.addEntity({{"classname", "script_model"}, {"origin", "64 0 0"}, {"script_gameobjectname", "bombzone"},
+                                           {"model", "tm/com_pallet_2"}}, {}, "t");
+        ctx.documentEdited();
+        QAction* dom = w.findChild<QAction*>("gameMode_dom");
+        QAction* sd = w.findChild<QAction*>("gameMode_sd");
+        QAction* all = w.findChild<QAction*>("gameMode_all");
+        r.check(dom && sd && all && w.findChild<QAction*>("gameMode_war"), "View > Game Mode lists the modes and All Modes");
+        if (dom && sd && all) {
+            dom->trigger();
+            r.check(!ctx.scene.hiddenByMode.count(flag) && ctx.scene.hiddenByMode.count(site), "Domination: the flag shows, the bomb site is hidden");
+            r.check(Settings::instance().value("view/gameMode").toString() == "dom", "the mode is saved");
+            sd->trigger();
+            r.check(ctx.scene.hiddenByMode.count(flag) && !ctx.scene.hiddenByMode.count(site), "Search and Destroy: the bomb site shows, the flag is hidden");
+            bool drawn = false;
+            for (const auto* g : ctx.scene.items()) drawn |= g->ref.entity == flag;
+            r.check(!drawn, "a hidden mode's entity is not drawn");
+            all->trigger();
+            r.check(ctx.scene.hiddenByMode.empty(), "All Modes shows every mode's objects");
+        }
+        ctx.doc.undo();
+        ctx.doc.undo();
+        ctx.documentEdited();
+    }
+
     r.section("game lighting (View > Game Lighting)");
     if (CameraView* cv = w.cameraView()) {
         // The preview bake runs in the background; the camera shades with the game's world shader and post chain.

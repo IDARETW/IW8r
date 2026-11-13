@@ -106,6 +106,7 @@ public:
     // Radiant Region: the active box (nullopt = off). Primitives and point entities outside it are hidden in all views.
     std::optional<AABB> region;
     void refreshRegion();  // recomputes scene.hiddenByRegion from `region` (called by documentEdited)
+    void refreshGameMode();  // recomputes scene.hiddenByMode from scene.gameMode (called by documentEdited)
     // Call after any document mutation (edits, undo, selection, load).
     void documentEdited(const QString& status = {});
     void cameraMoved();

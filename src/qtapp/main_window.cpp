@@ -1,4 +1,5 @@
 #include "stock_terrain_layers.h"
+#include "game_mode_view.h"
 #include "worker_guard.h"
 #include "stock_clutter.h"
 #include "stock_super_terrain.h"
@@ -351,6 +352,9 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         if ((ts.contains("_bad_") || (e->sortKey >= 10 && e->sortKey <= 17 && (ts.startsWith("lit") || e->techset.startsWith("tw")))) &&
             (e->techset.startsWith("tw/") || e->techset.startsWith("twc/") || e->techset.startsWith("tw4/") || e->techset.startsWith("twc4/")))
             f.decalSortKey = std::max(1, e->sortKey);
+        // Model decals (research 98's blend token on model techsets; sort keys 10-17 seen): grenade box stencils, frame
+        // decals, reveal layers. Glass and other blended surfaces sort later (25, 30) and are not decals.
+        if (ts.contains("_bad_") && e->sortKey > 0 && e->sortKey <= 17 && !e->techset.startsWith("tw")) f.propDecalSortKey = e->sortKey;
         f.ssr = parseStockTechsetName(e->techset.toStdString()).ssr;
         f.tint = e->tint;
         f.tintMasked = e->tintMasked;
@@ -1869,6 +1873,36 @@ void MainWindow::buildMenus() {
             ctx_.scene.invalidate();
             ctx_.documentEdited();
         });
+    }
+    {
+        // View > Game Mode: show what one gametype keeps (its objectives, triggers, script models and brushmodels, and
+        // its spawns); the game deletes every other mode's gameobjects when a match starts (research 40).
+        QMenu* gmMenu = view->addMenu("Game Mode");
+        gmMenu->setObjectName("gameModeMenu");
+        auto* group = new QActionGroup(gmMenu);
+        const QString saved = Settings::instance().value("view/gameMode", QString()).toString();
+        const auto choose = [this](const QString& id, const QString& label) {
+            Settings::instance().setValue("view/gameMode", id);
+            ctx_.scene.gameMode = id.toStdString();
+            ctx_.refreshGameMode();
+            ctx_.documentEdited(id.isEmpty() ? QString("Game Mode: every mode's objects shown")
+                                             : QString("Game Mode: %1 (%2 entities of other modes hidden)").arg(label).arg(ctx_.scene.hiddenByMode.size()));
+        };
+        QAction* all = gmMenu->addAction("All Modes", this, [choose] { choose(QString(), "All Modes"); });
+        all->setObjectName("gameMode_all");
+        all->setCheckable(true);
+        all->setChecked(saved.isEmpty() || !findGameModeView(saved.toStdString()));
+        group->addAction(all);
+        gmMenu->addSeparator();
+        for (const GameModeView& m : gameModeViews()) {
+            const QString id = QString::fromStdString(m.id), label = QString::fromStdString(m.label);
+            QAction* a = gmMenu->addAction(label, this, [choose, id, label] { choose(id, label); });
+            a->setObjectName("gameMode_" + id);
+            a->setCheckable(true);
+            a->setChecked(saved == id);
+            group->addAction(a);
+        }
+        if (findGameModeView(saved.toStdString())) ctx_.scene.gameMode = saved.toStdString();
     }
     QAction* spawnsToggle = addCommand(view, "ToggleCompiledSpawns", "Show IW8 Compiled Spawns", QKeySequence(), [this] {
         ctx_.showSpawns = !ctx_.showSpawns;

@@ -1,3 +1,4 @@
+#include "game_mode_view.h"
 #include "grid_view.h"
 #include "spawn_analysis.h"
 #include "light_budget.h"
@@ -278,8 +279,9 @@ void GridView::paintEvent(QPaintEvent*) {
     }
     if (ctx_->showSpawns) {
         p.setPen(QPen(QColor(64, 255, 64, 200), 1.0));
+        const GameModeView* mode = findGameModeView(ctx_->scene.gameMode);
         for (const auto& s : ctx_->scene.spawns)
-            p.drawRect(QRectF(worldToWidget(s.origin[H] - 16, s.origin[V] + (V == 2 ? 72 : 16)), worldToWidget(s.origin[H] + 16, s.origin[V] - (V == 2 ? 0 : 16))));
+            if (!mode || gameModeKeepsSpawn(*mode, s.name)) p.drawRect(QRectF(worldToWidget(s.origin[H] - 16, s.origin[V] + (V == 2 ? 72 : 16)), worldToWidget(s.origin[H] + 16, s.origin[V] - (V == 2 ? 0 : 16))));
     }
     // Vertex mode handles: brush corners and patch control points of the selection (dragged ones follow the mouse).
     if (ctx_->vertexMode) {

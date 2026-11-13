@@ -450,6 +450,8 @@ public:
     bool stockCacheIdle() const;
     // Textured stock prop placements lit from their light grid box, and all textured placements, in the last rebuild.
     std::array<size_t, 2> propLightStats() const { return {refPropLit_, refPropLitOf_}; }
+    // The stock reference's prop placements (null before a stock map is shown): the bench's "prop" camera.
+    std::shared_ptr<const std::vector<StockModelInstance>> referencePropPlacements() const { return refProps_; }
 private:
     std::shared_ptr<std::vector<app::GpuVertex>> refBaseTris_;
     size_t refWorldTris_ = 0;

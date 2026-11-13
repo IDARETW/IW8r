@@ -748,7 +748,9 @@ void SceneCache::sync(const Document& doc) {
             const Primitive* p = it.prim();
             if (!p || p->kind == PrimKind::Unknown) continue;
             hasPrim = true;
-            if (filtered || hidden.count(it.id) || hidden.count(e.id) || hiddenByLayer.count(it.id) || hiddenByRegion.count(it.id)) continue;
+            if (filtered || hidden.count(it.id) || hidden.count(e.id) || hiddenByLayer.count(it.id) || hiddenByRegion.count(it.id) ||
+                hiddenByMode.count(e.id))
+                continue;
             PrimGeom* pg = hinted(e.id, it.id);
             if (!pg)
                 if (auto found = cache_.find(it.id); found != cache_.end()) pg = &found->second;
@@ -767,7 +769,7 @@ void SceneCache::sync(const Document& doc) {
             list_.push_back(pg);
         }
         if (!hasPrim && !e.isWorldspawn() && e.origin()) {
-            if (filtered || hidden.count(e.id) || hiddenByRegion.count(e.id)) continue;
+            if (filtered || hidden.count(e.id) || hiddenByRegion.count(e.id) || hiddenByMode.count(e.id)) continue;
             uint64_t rev = 0;
             for (const auto& it : e.items) rev = std::max(rev, it.rev + 1);
             PrimGeom* pg = hinted(e.id, kNoId);

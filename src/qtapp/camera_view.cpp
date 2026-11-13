@@ -361,6 +361,7 @@ void CameraView::render() {
                         continue;
                     }
                     if (nid >= 0) renderer_.setReferenceNormal(k, nid);
+                    if (ctx_ && ctx_->scene.drawClassFor) renderer_.setReferenceDrawClass(k, ctx_->scene.drawClassFor(refTexMaterials_[k]));
                     setBaseMaterialConstants(k);
                     if (!applyMaterialExtras(refTexMaterials_[k], k, false)) {
                         pending = true;
@@ -394,6 +395,9 @@ void CameraView::render() {
                     }
                     if (nid >= 0) renderer_.setReferenceInstNormal(k, nid);
                     if (const auto p = materialConstantsFor(texInstMaterials_[k])) renderer_.setReferenceInstParams(k, p->data());
+                    if (factsLookup_)
+                        if (const auto f = factsLookup_(texInstMaterials_[k])) renderer_.setReferenceInstDecal(k, f->propDecalSortKey);
+                    if (ctx_ && ctx_->scene.drawClassFor) renderer_.setReferenceInstDrawClass(k, ctx_->scene.drawClassFor(texInstMaterials_[k]));
                     if (!applyMaterialExtras(texInstMaterials_[k], k, true)) {
                         pending = true;
                         continue;

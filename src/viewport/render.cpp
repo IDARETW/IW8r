@@ -3384,8 +3384,23 @@ void SceneRenderer::drawReferenceTexInstances() {
     ID3D11ShaderResourceView* noNrm = nullptr;
     ctx_->PSSetShaderResources(1, 1, &noNrm);
     const UINT strides[2] = {UINT(sizeof(PropVertex)), UINT(24 * sizeof(float))}, offsets[2] = {0, 0};
+    // The props' decal meshes after the others (setReferenceInstDecal); none in the depth pre-pass.
+    ID3D11RasterizerState* savedRs = nullptr;
+    ID3D11DepthStencilState* savedDs = nullptr;
+    UINT savedRef = 0;
+    bool decalStateSet = false;
+    for (int decalPass = 0; decalPass < 2; ++decalPass)
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
+        if ((g.decal > 0) != (decalPass == 1) || g.drawClass != 0) continue;
+        if (decalPass == 1 && texPsOverride_) continue;
+        if (decalPass == 1 && !decalStateSet && rsDecal_) {
+            decalStateSet = true;
+            ctx_->RSGetState(&savedRs);
+            ctx_->OMGetDepthStencilState(&savedDs, &savedRef);
+            ctx_->RSSetState(rsDecal_);
+            ctx_->OMSetDepthStencilState(dsTest_, 0);
+        }
         const int id = g.texture >= 0 ? g.texture : whiteTex_;
         if (id < 0 || size_t(id) >= textures_.size()) continue;
         const bool culled = instCull_ && g.visInst && g.visible <= g.instances;
@@ -3415,6 +3430,12 @@ void SceneRenderer::drawReferenceTexInstances() {
         ctx_->IASetVertexBuffers(0, 2, bufs, strides, offsets);
         ctx_->IASetIndexBuffer(g.ib, DXGI_FORMAT(g.ibFormat), 0);
         drawInstIdx(g.vertices, prepassBig ? g.big : culled ? g.visible : g.instances);
+    }
+    if (decalStateSet) {
+        ctx_->RSSetState(savedRs);
+        ctx_->OMSetDepthStencilState(savedDs, savedRef);
+        if (savedRs) savedRs->Release();
+        if (savedDs) savedDs->Release();
     }
     if (instCb && cbLayer_) ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);  // the plain (zero) layer buffer
     if (propNormals) {
@@ -3479,6 +3500,7 @@ void SceneRenderer::drawReferenceTexInstancesShadow(const iw8r::Frustum* view) {
     const UINT strides[2] = {UINT(sizeof(PropVertex)), UINT(24 * sizeof(float))}, offsets[2] = {0, 0};
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
+        if (g.decal > 0 || g.drawClass == 2) continue;  // decals cast no shadow
         if (g.lodGroup >= 0 && g.lodNear > 0) continue;  // the sun shadow of a LOD group: its LOD0
         if (psShadowClip_) {
             const int id = g.texture >= 0 ? g.texture : whiteTex_;
@@ -4001,7 +4023,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ctx_->IASetVertexBuffers(0, 1, &vbRefTex_, &tstride, &offset);
             ID3D11Buffer* shVb = vbRefTex_;
             for (size_t k = 0; k < refTexIds_.size(); ++k) {
-                if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal)) continue;
+                if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].drawClass == 2)) continue;
                 const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
                 if (id < 0 || size_t(id) >= textures_.size()) continue;
                 if (cull && refExtraOutside(k, sf)) continue;
@@ -4143,7 +4165,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             const bool preCb = uploadLayerParams();
             ID3D11Buffer* preVb = vbRefTex_;
             for (size_t k = 0; k < refTexIds_.size(); ++k) {
-                if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal)) continue;  // layers, decals: later
+                if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].drawClass != 0)) continue;  // layers, decals: later
                 const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
                 if (id < 0 || size_t(id) >= textures_.size()) continue;
                 if (refExtraOutside(k, frustum)) continue;
@@ -4307,7 +4329,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         constexpr size_t kBasePerCb = 256;
         ID3D11Buffer* baseVb = vbRefTex_;
         for (size_t k = 0; k < refTexIds_.size(); ++k) {
-            if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal)) continue;  // layers, decals: below
+            if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].drawClass != 0)) continue;  // layers, decals: below
             const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
             if (id < 0 || size_t(id) >= textures_.size()) continue;
             if (refExtraOutside(k, frustum)) continue;  // a streamed world tile's batch out of view
@@ -4387,7 +4409,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                     if (want != boundRefVb) ctx_->IASetVertexBuffers(0, 1, &want, &tstride, &offset), boundRefVb = want;
                 }
                 const RefLayer& L = refLayers_[k];
-                if (!L.ready || refTexIds_[k] < 0 || size_t(refTexIds_[k]) >= textures_.size()) continue;
+                if (!L.ready || L.drawClass != 0 || refTexIds_[k] < 0 || size_t(refTexIds_[k]) >= textures_.size()) continue;
                 if (k >= refTexExtraFrom_) {
                     // Prop decals: small detail; drawn in view and within 4,000 units (Hideout: 790k triangles, 38 ms).
                     if (noPropDecals && !(L.params[0] > 0.5f && L.params[0] < 1.5f)) continue;
