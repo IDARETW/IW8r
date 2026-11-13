@@ -254,6 +254,8 @@ Texture2D gameLmD : register(t8);
 Texture3D gameLut : register(t9);
 // The stock world shader's ggx_env_brdf_lut (A, B by N.V across and gloss down; research 95), when the editor has it.
 Texture2D envBrdf : register(t10);
+// Its specular occlusion table gtso_lut (research 95, W:796), when the editor has it (gameSun.w = 1).
+Texture3D gtsoLut : register(t18);
 // The stock reference's reflection probes (setStockProbes): octahedral, world space, 4-texel gutter at every level.
 Texture2DArray stockProbes : register(t11);
 struct ProbeBox { float4 centerSlice; float4 axisX; float4 axisY; float4 axisZ; float4 originFeather; };
@@ -621,16 +623,19 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             float fq = 1.05 * (1.0 - pow(1.0 - nv, 5.0));
             float kd = lerp(fq, cq * (cq + min(4.0 * tq * tq, 1.0)) * max(1.25 - 1.6 * tq, 0.55 - 0.2 * tq), tq) + 0.38 * tq * tq;
             float fmax = max(Fenv.r, max(Fenv.g, Fenv.b));
-            const float so = min(aoV, baseMat ? nmCavity : 1.0);
+            // Specular occlusion: the game's gtso_lut(max(sqrt(1 - ao), sqrt(1 - cavity)), a2, saturate(Ngeom . R))
+            // (research 95 W:796, raw coordinates, linear clamp); without the table, the smaller of the two.
+            const float cavS = baseMat ? nmCavity : 1.0;
+            const float so = gameSun.w > 0.5
+                ? gtsoLut.SampleLevel(lutSamp, float3(max(sqrt(saturate(1.0 - aoV)), sqrt(saturate(1.0 - cavS))), a2, saturate(dot(Nf, R))), 0).r
+                : min(aoV, cavS);
             float3 S = lerp(0.18 * Lr, Lr, so);
             const bool probesOnLayers = gameSkyScale.w > 0.5;  // IW8R_PERF_OFF=layerprobes turns it off
             if (probeCount.x > 0.5 && (layerP.x < 0.5 || (probesOnLayers && layerUvO.w < 0.5))) {  // every pass but the terrain patch (research 95)
                 // Probes are luminance-normalised: relit by the lightmap along the reflection (research 95).
                 float3 P = stockProbeLight(i.w, R, gp) * dot(Lr, float3(0.2126, 0.7152, 0.0722));
                 float3 mixed = lerp(P, Lr, 0.85);
-                // Specular occlusion: the game's gtso_lut(max(sqrt(1 - ao), sqrt(1 - cavity)), ...) without GTAO;
-                // the cavity stands in for it (INFERRED shape).
-                S = lerp(0.18 * mixed, P, so);
+                S = lerp(0.18 * mixed, P, so);  // so: the specular occlusion above
             }
             const float3 aoMB = aoV / (1.0 - min(diffAlbedo, 0.85) * (1.0 - aoV));  // research 95: multi-bounce AO
             // Screen-space reflections (research 104): materials that trace them (base: layerP.z, layers: layerTint.w),
@@ -995,6 +1000,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(gameLutTex_);
     for (int k = 0; k < 3; ++k) safeRelease(stockLmSrv_[k]), safeRelease(stockLmTex_[k]);
     safeRelease(envBrdfSrv_), safeRelease(envBrdfTex_);
+    safeRelease(gtsoSrv_), safeRelease(gtsoTex_);
     safeRelease(probeArrSrv_), safeRelease(probeArrTex_), safeRelease(cbProbes_), safeRelease(cbLmRects_);
     safeRelease(probeGridSrv_), safeRelease(probeGridTex_);
     safeRelease(meterSrv_), safeRelease(meterRtv_), safeRelease(meterTex_);
@@ -1593,6 +1599,20 @@ void SceneRenderer::setStockLightmap(int width, int height, const float* a, cons
     }
 }
 
+void SceneRenderer::setGtsoLut(int width, int height, int depth, const uint8_t* r) {
+    safeRelease(gtsoSrv_), safeRelease(gtsoTex_);
+    if (!dev_ || width < 2 || height < 2 || depth < 2 || !r) return;
+    D3D11_TEXTURE3D_DESC td{};
+    td.Width = UINT(width), td.Height = UINT(height), td.Depth = UINT(depth);
+    td.MipLevels = 1;
+    td.Format = DXGI_FORMAT_R8_UNORM;
+    td.Usage = D3D11_USAGE_IMMUTABLE;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA init{r, UINT(width), UINT(width) * UINT(height)};
+    if (FAILED(dev_->CreateTexture3D(&td, &init, &gtsoTex_)) || FAILED(dev_->CreateShaderResourceView(gtsoTex_, nullptr, &gtsoSrv_)))
+        safeRelease(gtsoTex_);
+}
+
 void SceneRenderer::setEnvBrdfLut(int width, int height, const uint8_t* rg) {
     safeRelease(envBrdfSrv_), safeRelease(envBrdfTex_);
     if (!dev_ || width < 2 || height < 2 || !rg) return;
@@ -1754,7 +1774,7 @@ void SceneRenderer::writeGameCb() {
     if (!cbGame_) return;
     const bool on = game_.on && gameLutSrv_ != nullptr;
     float g[52] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
-                   game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], 0,
+                   game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], on && gtsoSrv_ ? 1.0f : 0.0f,
                    game_.sunColor[0], game_.sunColor[1], game_.sunColor[2], 0,
                    game_.sky[0], game_.sky[1], game_.sky[2], game_.skyIsStock ? 1.0f : 0.0f};
     for (int r = 0; r < 6; ++r)
@@ -1781,6 +1801,7 @@ void SceneRenderer::writeGameCb() {
     ctx_->PSSetShaderResources(13, 1, &probeGridSrv_);
     ID3D11ShaderResourceView* ao = on && aoValid_ ? aoSrv_[1] : nullptr;
     ctx_->PSSetShaderResources(14, 1, &ao);
+    ctx_->PSSetShaderResources(18, 1, &gtsoSrv_);
     if (cbProbes_) ctx_->PSSetConstantBuffers(5, 1, &cbProbes_);
     if (cbLmRects_) ctx_->PSSetConstantBuffers(6, 1, &cbLmRects_);
     if (lutSampler_) ctx_->PSSetSamplers(2, 1, &lutSampler_);

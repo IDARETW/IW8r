@@ -2,6 +2,11 @@
 
 ## Latest (2026-11-13)
 
+- M1.4 gtso_lut (2026-11-13): game_look_assets cachedCodePostImage (shared ACTS export of a code_post_gfx image into
+  AppLocalData/game_look), loadGtsoLut + decodeBc4VolumeDds (16x16x16 BC4 -> R8), SceneRenderer::setGtsoLut (Texture3D
+  R8 at t18, gameSun.w = 1 when bound). ps_tex: so = gtsoLut(max(sqrt(1-ao), sqrt(1-cavity)), a2, sat(Nf . R)) with the
+  lut sampler (raw coordinates, as W:796), else min(ao, cavity). GUI test: table read + a one-block decode. Speedball
+  8.1 ms, 4 % of pixels change slightly (snowy tree tops, roofs).
 - M1.5 core DONE (2026-11-13): core stock_lightgrid (parseStockLgvBoxes from the trzone export, the atlas block cut
   from the .ff.dec right after the box table or by the root's signature, parse / sample / eval; tests with a 544-byte
   speedball fixture). StockModelInstance gets lightingIndex / worldTransient / modelFlags (modelStaticIndirection).

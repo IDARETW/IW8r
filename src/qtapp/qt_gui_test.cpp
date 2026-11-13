@@ -64,6 +64,7 @@
 #include "iw8_contents.h"
 #include "tex_projection.h"
 #include "camera_view.h"
+#include "game_look_assets.h"
 #include "compile_panel.h"
 #include "find_dialog.h"
 #include "live_link_panel.h"
@@ -2437,6 +2438,32 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 QThread::msleep(20);
             }
             r.check(cv->hasEnvBrdfLut(), QString("the game's environment BRDF table is read from the install (%1 ms)").arg(bt.elapsed()));
+        }
+        // Its specular occlusion table (gtso_lut, a BC4 volume), the same way; and the decoder on one known block.
+        {
+            QElapsedTimer bt;
+            bt.start();
+            while (!cv->hasGtsoLut() && bt.elapsed() < 20000) {
+                cv->renderImage(160, 90, true, 0, 0);
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+                QThread::msleep(20);
+            }
+            r.check(cv->hasGtsoLut(), QString("the game's specular occlusion table is read from the install (%1 ms)").arg(bt.elapsed()));
+            QByteArray dds(128 + 8, '\0');
+            std::memcpy(dds.data(), "DDS ", 4);
+            const auto put = [&](int o, uint32_t v) { for (int k = 0; k < 4; ++k) dds[o + k] = char((v >> (8 * k)) & 0xff); };
+            put(4, 124), put(12, 4), put(16, 4), put(24, 1);
+            std::memcpy(dds.data() + 84, "ATI1", 4);
+            // r0 = 200 > r1 = 60: index 0 -> 200, 1 -> 60, 2 -> (6*200 + 60) / 7 = 180; texel 0 index 0, texel 1 index 1,
+            // texel 2 index 2, the rest 0.
+            dds[128] = char(200), dds[129] = char(60);
+            const uint64_t bits = (0ull << 0) | (1ull << 3) | (2ull << 6);
+            for (int k = 0; k < 6; ++k) dds[130 + k] = char((bits >> (8 * k)) & 0xff);
+            GtsoLut lut;
+            const bool ok = decodeBc4VolumeDds(dds, lut);
+            r.check(ok && lut.width == 4 && lut.depth == 1 && lut.r.size() == 16 && lut.r[0] == 200 && lut.r[1] == 60 && lut.r[2] == 180 &&
+                        lut.r[15] == 200,
+                    "a BC4 volume decodes to one byte per texel (the specular occlusion table's format)");
         }
         // A stock map's look: its sun and its vision's auto exposure, metered from the frames (core game_look).
         {

@@ -112,10 +112,12 @@ side.
 **1.4 Stock shading parity: the small items.**
 - **Material and occlusion:**
   - normal decode `z = 1 - 0.6|xy|²`;
-  - read `gtso_lut` from the install (cached, like the env BRDF) and use the game's specular occlusion;
+  - read `gtso_lut` from the install (cached, like the env BRDF) and use the game's specular occlusion (DONE);
   - sun specular × cavity;
   - wrap diffuse for the `100a` techsets (`src/core/stock_decal.h` helper).
-- **Probes:** on layer and decal passes too, with the cb7[186] rough-surface fallback, and more than 128 boxes.
+- **Probes:** on layer and decal passes too (DONE), with the cb7[186] rough-surface fallback (research 107). More
+  than 128 boxes: no MP map has more than about 70 (the cached probe files); only Warzone would, and its probes are in
+  the streamed tiles (index.json: "reflectionProbeCount 5620 does not match its records"), so it moves to 1.5b.
 - **Foliage:** transmission (slot 68 × constant 18, research 100 section 3.3).
 - **Layers:** colour modes 2/3, and layer gloss / normal.
 - **Glass:** f0 .04 with gloss ≥ .9 plus probe reflection.
@@ -134,6 +136,12 @@ props (still the probes), Warzone tile grids (tile props fall back to the probes
   - SELFVIS AO on models and foliage.
   - Lightmapped props draw with their lightmap.
 - **Done when:** a prop indoors is as dark as the world around it.
+
+**1.5b Warzone baked light per tile.** The main gfx_map lists every prop, but a prop's light grid box is in the
+transient zone `worldTransient` (research 105 section 5.1), and the reflection probes are in the tiles too. The tile
+lightmap job already decompresses each tile: cut its light grid block there as well (keyed by the transient index),
+decode the tile probes, and draw tile props and tile ground with them. Done when Verdansk props and wet roads near the
+raised camera use their own tile's light and probes.
 
 **1.6 Local lights.**
 - **Stock maps.** Load their own primary lights (ComWorld light types other than the sun), which today are skipped at

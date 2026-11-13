@@ -393,6 +393,9 @@ public:
     // The stock world shader's environment BRDF table (64 x 64, A and B as R8G8; game_look_assets.h fetches it from the
     // owner's install). null = the analytic fit.
     void setEnvBrdfLut(int width, int height, const uint8_t* rg);
+    // The stock specular occlusion table (gtso_lut, one byte per texel, x fastest; research 95), t18.
+    void setGtsoLut(int width, int height, int depth, const uint8_t* r);
+    bool hasGtsoLut() const { return gtsoSrv_ != nullptr; }
     // The stock reference's reflection probes (core stock_probes, research 95 "Indirect specular"): every probe's
     // octahedral BC6H image as one array slice (all levels) and the influence boxes, drawn highest priority first.
     // null clears them.
@@ -668,6 +671,8 @@ private:
     ID3D11Buffer* cbLmRects_ = nullptr;
     static constexpr int kMaxLightmapRects = 1024;
     ID3D11Texture2D* envBrdfTex_ = nullptr;
+    ID3D11Texture3D* gtsoTex_ = nullptr;
+    ID3D11ShaderResourceView* gtsoSrv_ = nullptr;
     // Game Lighting's depth pre-pass (the game shader is costly and its alpha clip stops early depth rejection): depth
     // first through the clip shader with colour writes off, then the shading pass tests depth without writing it.
     struct ID3D11BlendState* blendNoColor_ = nullptr;

@@ -5,6 +5,7 @@
 // in AppLocalData/game_look/. Blocking: call it off the UI thread.
 #pragma once
 
+#include <QByteArray>
 #include <QString>
 
 #include <functional>
@@ -21,5 +22,18 @@ struct EnvBrdfLut {
 // toolPath: the editor's tool paths ("acts", "replay", "oodle"; MainWindow::toolPath). Reads the cached copy, or runs
 // ACTS once (a few seconds) and caches it.
 EnvBrdfLut loadEnvBrdfLut(const std::function<QString(const QString&)>& toolPath);
+
+// The stock world shader's specular occlusion table (`gtso_lut`, 16 x 16 x 16 BC4 3D in code_post_gfx; research 95).
+// The shader samples it (linear, clamped) at (max(sqrt(1 - ao), sqrt(1 - cavity)), a2, saturate(N_geom . R)).
+struct GtsoLut {
+    int width = 0, height = 0, depth = 0;
+    std::vector<uint8_t> r;  // width * height * depth, x fastest (occlusion), then y (a2), then z (N.R)
+    QString error;
+};
+GtsoLut loadGtsoLut(const std::function<QString(const QString&)>& toolPath);
+
+// A BC4 DDS volume (DX10 header BC4_UNORM, or FourCC ATI1 / BC4U), mip 0 decoded to one byte per texel. Fails on
+// anything else. Exposed for the tests.
+bool decodeBc4VolumeDds(const QByteArray& dds, GtsoLut& out);
 
 }  // namespace iw8r::qt

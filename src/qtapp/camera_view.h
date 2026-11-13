@@ -34,6 +34,8 @@ struct IDXGISwapChain;
 
 namespace iw8r::qt {
 
+struct GtsoLut;  // game_look_assets.h
+
 class CameraView : public QWidget {
     Q_OBJECT
 public:
@@ -273,6 +275,7 @@ public slots:
     }
     bool hasStockLightmap() const { return renderer_.hasStockLightmap(); }
     bool hasEnvBrdfLut() const { return renderer_.hasEnvBrdfLut(); }
+    bool hasGtsoLut() const { return renderer_.hasGtsoLut(); }
     // The stock reference's reflection probes (null clears), sent to the renderer on the next frame.
     void setStockProbes(std::shared_ptr<const StockProbeSet> set) {
         pendingProbes_ = std::move(set);
@@ -516,6 +519,8 @@ private:
     Vec3 gameSunToward() const;
     std::function<QString(const QString&)> toolPathFn_;
     bool envBrdfAsked_ = false;
+    bool gtsoAsked_ = false;
+    std::shared_ptr<GtsoLut> pendingGtso_;
     std::shared_ptr<std::vector<uint8_t>> pendingEnvBrdf_;
     int pendingEnvBrdfW_ = 0, pendingEnvBrdfH_ = 0;
     std::shared_ptr<const app::StockLightmapLayers> pendingStockLm_;

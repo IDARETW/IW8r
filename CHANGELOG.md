@@ -5,6 +5,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **The game's specular occlusion table.** Reflections in corners, creases and under props now fade exactly as the
+  game's own table (gtso_lut, read once from your install like the BRDF table) says, from the ambient occlusion, the
+  material's cavity, its gloss and the reflection angle. The change is small and mostly on glossy surfaces.
 - **Placed props lit like the world around them.** In Game Lighting each stock prop now takes the light the game
   baked for it (its own light grid box, research 105) instead of one map-wide value, so props indoors and in shade are
   as dark as the walls next to them, and props in the open keep the sky's colour. The world cache reads the light

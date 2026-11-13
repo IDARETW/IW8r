@@ -1988,6 +1988,28 @@ void CameraView::prepareGameLook() {
             renderer_.setEnvBrdfLut(pendingEnvBrdfW_, pendingEnvBrdfH_, pendingEnvBrdf_->data());
             pendingEnvBrdf_.reset();
         }
+        // Its specular occlusion table (gtso_lut), the same way.
+        if (!gtsoAsked_ && toolPathFn_) {
+            gtsoAsked_ = true;
+            QPointer<CameraView> self(this);
+            auto tools = toolPathFn_;
+            std::thread([self, tools] {
+                auto lut = std::make_shared<GtsoLut>(loadGtsoLut(tools));
+                QMetaObject::invokeMethod(qApp, [self, lut] {
+                    if (!self) return;
+                    if (lut->width > 0) {
+                        self->pendingGtso_ = lut;
+                        self->update();
+                    } else {
+                        emit self->ctx_->statusMessage("Game Lighting: specular occlusion table: " + lut->error + " (an approximation is used)");
+                    }
+                }, Qt::QueuedConnection);
+            }).detach();
+        }
+        if (pendingGtso_) {
+            renderer_.setGtsoLut(pendingGtso_->width, pendingGtso_->height, pendingGtso_->depth, pendingGtso_->r.data());
+            pendingGtso_.reset();
+        }
         const Vec3 t = gameSunToward();
         // A stock map: its own sun (read from its ComWorld, else the shipped table) and the exposure of its vision (or
         // of the shipped map with the nearest sun); an own map: suncolor and the converter's fixed exposure (EV 10).
