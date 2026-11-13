@@ -631,7 +631,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             if (stockWorld_)
                 for (const auto& m : stockWorld_->meshes) {
                     const QString mat = qs(m.material);
-                    if (!mat.contains("sky", Qt::CaseInsensitive)) continue;
+                    if (!mat.section(QChar('/'), -1).startsWith("sky_", Qt::CaseInsensitive)) continue;  // tw/sky_<map>, not skyline / skyscraper
                     const QString f = skyCache->cachedDds(mat);
                     if (f.isEmpty()) skyCache->request(mat);
                     return f;

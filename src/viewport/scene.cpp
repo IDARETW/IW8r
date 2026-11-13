@@ -1428,7 +1428,10 @@ size_t buildReferenceTris(const StockWorld& world, std::vector<GpuVertex>& out, 
     for (const auto& m : world.meshes) {
         std::string lm = m.material;
         for (char& c : lm) c = char(std::tolower(static_cast<unsigned char>(c)));
-        if (skipSky && lm.find("sky") != std::string::npos) continue;
+        if (skipSky) {  // the sky box (tw/sky_<map>), not skyline / skyscraper surfaces (mp_shipment's city)
+            const std::string leaf = lm.substr(lm.rfind('/') == std::string::npos ? 0 : lm.rfind('/') + 1);
+            if (leaf == "sky" || leaf.rfind("sky_", 0) == 0) continue;
+        }
         for (size_t i = 0; i + 2 < m.idx.size(); i += 3) {
             const uint32_t a = m.idx[i], b = m.idx[i + 1], c = m.idx[i + 2];
             if (a >= m.pos.size() || b >= m.pos.size() || c >= m.pos.size()) continue;
@@ -1467,7 +1470,10 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
             mi < world.lightmapIndex.size() && world.lightmapIndex[mi].size() == m.pos.size() ? &world.lightmapIndex[mi] : nullptr;
         std::string lm = m.material;
         for (char& c : lm) c = char(std::tolower(static_cast<unsigned char>(c)));
-        if (skipSky && lm.find("sky") != std::string::npos) continue;
+        if (skipSky) {  // the sky box (tw/sky_<map>), not skyline / skyscraper surfaces (mp_shipment's city)
+            const std::string leaf = lm.substr(lm.rfind('/') == std::string::npos ? 0 : lm.rfind('/') + 1);
+            if (leaf == "sky" || leaf.rfind("sky_", 0) == 0) continue;
+        }
         if (m.uv.size() != m.pos.size()) continue;
         auto [it, fresh] = byMaterial.emplace(m.material, out.size());
         if (fresh) out.push_back({m.material, {}});
