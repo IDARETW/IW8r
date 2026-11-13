@@ -1472,6 +1472,22 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
         auto [it, fresh] = byMaterial.emplace(m.material, out.size());
         if (fresh) out.push_back({m.material, {}});
         auto& dst = out[it->second].tris;
+        // Layers above 0 of a layered stock material: one batch per material and layer (research 97).
+        const int layers = mi < world.layerCount.size() ? world.layerCount[mi] : 1;
+        const bool layered = layers > 1 && mi < world.layerUv.size() && world.layerUv[mi].size() == m.pos.size() * size_t(layers);
+        std::vector<std::vector<GpuTexVertex>*> layerDst;
+        if (layered)
+            for (int L = 1; L < layers; ++L) {
+                auto [lit, lfresh] = byMaterial.emplace(m.material + '\x01' + std::to_string(L), out.size());
+                if (lfresh) {
+                    out.push_back({m.material, {}});
+                    out.back().layer = L;
+                }
+                layerDst.push_back(&out[lit->second].tris);
+            }
+        const std::vector<uint32_t>* vcol = layered && mi < world.vertexColor.size() && world.vertexColor[mi].size() == m.pos.size() ? &world.vertexColor[mi] : nullptr;
+        const std::vector<uint32_t>* vcolHi =
+            layered && mi < world.vertexColorHigh.size() && world.vertexColorHigh[mi].size() == m.pos.size() ? &world.vertexColorHigh[mi] : nullptr;
         for (size_t i = 0; i + 2 < m.idx.size(); i += 3) {
             const uint32_t a = m.idx[i], b = m.idx[i + 1], c = m.idx[i + 2];
             if (a >= m.pos.size() || b >= m.pos.size() || c >= m.pos.size()) continue;
@@ -1488,6 +1504,14 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
                     if (li >= 0) v.lu = float(li) + std::min((*lmuv)[k][0], 0.99994f), v.lv = (*lmuv)[k][1];
                 }
                 dst.push_back(v);
+                for (int L = 1; L <= int(layerDst.size()); ++L) {
+                    GpuTexVertex lv = v;
+                    const auto& luv = world.layerUv[mi][size_t(k) * size_t(layers) + size_t(L)];
+                    lv.u = luv[0], lv.v = 1.0f - luv[1];
+                    lv.tx = stockLayerWeight(vcol ? (*vcol)[k] : 0xFFFFFFFFu, vcolHi ? (*vcolHi)[k] : 0xFFFFFFFFu, L);
+                    lv.ty = lv.tz = 0;
+                    layerDst[size_t(L - 1)]->push_back(lv);
+                }
             }
             ++tris;
         }

@@ -198,11 +198,13 @@ void CameraView::render() {
             for (const auto& [d, k] : dist) sorted.push_back(std::move(pendingRefTex_[k]));
             pendingRefTex_ = std::move(sorted);
         }
+        refTexLayer_.clear();
         for (auto& b : pendingRefTex_) {
             refTexMaterials_.push_back(b.material);
+            refTexLayer_.push_back(b.layer);
             batches.push_back(std::move(b.tris));
         }
-        renderer_.setReferenceTextured(batches);
+        renderer_.setReferenceTextured(batches, &refTexLayer_);
         refTexResolved_.assign(refTexMaterials_.size(), false);
         refTexPending_ = refPollDue_ = true;
         pendingRefTex_.clear();
@@ -224,6 +226,11 @@ void CameraView::render() {
             bool pending = false;
             for (size_t k = 0; k < refTexMaterials_.size(); ++k) {
                 if (refTexResolved_[k]) continue;
+                if (k < refTexLayer_.size() && refTexLayer_[k] > 0) {
+                    if (resolveReferenceLayer(k)) refTexResolved_[k] = true;
+                    else pending = true;
+                    continue;
+                }
                 const int id = textureFor(refTexMaterials_[k]);
                 if (texIds_.count(refTexMaterials_[k])) {
                     refTexResolved_[k] = true;
@@ -408,7 +415,10 @@ void CameraView::render() {
             std::string bytes, cube, err;
             SkyConvertOptions so;
             so.faceSize = 256;
-            if (!sky.isEmpty() && readFile(sky.toStdString(), bytes) && skyCubemapFromDds(bytes, cube, so, nullptr, &err)) {
+            SkyConvertInfo skyInfo;
+            if (!sky.isEmpty() && readFile(sky.toStdString(), bytes) && skyCubemapFromDds(bytes, cube, so, &skyInfo, &err)) {
+                skyExposure_ = skyInfo.hdr ? skyInfo.exposure : 0.0f;
+                skyMeanLum_ = skyInfo.meanLuminance, skyHighLum_ = skyInfo.highLuminance;
                 // Legacy DDS: 128-byte header, six faces of B8G8R8A8, one mip each.
                 const int fs = int(std::lround(std::sqrt((cube.size() - 128) / 24.0)));
                 if (fs > 0 && cube.size() == 128 + size_t(6) * size_t(fs) * size_t(fs) * 4)
@@ -487,6 +497,25 @@ void CameraView::render() {
             // (about 9 units a texel) does not shadow itself into an even half shade.
             const double texel = 2.0 * R / 2048.0;
             renderer_.setSunShadow(true, m, float((2.0 + 1.5 * texel) / (4.0 * R)));
+            // The near cascade: a box of kNearRadius around the view ahead of the camera, moved in steps of an eighth of
+            // it (so it is not drawn again on every small move), when the scene is much bigger than that box.
+            constexpr double kNearRadius = 1400.0;
+            if (R > 2.5 * kNearRadius) {
+                const Vec3 fwd = ctx_->cam.forward();
+                Vec3 flat{fwd.x, fwd.y, 0};
+                flat = length(flat) > 1e-6 ? normalize(flat) : Vec3{1, 0, 0};
+                Vec3 c = ctx_->cam.pos + flat * (0.55 * kNearRadius);
+                const double step = kNearRadius / 8;
+                c = Vec3{std::round(c.x / step) * step, std::round(c.y / step) * step, std::round(c.z / step) * step};
+                const double cc[3] = {c.x, c.y, c.z};
+                const double depthR = std::max(kNearRadius, R + length(c - sb.center()));
+                float mn[16];
+                app::sunShadowMatrixAround(t, cc, kNearRadius, depthR, mn);
+                const double texelN = 2.0 * kNearRadius / 2048.0;
+                renderer_.setSunShadowNear(true, mn, float((1.0 + 1.5 * texelN) / (4.0 * depthR)));
+            } else {
+                renderer_.setSunShadowNear(false, m, 0);
+            }
         }
     }
     const app::Mat4f vp = app::viewProjection(ctx_->cam, captureAspect_ > 0 ? captureAspect_ : double(w) / double(h));
@@ -790,6 +819,30 @@ void CameraView::tickPlay(double dt) {
         ctx_->setStatus(QString("Play: %1  (WASD, Space jump/mantle, Shift sprint, C crouch/slide, Z prone, N noclip, Esc exit)").arg(mode));
     }
     ctx_->cameraMoved();
+}
+
+bool CameraView::resolveReferenceLayer(size_t k) {
+    const std::string& base = refTexMaterials_[k];
+    const int L = refTexLayer_[k];
+    if (!layerLookup_) return true;  // no layer data: the layer is left out
+    const std::optional<StockLayeredMaterial> c = layerLookup_(base);
+    if (!c) {
+        if (imageRequest_ && requested_.insert(base).second) imageRequest_(base);
+        return false;
+    }
+    StockLayerConstants lc;
+    if (c->layers > L && size_t(L) < c->layer.size()) lc = c->layer[size_t(L)];
+    // Colour modes 2 and 3 leave the colour below; multiply (1) is not drawn yet (its normal / gloss blend only).
+    if (lc.colorMode != 0) return true;
+    const std::string ck = base + '\x01' + std::to_string(L), rk = base + '\x02' + std::to_string(L);
+    const int cid = textureFor(ck), rid = textureFor(rk);
+    if (!texIds_.count(ck) || !texIds_.count(rk)) return false;
+    if (cid < 0 || cid == checkerTex_) return true;  // no colour image: left out rather than drawn as the checker
+    const float p[16] = {1.0f, float(lc.flags), lc.sharpness, 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,
+                         lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
+    renderer_.setReferenceTexture(k, cid);
+    renderer_.setReferenceLayer(k, rid == checkerTex_ ? -1 : rid, p);
+    return true;
 }
 
 void CameraView::setMaterialImages(ImageLookup lookup, ImageRequest request) {
@@ -1657,6 +1710,20 @@ void CameraView::prepareGameLook() {
         g.sunColor[0] = float(c.x), g.sunColor[1] = float(c.y), g.sunColor[2] = float(c.z);
         const Vec3 sky = gameSkyOf(ctx_->doc);
         g.sky[0] = float(sky.x), g.sky[1] = float(sky.y), g.sky[2] = float(sky.z);
+        if (stock && stockFog_.on) {
+            const GameFog& f = stockFog_;
+            const double s = gameFogInscatter(f);
+            const float fog[6][4] = {{float(f.start), float(f.density), float(f.maxOpacity), 1.0f},
+                                     {float(f.color[0] * s), float(f.color[1] * s), float(f.color[2] * s), float(f.mieBlend)},
+                                     {float(f.rayleigh[0]), float(f.rayleigh[1]), float(f.rayleigh[2]), float(f.mieAnisotropy)},
+                                     {float(f.mie[0]), float(f.mie[1]), float(f.mie[2]), float(f.desaturation)},
+                                     {float(f.heightBase), float(f.heightHalf), float(f.skyDistance), float(f.skyIntensity)},
+                                     {float(f.maxDistance), 0, 0, 0}};
+            std::memcpy(g.fog, fog, sizeof(fog));
+        }
+        // The sky preview is an 8-bit copy of the HDR stock sky times its conversion exposure: undo it, so the sky has
+        // its own radiance in the game's light units (and the post chain exposes it like the rest).
+        if (stock && skyExposure_ > 0) g.skyScale = float((stockSkyIntensity_ > 0 ? stockSkyIntensity_ : 1.0) / skyExposure_);
         if (stock && stockMeanLight_[0] + stockMeanLight_[1] + stockMeanLight_[2] > 0) {
             for (int k = 0; k < 3; ++k) g.sky[k] = stockMeanLight_[size_t(k)];
             g.skyIsStock = true;

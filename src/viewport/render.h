@@ -163,6 +163,9 @@ struct FrameInput {
 // Orthographic sun view over the box mins..maxs for the shadow map (row-vector, D3D depth 0..1). toward: unit vector
 // toward the sun.
 void sunShadowMatrix(const double toward[3], const double mins[3], const double maxs[3], float out[16]);
+// The same around a centre: radius R across the light, depth +-2 x depthRadius along it (the near shadow cascade covers a
+// small box but takes casters from the whole scene).
+void sunShadowMatrixAround(const double toward[3], const double centre[3], double R, double depthRadius, float out[16]);
 
 class SceneRenderer {
 public:
@@ -182,7 +185,12 @@ public:
     // Textured stock reference (3.19): batches uploaded once (vertex ranges in one static buffer); a batch draws with
     // its texture once setReferenceTexture gave it one, else with a plain white texture. Empty clears it. While a
     // textured reference is set, the flat reference is not drawn.
-    bool setReferenceTextured(const std::vector<std::vector<GpuTexVertex>>& batches);
+    // layers (optional, parallel to batches): 0 for a base batch, L >= 1 for layer L of a layered stock material, drawn
+    // after every base batch (in layer order) with setReferenceLayer's blend; not drawn until then.
+    bool setReferenceTextured(const std::vector<std::vector<GpuTexVertex>>& batches, const std::vector<int>* layers = nullptr);
+    // A layer batch's blend (research 97): reveal = its alpha + reveal texture (-1: none, white), params = flags, reveal
+    // sharpness k, tint RGB, UV transform (cos, sin, scale u, scale v, offset u, offset v); see the shader's cbuffer Layer.
+    void setReferenceLayer(size_t batch, int revealTexture, const float params[16]);
     // Reference props as instanced meshes (3.20): each model uploaded once, drawn with DrawInstanced in the camera and
     // the sun shadow pass. Empty clears them.
     bool setReferenceInstances(const std::vector<InstancedMesh>& meshes);
@@ -254,6 +262,12 @@ public:
         float sunColor[3] = {1, 1, 1};
         float sky[3] = {0.2f, 0.2f, 0.2f};
         bool skyIsStock = false;  // sky = the stock map's mean baked light: unlit surfaces take the probes at that level
+        // The stock map's atmosphere (core GameFog): fog0 = start, half distance, max opacity, on; fog1 = inscattered
+        // radiance (rgb, fog colour x scale), Mie blend; fog2 = Rayleigh albedo, Mie anisotropy; fog3 = Mie albedo,
+        // desaturation; fog4 = height base, height half distance, sky distance, sky intensity; fog5.x = max distance;
+        // skyScale: the sky texture (LDR) to scene light.
+        float fog[6][4] = {};
+        float skyScale = 1.0f;
         float lutScale = 1.0f;
     };
     void setGameLook(const GameLook& g) { game_ = g; }
@@ -292,6 +306,8 @@ public:
     // Sun shadow map for the lit preview (2048 x 2048 depth from the sun, re-rendered when the geometry or the matrix
     // changes). sunShadowMatrix builds the matrix.
     void setSunShadow(bool enabled, const float sunViewProj[16], float bias);
+    // The near cascade (a box around the camera at the same 2048 texels): sharp shadows of small props and poles.
+    void setSunShadowNear(bool enabled, const float sunViewProj[16], float bias);
     // Wind preview (5.23, core foliage_sway): direction (unit, xy), amplitude in units at full height, wave phase
     // 2 pi gust t. Amplitude 0 = off.
     void setWind(float dirX, float dirY, float amplitude, float phase) { wind_[0] = dirX * amplitude, wind_[1] = dirY * amplitude, wind_[2] = phase; }
@@ -406,11 +422,26 @@ private:
     bool shadowEnabled_ = false, shadowDirty_ = true, shadowFailed_ = false;
     ID3D11Texture2D* shadowTex_ = nullptr;
     ID3D11DepthStencilView* shadowDsv_ = nullptr;
+    ID3D11DepthStencilView* shadowDsvNear_ = nullptr;
+    float sunViewProjNear_[16] = {};
+    float shadowBiasNear_ = 0.0005f;
+    bool nearEnabled_ = false, nearDirty_ = true;
+    void drawReferenceTexInstancesShadow();
     ID3D11ShaderResourceView* shadowSrv_ = nullptr;
     ID3D11SamplerState* cmpSampler_ = nullptr;
     ID3D11RasterizerState* rsShadow_ = nullptr;
     ID3D11Buffer* cbWind_ = nullptr;
     ID3D11Buffer* cbBatch_ = nullptr;  // per textured batch: x = has a normal map
+    ID3D11Buffer* cbLayer_ = nullptr;  // b7: a stock layer batch's blend (zero = not a layer)
+    struct RefLayer {
+        int layer = 0;  // 0 = a base batch
+        bool ready = false;
+        int reveal = -1;
+        float params[16] = {};
+    };
+    std::vector<RefLayer> refLayers_;
+    std::vector<size_t> refLayerOrder_;  // layer batches by layer, then batch
+    int whiteFullTex_ = -1;
     ID3D11Buffer* vbRef_ = nullptr;
     float fog_[8] = {};
     float grade_[12] = {1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0};  // contrast brightness desat _, light tint + lut size, dark tint

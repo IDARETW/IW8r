@@ -68,6 +68,17 @@ TEST(game_look_auto_exposure) {
     CHECK(a > 1.0 && a < 4.0 && std::fabs(gameAdaptExposure(1.0, 4.0, 100.0, 1.0) - 4.0) < 1e-6);
 }
 
+TEST(game_look_fog_from_vision) {
+    // mp_m_speedball's vision lines (tokens of the converter's replay_vision_names.inc).
+    const std::string text = "SNNNRLTML \"2550\"\nMKKLQTSKSO \"1\"\nRPNOKKL \"1000\"\nTRPROKTLS \"1\"\n"
+                             "LNOQTMMLSP \"19.3\"\nLNMRMNLNTT \"0.9176471 0.9568627 1\"\nPOKSTQPPQ \"5000\"\n"
+                             "NPMPRRLNPO \"0.3\"\nMPRLMQNQO \"0.7\"\nMSTOLQOTKN \"10000\"\n";
+    const GameFog f = gameFogFromVision(text);
+    CHECK(f.on && f.halfPlane == 2550 && f.density == 10000 && f.start == 1000 && f.heightHalf == 5000 && std::fabs(f.rayleigh[0] - 0.9176471) < 1e-9);
+    CHECK(std::fabs(gameFogInscatter(f) - 7.2) < 0.2);  // the haze of the owner's screenshot, about 7 scene units
+    CHECK(!gameFogFromVision("RPNOKKL \"1000\"\n").on);
+}
+
 TEST(game_look_local_lights) {
     // convert.cpp's log of the lmproof map: IW3 radius 300, reference 150 -> intensity 11250.
     CHECK(std::fabs(gameLightIntensity(300, 150) - 11250.0) < 1e-6);

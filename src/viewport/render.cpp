@@ -69,7 +69,7 @@ ProfScope::~ProfScope() {
 namespace {
 
 const char* kShader = R"(
-cbuffer CB : register(b0) { row_major float4x4 viewProj; float4 eyeStart; float4 fogColHalf; float4 litParams; row_major float4x4 sunViewProj; float4 grade0; float4 gradeLight; float4 gradeDark; };
+cbuffer CB : register(b0) { row_major float4x4 viewProj; float4 eyeStart; float4 fogColHalf; float4 litParams; row_major float4x4 sunViewProj; float4 grade0; float4 gradeLight; float4 gradeDark; row_major float4x4 sunViewProjNear; float4 sunNear; };
 // Colour grade (3.15): grade0 = contrast, brightness, desaturation, flags (1 film, 2 invert, 4 LUT); gradeLight.w = LUT size.
 Texture3D gradeLut : register(t4);
 SamplerState lutSamp : register(s2);
@@ -94,18 +94,28 @@ float3 applyGrade(float3 c) {
 // litParams: x = lighting decode scale (2 in the lit preview: vertex colours carry light / 2), y = 1 with the sun shadow
 // map, z = shadow depth bias, w = exposure. In the lit preview a vertex alpha a >= 0.5 carries the sun's share of the
 // light, (a - 0.5) * 2, which the shadow map removes where the sun is blocked.
-Texture2D<float> shadowMap : register(t2);
+// Two cascades (slice 1: the box around the camera, sunViewProjNear / sunNear = bias, on; slice 0: the whole scene),
+// as the game's cascaded sun shadows: small props and thin poles keep their shadows near the camera.
+Texture2DArray<float> shadowMap : register(t2);
 SamplerComparisonState shadowSamp : register(s1);
-float sunShadow(float3 w) {
-    if (litParams.y < 0.5) return 1.0;
-    float4 lp = mul(float4(w, 1.0), sunViewProj);
-    float2 uv = float2(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
-    if (uv.x <= 0 || uv.y <= 0 || uv.x >= 1 || uv.y >= 1 || lp.z >= 1) return 1.0;
+float shadowPcf(float2 uv, float z, float slice) {
     float s = 0;
     [unroll] for (int y = -1; y <= 1; ++y)
         [unroll] for (int x = -1; x <= 1; ++x)
-            s += shadowMap.SampleCmpLevelZero(shadowSamp, uv + float2(x, y) / 2048.0, lp.z - litParams.z);
+            s += shadowMap.SampleCmpLevelZero(shadowSamp, float3(uv + float2(x, y) / 2048.0, slice), z);
     return s / 9.0;
+}
+float sunShadow(float3 w) {
+    if (litParams.y < 0.5) return 1.0;
+    if (sunNear.y > 0.5) {
+        float4 ln = mul(float4(w, 1.0), sunViewProjNear);
+        float2 un = float2(ln.x * 0.5 + 0.5, 0.5 - ln.y * 0.5);
+        if (un.x > 0.01 && un.y > 0.01 && un.x < 0.99 && un.y < 0.99 && ln.z < 1) return shadowPcf(un, ln.z - sunNear.x, 1.0);
+    }
+    float4 lp = mul(float4(w, 1.0), sunViewProj);
+    float2 uv = float2(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
+    if (uv.x <= 0 || uv.y <= 0 || uv.x >= 1 || uv.y >= 1 || lp.z >= 1) return 1.0;
+    return shadowPcf(uv, lp.z - litParams.z, 0.0);
 }
 float3 litDecode(float3 c, float a, float3 w) {
     if (litParams.x < 1.5) return c;
@@ -137,7 +147,7 @@ float4 ps_depth(PSIn i) : SV_TARGET { return float4(0, 0, 0, 1); }
 )";
 
 const char* kTexShader = R"(
-cbuffer CB : register(b0) { row_major float4x4 viewProj; float4 eyeStart; float4 fogColHalf; float4 litParams; row_major float4x4 sunViewProj; float4 grade0; float4 gradeLight; float4 gradeDark; };
+cbuffer CB : register(b0) { row_major float4x4 viewProj; float4 eyeStart; float4 fogColHalf; float4 litParams; row_major float4x4 sunViewProj; float4 grade0; float4 gradeLight; float4 gradeDark; row_major float4x4 sunViewProjNear; float4 sunNear; };
 // Colour grade (3.15): grade0 = contrast, brightness, desaturation, flags (1 film, 2 invert, 4 LUT); gradeLight.w = LUT size.
 Texture3D gradeLut : register(t4);
 SamplerState lutSamp : register(s2);
@@ -162,18 +172,28 @@ float3 applyGrade(float3 c) {
 // litParams: x = lighting decode scale (2 in the lit preview: vertex colours carry light / 2), y = 1 with the sun shadow
 // map, z = shadow depth bias, w = exposure. In the lit preview a vertex alpha a >= 0.5 carries the sun's share of the
 // light, (a - 0.5) * 2, which the shadow map removes where the sun is blocked.
-Texture2D<float> shadowMap : register(t2);
+// Two cascades (slice 1: the box around the camera, sunViewProjNear / sunNear = bias, on; slice 0: the whole scene),
+// as the game's cascaded sun shadows: small props and thin poles keep their shadows near the camera.
+Texture2DArray<float> shadowMap : register(t2);
 SamplerComparisonState shadowSamp : register(s1);
-float sunShadow(float3 w) {
-    if (litParams.y < 0.5) return 1.0;
-    float4 lp = mul(float4(w, 1.0), sunViewProj);
-    float2 uv = float2(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
-    if (uv.x <= 0 || uv.y <= 0 || uv.x >= 1 || uv.y >= 1 || lp.z >= 1) return 1.0;
+float shadowPcf(float2 uv, float z, float slice) {
     float s = 0;
     [unroll] for (int y = -1; y <= 1; ++y)
         [unroll] for (int x = -1; x <= 1; ++x)
-            s += shadowMap.SampleCmpLevelZero(shadowSamp, uv + float2(x, y) / 2048.0, lp.z - litParams.z);
+            s += shadowMap.SampleCmpLevelZero(shadowSamp, float3(uv + float2(x, y) / 2048.0, slice), z);
     return s / 9.0;
+}
+float sunShadow(float3 w) {
+    if (litParams.y < 0.5) return 1.0;
+    if (sunNear.y > 0.5) {
+        float4 ln = mul(float4(w, 1.0), sunViewProjNear);
+        float2 un = float2(ln.x * 0.5 + 0.5, 0.5 - ln.y * 0.5);
+        if (un.x > 0.01 && un.y > 0.01 && un.x < 0.99 && un.y < 0.99 && ln.z < 1) return shadowPcf(un, ln.z - sunNear.x, 1.0);
+    }
+    float4 lp = mul(float4(w, 1.0), sunViewProj);
+    float2 uv = float2(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
+    if (uv.x <= 0 || uv.y <= 0 || uv.x >= 1 || uv.y >= 1 || lp.z >= 1) return 1.0;
+    return shadowPcf(uv, lp.z - litParams.z, 0.0);
 }
 float3 litDecode(float3 c, float a, float3 w) {
     if (litParams.x < 1.5) return c;
@@ -195,7 +215,29 @@ cbuffer Wind : register(b3) { float4 wind; };         // xy = direction x amplit
 struct PixelLight { float4 posRadius; float4 colorOuter; float4 dirInner; };
 cbuffer Lights : register(b2) { float4 lightCount; PixelLight lights[64]; };
 // View > Game Lighting: game0 = (on, LUT input scale, lightmap bound, 0), sun toward, sun colour, unbaked light.
-cbuffer Game : register(b4) { float4 game0; float4 gameSun; float4 gameSunCol; float4 gameSky; };
+cbuffer Game : register(b4) { float4 game0; float4 gameSun; float4 gameSunCol; float4 gameSky; float4 gameFog[6]; float4 gameSkyScale; };
+// The stock map's atmosphere (GameLook::fog): distance fog with a height falloff, Rayleigh / Mie inscattering, extinction
+// desaturation. `sky`: the sky takes the fog of the sky distance times the sky intensity.
+float3 gameFogApply(float3 c, float3 w, bool sky) {
+    if (gameFog[0].w < 0.5) return c;
+    float3 v = w - eyeStart.xyz;
+    float d = length(v);
+    float3 dir = v / max(d, 1e-3);
+    if (sky) d = gameFog[4].z;
+    d = min(d, gameFog[5].x);
+    float dd = max(d - gameFog[0].x, 0.0);
+    float a = (eyeStart.z - gameFog[4].x) / gameFog[4].y;
+    float b = a + dir.z * d / gameFog[4].y;
+    float hf = abs(b - a) > 1e-3 ? (exp2(-a) - exp2(-b)) / ((b - a) * 0.693147) : exp2(-a);
+    float amount = min(1.0 - exp2(-dd / gameFog[0].y * max(hf, 0.0)), gameFog[0].z);
+    if (sky) amount *= gameFog[4].w;
+    float g = gameFog[2].w, mu = dot(dir, gameSun.xyz);
+    float hg = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * mu, 1e-4), 1.5);
+    float3 inscatter = gameFog[1].rgb * lerp(gameFog[2].rgb, gameFog[3].rgb * hg, gameFog[1].w);
+    float l = dot(c, float3(0.2126, 0.7152, 0.0722));
+    c = lerp(c, l.xxx, gameFog[3].w * amount);
+    return lerp(c, inscatter, amount);
+}
 Texture2D gameLmA : register(t6);
 // The stock reference's lightmap rectangles in its atlas (setStockLightmap): x, y, width, height per lightmap index,
 // and the atlas size in .x of lmInfo. A reference vertex carries index + u in its lightmap u.
@@ -287,20 +329,44 @@ float3 gamePost(float3 c) {
     float3 u = saturate((log2(x + 1.0 / 1024.0) + 10.0) / 20.0) * (63.0 / 64.0) + 0.5 / 64.0;
     return gameLut.SampleLevel(lutSamp, u, 0).rgb;
 }
+// A stock layered material's layer L >= 1 (research 97), drawn over the layers below with blending: layerP = (on, flags,
+// reveal sharpness k, _), layerTint = tint RGB, layerUvT = (cos, sin, scale u, scale v), layerUvO = (offset u, v). The
+// vertex blend weight is in the tangent x (the stock reference has no tangents). t12: the alpha (red) + reveal (green) map.
+cbuffer Layer : register(b7) { float4 layerP; float4 layerTint; float4 layerUvT; float4 layerUvO; };
+Texture2D revealTex : register(t12);
 float4 ps_tex(PSIn i) : SV_TARGET {
-    float4 t = tex0.Sample(samp0, i.uv);
+    float layerB = -1.0;
+    float2 uvS = i.uv;
+    if (layerP.x > 0.5)
+        uvS = float2(layerUvT.x * i.uv.x * layerUvT.z + layerUvT.y * i.uv.y * layerUvT.w,
+                     -layerUvT.y * i.uv.x * layerUvT.z + layerUvT.x * i.uv.y * layerUvT.w) + layerUvO.xy;
+    float4 t = tex0.Sample(samp0, uvS);
+    if (layerP.x > 0.5) {
+        float2 ar = revealTex.Sample(samp0, uvS).rg;
+        float w = saturate(i.t.x), k = layerP.z;
+        uint fl = (uint)(layerP.y + 0.5);
+        float b = w;
+        if (fl & 16u) {
+            float lo = saturate(1.0 - w - k * sqrt(w)), hi = saturate(1.0 - w + k * sqrt(1.0 - w));
+            b = saturate((ar.g - lo) / max(hi - lo, 1e-4));
+        }
+        if (fl & 8u) b *= ar.r;
+        layerB = b;
+        t.rgb *= pow(max(layerTint.rgb, 0.0), 1.0 / 2.2);  // the tint is linear; t is still sRGB here
+    }
     // Blend 0: alpha-tested foliage and grates. Blended materials keep their coverage; without a mask (alpha 1) a
     // blended surface (glass, a decal sheet) shows at 60 percent so what is behind it stays visible.
     float outA = 1.0;
     if (batchFlags.y < 0.5) clip(t.a - 0.3);
     else outA = t.a > 0.99 ? 0.6 : t.a;
+    if (layerB >= 0.0) outA = layerB;
     if (game0.x > 0.5) {
         // View > Game Lighting: map_surface_realtime.hlsl (the converter's world shader, iw3 style) and the post chain.
         // batchFlags2.z: the stock reference world (its vertex colours are an editor shade, not a tint), .w: its own
         // lightmap is bound (the stock world shader's formula, tangent-space direction).
         const bool stockRef = batchFlags2.z > 0.5;
         float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? float3(1, 1, 1) : i.col.rgb);  // i.col: selection and brush entity tints
-        if (!stockRef && i.col.a < 0.5) return float4(gamePost(albedo), 1.0);  // sky box: unlit
+        if (!stockRef && i.col.a < 0.5) return float4(gamePost(gameFogApply(albedo * gameSkyScale.x, i.w, true)), 1.0);  // sky box
         float3 Nf = dot(i.n, i.n) > 0.5 ? normalize(i.n) : normalize(cross(ddx(i.w), ddy(i.w)));
         // A normal from the screen derivatives has no reliable side (instanced props have none of their own): it faces
         // the viewer.
@@ -421,7 +487,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             c += albedo * irr + fres * dist2 * 0.25 * irr;
         }
         if (batchFlags2.x > 0.5) c += srgbToLinear3(emi0.Sample(samp0, i.uv).rgb);
-        c = applyFog(c, i.w);
+        c = gameFog[0].w > 0.5 ? gameFogApply(c, i.w, false) : applyFog(c, i.w);
         c = gamePost(c);
         if (batchFlags.y > 1.5) return float4(c * outA, 1.0);
         return float4(c, outA);
@@ -547,10 +613,12 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(layoutInst_);
     safeRelease(shadowSrv_);
     safeRelease(shadowDsv_);
+    safeRelease(shadowDsvNear_);
     safeRelease(shadowTex_);
     safeRelease(cmpSampler_);
     safeRelease(rsShadow_);
     safeRelease(cbBatch_);
+    safeRelease(cbLayer_);
     safeRelease(cbWind_);
     safeRelease(cbLights_);
     safeRelease(cbGame_);
@@ -693,10 +761,17 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
             bd.Usage = D3D11_USAGE_DEFAULT;
             bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
             dev_->CreateBuffer(&bd, nullptr, &cbBatch_);
+            {
+                D3D11_BUFFER_DESC lb = bd;
+                lb.ByteWidth = 64;
+                const float zero[16] = {};
+                D3D11_SUBRESOURCE_DATA lz{zero, 0, 0};
+                dev_->CreateBuffer(&lb, &lz, &cbLayer_);
+            }
             dev_->CreateBuffer(&bd, nullptr, &cbWind_);
             bd.ByteWidth = 16 + UINT(sizeof(PixelLight)) * kMaxPixelLights;
             dev_->CreateBuffer(&bd, nullptr, &cbLights_);
-            bd.ByteWidth = 64;  // game0, sun toward, sun colour, unbaked light
+            bd.ByteWidth = 176;  // game0, sun toward, sun colour, unbaked light, fog[6], sky scale
             dev_->CreateBuffer(&bd, nullptr, &cbGame_);
         }
         safeRelease(tvs);
@@ -735,7 +810,8 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
     safeRelease(psb);
 
     D3D11_BUFFER_DESC cbd{};
-    cbd.ByteWidth = 224;  // viewProj, eye + fog start, fog colour + halfway, lit params, sun shadow viewProj, grade (3 x float4)
+    cbd.ByteWidth = 304;  // viewProj, eye + fog start, fog colour + halfway, lit params, sun shadow viewProj, grade (3 x float4),
+                          // near cascade viewProj, near params
     cbd.Usage = D3D11_USAGE_DYNAMIC;
     cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     cbd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -999,10 +1075,13 @@ void SceneRenderer::setStockProbes(const StockProbeSet* set) {
 void SceneRenderer::writeGameCb() {
     if (!cbGame_) return;
     const bool on = game_.on && gameLutSrv_ != nullptr;
-    const float g[16] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
-                         game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], 0,
-                         game_.sunColor[0], game_.sunColor[1], game_.sunColor[2], 0,
-                         game_.sky[0], game_.sky[1], game_.sky[2], game_.skyIsStock ? 1.0f : 0.0f};
+    float g[44] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
+                   game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], 0,
+                   game_.sunColor[0], game_.sunColor[1], game_.sunColor[2], 0,
+                   game_.sky[0], game_.sky[1], game_.sky[2], game_.skyIsStock ? 1.0f : 0.0f};
+    for (int r = 0; r < 6; ++r)
+        for (int k = 0; k < 4; ++k) g[16 + 4 * r + k] = game_.fog[r][k];
+    g[40] = game_.skyScale;
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
     ID3D11ShaderResourceView* gl[3] = {gameLutSrv_, envBrdfSrv_, probeArrSrv_};
@@ -1173,7 +1252,26 @@ void SceneRenderer::resize(int w, int h) {
     dev_->CreateDepthStencilView(depth_, nullptr, &dsv_);
 }
 
-bool SceneRenderer::setReferenceTextured(const std::vector<std::vector<GpuTexVertex>>& batches) {
+void SceneRenderer::setReferenceLayer(size_t batch, int revealTexture, const float params[16]) {
+    if (batch >= refLayers_.size() || refLayers_[batch].layer <= 0) return;
+    RefLayer& L = refLayers_[batch];
+    L.ready = true;
+    L.reveal = revealTexture;
+    std::memcpy(L.params, params, sizeof(L.params));
+}
+
+bool SceneRenderer::setReferenceTextured(const std::vector<std::vector<GpuTexVertex>>& batches, const std::vector<int>* layers) {
+    refLayers_.assign(batches.size(), RefLayer{});
+    refLayerOrder_.clear();
+    if (layers && layers->size() == batches.size()) {
+        for (size_t k = 0; k < batches.size(); ++k)
+            if ((*layers)[k] > 0) refLayers_[k].layer = (*layers)[k], refLayerOrder_.push_back(k);
+        std::stable_sort(refLayerOrder_.begin(), refLayerOrder_.end(), [&](size_t a, size_t b) { return refLayers_[a].layer < refLayers_[b].layer; });
+    }
+    if (whiteFullTex_ < 0 && dev_) {
+        const uint8_t white[16] = {255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255};
+        whiteFullTex_ = createTexture(white, 2, 2);
+    }
     safeRelease(vbRefTex_);
     refTexFirst_.clear(), refTexCount_.clear(), refTexIds_.clear(), refTexChunks_.clear();
     refChunkTotal_ = refCulledLast_ = 0;
@@ -1307,6 +1405,33 @@ void SceneRenderer::drawReferenceTexInstances() {
     ctx_->IASetInputLayout(layout_);
     ctx_->VSSetShader(vs_, nullptr, 0);
     ctx_->PSSetShader(ps_, nullptr, 0);
+}
+
+void SceneRenderer::drawReferenceTexInstancesShadow() {
+    if (refTexInst_.empty() || !vsTexInst_ || !layoutTexInst_) return;
+    ctx_->IASetInputLayout(layoutTexInst_);
+    ctx_->VSSetShader(vsTexInst_, nullptr, 0);
+    ctx_->PSSetShader(psShadowClip_, nullptr, 0);  // none: solid
+    if (psShadowClip_ && sampler_) ctx_->PSSetSamplers(0, 1, &sampler_);
+    const UINT strides[2] = {UINT(sizeof(GpuTexVertex)), UINT(12 * sizeof(float))}, offsets[2] = {0, 0};
+    for (const auto& g : refTexInst_) {
+        if (!g.vb || !g.inst) continue;
+        if (psShadowClip_) {
+            const int id = g.texture >= 0 ? g.texture : whiteTex_;
+            if (id < 0 || size_t(id) >= textures_.size()) continue;
+            ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]);
+        }
+        ID3D11Buffer* bufs[2] = {g.vb, g.inst};
+        ctx_->IASetVertexBuffers(0, 2, bufs, strides, offsets);
+        drawInst(g.vertices, g.instances, 0, 0);
+    }
+    ID3D11Buffer* none[2] = {nullptr, nullptr};
+    ctx_->IASetVertexBuffers(0, 2, none, strides, offsets);
+    ID3D11ShaderResourceView* noTex[1] = {nullptr};
+    ctx_->PSSetShaderResources(0, 1, noTex);
+    ctx_->IASetInputLayout(layout_);
+    ctx_->VSSetShader(vs_, nullptr, 0);
+    ctx_->PSSetShader(nullptr, nullptr, 0);
 }
 
 void SceneRenderer::drawReferenceInstances(ReferencePass pass) {
@@ -1570,7 +1695,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     D3D11_MAPPED_SUBRESOURCE m;
     const bool shadowOn = shadowEnabled_ && createShadowResources();
     auto writeCbWith = [&](const float* vpm, bool fog, bool lit) {
-        float cb[56];
+        float cb[76];
         std::memcpy(cb, vpm, 64);
         std::memcpy(cb + 16, fog_, sizeof(float) * 8);
         if (!fog) cb[23] = 0;
@@ -1584,6 +1709,10 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         std::memcpy(cb + 28, sunViewProj_, 64);
         std::memcpy(cb + 44, grade_, sizeof(grade_));
         cb[47] = lit ? float(gradeFlags_) : 0.0f;  // lines (lit = false) keep their colours
+        std::memcpy(cb + 56, sunViewProjNear_, 64);
+        cb[72] = shadowBiasNear_;
+        cb[73] = nearEnabled_ ? 1.0f : 0.0f;
+        cb[74] = cb[75] = 0;
         if (SUCCEEDED(ctx_->Map(cb_, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
             std::memcpy(m.pData, cb, sizeof(cb));
             ctx_->Unmap(cb_, 0);
@@ -1634,17 +1763,20 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     const UINT stride = sizeof(GpuVertex), offset = 0, tstride = sizeof(GpuTexVertex);
     static const bool shadowAlways = perfOff("shadow");  // benchmark: as before, on every change of any geometry
     if (shadowAlways && (in.geometryChanged || in.casterVersion != shadowCasterVersion_)) shadowDirty_ = true;
-    if (shadowOn && (shadowDirty_ || in.casterVersion != shadowCasterVersion_)) {
-        // Sun shadow map (lit preview): depth of everything from the sun, drawn again only when a caster or the sun
-        // changed (the camera moving and the selection do not need it).
+    const bool farShadowDue = shadowOn && (shadowDirty_ || in.casterVersion != shadowCasterVersion_);
+    const bool nearShadowDue = shadowOn && nearEnabled_ && shadowDsvNear_ && (farShadowDue || nearDirty_);
+    if (farShadowDue || nearShadowDue) {
+        // Sun shadow maps (lit preview, Game Lighting): depth of everything from the sun. The whole-scene cascade is drawn
+        // again only when a caster or the sun changed; the near cascade also when the camera has moved its box.
         IW8R_PROF("d.shadow");
         ID3D11RenderTargetView* noRtv = nullptr;
-        ctx_->OMSetRenderTargets(1, &noRtv, shadowDsv_);
         inShadowPass_ = true;
-        ctx_->ClearDepthStencilView(shadowDsv_, D3D11_CLEAR_DEPTH, 1.0f, 0);
         D3D11_VIEWPORT svp{0, 0, float(kShadowSize), float(kShadowSize), 0, 1};
         ctx_->RSSetViewports(1, &svp);
-        writeCbWith(sunViewProj_, false, false);
+        const auto drawCasters = [&](ID3D11DepthStencilView* sdsv, const float* sm, bool cull) {
+        ctx_->OMSetRenderTargets(1, &noRtv, sdsv);
+        ctx_->ClearDepthStencilView(sdsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
+        writeCbWith(sm, false, false);
         ctx_->VSSetConstantBuffers(0, 1, &cb_);
         ctx_->PSSetShader(nullptr, nullptr, 0);
         ctx_->RSSetState(rsShadow_ ? rsShadow_ : rsTris_);
@@ -1685,13 +1817,24 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ctx_->IASetInputLayout(layout_);
             ctx_->VSSetShader(vs_, nullptr, 0);
             ctx_->IASetVertexBuffers(0, 1, &vbRef_, &stride, &offset);
-            drawN(UINT(refCount_), 0);
+            if (cull && !refChunks_.empty())
+                forVisibleRuns(iw8r::frustumFromViewProj(sm), refChunks_, [&](uint32_t first, uint32_t n) { drawN(n * 3, first * 3); });
+            else
+                drawN(UINT(refCount_), 0);
         }
         if (refVisible_) drawReferenceInstances(ReferencePass::Shadow);
-        shadowDirty_ = false;
-        shadowCasterVersion_ = in.casterVersion;
+        // The textured props (trees, crates, poles) cast too: their leaves through the cut-out test.
+        if (refVisible_) drawReferenceTexInstancesShadow();
+        };
+        if (farShadowDue) drawCasters(shadowDsv_, sunViewProj_, false);
+        if (nearShadowDue) drawCasters(shadowDsvNear_, sunViewProjNear_, true);
+        if (farShadowDue) {
+            shadowDirty_ = false;
+            shadowCasterVersion_ = in.casterVersion;
+            ++stats_.shadowPasses;
+        }
+        if (nearShadowDue) nearDirty_ = false;
         inShadowPass_ = false;
-        ++stats_.shadowPasses;
         ctx_->OMSetRenderTargets(1, &rtv_, dsv_);
         ctx_->RSSetViewports(1, &vp);
     }
@@ -1754,6 +1897,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             }
             ctx_->IASetVertexBuffers(0, 1, &vbRefTex_, &tstride, &offset);
             for (size_t k = 0; k < refTexIds_.size(); ++k) {
+                if (k < refLayers_.size() && refLayers_[k].layer > 0) continue;  // layers: drawn blended after the bases
                 const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
                 if (id < 0 || size_t(id) >= textures_.size()) continue;
                 ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]);
@@ -1893,6 +2037,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         refCulledLast_ = 0;
         ID3D11ShaderResourceView* bound = nullptr;
         for (size_t k = 0; k < refTexIds_.size(); ++k) {
+            if (k < refLayers_.size() && refLayers_[k].layer > 0) continue;  // layers: drawn blended below
             const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
             if (id < 0 || size_t(id) >= textures_.size()) continue;
             const auto bind = [&] {
@@ -1909,6 +2054,34 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             }
             bind();
             drawN(refTexCount_[k], refTexFirst_[k]);
+        }
+        // The layers of layered stock materials (terrain): over their base, in layer order, blended by the layer's
+        // weight and reveal map, depth-tested against the base (same vertices, same depth) without writing it.
+        if (!refLayerOrder_.empty() && cbLayer_) {
+            if (cbBatch_) {
+                const float flags[8] = {0, 1.0f, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};  // y = 1: blended, no clip
+                ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+            }
+            ctx_->OMSetDepthStencilState(dsTest_, 0);
+            ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);
+            for (size_t k : refLayerOrder_) {
+                const RefLayer& L = refLayers_[k];
+                if (!L.ready || refTexIds_[k] < 0 || size_t(refTexIds_[k]) >= textures_.size()) continue;
+                const int rv = L.reveal >= 0 && size_t(L.reveal) < textures_.size() ? L.reveal : whiteFullTex_;
+                if (rv < 0 || size_t(rv) >= textures_.size()) continue;
+                ctx_->UpdateSubresource(cbLayer_, 0, nullptr, L.params, 0, 0);
+                ctx_->PSSetShaderResources(0, 1, &textures_[size_t(refTexIds_[k])]);
+                ctx_->PSSetShaderResources(12, 1, &textures_[size_t(rv)]);
+                if (refCulling_ && k < refTexChunks_.size() && !refTexChunks_[k].empty())
+                    refCulledLast_ += forVisibleRuns(frustum, refTexChunks_[k], [&](uint32_t first, uint32_t n) { drawN(n * 3, refTexFirst_[k] + first * 3); });
+                else
+                    drawN(refTexCount_[k], refTexFirst_[k]);
+            }
+            const float zero[16] = {};
+            ctx_->UpdateSubresource(cbLayer_, 0, nullptr, zero, 0, 0);
+            ID3D11ShaderResourceView* noRev = nullptr;
+            ctx_->PSSetShaderResources(12, 1, &noRev);
+            ctx_->OMSetDepthStencilState(texOpaqueDs, 0);
         }
         ID3D11ShaderResourceView* none2[1] = {nullptr};
         ctx_->PSSetShaderResources(0, 1, none2);
@@ -1989,22 +2162,28 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
 }
 
 bool SceneRenderer::createShadowResources() {
-    if (shadowSrv_ && shadowDsv_ && cmpSampler_) return true;
+    if (shadowSrv_ && shadowDsv_ && shadowDsvNear_ && cmpSampler_) return true;
     if (!dev_ || shadowFailed_) return false;
     D3D11_TEXTURE2D_DESC td{};
     td.Width = td.Height = kShadowSize;
-    td.MipLevels = td.ArraySize = 1;
+    td.MipLevels = 1;
+    td.ArraySize = 2;  // 0: the whole scene, 1: the near cascade
     td.Format = DXGI_FORMAT_R32_TYPELESS;
     td.SampleDesc.Count = 1;
     td.Usage = D3D11_USAGE_DEFAULT;
     td.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
     D3D11_DEPTH_STENCIL_VIEW_DESC dd{};
     dd.Format = DXGI_FORMAT_D32_FLOAT;
-    dd.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    dd.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+    dd.Texture2DArray.FirstArraySlice = 0;
+    dd.Texture2DArray.ArraySize = 1;
+    D3D11_DEPTH_STENCIL_VIEW_DESC ddNear = dd;
+    ddNear.Texture2DArray.FirstArraySlice = 1;
     D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
     sd.Format = DXGI_FORMAT_R32_FLOAT;
-    sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    sd.Texture2D.MipLevels = 1;
+    sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+    sd.Texture2DArray.MipLevels = 1;
+    sd.Texture2DArray.ArraySize = 2;
     D3D11_SAMPLER_DESC cs{};
     cs.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
     cs.AddressU = cs.AddressV = cs.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
@@ -2018,6 +2197,7 @@ bool SceneRenderer::createShadowResources() {
     rd.DepthBias = 1000;
     rd.SlopeScaledDepthBias = 2.0f;
     if (FAILED(dev_->CreateTexture2D(&td, nullptr, &shadowTex_)) || FAILED(dev_->CreateDepthStencilView(shadowTex_, &dd, &shadowDsv_)) ||
+        FAILED(dev_->CreateDepthStencilView(shadowTex_, &ddNear, &shadowDsvNear_)) ||
         FAILED(dev_->CreateShaderResourceView(shadowTex_, &sd, &shadowSrv_)) || FAILED(dev_->CreateSamplerState(&cs, &cmpSampler_))) {
         shadowFailed_ = true;
         return false;
@@ -2035,11 +2215,25 @@ void SceneRenderer::setSunShadow(bool enabled, const float sunViewProj[16], floa
     shadowBias_ = bias;
 }
 
+void SceneRenderer::setSunShadowNear(bool enabled, const float sunViewProj[16], float bias) {
+    if (enabled && (!nearEnabled_ || std::memcmp(sunViewProj, sunViewProjNear_, sizeof(sunViewProjNear_)) != 0)) nearDirty_ = true;
+    nearEnabled_ = enabled;
+    std::memcpy(sunViewProjNear_, sunViewProj, sizeof(sunViewProjNear_));
+    shadowBiasNear_ = bias;
+}
+
 void sunShadowMatrix(const double toward[3], const double mins[3], const double maxs[3], float out[16]) {
-    // Orthographic view from the sun over the box: x / y across, depth along the light, D3D z in [0, 1] (row vectors).
     const double c[3] = {(mins[0] + maxs[0]) / 2, (mins[1] + maxs[1]) / 2, (mins[2] + maxs[2]) / 2};
     const double ex[3] = {(maxs[0] - mins[0]) / 2, (maxs[1] - mins[1]) / 2, (maxs[2] - mins[2]) / 2};
     const double R = std::max(1.0, std::sqrt(ex[0] * ex[0] + ex[1] * ex[1] + ex[2] * ex[2]));
+    sunShadowMatrixAround(toward, c, R, R, out);
+}
+
+void sunShadowMatrixAround(const double toward[3], const double c[3], double R, double depthRadius, float out[16]) {
+    // Orthographic view from the sun over a sphere: x / y across (radius R), depth along the light (2 x depthRadius
+    // before and after the centre), D3D z in [0, 1] (row vectors).
+    R = std::max(1.0, R);
+    const double D = std::max(R, depthRadius);
     double tl = std::sqrt(toward[0] * toward[0] + toward[1] * toward[1] + toward[2] * toward[2]);
     if (tl < 1e-9) tl = 1;
     const double f[3] = {-toward[0] / tl, -toward[1] / tl, -toward[2] / tl};  // from the sun into the scene
@@ -2048,9 +2242,9 @@ void sunShadowMatrix(const double toward[3], const double mins[3], const double 
     const double rl = std::sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
     for (double& v : r) v /= rl;
     const double u[3] = {r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]};
-    const double eye[3] = {c[0] - f[0] * 2 * R, c[1] - f[1] * 2 * R, c[2] - f[2] * 2 * R};
+    const double eye[3] = {c[0] - f[0] * 2 * D, c[1] - f[1] * 2 * D, c[2] - f[2] * 2 * D};
     auto dot3 = [](const double* a, const double* b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
-    const double depth = 4 * R;
+    const double depth = 4 * D;
     for (int i = 0; i < 16; ++i) out[i] = 0;
     for (int k = 0; k < 3; ++k) {
         out[k * 4 + 0] = float(r[k] / R);

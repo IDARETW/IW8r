@@ -35,24 +35,28 @@ struct SurfData {
     int64_t texCoordOffset = 0;  // aux stream byte offset of vertex 0, layer 0 (0 when absent)
     int64_t xyzOffset = -1;      // posData byte offset of the block's vertex 0 (-1 when absent)
     int64_t lmapCoordOffset = 0; // aux stream byte offset of the block's vertex 0 lightmap UV (0 when absent)
+    int64_t colorOffset = 0;     // aux stream byte offset of the block's vertex 0 colour record (0 when absent)
+    std::array<int64_t, 7> normalTransformOffset{};  // per layer above 0 (0 when absent)
 };
 
 // Mesh vertex key: (position stream offset, texture stream offset), the lightmap UV stream offset, the transient zone
 // and the lightmap index. The offsets are byte offsets in ONE zone's streams (every streamed tile starts again at 0),
 // so the zone is part of the key: vertices shared between surfaces of one vertex block merge and nothing else does.
 struct VertexKey {
-    uint64_t posUv = 0;
+    uint64_t posUv = 0;  // the texture record also selects every layer's UV and the normal transforms (same vertex j)
     uint32_t lmap = 0;
     uint32_t zone = 0;
     int32_t lightmap = -1;
+    uint32_t color = 0;  // colour record offset (kNoUv when none)
     bool operator==(const VertexKey& o) const {
-        return posUv == o.posUv && lmap == o.lmap && zone == o.zone && lightmap == o.lightmap;
+        return posUv == o.posUv && lmap == o.lmap && zone == o.zone && lightmap == o.lightmap && color == o.color;
     }
 };
 struct VertexKeyHash {
     size_t operator()(const VertexKey& k) const {
         uint64_t h = k.posUv ^ (uint64_t(k.lmap) * 0x9E3779B97F4A7C15ull);
         h ^= (uint64_t(k.zone) << 20 | uint64_t(uint32_t(k.lightmap))) * 0xC2B2AE3D27D4EB4Full;
+        h ^= uint64_t(k.color) * 0x165667B19E3779F9ull;
         return std::hash<uint64_t>()(h);
     }
 };
@@ -80,6 +84,10 @@ bool unhex(const std::string& hex, std::vector<uint8_t>& out) {
         out[i] = uint8_t(hi << 4 | lo);
     }
     return true;
+}
+
+uint32_t readU32(const std::vector<uint8_t>& b, size_t off) {
+    return uint32_t(b[off]) | uint32_t(b[off + 1]) << 8 | uint32_t(b[off + 2]) << 16 | uint32_t(b[off + 3]) << 24;
 }
 
 float readF32(const std::vector<uint8_t>& b, size_t off) {
@@ -203,6 +211,10 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
             d.texCoordOffset = int64_t(num(r.get("texCoordOffset"), 0));
             d.xyzOffset = int64_t(num(r.get("xyzOffset"), -1));
             d.lmapCoordOffset = int64_t(num(r.get("lmapCoordOffset"), 0));
+            d.colorOffset = int64_t(num(r.get("colorOffset"), 0));
+            if (const Value* nt = r.get("normalTransformOffset"); nt && nt->type == Value::Type::Array)
+                for (size_t i = 0; i < nt->arr.size() && i < d.normalTransformOffset.size(); ++i)
+                    d.normalTransformOffset[i] = int64_t(num(&nt->arr[i], 0));
             surfData.push_back(d);
         }
     } else if (sd && sd->get("bytes") && sd->get("bytes")->string()) {
@@ -220,7 +232,10 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
                 d.layerCount = u32(at + 0x04);
                 d.xyzOffset = u32(at + 0x08);
                 d.lmapCoordOffset = u32(at + 0x10);
+                d.colorOffset = u32(at + 0x14);
                 d.texCoordOffset = u32(at + 0x18);
+                if (stride >= 0x38)  // normalTransformOffset[7] at 0x1C .. 0x37
+                    for (size_t i = 0; i < d.normalTransformOffset.size(); ++i) d.normalTransformOffset[i] = u32(at + 0x1C + 4 * i);
                 surfData.push_back(d);
             }
         }
@@ -229,6 +244,13 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
     out.meshes.clear();
     out.lightmapUv.clear();
     out.lightmapIndex.clear();
+    out.layerCount.clear();
+    out.layerUv.clear();
+    out.vertexColor.clear();
+    out.vertexColorHigh.clear();
+    out.layerNormalTransform.clear();
+    out.layeredSurfaces = 0;
+    out.colorSurfaces = 0;
     out.bounds = AABB();
     out.warnings.clear();
     // Per mesh: VertexKey (position, texture and lightmap stream offsets) -> mesh vertex.
@@ -238,6 +260,27 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
     size_t surfacesUsed = 0, trisBad = 0, surfacesBad = 0;
     size_t uvNoAux = 0, uvUnresolved = 0;                       // surfaces whose texture coordinates are not read
     size_t lightmapSurfaces = 0;                                // surfaces with lightmap UVs
+    size_t layerMismatch = 0;                                   // surfaces with fewer layers than their mesh
+    size_t colorBad = 0;                                        // colour or normal transform records out of range
+
+    // The layer count of each material: the largest layerCount of its surfaces (research 97), so every vertex of a
+    // mesh has the same number of layer records.
+    const auto surfaceLayers = [&](const Value& s) -> int {
+        const int64_t k = int64_t(num(s.get("surfDataIndex"), -1));
+        if (k < 0 || k >= int64_t(surfData.size())) return 1;
+        return int(std::clamp<int64_t>(surfData[size_t(k)].layerCount, 1, kStockMaxLayers));
+    };
+    const auto materialOf = [](const Value& s) {
+        const Value* mat = s.get("material");
+        std::string name = mat && mat->get("name") && mat->get("name")->string() ? *mat->get("name")->string() : "";
+        if (!name.empty() && name[0] == ',') name.erase(0, 1);
+        return name;
+    };
+    std::map<std::string, int> materialLayers;
+    for (const Value& s : surfs->arr) {
+        int& n = materialLayers[materialOf(s)];
+        n = std::max(n, surfaceLayers(s));
+    }
 
     for (const Value& s : surfs->arr) {
         const Value* tris = s.get("tris");
@@ -265,10 +308,8 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
             ++surfacesBad;
             continue;
         }
-        const Value* mat = s.get("material");
         // The surface names carry a leading ',' (ACTS prints the material name with it); the material asset is named without it.
-        std::string name = mat && mat->get("name") && mat->get("name")->string() ? *mat->get("name")->string() : "";
-        if (!name.empty() && name[0] == ',') name.erase(0, 1);
+        const std::string name = materialOf(s);
         size_t mi;
         if (auto it = byMaterial.find(name); it != byMaterial.end()) {
             mi = it->second;
@@ -279,11 +320,21 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
             out.meshes.back().material = name;
             out.lightmapUv.emplace_back();
             out.lightmapIndex.emplace_back();
+            out.layerCount.push_back(std::max(1, materialLayers[name]));
+            out.layerUv.emplace_back();
+            out.vertexColor.emplace_back();
+            out.vertexColorHigh.emplace_back();
+            out.layerNormalTransform.emplace_back();
             vmap.emplace_back();
         }
         ImportedMesh& m = out.meshes[mi];
         auto& lmUv = out.lightmapUv[mi];
         auto& lmIdx = out.lightmapIndex[mi];
+        auto& layUv = out.layerUv[mi];
+        auto& vcol = out.vertexColor[mi];
+        auto& vcolHigh = out.vertexColorHigh[mi];
+        auto& layNt = out.layerNormalTransform[mi];
+        const int meshLayers = out.layerCount[mi];
         auto& vm = vmap[mi];
         ++surfacesUsed;
 
@@ -327,6 +378,35 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
         if (lmBase >= 0) ++lightmapSurfaces;
         const int32_t vertexLightmap = lmBase >= 0 ? int32_t(surfLightmap) : -1;
 
+        // Layers, vertex colour and layer normal transforms (research 97). The colour record is 4 bytes per vertex, 8
+        // for 5 to 8 layers; like the lightmap UV it is indexed from the surface's first vertex in its block.
+        const int layers = surfaceLayers(s);
+        if (layers > 1) ++out.layeredSurfaces;
+        if (layers < meshLayers) ++layerMismatch;
+        int64_t colBase = -1;  // aux offset of this surface's vertex 0 colour record (-1: none)
+        const int64_t colStride = layers > 4 ? 8 : 4;
+        std::array<int64_t, 7> ntBase{};  // per layer above 0: aux offset of this surface's vertex 0 transform (0: none)
+        if (surfDataIndex >= 0 && surfDataIndex < int64_t(surfData.size()) && !z.aux.empty()) {
+            const SurfData& sdr = surfData[size_t(surfDataIndex)];
+            int64_t firstVertex = 0;
+            if (sdr.xyzOffset >= 0 && posOffset >= sdr.xyzOffset && (posOffset - sdr.xyzOffset) % kPosStride == 0)
+                firstVertex = (posOffset - sdr.xyzOffset) / kPosStride;
+            bool bad = false;
+            if (sdr.colorOffset > 0) {
+                const int64_t base = sdr.colorOffset + colStride * firstVertex;
+                if (uint64_t(base) + uint64_t(colStride) * uint64_t(vertexCount) <= z.aux.size()) colBase = base;
+                else bad = true;
+            }
+            for (int l = 1; l < layers; ++l) {
+                if (sdr.normalTransformOffset[size_t(l - 1)] <= 0) continue;
+                const int64_t base = sdr.normalTransformOffset[size_t(l - 1)] + 4 * firstVertex;
+                if (uint64_t(base) + 4 * uint64_t(vertexCount) <= z.aux.size()) ntBase[size_t(l - 1)] = base;
+                else bad = true;
+            }
+            if (bad) ++colorBad;
+        }
+        if (colBase >= 0) ++out.colorSurfaces;
+
         for (int64_t j = 0; j < triCount; ++j) {
             const uint16_t* t = &z.idx[size_t(baseIndex + 3 * j)];
             if (t[0] >= vertexCount || t[1] >= vertexCount || t[2] >= vertexCount) {
@@ -338,7 +418,8 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
                 const uint32_t posKey = uint32_t(posOffset) + kPosStride * t[c];  // stream byte offset: shared across surfaces
                 const uint32_t uvKey = uvBase >= 0 ? uint32_t(uvBase + uvStride * t[c]) : kNoUv;
                 const uint32_t lmKey = lmBase >= 0 ? uint32_t(lmBase + int64_t(kLmapStride) * t[c]) : kNoUv;
-                const VertexKey key{uint64_t(posKey) << 32 | uvKey, lmKey, uint32_t(zoneIndex), vertexLightmap};
+                const uint32_t colKey = colBase >= 0 ? uint32_t(colBase + colStride * t[c]) : kNoUv;
+                const VertexKey key{uint64_t(posKey) << 32 | uvKey, lmKey, uint32_t(zoneIndex), vertexLightmap, colKey};
                 auto it = vm.find(key);
                 if (it == vm.end()) {
                     const size_t at = posKey;
@@ -350,6 +431,23 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
                     lmUv.push_back(lmBase >= 0 ? std::array<float, 2>{readF32(z.aux, lmKey), readF32(z.aux, lmKey + 4)}
                                                : std::array<float, 2>{-1.0f, -1.0f});
                     lmIdx.push_back(vertexLightmap);
+                    // Every layer's UV (v flipped like uv); a layer the surface does not have repeats its layer 0.
+                    std::array<float, 2> uv0{0.0f, 0.0f};
+                    for (int l = 0; l < meshLayers; ++l) {
+                        std::array<float, 2> luv = uv0;
+                        if (uvBase >= 0 && l < layers) {
+                            const size_t at2 = size_t(uvKey) + kUvLayerStride * size_t(l);
+                            luv = {readF32(z.aux, at2), 1.0f - readF32(z.aux, at2 + 4)};
+                        }
+                        if (l == 0) uv0 = luv;
+                        layUv.push_back(luv);
+                    }
+                    vcol.push_back(colBase >= 0 ? readU32(z.aux, colKey) : 0xFFFFFFFFu);
+                    vcolHigh.push_back(colBase >= 0 && colStride == 8 ? readU32(z.aux, size_t(colKey) + 4) : 0xFFFFFFFFu);
+                    for (int l = 1; l < meshLayers; ++l)
+                        layNt.push_back(l < layers && ntBase[size_t(l - 1)] > 0
+                                            ? readU32(z.aux, size_t(ntBase[size_t(l - 1)] + 4 * int64_t(t[c])))
+                                            : 0xFF8080FFu);
                     out.bounds.add(p);
                 }
                 corner[c] = it->second;
@@ -385,12 +483,22 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
                 out.meshes[keep] = std::move(out.meshes[i]);
                 out.lightmapUv[keep] = std::move(out.lightmapUv[i]);
                 out.lightmapIndex[keep] = std::move(out.lightmapIndex[i]);
+                out.layerCount[keep] = out.layerCount[i];
+                out.layerUv[keep] = std::move(out.layerUv[i]);
+                out.vertexColor[keep] = std::move(out.vertexColor[i]);
+                out.vertexColorHigh[keep] = std::move(out.vertexColorHigh[i]);
+                out.layerNormalTransform[keep] = std::move(out.layerNormalTransform[i]);
             }
             ++keep;
         }
         out.meshes.resize(keep);
         out.lightmapUv.resize(keep);
         out.lightmapIndex.resize(keep);
+        out.layerCount.resize(keep);
+        out.layerUv.resize(keep);
+        out.vertexColor.resize(keep);
+        out.vertexColorHigh.resize(keep);
+        out.layerNormalTransform.resize(keep);
     }
     out.lightmapSurfaces = lightmapSurfaces;
 
@@ -410,6 +518,10 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
         out.warnings.push_back(std::to_string(uvNoAux) + " surfaces without texture coordinates (no auxData in the transient zone): uv zero");
     if (uvUnresolved)
         out.warnings.push_back(std::to_string(uvUnresolved) + " surfaces without texture coordinates (surfData missing or out of range): uv zero");
+    if (layerMismatch)
+        out.warnings.push_back(std::to_string(layerMismatch) + " surfaces with fewer texture layers than their material's other surfaces: their layer 0 repeated");
+    if (colorBad)
+        out.warnings.push_back(std::to_string(colorBad) + " surfaces with a colour or normal transform record out of range: not read");
     if (surfacesUsed == 0) {
         if (err) *err = "no gfx_map surface could be read";
         return false;
@@ -559,6 +671,13 @@ std::vector<StreamedWorldZone> streamedZonesNear(const std::vector<StreamedWorld
         out.push_back(*z);
     }
     return out;
+}
+
+float stockLayerWeight(uint32_t color, uint32_t colorHigh, int layer) {
+    if (layer <= 0) return 1.0f;
+    if (layer >= kStockMaxLayers) return 0.0f;
+    const uint32_t word = layer < 4 ? color : colorHigh;
+    return float((word >> (8 * (layer & 3))) & 0xFFu) / 255.0f;
 }
 
 void unpackStockTexCoords(uint32_t packed, double& u, double& v) {

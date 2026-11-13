@@ -3,8 +3,8 @@
 //   gfx_map_trzone  GfxWorldTransientZone: the surface draw data. drawVerts.posData holds float3 positions (12 bytes,
 //                   Z-up inches), drawVerts.indices holds uint16 indices (surface-relative)
 // Route, commands, sizes and the verified layout: docs/research/30_stock_world_geometry.md.
-// Read-only. Static props (smodels), normals, tangents and vertex colours are not read; texture coordinates and
-// lightmap UVs (StockWorld::lightmapUv, research 94) are.
+// Read-only. Static props (smodels), normals and tangents are not read; texture coordinates (every layer), lightmap
+// UVs (StockWorld::lightmapUv, research 94), vertex colours and the layer normal transforms (research 97) are.
 //
 // Texture coordinates (solved 2026-11-10). Each surface names its per-vertex streams through its GfxWorldSurfData
 // record, the vertex data is the drawVerts.auxData stream of gfx_map_trzone (hex "bytes", 15,129,844 bytes on mp_shipment):
@@ -18,8 +18,9 @@
 //     vertex. x64-zt src/convert/iw3_iw8/resources/replay_world_vertex.hlsl:91-93 reads the same way (Load2 at
 //     textureOffset + id * layerCount * 8), and src/games/iw8/common/replay_render.cpp:1880-1892 writes the Replay form.
 //   - lmapCoord, 8 bytes/vertex (float32 u, v), is read into StockWorld::lightmapUv (research 94 section 2).
-//   - The other aux regions per surface (not read): tangentFrame 4 bytes/vertex, colour
-//     4 bytes/vertex when colorOffset is set, normalTransform 4 bytes/vertex per layer above 0, displacement 4 bytes/vertex.
+//   - The other aux regions per surface: tangentFrame 4 bytes/vertex (not read), colour 4 bytes/vertex when colorOffset
+//     is set (8 bytes/vertex for 5 to 8 layers, research 97), normalTransform 4 bytes/vertex per layer above 0,
+//     displacement 4 bytes/vertex (not read).
 //     Together with the texCoord regions they tile the aux stream on mp_shipment with no overlap; 3,156 bytes are not in
 //     any region (852 of them the displacement array of one surface, 2,304 in no surface record).
 //   - Validation on the mp_shipment cache export (2026-11-10, independent script over the same bytes): coplanar adjacent triangle pairs in one vertex block whose uv
@@ -42,6 +43,8 @@
 
 namespace iw8r {
 
+constexpr int kStockMaxLayers = 8;  // GfxWorldSurfData.layerCount on mp_br_tut goes up to 8 (twc4/14n_17n_17n_..._24n)
+
 struct StockWorld {
     // One mesh per surface material name (the material asset name, without the leading comma ACTS prints), in order
     // of first use. Positions are Z-up inches (the Radiant unit, no scale or axis change). Triangles are
@@ -63,6 +66,30 @@ struct StockWorld {
     // lightmapTransientIndex[i]), or -1 exactly where lightmapUv is (-1, -1).
     std::vector<std::vector<int>> lightmapIndex;
     size_t lightmapSurfaces = 0;        // surfaces whose vertices got a lightmap UV
+
+    // Layered world materials (tw4 / twc4, docs/research/97_stock_layered_materials.md), parallel to meshes.
+    // layerCount[m]: the texture layers of mesh m (1..kStockMaxLayers), the largest GfxWorldSurfData.layerCount of the
+    // surfaces of its material (every surface of one material has the same count on the maps seen).
+    std::vector<int> layerCount;
+    // Every layer's texture coordinates: layerUv[m][k * layerCount[m] + L] is layer L of meshes[m].pos[k], float32
+    // (u, 1 - v) exactly as meshes[m].uv (layer 0 is the same value as uv). The aux record of vertex j is at
+    // texCoordOffset + 8 * layerCount * j, layers interleaved. A surface with fewer layers than its mesh (not seen)
+    // repeats its layer 0; a vertex without texture coordinates has (0, 0) everywhere.
+    std::vector<std::vector<std::array<float, 2>>> layerUv;
+    // The vertex colour record (GfxWorldSurfData.colorOffset, at colorOffset + stride * (firstVertex + j)), as stored:
+    // byte 0 in bits 0-7 (R), byte 1 in bits 8-15 (G), byte 2 (B), byte 3 (A). On a twc4 surface byte L is the blend
+    // weight of layer L (L >= 1; byte 0 is not read by the layered shaders). 0xFFFFFFFF (white, every weight 1) when
+    // the surface has no colour record: tw4 surfaces, whose shaders blend with a weight of 1.
+    std::vector<std::vector<uint32_t>> vertexColor;
+    // Bytes 4..7 of the colour record: surfaces of 5 to 8 layers have 8 colour bytes per vertex (byte L = layer L's
+    // weight). 0xFFFFFFFF when the record has 4 bytes or there is none.
+    std::vector<std::vector<uint32_t>> vertexColorHigh;
+    // Per layer above 0, the 2x2 tangent transform of its normal map (GfxWorldSurfData.normalTransformOffset[L - 1],
+    // 4 bytes/vertex, matrix entry i = byte i * 2 / 255 - 1; research 97 section 2):
+    // layerNormalTransform[m][k * (layerCount[m] - 1) + (L - 1)]. 0xFF8080FF (identity) where the surface has none.
+    std::vector<std::vector<uint32_t>> layerNormalTransform;
+    size_t layeredSurfaces = 0;  // surfaces with layerCount >= 2
+    size_t colorSurfaces = 0;    // surfaces whose vertices got a colour record
     AABB bounds;                        // over every vertex used by a triangle (includes sky geometry)
     std::vector<std::string> warnings;  // non-fatal: surfaces skipped, index range problems
 };
@@ -98,5 +125,10 @@ std::vector<StreamedWorldZone> streamedZonesNear(const std::vector<StreamedWorld
 // (x64-zt Vec2PackTexCoords / Vec2UnpackTexCoords). Zero, normal, subnormal, infinite and NaN halves are all handled
 // by the IEEE rules. Not used for stock world surfaces (those are float32 pairs, see above).
 void unpackStockTexCoords(uint32_t packed, double& u, double& v);
+
+// The blend weight of layer `layer` (0 .. kStockMaxLayers - 1) in [0, 1] from a vertex's colour words
+// (StockWorld::vertexColor / vertexColorHigh): byte `layer` / 255. Layer 0 is the base and always 1 (the shaders do
+// not read byte 0).
+float stockLayerWeight(uint32_t color, uint32_t colorHigh, int layer);
 
 }  // namespace iw8r

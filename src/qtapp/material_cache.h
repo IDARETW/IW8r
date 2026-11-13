@@ -7,8 +7,11 @@
 //   images/      colour and normal DDS files, named after the image
 //   w/           scratch ACTS output of the batch in progress (removed when the batch finishes)
 // Materials already in the index (or seeded from data/stock_assets/<zone>/index.json) never run ACTS again.
+// Layered world materials (tw4 / twc4) also get every layer's colour, normal and alpha + reveal image and their
+// pixel constant buffer (layerImages / layerConstants; docs/research/97_stock_layered_materials.md).
 #pragma once
 
+#include <QByteArray>
 #include <QFileInfo>
 #include <QList>
 #include <QObject>
@@ -22,6 +25,8 @@
 #include <set>
 #include <vector>
 
+#include "stock_layered_material.h"
+
 namespace iw8r::qt {
 
 struct ActsResult;
@@ -32,6 +37,13 @@ public:
     using ToolPathFn = std::function<QString(const QString&)>;  // keys "acts", "replay", "oodle" (MainWindow::toolPath)
     explicit MaterialCache(ToolPathFn tools, QObject* parent = nullptr);
     ~MaterialCache() override;
+
+    // The images of one layer of a stock layered (tw4 / twc4) material, research 97: colour (slot L), normal + gloss
+    // (slot 9 + L) and alpha + reveal (slot 27 + L, red alpha, green reveal; none for layer 0). Cached DDS paths, empty
+    // when the material has none in that slot (or an engine image such as $black) or its export failed.
+    struct LayerImages {
+        QString colorDds, normalDds, revealDds;
+    };
 
     struct Entry {
         QString material, zone, colorDds, normalDds, techset;
@@ -44,11 +56,25 @@ public:
         // Texture table of the material body, "<slot>=<image name>" per entry (4.16); empty for entries cached before
         // the table was kept and for seeds.
         QStringList textures;
+        // Layered materials (body field layerCount >= 2, research 97): layers[L] for L = 0 .. layerCount - 1 (layers[0]
+        // repeats colorDds / normalDds), and the body's pixel constant buffer (constantBufferTable[0].psData) that holds
+        // the per-layer blend constants. Empty for single-layer materials, seeds and entries cached before 2026-11-12.
+        int layerCount = 0;
+        std::vector<LayerImages> layers;
+        QByteArray psData;
         bool failed = false;
         QString error;
     };
 
     std::optional<Entry> lookup(const QString& material) const;  // on-disk index and seeds only (instant)
+    // A stock layered material's colour image per layer, layer 0 first (layer 0 = lookup()->colorDds): cached DDS paths
+    // as colorDds is, an empty string for a layer without one. Empty when the material is not layered or not resolved.
+    std::vector<QString> layerColorImages(const QString& material) const;
+    // The same with each layer's normal + gloss and alpha + reveal images.
+    std::vector<LayerImages> layerImages(const QString& material) const;
+    // The per-layer blend constants (flags, UV transform, tint, reveal sharpness, specular / gloss remaps), decoded from
+    // the cached psData; nullopt when the material is not layered, not resolved, or its psData is missing or short.
+    std::optional<StockLayeredMaterial> layerConstants(const QString& material) const;
     void request(const QStringList& materials);                  // async; de-duplicated; batched per zone
     // A stock map shown as the reference: materials the catalog does not list are looked up in this zone (and its
     // techsets zone). The per-map terrain blends (tw4/..., twc4/...) are named per map, and the catalog lists only
@@ -82,6 +108,10 @@ private:
         QString materialType;
         int sortKey = -1;
         QStringList textures;   // "<slot>=<image>" for every non-placeholder entry
+        int layerCount = 0;     // body layerCount (0 when absent)
+        // Per layer L (index L; layer 0 = color / normal): image names, empty when absent or a placeholder.
+        QStringList layerColor, layerNormal, layerReveal;
+        QByteArray psData;      // constantBufferTable[0].psData of a layered body
         QString error;
     };
     struct Image {  // one colour or normal image in the current batch

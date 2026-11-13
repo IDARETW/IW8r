@@ -68,6 +68,26 @@ const StockMapLook* stockMapLook(const std::string& map);
 const StockMapLook& stockMapLookNearest(double sunIntensity);
 const std::vector<StockMapLook>& stockMapLooks();
 
+// A stock map's atmosphere from its vision (vision/<map>.vision; field tokens from the x64-zt converter's
+// replay_vision_names.inc): distance fog whose transmittance halves every `density` units past start (Replay's fog
+// evaluates exp2(-(distance - fogStartDist) / fogDensity), x64-zt iw3_vision.cpp; halfPlane is kept for reference), scaled by a height falloff
+// (halves every heightHalf units above heightBase), up to maxOpacity; the inscattered light is
+// 0.001 x 2^(inscatterEv - 2.84) / (4 pi) x fogColor (calibrated 2026-11-12 on mp_m_speedball: the distant haze in the
+// owner's screenshot is about 7 scene units, this gives 7.2), tinted by the Rayleigh albedo and, toward the sun, by the
+// Mie albedo with a Henyey-Greenstein lobe (mieBlend, mieAnisotropy). The sky takes the fog of skyDistance, times
+// skyIntensity. Surfaces lose saturation by `desaturation` x the fog amount.
+struct GameFog {
+    bool on = false;
+    double start = 0, density = 10000, halfPlane = 5000, maxOpacity = 1, maxDistance = 1e9, skyDistance = 40000, skyIntensity = 0.5;
+    double heightBase = 0, heightHalf = 1e9, desaturation = 0, inscatterEv = 18;
+    double color[3] = {1, 1, 1}, rayleigh[3] = {1, 1, 1}, mie[3] = {1, 1, 1};
+    double mieAnisotropy = 0.4, mieBlend = 0;
+};
+// Reads the vision text (`TOKEN "value"` lines). `on` only when the atmospheric fog fields are there.
+GameFog gameFogFromVision(const std::string& visionText);
+// The inscattered radiance scale, in scene light units.
+double gameFogInscatter(const GameFog& f);
+
 // sRGB texture value to linear (the game samples colour maps as sRGB).
 double srgbToLinear(double c);
 

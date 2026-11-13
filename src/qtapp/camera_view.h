@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "stock_probes.h"
+#include "stock_layered_material.h"
 #include "game_lightmap.h"
 #include "game_look.h"
 #include "vfx_sim.h"
@@ -77,6 +78,11 @@ public:
     using ImageLookup = std::function<std::optional<QString>(const std::string& material)>;
     using ImageRequest = std::function<void(const std::string& material)>;
     void setMaterialImages(ImageLookup lookup, ImageRequest request);
+    // Layered stock materials (research 97): a material's per-layer constants; nullopt while the material is not
+    // resolved, an empty StockLayeredMaterial (layers 0) when it has none. Layer images are looked up through
+    // ImageLookup as "<material>\x01<L>" (colour) and "<material>\x02<L>" (alpha + reveal).
+    using LayerLookup = std::function<std::optional<StockLayeredMaterial>(const std::string& material)>;
+    void setMaterialLayers(LayerLookup lookup) { layerLookup_ = std::move(lookup); }
     // Cut-out mask of a stock material ("" = none): a stock colour image's alpha is specular (`_c&_s`), so without a
     // mask the camera draws it opaque; with one (`_sdf`, foliage `_alpha`) the mask is the alpha.
     using MaskLookup = std::function<QString(const std::string& material)>;
@@ -153,8 +159,20 @@ public slots:
     // The stock map shown as the reference ("" = none): Game Lighting then uses that map's sun and auto exposure
     // (core game_look stockMapLook).
     void setGameStockMap(const std::string& zone) {
-        if (zone != gameStockMap_) gameBakeRev_ = ~0ull, stockSunKnown_ = false;  // the preview bake follows that map's sun
+        if (zone != gameStockMap_) gameBakeRev_ = ~0ull, stockSunKnown_ = false, stockFog_ = GameFog{}, stockSkyIntensity_ = 0;  // the bake follows the sun
         gameStockMap_ = zone;
+        update();
+    }
+    // The stock map's atmosphere (its vision text; core gameFogFromVision).
+    // The sky preview: conversion exposure and the HDR source mean / 99.5th percentile luminance (diagnosis).
+    std::array<float, 3> skyLuminance() const { return {skyExposure_, skyMeanLum_, skyHighLum_}; }
+    // The stock sky material's intensity (its first pixel constant): the sky image times this is the drawn sky.
+    void setGameStockSkyIntensity(double intensity) {
+        stockSkyIntensity_ = intensity;
+        update();
+    }
+    void setGameStockVision(const std::string& visionText) {
+        stockFog_ = gameFogFromVision(visionText);
         update();
     }
     // The stock map's own sun (its ComWorld sun light: intensity, linear colour, direction toward the sun).
@@ -291,6 +309,9 @@ private:
     bool instDirty_ = false;
     std::vector<app::ReferenceTexBatch> pendingRefTex_;
     std::vector<std::string> refTexMaterials_;
+    std::vector<int> refTexLayer_;  // parallel: 0 base, L >= 1 a layer batch of refTexMaterials_[k]
+    LayerLookup layerLookup_;
+    bool resolveReferenceLayer(size_t k);  // true when settled (drawn or left out)
     std::vector<bool> refTexResolved_;
     bool refTexDirty_ = false;
     // Reference materials waiting for an image: asked again on events and twice a second (render()).
@@ -341,6 +362,7 @@ private:
     std::function<std::optional<std::array<double, 3>>(const std::string& material)> customTint_;
     std::function<QString()> skySource_;
     QString skyPath_;
+    float skyExposure_ = 0, skyMeanLum_ = 0, skyHighLum_ = 0;  // the 8-bit sky preview = HDR sky x this (sky_image.h auto exposure); 0 = LDR source
     std::vector<int> skyTex_;  // six face textures (D3D order)
     void updateSkyBox();
     MaskLookup maskLookup_;
@@ -374,6 +396,8 @@ private:
     bool gameBaking_ = false, gameLutReady_ = false, gameWasOn_ = false, gameMetering_ = false;
     std::string gameStockMap_;
     bool stockSunKnown_ = false;
+    GameFog stockFog_;
+    double stockSkyIntensity_ = 0;
     double stockSunIntensity_ = 0;
     Vec3 stockSunColor_{1, 1, 1}, stockSunToward_{0, 0, 1};
     // The stock map's look for Game Lighting: its own entry, else the shipped map with the nearest sun.

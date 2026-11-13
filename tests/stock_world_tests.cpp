@@ -517,7 +517,7 @@ TEST(stock_world_surfdata_hex_bytes) {
         std::vector<uint8_t> one(88, 0);
         for (int k = 0; k < 7; ++k)
             for (int b = 0; b < 4; ++b) one[size_t(4 * k + b)] = uint8_t(r[k] >> (8 * b));
-        one[0x1C] = 168;  // normalTransformOffset[0] of record 1 (not read)
+        one[0x1C] = 168;  // normalTransformOffset[0] (set on every record; read only for layers above 0: record 1)
         raw.insert(raw.end(), one.begin(), one.end());
     }
     const size_t a = valuesForm.find(R"("surfData":{"values":[)");
@@ -537,6 +537,197 @@ TEST(stock_world_surfdata_hex_bytes) {
         CHECK(h.meshes[m].uv == v.meshes[m].uv);
         CHECK(h.lightmapUv[m] == v.lightmapUv[m]);
         CHECK(h.lightmapIndex[m] == v.lightmapIndex[m]);
+        // The layer records too: normalTransformOffset[0] (0x1C) of record 1 gives the wall's layer-1 transforms.
+        CHECK(h.layerCount[m] == v.layerCount[m]);
+        CHECK(h.layerUv[m] == v.layerUv[m]);
+        CHECK(h.vertexColor[m] == v.vertexColor[m]);
+        CHECK(h.layerNormalTransform[m] == v.layerNormalTransform[m]);
     }
+    CHECK(h.layerCount.size() == 2 && h.layerCount[1] == 2 && h.layerNormalTransform[1].size() == h.meshes[1].pos.size());
+    if (h.layerNormalTransform.size() == 2)
+        for (uint32_t t : h.layerNormalTransform[1]) CHECK(t == 0xEEEEEEEEu);
     CHECK(h.warnings == v.warnings);
+}
+
+namespace {
+
+// Layered surfaces (docs/research/97): the floor (surfData 0, one layer, no colour), the wall (surfData 1, two layers,
+// a colour record and a layer-1 normal transform), the wall again through surfData 3 (same texture records, its own
+// colour record: its vertices must not merge with the first wall's), and a five-layer surface over the floor block
+// (surfData 2: 8 colour bytes per vertex, transforms for layers 1 and 3 only, no lightmap UV).
+std::string gfxJsonLayers() {
+    std::string s = R"({"format":"mw19-asset-json-v1","asset":{"name":"maps/mp/test.d3dbsp","fields":{"surfaces":{"surfaces":{"values":[)";
+    s += R"({"tris":{"posOffset":4,"vertexCount":4,"triCount":2,"baseIndex":0},"material":{"name":"tw/floor"},"transientZone":0,"surfDataIndex":0})";
+    s += R"(,{"tris":{"posOffset":16,"vertexCount":3,"triCount":1,"baseIndex":6},"material":{"name":",twc4/wall"},"transientZone":0,"surfDataIndex":1})";
+    s += R"(,{"tris":{"posOffset":16,"vertexCount":3,"triCount":1,"baseIndex":6},"material":{"name":",twc4/wall"},"transientZone":0,"surfDataIndex":3})";
+    s += R"(,{"tris":{"posOffset":4,"vertexCount":4,"triCount":2,"baseIndex":0},"material":{"name":",twc4/five"},"transientZone":0,"surfDataIndex":2})";
+    s += R"(]},"surfData":{"values":[)";
+    s += R"({"transientZone":0,"layerCount":1,"xyzOffset":4,"tangentFrameOffset":4,"lmapCoordOffset":20,"colorOffset":0,"texCoordOffset":52})";
+    s += R"(,{"transientZone":0,"layerCount":2,"xyzOffset":16,"tangentFrameOffset":84,"lmapCoordOffset":96,"colorOffset":120,"texCoordOffset":132,"normalTransformOffset":[180,0,0,0,0,0,0]})";
+    s += R"(,{"transientZone":0,"layerCount":5,"xyzOffset":4,"tangentFrameOffset":4,"lmapCoordOffset":0,"colorOffset":192,"texCoordOffset":224,"normalTransformOffset":[384,0,400,0,0,0,0]})";
+    s += R"(,{"transientZone":0,"layerCount":2,"xyzOffset":16,"tangentFrameOffset":84,"lmapCoordOffset":96,"colorOffset":416,"texCoordOffset":132,"normalTransformOffset":[180,0,0,0,0,0,0]})";
+    s += R"(]}}}}})";
+    return s;
+}
+
+void putU32(std::vector<uint8_t>& b, uint32_t v) {
+    for (int i = 0; i < 4; ++i) b.push_back(uint8_t(v >> (8 * i)));
+}
+
+// The aux stream for gfxJsonLayers, 428 bytes:
+//   0 pad | 4 floor tangent | 20 floor lmap | 52 floor tex (1 layer) | 84 wall tangent | 96 wall lmap
+//   120 wall colour (vertex j: R 0xFF, G 0x40 j, B 0x11, A 0x22) | 132 wall tex (vertex j: (2 + j, 3 + j), (50 + j, 60 + j))
+//   180 wall layer-1 transform (vertex j: 0xFF808000 | j) | 192 five colour (8 bytes/vertex: FF, 10j+1 .. 10j+4, 0, 0, 0)
+//   224 five tex (5 layers: layer l of vertex j = (10 l + j, 100 + 10 l + j)) | 384 five layer-1 transform
+//   400 five layer-3 transform | 416 second wall colour (vertex j: 0x0A0B0C0D + j)
+std::vector<uint8_t> auxSampleLayers() {
+    std::vector<uint8_t> a(4, 0);
+    a.insert(a.end(), 16, 0xAB);
+    a.insert(a.end(), 32, 0xCD);
+    const float floorUv[4][2] = {{0, 0}, {0.5f, 0.25f}, {1, 0.5f}, {1.5f, 0.75f}};
+    for (const auto& p : floorUv) {
+        putF(a, p[0]);
+        putF(a, p[1]);
+    }
+    a.insert(a.end(), 12, 0xAB);                                                 // 84
+    a.insert(a.end(), 24, 0xCD);                                                 // 96
+    for (uint32_t j = 0; j < 3; ++j) putU32(a, 0x221100FFu | (0x40u * j) << 8);  // 120
+    for (int j = 0; j < 3; ++j) {                                                // 132
+        putF(a, float(2 + j));
+        putF(a, float(3 + j));
+        putF(a, float(50 + j));
+        putF(a, float(60 + j));
+    }
+    for (uint32_t j = 0; j < 3; ++j) putU32(a, 0xFF808000u | j);  // 180
+    for (uint32_t j = 0; j < 4; ++j) {                            // 192
+        putU32(a, 0xFFu | (10 * j + 1) << 8 | (10 * j + 2) << 16 | (10 * j + 3) << 24);
+        putU32(a, 10 * j + 4);
+    }
+    for (int j = 0; j < 4; ++j)  // 224
+        for (int l = 0; l < 5; ++l) {
+            putF(a, float(10 * l + j));
+            putF(a, float(100 + 10 * l + j));
+        }
+    for (uint32_t j = 0; j < 4; ++j) putU32(a, 0x11111100u | j);  // 384
+    for (uint32_t j = 0; j < 4; ++j) putU32(a, 0x33333300u | j);  // 400
+    for (uint32_t j = 0; j < 3; ++j) putU32(a, 0x0A0B0C0Du + j);  // 416
+    return a;
+}
+
+// The first vertex of mesh m at position p, or -1.
+int vertexAt(const StockWorld& w, size_t m, Vec3 p) {
+    const ImportedMesh& mesh = w.meshes[m];
+    for (size_t k = 0; k < mesh.pos.size(); ++k)
+        if (mesh.pos[k] == p) return int(k);
+    return -1;
+}
+
+}  // namespace
+
+TEST(stock_world_layers_and_vertex_colour) {
+    const Sample s = sample();
+    const auto aux = auxSampleLayers();
+    CHECK(aux.size() == 428);
+    StockWorld w;
+    std::string err;
+    CHECK(parseStockWorld(gfxJsonLayers(), {trzJson(s.pos, s.idx, 0, aux)}, w, &err));
+    CHECK(err.empty());
+    CHECK(w.warnings.empty());
+    CHECK(w.meshes.size() == 3);
+    if (w.meshes.size() != 3) return;
+    CHECK(w.meshes[0].material == "tw/floor" && w.meshes[1].material == "twc4/wall" && w.meshes[2].material == "twc4/five");
+    CHECK(w.layerCount.size() == 3 && w.layerUv.size() == 3 && w.vertexColor.size() == 3 && w.vertexColorHigh.size() == 3 &&
+          w.layerNormalTransform.size() == 3);
+    if (w.layerCount.size() != 3) return;
+    CHECK(w.layerCount[0] == 1 && w.layerCount[1] == 2 && w.layerCount[2] == 5);
+    CHECK(w.layeredSurfaces == 3);
+    CHECK(w.colorSurfaces == 3);
+    for (size_t m = 0; m < 3; ++m) {
+        const size_t n = w.meshes[m].pos.size();
+        const size_t layers = size_t(w.layerCount[m]);
+        CHECK(w.layerUv[m].size() == n * layers);
+        CHECK(w.vertexColor[m].size() == n && w.vertexColorHigh[m].size() == n);
+        CHECK(w.layerNormalTransform[m].size() == n * (layers - 1));
+        if (w.layerUv[m].size() != n * layers) continue;
+        // Layer 0 is the uv the reader always gave (v flipped).
+        for (size_t k = 0; k < n; ++k) {
+            CHECK(double(w.layerUv[m][k * layers][0]) == w.meshes[m].uv[k][0]);
+            CHECK(double(w.layerUv[m][k * layers][1]) == w.meshes[m].uv[k][1]);
+        }
+    }
+
+    // The floor: one layer, no colour record (white), no transforms.
+    CHECK(w.meshes[0].pos.size() == 4);
+    for (uint32_t c : w.vertexColor[0]) CHECK(c == 0xFFFFFFFFu);
+    for (uint32_t c : w.vertexColorHigh[0]) CHECK(c == 0xFFFFFFFFu);
+
+    // The wall: two surfaces over the same position and texture records with their own colour records, so 6 vertices
+    // (3 + 3), not 3. Vertex j of the block is v(1 + j).
+    CHECK(w.meshes[1].pos.size() == 6);
+    CHECK(w.meshes[1].idx.size() == 6);
+    const Vec3 wallPos[3] = {{100, 0, 0}, {0, 100, 0}, {100, 100, 0}};
+    for (uint32_t j = 0; j < 3; ++j) {
+        int first = -1, second = -1;
+        for (size_t q = 0; q < w.meshes[1].pos.size(); ++q) {
+            if (!(w.meshes[1].pos[q] == wallPos[j])) continue;
+            // Both copies read the same texture records: layer 1 UV (50 + j, 1 - (60 + j)) and its transform.
+            CHECK(w.layerUv[1][q * 2 + 1][0] == float(50 + j));
+            CHECK(w.layerUv[1][q * 2 + 1][1] == 1.0f - float(60 + j));
+            CHECK(w.layerNormalTransform[1][q] == (0xFF808000u | j));
+            if (w.vertexColor[1][q] == (0x221100FFu | (0x40u * j) << 8)) first = int(q);
+            if (w.vertexColor[1][q] == 0x0A0B0C0Du + j) second = int(q);
+        }
+        CHECK(first >= 0 && second >= 0 && first != second);
+        if (first < 0) continue;
+        CHECK(w.vertexColorHigh[1][size_t(first)] == 0xFFFFFFFFu);  // a 4-byte record
+        // Layer 1's weight is G (byte 1).
+        CHECK(stockLayerWeight(w.vertexColor[1][size_t(first)], w.vertexColorHigh[1][size_t(first)], 1) == float(0x40 * j) / 255.0f);
+    }
+
+    // The five-layer surface: 8 colour bytes per vertex, every layer's UV, transforms for layers 1 and 3, identity
+    // (0xFF8080FF) for layers 2 and 4. Vertex j of the block is v(j).
+    CHECK(w.meshes[2].pos.size() == 4);
+    const Vec3 fivePos[4] = {{0, 0, 0}, {100, 0, 0}, {0, 100, 0}, {100, 100, 0}};
+    for (uint32_t j = 0; j < 4; ++j) {
+        const int k = vertexAt(w, 2, fivePos[j]);
+        CHECK(k >= 0);
+        if (k < 0) continue;
+        for (int l = 0; l < 5; ++l) {
+            CHECK(w.layerUv[2][size_t(k) * 5 + size_t(l)][0] == float(10 * l + int(j)));
+            CHECK(w.layerUv[2][size_t(k) * 5 + size_t(l)][1] == 1.0f - float(100 + 10 * l + int(j)));
+        }
+        const uint32_t lo = w.vertexColor[2][size_t(k)], hi = w.vertexColorHigh[2][size_t(k)];
+        CHECK(lo == (0xFFu | (10 * j + 1) << 8 | (10 * j + 2) << 16 | (10 * j + 3) << 24));
+        CHECK(hi == 10 * j + 4);
+        CHECK(stockLayerWeight(lo, hi, 0) == 1.0f);
+        for (int l = 1; l <= 4; ++l) CHECK(stockLayerWeight(lo, hi, l) == float(10 * j + uint32_t(l)) / 255.0f);
+        CHECK(stockLayerWeight(lo, hi, 5) == 0.0f);
+        const uint32_t* nt = &w.layerNormalTransform[2][size_t(k) * 4];
+        CHECK(nt[0] == (0x11111100u | j) && nt[1] == 0xFF8080FFu && nt[2] == (0x33333300u | j) && nt[3] == 0xFF8080FFu);
+    }
+
+    // Without an aux stream: every list still parallel, colours white, layer UVs zero, transforms identity, and the two
+    // wall surfaces share their vertices again (3, as before colours were keyed).
+    StockWorld n;
+    CHECK(parseStockWorld(gfxJsonLayers(), {trzJson(s.pos, s.idx)}, n, &err));
+    CHECK(n.meshes.size() == 3 && n.layerCount.size() == 3);
+    CHECK(n.colorSurfaces == 0);
+    for (size_t m = 0; m < n.meshes.size() && m < n.layerCount.size(); ++m) {
+        CHECK(n.layerUv[m].size() == n.meshes[m].pos.size() * size_t(n.layerCount[m]));
+        for (const auto& uv : n.layerUv[m]) CHECK(uv[0] == 0.0f && uv[1] == 0.0f);
+        for (uint32_t c : n.vertexColor[m]) CHECK(c == 0xFFFFFFFFu);
+        for (uint32_t t : n.layerNormalTransform[m]) CHECK(t == 0xFF8080FFu);
+    }
+    CHECK(n.meshes.size() == 3 && n.meshes[1].pos.size() == 3);
+
+    // The oldest export shape (no surfData at all): one layer per mesh, lists parallel.
+    StockWorld o;
+    CHECK(parseStockWorld(gfxJson(false, false), {trzJson(s.pos, s.idx)}, o, &err));
+    CHECK(o.layerCount.size() == o.meshes.size());
+    for (size_t m = 0; m < o.meshes.size() && m < o.layerCount.size(); ++m) {
+        CHECK(o.layerCount[m] == 1);
+        CHECK(o.layerUv[m].size() == o.meshes[m].pos.size());
+        CHECK(o.vertexColor[m].size() == o.meshes[m].pos.size());
+        CHECK(o.layerNormalTransform[m].empty());
+    }
 }

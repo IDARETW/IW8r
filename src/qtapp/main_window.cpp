@@ -8,6 +8,7 @@
 #include "asset_usage_dialog.h"
 #include "material_clone.h"
 #include "uv_editor.h"
+#include <cstring>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -221,6 +222,17 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     });
     camera_->setMaterialImages(
         [this](const std::string& m) -> std::optional<QString> {
+            // A layer image of a layered stock material: "<material>\x01<L>" colour, "<material>\x02<L>" alpha + reveal.
+            if (const size_t sep = m.find_first_of("\x01\x02"); sep != std::string::npos && sep > 0) {
+                const QString base = qs(m.substr(0, sep));
+                const auto e = matCache_->lookup(base);
+                if (!e) return std::nullopt;
+                if (e->failed) return QString();
+                const auto imgs = matCache_->layerImages(base);
+                const int L = std::atoi(m.c_str() + sep + 1);
+                if (L < 0 || size_t(L) >= imgs.size()) return QString();
+                return m[sep] == '\x01' ? imgs[size_t(L)].colorDds : imgs[size_t(L)].revealDds;
+            }
             if (const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr) return qs(cm->colorImage);
             // The built-in glass of Make Glass Pane (owner report 2026-11-11: it showed the missing-material checker in
             // the camera): its image exists only inside a build folder, so the editor keeps its own copy.
@@ -244,7 +256,13 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             if (auto e = matCache_->lookup(qs(m))) return e->failed ? QString() : e->colorDds;
             return std::nullopt;
         },
-        [this](const std::string& m) { matCache_->request({qs(m)}); });
+        [this](const std::string& m) { matCache_->request({qs(m.substr(0, m.find_first_of("\x01\x02")))}); });
+    camera_->setMaterialLayers([this](const std::string& m) -> std::optional<StockLayeredMaterial> {
+        const auto e = matCache_->lookup(qs(m));
+        if (!e) return std::nullopt;
+        if (auto c = matCache_->layerConstants(qs(m))) return *c;
+        return StockLayeredMaterial{};
+    });
     camera_->setMaterialMasks([this](const std::string& m) -> QString {
         if (auto e = matCache_->lookup(qs(m)); e && !e->failed) return e->maskDds;
         return {};
@@ -587,6 +605,15 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
                     }
                 break;
             }
+            // A stock map's document names no sky: its world's own sky material (tw/sky_<map>) does.
+            if (stockWorld_)
+                for (const auto& m : stockWorld_->meshes) {
+                    const QString mat = qs(m.material);
+                    if (!mat.contains("sky", Qt::CaseInsensitive)) continue;
+                    const QString f = skyCache->cachedDds(mat);
+                    if (f.isEmpty()) skyCache->request(mat);
+                    return f;
+                }
             return {};
         });
         connect(skyCache, &StockSkyCache::skyReady, camera_, [this] { camera_->update(); });
@@ -6847,6 +6874,62 @@ void MainWindow::loadStockSun(const QString& zone) {
             p.waitForFinished(120000);
             json = findJson();
         }
+        // The vision (fog, atmosphere) beside it: vision/<zone>.vision as a rawfile.
+        const QString visDir = QFileInfo(dir).absolutePath() + "/vision";
+        const auto findVision = [&] {
+            for (QDirIterator it(visDir, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
+                const QString f = it.next();
+                if (f.contains("/rawfile/vision/")) return f;
+            }
+            return QString();
+        };
+        QString vision = findVision();
+        if (vision.isEmpty() && QFileInfo::exists(acts) && QFileInfo::exists(ff)) {
+            QProcess p;
+            p.start(acts, {"--noUpdater", "fastfile", "-r", "mw19replay", "-g", replay, "--oodle", oodle, "-a", "rawfile", "-n",
+                           "vision/" + zone + ".vision", "-l", "-o", visDir, ff});
+            p.waitForFinished(120000);
+            vision = findVision();
+        }
+        std::string visionText;
+        if (QFile vf(vision); !vision.isEmpty() && vf.open(QIODevice::ReadOnly)) visionText = vf.readAll().toStdString();
+        // The sky material's first pixel constant scales its image (tw/sky_<map>, in techsets_<map>.ff: 39.1 on
+        // mp_m_speedball): the stock sky image is stored that many times darker than the game draws it.
+        double skyIntensity = 0;
+        {
+            const QString skyDir = QFileInfo(dir).absolutePath() + "/sky_material";
+            const auto findMat = [&] {
+                for (QDirIterator it(skyDir, {"*.json"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
+                    const QString f = it.next();
+                    if (f.contains("/assets/material/")) return f;
+                }
+                return QString();
+            };
+            QString mj = findMat();
+            const QString techsets = QFileInfo(ff).absolutePath() + "/techsets_" + zone + ".ff";
+            if (mj.isEmpty() && QFileInfo::exists(acts))
+                for (const QString& z : {techsets, ff}) {
+                    if (!QFileInfo::exists(z)) continue;
+                    QProcess p;
+                    p.start(acts, {"--noUpdater", "fastfile", "-r", "mw19replay", "-g", replay, "--oodle", oodle, "-a", "material", "-n",
+                                   "tw/sky_" + zone, "-l", "-o", skyDir, z});
+                    p.waitForFinished(120000);
+                    mj = findMat();
+                    if (!mj.isEmpty()) break;
+                }
+            QFile mf(mj);
+            if (!mj.isEmpty() && mf.open(QIODevice::ReadOnly)) {
+                const QJsonArray vals = QJsonDocument::fromJson(mf.readAll())
+                                            .object()["asset"].toObject()["fields"].toObject()["constantBufferTable"].toObject()["values"].toArray();
+                const QString hex = vals.isEmpty() ? QString() : vals[0].toObject()["psData"].toObject()["bytes"].toString();
+                const QByteArray b = QByteArray::fromHex(hex.left(8).toLatin1());
+                if (b.size() == 4) {
+                    float v = 0;
+                    std::memcpy(&v, b.constData(), 4);
+                    if (std::isfinite(v) && v > 0 && v < 1e5) skyIntensity = v;
+                }
+            }
+        }
         double intensity = 0;
         Vec3 color{1, 1, 1}, toward{0, 0, 1};
         QFile f(json);
@@ -6863,9 +6946,11 @@ void MainWindow::loadStockSun(const QString& zone) {
                 break;
             }
         }
-        QMetaObject::invokeMethod(qApp, [self, zone, intensity, color, toward] {
-            if (!self || self->referenceZone_ != zone || intensity <= 0) return;
-            self->camera_->setGameStockSun(intensity, color, toward);
+        QMetaObject::invokeMethod(qApp, [self, zone, intensity, color, toward, visionText, skyIntensity] {
+            if (!self || self->referenceZone_ != zone) return;
+            if (!visionText.empty()) self->camera_->setGameStockVision(visionText);
+            if (skyIntensity > 0) self->camera_->setGameStockSkyIntensity(skyIntensity);
+            if (intensity > 0) self->camera_->setGameStockSun(intensity, color, toward);
         }, Qt::QueuedConnection);
     }).detach();
 }

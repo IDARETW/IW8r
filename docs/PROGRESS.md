@@ -1,5 +1,21 @@
 # Progress note (handoff)
 
+## Latest (2026-11-12 evening): Game Lighting against the owner's Speedball screenshot
+
+- Compare spot: IW8R_BENCH_CAM="-1080 230 330 -4 -27 120" (the owner plays at FOV 120, horizontal like the bench),
+  out/compare/speedball_ingame.webp. Run out/agent/sbcam.ps1 -Name <dir> -Cam "<cam>" (copies the exe to
+  out/audit_bin; caches shared in out/agent/benchcache: without IW8R_*_CACHE_ROOT each bench copies 1.2 GB).
+- Atmosphere: the vision's fog (core GameFog / gameFogFromVision; fogDensity is the half distance, as the converter
+  notes) with Rayleigh / Mie inscatter at fogInscatteringEv, height falloff, sky fog, extinction desaturation.
+- Stock sky drawn in Game Lighting: the world's sky material (tw/sky_<map>); its first pixel constant (39.1 on
+  Speedball, read from techsets_<map>.ff with ACTS) times the HDR image, undoing the 8-bit preview's exposure.
+- Shadows: textured props (trees, poles, crates) now cast; a near cascade (2800-unit box ahead of the camera, slice 1
+  of a two-slice shadow array) next to the whole-scene map.
+- Layered stock ground (research 97, agent): layers above 0 drawn blended over their base with their own UVs, weight
+  and reveal ramp; the metal base layer no longer shows through. Colour mode multiply is not drawn yet.
+- Open: Lit Preview alone is overexposed on stock maps; trees too dark; the vision's grading CLUT is not applied;
+  wall paint decals missing; sky preview bands (8-bit, 256 faces).
+
 ## Resume here (2026-11-12, afternoon)
 
 - Owner goal: finished product (stock map editing, Warzone editing, map and mode creation); no game tests unless

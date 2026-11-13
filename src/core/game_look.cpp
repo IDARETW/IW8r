@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <map>
 
 namespace iw8r {
 
@@ -256,6 +258,65 @@ const StockMapLook& stockMapLookNearest(double sunIntensity) {
     }
     return all[best];
 }
+
+GameFog gameFogFromVision(const std::string& text) {
+    GameFog f;
+    std::map<std::string, std::string> v;
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t end = text.find('\n', pos);
+        if (end == std::string::npos) end = text.size();
+        const std::string line = text.substr(pos, end - pos);
+        pos = end + 1;
+        const size_t q1 = line.find('"'), q2 = q1 == std::string::npos ? q1 : line.find('"', q1 + 1);
+        if (q2 == std::string::npos) continue;
+        std::string key = line.substr(0, q1);
+        while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) key.pop_back();
+        while (!key.empty() && (key.front() == ' ' || key.front() == '\t')) key.erase(key.begin());
+        v[key] = line.substr(q1 + 1, q2 - q1 - 1);
+    }
+    const auto num = [&](const char* tok, double& out) {
+        const auto it = v.find(tok);
+        if (it == v.end() || it->second.empty()) return false;
+        try {
+            out = std::stod(it->second);
+        } catch (...) {
+            return false;
+        }
+        return true;
+    };
+    const auto vec = [&](const char* tok, double out[3]) {
+        const auto it = v.find(tok);
+        if (it == v.end()) return false;
+        double a[3];
+        if (std::sscanf(it->second.c_str(), "%lf %lf %lf", &a[0], &a[1], &a[2]) != 3) return false;
+        for (int k = 0; k < 3; ++k) out[k] = a[k];
+        return true;
+    };
+    double scatter = 0;
+    const bool haveHalf = num("SNNNRLTML", f.halfPlane);           // fogHalfPlaneDistance
+    num("MKKLQTSKSO", scatter);                                    // fogAtmosphericScattering
+    num("RPNOKKL", f.start);                                       // fogStartDist
+    num("MSTOLQOTKN", f.density);                                  // fogDensity (the half distance)
+    num("TRPROKTLS", f.maxOpacity);                                // fogMaxOpacity
+    num("NRTMTRQTRQ", f.maxDistance);                              // fogMaxDistance
+    num("NLQKSSPMKP", f.skyDistance);                              // fogSkyDistance
+    num("NORQKLTPTR", f.skyIntensity);                             // fogSkyIntensity
+    num("NOSTLRKPQ", f.heightBase);                                // fogHeightFogBaseHeight
+    num("POKSTQPPQ", f.heightHalf);                                // fogHeightFogHalfPlaneDistance
+    num("MKQSQRPPQR", f.desaturation);                             // fogExtinctionDesaturation
+    num("LNOQTMMLSP", f.inscatterEv);                              // fogInscatteringEv
+    vec("NMLMMNQLSQ", f.color);                                    // fogColor
+    vec("LNMRMNLNTT", f.rayleigh);                                 // fogRayleighAlbedo
+    vec("LRKPNSNORL", f.mie);                                      // fogMieAlbedo
+    num("MPRLMQNQO", f.mieAnisotropy);                             // fogMieAnisotropy
+    num("NPMPRRLNPO", f.mieBlend);                                 // fogMieBlendStrength
+    f.on = haveHalf && scatter > 0 && f.density > 0 && f.maxOpacity > 0;
+    if (f.heightHalf <= 0) f.heightHalf = 1e9;
+    return f;
+}
+
+double gameFogInscatter(const GameFog& f) { return 0.001 * std::exp2(f.inscatterEv - 2.84) / (4.0 * 3.14159265358979); }
 
 double srgbToLinear(double c) { return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4); }
 

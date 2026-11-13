@@ -18,6 +18,7 @@
 #include <QTextStream>
 #include <QTimer>
 
+#include <algorithm>
 #include <utility>
 
 #include "acts_runner.h"
@@ -92,6 +93,27 @@ std::optional<MaterialCache::Entry> MaterialCache::lookup(const QString& materia
     return std::nullopt;
 }
 
+std::vector<MaterialCache::LayerImages> MaterialCache::layerImages(const QString& material) const {
+    const auto e = lookup(material);
+    if (!e || e->failed || e->layerCount < 2) return {};
+    return e->layers;
+}
+
+std::vector<QString> MaterialCache::layerColorImages(const QString& material) const {
+    std::vector<QString> out;
+    for (const LayerImages& l : layerImages(material)) out.push_back(l.colorDds);
+    return out;
+}
+
+std::optional<StockLayeredMaterial> MaterialCache::layerConstants(const QString& material) const {
+    const auto e = lookup(material);
+    if (!e || e->failed || e->layerCount < 2 || e->psData.isEmpty()) return std::nullopt;
+    const std::vector<uint8_t> bytes(e->psData.begin(), e->psData.end());
+    StockLayeredMaterial m;
+    if (!decodeStockLayeredMaterial(bytes, e->layerCount, m)) return std::nullopt;
+    return m;
+}
+
 void MaterialCache::request(const QStringList& materials) {
     bool added = false;
     for (QString m : materials) {
@@ -137,6 +159,18 @@ void MaterialCache::loadIndex() {
         const QString emissive = o.value("emissive").toString();
         e.emissiveDds = emissive.isEmpty() ? QString() : QDir(root_).filePath(emissive);
         for (const QJsonValue& t : o.value("textures").toArray()) e.textures << t.toString();
+        e.layerCount = o.value("layerCount").toInt(0);
+        const auto cached = [&](const QString& rel) { return rel.isEmpty() ? QString() : QDir(root_).filePath(rel); };
+        bool layerImageGone = false;
+        for (const QJsonValue& v : o.value("layers").toArray()) {
+            const QJsonObject l = v.toObject();
+            LayerImages li{cached(l.value("color").toString()), cached(l.value("normal").toString()),
+                           cached(l.value("reveal").toString())};
+            for (const QString& f : {li.colorDds, li.normalDds, li.revealDds})
+                if (!f.isEmpty() && !QFileInfo::exists(f)) layerImageGone = true;
+            e.layers.push_back(li);
+        }
+        e.psData = QByteArray::fromHex(o.value("psData").toString().toLatin1());
         e.surfaceFlags = o.contains("surfaceFlags") ? qint64(o.value("surfaceFlags").toDouble()) : -1;
         e.materialType = o.value("materialType").toString();
         e.sortKey = o.value("sortKey").toInt(-1);
@@ -147,6 +181,11 @@ void MaterialCache::loadIndex() {
         if (!e.failed && !o.contains("mask")) continue;
         // Resolved before slot-27 opacity masks and the body flags were kept (research 66): resolve again once.
         if (!e.failed && o.value("maskRules").toInt() < 4) continue;  // 4: + emissive (slot 18)
+        // Layered materials (tw4 / twc4) resolved before their layer images and constants were kept (research 97), or
+        // whose layer images were removed: resolve again once (images already cached are reused).
+        if (!e.failed && (o.value("layerRules").toInt() < 1 || layerImageGone) &&
+            (e.techset.startsWith("tw4/") || e.techset.startsWith("twc4/") || e.layerCount >= 2))
+            continue;
         e.error = o.value("error").toString();
         // A body that was in no zone is retried once per session: the colour-image-by-name fallback may resolve it.
         if (e.failed && (e.error.contains("not in zone") || e.error.contains("body not found"))) continue;
@@ -223,6 +262,16 @@ void MaterialCache::writeIndex() const {
         if (!e.materialType.isEmpty()) o.insert("materialType", e.materialType);
         if (e.sortKey >= 0) o.insert("sortKey", e.sortKey);
         if (!e.textures.isEmpty()) o.insert("textures", QJsonArray::fromStringList(e.textures));
+        if (e.layerCount > 0) o.insert("layerCount", e.layerCount);
+        if (!e.layers.empty()) {
+            QJsonArray layers;
+            const auto rel = [&](const QString& f) { return f.isEmpty() ? QString() : root.relativeFilePath(f); };
+            for (const LayerImages& l : e.layers)
+                layers.append(QJsonObject{{"color", rel(l.colorDds)}, {"normal", rel(l.normalDds)}, {"reveal", rel(l.revealDds)}});
+            o.insert("layers", layers);
+        }
+        if (!e.psData.isEmpty()) o.insert("psData", QString::fromLatin1(e.psData.toHex()));
+        if (!e.failed) o.insert("layerRules", 1);  // 1: layer images and psData of layered bodies (research 97)
         o.insert("failed", e.failed);
         if (!e.error.isEmpty()) o.insert("error", e.error);
         mats.insert(name, o);
@@ -362,7 +411,9 @@ void MaterialCache::buildImageRound() {
         imagesListed_ = true;
         for (const Work& w : works_) {
             if (!w.found) continue;
-            for (const QString& name : {w.color, w.normal, w.mask, w.emissive}) {
+            QStringList names{w.color, w.normal, w.mask, w.emissive};
+            names << w.layerColor << w.layerNormal << w.layerReveal;  // layered materials (research 97)
+            for (const QString& name : names) {
                 if (name.isEmpty() || images_.count(name)) continue;
                 Image im;
                 im.zones = w.imageZones;
@@ -437,12 +488,38 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
     // one-channel image (_sdf, _opacity, _a, _m, ...) or a colour image whose alpha is the opacity.
     const MaterialBlend blend = materialBlendFromTechset(work.techset.toStdString());
     const bool opacitySlot = blend != MaterialBlend::Opaque;
+    // Layered world materials (tw4 / twc4, research 97): layer L's colour is slot L, its normal + gloss 9 + L, its
+    // alpha + reveal 27 + L; the per-layer constants are the body's pixel constant buffer.
+    work.layerCount = fields.value("layerCount").toInt(0);
+    const int layers = std::clamp(work.layerCount, 0, 8);
+    work.layerColor.clear();
+    work.layerNormal.clear();
+    work.layerReveal.clear();
+    work.psData.clear();
+    if (layers >= 2) {
+        for (int l = 0; l < layers; ++l) {
+            work.layerColor << QString();
+            work.layerNormal << QString();
+            work.layerReveal << QString();
+        }
+        // The first buffer with pixel data: displacement layers (`..._129dn_...`, slot 96) have a vertex-only buffer 0
+        // and the pixel constants in buffer 1.
+        for (const QJsonValue& b : fields.value("constantBufferTable").toObject().value("values").toArray()) {
+            work.psData = QByteArray::fromHex(b.toObject().value("psData").toObject().value("bytes").toString().toLatin1());
+            if (!work.psData.isEmpty()) break;
+        }
+    }
     for (const QJsonValue& v : fields.value("textureTable").toObject().value("values").toArray()) {
         const QJsonObject t = v.toObject();
         const int slot = t.value("index").toInt(-1);
         const QString name = bareName(t.value("image").toObject().value("name").toString());
         if (isPlaceholder(name)) continue;
         work.textures << QString::number(slot) + "=" + name;
+        if (layers >= 2) {
+            if (slot >= 0 && slot < layers) work.layerColor[slot] = name;
+            else if (slot >= 9 && slot < 9 + layers) work.layerNormal[slot - 9] = name;
+            else if (slot >= 28 && slot < 27 + layers) work.layerReveal[slot - 27] = name;
+        }
         if (slot == 0 && work.color.isEmpty()) work.color = name;  // colour (albedo) slot
         if (slot == 9 && work.normal.isEmpty()) work.normal = name;  // normal slot
         if (slot == 27 && opacitySlot) work.mask = name;              // opacity slot (wins over a name match)
@@ -539,6 +616,22 @@ void MaterialCache::finishBatch() {
                 const Image& im = images_.at(w.emissive);
                 if (im.done) e.emissiveDds = im.file;  // optional: a failed emissive export is not an error
             }
+            e.layerCount = w.layerCount;
+            e.psData = w.psData;
+            for (int l = 0; l < w.layerColor.size(); ++l) {
+                const auto file = [&](const QString& name, const char* what) -> QString {
+                    const auto it = name.isEmpty() ? images_.end() : images_.find(name);
+                    if (it == images_.end()) return {};
+                    if (it->second.done) return it->second.file;
+                    e.error += QString("layer %1 %2 %3 not exported (%4); ").arg(l).arg(QString(what), name, it->second.error);
+                    return {};
+                };
+                LayerImages li;
+                li.colorDds = l == 0 ? e.colorDds : file(w.layerColor[l], "colour");
+                li.normalDds = l == 0 ? e.normalDds : file(w.layerNormal[l], "normal");
+                li.revealDds = file(w.layerReveal[l], "reveal");
+                e.layers.push_back(li);
+            }
         } else {
             e.failed = true;
             e.error = w.error.isEmpty() ? QStringLiteral("material body not found in any candidate zone") : w.error;
@@ -629,6 +722,12 @@ int runMaterialCacheTest(const QStringList& materials, const QString& outDir) {
             ++bad;
         } else {
             QString line = m + "\tzone=" + e->zone + "\tcolour=" + describeDds(e->colorDds) + "\tnormal=" + describeDds(e->normalDds);
+            if (e->layerCount >= 2) {
+                QStringList layers;
+                for (const MaterialCache::LayerImages& l : e->layers)
+                    layers << QFileInfo(l.colorDds).fileName() + "+" + QFileInfo(l.revealDds).fileName();
+                line += QString("\tlayers=%1 [%2] psData=%3B").arg(e->layerCount).arg(layers.join(" | ")).arg(e->psData.size());
+            }
             if (!e->error.isEmpty()) line += "\terror=" + e->error;
             lines << line;
         }

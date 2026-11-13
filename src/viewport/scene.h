@@ -213,6 +213,9 @@ size_t buildReferenceTris(const StockWorld& world, std::vector<GpuVertex>& out, 
 struct ReferenceTexBatch {
     std::string material;
     std::vector<GpuTexVertex> tris;
+    // 0: the material's base (layer 0); L >= 1: layer L of a layered stock material (tw4 / twc4, research 97), drawn over
+    // the layers below it with its own texture coordinates (uv) and its blend weight in the vertex tangent x (tx).
+    int layer = 0;
 };
 size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTexBatch>& out, bool skipSky = true,
                                 size_t maxTriangles = 3'000'000);

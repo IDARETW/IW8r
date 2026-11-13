@@ -515,6 +515,10 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                       .arg(lm ? lm->height : 0).arg(lm ? lm->polys : 0).arg(lm ? lm->seconds : 0, 0, 'f', 2)
                       .arg(lm && !lm->error.empty() ? QString::fromStdString(lm->error) : QString());
         settle();
+        {
+            const auto sl = cam->skyLuminance();
+            report << QString("game_sky exposure=%1 mean_lum=%2 high_lum=%3").arg(sl[0]).arg(sl[1]).arg(sl[2]);
+        }
         shot("game_a");
         run("game_still", nullptr);
         counts("counts_game");
