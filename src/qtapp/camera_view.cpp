@@ -280,7 +280,9 @@ void CameraView::render() {
                 }
                 const int id = textureFor(refTexMaterials_[k]);
                 if (texIds_.count(refTexMaterials_[k])) {
-                    if (id >= 0) renderer_.setReferenceTexture(k, id);
+                    // A stock image this install does not hold (catalogued only in a zone without its payload): plain grey on
+                    // the read-only stock reference rather than the missing-material checker (mp_m_fork, mp_m_speed).
+                    if (id >= 0) renderer_.setReferenceTexture(k, id == checkerTex_ ? -1 : id);
                     // Its normal map next (normalFor waits for the colour image and the per-frame budget).
                     const int nid = id >= 0 && id != checkerTex_ ? normalFor(refTexMaterials_[k]) : -1;
                     if (id >= 0 && id != checkerTex_ && !nrmIds_.count(refTexMaterials_[k])) {
@@ -308,7 +310,7 @@ void CameraView::render() {
                 const int id = textureFor(texInstMaterials_[k]);
                 if (texIds_.count(texInstMaterials_[k])) {
                     texInstResolved_[k] = true;
-                    if (id >= 0) renderer_.setReferenceInstTexture(k, id);
+                    if (id >= 0) renderer_.setReferenceInstTexture(k, id == checkerTex_ ? -1 : id);  // as the world: grey, not the checker
                 } else {
                     pending = true;
                 }
