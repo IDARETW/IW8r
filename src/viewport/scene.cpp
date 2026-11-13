@@ -1527,6 +1527,14 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
                 const auto& uc = world.layerUv[mi][size_t(c) * size_t(layers) + size_t(L)];
                 tanL.push_back(tangentOf(ua[0], 1.0f - ua[1], ub[0], 1.0f - ub[1], uc[0], 1.0f - uc[1]));
             }
+            // A layer whose weight is 0 at the three corners adds nothing to this triangle (the reveal ramp and the
+            // plain weight both give b = 0 at w = 0): it is left out (Hideout drew 21 M triangles a frame with every
+            // layer covering the whole terrain).
+            bool layerOn[kStockMaxLayers] = {};
+            for (int L = 1; L <= int(layerDst.size()); ++L)
+                for (uint32_t k : {a, b, c})
+                    if (stockLayerWeight(vcol ? (*vcol)[k] : 0xFFFFFFFFu, vcolHi ? (*vcolHi)[k] : 0xFFFFFFFFu, L) > 0.5f / 255.0f)
+                        layerOn[L - 1] = true;
             for (uint32_t k : {a, b, c}) {
                 // ImportedMesh::uv is OBJ convention (v flipped); the textured camera uses the game's v.
                 GpuTexVertex v{float(m.pos[k].x), float(m.pos[k].y), float(m.pos[k].z), m.uv[k][0], 1.0f - m.uv[k][1], rgba};
@@ -1543,6 +1551,7 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
                 }
                 dst.push_back(v);
                 for (int L = 1; L <= int(layerDst.size()); ++L) {
+                    if (!layerOn[L - 1]) continue;
                     GpuTexVertex lv = v;
                     const auto& luv = world.layerUv[mi][size_t(k) * size_t(layers) + size_t(L)];
                     lv.u = luv[0], lv.v = 1.0f - luv[1];

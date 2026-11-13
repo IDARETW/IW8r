@@ -2,7 +2,7 @@
 #include "stock_probes.h"
 
 #include <algorithm>
-#include <d3d11.h>
+#include <d3d11_1.h>
 #include <d3dcompiler.h>
 
 #include <cmath>
@@ -256,7 +256,10 @@ Texture2D envBrdf : register(t10);
 // The stock reference's reflection probes (setStockProbes): octahedral, world space, 4-texel gutter at every level.
 Texture2DArray stockProbes : register(t11);
 struct ProbeBox { float4 centerSlice; float4 axisX; float4 axisY; float4 axisZ; float4 originFeather; };
-cbuffer Probes : register(b5) { float4 probeCount; ProbeBox probeBoxes[128]; };
+cbuffer Probes : register(b5) { float4 probeCount; float4 probeGridMin; float4 probeGridCell; ProbeBox probeBoxes[128]; };
+// A grid over the boxes (setStockProbes): up to four candidate boxes per cell in priority order (255 = none), or the
+// nearest box where none covers the cell. probeCount.yzw = grid size, probeGridCell.w = 1 when the grid is bound.
+Texture3D<uint4> probeGrid : register(t13);
 float3 probeAt(float slice, float3 dir, float mip) {
     float3 a = abs(dir);
     float2 o = dir.xy / max(a.x + a.y + a.z, 1e-6);
@@ -277,7 +280,21 @@ float3 stockProbeLight(float3 p, float3 R, float gp) {
     // the weight the boxes around p leave (owner 2026-11-12: Hideout's far ridge was black without one).
     float nearRem = -1e30;
     float nearSlice = 0;
-    for (int k = 0; k < n && wsum < 0.999; ++k) {
+    // With the grid: only the cell's candidates (Hideout's 48 boxes per pixel per layer pass cost 40 ms a frame).
+    const bool grid = probeGridCell.w > 0.5;
+    uint4 cand = uint4(0, 0, 0, 0);
+    if (grid) {
+        int3 dims = int3(probeCount.yzw);
+        int3 cell = clamp(int3(floor((p - probeGridMin.xyz) / probeGridCell.xyz)), int3(0, 0, 0), dims - 1);
+        cand = probeGrid.Load(int4(cell, 0));
+        n = 4;
+    }
+    for (int j = 0; j < n && wsum < 0.999; ++j) {
+        int k = j;
+        if (grid) {
+            k = int(j == 0 ? cand.x : j == 1 ? cand.y : j == 2 ? cand.z : cand.w);
+            if (k >= 255) break;
+        }
         ProbeBox b = probeBoxes[k];
         float3 d = p - b.centerSlice.xyz;
         float3 lp = float3(dot(d, b.axisX.xyz), dot(d, b.axisY.xyz), dot(d, b.axisZ.xyz));
@@ -385,7 +402,9 @@ float4 ps_tex(PSIn i) : SV_TARGET {
     // Blend 0: alpha-tested foliage and grates. Blended materials keep their coverage; without a mask (alpha 1) a
     // blended surface (glass, a decal sheet) shows at 60 percent so what is behind it stays visible.
     float outA = 1.0;
-    if (batchFlags.y < 0.5) clip(t.a - 0.3);
+    // Cut-outs: the stock alpha-tested shaders keep opacity above 128 / 255 (research 100); the editor's own materials
+    // keep the editor's 0.3.
+    if (batchFlags.y < 0.5) clip(t.a - (game0.x > 0.5 && batchFlags2.z > 0.5 ? 0.5 : 0.3));
     else outA = t.a > 0.99 ? 0.6 : t.a;
     if (layerB >= 0.0) outA = layerB;
     // Colour mode multiply (layerP.w = 1; puddles, edge wear): below x lerp(1, layer, b), drawn with a multiplying blend
@@ -401,7 +420,9 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         float3 Nf = dot(i.n, i.n) > 0.5 ? normalize(i.n) : normalize(cross(ddx(i.w), ddy(i.w)));
         // A normal from the screen derivatives has no reliable side (instanced props have none of their own): it faces
         // the viewer.
-        if (dot(i.n, i.n) <= 0.5 && dot(Nf, eyeStart.xyz - i.w) < 0) Nf = -Nf;
+        // A face seen from behind is lit with its normal turned toward the viewer: the stock two-sided foliage shaders
+        // negate the tangent frame on back faces (research 100), and back-lit grass cards were dark speckles.
+        if (dot(Nf, eyeStart.xyz - i.w) < 0) Nf = -Nf;
         float3 N = Nf;
         if (batchFlags.x > 0.5 && dot(i.n, i.n) > 0.5) {
             float4 nm = nrm0.Sample(samp0, uvS);
@@ -414,9 +435,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // Without a lightmap texel (props, models, new brushes): on a stock map the game lights them from its light grid;
         // here from the reflection probes' blurriest level (luminance-normalised) at the map's mean baked light
         // (gameSky.rgb, gameSky.w = 1); otherwise the unbaked light.
-        float3 indirect = gameSky.rgb * (0.6 + 0.4 * saturate(N.z));
-        if (gameSky.w > 0.5 && probeCount.x > 0.5)
-            indirect = stockProbeLight(i.w, N, 0.0) * dot(gameSky.rgb, float3(0.2126, 0.7152, 0.0722));
+        float3 indirect = gameSky.rgb * (0.6 + 0.4 * saturate(N.z));  // the probes' light, below, where no lightmap
         float3 stockDw = Nf, stockB = 0;  // the stock lightmap's directional part, for E(R) below
         float visibility = 1.0;
         float2 lmUv = i.lm;
@@ -449,6 +468,10 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 visibility = a.a;
             }
         }
+        // Only where no lightmap lit the point: the probes' fallback light (it cost every lightmapped pixel two probe
+        // lookups that were thrown away).
+        if (!lmOk && gameSky.w > 0.5 && probeCount.x > 0.5)
+            indirect = stockProbeLight(i.w, N, 0.0) * dot(gameSky.rgb, float3(0.2126, 0.7152, 0.0722));
         // The sun: the baked sun depth where it covers the point (here the sun shadow map), else the lightmap's mask.
         if (litParams.y > 0.5) visibility = sunShadow(i.w);
         float3 c;
@@ -471,7 +494,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             float kd = lerp(fq, cq * (cq + min(4.0 * tq * tq, 1.0)) * max(1.25 - 1.6 * tq, 0.55 - 0.2 * tq), tq) + 0.38 * tq * tq;
             float fmax = max(Fenv.r, max(Fenv.g, Fenv.b));
             float3 S = Lr;
-            if (probeCount.x > 0.5) {
+            if (probeCount.x > 0.5 && layerP.x < 0.5) {  // layer and decal passes: the lightmap along R (they re-light per pass)
                 // Probes are luminance-normalised: relit by the lightmap along the reflection (research 95).
                 float3 P = stockProbeLight(i.w, R, gp) * dot(Lr, float3(0.2126, 0.7152, 0.0722));
                 float3 mixed = lerp(P, Lr, 0.85);
@@ -651,6 +674,9 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(rsShadow_);
     safeRelease(cbBatch_);
     safeRelease(cbLayer_);
+    for (auto*& b : cbLayerAll_) safeRelease(b);
+    cbLayerAll_.clear();
+    if (ctx1_) ctx1_->Release(), ctx1_ = nullptr;
     safeRelease(rsDecal_);
     safeRelease(vbRefTexExtra_);
     safeRelease(cbWind_);
@@ -662,6 +688,7 @@ SceneRenderer::~SceneRenderer() {
     for (int k = 0; k < 3; ++k) safeRelease(stockLmSrv_[k]), safeRelease(stockLmTex_[k]);
     safeRelease(envBrdfSrv_), safeRelease(envBrdfTex_);
     safeRelease(probeArrSrv_), safeRelease(probeArrTex_), safeRelease(cbProbes_), safeRelease(cbLmRects_);
+    safeRelease(probeGridSrv_), safeRelease(probeGridTex_);
     safeRelease(meterSrv_), safeRelease(meterRtv_), safeRelease(meterTex_);
     for (auto*& s : meterStage_) safeRelease(s);
     safeRelease(invGreySrv_), safeRelease(invGreyTex_);
@@ -1052,12 +1079,13 @@ void SceneRenderer::setStockProbes(const StockProbeSet* set) {
     if (!dev_) return;
     if (!cbProbes_) {
         D3D11_BUFFER_DESC bd{};
-        bd.ByteWidth = 16 + 80 * kMaxProbeBoxes;
+        bd.ByteWidth = 48 + 80 * kMaxProbeBoxes;
         bd.Usage = D3D11_USAGE_DEFAULT;
         bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         if (FAILED(dev_->CreateBuffer(&bd, nullptr, &cbProbes_))) return;
     }
-    std::vector<float> cb(size_t(4 + 20 * kMaxProbeBoxes), 0.0f);
+    safeRelease(probeGridSrv_), safeRelease(probeGridTex_);
+    std::vector<float> cb(size_t(12 + 20 * kMaxProbeBoxes), 0.0f);
     const auto upload = [&] { ctx_->UpdateSubresource(cbProbes_, 0, nullptr, cb.data(), 0, 0); };
     if (!set || set->probes.empty() || set->size < 16 || set->mipCount < 1) {
         upload();
@@ -1101,7 +1129,7 @@ void SceneRenderer::setStockProbes(const StockProbeSet* set) {
     for (size_t k : order) {
         const StockProbeBox& b = set->boxes[k];
         if (b.imageIndex < 0 || size_t(b.imageIndex) >= set->probes.size() || n >= size_t(kMaxProbeBoxes)) continue;
-        float* e = cb.data() + 4 + 20 * n;
+        float* e = cb.data() + 12 + 20 * n;
         e[0] = b.center[0], e[1] = b.center[1], e[2] = b.center[2], e[3] = float(b.imageIndex);
         for (int a = 0; a < 3; ++a) {
             e[4 + 4 * a] = b.axes[a][0], e[5 + 4 * a] = b.axes[a][1], e[6 + 4 * a] = b.axes[a][2];
@@ -1111,7 +1139,79 @@ void SceneRenderer::setStockProbes(const StockProbeSet* set) {
         e[19] = std::max({b.feather[0], b.feather[1], b.feather[2], 1.0f});
         ++n;
     }
-    cb[0] = float(n);
+    cb[0] = perfOff("probes") ? 0.0f : float(n);  // benchmark switch: no probes
+    // The candidate grid over the boxes' world bounds (the fallback box, as large as the map, left out of the bounds).
+    if (n > 4 && !perfOff("probegrid")) {
+        struct WB {
+            float lo[3], hi[3];
+        };
+        std::vector<WB> wb(n);
+        float glo[3] = {1e30f, 1e30f, 1e30f}, ghi[3] = {-1e30f, -1e30f, -1e30f};
+        for (size_t i = 0; i < n; ++i) {
+            const float* e = cb.data() + 12 + 20 * i;
+            for (int c = 0; c < 3; ++c) {
+                float ext = 0;
+                for (int a = 0; a < 3; ++a) ext += std::fabs(e[4 + 4 * a + c]) * e[7 + 4 * a];
+                wb[i].lo[c] = e[c] - ext, wb[i].hi[c] = e[c] + ext;
+            }
+            if (i + 1 < n || n == 1)
+                for (int c = 0; c < 3; ++c) glo[c] = std::min(glo[c], wb[i].lo[c]), ghi[c] = std::max(ghi[c], wb[i].hi[c]);
+        }
+        int dims[3];
+        float cell[3];
+        const float vol = std::max((ghi[0] - glo[0]) * (ghi[1] - glo[1]) * (ghi[2] - glo[2]), 1.0f);
+        const float side = std::cbrt(vol / 65536.0f);  // about 64 x 64 x 16 cells
+        for (int c = 0; c < 3; ++c) {
+            dims[c] = std::clamp(int(std::ceil((ghi[c] - glo[c]) / std::max(side, 1.0f))), 1, 128);
+            cell[c] = std::max((ghi[c] - glo[c]) / float(dims[c]), 1.0f);
+        }
+        std::vector<uint8_t> g(size_t(dims[0]) * dims[1] * dims[2] * 4, 255);
+        for (int z = 0; z < dims[2]; ++z)
+            for (int y = 0; y < dims[1]; ++y)
+                for (int x = 0; x < dims[0]; ++x) {
+                    const float clo[3] = {glo[0] + x * cell[0], glo[1] + y * cell[1], glo[2] + z * cell[2]};
+                    const float chi[3] = {clo[0] + cell[0], clo[1] + cell[1], clo[2] + cell[2]};
+                    uint8_t* q = &g[((size_t(z) * dims[1] + y) * dims[0] + x) * 4];
+                    int used = 0;
+                    for (size_t i = 0; i < n && used < 4; ++i) {
+                        bool touch = true;
+                        for (int c = 0; c < 3; ++c) touch = touch && wb[i].lo[c] <= chi[c] && wb[i].hi[c] >= clo[c];
+                        if (touch) q[used++] = uint8_t(i);
+                    }
+                    if (used == 0) {
+                        // Nearest box by its oriented margin at the cell centre (the shader's fallback).
+                        const float p[3] = {0.5f * (clo[0] + chi[0]), 0.5f * (clo[1] + chi[1]), 0.5f * (clo[2] + chi[2])};
+                        float best = -1e30f;
+                        size_t bi = 0;
+                        for (size_t i = 0; i < n; ++i) {
+                            const float* e = cb.data() + 12 + 20 * i;
+                            const float d[3] = {p[0] - e[0], p[1] - e[1], p[2] - e[2]};
+                            float m = 1e30f;
+                            for (int a = 0; a < 3; ++a) {
+                                const float lp = d[0] * e[4 + 4 * a] + d[1] * e[5 + 4 * a] + d[2] * e[6 + 4 * a];
+                                m = std::min(m, e[7 + 4 * a] - std::fabs(lp));
+                            }
+                            if (m > best) best = m, bi = i;
+                        }
+                        q[0] = uint8_t(bi);
+                    }
+                }
+        D3D11_TEXTURE3D_DESC t3{};
+        t3.Width = UINT(dims[0]), t3.Height = UINT(dims[1]), t3.Depth = UINT(dims[2]);
+        t3.MipLevels = 1;
+        t3.Format = DXGI_FORMAT_R8G8B8A8_UINT;
+        t3.Usage = D3D11_USAGE_IMMUTABLE;
+        t3.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA gi{g.data(), UINT(dims[0]) * 4, UINT(dims[0]) * UINT(dims[1]) * 4};
+        if (SUCCEEDED(dev_->CreateTexture3D(&t3, &gi, &probeGridTex_)) &&
+            SUCCEEDED(dev_->CreateShaderResourceView(probeGridTex_, nullptr, &probeGridSrv_))) {
+            cb[1] = float(dims[0]), cb[2] = float(dims[1]), cb[3] = float(dims[2]);
+            cb[4] = glo[0], cb[5] = glo[1], cb[6] = glo[2];
+            cb[8] = cell[0], cb[9] = cell[1], cb[10] = cell[2], cb[11] = 1.0f;
+        } else {
+            safeRelease(probeGridTex_);
+        }
+    }
     upload();
 }
 
@@ -1130,6 +1230,7 @@ void SceneRenderer::writeGameCb() {
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
     ID3D11ShaderResourceView* gl[3] = {gameLutSrv_, envBrdfSrv_, probeArrSrv_};
     ctx_->PSSetShaderResources(9, 3, gl);
+    ctx_->PSSetShaderResources(13, 1, &probeGridSrv_);
     if (cbProbes_) ctx_->PSSetConstantBuffers(5, 1, &cbProbes_);
     if (cbLmRects_) ctx_->PSSetConstantBuffers(6, 1, &cbLmRects_);
     if (lutSampler_) ctx_->PSSetSamplers(2, 1, &lutSampler_);
@@ -1305,6 +1406,7 @@ void SceneRenderer::setReferenceDecal(size_t batch, int sortKey, int revealTextu
     L.reveal = revealTexture;
     std::memcpy(L.params, params, sizeof(L.params));
     refDecalDirty_ = true;
+    layerParamsDirty_ = true;
 }
 
 void SceneRenderer::setReferenceLayer(size_t batch, int revealTexture, const float params[16]) {
@@ -1313,6 +1415,7 @@ void SceneRenderer::setReferenceLayer(size_t batch, int revealTexture, const flo
     L.ready = true;
     L.reveal = revealTexture;
     std::memcpy(L.params, params, sizeof(L.params));
+    layerParamsDirty_ = true;
 }
 
 bool SceneRenderer::appendReferenceDecals(const std::vector<std::vector<GpuTexVertex>>& batches) {
@@ -1325,6 +1428,7 @@ bool SceneRenderer::appendReferenceDecals(const std::vector<std::vector<GpuTexVe
     }
     safeRelease(vbRefTexExtra_);
     refTexExtraFrom_ = refTexIds_.size();
+    refTexExtraBounds_.clear();
     if (!dev_ || batches.empty()) return true;
     std::vector<GpuTexVertex> all;
     for (const auto& b : batches) {
@@ -1332,6 +1436,9 @@ bool SceneRenderer::appendReferenceDecals(const std::vector<std::vector<GpuTexVe
         refTexCount_.push_back(UINT(b.size()));
         all.insert(all.end(), b.begin(), b.end());
         refTexChunks_.emplace_back();  // small: drawn whole
+        iw8r::AABB bb;
+        for (const GpuTexVertex& v : b) bb.add(iw8r::Vec3{v.x, v.y, v.z});
+        refTexExtraBounds_.push_back(bb);
         refTexIds_.push_back(-1);
         RefLayer L;
         L.decal = true;  // never drawn opaque; ready once setReferenceDecal gives its textures
@@ -1352,6 +1459,7 @@ bool SceneRenderer::appendReferenceDecals(const std::vector<std::vector<GpuTexVe
 bool SceneRenderer::setReferenceTextured(const std::vector<std::vector<GpuTexVertex>>& batches, const std::vector<int>* layers) {
     safeRelease(vbRefTexExtra_);
     refTexExtraFrom_ = ~size_t(0);
+    refTexExtraBounds_.clear();
     refLayers_.assign(batches.size(), RefLayer{});
     refNrmIds_.assign(batches.size(), -1);
     refLayerOrder_.clear();
@@ -1453,8 +1561,53 @@ bool SceneRenderer::setReferenceInstances(const std::vector<InstancedMesh>& mesh
     return true;
 }
 
+void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3], float pixelAngle) {
+    const iw8r::Frustum fr = iw8r::frustumFromViewProj(viewProj);
+    instCulledLast_ = 0;
+    std::vector<float> keep;
+    for (GpuTexInstanced& g : refTexInst_) {
+        if (!g.vb || !g.inst || !g.visInst || g.rows.empty()) continue;
+        keep.clear();
+        const size_t n = g.rows.size() / 12;
+        for (size_t i = 0; i < n; ++i) {
+            const float* r = &g.rows[i * 12];
+            const float c[3] = {r[0] * g.centre[0] + r[1] * g.centre[1] + r[2] * g.centre[2] + r[3],
+                                r[4] * g.centre[0] + r[5] * g.centre[1] + r[6] * g.centre[2] + r[7],
+                                r[8] * g.centre[0] + r[9] * g.centre[1] + r[10] * g.centre[2] + r[11]};
+            const float sc = std::sqrt(r[0] * r[0] + r[4] * r[4] + r[8] * r[8]);
+            const float rad = g.radius * std::max(sc, 1e-6f);
+            bool out = false;
+            for (const auto& pl : fr.planes)
+                if (pl.n.x * c[0] + pl.n.y * c[1] + pl.n.z * c[2] - pl.d > rad) {
+                    out = true;
+                    break;
+                }
+            if (!out) {
+                const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
+                const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+                out = dist > rad && rad < dist * pixelAngle;  // under about a pixel across
+            }
+            if (out) {
+                ++instCulledLast_;
+                continue;
+            }
+            keep.insert(keep.end(), r, r + 12);
+        }
+        g.visible = unsigned(keep.size() / 12);
+        if (g.visible) {
+            D3D11_MAPPED_SUBRESOURCE ms;
+            if (SUCCEEDED(ctx_->Map(g.visInst, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms))) {
+                std::memcpy(ms.pData, keep.data(), keep.size() * sizeof(float));
+                ctx_->Unmap(g.visInst, 0);
+            } else {
+                g.visible = g.instances;  // fall back to every placement
+            }
+        }
+    }
+}
+
 bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>& meshes) {
-    for (auto& g : refTexInst_) safeRelease(g.vb), safeRelease(g.inst);
+    for (auto& g : refTexInst_) safeRelease(g.vb), safeRelease(g.inst), safeRelease(g.visInst);
     refTexInst_.clear();
     if (!dev_ || !vsTexInst_ || !layoutTexInst_) return meshes.empty();
     for (const InstancedTexMesh& m : meshes) {
@@ -1472,6 +1625,21 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
                 if (SUCCEEDED(dev_->CreateBuffer(&bd, &iinit, &g.inst))) {
                     g.vertices = unsigned(m.tris.size());
                     g.instances = unsigned(count);
+                    g.visible = g.instances;
+                    g.rows = m.rows;
+                    // The model's bounding sphere (box centre, half diagonal).
+                    float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
+                    for (const GpuTexVertex& v : m.tris) {
+                        const float p[3] = {v.x, v.y, v.z};
+                        for (int c = 0; c < 3; ++c) lo[c] = std::min(lo[c], p[c]), hi[c] = std::max(hi[c], p[c]);
+                    }
+                    float r2 = 0;
+                    for (int c = 0; c < 3; ++c) g.centre[c] = 0.5f * (lo[c] + hi[c]), r2 += 0.25f * (hi[c] - lo[c]) * (hi[c] - lo[c]);
+                    g.radius = std::sqrt(r2);
+                    D3D11_BUFFER_DESC dd = bd;
+                    dd.Usage = D3D11_USAGE_DYNAMIC;
+                    dd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+                    dev_->CreateBuffer(&dd, nullptr, &g.visInst);
                 } else {
                     safeRelease(g.vb);
                 }
@@ -1501,10 +1669,12 @@ void SceneRenderer::drawReferenceTexInstances() {
         if (!g.vb || !g.inst) continue;
         const int id = g.texture >= 0 ? g.texture : whiteTex_;
         if (id < 0 || size_t(id) >= textures_.size()) continue;
+        const bool culled = instCull_ && g.visInst && g.visible <= g.instances;
+        if (culled && g.visible == 0) continue;
         ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]);
-        ID3D11Buffer* bufs[2] = {g.vb, g.inst};
+        ID3D11Buffer* bufs[2] = {g.vb, culled ? g.visInst : g.inst};
         ctx_->IASetVertexBuffers(0, 2, bufs, strides, offsets);
-        drawInst(g.vertices, g.instances, 0, 0);
+        drawInst(g.vertices, culled ? g.visible : g.instances, 0, 0);
     }
     ID3D11Buffer* none[2] = {nullptr, nullptr};
     ctx_->IASetVertexBuffers(0, 2, none, strides, offsets);
@@ -1960,6 +2130,16 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     const float bf[4] = {0, 0, 0, 0};
     ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
     const iw8r::Frustum frustum = iw8r::frustumFromViewProj(viewProj);
+    {
+        static const bool noCull = perfOff("instcull");  // benchmark switch
+        instCull_ = !noCull && !in.capture && !in.clean;
+        if (instCull_ && !refTexInst_.empty()) {
+            // One pixel of the frame: the projection's x scale (viewProj is row-vector; column 0 of the projection part
+            // is not separable here, so the half-width tangent comes from the frame size and a 90-degree fallback).
+            const float eyeP[3] = {fog_[0], fog_[1], fog_[2]};  // setFog carries the eye
+            cullTexInstances(viewProj, eyeP, pixelAngle_);
+        }
+    }
     texCulledLast_ = 0;
     // Game Lighting: depth pre-pass of the opaque textured geometry (scene batches, the stock world, the stock props).
     // Off by default: measured on mp_rust (18 M triangles) it cost more than it saved (14.3 against 10.7 ms), the
@@ -2174,7 +2354,8 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         }
         // The layers of layered stock materials (terrain): over their base, in layer order, blended by the layer's
         // weight and reveal map, depth-tested against the base (same vertices, same depth) without writing it.
-        if ((!refLayerOrder_.empty() || refDecalDirty_ || !refDecalOrder_.empty()) && cbLayer_) {
+        static const bool noLayers = perfOff("layers");  // benchmark switch: no layer or decal passes
+        if (!noLayers && (!refLayerOrder_.empty() || refDecalDirty_ || !refDecalOrder_.empty()) && cbLayer_) {
             if (cbBatch_) {
                 const float flags[8] = {refNormals ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};  // y = 1: blended, no clip
                 ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
@@ -2192,6 +2373,39 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 });
             }
             ID3D11Buffer* boundRefVb = vbRefTex_;
+            if (!ctx1_ && ctx_ && dev_) {
+                D3D11_FEATURE_DATA_D3D11_OPTIONS o{};
+                if (SUCCEEDED(dev_->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &o, sizeof(o))) && o.ConstantBufferOffsetting)
+                    ctx_->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void**>(&ctx1_));
+            }
+            constexpr size_t kPerCb = 256;  // batches per 64 KB buffer (256 bytes each)
+            if (ctx1_ && (layerParamsDirty_ || cbLayerAllBatches_ != refLayers_.size())) {
+                layerParamsDirty_ = false;
+                const size_t chunks = (refLayers_.size() + kPerCb - 1) / kPerCb;
+                if (cbLayerAllBatches_ != refLayers_.size()) {
+                    for (auto*& b : cbLayerAll_) safeRelease(b);
+                    cbLayerAll_.assign(chunks, nullptr);
+                    cbLayerAllBatches_ = refLayers_.size();
+                    D3D11_BUFFER_DESC bd{};
+                    bd.ByteWidth = UINT(kPerCb * 256);
+                    bd.Usage = D3D11_USAGE_DEFAULT;
+                    bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+                    for (auto*& b : cbLayerAll_)
+                        if (FAILED(dev_->CreateBuffer(&bd, nullptr, &b))) cbLayerAllBatches_ = 0;
+                }
+                std::vector<float> all(kPerCb * 64, 0.0f);  // 256 bytes (16 constants) per batch
+                for (size_t c = 0; c < cbLayerAll_.size() && cbLayerAllBatches_; ++c) {
+                    std::fill(all.begin(), all.end(), 0.0f);
+                    for (size_t j = 0; j < kPerCb && c * kPerCb + j < refLayers_.size(); ++j)
+                        std::memcpy(&all[j * 64], refLayers_[c * kPerCb + j].params, sizeof(refLayers_[0].params));
+                    if (cbLayerAll_[c]) ctx_->UpdateSubresource(cbLayerAll_[c], 0, nullptr, all.data(), 0, 0);
+                }
+            }
+            const bool offsetCb = ctx1_ && !cbLayerAll_.empty() && cbLayerAllBatches_ == refLayers_.size();
+            int lastFlags = -1;
+            ID3D11BlendState* lastBlend = nullptr;
+            ID3D11ShaderResourceView *lastCol = nullptr, *lastRev = nullptr;
+            static const bool noPropDecals = perfOff("propdecals");  // benchmark switch
             // Opaque layers first, then the decals (their layers with them) with a small depth offset.
             std::vector<size_t> passOrder;
             passOrder.reserve(refLayerOrder_.size() + refDecalOrder_.size());
@@ -2208,20 +2422,49 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 }
                 const RefLayer& L = refLayers_[k];
                 if (!L.ready || refTexIds_[k] < 0 || size_t(refTexIds_[k]) >= textures_.size()) continue;
-                if (cbBatch_) {
-                    const bool volume = L.params[0] > 1.5f;  // decal volumes carry their box UV in the tangent: no normal map
+                if (k >= refTexExtraFrom_) {
+                    // Prop decals: small detail; drawn in view and within 4,000 units (Hideout: 790k triangles, 38 ms).
+                    if (noPropDecals) continue;
+                    const size_t e = k - refTexExtraFrom_;
+                    if (e < refTexExtraBounds_.size() && refTexExtraBounds_[e].valid()) {
+                        const iw8r::AABB& bb = refTexExtraBounds_[e];
+                        const iw8r::Vec3 c = bb.center();
+                        const double dx = c.x - fog_[0], dy = c.y - fog_[1], dz = c.z - fog_[2];
+                        const double r = iw8r::length(bb.maxs - bb.mins) * 0.5;
+                        if (std::sqrt(dx * dx + dy * dy + dz * dz) - r > 4000.0) continue;
+                        bool out = false;
+                        for (const auto& pl : frustum.planes)
+                            if (pl.n.x * c.x + pl.n.y * c.y + pl.n.z * c.z - pl.d > r) {
+                                out = true;
+                                break;
+                            }
+                        if (out) continue;
+                    }
+                }
+                const bool volume = L.params[0] > 1.5f;  // decal volumes carry their box UV in the tangent: no normal map
+                if (cbBatch_ && int(volume) != lastFlags) {
+                    lastFlags = int(volume);
                     const float flags[8] = {refNormals && !volume ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};
                     ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
                 }
                 const int rv = L.reveal >= 0 && size_t(L.reveal) < textures_.size() ? L.reveal : whiteFullTex_;
                 if (rv < 0 || size_t(rv) >= textures_.size()) continue;
-                ctx_->UpdateSubresource(cbLayer_, 0, nullptr, L.params, 0, 0);
-                {
-                    const float bfz[4] = {0, 0, 0, 0};
-                    ctx_->OMSetBlendState(L.params[3] > 0.5f && blendMul_ ? blendMul_ : blend_, bfz, 0xffffffff);
+                if (offsetCb && cbLayerAll_[k / kPerCb]) {
+                    const UINT first = UINT((k % kPerCb) * 16), num = 16;
+                    ctx1_->PSSetConstantBuffers1(7, 1, &cbLayerAll_[k / kPerCb], &first, &num);
+                } else {
+                    ctx_->UpdateSubresource(cbLayer_, 0, nullptr, L.params, 0, 0);
                 }
-                ctx_->PSSetShaderResources(0, 1, &textures_[size_t(refTexIds_[k])]);
-                ctx_->PSSetShaderResources(12, 1, &textures_[size_t(rv)]);
+                {
+                    ID3D11BlendState* want = L.params[3] > 0.5f && blendMul_ ? blendMul_ : blend_;
+                    if (want != lastBlend) {
+                        const float bfz[4] = {0, 0, 0, 0};
+                        ctx_->OMSetBlendState(want, bfz, 0xffffffff);
+                        lastBlend = want;
+                    }
+                }
+                if (textures_[size_t(refTexIds_[k])] != lastCol) lastCol = textures_[size_t(refTexIds_[k])], ctx_->PSSetShaderResources(0, 1, &lastCol);
+                if (textures_[size_t(rv)] != lastRev) lastRev = textures_[size_t(rv)], ctx_->PSSetShaderResources(12, 1, &lastRev);
                 bindNormal(k);
                 if (refCulling_ && k < refTexChunks_.size() && !refTexChunks_[k].empty())
                     refCulledLast_ += forVisibleRuns(frustum, refTexChunks_[k], [&](uint32_t first, uint32_t n) { drawN(n * 3, refTexFirst_[k] + first * 3); });
@@ -2230,6 +2473,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             }
             const float zero[16] = {};
             ctx_->UpdateSubresource(cbLayer_, 0, nullptr, zero, 0, 0);
+            ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);  // back to the plain (zero) layer buffer
             {
                 const float bfz[4] = {0, 0, 0, 0};
                 ctx_->OMSetBlendState(blend_, bfz, 0xffffffff);

@@ -28,6 +28,8 @@ not guessed. The target build throughout is MW2019 Replay 1.20.4.7623265
 | 96 | [Stock world removal](96_stock_world_removal.md) | Removing stock world triangles from drawing, Havok collision and the sun shadow |
 | 97 | [Stock layered materials](97_stock_layered_materials.md) | How tw4 / twc4 blend up to 8 texture layers: weights, reveal ramp, constants |
 | 98 | [Stock decals and displacement](98_stock_decals_displacement.md) | Blended world decals (sortKey 10-17) and `dn` displacement layers |
+| 99 | [Stock decal volumes](99_stock_decal_volumes.md) | Projected box decals (paint stripes, stencils): layout, projection, opacity |
+| 100 | [Stock ground clutter](100_stock_ground_clutter.md) | GPU clutter (Verdansk terrain only); MP grass is placed props and how the game shades them |
 
 ## Third-party "iw8 level maker" (report 13)
 

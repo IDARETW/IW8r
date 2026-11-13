@@ -365,6 +365,7 @@ void CameraView::render() {
         const ExpFog* fog = ctx_->fogPreview && atmo_.fog ? &*atmo_.fog : nullptr;
         const float col[3] = {fog ? float(fog->color.x) : 0.f, fog ? float(fog->color.y) : 0.f, fog ? float(fog->color.z) : 0.f};
         renderer_.setFog(eye, fog ? float(fog->start) : 0.f, fog ? float(fog->halfway) : 0.f, col);
+        renderer_.setPixelAngle(float(2.0 * std::tan(ctx_->cam.fov * 3.14159265358979 / 360.0) / std::max(1, fixedW_ > 0 ? fixedW_ : width())));
         // Colour grade preview (3.15): iw8r_film and the iw8r_lut .cube of the open map (Compile > Atmosphere).
         const FilmGrade* film = ctx_->gradePreview && atmo_.film ? &*atmo_.film : nullptr;
         const float lt[3] = {film ? float(film->lightTint.x) : 1.f, film ? float(film->lightTint.y) : 1.f, film ? float(film->lightTint.z) : 1.f};

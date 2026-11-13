@@ -13,6 +13,8 @@
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
+struct ID3D11DeviceContext1;
+struct ID3D11Texture3D;
 struct ID3D11Texture2D;
 struct ID3D11Texture1D;
 struct ID3D11RenderTargetView;
@@ -438,7 +440,26 @@ private:
         ID3D11Buffer* inst = nullptr;
         unsigned vertices = 0, instances = 0;
         int texture = -1;
+        // Screen culling (cullTexInstances): the placements on the CPU, the model's bounding sphere in model space, and
+        // a dynamic buffer of the placements that pass (drawn instead of `inst` while culling is on).
+        std::vector<float> rows;
+        float centre[3] = {0, 0, 0}, radius = 0;
+        ID3D11Buffer* visInst = nullptr;
+        unsigned visible = 0;
     };
+    // Each frame on screen: props outside the view, or smaller than about a pixel there, are left out (Hideout drew 21 M
+    // prop triangles a frame at full detail). The sun shadow pass keeps them all.
+    void cullTexInstances(const float viewProj[16], const float eye[3], float pixelAngle);
+    bool instCull_ = true;
+    float pixelAngle_ = 0.0015f;  // setPixelAngle
+
+public:
+    // The angle one pixel spans at the frame's centre (instance culling); the camera sets it from its FOV.
+    void setPixelAngle(float a) { pixelAngle_ = a > 0 ? a : 0.0015f; }
+    size_t instancesCulled() const { return instCulledLast_; }
+
+private:
+    size_t instCulledLast_ = 0;
     std::vector<GpuTexInstanced> refTexInst_;
     ID3D11VertexShader* vsTexInst_ = nullptr;
     ID3D11InputLayout* layoutTexInst_ = nullptr;
@@ -467,7 +488,15 @@ private:
     ID3D11RasterizerState* rsShadow_ = nullptr;
     ID3D11Buffer* cbWind_ = nullptr;
     ID3D11Buffer* cbBatch_ = nullptr;  // per textured batch: x = has a normal map
-    ID3D11Buffer* cbLayer_ = nullptr;  // b7: a stock layer batch's blend (zero = not a layer)
+    ID3D11Buffer* cbLayer_ = nullptr;
+    // Every layer / decal batch's constants in one buffer, 256 bytes per batch, bound per draw with a D3D 11.1 offset
+    // (Hideout: 4,300 draws a frame each copying its constants cost 40 ms). Rebuilt when a batch's constants change.
+    ID3D11DeviceContext1* ctx1_ = nullptr;
+    std::vector<ID3D11Buffer*> cbLayerAll_;  // 64 KB each: 256 batches (a 1.3 MB buffer lost the device on Hideout)
+    size_t cbLayerAllBatches_ = 0;
+    bool layerParamsDirty_ = true;
+    ID3D11Texture3D* probeGridTex_ = nullptr;  // setStockProbes: candidate boxes per cell
+    ID3D11ShaderResourceView* probeGridSrv_ = nullptr;  // b7: a stock layer batch's blend (zero = not a layer)
     struct RefLayer {
         int layer = 0;  // 0 = a base batch
         bool ready = false;
@@ -481,6 +510,7 @@ private:
     std::vector<size_t> refDecalOrder_;  // decal batches by sortKey, layer, batch
     ID3D11Buffer* vbRefTexExtra_ = nullptr;  // appendReferenceDecals
     size_t refTexExtraFrom_ = ~size_t(0);    // the first batch in vbRefTexExtra_
+    std::vector<iw8r::AABB> refTexExtraBounds_;  // per appended batch: drawn only in view and near (prop decals)
     bool refDecalDirty_ = false;
     ID3D11RasterizerState* rsDecal_ = nullptr;
     std::vector<int> refNrmIds_;         // per stock batch: its normal map texture, -1 = the flat one

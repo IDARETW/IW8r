@@ -86,6 +86,7 @@ public:
     // Stock decal volumes projected on the props (decalVolume batches): added beside the textured reference, replacing
     // an earlier set.
     std::array<size_t, 5> referenceDecalStats() const { return renderer_.referenceDecalStats(); }
+    size_t instancesCulled() const { return renderer_.instancesCulled(); }
     size_t referenceDecalExtras() const { return refTexExtraFrom_ == ~size_t(0) ? 0 : refTexMaterials_.size() - refTexExtraFrom_; }
     void setReferenceDecalExtras(std::vector<app::ReferenceTexBatch> batches) {
         pendingDecalExtras_ = std::move(batches);
