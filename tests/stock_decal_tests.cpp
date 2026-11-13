@@ -72,7 +72,12 @@ TEST(stock_decal_techset_names) {
     t = parseStockTechsetName("tw/lit_3_lit_bad_ta1_815002_1002000000000013_0_1_1_0_0_113810015b_0_0_1_0_0");
     CHECK(t.valid && t.ssr);
     t = parseStockTechsetName("tw/lit_3_lit_bad_ta1_815002_1002000000000018_0_1_1_0_0_113810015b_0_0_1_0_0");
-    CHECK(t.valid && !t.ssr && t.displacement);
+    CHECK(t.valid && !t.ssr && t.displacement && !t.transmission);
+    // Transmission: hexB bit 0 (Speedball's grass, research 107 section 1.1); the "...3" glass set has it too.
+    t = parseStockTechsetName("tmco/lit_3_lit_alt_ta1_848810_1012000201000051_0_1_1_0_0_13810015b_0_0_1_0_0");
+    CHECK(t.valid && t.transmission && t.blendToken == "alt" && !t.ssr);
+    t = parseStockTechsetName("tw/lit_3_lit_bad_ta1_815002_1002000000000013_0_1_1_0_0_113810015b_0_0_1_0_0");
+    CHECK(t.transmission && t.ssr);
     t = parseStockTechsetName(
         "twc4/lit_3_lit_rpl_ta1_802000_1002000000000018_0_3_3_0_0_13810015b_0_0_1_0_0_1_0_13811015b_0_0_3_0_0_2_0_"
         "13810015b_0_0_3_0_0");

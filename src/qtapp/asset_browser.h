@@ -78,6 +78,7 @@ public:
     // failed). Unavailable visible rows are greyed with the reason in their tooltip.
     using StatusSource = std::function<QString(const QString& name)>;
     void setStatusSource(StatusSource fn) { statusSource_ = std::move(fn); refreshThumbnails(); }
+    StatusSource statusSource() const { return statusSource_; }  // tests
     int unavailableMarked() const { return int(unavailable_.size()); }  // tests
     int hiddenMissing() const { return hiddenMissing_; }                 // tests
     QString previewCaption() const;

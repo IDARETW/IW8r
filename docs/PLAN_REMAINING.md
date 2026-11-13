@@ -110,6 +110,8 @@ side.
 - **Controls:** a toggle and a quality setting.
 
 **1.4 Stock shading parity: the small items.**
+- **Research 107 (2026-11-13) DONE:** lit-buffer constants, emissive x c36, transmission (ambient + sun), wrap diffuse
+  (lightmap + sun), probe rough fallback. Open: wrap and transmission for local lights, layer modes 2/3, AO strength.
 - **Material and occlusion:**
   - normal decode `z = 1 - 0.6|xy|²`;
   - read `gtso_lut` from the install (cached, like the env BRDF) and use the game's specular occlusion (DONE);
@@ -143,8 +145,8 @@ lightmap job already decompresses each tile: cut its light grid block there as w
 decode the tile probes, and draw tile props and tile ground with them. Done when Verdansk props and wet roads near the
 raised camera use their own tile's light and probes.
 
-**1.6 Local lights.** Part 1 DONE 2026-11-13 (research 106: every spot / omni at runtime, nearest 256, IES,
-tile-binned). Open: spot shadow maps (research 106 section 4 / 5.4).
+**1.6 Local lights.** DONE 2026-11-13 (research 106: every spot / omni at runtime, nearest 256, IES, tile-binned;
+64 shadow map slots). Open: needsDynamicShadows (entities in light maps), the screen-space shadow mask path.
 - **Stock maps.** Load their own primary lights (ComWorld light types other than the sun), which today are skipped at
   `main_window.cpp:7734`.
 - **Culling.** Clustered or tiled: a structured light list with per-tile indices, up to 254 lights.
@@ -175,7 +177,8 @@ tile-binned). Open: spot shadow maps (research 106 section 4 / 5.4).
   a lightmap.
 - **Own-map models.** Match the light grid that the build writes (1.11).
 
-**1.13 Stock prop LODs (performance; found 2026-11-13).** Aniyah draws 30 M triangles a frame because every prop is
+**1.13 Stock prop LODs (performance; found 2026-11-13).** DONE 2026-11-13 (Aniyah 10.3 ms, Speedball 6.1 ms).
+Open: the game's FOV / lodScale factor on the distances. Aniyah draws 30 M triangles a frame because every prop is
 LOD0 (GPU profile: props 10.2 of 23.5 ms). The model detail already lists each LOD's surfaces and distance, and
 ModelCache::requestLod fetches one LOD of one model per ACTS run. Fetch the LODs in batches, keep one mesh per LOD, and
 let the instance cull pick the game's LOD by distance (and FOV). Done when Aniyah is within 20 ms and Verdansk

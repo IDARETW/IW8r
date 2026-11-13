@@ -4,7 +4,9 @@
 #include <QDir>
 #include <QFileInfo>
 
+#include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 #ifdef _WIN32
@@ -83,6 +85,13 @@ LONG WINAPI onCrash(EXCEPTION_POINTERS* ep) {
     std::fclose(f);
     return EXCEPTION_CONTINUE_SEARCH;
 }
+
+// abort() (std::terminate after an uncaught C++ exception, an allocation failure in a worker thread, ...) ends the
+// process with a fail-fast that skips the filter above. The SIGABRT handler raises a structured exception instead, so
+// onCrash writes the dump and the stack of the aborting thread (the throw site is still on it).
+void onAbort(int) {
+    RaiseException(0xE0000ABu, EXCEPTION_NONCONTINUABLE, 0, nullptr);
+}
 #endif
 
 }  // namespace
@@ -93,6 +102,8 @@ void installCrashHandler(const QString& dir) {
     const std::wstring w = QDir::toNativeSeparators(dir).toStdWString();
     wcsncpy_s(g_dir, w.c_str(), _TRUNCATE);
     SetUnhandledExceptionFilter(onCrash);
+    std::signal(SIGABRT, onAbort);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 #endif
 }
 

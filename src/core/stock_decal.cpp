@@ -82,6 +82,7 @@ StockTechsetTraits parseStockTechsetName(const std::string& name) {
     t.ssr = (b & 0x2) != 0;  // hexB bit 1: "...2" and the glass "...3" (research 104 section 5)
     t.displacement = (b & 0xF) == 8;
     t.wrapDiffuse = (b & 0x0008000000000000ull) != 0;
+    t.transmission = (b & 0x1) != 0;
     t.layers = std::atoi(tok[8].c_str());
     t.valid = true;
     return t;

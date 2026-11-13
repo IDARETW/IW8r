@@ -141,12 +141,19 @@ public:
         bool tintMasked = false;
         std::string tintMaskFile;  // slot 59 DDS: the tint applies by its red channel
         StockLayeredMaterial constants;  // layer 0 at least when the body has a pixel constant buffer
+        // Research 107: the emissive (slot 18) and transmission (slot 68) images ("" = none) and constants: emissive
+        // scale c36, transmission tint c18, wrap c103 (rgb; .w = 1 when the term applies).
+        std::string emissiveFile, transmissionFile;
+        std::array<float, 4> emissiveScale{0, 0, 0, 0}, transTint{0, 0, 0, 0}, wrap{0, 0, 0, 0};
     };
     using FactsLookup = std::function<std::optional<StockMaterialFacts>(const std::string& material)>;
     void setMaterialFacts(FactsLookup lookup) { factsLookup_ = std::move(lookup); }
     void setBaseMaterialConstants(size_t referenceBatch);
     bool colourImageKeptCompressed(const std::string& material) const;
     std::optional<std::array<float, 16>> materialConstantsFor(const std::string& material) const;
+    // Research 107 terms of a stock material into the renderer (a base batch, else a prop mesh): false while one of its
+    // images is still loading (asked again next frame).
+    bool applyMaterialExtras(const std::string& material, size_t index, bool propMesh);
     // Cut-out mask of a stock material ("" = none): a stock colour image's alpha is specular (`_c&_s`), so without a
     // mask the camera draws it opaque; with one (`_sdf`, foliage `_alpha`) the mask is the alpha.
     using MaskLookup = std::function<QString(const std::string& material)>;
@@ -262,11 +269,15 @@ public slots:
     }
     // The stock map's local lights (core stock_lights.h, research 106) and its IES strip (R8 texels; empty = white), sent
     // to the renderer on the next Game Lighting frame. null clears them.
-    void setStockLocalLights(std::shared_ptr<const std::vector<StockGameLight>> lights, std::shared_ptr<const std::vector<uint8_t>> ies) {
+    // shadows: each light's shadow camera (same order; research 106 section 4), null = none shadowed.
+    void setStockLocalLights(std::shared_ptr<const std::vector<StockGameLight>> lights, std::shared_ptr<const std::vector<uint8_t>> ies,
+                             std::shared_ptr<const std::vector<StockLightShadow>> shadows = nullptr) {
         pendingLights_ = lights ? std::move(lights) : std::make_shared<const std::vector<StockGameLight>>();
         pendingIes_ = std::move(ies);
+        pendingShadows_ = std::move(shadows);
         update();
     }
+    size_t stockLightShadowsDrawn() const { return renderer_.stockLightShadowsDrawn(); }
     size_t stockLocalLightCount() const { return renderer_.stockLocalLightCount(); }
     size_t stockLocalLightsDrawn() const { return renderer_.stockLocalLightsDrawn(); }
     // The stock map's own sun (its ComWorld sun light: intensity, linear colour, direction toward the sun).
@@ -532,6 +543,7 @@ private:
     std::shared_ptr<GtsoLut> pendingGtso_;
     std::shared_ptr<const std::vector<StockGameLight>> pendingLights_;
     std::shared_ptr<const std::vector<uint8_t>> pendingIes_;
+    std::shared_ptr<const std::vector<StockLightShadow>> pendingShadows_;
     std::shared_ptr<std::vector<uint8_t>> pendingEnvBrdf_;
     int pendingEnvBrdfW_ = 0, pendingEnvBrdfH_ = 0;
     std::shared_ptr<const app::StockLightmapLayers> pendingStockLm_;

@@ -38,6 +38,19 @@ Mark each line OK / wrong (with a screenshot) and send it back.
 - [ ] File > Open IW8 Stock Map: a list of the 37 openable stock maps. (wrong 2026-11-11: mp_backlot2 opened with a lot of geometry missing)
 - [ ] A misc_prefab with "iw8r_mat:<material>" "<other material>" shows the swapped material in the views and the build.
 
+## In game: Game Lighting against the game (2026-11-13), the editor next to your in-game shots
+
+Open a stock map (File > Open IW8 Stock Map), turn on View > Game Lighting (Ctrl+Alt+L), and compare with the same spot
+in game. Only if you want to check it; each line says what should match.
+
+- [ ] Hideout: rooms under lamps are lit by the lamps (pools under ceiling lights, soft beam edges), with shadows from
+      shelves and beams; props inside are as dark as the walls next to them.
+- [ ] Aniyah Tac: the wall lanterns glow; far props switch to their low-detail models without visible popping.
+- [ ] Speedball: grass and leaves glow when the sun is behind them (look toward the sun across the grass).
+- [ ] Hideout: the doorway cloths and tarps have the colours you see in game (the editor now reads their tint from the
+      material's lit constants; one cloth turned purple-grey, another red).
+- [ ] Verdansk: props in the town are lit like the buildings around them (not uniformly bright).
+
 ## In game (after deploy)
 
 - [x] **stock_materials**: 20 pillars, each its own stock texture; the last (chainlink) is see-through.

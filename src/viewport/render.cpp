@@ -428,7 +428,7 @@ Texture2D nrm0 : register(t1);
 SamplerState samp0 : register(s0);
 struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4; };
 struct PSIn { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 w : TEXCOORD1; float3 n : TEXCOORD2; float3 t : TEXCOORD3; float2 lm : TEXCOORD4;
-               float4 lgv : TEXCOORD5; };
+               float3 lgvBack : TEXCOORD5; };
 PSIn vs_tex(VSIn i) {
     PSIn o;
     float3 p = i.pos;
@@ -440,6 +440,7 @@ PSIn vs_tex(VSIn i) {
         p.xy += wind.xy * (h * h * wave);
     }
     o.pos = mul(float4(p, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = p; o.n = i.n; o.t = i.t; o.lm = i.lm;
+    o.lgvBack = float3(0, 0, 0);
     return o;
 }
 // Textured instanced reference props: the model's vertices placed by three transform rows per instance.
@@ -459,6 +460,9 @@ PSIn vs_tex_inst(VSInInst i) {
         const float3 dc = i.l0.xyz, s0 = float3(i.l0.w, i.l1.x, i.l1.y), s2 = float3(i.l1.z, i.l1.w, i.l2.x), s3 = i.l2.yzw;
         o.t = max(0.282095 * dc + 0.217157 * (s0 * o.n.z - s2 * o.n.y - s3 * o.n.x), 0.0);
         o.lm = float2(-2, -2);
+        o.lgvBack = max(0.282095 * dc - 0.217157 * (s0 * o.n.z - s2 * o.n.y - s3 * o.n.x), 0.0);  // E(-n): transmission
+    } else {
+        o.lgvBack = float3(0, 0, 0);
     }
     return o;
 }
@@ -474,7 +478,16 @@ float3 gamePost(float3 c) {
 // A stock layered material's layer L >= 1 (research 97), drawn over the layers below with blending: layerP = (on, flags,
 // reveal sharpness k, multiply), layerTint = tint RGB, layerUvT = (cos, sin, scale u, scale v), layerUvO = (offset u, v). The
 // vertex blend weight is in the tangent x (the stock reference has no tangents). t12: the alpha (red) + reveal (green) map.
-cbuffer Layer : register(b7) { float4 layerP; float4 layerTint; float4 layerUvT; float4 layerUvO; };
+cbuffer Layer : register(b7) { float4 layerP; float4 layerTint; float4 layerUvT; float4 layerUvO;
+                               float4 matE; float4 matTr; float4 matW; float4 matX; };  // matE/Tr/W: research 107 (RefLayer::extra)
+Texture2D tr0 : register(t19);  // the transmission image (texture slot 68, sRGB) when matTr.w = 1
+// Wrap diffuse (research 107 section 2.2): w = constant 103 per channel.
+float wrapF(float x, float w) {
+    w = max(w, 1e-6);
+    const float m = max(x, -w) + w;
+    return saturate(x < w ? m * m * 3.0 / (4.0 * w * (w * w + 3.0)) : 3.0 * x / (w * w + 3.0));
+}
+float3 wrap3(float x, float3 w) { return float3(wrapF(x, w.r), wrapF(x, w.g), wrapF(x, w.b)); }
 cbuffer Tiles : register(b9) { float4 tileCount; float4 tileBox[256]; };  // the loaded streamed tiles (x0, y0, x1, y1)
 // The coarse terrain's hole filler (vertex alpha 253) where a streamed tile is loaded: its geometry fills the hole.
 bool tileFillHidden(float4 col, float3 w) {
@@ -524,6 +537,29 @@ StructuredBuffer<GameLight> gameLights : register(t20);
 Texture1D<float> iesStrip : register(t21);
 StructuredBuffer<uint> lightTiles : register(t22);
 cbuffer LocalLights : register(b11) { float4 localInfo; };
+// Their shadow maps (research 106 section 4): per slot the light's view-projection and (near, far, k, bias); depth t24.
+struct LightShadowSlot { row_major float4x4 vp; float4 p; };
+StructuredBuffer<LightShadowSlot> lightShadowSlots : register(t23);
+Texture2DArray<float> lightShadowMaps : register(t24);
+float gameLocalShadow(uint slot, float3 P) {
+    const LightShadowSlot s = lightShadowSlots[slot];
+    const float4 c = mul(float4(P, 1.0), s.vp);
+    if (c.w <= 1e-3) return 1.0;
+    const float2 uv = c.xy / c.w * float2(0.5, -0.5) + 0.5;
+    if (any(uv <= 0.0) || any(uv >= 1.0)) return 1.0;
+    const float n = s.p.x, f = s.p.y, k = s.p.z, b = s.p.w;
+    const float zr = (f - c.w) / (f - n);  // the receiver's reversed linear depth, as the stored one
+    const float2 texel = 1.0 / 512.0;
+    float sum = 0.0;
+    [unroll] for (int q = 0; q < 4; ++q) {
+        const float2 o = float2(q & 1 ? 0.5 : -0.5, q & 2 ? 0.5 : -0.5) * texel;
+        const float d = lightShadowMaps.SampleLevel(lutSamp, float3(uv + o, slot), 0);
+        const float z = n * f / max(f - d * (f - n), 1e-4);
+        const float zs = (f - z) / (f - n);
+        sum += saturate((exp(k * (zr - zs)) - b) / (1.0 - b));
+    }
+    return sum * 0.25;
+}
 float3 glSegPoint(GameLight l, float3 p) {
     return l.pos + clamp(dot(p - l.pos, l.bulbDir) / max(dot(l.bulbDir, l.bulbDir), 1e-20), -1.0, 1.0) * l.bulbDir;
 }
@@ -547,7 +583,11 @@ void gameLocalLight(GameLight l, float3 P, float3 N, float3 V, float3 diffuseCol
     }
     const float spotF = saturate(cosA * l.spot.x + l.spot.y);
     const float w = saturate(l.spot.w * (1.0 - d * l.invRadius)) * (isSpot ? spotF : 1.0);
-    const float att = prof * front * w * w * (3.0 - 2.0 * w);  // no shadow yet (research 106 section 4)
+    float att = prof * front * w * w * (3.0 - 2.0 * w);
+    if (att <= 0.0) return;
+    // Its shadow map (packed bits 0-7 = slot): spots over the whole cone, shadowed omnis inside their cone only.
+    const uint slot = l.packed & 0xffu;
+    if (slot != 0xffu) att *= lerp(1.0, gameLocalShadow(slot, P), isSpot ? 1.0 : spotF);
     if (att <= 0.0) return;
     const float3 X = P + (N + L) * (d / max(1.0 + dot(N, L), 1e-3));
     const float3 vd = glSegPoint(l, X) - P;
@@ -697,6 +737,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // (gameSky.rgb, gameSky.w = 1); otherwise the unbaked light.
         float3 indirect = gameSky.rgb * (0.6 + 0.4 * saturate(N.z));  // the probes' light, below, where no lightmap
         float3 stockDw = Nf, stockB = 0;  // the stock lightmap's directional part, for E(R) below
+        float3 stockDirN = 0;  // that part as it entered `indirect` (wrapped on wrap-diffuse materials)
         float visibility = 1.0;
         float2 lmUv = i.lm;
         bool lmOk = (stockRef ? batchFlags2.w > 0.5 : game0.z > 0.5) && i.lm.x >= 0;
@@ -721,7 +762,8 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 float3 T = p2 * du1.x + p1 * du2.x, B = p2 * du1.y + p1 * du2.y;
                 float s = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-20));
                 float3 Dw = normalize(T * s * d.x + B * s * d.y + Nf * d.z + 1e-6);
-                indirect = a.rgb + b * saturate(dot(N, Dw));
+                stockDirN = b * (matW.w > 0.5 ? wrap3(dot(N, Dw), matW.rgb) : saturate(dot(N, Dw)).xxx);
+                indirect = a.rgb + stockDirN;
                 stockDw = Dw, stockB = b;
             } else {
                 indirect = a.rgb * saturate(dot(N, Nf)) + b * saturate(dot(normalize(d + 1e-6), N));
@@ -765,7 +807,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             float2 ab = gameEnvBrdf(nv, gp);
             float3 Fenv = f0 * ab.x + ab.y;
             float3 R = reflect(-Vs, N);
-            float3 Lr = (indirect - stockB * saturate(dot(N, stockDw))) + stockB * saturate(dot(R, stockDw));
+            float3 Lr = (indirect - stockDirN) + stockB * saturate(dot(R, stockDw));
             float tq = ((-0.442435 * gp + 1.7905) * gp - 2.24983) * gp + 0.948867;
             float cq = sqrt(0.5 * nv + 0.5);
             float fq = 1.05 * (1.0 - pow(1.0 - nv, 5.0));
@@ -845,6 +887,17 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             c = diffAlbedo * indirect * kd * (1.0 - fmax) * aoMB + Fenv * S;
             float3 Ls = gameSun.xyz;
             float nl = dot(N, Ls);
+            if (matW.w > 0.5) {
+                // Wrap diffuse (research 107 section 2.2): the diffuse part wraps past the terminator per channel and the
+                // shadow takes a per-channel power (a coloured penumbra); the env BRDF and the specular keep the plain N.L.
+                const float mw = min(matW.r, min(matW.g, matW.b));
+                const float3 kw = 1.0 + 1.35 * (matW.rgb - mw);
+                const float3 ew = float3(kw.b * kw.g, kw.b * kw.r, kw.g * kw.r);
+                const float2 abw = gameEnvBrdf(saturate(nl), gp);
+                const float3 flw = f0 * abw.x + abw.y;
+                c += gameSunCol.rgb * pow(max(saturate(visibility), 1e-6), ew) * wrap3(nl, matW.rgb) * diffAlbedo *
+                     (1.0 - max(flw.r, max(flw.g, flw.b)));
+            }
             if (nl > 0) {
                 float3 H = normalize(Ls + Vs);
                 float nh = saturate(dot(N, H));
@@ -855,8 +908,29 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 float2 abl = gameEnvBrdf(saturate(nl), gp);
                 float3 fl = f0 * abl.x + abl.y;
                 c += gameSunCol.rgb * visibility * saturate(nl) *
-                     (diffAlbedo * (1.0 - max(fl.r, max(fl.g, fl.b))) + F * Dg * Vg * 1.0390625 * (baseMat ? nmCavity : 1.0));
+                     ((matW.w > 0.5 ? 0.0 : diffAlbedo * (1.0 - max(fl.r, max(fl.g, fl.b)))) + F * Dg * Vg * 1.0390625 * (baseMat ? nmCavity : 1.0));
             }
+            // Transmission (research 107 section 1): grass, foliage, tarps, cloth, flags. The baked light seen from the
+            // back side, and the sun through the blade as a GGX lobe of the surface's own roughness.
+            if (matTr.w > 0.5) {
+                const float3 T = srgbToLinear3(tr0.Sample(samp0, uvS).rgb) * matTr.rgb;
+                const float kTr = 1.0 - exp2(-3.32193 * a2);
+                const float3 Eb = lmOk ? (indirect - stockDirN) + stockB * saturate(dot(-N, stockDw))
+                                       : (propLit(i) ? i.lgvBack * gameSkyScale.y : indirect);
+                c += T * (1.0 - fmax) * kTr * Eb * aoMB;
+                const float nlb = dot(gameSun.xyz, -N);
+                if (nlb > 0.0) {
+                    const float3 Hb = normalize(gameSun.xyz - R);
+                    const float hb = dot(-N, Hb), qb = hb * hb * (a2 - 1.0) + 1.0;
+                    const float Db = a2 / max(qb * qb, 1e-8);
+                    const float Vb = 1.0 / ((nlb + sqrt(a2 + (1.0 - a2) * nlb * nlb)) * (nv + sqrt(a2 + (1.0 - a2) * nv * nv)));
+                    const float2 abb = gameEnvBrdf(nlb, gp);
+                    const float3 flb = f0 * abb.x + abb.y;
+                    c += gameSunCol.rgb * T * visibility * nlb * Db * Vb * 1.0390625 * (1.0 - max(flb.r, max(flb.g, flb.b)));
+                }
+            }
+            // Emissive (research 107 section 5): the image x constant 36, unlit, Fresnel-weighted, exposed as the rest.
+            if (matE.w > 0.5) c += srgbToLinear3(emi0.Sample(samp0, uvS).rgb) * matE.rgb * (1.0 - fmax);
             // The map's local lights (research 106): the drawn ones of this pixel's 32-pixel tile; no AO, as the game.
             if (localInfo.x > 0.5) {
                 const uint2 tile = uint2(i.pos.xy) / uint(localInfo.z);
@@ -1171,6 +1245,8 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(stockLightSrv_), safeRelease(stockLightBuf_), safeRelease(stockTileSrv_), safeRelease(stockTileBuf_);
     safeRelease(cbLocal_), safeRelease(iesSrv_), safeRelease(iesTex_);
     stockTileCap_ = 0;
+    for (auto*& d : lightShadowDsv_) safeRelease(d);
+    safeRelease(lightShadowSrv_), safeRelease(lightShadowTex_), safeRelease(lightSlotSrv_), safeRelease(lightSlotBuf_);
     safeRelease(probeArrSrv_), safeRelease(probeArrTex_), safeRelease(cbProbes_), safeRelease(cbLmRects_);
     safeRelease(probeGridSrv_), safeRelease(probeGridTex_);
     safeRelease(meterSrv_), safeRelease(meterRtv_), safeRelease(meterTex_);
@@ -1819,6 +1895,53 @@ void SceneRenderer::prepareStockLocalLights(const float* M) {
     if (stockLightOrder_.empty()) return done();
     const size_t n = std::min<size_t>(stockLightOrder_.size(), kMaxLights);
     std::partial_sort(stockLightOrder_.begin(), stockLightOrder_.begin() + ptrdiff_t(n), stockLightOrder_.end());
+    // Shadow slots (research 106 section 4.1): the nearest drawn lights with a shadow map keep or get one; a slot not used
+    // this frame goes to a nearer light that needs one. Lights without a slot draw unshadowed.
+    static const bool noLightShadows = std::getenv("IW8R_NO_LIGHT_SHADOWS") != nullptr;
+    if (lightSlotOf_.size() != stockLights_.size()) lightSlotOf_.assign(stockLights_.size(), -1);
+    if (!noLightShadows && stockLightShadows_.size() == stockLights_.size() && createLightShadowResources()) {
+        for (size_t k = 0; k < n; ++k) {
+            const uint32_t li = stockLightOrder_[k].second;
+            if (!stockLightShadows_[li].cast) continue;
+            int s = lightSlotOf_[li];
+            if (s < 0) {
+                // a free slot, else the one used longest ago (not this frame)
+                int best = -1;
+                for (int j = 0; j < kLightSlots; ++j) {
+                    if (lightSlots_[size_t(j)].light < 0) {
+                        best = j;
+                        break;
+                    }
+                    if (lightSlots_[size_t(j)].lastUsed < frame_ && (best < 0 || lightSlots_[size_t(j)].lastUsed < lightSlots_[size_t(best)].lastUsed))
+                        best = j;
+                }
+                if (best < 0) continue;  // every slot is in use this frame
+                LightSlot& sl = lightSlots_[size_t(best)];
+                if (sl.light >= 0 && size_t(sl.light) < lightSlotOf_.size()) lightSlotOf_[size_t(sl.light)] = -1;
+                sl = LightSlot{};
+                sl.light = int(li);
+                const iw8r::StockLightShadow& sh = stockLightShadows_[li];
+                iw8r::stockLightShadowMatrix(sh, sl.vp);
+                sl.params[0] = sh.zNear, sl.params[1] = sh.zFar, sl.params[2] = sh.k, sl.params[3] = sh.bias;
+                lightSlotOf_[li] = best;
+                lightSlotsChanged_ = true;
+                s = best;
+            }
+            lightSlots_[size_t(s)].lastUsed = frame_;
+        }
+        // The slots' matrices and lookup constants (t23), when a slot changed.
+        if (lightSlotsChanged_ && lightSlotBuf_) {
+            std::array<float, kLightSlots * 20> sb{};
+            for (int j = 0; j < kLightSlots; ++j) {
+                std::memcpy(&sb[size_t(j) * 20], lightSlots_[size_t(j)].vp, 16 * sizeof(float));
+                std::memcpy(&sb[size_t(j) * 20 + 16], lightSlots_[size_t(j)].params, 4 * sizeof(float));
+            }
+            ctx_->UpdateSubresource(lightSlotBuf_, 0, nullptr, sb.data(), 0, 0);
+            lightSlotsChanged_ = false;
+        }
+    }
+    lightShadowsDrawn_ = 0;
+    for (const LightSlot& sl : lightSlots_) lightShadowsDrawn_ += sl.light >= 0 && sl.drawn ? 1 : 0;
     if (!stockLightBuf_) {
         D3D11_BUFFER_DESC bd{};
         bd.ByteWidth = UINT(kMaxLights * sizeof(iw8r::StockGameLight));
@@ -1860,6 +1983,11 @@ void SceneRenderer::prepareStockLocalLights(const float* M) {
     for (size_t k = 0; k < n; ++k) {
         const iw8r::StockGameLight& l = stockLights_[stockLightOrder_[k].second];
         dst[k] = l;
+        {
+            const uint32_t li = stockLightOrder_[k].second;
+            const int s = li < lightSlotOf_.size() ? lightSlotOf_[li] : -1;
+            dst[k].packed = (l.packed & ~0xFFu) | (s >= 0 && lightSlots_[size_t(s)].drawn ? uint32_t(s) : 0xFFu);
+        }
         const float r = 1.0f / l.invRadius;
         float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
         bool behind = false;
@@ -1892,6 +2020,47 @@ void SceneRenderer::prepareStockLocalLights(const float* M) {
     stockLightsOn_ = true;
     stockLightsDrawn_ = n;
     done();
+}
+
+bool SceneRenderer::createLightShadowResources() {
+    if (lightShadowSrv_ && lightSlotSrv_) return true;
+    if (!dev_) return false;
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = td.Height = kLightSlotSize;
+    td.MipLevels = 1;
+    td.ArraySize = kLightSlots;
+    td.Format = DXGI_FORMAT_R32_TYPELESS;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+    if (FAILED(dev_->CreateTexture2D(&td, nullptr, &lightShadowTex_))) return false;
+    D3D11_SHADER_RESOURCE_VIEW_DESC sv{};
+    sv.Format = DXGI_FORMAT_R32_FLOAT;
+    sv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+    sv.Texture2DArray.MipLevels = 1;
+    sv.Texture2DArray.ArraySize = kLightSlots;
+    bool ok = SUCCEEDED(dev_->CreateShaderResourceView(lightShadowTex_, &sv, &lightShadowSrv_));
+    for (int j = 0; j < kLightSlots && ok; ++j) {
+        D3D11_DEPTH_STENCIL_VIEW_DESC dv{};
+        dv.Format = DXGI_FORMAT_D32_FLOAT;
+        dv.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+        dv.Texture2DArray.FirstArraySlice = UINT(j);
+        dv.Texture2DArray.ArraySize = 1;
+        ok = SUCCEEDED(dev_->CreateDepthStencilView(lightShadowTex_, &dv, &lightShadowDsv_[size_t(j)]));
+    }
+    D3D11_BUFFER_DESC bd{};
+    bd.ByteWidth = UINT(kLightSlots * 80);
+    bd.Usage = D3D11_USAGE_DEFAULT;
+    bd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    bd.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+    bd.StructureByteStride = 80;
+    ok = ok && SUCCEEDED(dev_->CreateBuffer(&bd, nullptr, &lightSlotBuf_)) &&
+         SUCCEEDED(dev_->CreateShaderResourceView(lightSlotBuf_, nullptr, &lightSlotSrv_));
+    if (!ok) {
+        for (auto*& d : lightShadowDsv_) safeRelease(d);
+        safeRelease(lightShadowSrv_), safeRelease(lightShadowTex_), safeRelease(lightSlotSrv_), safeRelease(lightSlotBuf_);
+    }
+    return ok;
 }
 
 void SceneRenderer::setGtsoLut(int width, int height, int depth, const uint8_t* r) {
@@ -2098,8 +2267,9 @@ void SceneRenderer::writeGameCb() {
     ctx_->PSSetShaderResources(14, 1, &ao);
     ctx_->PSSetShaderResources(18, 1, &gtsoSrv_);
     {
-        ID3D11ShaderResourceView* ll[3] = {stockLightsOn_ ? stockLightSrv_ : nullptr, iesSrv_, stockLightsOn_ ? stockTileSrv_ : nullptr};
-        ctx_->PSSetShaderResources(20, 3, ll);
+        ID3D11ShaderResourceView* ll[5] = {stockLightsOn_ ? stockLightSrv_ : nullptr, iesSrv_, stockLightsOn_ ? stockTileSrv_ : nullptr,
+                                           stockLightsOn_ ? lightSlotSrv_ : nullptr, stockLightsOn_ ? lightShadowSrv_ : nullptr};
+        ctx_->PSSetShaderResources(20, 5, ll);
         if (cbLocal_) ctx_->PSSetConstantBuffers(11, 1, &cbLocal_);
     }
     if (cbProbes_) ctx_->PSSetConstantBuffers(5, 1, &cbProbes_);
@@ -2342,6 +2512,30 @@ void SceneRenderer::setReferenceBaseParams(size_t batch, const float params[16])
     layerParamsDirty_ = true;
 }
 
+void SceneRenderer::setReferenceBaseExtra(size_t batch, const float extra[16], int emissiveTexture, int transmissionTexture) {
+    if (batch >= refLayers_.size() || refLayers_[batch].layer > 0 || refLayers_[batch].decal) return;
+    std::memcpy(refLayers_[batch].extra, extra, sizeof(refLayers_[batch].extra));
+    refLayers_[batch].emissive = emissiveTexture, refLayers_[batch].transmission = transmissionTexture;
+    layerParamsDirty_ = true;
+}
+
+void SceneRenderer::setReferenceInstExtra(size_t mesh, const float extra[16], int emissiveTexture, int transmissionTexture) {
+    if (mesh >= refTexInst_.size()) return;
+    std::memcpy(refTexInst_[mesh].extra, extra, sizeof(refTexInst_[mesh].extra));
+    refTexInst_[mesh].emissive = emissiveTexture, refTexInst_[mesh].transmission = transmissionTexture;
+    instParamsDirty_ = true;
+}
+
+// A/B switches for the research 107 terms: IW8R_NO_EMISSIVE, IW8R_NO_TRANSMISSION, IW8R_NO_WRAP clear their "on" floats
+// in RefLayer::extra as it is uploaded.
+static void maskExtraTerms(float* extra) {
+    static const bool noE = std::getenv("IW8R_NO_EMISSIVE") != nullptr, noT = std::getenv("IW8R_NO_TRANSMISSION") != nullptr,
+                      noW = std::getenv("IW8R_NO_WRAP") != nullptr;
+    if (noE) extra[3] = 0;
+    if (noT) extra[7] = 0;
+    if (noW) extra[11] = 0;
+}
+
 bool SceneRenderer::uploadLayerParams() {
     if (!ctx1_ && ctx_ && dev_) {
         D3D11_FEATURE_DATA_D3D11_OPTIONS o{};
@@ -2369,6 +2563,8 @@ bool SceneRenderer::uploadLayerParams() {
             for (size_t j = 0; j < kPerCb && c * kPerCb + j < refLayers_.size(); ++j) {
                 const size_t k = c * kPerCb + j;
                 std::memcpy(&all[j * 64], refLayers_[k].params, sizeof(refLayers_[0].params));
+                std::memcpy(&all[j * 64 + 16], refLayers_[k].extra, sizeof(refLayers_[0].extra));
+                maskExtraTerms(&all[j * 64 + 16]);
                 // A base batch drawing a raw-alpha texture: opaque, its alpha the specular code.
                 if (refLayers_[k].layer == 0 && !refLayers_[k].decal && k < refTexIds_.size() && textureRawAlpha(refTexIds_[k]))
                     all[j * 64 + 1] = 2.0f;
@@ -2653,46 +2849,9 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
     instCulledLast_ = 0;
     std::vector<float> keep, keepBig;
     static const float bigPx = std::getenv("IW8R_PREPASS_PX") ? std::max(0.0f, float(std::atof(std::getenv("IW8R_PREPASS_PX")))) : 24.0f;
-    for (GpuTexInstanced& g : refTexInst_) {
-        if (!g.vb || !g.inst || !g.visInst || g.rows.empty()) continue;
-        keep.clear();
-        keepBig.clear();
-        const size_t n = g.rows.size() / 12;
-        for (size_t i = 0; i < n; ++i) {
-            const float* r = &g.rows[i * 12];
-            const float c[3] = {r[0] * g.centre[0] + r[1] * g.centre[1] + r[2] * g.centre[2] + r[3],
-                                r[4] * g.centre[0] + r[5] * g.centre[1] + r[6] * g.centre[2] + r[7],
-                                r[8] * g.centre[0] + r[9] * g.centre[1] + r[10] * g.centre[2] + r[11]};
-            const float sc = std::sqrt(r[0] * r[0] + r[4] * r[4] + r[8] * r[8]);
-            const float rad = g.radius * std::max(sc, 1e-6f);
-            bool out = false;
-            for (const auto& pl : fr.planes)
-                if (pl.n.x * c[0] + pl.n.y * c[1] + pl.n.z * c[2] - pl.d > rad) {
-                    out = true;
-                    break;
-                }
-            if (!out) {
-                const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
-                const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-                static const float k = std::getenv("IW8R_INST_CULL_PX") ? std::max(0.5f, float(std::atof(std::getenv("IW8R_INST_CULL_PX")))) : 4.0f;  // 4: Verdansk 37 -> 15.5 ms, 106 pixels differ
-                out = dist > rad && rad < dist * pixelAngle * k;  // radius under k pixels: the game drops or LODs these
-                // Stock foliage past its last LOD distance: the game does not draw it (research 100 section 3.3).
-                static const bool noLodOut = std::getenv("IW8R_NO_FOLIAGE_LOD_OUT") != nullptr;
-                if (!noLodOut && g.lodOut > 0 && dist > g.lodOut) out = true;
-            }
-            if (out) {
-                ++instCulledLast_;
-                continue;
-            }
-            keep.insert(keep.end(), r, r + 12);
-            keep.insert(keep.end(), &g.light[i * 12], &g.light[i * 12] + 12);
-            {
-                const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
-                const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-                if (dist <= rad || rad >= dist * pixelAngle * bigPx)
-                    keepBig.insert(keepBig.end(), r, r + 12), keepBig.insert(keepBig.end(), &g.light[i * 12], &g.light[i * 12] + 12);
-            }
-        }
+    static const float kPx = std::getenv("IW8R_INST_CULL_PX") ? std::max(0.5f, float(std::atof(std::getenv("IW8R_INST_CULL_PX")))) : 4.0f;
+    static const bool noLodOut = std::getenv("IW8R_NO_FOLIAGE_LOD_OUT") != nullptr;
+    const auto upload = [&](GpuTexInstanced& g) {
         g.big = unsigned(keepBig.size() / 24);
         if (g.big && g.bigInst) {
             D3D11_MAPPED_SUBRESOURCE mb;
@@ -2713,6 +2872,103 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                 g.visible = g.instances;  // fall back to every placement
             }
         }
+    };
+    // LOD groups (plan 1.13): the placement is tested once against the group's bounding sphere (all its LODs), then
+    // goes to the mesh whose distance window holds it.
+    struct PlaceEval {
+        float dist, rad;
+        bool out;
+    };
+    std::vector<PlaceEval> ev;
+    for (const std::vector<size_t>& grp : texLodGroups_) {
+        if (grp.empty()) continue;
+        const GpuTexInstanced& lead = refTexInst_[grp[0]];
+        float radius = lead.radius;
+        for (size_t mi : grp) {
+            const GpuTexInstanced& m = refTexInst_[mi];
+            const float d[3] = {m.centre[0] - lead.centre[0], m.centre[1] - lead.centre[1], m.centre[2] - lead.centre[2]};
+            radius = std::max(radius, std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) + m.radius);
+        }
+        const size_t n = lead.rows.size() / 12;
+        ev.resize(n);
+        for (size_t i = 0; i < n; ++i) {
+            const float* r = &lead.rows[i * 12];
+            const float c[3] = {r[0] * lead.centre[0] + r[1] * lead.centre[1] + r[2] * lead.centre[2] + r[3],
+                                r[4] * lead.centre[0] + r[5] * lead.centre[1] + r[6] * lead.centre[2] + r[7],
+                                r[8] * lead.centre[0] + r[9] * lead.centre[1] + r[10] * lead.centre[2] + r[11]};
+            const float sc = std::sqrt(r[0] * r[0] + r[4] * r[4] + r[8] * r[8]);
+            PlaceEval& e = ev[i];
+            e.rad = radius * std::max(sc, 1e-6f);
+            e.out = false;
+            for (const auto& pl : fr.planes)
+                if (pl.n.x * c[0] + pl.n.y * c[1] + pl.n.z * c[2] - pl.d > e.rad) {
+                    e.out = true;
+                    break;
+                }
+            const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
+            e.dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+            if (!e.out) e.out = e.dist > e.rad && e.rad < e.dist * pixelAngle * kPx;
+            if (e.out) ++instCulledLast_;
+        }
+        for (size_t mi : grp) {
+            GpuTexInstanced& g = refTexInst_[mi];
+            if (!g.visInst) continue;
+            keep.clear();
+            keepBig.clear();
+            const bool lastFoliage = g.lodOut > 0 && g.lodFar >= g.lodOut;  // IW8R_NO_FOLIAGE_LOD_OUT: the last level has no end
+            const float farD = g.lodFar > 0 && !(noLodOut && lastFoliage) ? g.lodFar : 1e30f;
+            for (size_t i = 0; i < n; ++i) {
+                const PlaceEval& e = ev[i];
+                if (e.out || e.dist < g.lodNear || e.dist >= farD) continue;
+                const float* r = &g.rows[i * 12];
+                keep.insert(keep.end(), r, r + 12);
+                keep.insert(keep.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+                if (e.dist <= e.rad || e.rad >= e.dist * pixelAngle * bigPx)
+                    keepBig.insert(keepBig.end(), r, r + 12), keepBig.insert(keepBig.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+            }
+            upload(g);
+        }
+    }
+    for (GpuTexInstanced& g : refTexInst_) {
+        if (g.lodGroup >= 0) continue;  // above
+        if (!g.vb || !g.inst || !g.visInst || g.rows.empty()) continue;
+        keep.clear();
+        keepBig.clear();
+        const size_t n = g.rows.size() / 12;
+        for (size_t i = 0; i < n; ++i) {
+            const float* r = &g.rows[i * 12];
+            const float c[3] = {r[0] * g.centre[0] + r[1] * g.centre[1] + r[2] * g.centre[2] + r[3],
+                                r[4] * g.centre[0] + r[5] * g.centre[1] + r[6] * g.centre[2] + r[7],
+                                r[8] * g.centre[0] + r[9] * g.centre[1] + r[10] * g.centre[2] + r[11]};
+            const float sc = std::sqrt(r[0] * r[0] + r[4] * r[4] + r[8] * r[8]);
+            const float rad = g.radius * std::max(sc, 1e-6f);
+            bool out = false;
+            for (const auto& pl : fr.planes)
+                if (pl.n.x * c[0] + pl.n.y * c[1] + pl.n.z * c[2] - pl.d > rad) {
+                    out = true;
+                    break;
+                }
+            if (!out) {
+                const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
+                const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+                out = dist > rad && rad < dist * pixelAngle * kPx;  // radius under k pixels (4: Verdansk 37 -> 15.5 ms)
+                // Stock foliage past its last LOD distance: the game does not draw it (research 100 section 3.3).
+                if (!noLodOut && g.lodOut > 0 && dist > g.lodOut) out = true;
+            }
+            if (out) {
+                ++instCulledLast_;
+                continue;
+            }
+            keep.insert(keep.end(), r, r + 12);
+            keep.insert(keep.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+            {
+                const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
+                const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist <= rad || rad >= dist * pixelAngle * bigPx)
+                    keepBig.insert(keepBig.end(), r, r + 12), keepBig.insert(keepBig.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+            }
+        }
+        upload(g);
     }
 }
 
@@ -2747,6 +3003,8 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
                     g.visible = g.instances;
                     g.rows = m.rows;
                     g.lodOut = m.lodOut;
+                    g.lodGroup = m.lodGroup;
+                    g.lodNear = m.lodNear, g.lodFar = m.lodFar;
                     // The model's bounding sphere (box centre, half diagonal).
                     float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
                     for (const GpuTexVertex& v : m.tris) {
@@ -2767,6 +3025,25 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
             }
         }
         refTexInst_.push_back(g);
+    }
+    // The LOD groups: meshes of one model with the same placements (the culling decides once per placement).
+    texLodGroups_.clear();
+    std::unordered_map<int, size_t> groupAt;
+    for (size_t i = 0; i < refTexInst_.size(); ++i) {
+        const GpuTexInstanced& g = refTexInst_[i];
+        if (g.lodGroup < 0 || !g.vb || !g.inst) continue;
+        const auto [it, fresh] = groupAt.emplace(g.lodGroup, texLodGroups_.size());
+        if (fresh) texLodGroups_.emplace_back();
+        texLodGroups_[it->second].push_back(i);
+    }
+    // A group whose meshes disagree on the placements cannot share one decision: its meshes are culled on their own.
+    for (auto& grp : texLodGroups_) {
+        bool same = true;
+        for (size_t k = 1; k < grp.size() && same; ++k) same = refTexInst_[grp[k]].rows.size() == refTexInst_[grp[0]].rows.size();
+        if (!same) {
+            for (size_t i : grp) refTexInst_[i].lodGroup = -1, refTexInst_[i].lodNear = 0, refTexInst_[i].lodFar = 0;
+            grp.clear();
+        }
     }
     return true;
 }
@@ -2808,6 +3085,7 @@ void SceneRenderer::drawReferenceTexInstances() {
         if (id < 0 || size_t(id) >= textures_.size()) continue;
         const bool culled = instCull_ && g.visInst && g.visible <= g.instances;
         if (culled && g.visible == 0) continue;
+        if (!culled && g.lodGroup >= 0 && g.lodNear > 0) continue;  // unculled: a LOD group draws its LOD0 only
         // The depth pre-pass: only the placements large on screen (the shading pass writes depth for the rest).
         const bool prepassBig = texPsOverride_ && texPsOverride_ == psPrepass_ && culled && g.bigInst;
         if (prepassBig && g.big == 0) continue;
@@ -2815,6 +3093,11 @@ void SceneRenderer::drawReferenceTexInstances() {
         if (propNormals) {
             const int n = g.normal >= 0 && size_t(g.normal) < textures_.size() ? g.normal : flatNrmTex_;
             ctx_->PSSetShaderResources(1, 1, &textures_[size_t(n)]);
+            // Research 107: emissive (t3) and transmission (t19) images of the mesh's material.
+            ID3D11ShaderResourceView* e = g.emissive >= 0 && size_t(g.emissive) < textures_.size() ? textures_[size_t(g.emissive)] : nullptr;
+            ID3D11ShaderResourceView* t = g.transmission >= 0 && size_t(g.transmission) < textures_.size() ? textures_[size_t(g.transmission)] : nullptr;
+            ctx_->PSSetShaderResources(3, 1, &e);
+            ctx_->PSSetShaderResources(19, 1, &t);
         }
         if (instCb) {
             const size_t mi = size_t(&g - refTexInst_.data());
@@ -2865,6 +3148,8 @@ bool SceneRenderer::uploadInstParams() {
             for (size_t j = 0; j < kInstPerCb && c * kInstPerCb + j < refTexInst_.size(); ++j) {
                 const GpuTexInstanced& gi = refTexInst_[c * kInstPerCb + j];
                 std::memcpy(&all[j * 64], gi.params, sizeof(gi.params));
+                std::memcpy(&all[j * 64 + 16], gi.extra, sizeof(gi.extra));
+                maskExtraTerms(&all[j * 64 + 16]);
                 if (textureRawAlpha(gi.texture)) all[j * 64 + 1] = 2.0f;  // opaque: alpha is the specular code
             }
             if (cbInstAll_[c]) ctx_->UpdateSubresource(cbInstAll_[c], 0, nullptr, all.data(), 0, 0);
@@ -2888,6 +3173,7 @@ void SceneRenderer::drawReferenceTexInstancesShadow() {
     const UINT strides[2] = {UINT(sizeof(GpuTexVertex)), UINT(24 * sizeof(float))}, offsets[2] = {0, 0};
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
+        if (g.lodGroup >= 0 && g.lodNear > 0) continue;  // the sun shadow of a LOD group: its LOD0
         if (psShadowClip_) {
             const int id = g.texture >= 0 ? g.texture : whiteTex_;
             if (id < 0 || size_t(id) >= textures_.size()) continue;
@@ -3300,7 +3586,13 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     if (shadowAlways && (in.geometryChanged || in.casterVersion != shadowCasterVersion_)) shadowDirty_ = true;
     const bool farShadowDue = shadowOn && (shadowDirty_ || in.casterVersion != shadowCasterVersion_);
     const bool nearShadowDue = shadowOn && nearEnabled_ && shadowDsvNear_ && (farShadowDue || nearDirty_);
-    if (farShadowDue || nearShadowDue) {
+    // Local light shadow maps: every slot again when the casters changed; each frame a few of those not current.
+    if (farShadowDue)
+        for (LightSlot& sl : lightSlots_) sl.drawn = false;
+    bool lightShadowsDue = false;
+    if (stockLightsOn_ && lightShadowSrv_)
+        for (const LightSlot& sl : lightSlots_) lightShadowsDue |= sl.light >= 0 && !sl.drawn;
+    if (farShadowDue || nearShadowDue || lightShadowsDue) {
         // Sun shadow maps (lit preview, Game Lighting): depth of everything from the sun. The whole-scene cascade is drawn
         // again only when a caster or the sun changed; the near cascade also when the camera has moved its box.
         IW8R_PROF("d.shadow");
@@ -3412,6 +3704,21 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         };
         if (farShadowDue) drawCasters(shadowDsv_, sunViewProj_, false);
         if (nearShadowDue) drawCasters(shadowDsvNear_, sunViewProjNear_, true);
+        if (lightShadowsDue) {
+            // Up to six local light maps a frame (static world and props; the game also draws at most a few a frame).
+            D3D11_VIEWPORT lvp{0, 0, float(kLightSlotSize), float(kLightSlotSize), 0, 1};
+            ctx_->RSSetViewports(1, &lvp);
+            int budget = 6;
+            for (int j = 0; j < kLightSlots && budget > 0; ++j) {
+                LightSlot& sl = lightSlots_[size_t(j)];
+                if (sl.light < 0 || sl.drawn || !lightShadowDsv_[size_t(j)]) continue;
+                drawCasters(lightShadowDsv_[size_t(j)], sl.vp, true);
+                sl.drawn = true;
+                lightSlotsChanged_ = true;
+                --budget;
+            }
+            ctx_->RSSetViewports(1, &svp);
+        }
         if (farShadowDue) {
             shadowDirty_ = false;
             shadowCasterVersion_ = in.casterVersion;
@@ -3671,6 +3978,14 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 // Batches that share a texture (the plain one while images load) do not bind it again.
                 if (bound != textures_[size_t(id)]) ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]), bound = textures_[size_t(id)];
                 bindNormal(k);
+                // Research 107: the batch's emissive (t3) and transmission (t19) images, when its material has them.
+                if (k < refLayers_.size() && (refLayers_[k].emissive >= 0 || refLayers_[k].transmission >= 0)) {
+                    const RefLayer& L = refLayers_[k];
+                    ID3D11ShaderResourceView* e = L.emissive >= 0 && size_t(L.emissive) < textures_.size() ? textures_[size_t(L.emissive)] : nullptr;
+                    ID3D11ShaderResourceView* t = L.transmission >= 0 && size_t(L.transmission) < textures_.size() ? textures_[size_t(L.transmission)] : nullptr;
+                    ctx_->PSSetShaderResources(3, 1, &e);
+                    ctx_->PSSetShaderResources(19, 1, &t);
+                }
                 if (baseCb && cbLayerAll_[k / kBasePerCb]) {
                     const UINT first = UINT((k % kBasePerCb) * 16), num = 16;
                     ctx1_->PSSetConstantBuffers1(7, 1, &cbLayerAll_[k / kBasePerCb], &first, &num);

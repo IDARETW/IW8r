@@ -2119,8 +2119,15 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
 
     r.section("browser availability marks");
     {
-        // tmo/uk_portable_radio_01: its images are only referenced from techsets_mp_donetsk (no data in Replay).
+        // A material the availability source reports as missing is greyed. Which stock materials lack their images
+        // depends on the install and on which zones were catalogued (tmo/uk_portable_radio_01 used to be one until its
+        // pixels were found in a streamed Verdansk tile, 2026-11-13), so the source stands in for the cache here.
         AssetBrowser* mb = w.materialBrowser();
+        const AssetBrowser::StatusSource real = mb->statusSource();
+        mb->setStatusSource([real](const QString& m) -> QString {
+            if (m == "tmo/uk_portable_radio_01") return "test: no images in this install";
+            return real ? real(m) : QString();
+        });
         mb->setFilter("tmo/uk_portable_radio_01");
         for (int i = 0; i < 1800 && mb->unavailableMarked() == 0; ++i) {
             if (i % 20 == 0) mb->refreshThumbnails();
@@ -2128,6 +2135,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         }
         r.check(mb->unavailableMarked() > 0, "a material Replay has no images for is greyed as not available");
         mb->setFilter("");
+        mb->setStatusSource(real);
     }
 
     r.section("thumbnail store");

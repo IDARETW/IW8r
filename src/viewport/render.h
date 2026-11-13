@@ -103,6 +103,11 @@ struct InstancedTexMesh {
     // order terms per channel (slots 0, 2, 3), before bakedLightScale; DC r < 0 = none (the probes' fallback). Empty:
     // none for every instance.
     std::vector<float> light;
+    // Stock prop LODs (plan 1.13): the meshes of one model's LODs share lodGroup (>= 0) and hold the same rows and
+    // light in the same order; each draws the placements whose camera distance is in [lodNear, lodFar) (lodFar 0 = no
+    // limit). -1: not part of a LOD group (every visible placement).
+    int lodGroup = -1;
+    float lodNear = 0, lodFar = 0;
 };
 
 struct TexturedBatch {
@@ -208,6 +213,9 @@ public:
     // layerP.y = 1 when the colour alpha holds the specular code (192..254), layerTint = (spec scale, spec bias, gloss
     // scale, gloss bias), layerUvO = (normal strength, 1 = constants given).
     void setReferenceBaseParams(size_t batch, const float params[16]);
+    // Research 107 terms of a base batch / a prop mesh (RefLayer::extra layout) and their images (-1 = none).
+    void setReferenceBaseExtra(size_t batch, const float extra[16], int emissiveTexture, int transmissionTexture);
+    void setReferenceInstExtra(size_t mesh, const float extra[16], int emissiveTexture, int transmissionTexture);
     // The near-camera terrain layer patch's core (x, y, radius; radius 0 = none): the coarse terrain is not drawn there.
     void setTerrainCut(float x, float y, float radius) { terrainCut_[0] = x, terrainCut_[1] = y, terrainCut_[2] = radius; }
     // The loaded streamed tiles' areas (x0, y0, x1, y1; at most 256): the terrain's hole filler (vertex alpha 253) is
@@ -400,7 +408,15 @@ public:
     // Stock local lights (research 106): the map's packed spot / omni records (core stock_lights.h). Each frame the
     // nearest 256 in view are uploaded (t20) and binned to 32-pixel screen tiles (t22); Game Lighting shades the stock
     // reference and its props with them. Empty = none. IW8R_NO_STOCK_LIGHTS turns them off (A/B).
-    void setStockLocalLights(std::vector<iw8r::StockGameLight> lights) { stockLights_ = std::move(lights); }
+    // shadows: per light (same order), its shadow camera (research 106 section 4); empty or cast = false: unshadowed.
+    void setStockLocalLights(std::vector<iw8r::StockGameLight> lights, std::vector<iw8r::StockLightShadow> shadows = {}) {
+        stockLights_ = std::move(lights);
+        stockLightShadows_ = std::move(shadows);
+        for (int& s : lightSlotOf_) s = -1;
+        lightSlotOf_.assign(stockLights_.size(), -1);
+        for (auto& sl : lightSlots_) sl = LightSlot{};
+    }
+    size_t stockLightShadowsDrawn() const { return lightShadowsDrawn_; }
     size_t stockLocalLightCount() const { return stockLights_.size(); }
     size_t stockLocalLightsDrawn() const { return stockLightsDrawn_; }
     // The map's IES strip (*ieslookup level 0: width R8 texels, texel 0 white), t21. null = every light white.
@@ -533,8 +549,12 @@ private:
         std::vector<float> light;  // InstancedTexMesh::light (12 per instance)
         float centre[3] = {0, 0, 0}, radius = 0;
         float lodOut = 0;  // InstancedTexMesh::lodOut
+        int lodGroup = -1;          // InstancedTexMesh::lodGroup / lodNear / lodFar
+        float lodNear = 0, lodFar = 0;
         int normal = -1;            // setReferenceInstNormal
         float params[16] = {};      // setReferenceInstParams
+        float extra[16] = {};       // setReferenceInstExtra (RefLayer::extra)
+        int emissive = -1, transmission = -1;
         ID3D11Buffer* visInst = nullptr;
         unsigned visible = 0;
         // The visible placements large on screen (the depth pre-pass draws only these: Aniyah Tac 23.5 -> 16 ms).
@@ -544,6 +564,7 @@ private:
     // Each frame on screen: props outside the view, or smaller than about a pixel there, are left out (Hideout drew 21 M
     // prop triangles a frame at full detail). The sun shadow pass keeps them all.
     void cullTexInstances(const float viewProj[16], const float eye[3], float pixelAngle);
+    std::vector<std::vector<size_t>> texLodGroups_;  // refTexInst_ indices per LOD group (setReferenceTexInstances)
     bool instCull_ = true;
     float pixelAngle_ = 0.0015f;  // setPixelAngle
 
@@ -601,6 +622,10 @@ private:
         int sortKey = 0;
         int reveal = -1;
         float params[16] = {};
+        // Research 107 (base batches): emissive scale (c36) + on, transmission tint (c18) + on, wrap (c103) + on; in
+        // the same 256-byte slot of b7 after params. Their images (texture ids, -1 = none): t3 and t19.
+        float extra[16] = {};
+        int emissive = -1, transmission = -1;
     };
     std::vector<RefLayer> refLayers_;
     std::vector<size_t> refLayerOrder_;  // layer batches by layer, then batch
@@ -688,7 +713,29 @@ private:
     // Stock local lights (setStockLocalLights): all of the map's; per frame the drawn ones and the tile masks.
     void prepareStockLocalLights(const float* viewProj);
     std::vector<iw8r::StockGameLight> stockLights_;
+    std::vector<iw8r::StockLightShadow> stockLightShadows_;
     size_t stockLightsDrawn_ = 0;
+    // Local light shadow maps: kLightSlots slices of kLightSlotSize^2 depth (t24), one light each; their matrices and
+    // lookup constants (t23). A slot is drawn once (static casters), again when the casters change.
+    static constexpr int kLightSlots = 64;
+    static constexpr unsigned kLightSlotSize = 512;
+    struct LightSlot {
+        int light = -1;      // stockLights_ index, -1 = free
+        bool drawn = false;  // its depth is current
+        uint64_t lastUsed = 0;
+        float vp[16] = {};
+        float params[4] = {};  // near, far, k, bias
+    };
+    std::array<LightSlot, kLightSlots> lightSlots_{};
+    std::vector<int> lightSlotOf_;  // per light: its slot or -1
+    size_t lightShadowsDrawn_ = 0;  // slots with a current depth (bench)
+    bool lightSlotsChanged_ = true;
+    ID3D11Texture2D* lightShadowTex_ = nullptr;
+    ID3D11ShaderResourceView* lightShadowSrv_ = nullptr;
+    std::array<ID3D11DepthStencilView*, kLightSlots> lightShadowDsv_{};
+    ID3D11Buffer* lightSlotBuf_ = nullptr;
+    ID3D11ShaderResourceView* lightSlotSrv_ = nullptr;
+    bool createLightShadowResources();
     bool stockLightsOn_ = false;
     std::vector<std::pair<float, uint32_t>> stockLightOrder_;
     std::vector<uint32_t> stockTileMask_;

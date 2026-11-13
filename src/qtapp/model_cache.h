@@ -80,6 +80,11 @@ public:
     bool hasLod(const QString& name, int lod) const;
     bool lodFailed(const QString& name, int lod) const;
     void requestLod(const QString& name, int lod);
+    // Many LODs at once (stock prop LODs, plan 1.13): grouped by zone, up to 48 surfaces per ACTS run. Each answered
+    // pair gets lodReady, as requestLod. Pairs already cached, pending or failed are skipped.
+    void requestLods(const QList<QPair<QString, int>>& want);
+    // Fetches still running or queued by requestLod / requestLods.
+    int lodsPending() const { return int(lodPending_.size()); }
     std::optional<ImportedModel> loadModelLod(const QString& name, int lod, QString* err = nullptr) const;
 
 signals:

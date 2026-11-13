@@ -125,6 +125,18 @@ double benchMedian(std::vector<double> v) {
 
 double benchMax(const std::vector<double>& v) { return v.empty() ? 0 : *std::max_element(v.begin(), v.end()); }
 
+// The process's memory now (commit = private bytes, the part that counts against the machine's commit limit), for the
+// bench report's memory_at lines.
+QString benchMemoryNow(const char* stage) {
+#ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS pmc{};
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
+        return QString("memory_at %1 commit_mb=%2 working_set_mb=%3").arg(stage).arg(pmc.PagefileUsage / 1048576.0, 0, 'f', 0)
+            .arg(pmc.WorkingSetSize / 1048576.0, 0, 'f', 0);
+#endif
+    return QString("memory_at %1 unknown").arg(stage);
+}
+
 int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QString& outDir, const QString& referenceDir) {
     using iw8r::Vec3;
     QDir().mkpath(outDir);
@@ -159,6 +171,7 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             cam->renderNow();
             QApplication::processEvents(QEventLoop::AllEvents, 50);
         }
+        report << benchMemoryNow("reference_drawn");
         while (wt.elapsed() < 120000) {  // props, textures, lightmap and probes keep arriving: give them time
             cam->renderNow();
             QApplication::processEvents(QEventLoop::AllEvents, 50);
@@ -179,6 +192,7 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                 if (wt.elapsed() > 660000) break;
             }
         }
+        report << benchMemoryNow("caches_idle");
         const auto pl = w.propLightStats();
         report << QString("prop_light %1 of %2 textured placements lit from their light grid box").arg(pl[0]).arg(pl[1]);
         report << QString("stock zone %1 opened, reference %2 triangles after %3 ms, stock lightmap %4, probes %5")
@@ -354,6 +368,7 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             else if (calm.elapsed() > 3000) break;
         }
         report << QString("streamed_tiles drawn %1 of %2 after %3 ms").arg(w.streamedTilesDrawn()).arg(w.streamedTilesKnown()).arg(st.elapsed());
+        report << benchMemoryNow("tiles_settled");
         report << "streamed_tiles " + w.streamedTilesReport();
     }
     const auto trigger = [&](const char* name) {
@@ -648,7 +663,8 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                 const auto bm = cam->baseMaterialStats();
                 report << QString("base_materials batches %1 constants %2 spec_alpha %3").arg(bm[0]).arg(bm[1]).arg(bm[2]);
                 report << QString("game_ao drawn %1 hdr %2").arg(cam->gameAoDrawn() ? 1 : 0).arg(cam->gameHdrDrawn() ? 1 : 0);
-                report << QString("stock_lights %1 in the map, %2 drawn").arg(cam->stockLocalLightCount()).arg(cam->stockLocalLightsDrawn());
+                report << QString("stock_lights %1 in the map, %2 drawn, %3 shadow maps").arg(cam->stockLocalLightCount()).arg(cam->stockLocalLightsDrawn())
+                              .arg(cam->stockLightShadowsDrawn());
                 const auto sb = cam->ssrBatchStats();
                 report << QString("ssr_batches base %1 layers %2").arg(sb[0]).arg(sb[1]);
                 report << QString("texture_memory mb %1 budget_mb %2 reduced_to_128px %3").arg(double(cam->textureBytes()) / 1048576.0, 0, 'f', 0)

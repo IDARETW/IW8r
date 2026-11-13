@@ -2,6 +2,39 @@
 
 ## Latest (2026-11-13)
 
+- M1.6 DONE (2026-11-13): local light shadows. Core stockLightShadowCamera (research 106 section 4.2: pushed back
+  along dir by the bulb's extent, FOV 2 acos(cosOuter), near = offset + bulb along the axis + shadowNearPlaneBias,
+  far = offset + radius, k = (1 - softness) 88 + softness, b = shadowBias) and stockLightShadowMatrix (row-vector
+  LH perspective, w = depth); test against light 82. Renderer: 64 slots of 512^2 R32 depth (Texture2DArray t24),
+  slot records t23 (vp + near, far, k, b); per frame the nearest drawn shadow casters keep / take a slot (LRU), up to 6
+  slots drawn a frame with the sun pass's drawCasters (static world + LOD0 props), all again when the casters change;
+  the packed record's bits 0-7 point at a drawn slot. gameLocalShadow: 4 taps, linearised depth, exp compare; omnis
+  weighted by spotF. IW8R_NO_LIGHT_SHADOWS; bench "stock_lights ... N shadow maps" (Hideout bench camera 40, 8.6 ms).
+  Also: StockTechsetTraits::transmission (hexB bit 0), transmission only on rpl / alt sets (glass binds slot 68 too);
+  IW8R_NO_EMISSIVE / IW8R_NO_TRANSMISSION / IW8R_NO_WRAP A/B switches; GUI test "unavailable material" uses a stand-in
+  status source (the radio's images exist in a Verdansk tile zone now); bench memory_at lines.
+- M1.13 prop LODs DONE (2026-11-13): ModelCache::requestLods (48 xmodelsurfs per ACTS run, by zone; lodsPending()),
+  RefPropMesh::lods (cached LODs, game distances: LOD i up to lods[i].distance, a missing level's range stays with
+  the one before; the last runs to the foliage LOD-out, else no limit), InstancedTexMesh lodGroup / lodNear / lodFar,
+  renderer texLodGroups_: one cull decision per placement and group (group bounding sphere), each LOD mesh keeps the
+  placements in its window; sun shadow and unculled draws use LOD0 only. lodReady drops the kept mesh and rebuilds the
+  props once no LOD fetch is pending. IW8R_NO_PROP_LODS. stockCacheIdle (bench) also waits for LOD fetches. No FOV /
+  lodScale factor yet (raw distance). Aniyah 23.5 -> 10.3 ms (6.8 M triangles), Speedball 8.1 -> 6.1 ms.
+- Research 107 terms (2026-11-13): MaterialCache picks the lit buffer (constantBufferIndex[34]), reads constants by
+  index (literal floats, {"bits"} for non-finite words), rewrites single-layer psData to canonical rows (c72, c0, c9,
+  c54; 48 bytes without c54), keeps consts 18 / 36 / 103 / 104 and the slot-68 image (constRules 1: older entries
+  resolve again). StockMaterialFacts: emissiveFile / transmissionFile / emissiveScale / transTint / wrap.
+  CameraView::applyMaterialExtras -> SceneRenderer::setReferenceBaseExtra / setReferenceInstExtra (16 floats after
+  the params in each 256-byte b7 slot: matE, matTr, matW; images t3 and t19 via "\x06<path>" textures). ps_tex
+  stockRef: emissive x c36 x (1 - max Fenv); transmission (T = slot 68 x c18; ambient T (1 - max Fenv) (1 - 10^-a2)
+  E(-N) aoMB with E(-N) from the lightmap or the prop's grid (vs_tex_inst lgvBack); sun lobe through the blade); wrap
+  diffuse on the lightmap's directional part and the sun (per-channel shadow power). Not yet: wrap on local lights,
+  the transmission lobe for local lights, layer modes 2/3 rule (research 107 section 3), AO strength from the vision.
+  Found while doing it: the old `lgv` PSIn interpolant had never been removed (the patch helper skips an edit whose
+  replacement text already exists; ` };` did); now lgvBack.
+- Verdansk crash (2026-11-13): std::bad_alloc in rebuildReferenceProps (the debounced rebuild after tile light grids)
+  at ~16 GB commit on this 15.8 GB machine. rebuildReferenceProps now catches it (props stay, status message); the
+  crash handler also records abort() (SIGABRT -> structured exception -> dump + stack). Open: Verdansk's memory use.
 - M1.6 part 1 (2026-11-13, research 106): core stock_lights (parseStockPrimaryLights, parseStockLightDef,
   packStockLight = Replay's 96-byte t49 record, evalStockLightDiffuse CPU reference; tests against research 106 5.6:
   lights 82 / 118 / 9). MainWindow::loadStockSun also packs the spots / omnis, exports the lightdefs and the *ieslookup

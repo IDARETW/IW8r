@@ -5,6 +5,24 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Shadows from the stock maps' own lamps.** Lamps that cast shadows in game (70 on Hideout) now cast them in Game
+  Lighting too, with the game's soft exponential shadow edge (research 106): shelves, beams and doorways block their
+  light. The nearest 64 shadowed lights get a map; they are drawn once (a few per frame) and again only when something
+  changes.
+- **Stock props use their level-of-detail models, as in game.** Far props switch to the game's lower-detail models at
+  the game's own distances, fetched in the background the first time a map is opened. Aniyah Tac went from 23.5 to
+  10.3 ms a frame (30 to 6.8 million triangles), Speedball from 8 to 6 ms.
+- **Lamps, signs and screens glow at their real brightness.** Stock emissive surfaces now use their material's
+  brightness constant (research 107): a wall lantern or a care-package light is as bright as in game instead of a dim
+  texture.
+- **Grass, leaves, tarps and flags let light through.** Back-lit foliage and cloth glow with the sun behind them, and
+  pick up the baked light from their far side (research 107 transmission). Wrap-lit materials (rocks, snow, some
+  ground) soften their shading past the shadow line as in game.
+- **Stock material constants read correctly.** Some materials (mostly foliage and sandbags) had their gloss and
+  specular settings read from the wrong buffer or row; the material cache now reads the lit technique's own constants.
+  Materials cached before are read again once, in the background.
+- **The editor no longer closes when Verdansk runs out of memory while redrawing props**: it keeps the props as they
+  are and says so in the status bar.
 - **Stock maps' own lamps light the scene in Game Lighting.** Every spot and point light of a stock map (124 on Hideout,
   267 on Aniyah Tac) now lights the world and the props as the game draws them at runtime (research 106): their
   falloff, cone, bulb size and tube shape, their IES beam profile (read once from your install) and their highlights

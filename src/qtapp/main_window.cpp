@@ -354,6 +354,25 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         f.tintMasked = e->tintMasked;
         f.tintMaskFile = e->tintMaskDds.toStdString();
         if (auto c = matCache_->materialConstants(qs(m))) f.constants = *c;
+        // Research 107: emissive x c36 (1 when the material has no c36), transmission x c18, wrap c103.
+        const auto cst = [&](int k) -> const std::array<float, 4>* {
+            const auto it = e->consts.find(k);
+            return it == e->consts.end() ? nullptr : &it->second;
+        };
+        if (!e->emissiveDds.isEmpty()) {
+            f.emissiveFile = e->emissiveDds.toStdString();
+            const auto* c36 = cst(36);
+            f.emissiveScale = c36 ? std::array<float, 4>{(*c36)[0], (*c36)[1], (*c36)[2], 1.0f} : std::array<float, 4>{1, 1, 1, 1};
+        }
+        // Transmission: the techset's bit 0 on opaque and alpha-tested sets only (research 107 section 1.1: the blended glass
+        // sets also bind slot 68, for a use that was not decoded).
+        const StockTechsetTraits traits = parseStockTechsetName(e->techset.toStdString());
+        if (!e->transmissionDds.isEmpty() && traits.transmission && (traits.blendToken == "rpl" || traits.blendToken == "alt")) {
+            f.transmissionFile = e->transmissionDds.toStdString();
+            const auto* c18 = cst(18);
+            f.transTint = c18 ? std::array<float, 4>{(*c18)[0], (*c18)[1], (*c18)[2], 1.0f} : std::array<float, 4>{1, 1, 1, 1};
+        }
+        if (const auto* c103 = cst(103)) f.wrap = {(*c103)[0], (*c103)[1], (*c103)[2], 1.0f};
         return f;
     });
     camera_->setMaterialLayers([this](const std::string& m) -> std::optional<StockLayeredMaterial> {
@@ -591,9 +610,18 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         ctx_.cameraMoved();
     });
     connect(modelCacheStock_, &ModelCache::progress, this, [this](const QString& m) { ctx_.setStatus(m); });
-    connect(modelCacheStock_, &ModelCache::lodReady, this, [this](const QString&, int) {
+    connect(modelCacheStock_, &ModelCache::lodReady, this, [this](const QString& name, int) {
         ctx_.scene.invalidate();
         ctx_.cameraMoved();
+        // A stock prop's LOD (plan 1.13): its kept mesh is rebuilt with it; the props once, when every LOD fetch is done.
+        refPropBuilt_.erase(name.toStdString());
+        if (refProps_ && modelCacheStock_->lodsPending() == 0 && !refPropRebuildQueued_) {
+            refPropRebuildQueued_ = true;
+            QTimer::singleShot(2000, this, [this] {
+                refPropRebuildQueued_ = false;
+                rebuildReferenceProps();
+            });
+        }
     });
     connect(modelCacheStock_, &ModelCache::modelReady, this, [this](const QString& name) { lodDetail_.erase(name.toStdString()); });
     lodTimer_ = new QTimer(this);
@@ -6656,6 +6684,19 @@ void MainWindow::dropEvent(QDropEvent* e) {
 
 
 void MainWindow::rebuildReferenceProps() {
+    // Verdansk sits near the memory limit of a 16 GB machine: a rebuild that cannot get its memory keeps the props on
+    // screen as they are and says so, instead of ending the editor (std::bad_alloc, 2026-11-13).
+    try {
+        rebuildReferencePropsUnguarded();
+    } catch (const std::bad_alloc&) {
+        refPropBuilt_.clear();
+        refPropBuiltTris_ = 0;
+        ctx_.setStatus("Not enough memory to rebuild the stock map's props: they stay as they are (close other programs, or "
+                       "lower the streamed world radius in the settings)");
+    }
+}
+
+void MainWindow::rebuildReferencePropsUnguarded() {
     if (!refProps_ || !refBaseTris_ || referenceZone_.isEmpty()) return;
     // Boxes are instanced unit cubes (research 84): one mesh per kind, one transform row set per placement. They
     // used to be added to the flat reference triangle list, which the camera does not draw while the textured
@@ -6719,6 +6760,8 @@ void MainWindow::rebuildReferenceProps() {
     std::vector<app::InstancedTexMesh> texInstanced;
     std::vector<std::string> texMaterials;
     size_t meshTris = 0, meshed = 0;
+    int lodGroups = 0;  // plan 1.13: LOD groups numbered per rebuild
+    wantLods_.clear();
     refPropLit_ = refPropLitOf_ = 0;
     constexpr size_t kPropTriangleBudget = 4'000'000;
     const Vec3 light = normalize(Vec3{0.35, 0.55, 0.75});
@@ -6743,10 +6786,13 @@ void MainWindow::rebuildReferenceProps() {
                         if (const auto detail = modelCacheStock_->loadDetail(qs(in.model)); detail && !detail->lods.empty())
                             fresh->lodOut = std::max(0.0, detail->lods.back().distance);
                 }
-                {
-                    std::vector<app::GpuVertex>& plain = fresh->plain;
+                // Textured triangles of an imported mesh set (LOD0 also fills `plain` with its untextured surfaces).
+                const auto toTex = [&](const ImportedModel& src, std::vector<std::pair<std::string, std::vector<app::GpuTexVertex>>>& outTex,
+                                       std::vector<app::GpuVertex>* plainOut) {
+                    std::vector<app::GpuVertex> ignored;
+                    std::vector<app::GpuVertex>& plain = plainOut ? *plainOut : ignored;
                     const auto zup = [](const Vec3& p) { return Vec3{p.x, -p.z, p.y}; };  // glTF Y-up -> Z-up
-                    for (const auto& ms : im->meshes) {
+                    for (const auto& ms : src.meshes) {
                         const bool textured = !ms.material.empty() && ms.uv.size() == ms.pos.size();
                         std::vector<app::GpuTexVertex> texTris;
                         for (size_t i = 0; i + 2 < ms.idx.size(); i += 3) {
@@ -6782,8 +6828,32 @@ void MainWindow::rebuildReferenceProps() {
                                 for (const Vec3* v : {&a, &b, &c}) plain.push_back({float(v->x), float(v->y), float(v->z), col});
                             }
                         }
-                        if (!texTris.empty()) fresh->tex.push_back({ms.material, std::move(texTris)});
+                        if (!texTris.empty()) outTex.push_back({ms.material, std::move(texTris)});
                     }
+                };
+                toTex(*im, fresh->tex, &fresh->plain);
+                // Plan 1.13: the cached further LODs, with the game's distances (LOD i up to lods[i].distance); a LOD
+                // not cached yet is asked for and its range stays with the LOD before it.
+                if (const auto detail = modelCacheStock_->loadDetail(qs(in.model)); detail && detail->lods.size() > 1 && !fresh->tex.empty()) {
+                    static const bool noLods = std::getenv("IW8R_NO_PROP_LODS") != nullptr;
+                    const auto& L = detail->lods;
+                    for (size_t li = 1; li < L.size() && !noLods; ++li) {
+                        if (!modelCacheStock_->hasLod(qs(in.model), int(li))) {
+                            if (!modelCacheStock_->lodFailed(qs(in.model), int(li))) wantLods_.append({qs(in.model), int(li)});
+                            continue;
+                        }
+                        auto lm = modelCacheStock_->loadModelLod(qs(in.model), int(li));
+                        if (!lm) continue;
+                        RefPropMesh::Lod lod;
+                        lod.level = int(li);
+                        lod.nearD = L[li - 1].distance;
+                        toTex(*lm, lod.tex, nullptr);
+                        if (!lod.tex.empty() && lod.nearD > 0) fresh->lods.push_back(std::move(lod));
+                    }
+                    // Each level runs to the next one's start; the last to the foliage LOD-out (others: no limit).
+                    for (size_t k = 0; k < fresh->lods.size(); ++k)
+                        fresh->lods[k].farD = k + 1 < fresh->lods.size() ? fresh->lods[k + 1].nearD : fresh->lodOut;
+                    fresh->lod0Far = fresh->lods.empty() ? fresh->lodOut : fresh->lods[0].nearD;
                 }
                 built = fresh;
                 if (refPropBuiltTris_ + fresh->tris <= kPropTriangleBudget) {  // kept copies stay within the draw budget
@@ -6793,14 +6863,28 @@ void MainWindow::rebuildReferenceProps() {
             }
             if (built && built->tris > 0 && meshTris + built->tris <= kPropTriangleBudget) {
                 meshTris += built->tris;
+                const int group = built->lods.empty() ? -1 : ++lodGroups;
                 for (const auto& [material, tris] : built->tex) {
                     app::InstancedTexMesh tm;
                     tm.tris = tris;
                     tm.lodOut = float(built->lodOut);
+                    tm.lodGroup = group;
+                    tm.lodNear = 0, tm.lodFar = float(built->lod0Far);
                     mm.tex.push_back(int(texInstanced.size()));
                     texInstanced.push_back(std::move(tm));
                     texMaterials.push_back(material);
                 }
+                for (const RefPropMesh::Lod& lod : built->lods)
+                    for (const auto& [material, tris] : lod.tex) {
+                        app::InstancedTexMesh tm;
+                        tm.tris = tris;
+                        tm.lodOut = float(built->lodOut);
+                        tm.lodGroup = group;
+                        tm.lodNear = float(lod.nearD), tm.lodFar = float(lod.farD);
+                        mm.tex.push_back(int(texInstanced.size()));
+                        texInstanced.push_back(std::move(tm));
+                        texMaterials.push_back(material);
+                    }
                 if (!built->plain.empty()) {
                     app::InstancedMesh pm;
                     pm.tris = built->plain;
@@ -6879,6 +6963,8 @@ void MainWindow::rebuildReferenceProps() {
             marker(failMesh, in);
         }
     }
+    // Plan 1.13: the props' further LODs not cached yet, in batches (lodReady rebuilds the props).
+    if (!wantLods_.isEmpty() && modelCacheStock_) modelCacheStock_->requestLods(wantLods_);
     refPropPlaceholders_ = (waitMesh.rows.size() + failMesh.rows.size()) / 12;
     refPropBoxed_ = boxMesh.rows.size() / 12;
     for (auto [m, shades] : {std::pair{&boxMesh, boxShades}, std::pair{&waitMesh, waitShades}, std::pair{&failMesh, failShades}})
@@ -7816,6 +7902,7 @@ void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn)
         // The map's local lights (research 106): spots and omnis of the same ComWorld, their lightdefs and the IES strip
         // (both exported once by ACTS into <zone>/lights; "done" marks a run, whatever it found).
         auto localLights = std::make_shared<std::vector<StockGameLight>>();
+        auto lightShadows = std::make_shared<std::vector<StockLightShadow>>();
         auto iesStrip = std::make_shared<std::vector<uint8_t>>();
         if (!json.isEmpty()) {
             QFile lf(json);
@@ -7851,7 +7938,10 @@ void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn)
                     const auto d = defs.find(l.defName);
                     StockGameLight g;
                     // Without the strip every light samples white: the profile offsets would read nothing there.
-                    if (packStockLight(l, d != defs.end() && !iesStrip->empty() ? &d->second : nullptr, g)) localLights->push_back(g);
+                    if (packStockLight(l, d != defs.end() && !iesStrip->empty() ? &d->second : nullptr, g)) {
+                        localLights->push_back(g);
+                        lightShadows->push_back(stockLightShadowCamera(l, g));  // research 106 section 4
+                    }
                 }
             }
         }
@@ -7871,9 +7961,10 @@ void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn)
                 break;
             }
         }
-        QMetaObject::invokeMethod(qApp, [self, zone, intensity, color, toward, visionText, skyIntensity, grade, localLights, iesStrip] {
+        QMetaObject::invokeMethod(qApp, [self, zone, intensity, color, toward, visionText, skyIntensity, grade, localLights, iesStrip,
+                                         lightShadows] {
             if (!self || self->referenceZone_ != zone) return;
-            self->camera_->setStockLocalLights(localLights, iesStrip);
+            self->camera_->setStockLocalLights(localLights, iesStrip, lightShadows);
             if (grade) self->camera_->setGameStockGrading(grade);
             if (!visionText.empty()) self->camera_->setGameStockVision(visionText);
             if (skyIntensity > 0) self->camera_->setGameStockSkyIntensity(skyIntensity);
@@ -8301,7 +8392,9 @@ QString MainWindow::streamedTilesReport() const {
         .arg(emptyNames.mid(0, 8).join(' ')).arg(notExported).arg(missingNames.mid(0, 8).join(' '));
 }
 
-bool MainWindow::stockCacheIdle() const { return !worldCache_ || !worldCache_->busy(); }
+bool MainWindow::stockCacheIdle() const {
+    return (!worldCache_ || !worldCache_->busy()) && (!modelCacheStock_ || modelCacheStock_->lodsPending() == 0) && !refPropRebuildQueued_;
+}
 
 bool MainWindow::streamedTilesSettled() const {
     return streamBuilding_.empty() && !streamDirty_ && (!worldCache_ || !worldCache_->busy());

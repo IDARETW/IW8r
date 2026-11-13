@@ -223,4 +223,65 @@ StockLightEval evalStockLightDiffuse(const StockGameLight& g, const double P[3],
     return r;
 }
 
+StockLightShadow stockLightShadowCamera(const StockPrimaryLight& L, const StockGameLight& g) {
+    StockLightShadow s;
+    if (!L.canUseShadowMap || L.radius < 1.01f) return s;
+    const double co = std::clamp(double(L.cosHalfFovOuter), 0.001, 0.999), so = std::sqrt(1 - co * co);
+    double dir[3] = {L.dir[0], L.dir[1], L.dir[2]};
+    const double dl = std::sqrt(dot3(dir, dir));
+    if (dl < 1e-6) return s;
+    for (double& c : dir) c /= dl;
+    // The bulb along the axis and its extent (research 106 section 4.2).
+    const double bd[3] = {g.bulbDir[0], g.bulbDir[1], g.bulbDir[2]};
+    const double bl = std::sqrt(dot3(bd, bd)), bR = g.bulbRadius;
+    const double along = std::fabs(dot3(bd, dir));
+    double ext[3] = {bd[0], bd[1], bd[2]};
+    if (bl > 1e-9)
+        for (int k = 0; k < 3; ++k) ext[k] += bd[k] / bl * bR;
+    const double extLen = bl > 1e-9 ? std::sqrt(dot3(ext, ext)) : bR;
+    const double offset = std::max(extLen - along, 0.0) * co / so + along;
+    for (int k = 0; k < 3; ++k) {
+        s.eye[k] = float(L.origin[k] + dir[k] * offset);
+        s.forward[k] = float(-dir[k]);
+    }
+    // Roll from up, made perpendicular to the view direction (any perpendicular when up is along it).
+    double up[3] = {L.up[0], L.up[1], L.up[2]};
+    const double f[3] = {-dir[0], -dir[1], -dir[2]};
+    double ud = dot3(up, f);
+    for (int k = 0; k < 3; ++k) up[k] -= f[k] * ud;
+    if (dot3(up, up) < 1e-8) {
+        const double a[3] = {std::fabs(f[2]) < 0.9 ? 0.0 : 1.0, 0.0, std::fabs(f[2]) < 0.9 ? 1.0 : 0.0};
+        ud = dot3(a, f);
+        for (int k = 0; k < 3; ++k) up[k] = a[k] - f[k] * ud;
+    }
+    const double ul = std::sqrt(dot3(up, up));
+    for (int k = 0; k < 3; ++k) s.up[k] = float(up[k] / ul);
+    s.fov = float(2 * std::acos(co));
+    s.zNear = float(std::max(offset + along + double(L.shadowNearPlaneBias), 0.5));
+    s.zFar = float(std::max(offset + double(L.radius), double(s.zNear) + 1));
+    const double soft = std::clamp(double(L.shadowSoftness), 0.0, 1.0);
+    s.k = float((1 - soft) * 88 + soft);
+    s.bias = std::clamp(L.shadowBias, 0.0f, 0.999f);
+    s.cast = true;
+    return s;
+}
+
+void stockLightShadowMatrix(const StockLightShadow& s, float out[16]) {
+    const double f[3] = {s.forward[0], s.forward[1], s.forward[2]}, u[3] = {s.up[0], s.up[1], s.up[2]};
+    // Left-handed view: x right, y up, z forward (right = up x forward).
+    const double r[3] = {u[1] * f[2] - u[2] * f[1], u[2] * f[0] - u[0] * f[2], u[0] * f[1] - u[1] * f[0]};
+    const double e[3] = {s.eye[0], s.eye[1], s.eye[2]};
+    const double t = std::tan(0.5 * double(s.fov)), sc = 1.0 / std::max(t, 1e-6);
+    const double n = s.zNear, fa = s.zFar, a = fa / (fa - n), b = -n * fa / (fa - n);
+    // v * View: (dot(v - e, r), dot(v - e, u), dot(v - e, f), 1); then * Proj: (x sc, y sc, z a + b, z).
+    const double V[4][4] = {{r[0], u[0], f[0], 0}, {r[1], u[1], f[1], 0}, {r[2], u[2], f[2], 0},
+                            {-dot3(r, e), -dot3(u, e), -dot3(f, e), 1}};
+    for (int i = 0; i < 4; ++i) {
+        out[i * 4 + 0] = float(V[i][0] * sc);
+        out[i * 4 + 1] = float(V[i][1] * sc);
+        out[i * 4 + 2] = float(V[i][2] * a + V[i][3] * b);
+        out[i * 4 + 3] = float(V[i][2]);
+    }
+}
+
 }  // namespace iw8r

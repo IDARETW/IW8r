@@ -353,6 +353,10 @@ void CameraView::render() {
                     }
                     if (nid >= 0) renderer_.setReferenceNormal(k, nid);
                     setBaseMaterialConstants(k);
+                    if (!applyMaterialExtras(refTexMaterials_[k], k, false)) {
+                        pending = true;
+                        continue;
+                    }
                     if (id >= 0 && id != checkerTex_ && !resolveReferenceDecal(k, id)) {
                         pending = true;
                         continue;
@@ -381,6 +385,10 @@ void CameraView::render() {
                     }
                     if (nid >= 0) renderer_.setReferenceInstNormal(k, nid);
                     if (const auto p = materialConstantsFor(texInstMaterials_[k])) renderer_.setReferenceInstParams(k, p->data());
+                    if (!applyMaterialExtras(texInstMaterials_[k], k, true)) {
+                        pending = true;
+                        continue;
+                    }
                     texInstResolved_[k] = true;
                 } else {
                     pending = true;
@@ -981,6 +989,27 @@ std::optional<std::array<float, 16>> CameraView::materialConstantsFor(const std:
     const bool blended = ctx_ && ctx_->scene.blendFor && ctx_->scene.blendFor(m) != 0;
     return std::array<float, 16>{0.0f, !masked && !blended ? 1.0f : 0.0f, f->ssr ? 1.0f : 0.0f, 0.0f, c.specScale, c.specBias, c.glossScale, c.glossBias,
                                  0.0f, 0.0f, 0.0f, 0.0f, c.normalStrength, 1.0f, 0.0f, 0.0f};
+}
+
+bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool propMesh) {
+    if (m.empty() || !factsLookup_ || m.find_first_of("\x01\x02\x05\x06") != std::string::npos) return true;
+    const auto f = factsLookup_(m);
+    if (!f || (f->emissiveScale[3] <= 0 && f->transTint[3] <= 0 && f->wrap[3] <= 0)) return true;
+    int ids[2] = {-1, -1};
+    const std::string files[2] = {f->emissiveScale[3] > 0 ? f->emissiveFile : std::string(), f->transTint[3] > 0 ? f->transmissionFile : std::string()};
+    for (int k = 0; k < 2; ++k) {
+        if (files[k].empty()) continue;
+        const std::string key = "\x06" + files[k];
+        const int id = textureFor(key);
+        if (!texIds_.count(key)) return false;  // still loading
+        ids[k] = id == checkerTex_ ? -1 : id;
+    }
+    float x[16] = {f->emissiveScale[0], f->emissiveScale[1], f->emissiveScale[2], ids[0] >= 0 ? 1.0f : 0.0f,
+                   f->transTint[0], f->transTint[1], f->transTint[2], ids[1] >= 0 ? 1.0f : 0.0f,
+                   f->wrap[0], f->wrap[1], f->wrap[2], f->wrap[3] > 0 ? 1.0f : 0.0f, 0, 0, 0, 0};
+    if (propMesh) renderer_.setReferenceInstExtra(index, x, ids[0], ids[1]);
+    else renderer_.setReferenceBaseExtra(index, x, ids[0], ids[1]);
+    return true;
 }
 
 void CameraView::setBaseMaterialConstants(size_t k) {
@@ -2011,10 +2040,11 @@ void CameraView::prepareGameLook() {
             pendingGtso_.reset();
         }
         if (pendingLights_) {
-            renderer_.setStockLocalLights(*pendingLights_);
+            renderer_.setStockLocalLights(*pendingLights_, pendingShadows_ ? *pendingShadows_ : std::vector<StockLightShadow>{});
             renderer_.setIesStrip(pendingIes_ ? int(pendingIes_->size()) : 0, pendingIes_ && !pendingIes_->empty() ? pendingIes_->data() : nullptr);
             pendingLights_.reset();
             pendingIes_.reset();
+            pendingShadows_.reset();
         }
         const Vec3 t = gameSunToward();
         // A stock map: its own sun (read from its ComWorld, else the shipped table) and the exposure of its vision (or

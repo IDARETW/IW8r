@@ -85,4 +85,20 @@ struct StockLightEval {
 StockLightEval evalStockLightDiffuse(const StockGameLight& g, const double P[3], const double N[3],
                                      const std::function<float(float)>& ies = nullptr);
 
+// The shadow camera of a canUseShadowMap light (research 106 section 4.2): pushed back along dir so the frustum holds
+// the bulb, looking along -dir with roll from up, square, FOV 2 acos(cosHalfFovOuter); near = offset + the bulb's
+// length along the axis + shadowNearPlaneBias, far = offset + radius. Lookup: shadow = saturate((exp(k (zr - zs)) - b) /
+// (1 - b)) with z = (far - depth) / (far - near) for receiver and occluder, k = (1 - softness) 88 + softness,
+// b = shadowBias. cast = false for lights without a shadow map (or no usable cone).
+struct StockLightShadow {
+    bool cast = false;
+    float eye[3] = {0, 0, 0}, forward[3] = {0, 0, -1}, up[3] = {0, 1, 0};
+    float fov = 1.0f;  // radians, both axes
+    float zNear = 1, zFar = 2;
+    float k = 40, bias = 0.75f;
+};
+StockLightShadow stockLightShadowCamera(const StockPrimaryLight& light, const StockGameLight& packed);
+// Its view-projection, row-vector convention (v * M), D3D depth 0..1 from zNear to zFar, w = the depth along forward.
+void stockLightShadowMatrix(const StockLightShadow& s, float out[16]);
+
 }  // namespace iw8r

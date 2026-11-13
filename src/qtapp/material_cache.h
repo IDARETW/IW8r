@@ -18,6 +18,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <array>
 #include <deque>
 #include <functional>
 #include <map>
@@ -49,6 +50,11 @@ public:
         QString material, zone, colorDds, normalDds, techset;
         QString maskDds;  // opacity / cut-out mask (texture slot 27, research 66); empty when the material has none
         QString emissiveDds;  // emissive map (texture slot 18); empty when none
+        // Research 107: the transmission map (texture slot 68, sRGB; foliage, tarps, cloth, flags), and the lit
+        // technique's material constants by index: 18 transmission tint, 36 emissive scale, 103 wrap diffuse, 104 the
+        // wrap normal blend (rgba floats). Missing = not in the material.
+        QString transmissionDds;
+        std::map<int, std::array<float, 4>> consts;
         // Material body fields (research 66); -1 / empty for entries cached before they were kept.
         qint64 surfaceFlags = -1;  // bit 0x80 = nodraw (shadow-only, e.g. foliage *_shadowcaster meshes)
         QString materialType;      // e.g. MTL_TYPE_STATIC_MODEL_SELFVIS
@@ -61,7 +67,11 @@ public:
         // the per-layer blend constants. Empty for single-layer materials, seeds and entries cached before 2026-11-12.
         int layerCount = 0;
         std::vector<LayerImages> layers;
-        QByteArray psData;  // the body's first pixel constant buffer (every material since tintRules 1)
+        // The lit technique's pixel constant buffer (constantBufferIndex[34], research 107 section 6; before constRules
+        // 1 the first buffer with pixel data). Single-layer materials keep it in the canonical row order the decoders
+        // read: row 0 constant 72, row 1 constant 0, row 2 constant 9, row 3 constant 54 (the lit technique puts 18 / 36
+        // before 54); shorter than 64 bytes when the material has no constant 54.
+        QByteArray psData;
         // The colour tint (material constant 9, RRGGBB; -1 = neutral or unknown) and whether a tint mask (texture slot
         // 59) limits it (research 95: albedo x lerp(1, tint, mask)).
         int tint = -1;
@@ -120,6 +130,8 @@ private:
         QString color, normal;  // image names without the leading ','; empty when absent or a '$' placeholder
         QString mask;           // opacity / cut-out image name (slot 27 of alpha-tested and blended sets), if any
         QString emissive;       // slot 18 image name, if any
+        QString transmission;   // slot 68 image name, if any (research 107)
+        std::map<int, std::array<float, 4>> consts;  // Entry::consts
         qint64 surfaceFlags = -1;
         QString materialType;
         int sortKey = -1;

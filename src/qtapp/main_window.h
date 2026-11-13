@@ -445,7 +445,7 @@ public:
     // Nothing being exported or built for the streamed tiles (benchmark: wait before measuring).
     bool streamedTilesSettled() const;
     QString streamedTilesReport() const;  // benchmark: wanted / built / empty / not exported around the camera
-    // No world cache job (export, lightmap / probes / light grid, tiles) queued or running (benchmark).
+    // No world cache job (export, lightmap / probes / light grid, tiles), prop LOD fetch or queued prop rebuild (benchmark).
     bool stockCacheIdle() const;
     // Textured stock prop placements lit from their light grid box, and all textured placements, in the last rebuild.
     std::array<size_t, 2> propLightStats() const { return {refPropLit_, refPropLitOf_}; }
@@ -468,7 +468,17 @@ private:
         std::vector<std::pair<std::string, std::vector<app::GpuTexVertex>>> tex;     // material, its triangles
         size_t tris = 0;
         double lodOut = 0;  // foliage: the last LOD distance (not drawn beyond it, as in game); 0 = always
+        // Plan 1.13: the model's further LODs that are cached, each drawn from `near` to `far` inches from the camera
+        // (the game's LOD distances); LOD0 (tex above) up to the first one's near. far 0 = no limit.
+        struct Lod {
+            int level = 0;
+            double nearD = 0, farD = 0;
+            std::vector<std::pair<std::string, std::vector<app::GpuTexVertex>>> tex;
+        };
+        std::vector<Lod> lods;
+        double lod0Far = 0;  // LOD0's far (0 = no limit)
     };
+    QList<QPair<QString, int>> wantLods_;  // rebuildReferenceProps: prop LODs not cached yet (asked for at its end)
     std::map<std::string, std::shared_ptr<const RefPropMesh>> refPropBuilt_;
     // 12 floats per light grid volume of the reference zone's main transient zone (app::InstancedTexMesh::light: DC rgb,
     // then the first-order slots 0, 2 and 3), null when not read; refPropVolLightZone_ is its zone.
@@ -612,7 +622,10 @@ public:
     // The stock map's sun (its ComWorld sun light, through ACTS once; cached beside the world export) into the camera.
     // skyMaterial: the world's own sky material (tw/sky_mp_speed_midday on mp_m_speed); "" = tw/sky_<zone>.
     void loadStockSun(const QString& zone, const QString& skyMaterial = QString());
-    void rebuildReferenceProps();  // the stock reference's props from the model cache (again as models arrive)  // also used by --smoke-test (IW8R_SMOKE_REFERENCE)
+    // The stock reference's props from the model cache (again as models arrive); also used by --smoke-test
+    // (IW8R_SMOKE_REFERENCE). Out of memory: the props stay as they are (rebuildReferencePropsUnguarded does the work).
+    void rebuildReferenceProps();
+    void rebuildReferencePropsUnguarded();
 private:
 
     std::unique_ptr<MaterialLibrary> customMaterials_;

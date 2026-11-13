@@ -71,6 +71,7 @@ struct StockTechsetTraits {
     bool ssr = false;            // hexB bit 1 (last digit 2 or 3): screen-space reflection over the probe (research 104)
     bool displacement = false;   // hexB last digit 8: displacement (tessellation techniques + displaced VS)
     bool wrapDiffuse = false;    // hexB & 0x0008000000000000: one extra psData row, RGB wrap (stockWrapDiffuse)
+    bool transmission = false;   // hexB bit 0 (last digit odd): texture slot 68 x constant 18 lets light through (research 107)
     int layers = 0;              // the first layer-count token
 };
 StockTechsetTraits parseStockTechsetName(const std::string& techsetName);

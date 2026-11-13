@@ -180,3 +180,40 @@ TEST(stock_lights_diffuse_matches_research_106) {
         CHECK(evalStockLightDiffuse(g82, Q, up, ies6).att == 0);
     }
 }
+
+TEST(stock_lights_shadow_camera) {
+    std::vector<StockPrimaryLight> lights;
+    CHECK(parseStockPrimaryLights(kComWorld, lights));
+    StockGameLight g82, g118;
+    CHECK(packStockLight(lights[2], nullptr, g82) && packStockLight(lights[3], nullptr, g118));
+    // Light 82 (research 106 section 4.2): a 25-unit half tube of bulb radius 2 across the axis, so the camera sits
+    // 27 cos60 / sin60 = 15.59 behind the origin; near = 15.59 + 8, far = 15.59 + 250; k = 0.45 x 88 + 0.55 = 40.15.
+    const StockLightShadow s = stockLightShadowCamera(lights[2], g82);
+    CHECK(s.cast);
+    CHECK(near(s.fov, 2.0 * std::acos(0.5), 1e-4));
+    CHECK(near(s.eye[2], 286.477 + 15.588, 2e-4) && near(s.forward[2], -1.0, 1e-5));
+    CHECK(near(s.zNear, 23.588, 1e-3) && near(s.zFar, 265.588, 1e-4));
+    CHECK(near(s.k, 40.15, 1e-4) && near(s.bias, 0.85, 1e-5));
+    CHECK(std::fabs(s.up[0] * s.forward[0] + s.up[1] * s.forward[1] + s.up[2] * s.forward[2]) < 1e-5);
+    float M[16];
+    stockLightShadowMatrix(s, M);
+    const auto clip = [&](double x, double y, double z, double out[4]) {
+        for (int c = 0; c < 4; ++c) out[c] = x * M[c] + y * M[4 + c] + z * M[8 + c] + M[12 + c];
+    };
+    double c[4];
+    clip(-128.006, 392.382, 176.0, c);  // the floor straight below: centre of the map, w = its distance
+    CHECK(std::fabs(c[0] / c[3]) < 1e-3 && std::fabs(c[1] / c[3]) < 1e-3 && near(c[3], 286.477 + 15.588 - 176.0, 1e-3));
+    CHECK(c[2] / c[3] > 0 && c[2] / c[3] < 1);
+    clip(s.eye[0] + s.forward[0] * s.zNear, s.eye[1] + s.forward[1] * s.zNear, s.eye[2] + s.forward[2] * s.zNear, c);
+    CHECK(std::fabs(c[2] / c[3]) < 1e-4);  // depth 0 at near
+    clip(s.eye[0] + s.forward[0] * s.zFar, s.eye[1] + s.forward[1] * s.zFar, s.eye[2] + s.forward[2] * s.zFar, c);
+    CHECK(std::fabs(c[2] / c[3] - 1.0) < 1e-4);  // depth 1 at far
+    // A point on the cone edge (60 degrees off the axis) lands on the map's edge.
+    const double d = 100.0, off = d * std::tan(std::acos(0.5));
+    clip(s.eye[0] + s.up[0] * off + s.forward[0] * d, s.eye[1] + s.up[1] * off + s.forward[1] * d, s.eye[2] + s.up[2] * off + s.forward[2] * d, c);
+    CHECK(near(std::fabs(c[1] / c[3]), 1.0, 1e-3));
+    // No shadow map: nothing to draw.
+    StockPrimaryLight open = lights[3];
+    open.canUseShadowMap = false;
+    CHECK(!stockLightShadowCamera(open, g118).cast);
+}
