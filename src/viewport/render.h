@@ -256,6 +256,15 @@ public:
     size_t layerPassDraws_ = 0, layerPassTris_ = 0, layerPassBatches_ = 0;
     std::array<size_t, 3> layerPassStats() const { return {layerPassBatches_, layerPassDraws_, layerPassTris_}; }
     // Base batches: total, with material constants, with the specular code in their colour alpha.
+    // Batches whose material traces screen-space reflections: {base, layers}.
+    std::array<size_t, 2> ssrBatchStats() const {
+        std::array<size_t, 2> r{0, 0};
+        for (const RefLayer& L : refLayers_) {
+            if (L.layer == 0 && !L.decal && L.params[2] > 0.5f) ++r[0];
+            if ((L.layer > 0 || L.decal) && L.params[0] > 0.5f && L.params[0] < 1.5f && L.params[7] > 0.5f) ++r[1];
+        }
+        return r;
+    }
     std::array<size_t, 3> baseMaterialStats() const {
         std::array<size_t, 3> r{0, 0, 0};
         for (const RefLayer& L : refLayers_)
@@ -642,6 +651,9 @@ public:
     bool gameAo() const { return aoOn_; }
     bool gameAoDrawn() const { return aoValid_; }
     bool gameHdrDrawn() const { return hdrFrame_; }
+    // View > Game Lighting: screen-space reflections on the stock materials that trace them (on by default).
+    void setGameSsr(bool on) { ssrOn_ = on; }
+    bool gameSsr() const { return ssrOn_; }
 private:
     void meterFrame();
     ID3D11Texture2D* gameLmTex_[3] = {nullptr, nullptr, nullptr};
@@ -701,6 +713,21 @@ private:
     ID3D11RenderTargetView* sceneRtv_ = nullptr;  // where the lit scene goes this frame (hdrRtv_ or rtv_)
     bool hdrFrame_ = false;
     void drawPost();
+    // Screen-space reflections (research 104 section 8): this frame's HDR scene (half size, 4 mips) and linear depth
+    // (half size) kept for the next frame's trace in ps_tex, with the view they were drawn from (b10).
+    ID3D11Texture2D* prevColorTex_ = nullptr;
+    ID3D11RenderTargetView* prevColorRtv_ = nullptr;
+    ID3D11ShaderResourceView* prevColorSrv_ = nullptr;
+    ID3D11Texture2D* prevZTex_ = nullptr;
+    ID3D11RenderTargetView* prevZRtv_ = nullptr;
+    ID3D11ShaderResourceView* prevZSrv_ = nullptr;
+    ID3D11PixelShader* prevColorPs_ = nullptr;
+    ID3D11PixelShader* prevZPs_ = nullptr;
+    ID3D11Buffer* cbPrev_ = nullptr;
+    float prevViewProj_[16] = {};
+    bool prevValid_ = false;   // the copies hold a usable previous frame
+    bool ssrOn_ = true;
+    void keepFrameForSsr(const float* viewProj);
     ID3D11Texture2D* aoTex_[2] = {nullptr, nullptr};
     ID3D11RenderTargetView* aoRtv_[2] = {nullptr, nullptr};
     ID3D11ShaderResourceView* aoSrv_[2] = {nullptr, nullptr};

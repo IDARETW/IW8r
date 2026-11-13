@@ -68,6 +68,11 @@ TEST(stock_decal_techset_names) {
     CHECK(t.valid && t.wrapDiffuse && !t.ssr);
     t = parseStockTechsetName("tw/lit_3_lit_bad_ta1_815002_1002000000000012_0_1_1_0_0_113810015b_0_0_1_0_0");
     CHECK(t.valid && t.blended && t.ssr && !t.displacement);
+    // The glass set ending in 3 traces too (research 104 section 5); 8 (displacement) does not.
+    t = parseStockTechsetName("tw/lit_3_lit_bad_ta1_815002_1002000000000013_0_1_1_0_0_113810015b_0_0_1_0_0");
+    CHECK(t.valid && t.ssr);
+    t = parseStockTechsetName("tw/lit_3_lit_bad_ta1_815002_1002000000000018_0_1_1_0_0_113810015b_0_0_1_0_0");
+    CHECK(t.valid && !t.ssr && t.displacement);
     t = parseStockTechsetName(
         "twc4/lit_3_lit_rpl_ta1_802000_1002000000000018_0_3_3_0_0_13810015b_0_0_1_0_0_1_0_13811015b_0_0_3_0_0_2_0_"
         "13810015b_0_0_3_0_0");

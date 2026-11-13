@@ -4,6 +4,7 @@
 #include <set>
 #include "stock_displacement.h"
 #include "stock_decal_volumes.h"
+#include "stock_decal.h"
 #include "game_lightmap.h"
 #include "vision_editor_dialog.h"
 #include "material_replace.h"
@@ -345,6 +346,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         if ((ts.contains("_bad_") || (e->sortKey >= 10 && e->sortKey <= 17 && (ts.startsWith("lit") || e->techset.startsWith("tw")))) &&
             (e->techset.startsWith("tw/") || e->techset.startsWith("twc/") || e->techset.startsWith("tw4/") || e->techset.startsWith("twc4/")))
             f.decalSortKey = std::max(1, e->sortKey);
+        f.ssr = parseStockTechsetName(e->techset.toStdString()).ssr;
         f.tint = e->tint;
         f.tintMasked = e->tintMasked;
         f.tintMaskFile = e->tintMaskDds.toStdString();

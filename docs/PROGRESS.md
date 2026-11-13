@@ -5,6 +5,14 @@
 - **THE PLAN: docs/PLAN_REMAINING.md** (owner-approved 2026-11-13): Milestone 1 lighting (1.1 streamed tiles follow
   the camera, 1.2 HDR target, 1.3 SSR, ... 1.11 build-side lighting), 2 Umbra (decode, view, bake), 3 web viewer
   (streamed editor render, every command), 4 remaining pieces, 5 handover. Work it in order; mark items done there.
+- M1.3 DONE (2026-11-13): SSR per research 104 section 8.3 inside ps_tex (24 quadratic steps on the previous frame's
+  half-size linear depth t17, hit on the normal-mapped ray, cone mip of the previous HDR scene t16 (4 mips), edge and
+  forward fades; b10 prevVP / prevFwd / prevSize.z valid). keepFrameForSsr() after the lit scene (ps_prevz max 2x2,
+  ps_prevcolor avg 2x2 + GenerateMips). Flags: base layerP.z, layers layerTint.w (StockMaterialFacts::ssr from
+  parseStockTechsetName: hexB bit 1, test for the ...3 glass case). Gloss cutoff g' >= 0.3 (cb7[186] unknown).
+  IW8R_NO_SSR, IW8R_SSR_SHOW (state / weight / alpha of SSR pixels), IW8R_SSR_ALL (test: every surface a mirror of the
+  hits). Bench line ssr_batches. Speedball: 19 base + 53 layer batches; the visible change at the compare camera is
+  under one 8-bit step (dielectric puddles at that angle). Research 105 (static model lighting) landed for 1.5.
 - M1.4 part 1 (2026-11-13): the stock normal decode (normalised octa, z = 1 - 0.6|xy|^2), sun specular x cavity, probe
   reflections on layer and decal passes (not the terrain patch: layer params [15] = 1; that cost 3.7 ms on Verdansk;
   IW8R_PERF_OFF=layerprobes). Verdansk raised camera 25.9 ms. Research 104 (SSR) landed (helper agent).

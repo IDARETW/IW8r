@@ -101,7 +101,7 @@ side.
 - **Files:** `src/viewport/render.cpp` (`drawFrame` order, `ps_tex` game branch output, `meterFrame`, a new post
   shader), `camera_view.cpp`.
 
-**1.3 Screen-space reflections.**
+**1.3 Screen-space reflections.** DONE 2026-11-13 (research 104).
 - **Research.** Decode the game's SSR: the `r_ssr*` dvars, the techsets ending in `…2` (research 98 section 6), and the
   code_post_gfx SSR shaders. Export them through ACTS and disassemble with `out/agent/shader_research/py/dxbc_dis.py`
   (as research 100 did). The result is a new research note.

@@ -5,6 +5,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Screen-space reflections.** The stock materials that trace them in game (puddles, wet layers, some glossy props
+  and glass; research 104) reflect the scene, traced in the previous frame as the game does, over the probe
+  reflection. The effect is subtle on most maps (only those glossy materials trace).
 - **Game Lighting renders in HDR.** The lit scene is drawn in linear light and the game's post chain (exposure, tone
   curve, colour grade) runs once over it; decals, glass and multiply layers now blend in linear light as in game, and
   auto exposure meters the scene itself instead of the finished frame (editor lines and markers no longer count).

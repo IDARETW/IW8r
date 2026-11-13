@@ -34,6 +34,7 @@ not guessed. The target build throughout is MW2019 Replay 1.20.4.7623265
 | 102 | [Stock super terrain](102_stock_super_terrain.md) | Verdansk / Quarry terrain asset (stterrain): surfaces, node meshes, height maps, streamed levels |
 | 103 | [Stock super-terrain layers](103_stock_terrain_layers.md) | How Verdansk blends its ground materials near the camera: per-layer weight images, reveal ramp, combined-albedo switch |
 | 104 | [Screen-space reflections](104_screen_space_reflections.md) | How the game traces reflections (quarter-res screen march on the vertex normal, previous-frame colour) for `...2` techsets, the combine with the probe, the r_ssr dvars, and an editor recipe |
+| 105 | [Static model lighting](105_static_model_lighting.md) | How placed props are lit: per-instance light grid volumes (box table in the trzone export, SH probe atlas in the decompressed zone), lightmapped `tml/` props, SELFVIS, the tetrahedral grid, and an editor recipe |
 
 ## Third-party "iw8 level maker" (report 13)
 

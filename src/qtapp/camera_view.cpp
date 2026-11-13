@@ -973,11 +973,13 @@ std::optional<std::array<float, 16>> CameraView::materialConstantsFor(const std:
     // The stock material's layer-0 constants (spec / gloss remap, normal strength) for the Game Lighting shader.
     if (m.empty() || !factsLookup_ || m.find_first_of("\x01\x02\x05\x06") != std::string::npos) return std::nullopt;
     const auto f = factsLookup_(m);
+    if (f && f->ssr && f->constants.layer.empty())  // no constants, but it traces SSR (layerP.z)
+        return std::array<float, 16>{0.0f, 0.0f, 1.0f, 0.0f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     if (!f || f->constants.layer.empty()) return std::nullopt;
     const auto& c = f->constants.layer[0];
     const bool masked = maskLookup_ && !maskLookup_(m).isEmpty();
     const bool blended = ctx_ && ctx_->scene.blendFor && ctx_->scene.blendFor(m) != 0;
-    return std::array<float, 16>{0.0f, !masked && !blended ? 1.0f : 0.0f, 0.0f, 0.0f, c.specScale, c.specBias, c.glossScale, c.glossBias,
+    return std::array<float, 16>{0.0f, !masked && !blended ? 1.0f : 0.0f, f->ssr ? 1.0f : 0.0f, 0.0f, c.specScale, c.specBias, c.glossScale, c.glossBias,
                                  0.0f, 0.0f, 0.0f, 0.0f, c.normalStrength, 1.0f, 0.0f, 0.0f};
 }
 
@@ -1009,13 +1011,14 @@ bool CameraView::resolveReferenceLayer(size_t k) {
     // A decal material's layers draw with the decal, in its sort order (research 98).
     if (factsLookup_)
         if (const auto f = factsLookup_(base); f && f->decalSortKey > 0) {
-            const float p[16] = {1.0f, float(lc.flags), lc.sharpness, lc.colorMode == 1 ? 1.0f : 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,
+            const float p[16] = {1.0f, float(lc.flags), lc.sharpness, lc.colorMode == 1 ? 1.0f : 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], f->ssr ? 1.0f : 0.0f,
                                  lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
             renderer_.setReferenceTexture(k, cid);
             renderer_.setReferenceDecal(k, f->decalSortKey, rid == checkerTex_ ? -1 : rid, p);
             return true;
         }
-    const float p[16] = {1.0f, float(lc.flags), lc.sharpness, lc.colorMode == 1 ? 1.0f : 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,
+    const bool layerSsr = factsLookup_ && [&] { const auto f = factsLookup_(base); return f && f->ssr; }();
+    const float p[16] = {1.0f, float(lc.flags), lc.sharpness, lc.colorMode == 1 ? 1.0f : 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], layerSsr ? 1.0f : 0.0f,
                          lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
     renderer_.setReferenceTexture(k, cid);
     renderer_.setReferenceLayer(k, rid == checkerTex_ ? -1 : rid, p);
@@ -1034,7 +1037,7 @@ bool CameraView::resolveReferenceDecal(size_t k, int textureId) {
     if (!texIds_.count(rk)) return false;
     StockLayerConstants lc;
     if (!f->constants.layer.empty()) lc = f->constants.layer[0];
-    const float p[16] = {1.0f, float(lc.flags), lc.sharpness, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+    const float p[16] = {1.0f, float(lc.flags), lc.sharpness, 0.0f, 1.0f, 1.0f, 1.0f, f->ssr ? 1.0f : 0.0f,
                          1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f};  // layer 0: its tint is in the image already
     (void)textureId;
     renderer_.setReferenceDecal(k, f->decalSortKey, rid == checkerTex_ ? -1 : rid, p);

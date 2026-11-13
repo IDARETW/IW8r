@@ -99,6 +99,7 @@ public:
     std::array<size_t, 3> baseMaterialStats() const { return renderer_.baseMaterialStats(); }
     bool gameAoDrawn() const { return renderer_.gameAoDrawn(); }
     bool gameHdrDrawn() const { return renderer_.gameHdrDrawn(); }
+    std::array<size_t, 2> ssrBatchStats() const { return renderer_.ssrBatchStats(); }
     size_t referenceDecalExtras() const { return refTexExtraFrom_ == ~size_t(0) ? 0 : refTexMaterials_.size() - refTexExtraFrom_; }
     void setTerrainCut(double x, double y, double radius) {
         renderer_.setTerrainCut(float(x), float(y), float(radius));
@@ -133,6 +134,7 @@ public:
     // none; applied when no tint mask limits it). nullopt while the material is not resolved.
     struct StockMaterialFacts {
         int decalSortKey = 0;
+        bool ssr = false;  // its techset traces screen-space reflections (research 104)
         int tint = -1;
         bool tintMasked = false;
         std::string tintMaskFile;  // slot 59 DDS: the tint applies by its red channel

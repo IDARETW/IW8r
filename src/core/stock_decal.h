@@ -68,7 +68,7 @@ struct StockTechsetTraits {
     std::string blendToken;  // "rpl" opaque, "alt" alpha tested, "bad" premultiplied alpha blend
     bool blended = false;    // blendToken == "bad" (blendBits 0x28050)
     bool polygonOffset = false;  // hexA & 0x10000 on "bad" world techsets (otherBits 0x10)
-    bool ssr = false;            // hexB last digit 2: screen-space reflection lerped over the probe reflection
+    bool ssr = false;            // hexB bit 1 (last digit 2 or 3): screen-space reflection over the probe (research 104)
     bool displacement = false;   // hexB last digit 8: displacement (tessellation techniques + displaced VS)
     bool wrapDiffuse = false;    // hexB & 0x0008000000000000: one extra psData row, RGB wrap (stockWrapDiffuse)
     int layers = 0;              // the first layer-count token

@@ -385,6 +385,11 @@ bool tileFillHidden(float4 col, float3 w) {
 bool rawSpecAlpha() { return batchFlags.y < -1.5 || (layerP.x < 0.5 && layerP.y > 1.5); }
 // The HDR scene to the frame: the post chain where something was drawn (alpha > 0); the clear colour elsewhere.
 Texture2D<float4> hdrScene : register(t15);
+// Screen-space reflections (research 104 section 8): the previous frame's HDR scene (half size, mips) and its linear
+// depth, with the view they were drawn from.
+Texture2D<float4> prevColor : register(t16);
+Texture2D<float> prevZ : register(t17);
+cbuffer Prev : register(b10) { row_major float4x4 prevVP; float4 prevFwd; float4 prevSize; };  // prevSize: w, h, valid
 struct VFull { float4 pos : SV_POSITION; };
 VFull vs_post(uint id : SV_VertexID) {
     VFull o;
@@ -395,7 +400,7 @@ VFull vs_post(uint id : SV_VertexID) {
 float4 ps_post(VFull i) : SV_TARGET {
     float4 h = hdrScene.Load(int3(i.pos.xy, 0));
     if (h.a <= 0.0) discard;
-    if (gameAo.y > 0.5 || gameAo.z > 0.5) return float4(h.rgb, 1.0);  // debug views: shown as drawn
+    if (gameAo.y > 0.5 || gameAo.z > 0.5 || (gameSkyScale.z > 0.5 && gameSkyScale.z < 1.5)) return float4(h.rgb, 1.0);  // debug views
     return float4(gamePost(max(h.rgb, 0.0)), 1.0);
 }
 void ps_shadow_clip(PSIn i) {
@@ -609,6 +614,58 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 S = lerp(0.18 * mixed, P, so);
             }
             const float3 aoMB = aoV / (1.0 - min(diffAlbedo, 0.85) * (1.0 - aoV));  // research 95: multi-bounce AO
+            // Screen-space reflections (research 104): materials that trace them (base: layerP.z, layers: layerTint.w),
+            // glossy pixels, the previous frame's scene marched along the reflection of the vertex normal, the hit
+            // read on the normal-mapped ray with a roughness cone; S -> lerp(S, ssr, w).
+            const bool ssrMat = (layerP.x < 0.5 ? layerP.z > 0.5 : (layerP.x < 1.5 && layerTint.w > 0.5)) || gameSkyScale.z > 1.5;
+            float ssrDbg = 0.0, ssrWDbg = 0.0, ssrADbg = 0.0;  // debug view: 0.25 flagged, 0.5 traced, 0.75 hit, 1 used
+            if (ssrMat) ssrDbg = 0.25;
+            const bool ssrTest = gameSkyScale.z > 1.5;  // IW8R_SSR_ALL: every surface a mirror of what the trace hits
+            float3 ssrTestColor = 0.0;
+            if (ssrMat && prevSize.z > 0.5 && probeCount.x > 0.5 && (gp >= 0.3 || ssrTest)) {
+                ssrDbg = 0.5;
+                const float3 X = i.w, Ng = Nf, Vv = Vs;
+                const float3 Rg = reflect(-Vv, Ng);
+                const float wF = saturate(4.0 * dot(prevFwd.xyz, R));
+                if (wF > 0.0 && dot(Rg, -Vv) > 0.0 && dot(prevFwd.xyz, Rg) > 0.0) {
+                    const float4 ca = mul(float4(X, 1.0), prevVP), ce = mul(float4(X + 65500.0 * Rg, 1.0), prevVP);
+                    float3 A = float3(ca.xy / ca.w * float2(0.5, -0.5) + 0.5, 1.0 / ca.w);
+                    const float3 E = float3(ce.xy / ce.w * float2(0.5, -0.5) + 0.5, 1.0 / ce.w);
+                    const float3 D = E - A;
+                    const float len = length(D.xy * prevSize.xy);
+                    A.xy += D.xy * (1.0 / max(len, 1e-3));  // one pixel out
+                    float zPrev = 1.0 / A.z, tHit = 1.0;
+                    bool hit = false;
+                    [loop] for (int k = 0; k < 24; ++k) {
+                        float tk = (k + 0.5) / 24.0;
+                        tk *= tk;
+                        const float3 Q = A + tk * D;
+                        if (any(abs(Q.xy - 0.5) >= 0.5)) break;
+                        const float zr = 1.0 / Q.z;
+                        const float zs = prevZ.Load(int3(int2(Q.xy * prevSize.xy), 0));
+                        if (zs * 1.002 < zr && abs(zr - zs) < max(abs(zr - zPrev), 48.0) && tk > 1.0 / len) {
+                            hit = true, tHit = tk;
+                            break;
+                        }
+                        zPrev = zr;
+                    }
+                    if (hit && tHit < 0.9999) {
+                        const float rr = 1.0 - gp;
+                        const float cone = max(0.0, min(1.01737 * rr * rr * rr + 0.070128, 1.0) * tHit + 1.48707 * rr - 0.284052);
+                        const float4 cr = mul(float4(X + 65500.0 * R, 1.0), prevVP);
+                        const float2 uvR = cr.w > 0.0 ? cr.xy / cr.w * float2(0.5, -0.5) + 0.5 : A.xy;
+                        const float2 uvH = lerp(A.xy, uvR, tHit);
+                        const float2 e2 = uvH * 2.0 - 1.0;
+                        const float edge = saturate((1.0 - e2.x * e2.x) * (1.0 - e2.y * e2.y) * 2.0 * prevSize.x / max(prevSize.y, 1.0));
+                        const float4 sc = prevColor.SampleLevel(lutSamp, uvH, 3.0 * min(cone, 1.0));
+                        ssrDbg = 0.75, ssrWDbg = wF * edge, ssrADbg = sc.a;
+                        if (sc.a > 0.0) ssrTestColor = sc.rgb * wF * edge;
+                        if (sc.a > 0.0) S = lerp(S, sc.rgb, wF * edge), ssrDbg = 1.0;
+                    }
+                }
+            }
+            if (gameSkyScale.z > 0.5 && gameSkyScale.z < 1.5) return ssrMat ? float4(ssrDbg, ssrWDbg, ssrADbg, 1.0) : float4(0, 0, 0, 1);
+            if (ssrTest) return float4(ssrTestColor, 1.0);
             c = diffAlbedo * indirect * kd * (1.0 - fmax) * aoMB + Fenv * S;
             float3 Ls = gameSun.xyz;
             float nl = dot(N, Ls);
@@ -781,6 +838,33 @@ float ps_ao(V i) : SV_TARGET {
     ao = lerp(ao, 1.0, saturate((dist - 6000.0) / 4000.0));
     return pow(saturate(ao), aoPrm.y);
 }
+// Kept for the next frame's screen-space reflections: the linear view depth (clip w; 1e9 for the sky) at half size,
+// the farther of each 2 x 2 (the game's floatZ max chain), and the HDR scene averaged over 2 x 2.
+Texture2D<float4> hdrIn : register(t2);
+float ps_prevz(V i) : SV_TARGET {
+    int2 p = int2(i.pos.xy) * 2;
+    float w = 0.0;
+    [unroll] for (int y = 0; y < 2; ++y)
+        [unroll] for (int x = 0; x < 2; ++x) {
+            const int2 q = clamp(p + int2(x, y), int2(0, 0), int2(aoPrm.zw) - 1);
+            const float d = depthTex.Load(int3(q, 0));
+            float wl = 1e9;
+            if (d < 0.999999) wl = mul(float4(worldAt((float2(q) + 0.5) / aoPrm.zw, d), 1.0), aoVp).w;
+            w = max(w, wl);
+        }
+    return w;
+}
+float4 ps_prevcolor(V i) : SV_TARGET {
+    int2 p = int2(i.pos.xy) * 2;
+    float4 sum = 0.0;
+    float n = 0.0;
+    [unroll] for (int y = 0; y < 2; ++y)
+        [unroll] for (int x = 0; x < 2; ++x) {
+            const float4 c = hdrIn.Load(int3(clamp(p + int2(x, y), int2(0, 0), int2(aoPrm.zw) - 1), 0));
+            if (c.a > 0.0) sum += float4(c.rgb, 1.0), n += 1.0;
+        }
+    return n > 0.0 ? float4(sum.rgb / n, 1.0) : float4(0, 0, 0, 0);
+}
 float viewDist(int2 p) {
     int2 c = clamp(p, int2(0, 0), int2(aoPrm.zw) - 1);
     float d = depthTex.Load(int3(c, 0));
@@ -919,6 +1003,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(cbTiles_);
     safeRelease(postVs_), safeRelease(postPs_), safeRelease(meterHdrPs_);
     safeRelease(aoVs_), safeRelease(aoPs_), safeRelease(aoBlurPs_), safeRelease(cbAo_);
+    safeRelease(prevZPs_), safeRelease(prevColorPs_), safeRelease(cbPrev_);
     safeRelease(layoutTex_);
     for (auto& g : refTexInst_) safeRelease(g.vb), safeRelease(g.inst), safeRelease(g.visInst), safeRelease(g.bigInst);
     refTexInst_.clear();
@@ -1197,6 +1282,9 @@ void SceneRenderer::releaseTargets() {
     safeRelease(depthSrv_);
     safeRelease(depth_);
     safeRelease(hdrSrv_), safeRelease(hdrRtv_), safeRelease(hdrTex_);
+    safeRelease(prevColorSrv_), safeRelease(prevColorRtv_), safeRelease(prevColorTex_);
+    safeRelease(prevZSrv_), safeRelease(prevZRtv_), safeRelease(prevZTex_);
+    prevValid_ = false;
     for (int k = 0; k < 2; ++k) safeRelease(aoSrv_[k]), safeRelease(aoRtv_[k]), safeRelease(aoTex_[k]);
     aoValid_ = false;
 }
@@ -1215,6 +1303,10 @@ bool SceneRenderer::createAoResources() {
         dev_->CreateVertexShader(vsb->GetBufferPointer(), vsb->GetBufferSize(), nullptr, &aoVs_);
         dev_->CreatePixelShader(psb->GetBufferPointer(), psb->GetBufferSize(), nullptr, &aoPs_);
         dev_->CreatePixelShader(pbb->GetBufferPointer(), pbb->GetBufferSize(), nullptr, &aoBlurPs_);
+        ID3DBlob *zb = nullptr, *cb = nullptr;
+        if (compile("ps_prevz", "ps_5_0", zb)) dev_->CreatePixelShader(zb->GetBufferPointer(), zb->GetBufferSize(), nullptr, &prevZPs_);
+        if (compile("ps_prevcolor", "ps_5_0", cb)) dev_->CreatePixelShader(cb->GetBufferPointer(), cb->GetBufferSize(), nullptr, &prevColorPs_);
+        safeRelease(zb), safeRelease(cb);
     }
     safeRelease(vsb), safeRelease(psb), safeRelease(pbb);
     D3D11_BUFFER_DESC bd{};
@@ -1252,6 +1344,53 @@ bool invert4(const float* m, float* out) {
     return true;
 }
 }  // namespace
+
+void SceneRenderer::keepFrameForSsr(const float* viewProj) {
+    if (!prevColorRtv_ || !prevZRtv_ || !prevZPs_ || !prevColorPs_ || !depthSrv_ || !hdrSrv_ || !createAoResources()) {
+        prevValid_ = false;
+        return;
+    }
+    IW8R_PROF("d.ssr_keep");
+    float cb[40];
+    std::memcpy(cb, viewProj, 64);
+    if (!invert4(viewProj, cb + 16)) {
+        prevValid_ = false;
+        return;
+    }
+    cb[32] = fog_[0], cb[33] = fog_[1], cb[34] = fog_[2], cb[35] = 0;
+    cb[36] = 40.0f, cb[37] = 1.0f, cb[38] = float(w_), cb[39] = float(h_);
+    ctx_->UpdateSubresource(cbAo_, 0, nullptr, cb, 0, 0);
+    ID3D11ShaderResourceView* none4[4] = {nullptr, nullptr, nullptr, nullptr};
+    ctx_->PSSetShaderResources(16, 2, none4);  // this frame's inputs become the outputs
+    D3D11_VIEWPORT hv{0, 0, float(std::max(1, w_ / 2)), float(std::max(1, h_ / 2)), 0, 1};
+    ctx_->RSSetViewports(1, &hv);
+    ctx_->OMSetBlendState(nullptr, nullptr, 0xffffffff);
+    ctx_->OMSetDepthStencilState(dsOff_, 0);
+    ctx_->RSSetState(rsTris_);
+    ctx_->IASetInputLayout(nullptr);
+    ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx_->VSSetShader(aoVs_, nullptr, 0);
+    ctx_->PSSetConstantBuffers(8, 1, &cbAo_);
+    // linear depth (reads the depth buffer: no depth bound)
+    ctx_->OMSetRenderTargets(1, &prevZRtv_, nullptr);
+    ctx_->PSSetShader(prevZPs_, nullptr, 0);
+    ID3D11ShaderResourceView* zin[3] = {depthSrv_, nullptr, nullptr};
+    ctx_->PSSetShaderResources(0, 3, zin);
+    ctx_->Draw(3, 0);
+    // the scene, then its mips
+    ctx_->OMSetRenderTargets(1, &prevColorRtv_, nullptr);
+    ctx_->PSSetShader(prevColorPs_, nullptr, 0);
+    ID3D11ShaderResourceView* cin[3] = {depthSrv_, nullptr, hdrSrv_};
+    ctx_->PSSetShaderResources(0, 3, cin);
+    ctx_->Draw(3, 0);
+    ctx_->PSSetShaderResources(0, 3, none4);
+    ctx_->OMSetRenderTargets(1, &sceneRtv_, nullptr);
+    ctx_->GenerateMips(prevColorSrv_);
+    D3D11_VIEWPORT fv{0, 0, float(w_), float(h_), 0, 1};
+    ctx_->RSSetViewports(1, &fv);
+    std::memcpy(prevViewProj_, viewProj, 64);
+    prevValid_ = true;
+}
 
 void SceneRenderer::drawPost() {
     IW8R_PROF("d.post");
@@ -1602,6 +1741,9 @@ void SceneRenderer::writeGameCb() {
     g[41] = game_.bakedScale;
     static const bool noLayerProbes = perfOff("layerprobes");  // benchmark switch: probes on base batches only
     g[43] = noLayerProbes ? 0.0f : 1.0f;
+    static const bool ssrShow = std::getenv("IW8R_SSR_SHOW") != nullptr;  // debug: SSR materials and their hits
+    static const bool ssrAll = std::getenv("IW8R_SSR_ALL") != nullptr;  // test: every glossy stock surface traces
+    g[42] = ssrAll ? 2.0f : ssrShow ? 1.0f : 0.0f;
     // The coarse super terrain is cut away inside the near-camera layer patch (x, y, radius, on).
     g[44] = terrainCut_[0], g[45] = terrainCut_[1], g[46] = terrainCut_[2], g[47] = terrainCut_[2] > 0 ? 1.0f : 0.0f;
     g[48] = on && aoValid_ ? 1.0f : 0.0f;
@@ -1806,6 +1948,28 @@ void SceneRenderer::resize(int w, int h) {
     if (SUCCEEDED(dev_->CreateTexture2D(&td, nullptr, &hdrTex_))) {
         dev_->CreateRenderTargetView(hdrTex_, nullptr, &hdrRtv_);
         dev_->CreateShaderResourceView(hdrTex_, nullptr, &hdrSrv_);
+    }
+    {
+        D3D11_TEXTURE2D_DESC hd = td;
+        hd.Width = std::max(1u, td.Width / 2), hd.Height = std::max(1u, td.Height / 2);
+        hd.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        hd.MipLevels = 4;
+        hd.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        hd.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+        if (SUCCEEDED(dev_->CreateTexture2D(&hd, nullptr, &prevColorTex_))) {
+            D3D11_RENDER_TARGET_VIEW_DESC rd{};
+            rd.Format = hd.Format;
+            rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+            dev_->CreateRenderTargetView(prevColorTex_, &rd, &prevColorRtv_);
+            dev_->CreateShaderResourceView(prevColorTex_, nullptr, &prevColorSrv_);
+        }
+        hd.Format = DXGI_FORMAT_R32_FLOAT;
+        hd.MipLevels = 1;
+        hd.MiscFlags = 0;
+        if (SUCCEEDED(dev_->CreateTexture2D(&hd, nullptr, &prevZTex_))) {
+            dev_->CreateRenderTargetView(prevZTex_, nullptr, &prevZRtv_);
+            dev_->CreateShaderResourceView(prevZTex_, nullptr, &prevZSrv_);
+        }
     }
     td.Format = DXGI_FORMAT_R8_UNORM;
     td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -2651,7 +2815,34 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     // Game Lighting draws the lit scene into the HDR target (IW8R_NO_HDR: straight into the frame, as before).
     static const bool noHdr = std::getenv("IW8R_NO_HDR") != nullptr;
     hdrFrame_ = game_.on && gameLutSrv_ && hdrRtv_ && postVs_ && postPs_ && !noHdr && !in.capture;
+    if (!hdrFrame_) prevValid_ = false;
     sceneRtv_ = hdrFrame_ ? hdrRtv_ : rtv_;
+    {
+        // The previous frame for the reflections: only an HDR frame of the same size, with SSR on.
+        static const bool noSsr = std::getenv("IW8R_NO_SSR") != nullptr;
+        const bool ssrNow = hdrFrame_ && prevValid_ && ssrOn_ && !noSsr && prevColorSrv_ && prevZSrv_;
+        if (!cbPrev_ && dev_) {
+            D3D11_BUFFER_DESC bd{};
+            bd.ByteWidth = 96;
+            bd.Usage = D3D11_USAGE_DEFAULT;
+            bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+            dev_->CreateBuffer(&bd, nullptr, &cbPrev_);
+        }
+        if (cbPrev_) {
+            float pc[24] = {};
+            std::memcpy(pc, prevViewProj_, 64);
+            // The previous camera's forward axis: the w column of its view-projection (row-vector convention).
+            float fx = prevViewProj_[3], fy = prevViewProj_[7], fz = prevViewProj_[11];
+            const float fl = std::sqrt(fx * fx + fy * fy + fz * fz);
+            if (fl > 0) fx /= fl, fy /= fl, fz /= fl;
+            pc[16] = fx, pc[17] = fy, pc[18] = fz;
+            pc[20] = float(std::max(1, w_ / 2)), pc[21] = float(std::max(1, h_ / 2)), pc[22] = ssrNow ? 1.0f : 0.0f;
+            ctx_->UpdateSubresource(cbPrev_, 0, nullptr, pc, 0, 0);
+            ctx_->PSSetConstantBuffers(10, 1, &cbPrev_);
+        }
+        ID3D11ShaderResourceView* ps[2] = {ssrNow ? prevColorSrv_ : nullptr, ssrNow ? prevZSrv_ : nullptr};
+        ctx_->PSSetShaderResources(16, 2, ps);
+    }
     if (hdrFrame_) {
         const float zero[4] = {0, 0, 0, 0};
         ctx_->ClearRenderTargetView(hdrRtv_, zero);
@@ -3289,7 +3480,9 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         drawReferenceTexInstances();
     }
     if (hdrFrame_) {
-        // The lit scene is done: the post chain into the frame, then the unlit pieces and the editor's overlays.
+        // The lit scene is done: kept for the next frame's reflections, the post chain into the frame, then the unlit
+        // pieces and the editor's overlays.
+        keepFrameForSsr(viewProj);
         drawPost();
         if (refVisible_ && !refInst_.empty()) {
             ctx_->RSSetState(rsTris_);

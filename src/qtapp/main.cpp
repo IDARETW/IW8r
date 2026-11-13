@@ -631,6 +631,8 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                 const auto bm = cam->baseMaterialStats();
                 report << QString("base_materials batches %1 constants %2 spec_alpha %3").arg(bm[0]).arg(bm[1]).arg(bm[2]);
                 report << QString("game_ao drawn %1 hdr %2").arg(cam->gameAoDrawn() ? 1 : 0).arg(cam->gameHdrDrawn() ? 1 : 0);
+                const auto sb = cam->ssrBatchStats();
+                report << QString("ssr_batches base %1 layers %2").arg(sb[0]).arg(sb[1]);
                 report << QString("texture_memory mb %1 budget_mb %2 reduced_to_128px %3").arg(double(cam->textureBytes()) / 1048576.0, 0, 'f', 0)
                               .arg(double(cam->textureBudgetBytes()) / 1048576.0, 0, 'f', 0).arg(cam->texturesReducedByBudget());
             }
