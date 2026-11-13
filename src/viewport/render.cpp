@@ -2413,6 +2413,8 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 if (!refLayers_[k].decal) passOrder.push_back(k);
             const size_t firstDecal = passOrder.size();
             passOrder.insert(passOrder.end(), refDecalOrder_.begin(), refDecalOrder_.end());
+            layerPassDraws_ = layerPassTris_ = 0;
+            layerPassBatches_ = passOrder.size();
             for (size_t pi = 0; pi < passOrder.size(); ++pi) {
                 const size_t k = passOrder[pi];
                 if (pi == firstDecal && rsDecal_) ctx_->RSSetState(rsDecal_);
@@ -2467,9 +2469,12 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 if (textures_[size_t(rv)] != lastRev) lastRev = textures_[size_t(rv)], ctx_->PSSetShaderResources(12, 1, &lastRev);
                 bindNormal(k);
                 if (refCulling_ && k < refTexChunks_.size() && !refTexChunks_[k].empty())
-                    refCulledLast_ += forVisibleRuns(frustum, refTexChunks_[k], [&](uint32_t first, uint32_t n) { drawN(n * 3, refTexFirst_[k] + first * 3); });
+                    refCulledLast_ += forVisibleRuns(frustum, refTexChunks_[k], [&](uint32_t first, uint32_t n) {
+                        drawN(n * 3, refTexFirst_[k] + first * 3);
+                        ++layerPassDraws_, layerPassTris_ += n;
+                    });
                 else
-                    drawN(refTexCount_[k], refTexFirst_[k]);
+                    drawN(refTexCount_[k], refTexFirst_[k]), ++layerPassDraws_, layerPassTris_ += refTexCount_[k] / 3;
             }
             const float zero[16] = {};
             ctx_->UpdateSubresource(cbLayer_, 0, nullptr, zero, 0, 0);

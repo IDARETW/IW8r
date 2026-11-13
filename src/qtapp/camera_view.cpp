@@ -315,7 +315,11 @@ void CameraView::render() {
             }
             texInstPending_ = pending;
         }
-        if (moreToLoad_) {
+        // The stock reference's loads do not rebuild the map's own geometry: only its own textures do (mp_aniyah_tac
+        // rebuilt everything, 175 ms and 173 MB of uploads, on every frame while 9,000 layer textures streamed in).
+        refMoreToLoad_ = moreToLoad_;
+        moreToLoad_ = false;
+        if (refMoreToLoad_) {
             refPollDue_ = true;  // the budget stopped the loads: the next frame goes on (render() asks for it below)
         } else if ((refTexPending_ || texInstPending_) && !refPollTimerArmed_) {
             // Waiting for images that are not cached yet: look again in half a second.
@@ -605,7 +609,8 @@ void CameraView::render() {
         in.geometryChanged = rebuild;
         renderer_.drawFrame(in);
     }
-    if (moreToLoad_) QMetaObject::invokeMethod(this, [this] { update(); }, Qt::QueuedConnection);  // finish loading next frame
+    if (moreToLoad_ || refMoreToLoad_)
+        QMetaObject::invokeMethod(this, [this] { update(); }, Qt::QueuedConnection);  // finish loading next frame
     ensureSwapChain();
     if (!swap_) return;
     ID3D11Texture2D* back = nullptr;
@@ -1018,6 +1023,12 @@ int CameraView::textureFor(const std::string& material) {
         }
         return texIds_[material] = checkerTex_;
     }
+    // Layer, decal and decal volume images ("\x01" / "\x02" / "\x05" keys) are plain files, never tinted or masked
+    // per material: one texture per file (mp_aniyah_tac decoded the same layer images once per material, 37,000
+    // textures, and ran out of video memory).
+    const bool shareable = material.find_first_of("\x01\x02\x05") != std::string::npos;
+    if (shareable)
+        if (const auto it = texByPath_.find(path->toStdString()); it != texByPath_.end()) return texIds_[material] = it->second;
     if (!textureLoadAllowed(loadsThisFrame_)) {
         moreToLoad_ = true;  // keep frames short: the rest loads in the next frames
         return -1;
@@ -1115,6 +1126,7 @@ int CameraView::textureFor(const std::string& material) {
         id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
     }
     g_frameLoadMs += QDateTime::currentMSecsSinceEpoch() - loadStart;
+    if (shareable && id >= 0) texByPath_[path->toStdString()] = id;
     return texIds_[material] = id;
 }
 
@@ -1247,6 +1259,8 @@ int CameraView::normalFor(const std::string& material) {
     if (auto t = texIds_.find(material); t == texIds_.end() || t->second < 0 || t->second == checkerTex_) return -1;
     const QString path = normalLookup_ ? normalLookup_(material) : QString();
     if (path.isEmpty()) return nrmIds_[material] = -1;
+    // Normal maps are plain files: one texture per file (shared between the materials and layers that use it).
+    if (const auto it = nrmByPath_.find(path.toStdString()); it != nrmByPath_.end()) return nrmIds_[material] = it->second;
     if (!textureLoadAllowed(loadsThisFrame_)) {
         moreToLoad_ = true;
         return -1;
@@ -1255,9 +1269,11 @@ int CameraView::normalFor(const std::string& material) {
     const qint64 loadStart = QDateTime::currentMSecsSinceEpoch();
     int id = -1;
     app::Rgba8Image img;
-    if (app::loadDdsPreview(path.toStdString(), kViewTextureSide, img) && img.width > 0 && img.height > 0)
+    // The same size rule as the colour images (they had always loaded at full preview size, over the budget).
+    if (app::loadDdsPreview(path.toStdString(), textureSideNow(), img) && img.width > 0 && img.height > 0)
         id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
     g_frameLoadMs += QDateTime::currentMSecsSinceEpoch() - loadStart;
+    if (id >= 0) nrmByPath_[path.toStdString()] = id;
     return nrmIds_[material] = id;
 }
 
@@ -1312,7 +1328,7 @@ QImage CameraView::renderImage(int w, int h, bool clean, double aspect, int sett
     QElapsedTimer t;
     t.start();
     render();
-    while (moreToLoad_ && t.elapsed() < settleMs) {
+    while ((moreToLoad_ || refMoreToLoad_) && t.elapsed() < settleMs) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 30);
         geomDirty_ = true;
         render();

@@ -555,6 +555,12 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             const auto sl = cam->skyLuminance();
             report << QString("game_sky exposure=%1 mean_lum=%2 high_lum=%3").arg(sl[0]).arg(sl[1]).arg(sl[2]);
             report << QString("instances_culled %1").arg(cam->instancesCulled());
+            {
+                const auto ts = cam->referenceTriangleSplit();
+                report << QString("reference_triangles base %1 layers %2 decals %3").arg(ts[0]).arg(ts[1]).arg(ts[2]);
+                const auto lp = cam->layerPassStats();
+                report << QString("layer_pass batches %1 draws %2 triangles %3").arg(lp[0]).arg(lp[1]).arg(lp[2]);
+            }
             const auto ex = cam->gameExposureState();
             report << QString("game_exposure %1 target %2 metered %3 (EV %4)").arg(ex[0]).arg(ex[1]).arg(ex[2])
                           .arg(ex[0] > 0 ? 2.84 - std::log2(ex[0] / 180.0) : 0.0, 0, 'f', 2);

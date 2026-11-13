@@ -224,6 +224,17 @@ public:
         }
         return s;
     }
+    // Triangles stored in the textured reference: {base batches, layer batches, decal batches}.
+    size_t layerPassDraws_ = 0, layerPassTris_ = 0, layerPassBatches_ = 0;
+    std::array<size_t, 3> layerPassStats() const { return {layerPassBatches_, layerPassDraws_, layerPassTris_}; }
+    std::array<size_t, 3> referenceTriangleSplit() const {
+        std::array<size_t, 3> s{};
+        for (size_t k = 0; k < refTexCount_.size(); ++k) {
+            const bool layer = k < refLayers_.size() && refLayers_[k].layer > 0, decal = k < refLayers_.size() && refLayers_[k].decal;
+            s[decal ? 2 : layer ? 1 : 0] += refTexCount_[k] / 3;
+        }
+        return s;
+    }
     void setReferenceNormal(size_t batch, int textureId) {
         if (batch < refNrmIds_.size()) refNrmIds_[batch] = textureId;
     }

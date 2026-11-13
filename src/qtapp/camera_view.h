@@ -50,7 +50,7 @@ public:
     void setFixedRenderSize(int w, int h) { fixedW_ = w, fixedH_ = h; }
     void finishGpu() { renderer_.finishGpu(); }
     const app::SceneRenderer::FrameStats& frameStats() const { return renderer_.lastStats(); }
-    bool texturesPending() const { return moreToLoad_; }
+    bool texturesPending() const { return moreToLoad_ || refMoreToLoad_; }
     // Tests: the kept geometry against a fresh buildCameraGeometry of the same scene. "" when they agree, else what
     // differs. Call after a frame.
     QString geometrySelfCheck();
@@ -87,6 +87,8 @@ public:
     // an earlier set.
     std::array<size_t, 5> referenceDecalStats() const { return renderer_.referenceDecalStats(); }
     size_t instancesCulled() const { return renderer_.instancesCulled(); }
+    std::array<size_t, 3> referenceTriangleSplit() const { return renderer_.referenceTriangleSplit(); }
+    std::array<size_t, 3> layerPassStats() const { return renderer_.layerPassStats(); }
     size_t referenceDecalExtras() const { return refTexExtraFrom_ == ~size_t(0) ? 0 : refTexMaterials_.size() - refTexExtraFrom_; }
     void setReferenceDecalExtras(std::vector<app::ReferenceTexBatch> batches) {
         pendingDecalExtras_ = std::move(batches);
@@ -350,6 +352,7 @@ private:
     std::vector<app::InstancedMesh> pendingInst_;
     bool instDirty_ = false;
     std::vector<app::ReferenceTexBatch> pendingRefTex_;
+    bool refMoreToLoad_ = false;  // the reference loop stopped at the per-frame load budget
     std::vector<std::string> refTexMaterials_;
     std::vector<int> refTexLayer_;  // parallel: 0 base, L >= 1 a layer batch of refTexMaterials_[k]
     struct RefDecalVolume {
@@ -490,6 +493,7 @@ private:
     ImageRequest imageRequest_;
     std::unordered_map<std::string, std::pair<int, int>> texSizes_;  // decoded colour size before the 512 cap (Density mode)
     std::unordered_map<std::string, int> texIds_;  // resolved: >= 0 texture, -1 flat colour
+    std::unordered_map<std::string, int> texByPath_, nrmByPath_;  // shared images by file (textureFor, normalFor)
     std::set<std::string> requested_;
     int checkerTex_ = -1;
     int loadsThisFrame_ = 0;
