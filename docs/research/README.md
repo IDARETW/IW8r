@@ -26,6 +26,8 @@ not guessed. The target build throughout is MW2019 Replay 1.20.4.7623265
 | 94 | [Stock lightmaps](94_stock_lightmaps.md) | Where a stock map's lightmap lives, its three planes and per-vertex UVs |
 | 95 | [Lit shader math](95_lit_shader_math.md) | The stock world shader, the post chain, and the converter's world shader for editor maps (Game Lighting) |
 | 96 | [Stock world removal](96_stock_world_removal.md) | Removing stock world triangles from drawing, Havok collision and the sun shadow |
+| 97 | [Stock layered materials](97_stock_layered_materials.md) | How tw4 / twc4 blend up to 8 texture layers: weights, reveal ramp, constants |
+| 98 | [Stock decals and displacement](98_stock_decals_displacement.md) | Blended world decals (sortKey 10-17) and `dn` displacement layers |
 
 ## Third-party "iw8 level maker" (report 13)
 

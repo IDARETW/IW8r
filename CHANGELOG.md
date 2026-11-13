@@ -5,6 +5,24 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-12
 
+Game Lighting against the game (evening):
+
+- **Stock maps look like the game.** Compared with an in-game screenshot of Speedball (same spot, FOV 120):
+  - The vision's own colour grade is applied, with the base exposure recalibrated (+1.0 EV); the ground's brightness
+    percentiles now match.
+  - Fog and haze come from the vision (atmospheric scattering, height fog, the sky's haze band).
+  - The stock sky is drawn at the brightness its material gives it, and it stays put as the camera moves.
+  - Layered ground (up to 8 texture layers), puddles and edge wear, ground decals in their sort order, normal maps,
+    painted-material tints (Speedball's building, blue containers), and shadows from trees, poles and props with a
+    sharper shadow map near the camera.
+  - Stock maps auto-expose from the frame as the game does. Lit Preview on a stock map shows the game lighting.
+- **Other maps.** King's interior used its baked light 64x too bright (its bakedLightScale is read now); Shipment's
+  sky was missing (its skyline surfaces were taken for the sky box); Hideout's sky haze overshot into cyan. Rust,
+  Backlot and others checked. Per-map layered materials no longer take another map's same-named blend (Speedball's
+  ground showed a metal base).
+- **Material cache.** ACTS runs moved to a short temp folder: long packed image names passed Windows' 260-character
+  path limit and stayed the missing-material checker.
+
 Warzone and stock maps (later the same day):
 
 - **Viewport speed on stock maps.** With a stock map open (mp_rust: about a thousand models) a camera step took 182 ms
