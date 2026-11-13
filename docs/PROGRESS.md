@@ -9,6 +9,14 @@
   inside 0.74 x radius (gameTerrainCut, b4; stock reference batches only). GPU clutter on Verdansk drawn (research
   100, core stock_clutter). Bench mp_donetsk "-24900 -1700 -200 45 -12 90": 19.9 ms. Tests: core 1231 / 141991
   checks, GUI 961, smoke ok. Prop LODs: not used, screen culling instead (documented decision).
+- Terrain layer radius: default 6,000; IW8R_TERRAIN_LAYER_RADIUS (1,000-40,000; game = 17,368). Measured from a raised
+  camera (-24900 -1700 1800 45 -12 90): 21.1 ms / 1.2 M layer triangles at 6,000 vs 23.7 ms / 5.6 M at 17,368 (stride 2
+  within 4,000 of a surface, 4 to 9,000, then 8); mean image change 3.9/255, and far water planes show through the
+  coarse far mesh. Bench check "picture=DIFFERENT" now prints max / over8: every map gives max 1-4, over8 0 % (auto
+  exposure drift between the kept and the rebuilt frame, not a geometry fault). IW8R_BENCH_NEAR=<r> lists the scene
+  items near a fixed bench camera. Stock MP maps keep spawns outside the entity string: use "ent node_pathnode N".
+- Re-checked 2026-11-13 at eye level (Game Lighting): King 2.3 ms, Shipment 4.6, Hideout 9.6, Speedball 5.7. Speedball
+  vs the owner's shot (same features): lit concrete +3..9 %, dirt +3 %, far field +10 % (haze), grass -15 %.
 - Later on 2026-11-13: displacement drawn (research 101); Warzone super terrain drawn (ACTS fork 8b5ee11d deployed:
   build\bin\Release\data\mw19\schema.json; research 102; core stock_super_terrain); stand-in boxes out of the game views;
   prop screen culling at 4 px (Verdansk 37 -> 15.5 ms). Frame times with Game Lighting: Speedball 4.3-5.7, King 4.0,

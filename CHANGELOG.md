@@ -9,6 +9,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
   materials (dirt, grass, sand, rock) with the game's own per-layer weight images and reveal ramp (research 103),
   instead of the blurry baked colour. The patch follows the camera (rebuilt in the background when you move 2,000
   units) and replaces the coarse terrain there, so nothing pokes through. Verdansk's GPU grass clutter is drawn too.
+  The game itself blends out to 17,368 units; `IW8R_TERRAIN_LAYER_RADIUS=17368` does the same in the editor, at about
+  +2.6 ms and 900 MB more video memory for a picture that changes by about 4 levels in 255 on average. The patch's
+  caches now drop surfaces that leave the radius, so a long walk across Verdansk stays bounded.
 - **Prop LODs** are not used: screen culling (props under 4 pixels or out of view are skipped) already keeps every
   stock map between 4 and 20 ms a frame with Game Lighting on.
 - **Test runner:** `tools/run_all_tests.ps1` builds the core and test targets in two xmake calls (it reported a

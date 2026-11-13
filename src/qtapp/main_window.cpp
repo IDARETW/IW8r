@@ -212,7 +212,7 @@ struct StockTerrainLayerState {
     std::vector<StockTerrainHeightGrid> heights;
     std::vector<StockTerrainCutout> cutouts;
     std::map<int, std::vector<StockTerrainLayerMask>> masks;  // per surface, by layer (loaded on demand)
-    std::map<int, StockTerrainMesh> meshes;                   // per surface, stride 2 (built on demand)
+    std::map<int, StockTerrainMesh> meshes;                   // per surface x 16 + stride (built on demand)
 };
 void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
                              std::vector<app::ReferenceTexBatch>& out, StockGroundGrid* ground = nullptr,
@@ -220,6 +220,15 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
 // The terrain layers of the surfaces within `radius` of (x, y), as blended batches (base layer, then the layers), their
 // weights faded to 0 at the radius so the patch melts into the baked colour beyond.
 std::vector<app::ReferenceTexBatch> buildTerrainLayerBatches(StockTerrainLayerState& st, double x, double y, double radius);
+// The near-camera terrain layer patch's radius (IW8R_TERRAIN_LAYER_RADIUS overrides; the game blends out to 17,368).
+double terrainLayerRadius() {
+    static const double r = [] {
+        bool ok = false;
+        const double v = qEnvironmentVariable("IW8R_TERRAIN_LAYER_RADIUS").toDouble(&ok);
+        return ok && v >= 1000.0 && v <= 40000.0 ? v : 6000.0;
+    }();
+    return r;
+}
 // The ground clutter of a Warzone map (research 100: grass, reeds, rocks scattered by the game on its terrain) as model
 // placements, about 250,000 of them; empty for maps without (every 6v6 map).
 std::shared_ptr<std::vector<StockModelInstance>> scatterStockGroundClutter(const QString& zone, const QString& zoneDir,
@@ -7179,20 +7188,20 @@ void MainWindow::pushDecalExtras() {
 void MainWindow::updateTerrainLayers() {
     if (!terrainLayers_ || terrainLayerBusy_ || referenceZone_.isEmpty() || terrainLayers_->zone != referenceZone_) return;
     const Vec3 c = ctx_.cam.pos;
-    if (std::hypot(c.x - terrainLayerCentre_.x, c.y - terrainLayerCentre_.y) < 2000.0) return;
+    if (std::hypot(c.x - terrainLayerCentre_.x, c.y - terrainLayerCentre_.y) < std::min(2000.0, terrainLayerRadius() / 3.0)) return;  // the stride-2 ring is 4,000 units
     terrainLayerBusy_ = true;
     terrainLayerCentre_ = c;
     QPointer<MainWindow> self(this);
     auto st = terrainLayers_;
     const QString zone = referenceZone_;
     std::thread([self, st, c, zone] {
-        auto batches = std::make_shared<std::vector<app::ReferenceTexBatch>>(buildTerrainLayerBatches(*st, c.x, c.y, 6000.0));
+        auto batches = std::make_shared<std::vector<app::ReferenceTexBatch>>(buildTerrainLayerBatches(*st, c.x, c.y, terrainLayerRadius()));
         QMetaObject::invokeMethod(qApp, [self, batches, zone, c] {
             if (!self) return;
             self->terrainLayerBusy_ = false;
             if (self->referenceZone_ != zone) return;
             self->terrainLayerBatches_ = std::move(*batches);
-            self->camera_->setTerrainCut(c.x, c.y, self->terrainLayerBatches_.empty() ? 0.0 : 0.74 * 6000.0);
+            self->camera_->setTerrainCut(c.x, c.y, self->terrainLayerBatches_.empty() ? 0.0 : 0.74 * terrainLayerRadius());
             self->pushDecalExtras();
         }, Qt::QueuedConnection);
     }).detach();
@@ -7305,7 +7314,14 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
 std::vector<app::ReferenceTexBatch> buildTerrainLayerBatches(StockTerrainLayerState& st, double x, double y, double radius) {
     std::vector<app::ReferenceTexBatch> out;
     const QString zoneFolder = QFileInfo(st.tools.replay).absolutePath() + "/zone/";
-    for (const int s : stockTerrainSurfacesNear(st.terrain, x, y, radius)) {
+    const std::vector<int> near = stockTerrainSurfacesNear(st.terrain, x, y, radius);
+    // Surfaces out of range are dropped from the caches (the masks stay on disk), so a walk across Verdansk stays bounded.
+    {
+        const std::set<int> keep(near.begin(), near.end());
+        for (auto it = st.masks.begin(); it != st.masks.end();) it = keep.count(it->first) ? std::next(it) : st.masks.erase(it);
+        for (auto it = st.meshes.begin(); it != st.meshes.end();) it = keep.count(it->first / 16) ? std::next(it) : st.meshes.erase(it);
+    }
+    for (const int s : near) {
         if (s < 0 || size_t(s) >= st.terrain.surfaces.size() || size_t(s) >= st.heights.size() || st.heights[size_t(s)].data.empty())
             continue;
         const StockTerrainSurfaceLayers* sl = nullptr;
@@ -7337,18 +7353,27 @@ std::vector<app::ReferenceTexBatch> buildTerrainLayerBatches(StockTerrainLayerSt
             }
             st.masks[s] = std::move(masks);
         }
-        if (!st.meshes.count(s)) {
+        // Mesh density by distance (the weights are per vertex): stride 2 near the camera, 4 and 8 further out, as the
+        // detail there is under a pixel anyway. The game blends out to 17,368 inches (research 103).
+        const StockTerrainSurface& sf = st.terrain.surfaces[size_t(s)];
+        const double near2 = std::hypot(std::max(0.0, std::fabs(x - sf.origin.x) - sf.halfWldSize),
+                                         std::max(0.0, std::fabs(y - sf.origin.y) - sf.halfWldSize));
+        const int stride = near2 < 4000.0 ? 2 : near2 < 9000.0 ? 4 : 8;
+        const int meshKey = s * 16 + stride;
+        for (const int other : {2, 4, 8})
+            if (other != stride) st.meshes.erase(s * 16 + other);
+        if (!st.meshes.count(meshKey)) {
             StockTerrainBuildOptions bo;
-            bo.stride = 2;
+            bo.stride = stride;
             StockTerrainMesh m;
             const StockTerrainCutout* cut = size_t(s) < st.cutouts.size() && !st.cutouts[size_t(s)].words.empty() ? &st.cutouts[size_t(s)] : nullptr;
             if (!buildStockTerrainMesh(st.terrain, s, st.heights[size_t(s)], cut, bo, m)) continue;
-            st.meshes[s] = std::move(m);
+            st.meshes[meshKey] = std::move(m);
         }
         StockTerrainLayerPatchOptions po;
         po.centerX = x, po.centerY = y, po.radius = radius;
         StockTerrainLayerPatch patch;
-        if (!buildStockTerrainLayerPatch(st.terrain, st.table, st.meshes[s], st.masks[s], po, patch) || patch.base.idx.empty()) continue;
+        if (!buildStockTerrainLayerPatch(st.terrain, st.table, st.meshes[meshKey], st.masks[s], po, patch) || patch.base.idx.empty()) continue;
         const auto fade = [&](const Vec3& p) {
             const double d = std::hypot(p.x - x, p.y - y), t = std::clamp((radius - d) / (0.25 * radius), 0.0, 1.0);
             return t * t * (3.0 - 2.0 * t);

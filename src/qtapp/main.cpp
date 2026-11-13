@@ -284,6 +284,23 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             break;
         }
     }
+    // IW8R_BENCH_NEAR=<radius>: the scene items near the bench camera (kind, label, bounds), to name what a shot shows.
+    if (fixedCam && qEnvironmentVariableIsSet("IW8R_BENCH_NEAR")) {
+        const double r = qEnvironmentVariable("IW8R_BENCH_NEAR").toDouble();
+        const Vec3 c{benchCam[0], benchCam[1], benchCam[2]};
+        int listed = 0;
+        for (const auto* g : ctx.scene.items()) {
+            if (!g->bounds.valid() || listed >= 60) continue;
+            const Vec3 m = g->bounds.center();
+            if (std::hypot(m.x - c.x, m.y - c.y) > r) continue;
+            ++listed;
+            report << QString("near kind=%1 label=%2 volume=%3 brushEntity=%4 mesh=%5 color=%6 min=%7,%8,%9 max=%10,%11,%12")
+                          .arg(int(g->kind)).arg(QString::fromStdString(g->label)).arg(g->volume).arg(g->brushEntity).arg(g->mesh)
+                          .arg(g->color, 8, 16, QChar('0')).arg(g->bounds.mins.x, 0, 'f', 0).arg(g->bounds.mins.y, 0, 'f', 0)
+                          .arg(g->bounds.mins.z, 0, 'f', 0).arg(g->bounds.maxs.x, 0, 'f', 0).arg(g->bounds.maxs.y, 0, 'f', 0)
+                          .arg(g->bounds.maxs.z, 0, 'f', 0);
+        }
+    }
     {
         // Where the point entities cluster (spawns, markers): the play area of a stock map.
         std::vector<double> xs, ys, zs;
@@ -390,8 +407,29 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             cam->invalidateGeometry();
             frame(nullptr);
             const QImage fresh = cam->grabFrame();
-            report << QString("  check_%1 geometry=%2 picture=%3").arg(name, diff.isEmpty() ? QString("same") : "DIFFERENT: " + diff,
-                                                                         kept == fresh ? "same" : "DIFFERENT");
+            // How far apart the two frames are: Game Lighting's auto exposure keeps adapting between frames, so a
+            // small drift (max channel step, share of pixels off by more than 8) is expected there.
+            QString pic = "same";
+            if (kept != fresh) {
+                int maxD = 0;
+                qint64 off = 0, total = 0;
+                if (kept.size() == fresh.size()) {
+                    const QImage ka = kept.convertToFormat(QImage::Format_RGB32), fa = fresh.convertToFormat(QImage::Format_RGB32);
+                    for (int y = 0; y < ka.height(); ++y) {
+                        const QRgb* kr = reinterpret_cast<const QRgb*>(ka.constScanLine(y));
+                        const QRgb* fr = reinterpret_cast<const QRgb*>(fa.constScanLine(y));
+                        for (int x = 0; x < ka.width(); ++x) {
+                            const int d = std::max({std::abs(qRed(kr[x]) - qRed(fr[x])), std::abs(qGreen(kr[x]) - qGreen(fr[x])),
+                                                    std::abs(qBlue(kr[x]) - qBlue(fr[x]))});
+                            maxD = std::max(maxD, d);
+                            off += d > 8;
+                            ++total;
+                        }
+                    }
+                }
+                pic = QString("DIFFERENT max=%1 over8=%2%").arg(maxD).arg(total ? 100.0 * double(off) / double(total) : 100.0, 0, 'f', 3);
+            }
+            report << QString("  check_%1 geometry=%2 picture=%3").arg(name, diff.isEmpty() ? QString("same") : "DIFFERENT: " + diff, pic);
         }
         if (iw8r::app::Prof::on) report << QString("  profile_%1 (sum over %2 frames):%3").arg(name).arg(frames).arg(QString::fromStdString(iw8r::app::Prof::dump()));
     };
