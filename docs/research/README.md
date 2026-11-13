@@ -31,6 +31,7 @@ not guessed. The target build throughout is MW2019 Replay 1.20.4.7623265
 | 99 | [Stock decal volumes](99_stock_decal_volumes.md) | Projected box decals (paint stripes, stencils): layout, projection, opacity |
 | 100 | [Stock ground clutter](100_stock_ground_clutter.md) | GPU clutter (Verdansk terrain only); MP grass is placed props and how the game shades them |
 | 101 | [Stock displacement data](101_stock_displacement_data.md) | Per-vertex displacement records, height maps, amplitude; CPU subdivide and displace |
+| 102 | [Stock super terrain](102_stock_super_terrain.md) | Verdansk / Quarry terrain asset (stterrain): surfaces, node meshes, height maps, streamed levels |
 
 ## Third-party "iw8 level maker" (report 13)
 
