@@ -1585,7 +1585,8 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             if (!out) {
                 const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
                 const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-                out = dist > rad && rad < dist * pixelAngle;  // under about a pixel across
+                static const float k = std::getenv("IW8R_INST_CULL_PX") ? std::max(0.5f, float(std::atof(std::getenv("IW8R_INST_CULL_PX")))) : 4.0f;  // 4: Verdansk 37 -> 15.5 ms, 106 pixels differ
+                out = dist > rad && rad < dist * pixelAngle * k;  // radius under k pixels: the game drops or LODs these
             }
             if (out) {
                 ++instCulledLast_;
