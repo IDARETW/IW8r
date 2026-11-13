@@ -1,0 +1,371 @@
+# IW8 Radiant — plan for the remaining development
+
+## Context
+Owner direction (2026-11-13): finish lighting and everything that goes with it, fully integrated (viewport, GUI and
+the compiled map's lighting); then the Umbra system; then bring the web viewer level with the Windows GUI; then every
+other missing piece; hand over a finished product. Owner hint: "transient tiles may be to blame": Verdansk and Quarry
+keep most world geometry in 749 streamed `mp_donetsk_NNNNN_tr.ff` tiles (2.7 GB), which the editor loads only by hand
+(File > Load Streamed World Around Camera: 12k radius, 48 tiles, full reference reload). That is the likely source of
+the flat grey areas and holes in the Verdansk reference.
+Owner decisions: Umbra = decode, then a visibility view, then a real bake. Web 3D = stream the editor's own render.
+Lighting = viewport and build side (proven offline; the in-game look stays with the owner).
+
+On approval this plan is copied to `docs/PLAN_REMAINING.md`, and docs/PROGRESS.md points to it, so later sessions
+follow the same milestones.
+
+## Working rules (all milestones)
+- **Research first.** Any reverse engineering gets a note `docs/research/NNN_*.md` (labelled VERIFIED / INFERRED) and a
+  line in the README index.
+- **Code and tests.** Logic goes in a core module `src/core/*` with tests in `tests/*`. Wiring goes in viewport / qtapp.
+- **Builds.** Only `tools/dev_rebuild_editor.ps1 -NoLaunch`, holding `out/build.lock`.
+- **Patch scripts.** Multi-line source edits go through `tools/patches/*.py`, run with `py -3 -I`.
+- **Gate for every step.**
+  - `tools/run_all_tests.ps1` passes.
+  - Benches pass, run with `out/agent/mapcam.ps1` (bench cameras below).
+  - CHANGELOG and PROGRESS are updated.
+  - Commit and push to IDARETW/IW8r with no co-author trailer.
+- **Bench cameras.**
+
+  | Map | Camera |
+  |---|---|
+  | Speedball (matches owner's screenshot) | `-1080 230 330 -4 -27 120` |
+  | Hideout, Aniyah Tac, Shipment, King | `ent node_pathnode 30` |
+  | Verdansk, ground level | `-24900 -1700 -200 45 -12 90` |
+  | Verdansk, raised | `-24900 -1700 1800 45 -12 90` |
+
+- **Frame budgets** (Game Lighting, all features on):
+
+  | Map | Budget |
+  |---|---|
+  | Speedball | ≤ 8 ms |
+  | Hideout | ≤ 14 ms |
+  | Aniyah Tac | ≤ 20 ms |
+  | Verdansk | ≤ 28 ms |
+
+- **x64-zt converter changes.** Work in the `C:\zsw-iw8r\scriptables` worktree. Local commits only, never pushed, no
+  trailer. Deploy the live converter the way it is done today (keep the old exe in `out/zt_backup`).
+- **ACTS changes.** Fork worktree; commit and push to IDARETW/atian-cod-tools (owner asked); deploy schema-only changes
+  by copy.
+- **Off limits.**
+  - The game folder and `E:\DW\IW8` are read only.
+  - Never start or attach to the game.
+  - In-game checks go into `docs/TEST_CHECKLIST.md` for the owner.
+- **Helper agents.** Opus for independent pieces, each with its own files; Haiku for cleanup only. I verify every
+  report.
+- **Installer.** Rebuild at the end of each milestone (`tools/build_installer.ps1 -Zip`, then confirm there is no ini).
+
+---
+
+## Milestone 0 — Land the work in progress
+- **What is in the working tree, not yet committed:**
+  - screen-space AO (render.cpp `kAoShader`, `drawAo`, `invert4`);
+  - a readable depth buffer (`R24G8_TYPELESS`);
+  - `ps_prepass`, drawing only props large on screen (`bigInst`, `IW8R_PREPASS_PX` = 24);
+  - the main pass writing depth;
+  - the debug switches `IW8R_AO_SHOW` and `IW8R_NO_AO`, and the bench line `game_ao`.
+- **Benches measured so far:** Hideout 12.0 ms, Aniyah Tac 18.1 ms, Verdansk ground camera 24.4 ms.
+- **To finish:** run the tests, then commit and push. Record the AO in CHANGELOG / PROGRESS together with the decision
+  to leave small props out of the pre-pass.
+
+## Milestone 1 — Lighting, complete and integrated
+Order: the streamed world first (owner hint), then the HDR foundation, then the features, then the GUI, then the build
+side.
+
+**1.1 Streamed world tiles follow the camera (Warzone maps).**
+- **Automatic loading.** Turn the manual command into a background, camera-following loader. Reuse
+  `MainWindow::loadStreamedWorldAroundCamera` (`main_window_stock_edit.cpp:541`), `WorldCache::requestStreamed`,
+  `readStreamedWorldZones` / `streamedZonesNear` (`src/core/stock_world.cpp`), and the tile lightmap jobs
+  (`world_cache.cpp:735`). It follows the same pattern as `updateTerrainLayers`: a QTimer, rebuilding after the camera
+  has moved some distance.
+- **Incremental drawing.** Tiles are appended as their own world batches, the way decal extras are
+  (`appendReferenceDecals` and the extras), instead of reloading the whole reference.
+- **Cache budget.** Add the setting `stock/streamCacheGB` (default 3 GB, since disk space is tight), with LRU eviction
+  of `<world_cache>/<zone>/streamed/<tile>`.
+- **Also:**
+  - Tiles get their lightmaps and their props (static models in the tiles).
+  - Re-check the terrain cut and `cutoutStride` once the real tile geometry fills the holes.
+  - Confirm what the 1,024 `mp_<map>_cg_*` zones hold (research 90 says collision tiles).
+- **Done when:**
+  - From the raised Verdansk camera there are no grey sheets and no ground holes.
+  - The frame stays within budget.
+  - The cache stays within its budget.
+  - Tests cover tile selection, eviction and the extras append.
+
+**1.2 HDR scene target (the foundation for SSR, bloom and exposure parity).**
+- **New pipeline.** Game Lighting draws the scene into an `R16G16B16A16_FLOAT` target with linear output. A post pass
+  then applies `gamePost` (exposure, log shaper, LUT) into the 8-bit frame. Editor overlays (lines, markers, gizmo,
+  selection) are drawn after the post pass and are never tone-mapped.
+- **Unchanged:** the other modes (Lit, Textured and so on).
+- **Exposure metering.** It moves onto the HDR target: log-average with the `(1-r)^tonemapFocus` weight (research 95
+  section 3). It no longer runs through the inverse grey curve on the 8-bit frame.
+- **Files:** `src/viewport/render.cpp` (`drawFrame` order, `ps_tex` game branch output, `meterFrame`, a new post
+  shader), `camera_view.cpp`.
+
+**1.3 Screen-space reflections.**
+- **Research.** Decode the game's SSR: the `r_ssr*` dvars, the techsets ending in `…2` (research 98 section 6), and the
+  code_post_gfx SSR shaders. Export them through ACTS and disassemble with `out/agent/shader_research/py/dxbc_dis.py`
+  (as research 100 did). The result is a new research note.
+- **Implementation.** A trace over the previous HDR frame and the depth, blended with the probe by the game's rule, with
+  a probe fallback. It applies to stock and own materials.
+- **Controls:** a toggle and a quality setting.
+
+**1.4 Stock shading parity: the small items.**
+- **Material and occlusion:**
+  - normal decode `z = 1 - 0.6|xy|²`;
+  - read `gtso_lut` from the install (cached, like the env BRDF) and use the game's specular occlusion;
+  - sun specular × cavity;
+  - wrap diffuse for the `100a` techsets (`src/core/stock_decal.h` helper).
+- **Probes:** on layer and decal passes too, with the cb7[186] rough-surface fallback, and more than 128 boxes.
+- **Foliage:** transmission (slot 68 × constant 18, research 100 section 3.3).
+- **Layers:** colour modes 2/3, and layer gloss / normal.
+- **Glass:** f0 .04 with gloss ≥ .9 plus probe reflection.
+- **Effects:** emissive, not surface-lit.
+- **Sun:** disc and flare.
+- **AO:** a strength setting.
+
+**1.5 Lighting for static models and props.**
+- **Research.** The smodel vertex lighting (`AMBIENT_COLOR`, `HIGHLIGHT_DIR`, `SELFVIS`), the light grid (t102-t105:
+  SH L1, index, heightfield, mask), and `PackedLmapCoords` for lightmapped `tml/` props. Use ACTS gfx_map exports and
+  the Replay 1.20 disassembly.
+- **Implementation.**
+  - Props sample the light grid instead of the one map-wide value.
+  - SELFVIS AO on models and foliage.
+  - Lightmapped props draw with their lightmap.
+- **Done when:** a prop indoors is as dark as the world around it.
+
+**1.6 Local lights.**
+- **Stock maps.** Load their own primary lights (ComWorld light types other than the sun), which today are skipped at
+  `main_window.cpp:7734`.
+- **Culling.** Clustered or tiled: a structured light list with per-tile indices, up to 254 lights.
+- **Shadows.** Spot shadow maps for the nearest shadowed lights.
+- **Light keys honoured:** IES (`iw8r_ies`), `iw8r_falloff`, `iw8r_bulb_radius`, `iw8r_shadows`. A spot wider than 150°
+  becomes an omni light (`compile_iw8.cpp:2645`).
+- **Specular:** GGX with the material's f0 and gloss.
+
+**1.7 Emissive and decals.**
+- **Emissive:** stock world and props get emissive (slot 18) with the material's emissive scale, in HDR.
+- **Decal volumes:** normal, gloss, cavity and emissive (research 99 :177-179). The user's own `iw8r_decal` entities
+  are shaded in Game Lighting.
+
+**1.8 Atmosphere and post.**
+- **Volumetric fog / veil** from the stock vision, and for own maps the user's `iw8r_volume`.
+- **Bloom and veil.**
+- **Own maps:** honour `iw8r_exposure_adjust` and `iw8r_vision`.
+- **Previews that must work in Game Lighting:** Colour Grade, HDR fog, and the Lit Brightness dialog as an exposure
+  override.
+- **Sun shadows:** 3-4 cascades fitted to the view on big maps.
+
+**1.9 Own brushes match what the build will produce.**
+- **Unbaked maps.** Show the preview bake only when `iw8r_bake_lightmaps` is set; otherwise show the unbaked path the
+  game takes (research 55).
+- **Specular.** Own brushes get environment specular, using the converter shader's formula
+  (`map_surface_realtime.hlsl:1470-1573`).
+- **Brushes added to a stock map.** Light them as the carried `script_model` will be lit (light grid + probes), not by
+  a lightmap.
+- **Own-map models.** Match the light grid that the build writes (1.11).
+
+**1.10 GUI and settings.**
+- **View > Game Lighting submenu:** AO (on/off, strength, radius), SSR (on/off, quality), shadow quality, an exposure
+  override (EV), Re-bake Now (`rebakeGameLighting`), and debug views (AO buffer, SSR mask).
+- **Saved settings:** these, and the Game Lighting toggle itself, are saved in Settings. Environment variables stay as
+  bench overrides only.
+- **Compile panel:** bake settings (sky, texel size, rays), and the per-face lightmap scale passed through to the build
+  (ROADMAP 5.21).
+
+**1.11 Lighting of a compiled custom map.**
+- **Lightmap bake:**
+  - the sky from the vision / sky colour;
+  - bounce from real albedo (the texture averages);
+  - several bounces;
+  - multithreaded or GPU;
+  - per-face lightmap scale. The converter must read it, which is an x64-zt change.
+- **Light grid from the bake** (sky, bounce, lights) instead of a flat ambient (ROADMAP 5.20).
+- **Reflection probes:**
+  - captured with Game Lighting on, in game light units, HDR / BC6H, at a higher resolution;
+  - this fixes F.10 ("probes make no visible change").
+- **Offline proof:**
+  - Open the built zone as a stock map, so the editor draws it with its own lightmaps, probes and grid.
+  - Compare that with the editor's preview of the source map: per-region luminance within ±10 %.
+  - Read the built zone back with ACTS / `tools/verify_map_output.py`.
+
+**1.12 Docs.**
+- A research note for each decode.
+- A USER_GUIDE lighting section.
+- Fix the stale lines: ROADMAP 5.11, USER_GUIDE:613, the `render.cpp:525` comment.
+- Add the owner's in-game look items to TEST_CHECKLIST.
+
+**Milestone 1 is done when:**
+- Every item in the survey's gap table is done, or recorded as a documented decision.
+- Speedball matches the owner's shot on matched features within ±10 %.
+- Every map is within its frame budget.
+- Every feature has a GUI toggle, a saved setting and a test (core maths tests, plus a GUI test section that checks
+  toggles and saved settings).
+- The built-zone parity check passes on the sample map and on one stock-edit map.
+
+## Milestone 2 — The Umbra system
+**2.1 Decode the tome.**
+- **What is decoded:** the Umbra 3 `ImpTome` (v0xD6000014) cell nodes, portals, view trees, clusters and LOD tiles.
+- **Sources:**
+  - the game exe's Umbra runtime (query consumer at 0x18CCA80) through IDA;
+  - the IW7 struct names in x64-zt `src/games/iw7/structs.hpp`;
+  - the header work already in `tools/stock_world_remove_test.py` and research 96 :111-183.
+- **Deliverables:**
+  - a research note;
+  - `src/core/umbra_tome.{h,cpp}`: a parser for the header, tiles, cells, portals and objects;
+  - a visibility query: camera point → visible object user IDs (classes surface / smodel / light / probe / decal);
+  - tests on stock tomes (mp_shipment, at least 5 more MP zones, Verdansk's main zone): CRC, counts and
+    self-consistency.
+
+**2.2 A visibility view in the editor.**
+- **Overlay:** tiles, cells and portals.
+- **"Cull by tome" mode:** the stock reference draws only what the tome lets the game draw from the camera.
+- **Statistics:** visible objects by class.
+- Menu entries and saved settings.
+- This shows what the game hides, offline.
+
+**2.3 Stock-map edits keep the tome correct.**
+- **Local tile replacement.** Replace only the tiles that an edit touches (with one-cell tiles, or re-baked tiles once
+  2.4 exists), instead of opening the tome across the whole map.
+- **Editor side.** `stockWorldRemovalJson` (`src/core/stock_zone_edit.cpp:273-297`) writes the `"occlusion"` key. This
+  depends on the x64-zt editzone change.
+- **Warzone.** Allow removal of streamed (transient) entries once the tile and streamed data are handled (ROADMAP 13.5).
+- **Stale text to fix:** CHANGELOG :66-68, ROADMAP 11.5, `main_window_stock_edit.cpp:314-315`.
+
+**2.4 A real occlusion bake for custom maps.**
+- **Bake.** Voxelize the occluders (opaque structural brushes, large models with collection flag 128). Flood the empty
+  space into cells and portals per tile, and encode a multi-tile tome with real per-object bounds.
+- **Where the code goes.** The bake algorithm goes in core `src/core/umbra_bake.*`, which emits a neutral description.
+  The x64-zt encoder replaces `BuildConservativeUmbraTome` and keeps `validateUmbraTome`.
+- **Contribution culling.** Keep object-contribution culling conservative: props once vanished with it, and
+  `r_umbraMinObjectContribution` was the fix.
+- **Per-brush and per-model controls:** occluder yes/no keys, and door gates later.
+- **Conservativeness test.** From sampled camera positions, every object that ray casting can see must be visible
+  through the tome. Any miss fails the test.
+- **Report.** The fraction of objects culled per sample position, as the offline performance proxy.
+
+**Milestone 2 is done when:**
+- The decoder passes on every stock MP zone.
+- The visibility view works.
+- Stock edits change only local tiles.
+- Custom maps get a baked tome that passes the conservativeness test.
+- The owner's in-game look (performance and nothing missing) is on TEST_CHECKLIST.
+
+## Milestone 3 — Web viewer at the level of the Windows GUI
+ROADMAP L10, paused until now, is resumed by this request. Server: `src/qtapp/web_server.{h,cpp}`. Client:
+`data/web/*`. Wiring: `main_window.cpp:4503-4592`.
+
+**3.1 Remote 3D view.**
+- **Render API.** SceneRenderer gets "render this camera into an offscreen target", reusing the device's resources.
+  There is no second renderer and no texture duplication.
+- **Per client:** each browser has its own camera (orbit / fly) and size, sent by POST.
+- **Streaming.** The editor renders on demand and streams JPEG/WebP frames (multipart HTTP, or a binary WebSocket if
+  Qt WebSockets is available). It throttles to the client and sends nothing while the tab is hidden.
+- **Full parity:** every camera mode, Game Lighting, the stock reference, terrain and AO.
+- **Picking:** done server-side by ray at the click.
+
+**3.2 Protocol.** Send incremental scene diffs by item revision instead of re-sending the whole `/api/map` on every
+revision. This is needed for Verdansk's 23k entities. Log backlog and filters through `/api/log`. An undo history list.
+
+**3.3 Every command from the browser.**
+- **Command registry.** Expose the registry that `addCommand` builds (id, label, menu path, checkable, checked,
+  enabled) as `/api/commands` and `POST /api/command`. The web menu bar is generated from it, so every action is
+  reachable.
+- **Dialogs.** Web forms built from a shared JSON form schema, in owner-scope order:
+  1. Sun & Sky / Atmosphere / Vision.
+  2. Game Modes.
+  3. Edit Loot Points / Placed Objects / Load Streamed World.
+  4. Stock-edit actions: Rebuild, Hide / Show props, Relight.
+  5. Compile options and Build Budget.
+  6. Check Map / Map Doctor.
+  7. Preferences.
+  8. Prefabs.
+  9. Surface / UV (basic).
+  10. Material / Effect Info.
+
+**3.4 Editing tools.**
+- **2D:** create a brush by dragging, resize handles, clone / delete / copy / paste, rotate / scale, vertex and edge
+  modes, region, layers.
+- **Selection and placement:** face picking with surface fit; entity placement of every class and template at the 3D
+  pick point (not z = 0).
+- **Inspector:** shows entity definitions (key help, validation, required keys).
+
+**3.5 Security unchanged.** PBKDF2 auth, lockout, optional TLS, LAN off by default. Firewall and router stay with the
+owner. Nothing ever prints the `[web]` section.
+
+**3.6 Tests.** Extend the GUI test's web section to cover the commands, form round trips, a decoded render frame and
+diffs. Do a browser check of `localhost` in the built-in browser pane.
+
+**Milestone 3 is done when:**
+- Every row of the gap table is "yes", or "partial" with a stated reason.
+- FEATURES.md and USER_GUIDE have a web section.
+
+## Milestone 4 — The remaining pieces
+Ordered by the owner's scope. ROADMAP rows are in brackets.
+
+- **Stock map editing**
+  - native brushes inside a stock world (11.4, research);
+  - Warzone removals (11.5 / 13.5), building on 2.3 and 1.1;
+  - name-only `script_model` references (4.7, x64-zt);
+  - world materials from other maps (4.9 / 4.15);
+  - streamed JSON parse memory (9.4);
+  - catalogue gaps (4.25).
+- **Warzone**
+  - doors outside their area box;
+  - editing streamed entries;
+  - `common_br_mp` for an own map, and the ATV textures (13.4);
+  - vehicles and buy stations on a custom map.
+- **Map and mode creation**
+  - template sizes and the flag prop (6.2);
+  - preset dvars and new game types (13.2 / 13.6);
+  - infil (6.19);
+  - killstreak airspace and compass (6.21 / F.14);
+  - scripted objects (6.13);
+  - water / swim volumes (6.8 / 6.24);
+  - nav blockers (6.23);
+  - animated models (4.21);
+  - fonts and LUI (4.27, owner decides whether to defer).
+- **Audio and effects**
+  - the looping sound on an `fx_origin` (F.6);
+  - the reverb zone (F.7);
+  - PA speakers and music states (6.22);
+  - ambient sound (6.7);
+  - the Effect Editor (8.2);
+  - hot update (7.7);
+  - impacts (F.12).
+- **Assets**
+  - techset state words (12.1);
+  - winding (4.11);
+  - layered blend painting on brushes (5.9 / 8.11);
+  - physics assets (4.20);
+  - the tint rule (F.13).
+- **Live Link:** camera angles (7.3), capture (7.6 / 7.11), overlay fields (7.15).
+- **Performance and UX**
+  - per-item buffers (3.11);
+  - preview decode off the GUI thread;
+  - one process per validation run;
+  - the region outline.
+- **Packaging**
+  - RELEASE_CHECK decisions 1-4 (put to the owner when reached);
+  - exe MD5 check (9.1);
+  - final installer;
+  - clean-machine install (owner).
+- **Docs and tests**
+  - update FEATURE_MATRIX, MILESTONES, the old PROGRESS sections and the TEST_CHECKLIST marks;
+  - add a USER_GUIDE web section;
+  - fixtures so tests stop skipping silently (`out/m2-x64zt`, `out/m2-script-check`).
+
+## Milestone 5 — Handover
+- **Release:** final installer and zip (no ini).
+- **Docs:** FEATURES.md updated with `--feature-shots`.
+- **Owner checklist:** one consolidated list holding only what needs the game.
+- **Parking:** the editor open on a compiled map, and docs/PROGRESS.md and HANDOVER.md updated.
+
+## Verification (per milestone)
+- `tools/run_all_tests.ps1` passes (core, GUI, smoke); the counts never drop.
+- Every map is within its frame budget at the bench cameras (`out/agent/mapcam.ps1`; the bench report lines
+  `game_still`, `game_ao`, `base_materials`, `layer_pass`).
+- **Milestone 1:** Speedball against the owner's shot (`out/agent/grass_cmp.py` plus matched-feature means); Verdansk
+  raised camera free of grey sheets and holes; built-zone parity check.
+- **Milestone 2:** tome decode tests on stock zones; conservativeness test on baked sample maps.
+- **Milestone 3:** web GUI tests; built-in browser check on `localhost` (render stream, commands, forms).
+- Every converter change is proven by built-zone read-back (`tools/verify_map_output.py` plus the zonetool log).

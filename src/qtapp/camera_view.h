@@ -97,6 +97,7 @@ public:
     std::array<size_t, 3> referenceTriangleSplit() const { return renderer_.referenceTriangleSplit(); }
     std::array<size_t, 3> layerPassStats() const { return renderer_.layerPassStats(); }
     std::array<size_t, 3> baseMaterialStats() const { return renderer_.baseMaterialStats(); }
+    bool gameAoDrawn() const { return renderer_.gameAoDrawn(); }
     size_t referenceDecalExtras() const { return refTexExtraFrom_ == ~size_t(0) ? 0 : refTexMaterials_.size() - refTexExtraFrom_; }
     void setTerrainCut(double x, double y, double radius) {
         renderer_.setTerrainCut(float(x), float(y), float(radius));

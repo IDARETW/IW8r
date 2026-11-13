@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Ambient occlusion in Game Lighting.** Corners, wall bases and the ground under props darken the way the game's
+  screen-space AO does: indirect light gets a multi-bounce AO, reflections get specular occlusion. It needs a depth
+  pre-pass; props small on screen are left out of it to keep the cost down (Hideout 12 ms, Aniyah Tac 18 ms).
+- **Stock material shading.** World surfaces and placed props use each material's own gloss, cavity, metalness and
+  normal strength, and props now show their normal maps.
+- **Remaining work** is planned in docs/PLAN_REMAINING.md: lighting (streamed Verdansk tiles, HDR, reflections,
+  lights, the compiled map's lighting), then the Umbra system, then the web viewer, then the rest.
 - **Verdansk ground blended out to the game's distance** (17,368 units) by default, at your request. Far ground patches
   are no longer dropped at 4,000 units (that left sky-coloured holes), and the patch also covers the small cut-outs the
   coarse ground covered. About 21 ms a frame from a raised camera. `IW8R_TERRAIN_LAYER_RADIUS` still overrides it.

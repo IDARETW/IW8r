@@ -2,6 +2,13 @@
 
 ## Latest (2026-11-13)
 
+- **THE PLAN: docs/PLAN_REMAINING.md** (owner-approved 2026-11-13): Milestone 1 lighting (1.1 streamed tiles follow
+  the camera, 1.2 HDR target, 1.3 SSR, ... 1.11 build-side lighting), 2 Umbra (decode, view, bake), 3 web viewer
+  (streamed editor render, every command), 4 remaining pieces, 5 handover. Work it in order; mark items done there.
+- M0 done: screen-space AO (render.cpp kAoShader / drawAo / invert4; depth R24G8_TYPELESS + depthSrv_; ps_prepass
+  with the shading pass's cut-out and terrain cut; pre-pass draws props >= 24 px only (bigInst, IW8R_PREPASS_PX), the
+  shading pass writes depth; ps_tex reads t14, gameAo in b4). IW8R_NO_AO, IW8R_AO_SHOW, IW8R_AO_RADIUS (40),
+  IW8R_AO_POWER (1). Bench: Hideout 12.0 ms (10.1 without), Aniyah Tac 18.1 (14.9), Verdansk ground 24.4, Speedball 7.2.
 - Last on 2026-11-13: Verdansk near-camera terrain layers (research 103, core stock_terrain_layers): MainWindow::
   updateTerrainLayers (700 ms timer, rebuild after 2,000 units of movement, radius 6,000, stride 2) exports each
   surface's layer masks with ACTS once, builds the patch on a thread and pushes it as decal extras (terrainLayer

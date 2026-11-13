@@ -485,6 +485,9 @@ private:
         float params[16] = {};      // setReferenceInstParams
         ID3D11Buffer* visInst = nullptr;
         unsigned visible = 0;
+        // The visible placements large on screen (the depth pre-pass draws only these: Aniyah Tac 23.5 -> 16 ms).
+        ID3D11Buffer* bigInst = nullptr;
+        unsigned big = 0;
     };
     // Each frame on screen: props outside the view, or smaller than about a pixel there, are left out (Hideout drew 21 M
     // prop triangles a frame at full detail). The sun shadow pass keeps them all.
@@ -582,6 +585,12 @@ private:
     double meterValue_ = 0;
     bool meterHas_ = false;
     bool createMeterResources();
+public:
+    // View > Game Lighting: screen-space ambient occlusion on the indirect light (on by default).
+    void setGameAo(bool on) { aoOn_ = on; }
+    bool gameAo() const { return aoOn_; }
+    bool gameAoDrawn() const { return aoValid_; }
+private:
     void meterFrame();
     ID3D11Texture2D* gameLmTex_[3] = {nullptr, nullptr, nullptr};
     ID3D11ShaderResourceView* gameLmSrv_[3] = {nullptr, nullptr, nullptr};
@@ -625,6 +634,22 @@ private:
     ID3D11VertexShader* vsTex_ = nullptr;
     ID3D11PixelShader* psTex_ = nullptr;
     ID3D11PixelShader* psShadowClip_ = nullptr;  // sun shadow pass: alpha-test clip of textured batches
+    ID3D11PixelShader* psPrepass_ = nullptr;     // depth pre-pass: the shading pass's cut-outs and terrain cut
+    // Game Lighting ambient occlusion (screen space, from the pre-pass depth; research 95 "GTAO"): the depth's shader
+    // view, the raw and blurred AO targets, the full-screen shaders and their constants (b8).
+    ID3D11ShaderResourceView* depthSrv_ = nullptr;
+    ID3D11Texture2D* aoTex_[2] = {nullptr, nullptr};
+    ID3D11RenderTargetView* aoRtv_[2] = {nullptr, nullptr};
+    ID3D11ShaderResourceView* aoSrv_[2] = {nullptr, nullptr};
+    ID3D11VertexShader* aoVs_ = nullptr;
+    ID3D11PixelShader* aoPs_ = nullptr;
+    ID3D11PixelShader* aoBlurPs_ = nullptr;
+    ID3D11Buffer* cbAo_ = nullptr;
+    bool aoTried_ = false;
+    bool aoOn_ = true;
+    bool aoValid_ = false;  // this frame's AO is in aoSrv_[1]
+    bool createAoResources();
+    void drawAo(const float* viewProj);
     ID3D11InputLayout* layoutTex_ = nullptr;
     ID3D11SamplerState* sampler_ = nullptr;
     std::vector<ID3D11ShaderResourceView*> textures_;
