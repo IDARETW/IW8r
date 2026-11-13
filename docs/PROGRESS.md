@@ -2,6 +2,9 @@
 
 ## Latest (2026-11-13)
 
+- Converted maps' sky in game, proven offline: a build holds only the converter's six sky faces (lightmap UV y 1.25 = kind 1; brush sky faces are skipped), and replay_world_vertex.hlsl draws kind-1 vertices camera-relative at infinity (x64-zt 700d7c6f, 2026-10-22, in the live converter). Checked on mp_iw8r_show2 (built 2026-11-12) with ACTS gfx_map.
+- Speed: every map in the install 4-18 ms a frame (Aniyah Tac 17.5, Village 8.9, Hideout 7.2, Speedball 4.3).
+
 - Prop decal volumes (only volumes that miss the world), viewport speed (Hideout 56 -> 17 ms), grass shading,
   research 100 (clutter). Bench: IW8R_PERF_OFF=probes,layers,propdecals,probegrid,instcull; IW8R_DECAL_LOG.
 - Not done by choice: displacement (`dn` layers: 0-4.5 % of world triangles, about 2 inches of movement with the
