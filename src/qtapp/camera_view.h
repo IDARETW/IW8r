@@ -96,6 +96,7 @@ public:
     }
     std::array<size_t, 3> referenceTriangleSplit() const { return renderer_.referenceTriangleSplit(); }
     std::array<size_t, 3> layerPassStats() const { return renderer_.layerPassStats(); }
+    std::array<size_t, 3> baseMaterialStats() const { return renderer_.baseMaterialStats(); }
     size_t referenceDecalExtras() const { return refTexExtraFrom_ == ~size_t(0) ? 0 : refTexMaterials_.size() - refTexExtraFrom_; }
     void setTerrainCut(double x, double y, double radius) {
         renderer_.setTerrainCut(float(x), float(y), float(radius));
@@ -117,6 +118,8 @@ public:
     };
     using FactsLookup = std::function<std::optional<StockMaterialFacts>(const std::string& material)>;
     void setMaterialFacts(FactsLookup lookup) { factsLookup_ = std::move(lookup); }
+    void setBaseMaterialConstants(size_t referenceBatch);
+    std::optional<std::array<float, 16>> materialConstantsFor(const std::string& material) const;
     // Cut-out mask of a stock material ("" = none): a stock colour image's alpha is specular (`_c&_s`), so without a
     // mask the camera draws it opaque; with one (`_sdf`, foliage `_alpha`) the mask is the alpha.
     using MaskLookup = std::function<QString(const std::string& material)>;
@@ -489,6 +492,7 @@ private:
     double gameExposure_ = 0, gameExposureTarget_ = 0;
     QElapsedTimer gameExposureClock_;
     uint64_t gameBakeRev_ = ~0ull, gameSeenRev_ = ~0ull;
+    uint64_t gameBakeInputKey_ = 0;  // geometry stamps + bake settings of the last bake (maybeBakeGameLook)
     QElapsedTimer gameSeenAt_;
     bool gameLookOn() const;
     void prepareGameLook();

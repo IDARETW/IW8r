@@ -610,6 +610,8 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                 report << QString("reference_triangles base %1 layers %2 decals %3").arg(ts[0]).arg(ts[1]).arg(ts[2]);
                 const auto lp = cam->layerPassStats();
                 report << QString("layer_pass batches %1 draws %2 triangles %3").arg(lp[0]).arg(lp[1]).arg(lp[2]);
+                const auto bm = cam->baseMaterialStats();
+                report << QString("base_materials batches %1 constants %2 spec_alpha %3").arg(bm[0]).arg(bm[1]).arg(bm[2]);
             }
             const auto ex = cam->gameExposureState();
             report << QString("game_exposure %1 target %2 metered %3 (EV %4)").arg(ex[0]).arg(ex[1]).arg(ex[2])

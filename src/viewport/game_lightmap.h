@@ -56,6 +56,8 @@ struct GameLightmap {
 // stock draw class of a material (0 drawn, 1 shadow only, 2 hidden), null = all drawn. The scene's sun / sky / lights
 // are set by the caller.
 GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(const std::string&)>& drawClassFor);
+// The geometry part of gatherGameBake's key (every item's stamp), without gathering: a cheap "did anything change".
+uint64_t gameBakeGeometryKey(const SceneCache& scene);
 
 // A stock map's own lightmap (core stock_lightmap, research 94) as the renderer's three layers
 // (SceneRenderer::setStockLightmap): a = (f C, 1), b = ((1 - f) C / max(D.z, .001), 0), d = (D, 0), D in tangent space.

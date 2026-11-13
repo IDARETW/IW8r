@@ -123,6 +123,12 @@ std::shared_ptr<StockLightmapLayers> stockLightmapAtlas(const std::vector<StockL
     return out;
 }
 
+uint64_t gameBakeGeometryKey(const SceneCache& scene) {
+    uint64_t key = 1469598103934665603ull;
+    for (const PrimGeom* g : scene.items()) key = mixKey(key, int64_t(g->stamp));
+    return key;
+}
+
 GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(const std::string&)>& drawClassFor) {
     GameBakeInput in;
     uint64_t key = 1469598103934665603ull;

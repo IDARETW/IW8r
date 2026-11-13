@@ -196,6 +196,10 @@ public:
     // A layer batch's blend (research 97): reveal = its alpha + reveal texture (-1: none, white), params = flags, reveal
     // sharpness k, tint RGB, UV transform (cos, sin, scale u, scale v, offset u, offset v); see the shader's cbuffer Layer.
     void setReferenceLayer(size_t batch, int revealTexture, const float params[16]);
+    // A base batch's material constants (research 95), in the layer constant layout with layerP.x = 0:
+    // layerP.y = 1 when the colour alpha holds the specular code (192..254), layerTint = (spec scale, spec bias, gloss
+    // scale, gloss bias), layerUvO = (normal strength, 1 = constants given).
+    void setReferenceBaseParams(size_t batch, const float params[16]);
     // The near-camera terrain layer patch's core (x, y, radius; radius 0 = none): the coarse terrain is not drawn there.
     void setTerrainCut(float x, float y, float radius) { terrainCut_[0] = x, terrainCut_[1] = y, terrainCut_[2] = radius; }
     // A batch of a stock decal material (sortKey 10-17, techset blend `_bad_`; research 98): blended over the opaque
@@ -232,6 +236,13 @@ public:
     // Triangles stored in the textured reference: {base batches, layer batches, decal batches}.
     size_t layerPassDraws_ = 0, layerPassTris_ = 0, layerPassBatches_ = 0;
     std::array<size_t, 3> layerPassStats() const { return {layerPassBatches_, layerPassDraws_, layerPassTris_}; }
+    // Base batches: total, with material constants, with the specular code in their colour alpha.
+    std::array<size_t, 3> baseMaterialStats() const {
+        std::array<size_t, 3> r{0, 0, 0};
+        for (const RefLayer& L : refLayers_)
+            if (L.layer == 0 && !L.decal) ++r[0], r[1] += L.params[13] > 0.5f, r[2] += L.params[1] > 0.5f && L.params[13] > 0.5f;
+        return r;
+    }
     std::array<size_t, 3> referenceTriangleSplit() const {
         std::array<size_t, 3> s{};
         for (size_t k = 0; k < refTexCount_.size(); ++k) {
@@ -252,6 +263,15 @@ public:
     bool setReferenceTexInstances(const std::vector<InstancedTexMesh>& meshes);
     void setReferenceInstTexture(size_t mesh, int textureId) {
         if (mesh < refTexInst_.size()) refTexInst_[mesh].texture = textureId;
+    }
+    // A textured prop mesh's normal map (-1: the flat one) and material constants (setReferenceBaseParams layout).
+    void setReferenceInstNormal(size_t mesh, int textureId) {
+        if (mesh < refTexInst_.size()) refTexInst_[mesh].normal = textureId;
+    }
+    void setReferenceInstParams(size_t mesh, const float params[16]) {
+        if (mesh >= refTexInst_.size()) return;
+        std::memcpy(refTexInst_[mesh].params, params, sizeof(refTexInst_[mesh].params));
+        instParamsDirty_ = true;
     }
     size_t referenceTexInstanceMeshes() const { return refTexInst_.size(); }
     // Instanced draws of the textured meshes (a model with three materials counts each placement three times).
@@ -461,6 +481,8 @@ private:
         std::vector<float> rows;
         float centre[3] = {0, 0, 0}, radius = 0;
         float lodOut = 0;  // InstancedTexMesh::lodOut
+        int normal = -1;            // setReferenceInstNormal
+        float params[16] = {};      // setReferenceInstParams
         ID3D11Buffer* visInst = nullptr;
         unsigned visible = 0;
     };
@@ -510,6 +532,9 @@ private:
     // (Hideout: 4,300 draws a frame each copying its constants cost 40 ms). Rebuilt when a batch's constants change.
     ID3D11DeviceContext1* ctx1_ = nullptr;
     std::vector<ID3D11Buffer*> cbLayerAll_;  // 64 KB each: 256 batches (a 1.3 MB buffer lost the device on Hideout)
+    std::vector<ID3D11Buffer*> cbInstAll_;   // the same for the textured prop meshes' material constants
+    size_t cbInstAllMeshes_ = 0;
+    bool instParamsDirty_ = true;
     size_t cbLayerAllBatches_ = 0;
     bool layerParamsDirty_ = true;
     ID3D11Texture3D* probeGridTex_ = nullptr;  // setStockProbes: candidate boxes per cell
@@ -526,6 +551,8 @@ private:
     std::vector<size_t> refLayerOrder_;  // layer batches by layer, then batch
     std::vector<size_t> refDecalOrder_;  // decal batches by sortKey, layer, batch
     float terrainCut_[3] = {0, 0, 0};
+    // Uploads every batch's 16 constants into the 64 KB chunks (when changed); true when per-batch offsets can be bound.
+    bool uploadLayerParams();
     ID3D11Buffer* vbRefTexExtra_ = nullptr;  // appendReferenceDecals
     size_t refTexExtraFrom_ = ~size_t(0);    // the first batch in vbRefTexExtra_
     std::vector<iw8r::AABB> refTexExtraBounds_;  // per appended batch: drawn only in view and near (prop decals)

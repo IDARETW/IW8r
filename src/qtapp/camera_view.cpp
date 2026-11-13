@@ -144,6 +144,7 @@ void CameraView::render() {
     const int h = captureH_ > 0 ? captureH_ : fixedH_ > 0 ? fixedH_ : std::max(1, int(height() * dpr));
     renderer_.resize(w, h);
     if (texInstDirty_) {
+        IW8R_PROF("r.up_texinst");
         renderer_.setReferenceTexInstances(pendingTexInst_);
         pendingTexInst_.clear();
         pendingTexInst_.shrink_to_fit();
@@ -152,11 +153,13 @@ void CameraView::render() {
         texInstPending_ = refPollDue_ = true;
     }
     if (probesDirty_) {
+        IW8R_PROF("r.up_probes");
         renderer_.setStockProbes(pendingProbes_.get());
         pendingProbes_.reset();
         probesDirty_ = false;
     }
     if (stockLmDirty_) {
+        IW8R_PROF("r.up_lightmap");
         const auto& l = pendingStockLm_;
         if (l && l->width > 0) renderer_.setStockLightmap(l->width, l->height, l->a.data(), l->b.data(), l->d.data(), l->rects);
         else renderer_.setStockLightmap(0, 0, nullptr, nullptr, nullptr);
@@ -165,17 +168,20 @@ void CameraView::render() {
         stockLmDirty_ = false;
     }
     if (instDirty_) {
+        IW8R_PROF("r.up_inst");
         renderer_.setReferenceInstances(pendingInst_);
         pendingInst_.clear();
         pendingInst_.shrink_to_fit();
         instDirty_ = false;
     }
     if (refDirty_) {
+        IW8R_PROF("r.up_ref");
         renderer_.setReference(pendingRef_);
         pendingRef_.clear();
         pendingRef_.shrink_to_fit();
     }
     if (refTexDirty_) {
+        IW8R_PROF("r.up_reftex");
         refTexDirty_ = false;
         std::vector<std::vector<app::GpuTexVertex>> batches;
         refTexMaterials_.clear();
@@ -218,6 +224,7 @@ void CameraView::render() {
         pendingRefTex_.shrink_to_fit();
     }
     if (decalExtrasDirty_ && !refTexDirty_) {
+        IW8R_PROF("r.up_extras");
         // Decal volumes on the props: after the world's batches (dropping an earlier set).
         decalExtrasDirty_ = false;
         if (refTexExtraFrom_ != ~size_t(0) && refTexExtraFrom_ <= refTexMaterials_.size()) {
@@ -300,6 +307,7 @@ void CameraView::render() {
                         continue;
                     }
                     if (nid >= 0) renderer_.setReferenceNormal(k, nid);
+                    setBaseMaterialConstants(k);
                     if (id >= 0 && id != checkerTex_ && !resolveReferenceDecal(k, id)) {
                         pending = true;
                         continue;
@@ -319,8 +327,16 @@ void CameraView::render() {
                 if (texInstResolved_[k]) continue;
                 const int id = textureFor(texInstMaterials_[k]);
                 if (texIds_.count(texInstMaterials_[k])) {
-                    texInstResolved_[k] = true;
                     if (id >= 0) renderer_.setReferenceInstTexture(k, id == checkerTex_ ? -1 : id);  // as the world: grey, not the checker
+                    // Its normal map (Game Lighting: gloss, cavity, relief) and the material's constants.
+                    const int nid = id >= 0 && id != checkerTex_ ? normalFor(texInstMaterials_[k]) : -1;
+                    if (id >= 0 && id != checkerTex_ && !nrmIds_.count(texInstMaterials_[k])) {
+                        pending = true;
+                        continue;
+                    }
+                    if (nid >= 0) renderer_.setReferenceInstNormal(k, nid);
+                    if (const auto p = materialConstantsFor(texInstMaterials_[k])) renderer_.setReferenceInstParams(k, p->data());
+                    texInstResolved_[k] = true;
                 } else {
                     pending = true;
                 }
@@ -542,8 +558,14 @@ void CameraView::render() {
         geomDirty_ = moreToLoad_;  // textures still arriving: build again next frame
         ++geometryUpdates_;
     }
-    maybeBakeGameLook();
-    updateSkyBox();  // follows the camera
+    {
+        IW8R_PROF("r.bake_look");
+        maybeBakeGameLook();
+    }
+    {
+        IW8R_PROF("r.skybox");
+        updateSkyBox();  // follows the camera
+    }
     extraBatches_.clear();
     if (ctx_->scene.skyActive)
         for (auto& sb : skyBatches_) extraBatches_.push_back(sb.get());
@@ -632,6 +654,7 @@ void CameraView::render() {
         if (int(bd.Width) == renderer_.width() && int(bd.Height) == renderer_.height()) dc_->CopyResource(back, renderer_.colorTexture());
         back->Release();
     }
+    IW8R_PROF("r.present");
     swap_->Present(1, 0);
 }
 
@@ -901,6 +924,23 @@ void CameraView::tickPlay(double dt) {
     ctx_->cameraMoved();
 }
 
+std::optional<std::array<float, 16>> CameraView::materialConstantsFor(const std::string& m) const {
+    // The stock material's layer-0 constants (spec / gloss remap, normal strength) for the Game Lighting shader.
+    if (m.empty() || !factsLookup_ || m.find_first_of("\x01\x02\x05\x06") != std::string::npos) return std::nullopt;
+    const auto f = factsLookup_(m);
+    if (!f || f->constants.layer.empty()) return std::nullopt;
+    const auto& c = f->constants.layer[0];
+    const bool masked = maskLookup_ && !maskLookup_(m).isEmpty();
+    const bool blended = ctx_ && ctx_->scene.blendFor && ctx_->scene.blendFor(m) != 0;
+    return std::array<float, 16>{0.0f, !masked && !blended ? 1.0f : 0.0f, 0.0f, 0.0f, c.specScale, c.specBias, c.glossScale, c.glossBias,
+                                 0.0f, 0.0f, 0.0f, 0.0f, c.normalStrength, 1.0f, 0.0f, 0.0f};
+}
+
+void CameraView::setBaseMaterialConstants(size_t k) {
+    if (k >= refTexMaterials_.size()) return;
+    if (const auto p = materialConstantsFor(refTexMaterials_[k])) renderer_.setReferenceBaseParams(k, p->data());
+}
+
 bool CameraView::resolveReferenceLayer(size_t k) {
     const std::string& base = refTexMaterials_[k];
     const int L = refTexLayer_[k];
@@ -1074,9 +1114,16 @@ int CameraView::textureFor(const std::string& material) {
                     }
             }
             const bool softMask = ctx_ && ctx_->scene.blendFor && ctx_->scene.blendFor(material) != 0;
+            // Opaque stock images keep their specular code (research 95: metal / f0) as 192..254: never under any
+            // cut-out threshold, and 255 still means "no code" (masked images, editor textures).
+            const bool keepSpec = !haveMask && !softMask;
             for (int y = 0; y < img.height; ++y)
                 for (int x = 0; x < img.width; ++x) {
                     uint8_t a = 255;
+                    if (keepSpec) {
+                        const uint8_t s = img.pixels[(size_t(y) * size_t(img.width) + size_t(x)) * 4 + 3];
+                        a = uint8_t(192 + (int(s) * 62 + 127) / 255);
+                    }
                     if (haveMask) {
                         const int mx = int(int64_t(x) * mask.width / img.width), my = int(int64_t(y) * mask.height / img.height);
                         const uint8_t v = mask.pixels[(size_t(my) * size_t(mask.width) + size_t(mx)) * 4 + size_t(maskChannel)];
@@ -1935,7 +1982,10 @@ void CameraView::maybeBakeGameLook() {
         QTimer::singleShot(650, this, [this] { update(); });
         return;
     }
-    app::GameBakeInput in = app::gatherGameBake(ctx_->scene, ctx_->scene.drawClassFor);
+    // The settings first; the geometry is gathered (about a second on a stock map: every model triangle is an
+    // occluder) only when it or the settings changed. A revision bump alone (textures arriving) does not re-bake.
+    const bool forcedBake = gameBakeRev_ == ~0ull;
+    app::GameBakeInput in;
     // The game draws the sun (suncolor) and the lights in real time; the bake holds the sky, their bounce and the sun
     // visibility, as the build's bake (compile_iw8.cpp) does.
     in.scene.sunDir = ctx_->scene.sunToward;
@@ -1971,6 +2021,32 @@ void CameraView::maybeBakeGameLook() {
             if (const std::string* rs = e.value("iw8r_bake_rays")) in.settings.skyRays = std::clamp(std::atoi(rs->c_str()), 1, 1024);
             break;
         }
+    {
+        uint64_t h = app::gameBakeGeometryKey(ctx_->scene);
+        const auto mixD = [&h](double v) {
+            uint64_t b = 0;
+            std::memcpy(&b, &v, sizeof(b));
+            h ^= b + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
+            h *= 0x100000001b3ull;
+        };
+        for (const Vec3& v : {in.scene.sunDir, in.scene.sunColor, in.scene.skyColor}) mixD(v.x), mixD(v.y), mixD(v.z);
+        mixD(in.scene.sunIntensity), mixD(in.scene.skyIntensity), mixD(in.settings.texelSize), mixD(double(in.settings.skyRays));
+        mixD(double(in.key));
+        for (const BakeLight& b : in.scene.lights)
+            mixD(b.pos.x), mixD(b.pos.y), mixD(b.pos.z), mixD(b.color.x), mixD(b.color.y), mixD(b.color.z), mixD(b.radius),
+                mixD(b.dir.x), mixD(b.dir.y), mixD(b.dir.z), mixD(b.cosOuter), mixD(b.cosInner);
+        if (!forcedBake && gameLm_ && h == gameBakeInputKey_) {
+            gameBakeRev_ = rev;
+            return;
+        }
+        gameBakeInputKey_ = h;
+    }
+    {
+        app::GameBakeInput g = app::gatherGameBake(ctx_->scene, ctx_->scene.drawClassFor);
+        in.polys = std::move(g.polys);
+        in.occluders = std::move(g.occluders);
+        in.key ^= g.key;
+    }
     gameBaking_ = true;
     gameBakeRev_ = rev;
     emit ctx_->statusMessage(QString("Game lighting: baking %1 faces...").arg(in.polys.size()));

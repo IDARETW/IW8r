@@ -439,12 +439,32 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // negate the tangent frame on back faces (research 100), and back-lit grass cards were dark speckles.
         if (dot(Nf, eyeStart.xyz - i.w) < 0) Nf = -Nf;
         float3 N = Nf;
+        // A stock base batch with its material constants (layerP.x = 0, layerUvO.y = 1; research 95): gloss from the
+        // normal map's red channel, cavity from its blue, the normal scaled by the material's strength.
+        const bool baseMat = layerP.x < 0.5 && layerUvO.y > 0.5;
+        float nmGloss = -1.0, nmCavity = 1.0;
         if (batchFlags.x > 0.5 && dot(i.n, i.n) > 0.5) {
             float4 nm = nrm0.Sample(samp0, uvS);
+            if (baseMat) {
+                nmGloss = nm.r, nmCavity = nm.b;
+                nm.ga = (nm.ga - 0.5) * layerUvO.x + 0.5;
+            }
             float2 sd = nm.ga * 2.0 - 1.0;
             float2 oct = float2(sd.x + sd.y, sd.x - sd.y) * 0.5;
             float2 slope = oct / max(0.02, 1.0 - abs(oct.x) - abs(oct.y));
-            float3 T = normalize(i.t - Nf * dot(i.t, Nf)), B = cross(Nf, T);
+            float3 Tt = i.t - Nf * dot(i.t, Nf);
+            float3 T, B;
+            if (dot(Tt, Tt) > 1e-8) {
+                T = normalize(Tt), B = cross(Nf, T);
+            } else {
+                // No vertex tangent (placed props): the texture frame from the screen derivatives.
+                float3 dp1 = ddx(i.w), dp2 = ddy(i.w);
+                float2 du1 = ddx(uvS), du2 = ddy(uvS);
+                float3 p2 = cross(dp2, Nf), p1 = cross(Nf, dp1);
+                T = p2 * du1.x + p1 * du2.x, B = p2 * du1.y + p1 * du2.y;
+                float sc = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-20));
+                T *= sc, B *= sc;
+            }
             N = normalize(T * slope.x + B * slope.y + Nf);
         }
         // Without a lightmap texel (props, models, new brushes): on a stock map the game lights them from its light grid;
@@ -495,8 +515,22 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             // material's default gloss (the reference has no gloss maps here), retro-reflective diffuse kd, the
             // environment term from the lightmap along the reflection (probes later) and the GGX sun.
             float3 Vs = normalize(eyeStart.xyz - i.w);
-            const float3 f0 = 0.04;
-            const float gp = 1.0 - sqrt(1.0 - 0.3);
+            // The material (research 95 "Surface decode"): s = alpha x spec scale + bias (the colour alpha keeps the
+            // code as 192..254 on opaque stock images), metal = sat(s - .1) / .9, f0 = metal x albedo + min(s, .1);
+            // gloss = red x gloss scale + bias. Without constants: a dielectric of gloss .3.
+            float3 f0 = 0.04;
+            float glossM = 0.3;
+            float3 diffAlbedo = albedo;
+            if (baseMat) {
+                if (layerP.y > 0.5 && t.a < 0.999) {
+                    const float sCode = saturate((t.a * 255.0 - 192.0) / 62.0) * layerTint.x + layerTint.y;
+                    const float metal = saturate(sCode - 0.1) * 1.111111;
+                    f0 = metal * albedo + min(sCode, 0.1);
+                    diffAlbedo = albedo * max(1.0 - metal, 0.0);
+                }
+                if (nmGloss >= 0.0) glossM = saturate(nmGloss * layerTint.z + layerTint.w);
+            }
+            const float gp = 1.0 - sqrt(1.0 - glossM);
             float a2 = 2.0 / (2.0 + exp2(20.0 * gp));
             float nv = saturate(dot(N, Vs));
             float2 ab = gameEnvBrdf(nv, gp);
@@ -513,9 +547,11 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 // Probes are luminance-normalised: relit by the lightmap along the reflection (research 95).
                 float3 P = stockProbeLight(i.w, R, gp) * dot(Lr, float3(0.2126, 0.7152, 0.0722));
                 float3 mixed = lerp(P, Lr, 0.85);
-                S = lerp(0.18 * mixed, P, 1.0);  // specular occlusion 1: no GTAO here
+                // Specular occlusion: the game's gtso_lut(max(sqrt(1 - ao), sqrt(1 - cavity)), ...) without GTAO;
+                // the cavity stands in for it (INFERRED shape).
+                S = lerp(0.18 * mixed, P, baseMat ? nmCavity : 1.0);
             }
-            c = albedo * indirect * kd * (1.0 - fmax) + Fenv * S;
+            c = diffAlbedo * indirect * kd * (1.0 - fmax) + Fenv * S;
             float3 Ls = gameSun.xyz;
             float nl = dot(N, Ls);
             if (nl > 0) {
@@ -528,7 +564,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 float2 abl = gameEnvBrdf(saturate(nl), gp);
                 float3 fl = f0 * abl.x + abl.y;
                 c += gameSunCol.rgb * visibility * saturate(nl) *
-                     (albedo * (1.0 - max(fl.r, max(fl.g, fl.b))) + F * Dg * Vg * 1.0390625);
+                     (diffAlbedo * (1.0 - max(fl.r, max(fl.g, fl.b))) + F * Dg * Vg * 1.0390625);
             }
         } else {
             float3 light = indirect + visibility * saturate(dot(N, gameSun.xyz)) * gameSunCol.rgb;
@@ -691,6 +727,9 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(cbLayer_);
     for (auto*& b : cbLayerAll_) safeRelease(b);
     cbLayerAll_.clear();
+    for (auto*& b : cbInstAll_) safeRelease(b);
+    cbInstAll_.clear();
+    cbInstAllMeshes_ = 0;
     if (ctx1_) ctx1_->Release(), ctx1_ = nullptr;
     safeRelease(rsDecal_);
     safeRelease(vbRefTexExtra_);
@@ -1426,6 +1465,44 @@ void SceneRenderer::setReferenceDecal(size_t batch, int sortKey, int revealTextu
     layerParamsDirty_ = true;
 }
 
+void SceneRenderer::setReferenceBaseParams(size_t batch, const float params[16]) {
+    if (batch >= refLayers_.size() || refLayers_[batch].layer > 0 || refLayers_[batch].decal) return;
+    std::memcpy(refLayers_[batch].params, params, sizeof(refLayers_[batch].params));
+    layerParamsDirty_ = true;
+}
+
+bool SceneRenderer::uploadLayerParams() {
+    if (!ctx1_ && ctx_ && dev_) {
+        D3D11_FEATURE_DATA_D3D11_OPTIONS o{};
+        if (SUCCEEDED(dev_->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &o, sizeof(o))) && o.ConstantBufferOffsetting)
+            ctx_->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void**>(&ctx1_));
+    }
+    constexpr size_t kPerCb = 256;  // batches per 64 KB buffer (256 bytes each)
+    if (ctx1_ && (layerParamsDirty_ || cbLayerAllBatches_ != refLayers_.size())) {
+        layerParamsDirty_ = false;
+        const size_t chunks = (refLayers_.size() + kPerCb - 1) / kPerCb;
+        if (cbLayerAllBatches_ != refLayers_.size()) {
+            for (auto*& b : cbLayerAll_) safeRelease(b);
+            cbLayerAll_.assign(chunks, nullptr);
+            cbLayerAllBatches_ = refLayers_.size();
+            D3D11_BUFFER_DESC bd{};
+            bd.ByteWidth = UINT(kPerCb * 256);
+            bd.Usage = D3D11_USAGE_DEFAULT;
+            bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+            for (auto*& b : cbLayerAll_)
+                if (FAILED(dev_->CreateBuffer(&bd, nullptr, &b))) cbLayerAllBatches_ = 0;
+        }
+        std::vector<float> all(kPerCb * 64, 0.0f);  // 256 bytes (16 constants) per batch
+        for (size_t c = 0; c < cbLayerAll_.size() && cbLayerAllBatches_; ++c) {
+            std::fill(all.begin(), all.end(), 0.0f);
+            for (size_t j = 0; j < kPerCb && c * kPerCb + j < refLayers_.size(); ++j)
+                std::memcpy(&all[j * 64], refLayers_[c * kPerCb + j].params, sizeof(refLayers_[0].params));
+            if (cbLayerAll_[c]) ctx_->UpdateSubresource(cbLayerAll_[c], 0, nullptr, all.data(), 0, 0);
+        }
+    }
+    return ctx1_ && !cbLayerAll_.empty() && cbLayerAllBatches_ == refLayers_.size();
+}
+
 void SceneRenderer::setReferenceLayer(size_t batch, int revealTexture, const float params[16]) {
     if (batch >= refLayers_.size() || refLayers_[batch].layer <= 0) return;
     RefLayer& L = refLayers_[batch];
@@ -1688,8 +1765,36 @@ void SceneRenderer::drawReferenceTexInstances() {
         const float bf[4] = {0, 0, 0, 0};
         ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
     }
+    // Main pass: each mesh's normal map (the flat one without) and its material constants at its offset in b7.
+    const bool propNormals = !texPsOverride_ && flatNrmTex_ >= 0 && size_t(flatNrmTex_) < textures_.size();
+    bool instCb = false;
+    constexpr size_t kInstPerCb = 256;
+    if (propNormals && uploadLayerParams() /* ctx1_ */ && ctx1_) {
+        if (instParamsDirty_ || cbInstAllMeshes_ != refTexInst_.size()) {
+            instParamsDirty_ = false;
+            if (cbInstAllMeshes_ != refTexInst_.size()) {
+                for (auto*& b : cbInstAll_) safeRelease(b);
+                cbInstAll_.assign((refTexInst_.size() + kInstPerCb - 1) / kInstPerCb, nullptr);
+                cbInstAllMeshes_ = refTexInst_.size();
+                D3D11_BUFFER_DESC bd{};
+                bd.ByteWidth = UINT(kInstPerCb * 256);
+                bd.Usage = D3D11_USAGE_DEFAULT;
+                bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+                for (auto*& b : cbInstAll_)
+                    if (FAILED(dev_->CreateBuffer(&bd, nullptr, &b))) cbInstAllMeshes_ = 0;
+            }
+            std::vector<float> all(kInstPerCb * 64, 0.0f);
+            for (size_t c = 0; c < cbInstAll_.size() && cbInstAllMeshes_; ++c) {
+                std::fill(all.begin(), all.end(), 0.0f);
+                for (size_t j = 0; j < kInstPerCb && c * kInstPerCb + j < refTexInst_.size(); ++j)
+                    std::memcpy(&all[j * 64], refTexInst_[c * kInstPerCb + j].params, sizeof(refTexInst_[0].params));
+                if (cbInstAll_[c]) ctx_->UpdateSubresource(cbInstAll_[c], 0, nullptr, all.data(), 0, 0);
+            }
+        }
+        instCb = cbInstAllMeshes_ == refTexInst_.size() && !cbInstAll_.empty();
+    }
     if (cbBatch_) {
-        const float flags[8] = {0, soft ? -1.0f : 0.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};
+        const float flags[8] = {propNormals ? 1.0f : 0.0f, soft ? -1.0f : 0.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};
         ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
         ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
         ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
@@ -1704,9 +1809,23 @@ void SceneRenderer::drawReferenceTexInstances() {
         const bool culled = instCull_ && g.visInst && g.visible <= g.instances;
         if (culled && g.visible == 0) continue;
         ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]);
+        if (propNormals) {
+            const int n = g.normal >= 0 && size_t(g.normal) < textures_.size() ? g.normal : flatNrmTex_;
+            ctx_->PSSetShaderResources(1, 1, &textures_[size_t(n)]);
+            const size_t mi = size_t(&g - refTexInst_.data());
+            if (instCb && cbInstAll_[mi / kInstPerCb]) {
+                const UINT first = UINT((mi % kInstPerCb) * 16), num = 16;
+                ctx1_->PSSetConstantBuffers1(7, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);
+            }
+        }
         ID3D11Buffer* bufs[2] = {g.vb, culled ? g.visInst : g.inst};
         ctx_->IASetVertexBuffers(0, 2, bufs, strides, offsets);
         drawInst(g.vertices, culled ? g.visible : g.instances, 0, 0);
+    }
+    if (instCb && cbLayer_) ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);  // the plain (zero) layer buffer
+    if (propNormals) {
+        ID3D11ShaderResourceView* noN = nullptr;
+        ctx_->PSSetShaderResources(1, 1, &noN);
     }
     ID3D11Buffer* none[2] = {nullptr, nullptr};
     ctx_->IASetVertexBuffers(0, 2, none, strides, offsets);
@@ -2366,6 +2485,9 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         };
         refCulledLast_ = 0;
         ID3D11ShaderResourceView* bound = nullptr;
+        // Each base batch's material constants (spec / gloss remaps; setReferenceBaseParams) at its offset in b7.
+        const bool baseCb = uploadLayerParams();
+        constexpr size_t kBasePerCb = 256;
         for (size_t k = 0; k < refTexIds_.size(); ++k) {
             if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal)) continue;  // layers, decals: below
             const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
@@ -2374,6 +2496,10 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 // Batches that share a texture (the plain one while images load) do not bind it again.
                 if (bound != textures_[size_t(id)]) ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]), bound = textures_[size_t(id)];
                 bindNormal(k);
+                if (baseCb && cbLayerAll_[k / kBasePerCb]) {
+                    const UINT first = UINT((k % kBasePerCb) * 16), num = 16;
+                    ctx1_->PSSetConstantBuffers1(7, 1, &cbLayerAll_[k / kBasePerCb], &first, &num);
+                }
             };
             if (refCulling_ && k < refTexChunks_.size() && !refTexChunks_[k].empty()) {
                 bool any = false;
@@ -2386,6 +2512,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             bind();
             drawN(refTexCount_[k], refTexFirst_[k]);
         }
+        if (baseCb && cbLayer_) ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);  // the plain (zero) layer buffer
         // The layers of layered stock materials (terrain): over their base, in layer order, blended by the layer's
         // weight and reveal map, depth-tested against the base (same vertices, same depth) without writing it.
         static const bool noLayers = perfOff("layers");  // benchmark switch: no layer or decal passes
@@ -2407,35 +2534,8 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 });
             }
             ID3D11Buffer* boundRefVb = vbRefTex_;
-            if (!ctx1_ && ctx_ && dev_) {
-                D3D11_FEATURE_DATA_D3D11_OPTIONS o{};
-                if (SUCCEEDED(dev_->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &o, sizeof(o))) && o.ConstantBufferOffsetting)
-                    ctx_->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void**>(&ctx1_));
-            }
             constexpr size_t kPerCb = 256;  // batches per 64 KB buffer (256 bytes each)
-            if (ctx1_ && (layerParamsDirty_ || cbLayerAllBatches_ != refLayers_.size())) {
-                layerParamsDirty_ = false;
-                const size_t chunks = (refLayers_.size() + kPerCb - 1) / kPerCb;
-                if (cbLayerAllBatches_ != refLayers_.size()) {
-                    for (auto*& b : cbLayerAll_) safeRelease(b);
-                    cbLayerAll_.assign(chunks, nullptr);
-                    cbLayerAllBatches_ = refLayers_.size();
-                    D3D11_BUFFER_DESC bd{};
-                    bd.ByteWidth = UINT(kPerCb * 256);
-                    bd.Usage = D3D11_USAGE_DEFAULT;
-                    bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-                    for (auto*& b : cbLayerAll_)
-                        if (FAILED(dev_->CreateBuffer(&bd, nullptr, &b))) cbLayerAllBatches_ = 0;
-                }
-                std::vector<float> all(kPerCb * 64, 0.0f);  // 256 bytes (16 constants) per batch
-                for (size_t c = 0; c < cbLayerAll_.size() && cbLayerAllBatches_; ++c) {
-                    std::fill(all.begin(), all.end(), 0.0f);
-                    for (size_t j = 0; j < kPerCb && c * kPerCb + j < refLayers_.size(); ++j)
-                        std::memcpy(&all[j * 64], refLayers_[c * kPerCb + j].params, sizeof(refLayers_[0].params));
-                    if (cbLayerAll_[c]) ctx_->UpdateSubresource(cbLayerAll_[c], 0, nullptr, all.data(), 0, 0);
-                }
-            }
-            const bool offsetCb = ctx1_ && !cbLayerAll_.empty() && cbLayerAllBatches_ == refLayers_.size();
+            const bool offsetCb = uploadLayerParams();
             int lastFlags = -1;
             ID3D11BlendState* lastBlend = nullptr;
             ID3D11DepthStencilState* lastDs = dsTest_;
