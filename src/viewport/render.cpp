@@ -1709,7 +1709,10 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     const iw8r::Frustum frustum = iw8r::frustumFromViewProj(viewProj);
     texCulledLast_ = 0;
     // Game Lighting: depth pre-pass of the opaque textured geometry (scene batches, the stock world, the stock props).
-    const bool prepass = game_.on && psShadowClip_ && blendNoColor_ && vsTex_ && layoutTex_ && sampler_;
+    // Off by default: measured on mp_rust (18 M triangles) it cost more than it saved (14.3 against 10.7 ms), the
+    // geometry being drawn twice; IW8R_DEPTH_PREPASS=1 turns it on for scenes bound by shading instead.
+    static const bool usePrepass = std::getenv("IW8R_DEPTH_PREPASS") && std::string(std::getenv("IW8R_DEPTH_PREPASS")) == "1";
+    const bool prepass = usePrepass && game_.on && psShadowClip_ && blendNoColor_ && vsTex_ && layoutTex_ && sampler_;
     if (prepass) {
         IW8R_PROF("d.prepass");
         ctx_->OMSetBlendState(blendNoColor_, bf, 0xffffffff);
