@@ -556,6 +556,10 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             report << QString("game_sky exposure=%1 mean_lum=%2 high_lum=%3").arg(sl[0]).arg(sl[1]).arg(sl[2]);
             report << QString("instances_culled %1").arg(cam->instancesCulled());
             {
+                const auto ft = cam->fileTextureStats();
+                report << QString("file_textures asked %1 loaded %2 failed %3").arg(ft[0]).arg(ft[1]).arg(ft[2]);
+            }
+            {
                 const auto ts = cam->referenceTriangleSplit();
                 report << QString("reference_triangles base %1 layers %2 decals %3").arg(ts[0]).arg(ts[1]).arg(ts[2]);
                 const auto lp = cam->layerPassStats();

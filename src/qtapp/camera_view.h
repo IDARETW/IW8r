@@ -87,6 +87,13 @@ public:
     // an earlier set.
     std::array<size_t, 5> referenceDecalStats() const { return renderer_.referenceDecalStats(); }
     size_t instancesCulled() const { return renderer_.instancesCulled(); }
+    // File-keyed textures ("\x06<path>": the super terrain's albedo): {asked, loaded, failed}.
+    std::array<size_t, 3> fileTextureStats() const {
+        std::array<size_t, 3> s{};
+        for (const auto& [k, id] : texIds_)
+            if (!k.empty() && k[0] == '\x06') ++s[0], s[id >= 0 && id != checkerTex_ ? 1 : 2]++;
+        return s;
+    }
     std::array<size_t, 3> referenceTriangleSplit() const { return renderer_.referenceTriangleSplit(); }
     std::array<size_t, 3> layerPassStats() const { return renderer_.layerPassStats(); }
     size_t referenceDecalExtras() const { return refTexExtraFrom_ == ~size_t(0) ? 0 : refTexMaterials_.size() - refTexExtraFrom_; }

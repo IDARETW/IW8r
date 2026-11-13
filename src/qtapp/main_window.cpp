@@ -7216,6 +7216,9 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
             app::GpuTexVertex v{float(p.x), float(p.y), float(p.z), 0, 0, g | (g << 8) | (g << 16) | (0xffu << 24)};
             if (k < tm.albedoUv.size()) v.u = float(tm.albedoUv[k][0]), v.v = float(tm.albedoUv[k][1]);
             v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
+            // A tangent along +x (the albedo's u): the stock batches are normal-mapped (a flat map here), and a zero
+            // tangent gave a NaN normal: the terrain drew black.
+            v.tx = 1.0f, v.ty = 0.0f, v.tz = 0.0f;
             rb.tris.push_back(v);
         }
         out.push_back(std::move(rb));
