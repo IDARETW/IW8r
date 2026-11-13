@@ -6643,6 +6643,15 @@ void MainWindow::rebuildReferenceProps() {
                                     tv.u = float(uv[0]);
                                     tv.v = float(uv[1]);
                                     tv.rgba = col;
+                                    // The model's own vertex normals (tree cards bend theirs outward from the crown): Game
+                                    // Lighting shades with them (vs_tex_inst turns them by the instance).
+                                    if (ms.normal.size() == ms.pos.size()) {
+                                        const Vec3 nn = zup(ms.normal[ms.idx[i + size_t(n)]]);
+                                        if (length(nn) > 1e-6) {
+                                            const Vec3 un = normalize(nn);
+                                            tv.nx = float(un.x), tv.ny = float(un.y), tv.nz = float(un.z);
+                                        }
+                                    }
                                     texTris.push_back(tv);
                                 }
                             } else {

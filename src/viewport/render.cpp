@@ -318,7 +318,9 @@ struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COL
 PSIn vs_tex_inst(VSInInst i) {
     float4 p = float4(i.pos, 1.0);
     float3 w = float3(dot(i.r0, p), dot(i.r1, p), dot(i.r2, p));
-    PSIn o; o.pos = mul(float4(w, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = w; o.n = float3(0, 0, 0); o.t = float3(0, 0, 0); o.lm = float2(-1, -1); return o;
+    // The model's vertex normal turned by the instance (uniform scale; zero = none: the pixel shader derives one).
+    float3 nw = float3(dot(i.r0.xyz, i.n), dot(i.r1.xyz, i.n), dot(i.r2.xyz, i.n));
+    PSIn o; o.pos = mul(float4(w, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = w; o.n = dot(nw, nw) > 1e-12 ? normalize(nw) : float3(0, 0, 0); o.t = float3(0, 0, 0); o.lm = float2(-1, -1); return o;
 }
 // Sun shadow pass of textured batches: alpha-tested cut-outs (leaves, grates) cast their holes (research 66).
 void ps_shadow_clip(PSIn i) { clip(tex0.Sample(samp0, i.uv).a - 0.3); }
