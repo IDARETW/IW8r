@@ -1,5 +1,13 @@
 # Progress note (handoff)
 
+## Latest (2026-11-13)
+
+- Prop decal volumes (only volumes that miss the world), viewport speed (Hideout 56 -> 17 ms), grass shading,
+  research 100 (clutter). Bench: IW8R_PERF_OFF=probes,layers,propdecals,probegrid,instcull; IW8R_DECAL_LOG.
+- Not done by choice: displacement (`dn` layers: 0-4.5 % of world triangles, about 2 inches of movement with the
+  game's auto height scale; the game tessellates them, the editor shows their normal maps); GPU clutter on Verdansk
+  (ACTS cannot export its terrain asset yet: "pointer_extent_required").
+
 ## Latest (2026-11-12 evening): Game Lighting against the owner's Speedball screenshot
 
 - Compare spot: IW8R_BENCH_CAM="-1080 230 330 -4 -27 120" (the owner plays at FOV 120, horizontal like the bench),

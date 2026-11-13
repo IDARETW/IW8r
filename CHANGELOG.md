@@ -3,6 +3,17 @@
 Newest first. "Not seen in game" means built and checked offline (converter read-back, the game's own loaders through
 ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md) lists the in-game checks.
 
+## 2026-11-13
+
+- **Decals on props.** Stock decal volumes that find no world surface (stencils on crates, paint on the concrete
+  barriers) are projected on the props, drawn in view within 4,000 units.
+- **Viewport speed on big stock maps.** Hideout went from 56 ms to 17 ms a frame (Speedball 4.4 ms): layer and decal
+  constants bound by offset instead of copied per draw, props culled on screen when outside the view or under a
+  pixel, a lookup grid for the reflection probes, and layer triangles with no weight left out.
+- **Grass.** Back faces of two-sided foliage are lit facing the viewer (the dark speckles are gone) and stock
+  cut-outs use the game's 128/255 threshold. Speedball's grass is placed props; GPU ground clutter exists only on
+  Verdansk's terrain (research 100).
+
 ## 2026-11-12
 
 Game Lighting against the game (evening):
