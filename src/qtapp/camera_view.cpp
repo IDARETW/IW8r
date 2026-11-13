@@ -483,7 +483,10 @@ void CameraView::render() {
             float m[16];
             app::sunShadowMatrix(t, lo, hi, m);
             const double R = std::max(1.0, length(sb.maxs - sb.mins) / 2 + 110);
-            renderer_.setSunShadow(true, m, float(2.0 / (4.0 * R)));
+            // Depth bias: 2 units plus one and a half shadow-map texels (2048 over the box), so a big stock scene's ground
+            // (about 9 units a texel) does not shadow itself into an even half shade.
+            const double texel = 2.0 * R / 2048.0;
+            renderer_.setSunShadow(true, m, float((2.0 + 1.5 * texel) / (4.0 * R)));
         }
     }
     const app::Mat4f vp = app::viewProjection(ctx_->cam, captureAspect_ > 0 ? captureAspect_ : double(w) / double(h));
@@ -1687,7 +1690,7 @@ void CameraView::prepareGameLook() {
             QTimer::singleShot(16, this, [this] { update(); });  // still adapting
         else if (exposure.autoExposure)
             QTimer::singleShot(250, this, [this] { update(); });  // keep metering slowly while the view is still
-        g.lutScale = float(gameExposure_ * std::exp2(1.5));
+        g.lutScale = float(gameExposure_ * std::exp2(kGameBaseExposureEv));
     }
     renderer_.setGameLook(g);
 }

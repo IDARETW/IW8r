@@ -242,7 +242,32 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         ctx.cam.fov = 90;
     };
     // Fixed cameras: `a` sees the whole map from a corner, `b` stands inside it near the middle.
-    const auto camA = [&] { setCam(centre + Vec3{-0.45 * R, -0.45 * R, 0.35 * R}, 45, -28.8); };
+    // IW8R_BENCH_CAM="x y z yaw pitch [fov]" puts camera a where a comparison needs it (an in-game screenshot's spot).
+    double benchCam[6] = {0, 0, 0, 0, 0, 90};
+    const QStringList camParts = qEnvironmentVariable("IW8R_BENCH_CAM").split(' ', Qt::SkipEmptyParts);
+    const bool fixedCam = camParts.size() >= 5;
+    for (int k = 0; k < camParts.size() && k < 6; ++k) benchCam[k] = camParts[k].toDouble();
+    {
+        // Where the point entities cluster (spawns, markers): the play area of a stock map.
+        std::vector<double> xs, ys, zs;
+        for (const auto* g : ctx.scene.items())
+            if (g->kind == iw8r::app::PrimGeom::PointEntity && g->bounds.valid()) {
+                const Vec3 c = g->bounds.center();
+                xs.push_back(c.x), ys.push_back(c.y), zs.push_back(c.z);
+            }
+        if (!xs.empty()) {
+            const auto med = [](std::vector<double>& v) { std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end()); return v[v.size() / 2]; };
+            report << QString("entity_median %1 %2 %3 (%4 point entities)").arg(med(xs), 0, 'f', 0).arg(med(ys), 0, 'f', 0).arg(med(zs), 0, 'f', 0).arg(xs.size());
+        }
+    }
+    const auto camA = [&] {
+        if (fixedCam) {
+            setCam(Vec3{benchCam[0], benchCam[1], benchCam[2]}, benchCam[3], benchCam[4]);
+            ctx.cam.fov = benchCam[5];
+            return;
+        }
+        setCam(centre + Vec3{-0.45 * R, -0.45 * R, 0.35 * R}, 45, -28.8);
+    };
     const auto camB = [&] { setCam(Vec3{centre.x + 40, centre.y - 150, all.mins.z + 88}, 30, -5); };
     const auto trigger = [&](const char* name) {
         if (QAction* a = w.action(name)) a->trigger();
@@ -475,6 +500,7 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         // The owner works with the lit preview and Game Lighting both on: the benchmark does too (IW8R_BENCH_GAME_LIT=0
         // turns the lit preview off for Game Lighting alone).
         setLit(qEnvironmentVariable("IW8R_BENCH_GAME_LIT") != "0");
+        if (qEnvironmentVariable("IW8R_BENCH_NOSHADOW") == "1") ctx.scene.litShadows = false;  // diagnosis: no sun shadow map
         if (!ctx.scene.gameLook) trigger("ToggleGameLighting");
         camA();
         QElapsedTimer bt;

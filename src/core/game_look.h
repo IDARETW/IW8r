@@ -19,7 +19,11 @@ namespace iw8r {
 
 // The vision's manual exposure (tonemapAuto off): 180 x 2^(2.84 - ev + adjust). EV 10 is the converter's iw3 style.
 double gameManualExposure(double ev = 10.0, double adjust = 0.0);
-// The factor from the lit colour to the colour LUT's input: exposure x 2^1.5 (r_tonemapUniversalBaseExposureAdjust).
+// The base exposure step before the colour LUT. Research 95 inferred +1.5 EV (r_tonemapUniversalBaseExposureAdjust's
+// game-test default); calibrated 2026-11-12 against the owner's in-game screenshot of mp_m_speedball (same spot, Lit +
+// Game Lighting): sunlit concrete, sunlit dirt and wall shade all match with 0 EV and were 1.5 EV too bright with +1.5.
+constexpr double kGameBaseExposureEv = 0.0;
+// The factor from the lit colour to the colour LUT's input: exposure x 2^kGameBaseExposureEv.
 double gameLutInputScale(double ev = 10.0, double adjust = 0.0);
 
 // The log shaper of cs_tonemap: LUT coordinate of a linear value x (per channel).

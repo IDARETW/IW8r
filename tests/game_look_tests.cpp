@@ -9,7 +9,7 @@ using namespace iw8r;
 TEST(game_look_exposure_and_shaper) {
     // Research 95: EV 10.3319 gives exposure 1; the iw3 style's EV 10 with the +1.5 EV base.
     CHECK(std::fabs(gameManualExposure(10.3319) - 1.0) < 1e-3);
-    CHECK(std::fabs(gameLutInputScale(10.0) - 180.0 * std::exp2(2.84 - 10.0) * std::exp2(1.5)) < 1e-9);
+    CHECK(std::fabs(gameLutInputScale(10.0) - 180.0 * std::exp2(2.84 - 10.0) * std::exp2(kGameBaseExposureEv)) < 1e-9);
     // The 20-stop log shaper: 2^-10 .. 2^10 onto the LUT's texel centres.
     CHECK(std::fabs(gameLutCoordinate(0.0) - 0.5 / 64) < 1e-3);
     CHECK(std::fabs(gameLutCoordinate(1e9) - (63.0 / 64 + 0.5 / 64)) < 1e-9);

@@ -102,7 +102,7 @@ double luma2020(const double c[3]) { return 0.2627 * c[0] + 0.6780 * c[1] + 0.05
 }  // namespace
 
 double gameManualExposure(double ev, double adjust) { return 180.0 * std::exp2(2.84 - ev + adjust); }
-double gameLutInputScale(double ev, double adjust) { return gameManualExposure(ev, adjust) * std::exp2(1.5); }
+double gameLutInputScale(double ev, double adjust) { return gameManualExposure(ev, adjust) * std::exp2(kGameBaseExposureEv); }
 
 double gameLutCoordinate(double x, int size) {
     const double u = std::clamp((std::log2(std::max(x, 0.0) + 1.0 / 1024.0) + 10.0) / 20.0, 0.0, 1.0);
