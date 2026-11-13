@@ -217,9 +217,9 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
     std::vector<GpuVertex>& edgeDst = sel ? out.sel : lines;
     const std::string* lastMat = nullptr;
     MatInfo* lastInfo = nullptr;
-    const bool lit = sc.litPreview && !sc.gameLook;
-    const bool encoded = sc.litEncoded() && !sc.gameLook;
-    const GameLightmap* gameLm = sc.gameLook ? sc.gameLightmap.get() : nullptr;
+    const bool lit = sc.litPreview && !sc.gameLookActive();
+    const bool encoded = sc.litEncoded() && !sc.gameLookActive();
+    const GameLightmap* gameLm = sc.gameLookActive() ? sc.gameLightmap.get() : nullptr;
     for (size_t i = 0; i < g->polys.size(); ++i) {
         const bool hasMat = i < g->polyMaterial.size();
         MatInfo* mi = nullptr;
@@ -316,7 +316,7 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
         }
         if (texId >= 0) {
             const std::string& m = g->polyMaterial[i];
-            if (sc.gameLook) shade = 1.0;  // the renderer lights textured faces
+            if (sc.gameLookActive()) shade = 1.0;  // the renderer lights textured faces
             // Brush entities keep a hint of their class colour; selection tints red.
             uint32_t c = litColor(i < g->polyTint.size() ? g->polyTint[i] : 0xffffffffu);
             if (g->brushEntity) c = mixColor(c, g->color, 0.35);

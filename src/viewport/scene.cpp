@@ -1097,9 +1097,9 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
             Vec3 lit{1, 1, 1};
             Vec3 sunLit;  // the sun's part of lit (the shadow map removes it where the sun is blocked)
             // View > Game Lighting: the renderer lights textured faces; colours carry only tints (camera_geometry.cpp).
-            const bool litMode = scene.litPreview && !scene.gameLook;
-            const bool encodedMode = scene.litEncoded() && !scene.gameLook;
-            const GameLightmap* gameLm = scene.gameLook ? scene.gameLightmap.get() : nullptr;
+            const bool litMode = scene.litPreview && !scene.gameLookActive();
+            const bool encodedMode = scene.litEncoded() && !scene.gameLookActive();
+            const GameLightmap* gameLm = scene.gameLookActive() ? scene.gameLightmap.get() : nullptr;
             if (litMode) {
                 Vec3 c;
                 for (const auto& v : w) c += v;
@@ -1154,7 +1154,7 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
                 texId = tc->second;
             }
             if (texId >= 0) {
-                if (scene.gameLook) shade = 1.0;
+                if (scene.gameLookActive()) shade = 1.0;
                 // Brush entities keep a hint of their class colour; selection tints red.
                 uint32_t c = litColor(i < g->polyTint.size() ? g->polyTint[i] : 0xffffffffu);
                 if (g->brushEntity) c = mixColor(c, g->color, 0.35);
@@ -1495,10 +1495,31 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
             const double shade = 0.55 + 0.45 * std::fabs(dot(n, light));
             const uint32_t g = uint32_t(std::clamp(255.0 * shade, 0.0, 255.0));
             const uint32_t rgba = g | (g << 8) | (g << 16) | (0xffu << 24);
+            // The texture tangent of the triangle (the direction of +u in the game's uv), for the stock normal maps: the
+            // world's own tangent frames are not read. Any direction across the face where the uv is degenerate.
+            const auto tangentOf = [&](float u0, float v0, float u1, float v1, float u2, float v2) {
+                const Vec3 e1 = m.pos[b] - m.pos[a], e2 = m.pos[c] - m.pos[a];
+                const double du1 = u1 - u0, dv1 = v1 - v0, du2 = u2 - u0, dv2 = v2 - v0;
+                const double det = du1 * dv2 - du2 * dv1;
+                Vec3 t = std::fabs(det) > 1e-12 ? (e1 * dv2 - e2 * dv1) * (1.0 / det) : e1;
+                t = t - n * dot(t, n);
+                if (length(t) < 1e-9) t = std::fabs(n.z) < 0.9 ? cross(n, Vec3{0, 0, 1}) : cross(n, Vec3{1, 0, 0});
+                return normalize(t);
+            };
+            const Vec3 tan0 = tangentOf(float(m.uv[a][0]), 1.0f - float(m.uv[a][1]), float(m.uv[b][0]), 1.0f - float(m.uv[b][1]),
+                                        float(m.uv[c][0]), 1.0f - float(m.uv[c][1]));
+            std::vector<Vec3> tanL;
+            for (int L = 1; L <= int(layerDst.size()); ++L) {
+                const auto& ua = world.layerUv[mi][size_t(a) * size_t(layers) + size_t(L)];
+                const auto& ub = world.layerUv[mi][size_t(b) * size_t(layers) + size_t(L)];
+                const auto& uc = world.layerUv[mi][size_t(c) * size_t(layers) + size_t(L)];
+                tanL.push_back(tangentOf(ua[0], 1.0f - ua[1], ub[0], 1.0f - ub[1], uc[0], 1.0f - uc[1]));
+            }
             for (uint32_t k : {a, b, c}) {
                 // ImportedMesh::uv is OBJ convention (v flipped); the textured camera uses the game's v.
                 GpuTexVertex v{float(m.pos[k].x), float(m.pos[k].y), float(m.pos[k].z), m.uv[k][0], 1.0f - m.uv[k][1], rgba};
                 v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
+                v.tx = float(tan0.x), v.ty = float(tan0.y), v.tz = float(tan0.z);
                 if (lmuv && (*lmuv)[k][0] >= 0) {
                     const int li = lmidx ? (*lmidx)[k] : 0;
                     if (li >= 0) v.lu = float(li) + std::min((*lmuv)[k][0], 0.99994f), v.lv = (*lmuv)[k][1];
@@ -1508,8 +1529,10 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
                     GpuTexVertex lv = v;
                     const auto& luv = world.layerUv[mi][size_t(k) * size_t(layers) + size_t(L)];
                     lv.u = luv[0], lv.v = 1.0f - luv[1];
-                    lv.tx = stockLayerWeight(vcol ? (*vcol)[k] : 0xFFFFFFFFu, vcolHi ? (*vcolHi)[k] : 0xFFFFFFFFu, L);
-                    lv.ty = lv.tz = 0;
+                    // The layer's own tangent (its uv), its length 1 + the blend weight (the shader takes length - 1).
+                    const float w = stockLayerWeight(vcol ? (*vcol)[k] : 0xFFFFFFFFu, vcolHi ? (*vcolHi)[k] : 0xFFFFFFFFu, L);
+                    const Vec3 tl = tanL[size_t(L - 1)] * (1.0 + double(w));
+                    lv.tx = float(tl.x), lv.ty = float(tl.y), lv.tz = float(tl.z);
                     layerDst[size_t(L - 1)]->push_back(lv);
                 }
             }

@@ -191,6 +191,20 @@ public:
     // A layer batch's blend (research 97): reveal = its alpha + reveal texture (-1: none, white), params = flags, reveal
     // sharpness k, tint RGB, UV transform (cos, sin, scale u, scale v, offset u, offset v); see the shader's cbuffer Layer.
     void setReferenceLayer(size_t batch, int revealTexture, const float params[16]);
+    // A stock batch's normal map (the flat one until then).
+    // Layer batches of the stock reference: {all, ready to draw, multiply, with a normal map} (benchmark report).
+    std::array<size_t, 4> referenceLayerStats() const {
+        std::array<size_t, 4> s{refLayerOrder_.size(), 0, 0, 0};
+        for (size_t k : refLayerOrder_) {
+            s[1] += refLayers_[k].ready ? 1 : 0;
+            s[2] += refLayers_[k].ready && refLayers_[k].params[3] > 0.5f ? 1 : 0;
+            s[3] += k < refNrmIds_.size() && refNrmIds_[k] >= 0 ? 1 : 0;
+        }
+        return s;
+    }
+    void setReferenceNormal(size_t batch, int textureId) {
+        if (batch < refNrmIds_.size()) refNrmIds_[batch] = textureId;
+    }
     // Reference props as instanced meshes (3.20): each model uploaded once, drawn with DrawInstanced in the camera and
     // the sun shadow pass. Empty clears them.
     bool setReferenceInstances(const std::vector<InstancedMesh>& meshes);
@@ -441,6 +455,8 @@ private:
     };
     std::vector<RefLayer> refLayers_;
     std::vector<size_t> refLayerOrder_;  // layer batches by layer, then batch
+    std::vector<int> refNrmIds_;         // per stock batch: its normal map texture, -1 = the flat one
+    int flatNrmTex_ = -1;
     int whiteFullTex_ = -1;
     ID3D11Buffer* vbRef_ = nullptr;
     float fog_[8] = {};
@@ -502,6 +518,7 @@ private:
     ID3D11DepthStencilState* dsOff_ = nullptr;
     ID3D11BlendState* blend_ = nullptr;
     ID3D11BlendState* blendAdd_ = nullptr;  // additive (ONE, ONE) for blend 2 batches
+    ID3D11BlendState* blendMul_ = nullptr;  // dst x src colour: stock layers in colour mode multiply
     ID3D11VertexShader* vsTex_ = nullptr;
     ID3D11PixelShader* psTex_ = nullptr;
     ID3D11PixelShader* psShadowClip_ = nullptr;  // sun shadow pass: alpha-test clip of textured batches

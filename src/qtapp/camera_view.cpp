@@ -233,8 +233,15 @@ void CameraView::render() {
                 }
                 const int id = textureFor(refTexMaterials_[k]);
                 if (texIds_.count(refTexMaterials_[k])) {
-                    refTexResolved_[k] = true;
                     if (id >= 0) renderer_.setReferenceTexture(k, id);
+                    // Its normal map next (normalFor waits for the colour image and the per-frame budget).
+                    const int nid = id >= 0 && id != checkerTex_ ? normalFor(refTexMaterials_[k]) : -1;
+                    if (id >= 0 && id != checkerTex_ && !nrmIds_.count(refTexMaterials_[k])) {
+                        pending = true;
+                        continue;
+                    }
+                    if (nid >= 0) renderer_.setReferenceNormal(k, nid);
+                    refTexResolved_[k] = true;
                 } else {
                     pending = true;
                 }
@@ -340,7 +347,7 @@ void CameraView::render() {
     for (const auto& f : ctx_->doc.faceSelection()) mix((f.entity * 31 + f.item) * 131 + f.face);
     mix(uint64_t(ctx_->scene.cameraMode) | (uint64_t(ctx_->scene.litPreview) << 8) | (uint64_t(ctx_->scene.litShadows) << 9) |
         (uint64_t(ctx_->texturedView) << 10) | (uint64_t(ctx_->showSpawns) << 11) | (uint64_t(bool(imageLookup_)) << 12) |
-        (uint64_t(ctx_->scene.captureMode) << 13));
+        (uint64_t(ctx_->scene.captureMode) << 13) | (uint64_t(gameLookOn()) << 14));
     mix(ctx_->scene.pointfile.size());
     mix(ctx_->scene.collisionPreview.size());
     mix(ctx_->scene.compiledWorld.size());
@@ -432,6 +439,9 @@ void CameraView::render() {
                             rgba[k + 3] = 255;
                         }
                         skyTex_.push_back(renderer_.createTexture(rgba.data(), fs, fs));
+                        // Diagnosis: IW8R_DUMP_SKY=<folder> writes the six preview faces as PNG.
+                        if (const QString dump = qEnvironmentVariable("IW8R_DUMP_SKY"); !dump.isEmpty())
+                            QImage(rgba.data(), fs, fs, QImage::Format_RGBA8888).save(QDir(dump).filePath(QString("sky_face%1.png").arg(f)));
                     }
             }
             geomDirty_ = true;
@@ -833,13 +843,16 @@ bool CameraView::resolveReferenceLayer(size_t k) {
     }
     StockLayerConstants lc;
     if (c->layers > L && size_t(L) < c->layer.size()) lc = c->layer[size_t(L)];
-    // Colour modes 2 and 3 leave the colour below; multiply (1) is not drawn yet (its normal / gloss blend only).
-    if (lc.colorMode != 0) return true;
+    // Colour modes 2 and 3 leave the colour below (their normal / gloss blend only): not drawn. Multiply (1) is.
+    if (lc.colorMode >= 2) return true;
     const std::string ck = base + '\x01' + std::to_string(L), rk = base + '\x02' + std::to_string(L);
     const int cid = textureFor(ck), rid = textureFor(rk);
     if (!texIds_.count(ck) || !texIds_.count(rk)) return false;
     if (cid < 0 || cid == checkerTex_) return true;  // no colour image: left out rather than drawn as the checker
-    const float p[16] = {1.0f, float(lc.flags), lc.sharpness, 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,
+    const int nid = normalFor(ck);
+    if (!nrmIds_.count(ck)) return false;  // waits for the per-frame budget
+    if (nid >= 0) renderer_.setReferenceNormal(k, nid);
+    const float p[16] = {1.0f, float(lc.flags), lc.sharpness, lc.colorMode == 1 ? 1.0f : 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,
                          lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
     renderer_.setReferenceTexture(k, cid);
     renderer_.setReferenceLayer(k, rid == checkerTex_ ? -1 : rid, p);
@@ -1631,7 +1644,10 @@ size_t CameraView::referenceTexturesResolved() const {
 
 // ---- View > Game Lighting (game_lightmap.h, core game_look; research 95 "Editor maps in game")
 
-bool CameraView::gameLookOn() const { return ctx_->scene.gameLook && ctx_->texturedView && !ctx_->scene.captureMode; }
+bool CameraView::gameLookOn() const {
+    ctx_->scene.gameLookAuto = !gameStockMap_.empty();
+    return ctx_->scene.gameLookActive() && ctx_->texturedView && !ctx_->scene.captureMode;
+}
 
 const StockMapLook* CameraView::gameStockLook() const {
     if (gameStockMap_.empty()) return nullptr;

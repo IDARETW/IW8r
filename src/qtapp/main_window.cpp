@@ -327,6 +327,12 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         return {};
     });
     camera_->setMaterialNormals([this](const std::string& m) -> QString {
+        // A layer of a layered stock material ("<material>\x01<L>"): that layer's normal map.
+        if (const size_t sep = m.find('\x01'); sep != std::string::npos && sep > 0) {
+            const auto imgs = matCache_->layerImages(qs(m.substr(0, sep)));
+            const int L = std::atoi(m.c_str() + sep + 1);
+            return L >= 0 && size_t(L) < imgs.size() ? imgs[size_t(L)].normalDds : QString();
+        }
         if (auto e = matCache_->lookup(qs(m)); e && !e->failed) return e->normalDds;
         return {};
     });

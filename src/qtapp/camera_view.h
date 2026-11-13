@@ -173,6 +173,7 @@ public slots:
     // The stock map's atmosphere (its vision text; core gameFogFromVision).
     // The sky preview: conversion exposure and the HDR source mean / 99.5th percentile luminance (diagnosis).
     std::array<float, 3> skyLuminance() const { return {skyExposure_, skyMeanLum_, skyHighLum_}; }
+    std::array<size_t, 4> referenceLayerStats() const { return renderer_.referenceLayerStats(); }
     // The stock sky material's intensity (its first pixel constant): the sky image times this is the drawn sky.
     void setGameStockSkyIntensity(double intensity) {
         stockSkyIntensity_ = intensity;

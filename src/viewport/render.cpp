@@ -330,7 +330,7 @@ float3 gamePost(float3 c) {
     return gameLut.SampleLevel(lutSamp, u, 0).rgb;
 }
 // A stock layered material's layer L >= 1 (research 97), drawn over the layers below with blending: layerP = (on, flags,
-// reveal sharpness k, _), layerTint = tint RGB, layerUvT = (cos, sin, scale u, scale v), layerUvO = (offset u, v). The
+// reveal sharpness k, multiply), layerTint = tint RGB, layerUvT = (cos, sin, scale u, scale v), layerUvO = (offset u, v). The
 // vertex blend weight is in the tangent x (the stock reference has no tangents). t12: the alpha (red) + reveal (green) map.
 cbuffer Layer : register(b7) { float4 layerP; float4 layerTint; float4 layerUvT; float4 layerUvO; };
 Texture2D revealTex : register(t12);
@@ -343,7 +343,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
     float4 t = tex0.Sample(samp0, uvS);
     if (layerP.x > 0.5) {
         float2 ar = revealTex.Sample(samp0, uvS).rg;
-        float w = saturate(i.t.x), k = layerP.z;
+        float w = saturate(length(i.t) - 1.0), k = layerP.z;  // the tangent's length is 1 + the weight
         uint fl = (uint)(layerP.y + 0.5);
         float b = w;
         if (fl & 16u) {
@@ -360,6 +360,9 @@ float4 ps_tex(PSIn i) : SV_TARGET {
     if (batchFlags.y < 0.5) clip(t.a - 0.3);
     else outA = t.a > 0.99 ? 0.6 : t.a;
     if (layerB >= 0.0) outA = layerB;
+    // Colour mode multiply (layerP.w = 1; puddles, edge wear): below x lerp(1, layer, b), drawn with a multiplying blend
+    // over the shaded result (in display space: the factor's 1/2.2 power, as the post chain is close to a gamma there).
+    if (layerP.x > 0.5 && layerP.w > 0.5) return float4(pow(lerp(float3(1, 1, 1), srgbToLinear3(t.rgb), layerB), 1.0 / 2.2), 1.0);
     if (game0.x > 0.5) {
         // View > Game Lighting: map_surface_realtime.hlsl (the converter's world shader, iw3 style) and the post chain.
         // batchFlags2.z: the stock reference world (its vertex colours are an editor shade, not a tint), .w: its own
@@ -373,7 +376,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         if (dot(i.n, i.n) <= 0.5 && dot(Nf, eyeStart.xyz - i.w) < 0) Nf = -Nf;
         float3 N = Nf;
         if (batchFlags.x > 0.5 && dot(i.n, i.n) > 0.5) {
-            float4 nm = nrm0.Sample(samp0, i.uv);
+            float4 nm = nrm0.Sample(samp0, uvS);
             float2 sd = nm.ga * 2.0 - 1.0;
             float2 oct = float2(sd.x + sd.y, sd.x - sd.y) * 0.5;
             float2 slope = oct / max(0.02, 1.0 - abs(oct.x) - abs(oct.y));
@@ -500,7 +503,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // Normal map (IW8 "_n&_g", core/normal_pack.h: gloss in R, occlusion in B, the normal as an octahedral pair
         // in G and A): the per-face shade already in the vertex colour is modulated by how much the bumped normal
         // turns toward the light, plus a gloss highlight.
-        float4 nm = nrm0.Sample(samp0, i.uv);
+        float4 nm = nrm0.Sample(samp0, uvS);
         float2 sd = nm.ga * 2.0 - 1.0;
         float2 oct = float2(sd.x + sd.y, sd.x - sd.y) * 0.5;
         float2 slope = oct / max(0.02, 1.0 - abs(oct.x) - abs(oct.y));
@@ -645,6 +648,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(dsOff_);
     safeRelease(blend_);
     safeRelease(blendAdd_);
+    safeRelease(blendMul_);
     safeRelease(vsTex_);
     safeRelease(psTex_);
     safeRelease(psShadowClip_);
@@ -858,6 +862,14 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
     bd.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
     bd.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
     dev_->CreateBlendState(&bd, &blendAdd_);
+    {
+        D3D11_BLEND_DESC mb = bd;  // dst x src colour (stock multiply layers), alpha kept
+        mb.RenderTarget[0].SrcBlend = D3D11_BLEND_ZERO;
+        mb.RenderTarget[0].DestBlend = D3D11_BLEND_SRC_COLOR;
+        mb.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+        mb.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+        dev_->CreateBlendState(&mb, &blendMul_);
+    }
     return vs_ && ps_ && layout_ && cb_;
 }
 
@@ -1262,7 +1274,12 @@ void SceneRenderer::setReferenceLayer(size_t batch, int revealTexture, const flo
 
 bool SceneRenderer::setReferenceTextured(const std::vector<std::vector<GpuTexVertex>>& batches, const std::vector<int>* layers) {
     refLayers_.assign(batches.size(), RefLayer{});
+    refNrmIds_.assign(batches.size(), -1);
     refLayerOrder_.clear();
+    if (flatNrmTex_ < 0 && dev_) {
+        const uint8_t flat[16] = {128, 128, 255, 128, 128, 128, 255, 128, 128, 128, 255, 128, 128, 128, 255, 128};
+        flatNrmTex_ = createTexture(flat, 2, 2);
+    }
     if (layers && layers->size() == batches.size()) {
         for (size_t k = 0; k < batches.size(); ++k)
             if ((*layers)[k] > 0) refLayers_[k].layer = (*layers)[k], refLayerOrder_.push_back(k);
@@ -2026,14 +2043,22 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ID3D11ShaderResourceView* sl[3] = {stockLmSrv_[0], stockLmSrv_[1], stockLmSrv_[2]};
             ctx_->PSSetShaderResources(6, 3, sl);
         }
+        // x = 1: every stock batch samples t1, its normal map or the flat one (research 95 encoding: g, a = 0.5).
+        const bool refNormals = flatNrmTex_ >= 0 && size_t(flatNrmTex_) < textures_.size();
         if (cbBatch_) {
-            const float flags[8] = {0, 0, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};
+            const float flags[8] = {refNormals ? 1.0f : 0.0f, 0, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};
             ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
             ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
             ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
         }
         ID3D11ShaderResourceView* noNrm = nullptr;
         ctx_->PSSetShaderResources(1, 1, &noNrm);
+        ID3D11ShaderResourceView* boundNrm = nullptr;
+        const auto bindNormal = [&](size_t k) {
+            if (!refNormals) return;
+            const int n = k < refNrmIds_.size() && refNrmIds_[k] >= 0 && size_t(refNrmIds_[k]) < textures_.size() ? refNrmIds_[k] : flatNrmTex_;
+            if (boundNrm != textures_[size_t(n)]) ctx_->PSSetShaderResources(1, 1, &textures_[size_t(n)]), boundNrm = textures_[size_t(n)];
+        };
         refCulledLast_ = 0;
         ID3D11ShaderResourceView* bound = nullptr;
         for (size_t k = 0; k < refTexIds_.size(); ++k) {
@@ -2043,6 +2068,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             const auto bind = [&] {
                 // Batches that share a texture (the plain one while images load) do not bind it again.
                 if (bound != textures_[size_t(id)]) ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]), bound = textures_[size_t(id)];
+                bindNormal(k);
             };
             if (refCulling_ && k < refTexChunks_.size() && !refTexChunks_[k].empty()) {
                 bool any = false;
@@ -2059,7 +2085,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         // weight and reveal map, depth-tested against the base (same vertices, same depth) without writing it.
         if (!refLayerOrder_.empty() && cbLayer_) {
             if (cbBatch_) {
-                const float flags[8] = {0, 1.0f, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};  // y = 1: blended, no clip
+                const float flags[8] = {refNormals ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};  // y = 1: blended, no clip
                 ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
             }
             ctx_->OMSetDepthStencilState(dsTest_, 0);
@@ -2070,8 +2096,13 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 const int rv = L.reveal >= 0 && size_t(L.reveal) < textures_.size() ? L.reveal : whiteFullTex_;
                 if (rv < 0 || size_t(rv) >= textures_.size()) continue;
                 ctx_->UpdateSubresource(cbLayer_, 0, nullptr, L.params, 0, 0);
+                {
+                    const float bfz[4] = {0, 0, 0, 0};
+                    ctx_->OMSetBlendState(L.params[3] > 0.5f && blendMul_ ? blendMul_ : blend_, bfz, 0xffffffff);
+                }
                 ctx_->PSSetShaderResources(0, 1, &textures_[size_t(refTexIds_[k])]);
                 ctx_->PSSetShaderResources(12, 1, &textures_[size_t(rv)]);
+                bindNormal(k);
                 if (refCulling_ && k < refTexChunks_.size() && !refTexChunks_[k].empty())
                     refCulledLast_ += forVisibleRuns(frustum, refTexChunks_[k], [&](uint32_t first, uint32_t n) { drawN(n * 3, refTexFirst_[k] + first * 3); });
                 else
@@ -2079,12 +2110,18 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             }
             const float zero[16] = {};
             ctx_->UpdateSubresource(cbLayer_, 0, nullptr, zero, 0, 0);
+            {
+                const float bfz[4] = {0, 0, 0, 0};
+                ctx_->OMSetBlendState(blend_, bfz, 0xffffffff);
+            }
             ID3D11ShaderResourceView* noRev = nullptr;
             ctx_->PSSetShaderResources(12, 1, &noRev);
+            ctx_->PSSetShaderResources(1, 1, &noRev);
             ctx_->OMSetDepthStencilState(texOpaqueDs, 0);
         }
         ID3D11ShaderResourceView* none2[1] = {nullptr};
         ctx_->PSSetShaderResources(0, 1, none2);
+        ctx_->PSSetShaderResources(1, 1, none2);
         ctx_->IASetInputLayout(layout_);
         ctx_->VSSetShader(vs_, nullptr, 0);
         ctx_->PSSetShader(ps_, nullptr, 0);

@@ -114,6 +114,10 @@ public:
     // View > Game Lighting (game_lightmap.h): textured faces are shaded by the renderer as the game shades them; vertex
     // colours carry only tints, and vertices of baked polygons carry their lightmap UV.
     bool gameLook = false;
+    // A stock map reference is shown (set by the camera): its lit preview is the game's lighting, as the editor's own
+    // light bake has nothing to light there (owner report 2026-11-12: Lit Preview alone was blown out on Speedball).
+    bool gameLookAuto = false;
+    bool gameLookActive() const { return gameLook || (gameLookAuto && litPreview); }
     std::shared_ptr<const GameLightmap> gameLightmap;
     // The renderer's sun shadow map handles sun shadows per pixel (set by the camera); the per-face ray test is skipped.
     bool gpuShadows = false;
@@ -214,7 +218,7 @@ struct ReferenceTexBatch {
     std::string material;
     std::vector<GpuTexVertex> tris;
     // 0: the material's base (layer 0); L >= 1: layer L of a layered stock material (tw4 / twc4, research 97), drawn over
-    // the layers below it with its own texture coordinates (uv) and its blend weight in the vertex tangent x (tx).
+    // the layers below it with its own texture coordinates (uv); its tangent (from its uv) has length 1 + its blend weight.
     int layer = 0;
 };
 size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTexBatch>& out, bool skipSky = true,
