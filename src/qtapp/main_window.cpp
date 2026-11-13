@@ -1,3 +1,4 @@
+#include "stock_clutter.h"
 #include "stock_super_terrain.h"
 #include <set>
 #include "stock_displacement.h"
@@ -202,7 +203,11 @@ std::shared_ptr<StockDecalData> appendStockDecalVolumes(const StockWorld& world,
 // The super terrain of a Warzone map (Verdansk, Quarry; research 102): its height maps as a mesh within a triangle
 // budget, textured with each surface's baked albedo. Nothing for maps without one (remembered in <zoneDir>/terrain).
 void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
-                             std::vector<app::ReferenceTexBatch>& out);
+                             std::vector<app::ReferenceTexBatch>& out, StockGroundGrid* ground = nullptr);
+// The ground clutter of a Warzone map (research 100: grass, reeds, rocks scattered by the game on its terrain) as model
+// placements, about 250,000 of them; empty for maps without (every 6v6 map).
+std::shared_ptr<std::vector<StockModelInstance>> scatterStockGroundClutter(const QString& zone, const QString& zoneDir,
+                                                                          const StockDecalTools& tools, const StockGroundGrid& ground);
 // A copy of `world` with its displaced surfaces subdivided and moved (null when the map has none or they cannot be read).
 std::shared_ptr<const StockWorld> displaceStockWorld(const StockWorld& world, const QString& zone, const QString& zoneDir,
                                                      const StockDecalTools& tools);
@@ -2075,6 +2080,7 @@ void MainWindow::buildMenus() {
         stockWorld_.reset();
         referenceProps_.clear();
         refProps_.reset();
+        refClutter_.reset();
         refBaseTris_.reset();
         referencePropMeshes_ = 0;
         ctx_.cameraMoved();
@@ -6781,7 +6787,18 @@ void MainWindow::rebuildReferenceProps() {
     };
     referenceProps_.clear();  // boxes are instances now (above); the flat list is the world alone (loadStockReference)
     const std::vector<uint32_t> hiddenProps = stockEditHiddenProps(ctx_.doc.map());  // 11.5: hidden in the rebuilt map
-    for (const StockModelInstance& in : *refProps_) {
+    // The map's placed models, then its ground clutter (scatterStockGroundClutter; never hidden or edited).
+    std::vector<StockModelInstance> withClutter;
+    const std::vector<StockModelInstance>* drawProps = refProps_.get();
+    if (refClutter_ && !refClutter_->empty()) {
+        withClutter.reserve(refProps_->size() + refClutter_->size());
+        // The clutter first: its 28 small models take little of the triangle budget, which Verdansk's own props
+        // otherwise used up before them (the grass came out as hidden stand-in boxes).
+        withClutter = *refClutter_;
+        withClutter.insert(withClutter.end(), refProps_->begin(), refProps_->end());
+        drawProps = &withClutter;
+    }
+    for (const StockModelInstance& in : *drawProps) {
         if (std::binary_search(hiddenProps.begin(), hiddenProps.end(), in.index)) continue;
         const auto e = modelCacheStock_ ? modelCacheStock_->lookup(qs(in.model)) : std::nullopt;
         if (e && !e->failed) {
@@ -7137,7 +7154,7 @@ void MainWindow::projectPropDecals() {
 }
 
 void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
-                             std::vector<app::ReferenceTexBatch>& out) {
+                             std::vector<app::ReferenceTexBatch>& out, StockGroundGrid* ground) {
     if (qEnvironmentVariableIsSet("IW8R_NO_SUPER_TERRAIN")) return;
     const QString dir = zoneDir + "/terrain";
     if (QFileInfo::exists(dir + "/none")) return;  // looked once: no super terrain in this map
@@ -7199,6 +7216,13 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
     opt.stride = stockTerrainStrideForBudget(terrain, 1'000'000, &cutouts);
     StockTerrainMeshes meshes;
     if (!buildStockTerrainMeshes(terrain, heights, cutouts, opt, meshes, &err)) return;
+    if (ground) {
+        ground->setCellSize(512.0);
+        for (const StockTerrainMesh& tm : meshes.meshes)
+            for (size_t i = 0; i + 2 < tm.mesh.idx.size(); i += 3)
+                ground->addTriangle(tm.mesh.pos[tm.mesh.idx[i]], tm.mesh.pos[tm.mesh.idx[i + 1]], tm.mesh.pos[tm.mesh.idx[i + 2]]);
+        ground->finish();
+    }
     const Vec3 light = normalize(Vec3{0.35, 0.55, 0.75});
     for (const StockTerrainMesh& tm : meshes.meshes) {
         const ImportedMesh& m = tm.mesh;
@@ -7223,6 +7247,80 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
         }
         out.push_back(std::move(rb));
     }
+}
+
+std::shared_ptr<std::vector<StockModelInstance>> scatterStockGroundClutter(const QString& zone, const QString& zoneDir,
+                                                                          const StockDecalTools& tools, const StockGroundGrid& ground) {
+    if (qEnvironmentVariableIsSet("IW8R_NO_CLUTTER") || ground.triangleCount() == 0) return nullptr;
+    std::vector<StockClutterCollection> collections;
+    std::string err;
+    if (!readStockClutterCollections(zoneDir.toStdString(), collections, &err) || collections.empty()) return nullptr;
+    const QString dir = zoneDir + "/terrain";
+    QString json;
+    for (QDirIterator it(dir, {"*.json"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
+        const QString f = it.next();
+        if (f.contains("/assets/stterrain/")) json = f;
+    }
+    std::string text;
+    StockClutterTerrain terrain;
+    if (json.isEmpty() || !readFile(json.toStdString(), text) || !parseStockClutterTerrain(text, terrain, &err)) return nullptr;
+    text.clear();
+    text.shrink_to_fit();
+    // Each surface's sample bitmask is a stream key (one ACTS run each, about a second), kept beside the terrain.
+    const QString zoneFolder = QFileInfo(tools.replay).absolutePath() + "/zone/";
+    const QString keyDir = dir + "/mw19replay/" + zone + "/assets/streamkey";
+    QStringList xp;
+    for (const QFileInfo& f : QDir(zoneFolder).entryInfoList({"*.xpak"}, QDir::Files))
+        if (f.size() >= 64 * 1024) xp << "--xpak" << f.absoluteFilePath();
+    std::set<uint32_t> surfaces;
+    for (const auto& c : collections) surfaces.insert(c.terrainSurfaceIndex);
+    for (uint32_t s : surfaces) {
+        if (s >= terrain.surfaces.size()) continue;
+        const QString key = zone + "_s" + QString::number(s) + "__clutter_bitmask";
+        const auto findKey = [&] {
+            for (QDirIterator it(keyDir, {key + ".*"}, QDir::Files); it.hasNext();) return it.next();
+            return QString();
+        };
+        QString f = findKey();
+        if (f.isEmpty() && QFileInfo::exists(tools.acts)) {
+            QStringList args{"--noUpdater", "fastfile", "-r", "mw19replay", "-g", tools.replay, "--oodle", tools.oodle};
+            args << xp << "-a" << "streamkey" << "-n" << key << "-l" << "-o" << dir << zoneFolder + zone + ".ff";
+            QProcess p;
+            p.start(tools.acts, args);
+            p.waitForFinished(120000);
+            f = findKey();
+        }
+        QFile kf(f);
+        if (f.isEmpty() || !kf.open(QIODevice::ReadOnly)) continue;
+        const QByteArray b = kf.readAll();
+        auto& words = terrain.surfaces[s].bitmask;
+        words.resize(size_t(b.size()) / 4);
+        std::memcpy(words.data(), b.constData(), words.size() * 4);
+    }
+    // About 250,000 placements over the whole map: every Nth sample of the game's budget.
+    size_t budget = 0;
+    for (const auto& c : collections) budget += c.maxInstanceCount;
+    ClutterScatterOptions opt;
+    opt.maxInstances = 260000;
+    opt.keepEvery = uint32_t(std::max<size_t>(1, (budget + 249999) / 250000));
+    StockClutterScatter scatter;
+    scatterStockClutter(collections, terrain, [&](uint32_t s) -> ClutterGroundFn {
+        if (s >= terrain.surfaces.size()) return {};
+        return meshGround(ground, terrain.surfaces[s].objToWld);
+    }, opt, scatter);
+    auto out = std::make_shared<std::vector<StockModelInstance>>();
+    out->reserve(scatter.instances.size());
+    for (const StockClutterInstance& ci : scatter.instances) {
+        if (ci.model >= scatter.models.size()) continue;
+        StockModelInstance in;
+        in.model = scatter.models[ci.model];
+        in.origin = ci.origin;
+        in.axis = ci.axis;
+        in.scale = ci.scale;
+        in.index = 0xFFFFFFFFu;  // not a placed model of the map: never hidden, moved or removed by the stock edits
+        out->push_back(std::move(in));
+    }
+    return out->empty() ? nullptr : out;
 }
 
 std::shared_ptr<const StockWorld> displaceStockWorld(const StockWorld& world, const QString& zone, const QString& zoneDir,
@@ -7595,17 +7693,21 @@ void MainWindow::loadStockReference(const QString& zone) {
         if (world)
             if (auto displaced = displaceStockWorld(*world, zone, zoneDir, tools)) drawWorld = displaced;
         if (drawWorld) app::buildReferenceTexBatches(*drawWorld, *texBatches);  // textured camera reference (3.19)
-        if (world) appendStockSuperTerrain(zone, zoneDir, tools, *texBatches);  // Warzone ground (research 102)
+        StockGroundGrid terrainGround;
+        if (world) appendStockSuperTerrain(zone, zoneDir, tools, *texBatches, &terrainGround);  // Warzone ground (research 102)
+        std::shared_ptr<std::vector<StockModelInstance>> clutter =
+            world ? scatterStockGroundClutter(zone, zoneDir, tools, terrainGround) : nullptr;  // research 100
         std::shared_ptr<const StockDecalData> decals;
         if (world) decals = appendStockDecalVolumes(*world, zone, zoneDir, tools, *texBatches);  // projected decals (research 99)
         // Props (11.3, core stock_smodels): the static model placements of the same export.
         auto props = std::make_shared<std::vector<StockModelInstance>>();
         std::string perr;
         if (n) readStockModelInstances(zoneDir.toStdString(), *props, &perr);
-        QMetaObject::invokeMethod(qApp, [self, zone, tris, n, err, props, plans, world, texBatches, decals] {
+        QMetaObject::invokeMethod(qApp, [self, zone, tris, n, err, props, plans, world, texBatches, decals, clutter] {
             if (!self || self->referenceZone_ != zone) return;
             self->stockWorld_ = world;
             self->stockDecals_ = decals;
+            self->refClutter_ = clutter;
             self->propDecalsZone_.clear();
             if (world) self->camera_->setGameStockBakedScale(world->bakedLightScale);
             self->camera_->setReferenceTextured(std::move(*texBatches));

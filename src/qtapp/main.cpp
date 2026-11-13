@@ -28,6 +28,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <set>
 #include <windows.h>
 #include <d3d11.h>
 
@@ -555,6 +556,13 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             const auto sl = cam->skyLuminance();
             report << QString("game_sky exposure=%1 mean_lum=%2 high_lum=%3").arg(sl[0]).arg(sl[1]).arg(sl[2]);
             report << QString("instances_culled %1").arg(cam->instancesCulled());
+            if (const auto* cl = w.stockClutter(); cl && !cl->empty()) {
+                std::set<std::string> models;
+                for (const auto& c : *cl) models.insert(c.model);
+                const auto& c0 = (*cl)[cl->size() / 2];
+                report << QString("stock_clutter %1 placements, %2 models, e.g. %3 at %4 %5 %6").arg(cl->size()).arg(models.size())
+                              .arg(QString::fromStdString(c0.model)).arg(c0.origin.x).arg(c0.origin.y).arg(c0.origin.z);
+            }
             {
                 const auto ft = cam->fileTextureStats();
                 report << QString("file_textures asked %1 loaded %2 failed %3").arg(ft[0]).arg(ft[1]).arg(ft[2]);

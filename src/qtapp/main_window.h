@@ -407,6 +407,10 @@ public:
     bool goToCameraBookmark(int slot);
 private:
     std::shared_ptr<std::vector<StockModelInstance>> refProps_;
+    std::shared_ptr<std::vector<StockModelInstance>> refClutter_;  // Warzone ground clutter (drawn only)
+public:
+    const std::vector<StockModelInstance>* stockClutter() const { return refClutter_.get(); }  // tests, benchmark
+private:
     std::shared_ptr<std::vector<app::GpuVertex>> refBaseTris_;
     size_t refWorldTris_ = 0;
     class QTimer* refPropTimer_ = nullptr;

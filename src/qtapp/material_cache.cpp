@@ -339,11 +339,14 @@ QStringList MaterialCache::candidates(const QStringList& zones, bool bodies) con
     };
     for (const QString& z : zones) {
         const QString techZone = z.startsWith("techsets_") ? z : "techsets_" + z;
+        // A techsets_ zone holds no image payload: its map zone does (Verdansk's grass image is catalogued only in
+        // techsets_mp_donetsk and exports from mp_donetsk with the XPaks).
+        const QString mapZone = z.startsWith("techsets_") ? z.mid(9) : z;
         if (bodies) {
             add(techZone);
-            add(z);
+            add(mapZone);
         } else {
-            add(z);
+            add(mapZone);
             add(techZone);
         }
     }
