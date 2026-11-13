@@ -18,9 +18,16 @@
   layers (per-triangle tangents; layer weight in the tangent length); multiply layers (puddles, edge wear); Lit
   Preview on a stock map shows the game look (scene.gameLookAuto); props shade with their model normals; the
   viewport sky box follows the camera (no parallax). Bench lines: game_sky, stock_layers.
-- Open: world decals (sortKey 10-17) drawn as cut-outs, not blended (research 98 under way); displacement ("dn"
-  materials) not drawn; the vision's grading CLUT not applied; converted maps' sky in game believed at infinity
-  (converter skips sky faces, its box is camera-relative) but not seen by the owner since.
+- Then: the vision's grading CLUT (gradingclut<name>, PQ space before the RRT) with base exposure +1.0 EV
+  (Speedball percentiles match); decals blended in sort order (research 98); material tints from psData row 2
+  with the slot-59 mask (REMONT building, blue containers); atmospheric fog by fogHalfPlaneDistance; sky fog by
+  fogSkyIntensity and the zenith band; metered auto exposure on stock maps while their sky is drawn; Shipment's sky
+  (only tw/sky_* is the sky box; sky_<map> fallback). Bench: out/agent/mapcam.ps1 -Name -Map -Cam (caches in the
+  session scratchpad: E: is nearly full).
+- Checked: Speedball (against the owner's shot), Shipment (overcast port, fog), Hideout (desert, pale sky),
+  King (indoor; exposure meters to EV ~7.5 inside). Open: Speedball wall paint stripes (decal volumes?), Hideout's
+  far ridge dark, displacement not drawn (Speedball: 34 triangles, negligible), converted maps' sky in game
+  believed at infinity but unseen.
 
 ## Resume here (2026-11-12, afternoon)
 
