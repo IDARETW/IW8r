@@ -1576,7 +1576,9 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         if (!fog) cb[23] = 0;
         const bool litOn = lit && litDecode_ > 1.5f;
         cb[24] = litOn ? litDecode_ : 1.0f;
-        cb[25] = litOn && shadowOn ? 1.0f : 0.0f;
+        // The sun shadow map: the lit preview, and Game Lighting (the stock lightmaps hold no sun visibility: the game
+        // shadows the sun live, so without the map every surface took the full sun and the view looked washed out).
+        cb[25] = (litOn || (lit && game_.on)) && shadowOn ? 1.0f : 0.0f;
         cb[26] = shadowBias_;
         cb[27] = litOn ? exposure_ : 1.0f;
         std::memcpy(cb + 28, sunViewProj_, 64);
