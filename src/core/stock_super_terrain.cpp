@@ -494,6 +494,8 @@ bool buildStockTerrainMesh(const StockTerrain& terrain, int surface, const Stock
         for (int b = 0; b + 1 < n; ++b)
             for (int a = 0; a + 1 < n; ++a) keep[size_t(b) * size_t(n - 1) + size_t(a)] = coarseKept(*cutout, a, b, cells, stride);
     }
+    if (opt.onlyCutCells)
+        for (auto& k : keep) k = cut ? uint8_t(!k) : uint8_t(0);
     std::vector<uint32_t> vid(size_t(n) * size_t(n), UINT32_MAX);
     for (int b = 0; b + 1 < n; ++b)
         for (int a = 0; a + 1 < n; ++a) {

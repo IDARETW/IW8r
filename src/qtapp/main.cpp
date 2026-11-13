@@ -323,6 +323,22 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         setCam(centre + Vec3{-0.45 * R, -0.45 * R, 0.35 * R}, 45, -28.8);
     };
     const auto camB = [&] { setCam(Vec3{centre.x + 40, centre.y - 150, all.mins.z + 88}, 30, -5); };
+    // Streamed world tiles (Warzone) follow the camera: stand at the bench camera and let them come in (at most ten
+    // minutes; settled for three seconds) before anything is measured.
+    if (fixedCam && w.streamedTilesKnown() > 0) {
+        camA();
+        QElapsedTimer st, calm;
+        st.start();
+        calm.start();
+        while (st.elapsed() < 600000) {
+            cam->renderNow();
+            QApplication::processEvents(QEventLoop::AllEvents, 50);
+            if (!w.streamedTilesSettled() || cam->texturesPending()) calm.restart();
+            else if (calm.elapsed() > 3000) break;
+        }
+        report << QString("streamed_tiles drawn %1 of %2 after %3 ms").arg(w.streamedTilesDrawn()).arg(w.streamedTilesKnown()).arg(st.elapsed());
+        report << "streamed_tiles " + w.streamedTilesReport();
+    }
     const auto trigger = [&](const char* name) {
         if (QAction* a = w.action(name)) a->trigger();
     };

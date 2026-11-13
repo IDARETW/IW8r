@@ -5,6 +5,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Verdansk and Quarry stream their town around the camera.** The streamed world tiles within 20,000 units are
+  read and drawn in the background as you move (buildings, lots, roads), and dropped behind you; past them the
+  ground shows instead of holes. Read tiles stay on disk up to 3 GB (oldest dropped first). Settings
+  stock/autoStream, stock/streamRadius, stock/streamLimit, stock/streamCacheGB. File > Load Streamed World Around
+  Camera now just asks the loader to look again.
 - **Verdansk's buildings and roads (owner hint: transient tiles).** Most of Verdansk's world (buildings, lots, roads)
   is in 749 streamed tile zones; once they are read, the reference shows the town instead of flat grey sheets.
   Groundwork landed: tiles can be built one at a time from the map's surface table, stock textures stay

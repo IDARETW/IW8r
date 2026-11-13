@@ -154,6 +154,8 @@ struct StockTerrainBuildOptions {
     // has no hole where the coarse mesh it replaces had ground (small cut-outs whose filling geometry the editor may
     // not draw). 0 = decide at `stride` only.
     int cutoutStride = 0;
+    // Keep only the cells the cutout clears (the hole filler of a big map: drawn where no streamed tile is loaded).
+    bool onlyCutCells = false;
 };
 
 // Builds one surface. heights must be at least mapResolution x mapResolution; cutout may be null.

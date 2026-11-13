@@ -104,7 +104,27 @@ public:
         update();
     }
     void setReferenceDecalExtras(std::vector<app::ReferenceTexBatch> batches) {
-        pendingDecalExtras_ = std::move(batches);
+        static uint64_t version = 0;
+        ExtraGroup g;
+        g.key = 1, g.version = ++version, g.nearOnly = true;
+        g.batches = std::make_shared<const std::vector<app::ReferenceTexBatch>>(std::move(batches));
+        setReferenceExtraGroups({g});
+    }
+    // The reference's extras as keyed groups (the terrain layer patch, the prop decals, each streamed world tile; docs/
+    // PLAN_REMAINING.md 1.1). A group given again with the same key and version keeps its upload and its batches'
+    // textures; world groups hold ordinary world batches (drawn and shadowed as the main reference).
+    struct ExtraGroup {
+        uint64_t key = 0, version = 0;
+        bool world = false, nearOnly = false;
+        std::shared_ptr<const std::vector<app::ReferenceTexBatch>> batches;
+    };
+    // The areas (x0, y0, x1, y1) of the streamed world tiles drawn now: the terrain's hole filler is dropped there.
+    void setStreamedTileBoxes(std::vector<std::array<float, 4>> boxes) {
+        renderer_.setStreamedTileBoxes(boxes);
+        update();
+    }
+    void setReferenceExtraGroups(std::vector<ExtraGroup> groups) {
+        pendingExtraGroups_ = std::move(groups);
         decalExtrasDirty_ = true;
         update();
     }
@@ -385,7 +405,12 @@ private:
         int order = 0;
     };
     std::vector<RefDecalVolume> refTexVolume_;  // parallel: stock decal volume batches (research 99)
-    std::vector<app::ReferenceTexBatch> pendingDecalExtras_;
+    std::vector<ExtraGroup> pendingExtraGroups_;
+    struct ExtraMeta {
+        uint64_t key = 0, version = 0;
+        size_t count = 0;
+    };
+    std::vector<ExtraMeta> extraMeta_;  // the groups uploaded now, in order (their batches follow refTexExtraFrom_)
     bool decalExtrasDirty_ = false;
     size_t refTexExtraFrom_ = ~size_t(0);
     LayerLookup layerLookup_;

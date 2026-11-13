@@ -244,6 +244,13 @@ TEST(stock_super_terrain_mesh_stride_and_cutout) {
     CHECK(buildStockTerrainMesh(t, 0, g, &c, o, m));
     CHECK(m.cellsKept == 13);  // 16 - (0,0), (1,0), (1,1)
     o.cutoutStride = 0;
+    // The hole filler: only the cleared cells (5 at stride 1); none without a cutout.
+    o.onlyCutCells = true;
+    CHECK(buildStockTerrainMesh(t, 0, g, &c, o, m));
+    CHECK(m.cellsKept == 5);
+    CHECK(buildStockTerrainMesh(t, 0, g, nullptr, o, m));
+    CHECK(m.cellsKept == 0 && m.mesh.idx.empty());
+    o.onlyCutCells = false;
 }
 
 TEST(stock_super_terrain_meshes_and_budget) {

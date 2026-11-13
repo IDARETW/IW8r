@@ -56,7 +56,7 @@ follow the same milestones.
 
 ---
 
-## Milestone 0 — Land the work in progress
+## Milestone 0 — Land the work in progress (DONE a7bb3ae)
 - **What is in the working tree, not yet committed:**
   - screen-space AO (render.cpp `kAoShader`, `drawAo`, `invert4`);
   - a readable depth buffer (`R24G8_TYPELESS`);
@@ -71,7 +71,7 @@ follow the same milestones.
 Order: the streamed world first (owner hint), then the HDR foundation, then the features, then the GUI, then the build
 side.
 
-**1.1 Streamed world tiles follow the camera (Warzone maps).**
+**1.1 Streamed world tiles follow the camera (Warzone maps).** DONE 2026-11-13 (see PROGRESS; limits listed there).
 - **Automatic loading.** Turn the manual command into a background, camera-following loader. Reuse
   `MainWindow::loadStreamedWorldAroundCamera` (`main_window_stock_edit.cpp:541`), `WorldCache::requestStreamed`,
   `readStreamedWorldZones` / `streamedZonesNear` (`src/core/stock_world.cpp`), and the tile lightmap jobs

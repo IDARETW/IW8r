@@ -413,7 +413,24 @@ private:
     std::shared_ptr<struct StockTerrainLayerState> terrainLayers_;
     Vec3 terrainLayerCentre_{1e30, 1e30, 0};
     bool terrainLayerBusy_ = false;
-    std::vector<app::ReferenceTexBatch> terrainLayerBatches_, propDecalBatches_;
+    // The extras handed to the camera as keyed, versioned groups (CameraView::setReferenceExtraGroups).
+    std::shared_ptr<const std::vector<app::ReferenceTexBatch>> terrainLayerShared_, propDecalShared_;
+    uint64_t terrainLayerVersion_ = 0, propDecalVersion_ = 0;
+    // Streamed world tiles of a big map, built by transient zone index (docs/PLAN_REMAINING.md 1.1).
+    struct StreamTile {
+        std::shared_ptr<const std::vector<app::ReferenceTexBatch>> batches;
+        uint64_t version = 0;
+    };
+    std::map<int64_t, StreamTile> streamTiles_;
+    std::vector<StreamedWorldZone> streamZones_;  // of referenceZone_ (empty: no streamed tiles, or streaming off)
+    std::set<int64_t> streamBuilding_;
+    std::set<QString> streamRequested_;
+    QTimer* streamTimer_ = nullptr;
+    Vec3 streamCentre_{1e30, 1e30, 0};
+    bool streamDirty_ = false;
+    uint64_t streamVersion_ = 0;
+    void updateStreamedTiles();
+    void evictStreamedTiles(const QStringList& wanted);
     void pushDecalExtras();
     void updateTerrainLayers();
     class QTimer* terrainLayerTimer_ = nullptr;
@@ -421,7 +438,12 @@ public:
     const std::vector<StockModelInstance>* stockClutter() const { return refClutter_.get(); }  // tests, benchmark
     // The near-camera terrain layer patch: its centre and batch count (benchmark).
     Vec3 terrainLayerCentre() const { return terrainLayerCentre_; }
-    size_t terrainLayerBatchCount() const { return terrainLayerBatches_.size(); }
+    size_t terrainLayerBatchCount() const { return terrainLayerShared_ ? terrainLayerShared_->size() : 0; }
+    size_t streamedTilesDrawn() const { return streamTiles_.size(); }
+    size_t streamedTilesKnown() const { return streamZones_.size(); }
+    // Nothing being exported or built for the streamed tiles (benchmark: wait before measuring).
+    bool streamedTilesSettled() const;
+    QString streamedTilesReport() const;  // benchmark: wanted / built / empty / not exported around the camera
 private:
     std::shared_ptr<std::vector<app::GpuVertex>> refBaseTris_;
     size_t refWorldTris_ = 0;

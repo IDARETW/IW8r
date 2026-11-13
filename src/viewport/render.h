@@ -202,6 +202,13 @@ public:
     void setReferenceBaseParams(size_t batch, const float params[16]);
     // The near-camera terrain layer patch's core (x, y, radius; radius 0 = none): the coarse terrain is not drawn there.
     void setTerrainCut(float x, float y, float radius) { terrainCut_[0] = x, terrainCut_[1] = y, terrainCut_[2] = radius; }
+    // The loaded streamed tiles' areas (x0, y0, x1, y1; at most 256): the terrain's hole filler (vertex alpha 253) is
+    // discarded inside them.
+    void setStreamedTileBoxes(const std::vector<std::array<float, 4>>& boxes) {
+        tileBoxes_ = boxes;
+        if (tileBoxes_.size() > 256) tileBoxes_.resize(256);
+        tileBoxesDirty_ = true;
+    }
     // A batch of a stock decal material (sortKey 10-17, techset blend `_bad_`; research 98): blended over the opaque
     // world (premultiplied by its coverage B, depth tested with a small offset, no depth write), in sortKey order.
     // Layer 0 (layer == 0) takes params / reveal as a layer would (its weight is in the tangent length too).
@@ -210,6 +217,18 @@ public:
     // loaded): their own vertex buffer, batch indices from referenceTexturedBatches() on; each is a decal waiting for
     // setReferenceDecal. A second call replaces the previous ones; setReferenceTextured drops them.
     bool appendReferenceDecals(const std::vector<std::vector<GpuTexVertex>>& batches);
+    // The extras as keyed groups (terrain layer patch, prop decals, each streamed world tile), each in its own vertex
+    // buffer: a group given again with the same key and version (batches null) keeps its buffer and every batch's
+    // textures and constants; only new or changed groups are uploaded. World groups hold ordinary world batches (base
+    // and layer batches: drawn, cast sun shadows); the others are decal-like (setReferenceDecal makes them ready).
+    struct ExtraGroupInput {
+        uint64_t key = 0, version = 0;
+        const std::vector<std::vector<GpuTexVertex>>* batches = nullptr;  // null: reuse this key's group
+        std::vector<int> layers;  // world groups: per batch, 0 base / L >= 1 a layer batch
+        bool world = false;
+        bool nearOnly = false;    // drawn only in view and within 4,000 units (prop decals)
+    };
+    bool setReferenceExtras(const std::vector<ExtraGroupInput>& groups);
     // A stock batch's normal map (the flat one until then).
     // Layer batches of the stock reference: {all, ready to draw, multiply, with a normal map} (benchmark report).
     std::array<size_t, 4> referenceLayerStats() const {
@@ -558,9 +577,37 @@ private:
     std::vector<size_t> refLayerOrder_;  // layer batches by layer, then batch
     std::vector<size_t> refDecalOrder_;  // decal batches by sortKey, layer, batch
     float terrainCut_[3] = {0, 0, 0};
+    std::vector<std::array<float, 4>> tileBoxes_;
+    bool tileBoxesDirty_ = true;
+    ID3D11Buffer* cbTiles_ = nullptr;  // b9: count, then the boxes
     // Uploads every batch's 16 constants into the 64 KB chunks (when changed); true when per-batch offsets can be bound.
     bool uploadLayerParams();
-    ID3D11Buffer* vbRefTexExtra_ = nullptr;  // appendReferenceDecals
+    ID3D11Buffer* vbRefTexExtra_ = nullptr;  // unused (the extras are groups now: extraGroups_)
+    struct ExtraGroupGpu {
+        uint64_t key = 0, version = 0;
+        ID3D11Buffer* vb = nullptr;
+        std::vector<uint32_t> first, count;
+        std::vector<iw8r::AABB> bounds;
+        std::vector<int> layer;
+        bool world = false, nearOnly = false;
+    };
+    std::vector<ExtraGroupGpu> extraGroups_;
+    std::vector<ID3D11Buffer*> refTexVb_;     // per batch: its vertex buffer (null: vbRefTex_, the main reference)
+    std::vector<uint8_t> refTexNearOnly_;     // per batch: drawn only within 4,000 units of the camera
+    void releaseExtraGroups();
+    ID3D11Buffer* refVbFor(size_t k) const { return k < refTexVb_.size() && refTexVb_[k] ? refTexVb_[k] : vbRefTex_; }
+    // An extra batch whose bounds are outside the frustum (main batches use their chunks instead).
+    bool refExtraOutside(size_t k, const iw8r::Frustum& f) const {
+        if (refTexExtraFrom_ == ~size_t(0) || k < refTexExtraFrom_) return false;
+        const size_t e = k - refTexExtraFrom_;
+        if (e >= refTexExtraBounds_.size() || !refTexExtraBounds_[e].valid()) return false;
+        const iw8r::AABB& bb = refTexExtraBounds_[e];
+        const iw8r::Vec3 c = bb.center();
+        const double r = iw8r::length(bb.maxs - bb.mins) * 0.5;
+        for (const auto& pl : f.planes)
+            if (pl.n.x * c.x + pl.n.y * c.y + pl.n.z * c.z - pl.d > r) return true;
+        return false;
+    }
     size_t refTexExtraFrom_ = ~size_t(0);    // the first batch in vbRefTexExtra_
     std::vector<iw8r::AABB> refTexExtraBounds_;  // per appended batch: drawn only in view and near (prop decals)
     bool refDecalDirty_ = false;

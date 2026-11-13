@@ -5,7 +5,16 @@
 - **THE PLAN: docs/PLAN_REMAINING.md** (owner-approved 2026-11-13): Milestone 1 lighting (1.1 streamed tiles follow
   the camera, 1.2 HDR target, 1.3 SSR, ... 1.11 build-side lighting), 2 Umbra (decode, view, bake), 3 web viewer
   (streamed editor render, every command), 4 remaining pieces, 5 handover. Work it in order; mark items done there.
-- M1.1 in progress (2026-11-13): owner hint confirmed: with Verdansk's streamed tiles (IW8R_STREAM_AT test path,
+- M1.1 DONE (2026-11-13): camera-following tiles. Renderer extras are keyed groups (SceneRenderer::setReferenceExtras:
+  own VB per group, per-batch state kept for unchanged key+version, world groups = base/layer batches that draw and
+  cast; refTexVb_ / refTexNearOnly_ / refExtraOutside), CameraView::setReferenceExtraGroups (shared batches),
+  MainWindow::updateStreamedTiles (1 s timer, 1,500-unit move or streamDirty_, 2 builds at a time, drop past 1.3 R,
+  LRU eviction by <tile>/used), terrain hole filler (StockTerrainBuildOptions::onlyCutCells, vertex alpha 253, b9
+  tile boxes, tileFillHidden) and the fine cutout for the patch while streaming. Bench waits for the tiles at a fixed
+  camera (streamed_tiles lines). Verdansk raised camera: 49 tiles, 24.4 ms; Speedball unchanged. Limits: tiles are not
+  in the flat / wireframe views, 2D backdrops or picking; decal volumes are not projected on tile geometry; tile
+  displacement not applied.
+- (earlier) M1.1 groundwork (2026-11-13): owner hint confirmed: with Verdansk's streamed tiles (IW8R_STREAM_AT test path,
   36 tiles within 17,000 of -24900 -1700) the grey sheets are buildings, lots and roads. Done so far: core
   StockWorldSurfaceTable kept on StockWorld + buildStockWorldTile (test stock_world_streamed_tile_from_table),
   readStockWorld/WorldCache::load includeStreamed flag; BC1/2/3/7 stock images uploaded compressed

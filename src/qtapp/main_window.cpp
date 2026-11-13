@@ -214,10 +214,13 @@ struct StockTerrainLayerState {
     std::map<int, std::vector<StockTerrainLayerMask>> masks;  // per surface, by layer (loaded on demand)
     std::map<int, StockTerrainMesh> meshes;                   // per surface x 16 + stride (built on demand)
     int coarseStride = 0;                                     // the coarse terrain's stride: the patch keeps its cells
+    bool fineCutout = false;  // the streamed tiles are drawn (their geometry fills the cut-outs): the fine cut-out only
 };
+// holeFill: also the cells the cutouts clear, marked (vertex alpha 253) so the shaders drop them where a streamed tile
+// is loaded (its geometry fills the hole; elsewhere the terrain shows instead of the sky).
 void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
                              std::vector<app::ReferenceTexBatch>& out, StockGroundGrid* ground = nullptr,
-                             std::shared_ptr<StockTerrainLayerState>* layersOut = nullptr);
+                             std::shared_ptr<StockTerrainLayerState>* layersOut = nullptr, bool holeFill = false);
 // The terrain layers of the surfaces within `radius` of (x, y), as blended batches (base layer, then the layers), their
 // weights faded to 0 at the radius so the patch melts into the baked colour beyond.
 std::vector<app::ReferenceTexBatch> buildTerrainLayerBatches(StockTerrainLayerState& st, double x, double y, double radius);
@@ -7185,13 +7188,45 @@ void MainWindow::projectPropDecals() {
         app::ReferenceTexBatch rb;
         if (stockDecalBatch(d, b, order, rb)) out.push_back(std::move(rb)), ++order;
     }
-    propDecalBatches_ = std::move(out);
+    propDecalShared_ = std::make_shared<const std::vector<app::ReferenceTexBatch>>(std::move(out));
+    ++propDecalVersion_;
     pushDecalExtras();
 }
 
 void MainWindow::pushDecalExtras() {
-    std::vector<app::ReferenceTexBatch> all = terrainLayerBatches_;  // the terrain layers first, under the decals
-    all.insert(all.end(), propDecalBatches_.begin(), propDecalBatches_.end());
+    // The terrain layers first (under the decals), the prop decals, then every streamed world tile.
+    std::vector<CameraView::ExtraGroup> groups;
+    if (terrainLayerShared_ && !terrainLayerShared_->empty()) {
+        CameraView::ExtraGroup g;
+        g.key = 0x54455252, g.version = terrainLayerVersion_, g.batches = terrainLayerShared_;
+        groups.push_back(g);
+    }
+    if (propDecalShared_ && !propDecalShared_->empty()) {
+        CameraView::ExtraGroup g;
+        g.key = 0x50524f50, g.version = propDecalVersion_, g.nearOnly = true, g.batches = propDecalShared_;
+        groups.push_back(g);
+    }
+    for (const auto& [index, t] : streamTiles_)
+        if (t.batches && !t.batches->empty()) {
+            CameraView::ExtraGroup g;
+            g.key = 0x1000000000ull + uint64_t(index), g.version = t.version, g.world = true, g.batches = t.batches;
+            groups.push_back(g);
+        }
+    {
+        // The loaded tiles' areas: the terrain's hole filler is not drawn there.
+        std::vector<std::array<float, 4>> boxes;
+        for (const auto& [index, t] : streamTiles_)
+            for (const StreamedWorldZone& z : streamZones_)
+                if (z.index == index && z.bounds.valid()) {
+                    boxes.push_back({float(z.bounds.mins.x), float(z.bounds.mins.y), float(z.bounds.maxs.x), float(z.bounds.maxs.y)});
+                    break;
+                }
+        camera_->setStreamedTileBoxes(std::move(boxes));
+    }
+    std::vector<app::ReferenceTexBatch> all;  // for the diagnosis below only
+    const size_t terrainCount = terrainLayerShared_ ? terrainLayerShared_->size() : 0;
+    if (qEnvironmentVariableIsSet("IW8R_REF_NEAR"))
+        for (const auto& g : groups) all.insert(all.end(), g.batches->begin(), g.batches->end());
     // Diagnosis (IW8R_REF_NEAR, as the world batches): the extras near the point, to <file>.extras.
     if (const QStringList near = qEnvironmentVariable("IW8R_REF_NEAR").split(' ', Qt::SkipEmptyParts); near.size() >= 4) {
         const double nx = near[0].toDouble(), ny = near[1].toDouble(), nr = near[2].toDouble();
@@ -7205,12 +7240,12 @@ void MainWindow::pushDecalExtras() {
                     if (std::hypot(b.tris[i].x - nx, b.tris[i].y - ny) < nr)
                         ++inside, zmin = std::min(zmin, double(b.tris[i].z)), zmax = std::max(zmax, double(b.tris[i].z));
                 if (inside)
-                    lf.write(QString("%1 %2 tris %3 terrain %4 base %5 order %6 z %7..%8\n").arg(k < terrainLayerBatches_.size() ? "T" : "P")
+                    lf.write(QString("%1 %2 tris %3 terrain %4 base %5 order %6 z %7..%8\n").arg(k < terrainCount ? "T" : "P")
                                  .arg(QString::fromStdString(b.material)).arg(inside).arg(b.terrainLayer).arg(b.terrainBase).arg(b.decalOrder)
                                  .arg(zmin, 0, 'f', 0).arg(zmax, 0, 'f', 0).toUtf8());
             }
     }
-    camera_->setReferenceDecalExtras(std::move(all));
+    camera_->setReferenceExtraGroups(std::move(groups));
 }
 
 void MainWindow::updateTerrainLayers() {
@@ -7228,8 +7263,9 @@ void MainWindow::updateTerrainLayers() {
             if (!self) return;
             self->terrainLayerBusy_ = false;
             if (self->referenceZone_ != zone) return;
-            self->terrainLayerBatches_ = std::move(*batches);
-            self->camera_->setTerrainCut(c.x, c.y, self->terrainLayerBatches_.empty() ? 0.0 : 0.74 * terrainLayerRadius());
+            self->terrainLayerShared_ = batches;
+            ++self->terrainLayerVersion_;
+            self->camera_->setTerrainCut(c.x, c.y, batches->empty() ? 0.0 : 0.74 * terrainLayerRadius());
             self->pushDecalExtras();
         }, Qt::QueuedConnection);
     }).detach();
@@ -7237,7 +7273,7 @@ void MainWindow::updateTerrainLayers() {
 
 void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
                              std::vector<app::ReferenceTexBatch>& out, StockGroundGrid* ground,
-                             std::shared_ptr<StockTerrainLayerState>* layersOut) {
+                             std::shared_ptr<StockTerrainLayerState>* layersOut, bool holeFill) {
     if (qEnvironmentVariableIsSet("IW8R_NO_SUPER_TERRAIN")) return;
     const QString dir = zoneDir + "/terrain";
     if (QFileInfo::exists(dir + "/none")) return;  // looked once: no super terrain in this map
@@ -7314,9 +7350,17 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
         ground->finish();
     }
     const Vec3 light = normalize(Vec3{0.35, 0.55, 0.75});
-    for (const StockTerrainMesh& tm : meshes.meshes) {
+    StockTerrainMeshes fill;
+    if (holeFill) {
+        StockTerrainBuildOptions fo = opt;
+        fo.onlyCutCells = true;
+        buildStockTerrainMeshes(terrain, heights, cutouts, fo, fill, nullptr);
+    }
+    for (int pass = 0; pass < 2; ++pass)
+    for (const StockTerrainMesh& tm : (pass == 0 ? meshes : fill).meshes) {
         const ImportedMesh& m = tm.mesh;
         if (m.idx.empty()) continue;
+        const uint32_t alpha = pass == 0 ? 0xfeu : 0xfdu;  // 254 the coarse terrain, 253 its hole filler
         app::ReferenceTexBatch rb;
         // The surface's baked albedo, by its file ("\x06<path>"); a plain colour when it was not exported.
         const std::string ap = tm.albedoImage.empty() ? std::string() : findStockTerrainImage(imageDir.toStdString(), tm.albedoImage);
@@ -7328,7 +7372,7 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
             const double shade = 0.55 + 0.45 * std::fabs(dot(n, light));
             const uint32_t g = uint32_t(std::clamp(255.0 * shade, 0.0, 255.0));
             // Alpha 254 marks the coarse super terrain (cut away inside the near-camera layer patch).
-            app::GpuTexVertex v{float(p.x), float(p.y), float(p.z), 0, 0, g | (g << 8) | (g << 16) | (0xfeu << 24)};
+            app::GpuTexVertex v{float(p.x), float(p.y), float(p.z), 0, 0, g | (g << 8) | (g << 16) | (alpha << 24)};
             if (k < tm.albedoUv.size()) v.u = float(tm.albedoUv[k][0]), v.v = float(tm.albedoUv[k][1]);
             v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
             // A tangent along +x (the albedo's u): the stock batches are normal-mapped (a flat map here), and a zero
@@ -7395,7 +7439,7 @@ std::vector<app::ReferenceTexBatch> buildTerrainLayerBatches(StockTerrainLayerSt
         if (!st.meshes.count(meshKey)) {
             StockTerrainBuildOptions bo;
             bo.stride = stride;
-            bo.cutoutStride = qEnvironmentVariableIsSet("IW8R_TERRAIN_FINE_CUTOUT") ? 0 : st.coarseStride;
+            bo.cutoutStride = qEnvironmentVariableIsSet("IW8R_TERRAIN_FINE_CUTOUT") || st.fineCutout ? 0 : st.coarseStride;
             StockTerrainMesh m;
             const StockTerrainCutout* cut = size_t(s) < st.cutouts.size() && !st.cutouts[size_t(s)].words.empty() ? &st.cutouts[size_t(s)] : nullptr;
             if (!buildStockTerrainMesh(st.terrain, s, st.heights[size_t(s)], cut, bo, m)) continue;
@@ -7877,7 +7921,13 @@ void MainWindow::loadStockReference(const QString& zone) {
     const StockDecalTools tools{toolPath("acts"), toolPath("replay"), toolPath("oodle")};
     std::thread([self, cache, zone, zoneDir, tools] {
         QString err;
-        std::optional<StockWorld> loaded = cache->load(zone, &err);
+        const bool autoStream = Settings::instance().value("stock/autoStream", true).toBool();
+        std::optional<StockWorld> loaded = cache->load(zone, &err, !autoStream);
+        auto streamZones = std::make_shared<std::vector<StreamedWorldZone>>();
+        if (loaded && autoStream) {
+            std::string serr;
+            if (!readStreamedWorldZones(zoneDir.toStdString(), *streamZones, &serr)) streamZones->clear();
+        }
         auto world = loaded ? std::make_shared<const StockWorld>(std::move(*loaded)) : std::shared_ptr<const StockWorld>();
         auto tris = std::make_shared<std::vector<app::GpuVertex>>();
         size_t n = world ? app::buildReferenceTris(*world, *tris) : 0;
@@ -7891,7 +7941,7 @@ void MainWindow::loadStockReference(const QString& zone) {
         if (drawWorld) app::buildReferenceTexBatches(*drawWorld, *texBatches);  // textured camera reference (3.19)
         StockGroundGrid terrainGround;
         std::shared_ptr<StockTerrainLayerState> terrainLayers;
-        if (world) appendStockSuperTerrain(zone, zoneDir, tools, *texBatches, &terrainGround, &terrainLayers);  // research 102
+        if (world) appendStockSuperTerrain(zone, zoneDir, tools, *texBatches, &terrainGround, &terrainLayers, !streamZones->empty());  // research 102
         std::shared_ptr<std::vector<StockModelInstance>> clutter =
             world ? scatterStockGroundClutter(zone, zoneDir, tools, terrainGround) : nullptr;  // research 100
         std::shared_ptr<const StockDecalData> decals;
@@ -7931,7 +7981,8 @@ void MainWindow::loadStockReference(const QString& zone) {
         auto props = std::make_shared<std::vector<StockModelInstance>>();
         std::string perr;
         if (n) readStockModelInstances(zoneDir.toStdString(), *props, &perr);
-        QMetaObject::invokeMethod(qApp, [self, zone, tris, n, err, props, plans, world, texBatches, decals, clutter, terrainLayers] {
+        if (terrainLayers && !streamZones->empty()) terrainLayers->fineCutout = true;  // the tiles fill the cut-outs
+        QMetaObject::invokeMethod(qApp, [self, zone, tris, n, err, props, plans, world, texBatches, decals, clutter, terrainLayers, streamZones] {
             if (!self || self->referenceZone_ != zone) return;
             self->stockWorld_ = world;
             self->stockDecals_ = decals;
@@ -7944,9 +7995,26 @@ void MainWindow::loadStockReference(const QString& zone) {
                 self->terrainLayerTimer_->start();
             }
             self->terrainLayerCentre_ = Vec3{1e30, 1e30, 0};
-            self->terrainLayerBatches_.clear();
+            self->terrainLayerShared_.reset();
+            ++self->terrainLayerVersion_;
             self->camera_->setTerrainCut(0, 0, 0);
-            self->propDecalBatches_.clear();
+            self->propDecalShared_.reset();
+            ++self->propDecalVersion_;
+            // Streamed world tiles (Warzone): built again around the camera for this map.
+            self->streamTiles_.clear();
+            self->streamBuilding_.clear();
+            self->streamRequested_.clear();
+            self->streamZones_ = std::move(*streamZones);
+            self->streamCentre_ = Vec3{1e30, 1e30, 0};
+            if (!self->streamZones_.empty() && !self->streamTimer_) {
+                self->streamTimer_ = new QTimer(self);
+                self->streamTimer_->setInterval(1000);
+                QObject::connect(self->streamTimer_, &QTimer::timeout, self, [self] { self->updateStreamedTiles(); });
+                QObject::connect(self->worldCache_, &WorldCache::streamedReady, self, [self](const QString& z, int, int) {
+                    if (z == self->referenceZone_) self->streamDirty_ = true;  // exports done: build them
+                });
+                self->streamTimer_->start();
+            }
             self->propDecalsZone_.clear();
             if (world) self->camera_->setGameStockBakedScale(world->bakedLightScale);
             self->camera_->setReferenceTextured(std::move(*texBatches));
@@ -7986,6 +8054,119 @@ void MainWindow::loadStockReference(const QString& zone) {
             self->rebuildReferenceProps();
         }, Qt::QueuedConnection);
     }).detach();
+}
+
+// Streamed world tiles follow the camera (docs/PLAN_REMAINING.md 1.1): the tiles within stock/streamRadius (20,000)
+// are exported through ACTS when missing (WorldCache::requestStreamed, one at a time), built on worker threads from
+// the main zone's surface table (buildStockWorldTile) and drawn as world groups of the camera's extras; tiles past 1.3
+// times the radius are dropped. Exported tiles stay on disk up to stock/streamCacheGB (3), least recently used first.
+void MainWindow::updateStreamedTiles() {
+    if (streamZones_.empty() || !worldCache_ || !stockWorld_ || !stockWorld_->surfaceTable || referenceZone_.isEmpty()) return;
+    const Vec3 c = ctx_.cam.pos;
+    const bool moved = std::hypot(c.x - streamCentre_.x, c.y - streamCentre_.y) > 1500.0;
+    if (!moved && !streamDirty_) return;
+    streamDirty_ = false;
+    streamCentre_ = c;
+    const auto dir = worldCache_->lookup(referenceZone_);
+    if (!dir) return;
+    const double radius = Settings::instance().value("stock/streamRadius", 20000.0).toDouble();
+    const size_t limit = size_t(std::max(1, Settings::instance().value("stock/streamLimit", 96).toInt()));
+    const auto wanted = streamedZonesNear(streamZones_, c.x, c.y, radius, limit);
+    const auto keepZones = streamedZonesNear(streamZones_, c.x, c.y, radius * 1.3, limit * 2);
+    std::set<int64_t> keep;
+    for (const auto& z : keepZones) keep.insert(z.index);
+    bool changed = false;
+    for (auto it = streamTiles_.begin(); it != streamTiles_.end();)
+        if (!keep.count(it->first)) it = streamTiles_.erase(it), changed = true;
+        else ++it;
+    QStringList missing, wantedNames;
+    QPointer<MainWindow> self(this);
+    const QString zone = referenceZone_;
+    for (const StreamedWorldZone& z : wanted) {
+        const QString name = QString::fromStdString(z.name);
+        wantedNames << name;
+        const QString tileDir = *dir + "/streamed/" + name;
+        if (!QFileInfo(tileDir).isDir()) {
+            if (!streamRequested_.count(name)) missing << name, streamRequested_.insert(name);
+            continue;
+        }
+        QFile(tileDir + "/used").open(QIODevice::WriteOnly);  // its last use (the disk budget drops the oldest)
+        if (streamTiles_.count(z.index) || streamBuilding_.count(z.index) || streamBuilding_.size() >= 2) continue;
+        streamBuilding_.insert(z.index);
+        const std::shared_ptr<const StockWorld> world = stockWorld_;
+        const int64_t index = z.index;
+        std::thread([self, world, tileDir, index, zone] {
+            auto batches = std::make_shared<std::vector<app::ReferenceTexBatch>>();
+            StockWorld tw;
+            std::string err;
+            if (buildStockWorldTile(*world->surfaceTable, tileDir.toStdString(), tw, &err)) app::buildReferenceTexBatches(tw, *batches);
+            QMetaObject::invokeMethod(qApp, [self, batches, index, zone] {
+                if (!self) return;
+                self->streamBuilding_.erase(index);
+                if (self->referenceZone_ != zone) return;
+                self->streamTiles_[index] = StreamTile{batches, ++self->streamVersion_};
+                self->streamDirty_ = true;  // the next tick starts the next builds
+                self->pushDecalExtras();
+            }, Qt::QueuedConnection);
+        }).detach();
+    }
+    if (!missing.isEmpty()) worldCache_->requestStreamed(referenceZone_, missing);
+    if (changed) pushDecalExtras();
+    evictStreamedTiles(wantedNames);
+}
+
+QString MainWindow::streamedTilesReport() const {
+    if (streamZones_.empty() || !worldCache_) return QString();
+    const auto dir = worldCache_->lookup(referenceZone_);
+    const double radius = Settings::instance().value("stock/streamRadius", 20000.0).toDouble();
+    const size_t limit = size_t(std::max(1, Settings::instance().value("stock/streamLimit", 96).toInt()));
+    const auto wanted = streamedZonesNear(streamZones_, ctx_.cam.pos.x, ctx_.cam.pos.y, radius, limit);
+    size_t built = 0, empty = 0, notExported = 0;
+    QStringList emptyNames, missingNames;
+    for (const auto& z : wanted) {
+        const auto it = streamTiles_.find(z.index);
+        if (it != streamTiles_.end()) {
+            ++built;
+            if (!it->second.batches || it->second.batches->empty()) ++empty, emptyNames << QString::fromStdString(z.name);
+        } else if (!dir || !QFileInfo(*dir + "/streamed/" + QString::fromStdString(z.name)).isDir()) {
+            ++notExported, missingNames << QString::fromStdString(z.name);
+        }
+    }
+    return QString("wanted %1 built %2 empty %3 [%4] not_exported %5 [%6]").arg(wanted.size()).arg(built).arg(empty)
+        .arg(emptyNames.mid(0, 8).join(' ')).arg(notExported).arg(missingNames.mid(0, 8).join(' '));
+}
+
+bool MainWindow::streamedTilesSettled() const {
+    return streamBuilding_.empty() && !streamDirty_ && (!worldCache_ || !worldCache_->busy());
+}
+
+void MainWindow::evictStreamedTiles(const QStringList& wanted) {
+    const auto dir = worldCache_ ? worldCache_->lookup(referenceZone_) : std::nullopt;
+    if (!dir) return;
+    const qint64 budget = qint64(Settings::instance().value("stock/streamCacheGB", 3.0).toDouble() * 1024.0 * 1024.0 * 1024.0);
+    struct Tile {
+        QString path;
+        qint64 bytes = 0;
+        QDateTime used;
+    };
+    std::vector<Tile> tiles;
+    qint64 total = 0;
+    for (const QFileInfo& t : QDir(*dir + "/streamed").entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        if (t.fileName() == "w") continue;  // the export scratch
+        Tile e;
+        e.path = t.absoluteFilePath();
+        for (QDirIterator it(e.path, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) e.bytes += QFileInfo(it.next()).size();
+        const QFileInfo used(e.path + "/used");
+        e.used = used.exists() ? used.lastModified() : t.lastModified();
+        total += e.bytes;
+        if (!wanted.contains(t.fileName())) tiles.push_back(e);
+    }
+    if (total <= budget) return;
+    std::sort(tiles.begin(), tiles.end(), [](const Tile& a, const Tile& b) { return a.used < b.used; });
+    for (const Tile& t : tiles) {
+        if (total <= budget) break;
+        if (QDir(t.path).removeRecursively()) total -= t.bytes;
+    }
 }
 
 QStringList MainWindow::stockSkyList() const { return stockSkyNames(); }

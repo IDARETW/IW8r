@@ -539,6 +539,12 @@ QString MainWindow::stockZoneForReading(const QString& zone, QString* tempDir, Q
 }
 
 int MainWindow::loadStreamedWorldAroundCamera() {
+    if (!streamZones_.empty()) {  // the tiles follow the camera already: look now
+        streamDirty_ = true;
+        updateStreamedTiles();
+        ctx_.setStatus(QString("Streamed world: %1 tile(s) drawn around the camera, %2 in the map").arg(streamTiles_.size()).arg(streamZones_.size()));
+        return int(streamTiles_.size());
+    }
     if (referenceZone_.isEmpty() || !worldCache_) {
         ctx_.setStatus("Load Streamed World: open a stock map with its reference first (File > Open IW8 Stock Map)");
         return -1;

@@ -217,7 +217,8 @@ void CameraView::render() {
         }
         renderer_.setReferenceTextured(batches, &refTexLayer_);
         refTexExtraFrom_ = ~size_t(0);
-        decalExtrasDirty_ = decalExtrasDirty_ || !pendingDecalExtras_.empty();
+        extraMeta_.clear();  // the renderer dropped the extras with the old reference
+        decalExtrasDirty_ = decalExtrasDirty_ || !pendingExtraGroups_.empty();
         refTexResolved_.assign(refTexMaterials_.size(), false);
         refTexPending_ = refPollDue_ = true;
         pendingRefTex_.clear();
@@ -225,26 +226,70 @@ void CameraView::render() {
     }
     if (decalExtrasDirty_ && !refTexDirty_) {
         IW8R_PROF("r.up_extras");
-        // Decal volumes on the props: after the world's batches (dropping an earlier set).
+        // The extras after the world's batches, group by group: a group with the key and version it had keeps its
+        // upload and its batches' state; the others are uploaded (docs/PLAN_REMAINING.md 1.1).
         decalExtrasDirty_ = false;
-        if (refTexExtraFrom_ != ~size_t(0) && refTexExtraFrom_ <= refTexMaterials_.size()) {
-            refTexMaterials_.resize(refTexExtraFrom_), refTexLayer_.resize(refTexExtraFrom_);
-            refTexVolume_.resize(refTexExtraFrom_), refTexResolved_.resize(refTexExtraFrom_);
+        const size_t from = refTexExtraFrom_ != ~size_t(0) && refTexExtraFrom_ <= refTexMaterials_.size() ? refTexExtraFrom_ : refTexMaterials_.size();
+        struct OldSlice {
+            size_t first = 0, count = 0;
+            uint64_t version = 0;
+        };
+        std::map<uint64_t, OldSlice> oldAt;
+        {
+            size_t at = from;
+            for (const ExtraMeta& m : extraMeta_) oldAt[m.key] = {at, m.count, m.version}, at += m.count;
         }
-        refTexExtraFrom_ = refTexMaterials_.size();
-        std::vector<std::vector<app::GpuTexVertex>> vb;
-        for (const auto& b : pendingDecalExtras_) {
-            refTexMaterials_.push_back(b.material);
-            refTexLayer_.push_back(0);
-            RefDecalVolume dv;
-            dv.on = true, dv.mask = b.decalMask, dv.a = b.decalA, dv.b = b.decalB, dv.order = b.decalOrder;
-            dv.terrainLayer = b.terrainLayer, dv.flags = b.terrainFlags, dv.k = b.terrainK, dv.terrainBase = b.terrainBase;
-            for (int c = 0; c < 3; ++c) dv.tint[c] = b.decalTint[c];
-            refTexVolume_.push_back(dv);
-            refTexResolved_.push_back(false);
-            vb.push_back(b.tris);
+        const std::vector<std::string> oMat(refTexMaterials_.begin() + std::ptrdiff_t(from), refTexMaterials_.end());
+        const std::vector<int> oLay(refTexLayer_.begin() + std::ptrdiff_t(std::min(from, refTexLayer_.size())), refTexLayer_.end());
+        const std::vector<RefDecalVolume> oVol(refTexVolume_.begin() + std::ptrdiff_t(std::min(from, refTexVolume_.size())), refTexVolume_.end());
+        const std::vector<bool> oRes(refTexResolved_.begin() + std::ptrdiff_t(std::min(from, refTexResolved_.size())), refTexResolved_.end());
+        refTexMaterials_.resize(from), refTexLayer_.resize(from), refTexVolume_.resize(from), refTexResolved_.resize(from);
+        std::vector<app::SceneRenderer::ExtraGroupInput> in;
+        std::vector<std::vector<std::vector<app::GpuTexVertex>>> keep;
+        keep.reserve(pendingExtraGroups_.size());
+        std::vector<ExtraMeta> meta;
+        for (const ExtraGroup& g : pendingExtraGroups_) {
+            const size_t n = g.batches ? g.batches->size() : 0;
+            if (n == 0) continue;
+            app::SceneRenderer::ExtraGroupInput gi;
+            gi.key = g.key, gi.version = g.version, gi.world = g.world, gi.nearOnly = g.nearOnly;
+            const auto o = oldAt.find(g.key);
+            if (o != oldAt.end() && o->second.version == g.version && o->second.count == n) {
+                const size_t s0 = o->second.first - from;
+                for (size_t j = 0; j < n; ++j) {
+                    refTexMaterials_.push_back(s0 + j < oMat.size() ? oMat[s0 + j] : std::string());
+                    refTexLayer_.push_back(s0 + j < oLay.size() ? oLay[s0 + j] : 0);
+                    refTexVolume_.push_back(s0 + j < oVol.size() ? oVol[s0 + j] : RefDecalVolume{});
+                    refTexResolved_.push_back(s0 + j < oRes.size() ? bool(oRes[s0 + j]) : false);
+                }
+            } else {
+                keep.emplace_back();
+                auto& vb = keep.back();
+                for (const auto& b : *g.batches) {
+                    refTexMaterials_.push_back(b.material);
+                    RefDecalVolume dv;
+                    if (g.world) {  // world batches: base / layer / decal volume as in the main reference
+                        refTexLayer_.push_back(b.layer);
+                        dv.on = b.decalVolume, dv.mask = b.decalMask, dv.a = b.decalA, dv.b = b.decalB, dv.order = b.decalOrder;
+                    } else {
+                        refTexLayer_.push_back(0);
+                        dv.on = true, dv.mask = b.decalMask, dv.a = b.decalA, dv.b = b.decalB, dv.order = b.decalOrder;
+                        dv.terrainLayer = b.terrainLayer, dv.flags = b.terrainFlags, dv.k = b.terrainK, dv.terrainBase = b.terrainBase;
+                    }
+                    for (int c = 0; c < 3; ++c) dv.tint[c] = b.decalTint[c];
+                    refTexVolume_.push_back(dv);
+                    refTexResolved_.push_back(false);
+                    vb.push_back(b.tris);
+                    gi.layers.push_back(g.world ? b.layer : 0);
+                }
+                gi.batches = &vb;
+            }
+            in.push_back(std::move(gi));
+            meta.push_back({g.key, g.version, n});
         }
-        renderer_.appendReferenceDecals(vb);
+        renderer_.setReferenceExtras(in);
+        refTexExtraFrom_ = from;
+        extraMeta_ = std::move(meta);
         refTexPending_ = refPollDue_ = true;
     }
     // Per-frame texture budget, reset before the reference loop so it gets loads after a busy frame too.
