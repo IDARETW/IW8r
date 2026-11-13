@@ -6908,6 +6908,43 @@ void MainWindow::loadStockSun(const QString& zone) {
         }
         std::string visionText;
         if (QFile vf(vision); !vision.isEmpty() && vf.open(QIODevice::ReadOnly)) visionText = vf.readAll().toStdString();
+        // The vision's grading CLUT (field NONMKTKNNM, image "gradingclut<name>", a 3D texture in the map zone).
+        std::shared_ptr<GameGradingClut> grade;
+        {
+            std::string clutName;
+            for (size_t pos = visionText.find("NONMKTKNNM"); pos != std::string::npos && clutName.empty();
+                 pos = visionText.find("NONMKTKNNM", pos + 1)) {
+                const size_t q1 = visionText.find('"', pos), q2 = q1 == std::string::npos ? q1 : visionText.find('"', q1 + 1);
+                const size_t eol = visionText.find('\n', pos);
+                if (q2 != std::string::npos && (eol == std::string::npos || q2 < eol)) clutName = visionText.substr(q1 + 1, q2 - q1 - 1);
+            }
+            if (!clutName.empty()) {
+                const QString image = "gradingclut" + QString::fromStdString(clutName);
+                const QString clutDir = QFileInfo(dir).absolutePath() + "/grading";
+                const auto findDds = [&] {
+                    for (QDirIterator it(clutDir, {"*.dds"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
+                        const QString f = it.next();
+                        if (QFileInfo(f).fileName().startsWith(image + ".")) return f;
+                    }
+                    return QString();
+                };
+                QString dds = findDds();
+                const QString techsets = QFileInfo(ff).absolutePath() + "/techsets_" + zone + ".ff";
+                if (dds.isEmpty() && QFileInfo::exists(acts))
+                    for (const QString& z : {ff, techsets}) {
+                        if (!QFileInfo::exists(z)) continue;
+                        QProcess p;
+                        p.start(acts, {"--noUpdater", "fastfile", "-r", "mw19replay", "-g", replay, "--oodle", oodle, "-a", "image", "-n",
+                                       image, "-l", "-o", clutDir, z});
+                        p.waitForFinished(120000);
+                        dds = findDds();
+                        if (!dds.isEmpty()) break;
+                    }
+                std::string bytes;
+                auto g = std::make_shared<GameGradingClut>();
+                if (!dds.isEmpty() && readFile(dds.toStdString(), bytes) && gameGradingClutFromDds(bytes, *g)) grade = g;
+            }
+        }
         // The sky material's first pixel constant scales its image (tw/sky_<map>, in techsets_<map>.ff: 39.1 on
         // mp_m_speedball): the stock sky image is stored that many times darker than the game draws it.
         double skyIntensity = 0;
@@ -6961,8 +6998,9 @@ void MainWindow::loadStockSun(const QString& zone) {
                 break;
             }
         }
-        QMetaObject::invokeMethod(qApp, [self, zone, intensity, color, toward, visionText, skyIntensity] {
+        QMetaObject::invokeMethod(qApp, [self, zone, intensity, color, toward, visionText, skyIntensity, grade] {
             if (!self || self->referenceZone_ != zone) return;
+            if (grade) self->camera_->setGameStockGrading(grade);
             if (!visionText.empty()) self->camera_->setGameStockVision(visionText);
             if (skyIntensity > 0) self->camera_->setGameStockSkyIntensity(skyIntensity);
             if (intensity > 0) self->camera_->setGameStockSun(intensity, color, toward);

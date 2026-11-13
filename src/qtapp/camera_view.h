@@ -159,7 +159,7 @@ public slots:
     // The stock map shown as the reference ("" = none): Game Lighting then uses that map's sun and auto exposure
     // (core game_look stockMapLook).
     void setGameStockMap(const std::string& zone) {
-        if (zone != gameStockMap_) gameBakeRev_ = ~0ull, stockSunKnown_ = false, stockFog_ = GameFog{}, stockSkyIntensity_ = 0;  // the bake follows the sun
+        if (zone != gameStockMap_) gameBakeRev_ = ~0ull, stockSunKnown_ = false, stockFog_ = GameFog{}, stockSkyIntensity_ = 0, stockGrade_.reset(), gameLutReady_ = false;  // the bake follows the sun
         if (zone != gameStockMap_) {
             // Layered world materials are numbered per map (tw4/..., twc4/...: MaterialCache::mapLocalName): another
             // map's textures under the same names are not this map's.
@@ -174,6 +174,12 @@ public slots:
     // The sky preview: conversion exposure and the HDR source mean / 99.5th percentile luminance (diagnosis).
     std::array<float, 3> skyLuminance() const { return {skyExposure_, skyMeanLum_, skyHighLum_}; }
     std::array<size_t, 4> referenceLayerStats() const { return renderer_.referenceLayerStats(); }
+    // The stock map's grading CLUT (its vision's): baked into the colour LUT.
+    void setGameStockGrading(std::shared_ptr<const GameGradingClut> grade) {
+        stockGrade_ = std::move(grade);
+        gameLutReady_ = false;
+        update();
+    }
     // The stock sky material's intensity (its first pixel constant): the sky image times this is the drawn sky.
     void setGameStockSkyIntensity(double intensity) {
         stockSkyIntensity_ = intensity;
@@ -406,6 +412,7 @@ private:
     bool stockSunKnown_ = false;
     GameFog stockFog_;
     double stockSkyIntensity_ = 0;
+    std::shared_ptr<const GameGradingClut> stockGrade_;
     double stockSunIntensity_ = 0;
     Vec3 stockSunColor_{1, 1, 1}, stockSunToward_{0, 0, 1};
     // The stock map's look for Game Lighting: its own entry, else the shipped map with the nearest sun.

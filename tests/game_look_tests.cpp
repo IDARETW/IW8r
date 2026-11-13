@@ -68,6 +68,30 @@ TEST(game_look_auto_exposure) {
     CHECK(a > 1.0 && a < 4.0 && std::fabs(gameAdaptExposure(1.0, 4.0, 100.0, 1.0) - 4.0) < 1e-6);
 }
 
+TEST(game_look_grading_clut) {
+    CHECK(std::fabs(pqDecode(pqEncode(0.01)) - 0.01) < 1e-9 && std::fabs(pqEncode(0.01) - 0.508) < 0.01);  // 100 nits
+    // An identity CLUT (PQ code in = out) leaves the curve as it is, within the trilinear error.
+    GameGradingClut id;
+    id.size = 32;
+    id.rgb.resize(32 * 32 * 32 * 3);
+    for (int b = 0; b < 32; ++b)
+        for (int g = 0; g < 32; ++g)
+            for (int r = 0; r < 32; ++r) {
+                const size_t o = ((size_t(b) * 32 + size_t(g)) * 32 + size_t(r)) * 3;
+                id.rgb[o] = float(r) / 31.0f, id.rgb[o + 1] = float(g) / 31.0f, id.rgb[o + 2] = float(b) / 31.0f;
+            }
+    for (double x : {0.02, 0.18, 0.5, 2.0, 8.0}) {
+        const double in[3] = {x, x * 0.8, x * 0.5};
+        double a[3], b[3];
+        gameTonemap(in, a);
+        gameTonemap(in, b, &id);
+        for (int k = 0; k < 3; ++k) CHECK(std::fabs(a[k] - b[k]) < 0.02);
+    }
+    std::string err;
+    GameGradingClut bad;
+    CHECK(!gameGradingClutFromDds("DDS nope", bad, &err) && !err.empty());
+}
+
 TEST(game_look_fog_from_vision) {
     // mp_m_speedball's vision lines (tokens of the converter's replay_vision_names.inc).
     const std::string text = "SNNNRLTML \"2550\"\nMKKLQTSKSO \"1\"\nRPNOKKL \"1000\"\nTRPROKTLS \"1\"\n"

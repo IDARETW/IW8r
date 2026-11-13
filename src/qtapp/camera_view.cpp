@@ -1686,7 +1686,7 @@ void CameraView::prepareGameLook() {
     g.on = game;
     if (game) {
         if (!gameLutReady_) {
-            const std::vector<uint8_t> lut = buildGameTonemapLut(64);
+            const std::vector<uint8_t> lut = buildGameTonemapLut(64, !gameStockMap_.empty() && stockGrade_ ? stockGrade_.get() : nullptr);
             renderer_.setGameTonemapLut(64, lut.data());
             gameLutReady_ = true;
         }

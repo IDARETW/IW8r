@@ -13,8 +13,14 @@
   of a two-slice shadow array) next to the whole-scene map.
 - Layered stock ground (research 97, agent): layers above 0 drawn blended over their base with their own UVs, weight
   and reveal ramp; the metal base layer no longer shows through. Colour mode multiply is not drawn yet.
-- Open: Lit Preview alone is overexposed on stock maps; trees too dark; the vision's grading CLUT is not applied;
-  wall paint decals missing; sky preview bands (8-bit, 256 faces).
+- Later: per-map layered names (tw4/twc4 numbered blends differ per map) resolved in the map's own zone and cached
+  as "<zone>|<name>" (Speedball had taken mp_bm_tut / backlot2 blends); normal maps on the stock world and its
+  layers (per-triangle tangents; layer weight in the tangent length); multiply layers (puddles, edge wear); Lit
+  Preview on a stock map shows the game look (scene.gameLookAuto); props shade with their model normals; the
+  viewport sky box follows the camera (no parallax). Bench lines: game_sky, stock_layers.
+- Open: world decals (sortKey 10-17) drawn as cut-outs, not blended (research 98 under way); displacement ("dn"
+  materials) not drawn; the vision's grading CLUT not applied; converted maps' sky in game believed at infinity
+  (converter skips sky faces, its box is camera-relative) but not seen by the owner since.
 
 ## Resume here (2026-11-12, afternoon)
 

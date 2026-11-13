@@ -20,18 +20,35 @@ namespace iw8r {
 // The vision's manual exposure (tonemapAuto off): 180 x 2^(2.84 - ev + adjust). EV 10 is the converter's iw3 style.
 double gameManualExposure(double ev = 10.0, double adjust = 0.0);
 // The base exposure step before the colour LUT. Research 95 inferred +1.5 EV (r_tonemapUniversalBaseExposureAdjust's
-// game-test default); calibrated 2026-11-12 against the owner's in-game screenshot of mp_m_speedball (same spot, Lit +
-// Game Lighting): sunlit concrete, sunlit dirt and wall shade all match with 0 EV and were 1.5 EV too bright with +1.5.
-constexpr double kGameBaseExposureEv = 0.0;
+// game-test default). Calibrated 2026-11-12 against the owner's in-game screenshot of mp_m_speedball (same spot and
+// FOV, Lit + Game Lighting): with the map's grading CLUT applied (GameGradingClut) the ground's luminance percentiles
+// (25 / 50 / 75 %: 46 / 89 / 126 against the game's 44 / 86 / 126) match at +1.0 EV. (Without the grade 0 EV had
+// looked right: the missing grade's contrast had been made up by exposure.)
+constexpr double kGameBaseExposureEv = 1.0;
 // The factor from the lit colour to the colour LUT's input: exposure x 2^kGameBaseExposureEv.
 double gameLutInputScale(double ev = 10.0, double adjust = 0.0);
 
 // The log shaper of cs_tonemap: LUT coordinate of a linear value x (per channel).
 double gameLutCoordinate(double x, int size = 64);
+// A vision's grading CLUT (vision field NONMKTKNNM = "<name>", image "gradingclut<name>": a size^3 3D texture, red
+// fastest; mp_m_speedball's is 32^3 R16G16B16A16_UNORM). cs_universal_clut_generate (step 2, colorGradingFlags bit 0;
+// disassembly lines 63-144) samples it at PQ(x / 1024) of the Rec.2020 linear colour, scaled to the texel centres
+// (x 31/32 + 1/64), and decodes the PQ result back (x 1024): a grade in PQ space before the ACES RRT.
+struct GameGradingClut {
+    int size = 0;
+    std::vector<float> rgb;  // size^3 x 3, PQ codes 0..1
+    bool valid() const { return size >= 2 && rgb.size() == size_t(size) * size * size * 3; }
+};
+// Reads the DDS (DX10 header, 3D, R16G16B16A16_UNORM / R8G8B8A8_UNORM / R16G16B16A16_FLOAT).
+bool gameGradingClutFromDds(const std::string& dds, GameGradingClut& out, std::string* err = nullptr);
+// The ST.2084 PQ code of a linear value normalised to 10000 nits, and its inverse.
+double pqEncode(double y);
+double pqDecode(double code);
 // The universal colour LUT's curve for one Rec.709 linear colour (already exposed): the display value 0..1 (encoded).
-void gameTonemap(const double in[3], double out[3]);
+// grade: the map's grading CLUT (weight 1), or none.
+void gameTonemap(const double in[3], double out[3], const GameGradingClut* grade = nullptr);
 // The LUT itself: size^3 RGBA8 texels, red fastest, indexed by gameLutCoordinate per channel.
-std::vector<uint8_t> buildGameTonemapLut(int size = 64);
+std::vector<uint8_t> buildGameTonemapLut(int size = 64, const GameGradingClut* grade = nullptr);
 // The curve's inverse for greys: n LUT inputs (exposed linear values) whose display grey is i / (n - 1); the top
 // entries stop where the curve flattens (a clipped pixel reads as that brightest value).
 std::vector<float> gameTonemapInverseGrey(int n = 256);
