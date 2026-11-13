@@ -478,7 +478,8 @@ private:
         std::vector<Lod> lods;
         double lod0Far = 0;  // LOD0's far (0 = no limit)
     };
-    QList<QPair<QString, int>> wantLods_;  // rebuildReferenceProps: prop LODs not cached yet (asked for at its end)
+    QList<QPair<QString, int>> wantLods_;
+    bool propLodsEnabled_ = true;  // View > Game Lighting Options > Prop Levels of Detail (game/propLods)  // rebuildReferenceProps: prop LODs not cached yet (asked for at its end)
     std::map<std::string, std::shared_ptr<const RefPropMesh>> refPropBuilt_;
     // 12 floats per light grid volume of the reference zone's main transient zone (app::InstancedTexMesh::light: DC rgb,
     // then the first-order slots 0, 2 and 3), null when not read; refPropVolLightZone_ is its zone.

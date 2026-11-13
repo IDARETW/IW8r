@@ -685,7 +685,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // lightmap is bound (the stock world shader's formula, tangent-space direction).
         const bool stockRef = batchFlags2.z > 0.5;
         // Screen-space ambient occlusion: the indirect diffuse (multi-bounce, as the game) and the specular occlusion.
-        const float aoV = gameAo.x > 0.5 ? aoMap.Load(int3(i.pos.xy, 0)) : 1.0;
+        const float aoV = gameAo.x > 0.5 ? lerp(1.0, aoMap.Load(int3(i.pos.xy, 0)), gameSunCol.w) : 1.0;  // x the AO strength
         if (gameAo.y > 0.5) return float4(aoV, aoV, aoV, 1.0);
         if (gameAo.z > 0.5) return float4(t.rgb, outA);  // debug: the albedo as sampled
         float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? float3(1, 1, 1) : i.col.rgb);  // i.col: selection and brush entity tints
@@ -1874,7 +1874,7 @@ void SceneRenderer::prepareStockLocalLights(const float* M) {
     float info[4] = {0, 0, float(kTile), iesSrv_ ? 1.0f : 0.0f};
     static const bool off = std::getenv("IW8R_NO_STOCK_LIGHTS") != nullptr;
     const auto done = [&] { ctx_->UpdateSubresource(cbLocal_, 0, nullptr, info, 0, 0); };
-    if (off || !game_.on || stockLights_.empty() || !M || w_ <= 0 || h_ <= 0) return done();
+    if (off || !stockLightsEnabled_ || !game_.on || stockLights_.empty() || !M || w_ <= 0 || h_ <= 0) return done();
     // The game's rule (research 106 section 2.1): the lights in view, nearest to the camera first, at most 256.
     const iw8r::Frustum fr = iw8r::frustumFromViewProj(M);
     const float* eye = fog_;
@@ -1899,7 +1899,7 @@ void SceneRenderer::prepareStockLocalLights(const float* M) {
     // this frame goes to a nearer light that needs one. Lights without a slot draw unshadowed.
     static const bool noLightShadows = std::getenv("IW8R_NO_LIGHT_SHADOWS") != nullptr;
     if (lightSlotOf_.size() != stockLights_.size()) lightSlotOf_.assign(stockLights_.size(), -1);
-    if (!noLightShadows && stockLightShadows_.size() == stockLights_.size() && createLightShadowResources()) {
+    if (!noLightShadows && lightShadowsEnabled_ && stockLightShadows_.size() == stockLights_.size() && createLightShadowResources()) {
         for (size_t k = 0; k < n; ++k) {
             const uint32_t li = stockLightOrder_[k].second;
             if (!stockLightShadows_[li].cast) continue;
@@ -1986,7 +1986,7 @@ void SceneRenderer::prepareStockLocalLights(const float* M) {
         {
             const uint32_t li = stockLightOrder_[k].second;
             const int s = li < lightSlotOf_.size() ? lightSlotOf_[li] : -1;
-            dst[k].packed = (l.packed & ~0xFFu) | (s >= 0 && lightSlots_[size_t(s)].drawn ? uint32_t(s) : 0xFFu);
+            dst[k].packed = (l.packed & ~0xFFu) | (s >= 0 && lightSlots_[size_t(s)].drawn && lightShadowsEnabled_ ? uint32_t(s) : 0xFFu);
         }
         const float r = 1.0f / l.invRadius;
         float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f;
@@ -2249,14 +2249,15 @@ void SceneRenderer::writeGameCb() {
     g[43] = noLayerProbes ? 0.0f : 1.0f;
     static const bool ssrShow = std::getenv("IW8R_SSR_SHOW") != nullptr;  // debug: SSR materials and their hits
     static const bool ssrAll = std::getenv("IW8R_SSR_ALL") != nullptr;  // test: every glossy stock surface traces
-    g[42] = ssrAll ? 2.0f : ssrShow ? 1.0f : 0.0f;
+    g[42] = ssrAll ? 2.0f : ssrShow || gameDebugView_ == 3 ? 1.0f : 0.0f;
     // The coarse super terrain is cut away inside the near-camera layer patch (x, y, radius, on).
     g[44] = terrainCut_[0], g[45] = terrainCut_[1], g[46] = terrainCut_[2], g[47] = terrainCut_[2] > 0 ? 1.0f : 0.0f;
     g[48] = on && aoValid_ ? 1.0f : 0.0f;
     static const bool aoShow = std::getenv("IW8R_AO_SHOW") != nullptr;  // debug: the AO buffer instead of the lighting
-    g[49] = aoShow ? 1.0f : 0.0f;
+    g[49] = aoShow || gameDebugView_ == 1 ? 1.0f : 0.0f;
     static const bool albedoShow = std::getenv("IW8R_ALBEDO_SHOW") != nullptr;  // debug: Game Lighting shows the albedo
-    g[50] = albedoShow ? 1.0f : 0.0f;
+    g[50] = albedoShow || gameDebugView_ == 2 ? 1.0f : 0.0f;
+    g[11] = std::clamp(gameAoStrength_, 0.0f, 2.0f);  // gameSunCol.w: the AO strength
     g[51] = hdrFrame_ ? 1.0f : 0.0f;  // the lit scene goes to the HDR target: no post chain in the shaders
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);

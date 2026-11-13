@@ -2,6 +2,15 @@
 
 ## Latest (2026-11-13)
 
+- M1.10 part 1 (2026-11-13): View > Game Lighting Options (gameLightingMenu): GameAo / GameSsr / GameStockLights /
+  GameLightShadows / GamePropLods checkable, saved as game/ao, game/ssr, game/stockLights, game/lightShadows,
+  game/propLods (default on); GameAoStrength (game/aoStrength, gameSunCol.w: aoV = lerp(1, ao, s)); GameExposureOverride
+  (game/exposureEv, CameraView::setGameExposureOverride: manual EV over the map's auto / vision exposure); GameRebake;
+  Debug View (game/debugView: lit, AO buffer, albedo, reflections mask; renderer gameDebugView_ next to the env
+  switches). view/gameLighting saved by the toggle, deliberately not restored at start (benches and the GUI test share the settings).
+  Renderer: setStockLightsEnabled / setLightShadowsEnabled / setGameDebugView / setGameAoStrength. GUI test section
+  "game lighting options". USER_GUIDE "Game Lighting on stock maps". Helpers running: research 108 core (Warzone
+  probes, stock_probes.*), core JSON parse memory (stock_world / smodels / displacement / decal volumes / clutter).
 - M1.6 DONE (2026-11-13): local light shadows. Core stockLightShadowCamera (research 106 section 4.2: pushed back
   along dir by the bulb's extent, FOV 2 acos(cosOuter), near = offset + bulb along the axis + shadowNearPlaneBias,
   far = offset + radius, k = (1 - softness) 88 + softness, b = shadowBias) and stockLightShadowMatrix (row-vector

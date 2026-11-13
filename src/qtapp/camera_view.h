@@ -19,6 +19,7 @@
 #include <QPoint>
 #include <QWidget>
 #include <functional>
+#include <limits>
 #include <array>
 #include <optional>
 #include <set>
@@ -278,6 +279,16 @@ public slots:
         update();
     }
     size_t stockLightShadowsDrawn() const { return renderer_.stockLightShadowsDrawn(); }
+    // View > Game Lighting options (MainWindow keeps them in the settings).
+    void setGameAoEnabled(bool on) { renderer_.setGameAo(on); update(); }
+    void setGameSsrEnabled(bool on) { renderer_.setGameSsr(on); update(); }
+    void setStockLightsEnabled(bool on) { renderer_.setStockLightsEnabled(on); update(); }
+    void setLightShadowsEnabled(bool on) { renderer_.setLightShadowsEnabled(on); update(); }
+    void setGameDebugView(int v) { renderer_.setGameDebugView(v); update(); }
+    void setGameAoStrength(double s) { renderer_.setGameAoStrength(float(s)); update(); }
+    // A fixed exposure (EV, the game's units) instead of the map's own (auto or its vision's); NaN = the map's.
+    void setGameExposureOverride(double ev) { gameExposureOverride_ = ev; gameExposureSnap_ = true; update(); }
+    double gameExposureOverride() const { return gameExposureOverride_; }
     size_t stockLocalLightCount() const { return renderer_.stockLocalLightCount(); }
     size_t stockLocalLightsDrawn() const { return renderer_.stockLocalLightsDrawn(); }
     // The stock map's own sun (its ComWorld sun light: intensity, linear colour, direction toward the sun).
@@ -544,6 +555,7 @@ private:
     std::shared_ptr<const std::vector<StockGameLight>> pendingLights_;
     std::shared_ptr<const std::vector<uint8_t>> pendingIes_;
     std::shared_ptr<const std::vector<StockLightShadow>> pendingShadows_;
+    double gameExposureOverride_ = std::numeric_limits<double>::quiet_NaN();
     std::shared_ptr<std::vector<uint8_t>> pendingEnvBrdf_;
     int pendingEnvBrdfW_ = 0, pendingEnvBrdfH_ = 0;
     std::shared_ptr<const app::StockLightmapLayers> pendingStockLm_;

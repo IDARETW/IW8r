@@ -249,6 +249,21 @@ Commands in the Tools menu:
   film grade, exposure and the grading LUT keep their own dialogs. Only 87 fields have readable names; the rest are
   listed by token. Not seen in game yet.
 
+### Game Lighting on stock maps
+
+**View > Game Lighting** (Ctrl+Alt+L) on a stock map draws it the way the game does: the map's own lightmap and
+reflection probes, the sun with its shadows, each prop lit from the light the game baked for it, the map's own lamps
+with their shadows, ambient occlusion, screen-space reflections on wet and glossy surfaces, glowing lamps and screens,
+light through leaves and cloth, and the game's exposure and tone curve. Verdansk and Quarry stream their town in
+around the camera. The first time a map is opened this way the editor reads a few things from your install in the
+background (the status bar says what); later opens are quick.
+
+**View > Game Lighting Options** turns its parts on and off and remembers them: Ambient Occlusion, Screen-Space
+Reflections, Stock Map Lamps, Lamp Shadows and Prop Levels of Detail (far props use the game's simpler models, which is
+much faster on big maps). **Ambient Occlusion Strength** (1 is the game's), **Exposure Override** (a fixed EV instead of
+the map's auto exposure, for comparing screenshots), **Re-bake Lighting Now**, and **Debug View** (the AO buffer, the
+albedo, or where reflections are traced) are there too.
+
 ### Decals
 
 A decal is a picture projected onto the surfaces inside a box: a stain, a painted marking, a scorch mark.

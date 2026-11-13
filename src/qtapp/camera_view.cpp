@@ -2087,6 +2087,10 @@ void CameraView::prepareGameLook() {
         const bool meterStock = stock && stock->exposure.autoExposure && ctx_->scene.skyActive;
         exposure.autoExposure = meterStock;
         if (stock && !meterStock) exposure.ev = stock->exposure.midEv, exposure.exposureAdjust = stock->exposure.midAdjust + stock->exposure.exposureAdjust;
+        if (std::isfinite(gameExposureOverride_)) {  // View > Game Lighting > Exposure Override
+            exposure.autoExposure = false;
+            exposure.ev = gameExposureOverride_, exposure.exposureAdjust = 0;
+        }
         if (exposure.autoExposure != gameMetering_) {
             gameMetering_ = exposure.autoExposure;
             if (gameMetering_) {

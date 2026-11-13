@@ -5,6 +5,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **View > Game Lighting Options.** Ambient occlusion, screen-space reflections, the stock lamps, their shadows and
+  the prop levels of detail can each be turned off, with an AO strength, a fixed exposure for comparing screenshots,
+  Re-bake Lighting Now and debug views; all of it is remembered between sessions.
 - **Shadows from the stock maps' own lamps.** Lamps that cast shadows in game (70 on Hideout) now cast them in Game
   Lighting too, with the game's soft exponential shadow edge (research 106): shelves, beams and doorways block their
   light. The nearest 64 shadowed lights get a map; they are drawn once (a few per frame) and again only when something

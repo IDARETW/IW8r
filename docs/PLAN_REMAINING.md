@@ -184,7 +184,8 @@ ModelCache::requestLod fetches one LOD of one model per ACTS run. Fetch the LODs
 let the instance cull pick the game's LOD by distance (and FOV). Done when Aniyah is within 20 ms and Verdansk
 within 28 ms with no visible popping at the bench cameras.
 
-**1.10 GUI and settings.**
+**1.10 GUI and settings.** Part 1 DONE 2026-11-13 (View > Game Lighting Options, saved settings, GUI test). Open:
+shadow quality, the compile panel's bake settings.
 - **View > Game Lighting submenu:** AO (on/off, strength, radius), SSR (on/off, quality), shadow quality, an exposure
   override (EV), Re-bake Now (`rebakeGameLighting`), and debug views (AO buffer, SSR mask).
 - **Saved settings:** these, and the Game Lighting toggle itself, are saved in Settings. Environment variables stay as

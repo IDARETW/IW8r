@@ -417,6 +417,13 @@ public:
         for (auto& sl : lightSlots_) sl = LightSlot{};
     }
     size_t stockLightShadowsDrawn() const { return lightShadowsDrawn_; }
+    // View > Game Lighting switches (saved settings; the IW8R_NO_* environment variables still turn them off for benches).
+    void setStockLightsEnabled(bool on) { stockLightsEnabled_ = on; }
+    void setLightShadowsEnabled(bool on) { lightShadowsEnabled_ = on; }
+    // Debug view of Game Lighting: 0 the lit scene, 1 the AO buffer, 2 the albedo, 3 the reflections mask.
+    void setGameDebugView(int v) { gameDebugView_ = v; }
+    // The AO strength (research 107 section 4.3: the vision's r_ssaoStrength, 1 on MP maps): ao = lerp(1, ao, s).
+    void setGameAoStrength(float s) { gameAoStrength_ = s; }
     size_t stockLocalLightCount() const { return stockLights_.size(); }
     size_t stockLocalLightsDrawn() const { return stockLightsDrawn_; }
     // The map's IES strip (*ieslookup level 0: width R8 texels, texel 0 white), t21. null = every light white.
@@ -714,6 +721,9 @@ private:
     void prepareStockLocalLights(const float* viewProj);
     std::vector<iw8r::StockGameLight> stockLights_;
     std::vector<iw8r::StockLightShadow> stockLightShadows_;
+    bool stockLightsEnabled_ = true, lightShadowsEnabled_ = true;
+    int gameDebugView_ = 0;
+    float gameAoStrength_ = 1.0f;
     size_t stockLightsDrawn_ = 0;
     // Local light shadow maps: kLightSlots slices of kLightSlotSize^2 depth (t24), one light each; their matrices and
     // lookup constants (t23). A slot is drawn once (static casters), again when the casters change.
