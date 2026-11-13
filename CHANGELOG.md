@@ -5,6 +5,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Your maps' props and the gun take their light from where they stand.** The build's light grid (what lights
+  models, players and the viewmodel in game) was one flat colour at 70 % of the sun everywhere, so the gun was as
+  bright in a closed room as outside. It is now baked from the map itself: open sky where it is visible, light bounced
+  off the walls and floors around, dark indoors (plan 1.11, ROADMAP 5.20). Worldspawn `iw8r_flat_light_grid 1` keeps
+  the old flat colour. Not seen in game.
 - **View > Game Lighting Options.** Ambient occlusion, screen-space reflections, the stock lamps, their shadows and
   the prop levels of detail can each be turned off, with an AO strength, a fixed exposure for comparing screenshots,
   Re-bake Lighting Now and debug views; all of it is remembered between sessions.

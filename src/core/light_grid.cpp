@@ -1,7 +1,10 @@
 #include "light_grid.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <map>
+#include <thread>
 
 namespace iw8r {
 
@@ -78,6 +81,71 @@ bool buildLightGrid(const LightGridInput& in, LightGridFiles& out, std::string* 
     for (uint8_t n : zCount) N += n;
     out.entryCount = N;
 
+    // Palette (ROADMAP 5.20): with samplesAt, one colour per cell of the kept points, deduplicated; else one colour.
+    const int cxy = std::max(1, in.paletteCellXY), cz = std::max(1, in.paletteCellZ);
+    const int CX = (X + cxy - 1) / cxy, CY = (Y + cxy - 1) / cxy, CZ = (Z + cz - 1) / cz;
+    std::vector<int32_t> cellColor;  // per cell: palette index (-1 = not used)
+    std::vector<std::array<uint8_t, 168>> palette;
+    if (in.samplesAt && N <= in.maxEntries) {
+        // The cells that hold kept points, and for each the kept point nearest its centre.
+        struct Cell {
+            size_t index;
+            Vec3 point;
+            double best = 1e300;
+        };
+        std::vector<int64_t> cellAt(size_t(CX) * CY * CZ, -1);
+        std::vector<Cell> cells;
+        for (int r = 0; r < X; ++r)
+            for (int c = 0; c < Y; ++c) {
+                const size_t at = size_t(r) * size_t(Y) + size_t(c);
+                for (int z = zLo[at]; z < zLo[at] + zCount[at]; ++z) {
+                    const size_t ci = (size_t(r / cxy) * CY + size_t(c / cxy)) * CZ + size_t(z / cz);
+                    if (cellAt[ci] < 0) cellAt[ci] = int64_t(cells.size()), cells.push_back({ci, Vec3{}, 1e300});
+                    Cell& cell = cells[size_t(cellAt[ci])];
+                    const double dr = r - ((r / cxy) * cxy + (cxy - 1) * 0.5), dc = c - ((c / cxy) * cxy + (cxy - 1) * 0.5),
+                                 dz = z - ((z / cz) * cz + (cz - 1) * 0.5);
+                    const double d2 = dr * dr + dc * dc + dz * dz;
+                    if (d2 < cell.best) {
+                        cell.best = d2;
+                        cell.point = Vec3{(i0 + r) * kStepXY - kOrigin, (j0 + c) * kStepXY - kOrigin, (k0 + z) * kStepZ - kOrigin};
+                    }
+                }
+            }
+        std::vector<std::array<uint8_t, 168>> bytes(cells.size());
+        std::atomic<size_t> next{0};
+        const auto work = [&] {
+            std::array<std::array<float, 3>, 56> s{};
+            for (size_t k; (k = next.fetch_add(1)) < cells.size();) {
+                in.samplesAt(cells[k].point, s);
+                for (int i = 0; i < 56; ++i)
+                    for (int ch = 0; ch < 3; ++ch)
+                        bytes[k][size_t(i * 3 + ch)] = uint8_t(std::clamp(std::lround(double(s[size_t(i)][size_t(ch)])), 0L, 255L));
+            }
+        };
+        const unsigned nt = in.threads > 0 ? unsigned(in.threads) : std::max(1u, std::thread::hardware_concurrency());
+        std::vector<std::thread> pool;
+        for (unsigned t = 1; t < nt; ++t) pool.emplace_back(work);
+        work();
+        for (std::thread& t : pool) t.join();
+        // Deduplicated palette (u16 indices: at most 65535 colours; the cells only ever give fewer).
+        std::map<std::array<uint8_t, 168>, int32_t> seen;
+        cellColor.assign(size_t(CX) * CY * CZ, -1);
+        for (size_t k = 0; k < cells.size(); ++k) {
+            auto [it, fresh] = seen.emplace(bytes[k], int32_t(palette.size()));
+            if (fresh) palette.push_back(bytes[k]);
+            cellColor[cells[k].index] = it->second;
+        }
+        if (palette.size() > 65535) {
+            if (err) *err = "light grid palette over 65535 colours";
+            return false;
+        }
+    }
+    const auto colorOf = [&](int r, int c, int z) -> uint32_t {
+        if (cellColor.empty()) return 0;
+        const int32_t v = cellColor[(size_t(r / cxy) * CY + size_t(c / cxy)) * CZ + size_t(z / cz)];
+        return v < 0 ? 0u : uint32_t(v);
+    };
+
     // row_data: per row (x) a 12-byte header, then column runs (u8 run <= 255 columns sharing one z range, u8 count,
     // u8 startZ when count > 0), padded to 4 bytes; row_starts: the row's start in units of 4 bytes (u16). Entries in
     // reader order: run by run, column by column, z fastest (iw3_lightgrid.cpp ~200-265).
@@ -112,7 +180,7 @@ bool buildLightGrid(const LightGridInput& in, LightGridFiles& out, std::string* 
                         const Vec3 p{(i0 + r) * kStepXY - kOrigin, (j0 + cc) * kStepXY - kOrigin, (k0 + z) * kStepZ - kOrigin};
                         lit = in.sunVisible(p);
                     }
-                    put16(out.entries, 0);
+                    put16(out.entries, colorOf(r, cc, z));
                     out.entries.push_back(char(lit ? 1 : 0));
                     out.entries.push_back(char(0));
                     out.sunlit += lit ? 1 : 0;
@@ -122,10 +190,15 @@ bool buildLightGrid(const LightGridInput& in, LightGridFiles& out, std::string* 
         }
         while (out.rowData.size() % 4) out.rowData.push_back(char(0));
     }
-    // colors: one palette entry, 56 directional samples x RGB, all the ambient colour.
-    for (int s = 0; s < 56; ++s)
-        for (int ch = 0; ch < 3; ++ch)
-            out.colors.push_back(char(uint8_t(std::clamp(std::lround(255.0 * in.ambient[ch]), 0L, 255L))));
+    // colors: the palette (56 directional samples x RGB each), or one entry of the flat ambient colour.
+    if (!palette.empty()) {
+        for (const auto& p : palette) out.colors.append(reinterpret_cast<const char*>(p.data()), p.size());
+    } else {
+        for (int s = 0; s < 56; ++s)
+            for (int ch = 0; ch < 3; ++ch)
+                out.colors.push_back(char(uint8_t(std::clamp(std::lround(255.0 * in.ambient[ch]), 0L, 255L))));
+    }
+    out.colorCount = out.colors.size() / 168;
 
     auto file = [&](const char* part, size_t bytes) {
         return std::string("{\"file\": \"") + lightGridPartPath(in.mapId, part) + "\", \"bytes\": " + std::to_string(bytes) + "}";
@@ -135,13 +208,13 @@ bool buildLightGrid(const LightGridInput& in, LightGridFiles& out, std::string* 
                "  \"mins\": [" + std::to_string(i0) + ", " + std::to_string(j0) + ", " + std::to_string(k0) + "],\n" +
                "  \"maxs\": [" + std::to_string(i1) + ", " + std::to_string(j1) + ", " + std::to_string(k1) + "],\n" +
                "  \"row_count\": " + std::to_string(X) + ",\n  \"entry_count\": " + std::to_string(N) + ",\n" +
-               "  \"color_count\": 1,\n  \"sun_primary_light_index\": 1,\n  \"has_light_regions\": false,\n" +
+               "  \"color_count\": " + std::to_string(out.colorCount) + ",\n  \"sun_primary_light_index\": 1,\n  \"has_light_regions\": false,\n" +
                "  \"row_starts\": " + file("row_starts", out.rowStarts.size()) + ",\n" +
                "  \"row_data\": " + file("row_data", out.rowData.size()) + ",\n" +
                "  \"entries\": " + file("entries", out.entries.size()) + ",\n" +
                "  \"colors\": " + file("colors", out.colors.size()) + "\n}\n";
     // Self-check (the converter throws on any mismatch, which would fail the whole build).
-    const bool okSizes = out.rowStarts.size() == size_t(X) * 2 && out.entries.size() == N * 4 && out.colors.size() == 168 &&
+    const bool okSizes = out.rowStarts.size() == size_t(X) * 2 && out.entries.size() == N * 4 && out.colors.size() == 168 * out.colorCount &&
                          out.rowData.size() % 4 == 0 && N > 0 && N <= kMaxEntries;
     if (!okSizes) {
         if (err) *err = "light grid self-check failed";
@@ -149,6 +222,21 @@ bool buildLightGrid(const LightGridInput& in, LightGridFiles& out, std::string* 
         return false;
     }
     return true;
+}
+
+const std::array<Vec3, 56>& lightGridSampleDirections() {
+    static const std::array<Vec3, 56> dirs = [] {
+        std::array<Vec3, 56> d{};
+        size_t n = 0;
+        for (int z = 0; z < 4; ++z)
+            for (int y = 0; y < 4; ++y)
+                for (int x = 0; x < 4; ++x) {
+                    if (x > 0 && x < 3 && y > 0 && y < 3 && z > 0 && z < 3) continue;
+                    d[n++] = normalize(Vec3{x * (2.0 / 3.0) - 1.0, y * (2.0 / 3.0) - 1.0, z * (2.0 / 3.0) - 1.0});
+                }
+        return d;
+    }();
+    return dirs;
 }
 
 }  // namespace iw8r

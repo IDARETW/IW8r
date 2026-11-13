@@ -8,6 +8,7 @@
 // sun through the map's collision. Rows run along x, columns along y, z fastest.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -21,6 +22,7 @@ struct LightGridFiles {
     std::string json;  // <id>.d3dbsp.lightgrid.json
     std::string rowStarts, rowData, entries, colors;  // the four binary arrays
     size_t entryCount = 0, sunlit = 0;
+    size_t colorCount = 1;  // palette entries
     int dims[3] = {0, 0, 0};  // lattice points along x, y, z
 };
 
@@ -37,7 +39,19 @@ struct LightGridInput {
     std::function<std::vector<double>(double x, double y)> floorsAt;
     double bandBelow = 64, bandAbove = 320;
     size_t maxEntries = 4'000'000;  // larger grids fall back to every point sunlit (no traces)
+    // Per-point light (ROADMAP 5.20): the 56 samples (lightGridSampleDirections order) of the palette colour at a point,
+    // in the grid's 8-bit units (255 = a surface lit by 1.0, the sun colour x 1 of the build). The converter projects them
+    // to SH; models and viewmodels take that light (the sun comes on top through primaryLight). Called once per palette
+    // cell (paletteCellXY x paletteCellXY x paletteCellZ lattice points; the cell's point nearest its centre among the
+    // kept ones) from several threads. Unset: every point takes `ambient`.
+    std::function<void(const Vec3& point, std::array<std::array<float, 3>, 56>& samples)> samplesAt;
+    int paletteCellXY = 4, paletteCellZ = 1;
+    int threads = 0;  // 0: all cores
 };
+
+// The 56 sample directions of a palette colour: the shell texels of the 4 x 4 x 4 model-lighting volume (z outer, then
+// y, then x; the 8 interior texels left out), normalised (iw3_lightgrid.cpp LightGridProjection).
+const std::array<Vec3, 56>& lightGridSampleDirections();
 
 // Builds the files (validated: sizes and indices follow the converter's reader rules). False with *err when the bounds
 // are invalid or the grid would exceed the converter's limits (entry_count <= 8,388,608, z extent <= 255 points).

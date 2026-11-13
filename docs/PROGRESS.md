@@ -2,6 +2,14 @@
 
 ## Latest (2026-11-13)
 
+- M1.11 part 1 (2026-11-13): light grid from the map (ROADMAP 5.20). Core LightGridInput::samplesAt (56 samples in the
+  converter's direction order, lightGridSampleDirections = the 4x4x4 shell, z / y / x), palette per cell
+  (paletteCellXY 4 x paletteCellZ 1 lattice points, the kept point nearest the cell centre), multithreaded,
+  deduplicated, u16 indices, color_count in the JSON; test light_grid_palette_from_samples. compile_iw8: RayBvh of the
+  non-sky render surfaces; per cell 96 Fibonacci rays: escape upward = sky (iw8r_bake_sky or 0.55 0.65 0.8 x 0.35) /
+  pi, hit = 0.45 x (sun x N.L x visibility + half the sky) / pi; E(n_s) per sample, 255 = 1.0 (the bake's units).
+  iw8r_flat_light_grid 1 = the old flat 0.7 x sun colour. Dev showcase: 286,652 points, 10,690 colours; the converter
+  reads them ("10690 palette colours (4096x304 image)", 2.0 s).
 - M1.10 part 1 (2026-11-13): View > Game Lighting Options (gameLightingMenu): GameAo / GameSsr / GameStockLights /
   GameLightShadows / GamePropLods checkable, saved as game/ao, game/ssr, game/stockLights, game/lightShadows,
   game/propLods (default on); GameAoStrength (game/aoStrength, gameSunCol.w: aoV = lerp(1, ao, s)); GameExposureOverride

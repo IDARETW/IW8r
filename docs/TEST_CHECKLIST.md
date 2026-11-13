@@ -38,6 +38,12 @@ Mark each line OK / wrong (with a screenshot) and send it back.
 - [ ] File > Open IW8 Stock Map: a list of the 37 openable stock maps. (wrong 2026-11-11: mp_backlot2 opened with a lot of geometry missing)
 - [ ] A misc_prefab with "iw8r_mat:<material>" "<other material>" shows the swapped material in the views and the build.
 
+## In game: your map's model light (2026-11-13), not seen in game
+
+- [ ] Build the dev showcase (F7) and walk from outside into a closed room: the gun and nearby props get darker inside
+      and take the sky's colour outside (before, they were equally bright everywhere). The build log says "light grid:
+      ... colour(s) baked from the map".
+
 ## In game: Game Lighting against the game (2026-11-13), the editor next to your in-game shots
 
 Open a stock map (File > Open IW8 Stock Map), turn on View > Game Lighting (Ctrl+Alt+L), and compare with the same spot

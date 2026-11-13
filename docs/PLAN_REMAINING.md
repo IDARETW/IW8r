@@ -193,7 +193,8 @@ shadow quality, the compile panel's bake settings.
 - **Compile panel:** bake settings (sky, texel size, rays), and the per-face lightmap scale passed through to the build
   (ROADMAP 5.21).
 
-**1.11 Lighting of a compiled custom map.**
+**1.11 Lighting of a compiled custom map.** Part 1 DONE 2026-11-13: the light grid is baked from the map (sky and bounce
+per cell, 56 directional samples). Open: the bake items below, probes, the offline parity proof.
 - **Lightmap bake:**
   - the sky from the vision / sky colour;
   - bounce from real albedo (the texture averages);
