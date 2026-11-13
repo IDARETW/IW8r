@@ -636,6 +636,12 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
                     if (f.isEmpty()) skyCache->request(mat);
                     return f;
                 }
+            // A stock world without sky surfaces (mp_shipment): the map's own catalogued sky image, sky_<map>.
+            if (stockWorld_ && !referenceZone_.isEmpty() && [] { static const QStringList names = stockSkyNames(); return names; }().contains("sky_" + referenceZone_)) {
+                const QString f = skyCache->cachedDds("sky_" + referenceZone_);
+                if (f.isEmpty()) skyCache->request("sky_" + referenceZone_);
+                return f;
+            }
             return {};
         });
         connect(skyCache, &StockSkyCache::skyReady, camera_, [this] { camera_->update(); });

@@ -1790,7 +1790,7 @@ void CameraView::prepareGameLook() {
         if (stock && stockFog_.on) {
             const GameFog& f = stockFog_;
             const double s = gameFogInscatter(f);
-            const float fog[6][4] = {{float(f.start), float(f.density), float(f.maxOpacity), 1.0f},
+            const float fog[6][4] = {{float(f.start), float(f.halfPlane), float(f.maxOpacity), 1.0f},
                                      {float(f.color[0] * s), float(f.color[1] * s), float(f.color[2] * s), float(f.mieBlend)},
                                      {float(f.rayleigh[0]), float(f.rayleigh[1]), float(f.rayleigh[2]), float(f.mieAnisotropy)},
                                      {float(f.mie[0]), float(f.mie[1]), float(f.mie[2]), float(f.desaturation)},

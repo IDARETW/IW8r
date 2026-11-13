@@ -399,7 +399,7 @@ GameFog gameFogFromVision(const std::string& text) {
     vec("LRKPNSNORL", f.mie);                                      // fogMieAlbedo
     num("MPRLMQNQO", f.mieAnisotropy);                             // fogMieAnisotropy
     num("NPMPRRLNPO", f.mieBlend);                                 // fogMieBlendStrength
-    f.on = haveHalf && scatter > 0 && f.density > 0 && f.maxOpacity > 0;
+    f.on = haveHalf && scatter > 0 && f.halfPlane > 0 && f.maxOpacity > 0;
     if (f.heightHalf <= 0) f.heightHalf = 1e9;
     return f;
 }

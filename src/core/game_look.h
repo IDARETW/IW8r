@@ -86,8 +86,9 @@ const StockMapLook& stockMapLookNearest(double sunIntensity);
 const std::vector<StockMapLook>& stockMapLooks();
 
 // A stock map's atmosphere from its vision (vision/<map>.vision; field tokens from the x64-zt converter's
-// replay_vision_names.inc): distance fog whose transmittance halves every `density` units past start (Replay's fog
-// evaluates exp2(-(distance - fogStartDist) / fogDensity), x64-zt iw3_vision.cpp; halfPlane is kept for reference), scaled by a height falloff
+// replay_vision_names.inc): distance fog whose transmittance halves every `halfPlane` units past start
+// (fogHalfPlaneDistance: the atmospheric fog's, fogAtmosphericScattering 1; `density`, fogDensity, is the half distance
+// of the plain fog only, x64-zt iw3_vision.cpp. Owner 2026-11-12: with fogDensity the haze was hardly visible), scaled by a height falloff
 // (halves every heightHalf units above heightBase), up to maxOpacity; the inscattered light is
 // 0.001 x 2^(inscatterEv - 2.84) / (4 pi) x fogColor (calibrated 2026-11-12 on mp_m_speedball: the distant haze in the
 // owner's screenshot is about 7 scene units, this gives 7.2), tinted by the Rayleigh albedo and, toward the sun, by the
