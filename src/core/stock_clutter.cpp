@@ -8,6 +8,7 @@
 #include <fstream>
 #include <map>
 #include <optional>
+#include <string_view>
 #include <system_error>
 #include <tuple>
 
@@ -99,7 +100,7 @@ bool arrayBytes(const Value* node, std::vector<uint8_t>& bytes, bool& isBytes) {
 }
 
 // Skips one JSON value starting at text[i] (after whitespace); returns the index just past it, or npos.
-size_t skipValue(const std::string& t, size_t i) {
+size_t skipValue(std::string_view t, size_t i) {
     const size_t n = t.size();
     while (i < n && std::isspace(uint8_t(t[i]))) ++i;
     if (i >= n) return std::string::npos;
@@ -132,7 +133,7 @@ size_t skipValue(const std::string& t, size_t i) {
 }
 
 // Top-level members of the object that starts at text[open] ('{'): key -> (value begin, value end).
-bool objectMembers(const std::string& t, size_t open, std::map<std::string, std::pair<size_t, size_t>>& out) {
+bool objectMembers(std::string_view t, size_t open, std::map<std::string, std::pair<size_t, size_t>>& out) {
     const size_t n = t.size();
     if (open >= n || t[open] != '{') return false;
     size_t i = open + 1;
@@ -142,7 +143,7 @@ bool objectMembers(const std::string& t, size_t open, std::map<std::string, std:
         if (i >= n || t[i] != '"') return false;
         const size_t ke = skipValue(t, i);
         if (ke == std::string::npos) return false;
-        const std::string key = t.substr(i + 1, ke - i - 2);
+        const std::string key(t.substr(i + 1, ke - i - 2));
         i = ke;
         while (i < n && std::isspace(uint8_t(t[i]))) ++i;
         if (i >= n || t[i] != ':') return false;
@@ -156,8 +157,8 @@ bool objectMembers(const std::string& t, size_t open, std::map<std::string, std:
     return false;
 }
 
-std::optional<Value> parseSpan(const std::string& t, const std::pair<size_t, size_t>& span, std::string* err) {
-    return json::parse(t.substr(span.first, span.second - span.first), err);
+std::optional<Value> parseSpan(std::string_view t, const std::pair<size_t, size_t>& span, std::string* err) {
+    return json::parseView(t.substr(span.first, span.second - span.first), err);  // no copy of the text
 }
 
 std::string assetName(std::string s) {
@@ -187,7 +188,10 @@ Quat conj(const Quat& q) { return {-q[0], -q[1], -q[2], q[3]}; }
 // =================================================================================================================
 // GfxWorld clutter collections.
 
-bool parseStockClutterCollections(const std::string& text, std::vector<StockClutterCollection>& out, std::string* err) {
+namespace {
+
+// parseStockClutterCollections on any text (the mapped export file of readStockClutterCollections).
+bool parseClutterCollections(std::string_view text, std::vector<StockClutterCollection>& out, std::string* err) {
     out.clear();
     const size_t key = text.find("\"smodels\":");
     if (key == std::string::npos) return fail(err, "gfx_map has no smodels");
@@ -274,6 +278,12 @@ bool parseStockClutterCollections(const std::string& text, std::vector<StockClut
     return true;
 }
 
+}  // namespace
+
+bool parseStockClutterCollections(const std::string& text, std::vector<StockClutterCollection>& out, std::string* err) {
+    return parseClutterCollections(text, out, err);
+}
+
 bool readStockClutterCollections(const std::string& exportPathOrDir, std::vector<StockClutterCollection>& out,
                                  std::string* err) {
     out.clear();
@@ -289,15 +299,11 @@ bool readStockClutterCollections(const std::string& exportPathOrDir, std::vector
             return fail(err, "expected one gfx_map JSON under " + dir.string() + ", found " + std::to_string(found.size()));
         file = found.front();
     }
-    std::ifstream f(file, std::ios::binary);
-    if (!f) return fail(err, "cannot read " + file.string());
-    f.seekg(0, std::ios::end);
-    const std::streamoff n = f.tellg();
-    f.seekg(0, std::ios::beg);
-    std::string text(size_t(std::max<std::streamoff>(n, 0)), '\0');
-    if (!text.empty()) f.read(text.data(), std::streamsize(text.size()));
-    if (!f) return fail(err, "short read of " + file.string());
-    return parseStockClutterCollections(text, out, err);
+    // Memory-mapped (json::FileText): the 422 MB mp_donetsk export costs no private memory; only the smodels
+    // members are parsed.
+    json::FileText text;
+    if (!text.open(file)) return fail(err, "cannot read " + file.string());
+    return parseClutterCollections(text.view(), out, err);
 }
 
 // =================================================================================================================

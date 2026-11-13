@@ -28,7 +28,10 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <chrono>
+#include <cstdio>
 #include <set>
+#include <thread>
 #include <windows.h>
 #include <d3d11.h>
 
@@ -115,6 +118,7 @@ struct BenchSeries {
     std::vector<double> sync, other, cpu, total;
     size_t builds = 0;  // camera geometry rebuilds during the scenario
     size_t relayouts = 0, inPlace = 0, shadowPasses = 0, uploadBytes = 0;  // sums over the scenario's frames
+    size_t nearShadowPasses = 0, lampShadowMaps = 0;
 };
 
 double benchMedian(std::vector<double> v) {
@@ -137,7 +141,68 @@ QString benchMemoryNow(const char* stage) {
     return QString("memory_at %1 unknown").arg(stage);
 }
 
+// An allocation that fails in an event handler (a paint, a timer, a queued job's answer) is logged and the event
+// dropped instead of ending the editor: Windows had about 14 GB committed by other programs while Verdansk loaded, and
+// a texture decode on the UI thread ended the session (2026-11-13). The work is tried again on the next event.
+class GuardedApplication : public QApplication {
+public:
+    using QApplication::QApplication;
+    bool notify(QObject* receiver, QEvent* event) override {
+        try {
+            return QApplication::notify(receiver, event);
+        } catch (const std::bad_alloc&) {
+            static qint64 lastLog = 0;
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            if (now - lastLog > 10000) {
+                lastLog = now;
+                iw8r::qt::EditorLog::instance().add(iw8r::qt::LogLevel::Error, "memory",
+                                                    "Out of memory: a step was skipped and will be tried again. Close other programs, or lower "
+                                                    "the streamed world radius (stock/streamRadius) or the texture budget.");
+            }
+            return false;
+        }
+    }
+};
+
 int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QString& outDir, const QString& referenceDir) {
+    // A memory sample every 2 s from its own thread (the UI thread can be busy for long), appended as it is taken so a
+    // crash leaves the trace: seconds, commit MB, working set MB.
+    std::thread([outDir] {
+        QElapsedTimer clock;
+        clock.start();
+        const std::string path = QDir(outDir).filePath("memory.log").toStdString();
+        for (;;) {
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+#ifdef _WIN32
+            PROCESS_MEMORY_COUNTERS pmc{};
+            if (!GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) continue;
+            if (FILE* f = std::fopen(path.c_str(), "a")) {
+                std::fprintf(f, "%lld %llu %llu\n", (long long)(clock.elapsed() / 1000), (unsigned long long)(pmc.PagefileUsage >> 20),
+                             (unsigned long long)(pmc.WorkingSetSize >> 20));
+                std::fclose(f);
+            }
+#endif
+        }
+    }).detach();
+    // Every log line (status messages say which load step runs) goes into memory.log too, stamped with the time it was
+    // logged, so a memory spike can be matched to the step that caused it: "<seconds> S <text>".
+    {
+        const qint64 t0 = QDateTime::currentMSecsSinceEpoch();
+        const std::string path = QDir(outDir).filePath("memory.log").toStdString();
+        auto* gpuTick = new QTimer(&w);
+        gpuTick->setInterval(10000);
+        QObject::connect(gpuTick, &QTimer::timeout, &w, [&w] {
+            if (auto* cam = w.findChild<iw8r::qt::CameraView*>())
+                iw8r::qt::EditorLog::instance().add(iw8r::qt::LogLevel::Info, "bench", "gpu memory MB: " + QString::fromStdString(cam->gpuMemoryReport()));
+        });
+        gpuTick->start();
+        QObject::connect(&iw8r::qt::EditorLog::instance(), &iw8r::qt::EditorLog::added, &w, [t0, path](const iw8r::qt::LogEntry& e) {
+            if (FILE* f = std::fopen(path.c_str(), "a")) {
+                std::fprintf(f, "%.1f S %s\n", (e.time.toMSecsSinceEpoch() - t0) / 1000.0, e.text.left(200).toUtf8().constData());
+                std::fclose(f);
+            }
+        });
+    }
     using iw8r::Vec3;
     QDir().mkpath(outDir);
     QStringList report;
@@ -387,6 +452,8 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         if (s) {
             s->cpu.push_back(cpu), s->total.push_back(total);
             s->shadowPasses += cam->frameStats().shadowPasses;
+            s->nearShadowPasses += cam->frameStats().nearShadowPasses;
+            s->lampShadowMaps += cam->frameStats().lampShadowMaps;
             s->uploadBytes += cam->frameStats().uploadBytes;
         }
     };
@@ -422,6 +489,9 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                       .arg(benchMedian(s.sync), 0, 'f', 3).arg(benchMax(s.sync), 0, 'f', 3)
                       .arg(benchMedian(s.other), 0, 'f', 3).arg(benchMax(s.other), 0, 'f', 3).arg(s.builds)
                       .arg(s.relayouts).arg(s.inPlace).arg(s.shadowPasses).arg(double(s.uploadBytes) / 1024.0 / double(std::max<size_t>(1, s.cpu.size())), 0, 'f', 1);
+        if (s.nearShadowPasses || s.lampShadowMaps)
+            report << QString("  shadows_%1 near_cascade=%2 lamp_maps=%3 (over %4 frames)").arg(name.trimmed()).arg(s.nearShadowPasses)
+                          .arg(s.lampShadowMaps).arg(s.cpu.size());
     };
     const auto wanted = [&](const char* name) { return only.isEmpty() || only.split(',').contains(name); };
     const auto counts = [&](const QString& name) {
@@ -665,6 +735,7 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                 report << QString("game_ao drawn %1 hdr %2").arg(cam->gameAoDrawn() ? 1 : 0).arg(cam->gameHdrDrawn() ? 1 : 0);
                 report << QString("stock_lights %1 in the map, %2 drawn, %3 shadow maps").arg(cam->stockLocalLightCount()).arg(cam->stockLocalLightsDrawn())
                               .arg(cam->stockLightShadowsDrawn());
+                report << "post_fx " + cam->postFxReport();
                 const auto sb = cam->ssrBatchStats();
                 report << QString("ssr_batches base %1 layers %2").arg(sb[0]).arg(sb[1]);
                 report << QString("texture_memory mb %1 budget_mb %2 reduced_to_128px %3").arg(double(cam->textureBytes()) / 1048576.0, 0, 'f', 0)
@@ -1049,7 +1120,7 @@ int main(int argc, char** argv) {
         if (!qEnvironmentVariableIsSet("IW8R_MATERIAL_CACHE_ROOT")) qputenv("IW8R_MATERIAL_CACHE_ROOT", (outDir + "/cache/material_cache").toLocal8Bit());
     }
 
-    QApplication app(argc, argv);
+    GuardedApplication app(argc, argv);
     iw8r::qt::EditorLog::installQtMessageHandler();  // Qt warnings also go to the Console dock
     QApplication::setApplicationName("IW8 Radiant Suite");
     QApplication::setOrganizationName("IW8 Radiant Suite");

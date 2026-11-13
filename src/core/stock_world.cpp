@@ -54,15 +54,30 @@ struct VertexKeyHash {
     }
 };
 
+using json::View;
+
+// The exports are read through views of the validated text (json_lite View): only the members a reader needs are
+// scanned, record arrays are parsed one element at a time, and the big hex strings are decoded in place. No DOM of a
+// whole export is built (mp_donetsk's gfx_map is 422 MB of JSON, its DOM well over 1 GB).
+
 // The GfxWorld / GfxWorldTransientZone asset object: root.asset.fields.
-const Value* fieldsOf(const Value& root) {
-    const Value* a = root.get("asset");
-    return a ? a->get("fields") : nullptr;
+View fieldsOf(const View& root) { return root.get("asset").get("fields"); }
+
+double num(const View& v, double def = -1) {
+    const auto n = v.number();
+    return n ? *n : def;
 }
 
-double num(const Value* v, double def = -1) { return v && v->type == Value::Type::Number ? v->num : def; }
+// The decoded text of a string value: a view of the export itself when it has no escape (hex never has), else a
+// decoded copy in `scratch`. False when `v` is not a string.
+bool stringOf(const View& v, std::string& scratch, std::string_view& out) {
+    if (v.rawString(out)) return true;
+    if (!v.string(scratch)) return false;
+    out = scratch;
+    return true;
+}
 
-bool unhex(const std::string& hex, std::vector<uint8_t>& out) {
+bool unhex(std::string_view hex, std::vector<uint8_t>& out) {
     if (hex.size() % 2) return false;
     out.resize(hex.size() / 2);
     const auto nib = [](char c) -> int {
@@ -106,69 +121,81 @@ std::array<double, 2> stockUv(const std::vector<uint8_t>& aux, size_t off) {
 // Reads the transient zone index and the draw buffers of one gfx_map_trzone JSON text.
 // *empty is set for a stub with no buffers: big maps (mp_donetsk) keep most transient zones in their own streamed
 // fastfiles (mp_donetsk_00587_tr.ff, ...), and the main zone holds only a size-0 entry for each.
-bool extractTrz(const std::string& text, int64_t& zoneIndex, TrzData& out, std::string* err, bool* empty = nullptr) {
+bool extractTrz(std::string_view text, int64_t& zoneIndex, TrzData& out, std::string* err, bool* empty = nullptr) {
     std::string jerr;
-    const auto root = json::parse(text, &jerr);
-    if (!root) {
+    if (!json::validate(text, &jerr)) {
         if (err) *err = "gfx_map_trzone JSON: " + jerr;
         return false;
     }
-    const Value* f = fieldsOf(*root);
-    const Value* dv = f ? f->get("drawVerts") : nullptr;
-    const Value* posBytes = dv && dv->get("posData") ? dv->get("posData")->get("bytes") : nullptr;
-    const Value* idxBytes = dv && dv->get("indices") ? dv->get("indices")->get("bytes") : nullptr;
-    const Value* auxBytes = dv && dv->get("auxData") ? dv->get("auxData")->get("bytes") : nullptr;
+    const View root(text);
+    const View f = fieldsOf(root);
+    const View dv = f.get("drawVerts");
+    const View posBytes = dv.get("posData").get("bytes");
+    const View idxBytes = dv.get("indices").get("bytes");
+    const View auxBytes = dv.get("auxData").get("bytes");
+    std::string scratch;
+    std::string_view hex;
     // ACTS writes a small array as decoded "values" instead of hex "bytes" (some streamed world tiles of mp_donetsk).
-    const auto valuesOf = [&](const char* key) -> const Value* {
-        const Value* node = dv ? dv->get(key) : nullptr;
-        const Value* v = node ? node->get("values") : nullptr;
-        return v && v->type == Value::Type::Array ? v : nullptr;
+    const auto valuesOf = [&](const char* key) -> View {
+        const View v = dv.get(key).get("values");
+        return v.type() == Value::Type::Array ? v : View();
     };
-    if (dv && (!posBytes || !idxBytes) && (posBytes || valuesOf("posData")) && (idxBytes || valuesOf("indices"))) {
-        zoneIndex = int64_t(num(f->get("transientZoneIndex"), 0));
-        if (posBytes && posBytes->string()) {
-            if (!unhex(*posBytes->string(), out.pos)) {
+    const auto bytesOfValues = [](const View& arr, std::vector<uint8_t>& dst) {
+        arr.forEachElement([&](View b) {
+            dst.push_back(uint8_t(num(b, 0)));
+            return true;
+        });
+    };
+    if (dv.valid() && (!posBytes.valid() || !idxBytes.valid()) && (posBytes.valid() || valuesOf("posData").valid()) &&
+        (idxBytes.valid() || valuesOf("indices").valid())) {
+        zoneIndex = int64_t(num(f.get("transientZoneIndex"), 0));
+        if (stringOf(posBytes, scratch, hex)) {
+            if (!unhex(hex, out.pos)) {
                 if (err) *err = "gfx_map_trzone posData bytes are not hex";
                 return false;
             }
         } else {
-            for (const Value& b : valuesOf("posData")->arr) out.pos.push_back(uint8_t(num(&b, 0)));
+            bytesOfValues(valuesOf("posData"), out.pos);
         }
-        if (idxBytes && idxBytes->string()) {
+        if (stringOf(idxBytes, scratch, hex)) {
             std::vector<uint8_t> raw;
-            if (!unhex(*idxBytes->string(), raw) || raw.size() % 2) {
+            if (!unhex(hex, raw) || raw.size() % 2) {
                 if (err) *err = "gfx_map_trzone indices bytes are not hex";
                 return false;
             }
             for (size_t i = 0; i + 1 < raw.size(); i += 2) out.idx.push_back(uint16_t(raw[i] | raw[i + 1] << 8));
         } else {
-            for (const Value& i : valuesOf("indices")->arr) out.idx.push_back(uint16_t(num(&i, 0)));
+            valuesOf("indices").forEachElement([&](View i) {
+                out.idx.push_back(uint16_t(num(i, 0)));
+                return true;
+            });
         }
-        if (const Value* aux = valuesOf("auxData"))
-            for (const Value& b : aux->arr) out.aux.push_back(uint8_t(num(&b, 0)));
-        else if (auxBytes && auxBytes->string() && !unhex(*auxBytes->string(), out.aux)) {
+        if (const View aux = valuesOf("auxData"); aux.valid())
+            bytesOfValues(aux, out.aux);
+        else if (stringOf(auxBytes, scratch, hex) && !unhex(hex, out.aux)) {
             if (err) *err = "gfx_map_trzone auxData bytes are not hex";
             return false;
         }
         return true;
     }
     if (empty) *empty = false;
-    if (dv && num(dv->get("posDataSize"), -1) == 0 && num(dv->get("indexCount"), -1) == 0) {
-        zoneIndex = int64_t(num(f->get("transientZoneIndex"), 0));
+    if (dv.valid() && num(dv.get("posDataSize"), -1) == 0 && num(dv.get("indexCount"), -1) == 0) {
+        zoneIndex = int64_t(num(f.get("transientZoneIndex"), 0));
         if (empty) *empty = true;
         return true;
     }
-    if (!posBytes || !idxBytes || !posBytes->string() || !idxBytes->string()) {
+    if (posBytes.type() != Value::Type::String || idxBytes.type() != Value::Type::String) {
         if (err) *err = "gfx_map_trzone has no drawVerts posData/indices bytes (hex)";
         return false;
     }
-    zoneIndex = int64_t(num(f->get("transientZoneIndex"), 0));
+    zoneIndex = int64_t(num(f.get("transientZoneIndex"), 0));
     std::vector<uint8_t> idxRaw;
-    if (!unhex(*posBytes->string(), out.pos) || !unhex(*idxBytes->string(), idxRaw) || idxRaw.size() % 2) {
+    if (!stringOf(posBytes, scratch, hex) || !unhex(hex, out.pos) || !stringOf(idxBytes, scratch, hex) || !unhex(hex, idxRaw) ||
+        idxRaw.size() % 2) {
         if (err) *err = "gfx_map_trzone buffers are not hex";
         return false;
     }
-    if (auxBytes && auxBytes->string() && !unhex(*auxBytes->string(), out.aux)) {
+    if (stringOf(auxBytes, scratch, hex) && !unhex(hex, out.aux)) {
         if (err) *err = "gfx_map_trzone auxData bytes are not hex";
         return false;
     }
@@ -178,62 +205,77 @@ bool extractTrz(const std::string& text, int64_t& zoneIndex, TrzData& out, std::
 }
 
 // The surface table of a gfx_map JSON text.
-bool parseSurfaceTable(const std::string& gfxText, StockWorldSurfaceTable& table, std::string* err) {
+bool parseSurfaceTable(std::string_view gfxText, StockWorldSurfaceTable& table, std::string* err) {
     std::string jerr;
-    const auto root = json::parse(gfxText, &jerr);
-    if (!root) {
+    if (!json::validate(gfxText, &jerr)) {
         if (err) *err = "gfx_map JSON: " + jerr;
         return false;
     }
     StockWorldSurfaceTable& out = table;
-    const Value* f = fieldsOf(*root);
+    const View f = fieldsOf(View(gfxText));
     // bakedLightScale lives in the draw sub-object (its path differs between exports): the first one found by name,
-    // through objects only (the big arrays hold none).
+    // through objects only (the big arrays hold none). Depth first, the last child object first.
     {
-        std::vector<const Value*> stack{f};
-        while (!stack.empty()) {
-            const Value* v = stack.back();
+        std::vector<View> stack{f};
+        bool found = false;
+        while (!stack.empty() && !found) {
+            const View v = stack.back();
             stack.pop_back();
-            if (!v || v->type != Value::Type::Object) continue;
-            if (const Value* b = v->get("bakedLightScale"); b && b->number() && *b->number() > 0) {
-                out.bakedLightScale = *b->number();
-                break;
-            }
-            for (const auto& [k, child] : v->obj)
-                if (child.type == Value::Type::Object) stack.push_back(&child);
+            if (v.type() != Value::Type::Object) continue;
+            bool first = true;  // only the first member of that name counts (Value::get)
+            std::vector<View> children;
+            v.forEachMember([&](const std::string& k, View child) {
+                if (first && k == "bakedLightScale") {
+                    first = false;
+                    if (const auto b = child.number(); b && *b > 0) {
+                        out.bakedLightScale = *b;
+                        found = true;
+                        return false;
+                    }
+                }
+                if (child.type() == Value::Type::Object) children.push_back(child);
+                return true;
+            });
+            stack.insert(stack.end(), children.begin(), children.end());
         }
     }
-    const Value* surfs = f && f->get("surfaces") && f->get("surfaces")->get("surfaces")
-                             ? f->get("surfaces")->get("surfaces")->get("values")
-                             : nullptr;
-    if (!surfs || surfs->type != Value::Type::Array) {
+    const View surfs = f.get("surfaces").get("surfaces").get("values");
+    if (surfs.type() != Value::Type::Array) {
         if (err) *err = "gfx_map has no surfaces.surfaces.values";
         return false;
     }
 
-    // surfaces.surfData: one GfxWorldSurfData per vertex block (the surface's surfDataIndex selects it).
+    // surfaces.surfData: one GfxWorldSurfData per vertex block (the surface's surfDataIndex selects it). Records are
+    // parsed one at a time.
     std::vector<SurfData> surfData;
-    if (const Value* sd = f->get("surfaces") ? f->get("surfaces")->get("surfData") : nullptr;
-        sd && sd->get("values") && sd->get("values")->type == Value::Type::Array) {
-        for (const Value& r : sd->get("values")->arr) {
+    const View sd = f.get("surfaces").get("surfData");
+    std::string scratch;
+    std::string_view hex;
+    if (sd.get("values").type() == Value::Type::Array) {
+        sd.get("values").forEachElement([&](View e) {
+            const auto rec = e.parse();
+            if (!rec) return false;
+            const Value& r = *rec;
+            const auto vnum = [](const Value* v, double def) { return v && v->type == Value::Type::Number ? v->num : def; };
             SurfData d;
-            d.layerCount = int64_t(num(r.get("layerCount"), 0));
-            d.texCoordOffset = int64_t(num(r.get("texCoordOffset"), 0));
-            d.xyzOffset = int64_t(num(r.get("xyzOffset"), -1));
-            d.lmapCoordOffset = int64_t(num(r.get("lmapCoordOffset"), 0));
-            d.colorOffset = int64_t(num(r.get("colorOffset"), 0));
+            d.layerCount = int64_t(vnum(r.get("layerCount"), 0));
+            d.texCoordOffset = int64_t(vnum(r.get("texCoordOffset"), 0));
+            d.xyzOffset = int64_t(vnum(r.get("xyzOffset"), -1));
+            d.lmapCoordOffset = int64_t(vnum(r.get("lmapCoordOffset"), 0));
+            d.colorOffset = int64_t(vnum(r.get("colorOffset"), 0));
             if (const Value* nt = r.get("normalTransformOffset"); nt && nt->type == Value::Type::Array)
                 for (size_t i = 0; i < nt->arr.size() && i < d.normalTransformOffset.size(); ++i)
-                    d.normalTransformOffset[i] = int64_t(num(&nt->arr[i], 0));
+                    d.normalTransformOffset[i] = int64_t(vnum(&nt->arr[i], 0));
             surfData.push_back(d);
-        }
-    } else if (sd && sd->get("bytes") && sd->get("bytes")->string()) {
+            return true;
+        });
+    } else if (stringOf(sd.get("bytes"), scratch, hex)) {
         // ACTS writes a large array as hex "bytes" (mp_donetsk: 57,471 records): 88 bytes each, u32 transientZone,
         // layerCount, xyzOffset, tangentFrameOffset, lmapCoordOffset, colorOffset, texCoordOffset at 0x00 .. 0x18
         // (x64-zt structs.hpp:12012; the "values" form above names the same fields).
         std::vector<uint8_t> raw;
-        const int64_t stride = int64_t(num(sd->get("stride"), kSurfDataBytes));
-        if (stride >= 0x1C && unhex(*sd->get("bytes")->string(), raw)) {
+        const int64_t stride = int64_t(num(sd.get("stride"), kSurfDataBytes));
+        if (stride >= 0x1C && unhex(hex, raw)) {
             const auto u32 = [&](size_t at) {
                 return int64_t(uint32_t(raw[at]) | uint32_t(raw[at + 1]) << 8 | uint32_t(raw[at + 2]) << 16 | uint32_t(raw[at + 3]) << 24);
             };
@@ -252,24 +294,30 @@ bool parseSurfaceTable(const std::string& gfxText, StockWorldSurfaceTable& table
     }
     out.surfData = surfData;
     out.surfaces.clear();
-    out.surfaces.reserve(surfs->arr.size());
-    for (const Value& s : surfs->arr) {
+    // One GfxSurface record at a time (82,208 on mp_donetsk).
+    surfs.forEachElement([&](View e) {
+        const auto rec = e.parse();
+        if (!rec) return false;
+        const Value& s = *rec;
+        const auto vnum = [](const Value* v, double def) { return v && v->type == Value::Type::Number ? v->num : def; };
         StockWorldSurfaceTable::Surface r;
         const Value* mat = s.get("material");
         r.material = mat && mat->get("name") && mat->get("name")->string() ? *mat->get("name")->string() : "";
         if (!r.material.empty() && r.material[0] == ',') r.material.erase(0, 1);
         if (const Value* tris = s.get("tris")) {
             r.hasTris = true;
-            r.posOffset = int64_t(num(tris->get("posOffset"), -1));
-            r.vertexCount = int64_t(num(tris->get("vertexCount"), -1));
-            r.triCount = int64_t(num(tris->get("triCount"), -1));
-            r.baseIndex = int64_t(num(tris->get("baseIndex"), -1));
+            r.posOffset = int64_t(vnum(tris->get("posOffset"), -1));
+            r.vertexCount = int64_t(vnum(tris->get("vertexCount"), -1));
+            r.triCount = int64_t(vnum(tris->get("triCount"), -1));
+            r.baseIndex = int64_t(vnum(tris->get("baseIndex"), -1));
         }
-        r.zone = int64_t(num(s.get("transientZone"), 0));
-        r.surfDataIndex = int64_t(num(s.get("surfDataIndex"), -1));
-        r.lightmapIndex = int64_t(num(s.get("lightmapIndex"), 0));
+        r.zone = int64_t(vnum(s.get("transientZone"), 0));
+        r.surfDataIndex = int64_t(vnum(s.get("surfDataIndex"), -1));
+        r.lightmapIndex = int64_t(vnum(s.get("lightmapIndex"), 0));
         out.surfaces.push_back(std::move(r));
-    }
+        return true;
+    });
+    out.surfaces.shrink_to_fit();
     // The layer count of each material: the largest layerCount of its surfaces (research 97), so every vertex of a
     // mesh has the same number of layer records.
     out.materialLayers.clear();
@@ -320,7 +368,32 @@ bool buildFromTable(const StockWorldSurfaceTable& table, std::map<int64_t, TrzDa
     const auto materialOf = [](const StockWorldSurfaceTable::Surface& s) -> const std::string& { return s.material; };
     std::map<std::string, int> materialLayers = table.materialLayers;
 
-    for (const StockWorldSurfaceTable::Surface& s : table.surfaces) {
+    // Memory (mp_donetsk with every streamed tile: hundreds of MB): a transient zone's buffers and a material's vertex
+    // map are released once the last surface that names them is done. The trz entries stay (trz.count is still asked).
+    const size_t surfaceCount = table.surfaces.size();
+    std::vector<uint8_t> lastOfZone(surfaceCount, 0), lastOfMaterial(surfaceCount, 0);
+    {
+        std::map<int64_t, size_t> zoneLast;
+        std::map<std::string, size_t> materialLast;
+        for (size_t i = 0; i < surfaceCount; ++i) {
+            zoneLast[table.surfaces[i].zone] = i;
+            materialLast[table.surfaces[i].material] = i;
+        }
+        for (const auto& [zone, i] : zoneLast) lastOfZone[i] = 1;
+        for (const auto& [material, i] : materialLast) lastOfMaterial[i] = 1;
+    }
+    const auto releaseAfter = [&](size_t i) {
+        const StockWorldSurfaceTable::Surface& s = table.surfaces[i];
+        if (lastOfZone[i])
+            if (auto it = trz.find(s.zone); it != trz.end()) it->second = TrzData();
+        if (lastOfMaterial[i])
+            if (auto it = byMaterial.find(materialOf(s)); it != byMaterial.end())
+                std::unordered_map<VertexKey, uint32_t, VertexKeyHash>().swap(vmap[it->second]);
+    };
+
+    for (size_t si = 0; si < surfaceCount; ++si) {
+        if (si > 0) releaseAfter(si - 1);
+        const StockWorldSurfaceTable::Surface& s = table.surfaces[si];
         if (!s.hasTris) {
             if (!quietMissing || trz.count(s.zone)) ++surfacesBad;
             continue;
@@ -496,6 +569,9 @@ bool buildFromTable(const StockWorldSurfaceTable& table, std::map<int64_t, TrzDa
         }
     }
 
+    if (surfaceCount) releaseAfter(surfaceCount - 1);
+    vmap.clear();
+
     // Area-weighted vertex normals (no normal stream is read). uv was filled per vertex above.
     for (ImportedMesh& m : out.meshes) {
         m.normal.assign(m.pos.size(), Vec3{});
@@ -537,6 +613,19 @@ bool buildFromTable(const StockWorldSurfaceTable& table, std::map<int64_t, TrzDa
         out.vertexColorHigh.resize(keep);
         out.layerNormalTransform.resize(keep);
     }
+    // The per-vertex arrays grew one vertex at a time: give back their spare capacity (the world is kept while the map
+    // is open; mp_donetsk with every tile: 526 MB before, 452 MB after).
+    for (size_t i = 0; i < out.meshes.size(); ++i) {
+        out.meshes[i].pos.shrink_to_fit();
+        out.meshes[i].uv.shrink_to_fit();
+        out.meshes[i].idx.shrink_to_fit();
+        out.lightmapUv[i].shrink_to_fit();
+        out.lightmapIndex[i].shrink_to_fit();
+        out.layerUv[i].shrink_to_fit();
+        out.vertexColor[i].shrink_to_fit();
+        out.vertexColorHigh[i].shrink_to_fit();
+        out.layerNormalTransform[i].shrink_to_fit();
+    }
     out.lightmapSurfaces = lightmapSurfaces;
 
     if (missingZone.size() > 4) {
@@ -566,13 +655,12 @@ bool buildFromTable(const StockWorldSurfaceTable& table, std::map<int64_t, TrzDa
     return true;
 }
 
-bool readFile(const fs::path& p, std::string& out, std::string* err) {
-    std::ifstream f(p, std::ios::binary);
-    if (!f) {
+// The file's text, memory-mapped (json::FileText): it costs no private memory however big.
+bool readFile(const fs::path& p, json::FileText& out, std::string* err) {
+    if (!out.open(p)) {
         if (err) *err = "cannot read " + p.string();
         return false;
     }
-    out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
     return true;
 }
 
@@ -590,7 +678,7 @@ std::vector<fs::path> jsonFilesUnder(const fs::path& dir) {
 
 namespace {
 // The table parse, the mesh build, and the table kept with the world.
-bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, StockWorld& out, std::string* err) {
+bool buildWorld(std::string_view gfxText, std::map<int64_t, TrzData>& trz, StockWorld& out, std::string* err) {
     auto table = std::make_shared<StockWorldSurfaceTable>();
     if (!parseSurfaceTable(gfxText, *table, err)) return false;
     if (!buildFromTable(*table, trz, out, err, false)) return false;
@@ -645,41 +733,46 @@ bool readStreamedWorldZones(const std::string& zoneDir, std::vector<StreamedWorl
     // are not world tiles).
     std::set<int64_t> resident{0};
     for (const fs::path& p : jsonFilesUnder(base / "gfx_map_trzone")) {
-        std::string text;
+        json::FileText text;
         if (!readFile(p, text, err)) return false;
-        std::string jerr;
-        const auto root = json::parse(text, &jerr);
-        if (!root) continue;
-        const Value* f = fieldsOf(*root);
-        const Value* dv = f ? f->get("drawVerts") : nullptr;
-        if (dv && num(dv->get("posDataSize"), 0) > 0) resident.insert(int64_t(num(f->get("transientZoneIndex"), 0)));
+        if (!json::validate(text.view())) continue;
+        const View f = fieldsOf(View(text.view()));
+        const View dv = f.get("drawVerts");
+        if (dv.valid() && num(dv.get("posDataSize"), 0) > 0) resident.insert(int64_t(num(f.get("transientZoneIndex"), 0)));
     }
     const std::string mapName = fs::path(zoneDir).filename().string();
     std::map<int64_t, StreamedWorldZone> byIndex;
-    std::string gfxText;
+    json::FileText gfxText;
     if (!readFile(gfx.front(), gfxText, err)) return false;
     std::string jerr;
-    const auto root = json::parse(gfxText, &jerr);
-    if (!root) {
+    if (!json::validate(gfxText.view(), &jerr)) {
         if (err) *err = "gfx_map JSON: " + jerr;
         return false;
     }
-    const Value* f = fieldsOf(*root);
-    const Value* surfaces = f && f->get("surfaces") ? f->get("surfaces") : nullptr;
-    const Value* surfs = surfaces && surfaces->get("surfaces") ? surfaces->get("surfaces")->get("values") : nullptr;
-    const Value* bounds = surfaces && surfaces->get("surfaceBounds") ? surfaces->get("surfaceBounds")->get("bytes") : nullptr;
-    if (!bounds) bounds = f && f->get("surfaceBounds") ? f->get("surfaceBounds")->get("bytes") : nullptr;
-    if (!surfs || surfs->type != Value::Type::Array || !bounds || !bounds->string()) {
+    const View f = fieldsOf(View(gfxText.view()));
+    const View surfaces = f.get("surfaces");
+    const View surfs = surfaces.get("surfaces").get("values");
+    View bounds = surfaces.get("surfaceBounds").get("bytes");
+    if (!bounds.valid()) bounds = f.get("surfaceBounds").get("bytes");
+    std::string scratch;
+    std::string_view boundsHex;
+    if (surfs.type() != Value::Type::Array || !stringOf(bounds, scratch, boundsHex)) {
         if (err) *err = "gfx_map has no surfaces or surfaceBounds";
         return false;
     }
+    // The transient zone of every surface (only that member of each record is read).
+    std::vector<int64_t> surfZone;
+    surfs.forEachElement([&](View s) {
+        surfZone.push_back(int64_t(num(s.get("transientZone"), -1)));
+        return true;
+    });
     std::vector<uint8_t> raw;
-    if (!unhex(*bounds->string(), raw) || raw.size() / 56 < surfs->arr.size()) {
+    if (!unhex(boundsHex, raw) || raw.size() / 56 < surfZone.size()) {
         if (err) *err = "gfx_map surfaceBounds do not cover the surfaces";
         return false;
     }
-    for (size_t i = 0; i < surfs->arr.size(); ++i) {
-        const int64_t zone = int64_t(num(surfs->arr[i].get("transientZone"), -1));
+    for (size_t i = 0; i < surfZone.size(); ++i) {
+        const int64_t zone = surfZone[i];
         if (zone < 0 || zone > 99999 || resident.count(zone)) continue;
         auto it = byIndex.find(zone);
         if (it == byIndex.end()) {
@@ -759,17 +852,17 @@ bool readStockWorld(const std::string& zoneDir, StockWorld& out, std::string* er
                     allTrz.push_back(it->path());
     }
     for (const fs::path& p : allTrz) {
-        std::string text;
+        json::FileText text;
         if (!readFile(p, text, err)) return false;
         int64_t zone = 0;
         TrzData d;
         bool empty = false;
-        if (!extractTrz(text, zone, d, err, &empty)) return false;
+        if (!extractTrz(text.view(), zone, d, err, &empty)) return false;
         if (!empty) trz[zone] = std::move(d);
     }
-    std::string gfxText;
+    json::FileText gfxText;
     if (!readFile(gfx.front(), gfxText, err)) return false;
-    return buildWorld(gfxText, trz, out, err);
+    return buildWorld(gfxText.view(), trz, out, err);
 }
 
 bool buildStockWorldTile(const StockWorldSurfaceTable& table, const std::string& tileDir, StockWorld& out, std::string* err) {
@@ -783,12 +876,12 @@ bool buildStockWorldTile(const StockWorldSurfaceTable& table, const std::string&
         if (!it->is_regular_file(ec) || it->path().extension() != ".json" ||
             it->path().string().find("gfx_map_trzone") == std::string::npos)
             continue;
-        std::string text;
+        json::FileText text;
         if (!readFile(it->path(), text, err)) return false;
         int64_t zone = 0;
         TrzData d;
         bool empty = false;
-        if (!extractTrz(text, zone, d, err, &empty)) return false;
+        if (!extractTrz(text.view(), zone, d, err, &empty)) return false;
         if (!empty) trz[zone] = std::move(d);
     }
     if (trz.empty()) {

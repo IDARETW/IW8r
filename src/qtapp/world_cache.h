@@ -120,6 +120,12 @@ public:
     QString lightGridErrorOf(const QString& zone) const;  // why it was not made ("" when made, pending or never run)
     // requestLightmap has something to make for this cached zone (a lightmap, probes or the light grid).
     bool needsLightmapJob(const QString& zone) const;
+    // Warzone reflection probes (research 108): the main job writes every record and the zone-0 images into
+    // probes.iw8rprb (v2); the shared probes' images (streamed from the XPaks) come next through ACTS, batches of 450
+    // names, merged into the same file (<zone>/probes_shared.done when finished, probesReady then). Each tile job cuts
+    // the tile's own images into <zone>/streamed/<tile>/probes.iw8rprb (<tile>/probes.done: "ok N" / "none" / "error").
+    void requestSharedProbes(const QString& zone);
+    QStringList tileProbeFiles(const QString& zone) const;
     // The streamed tiles' light grid files of a zone: transientZoneIndex -> lightgrid.iw8rlg path. Starts no job.
     std::map<int, QString> tileLightGrids(const QString& zone) const;
 
@@ -201,6 +207,7 @@ private:
     QString lmScratch_;        // root_/w/lightmap_<zone> while it runs
     QProcess* lmProc_ = nullptr;
     QSet<QString> lmSkip_;     // ACTS or disk failures of this session (zone, or zone/tile): not tried again until the next start
+    QSet<QString> sharedProbesAsked_;  // requestSharedProbes this session
     QElapsedTimer lmTimer_;
 };
 

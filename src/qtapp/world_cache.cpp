@@ -1,4 +1,5 @@
 #include "world_cache.h"
+#include "worker_guard.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -19,6 +20,7 @@
 #include <QTimer>
 
 #include <algorithm>
+#include <memory>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -50,6 +52,8 @@ constexpr int kLightmapActsTimeoutMs = 10 * 60 * 1000;
 constexpr const char* kLightmapDir = "lightmaps";
 constexpr const char* kTileLightmapDone = "lightmap.done";
 constexpr const char* kTileLightGridDone = "lightgrid.done";
+constexpr const char* kTileProbesDone = "probes.done";
+constexpr const char* kSharedProbesDone = "probes_shared.done";
 // No decompression starts with less free space than this, whatever the estimate (Warzone zones are big).
 constexpr qint64 kMinFreeBytes = 3LL * 1024 * 1024 * 1024;
 
@@ -242,6 +246,90 @@ bool WorldCache::needsLightGrid(const QString& zone) const {
     return lookup(zone) && !lightGridFile(zone) && lightGridErrorOf(zone).isEmpty();
 }
 
+QStringList WorldCache::tileProbeFiles(const QString& zone) const {
+    QStringList out;
+    const auto dir = lookup(zone);
+    if (!dir) return out;
+    for (const QFileInfo& t : QDir(*dir + "/streamed").entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
+        if (const QString f = t.absoluteFilePath() + "/" + kProbesFile; QFileInfo::exists(f)) out << f;
+    return out;
+}
+
+void WorldCache::requestSharedProbes(const QString& zone) {
+    const auto dir = lookup(zone);
+    if (!dir || sharedProbesAsked_.contains(zone) || QFileInfo::exists(*dir + "/" + kSharedProbesDone)) return;
+    const QString mainFile = *dir + "/" + kProbesFile;
+    iw8r::StockProbeSet rec;
+    if (!iw8r::readStockProbeCacheRecords(mainFile.toStdString(), rec) || !rec.streamed) return;
+    sharedProbesAsked_.insert(zone);
+    QStringList names;
+    for (size_t i = 0; i < rec.probes.size(); ++i)
+        if (iw8r::stockProbeIsShared(rec.probes[i].imageIndirection)) names << QString::fromStdString(iw8r::stockProbeSharedImageName(rec, int(i)));
+    if (names.isEmpty()) return;
+    // One ACTS run per 450 names (research 108 section 4.2: 460 names took 1.4 s), then one merge.
+    const QString scratch = root_ + "/w/probes_" + zone;
+    QDir(scratch).removeRecursively();
+    QDir().mkpath(scratch);
+    auto pending = std::make_shared<int>(0);
+    QPointer<WorldCache> self(this);
+    emit progress(QString("ACTS: %1 shared reflection probe images of %2").arg(names.size()).arg(zone));
+    for (int at = 0, part = 0; at < names.size(); at += 450, ++part) {
+        ActsRequest request;
+        request.zone = zone;
+        request.types = "image";
+        request.names = names.mid(at, 450);
+        request.outDir = QDir::toNativeSeparators(scratch + "/" + QString::number(part));
+        request.xpaks = true;
+        ++*pending;
+        ActsRunner::shared()->submit(tools_, request, this, [self, zone, scratch, mainFile, pending, dir = *dir](const ActsResult&) {
+            if (--*pending > 0 || !self) return;
+            emit self->progress("Reading the shared reflection probe images of " + zone + "...");
+            std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, scratch, mainFile, dir] {
+                iw8r::StockProbeSet set;
+                std::string err;
+                size_t got = 0;
+                bool ok = iw8r::readStockProbeCache(mainFile.toStdString(), set, &err, false);
+                if (ok) {
+                    // The journal names each export's file ("*" names are encoded); the probe index ends the name.
+                    for (QDirIterator it(scratch, {"assets.jsonl"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
+                        QFile j(it.next());
+                        if (!j.open(QIODevice::ReadOnly)) continue;
+                        const QString base = QFileInfo(j.fileName()).absolutePath();
+                        while (!j.atEnd()) {
+                            const QJsonObject o = QJsonDocument::fromJson(j.readLine()).object();
+                            if (o.value("status").toString() != "ok") continue;
+                            const QString name = o.value("name").toString();
+                            bool num = false;
+                            const int probe = name.section('_', -1).toInt(&num);
+                            if (!num || probe < 0 || size_t(probe) >= set.probes.size()) continue;
+                            std::vector<uint8_t> bc6h;
+                            if (!iw8r::readStockProbeDds((base + "/" + o.value("file").toString()).toStdString(), bc6h)) continue;
+                            if (set.size == 0) set.size = iw8r::kStockProbeImageSize, set.mipCount = iw8r::kStockProbeImageMips;
+                            set.probes[size_t(probe)].bc6h = std::move(bc6h);
+                            ++got;
+                        }
+                    }
+                    ok = got > 0 && iw8r::writeStockProbeCache(mainFile.toStdString(), set, &err);
+                }
+                QDir(scratch).removeRecursively();
+                if (ok) {
+                    QSaveFile done(dir + "/" + kSharedProbesDone);
+                    if (done.open(QIODevice::WriteOnly)) {
+                        done.write(QString("ok %1\n").arg(got).toUtf8());
+                        done.commit();
+                    }
+                }
+                QMetaObject::invokeMethod(qApp, [self, zone, ok, got, err] {
+                    if (!self) return;
+                    emit self->progress(ok ? QString("world cache: %1 shared reflection probe images of %2 cached").arg(got).arg(zone)
+                                           : "world cache: shared reflection probes of " + zone + " not read: " + QString::fromStdString(err));
+                    emit self->probesReady(zone);
+                });
+            })).detach();
+        });
+    }
+}
+
 std::map<int, QString> WorldCache::tileLightGrids(const QString& zone) const {
     std::map<int, QString> out;
     const auto dir = lookup(zone);
@@ -295,6 +383,7 @@ void WorldCache::loadIndex() {
         e.actsMs = qint64(o.value("acts_ms").toDouble());
         e.lightmapError = o.value("lightmap_error").toString();
         e.probesError = o.value("probes_error").toString();
+        if (o.value("probeRules").toInt() < 2) e.probesError.clear();  // 2: the Warzone layout (research 108) is read
         e.lightGridError = o.value("lightgrid_error").toString();
         if (!e.failed) {
             e.dir = QDir(root_).filePath(o.value("dir").toString());
@@ -316,6 +405,7 @@ void WorldCache::writeIndex() const {
         if (!e.error.isEmpty()) o.insert("error", e.error);
         if (!e.lightmapError.isEmpty()) o.insert("lightmap_error", e.lightmapError);
         if (!e.probesError.isEmpty()) o.insert("probes_error", e.probesError);
+        o.insert("probeRules", 2);
         if (!e.lightGridError.isEmpty()) o.insert("lightgrid_error", e.lightGridError);
         zones.insert(zone, o);
     }
@@ -496,7 +586,7 @@ void WorldCache::startNextStreamed() {
         bool ok = false;
         QDirIterator it(exported, {"*.json"}, QDir::Files, QDirIterator::Subdirectories);
         while (it.hasNext())
-            if (it.next().contains("gfx_map_trzone")) ok = true;
+            if (const QString f = it.next(); f.contains("gfx_map_trzone") && QFileInfo(f).size() > 0) ok = true;  // 0 bytes: a broken export
         if (ok) {
             QDir(dest).removeRecursively();
             ok = QDir().rename(exported, dest);
@@ -637,8 +727,41 @@ void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
         const QString tileDir = *dir + "/streamed/" + tile;
         const bool wantLm = !QFileInfo::exists(tileDir + "/" + kTileLightmapDone);
         const bool wantLg = !QFileInfo::exists(tileDir + "/" + kTileLightGridDone);
-        emit progress("Reading the " + tile + (wantLm ? " lightmap..." : " prop light grid..."));
-        std::thread([self, zone, tile, scratch, dec, dir = *dir, tileDir, wantLm, wantLg] {
+        // The tile's own reflection probe images, once the main file holds the records (research 108 section 4.2).
+        const QString mainProbes = *dir + "/" + kProbesFile;
+        const bool wantPr = !QFileInfo::exists(tileDir + "/" + kTileProbesDone) && QFileInfo::exists(mainProbes);
+        emit progress("Reading the " + tile + (wantLm ? " lightmap..." : " prop light grid and probes..."));
+        std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, tile, scratch, dec, dir = *dir, tileDir, wantLm, wantLg, wantPr, mainProbes] {
+            if (wantPr) {
+                QString trzone;
+                for (QDirIterator it(tileDir + "/assets/gfx_map_trzone", {"*.json"}, QDir::Files); it.hasNext();) {
+                    trzone = it.next();
+                    break;
+                }
+                iw8r::StockProbeTransientZone tz;
+                iw8r::StockProbeSet rec;
+                iw8r::StockProbeImages imgs;
+                std::string prErr;
+                QString verdictText;
+                if (trzone.isEmpty() || !iw8r::readStockProbeTransientZone(trzone.toStdString(), tz, &prErr)) {
+                    verdictText = "error " + QString::fromStdString(prErr.empty() ? std::string("no gfx_map_trzone export") : prErr);
+                } else if (!tz.hasProbes || tz.exclusiveCount == 0) {
+                    verdictText = "none";
+                } else if (!iw8r::readStockProbeCacheRecords(mainProbes.toStdString(), rec, &prErr) || !rec.streamed) {
+                    verdictText.clear();  // the records are not there yet: asked again later
+                } else if (!iw8r::extractStockProbeZoneImages(dec.toStdString(), tz, rec, imgs, &prErr)) {
+                    verdictText = "error " + QString::fromStdString(prErr);
+                } else if (iw8r::writeStockProbeTileCache((tileDir + "/" + kProbesFile).toStdString(), imgs, &prErr)) {
+                    verdictText = QString("ok %1").arg(imgs.probes.size());
+                }
+                if (!verdictText.isEmpty()) {
+                    QSaveFile f(tileDir + "/" + kTileProbesDone);
+                    if (f.open(QIODevice::WriteOnly)) {
+                        f.write((verdictText + "\n").toUtf8());
+                        f.commit();
+                    }
+                }
+            }
             // The tile's static-model light grid (research 105 section 5.1): its own box table and atlas, for the props
             // whose worldTransient is this tile's transientZoneIndex. Its verdict goes to lightgrid.done.
             if (wantLg) {
@@ -715,7 +838,7 @@ void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
             QMetaObject::invokeMethod(qApp, [self, zone, tile, ok, message, persist] {
                 if (self) self->endTileLightmap(zone, tile, ok, message, persist);
             });
-        }).detach();
+        })).detach();
         return;
     }
 
@@ -739,7 +862,7 @@ void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
     if (wantPr) what << "reflection probes";
     if (wantLg) what << "prop light grid";
     emit progress("Reading the " + zone + " " + what.join(", ") + "...");
-    std::thread([self, zone, scratch, dec, zoneDir, prTarget, wantLm, wantPr, wantLg, gfxJson, lgTarget, trzoneJson] {
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, scratch, dec, zoneDir, prTarget, wantLm, wantPr, wantLg, gfxJson, lgTarget, trzoneJson] {
         // Only a verdict on the zone's data is kept (no root, unknown formats, no probe image); a file that could not
         // be read or written is tried again in the next session.
         const auto verdict = isVerdict;
@@ -760,6 +883,19 @@ void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
                 prErr = "no gfx_map JSON in the zone's world cache folder";
             } else if (!iw8r::readStockProbeRecords(gfxJson.toStdString(), probes, &prErr)) {
                 prPersist = verdict(prErr);  // a map without probes is a verdict
+            } else if (probes.streamed) {
+                // Warzone (research 108): every record and the main zone's own images now; the shared images through ACTS
+                // next (requestSharedProbes), each tile's with its tile job.
+                iw8r::StockProbeTransientZone tz;
+                iw8r::StockProbeImages imgs;
+                if (!iw8r::readStockProbeTransientZone(trzoneJson.toStdString(), tz, &prErr)) {
+                    prPersist = verdict(prErr);
+                } else if (!iw8r::extractStockProbeZoneImages(dec.toStdString(), tz, probes, imgs, &prErr)) {
+                    prPersist = verdict(prErr);
+                } else {
+                    prOk = iw8r::mergeStockProbeImages(probes, imgs, &prErr);
+                    if (probes.size == 0) probes.size = iw8r::kStockProbeImageSize, probes.mipCount = iw8r::kStockProbeImageMips;
+                }
             } else {
                 prOk = iw8r::extractStockProbeImages(dec.toStdString(), probes, &prErr);
                 prPersist = !prOk && verdict(prErr);
@@ -814,6 +950,7 @@ void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
                             .arg(probes.boxes.size())
                             .arg(probes.size)
                             .arg(probes.mipCount);
+            if (probes.streamed) prSummary += QString(" (Warzone: %1 shared images next, the rest with the tiles)").arg(probes.sharedCount);
             if (!iw8r::writeStockProbeCache(prTarget.toStdString(), probes, &prErr)) {
                 prOk = false;
                 QFile::remove(prTarget);
@@ -824,6 +961,7 @@ void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
             if (!self) return;
             if (wantLm) self->noteExtraction(zone, 0, lmOk, lmOk ? lmSummary : QString::fromStdString(lmErr), lmPersist);
             if (wantPr) self->noteExtraction(zone, 1, prOk, prOk ? prSummary : QString::fromStdString(prErr), prPersist);
+            if (wantPr && prOk) self->requestSharedProbes(zone);  // Warzone only (it checks)
             if (wantLg) self->noteExtraction(zone, 2, lgOk, lgOk ? lgSummary : QString::fromStdString(lgErr), lgPersist);
             self->lmZone_.clear();
             self->lmScratch_.clear();
@@ -832,7 +970,7 @@ void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
             emit self->lightGridReady(zone);
             self->startNextLightmap();
         });
-    }).detach();
+    })).detach();
 }
 
 void WorldCache::noteExtraction(const QString& zone, int kind, bool ok, const QString& message, bool persistError) {
@@ -884,10 +1022,13 @@ void WorldCache::endLightmap(const QString& zone, bool ok, const QString& error,
 
 void WorldCache::queueTileLightmap(const QString& zone, const QString& tile) {
     const auto dir = lookup(zone);
-    // Both the tile's lightmaps and its light grid have their verdict: nothing to do.
+    // The tile's lightmaps, its light grid and (once the main file holds the records) its probe images have their
+    // verdict: nothing to do.
+    const bool probesDue = dir && QFileInfo::exists(*dir + "/" + kProbesFile) &&
+                           !QFileInfo::exists(*dir + "/streamed/" + tile + "/" + kTileProbesDone);
     if (!dir ||
         (QFileInfo::exists(*dir + "/streamed/" + tile + "/" + kTileLightmapDone) &&
-         QFileInfo::exists(*dir + "/streamed/" + tile + "/" + kTileLightGridDone)) ||
+         QFileInfo::exists(*dir + "/streamed/" + tile + "/" + kTileLightGridDone) && !probesDue) ||
         lmSkip_.contains(zone + "/" + tile) || (zone == lmZone_ && tile == lmTile_))
         return;
     for (const auto& q : tileLmQueue_)
@@ -954,6 +1095,7 @@ void WorldCache::endTileLightmap(const QString& zone, const QString& tile, bool 
     for (const auto& q : tileLmQueue_) more |= q.first == zone;
     if (!more) emit lightmapReady(zone);
     emit lightGridReady(zone);  // the tile's light grid (tileLightGrids) may be new
+    emit probesReady(zone);     // and its probe images (tileProbeFiles)
     startNextLightmap();
 }
 

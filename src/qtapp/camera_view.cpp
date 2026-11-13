@@ -1,4 +1,5 @@
 #include "material_tints.h"
+#include "worker_guard.h"
 #include "camera_view.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -151,6 +152,14 @@ void CameraView::render() {
         texInstResolved_.assign(texInstMaterials_.size(), false);
         texInstDirty_ = false;
         texInstPending_ = refPollDue_ = true;
+    }
+    if (texLightDirty_) {
+        IW8R_PROF("r.up_texlight");
+        for (size_t i = 0; i < pendingTexLight_.size(); ++i)
+            if (!pendingTexLight_[i].empty()) renderer_.setReferenceTexInstanceLight(i, pendingTexLight_[i]);
+        pendingTexLight_.clear();
+        pendingTexLight_.shrink_to_fit();
+        texLightDirty_ = false;
     }
     if (probesDirty_) {
         IW8R_PROF("r.up_probes");
@@ -1139,6 +1148,12 @@ int CameraView::videoMemoryMB() const {
     return mb;
 }
 
+int CameraView::systemMemoryMB() {
+    MEMORYSTATUSEX ms{};
+    ms.dwLength = sizeof(ms);
+    return GlobalMemoryStatusEx(&ms) ? int(ms.ullTotalPhys / (1024 * 1024)) : 0;
+}
+
 int CameraView::textureSideNow() const { return renderer_.textureBytes() > textureBudget_ ? 128 : kViewTextureSide; }
 
 // A stock colour image no step edits: no cut-out mask, not a blended material, no tint (catalogue or the material's own).
@@ -1197,6 +1212,11 @@ int CameraView::textureFor(const std::string& material) {
     if (path->endsWith(".dds", Qt::CaseInsensitive) && colourImageKeptCompressed(material)) {
         // A stock image nothing edits (no cut-out mask, not blended, no tint): uploaded block-compressed as stored,
         // its alpha the specular code (Verdansk with its streamed tiles ran past the texture budget decoded to RGBA).
+        // Nothing per material changes it, so materials that use the same file share one texture.
+        if (const auto it = texByPathBc_.find(path->toStdString()); it != texByPathBc_.end()) {
+            --loadsThisFrame_;
+            return texIds_[material] = it->second;
+        }
         app::DdsBlockLevels blocks;
         if (app::loadDdsBlocks(path->toStdString(), textureSideNow(), blocks, &fullW, &fullH)) {
             id = renderer_.createTextureBlocks(blocks.dxgiFormat, blocks.width, blocks.height, blocks.levels);
@@ -1205,6 +1225,7 @@ int CameraView::textureFor(const std::string& material) {
                 if (textureSideNow() < kViewTextureSide) ++budgetReduced_;
                 g_frameLoadMs += QDateTime::currentMSecsSinceEpoch() - loadStart;
                 if (shareable) texByPath_[path->toStdString()] = id;
+                texByPathBc_[path->toStdString()] = id;
                 return texIds_[material] = id;
             }
         }
@@ -1424,7 +1445,11 @@ int CameraView::emissiveFor(const std::string& material) {
     ++loadsThisFrame_;
     int id = -1;
     app::Rgba8Image img;
-    if (app::loadDdsPreview(path.toStdString(), kViewTextureSide, img) && img.width > 0 && img.height > 0)
+    // The texture budget's size rule as the other images (emissive images always loaded at full preview size).
+    app::DdsBlockLevels blocks;
+    if (!qEnvironmentVariableIsSet("IW8R_NO_BC_TEXTURES") && app::loadDdsBlocks(path.toStdString(), textureSideNow(), blocks))
+        id = renderer_.createTextureBlocks(blocks.dxgiFormat, blocks.width, blocks.height, blocks.levels);
+    if (id < 0 && app::loadDdsPreview(path.toStdString(), textureSideNow(), img) && img.width > 0 && img.height > 0)
         id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
     return emiIds_[material] = id;
 }
@@ -1999,7 +2024,7 @@ void CameraView::prepareGameLook() {
             envBrdfAsked_ = true;
             QPointer<CameraView> self(this);
             auto tools = toolPathFn_;
-            std::thread([self, tools] {
+            std::thread(guardedWorker(__FILE__, __LINE__, [self, tools] {
                 EnvBrdfLut lut = loadEnvBrdfLut(tools);
                 QMetaObject::invokeMethod(qApp, [self, lut] {
                     if (!self) return;
@@ -2011,7 +2036,7 @@ void CameraView::prepareGameLook() {
                         emit self->ctx_->statusMessage("Game Lighting: " + lut.error + " (an approximation is used)");
                     }
                 }, Qt::QueuedConnection);
-            }).detach();
+            })).detach();
         }
         if (pendingEnvBrdf_) {
             renderer_.setEnvBrdfLut(pendingEnvBrdfW_, pendingEnvBrdfH_, pendingEnvBrdf_->data());
@@ -2022,7 +2047,7 @@ void CameraView::prepareGameLook() {
             gtsoAsked_ = true;
             QPointer<CameraView> self(this);
             auto tools = toolPathFn_;
-            std::thread([self, tools] {
+            std::thread(guardedWorker(__FILE__, __LINE__, [self, tools] {
                 auto lut = std::make_shared<GtsoLut>(loadGtsoLut(tools));
                 QMetaObject::invokeMethod(qApp, [self, lut] {
                     if (!self) return;
@@ -2033,7 +2058,7 @@ void CameraView::prepareGameLook() {
                         emit self->ctx_->statusMessage("Game Lighting: specular occlusion table: " + lut->error + " (an approximation is used)");
                     }
                 }, Qt::QueuedConnection);
-            }).detach();
+            })).detach();
         }
         if (pendingGtso_) {
             renderer_.setGtsoLut(pendingGtso_->width, pendingGtso_->height, pendingGtso_->depth, pendingGtso_->r.data());
@@ -2061,6 +2086,11 @@ void CameraView::prepareGameLook() {
         g.sunColor[0] = float(c.x), g.sunColor[1] = float(c.y), g.sunColor[2] = float(c.z);
         const Vec3 sky = gameSkyOf(ctx_->doc);
         g.sky[0] = float(sky.x), g.sky[1] = float(sky.y), g.sky[2] = float(sky.z);
+        if (stock) {  // the stock map's bloom veil and vignette (research 109)
+            g.veil = float(stockPostFx_.veil);
+            const double aspect = height() > 0 ? double(width()) / double(height()) : 16.0 / 9.0;
+            gameVignetteConstants(stockPostFx_, aspect, 1.0, g.vignette);
+        }
         if (stock && stockFog_.on) {
             const GameFog& f = stockFog_;
             const double s = gameFogInscatter(f);
@@ -2206,12 +2236,12 @@ void CameraView::maybeBakeGameLook() {
     gameBakeRev_ = rev;
     emit ctx_->statusMessage(QString("Game lighting: baking %1 faces...").arg(in.polys.size()));
     QPointer<CameraView> self(this);
-    std::thread([self, in = std::move(in)]() {
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, in = std::move(in)]() {
         std::shared_ptr<const app::GameLightmap> lm = app::bakeGameLightmap(in);
         QMetaObject::invokeMethod(qApp, [self, lm]() {
             if (self) self->gameBakeDone(lm);
         }, Qt::QueuedConnection);
-    }).detach();
+    })).detach();
 }
 
 void CameraView::gameBakeDone(std::shared_ptr<const app::GameLightmap> lm) {

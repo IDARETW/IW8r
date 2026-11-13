@@ -414,7 +414,11 @@ void ModelCache::requestLods(const QList<QPair<QString, int>>& want) {
         if (lod <= 0 || hasLod(name, lod) || lodPending_.count(key) || lodFailed_.count(key)) continue;
         const auto e = lookup(name);
         const auto d = loadDetail(name);
-        if (!e || e->failed || e->zone.isEmpty() || !d || lod >= int(d->lods.size()) || d->lods[size_t(lod)].surfs.empty()) {
+        // A surfs name with a comma is a reference to another zone's asset (",name", as the LOD0 failures say); the
+        // ACTS server refuses such a name and with it the whole batch ("Invalid asset name in request": on Verdansk
+        // every LOD batch failed, 2026-11-13). Those LODs stay with the level before them.
+        if (!e || e->failed || e->zone.isEmpty() || !d || lod >= int(d->lods.size()) || d->lods[size_t(lod)].surfs.empty() ||
+            d->lods[size_t(lod)].surfs.find(',') != std::string::npos) {
             lodFailed_.insert(key);
             continue;
         }
@@ -462,7 +466,19 @@ void ModelCache::requestLods(const QList<QPair<QString, int>>& want) {
                     ok += got ? 1 : 0;
                 }
                 QDir(dir).removeRecursively();
-                emit progress(QString("Prop LODs from %1: %2 of %3 (exit %4)").arg(zone).arg(ok).arg(part.size()).arg(result.exitCode));
+                // A run that failed as a whole says why (the server's error, else the last lines of the tool's output).
+                QString why;
+                if (ok == 0 && result.exitCode != 0 && result.exitCode != 127) {
+                    why = result.error.trimmed();
+                    if (why.isEmpty()) {
+                        const QList<QByteArray> lines = result.log.trimmed().split('\n');
+                        for (qsizetype k = std::max<qsizetype>(0, lines.size() - 2); k < lines.size(); ++k)
+                            why += (why.isEmpty() ? "" : " | ") + QString::fromUtf8(lines[k]).trimmed();
+                    }
+                    if (!result.started) why = "acts.exe could not be started";
+                    if (!why.isEmpty()) why = ": " + why.left(300);
+                }
+                emit progress(QString("Prop LODs from %1: %2 of %3 (exit %4)%5").arg(zone).arg(ok).arg(part.size()).arg(result.exitCode).arg(why));
                 for (const auto& [surfs, name, lod] : part) emit lodReady(name, lod);
             });
         }

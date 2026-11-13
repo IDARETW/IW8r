@@ -41,6 +41,7 @@ class CDockWidget;
 
 namespace iw8r {
 struct GameModePreset;
+struct StockProbeImageIndex;  // stock_probes.h
 }
 namespace iw8r::qt {
 class FxEditorDialog;
@@ -465,7 +466,8 @@ private:
     // Prop models converted for drawing, kept between passes while models are still arriving (then dropped).
     struct RefPropMesh {
         std::vector<app::GpuVertex> plain;                                           // untextured surfaces
-        std::vector<std::pair<std::string, std::vector<app::GpuTexVertex>>> tex;     // material, its triangles
+        // Material, its indexed mesh (shared with the camera's instanced meshes: no copy per rebuild).
+        std::vector<std::pair<std::string, std::shared_ptr<const app::PropMeshData>>> tex;
         size_t tris = 0;
         double lodOut = 0;  // foliage: the last LOD distance (not drawn beyond it, as in game); 0 = always
         // Plan 1.13: the model's further LODs that are cached, each drawn from `near` to `far` inches from the camera
@@ -473,7 +475,7 @@ private:
         struct Lod {
             int level = 0;
             double nearD = 0, farD = 0;
-            std::vector<std::pair<std::string, std::vector<app::GpuTexVertex>>> tex;
+            std::vector<std::pair<std::string, std::shared_ptr<const app::PropMeshData>>> tex;
         };
         std::vector<Lod> lods;
         double lod0Far = 0;  // LOD0's far (0 = no limit)
@@ -490,7 +492,18 @@ private:
     std::set<int> refPropTileLightAsked_;
     std::set<QString> streamExtrasAsked_;  // exported tiles whose lightmap / light grid job was asked for this session
     bool refPropRebuildQueued_ = false;
+    bool refPropRelightQueued_ = false;  // streamed tiles' light grids: one relight for a burst
     size_t refPropLit_ = 0, refPropLitOf_ = 0;  // propLightStats
+    // Per textured prop mesh (the camera's mesh order), each placement's light grid key in draw order: a light grid
+    // that arrives later (a streamed tile's, one after another on Warzone) relights the props without rebuilding them
+    // (relightReferenceProps; a rebuild reads every model again). `first`: the placement's first textured mesh.
+    struct PropLightKey {
+        uint32_t lightingIndex = 0xFFFFFFFF;
+        uint16_t transient = 0;
+        bool probe = false, first = false;
+    };
+    std::vector<std::vector<PropLightKey>> refPropLightKeys_;
+    bool propLightFor(const PropLightKey& k, float out[12]) const;
     size_t refPropBoxed_ = 0;  // models drawn as stand-in boxes (past the triangle budget) in the last rebuild
     // The stock map's decal volumes with their materials and masks (appendStockDecalVolumes), kept to project them on
     // the props once those are built (projectPropDecals; done once per map).
@@ -498,6 +511,9 @@ private:
     QString propDecalsZone_;
     void projectPropDecals();
     size_t refPropBuiltTris_ = 0;
+    // LOD0 triangles of every model read by this map's rebuilds: a model known to be past the triangle budget is not
+    // read again (Verdansk: thousands of models past it were read and converted, then dropped, on every rebuild).
+    std::map<std::string, size_t> refPropTrisKnown_;
     void updateStockPropLabel();
 public:
     struct StockPropStatus {
@@ -614,6 +630,16 @@ public:
     void loadStockLightmap(const QString& zone);
     // The reference zone's reflection probes (world cache probes.iw8rprb) into the camera, read off the UI thread.
     void loadStockProbes(const QString& zone);
+    // Warzone probes (research 108): the full set (records, shared, zone-0 and tile images) stays here; the renderer
+    // gets the boxes nearest the camera (buildStockProbeSubset, 128 at most), again after 1,500 units of movement.
+    void updateProbeSubset(bool force = false);
+    std::shared_ptr<const StockProbeSet> refProbesFull_;      // records only (no images)
+    std::shared_ptr<const StockProbeImageIndex> refProbesIndex_;  // where each probe's image is on disk
+    Vec3 refProbeSubsetAt_{1e30, 1e30, 1e30};
+    bool refProbeReloadQueued_ = false;
+    // One lightmap atlas build at a time (each needs a few hundred MB on Verdansk; streamed tiles finish in bursts):
+    // a request while one runs is remembered and run once when it ends.
+    bool refLmLoading_ = false, refLmAgain_ = false;
     // The reference zone's static-model light grid (world cache lightgrid.iw8rlg, research 105): each box's light at
     // its centre into refPropVolLight_, read off the UI thread; the props are rebuilt with it.
     void loadStockLightGrid(const QString& zone);
@@ -626,6 +652,8 @@ public:
     // The stock reference's props from the model cache (again as models arrive); also used by --smoke-test
     // (IW8R_SMOKE_REFERENCE). Out of memory: the props stay as they are (rebuildReferencePropsUnguarded does the work).
     void rebuildReferenceProps();
+    void relightReferenceProps();  // new light grids: only the props' light (falls back to a rebuild)
+    std::pair<double, size_t> streamTileReach() const;  // streamed tiles: radius and count
     void rebuildReferencePropsUnguarded();
 private:
 
@@ -636,6 +664,10 @@ private:
     int stockLodFor(const Entity& e, const std::string& model);
     void refreshLodPreview();
     bool lodPreview_ = false;
+    // Models and LODs arrive by the thousand on Warzone maps: one scene invalidation for a burst (each was a full
+    // re-sync of every entity on the next paint; Verdansk's 47,545 MapEnts entities kept the UI busy for a minute).
+    bool sceneInvalidateQueued_ = false;
+    void invalidateSceneSoon();
     std::map<std::string, std::optional<XModelInfo>> lodDetail_;
     std::vector<int> lodSig_;
     QTimer* lodTimer_ = nullptr;

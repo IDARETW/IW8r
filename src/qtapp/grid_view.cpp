@@ -191,7 +191,11 @@ void GridView::paintEvent(QPaintEvent*) {
     for (double v = std::floor(v0 / major) * major; v <= v1; v += major)
         p.drawText(QPointF(2, worldToWidget(0, v).y() - 2), QString::fromStdString(formatNumber(v)));
 
-    p.setRenderHint(QPainter::Antialiasing, true);
+    // Warzone maps hold tens of thousands of entities (Verdansk: 47,545 plus 23,446 loot points): no antialiasing
+    // then, and an entity a few pixels across is a dot (a filled, outlined, antialiased rectangle each made a zoomed-out
+    // paint take seconds).
+    const bool manyItems = ctx_->scene.items().size() > 20000;
+    p.setRenderHint(QPainter::Antialiasing, !manyItems);
     for (int pass = 0; pass < 2; ++pass) {
         for (const app::PrimGeom* g : ctx_->scene.items()) {
             const bool sel = ctx_->doc.isSelected(g->ref);
@@ -212,6 +216,10 @@ void GridView::paintEvent(QPaintEvent*) {
                 p.setPen(QPen(col, sel ? 1.5 : 1.0));
             } else if (g->kind == app::PrimGeom::PointEntity) {
                 const QRectF r(worldToWidget(g->bounds.mins[H], g->bounds.maxs[V]), worldToWidget(g->bounds.maxs[H], g->bounds.mins[V]));
+                if (!sel && std::fabs(r.width()) < 3.0 && std::fabs(r.height()) < 3.0) {
+                    p.drawPoint(r.center());
+                    continue;
+                }
                 p.fillRect(r, QColor(col.red(), col.green(), col.blue(), 96));
                 p.drawRect(r);
                 if (g->hasArrow && ctx_->showAngles)

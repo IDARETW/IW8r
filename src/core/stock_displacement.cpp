@@ -10,6 +10,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 
@@ -59,14 +60,28 @@ struct VertexKeyHash {
     }
 };
 
-const Value* fieldsOf(const Value& root) {
-    const Value* a = root.get("asset");
-    return a ? a->get("fields") : nullptr;
-}
+using json::View;
+
+// The exports are read through views of the validated text (json_lite View), the record arrays one element at a
+// time: no DOM of the whole gfx_map (422 MB of JSON on mp_donetsk) is built or kept.
+View fieldsOf(const View& root) { return root.get("asset").get("fields"); }
 
 double num(const Value* v, double def = -1) { return v && v->type == Value::Type::Number ? v->num : def; }
+double num(const View& v, double def = -1) {
+    const auto n = v.number();
+    return n ? *n : def;
+}
 
-bool unhex(const std::string& hex, std::vector<uint8_t>& out) {
+// The decoded text of a string value: a view of the export when it has no escape (hex never has), else a decoded
+// copy in `scratch`. False when `v` is not a string.
+bool stringOf(const View& v, std::string& scratch, std::string_view& out) {
+    if (v.rawString(out)) return true;
+    if (!v.string(scratch)) return false;
+    out = scratch;
+    return true;
+}
+
+bool unhex(std::string_view hex, std::vector<uint8_t>& out) {
     if (hex.size() % 2) return false;
     out.resize(hex.size() / 2);
     const auto nib = [](char c) -> int {
@@ -100,32 +115,36 @@ struct TrzData {
 };
 
 // The draw buffers of one gfx_map_trzone text (the forms stock_world.cpp extractTrz accepts). *empty: a size-0 stub.
-bool extractTrz(const std::string& text, int64_t& zoneIndex, TrzData& out, std::string* err, bool* empty) {
+bool extractTrz(std::string_view text, int64_t& zoneIndex, TrzData& out, std::string* err, bool* empty) {
     *empty = false;
     std::string jerr;
-    const auto root = json::parse(text, &jerr);
-    if (!root) {
+    if (!json::validate(text, &jerr)) {
         if (err) *err = "gfx_map_trzone JSON: " + jerr;
         return false;
     }
-    const Value* f = fieldsOf(*root);
-    const Value* dv = f ? f->get("drawVerts") : nullptr;
-    if (!dv) {
+    const View f = fieldsOf(View(text));
+    const View dv = f.get("drawVerts");
+    if (!dv.valid()) {
         if (err) *err = "gfx_map_trzone has no drawVerts";
         return false;
     }
-    zoneIndex = int64_t(num(f->get("transientZoneIndex"), 0));
-    if (num(dv->get("posDataSize"), -1) == 0 && num(dv->get("indexCount"), -1) == 0) {
+    zoneIndex = int64_t(num(f.get("transientZoneIndex"), 0));
+    if (num(dv.get("posDataSize"), -1) == 0 && num(dv.get("indexCount"), -1) == 0) {
         *empty = true;
         return true;
     }
+    std::string scratch;
     const auto bytesOf = [&](const char* key, std::vector<uint8_t>& dst) -> bool {
-        const Value* node = dv->get(key);
-        if (!node) return false;
-        if (const Value* b = node->get("bytes"); b && b->string()) return unhex(*b->string(), dst);
-        if (const Value* v = node->get("values"); v && v->type == Value::Type::Array) {
+        const View node = dv.get(key);
+        if (!node.valid()) return false;
+        std::string_view hex;
+        if (stringOf(node.get("bytes"), scratch, hex)) return unhex(hex, dst);
+        if (const View v = node.get("values"); v.type() == Value::Type::Array) {
             dst.clear();
-            for (const Value& x : v->arr) dst.push_back(uint8_t(num(&x, 0)));
+            v.forEachElement([&](View x) {
+                dst.push_back(uint8_t(num(x, 0)));
+                return true;
+            });
             return true;
         }
         return false;
@@ -136,8 +155,11 @@ bool extractTrz(const std::string& text, int64_t& zoneIndex, TrzData& out, std::
         return false;
     }
     // indices: hex bytes (uint16 little endian) or decoded values (one per index)
-    if (const Value* node = dv->get("indices"); node && node->get("values") && node->get("values")->type == Value::Type::Array) {
-        for (const Value& i : node->get("values")->arr) out.idx.push_back(uint16_t(num(&i, 0)));
+    if (const View vals = dv.get("indices").get("values"); vals.type() == Value::Type::Array) {
+        vals.forEachElement([&](View i) {
+            out.idx.push_back(uint16_t(num(i, 0)));
+            return true;
+        });
     } else if (!bytesOf("indices", idxRaw) || idxRaw.size() % 2) {
         if (err) *err = "gfx_map_trzone indices are missing or not hex";
         return false;
@@ -145,18 +167,23 @@ bool extractTrz(const std::string& text, int64_t& zoneIndex, TrzData& out, std::
         out.idx.resize(idxRaw.size() / 2);
         for (size_t i = 0; i < out.idx.size(); ++i) out.idx[i] = uint16_t(idxRaw[2 * i] | idxRaw[2 * i + 1] << 8);
     }
-    if (dv->get("auxData") && !bytesOf("auxData", out.aux)) {
+    if (dv.get("auxData").valid() && !bytesOf("auxData", out.aux)) {
         if (err) *err = "gfx_map_trzone auxData is not hex";
         return false;
     }
     return true;
 }
 
-std::vector<SurfData> readSurfData(const Value* f) {
+std::vector<SurfData> readSurfData(const View& f) {
     std::vector<SurfData> surfData;
-    const Value* sd = f->get("surfaces") ? f->get("surfaces")->get("surfData") : nullptr;
-    if (sd && sd->get("values") && sd->get("values")->type == Value::Type::Array) {
-        for (const Value& r : sd->get("values")->arr) {
+    const View sd = f.get("surfaces").get("surfData");
+    std::string scratch;
+    std::string_view hex;
+    if (sd.get("values").type() == Value::Type::Array) {
+        sd.get("values").forEachElement([&](View e) {
+            const auto rec = e.parse();  // one record at a time
+            if (!rec) return false;
+            const Value& r = *rec;
             SurfData d;
             d.layerCount = int64_t(num(r.get("layerCount"), 0));
             d.xyzOffset = int64_t(num(r.get("xyzOffset"), -1));
@@ -168,13 +195,14 @@ std::vector<SurfData> readSurfData(const Value* f) {
                 for (size_t i = 0; i < dp->arr.size() && i < d.displacementOffset.size(); ++i)
                     d.displacementOffset[i] = int64_t(num(&dp->arr[i], 0));
             surfData.push_back(d);
-        }
-    } else if (sd && sd->get("bytes") && sd->get("bytes")->string()) {
+            return true;
+        });
+    } else if (stringOf(sd.get("bytes"), scratch, hex)) {
         // 88-byte records (x64-zt structs.hpp:12012): u32 transientZone, layerCount, xyzOffset, tangentFrameOffset,
         // lmapCoordOffset, colorOffset, texCoordOffset, normalTransformOffset[7], displacementOffset[8] at 0x38.
         std::vector<uint8_t> raw;
-        const int64_t stride = int64_t(num(sd->get("stride"), kSurfDataBytes));
-        if (stride >= 0x1C && unhex(*sd->get("bytes")->string(), raw)) {
+        const int64_t stride = int64_t(num(sd.get("stride"), kSurfDataBytes));
+        if (stride >= 0x1C && unhex(hex, raw)) {
             for (size_t at = 0; at + size_t(stride) <= raw.size(); at += size_t(stride)) {
                 SurfData d;
                 d.layerCount = readU32(raw, at + 0x04);
@@ -199,31 +227,57 @@ std::string materialOf(const Value& s) {
     return name;
 }
 
+// The members of one gfx_map GfxSurface record the reader uses (the record itself is not kept).
+struct GfxSurf {
+    std::string material;  // materialOf
+    bool hasTris = false;  // the record has "tris"
+    int64_t posOffset = -1, vertexCount = -1, triCount = -1, baseIndex = -1;
+    int64_t zone = 0, surfDataIndex = -1, lightmapIndex = 0;
+};
+const std::string& materialOf(const GfxSurf& s) { return s.material; }
+
 // The gfx_map surfaces and their surfData, and which materials have a displaced surface.
 struct GfxInfo {
-    std::optional<Value> root;
-    const Value* surfs = nullptr;
+    std::vector<GfxSurf> surfs;
     std::vector<SurfData> surfData;
     std::set<std::string> displacedMaterials;
     std::set<int64_t> zones;  // transient zones holding a surface of a displaced material
 };
 
-bool readGfx(const std::string& gfxText, GfxInfo& g, std::string* err) {
+bool readGfx(std::string_view gfxText, GfxInfo& g, std::string* err) {
     std::string jerr;
-    g.root = json::parse(gfxText, &jerr);
-    if (!g.root) {
+    if (!json::validate(gfxText, &jerr)) {
         if (err) *err = "gfx_map JSON: " + jerr;
         return false;
     }
-    const Value* f = fieldsOf(*g.root);
-    g.surfs = f && f->get("surfaces") && f->get("surfaces")->get("surfaces") ? f->get("surfaces")->get("surfaces")->get("values") : nullptr;
-    if (!g.surfs || g.surfs->type != Value::Type::Array) {
+    const View f = fieldsOf(View(gfxText));
+    const View surfs = f.get("surfaces").get("surfaces").get("values");
+    if (surfs.type() != Value::Type::Array) {
         if (err) *err = "gfx_map has no surfaces.surfaces.values";
         return false;
     }
     g.surfData = readSurfData(f);
-    for (const Value& s : g.surfs->arr) {
-        const int64_t k = int64_t(num(s.get("surfDataIndex"), -1));
+    surfs.forEachElement([&](View e) {
+        const auto rec = e.parse();  // one record at a time
+        if (!rec) return false;
+        const Value& s = *rec;
+        GfxSurf r;
+        r.material = materialOf(s);
+        if (const Value* tris = s.get("tris")) {
+            r.hasTris = true;
+            r.posOffset = int64_t(num(tris->get("posOffset"), -1));
+            r.vertexCount = int64_t(num(tris->get("vertexCount"), -1));
+            r.triCount = int64_t(num(tris->get("triCount"), -1));
+            r.baseIndex = int64_t(num(tris->get("baseIndex"), -1));
+        }
+        r.zone = int64_t(num(s.get("transientZone"), 0));
+        r.surfDataIndex = int64_t(num(s.get("surfDataIndex"), -1));
+        r.lightmapIndex = int64_t(num(s.get("lightmapIndex"), 0));
+        g.surfs.push_back(std::move(r));
+        return true;
+    });
+    for (const GfxSurf& s : g.surfs) {
+        const int64_t k = s.surfDataIndex;
         if (k < 0 || k >= int64_t(g.surfData.size())) continue;
         for (int64_t o : g.surfData[size_t(k)].displacementOffset)
             if (o > 0) {
@@ -231,8 +285,8 @@ bool readGfx(const std::string& gfxText, GfxInfo& g, std::string* err) {
                 break;
             }
     }
-    for (const Value& s : g.surfs->arr)
-        if (g.displacedMaterials.count(materialOf(s))) g.zones.insert(int64_t(num(s.get("transientZone"), 0)));
+    for (const GfxSurf& s : g.surfs)
+        if (g.displacedMaterials.count(materialOf(s))) g.zones.insert(s.zone);
     return true;
 }
 
@@ -242,14 +296,14 @@ bool buildDisplacement(const GfxInfo& g, const std::map<int64_t, TrzData>& trz, 
                        std::string* err) {
     out = StockDisplacementData();
     const auto& surfData = g.surfData;
-    const auto surfaceLayers = [&](const Value& s) -> int {
-        const int64_t k = int64_t(num(s.get("surfDataIndex"), -1));
+    const auto surfaceLayers = [&](const GfxSurf& s) -> int {
+        const int64_t k = s.surfDataIndex;
         if (k < 0 || k >= int64_t(surfData.size())) return 1;
         return int(std::clamp<int64_t>(surfData[size_t(k)].layerCount, 1, kStockMaxLayers));
     };
     std::map<std::string, int> materialLayers;
-    for (const Value& s : g.surfs->arr) {
-        const std::string m = materialOf(s);
+    for (const GfxSurf& s : g.surfs) {
+        const std::string& m = materialOf(s);
         if (!g.displacedMaterials.count(m)) continue;
         int& n = materialLayers[m];
         n = std::max(n, surfaceLayers(s));
@@ -265,16 +319,15 @@ bool buildDisplacement(const GfxInfo& g, const std::map<int64_t, TrzData>& trz, 
     std::vector<std::string> order;
     size_t recordsBad = 0;
 
-    for (const Value& s : g.surfs->arr) {
-        const std::string name = materialOf(s);
+    for (const GfxSurf& s : g.surfs) {
+        const std::string& name = materialOf(s);
         if (!g.displacedMaterials.count(name)) continue;
-        const Value* tris = s.get("tris");
-        if (!tris) continue;
-        const int64_t posOffset = int64_t(num(tris->get("posOffset"), -1));
-        const int64_t vertexCount = int64_t(num(tris->get("vertexCount"), -1));
-        const int64_t triCount = int64_t(num(tris->get("triCount"), -1));
-        const int64_t baseIndex = int64_t(num(tris->get("baseIndex"), -1));
-        const int64_t zoneIndex = int64_t(num(s.get("transientZone"), 0));
+        if (!s.hasTris) continue;
+        const int64_t posOffset = s.posOffset;
+        const int64_t vertexCount = s.vertexCount;
+        const int64_t triCount = s.triCount;
+        const int64_t baseIndex = s.baseIndex;
+        const int64_t zoneIndex = s.zone;
         if (posOffset < 0 || vertexCount <= 0 || triCount <= 0 || baseIndex < 0) continue;
         const auto zit = trz.find(zoneIndex);
         if (zit == trz.end()) continue;
@@ -294,7 +347,7 @@ bool buildDisplacement(const GfxInfo& g, const std::map<int64_t, TrzData>& trz, 
 
         // The same stream bases as buildWorld (texture, lightmap, colour: they are part of the vertex key).
         int64_t uvBase = -1, uvStride = 0;
-        const int64_t surfDataIndex = int64_t(num(s.get("surfDataIndex"), -1));
+        const int64_t surfDataIndex = s.surfDataIndex;
         const SurfData* sdr = surfDataIndex >= 0 && surfDataIndex < int64_t(surfData.size()) ? &surfData[size_t(surfDataIndex)] : nullptr;
         if (sdr && sdr->texCoordOffset > 0 && sdr->layerCount >= 1 && !z.aux.empty()) {
             uvStride = int64_t(kUvLayerStride) * sdr->layerCount;
@@ -304,7 +357,7 @@ bool buildDisplacement(const GfxInfo& g, const std::map<int64_t, TrzData>& trz, 
         if (sdr && sdr->xyzOffset >= 0 && posOffset >= sdr->xyzOffset && (posOffset - sdr->xyzOffset) % kPosStride == 0)
             firstVertex = (posOffset - sdr->xyzOffset) / kPosStride;
         int64_t lmBase = -1;
-        const int64_t surfLightmap = int64_t(num(s.get("lightmapIndex"), 0));
+        const int64_t surfLightmap = s.lightmapIndex;
         if (sdr && !z.aux.empty() && surfLightmap != kNoLightmap && surfLightmap >= 0) {
             const int64_t base = sdr->lmapCoordOffset + int64_t(kLmapStride) * firstVertex;
             if (sdr->lmapCoordOffset > 0 && uint64_t(base) + uint64_t(kLmapStride) * uint64_t(vertexCount) <= z.aux.size()) lmBase = base;
@@ -420,13 +473,12 @@ bool buildDisplacement(const GfxInfo& g, const std::map<int64_t, TrzData>& trz, 
     return true;
 }
 
-bool readFile(const fs::path& p, std::string& out, std::string* err) {
-    std::ifstream f(p, std::ios::binary);
-    if (!f) {
+// The file's text, memory-mapped (json::FileText): it costs no private memory however big.
+bool readFile(const fs::path& p, json::FileText& out, std::string* err) {
+    if (!out.open(p)) {
         if (err) *err = "cannot read " + p.string();
         return false;
     }
-    out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
     return true;
 }
 
@@ -502,12 +554,12 @@ bool readStockDisplacement(const std::string& zoneDir, const StockWorld& world, 
         if (err) *err = "expected one gfx_map JSON under " + (base / "gfx_map").string() + ", found " + std::to_string(gfx.size());
         return false;
     }
-    std::string gfxText;
-    if (!readFile(gfx.front(), gfxText, err)) return false;
     GfxInfo g;
-    if (!readGfx(gfxText, g, err)) return false;
-    gfxText.clear();
-    gfxText.shrink_to_fit();
+    {
+        json::FileText gfxText;
+        if (!readFile(gfx.front(), gfxText, err)) return false;
+        if (!readGfx(gfxText.view(), g, err)) return false;
+    }
     if (g.displacedMaterials.empty()) return true;  // most maps: the transient zones are not read
     std::vector<fs::path> allTrz = jsonFilesUnder(base / "gfx_map_trzone");
     {
@@ -521,12 +573,12 @@ bool readStockDisplacement(const std::string& zoneDir, const StockWorld& world, 
     }
     std::map<int64_t, TrzData> trz;
     for (const fs::path& p : allTrz) {
-        std::string text;
+        json::FileText text;
         if (!readFile(p, text, err)) return false;
         int64_t zone = 0;
         TrzData d;
         bool empty = false;
-        if (!extractTrz(text, zone, d, err, &empty)) return false;
+        if (!extractTrz(text.view(), zone, d, err, &empty)) return false;
         // Only the zones holding displaced materials are kept (memory: a big map has hundreds of tiles).
         if (!empty && g.zones.count(zone)) trz[zone] = std::move(d);
     }

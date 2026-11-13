@@ -2376,6 +2376,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                                                                {"GameSsr", "game/ssr"},
                                                                {"GameStockLights", "game/stockLights"},
                                                                {"GameLightShadows", "game/lightShadows"},
+                                                               {"GamePostFx", "game/postFx"},
                                                                {"GamePropLods", "game/propLods"}};
         for (const auto& [id, key] : toggles) {
             QAction* a = w.action(id);

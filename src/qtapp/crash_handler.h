@@ -11,5 +11,7 @@ namespace iw8r::qt {
 void installCrashHandler(const QString& dir);
 // Newest crash report written after `sinceMsecsEpoch` (0 = any), or "" when there is none.
 QString newestCrashReport(const QString& dir, qint64 sinceMsecsEpoch = 0);
+// The process's committed private memory in MB (0 when unknown): bench diagnosis of load steps.
+size_t processCommitMb();
 
 }  // namespace iw8r::qt

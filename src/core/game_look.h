@@ -110,6 +110,23 @@ GameFog gameFogFromVision(const std::string& visionText);
 // The inscattered radiance scale, in scene light units.
 double gameFogInscatter(const GameFog& f);
 
+// The vision's post effects (research 109): the bloom veil, the vignette and the film grain. Defaults are the game's
+// (visionDefFields): a map that leaves a field out gets none of that effect.
+struct GamePostFx {
+    double veil = 0;  // veilStrength (MMQLTMKTPK): hdr = (1 - veil) hdr + veil bloom
+    double vignetteIntensity = 0, vignetteSquareWeight = 0, vignetteSize[2] = {1, 1}, vignetteFalloff = 1, vignetteFalloffStart = 0;
+    double vignetteBox[2] = {0, 0}, vignetteOffset[2] = {0, 0};
+    bool vignetteImage = false;  // vignetteImage set (not drawn by the editor: the analytic shape stands in)
+    double grain = 0;            // tonemapGrainStrength (LNQNRRPNPP) x r_filmGrainAtten 0.25
+};
+GamePostFx gamePostFxFromVision(const std::string& visionText);
+// The vignette's constants (cb7[214..216], research 109 section 4.1) for a view whose half-FOV tangents are tanX, tanY:
+// out[0..3] = (scaleX, scaleY, intensity, 0), out[4..7] = (offsetX, offsetY, boxX, boxY),
+// out[8..11] = (1 / falloff, -falloffStart / falloff, 0, 0). All zero when the intensity is 0.
+void gameVignetteConstants(const GamePostFx& p, double tanX, double tanY, float out[12]);
+// The vignette's factor (multiplying linear HDR) at screen position (u, v) in [0, 1]^2 (CPU reference of the shader).
+double gameVignetteFactor(const float constants[12], double u, double v);
+
 // sRGB texture value to linear (the game samples colour maps as sRGB).
 double srgbToLinear(double c);
 

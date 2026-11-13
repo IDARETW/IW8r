@@ -2,6 +2,80 @@
 
 ## Latest (2026-11-13)
 
+- Verdansk memory and frame (2026-11-13, evening). Diagnosis tools: the bench's memory.log now also holds every log
+  line ("<s> S <text>") and, every 10 s, "gpu memory MB: props a+b world c extras d streams e textures f lightmaps g
+  probes h shadows i targets j" (SceneRenderer::gpuMemoryReport); IW8R_BENCH_PROFILE adds "prop rebuild memory: ..."
+  per rebuild; tools/stack_snapshot.py <pid> samples the busiest threads' stacks of a running editor (DbgHelp,
+  no debugger needed); tools/symbolize_trace.py resolves abort-<tick>.txt. Windows charges video memory to the
+  process's commit (commit - working set ~ the GPU's committed memory), so VRAM counts against the 16 GB machine.
+  Findings and fixes: (1) projectPropDecals held ~8 GB for ~20 s (world-space copies of every prop near any decal
+  volume) -> only the prop-only volumes, only triangles touching their boxes, receives() decided once per material;
+  (2) prop rebuilds on every tile light grid -> relightReferenceProps (PropLightKey per placement per mesh,
+  SceneRenderer::setReferenceTexInstanceLight rebuilds only the instance buffer); refPropTrisKnown_ skips reading
+  models known to be past the 4M-triangle budget (8,869 -> 577 models read per rebuild); (3) props indexed:
+  PropVertex 28 B + PropMeshData indices (16-bit when possible), DrawIndexedInstanced, InstancedTexMesh::mesh shared
+  with refPropBuilt_ (no copy) -> kept LOD0 640 -> 146 MB, GPU props 788 -> 161 MB; (4) texture budget =
+  min(2/5 VRAM, RAM/8) (2,021 MB here), emissive images under the budget (BC when possible), untouched BC colour
+  images shared by file (texByPathBc_); (5) guardedWorker (src/qtapp/worker_guard.h) around every detached worker
+  in main_window / camera_view / world_cache; the terrain-layer worker keeps its layers on bad_alloc; loadStockLightmap
+  runs one atlas build at a time; (6) the lamp shadow maps and the near sun cascade drew every prop placement:
+  GpuTexInstanced::cells (placements sorted stably into 2,048-unit cells, `order` maps the caller's placement order;
+  LOD groups keep a common order) and drawReferenceTexInstancesShadow(view) draws the runs of cells in the view
+  (Verdansk 286 -> 28.7 ms over 8 frames, 20.2 ms over 60: the first frames fill the lamp maps 6 at a time); bench
+  line "shadows_<scenario> near_cascade=N lamp_maps=N"; the visible-placement buffer holds the large-on-screen
+  placements first and the pre-pass draws that prefix (bigInst gone: one full-size instance buffer less); (7) LOD batches all failed
+  ("Invalid asset name in request": ACTS refuses names with a comma, i.e. another zone's surfs) -> such LODs fail on
+  their own; failed LODs no longer drop a kept mesh; (8) model / LOD arrivals invalidated the scene each (a full sync
+  of 47,545 entities) -> invalidateSceneSoon (one per 300 ms burst, LODs only in the LOD preview); grid views draw
+  dots for entities under 3 px and no antialiasing past 20,000 items; (9) GuardedApplication::notify (main.cpp)
+  catches std::bad_alloc from any event (logged, event dropped, retried later); (10) streamTileReach(): 14,000 / 48
+  tiles under 24 GB of RAM (keep 1.15x / +25 %); (11) rsLinesFast_ (no line AA) past 500k line vertices. Prop
+  triangle budget: 16 M crashed (833k placements as meshes: instance data ~300 B a placement, GPU 859+877 MB), 8 M
+  crashed at 12.6 GB process commit with ~14 GB committed by other programs; kept at 4 M. Verdansk raised camera:
+  peak commit 14.5 GB (crash) -> 12.0 GB, no crash; 20.2 ms steady (60 frames). GPU timings vary a lot with other
+  programs' video memory (dwm 2.6 GB, others 3.5 GB on the 8 GB card during the runs). Open: 948k placements past the
+  prop triangle budget are not drawn (lighter instance data first: half-float light, no CPU rows copy); MapEnts
+  model entities are flat per-entity copies (streams 527 MB); streamed-tile CPU copies (~1 GB) are kept for re-upload.
+- M2.1 DONE (2026-11-13, helper; research 110): core umbra_tome (extractUmbraTomeFromGfxMapJson streams the tome out of
+  the gfx_map export; UmbraTome::parse / validate; tiles (k-d tree, cells 36 B, portals 16 B, the point-to-cell tree),
+  LOD tiles, clusters, objects with user IDs (class in bits 28-30); queryPoint / queryView -> visible cells, objects and
+  user IDs by class). Verified structurally on shipment, hideout, aniyah_tac, backlot2, rust, village2, emporium,
+  m_speedball and Verdansk; portal bit fields and camera quantisation confirmed in the DW exe's code. Query gaps: finest
+  tiles only (the coarse-tile rule is INFERRED), gates always open, no contribution cull, screen-rectangle clipping (only
+  ever shows more). 2-25 ms per all-direction query on MP maps, 70 ms on Verdansk. Tests umbra_tome_tests (1,267 tests).
+  Crash work: bad_alloc in setReferenceExtras (a group's vertices concatenated by a doubling vector) -> batches are
+  uploaded straight into a DEFAULT buffer; setReferenceTextured reserves its total; abort() writes abort-<tick>.txt
+  (the C++ exception in flight and module+offset frames; tools/symbolize_trace.py resolves them against the PDB); the
+  crash report keeps a 64 MB reserve and writes its text before the dump; the bench appends memory.log every 2 s.
+- M1.8 part 1 (2026-11-13, research 109): core GamePostFx (gamePostFxFromVision: veilStrength, vignette*, grain x 0.25;
+  gameVignetteConstants = cb7[214..216]; gameVignetteFactor CPU reference; test game_post_fx_from_vision: Speedball
+  corner 0.600, edge 0.693, Hideout corner 0.950). Renderer: the veil chain (veilS_ mips 1..n+1, veilV_ 2..n,
+  R16G16B16A16F; ps_veil_karis on mip 1, ps_veil_down 8 taps, ps_veil_up with s_veilWeights 0 .025 .075 .15 .2 .25
+  .3, fixed rotation n = 0.5), ps_post: veil lerp then vignette before gamePost; b12 Veil cbuffer, t25-27. GameLook
+  veil / vignette from the stock vision; View > Game Lighting Options > Bloom and Vignette (game/postFx). Bench line
+  post_fx. Speedball vs out/compare/speedball_ingame.webp (editor before -> after, game): centre 107.7 -> 99.8 (112.6),
+  top-left 126.7 -> 80.2 (66.8), bottom-right 74.5 -> 46.5 (29.2), left edge 181.3 -> 140.2 (136.6). Not done: grain,
+  the volumetric fog (research 109 section 2: re-tune the analytic fog first), Hideout's white balance matrix.
+  Bench note: out/agent/mapcam.ps1 copies the exe into out/audit_bin, which fails silently while another bench runs from
+  it; out/agent/mapcam2.ps1 uses out/audit_bin2.
+- Memory (2026-11-13, helper): json_lite file views (memory-mapped, validated with parse()'s rules and messages, members
+  parsed in place); readStockWorld / readStreamedWorldZones / readStockModelInstances / displacement / clutter read
+  members only. mp_donetsk peaks: world 1,683 -> 33 MB (with every tile 1,889 -> 641), streamed zones 1,683 -> 7, smodels
+  1,614 -> 281, displacement 1,712 -> 113, clutter 427 -> 23; fingerprints identical; tests json_lite_view_tests,
+  stock_reader_views_tests (1,261 tests). Mapped files are write-locked while read. Two Verdansk tiles had 0-byte
+  trzone exports: the export now counts a 0-byte file as failed and updateStreamedTiles removes such tiles (exported
+  again). Warzone probes keep records + StockProbeImageIndex (indexStockProbeCacheImages over the main and tile files);
+  buildStockProbeSubset(records, index, camera) reads only the chosen images. Verdansk crash before this: 0-byte dump
+  (out of memory while writing it).
+- M1.5b probes (2026-11-13, research 108; core by a helper: stock_probes v2, 1,259 tests). WorldCache: main job reads
+  the streamed records + zone-0 images (readStockProbeTransientZone of <zone>.0 trzone, extractStockProbeZoneImages,
+  merge, v2 main file); then requestSharedProbes: ACTS image export of the shared names (batches of 450, XPaks), the
+  journal maps "*reflection_probe_octahedron_<i>" to its encoded DDS, readStockProbeDds, written into the main file,
+  probes_shared.done. Tile job: the tile's exclusive images (tile trzone, the main file's records) into
+  streamed/<tile>/probes.iw8rprb, probes.done ("ok N" / "none" / "error ..."); queueTileLightmap re-runs tiles that
+  lack it once the main file exists. index.json probeRules 2 clears the old Warzone probe verdicts. MainWindow:
+  loadStockProbes merges the tile files into refProbesFull_; updateProbeSubset (buildStockProbeSubset at the camera,
+  128 boxes) on load and every 1,500 units (updateStreamedTiles); probe reloads debounced 3 s.
 - M1.11 part 1 (2026-11-13): light grid from the map (ROADMAP 5.20). Core LightGridInput::samplesAt (56 samples in the
   converter's direction order, lightGridSampleDirections = the 4x4x4 shell, z / y / x), palette per cell
   (paletteCellXY 4 x paletteCellZ 1 lattice points, the kept point nearest the cell centre), multithreaded,

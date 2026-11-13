@@ -564,9 +564,8 @@ int MainWindow::loadStreamedWorldAroundCamera() {
         ctx_.setStatus("Load Streamed World: " + referenceZone_ + " has no streamed world tiles (all of it is drawn already)");
         return 0;
     }
-    const double radius = Settings::instance().value("stock/streamRadius", 12000.0).toDouble();
-    const int limit = Settings::instance().value("stock/streamLimit", 48).toInt();
-    const auto near = streamedZonesNear(zones, ctx_.cam.pos.x, ctx_.cam.pos.y, radius, size_t(std::max(1, limit)));
+    const auto [radius, limit] = streamTileReach();
+    const auto near = streamedZonesNear(zones, ctx_.cam.pos.x, ctx_.cam.pos.y, radius, limit);
     QStringList tiles;
     for (const StreamedWorldZone& z : near) tiles << qs(z.name);
     static bool connected = false;

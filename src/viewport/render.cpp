@@ -444,7 +444,7 @@ PSIn vs_tex(VSIn i) {
     return o;
 }
 // Textured instanced reference props: the model's vertices placed by three transform rows per instance.
-struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
+struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
                   float4 l0 : INSTROW3; float4 l1 : INSTROW4; float4 l2 : INSTROW5; };
 PSIn vs_tex_inst(VSInInst i) {
     float4 p = float4(i.pos, 1.0);
@@ -514,11 +514,58 @@ VFull vs_post(uint id : SV_VertexID) {
     o.pos = float4(p * float2(2, -2) + float2(-1, 1), 0, 1);
     return o;
 }
+// The bloom veil (research 109 section 1.2): its chain's source / add levels, the result (V2) and the post constants:
+// veilDst = (dst w, dst h, 1 / w, 1 / h), veilW = (wIn, wOut); postFx0 = (veil, screen w, screen h); postVig0..2 = the
+// vignette (core gameVignetteConstants).
+Texture2D<float4> veilSrc : register(t25);
+Texture2D<float4> veilAdd : register(t26);
+Texture2D<float4> veilTex : register(t27);
+cbuffer Veil : register(b12) { float4 veilDst; float4 veilW; float4 postFx0; float4 postVig0; float4 postVig1; float4 postVig2; };
+static const float VR_OUT = 1.886476, VR_IN = 0.939981, VW_C = 0.479925, VW_OUT = 0.075948, VW_IN = 0.302964;
+// Tap k at the fixed rotation n = 0.5 (the game rotates per pixel and frame under TAA; the editor has none).
+float2 veilTap(int k, float stepA) { const float a = (k + 0.75) * stepA; return float2(sin(a), cos(a)) * ((k & 1) ? VR_IN : VR_OUT); }
+float4 ps_veil_down(VFull i) : SV_TARGET {
+    const float2 uv = i.pos.xy * veilDst.zw, d = veilDst.zw;
+    float3 c = VW_C * veilSrc.SampleLevel(lutSamp, uv, 0).rgb;
+    [unroll] for (int k = 0; k < 8; ++k) c += ((k & 1) ? VW_IN : VW_OUT) * veilSrc.SampleLevel(lutSamp, uv + veilTap(k, 0.78539816) * d, 0).rgb;
+    return float4(clamp(c * 0.501110, -32255.0, 32255.0), 1.0);
+}
+float4 ps_veil_karis(VFull i) : SV_TARGET {  // mip 1: the firefly control (each tap weighted 1 / (1 + its max))
+    const float2 uv = i.pos.xy * veilDst.zw, d = veilDst.zw;
+    float4 s[5];
+    s[4] = float4(VW_C * max(veilSrc.SampleLevel(lutSamp, uv, 0).rgb, 0.0), VW_C);
+    [unroll] for (int k = 0; k < 4; ++k) {
+        const float w = (k & 1) ? VW_IN : VW_OUT;
+        s[k] = float4(w * max(veilSrc.SampleLevel(lutSamp, uv + veilTap(k, 1.5707963) * d, 0).rgb, 0.0), w);
+    }
+    [unroll] for (int j = 0; j < 5; ++j) s[j] *= 1.0 / (1.0 + max(s[j].r, max(s[j].g, s[j].b)));
+    float3 r = 0;
+    [unroll] for (int g = 0; g < 4; ++g) { const float4 a = s[4] + s[g] + s[(g + 1) & 3]; r += a.rgb / max(a.w, 1e-5); }
+    return float4(clamp(0.25 * r, -32255.0, 32255.0), 1.0);
+}
+float4 ps_veil_up(VFull i) : SV_TARGET {
+    const float2 uv = i.pos.xy * veilDst.zw, d = veilDst.zw * 2.0;  // offsets in source texels
+    float3 b = VW_C * veilSrc.SampleLevel(lutSamp, uv, 0).rgb;
+    [unroll] for (int k = 0; k < 4; ++k) b += ((k & 1) ? VW_IN : VW_OUT) * veilSrc.SampleLevel(lutSamp, uv + veilTap(k, 1.5707963) * d, 0).rgb;
+    const float3 add = veilW.y > 0.0 ? veilAdd.SampleLevel(lutSamp, uv, 0).rgb : float3(0, 0, 0);
+    return float4(b * 0.807919 * veilW.x + add * veilW.y, 1.0);
+}
 float4 ps_post(VFull i) : SV_TARGET {
     float4 h = hdrScene.Load(int3(i.pos.xy, 0));
     if (h.a <= 0.0) discard;
     if (gameAo.y > 0.5 || gameAo.z > 0.5 || (gameSkyScale.z > 0.5 && gameSkyScale.z < 1.5)) return float4(h.rgb, 1.0);  // debug views
-    return float4(gamePost(max(h.rgb, 0.0)), 1.0);
+    float3 c = max(h.rgb, 0.0);
+    const float2 suv = i.pos.xy / max(postFx0.yz, 1.0);
+    // The veil (research 109 section 1.3): a lerp toward the very wide blur, in linear HDR before the exposure.
+    if (postFx0.x > 0.0) c = (1.0 - postFx0.x) * c + postFx0.x * clamp(veilTex.SampleLevel(lutSamp, suv, 0).rgb, 0.0, 32255.0);
+    // The vignette (section 4.1), after the veil, in linear HDR.
+    if (postVig0.z > 0.0) {
+        const float2 p = (suv - 0.5) * postVig0.xy + postVig1.xy;
+        const float r = length(p - clamp(p, -postVig1.zw, postVig1.zw));
+        const float t = saturate(r * postVig2.x + postVig2.y);
+        c *= 1.0 - (t + 0.6 * (t * t * (3.0 - 2.0 * t) - t)) * postVig0.z;
+    }
+    return float4(gamePost(c), 1.0);
 }
 void ps_shadow_clip(PSIn i) {
     if (!rawSpecAlpha()) clip(tex0.Sample(samp0, i.uv).a - 0.3);
@@ -1260,6 +1307,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(layout_);
     safeRelease(rsTris_);
     safeRelease(rsLines_);
+    safeRelease(rsLinesFast_);
     safeRelease(dsWrite_);
     safeRelease(blendNoColor_);
     safeRelease(dsTest_);
@@ -1273,10 +1321,12 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(psPrepass_);
     safeRelease(cbTiles_);
     safeRelease(postVs_), safeRelease(postPs_), safeRelease(meterHdrPs_);
+    safeRelease(veilDownPs_), safeRelease(veilKarisPs_), safeRelease(veilUpPs_), safeRelease(cbVeil_);
+    releaseVeilResources();
     safeRelease(aoVs_), safeRelease(aoPs_), safeRelease(aoBlurPs_), safeRelease(cbAo_);
     safeRelease(prevZPs_), safeRelease(prevColorPs_), safeRelease(cbPrev_);
     safeRelease(layoutTex_);
-    for (auto& g : refTexInst_) safeRelease(g.vb), safeRelease(g.inst), safeRelease(g.visInst), safeRelease(g.bigInst);
+    for (auto& g : refTexInst_) safeRelease(g.vb), safeRelease(g.ib), safeRelease(g.inst), safeRelease(g.visInst);
     refTexInst_.clear();
     safeRelease(vsTexInst_);
     safeRelease(layoutTexInst_);
@@ -1400,6 +1450,12 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
                 dev_->CreatePixelShader(ppo->GetBufferPointer(), ppo->GetBufferSize(), nullptr, &postPs_);
             }
             safeRelease(pvs), safeRelease(ppo);
+            for (const auto& [entry, out] : {std::pair<const char*, ID3D11PixelShader**>{"ps_veil_down", &veilDownPs_},
+                                             {"ps_veil_karis", &veilKarisPs_}, {"ps_veil_up", &veilUpPs_}}) {
+                ID3DBlob* vb = nullptr;
+                if (compileTex(entry, "ps_5_0", vb)) dev_->CreatePixelShader(vb->GetBufferPointer(), vb->GetBufferSize(), nullptr, out);
+                safeRelease(vb);
+            }
             ID3DBlob* pps = nullptr;
             if (compileTex("ps_prepass", "ps_5_0", pps)) {
                 dev_->CreatePixelShader(pps->GetBufferPointer(), pps->GetBufferSize(), nullptr, &psPrepass_);
@@ -1417,13 +1473,12 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
             ID3DBlob* tivs = nullptr;
             if (compileTex("vs_tex_inst", "vs_5_0", tivs)) {
                 dev_->CreateVertexShader(tivs->GetBufferPointer(), tivs->GetBufferSize(), nullptr, &vsTexInst_);
+                // PropVertex (28 bytes): position, uv, colour, normal as signed bytes.
                 const D3D11_INPUT_ELEMENT_DESC tiil[] = {
                     {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
-                    {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
-                    {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
-                    {"TEXCOORD", 4, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+                    {"NORMAL", 0, DXGI_FORMAT_R8G8B8A8_SNORM, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"INSTROW", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D11_INPUT_PER_INSTANCE_DATA, 1},
@@ -1431,7 +1486,7 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
                     {"INSTROW", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 64, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 80, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                 };
-                dev_->CreateInputLayout(tiil, 12, tivs->GetBufferPointer(), tivs->GetBufferSize(), &layoutTexInst_);
+                dev_->CreateInputLayout(tiil, UINT(std::size(tiil)), tivs->GetBufferPointer(), tivs->GetBufferSize(), &layoutTexInst_);
                 safeRelease(tivs);
             }
             D3D11_BUFFER_DESC bd{};
@@ -1506,6 +1561,8 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
     rd.SlopeScaledDepthBias = 0;
     rd.AntialiasedLineEnable = TRUE;
     dev_->CreateRasterizerState(&rd, &rsLines_);
+    rd.AntialiasedLineEnable = FALSE;
+    dev_->CreateRasterizerState(&rd, &rsLinesFast_);
 
     D3D11_DEPTH_STENCIL_DESC dd{};
     dd.DepthEnable = TRUE;
@@ -1666,8 +1723,110 @@ void SceneRenderer::keepFrameForSsr(const float* viewProj) {
     prevValid_ = true;
 }
 
+void SceneRenderer::releaseVeilResources() {
+    for (auto* list : {&veilS_, &veilV_})
+        for (VeilLevel& l : *list) safeRelease(l.srv), safeRelease(l.rtv), safeRelease(l.tex);
+    veilS_.clear(), veilV_.clear();
+    veilCount_ = veilW_ = veilH_ = 0;
+}
+
+bool SceneRenderer::createVeilResources() {
+    if (veilW_ == w_ && veilH_ == h_ && veilCount_ > 0) return true;
+    releaseVeilResources();
+    if (!dev_ || w_ < 8 || h_ < 8) return false;
+    // research 109 section 1.2: veilMip 2, veilCount = min(min(floor(log2(min(W, H))), 9) - 2, 7), scene mips 1..count+1.
+    const int lg = int(std::floor(std::log2(double(std::min(w_, h_)))));
+    const int count = std::clamp(std::min(lg, 9) - 2, 1, 7);
+    const auto make = [&](int mip, VeilLevel& l) {
+        l.w = std::max(1, w_ >> mip), l.h = std::max(1, h_ >> mip);
+        D3D11_TEXTURE2D_DESC td{};
+        td.Width = UINT(l.w), td.Height = UINT(l.h);
+        td.MipLevels = td.ArraySize = 1;
+        td.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        td.SampleDesc.Count = 1;
+        td.Usage = D3D11_USAGE_DEFAULT;
+        td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        return SUCCEEDED(dev_->CreateTexture2D(&td, nullptr, &l.tex)) && SUCCEEDED(dev_->CreateRenderTargetView(l.tex, nullptr, &l.rtv)) &&
+               SUCCEEDED(dev_->CreateShaderResourceView(l.tex, nullptr, &l.srv));
+    };
+    veilS_.resize(size_t(count + 2));
+    veilV_.resize(size_t(count + 1));
+    bool ok = true;
+    for (int m = 1; m <= count + 1 && ok; ++m) ok = make(m, veilS_[size_t(m)]);
+    for (int m = 2; m <= count && ok; ++m) ok = make(m, veilV_[size_t(m)]);
+    if (!cbVeil_ && ok) {
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = 96;
+        bd.Usage = D3D11_USAGE_DEFAULT;
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        ok = SUCCEEDED(dev_->CreateBuffer(&bd, nullptr, &cbVeil_));
+    }
+    if (!ok) {
+        releaseVeilResources();
+        return false;
+    }
+    veilCount_ = count, veilW_ = w_, veilH_ = h_;
+    return true;
+}
+
+bool SceneRenderer::drawVeil() {
+    if (!postFxEnabled_ || game_.veil <= 0 || !hdrSrv_ || !postVs_ || !veilDownPs_ || !veilKarisPs_ || !veilUpPs_ || !createVeilResources())
+        return false;
+    IW8R_PROF("d.veil");
+    static const float kWeights[7] = {0, 0.025f, 0.075f, 0.15f, 0.2f, 0.25f, 0.3f};  // s_veilWeights (Replay .rdata)
+    ctx_->OMSetBlendState(nullptr, nullptr, 0xffffffff);
+    ctx_->OMSetDepthStencilState(dsOff_, 0);
+    ctx_->RSSetState(rsTris_);
+    ctx_->IASetInputLayout(nullptr);
+    ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx_->VSSetShader(postVs_, nullptr, 0);
+    if (lutSampler_) ctx_->PSSetSamplers(2, 1, &lutSampler_);
+    ID3D11ShaderResourceView* none2[2] = {nullptr, nullptr};
+    const auto pass = [&](ID3D11PixelShader* ps, const VeilLevel& dst, ID3D11ShaderResourceView* src, ID3D11ShaderResourceView* add,
+                          float wIn, float wOut) {
+        float cb[24] = {float(dst.w), float(dst.h), 1.0f / float(dst.w), 1.0f / float(dst.h), wIn, wOut, 0, 0};
+        ctx_->UpdateSubresource(cbVeil_, 0, nullptr, cb, 0, 0);
+        ctx_->PSSetShaderResources(25, 2, none2);
+        ctx_->OMSetRenderTargets(1, &dst.rtv, nullptr);
+        D3D11_VIEWPORT vp{0, 0, float(dst.w), float(dst.h), 0, 1};
+        ctx_->RSSetViewports(1, &vp);
+        ID3D11ShaderResourceView* in[2] = {src, add};
+        ctx_->PSSetShaderResources(25, 2, in);
+        ctx_->PSSetConstantBuffers(12, 1, &cbVeil_);
+        ctx_->PSSetShader(ps, nullptr, 0);
+        ctx_->Draw(3, 0);
+    };
+    const int c = veilCount_;
+    pass(veilKarisPs_, veilS_[1], hdrSrv_, nullptr, 0, 0);
+    for (int m = 2; m <= c + 1; ++m) pass(veilDownPs_, veilS_[size_t(m)], veilS_[size_t(m - 1)].srv, nullptr, 0, 0);
+    // V_m = Up(V_{m+1} or the smallest mip) x wIn + S_m x weights[m - 2]; the first wIn is weights[count - 1].
+    for (int m = c; m >= 2; --m) {
+        ID3D11ShaderResourceView* src = m == c ? veilS_[size_t(c + 1)].srv : veilV_[size_t(m + 1)].srv;
+        const float wIn = m == c ? kWeights[std::min(c - 1, 6)] : 1.0f, wOut = kWeights[std::min(m - 2, 6)];
+        pass(veilUpPs_, veilV_[size_t(m)], src, wOut > 0 ? veilS_[size_t(m)].srv : nullptr, wIn, wOut);
+    }
+    ctx_->PSSetShaderResources(25, 2, none2);
+    D3D11_VIEWPORT full{0, 0, float(w_), float(h_), 0, 1};
+    ctx_->RSSetViewports(1, &full);
+    return c >= 2;
+}
+
 void SceneRenderer::drawPost() {
     IW8R_PROF("d.post");
+    const bool veil = drawVeil();
+    veilDrawn_ = veil;
+    {
+        // The post constants (b12): veil strength and screen size, the vignette.
+        float cb[24] = {};
+        cb[8] = veil ? game_.veil : 0.0f, cb[9] = float(w_), cb[10] = float(h_);
+        if (postFxEnabled_) std::memcpy(cb + 12, game_.vignette, sizeof(game_.vignette));
+        if (cbVeil_ || createVeilResources()) {
+            ctx_->UpdateSubresource(cbVeil_, 0, nullptr, cb, 0, 0);
+            ctx_->PSSetConstantBuffers(12, 1, &cbVeil_);
+        }
+        ID3D11ShaderResourceView* vt = veil ? veilV_[2].srv : nullptr;
+        ctx_->PSSetShaderResources(27, 1, &vt);
+    }
     writeGameCb();  // b4 (exposure), the LUT on t9 and its sampler
     ctx_->OMSetRenderTargets(1, &rtv_, nullptr);
     ctx_->OMSetBlendState(nullptr, nullptr, 0xffffffff);
@@ -1681,6 +1840,7 @@ void SceneRenderer::drawPost() {
     ctx_->Draw(3, 0);
     ID3D11ShaderResourceView* none = nullptr;
     ctx_->PSSetShaderResources(15, 1, &none);
+    ctx_->PSSetShaderResources(27, 1, &none);
     sceneRtv_ = rtv_;
     ctx_->OMSetRenderTargets(1, &rtv_, dsv_);
     const float bf[4] = {0, 0, 0, 0};
@@ -2608,6 +2768,11 @@ bool SceneRenderer::appendReferenceDecals(const std::vector<std::vector<GpuTexVe
     refTexExtraBounds_.clear();
     if (!dev_ || batches.empty()) return true;
     std::vector<GpuTexVertex> all;
+    {
+        size_t total = 0;
+        for (const auto& b : batches) total += b.size();
+        all.reserve(total);  // one allocation (growing by doubling briefly needed up to 3x)
+    }
     for (const auto& b : batches) {
         refTexFirst_.push_back(UINT(all.size()));
         refTexCount_.push_back(UINT(b.size()));
@@ -2671,24 +2836,34 @@ bool SceneRenderer::setReferenceExtras(const std::vector<ExtraGroupInput>& group
         if (!in.batches) continue;  // asked to reuse a group that is not there
         ExtraGroupGpu g;
         g.key = in.key, g.version = in.version, g.world = in.world, g.nearOnly = in.nearOnly;
-        std::vector<GpuTexVertex> all;
+        // Each batch goes straight into one buffer (no CPU copy of the whole group: Verdansk's terrain layer group
+        // briefly needed two to three times its size while a concatenated vector grew, std::bad_alloc 2026-11-13).
+        size_t total = 0;
         for (size_t j = 0; j < in.batches->size(); ++j) {
             const auto& b = (*in.batches)[j];
-            g.first.push_back(UINT(all.size()));
+            g.first.push_back(UINT(total));
             g.count.push_back(UINT(b.size()));
-            all.insert(all.end(), b.begin(), b.end());
+            total += b.size();
             iw8r::AABB bb;
             for (const GpuTexVertex& v : b) bb.add(iw8r::Vec3{v.x, v.y, v.z});
             g.bounds.push_back(bb);
             g.layer.push_back(in.world && j < in.layers.size() ? in.layers[j] : 0);
         }
-        if (!all.empty() && dev_) {
+        if (total > 0 && dev_ && total * sizeof(GpuTexVertex) < 0xFFFFFFFFull) {
             D3D11_BUFFER_DESC bd{};
-            bd.ByteWidth = UINT(all.size() * sizeof(GpuTexVertex));
-            bd.Usage = D3D11_USAGE_IMMUTABLE;
+            bd.ByteWidth = UINT(total * sizeof(GpuTexVertex));
+            bd.Usage = D3D11_USAGE_DEFAULT;
             bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-            D3D11_SUBRESOURCE_DATA init{all.data(), 0, 0};
-            if (FAILED(dev_->CreateBuffer(&bd, &init, &g.vb))) g.vb = nullptr;
+            if (FAILED(dev_->CreateBuffer(&bd, nullptr, &g.vb))) {
+                g.vb = nullptr;
+            } else {
+                for (size_t j = 0; j < in.batches->size(); ++j) {
+                    const auto& b = (*in.batches)[j];
+                    if (b.empty()) continue;
+                    const D3D11_BOX box{UINT(g.first[j] * sizeof(GpuTexVertex)), 0, 0, UINT((g.first[j] + b.size()) * sizeof(GpuTexVertex)), 1, 1};
+                    ctx_->UpdateSubresource(g.vb, 0, &box, b.data(), 0, 0);
+                }
+            }
         }
         worldChanged |= g.world;
         next.push_back(std::move(g));
@@ -2852,25 +3027,20 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
     static const float bigPx = std::getenv("IW8R_PREPASS_PX") ? std::max(0.0f, float(std::atof(std::getenv("IW8R_PREPASS_PX")))) : 24.0f;
     static const float kPx = std::getenv("IW8R_INST_CULL_PX") ? std::max(0.5f, float(std::atof(std::getenv("IW8R_INST_CULL_PX")))) : 4.0f;
     static const bool noLodOut = std::getenv("IW8R_NO_FOLIAGE_LOD_OUT") != nullptr;
+    // The visible placements, those large on screen first: the depth pre-pass draws only that prefix (`big`). One
+    // buffer instead of two of the full size (Verdansk's instance buffers were 877 MB with every prop drawn).
     const auto upload = [&](GpuTexInstanced& g) {
         g.big = unsigned(keepBig.size() / 24);
-        if (g.big && g.bigInst) {
-            D3D11_MAPPED_SUBRESOURCE mb;
-            if (SUCCEEDED(ctx_->Map(g.bigInst, 0, D3D11_MAP_WRITE_DISCARD, 0, &mb))) {
-                std::memcpy(mb.pData, keepBig.data(), keepBig.size() * sizeof(float));
-                ctx_->Unmap(g.bigInst, 0);
-            } else {
-                g.big = 0;
-            }
-        }
-        g.visible = unsigned(keep.size() / 24);
+        g.visible = unsigned((keepBig.size() + keep.size()) / 24);
         if (g.visible) {
             D3D11_MAPPED_SUBRESOURCE ms;
             if (SUCCEEDED(ctx_->Map(g.visInst, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms))) {
-                std::memcpy(ms.pData, keep.data(), keep.size() * sizeof(float));
+                std::memcpy(ms.pData, keepBig.data(), keepBig.size() * sizeof(float));
+                std::memcpy(static_cast<char*>(ms.pData) + keepBig.size() * sizeof(float), keep.data(), keep.size() * sizeof(float));
                 ctx_->Unmap(g.visInst, 0);
             } else {
                 g.visible = g.instances;  // fall back to every placement
+                g.big = 0;
             }
         }
     };
@@ -2922,10 +3092,9 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                 const PlaceEval& e = ev[i];
                 if (e.out || e.dist < g.lodNear || e.dist >= farD) continue;
                 const float* r = &g.rows[i * 12];
-                keep.insert(keep.end(), r, r + 12);
-                keep.insert(keep.end(), &g.light[i * 12], &g.light[i * 12] + 12);
-                if (e.dist <= e.rad || e.rad >= e.dist * pixelAngle * bigPx)
-                    keepBig.insert(keepBig.end(), r, r + 12), keepBig.insert(keepBig.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+                std::vector<float>& to = e.dist <= e.rad || e.rad >= e.dist * pixelAngle * bigPx ? keepBig : keep;
+                to.insert(to.end(), r, r + 12);
+                to.insert(to.end(), &g.light[i * 12], &g.light[i * 12] + 12);
             }
             upload(g);
         }
@@ -2960,70 +3129,205 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                 ++instCulledLast_;
                 continue;
             }
-            keep.insert(keep.end(), r, r + 12);
-            keep.insert(keep.end(), &g.light[i * 12], &g.light[i * 12] + 12);
             {
                 const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
                 const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-                if (dist <= rad || rad >= dist * pixelAngle * bigPx)
-                    keepBig.insert(keepBig.end(), r, r + 12), keepBig.insert(keepBig.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+                std::vector<float>& to = dist <= rad || rad >= dist * pixelAngle * bigPx ? keepBig : keep;
+                to.insert(to.end(), r, r + 12);
+                to.insert(to.end(), &g.light[i * 12], &g.light[i * 12] + 12);
             }
         }
         upload(g);
     }
 }
 
+namespace {
+size_t bufferBytes(ID3D11Buffer* b) {
+    if (!b) return 0;
+    D3D11_BUFFER_DESC d{};
+    b->GetDesc(&d);
+    return d.ByteWidth;
+}
+double formatBytesPerTexel(DXGI_FORMAT f) {
+    switch (f) {
+    case DXGI_FORMAT_BC1_UNORM: case DXGI_FORMAT_BC1_UNORM_SRGB: case DXGI_FORMAT_BC4_UNORM: case DXGI_FORMAT_BC4_SNORM:
+        return f == DXGI_FORMAT_BC4_UNORM || f == DXGI_FORMAT_BC4_SNORM ? 0.5 : 0.5;
+    case DXGI_FORMAT_BC2_UNORM: case DXGI_FORMAT_BC3_UNORM: case DXGI_FORMAT_BC3_UNORM_SRGB: case DXGI_FORMAT_BC5_UNORM:
+    case DXGI_FORMAT_BC5_SNORM: case DXGI_FORMAT_BC6H_UF16: case DXGI_FORMAT_BC6H_SF16: case DXGI_FORMAT_BC7_UNORM:
+    case DXGI_FORMAT_BC7_UNORM_SRGB: case DXGI_FORMAT_R8_UNORM: case DXGI_FORMAT_R8_TYPELESS:
+        return 1;
+    case DXGI_FORMAT_R16G16B16A16_FLOAT: case DXGI_FORMAT_R16G16B16A16_TYPELESS: case DXGI_FORMAT_R32G32_FLOAT:
+        return 8;
+    case DXGI_FORMAT_R32G32B32A32_FLOAT:
+        return 16;
+    case DXGI_FORMAT_R16_FLOAT: case DXGI_FORMAT_R16_UNORM: case DXGI_FORMAT_R16_TYPELESS:
+        return 2;
+    default:
+        return 4;
+    }
+}
+size_t texture2dBytes(ID3D11Texture2D* t) {
+    if (!t) return 0;
+    D3D11_TEXTURE2D_DESC d{};
+    t->GetDesc(&d);
+    double bytes = 0;
+    for (UINT m = 0; m < std::max(1u, d.MipLevels); ++m)
+        bytes += double(std::max(1u, d.Width >> m)) * double(std::max(1u, d.Height >> m)) * formatBytesPerTexel(d.Format);
+    return size_t(bytes * std::max(1u, d.ArraySize));
+}
+}  // namespace
+
+std::string SceneRenderer::gpuMemoryReport() const {
+    size_t props = 0, propInst = 0, world = 0, extras = 0, streams = 0, lightmaps = 0, probes = 0, shadows = 0, targets = 0;
+    for (const auto& g : refTexInst_)
+        props += bufferBytes(g.vb) + bufferBytes(g.ib), propInst += bufferBytes(g.inst) + bufferBytes(g.visInst);
+    for (const auto& g : refInst_) props += bufferBytes(g.vb), propInst += bufferBytes(g.inst);
+    world += bufferBytes(vbRefTex_) + bufferBytes(vbRef_);
+    {
+        std::vector<ID3D11Buffer*> seen;
+        for (const auto& g : extraGroups_) seen.push_back(g.vb);
+        for (ID3D11Buffer* b : refTexVb_)
+            if (b && std::find(seen.begin(), seen.end(), b) == seen.end()) seen.push_back(b), world += bufferBytes(b);
+    }
+    for (const auto& g : extraGroups_) extras += bufferBytes(g.vb);
+    for (const auto& [id, s] : gpu_) streams += bufferBytes(s.vb) + bufferBytes(s.ib);
+    for (ID3D11Texture2D* t : stockLmTex_) lightmaps += texture2dBytes(t);
+    for (ID3D11Texture2D* t : gameLmTex_) lightmaps += texture2dBytes(t);
+    probes += texture2dBytes(probeArrTex_) + texture2dBytes(probeTex_);
+    shadows += texture2dBytes(shadowTex_) + texture2dBytes(lightShadowTex_);
+    targets += texture2dBytes(color_) + texture2dBytes(depth_) + texture2dBytes(hdrTex_) + texture2dBytes(prevColorTex_) +
+               texture2dBytes(prevZTex_) + texture2dBytes(aoTex_[0]) + texture2dBytes(aoTex_[1]);
+    const auto mb = [](size_t b) { return std::to_string((b + (1u << 19)) >> 20); };
+    return "props " + mb(props) + "+" + mb(propInst) + " world " + mb(world) + " extras " + mb(extras) + " streams " + mb(streams) +
+           " textures " + mb(textureBytes_) + " lightmaps " + mb(lightmaps) + " probes " + mb(probes) + " shadows " + mb(shadows) +
+           " targets " + mb(targets);
+}
+
+bool SceneRenderer::setReferenceTexInstanceLight(size_t mesh, const std::vector<float>& light) {
+    if (!dev_ || mesh >= refTexInst_.size()) return false;
+    GpuTexInstanced& g = refTexInst_[mesh];
+    const size_t count = g.instances;
+    if (!g.inst || count == 0 || light.size() != count * 12 || g.rows.size() != count * 12) return false;
+    std::vector<float> gpuLight(count * 12);
+    for (size_t i = 0; i < count; ++i) {
+        const size_t s = i < g.order.size() ? g.order[i] : i;  // the caller's order -> the cells' order
+        std::memcpy(&gpuLight[i * 12], &light[s * 12], 12 * sizeof(float));
+    }
+    std::vector<float> inst24(count * 24);
+    for (size_t i = 0; i < count; ++i) {
+        std::memcpy(&inst24[i * 24], &g.rows[i * 12], 12 * sizeof(float));
+        std::memcpy(&inst24[i * 24 + 12], &gpuLight[i * 12], 12 * sizeof(float));
+    }
+    D3D11_BUFFER_DESC bd{};
+    bd.Usage = D3D11_USAGE_IMMUTABLE;
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    bd.ByteWidth = UINT(count * 24 * sizeof(float));
+    D3D11_SUBRESOURCE_DATA init{inst24.data(), 0, 0};
+    ID3D11Buffer* fresh = nullptr;
+    if (FAILED(dev_->CreateBuffer(&bd, &init, &fresh))) return false;
+    safeRelease(g.inst);
+    g.inst = fresh;
+    g.light = std::move(gpuLight);  // the culling copies it into the visible-placement buffers every frame
+    return true;
+}
+
 bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>& meshes) {
-    for (auto& g : refTexInst_) safeRelease(g.vb), safeRelease(g.inst), safeRelease(g.visInst), safeRelease(g.bigInst);
+    for (auto& g : refTexInst_) safeRelease(g.vb), safeRelease(g.ib), safeRelease(g.inst), safeRelease(g.visInst);
     refTexInst_.clear();
     if (!dev_ || !vsTexInst_ || !layoutTexInst_) return meshes.empty();
     for (const InstancedTexMesh& m : meshes) {
         const size_t count = m.rows.size() / 12;
         GpuTexInstanced g;  // kept even when empty: the index is the caller's mesh index (textures are set by it)
-        if (!m.tris.empty() && count > 0) {
+        const PropMeshData* pm = m.mesh.get();
+        if (pm && !pm->vertices.empty() && pm->indices.size() >= 3 && count > 0) {
             D3D11_BUFFER_DESC bd{};
             bd.Usage = D3D11_USAGE_IMMUTABLE;
+            bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+            if (pm->vertices.size() <= 65536) {
+                const std::vector<uint16_t> i16(pm->indices.begin(), pm->indices.end());
+                bd.ByteWidth = UINT(i16.size() * sizeof(uint16_t));
+                D3D11_SUBRESOURCE_DATA ii{i16.data(), 0, 0};
+                if (FAILED(dev_->CreateBuffer(&bd, &ii, &g.ib))) g.ib = nullptr;
+                g.ibFormat = DXGI_FORMAT_R16_UINT;
+            } else {
+                bd.ByteWidth = UINT(pm->indices.size() * sizeof(uint32_t));
+                D3D11_SUBRESOURCE_DATA ii{pm->indices.data(), 0, 0};
+                if (FAILED(dev_->CreateBuffer(&bd, &ii, &g.ib))) g.ib = nullptr;
+                g.ibFormat = DXGI_FORMAT_R32_UINT;
+            }
             bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-            bd.ByteWidth = UINT(m.tris.size() * sizeof(GpuTexVertex));
-            D3D11_SUBRESOURCE_DATA init{m.tris.data(), 0, 0};
-            if (SUCCEEDED(dev_->CreateBuffer(&bd, &init, &g.vb))) {
+            bd.ByteWidth = UINT(pm->vertices.size() * sizeof(PropVertex));
+            D3D11_SUBRESOURCE_DATA init{pm->vertices.data(), 0, 0};
+            if (g.ib && SUCCEEDED(dev_->CreateBuffer(&bd, &init, &g.vb))) {
+                // The placements in cell order (stable: the meshes of one LOD group, which hold the same placements in
+                // the same order, get the same order).
+                constexpr double kCell = 2048.0;
+                std::vector<uint32_t> key(count);
+                for (size_t i = 0; i < count; ++i) {
+                    const auto cellOf = [&](float v) { return uint32_t(std::clamp(int(std::floor(v / kCell)) + 32768, 0, 65535)); };
+                    key[i] = (cellOf(m.rows[i * 12 + 3]) << 16) | cellOf(m.rows[i * 12 + 7]);
+                }
+                g.order.resize(count);
+                for (size_t i = 0; i < count; ++i) g.order[i] = uint32_t(i);
+                std::stable_sort(g.order.begin(), g.order.end(), [&](uint32_t a, uint32_t b) { return key[a] < key[b]; });
                 // 24 floats per instance on the GPU: the 3 transform rows, then the prop's light (research 105).
-                g.light = m.light.size() == count * 12 ? m.light : std::vector<float>(count * 12, 0.0f);
-                if (m.light.size() != count * 12)
-                    for (size_t i = 0; i < count; ++i) g.light[i * 12] = -1.0f;  // none
+                const bool haveLight = m.light.size() == count * 12;
+                g.rows.resize(count * 12);
+                g.light.assign(count * 12, 0.0f);
+                for (size_t i = 0; i < count; ++i) {
+                    const size_t s = g.order[i];
+                    std::memcpy(&g.rows[i * 12], &m.rows[s * 12], 12 * sizeof(float));
+                    if (haveLight) std::memcpy(&g.light[i * 12], &m.light[s * 12], 12 * sizeof(float));
+                    else g.light[i * 12] = -1.0f;  // none
+                }
                 std::vector<float> inst24(count * 24);
                 for (size_t i = 0; i < count; ++i) {
-                    std::memcpy(&inst24[i * 24], &m.rows[i * 12], 12 * sizeof(float));
+                    std::memcpy(&inst24[i * 24], &g.rows[i * 12], 12 * sizeof(float));
                     std::memcpy(&inst24[i * 24 + 12], &g.light[i * 12], 12 * sizeof(float));
                 }
                 bd.ByteWidth = UINT(count * 24 * sizeof(float));
                 D3D11_SUBRESOURCE_DATA iinit{inst24.data(), 0, 0};
                 if (SUCCEEDED(dev_->CreateBuffer(&bd, &iinit, &g.inst))) {
-                    g.vertices = unsigned(m.tris.size());
+                    g.vertices = unsigned(pm->indices.size());
                     g.instances = unsigned(count);
                     g.visible = g.instances;
-                    g.rows = m.rows;
                     g.lodOut = m.lodOut;
                     g.lodGroup = m.lodGroup;
                     g.lodNear = m.lodNear, g.lodFar = m.lodFar;
                     // The model's bounding sphere (box centre, half diagonal).
                     float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
-                    for (const GpuTexVertex& v : m.tris) {
+                    for (const PropVertex& v : pm->vertices) {
                         const float p[3] = {v.x, v.y, v.z};
                         for (int c = 0; c < 3; ++c) lo[c] = std::min(lo[c], p[c]), hi[c] = std::max(hi[c], p[c]);
                     }
                     float r2 = 0;
                     for (int c = 0; c < 3; ++c) g.centre[c] = 0.5f * (lo[c] + hi[c]), r2 += 0.25f * (hi[c] - lo[c]) * (hi[c] - lo[c]);
                     g.radius = std::sqrt(r2);
+                    // The cells: each one's placements' bounding spheres in world space.
+                    for (size_t i = 0; i < count; ++i) {
+                        if (i == 0 || key[g.order[i]] != key[g.order[i - 1]]) g.cells.push_back({iw8r::AABB{}, uint32_t(i), 0});
+                        GpuTexInstanced::InstCell& c = g.cells.back();
+                        ++c.count;
+                        const float* r = &g.rows[i * 12];
+                        double wc[3], scale = 0;
+                        for (int k = 0; k < 3; ++k) {
+                            wc[k] = r[k * 4 + 0] * g.centre[0] + r[k * 4 + 1] * g.centre[1] + r[k * 4 + 2] * g.centre[2] + r[k * 4 + 3];
+                            scale = std::max(scale, std::sqrt(double(r[k * 4 + 0]) * r[k * 4 + 0] + double(r[k * 4 + 1]) * r[k * 4 + 1] +
+                                                              double(r[k * 4 + 2]) * r[k * 4 + 2]));
+                        }
+                        const double rad = g.radius * scale * 1.0001 + 1.0;
+                        c.box.add(iw8r::Vec3{wc[0] - rad, wc[1] - rad, wc[2] - rad});
+                        c.box.add(iw8r::Vec3{wc[0] + rad, wc[1] + rad, wc[2] + rad});
+                    }
                     D3D11_BUFFER_DESC dd = bd;
                     dd.Usage = D3D11_USAGE_DYNAMIC;
                     dd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
                     dev_->CreateBuffer(&dd, nullptr, &g.visInst);
-                    dev_->CreateBuffer(&dd, nullptr, &g.bigInst);
                 } else {
                     safeRelease(g.vb);
                 }
             }
+            if (!g.vb) safeRelease(g.ib);
         }
         refTexInst_.push_back(g);
     }
@@ -3079,7 +3383,7 @@ void SceneRenderer::drawReferenceTexInstances() {
     }
     ID3D11ShaderResourceView* noNrm = nullptr;
     ctx_->PSSetShaderResources(1, 1, &noNrm);
-    const UINT strides[2] = {UINT(sizeof(GpuTexVertex)), UINT(24 * sizeof(float))}, offsets[2] = {0, 0};
+    const UINT strides[2] = {UINT(sizeof(PropVertex)), UINT(24 * sizeof(float))}, offsets[2] = {0, 0};
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
         const int id = g.texture >= 0 ? g.texture : whiteTex_;
@@ -3088,7 +3392,7 @@ void SceneRenderer::drawReferenceTexInstances() {
         if (culled && g.visible == 0) continue;
         if (!culled && g.lodGroup >= 0 && g.lodNear > 0) continue;  // unculled: a LOD group draws its LOD0 only
         // The depth pre-pass: only the placements large on screen (the shading pass writes depth for the rest).
-        const bool prepassBig = texPsOverride_ && texPsOverride_ == psPrepass_ && culled && g.bigInst;
+        const bool prepassBig = texPsOverride_ && texPsOverride_ == psPrepass_ && culled;
         if (prepassBig && g.big == 0) continue;
         ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]);
         if (propNormals) {
@@ -3107,9 +3411,10 @@ void SceneRenderer::drawReferenceTexInstances() {
                 ctx1_->PSSetConstantBuffers1(7, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);
             }
         }
-        ID3D11Buffer* bufs[2] = {g.vb, prepassBig ? g.bigInst : culled ? g.visInst : g.inst};
+        ID3D11Buffer* bufs[2] = {g.vb, culled ? g.visInst : g.inst};  // the pre-pass: the visible buffer's large prefix
         ctx_->IASetVertexBuffers(0, 2, bufs, strides, offsets);
-        drawInst(g.vertices, prepassBig ? g.big : culled ? g.visible : g.instances, 0, 0);
+        ctx_->IASetIndexBuffer(g.ib, DXGI_FORMAT(g.ibFormat), 0);
+        drawInstIdx(g.vertices, prepassBig ? g.big : culled ? g.visible : g.instances);
     }
     if (instCb && cbLayer_) ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);  // the plain (zero) layer buffer
     if (propNormals) {
@@ -3159,7 +3464,7 @@ bool SceneRenderer::uploadInstParams() {
     return cbInstAllMeshes_ == refTexInst_.size() && !cbInstAll_.empty();
 }
 
-void SceneRenderer::drawReferenceTexInstancesShadow() {
+void SceneRenderer::drawReferenceTexInstancesShadow(const iw8r::Frustum* view) {
     if (refTexInst_.empty() || !vsTexInst_ || !layoutTexInst_) return;
     ctx_->IASetInputLayout(layoutTexInst_);
     ctx_->VSSetShader(vsTexInst_, nullptr, 0);
@@ -3171,7 +3476,7 @@ void SceneRenderer::drawReferenceTexInstancesShadow() {
         ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
     }
     const bool instCb = psShadowClip_ && uploadInstParams();
-    const UINT strides[2] = {UINT(sizeof(GpuTexVertex)), UINT(24 * sizeof(float))}, offsets[2] = {0, 0};
+    const UINT strides[2] = {UINT(sizeof(PropVertex)), UINT(24 * sizeof(float))}, offsets[2] = {0, 0};
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
         if (g.lodGroup >= 0 && g.lodNear > 0) continue;  // the sun shadow of a LOD group: its LOD0
@@ -3189,10 +3494,27 @@ void SceneRenderer::drawReferenceTexInstancesShadow() {
         }
         ID3D11Buffer* bufs[2] = {g.vb, g.inst};
         ctx_->IASetVertexBuffers(0, 2, bufs, strides, offsets);
-        drawInst(g.vertices, g.instances, 0, 0);
+        ctx_->IASetIndexBuffer(g.ib, DXGI_FORMAT(g.ibFormat), 0);
+        if (!view || g.cells.empty()) {
+            drawInstIdx(g.vertices, g.instances);
+            continue;
+        }
+        // Runs of neighbouring cells in the view, one draw each.
+        uint32_t runFirst = 0, runCount = 0;
+        for (const auto& c : g.cells) {
+            if (iw8r::frustumIntersectsAabb(*view, c.box)) {
+                if (runCount && runFirst + runCount == c.first) runCount += c.count;
+                else {
+                    if (runCount) drawInstIdx(g.vertices, runCount, runFirst);
+                    runFirst = c.first, runCount = c.count;
+                }
+            }
+        }
+        if (runCount) drawInstIdx(g.vertices, runCount, runFirst);
     }
     ID3D11Buffer* none[2] = {nullptr, nullptr};
     ctx_->IASetVertexBuffers(0, 2, none, strides, offsets);
+    ctx_->IASetIndexBuffer(nullptr, DXGI_FORMAT_R32_UINT, 0);
     ID3D11ShaderResourceView* noTex[1] = {nullptr};
     ctx_->PSSetShaderResources(0, 1, noTex);
     if (instCb && cbLayer_) ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);
@@ -3260,6 +3582,16 @@ void SceneRenderer::drawIdx(unsigned count, unsigned first) {
     ctx_->DrawIndexed(count, first, 0);
     ++stats_.drawCalls;
     stats_.triangles += count / 3;
+}
+
+void SceneRenderer::drawInstIdx(unsigned indices, unsigned instances, unsigned firstInstance) {
+    ctx_->DrawIndexedInstanced(indices, instances, 0, 0, firstInstance);
+    if (inShadowPass_) {
+        ++stats_.shadowDrawCalls;
+        return;
+    }
+    ++stats_.drawCalls;
+    stats_.triangles += size_t(indices / 3) * instances;
 }
 
 void SceneRenderer::drawInst(unsigned vertices, unsigned instances, unsigned firstVertex, unsigned firstInstance) {
@@ -3700,8 +4032,12 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 drawN(UINT(refCount_), 0);
         }
         if (refVisible_) drawReferenceInstances(ReferencePass::Shadow);
-        // The textured props (trees, crates, poles) cast too: their leaves through the cut-out test.
-        if (refVisible_) drawReferenceTexInstancesShadow();
+        // The textured props (trees, crates, poles) cast too: their leaves through the cut-out test. The near cascade
+        // and the lamp maps draw the placements in their view only.
+        if (refVisible_) {
+            const iw8r::Frustum pf = iw8r::frustumFromViewProj(sm);
+            drawReferenceTexInstancesShadow(cull ? &pf : nullptr);
+        }
         };
         if (farShadowDue) drawCasters(shadowDsv_, sunViewProj_, false);
         if (nearShadowDue) drawCasters(shadowDsvNear_, sunViewProjNear_, true);
@@ -3715,6 +4051,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 if (sl.light < 0 || sl.drawn || !lightShadowDsv_[size_t(j)]) continue;
                 drawCasters(lightShadowDsv_[size_t(j)], sl.vp, true);
                 sl.drawn = true;
+                ++stats_.lampShadowMaps;
                 lightSlotsChanged_ = true;
                 --budget;
             }
@@ -3725,7 +4062,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             shadowCasterVersion_ = in.casterVersion;
             ++stats_.shadowPasses;
         }
-        if (nearShadowDue) nearDirty_ = false;
+        if (nearShadowDue) nearDirty_ = false, ++stats_.nearShadowPasses;
         inShadowPass_ = false;
         ctx_->OMSetRenderTargets(1, &sceneRtv_, dsv_);
         ctx_->RSSetViewports(1, &vp);
@@ -4183,7 +4520,10 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     if (shadowOn) ctx_->PSSetShaderResources(2, 1, &noShadowSrv);
     if (fLines.ready() || fLinesMisc.ready()) {
         IW8R_PROF("d.lines");
-        ctx_->RSSetState(rsLines_);
+        // Antialiased lines cost about 6 ns each on the GPU: Verdansk's 1.2 million entity outline lines took 7 ms a
+        // frame. Past half a million line vertices they are drawn plain.
+        const size_t lineVerts = (fLines.ready() ? fLines.s->v.size() : 0) + (fLinesMisc.ready() ? fLinesMisc.s->v.size() : 0);
+        ctx_->RSSetState(lineVerts > 500000 && rsLinesFast_ ? rsLinesFast_ : rsLines_);
         ctx_->OMSetDepthStencilState(dsTest_, 0);
         ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
         drawFlat(fLines, true);

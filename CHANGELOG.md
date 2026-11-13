@@ -5,6 +5,35 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Verdansk opens and runs without running the machine out of memory, at about 20 ms a frame.** It used to climb past
+  14 GB and close (out of memory) a few minutes after opening; it now peaks at about 12 GB. Its frame went from 286 ms
+  (since the stock lamps' shadows) to about 20 ms once the lamp shadows are drawn (more while other programs fill the
+  graphics card's memory). What changed:
+  - Props are kept as indexed meshes, a fifth of the memory (video memory for props 788 -> 161 MB), and the light of a
+    streamed tile that arrives no longer rebuilds every prop: only their light is updated.
+  - Lamp shadow maps and the near sun shadow draw only the props in their view (they drew all 1.2 million placements).
+  - Projecting decals onto the props kept 8 GB for a moment; it now copies only the triangles that touch a decal.
+  - The texture budget also follows the machine's memory (2 GB on a 16 GB machine), emissive images included, and
+    materials that share one stock image share its texture. Windows counts video memory against the machine's memory.
+  - A step that runs out of memory (a background job or the window itself) now stops with a message and is tried
+    again, instead of closing the editor. Windows had about 14 GB committed by other programs during these tests.
+  - Streamed tiles reach 14,000 units (48 tiles) on machines under 24 GB, 20,000 (96) above; stock/streamRadius and
+    stock/streamLimit still override.
+  - Very many editor lines (Verdansk's 1.2 million entity outlines) are drawn without antialiasing: 7 ms -> 0.2 ms.
+  - Prop levels of detail now arrive on Verdansk: one name that points into another zone used to fail whole batches.
+  - The 2D views no longer stall on Warzone maps: models arriving no longer re-read all 47,545 entities each time.
+- **The game's bloom and vignette in Game Lighting.** Stock maps now get their vision's soft glow (the "veil": a wide
+  bloom of the whole frame, 8 % on Speedball) and its darkened screen corners, built the way the game builds them
+  (research 109). Against your in-game Speedball shot the frame's edges and corners now match far better (left edge 181
+  -> 140, the game 137). View > Game Lighting Options > Bloom and Vignette turns them off.
+- **Verdansk needs far less memory to open.** Reading the map's 422 MB export used to take about 1.6 GB per step (world,
+  props, displacement, clutter, streamed tile list); each now takes 5 to 280 MB, with exactly the same result. The
+  reflection probes' 160 MB of images stay on disk and only the ones around the camera are read. Two Verdansk tiles
+  whose export had come out empty are exported again.
+- **Verdansk and Quarry reflections.** Their reflection probes now load (research 108): the editor reads all 5,620 of
+  Verdansk's, takes the shared ones from your install's packages once (about 160 MB in the world cache) and each streamed
+  tile's own with the tile, and gives the view the probes around the camera. Wet roads, glass and metal reflect the
+  town around them instead of nothing.
 - **Your maps' props and the gun take their light from where they stand.** The build's light grid (what lights
   models, players and the viewmodel in game) was one flat colour at 70 % of the sun everywhere, so the gun was as
   bright in a closed room as outside. It is now baked from the map itself: open sky where it is visible, light bounced

@@ -1,4 +1,5 @@
 #include "stock_terrain_layers.h"
+#include "worker_guard.h"
 #include "stock_clutter.h"
 #include "stock_super_terrain.h"
 #include <set>
@@ -22,6 +23,7 @@
 #include <QElapsedTimer>
 #include <QThread>
 #include "cache_manager.h"
+#include "crash_handler.h"
 #include "fx_editor.h"
 #include "stock_world_brushes.h"
 #include "stock_vision.h"
@@ -606,15 +608,20 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         // Model Info open on this model: show what the cache now has (LODs / bones after a refetch).
         if (auto* d = findChild<QDialog*>("modelInfoDialog"); d && d->isVisible() && d->windowTitle() == "Model Info: " + name)
             showModelInfo(name);
-        ctx_.scene.invalidate();
-        ctx_.cameraMoved();
+        invalidateSceneSoon();
     });
     connect(modelCacheStock_, &ModelCache::progress, this, [this](const QString& m) { ctx_.setStatus(m); });
-    connect(modelCacheStock_, &ModelCache::lodReady, this, [this](const QString& name, int) {
-        ctx_.scene.invalidate();
-        ctx_.cameraMoved();
-        // A stock prop's LOD (plan 1.13): its kept mesh is rebuilt with it; the props once, when every LOD fetch is done.
-        refPropBuilt_.erase(name.toStdString());
+    connect(modelCacheStock_, &ModelCache::lodReady, this, [this](const QString& name, int lod) {
+        // The scene draws LOD0 except in the LOD preview.
+        if (lodPreview_) invalidateSceneSoon();
+        // A stock prop's LOD (plan 1.13): its kept mesh is rebuilt with it (not when the LOD could not be had: Verdansk
+        // asks for thousands that fail, and each dropped a kept mesh); the props once, when every LOD fetch is done.
+        if (modelCacheStock_->hasLod(name, lod)) {
+            if (const auto it = refPropBuilt_.find(name.toStdString()); it != refPropBuilt_.end()) {
+                refPropBuiltTris_ -= std::min(refPropBuiltTris_, it->second->tris);
+                refPropBuilt_.erase(it);
+            }
+        }
         if (refProps_ && modelCacheStock_->lodsPending() == 0 && !refPropRebuildQueued_) {
             refPropRebuildQueued_ = true;
             QTimer::singleShot(2000, this, [this] {
@@ -2137,6 +2144,7 @@ void MainWindow::buildMenus() {
         toggle("GameSsr", "Screen-Space Reflections", "game/ssr", [this](bool on) { camera_->setGameSsrEnabled(on); });
         toggle("GameStockLights", "Stock Map Lamps", "game/stockLights", [this](bool on) { camera_->setStockLightsEnabled(on); });
         toggle("GameLightShadows", "Lamp Shadows", "game/lightShadows", [this](bool on) { camera_->setLightShadowsEnabled(on); });
+        toggle("GamePostFx", "Bloom and Vignette", "game/postFx", [this](bool on) { camera_->setPostFxEnabled(on); });
         toggle("GamePropLods", "Prop Levels of Detail (as in game)", "game/propLods", [this](bool on) {
             if (propLodsEnabled_ == on) return;
             propLodsEnabled_ = on;
@@ -2212,6 +2220,8 @@ void MainWindow::buildMenus() {
         camera_->setStockLightmap(nullptr);
         camera_->setStockProbes(nullptr);
         camera_->setStockLocalLights(nullptr, nullptr);
+        refProbesFull_.reset();
+        refProbesIndex_.reset();
         refPropVolLight_.reset();
         refPropVolLightZone_.clear();
         refPropTileLight_.clear();
@@ -6764,13 +6774,64 @@ void MainWindow::rebuildReferenceProps() {
     } catch (const std::bad_alloc&) {
         refPropBuilt_.clear();
         refPropBuiltTris_ = 0;
+        refPropLightKeys_.clear();
         ctx_.setStatus("Not enough memory to rebuild the stock map's props: they stay as they are (close other programs, or "
                        "lower the streamed world radius in the settings)");
     }
 }
 
+void MainWindow::invalidateSceneSoon() {
+    if (sceneInvalidateQueued_) return;
+    sceneInvalidateQueued_ = true;
+    QTimer::singleShot(300, this, [this] {
+        sceneInvalidateQueued_ = false;
+        ctx_.scene.invalidate();
+        ctx_.cameraMoved();
+    });
+}
+
+bool MainWindow::propLightFor(const PropLightKey& k, float out[12]) const {
+    static const float none[12] = {-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::memcpy(out, none, sizeof(none));
+    static const bool noPropLgv = std::getenv("IW8R_NO_PROP_LGV") != nullptr;  // A/B: the probes' light as before
+    if (noPropLgv || !k.probe) return false;
+    const std::vector<float>* grid = nullptr;  // the prop's transient zone's grid: the main zone's, or its tile's
+    if (k.transient == 0) {
+        grid = refPropVolLight_.get();
+    } else if (const auto t = refPropTileLight_.find(int(k.transient)); t != refPropTileLight_.end()) {
+        grid = t->second.get();
+    }
+    if (!grid || size_t(k.lightingIndex) >= grid->size() / 12) return false;
+    std::memcpy(out, &(*grid)[size_t(k.lightingIndex) * 12], 12 * sizeof(float));
+    return true;
+}
+
+void MainWindow::relightReferenceProps() {
+    // The camera must hold the meshes these keys were made for; otherwise (none yet, another rebuild since) rebuild.
+    if (refPropLightKeys_.empty() || !camera_ || camera_->referenceTexInstanceMeshes() != refPropLightKeys_.size()) {
+        rebuildReferenceProps();
+        return;
+    }
+    std::vector<std::vector<float>> light(refPropLightKeys_.size());
+    size_t lit = 0, of = 0;
+    for (size_t m = 0; m < refPropLightKeys_.size(); ++m) {
+        const auto& keys = refPropLightKeys_[m];
+        light[m].resize(keys.size() * 12);
+        for (size_t i = 0; i < keys.size(); ++i) {
+            const bool got = propLightFor(keys[i], &light[m][i * 12]);
+            if (keys[i].first) lit += got ? 1 : 0, ++of;
+        }
+    }
+    refPropLit_ = lit, refPropLitOf_ = of;
+    camera_->setReferenceTexInstanceLight(std::move(light));
+}
+
 void MainWindow::rebuildReferencePropsUnguarded() {
     if (!refProps_ || !refBaseTris_ || referenceZone_.isEmpty()) return;
+    // Bench diagnosis (IW8R_BENCH_PROFILE): the memory a rebuild holds, logged at its end.
+    static const bool memDiag = std::getenv("IW8R_BENCH_PROFILE") != nullptr;
+    const size_t commitAtStart = memDiag ? processCommitMb() : 0;
+    size_t loadedModels = 0;
     // Boxes are instanced unit cubes (research 84): one mesh per kind, one transform row set per placement. They
     // used to be added to the flat reference triangle list, which the camera does not draw while the textured
     // reference is set, so no box was ever seen.
@@ -6833,9 +6894,16 @@ void MainWindow::rebuildReferencePropsUnguarded() {
     std::vector<app::InstancedTexMesh> texInstanced;
     std::vector<std::string> texMaterials;
     size_t meshTris = 0, meshed = 0;
+    std::vector<std::vector<PropLightKey>> lightKeys;  // refPropLightKeys_ of this rebuild
+    refPropLightKeys_.clear();
     int lodGroups = 0;  // plan 1.13: LOD groups numbered per rebuild
     wantLods_.clear();
     refPropLit_ = refPropLitOf_ = 0;
+    // Distinct models' LOD0 triangles drawn as meshes (the rest as boxes). 4 M while props were 168 bytes a triangle;
+    // indexed (PropMeshData, about a fifth of that) Verdansk's props fit in 16 M (948k of its placements were boxes).
+    // Distinct models' LOD0 triangles drawn as meshes (the rest as boxes): 4 M while props were 168 bytes a triangle;
+    // indexed it could be more, but each placement drawn as a mesh costs about 300 bytes (instance data): Verdansk at 8 M
+    // and 16 M ran a 16 GB machine out of memory. Kept at 4 M until the instance data is lighter.
     constexpr size_t kPropTriangleBudget = 4'000'000;
     const Vec3 light = normalize(Vec3{0.35, 0.55, 0.75});
     const auto mesh = [&](const StockModelInstance& in) -> bool {
@@ -6848,7 +6916,11 @@ void MainWindow::rebuildReferencePropsUnguarded() {
             std::shared_ptr<const RefPropMesh> built;
             if (const auto kept = refPropBuilt_.find(in.model); kept != refPropBuilt_.end()) {
                 built = kept->second;
+            } else if (const auto known = refPropTrisKnown_.find(in.model);
+                       known != refPropTrisKnown_.end() && meshTris + known->second > kPropTriangleBudget) {
+                // Past the budget (known from an earlier rebuild): a box, without reading the model again.
             } else if (auto im = modelCacheStock_->loadModel(qs(in.model))) {
+                ++loadedModels;
                 auto fresh = std::make_shared<RefPropMesh>();
                 for (const auto& ms : im->meshes) fresh->tris += ms.idx.size() / 3;
                 // Foliage (grass, weeds, plants, trees) stops drawing past its last LOD distance in game. Other props
@@ -6860,48 +6932,65 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                             fresh->lodOut = std::max(0.0, detail->lods.back().distance);
                 }
                 // Textured triangles of an imported mesh set (LOD0 also fills `plain` with its untextured surfaces).
-                const auto toTex = [&](const ImportedModel& src, std::vector<std::pair<std::string, std::vector<app::GpuTexVertex>>>& outTex,
+                const auto toTex = [&](const ImportedModel& src,
+                                       std::vector<std::pair<std::string, std::shared_ptr<const app::PropMeshData>>>& outTex,
                                        std::vector<app::GpuVertex>* plainOut) {
                     std::vector<app::GpuVertex> ignored;
                     std::vector<app::GpuVertex>& plain = plainOut ? *plainOut : ignored;
                     const auto zup = [](const Vec3& p) { return Vec3{p.x, -p.z, p.y}; };  // glTF Y-up -> Z-up
                     for (const auto& ms : src.meshes) {
                         const bool textured = !ms.material.empty() && ms.uv.size() == ms.pos.size();
-                        std::vector<app::GpuTexVertex> texTris;
-                        for (size_t i = 0; i + 2 < ms.idx.size(); i += 3) {
-                            const Vec3 a = zup(ms.pos[ms.idx[i]]), b = zup(ms.pos[ms.idx[i + 1]]), c = zup(ms.pos[ms.idx[i + 2]]);
-                            const double k = 0.55 + 0.45 * std::fabs(dot(normalize(cross(b - a, c - a)), light));
-                            if (textured) {
-                                const uint32_t g = uint32_t(std::clamp(k * 255.0, 0.0, 255.0));
-                                const uint32_t col = 0xff000000u | (g << 16) | (g << 8) | g;
-                                const Vec3* v[3] = {&a, &b, &c};
-                                for (int n = 0; n < 3; ++n) {
-                                    const auto& uv = ms.uv[ms.idx[i + size_t(n)]];
-                                    app::GpuTexVertex tv;
-                                    tv.x = float(v[n]->x);
-                                    tv.y = float(v[n]->y);
-                                    tv.z = float(v[n]->z);
-                                    tv.u = float(uv[0]);
-                                    tv.v = float(uv[1]);
-                                    tv.rgba = col;
-                                    // The model's own vertex normals (tree cards bend theirs outward from the crown): Game
-                                    // Lighting shades with them (vs_tex_inst turns them by the instance).
-                                    if (ms.normal.size() == ms.pos.size()) {
-                                        const Vec3 nn = zup(ms.normal[ms.idx[i + size_t(n)]]);
-                                        if (length(nn) > 1e-6) {
-                                            const Vec3 un = normalize(nn);
-                                            tv.nx = float(un.x), tv.ny = float(un.y), tv.nz = float(un.z);
-                                        }
-                                    }
-                                    texTris.push_back(tv);
-                                }
-                            } else {
+                        if (!textured) {
+                            for (size_t i = 0; i + 2 < ms.idx.size(); i += 3) {
+                                const Vec3 a = zup(ms.pos[ms.idx[i]]), b = zup(ms.pos[ms.idx[i + 1]]), c = zup(ms.pos[ms.idx[i + 2]]);
+                                const double k = 0.55 + 0.45 * std::fabs(dot(normalize(cross(b - a, c - a)), light));
                                 const uint32_t g = uint32_t(std::clamp(k * 175.0, 0.0, 255.0));
                                 const uint32_t col = 0xff000000u | (uint32_t(g * 0.92) << 16) | (g << 8) | uint32_t(g * 0.85);
                                 for (const Vec3* v : {&a, &b, &c}) plain.push_back({float(v->x), float(v->y), float(v->z), col});
                             }
+                            continue;
                         }
-                        if (!texTris.empty()) outTex.push_back({ms.material, std::move(texTris)});
+                        // Indexed as stored (28 bytes a vertex). The model's own vertex normals (tree cards bend theirs
+                        // outward from the crown): Game Lighting shades with them (vs_tex_inst turns them by the
+                        // instance); none (zero) = the pixel shader derives one. The plain view's facing shade is per
+                        // vertex, from that normal or, without one, from the faces around the vertex.
+                        const size_t nv = ms.pos.size();
+                        const bool ownNormals = ms.normal.size() == nv;
+                        std::vector<Vec3> shadeN(nv, Vec3{0, 0, 0});
+                        auto pm = std::make_shared<app::PropMeshData>();
+                        pm->indices.reserve(ms.idx.size());
+                        for (size_t i = 0; i + 2 < ms.idx.size(); i += 3) {
+                            const uint32_t ia = ms.idx[i], ib = ms.idx[i + 1], ic = ms.idx[i + 2];
+                            if (ia >= nv || ib >= nv || ic >= nv) continue;
+                            pm->indices.push_back(ia), pm->indices.push_back(ib), pm->indices.push_back(ic);
+                            if (!ownNormals) {
+                                const Vec3 a = zup(ms.pos[ia]), b = zup(ms.pos[ib]), c = zup(ms.pos[ic]);
+                                const Vec3 fn = cross(b - a, c - a);
+                                shadeN[ia] = shadeN[ia] + fn, shadeN[ib] = shadeN[ib] + fn, shadeN[ic] = shadeN[ic] + fn;
+                            }
+                        }
+                        if (pm->indices.empty()) continue;
+                        pm->vertices.resize(nv);
+                        for (size_t v = 0; v < nv; ++v) {
+                            const Vec3 p = zup(ms.pos[v]);
+                            app::PropVertex& pv = pm->vertices[v];
+                            pv.x = float(p.x), pv.y = float(p.y), pv.z = float(p.z);
+                            pv.u = float(ms.uv[v][0]), pv.v = float(ms.uv[v][1]);
+                            pv.normal = 0;
+                            Vec3 sn = shadeN[v];
+                            if (ownNormals) {
+                                const Vec3 nn = zup(ms.normal[v]);
+                                if (length(nn) > 1e-6) {
+                                    const Vec3 un = normalize(nn);
+                                    pv.normal = app::packPropNormal(float(un.x), float(un.y), float(un.z));
+                                    sn = un;
+                                }
+                            }
+                            const double k = length(sn) > 1e-12 ? 0.55 + 0.45 * std::fabs(dot(normalize(sn), light)) : 0.775;
+                            const uint32_t g = uint32_t(std::clamp(k * 255.0, 0.0, 255.0));
+                            pv.rgba = 0xff000000u | (g << 16) | (g << 8) | g;
+                        }
+                        outTex.push_back({ms.material, std::move(pm)});
                     }
                 };
                 toTex(*im, fresh->tex, &fresh->plain);
@@ -6929,6 +7018,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                     fresh->lod0Far = fresh->lods.empty() ? fresh->lodOut : fresh->lods[0].nearD;
                 }
                 built = fresh;
+                refPropTrisKnown_[in.model] = fresh->tris;
                 if (refPropBuiltTris_ + fresh->tris <= kPropTriangleBudget) {  // kept copies stay within the draw budget
                     refPropBuiltTris_ += fresh->tris;
                     refPropBuilt_[in.model] = fresh;
@@ -6939,7 +7029,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                 const int group = built->lods.empty() ? -1 : ++lodGroups;
                 for (const auto& [material, tris] : built->tex) {
                     app::InstancedTexMesh tm;
-                    tm.tris = tris;
+                    tm.mesh = tris;
                     tm.lodOut = float(built->lodOut);
                     tm.lodGroup = group;
                     tm.lodNear = 0, tm.lodFar = float(built->lod0Far);
@@ -6950,7 +7040,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                 for (const RefPropMesh::Lod& lod : built->lods)
                     for (const auto& [material, tris] : lod.tex) {
                         app::InstancedTexMesh tm;
-                        tm.tris = tris;
+                        tm.mesh = tris;
                         tm.lodOut = float(built->lodOut);
                         tm.lodGroup = group;
                         tm.lodNear = float(lod.nearD), tm.lodFar = float(lod.farD);
@@ -6986,24 +7076,22 @@ void MainWindow::rebuildReferencePropsUnguarded() {
         }
         // Research 105: a LIGHTPROBE prop of the main transient zone takes its light grid box (12 floats, DC first);
         // every other placement gets DC r = -1 (the probes' fallback in the shader).
-        float lit[12] = {-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-        static const bool noPropLgv = std::getenv("IW8R_NO_PROP_LGV") != nullptr;  // A/B: the probes' light as before
-        const std::vector<float>* grid = nullptr;  // the prop's transient zone's grid: the main zone's, or its tile's
-        if (in.worldTransient == 0) {
-            grid = refPropVolLight_.get();
-        } else if (const auto t = refPropTileLight_.find(int(in.worldTransient)); t != refPropTileLight_.end()) {
-            grid = t->second.get();
-        }
-        if (!noPropLgv && grid && (in.modelFlags & 1u) && size_t(in.lightingIndex) < grid->size() / 12) {
-            std::memcpy(lit, &(*grid)[size_t(in.lightingIndex) * 12], sizeof(lit));
-            if (!it->second.tex.empty()) ++refPropLit_;
-        }
+        PropLightKey key;
+        key.lightingIndex = in.lightingIndex;
+        key.transient = in.worldTransient;
+        key.probe = (in.modelFlags & 1u) != 0;
+        float lit[12];
+        if (propLightFor(key, lit) && !it->second.tex.empty()) ++refPropLit_;
         if (!it->second.tex.empty()) ++refPropLitOf_;
+        if (lightKeys.size() < texInstanced.size()) lightKeys.resize(texInstanced.size());
+        key.first = true;
         for (const int ti : it->second.tex) {
             auto& dst = texInstanced[size_t(ti)].rows;
             dst.insert(dst.end(), rows, rows + 12);
             auto& ld = texInstanced[size_t(ti)].light;
             ld.insert(ld.end(), lit, lit + 12);
+            lightKeys[size_t(ti)].push_back(key);
+            key.first = false;
         }
         ++meshed;
         return true;
@@ -7072,6 +7160,25 @@ void MainWindow::rebuildReferencePropsUnguarded() {
             refPropBuilt_.clear();
             refPropBuiltTris_ = 0;
         }
+    }
+    lightKeys.resize(texInstanced.size());
+    refPropLightKeys_ = std::move(lightKeys);
+    if (memDiag) {
+        size_t keptMb = 0, keptLodMb = 0, drawMb = 0, rowsMb = 0;
+        for (const auto& [name, b] : refPropBuilt_) {
+            for (const auto& t : b->tex) keptMb += t.second->vertices.size() * sizeof(app::PropVertex) + t.second->indices.size() * 4;
+            for (const auto& l : b->lods)
+                for (const auto& t : l.tex) keptLodMb += t.second->vertices.size() * sizeof(app::PropVertex) + t.second->indices.size() * 4;
+            keptMb += b->plain.size() * sizeof(app::GpuVertex);
+        }
+        for (const auto& m : texInstanced)
+            drawMb += m.mesh ? m.mesh->vertices.size() * sizeof(app::PropVertex) + m.mesh->indices.size() * 4 : 0,
+                rowsMb += (m.rows.size() + m.light.size()) * 4;
+        EditorLog::instance().add(LogLevel::Info, "bench",
+                                  QString("prop rebuild memory: commit %1 -> %2 MB; kept LOD0 %3 MB, kept LODs %4 MB, drawn meshes "
+                                          "%5 MB in %6 meshes, rows+light %7 MB, %8 models read from disk")
+                                      .arg(commitAtStart).arg(processCommitMb()).arg(keptMb >> 20).arg(keptLodMb >> 20)
+                                      .arg(drawMb >> 20).arg(texInstanced.size()).arg(rowsMb >> 20).arg(loadedModels));
     }
     camera_->setReferenceInstances(std::move(instanced));
     camera_->setReferenceTexInstances(std::move(texInstanced), std::move(texMaterials));
@@ -7162,8 +7269,13 @@ void MainWindow::loadStockLightmap(const QString& zone) {
     for (const int idx : worldCache_->lightmapIndices(zone))
         if (const std::optional<QString> f = worldCache_->lightmapFile(zone, idx)) paths.push_back(f->toStdString());
     if (paths.empty()) return;
+    if (refLmLoading_) {
+        refLmAgain_ = true;
+        return;
+    }
+    refLmLoading_ = true;
     QPointer<MainWindow> self(this);
-    std::thread([self, zone, paths] {
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, paths] {
         std::vector<StockLightmap> lms;
         std::string err;
         for (const std::string& path : paths) {
@@ -7173,9 +7285,24 @@ void MainWindow::loadStockLightmap(const QString& zone) {
             else err = e;
         }
         std::shared_ptr<const app::StockLightmapLayers> layers;
-        if (!lms.empty()) layers = app::stockLightmapAtlas(lms);
+        try {
+            if (!lms.empty()) layers = app::stockLightmapAtlas(lms);
+        } catch (const std::bad_alloc&) {
+            err = "out of memory while packing " + std::to_string(lms.size()) + " lightmaps";
+            layers.reset();
+        }
+        lms.clear();
+        lms.shrink_to_fit();
         QMetaObject::invokeMethod(qApp, [self, zone, layers, err] {
-            if (!self || self->referenceZone_ != zone) return;
+            if (!self) return;
+            self->refLmLoading_ = false;
+            if (self->refLmAgain_) {
+                self->refLmAgain_ = false;
+                if (!self->referenceZone_.isEmpty()) QTimer::singleShot(0, self, [self] {
+                    if (self) self->loadStockLightmap(self->referenceZone_);
+                });
+            }
+            if (self->referenceZone_ != zone) return;
             if (layers && layers->width > 0) {
                 self->camera_->setStockLightmap(layers);
                 self->ctx_.setStatus(QString("Stock lightmap of %1: %2 x %3 (View > Game Lighting uses it)").arg(zone).arg(layers->width).arg(layers->height));
@@ -7183,7 +7310,7 @@ void MainWindow::loadStockLightmap(const QString& zone) {
                 self->ctx_.setStatus("Stock lightmap of " + zone + " not read: " + QString::fromStdString(err));
             }
         }, Qt::QueuedConnection);
-    }).detach();
+    })).detach();
 }
 
 // A stock map's decal volumes (research 99): read from its world export, their materials and masks exported once with
@@ -7289,39 +7416,69 @@ void MainWindow::projectPropDecals() {
     if (!stockDecals_ || !refProps_ || referenceZone_.isEmpty() || propDecalsZone_ == referenceZone_ || refPropBuilt_.empty()) return;
     propDecalsZone_ = referenceZone_;
     const StockDecalData& d = *stockDecals_;
-    // Only props near a volume become receivers.
+    // Only the volumes that found no world surface (stencils on crates, paint on barriers: research 99 found every
+    // empty Speedball volume beside a prop): ground decals (sand, dirt) on every prop inside their box cost Hideout
+    // 790k triangles and 38 ms a frame.
+    StockDecalVolumeSet propSet = d.set;
+    propSet.volumes.clear();
+    std::vector<size_t> back;
+    for (size_t i = 0; i < d.set.volumes.size(); ++i)
+        if (i >= d.onWorld.size() || !d.onWorld[i]) propSet.volumes.push_back(d.set.volumes[i]), back.push_back(i);
+    if (propSet.volumes.empty()) return;
+    // Receivers: only the triangles of props that touch one of those volumes' boxes (all props near any volume, in
+    // world space at about 200 bytes a triangle, took 8 GB on Verdansk, 2026-11-13).
     std::vector<AABB> boxes;
-    for (const auto& v : d.set.volumes) boxes.push_back(stockDecalVolumeBounds(v));
+    for (const auto& v : propSet.volumes) boxes.push_back(stockDecalVolumeBounds(v));
+    const auto overlaps = [](const AABB& b, const AABB& p) {
+        return !(b.mins.x > p.maxs.x || b.maxs.x < p.mins.x || b.mins.y > p.maxs.y || b.maxs.y < p.mins.y || b.mins.z > p.maxs.z ||
+                 b.maxs.z < p.mins.z);
+    };
+    // Cut-out and blended materials (foliage, cards, glass) receive no decal volume (research 99: their techsets have
+    // no decal loop); decided once per material.
+    std::map<std::string, bool> receives;
+    const auto materialReceives = [&](const std::string& mat) {
+        const auto [it, fresh] = receives.emplace(mat, true);
+        if (fresh) {
+            if (const auto e = matCache_->lookup(qs(mat)); e && !e->failed &&
+                (!e->maskDds.isEmpty() || materialBlendFromTechset(e->techset.toStdString()) != MaterialBlend::Opaque))
+                it->second = false;
+            if (qs(mat).contains("foliage", Qt::CaseInsensitive)) it->second = false;
+        }
+        return it->second;
+    };
     std::vector<ImportedMesh> meshes;  // world space; must outlive the receivers
+    std::vector<const AABB*> nearBoxes;
     for (const StockModelInstance& in : *refProps_) {
         const auto it = refPropBuilt_.find(in.model);
         if (it == refPropBuilt_.end() || !it->second) continue;
-        const auto place = [&](const app::GpuTexVertex& v) {
+        const auto place = [&](const app::PropVertex& v) {
             const Vec3 p{v.x, v.y, v.z};
             return in.origin + (in.axis[0] * p.x + in.axis[1] * p.y + in.axis[2] * p.z) * in.scale;
         };
         AABB pb;
-        for (const auto& [mat, tris] : it->second->tex)
-            for (const auto& v : tris) pb.add(place(v));
+        for (const auto& [mat, pm] : it->second->tex)
+            for (const auto& v : pm->vertices) pb.add(place(v));
         if (!pb.valid()) continue;
-        bool near = false;
+        nearBoxes.clear();
         for (const AABB& b : boxes)
-            if (!(b.mins.x > pb.maxs.x || b.maxs.x < pb.mins.x || b.mins.y > pb.maxs.y || b.maxs.y < pb.mins.y ||
-                  b.mins.z > pb.maxs.z || b.maxs.z < pb.mins.z)) {
-                near = true;
-                break;
-            }
-        if (!near) continue;
+            if (overlaps(b, pb)) nearBoxes.push_back(&b);
+        if (nearBoxes.empty()) continue;
         ImportedMesh m;
-        for (const auto& [mat, tris] : it->second->tex) {
-            // Cut-out and blended materials (foliage, cards, glass) receive no decal volume (research 99: their
-            // techsets have no decal loop).
-            if (const auto e = matCache_->lookup(qs(mat)); e && !e->failed &&
-                (!e->maskDds.isEmpty() || materialBlendFromTechset(e->techset.toStdString()) != MaterialBlend::Opaque))
-                continue;
-            if (qs(mat).contains("foliage", Qt::CaseInsensitive)) continue;
-            for (size_t i = 0; i + 2 < tris.size(); i += 3) {
-                const Vec3 a = place(tris[i]), b = place(tris[i + 1]), c = place(tris[i + 2]);
+        for (const auto& [mat, pm] : it->second->tex) {
+            const std::vector<app::PropVertex>& pv = pm->vertices;
+            const std::vector<uint32_t>& ix = pm->indices;
+            if (!materialReceives(mat)) continue;
+            for (size_t i = 0; i + 2 < ix.size(); i += 3) {
+                const Vec3 a = place(pv[ix[i]]), b = place(pv[ix[i + 1]]), c = place(pv[ix[i + 2]]);
+                AABB tb;
+                tb.add(a), tb.add(b), tb.add(c);
+                bool touches = false;
+                for (const AABB* nb : nearBoxes)
+                    if (overlaps(*nb, tb)) {
+                        touches = true;
+                        break;
+                    }
+                if (!touches) continue;
                 Vec3 n = cross(b - a, c - a);
                 if (length(n) < 1e-9) continue;
                 n = normalize(n);
@@ -7332,7 +7489,7 @@ void MainWindow::projectPropDecals() {
                     m.uv.push_back({0, 0});
                 }
             }
-            }
+        }
         if (!m.idx.empty()) meshes.push_back(std::move(m));
     }
     if (meshes.empty()) return;
@@ -7341,14 +7498,6 @@ void MainWindow::projectPropDecals() {
     receivers.build();
     std::vector<app::ReferenceTexBatch> out;
     int order = 100000;  // over the world's decals of the same order
-    // Only the volumes that found no world surface (stencils on crates, paint on barriers: research 99 found every
-    // empty Speedball volume beside a prop): ground decals (sand, dirt) on every prop inside their box cost Hideout
-    // 790k triangles and 38 ms a frame.
-    StockDecalVolumeSet propSet = d.set;
-    propSet.volumes.clear();
-    std::vector<size_t> back;
-    for (size_t i = 0; i < d.set.volumes.size(); ++i)
-        if (i >= d.onWorld.size() || !d.onWorld[i]) propSet.volumes.push_back(d.set.volumes[i]), back.push_back(i);
     std::vector<StockDecalBatch> projected = projectDecalVolumes(receivers, propSet);
     for (StockDecalBatch& b : projected)
         if (b.volume < back.size()) b.volume = back[b.volume];
@@ -7444,18 +7593,29 @@ void MainWindow::updateTerrainLayers() {
     QPointer<MainWindow> self(this);
     auto st = terrainLayers_;
     const QString zone = referenceZone_;
-    std::thread([self, st, c, zone] {
-        auto batches = std::make_shared<std::vector<app::ReferenceTexBatch>>(buildTerrainLayerBatches(*st, c.x, c.y, terrainLayerRadius()));
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, st, c, zone] {
+        // Out of memory: the layers drawn now stay (an empty result would take the ground away); the next camera move
+        // tries again.
+        std::shared_ptr<std::vector<app::ReferenceTexBatch>> batches;
+        try {
+            batches = std::make_shared<std::vector<app::ReferenceTexBatch>>(buildTerrainLayerBatches(*st, c.x, c.y, terrainLayerRadius()));
+        } catch (const std::bad_alloc&) {
+            batches.reset();
+        }
         QMetaObject::invokeMethod(qApp, [self, batches, zone, c] {
             if (!self) return;
             self->terrainLayerBusy_ = false;
+            if (!batches) {
+                self->ctx_.setStatus("Not enough memory for the terrain's layers around the camera: the ones drawn stay");
+                return;
+            }
             if (self->referenceZone_ != zone) return;
             self->terrainLayerShared_ = batches;
             ++self->terrainLayerVersion_;
             self->camera_->setTerrainCut(c.x, c.y, batches->empty() ? 0.0 : 0.74 * terrainLayerRadius());
             self->pushDecalExtras();
         }, Qt::QueuedConnection);
-    }).detach();
+    })).detach();
 }
 
 void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
@@ -7864,7 +8024,7 @@ void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn)
     const QString ff = QFileInfo(replay).absolutePath() + "/zone/" + zone + ".ff";
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/world_cache/" + zone + "/com_map";
     QPointer<MainWindow> self(this);
-    std::thread([self, zone, acts, replay, oodle, ff, dir, skyMaterial] {
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, acts, replay, oodle, ff, dir, skyMaterial] {
         const auto findJson = [&] {
             for (QDirIterator it(dir, {"*.json"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
                 const QString f = it.next();
@@ -8043,7 +8203,7 @@ void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn)
             if (skyIntensity > 0) self->camera_->setGameStockSkyIntensity(skyIntensity);
             if (intensity > 0) self->camera_->setGameStockSun(intensity, color, toward);
         }, Qt::QueuedConnection);
-    }).detach();
+    })).detach();
 }
 
 void MainWindow::loadStockProbes(const QString& zone) {
@@ -8051,16 +8211,54 @@ void MainWindow::loadStockProbes(const QString& zone) {
     if (!file) return;
     QPointer<MainWindow> self(this);
     const std::string path = file->toStdString();
-    std::thread([self, zone, path] {
+    const QStringList tiles = worldCache_->tileProbeFiles(zone);
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, path, tiles] {
         auto set = std::make_shared<StockProbeSet>();
+        auto index = std::make_shared<StockProbeImageIndex>();
         std::string err;
-        const bool ok = readStockProbeCache(path, *set, &err, false);  // the GPU takes the BC6H blocks as they are
-        QMetaObject::invokeMethod(qApp, [self, zone, set, ok, err] {
+        // Warzone (v2): the records and where each image lies (main file, then each read tile's file); the images stay
+        // on disk (160+ MB on Verdansk) and only the subset's are read. MP (v1): everything, as the GPU takes it.
+        bool ok = readStockProbeCacheRecords(path, *set, &err);
+        if (ok && set->streamed) {
+            ok = indexStockProbeCacheImages(path, set->probes.size(), *index, &err);
+            for (const QString& t : tiles) indexStockProbeCacheImages(t.toStdString(), set->probes.size(), *index);
+        } else if (ok) {
+            ok = readStockProbeCache(path, *set, &err, false);
+        }
+        QMetaObject::invokeMethod(qApp, [self, zone, set, index, ok, err] {
             if (!self || self->referenceZone_ != zone) return;
-            if (ok) self->camera_->setStockProbes(set);
-            else self->ctx_.setStatus("Stock reflection probes of " + zone + " not read: " + QString::fromStdString(err));
+            if (!ok) {
+                self->ctx_.setStatus("Stock reflection probes of " + zone + " not read: " + QString::fromStdString(err));
+            } else if (set->streamed) {
+                self->refProbesFull_ = set;
+                self->refProbesIndex_ = index;
+                self->updateProbeSubset(true);
+            } else {
+                self->refProbesFull_.reset();
+                self->refProbesIndex_.reset();
+                self->camera_->setStockProbes(set);
+            }
         }, Qt::QueuedConnection);
-    }).detach();
+    })).detach();
+}
+
+void MainWindow::updateProbeSubset(bool force) {
+    if (!refProbesFull_) return;
+    const Vec3 c = ctx_.cam.pos;
+    if (!force && length(c - refProbeSubsetAt_) < 1500.0) return;
+    refProbeSubsetAt_ = c;
+    QPointer<MainWindow> self(this);
+    const std::shared_ptr<const StockProbeSet> full = refProbesFull_;
+    const std::shared_ptr<const StockProbeImageIndex> index = refProbesIndex_;
+    const QString zone = referenceZone_;
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, full, index, c, zone] {
+        auto subset = std::make_shared<StockProbeSet>(index ? buildStockProbeSubset(*full, *index, ProbeVec3{float(c.x), float(c.y), float(c.z)})
+                                                            : buildStockProbeSubset(*full, ProbeVec3{float(c.x), float(c.y), float(c.z)}));
+        QMetaObject::invokeMethod(qApp, [self, subset, full, zone] {
+            if (!self || self->referenceZone_ != zone || self->refProbesFull_ != full) return;
+            self->camera_->setStockProbes(subset);
+        }, Qt::QueuedConnection);
+    })).detach();
 }
 
 namespace {
@@ -8098,7 +8296,7 @@ void MainWindow::loadStockTileLightGrids(const QString& zone) {
         if (refPropTileLightAsked_.insert(k).second) todo.push_back({k, path});
     if (todo.empty()) return;
     QPointer<MainWindow> self(this);
-    std::thread([self, zone, todo] {
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, todo] {
         std::vector<std::pair<int, std::shared_ptr<std::vector<float>>>> got;
         for (const auto& [k, path] : todo) {
             std::string err;
@@ -8108,16 +8306,16 @@ void MainWindow::loadStockTileLightGrids(const QString& zone) {
             if (!self || self->referenceZone_ != zone || got.empty()) return;
             for (const auto& [k, vol] : got) self->refPropTileLight_[k] = vol;
             // Tiles finish one after another: one prop rebuild for the ones that arrive close together.
-            if (!self->refPropRebuildQueued_) {
-                self->refPropRebuildQueued_ = true;
+            if (!self->refPropRelightQueued_) {
+                self->refPropRelightQueued_ = true;
                 QTimer::singleShot(1500, self, [self] {
                     if (!self) return;
-                    self->refPropRebuildQueued_ = false;
-                    self->rebuildReferenceProps();
+                    self->refPropRelightQueued_ = false;
+                    self->relightReferenceProps();
                 });
             }
         }, Qt::QueuedConnection);
-    }).detach();
+    })).detach();
 }
 
 void MainWindow::loadStockLightGrid(const QString& zone) {
@@ -8125,7 +8323,7 @@ void MainWindow::loadStockLightGrid(const QString& zone) {
     if (!file) return;
     QPointer<MainWindow> self(this);
     const QString path = *file;
-    std::thread([self, zone, path] {
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, path] {
         std::string err;
         const std::shared_ptr<std::vector<float>> vol = sampleLightGridFile(path, &err);
         const bool ok = vol != nullptr;
@@ -8137,9 +8335,9 @@ void MainWindow::loadStockLightGrid(const QString& zone) {
             }
             self->refPropVolLight_ = vol;
             self->refPropVolLightZone_ = zone;
-            self->rebuildReferenceProps();
+            self->relightReferenceProps();
         }, Qt::QueuedConnection);
-    }).detach();
+    })).detach();
 }
 
 void MainWindow::loadStockReference(const QString& zone) {
@@ -8151,7 +8349,14 @@ void MainWindow::loadStockReference(const QString& zone) {
         });
         connect(worldCache_, &WorldCache::probesReady, this, [this](const QString& z) {
             if (z != referenceZone_) return;
-            if (worldCache_->probesFile(z)) loadStockProbes(z);
+            // Warzone tiles add their images one after another: one reload for a burst.
+            if (worldCache_->probesFile(z) && !refProbeReloadQueued_) {
+                refProbeReloadQueued_ = true;
+                QTimer::singleShot(refProbesFull_ ? 3000 : 0, this, [this, z] {
+                    refProbeReloadQueued_ = false;
+                    if (z == referenceZone_) loadStockProbes(z);
+                });
+            }
             else if (!worldCache_->probesErrorOf(z).isEmpty()) ctx_.setStatus("Stock reflection probes of " + z + ": " + worldCache_->probesErrorOf(z));
         });
         connect(worldCache_, &WorldCache::lightGridReady, this, [this](const QString& z) {
@@ -8177,6 +8382,7 @@ void MainWindow::loadStockReference(const QString& zone) {
     refPropFailuresLogged_ = false;
     refPropBuilt_.clear();
     refPropBuiltTris_ = 0;
+    refPropTrisKnown_.clear();
     if (modelCacheStock_ && !refPropTimer_) {
         // Props are redrawn shortly after the model cache has ended a batch. The timer is not restarted while it
         // runs: batches that end in quick succession cannot put the redraw off.
@@ -8186,6 +8392,7 @@ void MainWindow::loadStockReference(const QString& zone) {
         connect(refPropTimer_, &QTimer::timeout, this, [this] { rebuildReferenceProps(); });
         // A model that was fetched again (Model Info > refetch) must not be drawn from its kept copy.
         connect(modelCacheStock_, &ModelCache::modelReady, this, [this](const QString& name) {
+            refPropTrisKnown_.erase(name.toStdString());
             if (const auto it = refPropBuilt_.find(name.toStdString()); it != refPropBuilt_.end()) {
                 refPropBuiltTris_ -= std::min(refPropBuiltTris_, it->second->tris);
                 refPropBuilt_.erase(it);
@@ -8240,7 +8447,7 @@ void MainWindow::loadStockReference(const QString& zone) {
     WorldCache* cache = worldCache_;
     const QString zoneDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/world_cache/" + zone;
     const StockDecalTools tools{toolPath("acts"), toolPath("replay"), toolPath("oodle")};
-    std::thread([self, cache, zone, zoneDir, tools] {
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, cache, zone, zoneDir, tools] {
         QString err;
         const bool autoStream = Settings::instance().value("stock/autoStream", true).toBool();
         std::optional<StockWorld> loaded = cache->load(zone, &err, !autoStream);
@@ -8344,6 +8551,9 @@ void MainWindow::loadStockReference(const QString& zone) {
             self->camera_->setStockLightmap(nullptr);
             self->camera_->setStockProbes(nullptr);
             self->camera_->setStockLocalLights(nullptr, nullptr);
+            self->refProbesFull_.reset();
+            self->refProbesIndex_.reset();
+            self->refProbeSubsetAt_ = Vec3{1e30, 1e30, 1e30};
             QString skyMat;
             if (world)
                 for (const auto& m : world->meshes) {
@@ -8380,14 +8590,25 @@ void MainWindow::loadStockReference(const QString& zone) {
             self->camera_->setReference(std::vector<app::GpuVertex>(*tris));
             self->rebuildReferenceProps();
         }, Qt::QueuedConnection);
-    }).detach();
+    })).detach();
 }
 
-// Streamed world tiles follow the camera (docs/PLAN_REMAINING.md 1.1): the tiles within stock/streamRadius (20,000)
+// Streamed world tiles follow the camera (docs/PLAN_REMAINING.md 1.1): the tiles within stock/streamRadius (20,000;
+// 14,000 on a machine under 24 GB)
 // are exported through ACTS when missing (WorldCache::requestStreamed, one at a time), built on worker threads from
-// the main zone's surface table (buildStockWorldTile) and drawn as world groups of the camera's extras; tiles past 1.3
+// the main zone's surface table (buildStockWorldTile) and drawn as world groups of the camera's extras; tiles past 1.15
 // times the radius are dropped. Exported tiles stay on disk up to stock/streamCacheGB (3), least recently used first.
+// The streamed tiles' reach: the settings, else by the machine's memory (each Verdansk tile is about 20 MB of video
+// memory and as much again in the editor; 96 tiles within 20,000 units ran a 16 GB machine out of memory).
+std::pair<double, size_t> MainWindow::streamTileReach() const {
+    const bool big = CameraView::systemMemoryMB() >= 24 * 1024;
+    const double radius = Settings::instance().value("stock/streamRadius", big ? 20000.0 : 14000.0).toDouble();
+    const size_t limit = size_t(std::max(1, Settings::instance().value("stock/streamLimit", big ? 96 : 48).toInt()));
+    return {radius, limit};
+}
+
 void MainWindow::updateStreamedTiles() {
+    updateProbeSubset();  // Warzone probes follow the camera too
     if (streamZones_.empty() || !worldCache_ || !stockWorld_ || !stockWorld_->surfaceTable || referenceZone_.isEmpty()) return;
     const Vec3 c = ctx_.cam.pos;
     const bool moved = std::hypot(c.x - streamCentre_.x, c.y - streamCentre_.y) > 1500.0;
@@ -8396,10 +8617,9 @@ void MainWindow::updateStreamedTiles() {
     streamCentre_ = c;
     const auto dir = worldCache_->lookup(referenceZone_);
     if (!dir) return;
-    const double radius = Settings::instance().value("stock/streamRadius", 20000.0).toDouble();
-    const size_t limit = size_t(std::max(1, Settings::instance().value("stock/streamLimit", 96).toInt()));
+    const auto [radius, limit] = streamTileReach();
     const auto wanted = streamedZonesNear(streamZones_, c.x, c.y, radius, limit);
-    const auto keepZones = streamedZonesNear(streamZones_, c.x, c.y, radius * 1.3, limit * 2);
+    const auto keepZones = streamedZonesNear(streamZones_, c.x, c.y, radius * 1.15, limit + limit / 4);
     std::set<int64_t> keep;
     for (const auto& z : keepZones) keep.insert(z.index);
     bool changed = false;
@@ -8413,6 +8633,13 @@ void MainWindow::updateStreamedTiles() {
         const QString name = QString::fromStdString(z.name);
         wantedNames << name;
         const QString tileDir = *dir + "/streamed/" + name;
+        // A tile whose export is an empty file (two Verdansk tiles were, 2026-11-13) is exported again.
+        if (QFileInfo(tileDir).isDir() && !streamRequested_.count(name)) {
+            bool empty = false;
+            for (QDirIterator it(tileDir + "/assets/gfx_map_trzone", {"*.json"}, QDir::Files); it.hasNext();)
+                empty |= QFileInfo(it.next()).size() == 0;
+            if (empty) QDir(tileDir).removeRecursively();
+        }
         if (!QFileInfo(tileDir).isDir()) {
             if (!streamRequested_.count(name)) missing << name, streamRequested_.insert(name);
             continue;
@@ -8424,7 +8651,7 @@ void MainWindow::updateStreamedTiles() {
         streamBuilding_.insert(z.index);
         const std::shared_ptr<const StockWorld> world = stockWorld_;
         const int64_t index = z.index;
-        std::thread([self, world, tileDir, index, zone] {
+        std::thread(guardedWorker(__FILE__, __LINE__, [self, world, tileDir, index, zone] {
             auto batches = std::make_shared<std::vector<app::ReferenceTexBatch>>();
             StockWorld tw;
             std::string err;
@@ -8437,7 +8664,7 @@ void MainWindow::updateStreamedTiles() {
                 self->streamDirty_ = true;  // the next tick starts the next builds
                 self->pushDecalExtras();
             }, Qt::QueuedConnection);
-        }).detach();
+        })).detach();
     }
     if (!missing.isEmpty()) worldCache_->requestStreamed(referenceZone_, missing);
     if (changed) pushDecalExtras();
@@ -8447,8 +8674,7 @@ void MainWindow::updateStreamedTiles() {
 QString MainWindow::streamedTilesReport() const {
     if (streamZones_.empty() || !worldCache_) return QString();
     const auto dir = worldCache_->lookup(referenceZone_);
-    const double radius = Settings::instance().value("stock/streamRadius", 20000.0).toDouble();
-    const size_t limit = size_t(std::max(1, Settings::instance().value("stock/streamLimit", 96).toInt()));
+    const auto [radius, limit] = streamTileReach();
     const auto wanted = streamedZonesNear(streamZones_, ctx_.cam.pos.x, ctx_.cam.pos.y, radius, limit);
     size_t built = 0, empty = 0, notExported = 0;
     QStringList emptyNames, missingNames;
@@ -8466,7 +8692,7 @@ QString MainWindow::streamedTilesReport() const {
 }
 
 bool MainWindow::stockCacheIdle() const {
-    return (!worldCache_ || !worldCache_->busy()) && (!modelCacheStock_ || modelCacheStock_->lodsPending() == 0) && !refPropRebuildQueued_;
+    return (!worldCache_ || !worldCache_->busy()) && (!modelCacheStock_ || modelCacheStock_->lodsPending() == 0) && !refPropRebuildQueued_ && !refPropRelightQueued_;
 }
 
 bool MainWindow::streamedTilesSettled() const {

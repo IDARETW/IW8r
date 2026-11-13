@@ -266,6 +266,7 @@ public slots:
     }
     void setGameStockVision(const std::string& visionText) {
         stockFog_ = gameFogFromVision(visionText);
+        stockPostFx_ = gamePostFxFromVision(visionText);
         update();
     }
     // The stock map's local lights (core stock_lights.h, research 106) and its IES strip (R8 texels; empty = white), sent
@@ -286,6 +287,12 @@ public slots:
     void setLightShadowsEnabled(bool on) { renderer_.setLightShadowsEnabled(on); update(); }
     void setGameDebugView(int v) { renderer_.setGameDebugView(v); update(); }
     void setGameAoStrength(double s) { renderer_.setGameAoStrength(float(s)); update(); }
+    void setPostFxEnabled(bool on) { renderer_.setPostFxEnabled(on); update(); }
+    // Bench: the stock vision's veil and vignette intensity, the renderer's veil and whether it was drawn.
+    QString postFxReport() const {
+        return QString("veil %1 vignette %2 renderer_veil %3 drawn %4")
+            .arg(stockPostFx_.veil).arg(stockPostFx_.vignetteIntensity).arg(renderer_.gameVeil()).arg(renderer_.veilDrawn() ? 1 : 0);
+    }
     // A fixed exposure (EV, the game's units) instead of the map's own (auto or its vision's); NaN = the map's.
     void setGameExposureOverride(double ev) { gameExposureOverride_ = ev; gameExposureSnap_ = true; update(); }
     double gameExposureOverride() const { return gameExposureOverride_; }
@@ -332,7 +339,16 @@ public slots:
     // The video card's dedicated memory (MB, 0 when unknown) and the default budget from it: 40 % of it, 1 to 4 GB
     // (Verdansk with its streamed tiles needs about 3 GB of compressed stock textures at 512 px).
     int videoMemoryMB() const;
-    int defaultTextureBudgetMB() const { const int v = videoMemoryMB(); return v > 0 ? std::clamp(v * 2 / 5, 1024, 4096) : 1024; }
+    // 2/5 of the video memory, and no more than 1/8 of the machine's memory: Windows charges video memory to the
+    // process's commit, so on a 16 GB machine Verdansk's 3 GB of textures (the 8 GB card's budget) helped run the
+    // commit limit out (2026-11-13).
+    int defaultTextureBudgetMB() const {
+        const int v = videoMemoryMB(), ram = systemMemoryMB();
+        int mb = v > 0 ? std::clamp(v * 2 / 5, 1024, 4096) : 1024;
+        if (ram > 0) mb = std::min(mb, std::max(1024, ram / 8));
+        return mb;
+    }
+    static int systemMemoryMB();
     size_t textureBudgetBytes() const { return textureBudget_; }
     size_t textureBytes() const { return renderer_.textureBytes(); }
     int textureSideNow() const;
@@ -355,6 +371,17 @@ public slots:
         update();
     }
     size_t referenceTexInstanceMeshes() const { return texInstMaterials_.size(); }
+    std::string gpuMemoryReport() const { return renderer_.gpuMemoryReport(); }
+    // New per-placement light for every textured prop mesh (same order and counts as setReferenceTexInstances gave).
+    void setReferenceTexInstanceLight(std::vector<std::vector<float>> light) {
+        if (texInstDirty_) {
+            for (size_t i = 0; i < light.size() && i < pendingTexInst_.size(); ++i) pendingTexInst_[i].light = std::move(light[i]);
+        } else {
+            pendingTexLight_ = std::move(light);
+            texLightDirty_ = true;
+        }
+        update();
+    }
     size_t referenceTexInstancesResolved() const {
         size_t n = 0;
         for (bool b : texInstResolved_) n += b ? 1 : 0;
@@ -423,6 +450,8 @@ private:
     const char* playMode_ = nullptr;
     std::vector<app::GpuVertex> pendingRef_;
     std::vector<app::InstancedTexMesh> pendingTexInst_;
+    std::vector<std::vector<float>> pendingTexLight_;  // setReferenceTexInstanceLight
+    bool texLightDirty_ = false;
     std::vector<std::string> texInstMaterials_;
     std::vector<bool> texInstResolved_;
     bool texInstDirty_ = false;
@@ -539,6 +568,7 @@ private:
     std::string gameStockMap_;
     bool stockSunKnown_ = false;
     GameFog stockFog_;
+    GamePostFx stockPostFx_;  // the stock map's veil and vignette (research 109)
     double stockSkyIntensity_ = 0;
     double stockBakedScale_ = 1.0;
     std::shared_ptr<const GameGradingClut> stockGrade_;
@@ -586,6 +616,7 @@ private:
     std::unordered_map<std::string, std::pair<int, int>> texSizes_;  // decoded colour size before the 512 cap (Density mode)
     std::unordered_map<std::string, int> texIds_;  // resolved: >= 0 texture, -1 flat colour
     std::unordered_map<std::string, int> texByPath_, nrmByPath_;  // shared images by file (textureFor, normalFor)
+    std::unordered_map<std::string, int> texByPathBc_;  // untouched stock colour images kept compressed, by file
     std::set<std::string> requested_;
     int checkerTex_ = -1;
     int loadsThisFrame_ = 0;

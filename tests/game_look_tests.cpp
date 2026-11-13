@@ -116,3 +116,24 @@ TEST(game_look_local_lights) {
     CHECK(gameLightAttenuation(I, 300, 100, 0.0) == 0.0);
     CHECK(std::fabs(srgbToLinear(1.0) - 1.0) < 1e-12 && std::fabs(srgbToLinear(0.5) - 0.214041) < 1e-5);
 }
+
+TEST(game_post_fx_from_vision) {
+    // Research 109 (post_ref.py): Speedball's veil 0.08, grain 0.1 x 0.25, vignette 0.4 at size 0.99: on a 16:9 view
+    // the corners are x0.600 and the middle of an edge x0.693; Hideout's 0.05 gives x0.950 at the corners.
+    const std::string speedball = "LNQNRRPNPP \"0.1\"\nMMQLTMKTPK \"0.08\"\nNKMMLMPOKK \"0.4\"\nLPPRTKTTO \"0.99\"\nMMMSOLKOMR \"0.99\"\nRSPMMQLQN \"1\"\n";
+    const GamePostFx s = gamePostFxFromVision(speedball);
+    CHECK(std::fabs(s.veil - 0.08) < 1e-9 && std::fabs(s.grain - 0.025) < 1e-9 && std::fabs(s.vignetteIntensity - 0.4) < 1e-9);
+    float c[12];
+    gameVignetteConstants(s, 16.0 / 9.0, 1.0, c);
+    CHECK(std::fabs(gameVignetteFactor(c, 0.5, 0.5) - 1.0) < 1e-9);
+    CHECK(std::fabs(gameVignetteFactor(c, 1.0, 1.0) - 0.600) < 0.002);
+    CHECK(std::fabs(gameVignetteFactor(c, 0.0, 0.5) - 0.693) < 0.002);
+    CHECK(std::fabs(gameVignetteFactor(c, 0.5, 0.0) - 0.693) < 0.002);
+    const GamePostFx h = gamePostFxFromVision("LNQNRRPNPP \"0.2\"\nMMQLTMKTPK \"0.087\"\nNKMMLMPOKK \"0.05\"\n");
+    gameVignetteConstants(h, 16.0 / 9.0, 1.0, c);
+    CHECK(std::fabs(gameVignetteFactor(c, 0.0, 0.0) - 0.950) < 0.002 && std::fabs(h.grain - 0.05) < 1e-9);
+    // Nothing set: no veil, no vignette (all constants zero, factor 1).
+    const GamePostFx none = gamePostFxFromVision("");
+    gameVignetteConstants(none, 16.0 / 9.0, 1.0, c);
+    CHECK(none.veil == 0 && c[2] == 0 && gameVignetteFactor(c, 0.0, 0.0) == 1.0);
+}

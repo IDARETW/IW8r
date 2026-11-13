@@ -139,7 +139,8 @@ props (still the probes), Warzone tile grids (tile props fall back to the probes
   - Lightmapped props draw with their lightmap.
 - **Done when:** a prop indoors is as dark as the world around it.
 
-**1.5b Warzone baked light per tile.** The main gfx_map lists every prop, but a prop's light grid box is in the
+**1.5b Warzone baked light per tile.** DONE 2026-11-13: tile light grids and the Warzone probes (research 108; the
+game's tile activation rule is replaced by the nearest-boxes subset). The main gfx_map lists every prop, but a prop's light grid box is in the
 transient zone `worldTransient` (research 105 section 5.1), and the reflection probes are in the tiles too. The tile
 lightmap job already decompresses each tile: cut its light grid block there as well (keyed by the transient index),
 decode the tile probes, and draw tile props and tile ground with them. Done when Verdansk props and wet roads near the
@@ -160,7 +161,8 @@ raised camera use their own tile's light and probes.
 - **Decal volumes:** normal, gloss, cavity and emissive (research 99 :177-179). The user's own `iw8r_decal` entities
   are shaded in Game Lighting.
 
-**1.8 Atmosphere and post.**
+**1.8 Atmosphere and post.** Part 1 DONE 2026-11-13 (research 109: bloom veil and vignette). Open: volumetric fog, film
+grain, white balance.
 - **Volumetric fog / veil** from the stock vision, and for own maps the user's `iw8r_volume`.
 - **Bloom and veil.**
 - **Own maps:** honour `iw8r_exposure_adjust` and `iw8r_vision`.
@@ -225,7 +227,8 @@ per cell, 56 directional samples). Open: the bake items below, probes, the offli
 - The built-zone parity check passes on the sample map and on one stock-edit map.
 
 ## Milestone 2 — The Umbra system
-**2.1 Decode the tome.**
+**2.1 Decode the tome.** DONE 2026-11-13 (research 110, core umbra_tome with a visibility query and tests on nine
+stock zones).
 - **What is decoded:** the Umbra 3 `ImpTome` (v0xD6000014) cell nodes, portals, view trees, clusters and LOD tiles.
 - **Sources:**
   - the game exe's Umbra runtime (query consumer at 0x18CCA80) through IDA;

@@ -6,7 +6,9 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <optional>
+#include <string_view>
 #include <system_error>
 
 #include "json_lite.h"
@@ -25,7 +27,7 @@ constexpr size_t kInstanceBytes = 24;              // GfxSModelInstanceData
 constexpr size_t kIndirectionBytes = 8;            // GfxModelStaticIndirection (docs/research/105 section 1.1)
 constexpr double kPi = 3.14159265358979323846;
 
-bool unhex(const std::string& hex, std::vector<uint8_t>& out) {
+bool unhex(std::string_view hex, std::vector<uint8_t>& out) {
     if (hex.size() % 2) return false;
     out.resize(hex.size() / 2);
     const auto nib = [](char c) -> int {
@@ -67,22 +69,32 @@ double orientComponent(uint16_t u) { return double(u) / 32767.5 - 1.0; }
 
 double comp(const Vec3& v, int i) { return i == 0 ? v.x : i == 1 ? v.y : v.z; }
 
-bool readWholeFile(const fs::path& p, std::string& out, std::string* err) {
-    std::ifstream f(p, std::ios::binary);
-    if (!f) {
+// The file's text, memory-mapped (json::FileText): the 422 MB mp_donetsk export costs no private memory.
+bool readWholeFile(const fs::path& p, json::FileText& out, std::string* err) {
+    if (!out.open(p)) {
         if (err) *err = "cannot read " + p.string();
         return false;
     }
-    f.seekg(0, std::ios::end);
-    const std::streamoff n = f.tellg();
-    f.seekg(0, std::ios::beg);
-    out.resize(size_t(std::max<std::streamoff>(n, 0)));
-    if (!out.empty()) f.read(out.data(), std::streamsize(out.size()));
-    if (!f) {
-        if (err) *err = "short read of " + p.string();
-        return false;
-    }
     return true;
+}
+
+// The decoded text of a string value: a view of the export when it has no escape (hex never has), else a decoded
+// copy in `scratch`. False when `v` is not a string.
+bool stringOf(const json::View& v, std::string& scratch, std::string_view& out) {
+    if (v.rawString(out)) return true;
+    if (!v.string(scratch)) return false;
+    out = scratch;
+    return true;
+}
+
+// Every element of an array view parsed on its own (a small DOM at a time).
+void forEachRecord(const json::View& arr, const std::function<void(const Value&)>& fn) {
+    arr.forEachElement([&](json::View e) {
+        const auto v = e.parse();
+        if (!v) return false;
+        fn(*v);
+        return true;
+    });
 }
 
 std::vector<fs::path> jsonFilesUnder(const fs::path& dir) {
@@ -143,30 +155,29 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
     fs::path file;
     if (!findGfxMapJson(exportPathOrDir, file, err)) return false;
 
-    std::string text, jerr;
+    // Only fields.smodels is read, record by record (no DOM of the whole export: 422 MB of JSON on mp_donetsk).
+    json::FileText text;
+    std::string jerr;
     if (!readWholeFile(file, text, err)) return false;
-    const auto root = json::parse(text, &jerr);
-    text.clear();
-    text.shrink_to_fit();  // the 138 MB text is not needed past the parse
-    if (!root) {
+    if (!json::validate(text.view(), &jerr)) {
         if (err) *err = "gfx_map JSON: " + jerr;
         return false;
     }
 
-    const Value* fields = root->get("asset") ? root->get("asset")->get("fields") : nullptr;
-    const Value* sm = fields ? fields->get("smodels") : nullptr;
-    if (!sm) {
+    const json::View fields = json::View(text.view()).get("asset").get("fields");
+    const json::View sm = fields.get("smodels");
+    if (!sm.valid()) {
         if (err) *err = "gfx_map has no fields.smodels";
         return false;
     }
-    const Value* models = sm->get("models") ? sm->get("models")->get("values") : nullptr;
-    const Value* collNode = sm->get("collections");
-    const Value* instNode = sm->get("smodelInstanceData");
-    const Value* collBytes = collNode ? collNode->get("bytes") : nullptr;
-    const Value* instBytes = instNode ? instNode->get("bytes") : nullptr;
-    const Value* collValues = collNode ? collNode->get("values") : nullptr;
-    const Value* instValues = instNode ? instNode->get("values") : nullptr;
-    if (!models || models->type != Value::Type::Array) {
+    const json::View models = sm.get("models").get("values");
+    const json::View collNode = sm.get("collections");
+    const json::View instNode = sm.get("smodelInstanceData");
+    const json::View collBytes = collNode.get("bytes");
+    const json::View instBytes = instNode.get("bytes");
+    const json::View collValues = collNode.get("values");
+    const json::View instValues = instNode.get("values");
+    if (models.type() != Value::Type::Array) {
         if (err) *err = "smodels has no models.values";
         return false;
     }
@@ -176,24 +187,26 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
         for (int k = 0; k < 4; ++k) v.push_back(uint8_t((x >> (8 * k)) & 0xff));
     };
     auto num = [](const Value* n) { return n && n->number() ? *n->number() : 0.0; };
-    if (collBytes && collBytes->string() && instBytes && instBytes->string()) {
-        if (!unhex(*collBytes->string(), coll) || coll.size() % kCollectionBytes != 0) {
+    std::string scratch;
+    std::string_view hex;
+    if (collBytes.type() == Value::Type::String && instBytes.type() == Value::Type::String) {
+        if (!stringOf(collBytes, scratch, hex) || !unhex(hex, coll) || coll.size() % kCollectionBytes != 0) {
             if (err) *err = "smodels.collections bytes are not hex or not a multiple of 16";
             return false;
         }
-        if (!unhex(*instBytes->string(), inst) || inst.size() % kInstanceBytes != 0) {
+        if (!stringOf(instBytes, scratch, hex) || !unhex(hex, inst) || inst.size() % kInstanceBytes != 0) {
             if (err) *err = "smodels.smodelInstanceData bytes are not hex or not a multiple of 24";
             return false;
         }
-    } else if (collValues && collValues->type == Value::Type::Array && instValues && instValues->type == Value::Type::Array) {
+    } else if (collValues.type() == Value::Type::Array && instValues.type() == Value::Type::Array) {
         // Some exports (mp_m_king, mp_m_speedball) expand the arrays into objects: rebuild the same byte layout.
-        for (const Value& c : collValues->arr) {
+        forEachRecord(collValues, [&](const Value& c) {
             put32(coll, uint64_t(num(c.get("firstInstance"))));
             put32(coll, uint64_t(num(c.get("instanceCount"))));
             put32(coll, uint64_t(num(c.get("smodelIndex"))));
             put32(coll, 0);
-        }
-        for (const Value& i : instValues->arr) {
+        });
+        forEachRecord(instValues, [&](const Value& i) {
             const Value* t = i.get("translation");
             for (int k = 0; k < 3; ++k)
                 put32(inst, uint64_t(uint32_t(int32_t(t && size_t(k) < t->arr.size() ? num(&t->arr[size_t(k)]) : 0.0))));
@@ -204,7 +217,7 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
             uint32_t bits;
             std::memcpy(&bits, &sc, 4);
             put32(inst, bits);
-        }
+        });
     } else {
         if (err) *err = "smodels has no collections / smodelInstanceData bytes or values";
         return false;
@@ -214,37 +227,42 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
     // Lighting indirection, one 8-byte record per instance row (optional: older exports may lack it; then the
     // instances keep their defaults). A malformed array is ignored the same way.
     std::vector<uint8_t> indir;
-    if (const Value* ind = sm->get("modelStaticIndirection")) {
-        const Value* ib = ind->get("bytes");
-        const Value* iv = ind->get("values");
-        if (ib && ib->string()) {
-            if (!unhex(*ib->string(), indir) || indir.size() % kIndirectionBytes != 0) indir.clear();
-        } else if (iv && iv->type == Value::Type::Array) {
-            for (const Value& r : iv->arr) {
+    if (const json::View ind = sm.get("modelStaticIndirection"); ind.valid()) {
+        const json::View ib = ind.get("bytes");
+        const json::View iv = ind.get("values");
+        if (stringOf(ib, scratch, hex)) {
+            if (!unhex(hex, indir) || indir.size() % kIndirectionBytes != 0) indir.clear();
+        } else if (iv.type() == Value::Type::Array) {
+            forEachRecord(iv, [&](const Value& r) {
                 const double li = num(r.get("lightingInstanceIndirection"));
                 put32(indir, li < 0 ? uint64_t(uint32_t(int64_t(li))) : uint64_t(li));
                 const uint32_t lo = uint32_t(num(r.get("splinedModelInstanceIndex"))) & 0xFFFF;
                 const uint32_t hi = uint32_t(num(r.get("worldTransient"))) & 0xFFFF;
                 put32(indir, uint64_t(lo | hi << 16));
-            }
+            });
         }
     }
     const uint64_t indirTotal = indir.size() / kIndirectionBytes;
 
     std::vector<std::string> names;
     std::vector<uint32_t> modelFlags;
-    names.reserve(models->arr.size());
-    modelFlags.reserve(models->arr.size());
-    for (const Value& m : models->arr) {
+    forEachRecord(models, [&](const Value& m) {
         const Value* mm = m.get("model");
         const std::string* n = mm && mm->get("name") ? mm->get("name")->string() : nullptr;
         names.push_back(n ? *n : std::string());
         const Value* fl = m.get("flags");  // {"value": n, "name": "..."} or a plain number
         const Value* fv = fl && fl->type == Value::Type::Object ? fl->get("value") : fl;
         modelFlags.push_back(uint32_t(num(fv)));
-    }
+    });
+    text.close();  // everything needed is decoded
 
     const size_t collectionCount = coll.size() / kCollectionBytes;
+    {
+        // The instances drawn, reserved at once (1,096,414 on mp_donetsk: no regrowth copies of the vector).
+        uint64_t total = 0;
+        for (size_t c = 0; c < collectionCount; ++c) total += u32At(coll, c * kCollectionBytes + 4);
+        if (total <= instanceTotal * 4 + 1024) out.reserve(size_t(total));
+    }
     for (size_t c = 0; c < collectionCount; ++c) {
         const uint64_t first = u32At(coll, c * kCollectionBytes);
         const uint64_t count = u32At(coll, c * kCollectionBytes + 4);

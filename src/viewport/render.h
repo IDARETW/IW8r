@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -93,8 +94,30 @@ struct InstancedMesh {
 
 // A textured instanced mesh (stock reference props with their textures): one material's triangles of a model, drawn
 // once per placement. `rows` as in InstancedMesh.
+// A textured instanced prop's mesh (model space): indexed, 28 bytes a vertex. The props used to be unindexed
+// GpuTexVertex lists (168 bytes a triangle); Verdansk's filled the video memory and, with the kept copies, the commit
+// limit of a 16 GB machine (2026-11-13).
+struct PropVertex {
+    float x, y, z;
+    float u, v;
+    uint32_t rgba;
+    uint32_t normal;  // signed bytes x, y, z (w 0); zero = none (the pixel shader derives one)
+};
+struct PropMeshData {
+    std::vector<PropVertex> vertices;
+    std::vector<uint32_t> indices;  // triangles
+};
+inline uint32_t packPropNormal(float x, float y, float z) {
+    const auto b = [](float c) {
+        const float s = c < -1.f ? -1.f : c > 1.f ? 1.f : c;
+        return uint32_t(uint8_t(int8_t(s >= 0 ? int(s * 127.f + 0.5f) : int(s * 127.f - 0.5f))));
+    };
+    return b(x) | (b(y) << 8) | (b(z) << 16);
+}
+
 struct InstancedTexMesh {
-    std::vector<GpuTexVertex> tris;
+    // Shared with the caller (a stock prop's converted mesh, kept between rebuilds): no copy per rebuild.
+    std::shared_ptr<const PropMeshData> mesh;
     std::vector<float> rows;  // 12 floats per instance
     // Stock foliage: the model's last LOD distance (inches). The game stops drawing a placement beyond it (the grass
     // dissolves there with a dither); 0 = always drawn.
@@ -197,6 +220,10 @@ public:
     void releaseTextures();
     // 3.20 texture memory budget: GPU bytes of the textures made so far (with their mip chains).
     size_t textureBytes() const { return textureBytes_; }
+    // Video memory the renderer holds, by kind (MB): "props a+b world c extras d streams e textures f lightmaps g
+    // probes h shadows i targets j". Windows charges video memory to the process's commit, so this is part of what
+    // the bench's memory.log shows.
+    std::string gpuMemoryReport() const;
     // Static read-only reference triangles (stock map world geometry), uploaded once and drawn under the scene.
     // An empty vector clears it. Returns false when the buffer could not be created.
     bool setReference(const std::vector<GpuVertex>& tris);
@@ -305,6 +332,9 @@ public:
     // Textured instanced reference props: uploaded once, each drawn with the texture setReferenceInstTexture gave it
     // (a plain white texture until then). Empty clears them.
     bool setReferenceTexInstances(const std::vector<InstancedTexMesh>& meshes);
+    // New per-placement light (InstancedTexMesh::light, 12 floats per instance) for mesh `mesh` of the last
+    // setReferenceTexInstances: only its instance buffer is made again. False when the counts do not match.
+    bool setReferenceTexInstanceLight(size_t mesh, const std::vector<float>& light);
     void setReferenceInstTexture(size_t mesh, int textureId) {
         if (mesh < refTexInst_.size()) refTexInst_[mesh].texture = textureId, instParamsDirty_ = true;
     }
@@ -390,6 +420,10 @@ public:
         float skyScale = 1.0f;
         float bakedScale = 1.0f;  // the stock map's bakedLightScale, on its lightmap
         float lutScale = 1.0f;
+        // The map's post effects (research 109): the bloom veil's strength and the vignette's constants
+        // (core gameVignetteConstants); zero = none.
+        float veil = 0;
+        float vignette[12] = {};
     };
     void setGameLook(const GameLook& g) { game_ = g; }
     bool gameLookOn() const { return game_.on; }
@@ -424,6 +458,10 @@ public:
     void setGameDebugView(int v) { gameDebugView_ = v; }
     // The AO strength (research 107 section 4.3: the vision's r_ssaoStrength, 1 on MP maps): ao = lerp(1, ao, s).
     void setGameAoStrength(float s) { gameAoStrength_ = s; }
+    // The map's bloom veil and vignette (research 109) in Game Lighting.
+    void setPostFxEnabled(bool on) { postFxEnabled_ = on; }
+    bool veilDrawn() const { return veilDrawn_; }  // the last post pass mixed the veil (bench)
+    float gameVeil() const { return game_.veil; }
     size_t stockLocalLightCount() const { return stockLights_.size(); }
     size_t stockLocalLightsDrawn() const { return stockLightsDrawn_; }
     // The map's IES strip (*ieslookup level 0: width R8 texels, texel 0 white), t21. null = every light white.
@@ -472,6 +510,7 @@ public:
     struct FrameStats {
         size_t drawCalls = 0, triangles = 0, lines = 0, batches = 0;
         size_t shadowDrawCalls = 0, shadowPasses = 0;
+        size_t nearShadowPasses = 0, lampShadowMaps = 0;  // the near sun cascade and local light maps drawn this frame
         size_t uploadBytes = 0;  // vertex / index bytes sent to the GPU this frame
         size_t referenceInstanceVertices = 0;  // instanced reference props drawn on screen (vertices x instances)
     };
@@ -517,6 +556,7 @@ private:
     void buildChunks(const SceneBatch& b, StreamGpu& g);
     void releaseStreams();
     void drawInst(unsigned vertices, unsigned instances, unsigned firstVertex, unsigned firstInstance);
+    void drawInstIdx(unsigned indices, unsigned instances, unsigned firstInstance = 0);
     void releaseTargets();
 
     ID3D11Device* dev_ = nullptr;
@@ -547,8 +587,19 @@ private:
     size_t refInstTotal_ = 0;
     struct GpuTexInstanced {
         ID3D11Buffer* vb = nullptr;
+        ID3D11Buffer* ib = nullptr;  // PropMeshData::indices (16-bit when the vertices allow)
+        int ibFormat = 42;  // DXGI_FORMAT_R32_UINT (render.h does not include the DXGI headers)
         ID3D11Buffer* inst = nullptr;
-        unsigned vertices = 0, instances = 0;
+        unsigned vertices = 0, instances = 0;  // vertices: the index count (vertices drawn per instance)
+        // The placements sorted into 2,048-unit cells: a shadow map draws only the cells in its view (the lamp maps and
+        // the near sun cascade drew every placement of the map: Verdansk's 1.2 million, 263 ms a frame, 2026-11-13).
+        // `order`: GPU placement i is the caller's placement order[i] (rows and light are kept in GPU order).
+        struct InstCell {
+            iw8r::AABB box;
+            uint32_t first = 0, count = 0;
+        };
+        std::vector<InstCell> cells;
+        std::vector<uint32_t> order;
         int texture = -1;
         // Screen culling (cullTexInstances): the placements on the CPU, the model's bounding sphere in model space, and
         // a dynamic buffer of the placements that pass (drawn instead of `inst` while culling is on).
@@ -564,8 +615,8 @@ private:
         int emissive = -1, transmission = -1;
         ID3D11Buffer* visInst = nullptr;
         unsigned visible = 0;
-        // The visible placements large on screen (the depth pre-pass draws only these: Aniyah Tac 23.5 -> 16 ms).
-        ID3D11Buffer* bigInst = nullptr;
+        // How many of visInst's placements, at its start, are large on screen (the depth pre-pass draws only those:
+        // Aniyah Tac 23.5 -> 16 ms).
         unsigned big = 0;
     };
     // Each frame on screen: props outside the view, or smaller than about a pixel there, are left out (Hideout drew 21 M
@@ -604,7 +655,7 @@ private:
     float sunViewProjNear_[16] = {};
     float shadowBiasNear_ = 0.0005f;
     bool nearEnabled_ = false, nearDirty_ = true;
-    void drawReferenceTexInstancesShadow();
+    void drawReferenceTexInstancesShadow(const iw8r::Frustum* view = nullptr);  // view: only the cells inside it
     ID3D11ShaderResourceView* shadowSrv_ = nullptr;
     ID3D11SamplerState* cmpSampler_ = nullptr;
     ID3D11RasterizerState* rsShadow_ = nullptr;
@@ -783,6 +834,7 @@ private:
     ID3D11InputLayout* layout_ = nullptr;
     ID3D11RasterizerState* rsTris_ = nullptr;
     ID3D11RasterizerState* rsLines_ = nullptr;
+    ID3D11RasterizerState* rsLinesFast_ = nullptr;  // the same without line antialiasing (very many lines)
     ID3D11DepthStencilState* dsWrite_ = nullptr;
     ID3D11DepthStencilState* dsTest_ = nullptr;
     ID3D11DepthStencilState* dsOff_ = nullptr;
@@ -803,6 +855,25 @@ private:
     ID3D11ShaderResourceView* hdrSrv_ = nullptr;
     ID3D11VertexShader* postVs_ = nullptr;
     ID3D11PixelShader* postPs_ = nullptr;
+    // The bloom veil chain (research 109 section 1.2): scene mips 1..n+1 and the upsampled levels 2..n, R16G16B16A16F.
+    struct VeilLevel {
+        ID3D11Texture2D* tex = nullptr;
+        ID3D11RenderTargetView* rtv = nullptr;
+        ID3D11ShaderResourceView* srv = nullptr;
+        int w = 0, h = 0;
+    };
+    std::vector<VeilLevel> veilS_, veilV_;  // index = mip level
+    int veilCount_ = 0, veilW_ = 0, veilH_ = 0;
+    ID3D11PixelShader* veilDownPs_ = nullptr;
+    ID3D11PixelShader* veilKarisPs_ = nullptr;
+    ID3D11PixelShader* veilUpPs_ = nullptr;
+    ID3D11Buffer* cbVeil_ = nullptr;
+    bool postFxEnabled_ = true;
+    bool veilDrawn_ = false;
+    bool createVeilResources();
+    void releaseVeilResources();
+    // Builds the veil (V2) from the HDR scene; false when the map has no veil or it is off.
+    bool drawVeil();
     ID3D11PixelShader* meterHdrPs_ = nullptr;
     ID3D11RenderTargetView* sceneRtv_ = nullptr;  // where the lit scene goes this frame (hdrRtv_ or rtv_)
     bool hdrFrame_ = false;
