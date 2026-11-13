@@ -7,7 +7,7 @@
 
 - Prop decal volumes (only volumes that miss the world), viewport speed (Hideout 56 -> 17 ms), grass shading,
   research 100 (clutter). Bench: IW8R_PERF_OFF=probes,layers,propdecals,probegrid,instcull; IW8R_DECAL_LOG.
-- Not done by choice: displacement (`dn` layers: 0-4.5 % of world triangles, about 2 inches of movement with the
+- Displacement now drawn (research 101): displaced meshes subdivided on the CPU (4-inch edges, 1.5 M triangle budget) and moved by their height maps; IW8R_NO_DISPLACEMENT=1 turns it off. Earlier note: displacement (`dn` layers: 0-4.5 % of world triangles, about 2 inches of movement with the
   game's auto height scale; the game tessellates them, the editor shows their normal maps); GPU clutter on Verdansk
   (ACTS cannot export its terrain asset yet: "pointer_extent_required").
 
