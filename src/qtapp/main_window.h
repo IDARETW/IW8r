@@ -9,6 +9,7 @@
 #include "camera_path.h"
 #include <QTimer>
 
+#include <array>
 #include <optional>
 
 #include "xmodel_info.h"
@@ -444,6 +445,10 @@ public:
     // Nothing being exported or built for the streamed tiles (benchmark: wait before measuring).
     bool streamedTilesSettled() const;
     QString streamedTilesReport() const;  // benchmark: wanted / built / empty / not exported around the camera
+    // No world cache job (export, lightmap / probes / light grid, tiles) queued or running (benchmark).
+    bool stockCacheIdle() const;
+    // Textured stock prop placements lit from their light grid box, and all textured placements, in the last rebuild.
+    std::array<size_t, 2> propLightStats() const { return {refPropLit_, refPropLitOf_}; }
 private:
     std::shared_ptr<std::vector<app::GpuVertex>> refBaseTris_;
     size_t refWorldTris_ = 0;
@@ -465,6 +470,11 @@ private:
         double lodOut = 0;  // foliage: the last LOD distance (not drawn beyond it, as in game); 0 = always
     };
     std::map<std::string, std::shared_ptr<const RefPropMesh>> refPropBuilt_;
+    // 12 floats per light grid volume of the reference zone's main transient zone (app::InstancedTexMesh::light: DC rgb,
+    // then the first-order slots 0, 2 and 3), null when not read; refPropVolLightZone_ is its zone.
+    std::shared_ptr<const std::vector<float>> refPropVolLight_;
+    QString refPropVolLightZone_;
+    size_t refPropLit_ = 0, refPropLitOf_ = 0;  // propLightStats
     size_t refPropBoxed_ = 0;  // models drawn as stand-in boxes (past the triangle budget) in the last rebuild
     // The stock map's decal volumes with their materials and masks (appendStockDecalVolumes), kept to project them on
     // the props once those are built (projectPropDecals; done once per map).
@@ -588,6 +598,9 @@ public:
     void loadStockLightmap(const QString& zone);
     // The reference zone's reflection probes (world cache probes.iw8rprb) into the camera, read off the UI thread.
     void loadStockProbes(const QString& zone);
+    // The reference zone's static-model light grid (world cache lightgrid.iw8rlg, research 105): each box's light at
+    // its centre into refPropVolLight_, read off the UI thread; the props are rebuilt with it.
+    void loadStockLightGrid(const QString& zone);
     // The stock map's sun (its ComWorld sun light, through ACTS once; cached beside the world export) into the camera.
     // skyMaterial: the world's own sky material (tw/sky_mp_speed_midday on mp_m_speed); "" = tw/sky_<zone>.
     void loadStockSun(const QString& zone, const QString& skyMaterial = QString());

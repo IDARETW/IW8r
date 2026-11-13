@@ -41,6 +41,14 @@
 // off the UI thread, the scratch (every .dec) deleted before the cache files are written. One decompression at a
 // time (main and tile jobs share one slot), none while a geometry export runs or waits; each needs the estimated
 // .dec size free and never less than 3 GB. lightmapReady(zone) when a zone's queued tile jobs are all done.
+//
+// Static-model light grid (core stock_lightgrid.h, research 105): the same main-zone job also makes
+//   <zone>/lightgrid.iw8rlg  the LGV block (atlas root, the two probe textures, per-volume packing and transforms),
+//                            cut from the .ff.dec right after the box table of the cached gfx_map_trzone export;
+//                            lightGridFile(zone). Read it with iw8r::parseStockLgvBlock.
+// Missing, with no recorded error, it alone re-runs the job for a zone cached before it existed. A verdict on the data
+// (no volumes, no atlas found) is kept as "lightgrid_error". lightGridReady(zone) when the job ends either way.
+// Warzone tiles hold their own grids (not extracted yet: their props fall back to the probes).
 #pragma once
 
 #include <QElapsedTimer>
@@ -102,6 +110,12 @@ public:
     // cached or has no probes (yet). Does not start a job (requestLightmap does).
     std::optional<QString> probesFile(const QString& zone) const;
     QString probesErrorOf(const QString& zone) const;  // why the probe extraction failed ("" when made, pending or never run)
+    // The zone's static-model light grid file (<zone cache folder>/lightgrid.iw8rlg), or nullopt when the zone is not
+    // cached or it is not made (yet). Does not start a job (requestLightmap does).
+    std::optional<QString> lightGridFile(const QString& zone) const;
+    QString lightGridErrorOf(const QString& zone) const;  // why it was not made ("" when made, pending or never run)
+    // requestLightmap has something to make for this cached zone (a lightmap, probes or the light grid).
+    bool needsLightmapJob(const QString& zone) const;
 
     // Big maps (research 90 / 87 section 1.2): exports the streamed world tiles `tiles` (zone names such as
     // mp_donetsk_00587_tr) of a cached zone into <cache>/<zone>/streamed/<tile>, one ACTS run each, skipping those
@@ -117,6 +131,7 @@ signals:
     void streamedReady(const QString& zone, int loaded, int failed);
     void lightmapReady(const QString& zone);  // lightmapFile() or lightmapErrorOf() now answers for this zone
     void probesReady(const QString& zone);    // probesFile() or probesErrorOf() now answers for this zone
+    void lightGridReady(const QString& zone);  // lightGridFile() or lightGridErrorOf() now answers for this zone
     void progress(const QString& message);
 
 private:
@@ -128,10 +143,12 @@ private:
         QString error;
         QString lightmapError;  // the lightmap scan rejected this zone (not tried again)
         QString probesError;    // the probe extraction rejected this zone (not tried again)
+        QString lightGridError; // the light grid extraction rejected this zone (not tried again)
     };
     // The lightmap / probes job still has something to make for this cached zone.
     bool needsLightmap(const QString& zone) const;
     bool needsProbes(const QString& zone) const;
+    bool needsLightGrid(const QString& zone) const;
 
     void loadIndex();
     void writeIndex() const;
@@ -167,9 +184,9 @@ private:
     QString lmTile_;           // tile of the tile lightmap job in progress ("" for none or for a main-zone job)
     // The whole job failed before the scans (ACTS, disk space, no .ff): both outputs share the verdict.
     void endLightmap(const QString& zone, bool ok, const QString& error, bool persistError);
-    // One output's scan result (the probes when `probes`, else the lightmap): progress line, and a failure is kept
-    // in index.json (persistError) or in lmSkip_. Emits no ready signal.
-    void noteExtraction(const QString& zone, bool probes, bool ok, const QString& message, bool persistError);
+    // One output's scan result (kind 0 the lightmap, 1 the probes, 2 the light grid): progress line, and a failure is
+    // kept in index.json (persistError) or in lmSkip_. Emits no ready signal.
+    void noteExtraction(const QString& zone, int kind, bool ok, const QString& message, bool persistError);
     QStringList lmQueue_;
     QString lmZone_;           // zone of the job in progress ("" when idle)
     QString lmScratch_;        // root_/w/lightmap_<zone> while it runs

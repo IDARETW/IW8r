@@ -5,6 +5,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Placed props lit like the world around them.** In Game Lighting each stock prop now takes the light the game
+  baked for it (its own light grid box, research 105) instead of one map-wide value, so props indoors and in shade are
+  as dark as the walls next to them, and props in the open keep the sky's colour. The world cache reads the light
+  grid once per map (a short background job the first time a map is opened after this update). On Hideout 12,131 of
+  12,367 prop placements use it; the rest (lightmapped props such as rugs) keep the old light for now.
 - **Screen-space reflections.** The stock materials that trace them in game (puddles, wet layers, some glossy props
   and glass; research 104) reflect the scene, traced in the previous frame as the game does, over the probe
   reflection. The effect is subtle on most maps (only those glossy materials trace).

@@ -92,6 +92,18 @@ std::string smodelsJson(bool badModelIndex) {
     const double s15 = std::sin(15.0 * 3.14159265358979323846 / 180.0), c15 = std::cos(15.0 * 3.14159265358979323846 / 180.0);
     putInstance(inst, Vec3{-10, 20, 30}, s15, 0, 0, c15, 1.0f);
 
+    // Lighting indirection per instance row: u32 lightingInstanceIndirection, u16 splined index, u16 worldTransient.
+    std::vector<uint8_t> indir;
+    putU32(indir, 7);
+    putU16(indir, 0);
+    putU16(indir, 0);
+    putU32(indir, 0xFFFFFFFFu);
+    putU16(indir, 0);
+    putU16(indir, 0);
+    putU32(indir, 2);
+    putU16(indir, 5);
+    putU16(indir, 3);
+
     std::string s = R"({"format":"mw19-asset-json","format_version":1,"profile":"replay-1.20","pool":"gfx_map",)"
                     R"("root_type":"GfxWorld","asset":{"type":"GfxWorld","fields":{"name":{"string":"maps/mp/test.d3dbsp"},)"
                     R"("smodels":{"collectionCount":2,"instanceCount":3,)"
@@ -100,7 +112,9 @@ std::string smodelsJson(bool badModelIndex) {
                     R"({"model":{"type":"XModel","asset_reference":true,"name":"tm/b"},"flags":{"value":5}}]},)"
                     R"("collections":{"type":"GfxStaticModelCollection","stride":16,"count":2,"encoding":"hex-little-endian","bytes":")" +
                     hexOf(coll) + R"("},)" + R"("smodelInstanceData":{"type":"GfxSModelInstanceData","stride":24,"count":3,)"
-                    R"("encoding":"hex-little-endian","bytes":")" + hexOf(inst) + R"("}}}}})";
+                    R"("encoding":"hex-little-endian","bytes":")" + hexOf(inst) + R"("},)" +
+                    R"("modelStaticIndirection":{"type":"GfxModelStaticIndirection","stride":8,"count":3,)"
+                    R"("encoding":"hex-little-endian","bytes":")" + hexOf(indir) + R"("}}}}})";
     return s;
 }
 
@@ -148,6 +162,10 @@ TEST(stock_smodels_synthetic_export) {
     CHECK(v[2].model == "tm/b");
     // Each placement knows its row in smodelInstanceData (11.5: the converter hides a prop by that row).
     CHECK(v[0].index == 0 && v[1].index == 1 && v[2].index == 2);
+    // Lighting: modelStaticIndirection per instance row and the model flags (tm/a 1 = LIGHTPROBE, tm/b 5).
+    CHECK(v[0].lightingIndex == 7 && v[0].worldTransient == 0 && v[0].modelFlags == 1);
+    CHECK(v[1].lightingIndex == 0xFFFFFFFFu && v[1].worldTransient == 0 && v[1].modelFlags == 1);
+    CHECK(v[2].lightingIndex == 2 && v[2].worldTransient == 3 && v[2].modelFlags == 5);
 
     CHECK(nearVec(v[0].origin, Vec3{100, -50.5, 8}));
     CHECK(sameAxis(v[0].axis, {Vec3{1, 0, 0}, Vec3{0, 1, 0}, Vec3{0, 0, 1}}, 1e-4));
@@ -190,6 +208,49 @@ TEST(stock_smodels_synthetic_export) {
     CHECK(readStockModelInstances((zone / "assets" / "gfx_map" / "maps" / "mp" / "test.d3dbsp.1.asset.json").string(),
                                   viaFile, &err));
     CHECK(viaFile.size() == 3);
+}
+
+// The "values" form (mp_m_speedball, mp_m_king): collections, instances and the lighting indirection as objects.
+TEST(stock_smodels_lighting_values_form) {
+    const auto json = [](bool withIndirection) {
+        std::string s = R"({"asset":{"fields":{"smodels":{)"
+                        R"("models":{"values":[{"model":{"name":"tm/lm"},"flags":{"value":2,"name":"LIGHTMAP"}},)"
+                        R"({"model":{"name":"tm/p"},"flags":9}]},)"
+                        R"("collections":{"values":[{"firstInstance":0,"instanceCount":1,"smodelIndex":1},)"
+                        R"({"firstInstance":1,"instanceCount":1,"smodelIndex":0}]},)"
+                        R"("smodelInstanceData":{"values":[)"
+                        R"({"translation":[4096,0,0],"orientation":{"v":[2147516416,4294934528]},"scale":1.0},)"
+                        R"({"translation":[0,8192,0],"orientation":{"v":[2147516416,4294934528]},"scale":2.0}]})";
+        if (withIndirection)
+            s += R"(,"modelStaticIndirection":{"stride":8,"count":2,"values":[)"
+                 R"({"lightingInstanceIndirection":11,"splinedModelInstanceIndex":0,"worldTransient":2},)"
+                 R"({"lightingInstanceIndirection":0,"splinedModelInstanceIndex":0,"worldTransient":0}]})";
+        return s + "}}}}";
+    };
+    const fs::path dir = fs::path(iw8r::test::tmpDir()) / "stock_smodels_values";
+    const fs::path with = dir / "with.json", without = dir / "without.json";
+    writeText(with, json(true));
+    writeText(without, json(false));
+
+    std::vector<StockModelInstance> v;
+    std::string err;
+    CHECK(readStockModelInstances(with.string(), v, &err));
+    CHECK(v.size() == 2);
+    if (v.size() == 2) {
+        CHECK(v[0].model == "tm/p" && v[0].index == 0 && v[0].modelFlags == 9);
+        CHECK(v[0].lightingIndex == 11 && v[0].worldTransient == 2);
+        CHECK(v[1].model == "tm/lm" && v[1].index == 1 && v[1].modelFlags == 2);
+        CHECK(v[1].lightingIndex == 0 && v[1].worldTransient == 0);
+        CHECK(nearVec(v[0].origin, Vec3{1, 0, 0}) && nearVec(v[1].origin, Vec3{0, 2, 0}));
+    }
+
+    // Without modelStaticIndirection the instances keep the defaults; the flags still come through.
+    CHECK(readStockModelInstances(without.string(), v, &err));
+    CHECK(v.size() == 2);
+    if (v.size() == 2) {
+        CHECK(v[0].lightingIndex == 0xFFFFFFFFu && v[0].worldTransient == 0 && v[0].modelFlags == 9);
+        CHECK(v[1].lightingIndex == 0xFFFFFFFFu && v[1].modelFlags == 2);
+    }
 }
 
 TEST(stock_smodels_rejects_bad_export) {
@@ -265,4 +326,14 @@ TEST(stock_smodels_real_mp_shipment_cache) {
         }
     CHECK(!top.empty());
     CHECK(best > 0);
+
+    // Lighting (docs/research/105 section 1.1): nearly every probe-lit instance has a box index.
+    size_t probeLit = 0, indexed = 0;
+    for (const StockModelInstance& s : v)
+        if (s.modelFlags & 1) {
+            ++probeLit;
+            if (s.lightingIndex != 0xFFFFFFFFu) ++indexed;
+        }
+    CHECK(probeLit > 100);
+    CHECK(indexed * 10 >= probeLit * 9);
 }

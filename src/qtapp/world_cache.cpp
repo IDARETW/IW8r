@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "acts_runner.h"
+#include "stock_lightgrid.h"
 #include "stock_lightmap.h"
 #include "stock_probes.h"
 
@@ -41,6 +42,7 @@ constexpr qint64 kMaxExportBytes = 2LL * 1024 * 1024 * 1024;
 // plus a margin.
 constexpr const char* kLightmapFile = "lightmap.iw8rlm";
 constexpr const char* kProbesFile = "probes.iw8rprb";
+constexpr const char* kLightGridFile = "lightgrid.iw8rlg";
 constexpr double kDecPerZoneByte = 2.5;
 constexpr qint64 kLightmapMarginBytes = 256LL * 1024 * 1024;
 constexpr int kLightmapActsTimeoutMs = 10 * 60 * 1000;
@@ -222,6 +224,27 @@ bool WorldCache::needsProbes(const QString& zone) const {
     return lookup(zone) && !probesFile(zone) && probesErrorOf(zone).isEmpty();
 }
 
+std::optional<QString> WorldCache::lightGridFile(const QString& zone) const {
+    const auto dir = lookup(zone);
+    if (!dir) return std::nullopt;
+    const QString f = *dir + "/" + kLightGridFile;
+    if (!QFileInfo::exists(f)) return std::nullopt;
+    return f;
+}
+
+QString WorldCache::lightGridErrorOf(const QString& zone) const {
+    const auto it = index_.find(zone);
+    return it == index_.end() ? QString() : it->second.lightGridError;
+}
+
+bool WorldCache::needsLightGrid(const QString& zone) const {
+    return lookup(zone) && !lightGridFile(zone) && lightGridErrorOf(zone).isEmpty();
+}
+
+bool WorldCache::needsLightmapJob(const QString& zone) const {
+    return needsLightmap(zone) || needsProbes(zone) || needsLightGrid(zone);
+}
+
 QString WorldCache::cacheRoot() const { return root_; }
 
 std::optional<StockWorld> WorldCache::load(const QString& zone, QString* err, bool includeStreamed) const {
@@ -255,6 +278,7 @@ void WorldCache::loadIndex() {
         e.actsMs = qint64(o.value("acts_ms").toDouble());
         e.lightmapError = o.value("lightmap_error").toString();
         e.probesError = o.value("probes_error").toString();
+        e.lightGridError = o.value("lightgrid_error").toString();
         if (!e.failed) {
             e.dir = QDir(root_).filePath(o.value("dir").toString());
             if (!QFileInfo::exists(e.dir + "/assets")) continue;  // removed by hand: resolve again
@@ -275,6 +299,7 @@ void WorldCache::writeIndex() const {
         if (!e.error.isEmpty()) o.insert("error", e.error);
         if (!e.lightmapError.isEmpty()) o.insert("lightmap_error", e.lightmapError);
         if (!e.probesError.isEmpty()) o.insert("probes_error", e.probesError);
+        if (!e.lightGridError.isEmpty()) o.insert("lightgrid_error", e.lightGridError);
         zones.insert(zone, o);
     }
     QJsonObject top;
@@ -479,7 +504,7 @@ void WorldCache::startNextStreamed() {
 
 void WorldCache::requestLightmap(const QString& zone) {
     const QString z = zone.trimmed();
-    if (z.isEmpty() || (!needsLightmap(z) && !needsProbes(z)) || lmSkip_.contains(z) || lmQueue_.contains(z) || z == lmZone_)
+    if (z.isEmpty() || !needsLightmapJob(z) || lmSkip_.contains(z) || lmQueue_.contains(z) || z == lmZone_)
         return;
     lmQueue_.append(z);
     startNextLightmap();
@@ -496,7 +521,7 @@ void WorldCache::startNextLightmap() {
         return startTileLightmap(zone, tile);
     }
     const QString zone = lmQueue_.takeFirst();
-    if (!needsLightmap(zone) && !needsProbes(zone)) return startNextLightmap();
+    if (!needsLightmapJob(zone)) return startNextLightmap();
 
     const QString acts = tools_("acts"), replay = tools_("replay"), oodle = tools_("oodle");
     for (const QString& f : {acts, replay, oodle})
@@ -510,6 +535,7 @@ void WorldCache::startNextLightmap() {
             tileLmQueue_.clear();
             emit lightmapReady(zone);
             emit probesReady(zone);
+            emit lightGridReady(zone);
             return;
         }
     const QString ff = replayZoneDir() + "/" + zone + ".ff";
@@ -627,11 +653,17 @@ void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
     const QString zoneDir = *dir;
     const QString prTarget = *dir + "/" + kProbesFile;
     // Only what is missing (a zone cached with a lightmap gets only its probes, and the reverse).
-    const bool wantLm = needsLightmap(zone), wantPr = needsProbes(zone);
+    const bool wantLm = needsLightmap(zone), wantPr = needsProbes(zone), wantLg = needsLightGrid(zone);
     const QString gfxJson = QString::fromStdString(iw8r::findStockGfxMapJson(dir->toStdString()));
+    const QString lgTarget = *dir + "/" + kLightGridFile;
+    const QString trzoneJson = *dir + "/assets/gfx_map_trzone/" + zone + ".0.asset.json";
     QPointer<WorldCache> self(this);
-    emit progress("Reading the " + zone + (wantLm && wantPr ? " lightmap and reflection probes..." : wantLm ? " lightmap..." : " reflection probes..."));
-    std::thread([self, zone, scratch, dec, zoneDir, prTarget, wantLm, wantPr, gfxJson] {
+    QStringList what;
+    if (wantLm) what << "lightmap";
+    if (wantPr) what << "reflection probes";
+    if (wantLg) what << "prop light grid";
+    emit progress("Reading the " + zone + " " + what.join(", ") + "...");
+    std::thread([self, zone, scratch, dec, zoneDir, prTarget, wantLm, wantPr, wantLg, gfxJson, lgTarget, trzoneJson] {
         // Only a verdict on the zone's data is kept (no root, unknown formats, no probe image); a file that could not
         // be read or written is tried again in the next session.
         const auto verdict = isVerdict;
@@ -657,7 +689,43 @@ void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
                 prPersist = !prOk && verdict(prErr);
             }
         }
+        // The static-model light grid (research 105): the box table from the trzone export, the atlas from the .dec.
+        std::string lgBlock, lgErr;
+        bool lgOk = false, lgPersist = false;
+        size_t lgVolumes = 0;
+        if (wantLg) {
+            QFile tf(trzoneJson);
+            if (!tf.open(QIODevice::ReadOnly)) {
+                lgErr = "no gfx_map_trzone export at " + trzoneJson.toStdString();
+                lgPersist = true;  // the export is what it is until the zone is exported again
+            } else {
+                const QByteArray text = tf.readAll();
+                tf.close();
+                std::vector<iw8r::StockLgvBox> boxes;
+                std::vector<uint8_t> raw;
+                if (!iw8r::parseStockLgvBoxes(text.toStdString(), boxes, &raw, &lgErr)) {
+                    lgPersist = true;
+                } else if (boxes.empty()) {
+                    lgErr = "no static model light grid volumes";
+                    lgPersist = true;
+                } else {
+                    lgVolumes = boxes.size();
+                    lgOk = iw8r::extractStockLgvBlockFromFile(dec.toStdString(), raw, boxes.size(), lgBlock, &lgErr);
+                    lgPersist = !lgOk && (lgErr.find("not found") != std::string::npos || lgErr.find("runs past") != std::string::npos);  // a verdict on the zone; unreadable: not
+                }
+            }
+        }
         QDir(scratch).removeRecursively();  // every .dec, before the cache files are written
+        QString lgSummary;
+        if (lgOk) {
+            lgSummary = QString("%1 volumes, %2 KB").arg(lgVolumes).arg(qint64(lgBlock.size()) / 1024);
+            QSaveFile out(lgTarget);
+            if (!out.open(QIODevice::WriteOnly) || out.write(lgBlock.data(), qint64(lgBlock.size())) != qint64(lgBlock.size()) ||
+                !out.commit()) {
+                lgOk = false;  // disk full or similar: not a verdict
+                lgErr = "could not write " + lgTarget.toStdString();
+            }
+        }
         const bool lmPersist = wantLm && !lmOk && verdict(lmErr);
         QString lmSummary, prSummary;
         if (lmOk) {
@@ -675,30 +743,32 @@ void WorldCache::lightmapActsEnded(int exitCode, bool startFailed) {
                 QFile::remove(prTarget);
             }
         }
-        QMetaObject::invokeMethod(qApp, [self, zone, wantLm, wantPr, lmOk, prOk, lmPersist, prPersist, lmSummary, prSummary,
-                                         lmErr, prErr] {
+        QMetaObject::invokeMethod(qApp, [self, zone, wantLm, wantPr, wantLg, lmOk, prOk, lgOk, lmPersist, prPersist, lgPersist,
+                                         lmSummary, prSummary, lgSummary, lmErr, prErr, lgErr] {
             if (!self) return;
-            if (wantLm) self->noteExtraction(zone, false, lmOk, lmOk ? lmSummary : QString::fromStdString(lmErr), lmPersist);
-            if (wantPr) self->noteExtraction(zone, true, prOk, prOk ? prSummary : QString::fromStdString(prErr), prPersist);
+            if (wantLm) self->noteExtraction(zone, 0, lmOk, lmOk ? lmSummary : QString::fromStdString(lmErr), lmPersist);
+            if (wantPr) self->noteExtraction(zone, 1, prOk, prOk ? prSummary : QString::fromStdString(prErr), prPersist);
+            if (wantLg) self->noteExtraction(zone, 2, lgOk, lgOk ? lgSummary : QString::fromStdString(lgErr), lgPersist);
             self->lmZone_.clear();
             self->lmScratch_.clear();
             emit self->lightmapReady(zone);
             emit self->probesReady(zone);
+            emit self->lightGridReady(zone);
             self->startNextLightmap();
         });
     }).detach();
 }
 
-void WorldCache::noteExtraction(const QString& zone, bool probes, bool ok, const QString& message, bool persistError) {
+void WorldCache::noteExtraction(const QString& zone, int kind, bool ok, const QString& message, bool persistError) {
     const qint64 ms = lmTimer_.isValid() ? lmTimer_.elapsed() : 0;
-    const QString what = probes ? "reflection probes" : "lightmap";
+    const QString what = kind == 2 ? "prop light grid" : kind == 1 ? "reflection probes" : "lightmap";
     if (ok) {
         emit progress(QString("world cache: %1 %2 cached (%3), %4 ms").arg(zone, what, message).arg(ms));
         return;
     }
     if (persistError) {
         if (auto it = index_.find(zone); it != index_.end() && !it->second.failed) {
-            (probes ? it->second.probesError : it->second.lightmapError) = message;
+            (kind == 2 ? it->second.lightGridError : kind == 1 ? it->second.probesError : it->second.lightmapError) = message;
             writeIndex();
         }
     } else {
@@ -717,6 +787,7 @@ void WorldCache::endLightmap(const QString& zone, bool ok, const QString& error,
             if (auto it = index_.find(zone); it != index_.end() && !it->second.failed) {
                 if (needsLightmap(zone)) it->second.lightmapError = error;
                 if (needsProbes(zone)) it->second.probesError = error;
+                if (needsLightGrid(zone)) it->second.lightGridError = error;
                 writeIndex();
             }
         } else {
@@ -728,6 +799,7 @@ void WorldCache::endLightmap(const QString& zone, bool ok, const QString& error,
     lmScratch_.clear();
     emit lightmapReady(zone);
     emit probesReady(zone);
+    emit lightGridReady(zone);
     startNextLightmap();
 }
 

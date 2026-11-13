@@ -2,6 +2,18 @@
 
 ## Latest (2026-11-13)
 
+- M1.5 core DONE (2026-11-13): core stock_lightgrid (parseStockLgvBoxes from the trzone export, the atlas block cut
+  from the .ff.dec right after the box table or by the root's signature, parse / sample / eval; tests with a 544-byte
+  speedball fixture). StockModelInstance gets lightingIndex / worldTransient / modelFlags (modelStaticIndirection).
+  WorldCache: third output lightgrid.iw8rlg of the main-zone decompress job (needsLightGrid re-runs the job for zones
+  cached before; verdicts kept as lightgrid_error; lightGridReady). MainWindow::loadStockLightGrid samples every box
+  at its centre into refPropVolLight_ (12 floats: DC, slots 0/2/3); rebuildReferenceProps gives each LIGHTPROBE
+  placement of transient zone 0 its box (InstancedTexMesh::light); the instance stream is 24 floats (rows + light);
+  vs_tex_inst evaluates E(n) per vertex (as the game) into t with lm = (-2, -2) (no extra interpolant), ps_tex uses it
+  x bakedLightScale where no lightmap. IW8R_NO_PROP_LGV = old probe light (A/B). Bench line prop_light; the bench now
+  waits for the world cache jobs. Hideout 12,131 / 12,367 lit, 12.9 ms; Speedball 3,476 / 3,476, 8.0-8.1 ms (on and
+  off within noise; budget 8). Open: SELFVIS, lightmapped tml props, Warzone tile grids. Research 106 (local lights)
+  running in a helper agent.
 - **THE PLAN: docs/PLAN_REMAINING.md** (owner-approved 2026-11-13): Milestone 1 lighting (1.1 streamed tiles follow
   the camera, 1.2 HDR target, 1.3 SSR, ... 1.11 build-side lighting), 2 Umbra (decode, view, bake), 3 web viewer
   (streamed editor render, every command), 4 remaining pieces, 5 handover. Work it in order; mark items done there.
@@ -91,8 +103,8 @@
 ## Latest (2026-11-12 evening): Game Lighting against the owner's Speedball screenshot
 
 - Compare spot: IW8R_BENCH_CAM="-1080 230 330 -4 -27 120" (the owner plays at FOV 120, horizontal like the bench),
-  out/compare/speedball_ingame.webp. Run out/agent/sbcam.ps1 -Name <dir> -Cam "<cam>" (copies the exe to
-  out/audit_bin; caches shared in out/agent/benchcache: without IW8R_*_CACHE_ROOT each bench copies 1.2 GB).
+  out/compare/speedball_ingame.webp. Run out/agent/mapcam.ps1 -Name <dir> -Map <zone> -Cam "<cam>" (copies the exe to
+  out/audit_bin; model and material caches shared in %TEMP%\iwb: without IW8R_*_CACHE_ROOT each bench copies 1.2 GB).
 - Atmosphere: the vision's fog (core GameFog / gameFogFromVision; fogDensity is the half distance, as the converter
   notes) with Rayleigh / Mie inscatter at fogInscatteringEv, height falloff, sky fog, extinction desaturation.
 - Stock sky drawn in Game Lighting: the world's sky material (tw/sky_<map>); its first pixel constant (39.1 on

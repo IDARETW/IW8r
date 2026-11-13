@@ -7,6 +7,9 @@
 //     smodels.smodelInstanceData.bytes        GfxSModelInstanceData, 24 bytes each: int32 translation[3] in 1/4096
 //                                             inch, u16 orientation[4] (quaternion x, y, z, w; c = u / 32767.5 - 1),
 //                                             float scale
+//     smodels.modelStaticIndirection          GfxModelStaticIndirection, 8 bytes each (hex bytes or values): u32
+//                                             lightingInstanceIndirection, u16 splinedModelInstanceIndex,
+//                                             u16 worldTransient, one per instance row
 //   Every instance is drawn by the collection that names it (collection c draws instances firstInstance ..
 //   firstInstance + instanceCount - 1). The origin is the translation (checked: the rotated model bounds centre
 //   matches the collection bounds within 0.01 inch on the cache).
@@ -29,6 +32,13 @@ struct StockModelInstance {
     std::array<Vec3, 3> axis{Vec3{1, 0, 0}, Vec3{0, 1, 0}, Vec3{0, 0, 1}};  // model X, Y, Z in world space (unit columns)
     double scale = 1;                                    // uniform scale from smodelInstanceData (raw value)
     uint32_t index = 0;                                  // its row in GfxWorld.smodels.smodelInstanceData (11.5: hide)
+    // Baked lighting (docs/research/105 section 1.1), from smodels.modelStaticIndirection[index] and the model's flags:
+    // modelFlags & 1 (LIGHTPROBE): lightingIndex is the box in transient zone worldTransient's light grid volumes
+    // (stock_lightgrid.h); modelFlags & 2 (LIGHTMAP): lightingIndex indexes GfxWorld.lmapLookup. Defaults when the
+    // export has no modelStaticIndirection.
+    uint32_t lightingIndex = 0xFFFFFFFF;
+    uint16_t worldTransient = 0;
+    uint32_t modelFlags = 0;                             // smodels.models[collection.smodelIndex].flags
 };
 
 // Reads the static model instances of one gfx_map export. exportPathOrDir is either the gfx_map JSON file itself or

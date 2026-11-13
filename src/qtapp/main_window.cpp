@@ -40,6 +40,7 @@
 #include "hotkey_presets.h"
 #include "decal_tools.h"
 #include "stock_smodels.h"
+#include "stock_lightgrid.h"
 #include "nav_debug.h"
 #include "lightmap_fields.h"
 #include "verification.h"
@@ -2107,6 +2108,8 @@ void MainWindow::buildMenus() {
         camera_->setGameStockMap("");
         camera_->setStockLightmap(nullptr);
         camera_->setStockProbes(nullptr);
+        refPropVolLight_.reset();
+        refPropVolLightZone_.clear();
         ctx_.referencePlans.clear();
         stockWorld_.reset();
         referenceProps_.clear();
@@ -6711,6 +6714,7 @@ void MainWindow::rebuildReferenceProps() {
     std::vector<app::InstancedTexMesh> texInstanced;
     std::vector<std::string> texMaterials;
     size_t meshTris = 0, meshed = 0;
+    refPropLit_ = refPropLitOf_ = 0;
     constexpr size_t kPropTriangleBudget = 4'000'000;
     const Vec3 light = normalize(Vec3{0.35, 0.55, 0.75});
     const auto mesh = [&](const StockModelInstance& in) -> bool {
@@ -6818,9 +6822,21 @@ void MainWindow::rebuildReferenceProps() {
             auto& dst = instanced[size_t(it->second.plain)].rows;
             dst.insert(dst.end(), rows, rows + 12);
         }
+        // Research 105: a LIGHTPROBE prop of the main transient zone takes its light grid box (12 floats, DC first);
+        // every other placement gets DC r = -1 (the probes' fallback in the shader).
+        float lit[12] = {-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+        static const bool noPropLgv = std::getenv("IW8R_NO_PROP_LGV") != nullptr;  // A/B: the probes' light as before
+        if (!noPropLgv && refPropVolLight_ && (in.modelFlags & 1u) && in.worldTransient == 0 &&
+            size_t(in.lightingIndex) < refPropVolLight_->size() / 12) {
+            std::memcpy(lit, &(*refPropVolLight_)[size_t(in.lightingIndex) * 12], sizeof(lit));
+            if (!it->second.tex.empty()) ++refPropLit_;
+        }
+        if (!it->second.tex.empty()) ++refPropLitOf_;
         for (const int ti : it->second.tex) {
             auto& dst = texInstanced[size_t(ti)].rows;
             dst.insert(dst.end(), rows, rows + 12);
+            auto& ld = texInstanced[size_t(ti)].light;
+            ld.insert(ld.end(), lit, lit + 12);
         }
         ++meshed;
         return true;
@@ -7830,6 +7846,51 @@ void MainWindow::loadStockProbes(const QString& zone) {
     }).detach();
 }
 
+void MainWindow::loadStockLightGrid(const QString& zone) {
+    const std::optional<QString> file = worldCache_ ? worldCache_->lightGridFile(zone) : std::nullopt;
+    if (!file) return;
+    QPointer<MainWindow> self(this);
+    const QString path = *file;
+    std::thread([self, zone, path] {
+        std::string err;
+        auto vol = std::make_shared<std::vector<float>>();
+        bool ok = false;
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) {
+            err = "cannot read " + path.toStdString();
+        } else {
+            const QByteArray bytes = f.readAll();
+            StockLgvAtlas atlas;
+            ok = parseStockLgvBlock(std::string(bytes.constData(), size_t(bytes.size())), atlas, &err);
+            if (ok) {
+                // Each box at its centre (research 105 section 5.3): exact for 1x1x1 boxes, the mean for big ones.
+                const double centre[3] = {0.5, 0.5, 0.5};
+                vol->resize(atlas.pack.size() * 12);
+                for (size_t v = 0; v < atlas.pack.size(); ++v) {
+                    const StockLgvSh sh = sampleStockLgv(atlas, v, centre);
+                    float* o = &(*vol)[v * 12];
+                    for (int c = 0; c < 3; ++c) {
+                        o[c] = sh.dc[c];
+                        o[3 + c] = sh.sh[0][c];
+                        o[6 + c] = sh.sh[2][c];
+                        o[9 + c] = sh.sh[3][c];
+                    }
+                }
+            }
+        }
+        QMetaObject::invokeMethod(qApp, [self, zone, vol, ok, err] {
+            if (!self || self->referenceZone_ != zone) return;
+            if (!ok) {
+                self->ctx_.setStatus("Stock prop light grid of " + zone + " not read: " + QString::fromStdString(err));
+                return;
+            }
+            self->refPropVolLight_ = vol;
+            self->refPropVolLightZone_ = zone;
+            self->rebuildReferenceProps();
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
 void MainWindow::loadStockReference(const QString& zone) {
     if (!worldCache_) {
         worldCache_ = new WorldCache([this](const QString& k) { return toolPath(k); }, this);
@@ -7841,6 +7902,11 @@ void MainWindow::loadStockReference(const QString& zone) {
             if (z != referenceZone_) return;
             if (worldCache_->probesFile(z)) loadStockProbes(z);
             else if (!worldCache_->probesErrorOf(z).isEmpty()) ctx_.setStatus("Stock reflection probes of " + z + ": " + worldCache_->probesErrorOf(z));
+        });
+        connect(worldCache_, &WorldCache::lightGridReady, this, [this](const QString& z) {
+            if (z != referenceZone_) return;
+            if (worldCache_->lightGridFile(z)) loadStockLightGrid(z);
+            else if (!worldCache_->lightGridErrorOf(z).isEmpty()) ctx_.setStatus("Stock prop light grid of " + z + ": " + worldCache_->lightGridErrorOf(z));
         });
         connect(worldCache_, &WorldCache::lightmapReady, this, [this](const QString& z) {
             if (z != referenceZone_) return;
@@ -8037,9 +8103,9 @@ void MainWindow::loadStockReference(const QString& zone) {
             const bool haveLm = self->worldCache_->lightmapFile(zone) || !self->worldCache_->lightmapIndices(zone).isEmpty();
             if (haveLm) self->loadStockLightmap(zone);
             if (self->worldCache_->probesFile(zone)) self->loadStockProbes(zone);
-            const bool needLm = !haveLm && self->worldCache_->lightmapErrorOf(zone).isEmpty();
-            const bool needProbes = !self->worldCache_->probesFile(zone) && self->worldCache_->probesErrorOf(zone).isEmpty();
-            if (needLm || needProbes) self->worldCache_->requestLightmap(zone);
+            if (self->refPropVolLightZone_ != zone) self->refPropVolLight_.reset();
+            if (self->worldCache_->lightGridFile(zone) && !self->refPropVolLight_) self->loadStockLightGrid(zone);
+            if (self->worldCache_->needsLightmapJob(zone)) self->worldCache_->requestLightmap(zone);
             self->ctx_.referencePlans = std::move(*plans);
             self->ctx_.cameraMoved();  // repaints the 2D views too
             if (n == 0) {
@@ -8137,6 +8203,8 @@ QString MainWindow::streamedTilesReport() const {
     return QString("wanted %1 built %2 empty %3 [%4] not_exported %5 [%6]").arg(wanted.size()).arg(built).arg(empty)
         .arg(emptyNames.mid(0, 8).join(' ')).arg(notExported).arg(missingNames.mid(0, 8).join(' '));
 }
+
+bool MainWindow::stockCacheIdle() const { return !worldCache_ || !worldCache_->busy(); }
 
 bool MainWindow::streamedTilesSettled() const {
     return streamBuilding_.empty() && !streamDirty_ && (!worldCache_ || !worldCache_->busy());

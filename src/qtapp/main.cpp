@@ -164,6 +164,23 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             QApplication::processEvents(QEventLoop::AllEvents, 50);
             if (wt.elapsed() > 30000 && !cam->texturesPending()) break;
         }
+        // The world cache's lightmap / probes / light grid job (a decompression; minutes on a zone cached before the
+        // light grid existed), then the prop rebuild it starts.
+        if (!w.stockCacheIdle()) {
+            while (wt.elapsed() < 600000 && !w.stockCacheIdle()) {
+                cam->renderNow();
+                QApplication::processEvents(QEventLoop::AllEvents, 50);
+            }
+            QElapsedTimer settle;
+            settle.start();
+            while (settle.elapsed() < 3000 || cam->texturesPending()) {
+                cam->renderNow();
+                QApplication::processEvents(QEventLoop::AllEvents, 50);
+                if (wt.elapsed() > 660000) break;
+            }
+        }
+        const auto pl = w.propLightStats();
+        report << QString("prop_light %1 of %2 textured placements lit from their light grid box").arg(pl[0]).arg(pl[1]);
         report << QString("stock zone %1 opened, reference %2 triangles after %3 ms, stock lightmap %4, probes %5")
                       .arg(mapFile.mid(6)).arg(cam->referenceTriangles()).arg(wt.elapsed()).arg(cam->hasStockLightmap() ? "yes" : "no")
                       .arg(cam->stockProbeCount());

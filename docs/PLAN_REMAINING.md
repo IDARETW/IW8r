@@ -123,7 +123,9 @@ side.
 - **Sun:** disc and flare.
 - **AO:** a strength setting.
 
-**1.5 Lighting for static models and props.**
+**1.5 Lighting for static models and props.** Core DONE 2026-11-13 (research 105): probe-lit props take their own
+light grid box (Hideout 12,131 of 12,367 placements). Open: SELFVIS (needs an ACTS change), the 236 lightmapped `tml`
+props (still the probes), Warzone tile grids (tile props fall back to the probes).
 - **Research.** The smodel vertex lighting (`AMBIENT_COLOR`, `HIGHLIGHT_DIR`, `SELFVIS`), the light grid (t102-t105:
   SH L1, index, heightfield, mask), and `PackedLmapCoords` for lightmapped `tml/` props. Use ACTS gfx_map exports and
   the Replay 1.20 disassembly.

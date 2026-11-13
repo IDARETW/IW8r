@@ -336,7 +336,8 @@ Texture2D tex0 : register(t0);
 Texture2D nrm0 : register(t1);
 SamplerState samp0 : register(s0);
 struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4; };
-struct PSIn { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 w : TEXCOORD1; float3 n : TEXCOORD2; float3 t : TEXCOORD3; float2 lm : TEXCOORD4; };
+struct PSIn { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 w : TEXCOORD1; float3 n : TEXCOORD2; float3 t : TEXCOORD3; float2 lm : TEXCOORD4;
+               float4 lgv : TEXCOORD5; };
 PSIn vs_tex(VSIn i) {
     PSIn o;
     float3 p = i.pos;
@@ -347,16 +348,28 @@ PSIn vs_tex(VSIn i) {
         float wave = 0.7 * sin(wind.z + ph) + 0.3 * sin(1.7 * wind.z + 1.3 * ph);
         p.xy += wind.xy * (h * h * wave);
     }
-    o.pos = mul(float4(p, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = p; o.n = i.n; o.t = i.t; o.lm = i.lm; return o;
+    o.pos = mul(float4(p, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = p; o.n = i.n; o.t = i.t; o.lm = i.lm;
+    return o;
 }
 // Textured instanced reference props: the model's vertices placed by three transform rows per instance.
-struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2; };
+struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
+                  float4 l0 : INSTROW3; float4 l1 : INSTROW4; float4 l2 : INSTROW5; };
 PSIn vs_tex_inst(VSInInst i) {
     float4 p = float4(i.pos, 1.0);
     float3 w = float3(dot(i.r0, p), dot(i.r1, p), dot(i.r2, p));
     // The model's vertex normal turned by the instance (uniform scale; zero = none: the pixel shader derives one).
     float3 nw = float3(dot(i.r0.xyz, i.n), dot(i.r1.xyz, i.n), dot(i.r2.xyz, i.n));
-    PSIn o; o.pos = mul(float4(w, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = w; o.n = dot(nw, nw) > 1e-12 ? normalize(nw) : float3(0, 0, 0); o.t = float3(0, 0, 0); o.lm = float2(-1, -1); return o;
+    PSIn o; o.pos = mul(float4(w, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = w; o.n = dot(nw, nw) > 1e-12 ? normalize(nw) : float3(0, 0, 0); o.t = float3(0, 0, 0); o.lm = float2(-1, -1);
+    // The prop's light grid box (research 105 section 1.4, DC + first order), per vertex with the vertex normal as the
+    // game's static-model shader does: E = 0.282095 DC + 4/9 0.488603 (s0 n.z - s2 n.y - s3 n.x), in lightmap units
+    // (the pixel shader applies bakedLightScale). Props have no tangent and no lightmap UV: E rides in t, marked by
+    // lm = (-2, -2) (propLight()). DC r < 0: none (the probes' fallback).
+    if (i.l0.x >= 0.0) {
+        const float3 dc = i.l0.xyz, s0 = float3(i.l0.w, i.l1.x, i.l1.y), s2 = float3(i.l1.z, i.l1.w, i.l2.x), s3 = i.l2.yzw;
+        o.t = max(0.282095 * dc + 0.217157 * (s0 * o.n.z - s2 * o.n.y - s3 * o.n.x), 0.0);
+        o.lm = float2(-2, -2);
+    }
+    return o;
 }
 // Sun shadow pass of textured batches: alpha-tested cut-outs (leaves, grates) cast their holes (research 66).
 
@@ -413,7 +426,11 @@ void ps_prepass(PSIn i) {
     if (gameTerrainCut.w > 0.5 && batchFlags2.z > 0.5 && i.col.a > 0.99 && i.col.a < 0.998 && distance(i.w.xy, gameTerrainCut.xy) < gameTerrainCut.z) discard;
 }
 Texture2D revealTex : register(t12);
+// vs_tex_inst: a prop lit from its light grid box carries that light in t (no tangent) and lm = (-2, -2).
+bool propLit(PSIn i) { return i.lm.x < -1.5; }
 float4 ps_tex(PSIn i) : SV_TARGET {
+    const float3 propLgv = propLit(i) ? i.t : float3(0, 0, 0);
+    if (propLit(i)) i.t = float3(0, 0, 0);  // no vertex tangent: the normal map frame from the screen derivatives
     // The coarse super terrain (vertex alpha 254) inside the near-camera layer patch: the patch draws the ground there.
     if (gameTerrainCut.w > 0.5 && batchFlags2.z > 0.5 && i.col.a > 0.99 && i.col.a < 0.998 && distance(i.w.xy, gameTerrainCut.xy) < gameTerrainCut.z) discard;
     if (tileFillHidden(i.col, i.w)) discard;
@@ -563,7 +580,9 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         }
         // Only where no lightmap lit the point: the probes' fallback light (it cost every lightmapped pixel two probe
         // lookups that were thrown away).
-        if (!lmOk && gameSky.w > 0.5 && probeCount.x > 0.5)
+        if (!lmOk && stockRef && propLit(i)) {
+            indirect = propLgv * gameSkyScale.y;  // the prop's light grid box (vs_tex_inst), x bakedLightScale
+        } else if (!lmOk && gameSky.w > 0.5 && probeCount.x > 0.5)
             indirect = stockProbeLight(i.w, N, 0.0) * dot(gameSky.rgb, float3(0.2126, 0.7152, 0.0722));
         // The sun: the baked sun depth where it covers the point (here the sun shadow map), else the lightmap's mask.
         if (litParams.y > 0.5) visibility = sunShadow(i.w);
@@ -1156,8 +1175,11 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
                     {"INSTROW", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+                    {"INSTROW", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 48, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+                    {"INSTROW", 4, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 64, D3D11_INPUT_PER_INSTANCE_DATA, 1},
+                    {"INSTROW", 5, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 80, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                 };
-                dev_->CreateInputLayout(tiil, 9, tivs->GetBufferPointer(), tivs->GetBufferSize(), &layoutTexInst_);
+                dev_->CreateInputLayout(tiil, 12, tivs->GetBufferPointer(), tivs->GetBufferSize(), &layoutTexInst_);
                 safeRelease(tivs);
             }
             D3D11_BUFFER_DESC bd{};
@@ -2342,13 +2364,15 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                 continue;
             }
             keep.insert(keep.end(), r, r + 12);
+            keep.insert(keep.end(), &g.light[i * 12], &g.light[i * 12] + 12);
             {
                 const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
                 const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-                if (dist <= rad || rad >= dist * pixelAngle * bigPx) keepBig.insert(keepBig.end(), r, r + 12);
+                if (dist <= rad || rad >= dist * pixelAngle * bigPx)
+                    keepBig.insert(keepBig.end(), r, r + 12), keepBig.insert(keepBig.end(), &g.light[i * 12], &g.light[i * 12] + 12);
             }
         }
-        g.big = unsigned(keepBig.size() / 12);
+        g.big = unsigned(keepBig.size() / 24);
         if (g.big && g.bigInst) {
             D3D11_MAPPED_SUBRESOURCE mb;
             if (SUCCEEDED(ctx_->Map(g.bigInst, 0, D3D11_MAP_WRITE_DISCARD, 0, &mb))) {
@@ -2358,7 +2382,7 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                 g.big = 0;
             }
         }
-        g.visible = unsigned(keep.size() / 12);
+        g.visible = unsigned(keep.size() / 24);
         if (g.visible) {
             D3D11_MAPPED_SUBRESOURCE ms;
             if (SUCCEEDED(ctx_->Map(g.visInst, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms))) {
@@ -2385,8 +2409,17 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
             bd.ByteWidth = UINT(m.tris.size() * sizeof(GpuTexVertex));
             D3D11_SUBRESOURCE_DATA init{m.tris.data(), 0, 0};
             if (SUCCEEDED(dev_->CreateBuffer(&bd, &init, &g.vb))) {
-                bd.ByteWidth = UINT(count * 12 * sizeof(float));
-                D3D11_SUBRESOURCE_DATA iinit{m.rows.data(), 0, 0};
+                // 24 floats per instance on the GPU: the 3 transform rows, then the prop's light (research 105).
+                g.light = m.light.size() == count * 12 ? m.light : std::vector<float>(count * 12, 0.0f);
+                if (m.light.size() != count * 12)
+                    for (size_t i = 0; i < count; ++i) g.light[i * 12] = -1.0f;  // none
+                std::vector<float> inst24(count * 24);
+                for (size_t i = 0; i < count; ++i) {
+                    std::memcpy(&inst24[i * 24], &m.rows[i * 12], 12 * sizeof(float));
+                    std::memcpy(&inst24[i * 24 + 12], &g.light[i * 12], 12 * sizeof(float));
+                }
+                bd.ByteWidth = UINT(count * 24 * sizeof(float));
+                D3D11_SUBRESOURCE_DATA iinit{inst24.data(), 0, 0};
                 if (SUCCEEDED(dev_->CreateBuffer(&bd, &iinit, &g.inst))) {
                     g.vertices = unsigned(m.tris.size());
                     g.instances = unsigned(count);
@@ -2446,7 +2479,7 @@ void SceneRenderer::drawReferenceTexInstances() {
     }
     ID3D11ShaderResourceView* noNrm = nullptr;
     ctx_->PSSetShaderResources(1, 1, &noNrm);
-    const UINT strides[2] = {UINT(sizeof(GpuTexVertex)), UINT(12 * sizeof(float))}, offsets[2] = {0, 0};
+    const UINT strides[2] = {UINT(sizeof(GpuTexVertex)), UINT(24 * sizeof(float))}, offsets[2] = {0, 0};
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
         const int id = g.texture >= 0 ? g.texture : whiteTex_;
@@ -2530,7 +2563,7 @@ void SceneRenderer::drawReferenceTexInstancesShadow() {
         ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
     }
     const bool instCb = psShadowClip_ && uploadInstParams();
-    const UINT strides[2] = {UINT(sizeof(GpuTexVertex)), UINT(12 * sizeof(float))}, offsets[2] = {0, 0};
+    const UINT strides[2] = {UINT(sizeof(GpuTexVertex)), UINT(24 * sizeof(float))}, offsets[2] = {0, 0};
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
         if (psShadowClip_) {

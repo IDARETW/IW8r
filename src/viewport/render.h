@@ -95,6 +95,10 @@ struct InstancedTexMesh {
     // Stock foliage: the model's last LOD distance (inches). The game stops drawing a placement beyond it (the grass
     // dissolves there with a dither); 0 = always drawn.
     float lodOut = 0;
+    // Per instance, the prop's light from its light grid box (research 105): 12 floats, DC rgb then the three first-
+    // order terms per channel (slots 0, 2, 3), before bakedLightScale; DC r < 0 = none (the probes' fallback). Empty:
+    // none for every instance.
+    std::vector<float> light;
 };
 
 struct TexturedBatch {
@@ -511,6 +515,7 @@ private:
         // Screen culling (cullTexInstances): the placements on the CPU, the model's bounding sphere in model space, and
         // a dynamic buffer of the placements that pass (drawn instead of `inst` while culling is on).
         std::vector<float> rows;
+        std::vector<float> light;  // InstancedTexMesh::light (12 per instance)
         float centre[3] = {0, 0, 0}, radius = 0;
         float lodOut = 0;  // InstancedTexMesh::lodOut
         int normal = -1;            // setReferenceInstNormal

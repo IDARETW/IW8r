@@ -22,6 +22,7 @@ namespace fs = std::filesystem;
 constexpr double kTranslationUnit = 1.0 / 4096.0;  // int32 translation, 1/4096 inch (docs/research/48 section 4)
 constexpr size_t kCollectionBytes = 16;            // GfxStaticModelCollection
 constexpr size_t kInstanceBytes = 24;              // GfxSModelInstanceData
+constexpr size_t kIndirectionBytes = 8;            // GfxModelStaticIndirection (docs/research/105 section 1.1)
 constexpr double kPi = 3.14159265358979323846;
 
 bool unhex(const std::string& hex, std::vector<uint8_t>& out) {
@@ -210,12 +211,37 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
     }
     const uint64_t instanceTotal = inst.size() / kInstanceBytes;
 
+    // Lighting indirection, one 8-byte record per instance row (optional: older exports may lack it; then the
+    // instances keep their defaults). A malformed array is ignored the same way.
+    std::vector<uint8_t> indir;
+    if (const Value* ind = sm->get("modelStaticIndirection")) {
+        const Value* ib = ind->get("bytes");
+        const Value* iv = ind->get("values");
+        if (ib && ib->string()) {
+            if (!unhex(*ib->string(), indir) || indir.size() % kIndirectionBytes != 0) indir.clear();
+        } else if (iv && iv->type == Value::Type::Array) {
+            for (const Value& r : iv->arr) {
+                const double li = num(r.get("lightingInstanceIndirection"));
+                put32(indir, li < 0 ? uint64_t(uint32_t(int64_t(li))) : uint64_t(li));
+                const uint32_t lo = uint32_t(num(r.get("splinedModelInstanceIndex"))) & 0xFFFF;
+                const uint32_t hi = uint32_t(num(r.get("worldTransient"))) & 0xFFFF;
+                put32(indir, uint64_t(lo | hi << 16));
+            }
+        }
+    }
+    const uint64_t indirTotal = indir.size() / kIndirectionBytes;
+
     std::vector<std::string> names;
+    std::vector<uint32_t> modelFlags;
     names.reserve(models->arr.size());
+    modelFlags.reserve(models->arr.size());
     for (const Value& m : models->arr) {
         const Value* mm = m.get("model");
         const std::string* n = mm && mm->get("name") ? mm->get("name")->string() : nullptr;
         names.push_back(n ? *n : std::string());
+        const Value* fl = m.get("flags");  // {"value": n, "name": "..."} or a plain number
+        const Value* fv = fl && fl->type == Value::Type::Object ? fl->get("value") : fl;
+        modelFlags.push_back(uint32_t(num(fv)));
     }
 
     const size_t collectionCount = coll.size() / kCollectionBytes;
@@ -243,6 +269,11 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
                                  orientComponent(u16At(inst, o + 16)), orientComponent(u16At(inst, o + 18)));
             s.scale = f32At(inst, o + 20);
             s.index = uint32_t(k);
+            s.modelFlags = modelFlags[size_t(model)];
+            if (k < indirTotal) {
+                s.lightingIndex = u32At(indir, size_t(k) * kIndirectionBytes);
+                s.worldTransient = u16At(indir, size_t(k) * kIndirectionBytes + 6);
+            }
             out.push_back(std::move(s));
         }
     }
