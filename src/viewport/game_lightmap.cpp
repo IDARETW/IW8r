@@ -59,6 +59,16 @@ std::shared_ptr<StockLightmapLayers> stockLightmapLayers(const StockLightmap& lm
     }
     out->rects.assign(size_t(std::max(lm.index, 0)) + 1, {0, 0, 0, 0});
     out->rects[size_t(std::max(lm.index, 0))] = {0, 0, 1, 1};
+    double sum[3] = {0, 0, 0};
+    size_t lit = 0;
+    for (size_t i = 0; i < n; ++i) {
+        const float* c = &lm.irradiance[i * 3];
+        if (c[0] + c[1] + c[2] <= 1e-4f) continue;  // padding and unused texels
+        for (int k = 0; k < 3; ++k) sum[k] += c[k];
+        ++lit;
+    }
+    if (lit)
+        for (int k = 0; k < 3; ++k) out->meanIrradiance[size_t(k)] = float(sum[k] / double(lit));
     return out;
 }
 
@@ -79,6 +89,7 @@ std::shared_ptr<StockLightmapLayers> stockLightmapAtlas(const std::vector<StockL
     while (W < widest || size_t(W) * size_t(W) < area) W *= 2;
     W = std::min(W, 16384);
     struct Place { const StockLightmap* l; int x, y; };
+    double weight = 0;
     std::vector<Place> places;
     int x = 0, y = 0, shelf = 0;
     for (const StockLightmap* l : list) {
@@ -103,7 +114,12 @@ std::shared_ptr<StockLightmapLayers> stockLightmapAtlas(const std::vector<StockL
             std::copy_n(one->d.begin() + src, size_t(one->width) * 4, out->d.begin() + dst);
         }
         out->rects[size_t(p.l->index)] = {float(p.x) / W, float(p.y) / H, float(p.l->width) / W, float(p.l->height) / H};
+        const double texels = double(p.l->width) * double(p.l->height);
+        for (int k = 0; k < 3; ++k) out->meanIrradiance[size_t(k)] += float(one->meanIrradiance[size_t(k)] * texels);
+        weight += texels;
     }
+    if (weight > 0)
+        for (float& m : out->meanIrradiance) m = float(m / weight);
     return out;
 }
 

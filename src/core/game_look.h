@@ -59,6 +59,9 @@ struct StockMapLook {
 };
 // The known shipped maps; null for others.
 const StockMapLook* stockMapLook(const std::string& map);
+// The shipped map whose sun intensity is nearest (in log terms) to `sunIntensity`: the converter's own way of giving a
+// map an exposure (iw3_vision.cpp MatchIw8Lighting). mp_br_tut's sun equals mp_m_speedball's, for example.
+const StockMapLook& stockMapLookNearest(double sunIntensity);
 const std::vector<StockMapLook>& stockMapLooks();
 
 // sRGB texture value to linear (the game samples colour maps as sRGB).

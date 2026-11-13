@@ -2454,7 +2454,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             }
             const QImage stockLook = cv->renderImage(320, 180, true, 0, 0);
             r.check(guess > 0 && last > 0 && std::isfinite(last) && std::fabs(std::log(last / manual)) > 0.05,
-                    QString("a stock map's look meters its exposure (fixed %1, first guess %2, after 4 s %3)")
+                    QString("a stock map's look sets its own exposure (own map %1, stock map %2, after 4 s %3)")
                         .arg(manual, 0, 'f', 3).arg(guess, 0, 'f', 3).arg(last, 0, 'f', 3));
             const QByteArray shot2 = qgetenv("IW8R_GAME_LOOK_SHOT");
             if (!shot2.isEmpty()) stockLook.save(QString::fromLocal8Bit(shot2).replace(".png", "_stocklook.png"));

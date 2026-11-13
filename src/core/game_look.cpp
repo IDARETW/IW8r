@@ -246,6 +246,17 @@ std::vector<float> gameTonemapInverseGrey(int n) {
     return inv;
 }
 
+const StockMapLook& stockMapLookNearest(double sunIntensity) {
+    const auto& all = stockMapLooks();
+    size_t best = 0;
+    double bestD = 1e300;
+    for (size_t k = 0; k < all.size(); ++k) {
+        const double d = std::fabs(std::log(std::max(sunIntensity, 1e-3) / all[k].sunIntensity));
+        if (d < bestD) bestD = d, best = k;
+    }
+    return all[best];
+}
+
 double srgbToLinear(double c) { return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4); }
 
 double gameLightIntensity(double radius, double reference) {

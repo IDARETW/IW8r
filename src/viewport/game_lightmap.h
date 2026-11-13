@@ -64,6 +64,8 @@ struct StockLightmapLayers {
     std::vector<float> a, b, d;
     // Per lightmap index: its rectangle in the layers (x, y, width, height, all 0..1); zero = not loaded.
     std::vector<std::array<float, 4>> rects;
+    // The mean irradiance C over the lightmapped texels (Game Lighting lights props and models at this level).
+    std::array<float, 3> meanIrradiance{0, 0, 0};
 };
 std::shared_ptr<StockLightmapLayers> stockLightmapLayers(const StockLightmap& lm);
 // Several lightmaps (a Warzone map's, by StockLightmap::index) packed into one atlas (shelves, 1-texel gaps).

@@ -8,6 +8,9 @@
 #include "asset_usage_dialog.h"
 #include "material_clone.h"
 #include "uv_editor.h"
+#include <QJsonObject>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <QElapsedTimer>
 #include <QThread>
 #include "cache_manager.h"
@@ -6824,6 +6827,49 @@ void MainWindow::loadStockLightmap(const QString& zone) {
     }).detach();
 }
 
+void MainWindow::loadStockSun(const QString& zone) {
+    const QString acts = toolPath("acts"), replay = toolPath("replay"), oodle = toolPath("oodle");
+    const QString ff = QFileInfo(replay).absolutePath() + "/zone/" + zone + ".ff";
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/world_cache/" + zone + "/com_map";
+    QPointer<MainWindow> self(this);
+    std::thread([self, zone, acts, replay, oodle, ff, dir] {
+        const auto findJson = [&] {
+            for (QDirIterator it(dir, {"*.json"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
+                const QString f = it.next();
+                if (f.contains("/assets/com_map/")) return f;
+            }
+            return QString();
+        };
+        QString json = findJson();
+        if (json.isEmpty() && QFileInfo::exists(acts) && QFileInfo::exists(ff)) {
+            QProcess p;
+            p.start(acts, {"--noUpdater", "fastfile", "-r", "mw19replay", "-g", replay, "--oodle", oodle, "-a", "com_map", "-l", "-o", dir, ff});
+            p.waitForFinished(120000);
+            json = findJson();
+        }
+        double intensity = 0;
+        Vec3 color{1, 1, 1}, toward{0, 0, 1};
+        QFile f(json);
+        if (!json.isEmpty() && f.open(QIODevice::ReadOnly)) {
+            const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+            const QJsonArray lights = root["asset"].toObject()["fields"].toObject()["primaryLights"].toObject()["values"].toArray();
+            for (const QJsonValue& lv : lights) {
+                const QJsonObject l = lv.toObject();
+                if (l["type"].toInt() != 1) continue;  // the sun
+                intensity = l["intensity"].toDouble();
+                const QJsonArray c = l["colorLinearSrgb"].toObject()["v"].toArray(), d = l["dir"].toObject()["v"].toArray();
+                if (c.size() == 3) color = Vec3{c[0].toDouble(), c[1].toDouble(), c[2].toDouble()};
+                if (d.size() == 3) toward = normalize(Vec3{d[0].toDouble(), d[1].toDouble(), d[2].toDouble()});
+                break;
+            }
+        }
+        QMetaObject::invokeMethod(qApp, [self, zone, intensity, color, toward] {
+            if (!self || self->referenceZone_ != zone || intensity <= 0) return;
+            self->camera_->setGameStockSun(intensity, color, toward);
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
 void MainWindow::loadStockProbes(const QString& zone) {
     const std::optional<QString> file = worldCache_ ? worldCache_->probesFile(zone) : std::nullopt;
     if (!file) return;
@@ -6950,6 +6996,7 @@ void MainWindow::loadStockReference(const QString& zone) {
             // Game Lighting draws the stock world with its own lightmap (research 94): cached, or made now.
             self->camera_->setStockLightmap(nullptr);
             self->camera_->setStockProbes(nullptr);
+            self->loadStockSun(zone);
             const bool haveLm = self->worldCache_->lightmapFile(zone) || !self->worldCache_->lightmapIndices(zone).isEmpty();
             if (haveLm) self->loadStockLightmap(zone);
             if (self->worldCache_->probesFile(zone)) self->loadStockProbes(zone);

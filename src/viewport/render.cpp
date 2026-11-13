@@ -302,6 +302,9 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? float3(1, 1, 1) : i.col.rgb);  // i.col: selection and brush entity tints
         if (!stockRef && i.col.a < 0.5) return float4(gamePost(albedo), 1.0);  // sky box: unlit
         float3 Nf = dot(i.n, i.n) > 0.5 ? normalize(i.n) : normalize(cross(ddx(i.w), ddy(i.w)));
+        // A normal from the screen derivatives has no reliable side (instanced props have none of their own): it faces
+        // the viewer.
+        if (dot(i.n, i.n) <= 0.5 && dot(Nf, eyeStart.xyz - i.w) < 0) Nf = -Nf;
         float3 N = Nf;
         if (batchFlags.x > 0.5 && dot(i.n, i.n) > 0.5) {
             float4 nm = nrm0.Sample(samp0, i.uv);
@@ -311,7 +314,12 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             float3 T = normalize(i.t - Nf * dot(i.t, Nf)), B = cross(Nf, T);
             N = normalize(T * slope.x + B * slope.y + Nf);
         }
+        // Without a lightmap texel (props, models, new brushes): on a stock map the game lights them from its light grid;
+        // here from the reflection probes' blurriest level (luminance-normalised) at the map's mean baked light
+        // (gameSky.rgb, gameSky.w = 1); otherwise the unbaked light.
         float3 indirect = gameSky.rgb * (0.6 + 0.4 * saturate(N.z));
+        if (gameSky.w > 0.5 && probeCount.x > 0.5)
+            indirect = stockProbeLight(i.w, N, 0.0) * dot(gameSky.rgb, float3(0.2126, 0.7152, 0.0722));
         float3 stockDw = Nf, stockB = 0;  // the stock lightmap's directional part, for E(R) below
         float visibility = 1.0;
         float2 lmUv = i.lm;
@@ -564,6 +572,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(rsTris_);
     safeRelease(rsLines_);
     safeRelease(dsWrite_);
+    safeRelease(blendNoColor_);
     safeRelease(dsTest_);
     safeRelease(dsOff_);
     safeRelease(blend_);
@@ -764,6 +773,12 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
     bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
     bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
     dev_->CreateBlendState(&bd, &blend_);
+    {
+        D3D11_BLEND_DESC nb{};
+        nb.RenderTarget[0].BlendEnable = FALSE;
+        nb.RenderTarget[0].RenderTargetWriteMask = 0;
+        dev_->CreateBlendState(&nb, &blendNoColor_);
+    }
     bd.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
     bd.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
     dev_->CreateBlendState(&bd, &blendAdd_);
@@ -987,7 +1002,7 @@ void SceneRenderer::writeGameCb() {
     const float g[16] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
                          game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], 0,
                          game_.sunColor[0], game_.sunColor[1], game_.sunColor[2], 0,
-                         game_.sky[0], game_.sky[1], game_.sky[2], 0};
+                         game_.sky[0], game_.sky[1], game_.sky[2], game_.skyIsStock ? 1.0f : 0.0f};
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
     ID3D11ShaderResourceView* gl[3] = {gameLutSrv_, envBrdfSrv_, probeArrSrv_};
@@ -1265,10 +1280,10 @@ void SceneRenderer::drawReferenceTexInstances() {
     if (refTexInst_.empty() || !vsTexInst_ || !layoutTexInst_ || !psTex_) return;
     ctx_->IASetInputLayout(layoutTexInst_);
     ctx_->VSSetShader(vsTexInst_, nullptr, 0);
-    ctx_->PSSetShader(psTex_, nullptr, 0);
+    ctx_->PSSetShader(texPsOverride_ ? texPsOverride_ : psTex_, nullptr, 0);
     ctx_->PSSetSamplers(0, 1, &sampler_);
     if (cbBatch_) {
-        const float flags[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        const float flags[8] = {0, 0, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};
         ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
         ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
         ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
@@ -1693,6 +1708,70 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
     const iw8r::Frustum frustum = iw8r::frustumFromViewProj(viewProj);
     texCulledLast_ = 0;
+    // Game Lighting: depth pre-pass of the opaque textured geometry (scene batches, the stock world, the stock props).
+    const bool prepass = game_.on && psShadowClip_ && blendNoColor_ && vsTex_ && layoutTex_ && sampler_;
+    if (prepass) {
+        IW8R_PROF("d.prepass");
+        ctx_->OMSetBlendState(blendNoColor_, bf, 0xffffffff);
+        ctx_->OMSetDepthStencilState(dsWrite_, 0);
+        ctx_->RSSetState(rsTris_);
+        ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        ctx_->IASetInputLayout(layoutTex_);
+        ctx_->VSSetShader(vsTex_, nullptr, 0);
+        ctx_->PSSetShader(psShadowClip_, nullptr, 0);
+        ctx_->PSSetSamplers(0, 1, &sampler_);
+        if (cbBatch_) ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
+        if (cbWind_) {
+            ctx_->UpdateSubresource(cbWind_, 0, nullptr, wind_, 0, 0);
+            ctx_->VSSetConstantBuffers(3, 1, &cbWind_);
+        }
+        for (const BatchDraw& d : drawList_) {
+            const SceneBatch& b = *d.b;
+            StreamGpu& g = *d.g;
+            if (b.blend || b.texture < 0 || size_t(b.texture) >= textures_.size()) continue;
+            if (cbBatch_) {  // the same vertex inputs as the shading pass (sway), so the depths match exactly
+                const float flags[8] = {0, float(b.blend), b.sway ? 1.0f : 0.0f, b.baseZ, 0, 0, 0, 0};
+                ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+            }
+            ctx_->PSSetShaderResources(0, 1, &textures_[size_t(b.texture)]);
+            ctx_->IASetVertexBuffers(0, 1, &g.vb, &tstride, &offset);
+            if (refCulling_ && g.chunked && !g.chunks.empty()) {
+                ctx_->IASetIndexBuffer(g.ib, DXGI_FORMAT_R32_UINT, 0);
+                forVisibleRuns(frustum, g.chunks, [&](uint32_t first, uint32_t n) { drawIdx(n * 3, first * 3); });
+            } else {
+                drawN(UINT(b.v.size()), 0);
+            }
+        }
+        if (vbRefTex_ && refVisible_) {
+            if (cbBatch_) {
+                const float flags[8] = {0, 0, 0, 0, 0, 0, 1.0f, 0};
+                ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+            }
+            ctx_->IASetVertexBuffers(0, 1, &vbRefTex_, &tstride, &offset);
+            for (size_t k = 0; k < refTexIds_.size(); ++k) {
+                const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
+                if (id < 0 || size_t(id) >= textures_.size()) continue;
+                ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]);
+                if (refCulling_ && k < refTexChunks_.size() && !refTexChunks_[k].empty())
+                    forVisibleRuns(frustum, refTexChunks_[k], [&](uint32_t first, uint32_t n) { drawN(n * 3, refTexFirst_[k] + first * 3); });
+                else
+                    drawN(refTexCount_[k], refTexFirst_[k]);
+            }
+        }
+        if (refVisible_ && !refTexInst_.empty()) {
+            texPsOverride_ = psShadowClip_;
+            drawReferenceTexInstances();
+            texPsOverride_ = nullptr;
+        }
+        ID3D11ShaderResourceView* noTex[1] = {nullptr};
+        ctx_->PSSetShaderResources(0, 1, noTex);
+        ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
+        ctx_->IASetInputLayout(layout_);
+        ctx_->VSSetShader(vs_, nullptr, 0);
+        ctx_->PSSetShader(ps_, nullptr, 0);
+    }
+    // After the pre-pass the opaque textured geometry only tests depth (equal depths pass LESS_EQUAL).
+    ID3D11DepthStencilState* texOpaqueDs = prepass ? dsTest_ : dsWrite_;
     if (!drawList_.empty()) {
         // One vertex buffer per batch; one draw per texture, or one per run of visible chunks.
         IW8R_PROF("d.tex");
@@ -1701,7 +1780,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         ctx_->PSSetShader(psTex_, nullptr, 0);
         ctx_->PSSetSamplers(0, 1, &sampler_);
         ctx_->RSSetState(rsTris_);
-        ctx_->OMSetDepthStencilState(dsWrite_, 0);
+        ctx_->OMSetDepthStencilState(texOpaqueDs, 0);
         ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         if (cbBatch_) ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
         if (cbBatch_) ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
@@ -1790,7 +1869,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         ctx_->PSSetShader(psTex_, nullptr, 0);
         ctx_->PSSetSamplers(0, 1, &sampler_);
         ctx_->RSSetState(rsTris_);
-        ctx_->OMSetDepthStencilState(dsWrite_, 0);
+        ctx_->OMSetDepthStencilState(texOpaqueDs, 0);
         ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ctx_->IASetVertexBuffers(0, 1, &vbRefTex_, &tstride, &offset);
         writeGameCb();
@@ -1850,7 +1929,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     }
     if (refVisible_ && !refTexInst_.empty()) {  // the same props with their textures
         ctx_->RSSetState(rsTris_);
-        ctx_->OMSetDepthStencilState(dsWrite_, 0);
+        ctx_->OMSetDepthStencilState(texOpaqueDs, 0);
         ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         drawReferenceTexInstances();
     }

@@ -160,6 +160,7 @@ void CameraView::render() {
         const auto& l = pendingStockLm_;
         if (l && l->width > 0) renderer_.setStockLightmap(l->width, l->height, l->a.data(), l->b.data(), l->d.data(), l->rects);
         else renderer_.setStockLightmap(0, 0, nullptr, nullptr, nullptr);
+        stockMeanLight_ = l ? l->meanIrradiance : std::array<float, 3>{0, 0, 0};
         pendingStockLm_.reset();
         stockLmDirty_ = false;
     }
@@ -475,7 +476,8 @@ void CameraView::render() {
         // The sun shadow map covers the box around every item.
         const AABB& sb = geo_.sceneBounds();
         if (sb.valid()) {
-            const double t[3] = {ctx_->scene.sunToward.x, ctx_->scene.sunToward.y, ctx_->scene.sunToward.z};
+            const Vec3 st = gameLookOn() ? gameSunToward() : ctx_->scene.sunToward;
+            const double t[3] = {st.x, st.y, st.z};
             const double lo[3] = {sb.mins.x - 64, sb.mins.y - 64, sb.mins.z - 64}, hi[3] = {sb.maxs.x + 64, sb.maxs.y + 64, sb.maxs.z + 64};
             float m[16];
             app::sunShadowMatrix(t, lo, hi, m);
@@ -1572,6 +1574,16 @@ size_t CameraView::referenceTexturesResolved() const {
 
 bool CameraView::gameLookOn() const { return ctx_->scene.gameLook && ctx_->texturedView && !ctx_->scene.captureMode; }
 
+const StockMapLook* CameraView::gameStockLook() const {
+    if (gameStockMap_.empty()) return nullptr;
+    if (const StockMapLook* l = stockMapLook(gameStockMap_)) return l;
+    return stockSunKnown_ ? &stockMapLookNearest(stockSunIntensity_) : nullptr;
+}
+
+Vec3 CameraView::gameSunToward() const {
+    return !gameStockMap_.empty() && stockSunKnown_ ? stockSunToward_ : ctx_->scene.sunToward;
+}
+
 namespace {
 // The worldspawn's "r g b intensity" sky for the bake (iw8r_bake_sky), default a pale blue at 0.35 of the sun.
 iw8r::Vec3 gameSkyOf(const iw8r::Document& doc) {
@@ -1626,20 +1638,30 @@ void CameraView::prepareGameLook() {
             renderer_.setEnvBrdfLut(pendingEnvBrdfW_, pendingEnvBrdfH_, pendingEnvBrdf_->data());
             pendingEnvBrdf_.reset();
         }
-        const Vec3& t = ctx_->scene.sunToward;
-        // A stock map: its own sun (colour x intensity) and its vision's auto exposure; an own map: suncolor and the
-        // converter's fixed exposure (iw3 style, EV 10).
-        const StockMapLook* stock = gameStockMap_.empty() ? nullptr : stockMapLook(gameStockMap_);
+        const Vec3 t = gameSunToward();
+        // A stock map: its own sun (read from its ComWorld, else the shipped table) and the exposure of its vision (or
+        // of the shipped map with the nearest sun); an own map: suncolor and the converter's fixed exposure (EV 10).
+        const StockMapLook* stock = gameStockLook();
         Vec3 c = ctx_->scene.sunColor;
         GameExposure exposure;
         if (stock) {
-            c = Vec3{stock->sunColor[0], stock->sunColor[1], stock->sunColor[2]} * stock->sunIntensity;
+            c = stockSunKnown_ ? stockSunColor_ * stockSunIntensity_
+                               : Vec3{stock->sunColor[0], stock->sunColor[1], stock->sunColor[2]} * stock->sunIntensity;
             exposure = stock->exposure;
         }
         g.sunToward[0] = float(t.x), g.sunToward[1] = float(t.y), g.sunToward[2] = float(t.z);
         g.sunColor[0] = float(c.x), g.sunColor[1] = float(c.y), g.sunColor[2] = float(c.z);
         const Vec3 sky = gameSkyOf(ctx_->doc);
         g.sky[0] = float(sky.x), g.sky[1] = float(sky.y), g.sky[2] = float(sky.z);
+        if (stock && stockMeanLight_[0] + stockMeanLight_[1] + stockMeanLight_[2] > 0) {
+            for (int k = 0; k < 3; ++k) g.sky[k] = stockMeanLight_[size_t(k)];
+            g.skyIsStock = true;
+        }
+        // Stock maps: the exposure their vision gives a mid-bright scene (its mid EV), held fixed. Metering the frame
+        // counted the editor's own empty background and markers (the game meters its sky and world only), which drove
+        // the exposure up and washed the world out, and it kept the view repainting.
+        exposure.autoExposure = false;
+        if (stock) exposure.ev = stock->exposure.midEv, exposure.exposureAdjust = stock->exposure.midAdjust + stock->exposure.exposureAdjust;
         if (exposure.autoExposure != gameMetering_) {
             gameMetering_ = exposure.autoExposure;
             if (gameMetering_) {
@@ -1694,10 +1716,11 @@ void CameraView::maybeBakeGameLook() {
     in.scene.skyIntensity = 1.0;
     // Brushes added to a stock map are lit in that map's units: its sun (colour x intensity) and a sky in the same
     // proportion, so they sit next to the stock world's own lightmap (whose sky light is in those units too).
-    if (const StockMapLook* stock = gameStockMap_.empty() ? nullptr : stockMapLook(gameStockMap_)) {
-        in.scene.sunColor = Vec3{stock->sunColor[0], stock->sunColor[1], stock->sunColor[2]};
-        in.scene.sunIntensity = stock->sunIntensity;
-        in.scene.skyIntensity = stock->sunIntensity;
+    if (const StockMapLook* stock = gameStockLook()) {
+        in.scene.sunColor = stockSunKnown_ ? stockSunColor_ : Vec3{stock->sunColor[0], stock->sunColor[1], stock->sunColor[2]};
+        in.scene.sunIntensity = stockSunKnown_ ? stockSunIntensity_ : stock->sunIntensity;
+        in.scene.skyIntensity = in.scene.sunIntensity;
+        in.scene.sunDir = gameSunToward();
         in.key ^= 0x5157u;
     }
     for (const auto& L : ctx_->scene.lights) {

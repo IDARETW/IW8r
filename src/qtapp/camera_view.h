@@ -7,6 +7,7 @@
 
 #include "stock_probes.h"
 #include "game_lightmap.h"
+#include "game_look.h"
 #include "vfx_sim.h"
 #include "atmosphere.h"
 #include "foliage_sway.h"
@@ -152,8 +153,15 @@ public slots:
     // The stock map shown as the reference ("" = none): Game Lighting then uses that map's sun and auto exposure
     // (core game_look stockMapLook).
     void setGameStockMap(const std::string& zone) {
-        if (zone != gameStockMap_) gameBakeRev_ = ~0ull;  // the preview bake follows that map's sun
+        if (zone != gameStockMap_) gameBakeRev_ = ~0ull, stockSunKnown_ = false;  // the preview bake follows that map's sun
         gameStockMap_ = zone;
+        update();
+    }
+    // The stock map's own sun (its ComWorld sun light: intensity, linear colour, direction toward the sun).
+    void setGameStockSun(double intensity, const Vec3& color, const Vec3& toward) {
+        stockSunKnown_ = intensity > 0;
+        stockSunIntensity_ = intensity, stockSunColor_ = color, stockSunToward_ = toward;
+        gameBakeRev_ = ~0ull;
         update();
     }
     // The stock reference's own lightmap (null clears it), sent to the renderer on the next frame.
@@ -365,11 +373,18 @@ private:
     std::shared_ptr<const app::GameLightmap> gameLm_;
     bool gameBaking_ = false, gameLutReady_ = false, gameWasOn_ = false, gameMetering_ = false;
     std::string gameStockMap_;
+    bool stockSunKnown_ = false;
+    double stockSunIntensity_ = 0;
+    Vec3 stockSunColor_{1, 1, 1}, stockSunToward_{0, 0, 1};
+    // The stock map's look for Game Lighting: its own entry, else the shipped map with the nearest sun.
+    const StockMapLook* gameStockLook() const;
+    Vec3 gameSunToward() const;
     std::function<QString(const QString&)> toolPathFn_;
     bool envBrdfAsked_ = false;
     std::shared_ptr<std::vector<uint8_t>> pendingEnvBrdf_;
     int pendingEnvBrdfW_ = 0, pendingEnvBrdfH_ = 0;
     std::shared_ptr<const app::StockLightmapLayers> pendingStockLm_;
+    std::array<float, 3> stockMeanLight_{0, 0, 0};
     bool stockLmDirty_ = false;
     std::shared_ptr<const StockProbeSet> pendingProbes_;
     bool probesDirty_ = false;

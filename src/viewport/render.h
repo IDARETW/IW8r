@@ -253,6 +253,7 @@ public:
         float sunToward[3] = {0, 0, 1};
         float sunColor[3] = {1, 1, 1};
         float sky[3] = {0.2f, 0.2f, 0.2f};
+        bool skyIsStock = false;  // sky = the stock map's mean baked light: unlit surfaces take the probes at that level
         float lutScale = 1.0f;
     };
     void setGameLook(const GameLook& g) { game_ = g; }
@@ -439,6 +440,10 @@ private:
     ID3D11Buffer* cbLmRects_ = nullptr;
     static constexpr int kMaxLightmapRects = 1024;
     ID3D11Texture2D* envBrdfTex_ = nullptr;
+    // Game Lighting's depth pre-pass (the game shader is costly and its alpha clip stops early depth rejection): depth
+    // first through the clip shader with colour writes off, then the shading pass tests depth without writing it.
+    struct ID3D11BlendState* blendNoColor_ = nullptr;
+    ID3D11PixelShader* texPsOverride_ = nullptr;  // set during the pre-pass: drawReferenceTexInstances uses it
     ID3D11Texture2D* probeArrTex_ = nullptr;
     ID3D11ShaderResourceView* probeArrSrv_ = nullptr;
     ID3D11Buffer* cbProbes_ = nullptr;
