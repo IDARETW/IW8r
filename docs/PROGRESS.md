@@ -24,6 +24,13 @@
   fogSkyIntensity and the zenith band; metered auto exposure on stock maps while their sky is drawn; Shipment's sky
   (only tw/sky_* is the sky box; sky_<map> fallback). Bench: out/agent/mapcam.ps1 -Name -Map -Cam (caches in the
   session scratchpad: E: is nearly full).
+- Late evening: stock decal volumes (research 99: paint stripes, stains; projected on the world, ACTS
+  decalvolumematerial / decalvolumemask, image exporter), King's bakedLightScale (1/64), the sky exporters look in
+  the open map's zones (Speed), sky brightness from the world's own sky material, probe fallback for far terrain,
+  material cache ACTS runs in a short temp folder (260-character paths), a dangling reference in the stock batch
+  builder fixed. Checked every map with a zone in this install (Aniyah Tac, Backlot, Emporium, Fork, Hideout, King,
+  Rust, Shipment, Speed, Speedball, Village) from a path-node camera: IW8R_BENCH_CAM="ent node_pathnode N [yaw] [fov]".
+  Bench caches live in a short temp path on purpose (AppData\Local\Temp\iwb). Installer rebuilt (no ini).
 - Checked: Speedball (against the owner's shot), Shipment (overcast port, fog), Hideout (desert, pale sky),
   King (indoor; exposure meters to EV ~7.5 inside). Open: Speedball wall paint stripes (decal volumes?), Hideout's
   far ridge dark, displacement not drawn (Speedball: 34 triangles, negligible), converted maps' sky in game
