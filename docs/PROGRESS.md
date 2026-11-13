@@ -81,7 +81,9 @@
   moving_window scenario (cameraMoved + event loop each step): 182 ms per step, the grid views drawing every model
   triangle. Fixed (grid_view.cpp: models as boxes unless selected; camera moves repaint only the marker area):
   about 6 ms per step for the window. The camera itself draws about 17.9 M triangles on mp_rust (7 ms on an idle GPU).
-  The owner accepted the handover (2026-11-12) after this fix.
+  The owner accepted the handover (2026-11-12) and is now doing some of the optional in-game looks (docs/HANDOVER.md
+  section 4, plus the frame rate after restarting the editor) before calling it finished: wait for that report and fix
+  what comes back.
 - Tests at the last commit: core 139,820 checks / 0, GUI 948 / 0.
 - Open (in scope): copying or removing a placed object that has a dynamic entity;
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.
