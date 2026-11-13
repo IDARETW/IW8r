@@ -89,6 +89,9 @@ struct StockWorld {
     // layerNormalTransform[m][k * (layerCount[m] - 1) + (L - 1)]. 0xFF8080FF (identity) where the surface has none.
     std::vector<std::vector<uint32_t>> layerNormalTransform;
     size_t layeredSurfaces = 0;  // surfaces with layerCount >= 2
+    // GfxWorldDraw.bakedLightScale: the factor the game applies to the baked light (lightmaps; research 95). 1 on most
+    // maps, 1/64 on mp_m_king (an indoor map whose lightmaps were stored 6 EV brighter).
+    double bakedLightScale = 1.0;
     size_t colorSurfaces = 0;    // surfaces whose vertices got a colour record
     AABB bounds;                        // over every vertex used by a triangle (includes sky geometry)
     std::vector<std::string> warnings;  // non-fatal: surfaces skipped, index range problems

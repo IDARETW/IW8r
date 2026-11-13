@@ -244,9 +244,45 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
     // Fixed cameras: `a` sees the whole map from a corner, `b` stands inside it near the middle.
     // IW8R_BENCH_CAM="x y z yaw pitch [fov]" puts camera a where a comparison needs it (an in-game screenshot's spot).
     double benchCam[6] = {0, 0, 0, 0, 0, 90};
-    const QStringList camParts = qEnvironmentVariable("IW8R_BENCH_CAM").split(' ', Qt::SkipEmptyParts);
-    const bool fixedCam = camParts.size() >= 5;
+    QStringList camParts = qEnvironmentVariable("IW8R_BENCH_CAM").split(' ', Qt::SkipEmptyParts);
+    bool fixedCam = camParts.size() >= 5;
     for (int k = 0; k < camParts.size() && k < 6; ++k) benchCam[k] = camParts[k].toDouble();
+    if (qEnvironmentVariableIsSet("IW8R_BENCH_CLASSES")) {  // diagnosis: the most common entity classnames
+        std::map<std::string, int> cls;
+        for (const auto& e : ctx.doc.map().entities) ++cls[e.classname()];
+        std::vector<std::pair<int, std::string>> v;
+        for (const auto& [c, n] : cls) v.push_back({n, c});
+        std::sort(v.rbegin(), v.rend());
+        QStringList l;
+        for (size_t i = 0; i < v.size() && i < 15; ++i) l << QString("%1=%2").arg(QString::fromStdString(v[i].second)).arg(v[i].first);
+        report << "classes " + l.join(' ');
+    }
+    // IW8R_BENCH_CAM="spawn N [fov]" / "ent <classname part> N [yaw] [fov]": stand at the Nth entity whose classname
+    // contains "spawn" (or the given part; stock maps without spawns in their entity string have node_pathnode on
+    // their floors), eye height, facing its yaw (or the given one).
+    if ((camParts.size() >= 2 && camParts[0] == "spawn") || (camParts.size() >= 3 && camParts[0] == "ent")) {
+        const bool byClass = camParts[0] == "ent";
+        const std::string part = byClass ? camParts[1].toStdString() : std::string("spawn");
+        if (byClass) camParts.removeAt(1);
+        int n = camParts[1].toInt(), seen = 0;
+        for (const auto& e : ctx.doc.map().entities) {
+            if (e.classname().find(part) == std::string::npos || !e.origin()) continue;
+            if (seen++ < n) continue;
+            const Vec3 o = *e.origin();
+            double yaw = 0;
+            if (const std::string* an = e.value("angles")) {
+                const QStringList a = QString::fromStdString(*an).split(' ', Qt::SkipEmptyParts);
+                if (a.size() >= 2) yaw = a[1].toDouble();
+            }
+            if (byClass && camParts.size() >= 3) yaw = camParts[2].toDouble();
+            benchCam[0] = o.x, benchCam[1] = o.y, benchCam[2] = o.z + 60, benchCam[3] = yaw, benchCam[4] = -5;
+            benchCam[5] = camParts.size() >= (byClass ? 4 : 3) ? camParts[byClass ? 3 : 2].toDouble() : 100;
+            fixedCam = true;
+            report << QString("bench_cam spawn %1 (%2) at %3 %4 %5 yaw %6").arg(n).arg(QString::fromStdString(e.classname()))
+                          .arg(o.x).arg(o.y).arg(o.z).arg(yaw);
+            break;
+        }
+    }
     {
         // Where the point entities cluster (spawns, markers): the play area of a stock map.
         std::vector<double> xs, ys, zs;

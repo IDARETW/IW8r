@@ -413,6 +413,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             float3 b = gameLmB.SampleLevel(lutSamp, lmUv, 0).rgb;
             float3 d = gameLmD.SampleLevel(lutSamp, lmUv, 0).xyz;
             if (stockRef) {
+                a.rgb *= gameSkyScale.y, b *= gameSkyScale.y;  // the map's bakedLightScale
                 // Stock: light = f C + (1 - f) C / D.z x sat(N . Dw), D in the surface's tangent frame (here the texture
                 // frame from the derivatives; on a flat normal N . Dw = D.z whatever the frame).
                 float3 dp1 = ddx(i.w), dp2 = ddy(i.w);
@@ -1103,6 +1104,7 @@ void SceneRenderer::writeGameCb() {
     for (int r = 0; r < 6; ++r)
         for (int k = 0; k < 4; ++k) g[16 + 4 * r + k] = game_.fog[r][k];
     g[40] = game_.skyScale;
+    g[41] = game_.bakedScale;
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
     ID3D11ShaderResourceView* gl[3] = {gameLutSrv_, envBrdfSrv_, probeArrSrv_};

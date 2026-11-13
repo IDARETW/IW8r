@@ -1800,9 +1800,10 @@ void CameraView::prepareGameLook() {
         }
         // The sky preview is an 8-bit copy of the HDR stock sky times its conversion exposure: undo it, so the sky has
         // its own radiance in the game's light units (and the post chain exposes it like the rest).
+        if (stock) g.bakedScale = float(stockBakedScale_);
         if (stock && skyExposure_ > 0) g.skyScale = float((stockSkyIntensity_ > 0 ? stockSkyIntensity_ : 1.0) / skyExposure_);
         if (stock && stockMeanLight_[0] + stockMeanLight_[1] + stockMeanLight_[2] > 0) {
-            for (int k = 0; k < 3; ++k) g.sky[k] = stockMeanLight_[size_t(k)];
+            for (int k = 0; k < 3; ++k) g.sky[k] = float(stockMeanLight_[size_t(k)] * stockBakedScale_);
             g.skyIsStock = true;
         }
         // Stock maps: their vision's auto exposure (metered from the frame, as the game does) while the stock sky fills

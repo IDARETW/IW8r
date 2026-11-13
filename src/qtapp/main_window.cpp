@@ -7151,6 +7151,7 @@ void MainWindow::loadStockReference(const QString& zone) {
         QMetaObject::invokeMethod(qApp, [self, zone, tris, n, err, props, plans, world, texBatches] {
             if (!self || self->referenceZone_ != zone) return;
             self->stockWorld_ = world;
+            if (world) self->camera_->setGameStockBakedScale(world->bakedLightScale);
             self->camera_->setReferenceTextured(std::move(*texBatches));
             self->camera_->setGameStockMap(zone.toStdString());
             // Game Lighting draws the stock world with its own lightmap (research 94): cached, or made now.

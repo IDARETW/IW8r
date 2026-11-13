@@ -193,6 +193,22 @@ bool buildWorld(const std::string& gfxText, std::map<int64_t, TrzData>& trz, Sto
         return false;
     }
     const Value* f = fieldsOf(*root);
+    // bakedLightScale lives in the draw sub-object (its path differs between exports): the first one found by name,
+    // through objects only (the big arrays hold none).
+    {
+        std::vector<const Value*> stack{f};
+        while (!stack.empty()) {
+            const Value* v = stack.back();
+            stack.pop_back();
+            if (!v || v->type != Value::Type::Object) continue;
+            if (const Value* b = v->get("bakedLightScale"); b && b->number() && *b->number() > 0) {
+                out.bakedLightScale = *b->number();
+                break;
+            }
+            for (const auto& [k, child] : v->obj)
+                if (child.type == Value::Type::Object) stack.push_back(&child);
+        }
+    }
     const Value* surfs = f && f->get("surfaces") && f->get("surfaces")->get("surfaces")
                              ? f->get("surfaces")->get("surfaces")->get("values")
                              : nullptr;

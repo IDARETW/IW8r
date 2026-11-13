@@ -193,6 +193,11 @@ public slots:
         gameLutReady_ = false;
         update();
     }
+    // The stock map's bakedLightScale (StockWorld): scales its lightmap and the light derived from it.
+    void setGameStockBakedScale(double s) {
+        stockBakedScale_ = s > 0 ? s : 1.0;
+        update();
+    }
     // The stock sky material's intensity (its first pixel constant): the sky image times this is the drawn sky.
     void setGameStockSkyIntensity(double intensity) {
         stockSkyIntensity_ = intensity;
@@ -427,6 +432,7 @@ private:
     bool stockSunKnown_ = false;
     GameFog stockFog_;
     double stockSkyIntensity_ = 0;
+    double stockBakedScale_ = 1.0;
     std::shared_ptr<const GameGradingClut> stockGrade_;
     bool gameExposureSnap_ = true;  // the first metered exposure after a map opens is taken at once
     double stockSunIntensity_ = 0;

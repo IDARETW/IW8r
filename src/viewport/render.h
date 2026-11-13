@@ -286,6 +286,7 @@ public:
         // skyScale: the sky texture (LDR) to scene light.
         float fog[6][4] = {};
         float skyScale = 1.0f;
+        float bakedScale = 1.0f;  // the stock map's bakedLightScale, on its lightmap
         float lutScale = 1.0f;
     };
     void setGameLook(const GameLook& g) { game_ = g; }
