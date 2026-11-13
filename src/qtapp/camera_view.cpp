@@ -210,10 +210,34 @@ void CameraView::render() {
             batches.push_back(std::move(b.tris));
         }
         renderer_.setReferenceTextured(batches, &refTexLayer_);
+        refTexExtraFrom_ = ~size_t(0);
+        decalExtrasDirty_ = decalExtrasDirty_ || !pendingDecalExtras_.empty();
         refTexResolved_.assign(refTexMaterials_.size(), false);
         refTexPending_ = refPollDue_ = true;
         pendingRefTex_.clear();
         pendingRefTex_.shrink_to_fit();
+    }
+    if (decalExtrasDirty_ && !refTexDirty_) {
+        // Decal volumes on the props: after the world's batches (dropping an earlier set).
+        decalExtrasDirty_ = false;
+        if (refTexExtraFrom_ != ~size_t(0) && refTexExtraFrom_ <= refTexMaterials_.size()) {
+            refTexMaterials_.resize(refTexExtraFrom_), refTexLayer_.resize(refTexExtraFrom_);
+            refTexVolume_.resize(refTexExtraFrom_), refTexResolved_.resize(refTexExtraFrom_);
+        }
+        refTexExtraFrom_ = refTexMaterials_.size();
+        std::vector<std::vector<app::GpuTexVertex>> vb;
+        for (const auto& b : pendingDecalExtras_) {
+            refTexMaterials_.push_back(b.material);
+            refTexLayer_.push_back(0);
+            RefDecalVolume dv;
+            dv.on = true, dv.mask = b.decalMask, dv.a = b.decalA, dv.b = b.decalB, dv.order = b.decalOrder;
+            for (int c = 0; c < 3; ++c) dv.tint[c] = b.decalTint[c];
+            refTexVolume_.push_back(dv);
+            refTexResolved_.push_back(false);
+            vb.push_back(b.tris);
+        }
+        renderer_.appendReferenceDecals(vb);
+        refTexPending_ = refPollDue_ = true;
     }
     // Per-frame texture budget, reset before the reference loop so it gets loads after a busy frame too.
     loadsThisFrame_ = 0;

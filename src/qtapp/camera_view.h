@@ -83,6 +83,15 @@ public:
     // ImageLookup as "<material>\x01<L>" (colour) and "<material>\x02<L>" (alpha + reveal).
     using LayerLookup = std::function<std::optional<StockLayeredMaterial>(const std::string& material)>;
     void setMaterialLayers(LayerLookup lookup) { layerLookup_ = std::move(lookup); }
+    // Stock decal volumes projected on the props (decalVolume batches): added beside the textured reference, replacing
+    // an earlier set.
+    std::array<size_t, 5> referenceDecalStats() const { return renderer_.referenceDecalStats(); }
+    size_t referenceDecalExtras() const { return refTexExtraFrom_ == ~size_t(0) ? 0 : refTexMaterials_.size() - refTexExtraFrom_; }
+    void setReferenceDecalExtras(std::vector<app::ReferenceTexBatch> batches) {
+        pendingDecalExtras_ = std::move(batches);
+        decalExtrasDirty_ = true;
+        update();
+    }
     // Stock material facts the reference needs: a decal's sort key (0 = not a decal) and the colour tint (RRGGBB, -1
     // none; applied when no tint mask limits it). nullopt while the material is not resolved.
     struct StockMaterialFacts {
@@ -349,6 +358,9 @@ private:
         int order = 0;
     };
     std::vector<RefDecalVolume> refTexVolume_;  // parallel: stock decal volume batches (research 99)
+    std::vector<app::ReferenceTexBatch> pendingDecalExtras_;
+    bool decalExtrasDirty_ = false;
+    size_t refTexExtraFrom_ = ~size_t(0);
     LayerLookup layerLookup_;
     FactsLookup factsLookup_;
     bool resolveReferenceDecal(size_t k, int textureId);  // true when settled

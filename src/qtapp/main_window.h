@@ -426,6 +426,11 @@ private:
         size_t tris = 0;
     };
     std::map<std::string, std::shared_ptr<const RefPropMesh>> refPropBuilt_;
+    // The stock map's decal volumes with their materials and masks (appendStockDecalVolumes), kept to project them on
+    // the props once those are built (projectPropDecals; done once per map).
+    std::shared_ptr<const struct StockDecalData> stockDecals_;
+    QString propDecalsZone_;
+    void projectPropDecals();
     size_t refPropBuiltTris_ = 0;
     void updateStockPropLabel();
 public:

@@ -652,6 +652,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(cbBatch_);
     safeRelease(cbLayer_);
     safeRelease(rsDecal_);
+    safeRelease(vbRefTexExtra_);
     safeRelease(cbWind_);
     safeRelease(cbLights_);
     safeRelease(cbGame_);
@@ -1314,7 +1315,43 @@ void SceneRenderer::setReferenceLayer(size_t batch, int revealTexture, const flo
     std::memcpy(L.params, params, sizeof(L.params));
 }
 
+bool SceneRenderer::appendReferenceDecals(const std::vector<std::vector<GpuTexVertex>>& batches) {
+    // Drop the previous extras.
+    if (refTexExtraFrom_ != ~size_t(0) && refTexExtraFrom_ <= refTexIds_.size()) {
+        const size_t n = refTexExtraFrom_;
+        refTexFirst_.resize(n), refTexCount_.resize(n), refTexIds_.resize(n), refTexChunks_.resize(n);
+        refLayers_.resize(n), refNrmIds_.resize(n);
+        refDecalDirty_ = true;
+    }
+    safeRelease(vbRefTexExtra_);
+    refTexExtraFrom_ = refTexIds_.size();
+    if (!dev_ || batches.empty()) return true;
+    std::vector<GpuTexVertex> all;
+    for (const auto& b : batches) {
+        refTexFirst_.push_back(UINT(all.size()));
+        refTexCount_.push_back(UINT(b.size()));
+        all.insert(all.end(), b.begin(), b.end());
+        refTexChunks_.emplace_back();  // small: drawn whole
+        refTexIds_.push_back(-1);
+        RefLayer L;
+        L.decal = true;  // never drawn opaque; ready once setReferenceDecal gives its textures
+        refLayers_.push_back(L);
+        refNrmIds_.push_back(-1);
+    }
+    if (all.empty()) return true;
+    D3D11_BUFFER_DESC bd{};
+    bd.ByteWidth = UINT(all.size() * sizeof(GpuTexVertex));
+    bd.Usage = D3D11_USAGE_IMMUTABLE;
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA init{all.data(), 0, 0};
+    if (FAILED(dev_->CreateBuffer(&bd, &init, &vbRefTexExtra_))) return false;
+    refDecalDirty_ = true;
+    return true;
+}
+
 bool SceneRenderer::setReferenceTextured(const std::vector<std::vector<GpuTexVertex>>& batches, const std::vector<int>* layers) {
+    safeRelease(vbRefTexExtra_);
+    refTexExtraFrom_ = ~size_t(0);
     refLayers_.assign(batches.size(), RefLayer{});
     refNrmIds_.assign(batches.size(), -1);
     refLayerOrder_.clear();
@@ -2154,6 +2191,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                     return x.sortKey != y.sortKey ? x.sortKey < y.sortKey : x.layer < y.layer;
                 });
             }
+            ID3D11Buffer* boundRefVb = vbRefTex_;
             // Opaque layers first, then the decals (their layers with them) with a small depth offset.
             std::vector<size_t> passOrder;
             passOrder.reserve(refLayerOrder_.size() + refDecalOrder_.size());
@@ -2164,6 +2202,10 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             for (size_t pi = 0; pi < passOrder.size(); ++pi) {
                 const size_t k = passOrder[pi];
                 if (pi == firstDecal && rsDecal_) ctx_->RSSetState(rsDecal_);
+                {
+                    ID3D11Buffer* want = k >= refTexExtraFrom_ && vbRefTexExtra_ ? vbRefTexExtra_ : vbRefTex_;
+                    if (want != boundRefVb) ctx_->IASetVertexBuffers(0, 1, &want, &tstride, &offset), boundRefVb = want;
+                }
                 const RefLayer& L = refLayers_[k];
                 if (!L.ready || refTexIds_[k] < 0 || size_t(refTexIds_[k]) >= textures_.size()) continue;
                 if (cbBatch_) {
@@ -2197,6 +2239,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ctx_->PSSetShaderResources(1, 1, &noRev);
             ctx_->RSSetState(rsTris_);
             ctx_->OMSetDepthStencilState(texOpaqueDs, 0);
+            if (boundRefVb != vbRefTex_) ctx_->IASetVertexBuffers(0, 1, &vbRefTex_, &tstride, &offset);
         }
         ID3D11ShaderResourceView* none2[1] = {nullptr};
         ctx_->PSSetShaderResources(0, 1, none2);

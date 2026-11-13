@@ -557,6 +557,10 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             const auto ex = cam->gameExposureState();
             report << QString("game_exposure %1 target %2 metered %3 (EV %4)").arg(ex[0]).arg(ex[1]).arg(ex[2])
                           .arg(ex[0] > 0 ? 2.84 - std::log2(ex[0] / 180.0) : 0.0, 0, 'f', 2);
+            {
+                const auto ds = cam->referenceDecalStats();
+                report << QString("stock_decals world %1 (ready %2) props %3 (ready %4, %5 triangles)").arg(ds[0]).arg(ds[1]).arg(ds[2]).arg(ds[3]).arg(ds[4]);
+            }
             const auto ls = cam->referenceLayerStats();
             report << QString("stock_layers batches=%1 ready=%2 multiply=%3 with_normal=%4").arg(ls[0]).arg(ls[1]).arg(ls[2]).arg(ls[3]);
         }

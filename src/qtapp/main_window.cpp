@@ -188,8 +188,15 @@ namespace iw8r::qt {
 struct StockDecalTools {
     QString acts, replay, oodle;
 };
-void appendStockDecalVolumes(const StockWorld& world, const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
-                             std::vector<app::ReferenceTexBatch>& out);
+struct StockDecalData {
+    StockDecalVolumeSet set;
+    std::map<std::string, StockDecalMaterial> materials;
+    std::map<std::string, std::string> maskImage;  // mask asset -> its blend map image
+};
+std::shared_ptr<StockDecalData> appendStockDecalVolumes(const StockWorld& world, const QString& zone, const QString& zoneDir,
+                                                        const StockDecalTools& tools, std::vector<app::ReferenceTexBatch>& out);
+// The reference batch of one projected decal volume (null material: none).
+bool stockDecalBatch(const StockDecalData& d, const StockDecalBatch& b, int order, app::ReferenceTexBatch& rb);
 
 
 namespace {
@@ -6792,6 +6799,7 @@ void MainWindow::rebuildReferenceProps() {
         modelCacheStock_->request(want);
     } else if (step == PropFetchStep::Done || step == PropFetchStep::Stalled) {
         if (refPropClock_.isValid() && refPropFetchMs_ < 0) refPropFetchMs_ = refPropClock_.elapsed();
+        projectPropDecals();  // the decal volumes on the props, before their kept meshes are released
         // No more passes are expected: the kept copies of the converted models are given back. They stay only
         // while markers remain, because toggling the lit preview then redraws the props (loadStockReference).
         if (failedPlacements == 0 && waiting == 0) {
@@ -6914,11 +6922,12 @@ void MainWindow::loadStockLightmap(const QString& zone) {
 
 // A stock map's decal volumes (research 99): read from its world export, their materials and masks exported once with
 // ACTS (beside the world cache), projected on the world and appended as blended reference batches.
-void appendStockDecalVolumes(const StockWorld& world, const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
-                             std::vector<app::ReferenceTexBatch>& out) {
-    StockDecalVolumeSet set;
+std::shared_ptr<StockDecalData> appendStockDecalVolumes(const StockWorld& world, const QString& zone, const QString& zoneDir,
+                                                        const StockDecalTools& tools, std::vector<app::ReferenceTexBatch>& out) {
+    auto data = std::make_shared<StockDecalData>();
+    StockDecalVolumeSet& set = data->set;
     std::string err;
-    if (!readStockDecalVolumes(zoneDir.toStdString(), set, &err) || set.volumes.empty()) return;
+    if (!readStockDecalVolumes(zoneDir.toStdString(), set, &err) || set.volumes.empty()) return nullptr;
     // Materials and masks (pools decalvolumematerial / decalvolumemask), cached in <zoneDir>/decalvol.
     const QString dvDir = zoneDir + "/decalvol";
     const auto readAssets = [&](const char* pool, std::map<std::string, std::string>& texts) {
@@ -6949,12 +6958,12 @@ void appendStockDecalVolumes(const StockWorld& world, const QString& zone, const
         readAssets("decalvolumematerial", matTexts);
         readAssets("decalvolumemask", maskTexts);
     }
-    std::map<std::string, StockDecalMaterial> mats;
+    std::map<std::string, StockDecalMaterial>& mats = data->materials;
     for (const auto& [f, t] : matTexts) {
         StockDecalMaterial m;
         if (parseStockDecalMaterial(t, m)) mats[m.name] = m;
     }
-    std::map<std::string, std::string> maskImage;
+    std::map<std::string, std::string>& maskImage = data->maskImage;
     for (const auto& [f, t] : maskTexts) {
         std::string name, image;
         if (parseStockDecalMask(t, name, image)) maskImage[name] = image;
@@ -6973,18 +6982,26 @@ void appendStockDecalVolumes(const StockWorld& world, const QString& zone, const
     const std::vector<StockDecalBatch> batches = projectDecalVolumes(receivers, set);
     int order = 0;
     for (const StockDecalBatch& b : batches) {
-        if (b.volume >= set.volumes.size() || b.idx.empty()) continue;
-        const StockDecalVolume& vol = set.volumes[b.volume];
-        const auto mi = mats.find(vol.material);
-        if (mi == mats.end() || mi->second.channels[0].empty()) continue;
-        const StockDecalShading sh = stockDecalShading(vol, mi->second);
         app::ReferenceTexBatch rb;
+        if (stockDecalBatch(*data, b, order, rb)) out.push_back(std::move(rb)), ++order;
+    }
+    return data;
+}
+
+bool stockDecalBatch(const StockDecalData& d, const StockDecalBatch& b, int order, app::ReferenceTexBatch& rb) {
+    {
+        if (b.volume >= d.set.volumes.size() || b.idx.empty()) return false;
+        const StockDecalVolume& vol = d.set.volumes[b.volume];
+        const auto mi = d.materials.find(vol.material);
+        if (mi == d.materials.end() || mi->second.channels[0].empty()) return false;
+        const auto& maskImage = d.maskImage;
+        const StockDecalShading sh = stockDecalShading(vol, mi->second);
         rb.material = "\x05" + mi->second.channels[0];
         rb.decalVolume = true;
         if (const auto mk = maskImage.find(vol.mask); mk != maskImage.end()) rb.decalMask = mk->second;
         rb.decalA = float(sh.opacityScale), rb.decalB = float(sh.opacityBias);
         rb.decalTint[0] = float(sh.tint.x), rb.decalTint[1] = float(sh.tint.y), rb.decalTint[2] = float(sh.tint.z);
-        rb.decalOrder = order++;
+        rb.decalOrder = order;
         for (uint32_t i : b.idx) {
             const StockDecalVertex& v = b.verts[i];
             app::GpuTexVertex g{float(v.pos.x), float(v.pos.y), float(v.pos.z), v.mu, v.mv, 0xFFFFFFFFu};
@@ -6993,8 +7010,93 @@ void appendStockDecalVolumes(const StockWorld& world, const QString& zone, const
             if (v.lightmap >= 0 && v.lmU >= 0) g.lu = float(v.lightmap) + std::min(v.lmU, 0.99994f), g.lv = v.lmV;
             rb.tris.push_back(g);
         }
-        out.push_back(std::move(rb));
     }
+    return true;
+}
+
+// Decal volumes on the stock props (stencils on crates, paint on containers; research 99: static models receive
+// them): the converted prop meshes placed in world space, projected once the props are built.
+void MainWindow::projectPropDecals() {
+    if (!stockDecals_ || !refProps_ || referenceZone_.isEmpty() || propDecalsZone_ == referenceZone_ || refPropBuilt_.empty()) return;
+    propDecalsZone_ = referenceZone_;
+    const StockDecalData& d = *stockDecals_;
+    // Only props near a volume become receivers.
+    std::vector<AABB> boxes;
+    for (const auto& v : d.set.volumes) boxes.push_back(stockDecalVolumeBounds(v));
+    std::vector<ImportedMesh> meshes;  // world space; must outlive the receivers
+    for (const StockModelInstance& in : *refProps_) {
+        const auto it = refPropBuilt_.find(in.model);
+        if (it == refPropBuilt_.end() || !it->second) continue;
+        const auto place = [&](const app::GpuTexVertex& v) {
+            const Vec3 p{v.x, v.y, v.z};
+            return in.origin + (in.axis[0] * p.x + in.axis[1] * p.y + in.axis[2] * p.z) * in.scale;
+        };
+        AABB pb;
+        for (const auto& [mat, tris] : it->second->tex)
+            for (const auto& v : tris) pb.add(place(v));
+        if (!pb.valid()) continue;
+        bool near = false;
+        for (const AABB& b : boxes)
+            if (!(b.mins.x > pb.maxs.x || b.maxs.x < pb.mins.x || b.mins.y > pb.maxs.y || b.maxs.y < pb.mins.y ||
+                  b.mins.z > pb.maxs.z || b.maxs.z < pb.mins.z)) {
+                near = true;
+                break;
+            }
+        if (!near) continue;
+        ImportedMesh m;
+        for (const auto& [mat, tris] : it->second->tex) {
+            // Cut-out and blended materials (foliage, cards, glass) receive no decal volume (research 99: their
+            // techsets have no decal loop).
+            if (const auto e = matCache_->lookup(qs(mat)); e && !e->failed &&
+                (!e->maskDds.isEmpty() || materialBlendFromTechset(e->techset.toStdString()) != MaterialBlend::Opaque))
+                continue;
+            if (qs(mat).contains("foliage", Qt::CaseInsensitive)) continue;
+            for (size_t i = 0; i + 2 < tris.size(); i += 3) {
+                const Vec3 a = place(tris[i]), b = place(tris[i + 1]), c = place(tris[i + 2]);
+                Vec3 n = cross(b - a, c - a);
+                if (length(n) < 1e-9) continue;
+                n = normalize(n);
+                for (const Vec3& p : {a, b, c}) {
+                    m.idx.push_back(uint32_t(m.pos.size()));
+                    m.pos.push_back(p);
+                    m.normal.push_back(n);
+                    m.uv.push_back({0, 0});
+                }
+            }
+            }
+        if (!m.idx.empty()) meshes.push_back(std::move(m));
+    }
+    if (meshes.empty()) return;
+    StockDecalReceivers receivers;
+    for (const ImportedMesh& m : meshes) receivers.addMesh(m);
+    receivers.build();
+    std::vector<app::ReferenceTexBatch> out;
+    int order = 100000;  // over the world's decals of the same order
+    const std::vector<StockDecalBatch> projected = projectDecalVolumes(receivers, d.set);
+    if (const QString logPath = qEnvironmentVariable("IW8R_DECAL_LOG"); !logPath.isEmpty()) {
+        // Diagnosis: receivers and the largest projected batches.
+        QFile lf(logPath);
+        if (lf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            size_t rt = 0;
+            for (const auto& m : meshes) rt += m.idx.size() / 3;
+            lf.write(QString("receiver meshes %1 triangles %2\n").arg(meshes.size()).arg(rt).toUtf8());
+            std::vector<std::pair<size_t, size_t>> sizes;
+            for (size_t i = 0; i < projected.size(); ++i) sizes.push_back({projected[i].idx.size() / 3, i});
+            std::sort(sizes.rbegin(), sizes.rend());
+            for (size_t k = 0; k < sizes.size() && k < 12; ++k) {
+                const StockDecalBatch& pb = projected[sizes[k].second];
+                const StockDecalVolume& v = d.set.volumes[pb.volume];
+                lf.write(QString("%1 tris vol %2 %3 c %4 %5 %6 h %7 %8 %9 cand %10\n").arg(sizes[k].first).arg(pb.volume)
+                             .arg(QString::fromStdString(v.material)).arg(v.center.x).arg(v.center.y).arg(v.center.z)
+                             .arg(v.halfSize.x).arg(v.halfSize.y).arg(v.halfSize.z).arg(pb.candidateTriangles).toUtf8());
+            }
+        }
+    }
+    for (const StockDecalBatch& b : projected) {
+        app::ReferenceTexBatch rb;
+        if (stockDecalBatch(d, b, order, rb)) out.push_back(std::move(rb)), ++order;
+    }
+    if (!out.empty()) camera_->setReferenceDecalExtras(std::move(out));
 }
 
 void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn) {
@@ -7254,14 +7356,17 @@ void MainWindow::loadStockReference(const QString& zone) {
         auto plans = std::make_shared<std::vector<ReferencePlan>>(buildReferencePlans(*tris));  // 2D backdrops (3.19)
         auto texBatches = std::make_shared<std::vector<app::ReferenceTexBatch>>();
         if (world) app::buildReferenceTexBatches(*world, *texBatches);  // textured camera reference (3.19)
-        if (world) appendStockDecalVolumes(*world, zone, zoneDir, tools, *texBatches);  // projected decals (research 99)
+        std::shared_ptr<const StockDecalData> decals;
+        if (world) decals = appendStockDecalVolumes(*world, zone, zoneDir, tools, *texBatches);  // projected decals (research 99)
         // Props (11.3, core stock_smodels): the static model placements of the same export.
         auto props = std::make_shared<std::vector<StockModelInstance>>();
         std::string perr;
         if (n) readStockModelInstances(zoneDir.toStdString(), *props, &perr);
-        QMetaObject::invokeMethod(qApp, [self, zone, tris, n, err, props, plans, world, texBatches] {
+        QMetaObject::invokeMethod(qApp, [self, zone, tris, n, err, props, plans, world, texBatches, decals] {
             if (!self || self->referenceZone_ != zone) return;
             self->stockWorld_ = world;
+            self->stockDecals_ = decals;
+            self->propDecalsZone_.clear();
             if (world) self->camera_->setGameStockBakedScale(world->bakedLightScale);
             self->camera_->setReferenceTextured(std::move(*texBatches));
             self->camera_->setGameStockMap(zone.toStdString());

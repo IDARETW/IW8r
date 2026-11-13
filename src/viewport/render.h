@@ -195,6 +195,10 @@ public:
     // world (premultiplied by its coverage B, depth tested with a small offset, no depth write), in sortKey order.
     // Layer 0 (layer == 0) takes params / reveal as a layer would (its weight is in the tangent length too).
     void setReferenceDecal(size_t batch, int sortKey, int revealTexture, const float params[16]);
+    // Decal batches added after the textured reference (stock decal volumes projected on the props once they are
+    // loaded): their own vertex buffer, batch indices from referenceTexturedBatches() on; each is a decal waiting for
+    // setReferenceDecal. A second call replaces the previous ones; setReferenceTextured drops them.
+    bool appendReferenceDecals(const std::vector<std::vector<GpuTexVertex>>& batches);
     // A stock batch's normal map (the flat one until then).
     // Layer batches of the stock reference: {all, ready to draw, multiply, with a normal map} (benchmark report).
     std::array<size_t, 4> referenceLayerStats() const {
@@ -203,6 +207,18 @@ public:
             s[1] += refLayers_[k].ready ? 1 : 0;
             s[2] += refLayers_[k].ready && refLayers_[k].params[3] > 0.5f ? 1 : 0;
             s[3] += k < refNrmIds_.size() && refNrmIds_[k] >= 0 ? 1 : 0;
+        }
+        return s;
+    }
+    // Decal batches: {world, world ready, appended (props), appended ready, appended triangles}.
+    std::array<size_t, 5> referenceDecalStats() const {
+        std::array<size_t, 5> s{};
+        for (size_t k = 0; k < refLayers_.size(); ++k) {
+            if (!refLayers_[k].decal) continue;
+            const bool extra = k >= refTexExtraFrom_;
+            s[extra ? 2 : 0]++;
+            if (refLayers_[k].ready) s[extra ? 3 : 1]++;
+            if (extra && k < refTexCount_.size()) s[4] += refTexCount_[k] / 3;
         }
         return s;
     }
@@ -463,6 +479,8 @@ private:
     std::vector<RefLayer> refLayers_;
     std::vector<size_t> refLayerOrder_;  // layer batches by layer, then batch
     std::vector<size_t> refDecalOrder_;  // decal batches by sortKey, layer, batch
+    ID3D11Buffer* vbRefTexExtra_ = nullptr;  // appendReferenceDecals
+    size_t refTexExtraFrom_ = ~size_t(0);    // the first batch in vbRefTexExtra_
     bool refDecalDirty_ = false;
     ID3D11RasterizerState* rsDecal_ = nullptr;
     std::vector<int> refNrmIds_;         // per stock batch: its normal map texture, -1 = the flat one
