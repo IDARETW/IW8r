@@ -5,6 +5,17 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **The game's own fog in Game Lighting.** The fog is now the game's formula, decoded from its shader and executable
+  (research 111), instead of a fit made on Speedball. On Rust it was more than twice too bright and greyed the scene;
+  it now keeps the colours and the far refinery shows through as in game. Speedball's sky band now matches your
+  in-game shot within 2 %. Still missing: the game's volumetric haze on top (research 109).
+- **View > Game Mode.** Pick a mode (Domination, Search and Destroy, Hardpoint, Headquarters, Capture the Flag, ...)
+  and the viewports show only what the game keeps in that mode: its objectives, triggers, script models, brushmodels
+  and spawns; the other modes' objects are hidden. All Modes shows everything, as before. Remembered between sessions.
+- **Painted bands and stencils on props no longer flicker.** Decal materials inside models (Rust's yellow pillar band)
+  are drawn on top of the surface beneath, as in game, instead of fighting it.
+- **No more "Shadow" walls.** Surfaces that only cast shadows in game (their image reads "Shadow", around Rust's yard)
+  are no longer drawn; their shadows stay.
 - **Verdansk opens and runs without running the machine out of memory, at about 20 ms a frame.** It used to climb past
   14 GB and close (out of memory) a few minutes after opening; it now peaks at about 12 GB. Its frame went from 286 ms
   (since the stock lamps' shadows) to about 20 ms once the lamp shadows are drawn (more while other programs fill the

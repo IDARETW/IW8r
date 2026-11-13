@@ -2105,6 +2105,9 @@ void CameraView::prepareGameLook() {
                                      {float(f.heightBase), float(f.heightHalf), float(f.skyDistance), float(f.skyIntensity)},
                                      {float(f.maxDistance), float(f.skyMinAngle), float(f.skyMaxAngle), 0}};
             std::memcpy(g.fog, fog, sizeof(fog));
+            // The game's own constants (research 111); 135.w follows the camera's height.
+            const GameFogConstants k = gameFogConstants(stockFogRefdef_, float(ctx_->cam.pos.z));
+            std::memcpy(g.fogK, k.c, sizeof(g.fogK));
         }
         // The sky preview is an 8-bit copy of the HDR stock sky times its conversion exposure: undo it, so the sky has
         // its own radiance in the game's light units (and the post chain exposes it like the rest).

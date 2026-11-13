@@ -5,6 +5,7 @@
 
 #include <memory>
 
+#include "game_fog.h"
 #include "stock_probes.h"
 #include "stock_layered_material.h"
 #include "game_lightmap.h"
@@ -267,6 +268,7 @@ public slots:
     }
     void setGameStockVision(const std::string& visionText) {
         stockFog_ = gameFogFromVision(visionText);
+        stockFogRefdef_ = gameFogRefdef(gameFogVisionFromText(visionText));
         stockPostFx_ = gamePostFxFromVision(visionText);
         update();
     }
@@ -569,6 +571,7 @@ private:
     std::string gameStockMap_;
     bool stockSunKnown_ = false;
     GameFog stockFog_;
+    GameFogRefdef stockFogRefdef_{};  // the game's fog from the same vision (core game_fog, research 111)
     GamePostFx stockPostFx_;  // the stock map's veil and vignette (research 109)
     double stockSkyIntensity_ = 0;
     double stockBakedScale_ = 1.0;

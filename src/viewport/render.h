@@ -429,7 +429,8 @@ public:
         // radiance (rgb, fog colour x scale), Mie blend; fog2 = Rayleigh albedo, Mie anisotropy; fog3 = Mie albedo,
         // desaturation; fog4 = height base, height half distance, sky distance, sky intensity; fog5.x = max distance;
         // skyScale: the sky texture (LDR) to scene light.
-        float fog[6][4] = {};
+        float fog[6][4] = {};  // only fog[0][3] (on) is read now; the rest of the fit is kept for the GUI's reports
+        float fogK[8][4] = {};  // the game's fog constants cb7[131..138] (core gameFogConstants, research 111)
         float skyScale = 1.0f;
         float bakedScale = 1.0f;  // the stock map's bakedLightScale, on its lightmap
         float lutScale = 1.0f;

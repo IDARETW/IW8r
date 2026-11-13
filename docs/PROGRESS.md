@@ -2,6 +2,19 @@
 
 ## Latest (2026-11-13)
 
+- Owner round (2026-11-13 evening): (1) decals "clip" on Rust = model decal materials (`_bad_` blend, sort key <= 17,
+  e.g. tm2co/ee_pillar_garage_painted_yellow_decal) drawn as opaque prop meshes -> StockMaterialFacts::propDecalSortKey,
+  SceneRenderer::setReferenceInstDecal: drawn after the props with rsDecal_, dsTest_, not in the pre-pass or shadows
+  (owner confirmed fixed). (2) tw/shadowcaster ("Shadow" image) drawn on screen -> materialDrawFor applied to the
+  reference: setReferenceDrawClass / setReferenceInstDrawClass (1 shadow only, 2 never). (3) Rust fog too bright ->
+  research 111 (helper): the game's analytic fog decoded; core game_fog (gameFogVisionFromText, gameFogRefdef,
+  gameFogConstants per frame with the eye z, gameFogEvaluate); render.cpp gameFogApply is its 1:1 port with fogK[8]
+  appended to the Game cbuffer (336 bytes); the old fit's desaturation and sRGB albedos are gone. Speedball top band
+  79.0 -> 110.9 (game 109.0); the corners are brighter than the game's (66.8-71.5): the volumetric fog (research 109
+  section 2) is the next fog step. (4) View > Game Mode (core game_mode_view, research 40 sections 3 and 7):
+  scene.gameMode + scene.hiddenByMode (EditorContext::refreshGameMode on documentEdited), spawns filtered by
+  mp_<token>_spawn*, setting view/gameMode, GUI test section "game mode view". Bench camera "prop <model> N [dist]
+  [yaw]" (main.cpp) frames a stock prop placement.
 - Verdansk memory and frame (2026-11-13, evening). Diagnosis tools: the bench's memory.log now also holds every log
   line ("<s> S <text>") and, every 10 s, "gpu memory MB: props a+b world c extras d streams e textures f lightmaps g
   probes h shadows i targets j" (SceneRenderer::gpuMemoryReport); IW8R_BENCH_PROFILE adds "prop rebuild memory: ..."

@@ -305,34 +305,48 @@ cbuffer Wind : register(b3) { float4 wind; };         // xy = direction x amplit
 struct PixelLight { float4 posRadius; float4 colorOuter; float4 dirInner; };
 cbuffer Lights : register(b2) { float4 lightCount; PixelLight lights[64]; };
 // View > Game Lighting: game0 = (on, LUT input scale, lightmap bound, 0), sun toward, sun colour, unbaked light.
-cbuffer Game : register(b4) { float4 game0; float4 gameSun; float4 gameSunCol; float4 gameSky; float4 gameFog[6]; float4 gameSkyScale; float4 gameTerrainCut; float4 gameAo; };
-// The stock map's atmosphere (GameLook::fog): distance fog with a height falloff, Rayleigh / Mie inscattering, extinction
-// desaturation. `sky`: the sky takes the fog of the sky distance times the sky intensity.
+cbuffer Game : register(b4) { float4 game0; float4 gameSun; float4 gameSunCol; float4 gameSky; float4 gameFog[6]; float4 gameSkyScale; float4 gameTerrainCut; float4 gameAo;
+                              float4 fogK[8]; };  // fogK = the game's cb7[131..138] (core game_fog, research 111)
+// The stock map's analytic fog, the game's own (research 111: cs_post_opaque_processes PO:39-214 with the exe's
+// constants cb7[131..138] in fogK, filled by core gameFogConstants; a 1:1 port of core gameFogEvaluate). The fog
+// spline image is zero on the stock maps (their visions name no spline) and is left out. gameFog[0].w = on.
+// `sky`: the sky's band of the fog. Owner 2026-11-13: the earlier fitted fog was too bright on mp_rust (sRGB albedos
+// used as linear, and a desaturation the game does not do).
 float3 gameFogApply(float3 c, float3 w, bool sky) {
     if (gameFog[0].w < 0.5) return c;
     float3 v = w - eyeStart.xyz;
-    float d = length(v);
-    float3 dir = v / max(d, 1e-3);
-    if (sky) d = gameFog[4].z;
-    d = min(d, gameFog[5].x);
-    float dd = max(d - gameFog[0].x, 0.0);
-    float a = (eyeStart.z - gameFog[4].x) / gameFog[4].y;
-    float b = a + dir.z * d / gameFog[4].y;
-    float hf = abs(b - a) > 1e-3 ? (exp2(-a) - exp2(-b)) / ((b - a) * 0.693147) : exp2(-a);
-    float amount = min(1.0 - exp2(-dd / gameFog[0].y * max(hf, 0.0)), gameFog[0].z);
-    float g = gameFog[2].w, mu = dot(dir, gameSun.xyz);
-    float hg = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * mu, 1e-4), 1.5);
-    float3 inscatter = gameFog[1].rgb * lerp(gameFog[2].rgb, gameFog[3].rgb * hg, gameFog[1].w);
+    float dist = length(v);
+    float3 dir = v / max(dist, 1e-3);
+    float dz = dir.z * dist, skyF = 0.0, path = dist + fogK[1].w;
     if (sky) {
-        // The sky's haze: brighter or dimmer by fogSkyIntensity, over the band of zenith angles fogSkyMin/MaxAngle.
-        float zenith = degrees(acos(clamp(dir.z, -1.0, 1.0)));
-        amount *= saturate((zenith - gameFog[5].y) / max(gameFog[5].z - gameFog[5].y, 1e-3));
-        inscatter *= gameFog[4].w;
+        dz = dir.z * fogK[0].x;
+        skyF = saturate(dir.z * fogK[0].y + fogK[0].z);
+        path = fogK[0].x;
     }
-    amount = saturate(amount);
-    float l = dot(c, float3(0.2126, 0.7152, 0.0722));
-    c = lerp(c, l.xxx, gameFog[3].w * amount);
-    return lerp(c, inscatter, amount);
+    float cosSun = dot(dir, fogK[1].xyz);
+    float3 T, L;
+    if (fogK[6].z < -0.5) {
+        float sunF = saturate(cosSun * fogK[6].x + fogK[6].y);
+        float tf = max(exp2(-(path * fogK[2].x)), fogK[3].w);
+        float ts = max(exp2(-(path * fogK[2].y)), fogK[3].w);
+        float t = saturate(sunF * (ts - tf) + tf);
+        if (sky) t = 1.0 - fogK[0].w * skyF;
+        T = t.xxx;
+        L = (sunF * (fogK[3].rgb - fogK[4].rgb) + fogK[4].rgb) * (1.0 - t);
+    } else {
+        float x = saturate(path * fogK[6].w);
+        float kz = dz * fogK[2].w;
+        float h = abs(kz) > 1e-6 ? (1.0 - exp2(kz * -1.442695)) / kz * fogK[4].w : fogK[4].w;
+        x *= h + fogK[5].w;
+        T = exp2(-(x * fogK[2].xyz));
+        if (sky) T = T * skyF + (1.0 - skyF);
+        float phaseR = (cosSun * cosSun + 1.0) * 0.059683;
+        float g = fogK[3].w;
+        float m = 1.0 - g * cosSun;
+        float phaseM = (1.0 - g * g) * 0.079577 / (m * m);
+        L = (fogK[3].rgb * phaseM + fogK[4].rgb * phaseR) * (1.0 - T);
+    }
+    return c * T + L;
 }
 Texture2D gameLmA : register(t6);
 // The stock reference's lightmap rectangles in its atlas (setStockLightmap): x, y, width, height per lightmap index,
@@ -1504,7 +1518,7 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
             dev_->CreateBuffer(&bd, nullptr, &cbWind_);
             bd.ByteWidth = 16 + UINT(sizeof(PixelLight)) * kMaxPixelLights;
             dev_->CreateBuffer(&bd, nullptr, &cbLights_);
-            bd.ByteWidth = 208;  // game0, sun toward, sun colour, unbaked light, fog[6], sky scale, terrain cut, ao
+            bd.ByteWidth = 336;  // game0, sun toward, sun colour, unbaked light, fog[6], sky scale, terrain cut, ao, fogK[8]
             dev_->CreateBuffer(&bd, nullptr, &cbGame_);
         }
         safeRelease(tvs);
@@ -2397,7 +2411,7 @@ void SceneRenderer::setStockProbes(const StockProbeSet* set) {
 void SceneRenderer::writeGameCb() {
     if (!cbGame_) return;
     const bool on = game_.on && gameLutSrv_ != nullptr;
-    float g[52] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
+    float g[84] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
                    game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], on && gtsoSrv_ ? 1.0f : 0.0f,
                    game_.sunColor[0], game_.sunColor[1], game_.sunColor[2], 0,
                    game_.sky[0], game_.sky[1], game_.sky[2], game_.skyIsStock ? 1.0f : 0.0f};
@@ -2419,6 +2433,7 @@ void SceneRenderer::writeGameCb() {
     g[50] = albedoShow || gameDebugView_ == 2 ? 1.0f : 0.0f;
     g[11] = std::clamp(gameAoStrength_, 0.0f, 2.0f);  // gameSunCol.w: the AO strength
     g[51] = hdrFrame_ ? 1.0f : 0.0f;  // the lit scene goes to the HDR target: no post chain in the shaders
+    std::memcpy(&g[52], game_.fogK, sizeof(game_.fogK));
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
     ID3D11ShaderResourceView* gl[3] = {gameLutSrv_, envBrdfSrv_, probeArrSrv_};
