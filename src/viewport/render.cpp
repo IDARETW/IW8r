@@ -273,12 +273,18 @@ float3 stockProbeLight(float3 p, float3 R, float gp) {
     float3 sum = 0;
     float wsum = 0;
     int n = int(probeCount.x);
+    // The box nearest to p (largest inside margin, least outside): far terrain outside every box takes its probe for
+    // the weight the boxes around p leave (owner 2026-11-12: Hideout's far ridge was black without one).
+    float nearRem = -1e30;
+    float nearSlice = 0;
     for (int k = 0; k < n && wsum < 0.999; ++k) {
         ProbeBox b = probeBoxes[k];
         float3 d = p - b.centerSlice.xyz;
         float3 lp = float3(dot(d, b.axisX.xyz), dot(d, b.axisY.xyz), dot(d, b.axisZ.xyz));
         float3 h = float3(b.axisX.w, b.axisY.w, b.axisZ.w);
         float3 rem = h - abs(lp);
+        float mrem = min(rem.x, min(rem.y, rem.z));
+        if (mrem > nearRem) nearRem = mrem, nearSlice = b.centerSlice.w;
         if (rem.x < 0 || rem.y < 0 || rem.z < 0) continue;
         float fade = saturate(min(rem.x, min(rem.y, rem.z)) / max(b.originFeather.w, 1.0));
         // Box parallax: where the reflection ray leaves the box, seen from the probe's capture origin.
@@ -291,6 +297,11 @@ float3 stockProbeLight(float3 p, float3 R, float gp) {
         float w = fade * (1.0 - wsum);
         float3 c = lerp(probeAt(b.centerSlice.w, dir, m0), probeAt(b.centerSlice.w, dir, m1), mf);
         sum += c * w;
+        wsum += w;
+    }
+    if (n > 0 && wsum < 0.999) {
+        float w = 1.0 - wsum;
+        sum += lerp(probeAt(nearSlice, R, m0), probeAt(nearSlice, R, m1), mf) * w;
         wsum += w;
     }
     return wsum > 1e-4 ? sum / wsum : float3(0, 0, 0);

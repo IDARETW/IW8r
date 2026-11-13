@@ -96,6 +96,7 @@ public:
     QString indexKey(const QString& material) const;
     bool busy() const;
     QString cacheRoot() const;
+    QString runRoot() const;  // ACTS run folders (short: long packed image names)
     // "<path> (WxH)" for a cached DDS, "none" for an empty path (Material Info).
     static QString describeImage(const QString& ddsPath);
 

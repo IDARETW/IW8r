@@ -77,7 +77,7 @@ MaterialCache::MaterialCache(ToolPathFn tools, QObject* parent) : QObject(parent
     root_ = qEnvironmentVariable("IW8R_MATERIAL_CACHE_ROOT",  // the asset audit uses a scratch root
                                  QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/material_cache");
     QDir().mkpath(root_ + "/images");
-    QDir(root_ + "/w").removeRecursively();  // scratch left behind by a crash
+    QDir(runRoot()).removeRecursively();  // scratch left behind by a crash
     loadIndex();
     loadSeeds();
 }
@@ -96,6 +96,13 @@ bool MaterialCache::mapLocalName(const QString& material) {
 
 QString MaterialCache::indexKey(const QString& material) const {
     return mapLocalName(material) && !mapZones_.isEmpty() ? mapZones_.first() + "|" + material.trimmed() : material.trimmed();
+}
+
+QString MaterialCache::runRoot() const {
+    // ACTS writes <run>/mw19replay/<zone>/assets/image/<packed image name>.<n>.dds: packed names reach 130 characters,
+    // so a run folder under a deep cache root went past Windows' 260 (ACTS: "Cannot write Replay asset"; mp_rust's
+    // corrugated metal stayed the missing-material checker). Runs go to a short folder of the system temp instead.
+    return QDir::tempPath() + "/iw8m" + QString::number(quintptr(this) & 0xFFFFF, 16);
 }
 
 std::optional<MaterialCache::Entry> MaterialCache::lookup(const QString& material) const {
@@ -496,7 +503,7 @@ void MaterialCache::pump() {
 }
 
 void MaterialCache::startRun(const Run& run) {
-    const QString dir = QDir::toNativeSeparators(root_ + "/w/" + QString::number(++runSeq_));
+    const QString dir = QDir::toNativeSeparators(runRoot() + "/" + QString::number(++runSeq_));
     QDir().mkpath(dir);
 
     ActsRequest request;
@@ -714,7 +721,7 @@ void MaterialCache::finishBatch() {
     emit progress(QString("cache: %1 material(s) resolved").arg(done.size()));
     for (const QString& m : done) emit materialReady(m);
     if (!pending_.isEmpty()) startBatch();
-    else if (!running_) QDir(root_ + "/w").removeRecursively();
+    else if (!running_) QDir(runRoot()).removeRecursively();
 }
 
 // ---------------------------------------------------------------------------------------------------------------
