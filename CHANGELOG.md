@@ -5,6 +5,8 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Verdansk and Quarry ground.** Their super terrain (the open ground, hills and mountains) was missing: ACTS could not export it. The ACTS fork now does (8b5ee11d, deployed), and the editor builds it from its height maps with each surface's baked colour, about a million triangles.
+- **Stand-in boxes** for models past the prop budget no longer cast shadows, and are left out of the lit and Game Lighting views (Verdansk was covered in tan slabs).
 - **Displaced surfaces.** Stone walls, cobbles and other displaced stock surfaces get their relief: their meshes are subdivided and moved by the game's own height maps (a few inches, as in game). Village, Aniyah Tac and Backlot use it most.
 - **Missing stock images** draw plain grey on the stock reference instead of the magenta checker.
 - **Converted maps' sky** proven offline to sit at infinity in game (the converter's six sky faces, drawn camera-relative).

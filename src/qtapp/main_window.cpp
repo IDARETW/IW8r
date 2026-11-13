@@ -1,3 +1,4 @@
+#include "stock_super_terrain.h"
 #include <set>
 #include "stock_displacement.h"
 #include "stock_decal_volumes.h"
@@ -198,6 +199,10 @@ struct StockDecalData {
 };
 std::shared_ptr<StockDecalData> appendStockDecalVolumes(const StockWorld& world, const QString& zone, const QString& zoneDir,
                                                         const StockDecalTools& tools, std::vector<app::ReferenceTexBatch>& out);
+// The super terrain of a Warzone map (Verdansk, Quarry; research 102): its height maps as a mesh within a triangle
+// budget, textured with each surface's baked albedo. Nothing for maps without one (remembered in <zoneDir>/terrain).
+void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
+                             std::vector<app::ReferenceTexBatch>& out);
 // A copy of `world` with its displaced surfaces subdivided and moved (null when the map has none or they cannot be read).
 std::shared_ptr<const StockWorld> displaceStockWorld(const StockWorld& world, const QString& zone, const QString& zoneDir,
                                                      const StockDecalTools& tools);
@@ -244,6 +249,11 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     });
     camera_->setMaterialImages(
         [this](const std::string& m) -> std::optional<QString> {
+            // A file by its path ("\x06<path>": the super terrain's baked albedo); "" = none.
+            if (!m.empty() && m[0] == '\x06') {
+                const QString f = qs(m.substr(1));
+                return !f.isEmpty() && QFileInfo::exists(f) ? f : QString();
+            }
             // A stock decal volume image ("\x05<image>": colour or mask, research 99): any catalogued image.
             if (!m.empty() && m[0] == '\x05') {
                 const QString image = qs(m.substr(1));
@@ -289,7 +299,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             return std::nullopt;
         },
         [this](const std::string& m) {
-            if (!m.empty() && m[0] == '\x05') return;  // decal volume images: requested by the lookup
+            if (!m.empty() && (m[0] == '\x05' || m[0] == '\x06')) return;  // requested by the lookup / a file
             matCache_->request({qs(m.substr(0, m.find_first_of("\x01\x02")))});
         });
     camera_->setMaterialFacts([this](const std::string& m) -> std::optional<CameraView::StockMaterialFacts> {
@@ -2032,6 +2042,8 @@ void MainWindow::buildMenus() {
         // again after edits), the game's sun / lights / exposure / tone map.
         ctx_.scene.gameLook = !ctx_.scene.gameLook;
         if (QAction* a = action("ToggleGameLighting")) a->setChecked(ctx_.scene.gameLook);
+        // The stock props' stand-in boxes are left out of the game-like views: redraw them.
+        if (refProps_ && !referenceZone_.isEmpty() && refPropBoxed_ > 0) QTimer::singleShot(0, this, [this] { rebuildReferenceProps(); });
         ctx_.cameraMoved();
     });
     gameToggle->setCheckable(true);
@@ -6785,10 +6797,16 @@ void MainWindow::rebuildReferenceProps() {
         }
     }
     refPropPlaceholders_ = (waitMesh.rows.size() + failMesh.rows.size()) / 12;
+    refPropBoxed_ = boxMesh.rows.size() / 12;
     for (auto [m, shades] : {std::pair{&boxMesh, boxShades}, std::pair{&waitMesh, waitShades}, std::pair{&failMesh, failShades}})
         if (!m->rows.empty()) {
+            // In the lit preview and Game Lighting (a game-like view) the stand-in boxes are left out as the other
+            // placeholders are: on Verdansk they covered the sky and walls in tan.
+            if (m == &boxMesh && (ctx_.scene.litPreview || ctx_.scene.gameLook)) continue;
             m->tris = unitCube(shades);
-            m->editorMarker = m != &boxMesh;  // amber / red markers: on screen only, never in captures or shadows
+            // Every placeholder is on screen only, never in captures or shadows: the tan stand-in boxes of models past the
+            // budget blacked out Verdansk's terrain with their blocky shadows (2026-11-13).
+            m->editorMarker = true;
             instanced.push_back(std::move(*m));
         }
     // Every missing model is asked for at once, most used first. The model cache works the list off in batches on
@@ -7116,6 +7134,92 @@ void MainWindow::projectPropDecals() {
         if (stockDecalBatch(d, b, order, rb)) out.push_back(std::move(rb)), ++order;
     }
     if (!out.empty()) camera_->setReferenceDecalExtras(std::move(out));
+}
+
+void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
+                             std::vector<app::ReferenceTexBatch>& out) {
+    if (qEnvironmentVariableIsSet("IW8R_NO_SUPER_TERRAIN")) return;
+    const QString dir = zoneDir + "/terrain";
+    if (QFileInfo::exists(dir + "/none")) return;  // looked once: no super terrain in this map
+    const QString zoneFolder = QFileInfo(tools.replay).absolutePath() + "/zone/";
+    const QString ff = zoneFolder + zone + ".ff";
+    const auto run = [&](const QStringList& extra, const QString& types, const QString& names) {
+        if (!QFileInfo::exists(tools.acts) || !QFileInfo::exists(ff)) return;
+        QStringList args{"--noUpdater", "fastfile", "-r", "mw19replay", "-g", tools.replay, "--oodle", tools.oodle};
+        args << extra << "-a" << types;
+        if (!names.isEmpty()) args << "-n" << names;
+        args << "-l" << "-o" << dir << ff;
+        QProcess p;
+        p.start(tools.acts, args);
+        p.waitForFinished(600000);
+    };
+    const auto findJson = [&] {
+        for (QDirIterator it(dir, {"*.json"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
+            const QString f = it.next();
+            if (f.contains("/assets/stterrain/")) return f;
+        }
+        return QString();
+    };
+    QString json = findJson();
+    if (json.isEmpty()) {
+        QDir().mkpath(dir);
+        run({}, "stterrain", QString());
+        json = findJson();
+        if (json.isEmpty()) {
+            QFile none(dir + "/none");
+            if (none.open(QIODevice::WriteOnly)) none.write("no stterrain asset in this zone\n");
+            return;
+        }
+    }
+    StockTerrain terrain;
+    std::string err;
+    if (!readStockTerrain(json.toStdString(), terrain, &err) || terrain.surfaces.empty()) return;
+    const QString imageDir = dir + "/mw19replay/" + zone + "/assets/image";
+    const std::vector<std::string> names = stockTerrainImageNames(terrain, kTerrainHeight | kTerrainCutout | kTerrainAlbedo);
+    QStringList missing;
+    for (const std::string& n : names)
+        if (findStockTerrainImage(imageDir.toStdString(), n).empty()) missing << QString::fromStdString(n);
+    if (!missing.isEmpty()) {
+        QStringList xp;
+        for (const QFileInfo& f : QDir(zoneFolder).entryInfoList({"*.xpak"}, QDir::Files))
+            if (f.size() >= 64 * 1024) xp << "--xpak" << f.absoluteFilePath();
+        run(xp, "image", missing.join(','));
+    }
+    std::vector<StockTerrainHeightGrid> heights(terrain.surfaces.size());
+    std::vector<StockTerrainCutout> cutouts(terrain.surfaces.size());
+    for (size_t s = 0; s < terrain.surfaces.size(); ++s) {
+        const auto& sf = terrain.surfaces[s];
+        const std::string hp = findStockTerrainImage(imageDir.toStdString(), sf.heightImage);
+        if (!hp.empty()) readStockTerrainHeightDds(hp, heights[s]);
+        const std::string cp = sf.cutoutImage.empty() ? std::string() : findStockTerrainImage(imageDir.toStdString(), sf.cutoutImage);
+        if (!cp.empty()) readStockTerrainCutoutDds(cp, cutouts[s]);
+    }
+    // About a million triangles: the reference stores triangle lists (56 bytes a corner).
+    StockTerrainBuildOptions opt;
+    opt.stride = stockTerrainStrideForBudget(terrain, 1'000'000, &cutouts);
+    StockTerrainMeshes meshes;
+    if (!buildStockTerrainMeshes(terrain, heights, cutouts, opt, meshes, &err)) return;
+    const Vec3 light = normalize(Vec3{0.35, 0.55, 0.75});
+    for (const StockTerrainMesh& tm : meshes.meshes) {
+        const ImportedMesh& m = tm.mesh;
+        if (m.idx.empty()) continue;
+        app::ReferenceTexBatch rb;
+        // The surface's baked albedo, by its file ("\x06<path>"); a plain colour when it was not exported.
+        const std::string ap = tm.albedoImage.empty() ? std::string() : findStockTerrainImage(imageDir.toStdString(), tm.albedoImage);
+        rb.material = ap.empty() ? std::string("\x06") : "\x06" + ap;
+        rb.tris.reserve(m.idx.size());
+        for (uint32_t k : m.idx) {
+            const Vec3& p = m.pos[k];
+            const Vec3 n = k < m.normal.size() ? m.normal[k] : Vec3{0, 0, 1};
+            const double shade = 0.55 + 0.45 * std::fabs(dot(n, light));
+            const uint32_t g = uint32_t(std::clamp(255.0 * shade, 0.0, 255.0));
+            app::GpuTexVertex v{float(p.x), float(p.y), float(p.z), 0, 0, g | (g << 8) | (g << 16) | (0xffu << 24)};
+            if (k < tm.albedoUv.size()) v.u = float(tm.albedoUv[k][0]), v.v = float(tm.albedoUv[k][1]);
+            v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
+            rb.tris.push_back(v);
+        }
+        out.push_back(std::move(rb));
+    }
 }
 
 std::shared_ptr<const StockWorld> displaceStockWorld(const StockWorld& world, const QString& zone, const QString& zoneDir,
@@ -7452,7 +7556,7 @@ void MainWindow::loadStockReference(const QString& zone) {
             connect(lit, &QAction::triggered, this, [this] {
                 if (!refProps_ || referenceZone_.isEmpty()) return;
                 const StockPropStatus s = stockPropStatus();
-                if (s.counts.missing + s.counts.failed > 0) QTimer::singleShot(0, this, [this] { rebuildReferenceProps(); });
+                if (s.counts.missing + s.counts.failed > 0 || refPropBoxed_ > 0) QTimer::singleShot(0, this, [this] { rebuildReferenceProps(); });
             });
     }
     if (!worldCache_->lookup(zone)) {
@@ -7488,6 +7592,7 @@ void MainWindow::loadStockReference(const QString& zone) {
         if (world)
             if (auto displaced = displaceStockWorld(*world, zone, zoneDir, tools)) drawWorld = displaced;
         if (drawWorld) app::buildReferenceTexBatches(*drawWorld, *texBatches);  // textured camera reference (3.19)
+        if (world) appendStockSuperTerrain(zone, zoneDir, tools, *texBatches);  // Warzone ground (research 102)
         std::shared_ptr<const StockDecalData> decals;
         if (world) decals = appendStockDecalVolumes(*world, zone, zoneDir, tools, *texBatches);  // projected decals (research 99)
         // Props (11.3, core stock_smodels): the static model placements of the same export.

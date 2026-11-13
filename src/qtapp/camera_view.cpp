@@ -1028,7 +1028,7 @@ int CameraView::textureFor(const std::string& material) {
     // Layer, decal and decal volume images ("\x01" / "\x02" / "\x05" keys) are plain files, never tinted or masked
     // per material: one texture per file (mp_aniyah_tac decoded the same layer images once per material, 37,000
     // textures, and ran out of video memory).
-    const bool shareable = material.find_first_of("\x01\x02\x05") != std::string::npos;
+    const bool shareable = material.find_first_of("\x01\x02\x05\x06") != std::string::npos;
     if (shareable)
         if (const auto it = texByPath_.find(path->toStdString()); it != texByPath_.end()) return texIds_[material] = it->second;
     if (!textureLoadAllowed(loadsThisFrame_)) {

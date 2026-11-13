@@ -426,6 +426,7 @@ private:
         size_t tris = 0;
     };
     std::map<std::string, std::shared_ptr<const RefPropMesh>> refPropBuilt_;
+    size_t refPropBoxed_ = 0;  // models drawn as stand-in boxes (past the triangle budget) in the last rebuild
     // The stock map's decal volumes with their materials and masks (appendStockDecalVolumes), kept to project them on
     // the props once those are built (projectPropDecals; done once per map).
     std::shared_ptr<const struct StockDecalData> stockDecals_;
