@@ -6997,12 +6997,13 @@ void appendStockDecalVolumes(const StockWorld& world, const QString& zone, const
     }
 }
 
-void MainWindow::loadStockSun(const QString& zone) {
+void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn) {
+    const QString skyMaterial = skyMaterialIn.isEmpty() ? "tw/sky_" + zone : skyMaterialIn;
     const QString acts = toolPath("acts"), replay = toolPath("replay"), oodle = toolPath("oodle");
     const QString ff = QFileInfo(replay).absolutePath() + "/zone/" + zone + ".ff";
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/world_cache/" + zone + "/com_map";
     QPointer<MainWindow> self(this);
-    std::thread([self, zone, acts, replay, oodle, ff, dir] {
+    std::thread([self, zone, acts, replay, oodle, ff, dir, skyMaterial] {
         const auto findJson = [&] {
             for (QDirIterator it(dir, {"*.json"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
                 const QString f = it.next();
@@ -7092,7 +7093,7 @@ void MainWindow::loadStockSun(const QString& zone) {
                     if (!QFileInfo::exists(z)) continue;
                     QProcess p;
                     p.start(acts, {"--noUpdater", "fastfile", "-r", "mw19replay", "-g", replay, "--oodle", oodle, "-a", "material", "-n",
-                                   "tw/sky_" + zone, "-l", "-o", skyDir, z});
+                                   skyMaterial, "-l", "-o", skyDir, z});
                     p.waitForFinished(120000);
                     mj = findMat();
                     if (!mj.isEmpty()) break;
@@ -7267,7 +7268,16 @@ void MainWindow::loadStockReference(const QString& zone) {
             // Game Lighting draws the stock world with its own lightmap (research 94): cached, or made now.
             self->camera_->setStockLightmap(nullptr);
             self->camera_->setStockProbes(nullptr);
-            self->loadStockSun(zone);
+            QString skyMat;
+            if (world)
+                for (const auto& m : world->meshes) {
+                    const QString mat = QString::fromStdString(m.material).remove(QChar(',')).trimmed();
+                    if (mat.section(QChar('/'), -1).startsWith("sky_", Qt::CaseInsensitive)) {
+                        skyMat = mat;
+                        break;
+                    }
+                }
+            self->loadStockSun(zone, skyMat);
             const bool haveLm = self->worldCache_->lightmapFile(zone) || !self->worldCache_->lightmapIndices(zone).isEmpty();
             if (haveLm) self->loadStockLightmap(zone);
             if (self->worldCache_->probesFile(zone)) self->loadStockProbes(zone);

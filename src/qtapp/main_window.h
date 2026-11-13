@@ -544,7 +544,8 @@ public:
     // The reference zone's reflection probes (world cache probes.iw8rprb) into the camera, read off the UI thread.
     void loadStockProbes(const QString& zone);
     // The stock map's sun (its ComWorld sun light, through ACTS once; cached beside the world export) into the camera.
-    void loadStockSun(const QString& zone);
+    // skyMaterial: the world's own sky material (tw/sky_mp_speed_midday on mp_m_speed); "" = tw/sky_<zone>.
+    void loadStockSun(const QString& zone, const QString& skyMaterial = QString());
     void rebuildReferenceProps();  // the stock reference's props from the model cache (again as models arrive)  // also used by --smoke-test (IW8R_SMOKE_REFERENCE)
 private:
 
