@@ -262,7 +262,7 @@ public:
     // (a plain white texture until then). Empty clears them.
     bool setReferenceTexInstances(const std::vector<InstancedTexMesh>& meshes);
     void setReferenceInstTexture(size_t mesh, int textureId) {
-        if (mesh < refTexInst_.size()) refTexInst_[mesh].texture = textureId;
+        if (mesh < refTexInst_.size()) refTexInst_[mesh].texture = textureId, instParamsDirty_ = true;
     }
     // A textured prop mesh's normal map (-1: the flat one) and material constants (setReferenceBaseParams layout).
     void setReferenceInstNormal(size_t mesh, int textureId) {
@@ -281,8 +281,12 @@ public:
         return n;
     }
     void setReferenceTexture(size_t batch, int textureId) {
-        if (batch < refTexIds_.size()) refTexIds_[batch] = textureId;
+        if (batch < refTexIds_.size()) refTexIds_[batch] = textureId, layerParamsDirty_ = true;
     }
+    // A block-compressed colour texture uploaded as it is stored (texture_decode loadDdsBlocks). Its alpha is the stock
+    // specular code, never a cut-out: batches drawing it are opaque (the shaders get "raw spec", no alpha test).
+    int createTextureBlocks(int dxgiFormat, int width, int height, const std::vector<std::string>& levels);
+    bool textureRawAlpha(int id) const { return id >= 0 && size_t(id) < texRawAlpha_.size() && texRawAlpha_[size_t(id)]; }
     size_t referenceTexturedBatches() const { return refTexIds_.size(); }
     // 3.20: the stock reference is cut into spatial chunks (core draw_chunks.h) and only the chunks in the view
     // frustum are drawn. Off draws everything (for comparison).
@@ -649,10 +653,14 @@ private:
     bool aoOn_ = true;
     bool aoValid_ = false;  // this frame's AO is in aoSrv_[1]
     bool createAoResources();
+    // Uploads the textured prop meshes' constants (setReferenceInstParams; raw-alpha textures marked) when changed;
+    // true when per-mesh offsets can be bound (cbInstAll_).
+    bool uploadInstParams();
     void drawAo(const float* viewProj);
     ID3D11InputLayout* layoutTex_ = nullptr;
     ID3D11SamplerState* sampler_ = nullptr;
     std::vector<ID3D11ShaderResourceView*> textures_;
+    std::vector<uint8_t> texRawAlpha_;  // per texture: 1 = alpha is the specular code (createTextureBlocks)
     int w_ = 0, h_ = 0;
 };
 

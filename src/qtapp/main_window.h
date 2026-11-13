@@ -419,6 +419,9 @@ private:
     class QTimer* terrainLayerTimer_ = nullptr;
 public:
     const std::vector<StockModelInstance>* stockClutter() const { return refClutter_.get(); }  // tests, benchmark
+    // The near-camera terrain layer patch: its centre and batch count (benchmark).
+    Vec3 terrainLayerCentre() const { return terrainLayerCentre_; }
+    size_t terrainLayerBatchCount() const { return terrainLayerBatches_.size(); }
 private:
     std::shared_ptr<std::vector<app::GpuVertex>> refBaseTris_;
     size_t refWorldTris_ = 0;

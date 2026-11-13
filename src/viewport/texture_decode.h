@@ -15,6 +15,15 @@ struct Rgba8Image {
     std::vector<uint8_t> pixels;  // RGBA8, row-major, top-down; size == width * height * 4
 };
 
+// A block-compressed colour image kept compressed for the GPU (BC1 / BC2 / BC3 / BC7): about 4 to 8 times smaller than
+// RGBA8 and nothing to decode. dxgiFormat is the non-sRGB UNORM format (the shaders convert to linear themselves).
+struct DdsBlockLevels {
+    int dxgiFormat = 0;
+    int width = 0, height = 0;          // of levels[0]
+    std::vector<std::string> levels;    // levels[0] at the size picked, then each smaller level stored after it
+    size_t bytes = 0;
+};
+
 // Decodes mip 0 of slice 0. Accepts legacy FourCC (DXT1/3/5, ATI1/BC4U, ATI2/BC5U) and DX10 headers with
 // BC1-BC7, R8G8B8A8, R8 and R16G16B16A16_FLOAT. BC6H and float data are tone-mapped to LDR (x/(1+x), then
 // gamma 1/2.2). BC4 becomes grey, BC5 becomes RG with B = reconstructed normal Z. Returns false on any
@@ -34,6 +43,12 @@ bool decodeDdsPreview(const std::string& fileBytes, int maxSide, Rgba8Image& out
                       int* fullHeight = nullptr, std::string* err = nullptr);
 
 // decodeDdsPreview for a file on disk (UTF-8 path): reads the header and the bytes of the chosen level only.
+// The BC1 / BC2 / BC3 / BC7 image at `path` for direct upload: the level loadDdsPreview would pick for maxSide and
+// every smaller level stored after it. false for any other format, a volume, or a top level under 4 texels (decode
+// those with loadDdsPreview).
+bool loadDdsBlocks(const std::string& path, int maxSide, DdsBlockLevels& out, int* fullWidth = nullptr, int* fullHeight = nullptr,
+                   std::string* err = nullptr);
+
 bool loadDdsPreview(const std::string& path, int maxSide, Rgba8Image& out, int* fullWidth = nullptr,
                     int* fullHeight = nullptr, std::string* err = nullptr);
 

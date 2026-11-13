@@ -505,6 +505,58 @@ TEST(stock_world_lightmap_index_and_zones) {
     CHECK(found);
 }
 
+// A big map's streamed tile built on its own (1.1 of docs/PLAN_REMAINING.md): the main zone's surface table is kept
+// with the world, and a tile export (<zoneDir>/streamed/<tile>) gives the surfaces of its transient zone only.
+TEST(stock_world_streamed_tile_from_table) {
+    namespace fs = std::filesystem;
+    const Sample s = sample();
+    Sample t = s;
+    t.pos = {0, 0, 0, 0};
+    const float v[6][3] = {{0, 0, 0}, {100, 0, 0}, {0, 100, 0}, {100, 100, 0}, {0, 0, 50}, {100, 0, 50}};
+    for (const auto& p : v) {
+        putF(t.pos, p[0] + 1000.0f);
+        putF(t.pos, p[1]);
+        putF(t.pos, p[2]);
+    }
+    std::string g = R"({"format":"mw19-asset-json-v1","asset":{"name":"maps/mp/test.d3dbsp","fields":{"surfaces":{"surfaces":{"values":[)";
+    g += R"({"tris":{"posOffset":4,"vertexCount":4,"triCount":2,"baseIndex":0},"material":{"name":"tw/floor"},"transientZone":0,"surfDataIndex":0,"lightmapIndex":0})";
+    g += R"(,{"tris":{"posOffset":4,"vertexCount":4,"triCount":2,"baseIndex":0},"material":{"name":",tw/wall"},"transientZone":30,"surfDataIndex":0,"lightmapIndex":17})";
+    g += R"(]},"surfData":{"values":[)";
+    g += R"({"transientZone":0,"layerCount":1,"xyzOffset":4,"tangentFrameOffset":4,"lmapCoordOffset":20,"colorOffset":0,"texCoordOffset":52})";
+    g += R"(]}}}}})";
+    const auto aux = auxSampleLm();
+    // The main zone alone: zone 30's surface is skipped, but it is in the kept table.
+    StockWorld w;
+    std::string err;
+    CHECK(parseStockWorld(g, {trzJson(s.pos, s.idx, 0, aux)}, w, &err));
+    CHECK(w.meshes.size() == 1 && w.surfaceTable != nullptr);
+    if (!w.surfaceTable) return;
+    CHECK(w.surfaceTable->surfaces.size() == 2);
+    CHECK(w.surfaceTable->surfaces[1].material == "tw/wall" && w.surfaceTable->surfaces[1].zone == 30);
+    // The tile: only zone 30's surface, with its own lightmap index.
+    const fs::path tile = fs::path(iw8r::test::tmpDir()) / "stock_world_tile" / "mp_test_00030_tr";
+    fs::remove_all(tile.parent_path());
+    fs::create_directories(tile / "assets" / "gfx_map_trzone");
+    std::ofstream(tile / "assets" / "gfx_map_trzone" / "test.30.asset.json") << trzJson(t.pos, t.idx, 30, aux);
+    StockWorld tw;
+    CHECK(buildStockWorldTile(*w.surfaceTable, tile.string(), tw, &err));
+    CHECK(tw.meshes.size() == 1);
+    if (tw.meshes.size() != 1 || tw.lightmapIndex.empty()) return;
+    CHECK(tw.meshes[0].material == "tw/wall");
+    CHECK(tw.meshes[0].pos.size() == 4 && tw.meshes[0].idx.size() == 6);
+    bool moved = true;
+    for (const Vec3& p : tw.meshes[0].pos) moved &= p.x >= 1000.0;
+    CHECK(moved);
+    bool lm17 = true;
+    for (int li : tw.lightmapIndex[0]) lm17 &= li == 17;
+    CHECK(lm17);
+    CHECK(tw.warnings.empty());  // the main zone's surfaces are not reported as missing
+    // An export with no buffers, or no export at all, fails with a message.
+    StockWorld none;
+    CHECK(!buildStockWorldTile(*w.surfaceTable, (tile.parent_path() / "missing").string(), none, &err));
+    CHECK(!err.empty());
+}
+
 // ACTS writes a large surfData array as hex "bytes" (mp_donetsk): the 88-byte GfxWorldSurfData records give the same
 // texture and lightmap coordinates as the decoded "values" form.
 TEST(stock_world_surfdata_hex_bytes) {

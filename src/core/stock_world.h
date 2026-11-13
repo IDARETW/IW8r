@@ -35,6 +35,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -44,6 +46,32 @@
 namespace iw8r {
 
 constexpr int kStockMaxLayers = 8;  // GfxWorldSurfData.layerCount on mp_br_tut goes up to 8 (twc4/14n_17n_17n_..._24n)
+
+// The main zone's surface table (gfx_map surfaces and surfData): every surface, also those whose buffers are in a
+// streamed tile. Kept with the world so a big map's tiles can be built one at a time later (buildStockWorldTile)
+// without parsing the main gfx_map again (hundreds of MB on mp_donetsk).
+struct StockWorldSurfaceTable {
+    struct Surface {
+        std::string material;  // without the leading comma ACTS prints
+        int64_t posOffset = -1, vertexCount = -1, triCount = -1, baseIndex = -1;
+        int64_t zone = 0;            // transientZone
+        int64_t surfDataIndex = -1;
+        int64_t lightmapIndex = 0;
+        bool hasTris = false;
+    };
+    struct SurfData {
+        int64_t layerCount = 0;
+        int64_t texCoordOffset = 0;  // aux stream byte offset of vertex 0, layer 0 (0 when absent)
+        int64_t xyzOffset = -1;      // posData byte offset of the block's vertex 0 (-1 when absent)
+        int64_t lmapCoordOffset = 0; // aux stream byte offset of the block's vertex 0 lightmap UV (0 when absent)
+        int64_t colorOffset = 0;     // aux stream byte offset of the block's vertex 0 colour record (0 when absent)
+        std::array<int64_t, 7> normalTransformOffset{};  // per layer above 0 (0 when absent)
+    };
+    std::vector<Surface> surfaces;
+    std::vector<SurfData> surfData;
+    std::map<std::string, int> materialLayers;  // the largest layerCount of each material's surfaces
+    double bakedLightScale = 1.0;
+};
 
 struct StockWorld {
     // One mesh per surface material name (the material asset name, without the leading comma ACTS prints), in order
@@ -92,6 +120,9 @@ struct StockWorld {
     // GfxWorldDraw.bakedLightScale: the factor the game applies to the baked light (lightmaps; research 95). 1 on most
     // maps, 1/64 on mp_m_king (an indoor map whose lightmaps were stored 6 EV brighter).
     double bakedLightScale = 1.0;
+    // The surface table the world was built from (readStockWorld / parseStockWorld): the tiles of a big map are built
+    // from it (buildStockWorldTile).
+    std::shared_ptr<const StockWorldSurfaceTable> surfaceTable;
     size_t colorSurfaces = 0;    // surfaces whose vertices got a colour record
     AABB bounds;                        // over every vertex used by a triangle (includes sky geometry)
     std::vector<std::string> warnings;  // non-fatal: surfaces skipped, index range problems
@@ -105,7 +136,14 @@ bool parseStockWorld(const std::string& gfxMapJson, const std::vector<std::strin
 // Reads an ACTS export folder: <zoneDir>/assets/gfx_map/**/*.json (exactly one) and
 // <zoneDir>/assets/gfx_map_trzone/**/*.json (one or more). zoneDir is <out>/mw19replay/<zone>. The streamed tiles a
 // big map was given (exports of its _tr zones under <zoneDir>/streamed/**/gfx_map_trzone) are read too.
-bool readStockWorld(const std::string& zoneDir, StockWorld& out, std::string* err = nullptr);
+// includeStreamed false: only the main zone's own buffers (the streamed tiles are added one by one later).
+bool readStockWorld(const std::string& zoneDir, StockWorld& out, std::string* err = nullptr, bool includeStreamed = true);
+
+// One streamed tile of a big map: the surfaces of `table` whose transient zone has its buffers in the tile export
+// `tileDir` (<zoneDir>/streamed/<tile>, its gfx_map_trzone JSON), as a world of their own (same conventions as
+// readStockWorld). Fails when the tile holds no buffers or none of the table's surfaces use them.
+bool buildStockWorldTile(const StockWorldSurfaceTable& table, const std::string& tileDir, StockWorld& out,
+                         std::string* err = nullptr);
 
 // The streamed world tiles of a big map (mp_br_quarry, mp_donetsk; research 87 section 1.2): a surface of the main
 // zone names its transient zone, and every transient zone whose buffers the export does not hold is streamed from

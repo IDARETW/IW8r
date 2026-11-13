@@ -5,6 +5,17 @@
 - **THE PLAN: docs/PLAN_REMAINING.md** (owner-approved 2026-11-13): Milestone 1 lighting (1.1 streamed tiles follow
   the camera, 1.2 HDR target, 1.3 SSR, ... 1.11 build-side lighting), 2 Umbra (decode, view, bake), 3 web viewer
   (streamed editor render, every command), 4 remaining pieces, 5 handover. Work it in order; mark items done there.
+- M1.1 in progress (2026-11-13): owner hint confirmed: with Verdansk's streamed tiles (IW8R_STREAM_AT test path,
+  36 tiles within 17,000 of -24900 -1700) the grey sheets are buildings, lots and roads. Done so far: core
+  StockWorldSurfaceTable kept on StockWorld + buildStockWorldTile (test stock_world_streamed_tile_from_table),
+  readStockWorld/WorldCache::load includeStreamed flag; BC1/2/3/7 stock images uploaded compressed
+  (texture_decode loadDdsBlocks, SceneRenderer::createTextureBlocks, texRawAlpha_: raw spec alpha, no alpha test:
+  rawSpecAlpha() = batchFlags.y -2 or layerP.y 2, forced at upload; IW8R_NO_BC_TEXTURES); texture budget default
+  40 % of video memory (1-4 GB); sun shadows cast from the textured reference's base batches (decals and layers
+  skip; IW8R_FLAT_SHADOW_REF for A/B). Diagnostics: IW8R_REF_NEAR="x y r file" (batches and extras near a point,
+  OVER = footprint covers it), IW8R_ALBEDO_SHOW, bench lines texture_memory / terrain_patch. Verdansk raised camera
+  with tiles 25.9 ms. NEXT: renderer extras as keyed groups (own VB each), world batches in extras, camera-following
+  tile loader with stock/streamCacheGB LRU, fine cutout once tiles cover the holes.
 - M0 done: screen-space AO (render.cpp kAoShader / drawAo / invert4; depth R24G8_TYPELESS + depthSrv_; ps_prepass
   with the shading pass's cut-out and terrain cut; pre-pass draws props >= 24 px only (bigInst, IW8R_PREPASS_PX), the
   shading pass writes depth; ps_tex reads t14, gameAo in b4). IW8R_NO_AO, IW8R_AO_SHOW, IW8R_AO_RADIUS (40),

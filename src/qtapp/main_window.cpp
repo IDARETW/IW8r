@@ -2254,7 +2254,7 @@ void MainWindow::buildMenus() {
         a->setChecked(mode == ctx_.scene.cameraMode);
         modeGroup->addAction(a);
     }
-    camera_->setTextureBudgetMB(Settings::instance().value("view/textureBudgetMB", 1024).toInt());
+    camera_->setTextureBudgetMB(Settings::instance().value("view/textureBudgetMB", camera_->defaultTextureBudgetMB()).toInt());
     addCommand(view, "TextureBudget", "Texture Memory Budget...", QKeySequence(), [this] {
         // 3.20: past the budget, new camera textures load at 128 px (the rest of the session).
         bool ok = false;
@@ -7192,6 +7192,24 @@ void MainWindow::projectPropDecals() {
 void MainWindow::pushDecalExtras() {
     std::vector<app::ReferenceTexBatch> all = terrainLayerBatches_;  // the terrain layers first, under the decals
     all.insert(all.end(), propDecalBatches_.begin(), propDecalBatches_.end());
+    // Diagnosis (IW8R_REF_NEAR, as the world batches): the extras near the point, to <file>.extras.
+    if (const QStringList near = qEnvironmentVariable("IW8R_REF_NEAR").split(' ', Qt::SkipEmptyParts); near.size() >= 4) {
+        const double nx = near[0].toDouble(), ny = near[1].toDouble(), nr = near[2].toDouble();
+        QFile lf(near[3] + ".extras");
+        if (lf.open(QIODevice::WriteOnly | QIODevice::Text))
+            for (size_t k = 0; k < all.size(); ++k) {
+                const auto& b = all[k];
+                size_t inside = 0;
+                double zmin = 1e30, zmax = -1e30;
+                for (size_t i = 0; i + 2 < b.tris.size(); i += 3)
+                    if (std::hypot(b.tris[i].x - nx, b.tris[i].y - ny) < nr)
+                        ++inside, zmin = std::min(zmin, double(b.tris[i].z)), zmax = std::max(zmax, double(b.tris[i].z));
+                if (inside)
+                    lf.write(QString("%1 %2 tris %3 terrain %4 base %5 order %6 z %7..%8\n").arg(k < terrainLayerBatches_.size() ? "T" : "P")
+                                 .arg(QString::fromStdString(b.material)).arg(inside).arg(b.terrainLayer).arg(b.terrainBase).arg(b.decalOrder)
+                                 .arg(zmin, 0, 'f', 0).arg(zmax, 0, 'f', 0).toUtf8());
+            }
+    }
     camera_->setReferenceDecalExtras(std::move(all));
 }
 
@@ -7878,6 +7896,37 @@ void MainWindow::loadStockReference(const QString& zone) {
             world ? scatterStockGroundClutter(zone, zoneDir, tools, terrainGround) : nullptr;  // research 100
         std::shared_ptr<const StockDecalData> decals;
         if (world) decals = appendStockDecalVolumes(*world, zone, zoneDir, tools, *texBatches);  // projected decals (research 99)
+        // Diagnosis: IW8R_REF_NEAR="x y radius file" lists the reference batches with triangles near that point.
+        if (const QStringList near = qEnvironmentVariable("IW8R_REF_NEAR").split(' ', Qt::SkipEmptyParts); near.size() >= 4) {
+            const double nx = near[0].toDouble(), ny = near[1].toDouble(), nr = near[2].toDouble();
+            QFile lf(near[3]);
+            if (lf.open(QIODevice::WriteOnly | QIODevice::Text))
+                for (const auto& b : *texBatches) {
+                    size_t inside = 0;
+                    double zmin = 1e30, zmax = -1e30;
+                    for (size_t i = 0; i + 2 < b.tris.size(); i += 3) {
+                        const auto& v = b.tris[i];
+                        if (std::hypot(v.x - nx, v.y - ny) < nr) ++inside, zmin = std::min(zmin, double(v.z)), zmax = std::max(zmax, double(v.z));
+                    }
+                    // Triangles whose footprint covers the point (large casters overhead).
+                    size_t over = 0;
+                    double ozmin = 1e30;
+                    for (size_t i = 0; i + 2 < b.tris.size(); i += 3) {
+                        const auto &p0 = b.tris[i], &p1 = b.tris[i + 1], &p2 = b.tris[i + 2];
+                        const double d0 = (p1.x - p0.x) * (ny - p0.y) - (p1.y - p0.y) * (nx - p0.x);
+                        const double d1 = (p2.x - p1.x) * (ny - p1.y) - (p2.y - p1.y) * (nx - p1.x);
+                        const double d2 = (p0.x - p2.x) * (ny - p2.y) - (p0.y - p2.y) * (nx - p2.x);
+                        if ((d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 <= 0 && d1 <= 0 && d2 <= 0))
+                            ++over, ozmin = std::min(ozmin, double(std::min({p0.z, p1.z, p2.z})));
+                    }
+                    if (over)
+                        lf.write(QString("OVER %1 tris %2 zmin %3\n").arg(QString::fromStdString(b.material)).arg(over).arg(ozmin, 0, 'f', 0).toUtf8());
+                    if (inside)
+                        lf.write(QString("%1 tris %2 layer %3 volume %4 order %5 terrain %6 z %7..%8\n").arg(QString::fromStdString(b.material))
+                                     .arg(inside).arg(b.layer).arg(b.decalVolume).arg(b.decalOrder).arg(b.terrainLayer).arg(zmin, 0, 'f', 0)
+                                     .arg(zmax, 0, 'f', 0).toUtf8());
+                }
+        }
         // Props (11.3, core stock_smodels): the static model placements of the same export.
         auto props = std::make_shared<std::vector<StockModelInstance>>();
         std::string perr;

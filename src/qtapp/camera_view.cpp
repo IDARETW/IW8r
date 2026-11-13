@@ -1048,7 +1048,33 @@ bool textureLoadAllowed(int loads) {
 }
 }  // namespace
 
+int CameraView::videoMemoryMB() const {
+    if (!dev_) return 0;
+    IDXGIDevice* dxgiDev = nullptr;
+    IDXGIAdapter* adapter = nullptr;
+    int mb = 0;
+    if (SUCCEEDED(dev_->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&dxgiDev))) && SUCCEEDED(dxgiDev->GetAdapter(&adapter))) {
+        DXGI_ADAPTER_DESC d{};
+        if (SUCCEEDED(adapter->GetDesc(&d))) mb = int(d.DedicatedVideoMemory / (1024 * 1024));
+    }
+    if (adapter) adapter->Release();
+    if (dxgiDev) dxgiDev->Release();
+    return mb;
+}
+
 int CameraView::textureSideNow() const { return renderer_.textureBytes() > textureBudget_ ? 128 : kViewTextureSide; }
+
+// A stock colour image no step edits: no cut-out mask, not a blended material, no tint (catalogue or the material's own).
+bool CameraView::colourImageKeptCompressed(const std::string& material) const {
+    static const bool off = qEnvironmentVariableIsSet("IW8R_NO_BC_TEXTURES");  // A/B switch
+    if (off) return false;
+    if (maskLookup_ && !maskLookup_(material).isEmpty()) return false;
+    if (ctx_ && ctx_->scene.blendFor && ctx_->scene.blendFor(material) != 0) return false;
+    if (MaterialTints::shared(QCoreApplication::applicationDirPath().toStdString()).find(material)) return false;
+    if (factsLookup_ && material.find_first_of("\x01\x02") == std::string::npos)
+        if (const auto f = factsLookup_(material); f && f->tint >= 0) return false;
+    return true;
+}
 
 int CameraView::textureFor(const std::string& material) {
     if (material.empty() || isIw8ToolMaterial(material)) return -1;  // tool faces keep their flat colour
@@ -1091,6 +1117,21 @@ int CameraView::textureFor(const std::string& material) {
     app::Rgba8Image img;
     int fullW = 0, fullH = 0;  // size of the whole image (Texel Density reads it), not of the level shown
     bool decoded = false;
+    if (path->endsWith(".dds", Qt::CaseInsensitive) && colourImageKeptCompressed(material)) {
+        // A stock image nothing edits (no cut-out mask, not blended, no tint): uploaded block-compressed as stored,
+        // its alpha the specular code (Verdansk with its streamed tiles ran past the texture budget decoded to RGBA).
+        app::DdsBlockLevels blocks;
+        if (app::loadDdsBlocks(path->toStdString(), textureSideNow(), blocks, &fullW, &fullH)) {
+            id = renderer_.createTextureBlocks(blocks.dxgiFormat, blocks.width, blocks.height, blocks.levels);
+            if (id >= 0) {
+                texSizes_[material] = {fullW, fullH};
+                if (textureSideNow() < kViewTextureSide) ++budgetReduced_;
+                g_frameLoadMs += QDateTime::currentMSecsSinceEpoch() - loadStart;
+                if (shareable) texByPath_[path->toStdString()] = id;
+                return texIds_[material] = id;
+            }
+        }
+    }
     if (path->endsWith(".dds", Qt::CaseInsensitive)) {
         // Only the mip level the viewport texture needs is read and decoded: the top level of a 2048x2048 stock
         // image is 16 MB of RGBA and cost 100 ms and more here, to be shrunk to 512 right after.
@@ -1328,8 +1369,12 @@ int CameraView::normalFor(const std::string& material) {
     const qint64 loadStart = QDateTime::currentMSecsSinceEpoch();
     int id = -1;
     app::Rgba8Image img;
-    // The same size rule as the colour images (they had always loaded at full preview size, over the budget).
-    if (app::loadDdsPreview(path.toStdString(), textureSideNow(), img) && img.width > 0 && img.height > 0)
+    // The same size rule as the colour images (they had always loaded at full preview size, over the budget). BC1 /
+    // BC3 / BC7 normal maps go up compressed (every channel as stored); BC5 and the rest are decoded.
+    app::DdsBlockLevels blocks;
+    if (!qEnvironmentVariableIsSet("IW8R_NO_BC_TEXTURES") && app::loadDdsBlocks(path.toStdString(), textureSideNow(), blocks))
+        id = renderer_.createTextureBlocks(blocks.dxgiFormat, blocks.width, blocks.height, blocks.levels);
+    if (id < 0 && app::loadDdsPreview(path.toStdString(), textureSideNow(), img) && img.width > 0 && img.height > 0)
         id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
     g_frameLoadMs += QDateTime::currentMSecsSinceEpoch() - loadStart;
     if (id >= 0) nrmByPath_[path.toStdString()] = id;

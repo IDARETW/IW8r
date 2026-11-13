@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Verdansk's buildings and roads (owner hint: transient tiles).** Most of Verdansk's world (buildings, lots, roads)
+  is in 749 streamed tile zones; once they are read, the reference shows the town instead of flat grey sheets.
+  Groundwork landed: tiles can be built one at a time from the map's surface table, stock textures stay
+  block-compressed on the GPU, the texture budget follows the video card (40 %, 1-4 GB), and world decals no
+  longer cast sun shadows (Verdansk's thousands of puddle and dirt decals blotched the ground). Loading the tiles
+  automatically around the camera is next (docs/PLAN_REMAINING.md 1.1).
 - **Ambient occlusion in Game Lighting.** Corners, wall bases and the ground under props darken the way the game's
   screen-space AO does: indirect light gets a multi-bounce AO, reflections get specular occlusion. It needs a depth
   pre-pass; props small on screen are left out of it to keep the cost down (Hideout 12 ms, Aniyah Tac 18 ms).

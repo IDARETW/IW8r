@@ -369,6 +369,63 @@ bool loadDdsPreview(const std::string& path, int maxSide, Rgba8Image& out, int* 
     return true;
 }
 
+bool loadDdsBlocks(const std::string& path, int maxSide, DdsBlockLevels& out, int* fullWidth, int* fullHeight, std::string* err) {
+    out = DdsBlockLevels{};
+    const std::filesystem::path file(std::u8string(reinterpret_cast<const char8_t*>(path.data()), path.size()));
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return failWith(err, "cannot open " + path);
+    in.seekg(0, std::ios::end);
+    const std::streamoff fileSize = in.tellg();
+    if (fileSize < 0) return failWith(err, "cannot read " + path);
+    std::string header(static_cast<size_t>(std::min<std::streamoff>(fileSize, 148)), '\0');
+    in.seekg(0);
+    in.read(header.data(), static_cast<std::streamsize>(header.size()));
+    if (!in) return failWith(err, "cannot read " + path);
+    DdsLayout l;
+    if (!parseHeader(header, l, err)) return false;
+    int dxgi = 0;
+    switch (l.codec) {
+        case Codec::Bc1: dxgi = 71; break;  // DXGI_FORMAT_BC1_UNORM
+        case Codec::Bc2: dxgi = 74; break;  // BC2_UNORM
+        case Codec::Bc3: dxgi = 77; break;  // BC3_UNORM
+        case Codec::Bc7: dxgi = 98; break;  // BC7_UNORM
+        default: return failWith(err, "not a BC1/2/3/7 colour image");
+    }
+    if (l.volume) return failWith(err, "volume image");
+    if (fullWidth) *fullWidth = static_cast<int>(l.width);
+    if (fullHeight) *fullHeight = static_cast<int>(l.height);
+    const size_t size = static_cast<size_t>(fileSize);
+    const size_t available = size > l.dataOffset ? size - l.dataOffset : 0;
+    const LevelPick pick = pickLevel(l, maxSide, available);
+    if (pick.width < 4 || pick.height < 4 || pick.width % 4 || pick.height % 4) return failWith(err, "top level not a whole number of blocks");
+    // The level index of the pick: walk the chain to find where it starts.
+    size_t w = l.width, h = l.height, offset = 0;
+    uint32_t level = 0;
+    while (level < l.mipCount && offset < pick.offset) {
+        offset += levelBytes(l.codec, w, h);
+        w = std::max<size_t>(1, w / 2), h = std::max<size_t>(1, h / 2);
+        ++level;
+    }
+    if (offset != pick.offset) return failWith(err, "mip chain does not line up");
+    out.dxgiFormat = dxgi;
+    out.width = static_cast<int>(w), out.height = static_cast<int>(h);
+    in.seekg(static_cast<std::streamoff>(l.dataOffset + offset));
+    for (; level < l.mipCount; ++level) {
+        const size_t bytes = levelBytes(l.codec, w, h);
+        if (offset > available || bytes > available - offset) break;  // the file ends here: keep the levels read
+        std::string data(bytes, '\0');
+        in.read(data.data(), static_cast<std::streamsize>(bytes));
+        if (!in) break;
+        out.levels.push_back(std::move(data));
+        out.bytes += bytes;
+        offset += bytes;
+        if (w == 1 && h == 1) break;
+        w = std::max<size_t>(1, w / 2), h = std::max<size_t>(1, h / 2);
+    }
+    if (out.levels.empty()) return failWith(err, "no level could be read");
+    return true;
+}
+
 Rgba8Image downscale(const Rgba8Image& in, int maxSide) {
     if (in.width <= 0 || in.height <= 0 || maxSide <= 0 || std::max(in.width, in.height) <= maxSide) return in;
 

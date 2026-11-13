@@ -79,7 +79,9 @@ public:
     QString cacheRoot() const;
 
     // Parses the cached export. nullopt with err set when the zone is not cached.
-    std::optional<StockWorld> load(const QString& zone, QString* err = nullptr) const;
+    // includeStreamed false: the main zone only (the streamed tiles are added one by one by the camera-following
+    // loader; buildStockWorldTile).
+    std::optional<StockWorld> load(const QString& zone, QString* err = nullptr, bool includeStreamed = true) const;
 
     // The zone's lightmap cache file (<zone cache folder>/lightmap.iw8rlm, read it with iw8r::readStockLightmapCache),
     // or nullopt when the zone is not cached or has no lightmap (yet). Does not start a job. MP maps only: a Warzone

@@ -224,7 +224,7 @@ bool WorldCache::needsProbes(const QString& zone) const {
 
 QString WorldCache::cacheRoot() const { return root_; }
 
-std::optional<StockWorld> WorldCache::load(const QString& zone, QString* err) const {
+std::optional<StockWorld> WorldCache::load(const QString& zone, QString* err, bool includeStreamed) const {
     const auto dir = lookup(zone);
     if (!dir) {
         if (err) *err = "zone not in the world cache: " + zone;
@@ -232,7 +232,7 @@ std::optional<StockWorld> WorldCache::load(const QString& zone, QString* err) co
     }
     StockWorld w;
     std::string serr;
-    if (!readStockWorld(dir->toStdString(), w, &serr)) {
+    if (!readStockWorld(dir->toStdString(), w, &serr, includeStreamed)) {
         if (err) *err = QString::fromStdString(serr);
         return std::nullopt;
     }

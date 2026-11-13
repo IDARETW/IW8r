@@ -120,6 +120,7 @@ public:
     using FactsLookup = std::function<std::optional<StockMaterialFacts>(const std::string& material)>;
     void setMaterialFacts(FactsLookup lookup) { factsLookup_ = std::move(lookup); }
     void setBaseMaterialConstants(size_t referenceBatch);
+    bool colourImageKeptCompressed(const std::string& material) const;
     std::optional<std::array<float, 16>> materialConstantsFor(const std::string& material) const;
     // Cut-out mask of a stock material ("" = none): a stock colour image's alpha is specular (`_c&_s`), so without a
     // mask the camera draws it opaque; with one (`_sdf`, foliage `_alpha`) the mask is the alpha.
@@ -271,6 +272,10 @@ public slots:
     size_t lastCulledSceneChunks() const { return renderer_.lastCulledSceneChunks(); }
     // 3.20 texture memory budget (MB, setting view/textureBudgetMB): past it, new textures load at 128 px.
     void setTextureBudgetMB(int mb) { textureBudget_ = size_t(std::max(1, mb)) * 1024 * 1024; }
+    // The video card's dedicated memory (MB, 0 when unknown) and the default budget from it: 40 % of it, 1 to 4 GB
+    // (Verdansk with its streamed tiles needs about 3 GB of compressed stock textures at 512 px).
+    int videoMemoryMB() const;
+    int defaultTextureBudgetMB() const { const int v = videoMemoryMB(); return v > 0 ? std::clamp(v * 2 / 5, 1024, 4096) : 1024; }
     size_t textureBudgetBytes() const { return textureBudget_; }
     size_t textureBytes() const { return renderer_.textureBytes(); }
     int textureSideNow() const;

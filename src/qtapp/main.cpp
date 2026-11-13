@@ -594,6 +594,8 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             const auto sl = cam->skyLuminance();
             report << QString("game_sky exposure=%1 mean_lum=%2 high_lum=%3").arg(sl[0]).arg(sl[1]).arg(sl[2]);
             report << QString("instances_culled %1").arg(cam->instancesCulled());
+            report << QString("terrain_patch centre %1 %2 batches %3 camera %4 %5").arg(w.terrainLayerCentre().x, 0, 'f', 0)
+                          .arg(w.terrainLayerCentre().y, 0, 'f', 0).arg(w.terrainLayerBatchCount()).arg(ctx.cam.pos.x, 0, 'f', 0).arg(ctx.cam.pos.y, 0, 'f', 0);
             if (const auto* cl = w.stockClutter(); cl && !cl->empty()) {
                 std::set<std::string> models;
                 for (const auto& c : *cl) models.insert(c.model);
@@ -613,6 +615,8 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                 const auto bm = cam->baseMaterialStats();
                 report << QString("base_materials batches %1 constants %2 spec_alpha %3").arg(bm[0]).arg(bm[1]).arg(bm[2]);
                 report << QString("game_ao drawn %1").arg(cam->gameAoDrawn() ? 1 : 0);
+                report << QString("texture_memory mb %1 budget_mb %2 reduced_to_128px %3").arg(double(cam->textureBytes()) / 1048576.0, 0, 'f', 0)
+                              .arg(double(cam->textureBudgetBytes()) / 1048576.0, 0, 'f', 0).arg(cam->texturesReducedByBudget());
             }
             const auto ex = cam->gameExposureState();
             report << QString("game_exposure %1 target %2 metered %3 (EV %4)").arg(ex[0]).arg(ex[1]).arg(ex[2])
