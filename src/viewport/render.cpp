@@ -500,7 +500,11 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             }
             float2 sd = nm.ga * 2.0 - 1.0;
             float2 oct = float2(sd.x + sd.y, sd.x - sd.y) * 0.5;
-            float2 slope = oct / max(0.02, 1.0 - abs(oct.x) - abs(oct.y));
+            // The stock decode (research 95, W:425-428): the octahedral direction normalised, its z replaced by
+            // 1 - 0.6 |xy|^2 (the normal map's relief is a little flatter than the plain decode).
+            const float2 nxy = normalize(float3(oct, max(1.0 - abs(oct.x) - abs(oct.y), 0.0))).xy;
+            const float3 nT = normalize(float3(nxy, 1.0 - 0.6 * dot(nxy, nxy)));
+            float2 slope = nT.xy / max(nT.z, 0.02);
             float3 Tt = i.t - Nf * dot(i.t, Nf);
             float3 T, B;
             if (dot(Tt, Tt) > 1e-8) {
@@ -595,7 +599,8 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             float fmax = max(Fenv.r, max(Fenv.g, Fenv.b));
             const float so = min(aoV, baseMat ? nmCavity : 1.0);
             float3 S = lerp(0.18 * Lr, Lr, so);
-            if (probeCount.x > 0.5 && layerP.x < 0.5) {  // layer and decal passes: the lightmap along R (they re-light per pass)
+            const bool probesOnLayers = gameSkyScale.w > 0.5;  // IW8R_PERF_OFF=layerprobes turns it off
+            if (probeCount.x > 0.5 && (layerP.x < 0.5 || (probesOnLayers && layerUvO.w < 0.5))) {  // every pass but the terrain patch (research 95)
                 // Probes are luminance-normalised: relit by the lightmap along the reflection (research 95).
                 float3 P = stockProbeLight(i.w, R, gp) * dot(Lr, float3(0.2126, 0.7152, 0.0722));
                 float3 mixed = lerp(P, Lr, 0.85);
@@ -617,7 +622,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 float2 abl = gameEnvBrdf(saturate(nl), gp);
                 float3 fl = f0 * abl.x + abl.y;
                 c += gameSunCol.rgb * visibility * saturate(nl) *
-                     (diffAlbedo * (1.0 - max(fl.r, max(fl.g, fl.b))) + F * Dg * Vg * 1.0390625);
+                     (diffAlbedo * (1.0 - max(fl.r, max(fl.g, fl.b))) + F * Dg * Vg * 1.0390625 * (baseMat ? nmCavity : 1.0));
             }
         } else {
             float3 light = indirect * aoV + visibility * saturate(dot(N, gameSun.xyz)) * gameSunCol.rgb;
@@ -1595,6 +1600,8 @@ void SceneRenderer::writeGameCb() {
         for (int k = 0; k < 4; ++k) g[16 + 4 * r + k] = game_.fog[r][k];
     g[40] = game_.skyScale;
     g[41] = game_.bakedScale;
+    static const bool noLayerProbes = perfOff("layerprobes");  // benchmark switch: probes on base batches only
+    g[43] = noLayerProbes ? 0.0f : 1.0f;
     // The coarse super terrain is cut away inside the near-camera layer patch (x, y, radius, on).
     g[44] = terrainCut_[0], g[45] = terrainCut_[1], g[46] = terrainCut_[2], g[47] = terrainCut_[2] > 0 ? 1.0f : 0.0f;
     g[48] = on && aoValid_ ? 1.0f : 0.0f;

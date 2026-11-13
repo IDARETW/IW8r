@@ -329,7 +329,7 @@ void CameraView::render() {
                         // A terrain layer: the layer mode (weight in the tangent length, reveal ramp / alpha by its flags),
                         // under the world's own decals (sort key 1).
                         const float p[16] = {1.0f, float(dv.flags), dv.k, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-                                             1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, dv.terrainBase ? 1.0f : 0.0f, 0.0f};
+                                             1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, dv.terrainBase ? 1.0f : 0.0f, 1.0f};  // [15] = 1: a terrain layer (no probe reflection)
                         renderer_.setReferenceTexture(k, cid);
                         renderer_.setReferenceDecal(k, 1, mid == checkerTex_ ? -1 : mid, p);
                         continue;
