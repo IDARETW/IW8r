@@ -76,6 +76,12 @@
   game_lightmap stockLightmapAtlas packs them; reference vertices carry index + u; render.cpp LightmapRects (b6).
   Checked: mp_br_tut (1 lightmap, 125,825 vertices), mp_donetsk with 12 tiles (13 lightmaps, all 391,888 lightmapped
   vertices have their file; atlas 2048 x 1282; 0.44 ms per frame). mp_donetsk uses the mp_br_quarry look.
+- Then the owner reported about 5 fps (Game Lighting on and off) with mp_rust open as a stock map. Reproduced with
+  --viewport-bench stock:<zone .ff> (new; opens the zone as File > Open Stock Zone does, ACTS kept on) and the new
+  moving_window scenario (cameraMoved + event loop each step): 182 ms per step, the grid views drawing every model
+  triangle. Fixed (grid_view.cpp: models as boxes unless selected; camera moves repaint only the marker area):
+  about 6 ms per step for the window. The camera itself draws about 17.9 M triangles on mp_rust (7 ms on an idle GPU).
+  The owner accepted the handover (2026-11-12) after this fix.
 - Tests at the last commit: core 139,820 checks / 0, GUI 948 / 0.
 - Open (in scope): copying or removing a placed object that has a dynamic entity;
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.

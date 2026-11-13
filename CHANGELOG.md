@@ -7,6 +7,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 Warzone and stock maps (later the same day):
 
+- **Viewport speed on stock maps.** With a stock map open (mp_rust: about a thousand models) a camera step took 182 ms
+  (about 5 fps) because the grid views redrew every model triangle on each move. Models are now boxes in 2D unless
+  selected, and a camera move repaints only around the camera marker: the window adds about 6 ms per step. Measured
+  with the new benchmark mode `--viewport-bench stock:<zone .ff>`.
+
 - **Remove stock world geometry.** An `iw8r_remove_world` box on a stock map removes the world inside it (walls,
   crates baked into the world) from drawing and from collision when the zone is rebuilt, and bakes the sun shadow
   again without it. Baked lighting and occlusion keep the old geometry. Proven offline on Shipment
