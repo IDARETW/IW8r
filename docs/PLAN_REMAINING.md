@@ -91,7 +91,7 @@ side.
   - The cache stays within its budget.
   - Tests cover tile selection, eviction and the extras append.
 
-**1.2 HDR scene target (the foundation for SSR, bloom and exposure parity).**
+**1.2 HDR scene target (the foundation for SSR, bloom and exposure parity).** DONE 2026-11-13.
 - **New pipeline.** Game Lighting draws the scene into an `R16G16B16A16_FLOAT` target with linear output. A post pass
   then applies `gamePost` (exposure, log shaper, LUT) into the 8-bit frame. Editor overlays (lines, markers, gizmo,
   selection) are drawn after the post pass and are never tone-mapped.

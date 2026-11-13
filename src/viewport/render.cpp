@@ -383,6 +383,21 @@ bool tileFillHidden(float4 col, float3 w) {
 // Opaque with the stock specular code in alpha (block-compressed stock images): no alpha test. Editor batches say so
 // with blend mode -2, stock batches and props with layerP.y = 2.
 bool rawSpecAlpha() { return batchFlags.y < -1.5 || (layerP.x < 0.5 && layerP.y > 1.5); }
+// The HDR scene to the frame: the post chain where something was drawn (alpha > 0); the clear colour elsewhere.
+Texture2D<float4> hdrScene : register(t15);
+struct VFull { float4 pos : SV_POSITION; };
+VFull vs_post(uint id : SV_VertexID) {
+    VFull o;
+    float2 p = float2((id << 1) & 2, id & 2);
+    o.pos = float4(p * float2(2, -2) + float2(-1, 1), 0, 1);
+    return o;
+}
+float4 ps_post(VFull i) : SV_TARGET {
+    float4 h = hdrScene.Load(int3(i.pos.xy, 0));
+    if (h.a <= 0.0) discard;
+    if (gameAo.y > 0.5 || gameAo.z > 0.5) return float4(h.rgb, 1.0);  // debug views: shown as drawn
+    return float4(gamePost(max(h.rgb, 0.0)), 1.0);
+}
 void ps_shadow_clip(PSIn i) {
     if (!rawSpecAlpha()) clip(tex0.Sample(samp0, i.uv).a - 0.3);
 }
@@ -448,7 +463,10 @@ float4 ps_tex(PSIn i) : SV_TARGET {
     if (layerB >= 0.0) outA = layerB;
     // Colour mode multiply (layerP.w = 1; puddles, edge wear): below x lerp(1, layer, b), drawn with a multiplying blend
     // over the shaded result (in display space: the factor's 1/2.2 power, as the post chain is close to a gamma there).
-    if (layerP.x > 0.5 && layerP.w > 0.5) return float4(pow(lerp(float3(1, 1, 1), srgbToLinear3(t.rgb), layerB), 1.0 / 2.2), 1.0);
+    if (layerP.x > 0.5 && layerP.w > 0.5) {
+        const float3 mulLin = lerp(float3(1, 1, 1), srgbToLinear3(t.rgb), layerB);
+        return float4(game0.x > 0.5 && gameAo.w > 0.5 ? mulLin : pow(mulLin, 1.0 / 2.2), 1.0);  // HDR: a linear multiply
+    }
     if (game0.x > 0.5) {
         // View > Game Lighting: map_surface_realtime.hlsl (the converter's world shader, iw3 style) and the post chain.
         // batchFlags2.z: the stock reference world (its vertex colours are an editor shade, not a tint), .w: its own
@@ -459,7 +477,10 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         if (gameAo.y > 0.5) return float4(aoV, aoV, aoV, 1.0);
         if (gameAo.z > 0.5) return float4(t.rgb, outA);  // debug: the albedo as sampled
         float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? float3(1, 1, 1) : i.col.rgb);  // i.col: selection and brush entity tints
-        if (!stockRef && i.col.a < 0.5) return float4(gamePost(gameFogApply(albedo * gameSkyScale.x, i.w, true)), 1.0);  // sky box
+        if (!stockRef && i.col.a < 0.5) {  // sky box
+            const float3 sky = gameFogApply(albedo * gameSkyScale.x, i.w, true);
+            return float4(gameAo.w > 0.5 ? sky : gamePost(sky), 1.0);
+        }
         float3 Nf = dot(i.n, i.n) > 0.5 ? normalize(i.n) : normalize(cross(ddx(i.w), ddy(i.w)));
         // A normal from the screen derivatives has no reliable side (instanced props have none of their own): it faces
         // the viewer.
@@ -626,7 +647,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         }
         if (batchFlags2.x > 0.5) c += srgbToLinear3(emi0.Sample(samp0, i.uv).rgb);
         c = gameFog[0].w > 0.5 ? gameFogApply(c, i.w, false) : applyFog(c, i.w);
-        c = gamePost(c);
+        if (gameAo.w < 0.5) c = gamePost(c);  // HDR frames: the post pass applies it (drawPost)
         if (batchFlags.y > 1.5) return float4(c * outA, 1.0);
         return float4(c, outA);
     }
@@ -796,6 +817,14 @@ float4 ps_meter(V i) : SV_TARGET {
     float w = 1.0 - r;
     return float4(log(max(x, 1e-5)) * w, w, 0, 0);
 }
+// The HDR scene (linear, before exposure): its luminance directly (research 95 section 3), same weights.
+float4 ps_meter_hdr(V i) : SV_TARGET {
+    float4 c = frame.SampleLevel(lin, i.uv, 0);
+    float x = c.a > 0.0 ? dot(max(c.rgb, 0.0), float3(0.2126, 0.7152, 0.0722)) : 0.0;
+    float r = saturate(length(i.uv - 0.5) * 1.41421356);
+    float w = c.a > 0.0 ? 1.0 - r : 0.0;
+    return float4(log(max(x, 1e-5)) * w, w, 0, 0);
+}
 )";
 
 // IEEE binary16 from float (round to nearest; the lightmap values are finite and positive or small).
@@ -883,6 +912,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(psShadowClip_);
     safeRelease(psPrepass_);
     safeRelease(cbTiles_);
+    safeRelease(postVs_), safeRelease(postPs_), safeRelease(meterHdrPs_);
     safeRelease(aoVs_), safeRelease(aoPs_), safeRelease(aoBlurPs_), safeRelease(cbAo_);
     safeRelease(layoutTex_);
     for (auto& g : refTexInst_) safeRelease(g.vb), safeRelease(g.inst), safeRelease(g.visInst), safeRelease(g.bigInst);
@@ -1002,6 +1032,13 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
                 dev_->CreatePixelShader(sps->GetBufferPointer(), sps->GetBufferSize(), nullptr, &psShadowClip_);
                 safeRelease(sps);
             }
+            ID3DBlob* pvs = nullptr;
+            ID3DBlob* ppo = nullptr;
+            if (compileTex("vs_post", "vs_5_0", pvs) && compileTex("ps_post", "ps_5_0", ppo)) {
+                dev_->CreateVertexShader(pvs->GetBufferPointer(), pvs->GetBufferSize(), nullptr, &postVs_);
+                dev_->CreatePixelShader(ppo->GetBufferPointer(), ppo->GetBufferSize(), nullptr, &postPs_);
+            }
+            safeRelease(pvs), safeRelease(ppo);
             ID3DBlob* pps = nullptr;
             if (compileTex("ps_prepass", "ps_5_0", pps)) {
                 dev_->CreatePixelShader(pps->GetBufferPointer(), pps->GetBufferSize(), nullptr, &psPrepass_);
@@ -1121,9 +1158,10 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
     bd.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
     bd.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
     bd.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    // Alpha keeps the largest value: it marks the pixels the HDR scene drew (drawPost); the frame's alpha is unused.
     bd.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-    bd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
-    bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    bd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+    bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_MAX;
     bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
     dev_->CreateBlendState(&bd, &blend_);
     {
@@ -1153,6 +1191,7 @@ void SceneRenderer::releaseTargets() {
     safeRelease(color_);
     safeRelease(depthSrv_);
     safeRelease(depth_);
+    safeRelease(hdrSrv_), safeRelease(hdrRtv_), safeRelease(hdrTex_);
     for (int k = 0; k < 2; ++k) safeRelease(aoSrv_[k]), safeRelease(aoRtv_[k]), safeRelease(aoTex_[k]);
     aoValid_ = false;
 }
@@ -1209,6 +1248,30 @@ bool invert4(const float* m, float* out) {
 }
 }  // namespace
 
+void SceneRenderer::drawPost() {
+    IW8R_PROF("d.post");
+    writeGameCb();  // b4 (exposure), the LUT on t9 and its sampler
+    ctx_->OMSetRenderTargets(1, &rtv_, nullptr);
+    ctx_->OMSetBlendState(nullptr, nullptr, 0xffffffff);
+    ctx_->OMSetDepthStencilState(dsOff_, 0);
+    ctx_->RSSetState(rsTris_);
+    ctx_->IASetInputLayout(nullptr);
+    ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx_->VSSetShader(postVs_, nullptr, 0);
+    ctx_->PSSetShader(postPs_, nullptr, 0);
+    ctx_->PSSetShaderResources(15, 1, &hdrSrv_);
+    ctx_->Draw(3, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    ctx_->PSSetShaderResources(15, 1, &none);
+    sceneRtv_ = rtv_;
+    ctx_->OMSetRenderTargets(1, &rtv_, dsv_);
+    const float bf[4] = {0, 0, 0, 0};
+    ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
+    ctx_->IASetInputLayout(layout_);
+    ctx_->VSSetShader(vs_, nullptr, 0);
+    ctx_->PSSetShader(ps_, nullptr, 0);
+}
+
 void SceneRenderer::drawAo(const float* viewProj) {
     aoValid_ = false;
     if (!depthSrv_ || !aoRtv_[0] || !aoRtv_[1] || !createAoResources()) return;
@@ -1241,7 +1304,7 @@ void SceneRenderer::drawAo(const float* viewProj) {
     ctx_->PSSetShaderResources(0, 2, in1);
     ctx_->Draw(3, 0);
     ctx_->PSSetShaderResources(0, 2, none2);
-    ctx_->OMSetRenderTargets(1, &rtv_, dsv_);
+    ctx_->OMSetRenderTargets(1, &sceneRtv_, dsv_);
     aoValid_ = true;
 }
 
@@ -1539,6 +1602,7 @@ void SceneRenderer::writeGameCb() {
     g[49] = aoShow ? 1.0f : 0.0f;
     static const bool albedoShow = std::getenv("IW8R_ALBEDO_SHOW") != nullptr;  // debug: Game Lighting shows the albedo
     g[50] = albedoShow ? 1.0f : 0.0f;
+    g[51] = hdrFrame_ ? 1.0f : 0.0f;  // the lit scene goes to the HDR target: no post chain in the shaders
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
     ID3D11ShaderResourceView* gl[3] = {gameLutSrv_, envBrdfSrv_, probeArrSrv_};
@@ -1605,6 +1669,10 @@ bool SceneRenderer::createMeterResources() {
     if (ok) {
         dev_->CreateVertexShader(vsb->GetBufferPointer(), vsb->GetBufferSize(), nullptr, &meterVs_);
         dev_->CreatePixelShader(psb->GetBufferPointer(), psb->GetBufferSize(), nullptr, &meterPs_);
+        ID3DBlob* hb = nullptr;
+        if (SUCCEEDED(D3DCompile(kMeterShader, std::strlen(kMeterShader), "iw8r_meter", nullptr, nullptr, "ps_meter_hdr", "ps_5_0", 0, 0, &hb, nullptr)))
+            dev_->CreatePixelShader(hb->GetBufferPointer(), hb->GetBufferSize(), nullptr, &meterHdrPs_);
+        safeRelease(hb);
     }
     safeRelease(vsb), safeRelease(psb), safeRelease(errb);
     if (!meterVs_ || !meterPs_) return false;
@@ -1661,11 +1729,12 @@ void SceneRenderer::meterFrame() {
     ctx_->IASetInputLayout(nullptr);
     ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ctx_->VSSetShader(meterVs_, nullptr, 0);
-    ctx_->PSSetShader(meterPs_, nullptr, 0);
+    const bool hdrMeter = hdrFrame_ && hdrSrv_ && meterHdrPs_;
+    ctx_->PSSetShader(hdrMeter ? meterHdrPs_ : meterPs_, nullptr, 0);
     const float cb[4] = {1.0f / std::max(game_.lutScale, 1e-6f), 0, 0, 0};
     ctx_->UpdateSubresource(cbMeter_, 0, nullptr, cb, 0, 0);
     ctx_->PSSetConstantBuffers(0, 1, &cbMeter_);
-    ID3D11ShaderResourceView* srvs[2] = {srv_, invGreySrv_};
+    ID3D11ShaderResourceView* srvs[2] = {hdrMeter ? hdrSrv_ : srv_, invGreySrv_};
     ctx_->PSSetShaderResources(0, 2, srvs);
     if (lutSampler_) ctx_->PSSetSamplers(0, 1, &lutSampler_);
     ctx_->Draw(3, 0);
@@ -1724,6 +1793,12 @@ void SceneRenderer::resize(int w, int h) {
         td.BindFlags = D3D11_BIND_DEPTH_STENCIL;
         dev_->CreateTexture2D(&td, nullptr, &depth_);
         dev_->CreateDepthStencilView(depth_, nullptr, &dsv_);
+    }
+    td.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    if (SUCCEEDED(dev_->CreateTexture2D(&td, nullptr, &hdrTex_))) {
+        dev_->CreateRenderTargetView(hdrTex_, nullptr, &hdrRtv_);
+        dev_->CreateShaderResourceView(hdrTex_, nullptr, &hdrSrv_);
     }
     td.Format = DXGI_FORMAT_R8_UNORM;
     td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -2566,7 +2641,15 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     stats_ = {};
     inShadowPass_ = false;
     const float* viewProj = in.viewProj;
-    ctx_->OMSetRenderTargets(1, &rtv_, dsv_);
+    // Game Lighting draws the lit scene into the HDR target (IW8R_NO_HDR: straight into the frame, as before).
+    static const bool noHdr = std::getenv("IW8R_NO_HDR") != nullptr;
+    hdrFrame_ = game_.on && gameLutSrv_ && hdrRtv_ && postVs_ && postPs_ && !noHdr && !in.capture;
+    sceneRtv_ = hdrFrame_ ? hdrRtv_ : rtv_;
+    if (hdrFrame_) {
+        const float zero[4] = {0, 0, 0, 0};
+        ctx_->ClearRenderTargetView(hdrRtv_, zero);
+    }
+    ctx_->OMSetRenderTargets(1, &sceneRtv_, dsv_);
     if (!cbTiles_ && dev_) {
         D3D11_BUFFER_DESC bd{};
         bd.ByteWidth = 16 + 256 * 16;
@@ -2781,7 +2864,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         }
         if (nearShadowDue) nearDirty_ = false;
         inShadowPass_ = false;
-        ctx_->OMSetRenderTargets(1, &rtv_, dsv_);
+        ctx_->OMSetRenderTargets(1, &sceneRtv_, dsv_);
         ctx_->RSSetViewports(1, &vp);
     }
     writeCb(true);
@@ -3186,7 +3269,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             drawN(UINT(refCount_), 0);
         }
     }
-    if (refVisible_ && !refInst_.empty()) {  // instanced reference props (3.20)
+    if (refVisible_ && !refInst_.empty() && !hdrFrame_) {  // instanced reference props (3.20)
         ctx_->RSSetState(rsTris_);
         ctx_->OMSetDepthStencilState(dsWrite_, 0);
         ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -3197,6 +3280,16 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         ctx_->OMSetDepthStencilState(texOpaqueDs, 0);
         ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         drawReferenceTexInstances();
+    }
+    if (hdrFrame_) {
+        // The lit scene is done: the post chain into the frame, then the unlit pieces and the editor's overlays.
+        drawPost();
+        if (refVisible_ && !refInst_.empty()) {
+            ctx_->RSSetState(rsTris_);
+            ctx_->OMSetDepthStencilState(dsWrite_, 0);
+            ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            drawReferenceInstances(in.capture || in.clean ? ReferencePass::Capture : ReferencePass::Screen);
+        }
     }
     const auto drawFlat = [&](const Flat& f, bool lines) {
         if (!f.ready()) return;

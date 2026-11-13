@@ -5,6 +5,11 @@
 - **THE PLAN: docs/PLAN_REMAINING.md** (owner-approved 2026-11-13): Milestone 1 lighting (1.1 streamed tiles follow
   the camera, 1.2 HDR target, 1.3 SSR, ... 1.11 build-side lighting), 2 Umbra (decode, view, bake), 3 web viewer
   (streamed editor render, every command), 4 remaining pieces, 5 handover. Work it in order; mark items done there.
+- M1.2 DONE (2026-11-13): HDR scene target. render.cpp hdrTex_/hdrRtv_/hdrSrv_ (R16G16B16A16_FLOAT), sceneRtv_,
+  hdrFrame_ (game on, not capture; IW8R_NO_HDR), gameAo.w = 1: ps_tex skips gamePost (sky, lit, multiply layers
+  linear), drawPost() (vs_post/ps_post: gamePost where HDR alpha > 0) after the textured props, then plain instanced
+  props, flat, lines, overlays to the frame. blend_ alpha = MAX (marks drawn pixels). Meter: ps_meter_hdr on the HDR
+  scene (luminance, centre weight). Bench line game_ao ... hdr 1. Speedball 7.5 ms (same), Hideout 12.3 (+1.1).
 - M1.1 DONE (2026-11-13): camera-following tiles. Renderer extras are keyed groups (SceneRenderer::setReferenceExtras:
   own VB per group, per-batch state kept for unchanged key+version, world groups = base/layer batches that draw and
   cast; refTexVb_ / refTexNearOnly_ / refExtraOutside), CameraView::setReferenceExtraGroups (shared batches),

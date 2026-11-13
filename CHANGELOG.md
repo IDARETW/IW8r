@@ -5,6 +5,10 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Game Lighting renders in HDR.** The lit scene is drawn in linear light and the game's post chain (exposure, tone
+  curve, colour grade) runs once over it; decals, glass and multiply layers now blend in linear light as in game, and
+  auto exposure meters the scene itself instead of the finished frame (editor lines and markers no longer count).
+  This is the base for screen-space reflections and bloom next.
 - **Verdansk and Quarry stream their town around the camera.** The streamed world tiles within 20,000 units are
   read and drawn in the background as you move (buildings, lots, roads), and dropped behind you; past them the
   ground shows instead of holes. Read tiles stay on disk up to 3 GB (oldest dropped first). Settings

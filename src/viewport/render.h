@@ -641,6 +641,7 @@ public:
     void setGameAo(bool on) { aoOn_ = on; }
     bool gameAo() const { return aoOn_; }
     bool gameAoDrawn() const { return aoValid_; }
+    bool gameHdrDrawn() const { return hdrFrame_; }
 private:
     void meterFrame();
     ID3D11Texture2D* gameLmTex_[3] = {nullptr, nullptr, nullptr};
@@ -689,6 +690,17 @@ private:
     // Game Lighting ambient occlusion (screen space, from the pre-pass depth; research 95 "GTAO"): the depth's shader
     // view, the raw and blurred AO targets, the full-screen shaders and their constants (b8).
     ID3D11ShaderResourceView* depthSrv_ = nullptr;
+    // Game Lighting's HDR scene (docs/PLAN_REMAINING.md 1.2): the lit scene in linear light (alpha marks drawn pixels),
+    // then one post pass (exposure, log shaper, LUT) into the frame; editor overlays are drawn after it.
+    ID3D11Texture2D* hdrTex_ = nullptr;
+    ID3D11RenderTargetView* hdrRtv_ = nullptr;
+    ID3D11ShaderResourceView* hdrSrv_ = nullptr;
+    ID3D11VertexShader* postVs_ = nullptr;
+    ID3D11PixelShader* postPs_ = nullptr;
+    ID3D11PixelShader* meterHdrPs_ = nullptr;
+    ID3D11RenderTargetView* sceneRtv_ = nullptr;  // where the lit scene goes this frame (hdrRtv_ or rtv_)
+    bool hdrFrame_ = false;
+    void drawPost();
     ID3D11Texture2D* aoTex_[2] = {nullptr, nullptr};
     ID3D11RenderTargetView* aoRtv_[2] = {nullptr, nullptr};
     ID3D11ShaderResourceView* aoSrv_[2] = {nullptr, nullptr};
