@@ -1477,11 +1477,11 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
         if (m.uv.size() != m.pos.size()) continue;
         auto [it, fresh] = byMaterial.emplace(m.material, out.size());
         if (fresh) out.push_back({m.material, {}});
-        auto& dst = out[it->second].tris;
+        const size_t baseBatch = it->second;  // an index: adding the layer batches below may move `out`
         // Layers above 0 of a layered stock material: one batch per material and layer (research 97).
         const int layers = mi < world.layerCount.size() ? world.layerCount[mi] : 1;
         const bool layered = layers > 1 && mi < world.layerUv.size() && world.layerUv[mi].size() == m.pos.size() * size_t(layers);
-        std::vector<std::vector<GpuTexVertex>*> layerDst;
+        std::vector<size_t> layerBatch;
         if (layered)
             for (int L = 1; L < layers; ++L) {
                 auto [lit, lfresh] = byMaterial.emplace(m.material + '\x01' + std::to_string(L), out.size());
@@ -1489,8 +1489,12 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
                     out.push_back({m.material, {}});
                     out.back().layer = L;
                 }
-                layerDst.push_back(&out[lit->second].tris);
+                layerBatch.push_back(lit->second);
             }
+        // References only now that `out` holds every batch of this mesh (a push_back above can move its vectors).
+        auto& dst = out[baseBatch].tris;
+        std::vector<std::vector<GpuTexVertex>*> layerDst;
+        for (size_t b : layerBatch) layerDst.push_back(&out[b].tris);
         const std::vector<uint32_t>* vcol = mi < world.vertexColor.size() && world.vertexColor[mi].size() == m.pos.size() ? &world.vertexColor[mi] : nullptr;
         // Layer 0's weight (decals, research 98): twc4 byte 0, twc the vertex alpha, others 1.
         const bool twc4 = lm.rfind("twc4/", 0) == 0, twc = !twc4 && lm.rfind("twc/", 0) == 0;

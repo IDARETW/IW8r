@@ -220,6 +220,13 @@ struct ReferenceTexBatch {
     // 0: the material's base (layer 0); L >= 1: layer L of a layered stock material (tw4 / twc4, research 97), drawn over
     // the layers below it with its own texture coordinates (uv); its tangent (from its uv) has length 1 + its blend weight.
     int layer = 0;
+    // A stock decal volume's projection (research 99): material = "\x05<colour image>"; the vertex uv is the material
+    // UV, tangent (x, y, z) = box UV and angle fade, lu / lv the receiver's lightmap UV. Drawn blended after the world.
+    bool decalVolume = false;
+    std::string decalMask;  // the mask image ("<mask>~atlasbc4"), "" when none
+    float decalA = 1, decalB = 0;  // the blend-map remap: op = m * saturate(m * A + B)
+    float decalTint[3] = {1, 1, 1};
+    int decalOrder = 0;
 };
 size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTexBatch>& out, bool skipSky = true,
                                 size_t maxTriangles = 3'000'000);

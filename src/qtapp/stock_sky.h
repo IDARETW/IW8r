@@ -40,6 +40,10 @@ public:
     void request(const QString& sky);
     QString lastError(const QString& sky) const;  // why the last export of this sky failed ("" if none)
     bool busy() const { return running_ || !pending_.empty(); }
+    // A stock map shown as the reference: images the catalog does not list are also looked for in its zones.
+    void addMapZone(const QString& zone) {
+        if (!zone.isEmpty() && !mapZones_.contains(zone)) mapZones_.prepend(zone);
+    }
 
 signals:
     void skyReady(const QString& image, const QString& file);  // file "" when the export failed (see lastError)
@@ -53,6 +57,7 @@ private:
     ToolPathFn tools_;
     QString imagesDir_;
     std::map<QString, QStringList> zones_;  // image -> catalog zones
+    QStringList mapZones_;                  // addMapZone, newest first
     bool anyImage_ = false;
     QString lastArgs_;
     QString keyOf(const QString& name) const;   // catalog key of a requested name

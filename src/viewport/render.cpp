@@ -360,7 +360,16 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         uvS = float2(layerUvT.x * i.uv.x * layerUvT.z + layerUvT.y * i.uv.y * layerUvT.w,
                      -layerUvT.y * i.uv.x * layerUvT.z + layerUvT.x * i.uv.y * layerUvT.w) + layerUvO.xy;
     float4 t = tex0.Sample(samp0, uvS);
-    if (layerP.x > 0.5) {
+    if (layerP.x > 1.5) {
+        // A stock decal volume (research 99): the mask at the box UV (clamped), the edge fade, the blend-map remap
+        // op = m x saturate(m A + B), times the angle fade; the colour image tinted (layerTint).
+        float2 bu = saturate(i.t.xy);
+        float m = revealTex.SampleLevel(lutSamp, bu, 0).r;
+        m *= 1.0 - saturate(256.0 * (max(abs(2.0 * bu.x - 1.0), abs(2.0 * bu.y - 1.0)) - (1.0 - 0.0078125)));
+        layerB = m * saturate(m * layerP.y + layerP.z) * saturate(i.t.z);
+        if (layerB < 1.0 / 255.0) discard;
+        t.rgb *= pow(max(layerTint.rgb, 0.0), 1.0 / 2.2);
+    } else if (layerP.x > 0.5) {
         float2 ar = revealTex.Sample(samp0, uvS).rg;
         float w = saturate(length(i.t) - 1.0), k = layerP.z;  // the tangent's length is 1 + the weight
         uint fl = (uint)(layerP.y + 0.5);
@@ -2157,6 +2166,11 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 if (pi == firstDecal && rsDecal_) ctx_->RSSetState(rsDecal_);
                 const RefLayer& L = refLayers_[k];
                 if (!L.ready || refTexIds_[k] < 0 || size_t(refTexIds_[k]) >= textures_.size()) continue;
+                if (cbBatch_) {
+                    const bool volume = L.params[0] > 1.5f;  // decal volumes carry their box UV in the tangent: no normal map
+                    const float flags[8] = {refNormals && !volume ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};
+                    ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+                }
                 const int rv = L.reveal >= 0 && size_t(L.reveal) < textures_.size() ? L.reveal : whiteFullTex_;
                 if (rv < 0 || size_t(rv) >= textures_.size()) continue;
                 ctx_->UpdateSubresource(cbLayer_, 0, nullptr, L.params, 0, 0);

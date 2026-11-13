@@ -199,9 +199,14 @@ void CameraView::render() {
             pendingRefTex_ = std::move(sorted);
         }
         refTexLayer_.clear();
+        refTexVolume_.clear();
         for (auto& b : pendingRefTex_) {
             refTexMaterials_.push_back(b.material);
             refTexLayer_.push_back(b.layer);
+            RefDecalVolume dv;
+            dv.on = b.decalVolume, dv.mask = b.decalMask, dv.a = b.decalA, dv.b = b.decalB, dv.order = b.decalOrder;
+            for (int c = 0; c < 3; ++c) dv.tint[c] = b.decalTint[c];
+            refTexVolume_.push_back(dv);
             batches.push_back(std::move(b.tris));
         }
         renderer_.setReferenceTextured(batches, &refTexLayer_);
@@ -229,6 +234,24 @@ void CameraView::render() {
                 if (k < refTexLayer_.size() && refTexLayer_[k] > 0) {
                     if (resolveReferenceLayer(k)) refTexResolved_[k] = true;
                     else pending = true;
+                    continue;
+                }
+                if (k < refTexVolume_.size() && refTexVolume_[k].on) {
+                    // A decal volume: its colour and mask images, then drawn with the decals (no normal map).
+                    const RefDecalVolume& dv = refTexVolume_[k];
+                    const int cid = textureFor(refTexMaterials_[k]);
+                    const std::string mk = dv.mask.empty() ? std::string() : "\x05" + dv.mask;
+                    const int mid = mk.empty() ? -1 : textureFor(mk);
+                    if (!texIds_.count(refTexMaterials_[k]) || (!mk.empty() && !texIds_.count(mk))) {
+                        pending = true;
+                        continue;
+                    }
+                    refTexResolved_[k] = true;
+                    if (cid < 0 || cid == checkerTex_) continue;  // no colour image: left out
+                    const float p[16] = {2.0f, dv.a, dv.b, 0.0f, dv.tint[0], dv.tint[1], dv.tint[2], 0.0f,
+                                         1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+                    renderer_.setReferenceTexture(k, cid);
+                    renderer_.setReferenceDecal(k, 1000 + dv.order, mid == checkerTex_ ? -1 : mid, p);
                     continue;
                 }
                 const int id = textureFor(refTexMaterials_[k]);

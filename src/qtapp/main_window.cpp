@@ -1,3 +1,4 @@
+#include "stock_decal_volumes.h"
 #include "game_lightmap.h"
 #include "vision_editor_dialog.h"
 #include "material_replace.h"
@@ -183,6 +184,14 @@
 
 namespace iw8r::qt {
 
+// Tool paths a worker thread needs to export stock decal volume assets (appendStockDecalVolumes).
+struct StockDecalTools {
+    QString acts, replay, oodle;
+};
+void appendStockDecalVolumes(const StockWorld& world, const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
+                             std::vector<app::ReferenceTexBatch>& out);
+
+
 namespace {
 QString qs(const std::string& s) { return QString::fromStdString(s); }
 constexpr int kDockLayoutVersion = 12;  // 12: Script, Outliner  // 11: Sounds  // 10: Images  // 9: Effects  // 8: Prefabs  // 7: Console  // 6: Live Link  // 3: Surface and Compile docks; 4: Replay Log; 5: Layers
@@ -222,6 +231,15 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     });
     camera_->setMaterialImages(
         [this](const std::string& m) -> std::optional<QString> {
+            // A stock decal volume image ("\x05<image>": colour or mask, research 99): any catalogued image.
+            if (!m.empty() && m[0] == '\x05') {
+                const QString image = qs(m.substr(1));
+                const QString f = imageCache_->cachedDds(image);
+                if (!f.isEmpty()) return f;
+                if (!imageCache_->lastError(image).isEmpty()) return QString();  // could not be exported
+                imageCache_->request(image);
+                return std::nullopt;
+            }
             // A layer image of a layered stock material: "<material>\x01<L>" colour, "<material>\x02<L>" alpha + reveal.
             if (const size_t sep = m.find_first_of("\x01\x02"); sep != std::string::npos && sep > 0) {
                 const QString base = qs(m.substr(0, sep));
@@ -257,7 +275,10 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             if (auto e = matCache_->lookup(qs(m))) return e->failed ? QString() : e->colorDds;
             return std::nullopt;
         },
-        [this](const std::string& m) { matCache_->request({qs(m.substr(0, m.find_first_of("\x01\x02")))}); });
+        [this](const std::string& m) {
+            if (!m.empty() && m[0] == '\x05') return;  // decal volume images: requested by the lookup
+            matCache_->request({qs(m.substr(0, m.find_first_of("\x01\x02")))});
+        });
     camera_->setMaterialFacts([this](const std::string& m) -> std::optional<CameraView::StockMaterialFacts> {
         const auto e = matCache_->lookup(qs(m));
         if (!e || e->failed) return std::nullopt;
@@ -6891,6 +6912,91 @@ void MainWindow::loadStockLightmap(const QString& zone) {
     }).detach();
 }
 
+// A stock map's decal volumes (research 99): read from its world export, their materials and masks exported once with
+// ACTS (beside the world cache), projected on the world and appended as blended reference batches.
+void appendStockDecalVolumes(const StockWorld& world, const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
+                             std::vector<app::ReferenceTexBatch>& out) {
+    StockDecalVolumeSet set;
+    std::string err;
+    if (!readStockDecalVolumes(zoneDir.toStdString(), set, &err) || set.volumes.empty()) return;
+    // Materials and masks (pools decalvolumematerial / decalvolumemask), cached in <zoneDir>/decalvol.
+    const QString dvDir = zoneDir + "/decalvol";
+    const auto readAssets = [&](const char* pool, std::map<std::string, std::string>& texts) {
+        for (QDirIterator it(dvDir, {"*.json"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
+            const QString f = it.next();
+            if (!f.contains(QString("/assets/") + pool + "/")) continue;
+            std::string t;
+            if (readFile(f.toStdString(), t)) texts[f.toStdString()] = t;
+        }
+    };
+    std::map<std::string, std::string> matTexts, maskTexts;
+    readAssets("decalvolumematerial", matTexts);
+    readAssets("decalvolumemask", maskTexts);
+    if (matTexts.empty() && QFileInfo::exists(tools.acts)) {
+        QStringList names;
+        for (const auto& m : set.materials)
+            if (!m.empty()) names << QString::fromStdString(m);
+        for (const auto& m : set.masks)
+            if (!m.empty()) names << QString::fromStdString(m);
+        const QString zoneFolder = QFileInfo(tools.replay).absolutePath() + "/zone/";
+        for (const QString& ff : {zoneFolder + "techsets_" + zone + ".ff", zoneFolder + zone + ".ff"}) {
+            if (!QFileInfo::exists(ff)) continue;
+            QProcess p;
+            p.start(tools.acts, {"--noUpdater", "fastfile", "-r", "mw19replay", "-g", tools.replay, "--oodle", tools.oodle, "-a",
+                                 "decalvolumematerial,decalvolumemask", "-n", names.join(','), "-l", "-o", dvDir, ff});
+            p.waitForFinished(180000);
+        }
+        readAssets("decalvolumematerial", matTexts);
+        readAssets("decalvolumemask", maskTexts);
+    }
+    std::map<std::string, StockDecalMaterial> mats;
+    for (const auto& [f, t] : matTexts) {
+        StockDecalMaterial m;
+        if (parseStockDecalMaterial(t, m)) mats[m.name] = m;
+    }
+    std::map<std::string, std::string> maskImage;
+    for (const auto& [f, t] : maskTexts) {
+        std::string name, image;
+        if (parseStockDecalMask(t, name, image)) maskImage[name] = image;
+    }
+    // Receivers: the world without its sky and shadow-only caulk.
+    std::vector<bool> keep(world.meshes.size(), true);
+    for (size_t m = 0; m < world.meshes.size(); ++m) {
+        std::string lm = world.meshes[m].material;
+        for (char& c : lm) c = char(std::tolower(static_cast<unsigned char>(c)));
+        const std::string leaf = lm.substr(lm.rfind('/') == std::string::npos ? 0 : lm.rfind('/') + 1);
+        if (leaf == "sky" || leaf.rfind("sky_", 0) == 0 || lm.find("caulk") != std::string::npos) keep[m] = false;
+    }
+    StockDecalReceivers receivers;
+    receivers.addWorld(world, keep);
+    receivers.build();
+    const std::vector<StockDecalBatch> batches = projectDecalVolumes(receivers, set);
+    int order = 0;
+    for (const StockDecalBatch& b : batches) {
+        if (b.volume >= set.volumes.size() || b.idx.empty()) continue;
+        const StockDecalVolume& vol = set.volumes[b.volume];
+        const auto mi = mats.find(vol.material);
+        if (mi == mats.end() || mi->second.channels[0].empty()) continue;
+        const StockDecalShading sh = stockDecalShading(vol, mi->second);
+        app::ReferenceTexBatch rb;
+        rb.material = "\x05" + mi->second.channels[0];
+        rb.decalVolume = true;
+        if (const auto mk = maskImage.find(vol.mask); mk != maskImage.end()) rb.decalMask = mk->second;
+        rb.decalA = float(sh.opacityScale), rb.decalB = float(sh.opacityBias);
+        rb.decalTint[0] = float(sh.tint.x), rb.decalTint[1] = float(sh.tint.y), rb.decalTint[2] = float(sh.tint.z);
+        rb.decalOrder = order++;
+        for (uint32_t i : b.idx) {
+            const StockDecalVertex& v = b.verts[i];
+            app::GpuTexVertex g{float(v.pos.x), float(v.pos.y), float(v.pos.z), v.mu, v.mv, 0xFFFFFFFFu};
+            g.nx = float(v.normal.x), g.ny = float(v.normal.y), g.nz = float(v.normal.z);
+            g.tx = v.u, g.ty = v.v, g.tz = v.fade;
+            if (v.lightmap >= 0 && v.lmU >= 0) g.lu = float(v.lightmap) + std::min(v.lmU, 0.99994f), g.lv = v.lmV;
+            rb.tris.push_back(g);
+        }
+        out.push_back(std::move(rb));
+    }
+}
+
 void MainWindow::loadStockSun(const QString& zone) {
     const QString acts = toolPath("acts"), replay = toolPath("replay"), oodle = toolPath("oodle");
     const QString ff = QFileInfo(replay).absolutePath() + "/zone/" + zone + ".ff";
@@ -7131,11 +7237,14 @@ void MainWindow::loadStockReference(const QString& zone) {
     }
     ctx_.setStatus("Loading " + zone + " world geometry...");
     matCache_->addMapZone(zone);  // its own terrain blends are not in the material catalog
+    if (skyCache_) skyCache_->addMapZone(zone);  // its own sky (sky_mp_speed_midday) may be in no traced zone
+    if (imageCache_) imageCache_->addMapZone(zone);  // decal volume images likewise
     // Parsing takes a few seconds (hundreds of MB of JSON): off the UI thread, then hand the triangles to the camera.
     QPointer<MainWindow> self(this);
     WorldCache* cache = worldCache_;
     const QString zoneDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/world_cache/" + zone;
-    std::thread([self, cache, zone, zoneDir] {
+    const StockDecalTools tools{toolPath("acts"), toolPath("replay"), toolPath("oodle")};
+    std::thread([self, cache, zone, zoneDir, tools] {
         QString err;
         std::optional<StockWorld> loaded = cache->load(zone, &err);
         auto world = loaded ? std::make_shared<const StockWorld>(std::move(*loaded)) : std::shared_ptr<const StockWorld>();
@@ -7144,6 +7253,7 @@ void MainWindow::loadStockReference(const QString& zone) {
         auto plans = std::make_shared<std::vector<ReferencePlan>>(buildReferencePlans(*tris));  // 2D backdrops (3.19)
         auto texBatches = std::make_shared<std::vector<app::ReferenceTexBatch>>();
         if (world) app::buildReferenceTexBatches(*world, *texBatches);  // textured camera reference (3.19)
+        if (world) appendStockDecalVolumes(*world, zone, zoneDir, tools, *texBatches);  // projected decals (research 99)
         // Props (11.3, core stock_smodels): the static model placements of the same export.
         auto props = std::make_shared<std::vector<StockModelInstance>>();
         std::string perr;

@@ -268,7 +268,7 @@ template <class Fn> void StockDecalReceivers::query(const AABB& box, Fn&& fn) co
     if (nodes_.empty()) return;
     const float bmin[3] = {float(box.mins.x), float(box.mins.y), float(box.mins.z)};
     const float bmax[3] = {float(box.maxs.x), float(box.maxs.y), float(box.maxs.z)};
-    uint32_t stack[64];
+    uint32_t stack[128];
     int sp = 0;
     stack[sp++] = 0;
     while (sp) {
@@ -284,7 +284,7 @@ template <class Fn> void StockDecalReceivers::query(const AABB& box, Fn&& fn) co
                     continue;
                 fn(i);
             }
-        } else if (sp + 2 <= 64) {
+        } else if (sp + 2 <= 128) {
             stack[sp++] = n.left;
             stack[sp++] = n.left + 1;
         }

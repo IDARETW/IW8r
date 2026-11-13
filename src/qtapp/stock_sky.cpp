@@ -104,6 +104,8 @@ void StockSkyCache::pump() {
                 if (z.startsWith("techsets_")) candidates << z.mid(9);
             if (current_.startsWith("sky_mp_")) candidates << current_.mid(4);
         }
+        // The stock map shown (addMapZone): its own sky (mp_m_speed's sky_mp_speed_midday) is in no traced zone.
+        for (const QString& z : mapZones_) candidates << z << "techsets_" + z;
         for (const QString& z : candidates)
             if (QFileInfo::exists(zoneDir + "/" + z + ".ff") && !currentZones_.contains(z)) currentZones_ << z;
         QString missingTool;
@@ -111,7 +113,7 @@ void StockSkyCache::pump() {
             if (!QFileInfo::exists(tools_(key))) missingTool = tools_(key);
         if (!missingTool.isEmpty() || currentZones_.isEmpty()) {
             const QString why = !missingTool.isEmpty() ? "missing tool " + missingTool
-                                : zones_.count(current_) ? "no catalog zone of it in the Replay zone folder"
+                                : zones_.count(current_) || !mapZones_.isEmpty() ? "no catalog zone of it in the Replay zone folder"
                                                          : "not a stock sky image (not in iw8_images.tsv)";
             errors_[current_] = why;
             queued_.erase(current_);

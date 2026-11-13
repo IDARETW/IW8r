@@ -342,6 +342,13 @@ private:
     std::vector<app::ReferenceTexBatch> pendingRefTex_;
     std::vector<std::string> refTexMaterials_;
     std::vector<int> refTexLayer_;  // parallel: 0 base, L >= 1 a layer batch of refTexMaterials_[k]
+    struct RefDecalVolume {
+        bool on = false;
+        std::string mask;
+        float a = 1, b = 0, tint[3] = {1, 1, 1};
+        int order = 0;
+    };
+    std::vector<RefDecalVolume> refTexVolume_;  // parallel: stock decal volume batches (research 99)
     LayerLookup layerLookup_;
     FactsLookup factsLookup_;
     bool resolveReferenceDecal(size_t k, int textureId);  // true when settled
