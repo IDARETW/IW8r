@@ -213,6 +213,7 @@ struct StockTerrainLayerState {
     std::vector<StockTerrainCutout> cutouts;
     std::map<int, std::vector<StockTerrainLayerMask>> masks;  // per surface, by layer (loaded on demand)
     std::map<int, StockTerrainMesh> meshes;                   // per surface x 16 + stride (built on demand)
+    int coarseStride = 0;                                     // the coarse terrain's stride: the patch keeps its cells
 };
 void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
                              std::vector<app::ReferenceTexBatch>& out, StockGroundGrid* ground = nullptr,
@@ -225,7 +226,7 @@ double terrainLayerRadius() {
     static const double r = [] {
         bool ok = false;
         const double v = qEnvironmentVariable("IW8R_TERRAIN_LAYER_RADIUS").toDouble(&ok);
-        return ok && v >= 1000.0 && v <= 40000.0 ? v : 6000.0;
+        return ok && v >= 1000.0 && v <= 40000.0 ? v : 17368.0;  // the game: 17,368.23 x r_st_combined_bias_high (owner 2026-11-13)
     }();
     return r;
 }
@@ -7284,6 +7285,7 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
         auto st = std::make_shared<StockTerrainLayerState>();
         st->zone = zone, st->imageDir = imageDir, st->tools = tools;
         st->terrain = terrain, st->heights = heights, st->cutouts = cutouts;
+        st->coarseStride = opt.stride;
         if (readStockTerrainLayers(json.toStdString(), st->table) && !st->table.surfaces.empty()) *layersOut = st;
     }
     if (ground) {
@@ -7367,13 +7369,15 @@ std::vector<app::ReferenceTexBatch> buildTerrainLayerBatches(StockTerrainLayerSt
         const StockTerrainSurface& sf = st.terrain.surfaces[size_t(s)];
         const double near2 = std::hypot(std::max(0.0, std::fabs(x - sf.origin.x) - sf.halfWldSize),
                                          std::max(0.0, std::fabs(y - sf.origin.y) - sf.halfWldSize));
-        const int stride = near2 < 4000.0 ? 2 : near2 < 9000.0 ? 4 : 8;
+        static const int fixedStride = qEnvironmentVariableIntValue("IW8R_TERRAIN_LAYER_STRIDE");  // 0 = by distance
+        const int stride = fixedStride == 2 || fixedStride == 4 || fixedStride == 8 ? fixedStride : near2 < 4000.0 ? 2 : near2 < 9000.0 ? 4 : 8;
         const int meshKey = s * 16 + stride;
         for (const int other : {2, 4, 8})
             if (other != stride) st.meshes.erase(s * 16 + other);
         if (!st.meshes.count(meshKey)) {
             StockTerrainBuildOptions bo;
             bo.stride = stride;
+            bo.cutoutStride = qEnvironmentVariableIsSet("IW8R_TERRAIN_FINE_CUTOUT") ? 0 : st.coarseStride;
             StockTerrainMesh m;
             const StockTerrainCutout* cut = size_t(s) < st.cutouts.size() && !st.cutouts[size_t(s)].words.empty() ? &st.cutouts[size_t(s)] : nullptr;
             if (!buildStockTerrainMesh(st.terrain, s, st.heights[size_t(s)], cut, bo, m)) continue;

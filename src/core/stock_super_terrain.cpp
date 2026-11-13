@@ -474,9 +474,26 @@ bool buildStockTerrainMesh(const StockTerrain& terrain, int surface, const Stock
 
     // Which coarse cells are kept, and which samples they use.
     std::vector<uint8_t> keep(size_t(n - 1) * size_t(n - 1), 1);
-    if (cut)
+    if (cut && opt.cutoutStride > stride) {
+        // The coarse mesh's decision for the coarse cell holding this cell's centre texel.
+        const int S = opt.cutoutStride, nC = stockTerrainSamples(cells, S);
+        std::vector<int8_t> coarse(size_t(nC - 1) * size_t(nC - 1), -1);
+        const auto coarseAt = [&](int A, int B) {
+            A = std::clamp(A, 0, nC - 2), B = std::clamp(B, 0, nC - 2);
+            int8_t& k = coarse[size_t(B) * size_t(nC - 1) + size_t(A)];
+            if (k < 0) k = coarseKept(*cutout, A, B, cells, S) ? 1 : 0;
+            return k == 1;
+        };
+        for (int b = 0; b + 1 < n; ++b)
+            for (int a = 0; a + 1 < n; ++a) {
+                const int cx = (sampleTexel(a, cells, stride) + sampleTexel(a + 1, cells, stride)) / 2;
+                const int cy = (sampleTexel(b, cells, stride) + sampleTexel(b + 1, cells, stride)) / 2;
+                keep[size_t(b) * size_t(n - 1) + size_t(a)] = coarseKept(*cutout, a, b, cells, stride) || coarseAt(cx / S, cy / S);
+            }
+    } else if (cut) {
         for (int b = 0; b + 1 < n; ++b)
             for (int a = 0; a + 1 < n; ++a) keep[size_t(b) * size_t(n - 1) + size_t(a)] = coarseKept(*cutout, a, b, cells, stride);
+    }
     std::vector<uint32_t> vid(size_t(n) * size_t(n), UINT32_MAX);
     for (int b = 0; b + 1 < n; ++b)
         for (int a = 0; a + 1 < n; ++a) {

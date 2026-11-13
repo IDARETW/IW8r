@@ -234,6 +234,16 @@ TEST(stock_super_terrain_mesh_stride_and_cutout) {
     clearCell(c, 1, 1);  // 1 of 4 -> dropped
     CHECK(buildStockTerrainMesh(t, 0, g, &c, o, m));
     CHECK(m.cellsKept == 3 && m.mesh.pos.size() == 8);
+    // A fine mesh that also keeps what the coarse mesh keeps (cutoutStride): the cleared fine cells (2, 1) and (3, 3)
+    // come back, as their coarse cells are kept; cells (0..1, 0..1) follow the fine map (coarse (0, 0) is dropped).
+    clearCell(c, 3, 3);
+    o.stride = 1;
+    CHECK(buildStockTerrainMesh(t, 0, g, &c, o, m));
+    CHECK(m.cellsKept == 11);
+    o.cutoutStride = 2;
+    CHECK(buildStockTerrainMesh(t, 0, g, &c, o, m));
+    CHECK(m.cellsKept == 13);  // 16 - (0,0), (1,0), (1,1)
+    o.cutoutStride = 0;
 }
 
 TEST(stock_super_terrain_meshes_and_budget) {

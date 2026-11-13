@@ -15,6 +15,11 @@
   coarse far mesh. Bench check "picture=DIFFERENT" now prints max / over8: every map gives max 1-4, over8 0 % (auto
   exposure drift between the kept and the rebuilt frame, not a geometry fault). IW8R_BENCH_NEAR=<r> lists the scene
   items near a fixed bench camera. Stock MP maps keep spawns outside the entity string: use "ent node_pathnode N".
+- Owner 2026-11-13: Verdansk terrain layers default to 17,368 (game distance); keep the viewport sharp (no TAA blur);
+  next: the rest of the lighting (ambient occlusion, reflections, ...). Terrain layer batches skip the 4,000-unit
+  extras cull (params x = 1). Patch cells: fine cutout OR the coarse mesh's cell (StockTerrainBuildOptions::
+  cutoutStride). IW8R_TERRAIN_LAYER_STRIDE=2|4|8, IW8R_TERRAIN_FINE_CUTOUT=1 for A/B. Raised cam: 21.3 ms, 5.6 M
+  layer triangles. Light-grey flat areas at 8-15k from that camera predate this (world ground, to look at).
 - Speedball vs the owner's shot, whole ground (out/agent/grass_cmp.py <png>): dirt median 123 vs 125, haze band
   130/136/143 vs 131/137/136. Grass reads brighter and noisier, but dirt shows the same 2.25x pixel-to-pixel contrast
   (17.8 vs 7.9) while plain concrete matches (4.0 vs 4.9): the game image is softened overall by TAA, not a grass

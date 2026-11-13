@@ -5,6 +5,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Verdansk ground blended out to the game's distance** (17,368 units) by default, at your request. Far ground patches
+  are no longer dropped at 4,000 units (that left sky-coloured holes), and the patch also covers the small cut-outs the
+  coarse ground covered. About 21 ms a frame from a raised camera. `IW8R_TERRAIN_LAYER_RADIUS` still overrides it.
 - **Softer grass and cut-out edges.** Placed props' cut-out edges (grass blades, fences, grates) are anti-aliased instead
   of hard-cut, which removes most of the black speckle in Speedball's grass. Stock foliage also stops drawing past its
   last LOD distance, as in game. `IW8R_HARD_CUTOUT=1` / `IW8R_NO_FOLIAGE_LOD_OUT=1` turn these off.

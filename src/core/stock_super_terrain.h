@@ -150,6 +150,10 @@ struct StockTerrainMesh {
 struct StockTerrainBuildOptions {
     int stride = 1;                // texels per grid step (>= 1)
     bool applyCutout = true;       // leave out the cells the cutout map clears (when a cutout is given)
+    // > stride: a cell is also kept when the coarser mesh at this stride keeps the cell around it, so a fine patch
+    // has no hole where the coarse mesh it replaces had ground (small cut-outs whose filling geometry the editor may
+    // not draw). 0 = decide at `stride` only.
+    int cutoutStride = 0;
 };
 
 // Builds one surface. heights must be at least mapResolution x mapResolution; cutout may be null.
