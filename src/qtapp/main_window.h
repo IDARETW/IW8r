@@ -36,6 +36,7 @@ class CDockWidget;
 #include "stock_placed.h"
 #include "stock_smodels.h"
 #include "stock_prop_fetch.h"
+#include "scene.h"  // app::ReferenceTexBatch (decal and terrain layer batches)
 
 namespace iw8r {
 struct GameModePreset;
@@ -408,6 +409,14 @@ public:
 private:
     std::shared_ptr<std::vector<StockModelInstance>> refProps_;
     std::shared_ptr<std::vector<StockModelInstance>> refClutter_;  // Warzone ground clutter (drawn only)
+    // Near-camera super-terrain layers (research 103): rebuilt in the background when the camera has moved 2,000 units.
+    std::shared_ptr<struct StockTerrainLayerState> terrainLayers_;
+    Vec3 terrainLayerCentre_{1e30, 1e30, 0};
+    bool terrainLayerBusy_ = false;
+    std::vector<app::ReferenceTexBatch> terrainLayerBatches_, propDecalBatches_;
+    void pushDecalExtras();
+    void updateTerrainLayers();
+    class QTimer* terrainLayerTimer_ = nullptr;
 public:
     const std::vector<StockModelInstance>* stockClutter() const { return refClutter_.get(); }  // tests, benchmark
 private:

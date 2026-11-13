@@ -231,6 +231,7 @@ void CameraView::render() {
             refTexLayer_.push_back(0);
             RefDecalVolume dv;
             dv.on = true, dv.mask = b.decalMask, dv.a = b.decalA, dv.b = b.decalB, dv.order = b.decalOrder;
+            dv.terrainLayer = b.terrainLayer, dv.flags = b.terrainFlags, dv.k = b.terrainK, dv.terrainBase = b.terrainBase;
             for (int c = 0; c < 3; ++c) dv.tint[c] = b.decalTint[c];
             refTexVolume_.push_back(dv);
             refTexResolved_.push_back(false);
@@ -272,6 +273,15 @@ void CameraView::render() {
                     }
                     refTexResolved_[k] = true;
                     if (cid < 0 || cid == checkerTex_) continue;  // no colour image: left out
+                    if (dv.terrainLayer) {
+                        // A terrain layer: the layer mode (weight in the tangent length, reveal ramp / alpha by its flags),
+                        // under the world's own decals (sort key 1).
+                        const float p[16] = {1.0f, float(dv.flags), dv.k, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+                                             1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, dv.terrainBase ? 1.0f : 0.0f, 0.0f};
+                        renderer_.setReferenceTexture(k, cid);
+                        renderer_.setReferenceDecal(k, 1, mid == checkerTex_ ? -1 : mid, p);
+                        continue;
+                    }
                     const float p[16] = {2.0f, dv.a, dv.b, 0.0f, dv.tint[0], dv.tint[1], dv.tint[2], 0.0f,
                                          1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
                     renderer_.setReferenceTexture(k, cid);

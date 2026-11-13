@@ -97,6 +97,10 @@ public:
     std::array<size_t, 3> referenceTriangleSplit() const { return renderer_.referenceTriangleSplit(); }
     std::array<size_t, 3> layerPassStats() const { return renderer_.layerPassStats(); }
     size_t referenceDecalExtras() const { return refTexExtraFrom_ == ~size_t(0) ? 0 : refTexMaterials_.size() - refTexExtraFrom_; }
+    void setTerrainCut(double x, double y, double radius) {
+        renderer_.setTerrainCut(float(x), float(y), float(radius));
+        update();
+    }
     void setReferenceDecalExtras(std::vector<app::ReferenceTexBatch> batches) {
         pendingDecalExtras_ = std::move(batches);
         decalExtrasDirty_ = true;
@@ -364,6 +368,9 @@ private:
     std::vector<int> refTexLayer_;  // parallel: 0 base, L >= 1 a layer batch of refTexMaterials_[k]
     struct RefDecalVolume {
         bool on = false;
+        bool terrainLayer = false, terrainBase = false;
+        uint32_t flags = 0;
+        float k = 0;
         std::string mask;
         float a = 1, b = 0, tint[3] = {1, 1, 1};
         int order = 0;

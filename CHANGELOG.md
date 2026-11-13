@@ -5,6 +5,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Verdansk ground up close.** Within about 6,000 units of the camera the editor now blends the terrain's real ground
+  materials (dirt, grass, sand, rock) with the game's own per-layer weight images and reveal ramp (research 103),
+  instead of the blurry baked colour. The patch follows the camera (rebuilt in the background when you move 2,000
+  units) and replaces the coarse terrain there, so nothing pokes through. Verdansk's GPU grass clutter is drawn too.
+- **Prop LODs** are not used: screen culling (props under 4 pixels or out of view are skipped) already keeps every
+  stock map between 4 and 20 ms a frame with Game Lighting on.
+- **Test runner:** `tools/run_all_tests.ps1` builds the core and test targets in two xmake calls (it reported a
+  build failure every run).
 - **Verdansk and Quarry ground.** Their super terrain (the open ground, hills and mountains) was missing: ACTS could not export it. The ACTS fork now does (8b5ee11d, deployed), and the editor builds it from its height maps with each surface's baked colour, about a million triangles.
 - **Stand-in boxes** for models past the prop budget no longer cast shadows, and are left out of the lit and Game Lighting views (Verdansk was covered in tan slabs).
 - **Displaced surfaces.** Stone walls, cobbles and other displaced stock surfaces get their relief: their meshes are subdivided and moved by the game's own height maps (a few inches, as in game). Village, Aniyah Tac and Backlot use it most.

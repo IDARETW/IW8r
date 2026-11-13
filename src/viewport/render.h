@@ -193,6 +193,8 @@ public:
     // A layer batch's blend (research 97): reveal = its alpha + reveal texture (-1: none, white), params = flags, reveal
     // sharpness k, tint RGB, UV transform (cos, sin, scale u, scale v, offset u, offset v); see the shader's cbuffer Layer.
     void setReferenceLayer(size_t batch, int revealTexture, const float params[16]);
+    // The near-camera terrain layer patch's core (x, y, radius; radius 0 = none): the coarse terrain is not drawn there.
+    void setTerrainCut(float x, float y, float radius) { terrainCut_[0] = x, terrainCut_[1] = y, terrainCut_[2] = radius; }
     // A batch of a stock decal material (sortKey 10-17, techset blend `_bad_`; research 98): blended over the opaque
     // world (premultiplied by its coverage B, depth tested with a small offset, no depth write), in sortKey order.
     // Layer 0 (layer == 0) takes params / reveal as a layer would (its weight is in the tangent length too).
@@ -519,6 +521,7 @@ private:
     std::vector<RefLayer> refLayers_;
     std::vector<size_t> refLayerOrder_;  // layer batches by layer, then batch
     std::vector<size_t> refDecalOrder_;  // decal batches by sortKey, layer, batch
+    float terrainCut_[3] = {0, 0, 0};
     ID3D11Buffer* vbRefTexExtra_ = nullptr;  // appendReferenceDecals
     size_t refTexExtraFrom_ = ~size_t(0);    // the first batch in vbRefTexExtra_
     std::vector<iw8r::AABB> refTexExtraBounds_;  // per appended batch: drawn only in view and near (prop decals)

@@ -2,14 +2,20 @@
 
 ## Latest (2026-11-13)
 
+- Last on 2026-11-13: Verdansk near-camera terrain layers (research 103, core stock_terrain_layers): MainWindow::
+  updateTerrainLayers (700 ms timer, rebuild after 2,000 units of movement, radius 6,000, stride 2) exports each
+  surface's layer masks with ACTS once, builds the patch on a thread and pushes it as decal extras (terrainLayer
+  batches; the base layer writes depth). The coarse super terrain carries vertex alpha 254 and ps_tex discards it
+  inside 0.74 x radius (gameTerrainCut, b4; stock reference batches only). GPU clutter on Verdansk drawn (research
+  100, core stock_clutter). Bench mp_donetsk "-24900 -1700 -200 45 -12 90": 19.9 ms. Tests: core 1231 / 141991
+  checks, GUI 961, smoke ok. Prop LODs: not used, screen culling instead (documented decision).
 - Later on 2026-11-13: displacement drawn (research 101); Warzone super terrain drawn (ACTS fork 8b5ee11d deployed:
   build\bin\Release\data\mw19\schema.json; research 102; core stock_super_terrain); stand-in boxes out of the game views;
   prop screen culling at 4 px (Verdansk 37 -> 15.5 ms). Frame times with Game Lighting: Speedball 4.3-5.7, King 4.0,
   Shipment 5.2, Rust 5.8, Speed 5.7, Backlot 7.1, Hideout 7.2, Emporium 7.3, Fork 7.4, Village 11.4, Verdansk 15.5,
   Aniyah Tac 18 ms. Installer rebuilt (no ini).
-- Known limits: GPU clutter on Verdansk not drawn (its density masks are streamed per surface; core stock_clutter can
-  scatter it once they are exported); terrain layer textures not blended (the baked albedo is used); prop LODs not
-  used (screen culling instead).
+- Known limits (updated): terrain layers are blended only within 6,000 units (beyond, the baked albedo, as the game
+  does past about 17,000); prop LODs not used (screen culling instead).
 
 - Converted maps' sky in game, proven offline: a build holds only the converter's six sky faces (lightmap UV y 1.25 = kind 1; brush sky faces are skipped), and replay_world_vertex.hlsl draws kind-1 vertices camera-relative at infinity (x64-zt 700d7c6f, 2026-10-22, in the live converter). Checked on mp_iw8r_show2 (built 2026-11-12) with ACTS gfx_map.
 - Speed: every map in the install 4-18 ms a frame (Aniyah Tac 17.5, Village 8.9, Hideout 7.2, Speedball 4.3).

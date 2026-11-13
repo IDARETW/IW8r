@@ -30,8 +30,10 @@ $bin = Join-Path $root 'bin\release'
 $results = @()
 function Add-Result($name, $ok, $detail) { $script:results += [pscustomobject]@{ Suite = $name; Ok = $ok; Detail = $detail } }
 
-& xmake build -y iw8r_tests iw8r 2>&1 | Out-Null
+& xmake build -y iw8r_tests 2>&1 | Out-Null
 $okCore = $LASTEXITCODE -eq 0
+& xmake build -y iw8r 2>&1 | Out-Null
+$okCore = $okCore -and ($LASTEXITCODE -eq 0)  # xmake builds one target per call
 & powershell -ExecutionPolicy Bypass -File (Join-Path $root 'tools\dev_rebuild_editor.ps1') -NoLaunch 2>&1 | Out-Null
 $okEditor = $LASTEXITCODE -eq 0
 Add-Result 'build' ($okCore -and $okEditor) ("core={0} editor={1}" -f $okCore, $okEditor)

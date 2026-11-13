@@ -1,3 +1,4 @@
+#include "stock_terrain_layers.h"
 #include "stock_clutter.h"
 #include "stock_super_terrain.h"
 #include <set>
@@ -202,8 +203,23 @@ std::shared_ptr<StockDecalData> appendStockDecalVolumes(const StockWorld& world,
                                                         const StockDecalTools& tools, std::vector<app::ReferenceTexBatch>& out);
 // The super terrain of a Warzone map (Verdansk, Quarry; research 102): its height maps as a mesh within a triangle
 // budget, textured with each surface's baked albedo. Nothing for maps without one (remembered in <zoneDir>/terrain).
+// What the near-camera terrain layers need (research 103), kept from the load (MainWindow::updateTerrainLayers).
+struct StockTerrainLayerState {
+    QString zone, imageDir;
+    StockDecalTools tools;
+    StockTerrain terrain;
+    StockTerrainLayerTable table;
+    std::vector<StockTerrainHeightGrid> heights;
+    std::vector<StockTerrainCutout> cutouts;
+    std::map<int, std::vector<StockTerrainLayerMask>> masks;  // per surface, by layer (loaded on demand)
+    std::map<int, StockTerrainMesh> meshes;                   // per surface, stride 2 (built on demand)
+};
 void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
-                             std::vector<app::ReferenceTexBatch>& out, StockGroundGrid* ground = nullptr);
+                             std::vector<app::ReferenceTexBatch>& out, StockGroundGrid* ground = nullptr,
+                             std::shared_ptr<StockTerrainLayerState>* layersOut = nullptr);
+// The terrain layers of the surfaces within `radius` of (x, y), as blended batches (base layer, then the layers), their
+// weights faded to 0 at the radius so the patch melts into the baked colour beyond.
+std::vector<app::ReferenceTexBatch> buildTerrainLayerBatches(StockTerrainLayerState& st, double x, double y, double radius);
 // The ground clutter of a Warzone map (research 100: grass, reeds, rocks scattered by the game on its terrain) as model
 // placements, about 250,000 of them; empty for maps without (every 6v6 map).
 std::shared_ptr<std::vector<StockModelInstance>> scatterStockGroundClutter(const QString& zone, const QString& zoneDir,
@@ -7150,11 +7166,41 @@ void MainWindow::projectPropDecals() {
         app::ReferenceTexBatch rb;
         if (stockDecalBatch(d, b, order, rb)) out.push_back(std::move(rb)), ++order;
     }
-    if (!out.empty()) camera_->setReferenceDecalExtras(std::move(out));
+    propDecalBatches_ = std::move(out);
+    pushDecalExtras();
+}
+
+void MainWindow::pushDecalExtras() {
+    std::vector<app::ReferenceTexBatch> all = terrainLayerBatches_;  // the terrain layers first, under the decals
+    all.insert(all.end(), propDecalBatches_.begin(), propDecalBatches_.end());
+    camera_->setReferenceDecalExtras(std::move(all));
+}
+
+void MainWindow::updateTerrainLayers() {
+    if (!terrainLayers_ || terrainLayerBusy_ || referenceZone_.isEmpty() || terrainLayers_->zone != referenceZone_) return;
+    const Vec3 c = ctx_.cam.pos;
+    if (std::hypot(c.x - terrainLayerCentre_.x, c.y - terrainLayerCentre_.y) < 2000.0) return;
+    terrainLayerBusy_ = true;
+    terrainLayerCentre_ = c;
+    QPointer<MainWindow> self(this);
+    auto st = terrainLayers_;
+    const QString zone = referenceZone_;
+    std::thread([self, st, c, zone] {
+        auto batches = std::make_shared<std::vector<app::ReferenceTexBatch>>(buildTerrainLayerBatches(*st, c.x, c.y, 6000.0));
+        QMetaObject::invokeMethod(qApp, [self, batches, zone, c] {
+            if (!self) return;
+            self->terrainLayerBusy_ = false;
+            if (self->referenceZone_ != zone) return;
+            self->terrainLayerBatches_ = std::move(*batches);
+            self->camera_->setTerrainCut(c.x, c.y, self->terrainLayerBatches_.empty() ? 0.0 : 0.74 * 6000.0);
+            self->pushDecalExtras();
+        }, Qt::QueuedConnection);
+    }).detach();
 }
 
 void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const StockDecalTools& tools,
-                             std::vector<app::ReferenceTexBatch>& out, StockGroundGrid* ground) {
+                             std::vector<app::ReferenceTexBatch>& out, StockGroundGrid* ground,
+                             std::shared_ptr<StockTerrainLayerState>* layersOut) {
     if (qEnvironmentVariableIsSet("IW8R_NO_SUPER_TERRAIN")) return;
     const QString dir = zoneDir + "/terrain";
     if (QFileInfo::exists(dir + "/none")) return;  // looked once: no super terrain in this map
@@ -7216,6 +7262,12 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
     opt.stride = stockTerrainStrideForBudget(terrain, 1'000'000, &cutouts);
     StockTerrainMeshes meshes;
     if (!buildStockTerrainMeshes(terrain, heights, cutouts, opt, meshes, &err)) return;
+    if (layersOut) {
+        auto st = std::make_shared<StockTerrainLayerState>();
+        st->zone = zone, st->imageDir = imageDir, st->tools = tools;
+        st->terrain = terrain, st->heights = heights, st->cutouts = cutouts;
+        if (readStockTerrainLayers(json.toStdString(), st->table) && !st->table.surfaces.empty()) *layersOut = st;
+    }
     if (ground) {
         ground->setCellSize(512.0);
         for (const StockTerrainMesh& tm : meshes.meshes)
@@ -7237,7 +7289,8 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
             const Vec3 n = k < m.normal.size() ? m.normal[k] : Vec3{0, 0, 1};
             const double shade = 0.55 + 0.45 * std::fabs(dot(n, light));
             const uint32_t g = uint32_t(std::clamp(255.0 * shade, 0.0, 255.0));
-            app::GpuTexVertex v{float(p.x), float(p.y), float(p.z), 0, 0, g | (g << 8) | (g << 16) | (0xffu << 24)};
+            // Alpha 254 marks the coarse super terrain (cut away inside the near-camera layer patch).
+            app::GpuTexVertex v{float(p.x), float(p.y), float(p.z), 0, 0, g | (g << 8) | (g << 16) | (0xfeu << 24)};
             if (k < tm.albedoUv.size()) v.u = float(tm.albedoUv[k][0]), v.v = float(tm.albedoUv[k][1]);
             v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
             // A tangent along +x (the albedo's u): the stock batches are normal-mapped (a flat map here), and a zero
@@ -7247,6 +7300,93 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
         }
         out.push_back(std::move(rb));
     }
+}
+
+std::vector<app::ReferenceTexBatch> buildTerrainLayerBatches(StockTerrainLayerState& st, double x, double y, double radius) {
+    std::vector<app::ReferenceTexBatch> out;
+    const QString zoneFolder = QFileInfo(st.tools.replay).absolutePath() + "/zone/";
+    for (const int s : stockTerrainSurfacesNear(st.terrain, x, y, radius)) {
+        if (s < 0 || size_t(s) >= st.terrain.surfaces.size() || size_t(s) >= st.heights.size() || st.heights[size_t(s)].data.empty())
+            continue;
+        const StockTerrainSurfaceLayers* sl = nullptr;
+        for (const auto& t : st.table.surfaces)
+            if (t.surface == s) sl = &t;
+        if (!sl || sl->layers.empty()) continue;
+        // The layer masks of the surface (streamed images: one ACTS run per surface, kept beside the terrain).
+        if (!st.masks.count(s)) {
+            const std::vector<std::string> names = stockTerrainLayerMaskImageNames(st.table, s);
+            QStringList missing;
+            for (const std::string& n : names)
+                if (findStockTerrainImage(st.imageDir.toStdString(), n).empty()) missing << QString::fromStdString(n);
+            if (!missing.isEmpty() && QFileInfo::exists(st.tools.acts)) {
+                QStringList args{"--noUpdater", "fastfile", "-r", "mw19replay", "-g", st.tools.replay, "--oodle", st.tools.oodle};
+                for (const QFileInfo& f : QDir(zoneFolder).entryInfoList({"*.xpak"}, QDir::Files))
+                    if (f.size() >= 64 * 1024) args << "--xpak" << f.absoluteFilePath();
+                args << "-a" << "image" << "-n" << missing.join(',') << "-l" << "-o"
+                     << QFileInfo(st.imageDir).absolutePath() + "/../../.." << zoneFolder + st.zone + ".ff";
+                QProcess p;
+                p.start(st.tools.acts, args);
+                p.waitForFinished(300000);
+            }
+            std::vector<StockTerrainLayerMask> masks(sl->layers.size());
+            for (size_t L = 0; L < sl->layers.size(); ++L) {
+                const auto& li = sl->layers[L];
+                if (li.maskImage.empty()) continue;
+                const std::string f = findStockTerrainImage(st.imageDir.toStdString(), li.maskImage);
+                if (!f.empty()) readStockTerrainLayerMaskDds(f, masks[L]);
+            }
+            st.masks[s] = std::move(masks);
+        }
+        if (!st.meshes.count(s)) {
+            StockTerrainBuildOptions bo;
+            bo.stride = 2;
+            StockTerrainMesh m;
+            const StockTerrainCutout* cut = size_t(s) < st.cutouts.size() && !st.cutouts[size_t(s)].words.empty() ? &st.cutouts[size_t(s)] : nullptr;
+            if (!buildStockTerrainMesh(st.terrain, s, st.heights[size_t(s)], cut, bo, m)) continue;
+            st.meshes[s] = std::move(m);
+        }
+        StockTerrainLayerPatchOptions po;
+        po.centerX = x, po.centerY = y, po.radius = radius;
+        StockTerrainLayerPatch patch;
+        if (!buildStockTerrainLayerPatch(st.terrain, st.table, st.meshes[s], st.masks[s], po, patch) || patch.base.idx.empty()) continue;
+        const auto fade = [&](const Vec3& p) {
+            const double d = std::hypot(p.x - x, p.y - y), t = std::clamp((radius - d) / (0.25 * radius), 0.0, 1.0);
+            return t * t * (3.0 - 2.0 * t);
+        };
+        const auto addLayer = [&](const ImportedMesh& m, const std::function<double(size_t)>& weight, const std::string& color,
+                              const std::string& reveal, uint32_t flags, double k, bool isBase) {
+            if (m.idx.empty() || color.empty()) return;
+            app::ReferenceTexBatch rb;
+            rb.material = "\x05" + color;
+            rb.decalVolume = true;
+            rb.terrainLayer = true;
+            rb.decalMask = reveal;
+            rb.terrainFlags = flags;
+            rb.terrainK = float(k);
+            rb.terrainBase = isBase;
+            rb.tris.reserve(m.idx.size());
+            for (uint32_t i : m.idx) {
+                const Vec3& p = m.pos[i];
+                const Vec3 n = i < m.normal.size() ? m.normal[i] : Vec3{0, 0, 1};
+                app::GpuTexVertex v{float(p.x), float(p.y), float(p.z), 0, 0, 0xFFFFFFFFu};
+                if (i < m.uv.size()) v.u = float(m.uv[i][0]), v.v = float(1.0 - m.uv[i][1]);
+                v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
+                const double w = std::clamp(weight(i) * fade(p), 0.0, 1.0);
+                v.tx = float(1.0 + w), v.ty = 0, v.tz = 0;  // tangent +x, length 1 + weight
+                rb.tris.push_back(v);
+            }
+            out.push_back(std::move(rb));
+        };
+        const auto& base = sl->layers[size_t(std::clamp(patch.baseLayer, 0, int(sl->layers.size()) - 1))];
+        // The base at full weight out to the cut (0.75 x radius, where the fade starts), fading beyond it.
+        addLayer(patch.base, [](size_t) { return 1.0; }, base.colorImage, std::string(), 0, 0, true);
+        for (const StockTerrainLayerSet& ls : patch.layers) {
+            const uint32_t flags = (ls.revealRamp ? 16u : 0u) | (ls.alphaReveal ? 8u : 0u);
+            addLayer(ls.mesh, [&](size_t i) { return i < ls.weight.size() ? double(ls.weight[i]) : 0.0; }, ls.colorImage,
+                 ls.alphaReveal ? ls.revealImage : std::string(), flags, ls.revealK, false);
+        }
+    }
+    return out;
 }
 
 std::shared_ptr<std::vector<StockModelInstance>> scatterStockGroundClutter(const QString& zone, const QString& zoneDir,
@@ -7694,7 +7834,8 @@ void MainWindow::loadStockReference(const QString& zone) {
             if (auto displaced = displaceStockWorld(*world, zone, zoneDir, tools)) drawWorld = displaced;
         if (drawWorld) app::buildReferenceTexBatches(*drawWorld, *texBatches);  // textured camera reference (3.19)
         StockGroundGrid terrainGround;
-        if (world) appendStockSuperTerrain(zone, zoneDir, tools, *texBatches, &terrainGround);  // Warzone ground (research 102)
+        std::shared_ptr<StockTerrainLayerState> terrainLayers;
+        if (world) appendStockSuperTerrain(zone, zoneDir, tools, *texBatches, &terrainGround, &terrainLayers);  // research 102
         std::shared_ptr<std::vector<StockModelInstance>> clutter =
             world ? scatterStockGroundClutter(zone, zoneDir, tools, terrainGround) : nullptr;  // research 100
         std::shared_ptr<const StockDecalData> decals;
@@ -7703,11 +7844,22 @@ void MainWindow::loadStockReference(const QString& zone) {
         auto props = std::make_shared<std::vector<StockModelInstance>>();
         std::string perr;
         if (n) readStockModelInstances(zoneDir.toStdString(), *props, &perr);
-        QMetaObject::invokeMethod(qApp, [self, zone, tris, n, err, props, plans, world, texBatches, decals, clutter] {
+        QMetaObject::invokeMethod(qApp, [self, zone, tris, n, err, props, plans, world, texBatches, decals, clutter, terrainLayers] {
             if (!self || self->referenceZone_ != zone) return;
             self->stockWorld_ = world;
             self->stockDecals_ = decals;
             self->refClutter_ = clutter;
+            self->terrainLayers_ = terrainLayers;
+            if (terrainLayers && !self->terrainLayerTimer_) {
+                self->terrainLayerTimer_ = new QTimer(self);
+                self->terrainLayerTimer_->setInterval(700);
+                QObject::connect(self->terrainLayerTimer_, &QTimer::timeout, self, [self] { self->updateTerrainLayers(); });
+                self->terrainLayerTimer_->start();
+            }
+            self->terrainLayerCentre_ = Vec3{1e30, 1e30, 0};
+            self->terrainLayerBatches_.clear();
+            self->camera_->setTerrainCut(0, 0, 0);
+            self->propDecalBatches_.clear();
             self->propDecalsZone_.clear();
             if (world) self->camera_->setGameStockBakedScale(world->bakedLightScale);
             self->camera_->setReferenceTextured(std::move(*texBatches));

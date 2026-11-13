@@ -215,7 +215,7 @@ cbuffer Wind : register(b3) { float4 wind; };         // xy = direction x amplit
 struct PixelLight { float4 posRadius; float4 colorOuter; float4 dirInner; };
 cbuffer Lights : register(b2) { float4 lightCount; PixelLight lights[64]; };
 // View > Game Lighting: game0 = (on, LUT input scale, lightmap bound, 0), sun toward, sun colour, unbaked light.
-cbuffer Game : register(b4) { float4 game0; float4 gameSun; float4 gameSunCol; float4 gameSky; float4 gameFog[6]; float4 gameSkyScale; };
+cbuffer Game : register(b4) { float4 game0; float4 gameSun; float4 gameSunCol; float4 gameSky; float4 gameFog[6]; float4 gameSkyScale; float4 gameTerrainCut; };
 // The stock map's atmosphere (GameLook::fog): distance fog with a height falloff, Rayleigh / Mie inscattering, extinction
 // desaturation. `sky`: the sky takes the fog of the sky distance times the sky intensity.
 float3 gameFogApply(float3 c, float3 w, bool sky) {
@@ -371,6 +371,8 @@ float3 gamePost(float3 c) {
 cbuffer Layer : register(b7) { float4 layerP; float4 layerTint; float4 layerUvT; float4 layerUvO; };
 Texture2D revealTex : register(t12);
 float4 ps_tex(PSIn i) : SV_TARGET {
+    // The coarse super terrain (vertex alpha 254) inside the near-camera layer patch: the patch draws the ground there.
+    if (gameTerrainCut.w > 0.5 && batchFlags2.z > 0.5 && i.col.a > 0.99 && i.col.a < 0.998 && distance(i.w.xy, gameTerrainCut.xy) < gameTerrainCut.z) discard;
     float layerB = -1.0;
     float2 uvS = i.uv;
     if (layerP.x > 0.5)
@@ -833,7 +835,7 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
             dev_->CreateBuffer(&bd, nullptr, &cbWind_);
             bd.ByteWidth = 16 + UINT(sizeof(PixelLight)) * kMaxPixelLights;
             dev_->CreateBuffer(&bd, nullptr, &cbLights_);
-            bd.ByteWidth = 176;  // game0, sun toward, sun colour, unbaked light, fog[6], sky scale
+            bd.ByteWidth = 192;  // game0, sun toward, sun colour, unbaked light, fog[6], sky scale, terrain cut
             dev_->CreateBuffer(&bd, nullptr, &cbGame_);
         }
         safeRelease(tvs);
@@ -1218,7 +1220,7 @@ void SceneRenderer::setStockProbes(const StockProbeSet* set) {
 void SceneRenderer::writeGameCb() {
     if (!cbGame_) return;
     const bool on = game_.on && gameLutSrv_ != nullptr;
-    float g[44] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
+    float g[48] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
                    game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], 0,
                    game_.sunColor[0], game_.sunColor[1], game_.sunColor[2], 0,
                    game_.sky[0], game_.sky[1], game_.sky[2], game_.skyIsStock ? 1.0f : 0.0f};
@@ -1226,6 +1228,8 @@ void SceneRenderer::writeGameCb() {
         for (int k = 0; k < 4; ++k) g[16 + 4 * r + k] = game_.fog[r][k];
     g[40] = game_.skyScale;
     g[41] = game_.bakedScale;
+    // The coarse super terrain is cut away inside the near-camera layer patch (x, y, radius, on).
+    g[44] = terrainCut_[0], g[45] = terrainCut_[1], g[46] = terrainCut_[2], g[47] = terrainCut_[2] > 0 ? 1.0f : 0.0f;
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
     ID3D11ShaderResourceView* gl[3] = {gameLutSrv_, envBrdfSrv_, probeArrSrv_};
@@ -2405,6 +2409,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             const bool offsetCb = ctx1_ && !cbLayerAll_.empty() && cbLayerAllBatches_ == refLayers_.size();
             int lastFlags = -1;
             ID3D11BlendState* lastBlend = nullptr;
+            ID3D11DepthStencilState* lastDs = dsTest_;
             ID3D11ShaderResourceView *lastCol = nullptr, *lastRev = nullptr;
             static const bool noPropDecals = perfOff("propdecals");  // benchmark switch
             // Opaque layers first, then the decals (their layers with them) with a small depth offset.
@@ -2459,6 +2464,9 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                     ctx_->UpdateSubresource(cbLayer_, 0, nullptr, L.params, 0, 0);
                 }
                 {
+                    // The terrain patch's base layer stands in for the cut-away coarse terrain: it writes depth.
+                    ID3D11DepthStencilState* wantDs = L.params[14] > 0.5f ? dsWrite_ : dsTest_;
+                    if (wantDs != lastDs) ctx_->OMSetDepthStencilState(wantDs, 0), lastDs = wantDs;
                     ID3D11BlendState* want = L.params[3] > 0.5f && blendMul_ ? blendMul_ : blend_;
                     if (want != lastBlend) {
                         const float bfz[4] = {0, 0, 0, 0};

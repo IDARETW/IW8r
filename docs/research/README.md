@@ -32,6 +32,7 @@ not guessed. The target build throughout is MW2019 Replay 1.20.4.7623265
 | 100 | [Stock ground clutter](100_stock_ground_clutter.md) | GPU clutter (Verdansk terrain only); MP grass is placed props and how the game shades them |
 | 101 | [Stock displacement data](101_stock_displacement_data.md) | Per-vertex displacement records, height maps, amplitude; CPU subdivide and displace |
 | 102 | [Stock super terrain](102_stock_super_terrain.md) | Verdansk / Quarry terrain asset (stterrain): surfaces, node meshes, height maps, streamed levels |
+| 103 | [Stock super-terrain layers](103_stock_terrain_layers.md) | How Verdansk blends its ground materials near the camera: per-layer weight images, reveal ramp, combined-albedo switch |
 
 ## Third-party "iw8 level maker" (report 13)
 
