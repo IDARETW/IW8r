@@ -54,8 +54,8 @@ Survey of the editor's world cache (`%LOCALAPPDATA%\IW8 Radiant Suite\...\world_
 | mp_donetsk (Warzone) | REGULAR | 258 lightmaps, 64x64 to 1024x512, 868 transient zones | 26,221 |
 
 Correction (2026-11-12, core stock_lightmap on the zone): mp_donetsk's main zone holds one root with one lightmap of
-type 0 whose irradiance plane is BC6H (format 42); the others are in the streamed zones. The editor refuses it with
-that reason. Shipment and Backlot2 read back with the numbers below (C mean, max, D mean) exactly.
+type 0 whose irradiance plane is BC6H (format 42); the others are in the streamed zones. Shipment and Backlot2 read
+back with the numbers below (C mean, max, D mean) exactly. The Warzone layout is section 8; the editor reads it now.
 
 ### 1.2 Pixel planes (VERIFIED from the decompressed zones)
 
@@ -253,8 +253,8 @@ converter uses for editor surfaces (generated `w/mw120r_*` techsets bind their o
 ## 6. Open items
 
 1. AB_LIGHTING: the meaning of the RGBA8 plane's B channel and of the binary BC4 plane (mp_backlot2, mp_village2).
-2. REGULAR (compressed) plane formats: mp_donetsk only. Its `_tr.ff` zones are 49 KB stubs (empty after `-d`), so
-   the data is elsewhere (XPak or the main zone). Not read.
+2. ~~REGULAR (compressed) plane formats~~: solved, section 8 (BC4, BC6H, BC5; one lightmap per streamed `_tr` tile;
+   only the 49 KB tiles are stubs).
 3. `PackedLmapCoords` packing for lightmapped static models (needs an XSurface table export).
 4. Whether `C` includes the direct sun; the unit scale between bake output and Replay units (the converter has a
    `unitScale` hook, `iw3_render_assets.cpp:431`).
@@ -267,3 +267,84 @@ Scripts in `out\agent\lightmap_research`: `find_lm.py` (root scan), `extract.py 
 + PNGs), `extract_bl2.py`, `surf_extract.py <map>` (surfaces, surfData and streams from the world cache),
 `render_yard.py` (top-down proof), `worked.py` (the table in section 2). The large decompressed zones, stream dumps and
 techset exports were deleted after use (E: is nearly full).
+
+## 8. Warzone (type 0) (2026-11-12)
+
+mp_donetsk (Verdansk), mp_br_quarry and mp_br_tut, read from the gfx_map exports and from every lightmap zone
+decompressed with ACTS `-d` (one at a time, each `.dec` deleted at once). Work files: `out/agent/wzlm` (scripts only).
+
+### 8.1 Tables (VERIFIED)
+
+| Map | `lightmapType` | `lightmapCount` | Sizes (`packedLightmap`) | Texels | Where |
+| --- | --- | --- | --- | --- | --- |
+| mp_br_tut | 1 REGULAR_UNCOMPRESSED | 1 | 1024x1024 | 1.05 M | main zone (section 1 route) |
+| mp_br_quarry | 0 REGULAR | 34 | 64x64 .. 1024x512 (256x256 x11, 64x64 x7, 512x512 x5, ...) | 3.12 M | main zone + 33 tiles |
+| mp_donetsk | 0 REGULAR | 258 | 64x64 .. 1024x512 (512x256 x63, 256x256 x49, 512x512 x48, 64x64 x34, 256x128 x28, 128x128 x18, 1024x512 x13, 128x64 x5) | 32.26 M | main zone + 257 tiles |
+
+- `lightmapTransientIndex[i]` is the transient zone of lightmap i. Zone 0 is the map's main `.ff`; zone k > 0 is the
+  streamed tile `<map>_<k, 5 digits>_tr.ff` (the same tiles that hold the world geometry, research 89 section 6c).
+  Quarry: `[0, 9..19, 21..29, 52, 99, 142, 159, 160, 172, 197, 199, 200, 204, 205, 212, 267]`. Verdansk: 0 .. 303 with
+  gaps (54, 82, 109, 113, 116-119, ...). **One lightmap per transient zone**, in ascending zone order.
+- `lightmapReindexData`: three elements per lightmap `{i, 0, 0, w, h}` (posX = posY = 0: one lightmap per image, no
+  atlas of atlases), `imagePixelSize` 4.
+- Surfaces: **every** surface with `lightmapIndex` i (not 510) has `transientZone == lightmapTransientIndex[i]`
+  (mp_donetsk: 81,329 of 82,208 surfaces, the other 879 use 510; mp_br_quarry: 11,087 of 11,260, 173 use 510). So the
+  lightmaps a set of streamed tiles needs are exactly the lightmaps in those tiles. Quarry's world surfaces use 31 of its
+  34 lightmaps; 21, 23 and 33 (64x64, zones 52, 142, 267) have no world surface (static models? not checked).
+
+### 8.2 The roots (VERIFIED, every lightmap of both maps)
+
+Each lightmap zone's decompressed file has exactly one `GfxLightmapAtlasDataTemp` root with `transientZone` k,
+`numLightmaps` 1, `firstLightmapIndex` i (the global index) and `lightmapType` 0. The root is not aligned
+(mp_br_quarry_00026_tr: 0x9891FE in a 17.3 MB `.dec`; mp_donetsk_00030_tr: 0x2FB995; mp_donetsk main: 0x81C5629).
+
+| Plane | Format | Bytes | Contents |
+| --- | --- | --- | --- |
+| 0 | 39 GFX_PF_BC4 | w x h / 2 | ambient fraction `f` |
+| 1 | **42 GFX_PF_BC6H** (unsigned) | w x h | irradiance `C`, half floats, linear (as R11G11B10F on MP maps) |
+| 2 | 40 GFX_PF_BC5 | w x h | octahedral direction (section 1.3) |
+
+All planes: flags 3, depth 1, 1 element, **1 level**, pixel pointer -2 (follow the root, plane after plane). The size of
+each root's planes equals `packedLightmap[i]` for all 258 + 34 lightmaps. 49,288-byte tiles are stubs (574 bytes after
+`-d`, no root); Quarry has 144 non-stub tiles of 749, Verdansk 568 of 749 (the `_cg_NNNNN_tr` zones were not read).
+
+### 8.3 Values (VERIFIED, core decoder)
+
+| Map | Lightmaps read | C mean over all texels (R, G, B) | C max | Notes |
+| --- | --- | --- | --- | --- |
+| mp_br_tut | 1 | (2.26, 2.50, 2.90) | 12.0 | type 1, as section 1 |
+| mp_br_quarry | 34 / 34 | (0.79, 0.81, 0.86) | 30.95 | lightmap 0 (main zone, 512x512) is mostly dark: mean 0.15 |
+| mp_donetsk | 258 / 258 | (0.96, 1.02, 1.11) | 61.9 | lightmap 0 (main zone) 1024x512, mean (0.96, 1.09, 1.28) |
+
+No texel is negative or not finite. Many tiles clip at C = 6.72 (a common BC6H endpoint; INFERRED: the bake's sun
+level). Cost: decompressing and reading all 258 Verdansk lightmap zones took 63 s (1.29 GB of `.ff`, 2.48 GB of `.dec`
+one at a time; the main zone 364 MB -> 573 MB); Quarry's 34 took 18 s. Cache files: 9 bytes per texel, Verdansk
+277 MB, Quarry 27 MB.
+
+### 8.4 World UVs (VERIFIED)
+
+The lightmap UV per vertex is as in section 2, normalised to the surface's own lightmap. mp_donetsk's `surfData` is
+exported as hex `bytes` (57,471 records of 88 bytes: u32 transientZone, layerCount, xyzOffset, tangentFrameOffset,
+lmapCoordOffset, colorOffset, texCoordOffset, ...), not decoded `values`; the reader takes both now (before, Verdansk
+got no texture coordinates and no lightmap UVs at all).
+
+| Export | Vertices | With lightmap index + UV | Distinct indices | Lightmapped surfaces |
+| --- | --- | --- | --- | --- |
+| mp_br_tut (main) | 126,201 | 125,825 | 1 | 779 |
+| mp_br_quarry (main + its 33 lightmap tiles) | 1,781,771 | 1,735,306 | 31 | 11,087 (all) |
+| mp_donetsk (main + the 12 cached tiles) | 396,357 | 391,888 | 13 | 3,214 |
+| mp_shipment (MP, unchanged) | 644,164 | 644,048 | 1 | 1,036 |
+
+Every UV lies in [0, 1]; every triangle's three corners name the same lightmap. Proof (Quarry town, top-down, each
+triangle filled with C at its interpolated UV): the right lightmap gives coherent roofs, walls and shadows; the next
+lightmap at the same UVs gives a scramble. Triangle centroids land on a black texel 5.7 % of the time with the right
+lightmap, 19.9 % with the wrong one, 9.8 % at random UVs.
+
+### 8.5 Editor (core stock_lightmap, stock_world; qtapp world_cache)
+
+- `extractStockLightmapsFromDecompressedZone` decodes every lightmap of a zone with its global index; BC6H via bcdec.
+- `StockWorld::lightmapIndex` (per vertex, parallel to `lightmapUv`; -1 where there is no UV). Vertex sharing keys on
+  the transient zone and the lightmap index too (stream offsets restart in every tile).
+- World cache: `lightmaps/<index>.iw8rlm` per lightmap (the MP single `lightmap.iw8rlm` stays); the main-zone job writes
+  lightmap 0, a tile lightmap job runs for each streamed tile exported near the camera and marks the tile
+  `lightmap.done`. `WorldCache::lightmapFile(zone, index)`, `lightmapIndices(zone)`, `lightmapReady(zone)`.

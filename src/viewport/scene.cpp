@@ -1462,6 +1462,9 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
         // Its stock lightmap UVs (research 94; (-1, -1) where the surface has none).
         const std::vector<std::array<float, 2>>* lmuv =
             mi < world.lightmapUv.size() && world.lightmapUv[mi].size() == m.pos.size() ? &world.lightmapUv[mi] : nullptr;
+        // Which lightmap (Warzone maps have many): the vertex carries index + u in its lightmap u (the shader splits it).
+        const std::vector<int>* lmidx =
+            mi < world.lightmapIndex.size() && world.lightmapIndex[mi].size() == m.pos.size() ? &world.lightmapIndex[mi] : nullptr;
         std::string lm = m.material;
         for (char& c : lm) c = char(std::tolower(static_cast<unsigned char>(c)));
         if (skipSky && lm.find("sky") != std::string::npos) continue;
@@ -1480,7 +1483,10 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
                 // ImportedMesh::uv is OBJ convention (v flipped); the textured camera uses the game's v.
                 GpuTexVertex v{float(m.pos[k].x), float(m.pos[k].y), float(m.pos[k].z), m.uv[k][0], 1.0f - m.uv[k][1], rgba};
                 v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
-                if (lmuv && (*lmuv)[k][0] >= 0) v.lu = (*lmuv)[k][0], v.lv = (*lmuv)[k][1];
+                if (lmuv && (*lmuv)[k][0] >= 0) {
+                    const int li = lmidx ? (*lmidx)[k] : 0;
+                    if (li >= 0) v.lu = float(li) + std::min((*lmuv)[k][0], 0.99994f), v.lv = (*lmuv)[k][1];
+                }
                 dst.push_back(v);
             }
             ++tris;

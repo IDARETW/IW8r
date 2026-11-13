@@ -158,7 +158,7 @@ void CameraView::render() {
     }
     if (stockLmDirty_) {
         const auto& l = pendingStockLm_;
-        if (l && l->width > 0) renderer_.setStockLightmap(l->width, l->height, l->a.data(), l->b.data(), l->d.data());
+        if (l && l->width > 0) renderer_.setStockLightmap(l->width, l->height, l->a.data(), l->b.data(), l->d.data(), l->rects);
         else renderer_.setStockLightmap(0, 0, nullptr, nullptr, nullptr);
         pendingStockLm_.reset();
         stockLmDirty_ = false;

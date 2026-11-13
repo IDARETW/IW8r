@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <fstream>
 
+#include "stock_probes.h"  // decodeBC6H
+
 namespace iw8r {
 namespace {
 
@@ -235,73 +237,63 @@ bool findStockLightmapRoots(const std::string& decPath, std::vector<uint64_t>& r
     return true;
 }
 
-bool extractStockLightmapFromDecompressedZone(const std::string& decPath, StockLightmap& out, std::string* err,
-                                              uint64_t* rootOffset) {
-    std::vector<uint64_t> roots;
-    if (!findStockLightmapRoots(decPath, roots, err)) return false;
-    if (roots.empty()) {
-        if (err) *err = "no lightmap root (GfxLightmapAtlasDataTemp) in " + fs::path(decPath).filename().string();
-        return false;
-    }
-    if (roots.size() > 1) {
-        if (err) *err = std::to_string(roots.size()) + " lightmap roots found: not supported yet";
-        return false;
-    }
-    const uint64_t at = roots.front();
-    if (rootOffset) *rootOffset = at;
-    std::ifstream f(fs::path(decPath), std::ios::binary);
-    std::vector<uint8_t> root(kRootBytes);
-    if (!f || !readAt(f, at, root.data(), kRootBytes)) {
-        if (err) *err = "cannot read the lightmap root of " + decPath;
-        return false;
-    }
-    const uint32_t num = rd32(root.data() + 4);
-    const uint32_t type = rd32(root.data() + 12);
-    if (num != 1) {
-        if (err) *err = std::to_string(num) + " lightmaps: not supported yet";
-        return false;
-    }
-    if (type != 1 && type != 2) {
-        // mp_donetsk: type 0 REGULAR, BC6H irradiance (format 42); the main zone holds lightmap 0 of 258, the others
-        // are in the streamed transient zones.
-        if (err) *err = "lightmap type " + std::to_string(type) + " (REGULAR, Warzone: BC6H, lightmaps in streamed zones): not supported yet";
-        return false;
-    }
+namespace {
+
+// Decodes lightmap `li` of the root `root` (kRootBytes) whose pixels start at `pixelOffset` in `f`. On success
+// `pixelOffset` is moved past its three planes.
+bool decodeLightmap(std::ifstream& f, const std::vector<uint8_t>& root, uint32_t li, uint64_t& pixelOffset,
+                    StockLightmap& lm, std::string* err) {
+    const uint32_t tz = rd32(root.data()), first = rd32(root.data() + 8), type = rd32(root.data() + 12);
     ImageRaw planes[3];
-    for (int c = 0; c < 3; ++c) planes[c] = readRaw(root.data() + 0x10 + c * kRawBytes);
+    for (int c = 0; c < 3; ++c) planes[c] = readRaw(root.data() + 0x10 + li * kLightmapBytes + c * kRawBytes);
     const int w = planes[0].width, h = planes[0].height;
+    const std::string which = "lightmap " + std::to_string(first + li);
     for (const ImageRaw& r : planes)
         if (r.width != w || r.height != h) {
-            if (err) *err = "lightmap planes differ in size";
+            if (err) *err = which + ": planes differ in size";
             return false;
         }
-    if (planes[0].format != kLmFormatBC4 || planes[1].format != kLmFormatR11G11B10F ||
+    const bool c32 = planes[1].format == kLmFormatR11G11B10F;
+    const bool c6h = planes[1].format == kLmFormatBC6H || planes[1].format == kLmFormatBC6HS;
+    if (planes[0].format != kLmFormatBC4 || (!c32 && !c6h) ||
         (planes[2].format != kLmFormatBC5 && planes[2].format != kLmFormatRGBA8 && planes[2].format != kLmFormatRGBA8Srgb)) {
         if (err)
-            *err = "lightmap plane formats " + std::to_string(planes[0].format) + ", " + std::to_string(planes[1].format) + ", " +
-                   std::to_string(planes[2].format) + ": not supported yet (expected 39, 32, 40 or 6)";
+            *err = which + ": plane formats " + std::to_string(planes[0].format) + ", " + std::to_string(planes[1].format) +
+                   ", " + std::to_string(planes[2].format) + ": not supported yet (expected 39; 32 or 42; 40 or 6)";
         return false;
     }
 
-    StockLightmap lm;
+    lm = StockLightmap();
+    lm.index = int(first + li);
+    lm.transientZone = int(tz);
     lm.type = int(type);
     lm.width = w;
     lm.height = h;
-    uint64_t offset = at + kRootBytes;
     std::vector<uint8_t> px;
     std::vector<float> tmp;
+    std::vector<uint16_t> halves;
     for (int c = 0; c < 3; ++c) {
         px.resize(planes[c].totalSize);
-        if (!readAt(f, offset, px.data(), px.size())) {
-            if (err) *err = "lightmap plane " + std::to_string(c) + " runs past the end of the file";
+        if (!readAt(f, pixelOffset, px.data(), px.size())) {
+            if (err) *err = which + ": plane " + std::to_string(c) + " runs past the end of the file";
             return false;
         }
-        offset += planes[c].totalSize;
+        pixelOffset += planes[c].totalSize;
         bool ok = false;
         if (c == 0) {
             ok = decodeBC4(px.data(), px.size(), w, h, lm.ambientFraction);
-        } else if (c == 1) {
+        } else if (c == 1 && c32) {
             ok = decodeR11G11B10F(px.data(), px.size(), w, h, lm.irradiance);
+        } else if (c == 1) {
+            // BC6H (level 0): half floats, linear light like R11G11B10F.
+            ok = decodeBC6H(px.data(), px.size(), w, h, planes[1].format == kLmFormatBC6HS, halves);
+            if (ok) {
+                lm.irradiance.resize(halves.size());
+                for (size_t i = 0; i < halves.size(); ++i) {
+                    const float v = halfToFloat(halves[i]);
+                    lm.irradiance[i] = v > 0.0f ? v : 0.0f;  // light is never negative (signed BC6H only)
+                }
+            }
         } else {
             const bool bc5 = planes[c].format == kLmFormatBC5;
             ok = bc5 ? decodeBC5(px.data(), px.size(), w, h, tmp) : decodeRGBA8(px.data(), px.size(), w, h, tmp);
@@ -317,10 +309,77 @@ bool extractStockLightmapFromDecompressedZone(const std::string& decPath, StockL
             }
         }
         if (!ok) {
-            if (err) *err = "lightmap plane " + std::to_string(c) + " is smaller than its size needs";
+            if (err) *err = which + ": plane " + std::to_string(c) + " is smaller than its size needs";
             return false;
         }
     }
+    return true;
+}
+
+}  // namespace
+
+bool extractStockLightmapsFromDecompressedZone(const std::string& decPath, std::vector<StockLightmap>& out, std::string* err,
+                                               std::vector<uint64_t>* rootOffsets) {
+    std::vector<uint64_t> roots;
+    if (!findStockLightmapRoots(decPath, roots, err)) return false;
+    if (rootOffsets) *rootOffsets = roots;
+    if (roots.empty()) {
+        if (err) *err = "no lightmap root (GfxLightmapAtlasDataTemp) in " + fs::path(decPath).filename().string();
+        return false;
+    }
+    std::ifstream f(fs::path(decPath), std::ios::binary);
+    std::vector<StockLightmap> all;
+    std::vector<uint8_t> root(kRootBytes);
+    for (const uint64_t at : roots) {
+        if (!f || !readAt(f, at, root.data(), kRootBytes)) {
+            if (err) *err = "cannot read the lightmap root of " + decPath;
+            return false;
+        }
+        const uint32_t num = rd32(root.data() + 4);
+        uint64_t pixels = at + kRootBytes;  // the pixels follow the root: lightmap after lightmap, plane after plane
+        for (uint32_t li = 0; li < num; ++li) {
+            StockLightmap lm;
+            if (!decodeLightmap(f, root, li, pixels, lm, err)) return false;
+            for (const StockLightmap& o : all)
+                if (o.index == lm.index) {
+                    if (err) *err = "two lightmaps with index " + std::to_string(lm.index) + " in " + fs::path(decPath).filename().string();
+                    return false;
+                }
+            all.push_back(std::move(lm));
+        }
+    }
+    out = std::move(all);
+    return true;
+}
+
+bool extractStockLightmapFromDecompressedZone(const std::string& decPath, StockLightmap& out, std::string* err,
+                                              uint64_t* rootOffset) {
+    std::vector<uint64_t> roots;
+    if (!findStockLightmapRoots(decPath, roots, err)) return false;
+    if (roots.empty()) {
+        if (err) *err = "no lightmap root (GfxLightmapAtlasDataTemp) in " + fs::path(decPath).filename().string();
+        return false;
+    }
+    if (roots.size() > 1) {
+        if (err) *err = std::to_string(roots.size()) + " lightmap roots found: use extractStockLightmapsFromDecompressedZone";
+        return false;
+    }
+    const uint64_t at = roots.front();
+    if (rootOffset) *rootOffset = at;
+    std::ifstream f(fs::path(decPath), std::ios::binary);
+    std::vector<uint8_t> root(kRootBytes);
+    if (!f || !readAt(f, at, root.data(), kRootBytes)) {
+        if (err) *err = "cannot read the lightmap root of " + decPath;
+        return false;
+    }
+    const uint32_t num = rd32(root.data() + 4);
+    if (num != 1) {
+        if (err) *err = std::to_string(num) + " lightmaps in one root: use extractStockLightmapsFromDecompressedZone";
+        return false;
+    }
+    uint64_t pixels = at + kRootBytes;
+    StockLightmap lm;
+    if (!decodeLightmap(f, root, 0, pixels, lm, err)) return false;
     out = std::move(lm);
     return true;
 }
@@ -390,7 +449,7 @@ bool writeStockLightmapCache(const std::string& path, const StockLightmap& lm, s
     wr32(body.data() + 16, uint32_t(lm.width));
     wr32(body.data() + 20, uint32_t(lm.height));
     wr32(body.data() + 24, planes);
-    wr32(body.data() + 28, 0);
+    wr32(body.data() + 28, uint32_t(std::max(lm.index, 0)));
     body.reserve(kHeaderBytes + n * (((planes & 1) ? 6 : 0) + ((planes & 2) ? 1 : 0) + ((planes & 4) ? 2 : 0)));
     if (planes & 1)
         for (float v : lm.irradiance) {
@@ -435,8 +494,11 @@ bool writeStockLightmapCache(const std::string& path, const StockLightmap& lm, s
     return true;
 }
 
-bool readStockLightmapCache(const std::string& path, StockLightmap& out, std::string* err) {
-    std::ifstream f(fs::path(path), std::ios::binary);
+namespace {
+
+// Opens a cache file and reads its header into `lm` (planes empty). `planes` gets the plane bits.
+bool openCache(const std::string& path, std::ifstream& f, StockLightmap& lm, uint32_t& planes, std::string* err) {
+    f.open(fs::path(path), std::ios::binary);
     if (!f) {
         if (err) *err = "cannot read " + path;
         return false;
@@ -451,11 +513,37 @@ bool readStockLightmapCache(const std::string& path, StockLightmap& out, std::st
         if (err) *err = path + ": lightmap cache version " + std::to_string(rd32(h + 8)) + " is not supported";
         return false;
     }
-    const uint32_t type = rd32(h + 12), w = rd32(h + 16), hh = rd32(h + 20), planes = rd32(h + 24);
-    if (w == 0 || hh == 0 || w > 16384 || hh > 16384 || (planes & ~7u)) {
+    const uint32_t type = rd32(h + 12), w = rd32(h + 16), hh = rd32(h + 20), index = rd32(h + 28);
+    planes = rd32(h + 24);
+    if (w == 0 || hh == 0 || w > 16384 || hh > 16384 || (planes & ~7u) || index > 0xFFFF) {
         if (err) *err = path + ": bad lightmap cache header";
         return false;
     }
+    lm = StockLightmap();
+    lm.index = int(index);
+    lm.type = int(type);
+    lm.width = int(w);
+    lm.height = int(hh);
+    return true;
+}
+
+}  // namespace
+
+bool readStockLightmapCacheHeader(const std::string& path, StockLightmap& out, std::string* err) {
+    std::ifstream f;
+    uint32_t planes = 0;
+    StockLightmap lm;
+    if (!openCache(path, f, lm, planes, err)) return false;
+    out = std::move(lm);
+    return true;
+}
+
+bool readStockLightmapCache(const std::string& path, StockLightmap& out, std::string* err) {
+    std::ifstream f;
+    uint32_t planes = 0;
+    StockLightmap lm;
+    if (!openCache(path, f, lm, planes, err)) return false;
+    const uint32_t w = uint32_t(lm.width), hh = uint32_t(lm.height);
     const size_t n = size_t(w) * size_t(hh);
     const size_t bytes = n * (((planes & 1) ? 6 : 0) + ((planes & 2) ? 1 : 0) + ((planes & 4) ? 2 : 0));
     std::vector<uint8_t> body(bytes);
@@ -464,10 +552,6 @@ bool readStockLightmapCache(const std::string& path, StockLightmap& out, std::st
         if (err) *err = path + ": lightmap cache size does not match its header";
         return false;
     }
-    StockLightmap lm;
-    lm.type = int(type);
-    lm.width = int(w);
-    lm.height = int(hh);
     const uint8_t* p = body.data();
     if (planes & 1) {
         lm.irradiance.resize(n * 3);

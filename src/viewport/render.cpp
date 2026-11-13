@@ -197,6 +197,9 @@ cbuffer Lights : register(b2) { float4 lightCount; PixelLight lights[64]; };
 // View > Game Lighting: game0 = (on, LUT input scale, lightmap bound, 0), sun toward, sun colour, unbaked light.
 cbuffer Game : register(b4) { float4 game0; float4 gameSun; float4 gameSunCol; float4 gameSky; };
 Texture2D gameLmA : register(t6);
+// The stock reference's lightmap rectangles in its atlas (setStockLightmap): x, y, width, height per lightmap index,
+// and the atlas size in .x of lmInfo. A reference vertex carries index + u in its lightmap u.
+cbuffer LightmapRects : register(b6) { float4 lmInfo; float4 lmRects[1024]; };
 Texture2D gameLmB : register(t7);
 Texture2D gameLmD : register(t8);
 Texture3D gameLut : register(t9);
@@ -311,10 +314,19 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         float3 indirect = gameSky.rgb * (0.6 + 0.4 * saturate(N.z));
         float3 stockDw = Nf, stockB = 0;  // the stock lightmap's directional part, for E(R) below
         float visibility = 1.0;
-        if ((stockRef ? batchFlags2.w > 0.5 : game0.z > 0.5) && i.lm.x >= 0) {
-            float4 a = gameLmA.SampleLevel(lutSamp, i.lm, 0);
-            float3 b = gameLmB.SampleLevel(lutSamp, i.lm, 0).rgb;
-            float3 d = gameLmD.SampleLevel(lutSamp, i.lm, 0).xyz;
+        float2 lmUv = i.lm;
+        bool lmOk = (stockRef ? batchFlags2.w > 0.5 : game0.z > 0.5) && i.lm.x >= 0;
+        if (lmOk && stockRef) {
+            float idx = floor(i.lm.x);
+            float4 rc = idx < 1024 ? lmRects[int(idx)] : float4(0, 0, 0, 0);
+            if (rc.z <= 0) lmOk = false;
+            float2 half = 0.5 / max(lmInfo.xy, 1.0) / max(rc.zw, 1e-6);
+            lmUv = rc.xy + clamp(float2(i.lm.x - idx, i.lm.y), half, 1.0 - half) * rc.zw;
+        }
+        if (lmOk) {
+            float4 a = gameLmA.SampleLevel(lutSamp, lmUv, 0);
+            float3 b = gameLmB.SampleLevel(lutSamp, lmUv, 0).rgb;
+            float3 d = gameLmD.SampleLevel(lutSamp, lmUv, 0).xyz;
             if (stockRef) {
                 // Stock: light = f C + (1 - f) C / D.z x sat(N . Dw), D in the surface's tangent frame (here the texture
                 // frame from the derivatives; on a flat normal N . Dw = D.z whatever the frame).
@@ -539,7 +551,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(gameLutTex_);
     for (int k = 0; k < 3; ++k) safeRelease(stockLmSrv_[k]), safeRelease(stockLmTex_[k]);
     safeRelease(envBrdfSrv_), safeRelease(envBrdfTex_);
-    safeRelease(probeArrSrv_), safeRelease(probeArrTex_), safeRelease(cbProbes_);
+    safeRelease(probeArrSrv_), safeRelease(probeArrTex_), safeRelease(cbProbes_), safeRelease(cbLmRects_);
     safeRelease(meterSrv_), safeRelease(meterRtv_), safeRelease(meterTex_);
     for (auto*& s : meterStage_) safeRelease(s);
     safeRelease(invGreySrv_), safeRelease(invGreyTex_);
@@ -844,8 +856,25 @@ void SceneRenderer::setGameLightmap(int width, int height, const float* a, const
     }
 }
 
-void SceneRenderer::setStockLightmap(int width, int height, const float* a, const float* b, const float* d) {
+void SceneRenderer::setStockLightmap(int width, int height, const float* a, const float* b, const float* d,
+                                     const std::vector<std::array<float, 4>>& rects) {
     for (int k = 0; k < 3; ++k) safeRelease(stockLmSrv_[k]), safeRelease(stockLmTex_[k]);
+    if (dev_ && !cbLmRects_) {
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = 16 + 16 * kMaxLightmapRects;
+        bd.Usage = D3D11_USAGE_DEFAULT;
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        dev_->CreateBuffer(&bd, nullptr, &cbLmRects_);
+    }
+    if (cbLmRects_) {
+        std::vector<float> cb(size_t(4 + 4 * kMaxLightmapRects), 0.0f);
+        cb[0] = float(width), cb[1] = float(height);
+        // A single lightmap without rectangles is index 0 over the whole texture.
+        if (rects.empty()) cb[4] = 0, cb[5] = 0, cb[6] = 1, cb[7] = 1;
+        for (size_t k = 0; k < rects.size() && k < size_t(kMaxLightmapRects); ++k)
+            for (int c = 0; c < 4; ++c) cb[4 + 4 * k + size_t(c)] = rects[k][size_t(c)];
+        ctx_->UpdateSubresource(cbLmRects_, 0, nullptr, cb.data(), 0, 0);
+    }
     if (!dev_ || width < 1 || height < 1 || !a || !b || !d) return;
     const float* src[3] = {a, b, d};
     for (int k = 0; k < 3; ++k) {
@@ -964,6 +993,7 @@ void SceneRenderer::writeGameCb() {
     ID3D11ShaderResourceView* gl[3] = {gameLutSrv_, envBrdfSrv_, probeArrSrv_};
     ctx_->PSSetShaderResources(9, 3, gl);
     if (cbProbes_) ctx_->PSSetConstantBuffers(5, 1, &cbProbes_);
+    if (cbLmRects_) ctx_->PSSetConstantBuffers(6, 1, &cbLmRects_);
     if (lutSampler_) ctx_->PSSetSamplers(2, 1, &lutSampler_);
 }
 

@@ -27,7 +27,8 @@ lightmap (sky light, bounce of the sun and lights, sun visibility); the game dra
 
 **See it as the game draws it.** View > Game Lighting (Ctrl+Alt+L): the same bake, made in the background and again
 after edits, shaded with the converter's world shader and the game's exposure and tone curve. On a stock map: the map's
-own baked lightmap, reflection probes, sun, auto exposure and the stock world shader's specular. Measured cost: about
+own baked lightmap, reflection probes, sun, auto exposure and the stock world shader's specular; on Warzone maps the
+lightmaps of the streamed tiles around the camera (Verdansk, Quarry, the tutorial map). Measured cost: about
 0.5 to 2.2 ms per frame at 1920 x 1080 on stock worlds (Shipment runs about 200 fps in game).
 
 **Edit stock maps.** File > Open stock zone, edit, File > Rebuild Stock Zone (and Install / Restore, which you run):
@@ -68,7 +69,6 @@ lists them as optional checks, most important first:
 
 ## 5. Known limits
 
-- Game Lighting on Warzone maps: in progress at handover time (their lightmaps are streamed); see `docs\PROGRESS.md`.
 - Stock world removal opens the whole map's occlusion when the removed geometry was an occluder (a local fix needs the
   occlusion data's format decoded).
 - A turned stock sun keeps the old sun in the baked lightmap's bounce light; cut-out props (fences, leaves) do not cast

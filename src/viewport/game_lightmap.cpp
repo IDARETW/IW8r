@@ -57,6 +57,53 @@ std::shared_ptr<StockLightmapLayers> stockLightmapLayers(const StockLightmap& lm
         out->b[i * 4 + 3] = 0.0f;
         out->d[i * 4 + 3] = 0.0f;
     }
+    out->rects.assign(size_t(std::max(lm.index, 0)) + 1, {0, 0, 0, 0});
+    out->rects[size_t(std::max(lm.index, 0))] = {0, 0, 1, 1};
+    return out;
+}
+
+std::shared_ptr<StockLightmapLayers> stockLightmapAtlas(const std::vector<StockLightmap>& lms) {
+    std::vector<const StockLightmap*> list;
+    for (const StockLightmap& l : lms)
+        if (l.width > 0 && l.height > 0 && l.index >= 0) list.push_back(&l);
+    if (list.size() == 1 && list[0]->index == 0) return stockLightmapLayers(*list[0]);
+    auto out = std::make_shared<StockLightmapLayers>();
+    if (list.empty()) return out;
+    std::sort(list.begin(), list.end(), [](const StockLightmap* x, const StockLightmap* y) { return x->height > y->height; });
+    // Shelf packing into the narrowest power-of-two width that keeps the atlas roughly square.
+    size_t area = 0;
+    int widest = 0, maxIndex = 0;
+    for (const StockLightmap* l : list) area += size_t(l->width + 1) * size_t(l->height + 1), widest = std::max(widest, l->width + 1),
+                                        maxIndex = std::max(maxIndex, l->index);
+    int W = 256;
+    while (W < widest || size_t(W) * size_t(W) < area) W *= 2;
+    W = std::min(W, 16384);
+    struct Place { const StockLightmap* l; int x, y; };
+    std::vector<Place> places;
+    int x = 0, y = 0, shelf = 0;
+    for (const StockLightmap* l : list) {
+        if (x + l->width > W) x = 0, y += shelf + 1, shelf = 0;
+        places.push_back({l, x, y});
+        x += l->width + 1;
+        shelf = std::max(shelf, l->height);
+    }
+    const int H = y + shelf;
+    if (H > 16384) return out;  // too large for one texture: leave the lightmaps out
+    out->width = W, out->height = H;
+    const size_t n = size_t(W) * size_t(H);
+    out->a.assign(n * 4, 0.0f), out->b.assign(n * 4, 0.0f), out->d.assign(n * 4, 0.0f);
+    out->rects.assign(size_t(maxIndex) + 1, {0, 0, 0, 0});
+    for (const Place& p : places) {
+        const auto one = stockLightmapLayers(*p.l);
+        if (!one || one->width <= 0) continue;
+        for (int r = 0; r < one->height; ++r) {
+            const size_t src = size_t(r) * size_t(one->width) * 4, dst = (size_t(p.y + r) * size_t(W) + size_t(p.x)) * 4;
+            std::copy_n(one->a.begin() + src, size_t(one->width) * 4, out->a.begin() + dst);
+            std::copy_n(one->b.begin() + src, size_t(one->width) * 4, out->b.begin() + dst);
+            std::copy_n(one->d.begin() + src, size_t(one->width) * 4, out->d.begin() + dst);
+        }
+        out->rects[size_t(p.l->index)] = {float(p.x) / W, float(p.y) / H, float(p.l->width) / W, float(p.l->height) / H};
+    }
     return out;
 }
 

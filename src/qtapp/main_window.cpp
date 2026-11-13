@@ -6793,15 +6793,25 @@ void MainWindow::updateStockPropLabel() {
 }
 
 void MainWindow::loadStockLightmap(const QString& zone) {
-    const std::optional<QString> file = worldCache_ ? worldCache_->lightmapFile(zone) : std::nullopt;
-    if (!file) return;
+    if (!worldCache_) return;
+    // MP maps: one lightmap (lightmap.iw8rlm); Warzone maps: lightmaps/<index>.iw8rlm, more as streamed tiles arrive.
+    std::vector<std::string> paths;
+    if (const std::optional<QString> file = worldCache_->lightmapFile(zone)) paths.push_back(file->toStdString());
+    for (const int idx : worldCache_->lightmapIndices(zone))
+        if (const std::optional<QString> f = worldCache_->lightmapFile(zone, idx)) paths.push_back(f->toStdString());
+    if (paths.empty()) return;
     QPointer<MainWindow> self(this);
-    const std::string path = file->toStdString();
-    std::thread([self, zone, path] {
-        StockLightmap lm;
+    std::thread([self, zone, paths] {
+        std::vector<StockLightmap> lms;
         std::string err;
+        for (const std::string& path : paths) {
+            StockLightmap lm;
+            std::string e;
+            if (readStockLightmapCache(path, lm, &e)) lms.push_back(std::move(lm));
+            else err = e;
+        }
         std::shared_ptr<const app::StockLightmapLayers> layers;
-        if (readStockLightmapCache(path, lm, &err)) layers = app::stockLightmapLayers(lm);
+        if (!lms.empty()) layers = app::stockLightmapAtlas(lms);
         QMetaObject::invokeMethod(qApp, [self, zone, layers, err] {
             if (!self || self->referenceZone_ != zone) return;
             if (layers && layers->width > 0) {
@@ -6845,7 +6855,7 @@ void MainWindow::loadStockReference(const QString& zone) {
         });
         connect(worldCache_, &WorldCache::lightmapReady, this, [this](const QString& z) {
             if (z != referenceZone_) return;
-            if (worldCache_->lightmapFile(z)) loadStockLightmap(z);
+            if (worldCache_->lightmapFile(z) || !worldCache_->lightmapIndices(z).isEmpty()) loadStockLightmap(z);
             else ctx_.setStatus("Stock lightmap of " + z + ": " + worldCache_->lightmapErrorOf(z));
         });
     }
@@ -6940,9 +6950,10 @@ void MainWindow::loadStockReference(const QString& zone) {
             // Game Lighting draws the stock world with its own lightmap (research 94): cached, or made now.
             self->camera_->setStockLightmap(nullptr);
             self->camera_->setStockProbes(nullptr);
-            if (self->worldCache_->lightmapFile(zone)) self->loadStockLightmap(zone);
+            const bool haveLm = self->worldCache_->lightmapFile(zone) || !self->worldCache_->lightmapIndices(zone).isEmpty();
+            if (haveLm) self->loadStockLightmap(zone);
             if (self->worldCache_->probesFile(zone)) self->loadStockProbes(zone);
-            const bool needLm = !self->worldCache_->lightmapFile(zone) && self->worldCache_->lightmapErrorOf(zone).isEmpty();
+            const bool needLm = !haveLm && self->worldCache_->lightmapErrorOf(zone).isEmpty();
             const bool needProbes = !self->worldCache_->probesFile(zone) && self->worldCache_->probesErrorOf(zone).isEmpty();
             if (needLm || needProbes) self->worldCache_->requestLightmap(zone);
             self->ctx_.referencePlans = std::move(*plans);

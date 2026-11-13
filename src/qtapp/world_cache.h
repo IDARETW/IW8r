@@ -27,12 +27,27 @@
 // The job runs when either file is missing and has no recorded error, and makes only the missing one(s): a zone
 // cached with a lightmap but no probes gets its probes on the next requestLightmap (one decompression). A probe
 // verdict on the data is kept as "probes_error". Both lightmapReady and probesReady are emitted when the job ends.
+//
+// Many lightmaps (Warzone, research 94 section "Warzone (type 0)"): lightmap i of a map is in transient zone
+// lightmapTransientIndex[i]: zone 0 is the main .ff (handled by the job above), zone k the streamed tile
+// <map>_<k, 5 digits>_tr.ff. Cache files:
+//   <zone>/lightmap.iw8rlm          the map's only lightmap (index 0) when it has one of type 1 or 2 (every MP map)
+//   <zone>/lightmaps/<index>.iw8rlm every other lightmap (type 0 / Warzone, index = GfxSurface.lightmapIndex): the
+//                                   main zone's from the job above, a tile's from the tile lightmap job
+//   <zone>/streamed/<tile>/lightmap.done   the tile's lightmaps were extracted ("ok <indices>"), or the scan's
+//                                   verdict on the tile ("error <why>"); not tried again either way
+// lightmapFile(zone, index) finds either form. A tile lightmap job runs for every tile requestStreamed exports
+// (and for tiles exported before without lightmap.done): acts -d on <tile>.ff into w/lightmap_<tile>, the scan
+// off the UI thread, the scratch (every .dec) deleted before the cache files are written. One decompression at a
+// time (main and tile jobs share one slot), none while a geometry export runs or waits; each needs the estimated
+// .dec size free and never less than 3 GB. lightmapReady(zone) when a zone's queued tile jobs are all done.
 #pragma once
 
 #include <QElapsedTimer>
 #include <QObject>
 #include <QSet>
 #include <QString>
+#include <QList>
 #include <QStringList>
 
 #include <deque>
@@ -67,8 +82,15 @@ public:
     std::optional<StockWorld> load(const QString& zone, QString* err = nullptr) const;
 
     // The zone's lightmap cache file (<zone cache folder>/lightmap.iw8rlm, read it with iw8r::readStockLightmapCache),
-    // or nullopt when the zone is not cached or has no lightmap (yet). Does not start a job.
+    // or nullopt when the zone is not cached or has no lightmap (yet). Does not start a job. MP maps only: a Warzone
+    // map's lightmaps are per index, see below.
     std::optional<QString> lightmapFile(const QString& zone) const;
+    // The cache file of lightmap `index` (GfxSurface.lightmapIndex, StockWorld::lightmapIndex) of a zone:
+    // <zone>/lightmaps/<index>.iw8rlm, or for index 0 the single-lightmap file lightmap.iw8rlm. nullopt when the zone
+    // is not cached or that lightmap is not made (yet). Read it with iw8r::readStockLightmapCache. Starts no job.
+    std::optional<QString> lightmapFile(const QString& zone, int index) const;
+    // Every lightmap index of the zone that has a cache file, ascending. Starts no job.
+    QList<int> lightmapIndices(const QString& zone) const;
     QString lightmapErrorOf(const QString& zone) const;  // why the lightmap job failed ("" when made, pending or never run)
     // Queues the lightmap + probes job of a cached zone (async; nothing when it has both files (or their recorded
     // errors) or is queued). lightmapReady(zone) and probesReady(zone) when it ends either way.
@@ -81,9 +103,12 @@ public:
 
     // Big maps (research 90 / 87 section 1.2): exports the streamed world tiles `tiles` (zone names such as
     // mp_donetsk_00587_tr) of a cached zone into <cache>/<zone>/streamed/<tile>, one ACTS run each, skipping those
-    // already there; load() then includes them. streamedReady(zone) when the list is done.
+    // already there; load() then includes them. streamedReady(zone) when the list is done. Each tile (also one
+    // exported before) then gets its tile lightmap job (see above) unless it has lightmap.done.
     void requestStreamed(const QString& zone, const QStringList& tiles);
     int streamedPending() const { return int(streamQueue_.size()) + (streamRunning_ ? 1 : 0); }
+    // Tile lightmap jobs queued or running.
+    int tileLightmapsPending() const { return int(tileLmQueue_.size()) + (lmTile_.isEmpty() ? 0 : 1); }
 
 signals:
     void ready(const QString& zone);  // lookup() or errorOf() now answers for this zone
@@ -130,6 +155,14 @@ private:
     // Lightmap jobs: zones still to do, the one running (ACTS process, then the scan on a worker thread).
     void startNextLightmap();
     void lightmapActsEnded(int exitCode, bool startFailed);
+    // Starts acts -d on `ffPath` into lmScratch_ (lmZone_ / lmTile_ set by the caller).
+    void startDecompress(const QString& ffPath, const QString& what);
+    // Tile lightmap jobs (lmTile_ set while one runs).
+    void queueTileLightmap(const QString& zone, const QString& tile);
+    void startTileLightmap(const QString& zone, const QString& tile);
+    void endTileLightmap(const QString& zone, const QString& tile, bool ok, const QString& message, bool persist);
+    std::deque<std::pair<QString, QString>> tileLmQueue_;  // (zone, tile)
+    QString lmTile_;           // tile of the tile lightmap job in progress ("" for none or for a main-zone job)
     // The whole job failed before the scans (ACTS, disk space, no .ff): both outputs share the verdict.
     void endLightmap(const QString& zone, bool ok, const QString& error, bool persistError);
     // One output's scan result (the probes when `probes`, else the lightmap): progress line, and a failure is kept
@@ -139,7 +172,7 @@ private:
     QString lmZone_;           // zone of the job in progress ("" when idle)
     QString lmScratch_;        // root_/w/lightmap_<zone> while it runs
     QProcess* lmProc_ = nullptr;
-    QSet<QString> lmSkip_;     // ACTS or disk failures of this session: not tried again until the next start
+    QSet<QString> lmSkip_;     // ACTS or disk failures of this session (zone, or zone/tile): not tried again until the next start
     QElapsedTimer lmTimer_;
 };
 

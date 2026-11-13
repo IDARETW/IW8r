@@ -417,11 +417,19 @@ TEST(stock_world_lightmap_uvs) {
 
     // The wall has lightmapIndex 510: no lightmap UV.
     for (const auto& l : w.lightmapUv[1]) CHECK(l[0] == -1.0f && l[1] == -1.0f);
+    // The lightmap index per vertex, parallel to lightmapUv: 0 on the floor, -1 on the wall.
+    CHECK(w.lightmapIndex.size() == 2 && w.lightmapIndex[0].size() == floor.pos.size() &&
+          w.lightmapIndex[1].size() == w.meshes[1].pos.size());
+    if (w.lightmapIndex.size() == 2) {
+        for (int li : w.lightmapIndex[0]) CHECK(li == 0);
+        for (int li : w.lightmapIndex[1]) CHECK(li == -1);
+    }
 
     // No aux stream: every vertex has (-1, -1), and the vertex count is the old one.
     StockWorld n;
     CHECK(parseStockWorld(gfxJsonUv(false), {trzJson(s.pos, s.idx)}, n, &err));
     CHECK(n.lightmapUv.size() == n.meshes.size());
+    CHECK(n.lightmapIndex.size() == n.meshes.size());
     CHECK(n.lightmapSurfaces == 0);
     for (size_t m = 0; m < n.lightmapUv.size() && m < n.meshes.size(); ++m) {
         CHECK(n.lightmapUv[m].size() == n.meshes[m].pos.size());
@@ -432,4 +440,103 @@ TEST(stock_world_lightmap_uvs) {
     CHECK(parseStockWorld(gfxJson(false, true), {trzJson(s.pos, s.idx)}, o, &err));
     CHECK(o.lightmapUv.size() == o.meshes.size());
     for (size_t m = 0; m < o.lightmapUv.size() && m < o.meshes.size(); ++m) CHECK(o.lightmapUv[m].size() == o.meshes[m].pos.size());
+}
+
+// Warzone: lightmap i belongs to transient zone lightmapTransientIndex[i] (research 94 "Warzone (type 0)"). Two
+// transient zones (0 and 30, like a streamed tile) whose streams use the SAME byte offsets for different vertices,
+// with the same material: nothing may merge across the zones, and each vertex keeps its surface's lightmap index.
+// A third surface in zone 0 draws the floor block again with another lightmap index (3): its own vertices.
+TEST(stock_world_lightmap_index_and_zones) {
+    const Sample s = sample();
+    // Zone 30: the same layout, every position moved by +1000 on x.
+    Sample t = s;
+    t.pos = {0, 0, 0, 0};
+    const float v[6][3] = {{0, 0, 0}, {100, 0, 0}, {0, 100, 0}, {100, 100, 0}, {0, 0, 50}, {100, 0, 50}};
+    for (const auto& p : v) {
+        putF(t.pos, p[0] + 1000.0f);
+        putF(t.pos, p[1]);
+        putF(t.pos, p[2]);
+    }
+    std::string g = R"({"format":"mw19-asset-json-v1","asset":{"name":"maps/mp/test.d3dbsp","fields":{"surfaces":{"surfaces":{"values":[)";
+    g += R"({"tris":{"posOffset":4,"vertexCount":4,"triCount":2,"baseIndex":0},"material":{"name":"tw/floor"},"transientZone":0,"surfDataIndex":0,"lightmapIndex":0})";
+    g += R"(,{"tris":{"posOffset":4,"vertexCount":4,"triCount":2,"baseIndex":0},"material":{"name":"tw/floor"},"transientZone":30,"surfDataIndex":0,"lightmapIndex":17})";
+    g += R"(,{"tris":{"posOffset":4,"vertexCount":4,"triCount":2,"baseIndex":0},"material":{"name":"tw/floor"},"transientZone":0,"surfDataIndex":0,"lightmapIndex":3})";
+    g += R"(]},"surfData":{"values":[)";
+    g += R"({"transientZone":0,"layerCount":1,"xyzOffset":4,"tangentFrameOffset":4,"lmapCoordOffset":20,"colorOffset":0,"texCoordOffset":52})";
+    g += R"(]}}}}})";
+    const auto aux = auxSampleLm();
+    StockWorld w;
+    std::string err;
+    CHECK(parseStockWorld(g, {trzJson(s.pos, s.idx, 0, aux), trzJson(t.pos, t.idx, 30, aux)}, w, &err));
+    CHECK(err.empty());
+    CHECK(w.meshes.size() == 1);
+    if (w.meshes.size() != 1 || w.lightmapIndex.size() != 1 || w.lightmapUv.size() != 1) return;
+    const ImportedMesh& m = w.meshes[0];
+    CHECK(m.pos.size() == 12);  // 4 per surface: zone 0 / lightmap 0, zone 30 / lightmap 17, zone 0 / lightmap 3
+    CHECK(m.idx.size() == 18);
+    CHECK(w.lightmapIndex[0].size() == m.pos.size() && w.lightmapUv[0].size() == m.pos.size());
+    CHECK(w.lightmapSurfaces == 3);
+    if (w.lightmapIndex[0].size() != m.pos.size()) return;
+    int perIndex[18] = {};
+    bool placed = true;
+    for (size_t k = 0; k < m.pos.size(); ++k) {
+        const int li = w.lightmapIndex[0][k];
+        if (li < 0 || li > 17) {
+            placed = false;
+            continue;
+        }
+        ++perIndex[li];
+        // Zone 30's vertices (lightmap 17) are the moved ones; zone 0's are not.
+        placed &= (li == 17) == (m.pos[k].x >= 1000.0);
+    }
+    CHECK(placed);
+    CHECK(perIndex[0] == 4 && perIndex[17] == 4 && perIndex[3] == 4);
+    // Every triangle uses one lightmap (its corners agree).
+    bool oneLightmap = true;
+    for (size_t i = 0; i + 2 < m.idx.size(); i += 3)
+        oneLightmap &= w.lightmapIndex[0][m.idx[i]] == w.lightmapIndex[0][m.idx[i + 1]] &&
+                       w.lightmapIndex[0][m.idx[i]] == w.lightmapIndex[0][m.idx[i + 2]];
+    CHECK(oneLightmap);
+    // The same UVs in both zones (the same aux bytes): vertex (1100, 0, 0) of zone 30 is (0.3, 0.4).
+    bool found = false;
+    for (size_t k = 0; k < m.pos.size(); ++k)
+        if (m.pos[k] == Vec3{1100, 0, 0} && std::fabs(w.lightmapUv[0][k][0] - 0.3f) < 1e-6f && std::fabs(w.lightmapUv[0][k][1] - 0.4f) < 1e-6f)
+            found = true;
+    CHECK(found);
+}
+
+// ACTS writes a large surfData array as hex "bytes" (mp_donetsk): the 88-byte GfxWorldSurfData records give the same
+// texture and lightmap coordinates as the decoded "values" form.
+TEST(stock_world_surfdata_hex_bytes) {
+    const Sample s = sample();
+    const std::string valuesForm = gfxJsonLm();
+    // The three records of gfxJsonLm: (tz, layers, xyz, tangent, lmap, colour, tex).
+    const uint32_t rec[3][7] = {{0, 1, 4, 4, 20, 0, 52}, {0, 2, 16, 84, 96, 0, 120}, {0, 1, 4, 4, 180, 0, 52}};
+    std::vector<uint8_t> raw;
+    for (const auto& r : rec) {
+        std::vector<uint8_t> one(88, 0);
+        for (int k = 0; k < 7; ++k)
+            for (int b = 0; b < 4; ++b) one[size_t(4 * k + b)] = uint8_t(r[k] >> (8 * b));
+        one[0x1C] = 168;  // normalTransformOffset[0] of record 1 (not read)
+        raw.insert(raw.end(), one.begin(), one.end());
+    }
+    const size_t a = valuesForm.find(R"("surfData":{"values":[)");
+    const size_t b = valuesForm.rfind("]}}}}}");  // the end of the values array (records hold "]}" too)
+    CHECK(a != std::string::npos && b != std::string::npos);
+    if (a == std::string::npos || b == std::string::npos) return;
+    const std::string hexForm = valuesForm.substr(0, a) + R"("surfData":{"type":"GfxWorldSurfData","stride":88,"count":3,"encoding":"hex-little-endian","bytes":")" +
+                                hexOf(raw) + R"("})" + valuesForm.substr(b + 2);
+    StockWorld v, h;
+    std::string err;
+    CHECK(parseStockWorld(valuesForm, {trzJson(s.pos, s.idx, 0, auxSampleLm())}, v, &err));
+    CHECK(parseStockWorld(hexForm, {trzJson(s.pos, s.idx, 0, auxSampleLm())}, h, &err));
+    CHECK(h.lightmapSurfaces == 2 && h.lightmapSurfaces == v.lightmapSurfaces);
+    CHECK(h.meshes.size() == v.meshes.size());
+    for (size_t m = 0; m < h.meshes.size() && m < v.meshes.size(); ++m) {
+        CHECK(h.meshes[m].pos == v.meshes[m].pos);
+        CHECK(h.meshes[m].uv == v.meshes[m].uv);
+        CHECK(h.lightmapUv[m] == v.lightmapUv[m]);
+        CHECK(h.lightmapIndex[m] == v.lightmapIndex[m]);
+    }
+    CHECK(h.warnings == v.warnings);
 }

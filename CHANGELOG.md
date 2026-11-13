@@ -11,6 +11,9 @@ Warzone and stock maps (later the same day):
   crates baked into the world) from drawing and from collision when the zone is rebuilt, and bakes the sun shadow
   again without it. Baked lighting and occlusion keep the old geometry. Proven offline on Shipment
   (tools/stock_world_remove_test.py). Not seen in game.
+- **Game Lighting on Warzone maps.** Verdansk, Quarry and the tutorial map draw with their own lightmaps: the
+  editor reads the lightmaps of the streamed tiles it loads around the camera (one tile at a time, the scratch deleted
+  at once) and packs them into one atlas. Verdansk uses Quarry's sun and exposure, as the game does.
 - **Stock reflections and specular in Game Lighting.** The stock world shows its own reflection probes (read from the
   zone once, cached), the game's environment BRDF table (read from the install) and the GGX sun highlight, as the
   stock world shader does. About 2.2 ms per frame on Backlot2 at 1920 x 1080.

@@ -62,8 +62,12 @@ GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(co
 struct StockLightmapLayers {
     int width = 0, height = 0;
     std::vector<float> a, b, d;
+    // Per lightmap index: its rectangle in the layers (x, y, width, height, all 0..1); zero = not loaded.
+    std::vector<std::array<float, 4>> rects;
 };
 std::shared_ptr<StockLightmapLayers> stockLightmapLayers(const StockLightmap& lm);
+// Several lightmaps (a Warzone map's, by StockLightmap::index) packed into one atlas (shelves, 1-texel gaps).
+std::shared_ptr<StockLightmapLayers> stockLightmapAtlas(const std::vector<StockLightmap>& lms);
 
 // Bakes (any thread). Never null; `error` is set when nothing could be baked.
 std::shared_ptr<GameLightmap> bakeGameLightmap(const GameBakeInput& in, const std::function<void(double)>& progress = {});

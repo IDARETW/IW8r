@@ -49,15 +49,19 @@ struct StockWorld {
     // the floor surfaces of mp_shipment). Normals are area-weighted face normals. uv is layer 0 of the stock texture
     // coordinates, with v flipped to the ImportedMesh convention (see above); zero where the export has no aux stream or
     // no surfData for the surface (a warning names the count). Vertices are shared inside a mesh, so the count is the
-    // unique (position, texture coordinate, lightmap UV) records.
+    // unique (transient zone, position, texture coordinate, lightmap UV, lightmap index) records.
     std::vector<ImportedMesh> meshes;
     // Lightmap UVs (docs/research/94_stock_lightmaps.md section 2), parallel to meshes: lightmapUv[m][k] belongs to
     // meshes[m].pos[k]. float32 (u, v) as stored in the aux stream at GfxWorldSurfData.lmapCoordOffset +
-    // 8 * (firstVertex + j), normalised to the map's lightmap ([0, 1]); NO V flip: v = 0 is the first row of the
-    // image (StockLightmap, stock_lightmap.h), texel = (u * width, v * height). (-1, -1) for a vertex without one:
-    // its surface has lightmapIndex 510 (shadow casters, sky), its surfData has no lmapCoordOffset, or the transient
-    // zone has no aux data. Only one lightmap per map is supported, so the surface's lightmapIndex is not kept.
+    // 8 * (firstVertex + j), normalised to the vertex's lightmap (lightmapIndex below, [0, 1]); NO V flip: v = 0 is
+    // the first row of the image (StockLightmap, stock_lightmap.h), texel = (u * width, v * height). (-1, -1) for a
+    // vertex without one: its surface has lightmapIndex 510 (shadow casters, sky), its surfData has no
+    // lmapCoordOffset, or the transient zone has no aux data.
     std::vector<std::vector<std::array<float, 2>>> lightmapUv;
+    // The lightmap of each vertex, parallel to lightmapUv: its surface's GfxSurface.lightmapIndex (the global index,
+    // StockLightmap::index; 0 on every MP map, 0 .. N-1 on Warzone maps, where lightmap i belongs to transient zone
+    // lightmapTransientIndex[i]), or -1 exactly where lightmapUv is (-1, -1).
+    std::vector<std::vector<int>> lightmapIndex;
     size_t lightmapSurfaces = 0;        // surfaces whose vertices got a lightmap UV
     AABB bounds;                        // over every vertex used by a triangle (includes sky geometry)
     std::vector<std::string> warnings;  // non-fatal: surfaces skipped, index range problems

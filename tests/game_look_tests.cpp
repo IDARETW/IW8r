@@ -44,7 +44,7 @@ TEST(game_look_tonemap_curve) {
 
 TEST(game_look_auto_exposure) {
     const StockMapLook* ship = stockMapLook("mp_shipment");
-    CHECK(ship && ship->exposure.autoExposure && std::fabs(ship->sunIntensity - 8.63193) < 1e-9 && !stockMapLook("mp_nowhere"));
+    CHECK(ship && ship->exposure.autoExposure && std::fabs(ship->sunIntensity - 8.63193) < 1e-9 && !stockMapLook("mp_nowhere") && stockMapLook("mp_donetsk") == stockMapLook("mp_br_quarry"));
     if (!ship) return;
     // At the mid EV's luminance the key is the mid key (0.18 x 2^midAdjust), times 2^exposureAdjust.
     const GameExposure& e = ship->exposure;

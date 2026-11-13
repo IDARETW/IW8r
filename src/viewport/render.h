@@ -1,6 +1,7 @@
 // IW8 Radiant Suite - Direct3D 11 offscreen renderer for the 3D camera view.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -262,7 +263,8 @@ public:
     // The stock reference world's own lightmap (Game Lighting on a stock map, research 94 / 95): four floats per texel,
     // a = (ambient part f x C, 1), b = (directional part (1 - f) x C / max(D.z, .001), 0), d = (the tangent-space
     // direction D, 0). The reference vertices carry its UVs. null = none.
-    void setStockLightmap(int width, int height, const float* a, const float* b, const float* d);
+    void setStockLightmap(int width, int height, const float* a, const float* b, const float* d,
+                          const std::vector<std::array<float, 4>>& rects = {});
     bool hasStockLightmap() const { return stockLmSrv_[0] != nullptr; }
     // The stock world shader's environment BRDF table (64 x 64, A and B as R8G8; game_look_assets.h fetches it from the
     // owner's install). null = the analytic fit.
@@ -434,6 +436,8 @@ private:
     ID3D11ShaderResourceView* gameLmSrv_[3] = {nullptr, nullptr, nullptr};
     ID3D11Texture2D* stockLmTex_[3] = {nullptr, nullptr, nullptr};
     ID3D11ShaderResourceView* stockLmSrv_[3] = {nullptr, nullptr, nullptr};
+    ID3D11Buffer* cbLmRects_ = nullptr;
+    static constexpr int kMaxLightmapRects = 1024;
     ID3D11Texture2D* envBrdfTex_ = nullptr;
     ID3D11Texture2D* probeArrTex_ = nullptr;
     ID3D11ShaderResourceView* probeArrSrv_ = nullptr;

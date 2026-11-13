@@ -219,8 +219,10 @@ const std::vector<StockMapLook>& stockMapLooks() {
 }
 
 const StockMapLook* stockMapLook(const std::string& map) {
+    // Verdansk matches Quarry (the converter's table leaves it out for that reason).
+    const std::string name = map == "mp_donetsk" ? std::string("mp_br_quarry") : map;
     for (const StockMapLook& l : stockMapLooks())
-        if (map == l.map) return &l;
+        if (name == l.map) return &l;
     return nullptr;
 }
 

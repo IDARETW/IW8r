@@ -107,18 +107,54 @@ std::vector<uint8_t> planeDirection(bool rgba8, uint8_t x, uint8_t y) {
     return out;
 }
 
-// The root (0xF10 bytes) and its pixels. numLightmaps > 1 repeats the descriptors and the planes.
-std::vector<uint8_t> lightmapRecord(uint32_t type, uint32_t numLightmaps, bool rgba8, uint64_t pixelsPtr = 0xFFFFFFFFFFFFFFFEull) {
-    const auto p0 = planeBC4(), p1 = planeR11(), p2 = planeDirection(rgba8, 191, 127);
+// BC6H mode 11 (one region, 10-bit endpoints, unsigned): both endpoints (r, g, b), every index 0, so every texel
+// decodes to the unquantised endpoint. Bits: mode 00011 at 0..4, rw 5..14, gw 15..24, bw 25..34, rx 35..44,
+// gx 45..54, bx 55..64, indices 65..127.
+std::array<uint8_t, 16> bc6hConstantBlock(uint32_t r, uint32_t g, uint32_t b) {
+    std::array<uint8_t, 16> out{};
+    const auto put = [&](int at, uint32_t v, int bits) {
+        for (int i = 0; i < bits; ++i)
+            if (v >> i & 1) out[size_t((at + i) / 8)] |= uint8_t(1u << ((at + i) % 8));
+    };
+    put(0, 3, 5);
+    put(5, r, 10);
+    put(15, g, 10);
+    put(25, b, 10);
+    put(35, r, 10);
+    put(45, g, 10);
+    put(55, b, 10);
+    return out;
+}
+
+// The half float bits BC6H unsigned gives a 10-bit endpoint x (unquantise, then x 31 / 64; the D3D rules).
+uint16_t bc6hHalfOf(uint32_t x) {
+    const uint32_t unq = x == 0 ? 0 : x == 1023 ? 0xFFFF : ((x << 16) + 0x8000) >> 10;
+    return uint16_t((unq * 31) >> 6);
+}
+
+// 8 x 4 BC6H plane: block 0 = (512, 256, 768), block 1 = (100, 900, 0).
+std::vector<uint8_t> planeBC6H() {
+    std::vector<uint8_t> out;
+    const auto b0 = bc6hConstantBlock(512, 256, 768), b1 = bc6hConstantBlock(100, 900, 0);
+    out.insert(out.end(), b0.begin(), b0.end());
+    out.insert(out.end(), b1.begin(), b1.end());
+    return out;
+}
+
+// The root (0xF10 bytes) and its pixels. numLightmaps > 1 repeats the descriptors and the planes. bc6h: plane 1 is
+// BC6H (type 0, Warzone) instead of R11G11B10F.
+std::vector<uint8_t> lightmapRecord(uint32_t type, uint32_t numLightmaps, bool rgba8, uint64_t pixelsPtr = 0xFFFFFFFFFFFFFFFEull,
+                                    uint32_t first = 0, uint32_t transientZone = 0, bool bc6h = false) {
+    const auto p0 = planeBC4(), p1 = bc6h ? planeBC6H() : planeR11(), p2 = planeDirection(rgba8, 191, 127);
     std::vector<uint8_t> r(0xF10, 0);
-    put32(r, 0, 0);             // transientZone
+    put32(r, 0, transientZone);
     put32(r, 4, numLightmaps);
-    put32(r, 8, 0);             // firstLightmapIndex
+    put32(r, 8, first);         // firstLightmapIndex
     put32(r, 12, type);
     for (uint32_t li = 0; li < numLightmaps; ++li) {
         const size_t at = 0x10 + li * 0x78;
         putRaw(r, at, kLmFormatBC4, uint32_t(p0.size()), kW, kH, pixelsPtr);
-        putRaw(r, at + 0x28, kLmFormatR11G11B10F, uint32_t(p1.size()), kW, kH);
+        putRaw(r, at + 0x28, bc6h ? kLmFormatBC6H : kLmFormatR11G11B10F, uint32_t(p1.size()), kW, kH);
         putRaw(r, at + 0x50, rgba8 ? kLmFormatRGBA8 : kLmFormatBC5, uint32_t(p2.size()), kW, kH);
     }
     for (uint32_t li = 0; li < numLightmaps; ++li) {
@@ -393,15 +429,19 @@ TEST(stock_lightmap_ab_and_unsupported) {
         CHECK(near(lm.direction[3 * 9], d[0]) && near(lm.direction[3 * 9 + 2], d[2]));
     }
 
-    // Two lightmaps (Warzone has hundreds): a clear error.
+    // Two lightmaps in one root: the single-lightmap reader sends the caller to the many-lightmap one.
     writeZone(zone, 30000, 1000, lightmapRecord(1, 2, false));
     CHECK(!extractStockLightmapFromDecompressedZone(zone.string(), lm, &err));
-    CHECK(err.find("2 lightmaps: not supported yet") != std::string::npos);
+    CHECK(err.find("2 lightmaps in one root") != std::string::npos);
 
-    // Type 0 (REGULAR, mp_donetsk's main zone): refused with its own message.
-    writeZone(zone, 30000, 1000, lightmapRecord(0, 1, false));
+    // An unknown irradiance format (BC7, 44) is refused with the formats in the message.
+    {
+        auto rec = lightmapRecord(0, 1, false);
+        put32(rec, 0x10 + 0x28, 44);
+        writeZone(zone, 30000, 1000, rec);
+    }
     CHECK(!extractStockLightmapFromDecompressedZone(zone.string(), lm, &err));
-    CHECK(err.find("lightmap type 0") != std::string::npos);
+    CHECK(err.find("plane formats 39, 44, 40") != std::string::npos);
 
     // Two roots in one file: refused.
     {
@@ -415,4 +455,99 @@ TEST(stock_lightmap_ab_and_unsupported) {
     CHECK(findStockLightmapRoots(zone.string(), roots, &err) && roots.size() == 2);
     CHECK(!extractStockLightmapFromDecompressedZone(zone.string(), lm, &err));
     CHECK(err.find("2 lightmap roots") != std::string::npos);
+}
+
+// Warzone (type 0): plane 1 is BC6H. One lightmap per transient zone; the root's firstLightmapIndex is the global
+// index (mp_br_quarry_00026_tr: transient zone 26, lightmap 17).
+TEST(stock_lightmap_type0_bc6h) {
+    const fs::path zone = tmpPath("wz_tile.ff.dec");
+    writeZone(zone, 60000, 3333, lightmapRecord(0, 1, false, 0xFFFFFFFFFFFFFFFEull, 17, 26, true));
+    std::vector<StockLightmap> all;
+    std::vector<uint64_t> roots;
+    std::string err;
+    CHECK(extractStockLightmapsFromDecompressedZone(zone.string(), all, &err, &roots));
+    CHECK(err.empty());
+    CHECK(roots.size() == 1 && roots[0] == 3333);
+    CHECK(all.size() == 1);
+    if (all.size() != 1) return;
+    const StockLightmap& lm = all[0];
+    CHECK(lm.index == 17 && lm.transientZone == 26 && lm.type == 0 && lm.width == kW && lm.height == kH);
+    CHECK(lm.irradiance.size() == size_t(kW * kH * 3) && lm.ambientFraction.size() == size_t(kW * kH) &&
+          lm.direction.size() == size_t(kW * kH * 3));
+    if (lm.irradiance.size() != size_t(kW * kH * 3)) return;
+    // Block 0 (x 0..3) is (512, 256, 768) unquantised, block 1 (x 4..7) (100, 900, 0); every row alike.
+    const float r0 = halfToFloat(bc6hHalfOf(512)), g0 = halfToFloat(bc6hHalfOf(256)), b0 = halfToFloat(bc6hHalfOf(768));
+    const float r1 = halfToFloat(bc6hHalfOf(100)), g1 = halfToFloat(bc6hHalfOf(900));
+    CHECK(near(r0, 1.5146484f, 1e-6f) && b0 > 300.0f);
+    bool ok = true;
+    for (int y = 0; y < kH; ++y)
+        for (int x = 0; x < kW; ++x) {
+            const float* c = &lm.irradiance[size_t(y * kW + x) * 3];
+            ok &= x < 4 ? (c[0] == r0 && c[1] == g0 && c[2] == b0) : (c[0] == r1 && c[1] == g1 && c[2] == 0.0f);
+        }
+    CHECK(ok);
+    // f and D decode as on the MP maps.
+    CHECK(near(lm.ambientFraction[0], 1.0f) && near(lm.ambientFraction[4], 0.2f));
+    const auto d = decodeOctahedralDirection(191 / 255.0f, 127 / 255.0f);
+    CHECK(near(lm.direction[0], d[0]) && near(lm.direction[2], d[2]));
+
+    // The single-lightmap reader takes type 0 too.
+    StockLightmap one;
+    CHECK(extractStockLightmapFromDecompressedZone(zone.string(), one, &err));
+    CHECK(one.index == 17 && one.type == 0 && one.irradiance == lm.irradiance);
+
+    // Cache: the index is kept (header offset 28); the header-only read gives it without the planes.
+    const fs::path cache = tmpPath("17.iw8rlm");
+    CHECK(writeStockLightmapCache(cache.string(), lm, &err));
+    StockLightmap back, head;
+    CHECK(readStockLightmapCache(cache.string(), back, &err));
+    CHECK(back.index == 17 && back.type == 0 && back.width == kW && back.height == kH && back.transientZone == -1);
+    CHECK(back.irradiance.size() == lm.irradiance.size());
+    bool close = back.irradiance.size() == lm.irradiance.size();
+    for (size_t i = 0; close && i < lm.irradiance.size(); ++i)
+        close = std::fabs(back.irradiance[i] - lm.irradiance[i]) <= std::fabs(lm.irradiance[i]) * 1e-3f + 1e-6f;
+    CHECK(close);
+    CHECK(readStockLightmapCacheHeader(cache.string(), head, &err));
+    CHECK(head.index == 17 && head.width == kW && head.height == kH && head.irradiance.empty() && head.direction.empty());
+    CHECK(!readStockLightmapCacheHeader(tmpPath("nope.iw8rlm").string(), head, &err));
+}
+
+// Several lightmaps: one root with three (indices 5, 6, 7) and a second root with one (9), pixels after each root.
+TEST(stock_lightmap_many) {
+    std::vector<uint8_t> both = lightmapRecord(0, 3, false, 0xFFFFFFFFFFFFFFFEull, 5, 40, true);
+    both.resize(both.size() + 300, 0);
+    const auto second = lightmapRecord(1, 1, false, 0xFFFFFFFFFFFFFFFEull, 9, 41, false);
+    both.insert(both.end(), second.begin(), second.end());
+    const fs::path zone = tmpPath("many.ff.dec");
+    writeZone(zone, 80000, 1001, both);
+    std::vector<StockLightmap> all;
+    std::string err;
+    CHECK(extractStockLightmapsFromDecompressedZone(zone.string(), all, &err));
+    CHECK(err.empty());
+    CHECK(all.size() == 4);
+    if (all.size() != 4) return;
+    CHECK(all[0].index == 5 && all[1].index == 6 && all[2].index == 7 && all[3].index == 9);
+    CHECK(all[0].transientZone == 40 && all[3].transientZone == 41 && all[0].type == 0 && all[3].type == 1);
+    // Each lightmap's planes are read from its own place: the three BC6H lightmaps are equal, the fourth is R11G11B10F.
+    CHECK(all[1].irradiance == all[0].irradiance && all[2].irradiance == all[0].irradiance);
+    CHECK(all[3].irradiance.size() == size_t(kW * kH * 3) && all[3].irradiance[0] == 1.0f && all[3].irradiance[1] == 2.0f);
+    CHECK(all[2].ambientFraction == all[3].ambientFraction && all[2].direction == all[3].direction);
+
+    // The single-lightmap reader refuses two roots.
+    StockLightmap one;
+    CHECK(!extractStockLightmapFromDecompressedZone(zone.string(), one, &err));
+
+    // Two lightmaps with one index: refused.
+    std::vector<uint8_t> dup = lightmapRecord(0, 1, false, 0xFFFFFFFFFFFFFFFEull, 9, 40, true);
+    dup.resize(dup.size() + 64, 0);
+    dup.insert(dup.end(), second.begin(), second.end());
+    writeZone(zone, 80000, 500, dup);
+    CHECK(!extractStockLightmapsFromDecompressedZone(zone.string(), all, &err));
+    CHECK(err.find("two lightmaps with index 9") != std::string::npos);
+
+    // No root: an error, out untouched.
+    writeZone(zone, 10000, 0, std::vector<uint8_t>(1, 0));
+    all.assign(2, StockLightmap());
+    CHECK(!extractStockLightmapsFromDecompressedZone(zone.string(), all, &err));
+    CHECK(all.size() == 2 && err.find("no lightmap root") != std::string::npos);
 }

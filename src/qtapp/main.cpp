@@ -167,17 +167,27 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             // sun and exposure (core game_look).
             const QString zone = QFileInfo(referenceDir).fileName();
             cam->setGameStockMap(zone.toStdString());
-            iw8r::StockLightmap slm;
+            // MP maps: lightmap.iw8rlm; Warzone maps: lightmaps/<index>.iw8rlm (the streamed tiles' lightmaps too).
+            std::vector<iw8r::StockLightmap> lms;
             std::string lerr;
-            const QString lmFile = QDir(referenceDir).filePath("lightmap.iw8rlm");
-            if (QFileInfo::exists(lmFile) && iw8r::readStockLightmapCache(lmFile.toStdString(), slm, &lerr)) {
-                cam->setStockLightmap(iw8r::app::stockLightmapLayers(slm));
+            QStringList lmFiles;
+            if (QFileInfo::exists(QDir(referenceDir).filePath("lightmap.iw8rlm"))) lmFiles << QDir(referenceDir).filePath("lightmap.iw8rlm");
+            for (const QString& f : QDir(QDir(referenceDir).filePath("lightmaps")).entryList({"*.iw8rlm"}, QDir::Files))
+                lmFiles << QDir(QDir(referenceDir).filePath("lightmaps")).filePath(f);
+            for (const QString& f : lmFiles) {
+                iw8r::StockLightmap slm;
+                if (iw8r::readStockLightmapCache(f.toStdString(), slm, &lerr)) lms.push_back(std::move(slm));
+            }
+            if (!lms.empty()) {
+                const auto layers = iw8r::app::stockLightmapAtlas(lms);
+                cam->setStockLightmap(layers);
                 size_t withUv = 0, all = 0;
                 for (const auto& v : world.lightmapUv)
                     for (const auto& uv : v) withUv += uv[0] >= 0 ? 1 : 0, ++all;
-                report << QString("stock_lightmap %1x%2 type=%3 vertices_with_uv=%4/%5").arg(slm.width).arg(slm.height).arg(slm.type).arg(withUv).arg(all);
+                report << QString("stock_lightmap %1 lightmap(s), atlas %2x%3, vertices_with_uv=%4/%5").arg(lms.size()).arg(layers->width)
+                              .arg(layers->height).arg(withUv).arg(all);
             } else {
-                report << QString("stock_lightmap none (%1)").arg(QFileInfo::exists(lmFile) ? QString::fromStdString(lerr) : "not cached");
+                report << QString("stock_lightmap none (%1)").arg(lmFiles.isEmpty() ? QString("not cached") : QString::fromStdString(lerr));
             }
             const QString prFile = QDir(referenceDir).filePath("probes.iw8rprb");
             auto probes = std::make_shared<iw8r::StockProbeSet>();

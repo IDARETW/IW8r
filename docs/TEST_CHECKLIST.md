@@ -341,7 +341,7 @@ Separate maps (also built):
 - [ ] Animated model: a live script_model with iw8r_anim plays the stock animation (try desktop_fan_fn_01_loop).
 - [ ] Live Link > Quick match picks the map and mode with bots in the lobby; Live Link > Screenshot saves the game view.
 
-## Optional in-game looks (2026-11-12, later): all proven offline, none seen in game
+## In game (optional, 2026-11-12 later): all proven offline, none seen in game
 
 - [ ] Compile panel > Bake lightmaps, build, then stand in game and in View > Game Lighting (Ctrl+Alt+L) at the same
       spot: brightness, shadows, light pools and colours should match.

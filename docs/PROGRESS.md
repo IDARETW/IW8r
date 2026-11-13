@@ -70,6 +70,12 @@
   to Umbra occluder surfaces (flag 64), editzone replaces the Umbra tome with the converter's conservative one-cell tome
   (replayrender::BuildConservativeUmbraTome, stock objects and user ids kept); key "occlusion" auto / open / stock.
   Local tile editing needs the Umbra portal encoding decoded (not done).
+- Then Warzone lightmaps: type 0 (BC6H C), one lightmap per transient zone (research 94 section 8); stock_lightmap
+  reads many, stock_world keeps lightmapIndex per vertex (and fixed: Verdansk surfData as hex bytes, vertex sharing
+  across tiles); WorldCache lightmapFile(zone, index) / lightmapIndices, tile jobs after streamed exports;
+  game_lightmap stockLightmapAtlas packs them; reference vertices carry index + u; render.cpp LightmapRects (b6).
+  Checked: mp_br_tut (1 lightmap, 125,825 vertices), mp_donetsk with 12 tiles (13 lightmaps, all 391,888 lightmapped
+  vertices have their file; atlas 2048 x 1282; 0.44 ms per frame). mp_donetsk uses the mp_br_quarry look.
 - Tests at the last commit: core 139,820 checks / 0, GUI 948 / 0.
 - Open (in scope): copying or removing a placed object that has a dynamic entity;
   11.5 removing stock world geometry; 11.6 the sky and the sun direction of a stock map; 11.10 Ground War scale.
