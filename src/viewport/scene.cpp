@@ -2,6 +2,7 @@
 #include "game_lightmap.h"
 #include "scene.h"
 #include "light_grid.h"
+#include "lightmap_fields.h"
 #include "texel_density.h"
 #include "patch_ops.h"
 #include "vertex_paint.h"
@@ -146,6 +147,8 @@ PrimGeom buildPrim(const Entity& e, const EntityItem& it, const Primitive& p) {
             g.polyMaterial.push_back(p.faces[i].material());
             g.polyUV.push_back(std::move(uv));
             g.polyRepeatsPerUnit.push_back(float(faceDensity(p, i, 1, 1, 0).texturePxPerUnit));
+            g.polyLmDensity.resize(g.polys.size() - 1, 1.0f);
+            g.polyLmDensity.push_back(float(lightmapDensityOfSuffix(p.faces[i].suffix)));
         }
         g.label = p.faces.empty() ? std::string() : p.faces.front().material();
         g.volume = !p.faces.empty() && std::all_of(p.faces.begin(), p.faces.end(), [](const auto& f) { return isVolumeMaterial(f.material()); });

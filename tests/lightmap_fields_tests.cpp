@@ -341,3 +341,14 @@ TEST(patch_lock_corners_only) {
     // The lock is positional: the points between the corners follow the edit.
     CHECK(near(out.pos[2].x, before.pos[2].x + 7));
 }
+
+// The lightmap density of a face from its suffix: 16384 is the default (1), half the scale is twice the texels.
+TEST(lightmap_density_of_suffix) {
+    CHECK(lightmapDensityOfSuffix("tm/wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0") == 1.0);
+    CHECK(std::fabs(lightmapDensityOfSuffix("tm/wall 128 128 0 0 0 0 lightmap_gray 8192 8192 0 0 0 0") - 2.0) < 1e-12);
+    CHECK(std::fabs(lightmapDensityOfSuffix("tm/wall 128 128 0 0 0 0 lightmap_gray 32768 32768 0 0 0 0") - 0.5) < 1e-12);
+    CHECK(std::fabs(lightmapDensityOfSuffix("tm/wall 128 128 0 0 0 0 lightmap_gray 8192 32768 0 0 0 0") - 1.0) < 1e-12);
+    CHECK(lightmapDensityOfSuffix("tm/wall 128 128 0 0 0 0 lightmap_gray 16 16 0 0 0 0") == 8.0);     // kept inside 1/8 .. 8
+    CHECK(lightmapDensityOfSuffix("tm/wall 128 128 0 0 0 0 lightmap_gray 0 16384 0 0 0 0") == 1.0);   // not positive
+    CHECK(lightmapDensityOfSuffix("tm/wall 128 128 0 0 0 0") == 1.0);                                 // no lightmap fields
+}

@@ -289,6 +289,9 @@ Commands in the Tools menu:
   sets its own, so the game's north matches the editor's.
 - **Models.** A placed model is lit by the light at its place (the build's light grid: sky, sun bounce, how closed
   in the spot is), with or without baked lightmaps. View > Game Lighting shows it per model.
+- **Sharper shadows where you want them.** Select faces or brushes and lower "Lightmap scale" in the Surface panel
+  (16384 is the default; 8192 gives twice the lightmap texels, 4096 four times, down to an eighth of the map's texel
+  size). Raise it on big plain faces to save lightmap space.
 - **What the bake bounces.** Light that hits a surface goes on in that surface's colour (the average colour of its
   material), and the bounces after the first are estimated from how enclosed a place is: a room with one window is
   lit softly all through, and a coloured wall tints what is near it.

@@ -66,6 +66,11 @@
   EdgeBrush::detail (set by compile_iw8.cpp from brushIsDetail; the occluder list skips detail brushes, test
   compile_occlusion_bake_leaves_detail_brushes_out). Region outline: SceneCache::regionLines (EditorContext::
   refreshRegion), drawn in camera_geometry's misc lines and in GridView::paintEvent.
+  Per-face lightmap scale: core lightmap_fields lightmapDensityOfSuffix (16384 / sqrt(L1 x L2), 1/8 .. 8),
+  BakeSurface::triDensity + Chart::density (charts never mix densities; projected x density / texel in the three
+  places), compile_iw8.cpp Chunk::lmDensity -> RenderSurface::triDensity, viewport PrimGeom::polyLmDensity ->
+  GameBakeInput::Poly::density. Tests: lightmap_bake_face_density, lightmap_density_of_suffix,
+  compile_lightmap_bake_honours_face_lightmap_scale.
   The web list of plan 3.3 / 3.4 is done (the Vision Editor form closed it). Earlier note: (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder

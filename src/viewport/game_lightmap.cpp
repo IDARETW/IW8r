@@ -155,6 +155,7 @@ GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(co
                 for (const Vec3& v : w) c += v;
                 p.centroid = c * (1.0 / double(w.size()));
                 if (albedoFor) p.albedo = albedoFor(*mat);
+                if (i < g->polyLmDensity.size()) p.density = g->polyLmDensity[i];
                 in.polys.push_back(std::move(p));
             } else if (!tool || sky) {
                 for (size_t k = 1; k + 1 < w.size(); ++k) in.occluders.push_back({w[0], w[k], w[k + 1], 0});
@@ -193,6 +194,7 @@ std::shared_ptr<GameLightmap> bakeGameLightmap(const GameBakeInput& in, const st
             s.idx.push_back(base + uint32_t(k));
             s.idx.push_back(base + uint32_t(k + 1));
             s.triAlbedo.push_back(p.albedo);
+            s.triDensity.push_back(p.density);
         }
     }
     out->polys = in.polys.size();

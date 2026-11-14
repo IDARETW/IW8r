@@ -38,6 +38,10 @@ struct BakeSurface {
     // one entry per triangle, gives it per triangle instead (the viewport bakes every polygon in one surface).
     Vec3 albedo{-1, -1, -1};
     std::vector<Vec3> triAlbedo;
+    // The lightmap density of each triangle against BakeSettings::texelSize (2 = texels half as wide; a face's
+    // lightmap scale, core lightmap_fields lightmapDensityOfSuffix). Empty or not one per triangle: 1 everywhere.
+    // Triangles of different densities are never in one chart.
+    std::vector<float> triDensity;
 };
 
 // The bounce reflectance of a material from its colour image: the average of the sRGB bytes in linear light, kept

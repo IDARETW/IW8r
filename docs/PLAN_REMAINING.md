@@ -202,7 +202,7 @@ compile panel's bake settings DONE 2026-11-13 (Compile > Bake Settings, core bak
 **1.11 Lighting of a compiled custom map.** Part 1 DONE 2026-11-13: the light grid is baked from the map (sky and bounce
 per cell, 56 directional samples). 2026-11-14: the bounce takes the surface's colour and the later bounces are
 added (lightmap; the light grid takes the colour). Left by decision (table "Open points closed by decision"): a
-per-face lightmap scale, HDR probes, the parity proof.
+HDR probes, the parity proof. The per-face lightmap scale is DONE 2026-11-14 (in the bake itself; no converter change).
 - **Lightmap bake:**
   - the sky from the vision / sky colour;
   - bounce from real albedo (the texture averages);
@@ -368,7 +368,7 @@ judged against the running game, which is not used any more. They are listed so 
 | 1.5 SELFVIS, the 236 lightmapped `tml` props, Warzone tile grids for tile props | Props take their own light grid box; the rest fall back to the probes | SELFVIS needs a new ACTS export; the others touch 2 % of placements. |
 | 1.6 `needsDynamicShadows`, the screen-space shadow mask | Every spot and omni light with shadow maps for the nearest 64 | Affects moving entities and contact shadows only. |
 | 1.8 volumetric fog, film grain, white balance | Bloom veil, vignette, exponential fog, the stock vision's exposure and grade | The volumetric fog constants are not calibrated (it stays off rather than wrong); grain and white balance are not decoded, and grain is noise by design. |
-| 1.11 a per-face lightmap scale, HDR probe capture | Bounces in the surfaces' colours with the later bounces estimated (2026-11-14), the texel size as a Bake Setting, 8-bit probes captured before every build | The per-face scale needs a converter change; HDR probes change glossy reflections by a little. |
+| 1.11 HDR probe capture | Bounces in the surfaces' colours with the later bounces estimated, a lightmap scale per face, the texel size as a Bake Setting (all 2026-11-14), 8-bit probes captured before every build | HDR probes change glossy reflections by a little and need the converter to take another image format. |
 | 1.11 the parity proof (draw the built zone as a stock map and compare) | `tools/lightmap_bake_build_test.py` proves the baked data reaches the built zone; View > Game Lighting uses the converter shader's own formulas (research 117) | The proof as planned would compare the wrong things: a built map is drawn by the converter's world shader, and the editor's stock-map path models the game's stock shaders, not that one. |
 | 1.13 the game's FOV / lodScale factor on LOD distances | Stock LOD distances as stored | Changes only the distance at which a LOD switches; the frame budgets are met without it. |
 | 2.2 culling lights, probes and decals in the Umbra view; surface ids on displaced terrain | Surfaces and props are culled by the tome | A viewer refinement: the view already answers "what does the game hide here". |

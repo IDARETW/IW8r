@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **The lightmap scale of a face now does something.** The Surface panel (and the web page's Surface form) has had
+  "Lightmap scale" fields, but the bake gave every face the same texel size. Now a face with half the scale (8192
+  instead of 16384) gets twice the lightmap texels along each side, so its shadows are sharper; a larger scale makes
+  a face coarser and cheaper. The range is one eighth to eight times the map's texel size (Bake Settings). The
+  editor makes the lightmap and its coordinates itself, so the build tool did not have to change. View > Game
+  Lighting previews it. The build log counts the triangles with their own scale. In game: not checked.
+
 - **Occlusion bake: you choose the occluders per brush.** A detail brush (Brush > Make Detail, `contents detail;`)
   is never an occluder; structural brushes are, as before. That is the old Radiant rule (detail does not block
   sight), and it lets you keep small or doubtful brushes out of the bake. The build log counts them.

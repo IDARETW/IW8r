@@ -38,6 +38,10 @@ struct LightmapParams {
     double rot = 0;                          // L5: rotation or offset (inferred)
 };
 
+// How many times finer than the default a face's lightmap is, from the lightmap fields in its suffix text:
+// 16384 / sqrt(L1 x L2), kept inside 1/8 .. 8. 1 when the suffix has no lightmap fields or they are not positive.
+double lightmapDensityOfSuffix(const std::string& suffix);
+
 // Reads the lightmap fields of brush face `face`. nullopt when the primitive is not a brush, the index is out of
 // range, the face has fewer than 14 suffix tokens, the LMMAT token is numeric, or any of L1..L5 does not parse.
 std::optional<LightmapParams> lightmapParamsOfFace(const Primitive& p, size_t face);

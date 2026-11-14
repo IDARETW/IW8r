@@ -7,6 +7,7 @@
 #include "game_modes.h"
 #include "collision_world.h"
 #include "light_grid.h"
+#include "lightmap_fields.h"
 #include "ray_bvh.h"
 #include "patch_ops.h"
 #include "vertex_paint.h"
@@ -259,6 +260,7 @@ struct RenderVertex {
 struct Chunk {
     size_t entity = 0;
     size_t group = 0;  // brush or patch primitive ordinal
+    float lmDensity = 1;  // the face's lightmap density (core lightmap_fields; 1 = the bake's texel size)
     std::string editorMaterial;
     std::vector<RenderVertex> verts;
     std::vector<uint32_t> idx;
@@ -268,6 +270,7 @@ struct RenderSurface {
     std::string editorMaterial;
     std::vector<RenderVertex> verts;
     std::vector<uint32_t> idx;
+    std::vector<float> triDensity;  // per triangle: the lightmap density of the face it came from
 };
 
 struct CollisionBrush {
@@ -386,6 +389,7 @@ void gatherBrush(const Primitive& p, size_t entity, size_t group, Gather& g, boo
         c.entity = entity;
         c.group = group;
         c.editorMaterial = mat;
+        c.lmDensity = float(lightmapDensityOfSuffix(cb[fi].suffix));
         if (haveMeshes && fi < edgeMeshes.size()) {
             if (edgeMeshes[fi].idx.empty()) {
                 ++g.coveredFaces;  // wholly under coplanar faces of other brushes, or inside / against an opaque brush
@@ -530,6 +534,7 @@ std::vector<RenderSurface> groupChunks(const std::vector<Chunk>& chunks, bool pe
         const uint32_t base = uint32_t(s.verts.size());
         s.verts.insert(s.verts.end(), c.verts.begin(), c.verts.end());
         for (uint32_t i : c.idx) s.idx.push_back(base + i);
+        s.triDensity.insert(s.triDensity.end(), c.idx.size() / 3, c.lmDensity);
     }
     return out;
 }
@@ -2738,11 +2743,14 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     std::vector<std::pair<fs::path, std::string>> lightmapFiles;
     if (worldspawn && worldspawn->value("iw8r_bake_lightmaps") && *worldspawn->value("iw8r_bake_lightmaps") == "1") {
         BakeScene scene;
+        size_t scaledTriangles = 0;  // triangles of faces with a lightmap scale of their own
         for (const RenderSurface& s : surfaces) {
             BakeSurface b;
             const std::string m = lower(s.editorMaterial);
             b.lit = m.find("sky") == std::string::npos;
             b.albedo = bounceOf(s.editorMaterial);
+            b.triDensity = s.triDensity;
+            for (const float d : s.triDensity) scaledTriangles += std::fabs(d - 1.0f) > 1e-6f;
             for (const RenderVertex& v : s.verts) b.verts.push_back({v.pos, v.normal, v.tangent});
             b.idx = s.idx;
             scene.surfaces.push_back(std::move(b));
@@ -2848,7 +2856,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             for (const auto& [name, colour] : bounceColour) coloured += colour.x >= 0;
             warn.push_back("lightmap baked: " + std::to_string(baked.width) + " x " + std::to_string(baked.height) + ", " +
                            std::to_string(baked.charts) + " chart(s), " + std::to_string(baked.texelsLit) + " texels at " +
-                           num(baked.texelSize) + " units, " + std::to_string(scene.lights.size()) + " light(s), bounce colours of " +
+                           num(baked.texelSize) + " units, " + std::to_string(scene.lights.size()) + " light(s), " + std::to_string(scaledTriangles) + " triangle(s) with their own lightmap scale, bounce colours of " +
                            std::to_string(coloured) + " of " + std::to_string(bounceColour.size()) + " material(s), " +
                            num(std::round(seconds * 10) / 10) + " s (research 94 / 95; in game not verified)");
         }

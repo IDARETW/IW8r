@@ -52,7 +52,8 @@ struct Chart {
     size_t surface = 0;
     std::vector<uint32_t> tris;  // triangle ordinals in the surface
     Vec3 normal, u, v;           // projection basis
-    double minU = 0, minV = 0, maxU = 0, maxV = 0;  // in texels (projected / texelSize)
+    double density = 1;          // texels per texelSize (BakeSurface::triDensity of its triangles)
+    double minU = 0, minV = 0, maxU = 0, maxV = 0;  // in texels (projected x density / texelSize)
     int w = 0, h = 0;            // size with padding
     int x = 0, y = 0;            // atlas position
 };
@@ -139,11 +140,14 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                 for (const uint32_t b : list)
                     if (a != b) neighbours[a].push_back(b);
         std::vector<int> chartOf(triCount, -1);
+        const bool densities = s.triDensity.size() == triCount;
+        const auto densityOf = [&](size_t t) { return densities && s.triDensity[t] > 0 ? std::clamp(double(s.triDensity[t]), 0.125, 8.0) : 1.0; };
         for (size_t t = 0; t < triCount; ++t) {
             if (chartOf[t] >= 0 || length(fn[t]) < 0.5) continue;
             Chart c;
             c.surface = si;
             c.normal = fn[t];
+            c.density = densityOf(t);
             std::vector<uint32_t> queue{uint32_t(t)};
             chartOf[t] = int(charts.size());
             while (!queue.empty()) {
@@ -151,7 +155,8 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                 queue.pop_back();
                 c.tris.push_back(q);
                 for (const uint32_t n : neighbours[q])
-                    if (chartOf[n] < 0 && length(fn[n]) > 0.5 && dot(fn[n], c.normal) >= settings.chartNormalDot) {
+                    if (chartOf[n] < 0 && length(fn[n]) > 0.5 && dot(fn[n], c.normal) >= settings.chartNormalDot &&
+                        std::fabs(densityOf(n) - c.density) < 1e-6) {
                         chartOf[n] = int(charts.size());
                         queue.push_back(n);
                     }
@@ -195,7 +200,7 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
             for (const uint32_t t : c.tris)
                 for (int e = 0; e < 3; ++e) {
                     const Vec3& p = s.verts[s.idx[t * 3 + e]].pos;
-                    const double pu = dot(p, c.u) / texel, pv = dot(p, c.v) / texel;
+                    const double pu = dot(p, c.u) * c.density / texel, pv = dot(p, c.v) * c.density / texel;
                     c.minU = std::min(c.minU, pu);
                     c.maxU = std::max(c.maxU, pu);
                     c.minV = std::min(c.minV, pv);
@@ -226,8 +231,8 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
             for (int e = 0; e < 3; ++e) {
                 const uint32_t vi = s.idx[t * 3 + e];
                 const Vec3& p = s.verts[vi].pos;
-                const double tu = c.x + settings.padding + (dot(p, c.u) / texel - c.minU);
-                const double tv = c.y + settings.padding + (dot(p, c.v) / texel - c.minV);
+                const double tu = c.x + settings.padding + (dot(p, c.u) * c.density / texel - c.minU);
+                const double tv = c.y + settings.padding + (dot(p, c.v) * c.density / texel - c.minV);
                 r.uv[c.surface][vi] = {float(tu / side), float(tv / side)};
             }
     }
@@ -244,8 +249,8 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
             const BakeVertex* vtx[3] = {&s.verts[s.idx[t * 3]], &s.verts[s.idx[t * 3 + 1]], &s.verts[s.idx[t * 3 + 2]]};
             double px[3], py[3];
             for (int e = 0; e < 3; ++e) {
-                px[e] = c.x + settings.padding + (dot(vtx[e]->pos, c.u) / texel - c.minU);
-                py[e] = c.y + settings.padding + (dot(vtx[e]->pos, c.v) / texel - c.minV);
+                px[e] = c.x + settings.padding + (dot(vtx[e]->pos, c.u) * c.density / texel - c.minU);
+                py[e] = c.y + settings.padding + (dot(vtx[e]->pos, c.v) * c.density / texel - c.minV);
             }
             const double area = (px[1] - px[0]) * (py[2] - py[0]) - (px[2] - px[0]) * (py[1] - py[0]);
             if (std::fabs(area) < 1e-12) continue;

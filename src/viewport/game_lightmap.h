@@ -29,6 +29,7 @@ struct GameBakeInput {
         std::vector<Vec3> pts;
         Vec3 normal, centroid;
         Vec3 albedo{-1, -1, -1};  // the material's bounce colour (BakeSurface::albedo); negative: the bake's grey
+        float density = 1;        // the face's lightmap density (BakeSurface::triDensity)
     };
     std::vector<Poly> polys;                 // lit by the lightmap
     std::vector<RayBvh::Triangle> occluders;  // cast shadows only

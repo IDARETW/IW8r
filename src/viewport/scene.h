@@ -61,6 +61,8 @@ struct PrimGeom {
     std::vector<std::vector<std::array<float, 2>>> polyUV;
     // Density mode: sqrt(u repeats x v repeats) per world unit of each brush face (texel_density with a 1x1 texture).
     std::vector<float> polyRepeatsPerUnit;
+    // The lightmap density of each brush face (core lightmap_fields lightmapDensityOfSuffix); empty: 1 everywhere.
+    std::vector<float> polyLmDensity;
     // Painted patch vertex colours (8.11): one ABGR tint per poly (the mean of its corners), empty when unpainted.
     std::vector<uint32_t> polyTint;
     // A prefab with models inside (2026-11-12): polys [0, meshFrom) are brush and patch faces, [meshFrom, markerFrom)

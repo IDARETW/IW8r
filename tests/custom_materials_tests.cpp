@@ -540,3 +540,32 @@ TEST(compile_occlusion_bake_leaves_detail_brushes_out) {
             if (contains(w, "occlusion")) std::printf("  %s\n", w.c_str());
     CHECK(said);
 }
+
+// A face's lightmap scale reaches the build's bake: a box whose faces ask for twice the density is baked that way,
+// and the build log counts its triangles.
+TEST(compile_lightmap_bake_honours_face_lightmap_scale) {
+    const std::string dir = freshDir("lmscale");
+    const std::string fine = " tm/wall 128 128 0 0 0 0 lightmap_gray 8192 8192 0 0 0 0";
+    const std::string plain = " tm/wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0";
+    for (int pass = 0; pass < 2; ++pass) {
+        const std::string text = "iwmap 4\n{\n\"classname\" \"worldspawn\"\n\"iw8r_bake_lightmaps\" \"1\"\n" +
+                                 makeBrushPrimitive(makeBox({{-256, -256, -16}, {256, 256, 0}}, plain), "\n")->text() +
+                                 makeBrushPrimitive(makeBox({{-64, -64, 0}, {64, 64, 128}}, pass ? fine : plain), "\n")->text() + "}\n";
+        Id next = 1;
+        ParseResult pr = parseMap(text, next);
+        CHECK(pr.map.has_value());
+        if (!pr.map) return;
+        CompileOptions opt;
+        opt.mapId = "mp_lmscale";
+        CompileReport rep;
+        std::string err;
+        CHECK(compileIw8Extraction(*pr.map, dir + (pass ? "/fine" : "/plain"), opt, rep, &err));
+        std::string line;
+        for (const std::string& w : rep.warnings)
+            if (contains(w, "lightmap baked:")) line = w;
+        // Six faces of two triangles (the material is not in a library, so no face counts as hidden).
+        const bool said = contains(line, pass ? " 12 triangle(s) with their own lightmap scale" : " 0 triangle(s) with their own lightmap scale");
+        if (!said) std::printf("  %s\n", line.c_str());
+        CHECK(said);
+    }
+}

@@ -3,6 +3,7 @@
 #include "ray_bvh.h"
 #include "test_harness.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
@@ -201,4 +202,47 @@ TEST(lightmap_bake_bounce_colour_and_later_bounces) {
     const Vec3 a = bakeAlbedoFromRgba(px, 2);
     CHECK(std::fabs(a.x - 0.9) < 1e-9 && std::fabs(a.y - 0.2158605) < 1e-5 && std::fabs(a.z - 0.02) < 1e-9);
     CHECK(bakeAlbedoFromRgba(nullptr, 0).x < 0);
+}
+
+// Plan 1.11: a face's lightmap scale. Two equal squares side by side in one plane, the second twice as dense: they
+// are two charts, and the second is twice as wide in the atlas.
+TEST(lightmap_bake_face_density) {
+    BakeScene scene;
+    BakeSurface s;
+    const Vec3 n{0, 0, 1}, t{1, 0, 0};
+    s.verts = {{{0, 0, 0}, n, t},   {{128, 0, 0}, n, t},   {{128, 128, 0}, n, t}, {{0, 128, 0}, n, t},
+               {{128, 0, 0}, n, t}, {{256, 0, 0}, n, t},   {{256, 128, 0}, n, t}, {{128, 128, 0}, n, t}};
+    s.idx = {0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7};
+    scene.surfaces.push_back(s);
+    scene.sunIntensity = 0;
+    scene.skyIntensity = 1;
+    BakeSettings settings;
+    settings.texelSize = 16;
+    settings.skyRays = 4;
+    settings.threads = 1;
+    const BakeResult plain = bakeLightmap(scene, settings);
+    CHECK(plain.ok && plain.charts == 1);
+    scene.surfaces[0].triDensity = {1, 1, 2, 2};
+    const BakeResult r = bakeLightmap(scene, settings);
+    CHECK(r.ok && r.charts == 2);
+    if (!r.ok || r.uv.empty()) return;
+    // The width of each square in texels, from the UVs of its vertices (found by position: vertices may be split).
+    const auto widthOf = [&](double x0, double x1) {
+        float lo = 1e9f, hi = -1e9f;
+        const BakeSurface& bs = r.surfaces[0];
+        for (size_t tri = 0; tri * 3 < bs.idx.size(); ++tri) {
+            double cx = 0;
+            for (int e = 0; e < 3; ++e) cx += bs.verts[bs.idx[tri * 3 + e]].pos.x / 3.0;
+            if (cx < x0 || cx > x1) continue;
+            for (int e = 0; e < 3; ++e) {
+                const float u = r.uv[0][bs.idx[tri * 3 + e]][0] * float(r.width);
+                lo = std::min(lo, u), hi = std::max(hi, u);
+            }
+        }
+        return double(hi - lo);
+    };
+    const double first = widthOf(0, 128), second = widthOf(128, 256);
+    CHECK(std::fabs(first - 128.0 / r.texelSize) < 1e-3);
+    CHECK(std::fabs(second - 2.0 * 128.0 / r.texelSize) < 1e-3);
+    CHECK(r.texelsLit > plain.texelsLit * 2);
 }

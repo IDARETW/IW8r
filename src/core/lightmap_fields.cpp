@@ -1,5 +1,7 @@
 // IW8 Radiant Suite - lightmap fields, patch control-point locks and the Surface panel lightmap edit (see lightmap_fields.h).
 #include "lightmap_fields.h"
+#include <cmath>
+#include <algorithm>
 
 #include <cstdlib>
 #include <map>
@@ -72,6 +74,12 @@ void planNumber(const std::string& suffix, const std::vector<Span>& sp, size_t k
 }
 
 }  // namespace
+
+double lightmapDensityOfSuffix(const std::string& suffix) {
+    const auto lp = readSuffix(suffix);
+    if (!lp || !(lp->sx > 0) || !(lp->sy > 0)) return 1.0;
+    return std::clamp(16384.0 / std::sqrt(lp->sx * lp->sy), 0.125, 8.0);
+}
 
 std::optional<LightmapParams> lightmapParamsOfFace(const Primitive& p, size_t face) {
     if (p.kind != PrimKind::Brush || face >= p.faces.size()) return std::nullopt;
