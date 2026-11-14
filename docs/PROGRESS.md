@@ -5,7 +5,8 @@
 - 2026-11-14: handover round. docs/HANDOVER.md rewritten for the current state; TEST_CHECKLIST starts its In game
   part with "the short list" (six items, most important first). tools/package_release.ps1 copies data\shaders (was
   missing from every package so far) and throws when a run-time file is missing; packaged exe smoke test ok.
-  run_offline_proofs.py: 19 of 19 pass with converter 24d1aec7. Web forms: preferences (currentPreferences /
+  run_offline_proofs.py: 19 of 19 pass with converter 24d1aec7; run again after ecb71fd (the worker texture
+  decode): 20 of 20 pass, 630 s in all. Web forms: preferences (currentPreferences /
   applyPreferences, build/realScriptables, build/collisionLayout, DevmapRunner play options; no folders, no host
   command), vision overrides in the atmosphere form (visionOverridesJson decides), prefabs in the Assets panel (hooks
   prefabs / placePrefab over PrefabBrowser rows; thumbnails by row; the dock's list is loaded on the first request).

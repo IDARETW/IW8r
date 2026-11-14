@@ -23,14 +23,17 @@ Start the editor, open a map (or File > New), and read `docs\USER_GUIDE.md` (the
 **Make your own maps and modes.** Brushes, patches, terrain, prefabs and prefab bundles, stock models and effects,
 lights, probes, spawns, game type templates and your own game type scripts, mode rules, Warzone objects (loot points,
 clusters and zones, buy stations, vehicles), traversals for bots, map scripts. F7 builds the game's zones and checks
-them with the game's own loaders (ACTS).
+them with the game's own loaders (ACTS). Brush > Paint Mesh on Faces lays a paintable mesh on brush surfaces for
+blended materials (Patch > Vertex Paint Mode paints it).
 
 **Light it.** Compile > Bake lightmaps bakes the world's lightmap (sky light, bounce, where the sun reaches);
 Bake Settings sets the sky and the detail. Without a bake the game lights the map with a flat sky light and the sun.
 
 **See it as the game draws it.** View > Game Lighting (Ctrl+Alt+L) shows your map the way the built map is shaded:
 the baked look when Bake lightmaps is on, the flat sky light when it is off. On a stock map it draws the map's own
-lightmaps, probes, lamps, sun and exposure; brushes you add to a stock map take that map's light grid.
+lightmaps, probes, lamps, sun, exposure and white balance (the warm cast of Hideout or Verdansk); brushes you add to
+a stock map take that map's light grid. Stock props change detail level and disappear at the distances the game
+uses.
 
 **Your own look.** Tools > Shader Editor: a shader file for your map's surfaces (the toon shader is the example), and
 a colour filter for a stock map's surfaces.
@@ -59,19 +62,19 @@ entities, the inspector with key help.
 ## 3. How it was proven
 
 None of this needs the game running:
-- `bin\release\iw8r_tests.exe`: about 180,000 checks in 1,308 tests of the core (map format, geometry, builds, bakes,
+- `bin\release\iw8r_tests.exe`: about 181,500 checks in 1,346 tests of the core (map format, geometry, builds, bakes,
   decoders, the install logic, the occlusion bake).
-- `IW8Radiant.exe --gui-test tests\data\iw8_sample_room.map --out <dir>`: about 1,050 checks of the editor itself,
+- `IW8Radiant.exe --gui-test tests\data\iw8_sample_room.map --out <dir>`: about 1,080 checks of the editor itself,
   the web server and its page included.
 - `tools\run_all_tests.ps1`: both of those plus a start-up test, in one run.
-- `py -3 -I tools\run_offline_proofs.py <work dir>`: 20 end-to-end proofs (the 19 converter ones passed on 2026-11-14 before the last two were added or rerun; the two that build through the editor pass on the current build). Each one edits or builds a real map with the
+- `py -3 -I tools\run_offline_proofs.py <work dir>`: 20 end-to-end proofs; all 20 passed on the last build of 2026-11-14 (commit `ecb71fd`). Each one edits or builds a real map with the
   live converter, reads the result back with ACTS, compares it with what was asked, and checks that the game's own
-  loaders accept the zone (about 12 minutes).
+  loaders accept the zone (about 11 minutes).
 - `IW8Radiant.exe --viewport-bench <map> --out <dir>`: frame times and pictures of every view mode.
 - The web page was driven in a real browser against a running editor for every feature listed above.
 
 The state of each item, the research behind it and every proof are in `docs\ROADMAP.md`, `docs\research\`
-(more than 110 notes, the latest numbered 118) and `CHANGELOG.md`.
+(more than 110 notes, the latest numbered 120) and `CHANGELOG.md`.
 
 ## 4. Only the game can settle these
 
