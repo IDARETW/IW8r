@@ -493,6 +493,10 @@ public:
         float veil = 0;
         float vignette[12] = {};
         float grain = 0;  // film grain strength (the vision's tonemapGrainStrength x 0.25; research 109 section 4.2)
+        // The map's white balance (research 120, core gameWhiteBalanceMatrix): out = M in, row-major, on the linear
+        // colour before the exposure. whiteBalanceOn false = none.
+        bool whiteBalanceOn = false;
+        float whiteBalance[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     };
     void setGameLook(const GameLook& g) { game_ = g; }
     bool gameLookOn() const { return game_.on; }
@@ -530,6 +534,8 @@ public:
     // The map's bloom veil and vignette (research 109) in Game Lighting.
     void setPostFxEnabled(bool on) { postFxEnabled_ = on; }
     void setFilmGrainEnabled(bool on) { filmGrainEnabled_ = on; }
+    void setWhiteBalanceEnabled(bool on) { whiteBalanceEnabled_ = on; }
+    bool whiteBalanceDrawn() const { return whiteBalanceDrawn_; }  // the last frame's post pass applied a matrix
     void setVolumetricFogEnabled(bool on) { volumetricOn_ = on; }
     bool veilDrawn() const { return veilDrawn_; }  // the last post pass mixed the veil (bench)
     float gameVeil() const { return game_.veil; }
@@ -966,6 +972,7 @@ private:
     float lastViewProj_[16] = {};    // the frame's view (drawPost's volumetric march)
     bool postFxEnabled_ = true;
     bool filmGrainEnabled_ = true;
+    bool whiteBalanceEnabled_ = true, whiteBalanceDrawn_ = false;
     bool veilDrawn_ = false;
     bool createVeilResources();
     void releaseVeilResources();

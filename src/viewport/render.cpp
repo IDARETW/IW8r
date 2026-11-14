@@ -547,11 +547,14 @@ VFull vs_post(uint id : SV_VertexID) {
 }
 // The bloom veil (research 109 section 1.2): its chain's source / add levels, the result (V2) and the post constants:
 // veilDst = (dst w, dst h, 1 / w, 1 / h), veilW = (wIn, wOut); postFx0 = (veil, screen w, screen h, film grain); postVig0..2 = the
-// vignette (core gameVignetteConstants).
+// vignette (core gameVignetteConstants); postWb0..2 = the white balance matrix's rows (research 120), postWb0.w > 0.5 = on.
 Texture2D<float4> veilSrc : register(t25);
 Texture2D<float4> veilAdd : register(t26);
 Texture2D<float4> veilTex : register(t27);
-cbuffer Veil : register(b12) { float4 veilDst; float4 veilW; float4 postFx0; float4 postVig0; float4 postVig1; float4 postVig2; };
+cbuffer Veil : register(b12) {
+    float4 veilDst; float4 veilW; float4 postFx0; float4 postVig0; float4 postVig1; float4 postVig2;
+    float4 postWb0; float4 postWb1; float4 postWb2;
+};
 static const float VR_OUT = 1.886476, VR_IN = 0.939981, VW_C = 0.479925, VW_OUT = 0.075948, VW_IN = 0.302964;
 // Tap k at the fixed rotation n = 0.5 (the game rotates per pixel and frame under TAA; the editor has none).
 float2 veilTap(int k, float stepA) { const float a = (k + 0.75) * stepA; return float2(sin(a), cos(a)) * ((k & 1) ? VR_IN : VR_OUT); }
@@ -630,6 +633,9 @@ float4 ps_post(VFull i) : SV_TARGET {
         const float t = saturate(r * postVig2.x + postVig2.y);
         c *= 1.0 - (t + 0.6 * (t * t * (3.0 - 2.0 * t) - t)) * postVig0.z;
     }
+    // The white balance (research 120): the map's 3x3 matrix on the linear colour, after the vignette and before the
+    // exposure (cs_tonemap CB0[0..2]). Kept at 0 or above for the log shaper.
+    if (postWb0.w > 0.5) c = max(float3(dot(postWb0.xyz, c), dot(postWb1.xyz, c), dot(postWb2.xyz, c)), 0.0);
     float3 shown = gamePost(c);
     if (postFx0.w > 0.0) {
         // Film grain (research 109 section 4.2: the game's filmgrain shader): white noise times the display colour,
@@ -2036,7 +2042,7 @@ bool SceneRenderer::createVeilResources() {
     for (int m = 2; m <= count && ok; ++m) ok = make(m, veilV_[size_t(m)]);
     if (!cbVeil_ && ok) {
         D3D11_BUFFER_DESC bd{};
-        bd.ByteWidth = 96;
+        bd.ByteWidth = 144;  // 36 floats: veil, post, vignette, white balance
         bd.Usage = D3D11_USAGE_DEFAULT;
         bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         ok = SUCCEEDED(dev_->CreateBuffer(&bd, nullptr, &cbVeil_));
@@ -2064,7 +2070,7 @@ bool SceneRenderer::drawVeil() {
     ID3D11ShaderResourceView* none2[2] = {nullptr, nullptr};
     const auto pass = [&](ID3D11PixelShader* ps, const VeilLevel& dst, ID3D11ShaderResourceView* src, ID3D11ShaderResourceView* add,
                           float wIn, float wOut) {
-        float cb[24] = {float(dst.w), float(dst.h), 1.0f / float(dst.w), 1.0f / float(dst.h), wIn, wOut, 0, 0};
+        float cb[36] = {float(dst.w), float(dst.h), 1.0f / float(dst.w), 1.0f / float(dst.h), wIn, wOut, 0, 0};
         ctx_->UpdateSubresource(cbVeil_, 0, nullptr, cb, 0, 0);
         ctx_->PSSetShaderResources(25, 2, none2);
         ctx_->OMSetRenderTargets(1, &dst.rtv, nullptr);
@@ -2097,10 +2103,15 @@ void SceneRenderer::drawPost() {
     veilDrawn_ = veil;
     {
         // The post constants (b12): veil strength and screen size, the vignette.
-        float cb[24] = {};
+        float cb[36] = {};
         cb[8] = veil ? game_.veil : 0.0f, cb[9] = float(w_), cb[10] = float(h_);
         cb[11] = postFxEnabled_ && filmGrainEnabled_ ? game_.grain : 0.0f;
         if (postFxEnabled_) std::memcpy(cb + 12, game_.vignette, sizeof(game_.vignette));
+        static const bool noWb = std::getenv("IW8R_NO_WHITE_BALANCE") != nullptr;  // a bench switch
+        whiteBalanceDrawn_ = whiteBalanceEnabled_ && game_.whiteBalanceOn && !noWb;
+        for (int r = 0; r < 3; ++r)
+            for (int k = 0; k < 3; ++k) cb[24 + r * 4 + k] = whiteBalanceDrawn_ ? game_.whiteBalance[r * 3 + k] : (r == k ? 1.0f : 0.0f);
+        cb[27] = whiteBalanceDrawn_ ? 1.0f : 0.0f;
         if (cbVeil_ || createVeilResources()) {
             ctx_->UpdateSubresource(cbVeil_, 0, nullptr, cb, 0, 0);
             ctx_->PSSetConstantBuffers(12, 1, &cbVeil_);
@@ -4218,7 +4229,9 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     const float* viewProj = in.viewProj;
     // Game Lighting draws the lit scene into the HDR target (IW8R_NO_HDR: straight into the frame, as before).
     static const bool noHdr = std::getenv("IW8R_NO_HDR") != nullptr;
-    hdrFrame_ = game_.on && gameLutSrv_ && hdrRtv_ && postVs_ && postPs_ && !noHdr && !in.capture;
+    // A clean screenshot (in.clean) takes the same path as the view, so it has the view's bloom, vignette and white
+    // balance; a probe capture (in.capture without in.clean) never has the game look on.
+    hdrFrame_ = game_.on && gameLutSrv_ && hdrRtv_ && postVs_ && postPs_ && !noHdr && (!in.capture || in.clean);
     prepareStockLocalLights(viewProj);
     if (!hdrFrame_) prevValid_ = false;
     sceneRtv_ = hdrFrame_ ? hdrRtv_ : rtv_;

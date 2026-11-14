@@ -289,6 +289,12 @@ Commands in the Tools menu:
   sets its own, so the game's north matches the editor's.
 - **Film grain.** On a stock map the picture has the game's fine grain, as strong as that map's vision sets it. View
   > Game Lighting Options > Film Grain turns it off (for screenshots, or if it bothers you while editing).
+- **White balance.** Many stock maps set a white balance (Hideout and Verdansk a warm one); View > Game Lighting
+  shows it as the game does. View > Game Lighting Options > White Balance turns it off. For your own map, set it in
+  Compile > Vision Editor (or worldspawn `iw8r_vision`) with the fields `MNMNSSLLOR` (method: 4 is what the stock
+  maps use), `NLSRLSTPTN` (1 = daylight at a temperature), `TRQLLNNLS` (the temperature in kelvin: 5000 is neutral,
+  higher is warmer) and `OPSMSQNKQ` (green / magenta tint). Example: `MNMNSSLLOR=4;NLSRLSTPTN=1;TRQLLNNLS=5500`.
+  The viewport and the built map use the same values.
 - **Models.** A placed model is lit by the light at its place (the build's light grid: sky, sun bounce, how closed
   in the spot is), with or without baked lightmaps. View > Game Lighting shows it per model.
 - **Sharper shadows where you want them.** Select faces or brushes and lower "Lightmap scale" in the Surface panel

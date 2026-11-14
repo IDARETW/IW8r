@@ -3091,6 +3091,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                                                                {"GameLightShadows", "game/lightShadows"},
                                                                {"GamePostFx", "game/postFx"},
                                                                {"GameFilmGrain", "game/filmGrain"},
+                                                               {"GameWhiteBalance", "game/whiteBalance"},
                                                                {"GamePropLods", "game/propLods"}};
         for (const auto& [id, key] : toggles) {
             QAction* a = w.action(id);
@@ -3314,6 +3315,37 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         r.check(n > 0 && diff / std::max<size_t>(n, 1) > 2.0 && mean > 0.02 && mean < 0.98 && var > 1e-4,
                 QString("the game look renders a different, non-flat image (mean %1, variance %2, change %3 per pixel)")
                     .arg(mean, 0, 'f', 3).arg(var, 0, 'f', 4).arg(diff / std::max<size_t>(n, 1), 0, 'f', 1));
+        if (const Entity* ws = ctx.doc.worldspawn()) {
+            // An own map's white balance (research 120): the fields in worldspawn iw8r_vision turn the picture warmer,
+            // and View > Game Lighting Options > White Balance takes it off again.
+            const auto redOverBlue = [](const QImage& img) {
+                double red = 0, blue = 0;
+                for (int y = 0; y < img.height(); ++y)
+                    for (int x = 0; x < img.width(); ++x) red += qRed(img.pixel(x, y)), blue += qBlue(img.pixel(x, y));
+                return red / std::max(blue, 1.0);
+            };
+            const std::string* visWas = ws->value("iw8r_vision");
+            const std::string visText = visWas ? *visWas : std::string();
+            const double rb0 = redOverBlue(cv->renderImage(320, 180, true, 0, 0));
+            const bool drawn0 = cv->whiteBalanceDrawn();
+            ctx.doc.setKeyValue(ws->id, "iw8r_vision", (visText.empty() ? std::string() : visText + ";") + "MNMNSSLLOR=4;NLSRLSTPTN=1;TRQLLNNLS=6500");
+            ctx.documentEdited();
+            const double rb1 = redOverBlue(cv->renderImage(320, 180, true, 0, 0));
+            const bool drawn1 = cv->whiteBalanceDrawn();
+            QAction* opt = w.action("GameWhiteBalance");
+            const bool optWas = opt && opt->isChecked();
+            if (opt && optWas) opt->trigger();
+            const double rb2 = redOverBlue(cv->renderImage(320, 180, true, 0, 0));
+            const bool drawn2 = cv->whiteBalanceDrawn();
+            if (opt && opt->isChecked() != optWas) opt->trigger();
+            ctx.doc.undo();
+            ctx.documentEdited();
+            const std::string* visNow = ctx.doc.worldspawn() ? ctx.doc.worldspawn()->value("iw8r_vision") : nullptr;
+            const bool restored = (visNow ? *visNow : std::string()) == visText;
+            r.check(!drawn0 && drawn1 && !drawn2 && rb1 > rb0 * 1.05 && std::fabs(rb2 - rb0) < rb0 * 0.02 && restored && optWas,
+                    QString("an own map's white balance (iw8r_vision) warms the picture and the White Balance option takes it off (red/blue %1 -> %2 -> %3; applied %4 %5 %6)")
+                        .arg(rb0, 0, 'f', 3).arg(rb1, 0, 'f', 3).arg(rb2, 0, 'f', 3).arg(drawn0).arg(drawn1).arg(drawn2));
+        }
         const QByteArray shot = qgetenv("IW8R_GAME_LOOK_SHOT");
         if (!shot.isEmpty()) {
             after.save(QString::fromLocal8Bit(shot));

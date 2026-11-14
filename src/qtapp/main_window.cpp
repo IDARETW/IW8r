@@ -2269,6 +2269,7 @@ void MainWindow::buildMenus() {
         toggle("GameLightShadows", "Lamp Shadows", "game/lightShadows", [this](bool on) { camera_->setLightShadowsEnabled(on); });
         toggle("GamePostFx", "Bloom and Vignette", "game/postFx", [this](bool on) { camera_->setPostFxEnabled(on); });
         toggle("GameFilmGrain", "Film Grain", "game/filmGrain", [this](bool on) { camera_->setFilmGrainEnabled(on); });
+        toggle("GameWhiteBalance", "White Balance", "game/whiteBalance", [this](bool on) { camera_->setWhiteBalanceEnabled(on); });
         // Off by default: the game draws no brush outlines, and they show every seam between the brushes of a wall.
         toggle("GameBrushOutlines", "Brush Outlines (editor only)", "game/brushOutlines", [this](bool on) {
             ctx_.scene.gameOutlines = on;

@@ -2256,6 +2256,23 @@ void CameraView::prepareGameLook() {
         if (stock) {  // the stock map's bloom veil and vignette (research 109)
             g.veil = float(stockPostFx_.veil);
             g.grain = float(stockPostFx_.grain);
+        }
+        {
+            // The white balance (research 120): the stock map's vision, or an own map's worldspawn iw8r_vision.
+            GameWhiteBalance wb = stockPostFx_.whiteBalance;
+            if (!stock) {
+                const Entity* ws = ctx_->doc.worldspawn();
+                const std::string* ov = ws ? ws->value("iw8r_vision") : nullptr;
+                wb = ov ? gameWhiteBalanceFromOverrides(*ov) : GameWhiteBalance{};
+            }
+            if (gameWhiteBalanceActive(wb)) {
+                double wbm[9];
+                gameWhiteBalanceMatrix(wb, wbm);
+                g.whiteBalanceOn = true;
+                for (int k = 0; k < 9; ++k) g.whiteBalance[k] = float(wbm[k]);
+            }
+        }
+        if (stock) {
             const GamePostFx& p = stockPostFx_;
             if (p.volAir > 0) {  // the volumetric fog (research 109 section 2)
                 const float hExp = p.volHeightHalf != 0 ? float(-0.693147 / std::max(p.volHeightHalf, 0.1)) : 0.0f;

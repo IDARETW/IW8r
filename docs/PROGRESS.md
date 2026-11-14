@@ -37,7 +37,7 @@
   WebServer object). The page: logLines / renderLog / addLogLine, #logLevel, #logFilter. Plan 3.2 is done.
   POST /api/pick {face: true} (hook pickFace, MainWindow::webPickFace: scene.pickFace, selectFace / toggleFace);
   viewlive.js sends it on Ctrl + click.
-  Parking state 2026-11-14 (after the placement LOD scale and the distance cull of every stock prop): repo at the commit after 6b27051, suites core 181,392 checks / 1,331 tests and GUI 1,070 checks, 0 failures; zones of mp_cinderrail_t rebuilt 02:58 (x64zt_output; 0 overlapping faces, 5 px lines, the light grid with coloured bounce); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
+  Parking state 2026-11-14 (after the white balance): repo at the commit after db8489f, suites core 181,442 checks / 1,337 tests and GUI 1,074 checks, 0 failures; zones of mp_cinderrail_t rebuilt 02:58 (x64zt_output; 0 overlapping faces, 5 px lines, the light grid with coloured bounce); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
   GET /api/handles (control points of the selected patches, at most 20,000) and POST /api/vertices moves with
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.
   Web form "vision": every scalar / vector field of core vision_fields as a text field (key "v:<name>"), written
@@ -86,6 +86,10 @@
   Plan 3.1: MainWindow::followCameraPos() (the last /api/frame camera for webFollowHoldMs_ = 4000 ms, else
   ctx_.cam.pos) is the centre for updateStreamedTiles, updateTerrainLayers, updateProbeSubset and
   streamedTilesReport. GUI test with a 150 ms hold. Not run on Verdansk in a browser.
+  Plan 1.8 white balance: core white_balance (gameWhiteBalanceMatrix; research 120), GamePostFx::whiteBalance,
+  GameLook::whiteBalance -> ps_post postWb0..2 (cbuffer Veil is 36 floats now); own maps: worldspawn iw8r_vision
+  tokens MNMNSSLLOR / NLSRLSTPTN / TRQLLNNLS / OPSMSQNKQ. Toggle GameWhiteBalance (game/whiteBalance);
+  IW8R_NO_WHITE_BALANCE is the bench switch. Clean captures (in.clean) use the HDR frame and the post pass now.
   Plan 1.13: lodFov in SceneRenderer::cullTexInstances (research 119; IW8R_NO_LOD_FOV turns it off). The
   placement's own lodScale: StockModelInstance::lodCullScale (smodels.instanceFlags & 0xF, only for a collection
   of one instance without the clutter flag 0x20) -> InstancedTexMesh::cullScale (0 = never, the scripted objects).

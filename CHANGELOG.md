@@ -5,6 +5,18 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Game Lighting: the map's white balance.** Most stock maps set a white balance in their vision (Hideout,
+  Verdansk, Rust, Quarry, Backlot and others: a warm one). The game applies it to the whole picture; the viewport
+  did not, so Hideout looked cold and grey where the game is warm. The viewport now applies the game's matrix at the
+  game's place in the chain (white on Hideout becomes 1.08, 0.99, 0.89 in red, green, blue; Verdansk 1.07, 0.99,
+  0.88). Speedball and Shipment set none and do not change. An own map gets it from the white balance fields in
+  worldspawn `iw8r_vision`, which the build also writes into the map's vision. View > Game Lighting Options > White
+  Balance turns it off. The formula is from the game-test source and the constant tables from the Replay exe
+  (research 120); it was not compared with the running game.
+- **Clean screenshots have the view's bloom and vignette.** A screenshot without the editor's markers skipped the
+  whole post pass in Game Lighting, so it had no bloom, no vignette and no film grain. It now takes the same path as
+  the view.
+
 - **Stock maps: props disappear at the distance the game drops them.** The game stops drawing a placed model past
   its last level-of-detail distance, times a scale the level designer set on that one placement (0.25 to 4), and it
   measures to the nearest point of the model's box, not to its centre. The viewport dropped only grass and foliage,

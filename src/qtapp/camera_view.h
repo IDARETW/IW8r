@@ -321,6 +321,9 @@ public slots:
     void setGameAoStrength(double s) { renderer_.setGameAoStrength(float(s)); update(); }
     void setPostFxEnabled(bool on) { renderer_.setPostFxEnabled(on); update(); }
     void setFilmGrainEnabled(bool on) { renderer_.setFilmGrainEnabled(on); update(); }
+    void setWhiteBalanceEnabled(bool on) { renderer_.setWhiteBalanceEnabled(on); update(); }
+    bool whiteBalanceDrawn() const { return renderer_.whiteBalanceDrawn(); }
+    const GamePostFx& stockPostFx() const { return stockPostFx_; }
     void setVolumetricFogEnabled(bool on) { renderer_.setVolumetricFogEnabled(on); update(); }
     // Bench: the stock vision's veil and vignette intensity, the renderer's veil and whether it was drawn.
     QString postFxReport() const {

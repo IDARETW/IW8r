@@ -11,6 +11,8 @@
 // weight 1, red modifier 0, gamma 1).
 #pragma once
 
+#include "white_balance.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -122,6 +124,7 @@ struct GamePostFx {
     // air x 0.01 x exp(max(z - heightBase, 0) x -ln2 / heightHalf) (heightHalf 0 = uniform).
     double volAir = 0, volAbsorption = 0, volAlbedo[3] = {1, 1, 1}, volAmbient = 1, volSun = 1, volAnisotropy = 0;
     double volHeightBase = 0, volHeightHalf = 0;
+    GameWhiteBalance whiteBalance;  // research 120 (core white_balance.h); the defaults change nothing
 };
 GamePostFx gamePostFxFromVision(const std::string& visionText);
 // The vignette's constants (cb7[214..216], research 109 section 4.1) for a view whose half-FOV tangents are tanX, tanY:

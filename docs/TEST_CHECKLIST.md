@@ -95,6 +95,9 @@ in game. Only if you want to check it; each line says what should match.
 - [ ] Hideout: the doorway cloths and tarps have the colours you see in game (the editor now reads their tint from the
       material's lit constants; one cloth turned purple-grey, another red).
 - [ ] Verdansk: props in the town are lit like the buildings around them (not uniformly bright).
+- [ ] Hideout or Verdansk: the overall colour is as warm as in the game (2026-11-14: the map's white balance). If the
+      editor is warmer or colder than the game, turn View > Game Lighting Options > White Balance off and say which
+      of the two is closer.
 
 ## In game (after deploy)
 

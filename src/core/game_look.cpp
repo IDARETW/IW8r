@@ -406,6 +406,7 @@ GamePostFx gamePostFxFromVision(const std::string& text) {
     double grain = 0;
     num("LNQNRRPNPP", grain);
     p.grain = grain * 0.25;  // r_filmGrainAtten
+    p.whiteBalance = gameWhiteBalanceFromVision(text);
     p.veil = std::clamp(p.veil, 0.0, 1.0);
     p.vignetteIntensity = std::clamp(p.vignetteIntensity, 0.0, 1.0);
     return p;
