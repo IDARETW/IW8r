@@ -287,6 +287,8 @@ Commands in the Tools menu:
   also aimed at the sun painted in that sky, in the same undo step.
 - **Compass**: the compass north is the top of the XY view (+Y). Builds write worldspawn `northyaw 90` unless the map
   sets its own, so the game's north matches the editor's.
+- **Models.** A placed model is lit by the light at its place (the build's light grid: sky, sun bounce, how closed
+  in the spot is), with or without baked lightmaps. View > Game Lighting shows it per model.
 - **What the bake bounces.** Light that hits a surface goes on in that surface's colour (the average colour of its
   material), and the bounces after the first are estimated from how enclosed a place is: a room with one window is
   lit softly all through, and a coloured wall tints what is near it.

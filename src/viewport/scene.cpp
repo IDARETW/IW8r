@@ -1,6 +1,7 @@
 #include "brush_flags.h"
 #include "game_lightmap.h"
 #include "scene.h"
+#include "light_grid.h"
 #include "texel_density.h"
 #include "patch_ops.h"
 #include "vertex_paint.h"
@@ -700,8 +701,16 @@ void SceneCache::clear() {
     spawns.clear();
 }
 
+bool modelTriangleLight(const SceneCache& scene, const PrimGeom& g, size_t i, const Vec3& n, Vec3& light) {
+    if (scene.modelLights.empty() || !scene.gameLookActive() || !g.meshPoly(i)) return false;
+    const auto it = scene.modelLights.find(g.ref.entity);
+    if (it == scene.modelLights.end()) return false;
+    light = modelLightFromSamples(it->second, n);
+    return true;
+}
+
 void appendTexturedFace(const PrimGeom& g, size_t i, const Vec3& n, const Vec3& tan, uint32_t colour, const GameLightmap* gameLm,
-                        const Vec3& centre, std::vector<GpuTexVertex>& out) {
+                        const Vec3& centre, std::vector<GpuTexVertex>& out, bool propLight) {
     const Winding& w = g.polys[i];
     const auto& uv = g.polyUV[i];
     const EdgeFaceMesh* em = i < g.polyEdges.size() ? &g.polyEdges[i] : nullptr;
@@ -715,6 +724,7 @@ void appendTexturedFace(const PrimGeom& g, size_t i, const Vec3& n, const Vec3& 
                 float luv[2];
                 if (gameLm->uvFor(w[k], n, centre, luv)) v.lu = luv[0], v.lv = luv[1];
             }
+            if (propLight) v.lu = v.lv = -2.0f;
             return v;
         };
         for (size_t k = 1; k + 1 < w.size(); ++k) {
@@ -1331,7 +1341,9 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
                     for (const auto& p : w) centre += p;
                     centre = centre * (1.0 / double(std::max<size_t>(1, w.size())));
                 }
-                appendTexturedFace(*g, i, n, tan, c, gameLm, centre, out);
+                Vec3 modelLight;
+                const bool lit = modelTriangleLight(scene, *g, i, n, modelLight);
+                appendTexturedFace(*g, i, n, lit ? modelLight : tan, c, gameLm, centre, out, lit);
             } else if (!wire) {
                 uint32_t c = normals ? normalColour(n) : litColor(contentsMode || collisionMode ? g->contentsColor : g->color);
                 if (!normals && !contentsMode && i < g->polyTint.size()) c = mixColor(c, g->polyTint[i] | 0xff000000u, 0.6);

@@ -3878,45 +3878,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         if (!gridBvh.empty() && !flatGrid) {
             const Vec3 sunC{sunColor[0], sunColor[1], sunColor[2]};
             lg.samplesAt = [&gridBvh, &gridAlbedo, sunDir, sunC, gridSky, gridSkyI, reach](const Vec3& p, std::array<std::array<float, 3>, 56>& out) {
-                static const std::vector<Vec3> rays = [] {  // 96 directions spread evenly over the sphere
-                    std::vector<Vec3> r;
-                    const double ga = kPi * (3.0 - std::sqrt(5.0));
-                    for (int k = 0; k < 96; ++k) {
-                        const double z = 1.0 - (k + 0.5) * (2.0 / 96.0), rr = std::sqrt(std::max(0.0, 1.0 - z * z));
-                        r.push_back(Vec3{std::cos(ga * k) * rr, std::sin(ga * k) * rr, z});
-                    }
-                    return r;
-                }();
-                const auto& sdirs = lightGridSampleDirections();
-                double acc[56][3] = {};
-                const double w = 4.0 * kPi / double(rays.size());
-                for (const Vec3& d : rays) {
-                    Vec3 rad{0, 0, 0};
-                    RayBvh::Hit h;
-                    if (!gridBvh.intersect(p, d, 0.5, reach, h)) {
-                        if (d.z > 0) rad = gridSky * (gridSkyI / kPi);  // the open sky; below the map, nothing
-                    } else {
-                        const RayBvh::Triangle& t = gridBvh.triangles()[h.tri];
-                        Vec3 n = cross(t.b - t.a, t.c - t.a);
-                        const double nl = length(n);
-                        if (nl < 1e-12) continue;
-                        n = n * (1.0 / nl);
-                        if (dot(n, d) > 0) n = n * -1.0;
-                        const Vec3 hp = p + d * h.t + n * 0.5;
-                        const double ns = dot(n, sunDir);
-                        const double eSun = ns > 0 && !gridBvh.occluded(hp, sunDir, 0.1, reach) ? ns : 0.0;
-                        const Vec3 e = sunC * eSun + gridSky * (gridSkyI * 0.25 * (1.0 + n.z));  // about half its sky seen
-                        const Vec3 rho = t.id > 0 && t.id <= gridAlbedo.size() ? gridAlbedo[t.id - 1] : Vec3{0.45, 0.45, 0.45};
-                        rad = Vec3{e.x * rho.x, e.y * rho.y, e.z * rho.z} * (1.0 / kPi);
-                    }
-                    for (int s = 0; s < 56; ++s) {
-                        const double c = dot(sdirs[size_t(s)], d);
-                        if (c <= 0) continue;
-                        acc[s][0] += rad.x * c * w, acc[s][1] += rad.y * c * w, acc[s][2] += rad.z * c * w;
-                    }
-                }
-                for (int s = 0; s < 56; ++s)
-                    for (int ch = 0; ch < 3; ++ch) out[size_t(s)][size_t(ch)] = float(255.0 * acc[s][ch]);
+                lightGridSamplesAt(gridBvh, gridAlbedo, sunDir, sunC, gridSky * gridSkyI, reach, p, out);
             };
         }
         LightGridFiles grid;

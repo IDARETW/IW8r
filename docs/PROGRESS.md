@@ -55,6 +55,14 @@
   the light grid's rays (triangle id -> gridAlbedo); viewport: GameBakeInput::Poly::albedo, gatherGameBake(albedoFor),
   CameraView::bakeAlbedoFor (a 32 px level of the DDS, or the image file), the bake key takes the count of loaded
   textures so a bake is redone when images arrive. The light grid still bounces once.
+  Plan 1.9, own-map models: core light_grid lightGridSamplesAt (the build's palette-cell sampler, now one function
+  for compile_iw8.cpp and the viewport) and modelLightFromSamples (the converter's InstanceAmbient: 4 x 4 x 4 volume
+  by kModelLightingTexelColors, trilinear along the normal, x 2). Viewport: SceneCache::modelLights (entity -> 56
+  samples) + modelLightsRev (in the camera geometry key); model triangles carry the light in the vertex tangent with
+  lm = (-2, -2) (modelTriangleLight / appendTexturedFace propLight), the shader's own branch reads it like the stock
+  props' light grid box; CameraView::maybeLightModels makes the table in a thread (BVH of the drawn brush faces and
+  patches, settled 600 ms, redone only when the result differs). Sampled at the middle of the model's bounds; the
+  build's grid has a point every 128 x 128 x 64 units, so the two can differ a little near a doorway.
   The web list of plan 3.3 / 3.4 is done (the Vision Editor form closed it). Earlier note: (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder

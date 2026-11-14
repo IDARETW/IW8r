@@ -591,6 +591,13 @@ private:
     int normalFor(const std::string& material);
     MaskLookup emissiveLookup_;
     std::unordered_map<std::string, int> emiIds_;
+    // Game Lighting on an own map: the placed models' light from the build's light grid (SceneCache::modelLights),
+    // made again in the background when the geometry, the sun or the sky changed.
+    void maybeLightModels();
+    void modelLightsDone(std::shared_ptr<const std::unordered_map<Id, std::array<std::array<float, 3>, 56>>> lights, uint64_t key);
+    bool modelLighting_ = false;
+    uint64_t modelLightKey_ = 0, modelLightRev_ = ~0ull, modelLightSeenRev_ = 0;
+    QElapsedTimer modelLightSeenAt_;
     // A material's bounce colour for the preview bake (the average of its colour image), kept per image file.
     Vec3 bakeAlbedoFor(const std::string& material);
     std::unordered_map<std::string, Vec3> bakeAlbedo_;

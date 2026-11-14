@@ -888,6 +888,10 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // lookups that were thrown away).
         if (!lmOk && stockRef && propLit(i)) {
             indirect = propLgv * gameSkyScale.y;  // the prop's light grid box (vs_tex_inst), x bakedLightScale
+        } else if (!lmOk && !stockRef && propLit(i)) {
+            // A model of an own map: the light the build's light grid gives it at its place, by the triangle's normal
+            // (SceneCache::modelLights; the converter's InstanceAmbient).
+            indirect = propLgv;
         } else if (!lmOk && gameSky.w > 0.5 && gameSky.w < 1.5 && probeCount.x > 0.5)
             indirect = stockProbeLight(i.w, N, 0.0) * dot(gameSky.rgb, float3(0.2126, 0.7152, 0.0722));
         // The sun: the baked sun depth where it covers the point (here the sun shadow map), else the lightmap's mask.

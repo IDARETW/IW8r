@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Game Lighting: models in your own map are lit where they stand.** The build lights every placed model from the
+  light grid at its place, so a crate in a dark room is dark and one in the street takes the sky. The viewport gave
+  every model the map's average light. Now View > Game Lighting works out the same light for every model (the
+  build's own sampler, shared code) in the background and reads it per triangle the way the build's shader does.
+  Cinder Rail: 230 models. Core tests check the reader against known samples and the sampler under open sky, under a
+  roof and over a coloured floor. In game: not checked.
+
 - **Baked light bounces in colour, and more than once.** The lightmap bake (Compile > Bake lightmaps) and the light
   grid that lights models, players and the viewmodel used to bounce every surface as 45 % grey, once. Now light
   leaves a surface in that surface's own colour (the average of its material's colour image: a red wall tints the

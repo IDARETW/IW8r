@@ -101,8 +101,11 @@ struct GameLightmap;
 // an empty mesh, a face wholly under other faces), else the winding as a fan. `uv` are the winding's texture
 // coordinates (the mesh's are the same affine function of the position), `centre` the winding's centre when gameLm is
 // given (its lightmap UVs are kept per face corner).
+// propLight: `tan` is the light of a model's triangle (SceneCache::modelLights), marked by the lightmap UV (-2, -2).
 void appendTexturedFace(const PrimGeom& g, size_t i, const Vec3& n, const Vec3& tan, uint32_t colour, const GameLightmap* gameLm,
-                        const Vec3& centre, std::vector<GpuTexVertex>& out);
+                        const Vec3& centre, std::vector<GpuTexVertex>& out, bool propLight = false);
+// The light of poly `i` of an item when it is a model triangle with a light in `scene.modelLights` (Game Lighting).
+bool modelTriangleLight(const class SceneCache& scene, const PrimGeom& g, size_t i, const Vec3& n, Vec3& light);
 
 class SceneCache {
 public:
@@ -139,6 +142,12 @@ public:
     bool gameLookAuto = false;
     bool gameLookActive() const { return gameLook || (gameLookAuto && litPreview); }
     std::shared_ptr<const GameLightmap> gameLightmap;
+    // Game Lighting on an own map: the light of every placed model (by its entity), as the 56 samples the build's
+    // light grid holds at its place (core light_grid). A model's triangles carry the light of their normal in the
+    // vertex tangent with the lightmap UV (-2, -2), as stock props carry their light grid box. modelLightsRev moves
+    // when the table changes (the camera's geometry is then made again).
+    std::unordered_map<Id, std::array<std::array<float, 3>, 56>> modelLights;
+    uint64_t modelLightsRev = 0;
     // The renderer's sun shadow map handles sun shadows per pixel (set by the camera); the per-face ray test is skipped.
     bool gpuShadows = false;
     // Set by buildCameraGeometry: the first N flat triangle vertices cast sun shadows; the rest are markers, tool faces

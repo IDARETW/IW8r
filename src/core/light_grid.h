@@ -53,6 +53,18 @@ struct LightGridInput {
 // y, then x; the 8 interior texels left out), normalised (iw3_lightgrid.cpp LightGridProjection).
 const std::array<Vec3, 56>& lightGridSampleDirections();
 
+// The light of one point as those 56 samples (ROADMAP 5.20), in the grid's 8-bit units (255 = lit by 1.0): the sky
+// where a ray escapes upward, and one bounce of the sun and the sky off what a ray hits, in that surface's colour
+// (`albedos`[triangle id - 1] for ids above 0, else 45 % grey). `sky` is the sky's colour times its strength. The
+// build calls it per palette cell; the viewport per placed model.
+void lightGridSamplesAt(const class RayBvh& bvh, const std::vector<Vec3>& albedos, const Vec3& sunToward, const Vec3& sunColour, const Vec3& sky,
+                        double reach, const Vec3& point, std::array<std::array<float, 3>, 56>& out);
+
+// The light a surface with normal `n` takes from a point's 56 samples, as the build's world shader reads a placed
+// model's light (the converter's InstanceAmbient: the samples as the shell of a 4 x 4 x 4 volume of bytes, read
+// trilinearly where the normal leaves the cube, times 2). In lightmap units (1 = lit by 1.0).
+Vec3 modelLightFromSamples(const std::array<std::array<float, 3>, 56>& samples, const Vec3& n);
+
 // Builds the files (validated: sizes and indices follow the converter's reader rules). False with *err when the bounds
 // are invalid or the grid would exceed the converter's limits (entry_count <= 8,388,608, z extent <= 255 points).
 bool buildLightGrid(const LightGridInput& in, LightGridFiles& out, std::string* err = nullptr);

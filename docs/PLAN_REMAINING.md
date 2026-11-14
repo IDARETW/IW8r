@@ -173,7 +173,7 @@ grain, white balance.
 **1.9 Own brushes match what the build will produce.** Part 1 DONE 2026-11-13 (research 117: the unbaked look, the
 multi-bounce occlusion). Brushes added to a stock map DONE 2026-11-14 (the map's tetrahedral light grid, research
 117 section 5). Normal and specular maps of own materials DONE 2026-11-14 (the converter's SourceSunSpecular rule;
-see PROGRESS). Left by decision (table "Open points closed by decision"): own-map models against the built light grid.
+see PROGRESS). Own-map models take the build's light grid light at their place DONE 2026-11-14.
 - **Unbaked maps.** Show the preview bake only when `iw8r_bake_lightmaps` is set; otherwise show the unbaked path the
   game takes (research 55).
 - **Specular.** Own brushes get environment specular, using the converter shader's formula
@@ -368,7 +368,6 @@ judged against the running game, which is not used any more. They are listed so 
 | 1.5 SELFVIS, the 236 lightmapped `tml` props, Warzone tile grids for tile props | Props take their own light grid box; the rest fall back to the probes | SELFVIS needs a new ACTS export; the others touch 2 % of placements. |
 | 1.6 `needsDynamicShadows`, the screen-space shadow mask | Every spot and omni light with shadow maps for the nearest 64 | Affects moving entities and contact shadows only. |
 | 1.8 volumetric fog, film grain, white balance | Bloom veil, vignette, exponential fog, the stock vision's exposure and grade | The volumetric fog constants are not calibrated (it stays off rather than wrong); grain and white balance are not decoded, and grain is noise by design. |
-| 1.9 own-map models against the built light grid | Models in your own map take the map's ambient light and the sun | The built grid is per cell (1.11 part 1); sampling it per model in the viewport changes dark-room props only. |
 | 1.11 a per-face lightmap scale, HDR probe capture | Bounces in the surfaces' colours with the later bounces estimated (2026-11-14), the texel size as a Bake Setting, 8-bit probes captured before every build | The per-face scale needs a converter change; HDR probes change glossy reflections by a little. |
 | 1.11 the parity proof (draw the built zone as a stock map and compare) | `tools/lightmap_bake_build_test.py` proves the baked data reaches the built zone; View > Game Lighting uses the converter shader's own formulas (research 117) | The proof as planned would compare the wrong things: a built map is drawn by the converter's world shader, and the editor's stock-map path models the game's stock shaders, not that one. |
 | 1.13 the game's FOV / lodScale factor on LOD distances | Stock LOD distances as stored | Changes only the distance at which a LOD switches; the frame budgets are met without it. |

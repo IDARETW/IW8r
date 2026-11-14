@@ -356,7 +356,9 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
                 for (const auto& p : w) centre += p;
                 centre = centre * (1.0 / double(std::max<size_t>(1, w.size())));
             }
-            appendTexturedFace(*g, i, n, tan, c, gameLm, centre, dst);
+            Vec3 modelLight;
+            const bool lit = modelTriangleLight(sc, *g, i, n, modelLight);
+            appendTexturedFace(*g, i, n, lit ? modelLight : tan, c, gameLm, centre, dst, lit);
         } else if (!wire) {
             uint32_t c = normals ? normalColour(n) : litColor(contentsMode || collisionMode ? g->contentsColor : g->color);
             if (!normals && !contentsMode && i < g->polyTint.size()) c = mixColor(c, g->polyTint[i] | 0xff000000u, 0.6);
@@ -450,6 +452,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                            (uint64_t(textureFor != nullptr) << 14) | (uint64_t(bool(scene.normalFor)) << 15) | (uint64_t(bool(scene.emissiveFor)) << 16) |
                            (uint64_t(bool(scene.blendFor)) << 17) | (uint64_t(bool(scene.foliageFor)) << 18) | (uint64_t(bool(scene.drawClassFor)) << 19) |
                            (uint64_t(bool(scene.textureSizeFor)) << 20) | (uint64_t(bool(scene.specFor)) << 21));
+    key = mixBits(key, scene.modelLightsRev);
     key = mixBits(key, scene.selectionTint);
     key = mixDouble(key, scene.selectionTintAmount);
     key = mixDouble(key, scene.densityTarget);

@@ -44,6 +44,10 @@
 #include "brush_tools.h"
 #include "compile_iw8.h"
 #include "custom_materials.h"
+#include "editor_log.h"
+#include <unordered_set>
+#include "ray_bvh.h"
+#include "light_grid.h"
 #include "lightmap_bake.h"
 #include "normal_pack.h"
 #include "texture_decode.h"
@@ -681,6 +685,7 @@ void CameraView::render() {
     {
         IW8R_PROF("r.bake_look");
         maybeBakeGameLook();
+        maybeLightModels();
     }
     {
         IW8R_PROF("r.skybox");
@@ -2481,6 +2486,109 @@ void CameraView::maybeBakeGameLook() {
             if (self) self->gameBakeDone(lm);
         }, Qt::QueuedConnection);
     })).detach();
+}
+
+void CameraView::maybeLightModels() {
+    const auto clear = [this] {
+        if (!ctx_->scene.modelLights.empty()) {
+            ctx_->scene.modelLights.clear();
+            ++ctx_->scene.modelLightsRev;
+            geomDirty_ = true;
+            update();
+        }
+        modelLightKey_ = 0;
+        modelLightRev_ = ~0ull;
+    };
+    if (!gameLookOn() || gameStockLook()) {  // off, or a stock map (its own light grid lights its props)
+        clear();
+        return;
+    }
+    if (modelLighting_) return;
+    const uint64_t rev = ctx_->doc.revision() * 1000003ull ^ ctx_->scene.generation();
+    if (rev == modelLightRev_) return;
+    if (rev != modelLightSeenRev_) {
+        modelLightSeenRev_ = rev;
+        modelLightSeenAt_.restart();
+    }
+    // Wait until edits settle, as the lightmap bake does; the first lights are made at once.
+    if (!ctx_->scene.modelLights.empty() && modelLightSeenAt_.isValid() && modelLightSeenAt_.elapsed() < 600) {
+        QTimer::singleShot(650, this, [this] { update(); });
+        return;
+    }
+    modelLightRev_ = rev;
+    // The models: every item with model triangles, by its entity, at the middle of its bounds.
+    std::vector<std::pair<Id, Vec3>> models;
+    {
+        std::unordered_set<Id> seen;
+        for (const app::PrimGeom* g : ctx_->scene.items())
+            if (g->hasMeshPolys() && g->bounds.valid() && seen.insert(g->ref.entity).second)
+                models.push_back({g->ref.entity, (g->bounds.mins + g->bounds.maxs) * 0.5});
+    }
+    if (models.empty()) {
+        clear();
+        modelLightRev_ = rev;
+        return;
+    }
+    const Vec3 sunDir = ctx_->scene.sunToward, sunColour = ctx_->scene.sunColor, sky = gameSkyOf(ctx_->doc);
+    uint64_t h = app::gameBakeGeometryKey(ctx_->scene);
+    const auto mixD = [&h](double v) {
+        uint64_t b = 0;
+        std::memcpy(&b, &v, sizeof(b));
+        h ^= b + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
+        h *= 0x100000001b3ull;
+    };
+    for (const Vec3& v : {sunDir, sunColour, sky}) mixD(v.x), mixD(v.y), mixD(v.z);
+    {
+        size_t loaded = 0;  // the bounce colours come from the materials' images
+        for (const auto& [m, id] : texIds_) loaded += id >= 0 && id != checkerTex_;
+        mixD(double(loaded));
+    }
+    if (h == modelLightKey_) return;
+    // The world the build's grid sees: the drawn brush faces and patches (models are not in it), in their colours.
+    app::GameBakeInput g = app::gatherGameBake(ctx_->scene, ctx_->scene.drawClassFor, [this](const std::string& m) { return bakeAlbedoFor(m); });
+    auto tris = std::make_shared<std::vector<RayBvh::Triangle>>();
+    auto albedos = std::make_shared<std::vector<Vec3>>();
+    AABB bounds;
+    for (const auto& p : g.polys) {
+        uint32_t id = 0;
+        if (p.albedo.x >= 0) {
+            albedos->push_back(p.albedo);
+            id = uint32_t(albedos->size());
+        }
+        for (const Vec3& q : p.pts) bounds.add(q);
+        for (size_t k = 1; k + 1 < p.pts.size(); ++k) tris->push_back({p.pts[0], p.pts[k], p.pts[k + 1], id});
+    }
+    if (tris->empty() || !bounds.valid()) {
+        clear();
+        modelLightRev_ = rev;
+        return;
+    }
+    const double reach = 2.0 * length(bounds.maxs - bounds.mins) + 1024.0;
+    modelLighting_ = true;
+    QPointer<CameraView> self(this);
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, tris, albedos, models = std::move(models), sunDir, sunColour, sky, reach, h]() {
+        RayBvh bvh;
+        bvh.build(*tris);
+        auto out = std::make_shared<std::unordered_map<Id, std::array<std::array<float, 3>, 56>>>();
+        for (const auto& [id, at] : models) lightGridSamplesAt(bvh, *albedos, sunDir, sunColour, sky, reach, at, (*out)[id]);
+        QMetaObject::invokeMethod(qApp, [self, out, h]() {
+            if (self) self->modelLightsDone(out, h);
+        }, Qt::QueuedConnection);
+    })).detach();
+}
+
+void CameraView::modelLightsDone(std::shared_ptr<const std::unordered_map<Id, std::array<std::array<float, 3>, 56>>> lights, uint64_t key) {
+    modelLighting_ = false;
+    modelLightKey_ = key;
+    if (!lights || !gameLookOn() || gameStockLook()) return;
+    if (*lights == ctx_->scene.modelLights) return;  // nothing changed for any model: the geometry stays
+    ctx_->scene.modelLights = *lights;
+    ++ctx_->scene.modelLightsRev;
+    const QString told = QString("Game lighting: %1 model(s) lit from the light grid at their places").arg(lights->size());
+    emit ctx_->statusMessage(told);
+    EditorLog::instance().add(LogLevel::Info, "lighting", told);
+    geomDirty_ = true;
+    update();
 }
 
 void CameraView::gameBakeDone(std::shared_ptr<const app::GameLightmap> lm) {

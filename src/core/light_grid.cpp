@@ -1,4 +1,5 @@
 #include "light_grid.h"
+#include "ray_bvh.h"
 
 #include <algorithm>
 #include <atomic>
@@ -222,6 +223,79 @@ bool buildLightGrid(const LightGridInput& in, LightGridFiles& out, std::string* 
         return false;
     }
     return true;
+}
+
+void lightGridSamplesAt(const RayBvh& bvh, const std::vector<Vec3>& albedos, const Vec3& sunToward, const Vec3& sunColour, const Vec3& sky,
+                        double reach, const Vec3& p, std::array<std::array<float, 3>, 56>& out) {
+    constexpr double kPi = 3.14159265358979323846;
+    static const std::vector<Vec3> rays = [] {  // 96 directions spread evenly over the sphere
+        std::vector<Vec3> r;
+        const double ga = 3.14159265358979323846 * (3.0 - std::sqrt(5.0));
+        for (int k = 0; k < 96; ++k) {
+            const double z = 1.0 - (k + 0.5) * (2.0 / 96.0), rr = std::sqrt(std::max(0.0, 1.0 - z * z));
+            r.push_back(Vec3{std::cos(ga * k) * rr, std::sin(ga * k) * rr, z});
+        }
+        return r;
+    }();
+    const auto& sdirs = lightGridSampleDirections();
+    double acc[56][3] = {};
+    const double w = 4.0 * kPi / double(rays.size());
+    for (const Vec3& d : rays) {
+        Vec3 rad{0, 0, 0};
+        RayBvh::Hit h;
+        if (!bvh.intersect(p, d, 0.5, reach, h)) {
+            if (d.z > 0) rad = sky * (1.0 / kPi);  // the open sky; below the map, nothing
+        } else {
+            const RayBvh::Triangle& t = bvh.triangles()[h.tri];
+            Vec3 n = cross(t.b - t.a, t.c - t.a);
+            const double nl = length(n);
+            if (nl < 1e-12) continue;
+            n = n * (1.0 / nl);
+            if (dot(n, d) > 0) n = n * -1.0;
+            const Vec3 hp = p + d * h.t + n * 0.5;
+            const double ns = dot(n, sunToward);
+            const double eSun = ns > 0 && !bvh.occluded(hp, sunToward, 0.1, reach) ? ns : 0.0;
+            const Vec3 e = sunColour * eSun + sky * (0.25 * (1.0 + n.z));  // about half its sky seen
+            const Vec3 rho = t.id > 0 && t.id <= albedos.size() ? albedos[t.id - 1] : Vec3{0.45, 0.45, 0.45};
+            rad = Vec3{e.x * rho.x, e.y * rho.y, e.z * rho.z} * (1.0 / kPi);
+        }
+        for (int s = 0; s < 56; ++s) {
+            const double c = dot(sdirs[size_t(s)], d);
+            if (c <= 0) continue;
+            acc[s][0] += rad.x * c * w, acc[s][1] += rad.y * c * w, acc[s][2] += rad.z * c * w;
+        }
+    }
+    for (int s = 0; s < 56; ++s)
+        for (int ch = 0; ch < 3; ++ch) out[size_t(s)][size_t(ch)] = float(255.0 * acc[s][ch]);
+}
+
+Vec3 modelLightFromSamples(const std::array<std::array<float, 3>, 56>& samples, const Vec3& nIn) {
+    // Texel (x, y, z) of the 4 x 4 x 4 volume -> its colour (the converter's kModelLightingTexelColors: the shell in
+    // sample order; the eight inner texels repeat shell colours and are never reached from the cube's surface).
+    static const uint8_t colourOf[64] = {0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 0,
+                                         3,  21, 22, 12, 15, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 40, 43, 33, 34, 52, 55, 35,
+                                         36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55};
+    const double len = length(nIn);
+    const Vec3 n = len > 1e-12 ? nIn * (1.0 / len) : Vec3{0, 0, 1};
+    const double m = std::max(std::max(std::fabs(n.x), std::fabs(n.y)), std::max(std::fabs(n.z), 1e-6));
+    const double c[3] = {n.x / m * 1.5 + 1.5, n.y / m * 1.5 + 1.5, n.z / m * 1.5 + 1.5};
+    int i[3];
+    double f[3];
+    for (int a = 0; a < 3; ++a) i[a] = std::min(int(std::floor(c[a])), 2), f[a] = c[a] - i[a];
+    const auto texel = [&](int x, int y, int z, int ch) {
+        // A byte of the model lighting image: the sample, cut at 255.
+        return std::clamp(double(samples[colourOf[x + 4 * y + 16 * z]][size_t(ch)]), 0.0, 255.0) / 255.0;
+    };
+    Vec3 out;
+    double* o[3] = {&out.x, &out.y, &out.z};
+    for (int ch = 0; ch < 3; ++ch) {
+        const double x00 = texel(i[0], i[1], i[2], ch) * (1 - f[0]) + texel(i[0] + 1, i[1], i[2], ch) * f[0];
+        const double x10 = texel(i[0], i[1] + 1, i[2], ch) * (1 - f[0]) + texel(i[0] + 1, i[1] + 1, i[2], ch) * f[0];
+        const double x01 = texel(i[0], i[1], i[2] + 1, ch) * (1 - f[0]) + texel(i[0] + 1, i[1], i[2] + 1, ch) * f[0];
+        const double x11 = texel(i[0], i[1] + 1, i[2] + 1, ch) * (1 - f[0]) + texel(i[0] + 1, i[1] + 1, i[2] + 1, ch) * f[0];
+        *o[ch] = ((x00 * (1 - f[1]) + x10 * f[1]) * (1 - f[2]) + (x01 * (1 - f[1]) + x11 * f[1]) * f[2]) * 2.0;
+    }
+    return out;
 }
 
 const std::array<Vec3, 56>& lightGridSampleDirections() {
