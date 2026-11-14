@@ -2,6 +2,10 @@
 
 ## Latest (2026-11-13)
 
+- Plan 3.4 (placement): POST /api/place takes "view" (the browser camera + a point of the view) instead of "at";
+  hook surfacePoint -> MainWindow::webSurfacePoint (scene.pick, hits nearer than 1 unit refused). app.js sends it when
+  the live view is shown. GUI check. Open in 3.4: brush creation / resize handles in the page, vertex and edge
+  modes, the inspector with entity definitions (key help, required keys).
 - Plan 3.3 form 6: checkMap web form (a CheckMapDialog that is never shown gives itemTexts / fixableCount / fixAll;
   field type "report" = read-only text). FEATURES.md web section rewritten (menu bar, forms, live view, differences).
   Web forms so far: sunSky, atmosphere, bakeSettings, mapInfo, gameModes, checkMap.

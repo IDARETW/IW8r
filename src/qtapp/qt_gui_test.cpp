@@ -1976,6 +1976,48 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 vweb.handle("POST", "/api/pick", up, true, {});
                 r.check(haveBrush && pk.status == 200 && picked && ctx.doc.selection().empty(),
                         "POST /api/pick selects what the browser's view shows under the pointer, and nothing there deselects");
+                {
+                    // An asset placed through the live view lands on the surface under the view's centre.
+                    ch.surfacePoint = [&w](const WebCamera& cam, double x, double y, double aspect, double point[3]) {
+                        return w.webSurfacePoint(cam, x, y, aspect, point);
+                    };
+                    WebServer pweb(&ctx, ch);
+                    // A point of the brush's top with nothing standing on it (the room's centre has a spawn, whose box
+                    // would hold the camera): the first of a few where a ray straight down meets the top itself.
+                    ctx.scene.sync(ctx.doc);
+                    for (const auto* g : ctx.scene.items()) {
+                        if (g->kind != iw8r::app::PrimGeom::Brush || !g->bounds.valid()) continue;
+                        bool found = false;
+                        for (const double fu : {0.12, 0.31, 0.69, 0.88})
+                            for (const double fv : {0.12, 0.31, 0.69, 0.88}) {
+                                if (found) break;
+                                const Vec3 top{g->bounds.mins.x + (g->bounds.maxs.x - g->bounds.mins.x) * fu,
+                                               g->bounds.mins.y + (g->bounds.maxs.y - g->bounds.mins.y) * fv, g->bounds.maxs.z};
+                                double tt = 0;
+                                if (ctx.scene.pick(Ray{Vec3{top.x, top.y, top.z + 40}, Vec3{0, 0, -1}}, &tt) && std::fabs(tt - 40.0) < 0.5) centre = top, found = true;
+                            }
+                        break;
+                    }
+                    const size_t entsBefore = ctx.doc.map().entities.size();
+                    const QByteArray placeDown = QString("{\"kind\":\"effects\",\"name\":\"test_fx\",\"view\":{\"pos\":[%1,%2,%3],\"yaw\":0,\"pitch\":-89,"
+                                                         "\"fov\":90,\"x\":0.5,\"y\":0.5,\"aspect\":1.7778}}")
+                                                     .arg(centre.x).arg(centre.y).arg(centre.z + 40).toUtf8();
+                    const auto placed = pweb.handle("POST", "/api/place", placeDown, true, {});
+                    double placedZ = 1e9;
+                    if (ctx.doc.map().entities.size() == entsBefore + 1)
+                        if (const auto o = ctx.doc.map().entities.back().origin()) placedZ = o->z;
+                    if (ctx.doc.map().entities.size() == entsBefore + 1) ctx.doc.undo();
+                    const QByteArray placeUp = QString("{\"kind\":\"effects\",\"name\":\"test_fx\",\"view\":{\"pos\":[%1,%2,%3],\"yaw\":0,\"pitch\":89,"
+                                                       "\"fov\":90,\"x\":0.5,\"y\":0.5,\"aspect\":1.7778}}")
+                                                   .arg(centre.x).arg(centre.y).arg(centre.z + 90000).toUtf8();
+                    const auto nowhere = pweb.handle("POST", "/api/place", placeUp, true, {});
+                    ctx.doc.deselectAll();
+                    ctx.documentEdited();
+                    r.check(haveBrush && placed.status == 200 && std::fabs(placedZ - centre.z) <= 1.0 && nowhere.status == 400 &&
+                                ctx.doc.map().entities.size() == entsBefore,
+                            QString("POST /api/place with a view puts the asset on the surface under the view's centre (z %1, the brush top %2)")
+                                .arg(placedZ).arg(centre.z));
+                }
                 auto livePage = web.handle("GET", "/", {}, true, {});
                 auto liveJs = web.handle("GET", "/viewlive.js", {}, true, {});
                 r.check(livePage.body.contains("viewLive") && livePage.body.contains("Editor view (live)") && liveJs.status == 200 &&

@@ -24,7 +24,9 @@
 //   POST /api/undo | /api/redo | /api/save | /api/compile | /api/deploy | /api/build (F5) | /api/load
 //   GET  /api/assets?kind=materials|models|effects|sounds&q=text&limit=N   catalog names (unbuildable ones left out)
 //   GET  /api/thumb?kind=..&name=..  a cached thumbnail image (404 when none yet)
-//   POST /api/place    {kind, name, at:[x,y,z]}   models -> misc_model, effects -> fx_origin, sounds -> sound_emitter
+//   POST /api/place    {kind, name, at:[x,y,z]}   models -> misc_model, effects -> fx_origin, sounds -> sound_emitter;
+//                                    with view: {pos, yaw, pitch, fov, x, y, aspect} instead of at, on the surface
+//                                    under that point of the browser's live view (400 when nothing is there)
 //   POST /api/material {name}        apply to the selected brushes / faces
 //   GET  /api/frame?pos=x,y,z&yaw=&pitch=&fov=&w=&h=&q=   the editor's own 3D render from that camera, as a JPEG
 //                                    (w 64..2560, h 64..1440, q 30..95); the editor's modes apply (textured, lit,
@@ -85,6 +87,8 @@ public:
         std::function<QByteArray(const WebCamera& cam, int w, int h, int quality)> renderFrame;
         // Selects what lies under a point of that view (x, y in 0..1 from the top left); false when nothing is there.
         std::function<bool(const WebCamera& cam, double x, double y, double aspect, bool add)> pickFrame;
+        // The point of the scene under a point of that view; false when the ray hits nothing.
+        std::function<bool(const WebCamera& cam, double x, double y, double aspect, double point[3])> surfacePoint;
         // The editor's own camera, as {pos: [x, y, z], yaw, pitch, fov}: where a browser's view starts.
         std::function<QJsonObject()> camera;
         // The web forms (MainWindow::webFormList / webForm / applyWebForm).

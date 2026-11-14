@@ -4829,6 +4829,19 @@ static QString plainMenuText(QString text) {
     return text;
 }
 
+bool MainWindow::webSurfacePoint(const WebCamera& cam, double x, double y, double aspect, double point[3]) {
+    app::Camera c = ctx_.cam;
+    c.pos = Vec3{cam.pos[0], cam.pos[1], cam.pos[2]};
+    c.yaw = cam.yaw, c.pitch = cam.pitch, c.fov = cam.fov;
+    ctx_.scene.sync(ctx_.doc);
+    const Ray ray = app::cameraRay(c, 2.0 * x - 1.0, 1.0 - 2.0 * y, aspect);
+    double t = 0;
+    if (!ctx_.scene.pick(ray, &t) || t < 1.0) return false;  // nothing there, or the camera is inside an object
+    const Vec3 p = ray.origin + ray.dir * t;
+    point[0] = p.x, point[1] = p.y, point[2] = p.z;
+    return true;
+}
+
 QString MainWindow::webCommandBlocked(const QString& id, const QString& label) {
     static const QSet<QString> editorOnly{"Exit", "WebServer", "WebServerSettings", "InstallStockMap", "RestoreStockMap", "OpenInNewWindow", "RestartSafeMode"};
     if (editorOnly.contains(id)) return "only at the editor itself";
@@ -4959,6 +4972,9 @@ bool MainWindow::applyWebServerSettings(QString* message) {
         hooks.renderFrame = [this](const WebCamera& cam, int w, int h, int quality) { return webRenderFrame(cam, w, h, quality); };
         hooks.pickFrame = [this](const WebCamera& cam, double x, double y, double aspect, bool add) { return webPick(cam, x, y, aspect, add); };
         hooks.camera = [this] { return webCamera(); };
+        hooks.surfacePoint = [this](const WebCamera& cam, double x, double y, double aspect, double point[3]) {
+            return webSurfacePoint(cam, x, y, aspect, point);
+        };
         hooks.forms = [this] { return webFormList(); };
         hooks.form = [this](const QString& id) { return webForm(id); };
         hooks.applyForm = [this](const QString& id, const QJsonObject& values, QString* why) { return applyWebForm(id, values, why); };

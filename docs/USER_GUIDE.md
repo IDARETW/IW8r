@@ -690,7 +690,8 @@ one undo history, and each side sees the other's edits at once.
   move forward and back, right-drag to slide, click to select. Camera modes, Lit Preview and Game Lighting from the
   View menu apply to it.
 - **Panels.** Entities (with a filter), the Inspector (edit, add and remove keys), Assets (click a material to apply
-  it, a model, effect or sound to place it) and the Log.
+  it, a model, effect or sound to place it) and the Log. In the live editor view an asset is placed on the surface
+  at the centre of the picture; in the drawn 2D views at the view's centre, at height 0.
 - Big maps load: models are sent as boxes for the drawn views, and after the first load only changes travel.
 
 ## 12. Known limits

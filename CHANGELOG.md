@@ -5,6 +5,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Web: assets land on the surface in the live view.** With "Editor view (live)" shown, a model, effect or sound
+  clicked in the Assets panel is placed on the surface under the centre of the view (a pick through the browser's
+  camera), not at height 0. When nothing is there, or the camera is inside an object, the page says so and places
+  nothing.
+
 - **Web: Check Map in the browser.** Tools > Check Map opens in the web page as a report with the same findings, in
   the same order, as the editor's dialog, and a "Fix all findings marked [fix]" box that applies the automatic fixes
   as one undo step.

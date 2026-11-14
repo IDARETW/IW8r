@@ -244,7 +244,15 @@ async function searchAssets() {
     li.title = it.name;
     li.onclick = async () => {
       if (kind === "materials") { await post("/api/material", { name: it.name }); setStatus("Material " + it.name); return; }
-      // Place at the 2D view centre (the third axis at 0).
+      // In the live editor view: on the surface under the view's centre. Else at the 2D view centre (third axis 0).
+      const liveCam = !$("viewLive").hidden && window.viewLive && window.viewLive.camera();
+      if (liveCam) {
+        const r = $("viewLive").getBoundingClientRect();
+        await post("/api/place", { kind, name: it.name, loop: !!it.loop,
+                                   view: { pos: liveCam.pos, yaw: liveCam.yaw, pitch: liveCam.pitch, fov: liveCam.fov, x: 0.5, y: 0.5, aspect: r.width / r.height } });
+        setStatus("Placed " + it.name + " on the surface at the view's centre");
+        return;
+      }
       const [h, v] = axes(), at = [0, 0, 0];
       at[h] = view.cx; at[v] = view.cy;
       await post("/api/place", { kind, name: it.name, at, loop: !!it.loop });

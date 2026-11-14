@@ -38,6 +38,19 @@ Mark each line OK / wrong (with a screenshot) and send it back.
 - [ ] File > Open IW8 Stock Map: a list of the 37 openable stock maps. (wrong 2026-11-11: mp_backlot2 opened with a lot of geometry missing)
 - [ ] A misc_prefab with "iw8r_mat:<material>" "<other material>" shows the swapped material in the views and the build.
 
+**The web page (2026-11-13; no game needed).** Tools > Web Server on, then open the address the status bar shows.
+Each point was run by me in a browser against a running editor; this list is for your own look.
+
+- [ ] The page has the editor's menu bar. View > Game Lighting from the page switches the editor's camera view.
+- [ ] "Find a command": type "shadow"; Sun Shadow Detail is listed greyed ("opens a dialog on the editor's screen").
+- [ ] Compile > Sun & Sky opens a form with the map's sun; change the pitch, Apply, and the editor's sun moves;
+      Undo in the page puts it back.
+- [ ] Tools > Game Modes: pick "Warzone: Battle Royale Trios", "Carry in this map", OK; worldspawn gets
+      `iw8r_mode_dvars`. Tools > Check Map lists the same findings as the editor's dialog.
+- [ ] View box > "Editor view (live)": the editor's own picture; drag to look, W A S D to fly, click selects.
+      A model clicked in Assets lands on the surface at the centre of the picture.
+- [ ] A big map (Cinder Rail) opens in the page within a few seconds.
+
 ## In game: your map's model light (2026-11-13), not seen in game
 
 - [ ] Build the dev showcase (F7) and walk from outside into a closed room: the gun and nearby props get darker inside

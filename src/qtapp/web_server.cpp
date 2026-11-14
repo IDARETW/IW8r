@@ -646,7 +646,23 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
     } else if (path == "/api/place") {
         const QString kind = in.value("kind").toString();
         const std::string name = in.value("name").toString().trimmed().toStdString();
-        const QJsonArray at = in.value("at").toArray();
+        QJsonArray at = in.value("at").toArray();
+        if (in.value("view").isObject()) {
+            // On the surface the browser's live view shows under the given point.
+            const QJsonObject v = in.value("view").toObject();
+            const QJsonArray pos = v.value("pos").toArray();
+            WebCamera cam;
+            for (int k = 0; k < 3 && pos.size() == 3; ++k) cam.pos[k] = pos[k].toDouble();
+            cam.yaw = v.value("yaw").toDouble();
+            cam.pitch = std::clamp(v.value("pitch").toDouble(), -89.0, 89.0);
+            cam.fov = std::clamp(v.value("fov").toDouble(90), 10.0, 150.0);
+            double point[3] = {0, 0, 0};
+            if (pos.size() != 3 || !hooks_.surfacePoint ||
+                !hooks_.surfacePoint(cam, std::clamp(v.value("x").toDouble(0.5), 0.0, 1.0), std::clamp(v.value("y").toDouble(0.5), 0.0, 1.0),
+                                     std::clamp(v.value("aspect").toDouble(16.0 / 9.0), 0.2, 5.0), point))
+                return error(400, "there is nothing under the centre of the view to place it on");
+            at = QJsonArray{std::round(point[0]), std::round(point[1]), std::round(point[2])};
+        }
         if (name.empty() || name.find_first_of(" \t\"") != std::string::npos || at.size() != 3) return error(400, "need kind, name and at");
         const std::string origin = formatNumber(at[0].toDouble()) + " " + formatNumber(at[1].toDouble()) + " " + formatNumber(at[2].toDouble());
         std::vector<std::pair<std::string, std::string>> kv;
