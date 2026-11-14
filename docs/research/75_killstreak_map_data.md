@@ -199,6 +199,9 @@ Each item says what the game reads, and what it should fix. None is proven in ga
 
 ## 5. Not determined
 
+Update 2026-11-14: research 121 answers the first two items below for the invisible aircraft and players (the box of
+the occlusion data, read in the Replay exe), and section 4.1 item 2 is built in that form.
+
 - Why the Personal UAV aircraft is not visible and flies low in game. The script places it about 4,600 to 5,550 above the rig. No map key in this build changes that.
 - Whether the Chopper Gunner enemy invisibility is the visibility cell, a missing per-map vision asset, or the character thermal pass. No stock DPVS or vision data is in the repo to compare. Not run.
 - Encrypted names (not decoded): the UAV rig model and tag, the helipad name, `airstrikeheight`, `heli_pilot_mesh`, the Chopper Gunner thermal sets, and the game-mode name in `uav.gsc:446-451`. Their readers are known from code, but the strings are not.

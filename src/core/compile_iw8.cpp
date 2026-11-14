@@ -1514,6 +1514,11 @@ bool compileIw8ExtractionMovers(const MapFile& mapIn, const std::string& outDir,
     return ok;
 }
 
+// The airspace of a built map (worldspawn iw8r_airspace): how far the visibility cell and the occlusion data reach
+// past the geometry. Every stock tome read reaches at least 131072 units from the origin (research 121).
+constexpr double kAirspaceDefault = 131072.0;
+constexpr double kAirspaceMax = 524288.0;
+
 bool compileIw8Extraction(const MapFile& mapIn, const std::string& outDir, const CompileOptions& opt, CompileReport& rep,
                           std::string* err) {
     // Owner playtest 2026-11-11: traffic cones placed as misc_model did not move. A physics model (name ending _dyn)
@@ -2897,25 +2902,34 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     const size_t primaryLightCount = kFirstLocalLight + localLights.size();
 
     const std::string boundsJson = aabbJson(bounds);
-    // The one visibility cell reaches above and around the map (research 75, owner playtest 2026-11-11: the UAV model was
-    // invisible and players were invisible from the Chopper Gunner; both are outside a cell that ends at the map's
-    // geometry). worldspawn iw8r_airspace "<up> [out]" sets how far (default 6144 up, 2048 out; "0" keeps the tight
-    // cell). The world bounds, the light grid and the surface tree keep the map's own size.
+    // The one visibility cell reaches above, around and below the map (research 75 and 121, owner playtest
+    // 2026-11-11: the UAV model was invisible and players were invisible from the Chopper Gunner). The converter makes
+    // the occlusion data cover this cell; the game fails the camera query for a camera outside that data and then
+    // hides every player and vehicle (verified in the Replay exe, research 121). worldspawn iw8r_airspace
+    // "<up> [out]" sets how far; the default is the reach of every stock map's occlusion data (131072 units); "0"
+    // keeps the tight cell. The world bounds, the light grid and the surface tree keep the map's own size.
     AABB cellBounds = bounds;
     {
-        double up = 6144, outward = 2048;
+        double up = kAirspaceDefault, outward = kAirspaceDefault;
         if (worldspawn)
             if (const std::string* as = worldspawn->value("iw8r_airspace"); as && !as->empty()) {
                 double a2 = 0, b2 = 0;
                 const int got = std::sscanf(as->c_str(), "%lf %lf", &a2, &b2);
                 if (got >= 1 && a2 >= 0) {
                     up = a2;
-                    outward = got >= 2 && b2 >= 0 ? b2 : (a2 > 0 ? 2048 : 0);
+                    outward = got >= 2 && b2 >= 0 ? b2 : (a2 > 0 ? kAirspaceDefault : 0);
+                    // Past this the game's 16-bit cell coordinates get coarser than any stock map's.
+                    if (up > kAirspaceMax || outward > kAirspaceMax) {
+                        warn.push_back("worldspawn iw8r_airspace '" + *as + "' is larger than 524288; 524288 is used");
+                        up = std::min(up, kAirspaceMax);
+                        outward = std::min(outward, kAirspaceMax);
+                    }
                 } else {
-                    warn.push_back("worldspawn iw8r_airspace '" + *as + "' not understood (<up> [out]); using 6144 2048");
+                    warn.push_back("worldspawn iw8r_airspace '" + *as + "' not understood (<up> [out]); using 131072 131072");
                 }
             }
         cellBounds.maxs.z += up;
+        cellBounds.mins.z -= outward;
         cellBounds.mins.x -= outward;
         cellBounds.mins.y -= outward;
         cellBounds.maxs.x += outward;

@@ -38,7 +38,16 @@
   WebServer object). The page: logLines / renderLog / addLogLine, #logLevel, #logFilter. Plan 3.2 is done.
   POST /api/pick {face: true} (hook pickFace, MainWindow::webPickFace: scene.pickFace, selectFace / toggleFace);
   viewlive.js sends it on Ctrl + click.
-  Parking state 2026-11-14 (after trigger hints and the second review): repo at the commit after 2c1017b, converter live at 6a783fd5, suites core 181,781 checks / 1,365 tests and GUI 1,080 checks, 0 failures; zones of mp_cinderrail_t rebuilt 02:58 (x64zt_output; 0 overlapping faces, 5 px lines, the light grid with coloured bounce); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
+  Airspace (research 121, F.14): the offline proof of iw8r_airspace (tools/airspace_build_test.py, env test
+  umbra_built_zone_airspace) showed the airspace never reached the tome. Read in the Replay exe: a camera outside the
+  tome's box fails the query (Umbra::PortalCuller::init 0x141F9FBB0, error 5), the static masks are all set
+  (R_Umbra_ResetStaticVisibilityMasks 0x1418F1EE0) and scene entities are tested against the cleared buffer
+  (R_Umbra_CullSceneEnts 0x1418CC4A0). Stock tomes reach at least 131072 from the origin (report test
+  umbra_zone_airspace_report: IW8R_TEST_GFXMAP_JSON + IW8R_TEST_AIR_PROBE=1). Fix: compile_iw8.cpp kAirspaceDefault
+  131072 (up / around / below, kAirspaceMax 524288), converter b3b21198 BuildUmbraTome unions m.cells bounds
+  (tools/patches/zt_tome_airspace.py). The custom-loot and vehicle-carry proofs compare the live converter with the
+  new one byte for byte, so they fail on the map zone until the deploy (only gfx_map umbraTomeData differs).
+  Parking state 2026-11-14 (after the airspace fix): repo at the commit after 4df7a52, converter live at b3b21198, suites core 181,805 checks / 1,368 tests and GUI 1,080 checks, 0 failures; 23 offline proofs pass; zones of mp_cinderrail_t rebuilt 09:09 with that converter (x64zt_output; its occlusion data reaches 131072 units past the map); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe and out/package/IW8RadiantSuite-20261114.zip rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
   GET /api/handles (control points of the selected patches, at most 20,000) and POST /api/vertices moves with
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.
   Web form "vision": every scalar / vector field of core vision_fields as a text field (key "v:<name>"), written
@@ -763,7 +772,8 @@
     "war"; needs a proxy change). A Fable agent is writing docs/research/76_cold_start_devmap.md (start a devmap run
     from a closed game; owner request).
   - Research 75 (killstreaks): compile_iw8.cpp writes the DPVS cell bounds grown by worldspawn iw8r_airspace
-    (default 6144 up, 2048 out); world bounds and the surface tree stay tight.
+    (default 6144 up, 2048 out until 2026-11-14; now 131072 up / around / below, research 121, and the converter
+    makes the tome cover the cell); world bounds and the surface tree stay tight.
   - OWNER CORRECTION 2026-11-11: the proxy DLL is not installed. The game runs from the recompiled
     game_dx12_ship_replay_dw.exe / _local_dw.exe (a .map and .pdb sit beside it). Research that cites the proxy source
     (03, 05, 19, 74) is unproven for it. The editor still writes .proxy\control.ini on deploy.

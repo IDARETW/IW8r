@@ -355,7 +355,8 @@ Map: `out/agent/mp_iw8r_fix1/mp_iw8r_fix1.map` (already built; Ctrl+F7, then Loc
 - [ ] Reflection probes now carry a picture of their surroundings (captured before every build): glossy surfaces
       near a probe should reflect the room, not flat grey.
 - [ ] Killstreaks: the UAV aircraft is visible in the sky, and enemies are visible from the Chopper Gunner view
-      (the visibility cell now reaches 6144 units above the map; a guess until seen).
+      (fixed 2026-11-14: the map's occlusion data now reaches as far as a stock map's, research 121; rebuild the
+      map first).
 - [ ] Editor: File > Edit Custom Material shows a live preview of the material on a sphere that follows the
       shader controls; Primitives > Scripted Objects > Make Hinged Door makes a door from the selected brush.
 - [ ] Editor: prefabs drag from the Prefabs dock into the camera, and their pictures show the models; Tools > Make

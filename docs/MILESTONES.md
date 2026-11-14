@@ -136,7 +136,7 @@ from [HANDOVER.md](HANDOVER.md) sections 4 and 5.
 - Viewport: highlights of own materials with a specular map; volumetric fog is uncalibrated and off.
 - Streamed Warzone tiles cannot be edited (the client refuses unsigned tiles).
 - A turned stock sun keeps the old sun in the baked bounce light.
-- Items the game must answer first (reverb zones, killstreak airspace, intro cameras) are listed in ROADMAP.md.
+- Items the game must answer first (reverb zones, the UAV's minimap sweep, intro cameras) are listed in ROADMAP.md.
 - Ground War scale maps are out of scope.
 
 **Original M2.1 plan (done above):** write an edited entity string back into a real IW8 fastfile. Steps:

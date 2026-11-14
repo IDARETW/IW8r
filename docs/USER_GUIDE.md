@@ -772,7 +772,10 @@ The owner's playtest of 2026-11-11 left these open. docs/ROADMAP.md (fix queue F
 - Only Team Deathmatch can be picked in the game's lobby. Other modes say the map does not support them. Live Link >
   Quick match starts other modes directly.
 - Bullet impacts look alike on every surface in game. The build tags each surface correctly; the cause is not known yet.
-- Killstreak visuals: the UAV shows no sweep or pings, and players are invisible in the chopper gunner view.
+- Killstreak visuals: the UAV shows no sweep or pings. Players were invisible in the Chopper Gunner view and the
+  UAV's aircraft was invisible; the cause was found and fixed on 2026-11-14 (rebuild the map; not seen in game yet).
+  Worldspawn `iw8r_airspace "<up> [out]"` sets how far the map's occlusion data reaches past its geometry (default
+  131072 units, as in stock maps).
 - Prefabs made of models showed as boxes, and dragging a prefab did not work. Both were changed after the second
   playtest. Not seen in game yet.
 - A ladder's bottom was not climbable in game, and the hands sat a little off the ladder. The ladder was rebuilt after

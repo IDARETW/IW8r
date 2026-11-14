@@ -68,7 +68,7 @@ None of this needs the game running:
 - `IW8Radiant.exe --gui-test tests\data\iw8_sample_room.map --out <dir>`: about 1,080 checks of the editor itself,
   the web server and its page included.
 - `tools\run_all_tests.ps1`: both of those plus a start-up test, in one run.
-- `py -3 -I tools\run_offline_proofs.py <work dir>`: 22 end-to-end proofs; all passed on the last build of 2026-11-14. Each one edits or builds a real map with the
+- `py -3 -I tools\run_offline_proofs.py <work dir>`: 23 end-to-end proofs; all passed on the last build of 2026-11-14. Each one edits or builds a real map with the
   live converter, reads the result back with ACTS, compares it with what was asked, and checks that the game's own
   loaders accept the zone (about 11 minutes).
 - Among those proofs: the light planes of a built map, read back from the zone, equal the editor's bake texel by
@@ -102,7 +102,7 @@ short list", is these in order:
   the build shader's rule, which has not been compared with the game.
 - Streamed Warzone tiles cannot be edited (a client matter, see section 2).
 - A turned stock sun keeps the old sun in the baked bounce light.
-- Items the game must answer before more work makes sense (reverb zones, killstreak airspace, intro cameras) are
+- Items the game must answer before more work makes sense (reverb zones, the UAV's minimap sweep, intro cameras) are
   listed with their state in `docs\ROADMAP.md`.
 - Ground War scale maps are out of scope.
 - The smaller points that were left on purpose, each with what is there now and why, are one table in

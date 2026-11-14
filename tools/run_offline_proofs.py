@@ -38,6 +38,7 @@ proofs = [
     ('umbra_bake_build_test', []),  # the occlusion bake of an editor map, read back from the built zone
     ('hud_image_build_test', ['--exe', exe]),  # a map's own HUD image, built through the editor with this converter
     ('map_strings_build_test', ['--exe', exe]),  # a map's own text, read back from eng_<map>
+    ('airspace_build_test', ['--exe', exe]),  # a built map's occlusion data reaches as far as a stock map's
     ('warzone_custom_loot_test', None),
     ('warzone_custom_loot_boxes_test', None),
     ('scriptable_limits_test', None),

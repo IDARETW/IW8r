@@ -400,7 +400,10 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
     offline, each "partial" in ROADMAP only for its look in the game.
   - new game types (13.6): partial (research 91): a new game type name starts and the map script shapes it; a stock
     game type script cannot be replaced by a map zone.
-  - killstreak airspace and compass (6.21 / F.14): open; research 75 found no per-map key for it. Game.
+  - killstreak airspace (6.21 / F.14): done offline (2026-11-14, research 121): the cause of the invisible players and
+    aircraft was read in the Replay exe (a camera outside the occlusion data's box), a built map's occlusion data now
+    reaches as far as a stock map's, proof `tools/airspace_build_test.py`. Game: the look. The UAV's sweep and pings
+    on the minimap stay open (no cause found offline).
   - fonts and LUI (4.27): HUD from the map script works with stock icons and, since 2026-11-14, with the map's own
     pictures (`<map name>.hud`) and the map's own text (`<map name>.str`), both proven offline; game. Own fonts and menus are not built (deferred, as the plan
     allowed: no map-zone writer for them, and nothing shows the game would use one).

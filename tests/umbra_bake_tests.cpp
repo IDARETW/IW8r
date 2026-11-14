@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <random>
@@ -255,4 +256,109 @@ TEST(umbra_bake_built_zone_reads_back) {
                 bytes.size(), rep.cells, rep.portals, tome.objectCount(), rep.userIdsByClass[0], rep.userIdsByClass[1], rep.viewLeaves,
                 rep.multiCellViewLeaves, queries, queries ? 100.0 * double(seen) / double(queries * tome.objectCount()) : 0.0);
     CHECK(queries > 0 && rep.multiCellViewLeaves == 0);
+}
+
+// The airspace of a built map (ROADMAP F.14 / 6.21, research 75): aircraft and their cameras fly above the map, and
+// the game draws from a camera only what the occlusion data of its cell holds. Read back from a built zone (set
+// IW8R_TEST_GFXMAP_JSON to its ACTS gfx_map export, IW8R_TEST_AIR_INSIDE and IW8R_TEST_AIR_OUTSIDE to points as
+// "x y z;x y z"; skipped without them): a point given as inside lies in a cell and sees the map's objects from there;
+// a point given as outside lies in none.
+TEST(umbra_built_zone_airspace) {
+    const char* path = std::getenv("IW8R_TEST_GFXMAP_JSON");
+    const char* inside = std::getenv("IW8R_TEST_AIR_INSIDE");
+    const char* outside = std::getenv("IW8R_TEST_AIR_OUTSIDE");
+    if (!path || !*path || !inside || !outside) return;
+    std::vector<uint8_t> bytes;
+    std::string err;
+    CHECK(extractUmbraTomeFromGfxMapJson(path, bytes, &err));
+    UmbraTome tome;
+    CHECK(tome.parse(bytes, &err));
+    if (tome.cells().empty()) {
+        std::printf("  airspace: %s\n", err.c_str());
+        return;
+    }
+    const auto points = [](const char* text) {
+        std::vector<std::array<float, 3>> out;
+        const char* p = text;
+        while (*p) {
+            std::array<float, 3> v{};
+            int used = 0;
+            if (std::sscanf(p, "%f %f %f%n", &v[0], &v[1], &v[2], &used) == 3) out.push_back(v);
+            p += used;
+            while (*p && *p != ';') ++p;
+            if (*p == ';') ++p;
+            if (used == 0 && !*p) break;
+        }
+        return out;
+    };
+    size_t in = 0, inSeeing = 0, out = 0, outFree = 0, seenFromAir = 0;
+    for (const auto& p : points(inside)) {
+        ++in;
+        const bool inCell = !tome.cellsAt(p.data()).empty();
+        const UmbraVisibility v = visibleFrom(tome, p[0], p[1], p[2]);
+        const bool sees = v.status == UmbraQueryStatus::Ok && !v.objects.empty();
+        if (inCell && sees) ++inSeeing;
+        seenFromAir = std::max(seenFromAir, v.objects.size());
+        if (!inCell || !sees)
+            std::printf("  airspace: the point %.0f %.0f %.0f is %s a cell and sees %zu object(s)\n", p[0], p[1], p[2], inCell ? "in" : "outside", v.objects.size());
+    }
+    for (const auto& p : points(outside)) {
+        ++out;
+        if (tome.cellsAt(p.data()).empty()) ++outFree;
+        else std::printf("  airspace: the point %.0f %.0f %.0f was expected outside every cell and is in one\n", p[0], p[1], p[2]);
+    }
+    std::printf("  airspace: %zu of %zu air point(s) are in a cell and see the map (%zu of %u objects from the air), %zu of %zu far point(s) are outside\n",
+                inSeeing, in, seenFromAir, tome.objectCount(), outFree, out);
+    CHECK(in + out > 0);
+    CHECK(inSeeing == in);
+    CHECK(outFree == out);
+}
+
+// How far a zone's occlusion data reaches above and beside what it holds (research 75 / 121): set
+// IW8R_TEST_GFXMAP_JSON and IW8R_TEST_AIR_PROBE=1. Prints the tome's box, the box of its objects, and up to which
+// height above the objects' top, and how far beside them, a point still lies in a cell. A report, not a check.
+TEST(umbra_zone_airspace_report) {
+    const char* path = std::getenv("IW8R_TEST_GFXMAP_JSON");
+    const char* probe = std::getenv("IW8R_TEST_AIR_PROBE");
+    if (!path || !*path || !probe || !*probe) return;
+    std::vector<uint8_t> bytes;
+    std::string err;
+    UmbraTome tome;
+    if (!extractUmbraTomeFromGfxMapJson(path, bytes, &err) || !tome.parse(bytes, &err)) {
+        std::printf("  airreport: %s\n", err.c_str());
+        return;
+    }
+    float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
+    uint32_t counted = 0;
+    for (uint32_t o = 0; o < tome.objectCount(); ++o) {
+        uint32_t first = 0, count = 0;
+        tome.objectUserIds(o, first, count);
+        const uint32_t cls = count ? (tome.userId(first) >> 28) & 7 : 7;
+        if (cls > 1) continue;  // world surfaces and static models: the map's geometry
+        float mn[3], mx[3];
+        tome.objectBounds(o, mn, mx);
+        bool finite = true;
+        for (int k = 0; k < 3; ++k) finite = finite && std::isfinite(mn[k]) && std::isfinite(mx[k]) && mx[k] - mn[k] < 60000.0f;
+        if (!finite) continue;
+        ++counted;
+        for (int k = 0; k < 3; ++k) lo[k] = std::min(lo[k], mn[k]), hi[k] = std::max(hi[k], mx[k]);
+    }
+    const UmbraTomeHeader& h = tome.header();
+    std::printf("  airreport: tome box %.0f %.0f %.0f .. %.0f %.0f %.0f; %u geometry object(s) in %.0f %.0f %.0f .. %.0f %.0f %.0f\n",
+                h.treeMin[0], h.treeMin[1], h.treeMin[2], h.treeMax[0], h.treeMax[1], h.treeMax[2], counted, lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]);
+    if (!counted) return;
+    const float mid[3] = {(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2};
+    float topInCell = -1, sideInCell = -1;
+    for (float up = 250; up <= 40000; up += 250) {
+        const float p[3] = {mid[0], mid[1], hi[2] + up};
+        if (!tome.cellsAt(p).empty()) topInCell = up;
+    }
+    for (float out = 250; out <= 40000; out += 250) {
+        const float p[3] = {hi[0] + out, mid[1], hi[2] + 100};
+        if (!tome.cellsAt(p).empty()) sideInCell = out;
+    }
+    std::printf("  airreport: a point above the middle is in a cell up to %.0f units above the geometry; beside it (+x, just above the top) up to %.0f units\n",
+                topInCell, sideInCell);
+    std::printf("  airreport: tome box above the geometry's top %.0f, below its bottom %.0f, beside it x %.0f / %.0f, y %.0f / %.0f\n",
+                h.treeMax[2] - hi[2], lo[2] - h.treeMin[2], lo[0] - h.treeMin[0], h.treeMax[0] - hi[0], lo[1] - h.treeMin[1], h.treeMax[1] - hi[1]);
 }

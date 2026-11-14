@@ -2246,3 +2246,63 @@ TEST(compile_iw8_rebuild_drops_removed_hud_images_and_text) {
     for (const std::string& w : fourth.warnings) said = said || w.find("cannot be read") != std::string::npos;
     CHECK(said);
 }
+
+// F.14 / 6.21, research 121: the one visibility cell reaches above, around and below the map (aircraft and their
+// cameras fly there; the converter makes the occlusion data cover it);
+// worldspawn iw8r_airspace "<up> [out]" sets how far, "0" keeps the cell at the geometry, nonsense is said.
+TEST(compile_iw8_airspace_cell) {
+    const auto cellOf = [&](const char* key, std::vector<std::string>* warnings) {
+        std::string text = roomMapText();
+        if (key) {
+            const std::string ws = "\"classname\" \"worldspawn\"";
+            text.insert(text.find(ws) + ws.size(), std::string("\n\"iw8r_airspace\" \"") + key + "\"");
+        }
+        Id next = 1;
+        ParseResult pr = parseMap(text, next);
+        std::array<double, 12> out{};  // world mins, maxs, cell mins, maxs
+        if (!pr.map) return out;
+        const std::string dir = scratch(std::string("airspace_") + (key ? key : "default"));
+        CompileOptions opt;
+        opt.mapId = "mp_room";
+        CompileReport rep;
+        std::string err;
+        if (!compileIw8Extraction(*pr.map, dir, opt, rep, &err)) return out;
+        if (warnings) *warnings = rep.warnings;
+        const std::string world = readAll((fs::path(dir) / "extracted" / "maps" / "mp" / "mp_room.d3dbsp.replay-world.json").string());
+        const auto six = [&](const std::string& anchor, double* v) {
+            const size_t at = world.find(anchor);
+            if (at == std::string::npos) return;
+            std::sscanf(world.c_str() + at + anchor.size(), "[[%lf,%lf,%lf],[%lf,%lf,%lf]]", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]);
+        };
+        six("\"cells\":[{\"bounds\":", &out[6]);
+        for (int k = 0; k < 3; ++k) out[size_t(k)] = rep.bounds.mins[k], out[size_t(3 + k)] = rep.bounds.maxs[k];
+        return out;
+    };
+    const auto def = cellOf(nullptr, nullptr);
+    // The reach of a stock map's occlusion data: 131072 up, around and below.
+    for (int k = 0; k < 3; ++k) {
+        CHECK(std::fabs(def[size_t(6 + k)] - (def[size_t(k)] - 131072)) < 1e-6);
+        CHECK(std::fabs(def[size_t(9 + k)] - (def[size_t(3 + k)] + 131072)) < 1e-6);
+    }
+    const auto off = cellOf("0", nullptr);
+    for (int k = 0; k < 6; ++k) CHECK(std::fabs(off[size_t(6 + k)] - off[size_t(k)]) < 1e-6);
+    // Up, then around and below.
+    const auto own = cellOf("1000 500", nullptr);
+    CHECK(std::fabs(own[11] - (own[5] + 1000)) < 1e-6 && std::fabs(own[9] - (own[3] + 500)) < 1e-6 && std::fabs(own[6] - (own[0] - 500)) < 1e-6);
+    CHECK(std::fabs(own[8] - (own[2] - 500)) < 1e-6);
+    const auto upOnly = cellOf("3000", nullptr);
+    CHECK(std::fabs(upOnly[11] - (upOnly[5] + 3000)) < 1e-6 && std::fabs(upOnly[9] - (upOnly[3] + 131072)) < 1e-6);
+    // Larger than the game's cell coordinates stay useful for: cut to 524288 and said.
+    std::vector<std::string> bigWarnings;
+    const auto big = cellOf("9000000", &bigWarnings);
+    CHECK(std::fabs(big[11] - (big[5] + 524288)) < 1e-6);
+    bool bigSaid = false;
+    for (const std::string& w : bigWarnings) bigSaid = bigSaid || w.find("larger than 524288") != std::string::npos;
+    CHECK(bigSaid);
+    std::vector<std::string> warnings;
+    const auto bad = cellOf("high", &warnings);
+    CHECK(std::fabs(bad[11] - (bad[5] + 131072)) < 1e-6);
+    bool said = false;
+    for (const std::string& w : warnings) said = said || w.find("iw8r_airspace 'high' not understood") != std::string::npos;
+    CHECK(said);
+}

@@ -1602,11 +1602,12 @@
         },
         "iw8r_airspace": {
           "type": "string",
-          "default": "6144 2048",
-          "description": "How far the map's visibility cell reaches above (first number) and around (second number) the map's geometry, in units. Aircraft killstreaks and their cameras fly there; with a cell that ends at the geometry they were not drawn. \"0\" keeps the tight cell.",
+          "default": "131072 131072",
+          "description": "How far the map's visibility cell and occlusion data reach above (first number) and around and below (second number) the map's geometry, in units. Aircraft killstreaks and their cameras fly there; from a camera outside it the game draws no players or vehicles. The default is the reach of a stock map's occlusion data. \"0\" keeps the tight cell.",
           "required": false,
           "examples": [
-            "6144 2048",
+            "131072 131072",
+            "16384 8192",
             "0"
           ]
         },

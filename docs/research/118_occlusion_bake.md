@@ -28,7 +28,9 @@ hides. It is **off by default** (worldspawn `iw8r_umbra_bake 1`, Compile > Occlu
   quanta). Their faces move inward to a grid of about 4 units, so a wall is never thicker in the
   tome than in the map.
 - **A camera is never without a cell.** The view tree covers the tile's cube; a leaf inside a wall or outside the
-  map lists the nearest cell (INFERRED need: what the game does for a point with no cell is not known).
+  map lists the nearest cell. What the game does for a camera with no cell is known since research 121: the query
+  fails, the static map is drawn in full and no player or vehicle is drawn. The scene box the bake gets now includes
+  the map's airspace (131072 units by default), so the air above and around a map is cells too.
 - **Fallbacks.** No occluder, or a bake that fails: the one-cell tome. More cells than the limit (4096): the smaller
   occluders are left out.
 

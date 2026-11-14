@@ -5,6 +5,20 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Killstreak views on a built map: the cause was found and fixed** (research 121). In the playtest of
+  2026-11-11 players were invisible from the Chopper Gunner and the UAV's aircraft was invisible. Read in the game's
+  code: when a camera is outside the box of a map's occlusion data, the game draws the whole static map but no
+  player, vehicle or other moving object. Every stock map's occlusion data reaches at least 131,072 units from the
+  map's origin, above and below; a built map's ended at its walls.
+  - The earlier attempt (2026-11-12, `iw8r_airspace`) grew a different structure and never reached the occlusion
+    data. Writing its offline proof showed that: 0 of 3 points above a built map were covered.
+  - A built map now gets the reach of a stock map: 131,072 units above, around and below its geometry. Worldspawn
+    `iw8r_airspace "<up> [out]"` changes it; `"0"` gives the old tight box.
+  - Converter (x64-zt `b3b21198`, deployed): the occlusion data covers the map's visibility cell, with and
+    without the occlusion bake.
+  - New offline proof `tools/airspace_build_test.py` (four builds read back from their zones; 23 proofs in the set)
+    and core tests. Not seen in game.
+
 - **The build's script check no longer rejects ordinary scripts.** A map script that called one of its own
   functions on an entity (`player give_kit();`, everyday GSC) was stopped before the build with "unknown method".
   Only a name that is neither a game function nor defined in the script is an error now.
