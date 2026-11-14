@@ -692,7 +692,9 @@ one undo history, and each side sees the other's edits at once.
   has the editing, build and F5 settings (asset folders and the F5 host command are set at the editor only). The
   Atmosphere form also takes vision overrides (`name=value; name=x y z`). Edit > Surface edits the texture of the
   selected brushes (size, offsets, rotation, lightmap scale, Fit / Natural / Justify); Apply keeps the form open and
-  shows the result.
+  shows the result. View > Layers shows and hides layers, selects a layer's brushes and moves the selection to a
+  layer. Compile > Compile Options and Build Budget has the map id, the build switches and the last build's figures
+  against their limits.
 - **View box.** Top, Front and Side are drawn in the browser (drag to pan or move the selection, wheel to zoom,
   click to select). **3D** is a simple view drawn in the browser. **Editor view (live)** is the editor's own camera
   picture, drawn by the editor for your browser: drag to look, W A S D and Q E to fly (Shift is faster), wheel to
@@ -704,6 +706,9 @@ one undo history, and each side sees the other's edits at once.
 - **Entities.** Type a class under the entity list and press Place: a point entity of that class, on the surface at
   the centre of the live view or at the 2D view's centre. The Inspector shows what the class is, each key's help
   (hover the key; required keys are marked), suggests the class's keys, and lists what Check Map says about it.
+- **Vertices and edges.** Tool in the toolbar: with Vertices or Edges, the selected brushes show a handle on every
+  corner or edge of a Top, Front or Side view. Drag a handle: every corner under it moves, so the faces stay flat. A
+  move the brush cannot take is refused with the reason in the status line. Patches are shaped at the editor.
 - **Panels.** Entities (with a filter), the Inspector (edit, add and remove keys), Assets (click a material to apply
   it, a model, effect, sound or prefab to place it; prefabs land in front of the live view; the round "i" button
   shows the info text of a material, model or effect) and the Log. In the live editor view an asset is placed on the surface

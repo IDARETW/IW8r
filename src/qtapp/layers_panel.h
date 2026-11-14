@@ -2,6 +2,7 @@
 // `layer "NAME"` lines), per-layer visibility, select contents, move the selection to a layer, new layer.
 #pragma once
 
+#include <vector>
 #include <QWidget>
 #include <set>
 #include <string>
@@ -23,6 +24,13 @@ public:
     size_t selectLayer(const QString& layer);
     bool moveSelectionToLayer(const QString& layer);  // declares the layer when needed; one undo step
     bool newLayer(const QString& name);
+    // The dock's rows: "(no layer)" first, then every declared or used layer.
+    struct Row {
+        QString name;
+        size_t count = 0;  // primitives in the layer
+        bool visible = true;
+    };
+    std::vector<Row> rows() const;
 
 public slots:
     void refresh();

@@ -52,8 +52,9 @@ be replaced (the client refuses unsigned tiles), so edits live in the main map z
 **Occlusion (optional).** Compile > Occlusion bake gives your map cells and portals so the game skips what is behind
 walls. Off by default; View > Umbra Visibility shows what a stock map's own occlusion data hides.
 
-**From a browser.** Tools > Web Server: the editor's menus, eight dialogs as forms, the editor's own 3D picture with
-fly controls, drawing and resizing brushes, placing assets, prefabs and entities, the inspector with key help.
+**From a browser.** Tools > Web Server: the editor's menus, ten dialogs and docks as forms, the editor's own 3D picture with
+fly controls, drawing, resizing and reshaping brushes (corner and edge handles), placing assets, prefabs and
+entities, the inspector with key help.
 
 ## 3. How it was proven
 
@@ -87,7 +88,7 @@ short list", is these in order:
 
 ## 5. Not built, or built in part
 
-- Web page: vertex, edge and face tools; the full Vision Editor and the compile options as forms.
+- Web page: patch vertex editing; the full Vision Editor (vision overrides by name are in the Atmosphere form).
 - Occlusion: occluders that are not boxes; local updates of a stock map's occlusion data (removing stock geometry
   opens the whole map's occlusion).
 - Viewport: highlights of your own materials that have a specular map; volumetric fog is uncalibrated and off.

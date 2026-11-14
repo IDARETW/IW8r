@@ -2066,10 +2066,78 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 const QJsonObject sun = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=sunSky", {}, true, {}).body).object();
                 QStringList sunKeys;
                 for (const QJsonValue& f : sun.value("fields").toArray()) sunKeys << f.toObject().value("key").toString() + ":" + f.toObject().value("type").toString();
-                r.check(forms.size() == 8 && sun.value("title").toString() == "Sun & Sky" &&
+                r.check(forms.size() == 10 && sun.value("title").toString() == "Sun & Sky" &&
                             sunKeys == QStringList({"pitch:number", "yaw:number", "color:color", "sky:text"}) &&
                             fweb.handle("GET", "/api/form?id=nothing", {}, true, {}).status == 404,
                         "GET /api/forms lists the forms and GET /api/form gives a form's fields with the map's values");
+                {
+                    // Compile options: the dock's map id and switches, and the Build Budget as a report.
+                    const QString idWas = w.compilePanel()->mapId();
+                    const bool typedWas = w.compilePanel()->mapIdTyped();
+                    const size_t undoC = ctx.doc.undoPosition();
+                    const QJsonObject cf = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=compile", {}, true, {}).body).object();
+                    QStringList ckeys;
+                    QString budgetText;
+                    for (const QJsonValue& f : cf.value("fields").toArray()) {
+                        ckeys << f.toObject().value("key").toString();
+                        if (f.toObject().value("key").toString() == "budget") budgetText = f.toObject().value("value").toString();
+                    }
+                    const auto setC = fweb.handle("POST", "/api/form", "{\"id\":\"compile\",\"values\":{\"mapId\":\"mp_webform\",\"occlusionBake\":true}}", true, {});
+                    const bool idSet = w.compilePanel()->mapId() == "mp_webform";
+                    const bool occOn = key("iw8r_umbra_bake") == "1";
+                    const auto* occBox = w.compilePanel()->findChild<QCheckBox*>("compileOcclusionBake");
+                    const bool boxOn = occBox && occBox->isChecked();
+                    const auto badId = fweb.handle("POST", "/api/form", "{\"id\":\"compile\",\"values\":{\"mapId\":\"Bad Id!\",\"occlusionBake\":false}}", true, {});
+                    const bool kept = key("iw8r_umbra_bake") == "1" && w.compilePanel()->mapId() == "mp_webform";
+                    while (ctx.doc.undoPosition() > undoC) ctx.doc.undo();
+                    ctx.documentEdited();
+                    w.compilePanel()->setMapId(idWas, typedWas);
+                    r.check(ckeys.contains("mapId") && ckeys.contains("stockTextures") && ckeys.contains("bakeLightmaps") && ckeys.contains("occlusionBake") &&
+                                !budgetText.isEmpty() && setC.status == 200 && idSet && occOn && boxOn && badId.status == 400 && kept &&
+                                key("iw8r_umbra_bake") == "(none)" && w.compilePanel()->mapId() == idWas,
+                            QString("the Compile form sets the map id and the build switches and shows the Build Budget (%1)").arg(budgetText.section('\n', 0, 0)));
+                }
+                {
+                    // Layers: show / hide, select, move the selection, declare. Hidden layers leave the scene (and the web map).
+                    ctx.doc.deselectAll();
+                    ctx.documentEdited();
+                    const size_t undoL = ctx.doc.undoPosition();
+                    const QJsonObject lf = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=layers", {}, true, {}).body).object();
+                    QStringList lkeys;
+                    for (const QJsonValue& f : lf.value("fields").toArray()) lkeys << f.toObject().value("key").toString();
+                    const std::vector<LayersPanel::Row> rows0 = w.layersPanel()->rows();
+                    QString busy;  // a layer that holds primitives
+                    for (const LayersPanel::Row& row : rows0)
+                        if (busy.isEmpty() && row.count > 0) busy = row.name;
+                    ctx.scene.sync(ctx.doc);
+                    const size_t shown0 = ctx.scene.items().size();
+                    const auto hide = fweb.handle("POST", "/api/form", QString("{\"id\":\"layers\",\"values\":{\"show:%1\":false}}").arg(busy).toUtf8(), true, {});
+                    ctx.scene.sync(ctx.doc);
+                    const size_t shown1 = ctx.scene.items().size();
+                    bool listedHidden = false;
+                    for (const LayersPanel::Row& row : w.layersPanel()->rows()) listedHidden = listedHidden || (row.name == busy && !row.visible);
+                    fweb.handle("POST", "/api/form", QString("{\"id\":\"layers\",\"values\":{\"show:%1\":true}}").arg(busy).toUtf8(), true, {});
+                    ctx.scene.sync(ctx.doc);
+                    const size_t shown2 = ctx.scene.items().size();
+                    const auto sel = fweb.handle("POST", "/api/form", QString("{\"id\":\"layers\",\"values\":{\"select\":\"%1\"}}").arg(busy).toUtf8(), true, {});
+                    const size_t selected = ctx.doc.selection().size();
+                    const auto mv = fweb.handle("POST", "/api/form", "{\"id\":\"layers\",\"values\":{\"moveTo\":\"web_layer\"}}", true, {});
+                    bool moved = false;
+                    for (const LayersPanel::Row& row : w.layersPanel()->rows()) moved = moved || (row.name == "web_layer" && row.count == selected);
+                    const bool oneStep = ctx.doc.undoPosition() == undoL + 1;
+                    const auto badShow = fweb.handle("POST", "/api/form", "{\"id\":\"layers\",\"values\":{\"show:no such layer\":false}}", true, {});
+                    const auto badName = fweb.handle("POST", "/api/form", "{\"id\":\"layers\",\"values\":{\"newLayer\":\"a\\\"b\"}}", true, {});
+                    while (ctx.doc.undoPosition() > undoL) ctx.doc.undo();
+                    ctx.doc.deselectAll();
+                    ctx.documentEdited();
+                    bool gone = true;
+                    for (const LayersPanel::Row& row : w.layersPanel()->rows()) gone = gone && row.name != "web_layer";
+                    r.check(lkeys.contains("show:" + busy) && lkeys.contains("select") && lkeys.contains("moveTo") && !busy.isEmpty() && hide.status == 200 &&
+                                shown1 < shown0 && listedHidden && shown2 == shown0 && sel.status == 200 && selected > 0 && mv.status == 200 && moved && oneStep &&
+                                badShow.status == 400 && badName.status == 400 && gone,
+                            QString("the Layers form hides a layer (%1 of %2 items left), selects it (%3) and moves the selection to a new layer in one undo step [%4%5%6%7%8%9]")
+                                .arg(shown1).arg(shown0).arg(selected).arg(listedHidden).arg(shown2 == shown0).arg(moved).arg(oneStep).arg(badShow.status == 400 && badName.status == 400).arg(gone));
+                }
                 {
                     // Surface: the Surface panel's fields on the selection. Nothing selected = nothing to edit.
                     ctx.doc.deselectAll();
@@ -2337,6 +2405,34 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             r.check(rs.status == 200 && grown.valid() && std::fabs(grown.mins.x - 4096) < 0.01 && std::fabs(grown.maxs.x - 4224) < 0.01 &&
                         std::fabs(grown.maxs.y - 4224) < 0.01,
                     QString("POST /api/resize scales the selection along one axis about the pivot (x %1 .. %2)").arg(grown.mins.x).arg(grown.maxs.x));
+            {
+                // Corners: the upright edge at (4224, 4224) moves 64 units along x in one undo step; lifting one
+                // corner of the flat top is refused and changes nothing.
+                const size_t undoV = ctx.doc.undoPosition();
+                const QString body = QString("{\"moves\":[{\"e\":%1,\"i\":%2,\"from\":[[4224,4224,0],[4224,4224,64]]}],\"d\":[64,0,0]}").arg(be).arg(bi);
+                const auto mvv = web.handle("POST", "/api/vertices", body.toUtf8(), true, {});
+                ctx.scene.sync(ctx.doc);
+                AABB sheared;
+                for (const auto* g : ctx.scene.items())
+                    if (g->ref.entity == be && g->ref.item == bi) sheared = g->bounds;
+                const bool one = ctx.doc.undoPosition() == undoV + 1;
+                const QString lift = QString("{\"moves\":[{\"e\":%1,\"i\":%2,\"from\":[[4096,4096,64]]}],\"d\":[0,0,32]}").arg(be).arg(bi);
+                const auto bad = web.handle("POST", "/api/vertices", lift.toUtf8(), true, {});
+                const QString off = QString("{\"moves\":[{\"e\":%1,\"i\":%2,\"from\":[[1,2,3]]}],\"d\":[8,0,0]}").arg(be).arg(bi);
+                const auto notCorner = web.handle("POST", "/api/vertices", off.toUtf8(), true, {});
+                const bool kept = ctx.doc.undoPosition() == undoV + 1;
+                ctx.doc.undo();
+                ctx.documentEdited();
+                ctx.scene.sync(ctx.doc);
+                AABB restored;
+                for (const auto* g : ctx.scene.items())
+                    if (g->ref.entity == be && g->ref.item == bi) restored = g->bounds;
+                const auto pageV = web.handle("GET", "/app.js", {}, true, {});
+                r.check(mvv.status == 200 && one && sheared.valid() && std::fabs(sheared.maxs.x - 4288) < 0.01 && std::fabs(sheared.mins.x - 4096) < 0.01 &&
+                            bad.status == 400 && notCorner.status == 400 && kept && std::fabs(restored.maxs.x - 4224) < 0.01 &&
+                            pageV.body.contains("/api/vertices") && pageV.body.contains("shapeHandles"),
+                        QString("POST /api/vertices moves brush corners as one undo step and refuses a move that breaks the brush (x max %1)").arg(sheared.maxs.x));
+            }
             const auto badBrush = web.handle("POST", "/api/brush", "{\"mins\":[0,0,0],\"maxs\":[0,64,64]}", true, {});
             const auto badResize = web.handle("POST", "/api/resize", "{\"axis\":5,\"factor\":2,\"pivot\":[0,0,0]}", true, {});
             r.check(badBrush.status == 400 && badResize.status == 400, "a flat brush and a bad resize are refused");

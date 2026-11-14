@@ -14,7 +14,15 @@
   forms may set "reload" (the page reads the form again after Apply), GET /api/assetinfo?kind=&name= (hook assetInfo,
   showMaterialInfo / showModelInfo / showEffectInfo with show = false; names with a path are refused). The page takes
   scripts, pictures and links out of that HTML before showing it.
-  Open on the web list: compile options and Build Budget as a form, vertex and edge tools.
+  Then: POST /api/vertices {moves:[{e,i,from:[[x,y,z]..]}], d} (brushes only; each point is matched to the nearest
+  corner within 0.5 units; moveBrushVerts is tried on every brush first, so the request is all or nothing, then
+  moveVertexHandles makes the one undo step). Page: #editMode, shapeHandles / shapeHandleAt / shapeOffset in app.js;
+  handles merge corners with the same 2D position over all selected brushes. Patches have no web vertex tool.
+  Then: forms "layers" (LayersPanel::rows / setLayerVisible / selectLayer / moveSelectionToLayer / newLayer; rows()
+  reads hiddenLayers_, and setLayerVisible now also sets the row's tick) and "compile" (CompilePanel::setMapId, the
+  three check boxes by object name, budgetGauges / budgetWarnings of <build root>/last_build_report.json as a report).
+  The web list of plan 3.3 / 3.4 is done except: the full Vision Editor (218 fields; overrides by name are in the
+  Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder
   boxes -> free boxes = cells, portals = shared rectangles both ways, per-cell object lists by real box, objects keep
   scene-sized bounds, a midpoint view tree with one cell per leaf and the nearest cell for solid / outside; a tree
@@ -670,7 +678,7 @@
   - CLIENT BUILD STATE (2026-11-11 evening). Owner: "we should be updating game_dx12_ship_replay_local_dw.exe, the
     droplet is down and we dont need to publish anything there". tools/dw_candidate_build.py gets through prepare
     (job E:\DW\IW8\data\dw-client\jobs\1794440667375391600 is prepared and kept) and then stops at the start of the
-    build: "Configured codec tool is unavailable: C:\Users\user\AppData\Local\ReplayCompilerWorkstation\
+    build: "Configured codec tool is unavailable: %LOCALAPPDATA%\ReplayCompilerWorkstation\
     script-source-packs\mw169_mp_frontendc3s5\manifest.json" (sha256 86dd0e83... in compiler-base
     replay-project.local.json). That folder is an owner-supplied pack; AppData\Local last changed on 2026-11-08 16:10,
     so it went then (not found on C:, D:\offload or E:). NEXT: when the owner has put it back, run
@@ -684,7 +692,7 @@
     it is bySlot.) Tests: core 1078 / 0.
   - CLIENT BUILD: the pack was never missing. Builds run from the Codex app see AppData\Local through its package
     folder (...\Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local). From this session a junction
-    C:\Users\user\AppData\Local\ReplayCompilerWorkstation -> that folder is needed while building; remove it after
+    %LOCALAPPDATA%\ReplayCompilerWorkstation -> that folder is needed while building; remove it after
     (cmd /c rmdir, never a recursive delete). Link error fixed: data globals that are not in the linker catalog
     must be declared as gl_<older-build VA> (DW_MapDebug.cpp). The pipeline can also stop with "SQLite committed
     while checking snapshot reuse" when another tool writes the analysis database: just run it again.
@@ -1249,7 +1257,7 @@ iw8r compile <map> -o <dir> --map <id> [--materials <dir>]... [--models <dir>]..
 - Never write into `E:\IW8\Builds\1.20-replay` from tools or tests. Deploy and Launch are owner-triggered. Test deploys use
   a scratch folder.
 - E: has under 5 GB free. x64-zt output, the material cache and custom assets of untitled maps live under
-  `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\`.
+  `%LOCALAPPDATA%\IW8 Radiant Suite\IW8 Radiant Suite\`.
 - x64-zt repo `E:\mw124\x64-zt` is shared with another Claude session ("IW8 ZoneTool"):
   - Do branch work in a separate worktree only.
   - No AI co-author trailer (its AGENTS.md).

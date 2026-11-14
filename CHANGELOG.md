@@ -5,6 +5,18 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Web: Layers, and Compile Options with the Build Budget.** View > Layers in the web page shows or hides a layer
+  (the page's views follow), selects a layer's brushes and patches, moves the selection to a layer and declares a new
+  one. Compile > Compile Options and Build Budget has the map id, the three build switches (stock textures, bake
+  lightmaps, occlusion bake) and the last build's figures against their limits. A layer hidden from the page also
+  unticks its row in the editor's Layers dock. Checked in a real browser on a built map.
+
+- **Web: vertex and edge tools.** The web page's toolbar has Tool: Move / resize, Vertices, Edges. With Vertices or
+  Edges the selected brushes show a handle on every corner or edge of the 2D view; dragging one moves every corner
+  under it (a corner handle in the Top view is the whole upright edge, an edge handle is the whole side), with a live
+  preview, snapped to the grid, as one undo step. A move that would leave a brush that is not convex is refused and
+  nothing changes. Checked in a real browser with the mouse.
+
 - **Web: Surface form and asset info.** Edit > Surface in the web page edits the texture of the selected brushes:
   width, height, offsets, rotation, lightmap scale, and Fit / Natural / Justify, as one undo step; after Apply the
   fields show the result. Each material, model and effect in the Assets panel has an info button with the text of the

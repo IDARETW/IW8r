@@ -26,6 +26,8 @@
 #include <QPasswordDigestor>
 
 #include "brush_tools.h"
+#include "patch_ops.h"
+#include "patch_tools.h"
 #include "entity_defs.h"
 #include "find_dialog.h"
 #include "editor_context.h"
@@ -698,6 +700,45 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
                 return error(400, "a brush is at least 1 unit on every side and inside the map's limits");
         if (!createBoxBrush(*ctx_, box)) return error(400, "the brush could not be made (no worldspawn?)");
         ctx_->documentEdited("Brush created from the browser");
+    } else if (path == "/api/vertices") {
+        // {moves: [{e, i, from: [[x, y, z], ...]}], d: [x, y, z]}: the named corners of those brushes move by d.
+        const QJsonArray d = in.value("d").toArray(), moves = in.value("moves").toArray();
+        if (d.size() != 3 || moves.isEmpty() || moves.size() > 256) return error(400, "need moves:[{e,i,from:[[x,y,z],...]}] and d:[x,y,z]");
+        const Vec3 delta{d[0].toDouble(), d[1].toDouble(), d[2].toDouble()};
+        if (!(length(delta) > 1e-6) || !(length(delta) < 262144)) return error(400, "d is the distance to move: not 0, and inside the map");
+        std::vector<VertexHandle> handles;
+        for (const QJsonValue& mv : moves) {
+            const QJsonObject m = mv.toObject();
+            const Id e = Id(m.value("e").toDouble(-1)), i = Id(m.value("i").toDouble(-1));
+            const EntityItem* it = ctx_->doc.findItem(e, i);
+            const Primitive* prim = it ? it->prim() : nullptr;
+            if (!prim || prim->kind != PrimKind::Brush) return error(400, "corners are moved on brushes only");
+            const std::vector<Vec3> corners = brushVertices(*prim);
+            std::vector<Vec3> from;
+            for (const QJsonValue& pv : m.value("from").toArray()) {
+                const QJsonArray p = pv.toArray();
+                if (p.size() != 3) return error(400, "a corner is [x,y,z]");
+                const Vec3 want{p[0].toDouble(), p[1].toDouble(), p[2].toDouble()};
+                const Vec3* best = nullptr;
+                for (const Vec3& c : corners)
+                    if (!best || length(c - want) < length(*best - want)) best = &c;
+                if (!best || length(*best - want) > 0.5) return error(400, "a point is not a corner of that brush");
+                bool seen = false;
+                for (const Vec3& f : from) seen = seen || length(f - *best) < 1e-9;
+                if (!seen) from.push_back(*best);
+            }
+            if (from.empty()) return error(400, "a move names at least one corner");
+            // All or nothing: one brush that cannot take the move stops the whole request.
+            if (!moveBrushVerts(*prim, from, delta, ctx_->doc.eol()))
+                return error(400, "this move would leave a brush that is not convex, or a face that is not flat");
+            for (const Vec3& f : from) {
+                VertexHandle h;
+                h.pos = f, h.entity = e, h.item = i;
+                handles.push_back(h);
+            }
+        }
+        if (!moveVertexHandles(*ctx_, handles, delta)) return error(400, "nothing was moved");
+        ctx_->documentEdited("Corners moved from the browser");
     } else if (path == "/api/resize") {
         const int axis = in.value("axis").toInt(-1);
         const double factor = in.value("factor").toDouble(0);

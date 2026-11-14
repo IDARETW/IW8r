@@ -426,6 +426,14 @@ void CompilePanel::refreshMapId() {
 
 QString CompilePanel::mapId() const { return sanitizeMapId(mapId_->text()); }
 
+bool CompilePanel::setMapId(const QString& id, bool typed) {
+    const QString want = id.trimmed();
+    if (want.isEmpty() || sanitizeMapId(want) != want) return false;
+    mapId_->setText(want);
+    userEditedId_ = typed;
+    return true;
+}
+
 void CompilePanel::syncBakeLightmaps() {
     if (!bakeLightmaps_) return;
     const Entity* w = ctx_->doc.worldspawn();

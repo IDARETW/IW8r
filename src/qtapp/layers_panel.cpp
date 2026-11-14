@@ -76,6 +76,17 @@ QStringList LayersPanel::layerNames() const {
     return out;
 }
 
+std::vector<LayersPanel::Row> LayersPanel::rows() const {
+    std::vector<Row> out;
+    for (int r = 0; r < table_->rowCount(); ++r) {
+        const QTableWidgetItem* name = table_->item(r, 0);
+        const QTableWidgetItem* count = table_->item(r, 1);
+        if (!name) continue;
+        out.push_back({name->text(), count ? size_t(count->data(Qt::DisplayRole).toULongLong()) : 0, hiddenLayers_.count(name->text().toStdString()) == 0});
+    }
+    return out;
+}
+
 void LayersPanel::refresh() {
     std::map<std::string, size_t> counts;
     for (const auto& d : declaredLayers(ctx_->doc.map().header)) counts[d.name];
@@ -127,6 +138,11 @@ void LayersPanel::applyVisibility() {
 void LayersPanel::setLayerVisible(const QString& layer, bool visible) {
     if (visible) hiddenLayers_.erase(layer.toStdString());
     else hiddenLayers_.insert(layer.toStdString());
+    const bool was = filling_;
+    filling_ = true;  // the row follows; its change signal must not come back here
+    for (int r = 0; r < table_->rowCount(); ++r)
+        if (QTableWidgetItem* it = table_->item(r, 0); it && it->text() == layer) it->setCheckState(visible ? Qt::Checked : Qt::Unchecked);
+    filling_ = was;
     applyVisibility();
     ctx_->setStatus(QString("Layer %1 %2").arg(layer, visible ? "shown" : "hidden"));
 }

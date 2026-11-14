@@ -78,15 +78,27 @@ function draw() {
     g.lineWidth = selected ? 1.6 : 1;
     g.beginPath();
     for (const p of it.polys) {
-      p.forEach((q, k) => { const [x, y] = toScreen(q[a] + dragOffset(it, a), q[b] + dragOffset(it, b)); k ? g.lineTo(x, y) : g.moveTo(x, y); });
+      p.forEach((q, k) => {
+        const so = selected ? shapeOffset(q, a, b) : null;
+        const [x, y] = toScreen(q[a] + dragOffset(it, a) + (so ? so[0] : 0), q[b] + dragOffset(it, b) + (so ? so[1] : 0));
+        k ? g.lineTo(x, y) : g.moveTo(x, y);
+      });
       g.closePath();
     }
     g.stroke();
   };
   for (const it of map.items) if (!sel.has(selKey(it.e, it.i)) && !sel.has(selKey(it.e, -1))) drawItem(it, false);
   for (const it of map.items) if (sel.has(selKey(it.e, it.i)) || sel.has(selKey(it.e, -1))) drawItem(it, true);
+  // Vertices / Edges: a handle on every corner or edge of the selected brushes.
+  const shaping = !!$("editMode").value;
+  for (const hd of shapeHandles()) {
+    const moving = drag && drag.mode === "shape" && drag.handle.key === hd.key;
+    const [x, y] = toScreen(hd.h + (moving ? drag.delta[0] : 0), hd.v + (moving ? drag.delta[1] : 0));
+    g.fillStyle = moving ? "#ffffff" : $("editMode").value === "vertex" ? "#7fd0ff" : "#8fe08a";
+    g.fillRect(x - 4, y - 4, 8, 8);
+  }
   // The selection's box with a handle on each side (drag one to resize along that axis).
-  const box = selectionBox();
+  const box = shaping ? null : selectionBox();
   if (box) {
     let lo = [box.lo[a], box.lo[b]], hi = [box.hi[a], box.hi[b]];
     if (drag && drag.mode === "resize") { lo = drag.lo.slice(); hi = drag.hi.slice(); }
@@ -115,6 +127,50 @@ function selectionBox() {
   }
   return any ? { lo, hi } : null;
 }
+// Vertices / Edges (plan 3.4). A handle stands for every corner of the selected brushes under it in this view (a
+// corner handle in a Top view is the whole upright edge), so a drag keeps faces flat where a single corner would not.
+const key2 = (h, v) => Math.round(h * 8) + "," + Math.round(v * 8);
+function selectedBrushes() {
+  const sel = selectedSet();
+  return map.items.filter((it) => it.kind === "brush" && (sel.has(selKey(it.e, it.i)) || sel.has(selKey(it.e, -1))));
+}
+function shapeHandles() {
+  const mode = $("editMode").value;
+  if (!mode || Number($("axis").value) > 2) return [];
+  const [a, b] = axes(), out = new Map();
+  for (const it of selectedBrushes())
+    for (const p of it.polys)
+      p.forEach((q, n) => {
+        if (mode === "vertex") {
+          const k = key2(q[a], q[b]);
+          if (!out.has(k)) out.set(k, { key: k, h: q[a], v: q[b], ends: [k] });
+          return;
+        }
+        const r = p[(n + 1) % p.length], kq = key2(q[a], q[b]), kr = key2(r[a], r[b]);
+        if (kq === kr) return;                     // an edge seen end-on is a corner in this view
+        const k = [kq, kr].sort().join("|");
+        if (!out.has(k)) out.set(k, { key: k, h: (q[a] + r[a]) / 2, v: (q[b] + r[b]) / 2, ends: [kq, kr] });
+      });
+  return [...out.values()];
+}
+function shapeHandleAt(x, y) {
+  let best = null, bestD = 8;
+  for (const hd of shapeHandles()) {
+    const [hx, hy] = toScreen(hd.h, hd.v), dd = Math.max(Math.abs(x - hx), Math.abs(y - hy));
+    if (dd < bestD) { bestD = dd; best = hd; }
+  }
+  return best;
+}
+// The preview of a handle drag: the offset of a corner of a selected brush, or null.
+function shapeOffset(q, a, b) {
+  if (!drag || drag.mode !== "shape" || !drag.handle.ends.includes(key2(q[a], q[b]))) return null;
+  return drag.delta;
+}
+$("editMode").onchange = () => {
+  const m = $("editMode").value;
+  setStatus(m === "vertex" ? "Drag a corner of a selected brush" : m === "edge" ? "Drag an edge of a selected brush" : "");
+  draw();
+};
 // The handle of the selection's box under a canvas point: {side: 0 low | 1 high, dim: 0 horizontal | 1 vertical}.
 function handleAt(x, y) {
   const box = selectionBox();
@@ -160,7 +216,12 @@ canvas.addEventListener("pointerdown", (ev) => {
     drag = { mode: "draw", x: ev.offsetX, y: ev.offsetY, from: w, to: w, moved: false };
     return;
   }
-  const handle = handleAt(ev.offsetX, ev.offsetY);
+  const shape = shapeHandleAt(ev.offsetX, ev.offsetY);
+  if (shape) {
+    drag = { mode: "shape", x: ev.offsetX, y: ev.offsetY, handle: shape, start: toWorld(ev.offsetX, ev.offsetY), delta: [0, 0], moved: false };
+    return;
+  }
+  const handle = $("editMode").value ? null : handleAt(ev.offsetX, ev.offsetY);
   if (handle) {
     const [a, b] = axes();
     drag = { mode: "resize", x: ev.offsetX, y: ev.offsetY, handle, lo: [handle.box.lo[a], handle.box.lo[b]], hi: [handle.box.hi[a], handle.box.hi[b]], moved: false };
@@ -178,6 +239,13 @@ canvas.addEventListener("pointermove", (ev) => {
   if (!drag) return;
   if (Math.abs(ev.offsetX - drag.x) + Math.abs(ev.offsetY - drag.y) > 3) drag.moved = true;
   if (drag.mode === "draw") { drag.to = toWorld(ev.offsetX, ev.offsetY).map(snap); draw(); return; }
+  if (drag.mode === "shape") {
+    const [h, v] = toWorld(ev.offsetX, ev.offsetY);
+    drag.delta = [snap(h - drag.start[0]), snap(v - drag.start[1])];
+    setStatus(`Move ${drag.delta[0]} ${drag.delta[1]}`);
+    draw();
+    return;
+  }
   if (drag.mode === "resize") {
     const w = toWorld(ev.offsetX, ev.offsetY).map(snap), h = drag.handle, step = state.grid || 8;
     if (h.side) drag.hi[h.dim] = Math.max(w[h.dim], drag.lo[h.dim] + step); else drag.lo[h.dim] = Math.min(w[h.dim], drag.hi[h.dim] - step);
@@ -205,6 +273,20 @@ canvas.addEventListener("pointerup", async (ev) => {
     mins[b] = Math.min(d.from[1], d.to[1]); maxs[b] = Math.max(d.from[1], d.to[1]);
     mins[third] = 0; maxs[third] = 64;
     if (d.moved && maxs[a] > mins[a] && maxs[b] > mins[b]) { try { await post("/api/brush", { mins, maxs }); setStatus("Brush made; resize it in another view"); } catch (e) { /* shown */ } }
+    draw();
+    return;
+  }
+  if (d.mode === "shape") {
+    if (d.moved && (d.delta[0] || d.delta[1])) {
+      const [a, b] = axes(), dd = [0, 0, 0], moves = [];
+      dd[a] = d.delta[0]; dd[b] = d.delta[1];
+      for (const it of selectedBrushes()) {
+        const from = new Map();
+        for (const p of it.polys) for (const q of p) if (d.handle.ends.includes(key2(q[a], q[b]))) from.set(q.join(","), q);
+        if (from.size) moves.push({ e: it.e, i: it.i, from: [...from.values()] });
+      }
+      if (moves.length) { try { await post("/api/vertices", { moves, d: dd }); setStatus("Moved"); } catch (e) { /* the reason is shown */ } }
+    }
     draw();
     return;
   }

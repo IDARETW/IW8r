@@ -41,6 +41,10 @@ public:
     bool busy() const { return running_; }
 
     QString mapId() const;      // validated IW8 map id (mp_<name>, lower case)
+    // Sets the map id as if it was typed. False (and nothing changes) when the text is not a map id as it stands.
+    // `typed` false leaves the id following the map's file name again (as before anybody typed one).
+    bool setMapId(const QString& id, bool typed = true);
+    bool mapIdTyped() const { return userEditedId_; }
     QString buildRoot() const;  // <map dir>/iw8build/<map id> (or the app-data builds folder for untitled maps)
     QString extractionDir() const { return buildRoot() + "/extraction"; }
     QString navDebugFile() const { return buildRoot() + "/nav_debug.json"; }  // x64-zt IW8_ZONETOOL_NAV_DEBUG dump (6.23)

@@ -6,6 +6,8 @@
 // as its dialog (currentSunSky / applySunSky and so on), so both give the same map and the same single undo step.
 #include "main_window.h"
 
+#include <QCheckBox>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
 
@@ -15,11 +17,14 @@
 #include "atmosphere.h"
 #include "atmosphere_dialog.h"
 #include "bake_options.h"
+#include "build_report.h"
 #include "compile_panel.h"
 #include "settings.h"
 #include "devmap_launch.h"
 #include "find_dialog.h"
 #include "map_gametypes.h"
+#include "layers.h"
+#include "layers_panel.h"
 #include "panels.h"
 #include "sun_sky_dialog.h"
 
@@ -97,12 +102,66 @@ QJsonArray MainWindow::webFormList() const {
                       QJsonObject{{"id", "checkMap"}, {"title", "Check Map"}, {"command", "CheckMap"}, {"menu", "Tools"}},
                       QJsonObject{{"id", "preferences"}, {"title", "Preferences"}, {"command", "Preferences"}, {"menu", "Edit"}},
                       QJsonObject{{"id", "surface"}, {"title", "Surface (texture of the selection)"}, {"command", ""}, {"menu", "Edit"}},
+                      QJsonObject{{"id", "layers"}, {"title", "Layers"}, {"command", ""}, {"menu", "View"}},
+                      QJsonObject{{"id", "compile"}, {"title", "Compile Options and Build Budget"}, {"command", ""}, {"menu", "Compile"}},
                       QJsonObject{{"id", "bakeSettings"}, {"title", "Lightmap Bake Settings"}, {"command", ""}, {"menu", "Compile"}},
                       QJsonObject{{"id", "mapInfo"}, {"title", "Map Info"}, {"command", ""}, {"menu", "Compile"}}};
 }
 
 QJsonObject MainWindow::webForm(const QString& id) const {
     if (id == "gameModes") return webGameModesForm();
+    if (id == "compile") {
+        if (!compile_) return {};
+        const auto checked = [this](const char* name) {
+            const QCheckBox* box = compile_->findChild<QCheckBox*>(name);
+            return box && box->isChecked();
+        };
+        QString budget;
+        const QString file = compile_->buildRoot() + "/last_build_report.json";
+        BuildReport rep;
+        std::string err;
+        if (!QFileInfo::exists(file) || !loadBuildReport(file.toStdString(), rep, &err)) {
+            budget = "No build of this map yet: compile it and the figures appear here.";
+        } else {
+            const auto fmt = [](double v) { return v >= 100 || v == double(int64_t(v)) ? QString::number(v, 'f', 0) : QString::number(v, 'f', 1); };
+            budget = QString("%1, built %2\n").arg(qs(rep.mapId), QFileInfo(file).lastModified().toString("yyyy-MM-dd HH:mm"));
+            for (const BudgetGauge& g : budgetGauges(rep)) {
+                const QString unit = g.unit.empty() ? QString() : " " + qs(g.unit);
+                budget += QString("%1 %2%: %3%5 of %4%5%6\n")
+                              .arg(g.fraction() >= 1.0 ? "OVER" : g.fraction() >= 0.75 ? "near" : "ok  ")
+                              .arg(int(g.fraction() * 100), 3)
+                              .arg(fmt(g.value), fmt(g.limit), unit, QString("  ") + qs(g.label) + (g.native ? " (native limit)" : " (guideline)"));
+            }
+            for (const std::string& warn : budgetWarnings(rep)) budget += "! " + qs(warn) + "\n";
+        }
+        QJsonArray f{text("mapId", "Map id (mp_<name>, lower case, at most 15 characters)", compile_->mapId(),
+                          "The name of the built zones and of the map in the game"),
+                     boolean("stockTextures", "Stock textures", checked("compileStockTextures"),
+                             "Stock IW8 materials are built with their colour textures instead of grey"),
+                     boolean("bakeLightmaps", "Bake lightmaps", checked("compileBakeLightmaps"),
+                             "The build bakes the world's lightmap (sky light, bounce, where the sun reaches). The detail is in Lightmap Bake Settings"),
+                     boolean("occlusionBake", "Occlusion bake", checked("compileOcclusionBake"),
+                             "The build makes occlusion data from the map's opaque box brushes, so the game skips what is behind walls"),
+                     QJsonObject{{"key", "budget"}, {"label", "Build Budget (the last build against its limits)"}, {"type", "report"}, {"value", budget}}};
+        return QJsonObject{{"id", id}, {"title", "Compile Options and Build Budget"}, {"fields", f}, {"reload", true}};
+    }
+    if (id == "layers") {
+        QJsonArray f;
+        QJsonArray names{""}, labels{"(nothing)"};
+        QStringList plain;
+        for (const LayersPanel::Row& row : layers_ ? layers_->rows() : std::vector<LayersPanel::Row>{}) {
+            f.append(QJsonObject{{"key", "show:" + row.name}, {"label", QString("Show %1 (%2)").arg(row.name).arg(row.count)}, {"type", "bool"},
+                                 {"value", row.visible}, {"help", ""}});
+            names.append(row.name);
+            labels.append(QString("%1 (%2)").arg(row.name).arg(row.count));
+            plain << row.name;
+        }
+        f.append(QJsonObject{{"key", "select"}, {"label", "Select everything in"}, {"type", "choice"}, {"value", ""}, {"choices", names},
+                             {"choiceLabels", labels}, {"help", ""}});
+        f.append(text("moveTo", "Move the selection to layer", "", "The selected brushes and patches; a new name declares the layer. One undo step", plain));
+        f.append(text("newLayer", "Declare a new layer", "", "A name without quotes"));
+        return QJsonObject{{"id", id}, {"title", "Layers"}, {"fields", f}, {"reload", true}};
+    }
     if (id == "surface") {
         const SurfacePanel* sp = surface_;
         const SurfacePanel::Current c = sp ? sp->current() : SurfacePanel::Current{};
@@ -237,6 +296,57 @@ bool MainWindow::applyWebForm(const QString& id, const QJsonObject& values, QStr
         return false;
     };
     if (id == "gameModes") return applyWebGameModes(values, why);
+    if (id == "compile") {
+        if (!compile_) return no("the compile panel is not available");
+        if (compile_->busy()) return no("a build is running: change the options when it is done");
+        if (values.contains("mapId")) {
+            const QString want = values.value("mapId").toString().trimmed();
+            if (CompilePanel::sanitizeMapId(want) != want || want.isEmpty()) return no("a map id is mp_<name>: lower case a-z, 0-9 and _, at most 15 characters");
+        }
+        // Everything was accepted: now write. The switches go through the dock's own boxes (the two bakes are worldspawn
+        // keys, each an undo step of its own).
+        if (values.contains("mapId")) compile_->setMapId(values.value("mapId").toString());
+        static const std::pair<const char*, const char*> boxes[] = {{"stockTextures", "compileStockTextures"},
+                                                                    {"bakeLightmaps", "compileBakeLightmaps"},
+                                                                    {"occlusionBake", "compileOcclusionBake"}};
+        for (const auto& [key, name] : boxes)
+            if (values.contains(key))
+                if (QCheckBox* box = compile_->findChild<QCheckBox*>(name)) box->setChecked(values.value(key).toBool());
+        return true;
+    }
+    if (id == "layers") {
+        if (!layers_) return no("the layers are not available");
+        const std::vector<LayersPanel::Row> rows = layers_->rows();
+        const auto known = [&](const QString& n) {
+            for (const LayersPanel::Row& r : rows)
+                if (r.name == n) return true;
+            return false;
+        };
+        std::vector<std::pair<QString, bool>> shows;
+        for (auto it = values.begin(); it != values.end(); ++it) {
+            if (!it.key().startsWith("show:")) continue;
+            const QString n = it.key().mid(5);
+            if (!known(n)) return no("there is no layer " + n);
+            shows.push_back({n, it.value().toBool()});
+        }
+        const QString select = values.value("select").toString();
+        if (!select.isEmpty() && !known(select)) return no("there is no layer " + select);
+        const QString moveTo = values.value("moveTo").toString().trimmed();
+        const QString fresh = values.value("newLayer").toString().trimmed();
+        const bool noLayerRow = !rows.empty() && moveTo == rows.front().name;
+        if (!moveTo.isEmpty() && !noLayerRow && !isValidLayerName(moveTo.toStdString())) return no("a layer name has no quote and no line break");
+        if (!moveTo.isEmpty() && ctx_.doc.selection().empty()) return no("select the brushes or patches to move first");
+        if (!fresh.isEmpty() && !isValidLayerName(fresh.toStdString())) return no("a layer name has no quote and no line break");
+        // Everything was accepted: now do it. The selection is moved before another layer is selected.
+        for (const auto& [n, on] : shows) layers_->setLayerVisible(n, on);
+        if (!fresh.isEmpty() && !known(fresh)) layers_->newLayer(fresh);
+        if (!moveTo.isEmpty() && !layers_->moveSelectionToLayer(moveTo)) return no("nothing in the selection can be moved to a layer");
+        if (!select.isEmpty()) {
+            const size_t n = layers_->selectLayer(select);
+            ctx_.documentEdited(QString("%1 primitive(s) of layer %2 selected").arg(n).arg(select));
+        }
+        return true;
+    }
     if (id == "surface") {
         SurfacePanel* sp = surface_;
         const SurfacePanel::Current c = sp ? sp->current() : SurfacePanel::Current{};

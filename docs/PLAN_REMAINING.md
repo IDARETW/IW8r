@@ -310,7 +310,7 @@ revision. This is needed for Verdansk's 23k entities. Log backlog and filters th
 action; presets are made in the desktop dialog) and Check Map (report + fix all). Items 3 and 4 of the list below
 are plain commands and run from the web menu already. 2026-11-14 also: vision overrides (item 1, in the Atmosphere
 form), Preferences (7), prefabs in the Assets panel (8), Surface / UV (9), Material / Model / Effect Info (10, the
-info button of the Assets panel). Open: compile options and Build Budget (5).
+info button of the Assets panel), compile options and Build Budget (5). All ten are in the page.
 - **Command registry.** Expose the registry that `addCommand` builds (id, label, menu path, checkable, checked,
   enabled) as `/api/commands` and `POST /api/command`. The web menu bar is generated from it, so every action is
   reachable.
@@ -328,7 +328,9 @@ info button of the Assets panel). Open: compile options and Build Budget (5).
 
 **3.4 Editing tools.** DONE 2026-11-14 for: drawing a brush, resize handles, placing any entity class (on the
 surface in the live view), the inspector with entity definitions; clone / delete / copy / paste / rotate run as
-commands from the web menu. Open: vertex and edge modes, region and layers in the page, face picking with surface fit.
+commands from the web menu. 2026-11-14 also: vertex and edge handles (POST /api/vertices), layers (the Layers form;
+hidden layers leave the page's views), region (View > Region from the web menu; the page draws what the editor
+shows). Open: patch vertex editing, face picking with surface fit.
 - **2D:** create a brush by dragging, resize handles, clone / delete / copy / paste, rotate / scale, vertex and edge
   modes, region, layers.
 - **Selection and placement:** face picking with surface fit; entity placement of every class and template at the 3D

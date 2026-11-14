@@ -14,6 +14,7 @@
   <label>View <select id="axis"><option value="0">Top (XY)</option><option value="1">Front (XZ)</option><option value="2">Side (YZ)</option><option value="3">3D</option><option value="4">Editor view (live)</option></select></label>
   <button id="fit" title="Frame the whole map">Fit</button>
   <button id="drawBrush" title="Then drag a rectangle in a Top, Front or Side view: a brush with the current material. Its third size is 64 units from 0; resize it in another view">Draw brush</button>
+  <label title="What a drag does to the selected brushes in a Top, Front or Side view. Vertices: a handle on every corner. Edges: a handle on every edge. A handle moves every corner under it, so in a Top view a corner handle moves the whole upright edge">Tool <select id="editMode"><option value="">Move / resize</option><option value="vertex">Vertices</option><option value="edge">Edges</option></select></label>
   <button id="undo" title="Undo (shared with the editor)">Undo</button>
   <button id="redo">Redo</button>
   <button id="save">Save</button>
