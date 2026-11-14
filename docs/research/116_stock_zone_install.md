@@ -107,8 +107,15 @@ Shipment toon zone byte for byte, while the game folder still held our old patch
 - **In game (INFERRED, not run):** that the client loads an unsigned zone under the name of a stock map's zone as it
   loads its own unsigned zones (section 4 shows no rule that depends on the name, and three stock-named unsigned
   zones exist).
-- The unsigned rule wants the decoded size below 4 GB. An edited zone above that is refused at install with that
-  reason (the big Warzone zones are not measured here).
+- The unsigned rule wants the decoded size below 4 GB. Measured on the stock zone headers (VERIFIED): the largest map
+  zones are mp_donetsk 573 MB, mp_br_quarry 571 MB, mp_aniyah_tac 390 MB, mp_shipment 385 MB; common_mp is 820 MB.
+  All fit.
+- A stock zone loads only part of its data at once (mp_shipment: 195 of 385 MB in the header's always-loaded size).
+  An unsigned zone must declare all of it always loaded, so an edited map zone holds more memory while its map runs
+  (INFERRED from the two header fields; not measured in game).
+- **Streamed tiles cannot be replaced.** The client takes an unsigned zone only with transient type 0 or 1; the
+  Warzone tiles (`mp_donetsk_NNNNN_tr.ff` and the like) have types 2 to 13. An edit that would have to change a tile
+  (taking out streamed world geometry, plan 2.3) has no install route without a client change.
 - The installed copy needs the edited zone's size on the game's drive (the stock file itself is only moved).
 - A patch route would need a client change (accept unsigned data for a patch whose target header is unsigned). That
   is the owner's decision and build; nothing here depends on it.

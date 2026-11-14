@@ -256,6 +256,9 @@ collections; surface ids on displaced terrain.
 - **Editor side.** `stockWorldRemovalJson` (`src/core/stock_zone_edit.cpp:273-297`) writes the `"occlusion"` key. This
   depends on the x64-zt editzone change.
 - **Warzone.** Allow removal of streamed (transient) entries once the tile and streamed data are handled (ROADMAP 13.5).
+  Blocked at install (research 116, 2026-11-13): the client loads no unsigned zone of a streamed tile type, so an
+  edited tile cannot go into the game. Decision recorded: edits stay in the main map zone; a tile edit needs a client
+  change by the owner.
 - **Stale text to fix:** CHANGELOG :66-68, ROADMAP 11.5, `main_window_stock_edit.cpp:314-315`.
 
 **2.4 A real occlusion bake for custom maps.**
