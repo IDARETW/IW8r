@@ -7112,6 +7112,11 @@ bool MainWindow::openStockZone(const QString& zone, QString* err) {
         }
     const QString name = QFileInfo(zone).completeBaseName();
     const QString cache = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/stock_cache/" + name;
+    // A read of a stock map is still running (its wait runs the event loop): its folder must not be touched.
+    if (exportingMapEnts_) {
+        if (err) *err = "A stock map is being read already; wait for it to finish.";
+        return false;
+    }
     // An export that was cancelled or failed left its marker: what is in the folder may be half written.
     if (QFileInfo::exists(cache + "/export.incomplete")) QDir(cache + "/mw19replay").removeRecursively();
     QString json = QFileInfo::exists(cache + "/export.incomplete") ? QString() : findMapEntsJson(cache);

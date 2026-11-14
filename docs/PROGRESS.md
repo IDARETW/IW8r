@@ -38,7 +38,7 @@
   WebServer object). The page: logLines / renderLog / addLogLine, #logLevel, #logFilter. Plan 3.2 is done.
   POST /api/pick {face: true} (hook pickFace, MainWindow::webPickFace: scene.pickFace, selectFace / toggleFace);
   viewlive.js sends it on Ctrl + click.
-  Parking state 2026-11-14 (after the lightmap parity proof): repo at the commit after ae6c1cf, converter live at a2d67783, suites core 181,730 checks / 1,360 tests and GUI 1,080 checks, 0 failures; zones of mp_cinderrail_t rebuilt 02:58 (x64zt_output; 0 overlapping faces, 5 px lines, the light grid with coloured bounce); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
+  Parking state 2026-11-14 (after trigger hints and the second review): repo at the commit after 2c1017b, converter live at 6a783fd5, suites core 181,781 checks / 1,365 tests and GUI 1,080 checks, 0 failures; zones of mp_cinderrail_t rebuilt 02:58 (x64zt_output; 0 overlapping faces, 5 px lines, the light grid with coloured bounce); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
   GET /api/handles (control points of the selected patches, at most 20,000) and POST /api/vertices moves with
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.
   Web form "vision": every scalar / vector field of core vision_fields as a text field (key "v:<name>"), written
@@ -91,6 +91,11 @@
   without them) compares extractStockLightmapsFromDecompressedZone of the built <map>.ff.dec with
   decodeLightmapTexel of the extraction's pair; tools/lightmap_bake_build_test.py decompresses the built zone
   (ACTS fastfile -d --noAssetDump) and runs it. Result on the proof map: 0.23 % mean, 99 % within 0.5 %.
+  ROADMAP 4.27 trigger hints: key "hint" on trigger_use / trigger_use_touch -> TriggerVolume::hintText,
+  assignTriggerHintRefs ("<MAP ID>/TRIGGER_HINT_<n>", same order in the strings block and the script block of
+  compile_iw8.cpp), generated set-up "t.hint = &\"...\"; t.hintid = n; level.iw8r_hints = 1;", runtime
+  iw8r_hint_show in kTriggerGsc (a newclienthudelem per player; only reached with level.iw8r_hints). Key added in
+  tools/gen_iw8_entity_defs.py (defs and ENTITY_REFERENCE regenerated).
   ROADMAP 4.27 map text: core map_strings.{h,cpp} (parseMapStrings of "<map>.str", mapStringsTsv,
   stringRefsInScript, mapStringsTemplate), CompileOptions::stringsFile / CompileReport::mapStrings, extraction file
   extracted/localize/strings.tsv, command MapTextFile. Converter a2d67783 (worktree, deployed; old exe
@@ -102,6 +107,13 @@
   out/zt_backup/zonetool_24d1aec7.exe): CopyHudImages + a 2D material per hud_* image in addMapAssets (the material
   lands in techsets_<map>.ff, the image in <map>.ff). MainWindow::toolPath reads IW8R_TOOL_<KEY> first (a converter
   under test). Proof tools/hud_image_build_test.py (in run_offline_proofs.py: 21 proofs).
+  Second review (tools/patches/review_fixes_1114b.py): compile_iw8.cpp deletes stale extracted/images/hud_*.dds
+  and localize/strings.tsv before writing; rep.hudImages sorted; openStockZone checks exportingMapEnts_ first; the
+  shadow cell skip of the first review is gone again (InstCell::maxScale, cellCullOn_ removed); listHudImages
+  catches name conversions; parseMapStrings skips a BOM; stringRefsInScript is a small lexer; PatchCovers::covered
+  also needs the patch triangles to hold the face's area (clippedArea). build_preflight.cpp: a script-defined
+  function called on an entity is not an unknown method. Converter 6a783fd5: CopyHudImages reads
+  extracted/images only.
   Review fixes (tools/patches/review_fixes_1114.py): viewport/patch_covers.{h,cpp} (PatchCovers: find / covered by
   the patch triangles; used by camera_geometry.cpp and scene.cpp buildCameraGeometryImpl), InstancedTexMesh::
   hasModelBox / modelBox (RefPropMesh::box), InstCell::maxScale + cellCullOn_ / cellCullFov_ (shadow passes skip

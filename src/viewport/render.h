@@ -684,7 +684,6 @@ private:
         struct InstCell {
             iw8r::AABB box;
             uint32_t first = 0, count = 0;
-            float maxScale = 1;  // the largest cullScale of its placements; 0 = one of them is never left out
         };
         std::vector<InstCell> cells;
         std::vector<uint32_t> order;
@@ -977,10 +976,6 @@ private:
     float lastViewProj_[16] = {};    // the frame's view (drawPost's volumetric march)
     bool postFxEnabled_ = true;
     bool filmGrainEnabled_ = true;
-    // The view's distance cull as the shadow passes need it (drawReferenceTexInstancesShadow): on for this frame, the
-    // capped field-of-view factor.
-    bool cellCullOn_ = false;
-    float cellCullFov_ = 1.0f;
     bool whiteBalanceEnabled_ = true, whiteBalanceDrawn_ = false;
     bool veilDrawn_ = false;
     bool createVeilResources();

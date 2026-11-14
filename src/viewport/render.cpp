@@ -3412,8 +3412,6 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
     // IW8R_LOD_CENTRE_DIST: the distances of before 2026-11-14 (to the model's centre, every placement's scale 1; a
     // bench switch). The game measures to the nearest point of the placement's box.
     static const bool lodCentreDist = std::getenv("IW8R_LOD_CENTRE_DIST") != nullptr;
-    cellCullOn_ = !noLodOut;
-    cellCullFov_ = std::min(lodFov, 1.0f);
     // The visible placements, those large on screen first: the depth pre-pass draws only that prefix (`big`). One
     // buffer instead of two of the full size (Verdansk's instance buffers were 877 MB with every prop drawn).
     const auto upload = [&](GpuTexInstanced& g) {
@@ -3741,11 +3739,6 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
                         const double rad = g.radius * scale * 1.0001 + 1.0;
                         c.box.add(iw8r::Vec3{wc[0] - rad, wc[1] - rad, wc[2] - rad});
                         c.box.add(iw8r::Vec3{wc[0] + rad, wc[1] + rad, wc[2] + rad});
-                        if (!g.cullScale.empty()) {
-                            const float cs = g.cullScale[i];
-                            if (c.count == 1) c.maxScale = cs;
-                            else if (c.maxScale > 0) c.maxScale = cs > 0 ? std::max(c.maxScale, cs) : 0.0f;
-                        }
                     }
                     D3D11_BUFFER_DESC dd = bd;
                     dd.Usage = D3D11_USAGE_DYNAMIC;
@@ -3949,21 +3942,11 @@ void SceneRenderer::drawReferenceTexInstancesShadow(const iw8r::Frustum* view) {
             drawInstIdx(g.vertices, g.instances);
             continue;
         }
-        // Runs of neighbouring cells in the view, one draw each. A cell whose placements are all past their cull
-        // distance in the camera's view (research 119) casts nothing: the game leaves them out of its shadow passes too.
-        const bool distCull = cellCullOn_ && g.lodOut > 0;
+        // Runs of neighbouring cells in the view, one draw each. Every placement casts, also one the camera's view
+        // leaves out by distance: a shadow map is kept over several frames (a lamp's until a caster changes), so
+        // leaving casters out by where the camera stood when it was drawn would lose shadows after the camera moved.
         uint32_t runFirst = 0, runCount = 0;
         for (const auto& c : g.cells) {
-            if (distCull && c.maxScale > 0) {
-                double d2 = 0;
-                const double e[3] = {fog_[0], fog_[1], fog_[2]}, lo[3] = {c.box.mins.x, c.box.mins.y, c.box.mins.z},
-                             hi[3] = {c.box.maxs.x, c.box.maxs.y, c.box.maxs.z};
-                for (int k = 0; k < 3; ++k) {
-                    const double d = std::max(std::max(lo[k] - e[k], e[k] - hi[k]), 0.0);
-                    d2 += d * d;
-                }
-                if (iw8r::placementLodCulled(float(std::sqrt(d2)), cellCullFov_, c.maxScale, g.lodOut)) continue;
-            }
             if (iw8r::frustumIntersectsAabb(*view, c.box)) {
                 if (runCount && runFirst + runCount == c.first) runCount += c.count;
                 else {
@@ -4549,7 +4532,6 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         static const bool noCull = perfOff("instcull");  // benchmark switch
         // A clean screenshot leaves out what the view leaves out (the game's distance rule); a probe capture draws all.
         instCull_ = !noCull && (!in.capture || in.clean);
-        cellCullOn_ = false;  // set by cullTexInstances when it runs
         if (instCull_ && !refTexInst_.empty()) {
             // One pixel of the frame: the projection's x scale (viewProj is row-vector; column 0 of the projection part
             // is not separable here, so the half-width tangent comes from the frame size and a 90-degree fallback).

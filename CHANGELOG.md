@@ -5,6 +5,35 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **The build's script check no longer rejects ordinary scripts.** A map script that called one of its own
+  functions on an entity (`player give_kit();`, everyday GSC) was stopped before the build with "unknown method".
+  Only a name that is neither a game function nor defined in the script is an error now.
+- **Fixes after a second independent review** (eight defects in the HUD pictures, the map text and the earlier
+  fixes):
+  - A HUD picture or a text entry you removed from the map stayed in every later build (the build folder kept the
+    old files). The build now clears what it does not write again.
+  - Opening the same stock map twice in quick succession could delete the folder the first read was still writing.
+  - The shadow passes no longer leave out props by the camera's distance. Shadow maps are kept over several frames,
+    so a prop could appear without its shadow after the camera came closer. A prop the view has dropped casts its
+    shadow again, as before today.
+  - The build's "not one of this map's HUD images" warning could be wrong for pictures whose file names sort
+    differently from their HUD names.
+  - A picture whose file name uses characters outside the system's character set ended the program; it is left out
+    with a warning. A text file that cannot be read is said.
+  - A text file saved with a byte-order mark lost its first entry.
+  - Names in comments or inside ordinary strings of the script were read as text names.
+  - A tool face is hidden under paint meshes only when they cover all of it (a face with a gap between two meshes
+    was hidden in the editor).
+  - Converter (x64-zt `6a783fd5`, deployed): HUD pictures are taken from the build's own images folder only,
+    one file per name.
+
+- **A hint on a use trigger, without a script.** Give a `trigger_use` (or `trigger_use_touch`) the key `hint`, for
+  example `Press ^3[{+activate}]^7 to open the gate`. The build makes the text one of the map's localized strings,
+  and the map's own script shows it on the screen of a player who stands in the trigger and takes it away when they
+  leave. The entity inspector lists the key. A map without the key gets the script it got before. Proven offline:
+  the build passes the game's loaders and the text is read back from the map's language zone
+  (`tools/map_strings_build_test.py`); whether the game draws the hint has not been seen.
+
 - **Proof that a built map holds the light the editor showed.** The lightmap proof now also reads the light planes
   out of the built zone itself (with the reader the editor uses for stock maps) and compares them, texel by texel,
   with what the editor baked and draws in View > Game Lighting. On the proof map: 10,328 lit texels, 0.23 % apart

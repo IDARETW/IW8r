@@ -77,3 +77,30 @@ TEST(map_strings_script_names_and_template) {
     const std::string f = mapStringsFileFor("C:/maps/arena.map");
     CHECK(f.size() > 9 && f.substr(f.size() - 9) == "arena.str");
 }
+
+// Review 2026-11-14: a byte-order mark at the start of the file is not part of the first word.
+TEST(map_strings_byte_order_mark) {
+    const std::string text = std::string("\xEF\xBB\xBF") + "REFERENCE FIRST\nLANG_ENGLISH \"one\"\nREFERENCE SECOND\nLANG_ENGLISH \"two\"\n";
+    std::vector<std::string> warnings;
+    const auto s = parseMapStrings(text, "mp_x", &warnings);
+    CHECK(warnings.empty());
+    CHECK(s.size() == 2);
+    if (s.size() == 2) CHECK(s[0].key == "MP_X/FIRST" && s[0].text == "one" && s[1].key == "MP_X/SECOND");
+}
+
+// Review 2026-11-14: comments and ordinary string literals are skipped when the script's names are read.
+TEST(map_strings_script_names_skip_comments_and_strings) {
+    const std::string script =
+        "user_main() {\n"
+        "  x = \"a&\"; y = &\"MP_X/FOO\";\n"            // a quote ending in & must not pair up with the next one
+        "  // t settext( &\"MP_X/OLD\" );\n"            // commented out
+        "  /* h settext( &\"MP_X/OLDER\" ); */\n"
+        "  z = \"say \\\"hi\\\" &\"; w = &\"MP_X/BAR\";\n"  // an escaped quote inside a string
+        "  u = \"text with &\\\"MP_X/INSIDE\\\" in it\";\n"
+        "}\n";
+    const auto names = stringRefsInScript(script);
+    CHECK(names.size() == 2);
+    if (names.size() == 2) CHECK(names[0] == "MP_X/BAR" && names[1] == "MP_X/FOO");
+    CHECK(stringRefsInScript("// only a comment &\"A/B\"\n").empty());
+    CHECK(stringRefsInScript("x = &\"unterminated").empty() || stringRefsInScript("x = &\"unterminated").size() == 1);
+}

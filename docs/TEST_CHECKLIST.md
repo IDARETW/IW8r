@@ -91,6 +91,11 @@ Each one names the longer section below that has the steps.
   and play: the picture is on the screen at the left. If a grey or checkered square shows, the material loaded but
   the image did not; if nothing shows, say so.
 
+## In game (optional, 2026-11-14): a hint on a use trigger
+- [ ] Give a `trigger_use` brush the key `hint` = `Press ^3[{+activate}]^7 to test`. Build and play, walk into the
+  trigger: the text appears a little below the middle of the screen and goes when you step out. If nothing shows, or
+  the trigger stops reacting to Use, say so (the hint is drawn by the map's script).
+
 ## In game (optional, 2026-11-14): your own text
 - [ ] Compile > Map Text File, keep the example entry, and in the map script (worldspawn `iw8r_script`) put
   `user_main() { t = newhudelem(); t.x = 20; t.y = 100; t settext( &"MP_YOURMAP/HINT_EXAMPLE" ); }` with your map id

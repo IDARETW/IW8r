@@ -41,6 +41,10 @@ std::vector<MapString> parseMapStrings(const std::string& strText, const std::st
     std::string ref;                           // the REFERENCE waiting for its LANG_ENGLISH
     bool refHasText = false;
     size_t lineNo = 0, pos = 0;
+    // A byte-order mark at the start (editors that save "UTF-8 with BOM") is not part of the first word.
+    if (strText.size() >= 3 && static_cast<unsigned char>(strText[0]) == 0xEF && static_cast<unsigned char>(strText[1]) == 0xBB &&
+        static_cast<unsigned char>(strText[2]) == 0xBF)
+        pos = 3;
     const auto closeRef = [&] {
         if (!ref.empty() && !refHasText) warn("text file: " + ref + " has no LANG_ENGLISH line; left out");
         ref.clear();
@@ -130,14 +134,31 @@ std::string mapStringsFileFor(const std::string& mapPath) {
 }
 
 std::vector<std::string> stringRefsInScript(const std::string& scriptText) {
+    // Comments and ordinary string literals are skipped, so a quote inside them cannot pair up with a later one.
     std::set<std::string> names;
-    size_t pos = 0;
-    while ((pos = scriptText.find("&\"", pos)) != std::string::npos) {
-        const size_t close = scriptText.find('"', pos + 2);
-        if (close == std::string::npos) break;
-        const std::string name = scriptText.substr(pos + 2, close - pos - 2);
-        pos = close + 1;
-        if (!name.empty() && name.find_first_of(" \t\r\n") == std::string::npos) names.insert(upper(name));
+    const size_t n = scriptText.size();
+    size_t i = 0;
+    while (i < n) {
+        const char c = scriptText[i];
+        if (c == '/' && i + 1 < n && scriptText[i + 1] == '/') {
+            while (i < n && scriptText[i] != '\n') ++i;
+        } else if (c == '/' && i + 1 < n && scriptText[i + 1] == '*') {
+            const size_t end = scriptText.find("*/", i + 2);
+            i = end == std::string::npos ? n : end + 2;
+        } else if (c == '"' || (c == '&' && i + 1 < n && scriptText[i + 1] == '"')) {
+            const bool localized = c == '&';
+            size_t j = i + (localized ? 2 : 1);
+            std::string text;
+            while (j < n && scriptText[j] != '"' && scriptText[j] != '\n') {
+                if (scriptText[j] == '\\' && j + 1 < n) text.push_back(scriptText[j]), ++j;
+                text.push_back(scriptText[j]);
+                ++j;
+            }
+            if (localized && !text.empty() && text.find_first_of(" \t\r") == std::string::npos) names.insert(upper(text));
+            i = j < n ? j + 1 : n;
+        } else {
+            ++i;
+        }
     }
     return std::vector<std::string>(names.begin(), names.end());
 }

@@ -243,6 +243,18 @@ TEST(preflight_methods_on_self_and_level) {
     CHECK(countIssues(v, true, "script", "unknown method 'frobnicate()' called on 'level'") == 1);
 }
 
+// A function of the script itself called on an entity (`ent give_kit();`) is ordinary GSC, not an unknown method
+// (2026-11-14: the generated hint code and any map script that did this stopped the build).
+TEST(preflight_own_function_called_on_an_entity) {
+    std::string gsc = kGoodGsc;
+    gsc.insert(gsc.find("    playfx("), "    ent give_kit();\n    level give_kit();\n    ent frobnicate();\n");
+    gsc += "\ngive_kit()\n{\n    self solid();\n}\n";
+    const auto v = run(makeBuild("own_method", gsc));
+    CHECK(errorCount(v) == 1);
+    CHECK(countIssues(v, true, "script", "unknown method 'frobnicate()'") == 1);
+    CHECK(countIssues(v, true, "script", "give_kit") == 0);
+}
+
 TEST(preflight_comments_and_strings_are_not_calls) {
     std::string gsc = kGoodGsc;
     gsc.insert(gsc.find("    playfx("),

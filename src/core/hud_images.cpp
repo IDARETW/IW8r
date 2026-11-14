@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <set>
 #include <system_error>
+#include <utility>
 
 #include "custom_materials.h"
 #include "minimap.h"
@@ -37,20 +38,29 @@ std::vector<HudImage> listHudImages(const std::string& folder, std::vector<std::
     std::vector<HudImage> out;
     std::error_code ec;
     if (folder.empty() || !fs::is_directory(fs::path(folder), ec)) return out;
-    std::vector<fs::path> files;
-    for (fs::directory_iterator it(fs::path(folder), ec), end; !ec && it != end; it.increment(ec)) {
-        if (!it->is_regular_file(ec)) continue;
-        std::string ext = it->path().extension().string();
-        for (char& c : ext) c = char(std::tolower(static_cast<unsigned char>(c)));
-        if (ext == ".png" || ext == ".tga" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".dds") files.push_back(it->path());
-    }
-    std::sort(files.begin(), files.end(), [](const fs::path& a, const fs::path& b) { return a.filename().string() < b.filename().string(); });
     const auto warn = [&](const std::string& line) {
         if (warnings) warnings->push_back(line);
     };
+    // File name and full path, as text. A name the system's character set cannot hold makes the conversion throw: such a
+    // file is left out (the image decoder could not open it either).
+    std::vector<std::pair<std::string, std::string>> files;
+    size_t unusable = 0;
+    for (fs::directory_iterator it(fs::path(folder), ec), end; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file(ec)) continue;
+        try {
+            std::string ext = it->path().extension().string();
+            for (char& c : ext) c = char(std::tolower(static_cast<unsigned char>(c)));
+            if (ext == ".png" || ext == ".tga" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".dds")
+                files.emplace_back(it->path().filename().string(), it->path().string());
+        } catch (...) {
+            ++unusable;
+        }
+    }
+    if (unusable)
+        warn(std::to_string(unusable) + " file(s) in the HUD images folder left out: their names use characters outside the system's character set");
+    std::sort(files.begin(), files.end());
     std::set<std::string> seen;
-    for (const fs::path& f : files) {
-        const std::string file = f.filename().string();
+    for (const auto& [file, path] : files) {
         const std::string name = hudImageName(file);
         if (name.empty()) {
             warn("HUD image " + file + " left out: its name has no letter or digit");
@@ -64,7 +74,7 @@ std::vector<HudImage> listHudImages(const std::string& folder, std::vector<std::
             warn("HUD image " + file + " left out: more than " + std::to_string(kMaxHudImages) + " HUD images");
             continue;
         }
-        out.push_back({name, f.string()});
+        out.push_back({name, path});
     }
     return out;
 }

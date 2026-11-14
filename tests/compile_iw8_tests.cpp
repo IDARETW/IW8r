@@ -2098,3 +2098,151 @@ TEST(compile_iw8_map_strings_reach_the_extraction) {
     CHECK(pr2.map.has_value() && compileIw8Extraction(*pr2.map, out2, plain, rep2, &err));
     CHECK(rep2.mapStrings.empty() && !fs::exists(fs::path(out2) / "extracted" / "localize"));
 }
+
+// 4.27: a use trigger's "hint" becomes a localized string of the map, and the map script shows it to the player in
+// the trigger. A map without the key gets no hint code path and no strings file.
+TEST(compile_iw8_trigger_hints) {
+    const std::string sample = samplePath();
+    std::string text;
+    CHECK(!sample.empty() && readFile(sample, text));
+    if (text.empty()) return;
+    const std::string eol = text.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+    const auto brushTrigger = [&](const char* cls, const char* name, const char* hint, double x) {
+        AABB b;
+        b.mins = Vec3{x, 400, 0};
+        b.maxs = Vec3{x + 64, 464, 64};
+        const auto prim = makeBrushPrimitive(makeBox(b, " trigger 64 64 0 0 0 0"), eol, "");
+        std::string s = "{" + eol + "\"classname\" \"" + cls + "\"" + eol + "\"targetname\" \"" + name + "\"" + eol;
+        if (hint) s += std::string("\"hint\" \"") + hint + "\"" + eol;
+        return s + (prim ? prim->text() : std::string()) + "}" + eol;
+    };
+    const std::string plain = text;
+    text += brushTrigger("trigger_use", "gate_use", "Press ^3[{+activate}]^7 to open the gate", 0);
+    text += brushTrigger("trigger_multiple", "walk_in", "not a use trigger", 100);
+    text += brushTrigger("trigger_use_touch", "lever", "Pull the lever", 200);
+    text += brushTrigger("trigger_use", "silent_use", nullptr, 300);
+
+    Id next = 1;
+    ParseResult pr = parseMap(text, next);
+    CHECK(pr.map.has_value());
+    if (!pr.map) return;
+    // The volumes and their names.
+    auto volumes = readTriggerVolumes(*pr.map);
+    const auto pairs = assignTriggerHintRefs(volumes, "mp_room");
+    CHECK(pairs.size() == 2);
+    if (pairs.size() == 2) {
+        CHECK(pairs[0].first == "MP_ROOM/TRIGGER_HINT_1" && pairs[0].second == "Press ^3[{+activate}]^7 to open the gate");
+        CHECK(pairs[1].first == "MP_ROOM/TRIGGER_HINT_2" && pairs[1].second == "Pull the lever");
+    }
+    size_t withRef = 0;
+    for (const auto& v : volumes) {
+        withRef += !v.hintRef.empty();
+        if (v.targetname == "walk_in" || v.targetname == "silent_use") CHECK(v.hintRef.empty());
+    }
+    CHECK(withRef == 2);
+
+    const std::string out = scratch("trigger_hints");
+    CompileOptions opt;
+    opt.mapId = "mp_room";
+    CompileReport rep;
+    std::string err;
+    const bool ok = compileIw8Extraction(*pr.map, out, opt, rep, &err);
+    if (!ok) std::printf("  compile error: %s\n", err.c_str());
+    CHECK(ok);
+    if (!ok) return;
+    const std::string tsv = readAll((fs::path(out) / "extracted" / "localize" / "strings.tsv").string());
+    CHECK(tsv == "MP_ROOM/TRIGGER_HINT_1\tPress ^3[{+activate}]^7 to open the gate\nMP_ROOM/TRIGGER_HINT_2\tPull the lever\n");
+    CHECK(rep.mapStrings.size() == 2);
+    const std::string gsc = readAll((fs::path(out) / "extracted" / "maps" / "mp" / "mp_room.gsc").string());
+    CHECK(gsc.find("t = iw8r_trigger_add(\"gate_use\", 1, 0, 50);\n    t.hint = &\"MP_ROOM/TRIGGER_HINT_1\";\n    t.hintid = 1;\n    level.iw8r_hints = 1;") != std::string::npos);
+    CHECK(gsc.find("t.hint = &\"MP_ROOM/TRIGGER_HINT_2\";\n    t.hintid = 2;") != std::string::npos);
+    CHECK(gsc.find("p iw8r_hint_show(hint, hintid);") != std::string::npos && gsc.find("h = newclienthudelem(self);") != std::string::npos);
+    // The triggers without a hint have none.
+    const size_t walk = gsc.find("iw8r_trigger_add(\"walk_in\"");
+    CHECK(walk != std::string::npos && gsc.compare(gsc.find('\n', walk) + 1, 12, "    t.hint =") != 0);
+    bool said = false;
+    for (const std::string& w : rep.warnings) said = said || w.find("2 use trigger(s) show a hint") != std::string::npos;
+    CHECK(said);
+
+    // The same map without the triggers: no strings file, and the script never turns the hints on.
+    Id next2 = 1;
+    ParseResult pr2 = parseMap(plain, next2);
+    CHECK(pr2.map.has_value());
+    if (!pr2.map) return;
+    const std::string out2 = scratch("trigger_hints_none");
+    CompileReport rep2;
+    CHECK(compileIw8Extraction(*pr2.map, out2, opt, rep2, &err));
+    CHECK(!fs::exists(fs::path(out2) / "extracted" / "localize"));
+    const std::string gsc2 = readAll((fs::path(out2) / "extracted" / "maps" / "mp" / "mp_room.gsc").string());
+    CHECK(gsc2.find("level.iw8r_hints = 1;") == std::string::npos && gsc2.find("t.hint =") == std::string::npos);
+}
+
+// Review 2026-11-14: a rebuild into the same folder must not keep the HUD pictures and the text of the build before,
+// and the HUD names are searched in name order (two files whose names sort differently from their HUD names).
+TEST(compile_iw8_rebuild_drops_removed_hud_images_and_text) {
+    const fs::path dir = fs::path(scratch("stale_map"));
+    fs::remove_all(dir);
+    fs::create_directories(dir / "room.hud");
+    std::vector<uint8_t> rgba(8 * 8 * 4, 255);
+    std::string perr;
+    CHECK(writePng((dir / "room.hud" / "a b.png").string(), 8, 8, rgba, &perr));
+    CHECK(writePng((dir / "room.hud" / "a.png").string(), 8, 8, rgba, &perr));
+    std::ofstream(dir / "room.str") << "REFERENCE TITLE\nLANG_ENGLISH \"The Room\"\n";
+    std::ofstream(dir / "user.gsc") << "user_main() {\n  i = newhudelem();\n  i setshader(\"hud_a\", 32, 32);\n"
+                                       "  i setshader(\"hud_a_b\", 32, 32);\n}\n";
+    std::string text = roomMapText();
+    const std::string ws = "\"classname\" \"worldspawn\"";
+    const size_t at = text.find(ws);
+    CHECK(at != std::string::npos);
+    if (at == std::string::npos) return;
+    text.insert(at + ws.size(), "\n\"iw8r_script\" \"user.gsc\"");
+    const std::string out = scratch("stale_out");
+    fs::remove_all(out);
+    const auto build = [&](bool withExtras, CompileReport& rep) {
+        Id next = 1;
+        ParseResult pr = parseMap(text, next);
+        if (!pr.map) return false;
+        CompileOptions opt;
+        opt.mapId = "mp_room";
+        opt.mapDir = dir.string();
+        if (withExtras) {
+            opt.hudImageDir = hudImageFolderFor((dir / "room.map").string());
+            opt.stringsFile = mapStringsFileFor((dir / "room.map").string());
+        }
+        std::string err;
+        const bool ok = compileIw8Extraction(*pr.map, out, opt, rep, &err);
+        if (!ok) std::printf("  compile error: %s\n", err.c_str());
+        return ok;
+    };
+    const fs::path images = fs::path(out) / "extracted" / "images";
+    const fs::path tsv = fs::path(out) / "extracted" / "localize" / "strings.tsv";
+    CompileReport first;
+    CHECK(build(true, first));
+    CHECK(fs::exists(images / "hud_a.dds") && fs::exists(images / "hud_a_b.dds") && fs::exists(tsv));
+    // In name order, and the script's two names are both known: no warning about them.
+    CHECK(first.hudImages.size() == 2);
+    if (first.hudImages.size() == 2) CHECK(first.hudImages[0] == "hud_a" && first.hudImages[1] == "hud_a_b");
+    for (const std::string& w : first.warnings) CHECK(w.find("is not one of this map's HUD images") == std::string::npos);
+
+    // One picture taken away: its image goes, the other stays.
+    fs::remove(dir / "room.hud" / "a b.png");
+    CompileReport second;
+    CHECK(build(true, second));
+    CHECK(fs::exists(images / "hud_a.dds") && !fs::exists(images / "hud_a_b.dds") && fs::exists(tsv));
+    // No pictures and no text at all: nothing of them is left for the converter to find.
+    CompileReport third;
+    CHECK(build(false, third));
+    CHECK(!fs::exists(images / "hud_a.dds") && !fs::exists(images / "hud_a_b.dds") && !fs::exists(tsv));
+    // An unreadable text file is said.
+    CompileReport fourth;
+    Id next = 1;
+    ParseResult pr = parseMap(roomMapText(), next);
+    CompileOptions opt;
+    opt.mapId = "mp_room";
+    opt.stringsFile = (dir / "missing.str").string();
+    std::string err;
+    CHECK(pr.map.has_value() && compileIw8Extraction(*pr.map, scratch("stale_missing"), opt, fourth, &err));
+    bool said = false;
+    for (const std::string& w : fourth.warnings) said = said || w.find("cannot be read") != std::string::npos;
+    CHECK(said);
+}

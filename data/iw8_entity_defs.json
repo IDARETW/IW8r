@@ -6577,6 +6577,13 @@
             "default"
           ]
         },
+        "hint": {
+          "type": "string",
+          "default": "",
+          "description": "Use triggers: the text shown to a player who stands in the trigger, for example Press ^3[{+activate}]^7 to open. The build makes it a localized string of the map and the map script shows it (IW8 Radiant; not seen in game).",
+          "required": false,
+          "examples": []
+        },
         "model": {
           "type": "model",
           "default": "",
@@ -6646,6 +6653,13 @@
           "examples": [
             "default"
           ]
+        },
+        "hint": {
+          "type": "string",
+          "default": "",
+          "description": "Use triggers: the text shown to a player who stands in the trigger, for example Press ^3[{+activate}]^7 to open. The build makes it a localized string of the map and the map script shows it (IW8 Radiant; not seen in game).",
+          "required": false,
+          "examples": []
         },
         "model": {
           "type": "model",

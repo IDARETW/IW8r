@@ -292,6 +292,9 @@ Commands in the Tools menu:
   map's script: `icon = newhudelem(); icon.x = 20; icon.y = 120; icon setshader("hud_flag", 64, 64);`. Use names the
   game does not already have (a name such as `hud_icon_c4` is a stock icon). Up to 64 pictures; each is stored
   square, up to 1024 pixels a side.
+- **A hint on a use trigger.** Select a `trigger_use` brush and add the key `hint` with the text the player should
+  see, for example `Press ^3[{+activate}]^7 to open the gate`. Nothing else is needed: the build carries the text and
+  the map shows it while a player stands in the trigger.
 - **Your own text in the game.** Compile > Map Text File opens `<map name>.str` beside your map. Each entry is two
   lines: `REFERENCE HINT_GATE` and `LANG_ENGLISH "Press ^3[{+activate}]^7 to open"` (`\n` is a line break, `^1` to
   `^7` are colours, `[{+activate}]` shows the key). In the map's script the entry is `&"MP_YOURMAP/HINT_GATE"`: your

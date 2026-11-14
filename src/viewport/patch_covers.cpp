@@ -26,6 +26,33 @@ bool inTriangle(const Vec3& p, const Vec3& a, const Vec3& b, const Vec3& c, cons
     return (s0 >= -e && s1 >= -e && s2 >= -e) || (s0 <= e && s1 <= e && s2 <= e);
 }
 
+// Area of triangle (a, b, c) inside the convex polygon `poly` (all in the plane with normal n; poly wound either way).
+double clippedArea(const Vec3& a, const Vec3& b, const Vec3& c, const Winding& poly, const Vec3& n) {
+    // The polygon's own turning sense about n.
+    double turn = 0;
+    for (size_t k = 0; k < poly.size(); ++k)
+        turn += dot(cross(poly[(k + 1) % poly.size()] - poly[k], poly[(k + 2) % poly.size()] - poly[(k + 1) % poly.size()]), n);
+    const double sign = turn >= 0 ? 1.0 : -1.0;
+    std::vector<Vec3> in{a, b, c}, out;
+    for (size_t k = 0; k < poly.size() && in.size() >= 3; ++k) {
+        const Vec3& p0 = poly[k];
+        const Vec3 edge = poly[(k + 1) % poly.size()] - p0;
+        const auto side = [&](const Vec3& p) { return sign * dot(cross(edge, p - p0), n); };  // >= 0: inside this edge
+        out.clear();
+        for (size_t i = 0; i < in.size(); ++i) {
+            const Vec3& u = in[i];
+            const Vec3& v = in[(i + 1) % in.size()];
+            const double su = side(u), sv = side(v);
+            if (su >= 0) out.push_back(u);
+            if ((su >= 0) != (sv >= 0)) out.push_back(u + (v - u) * (su / (su - sv)));
+        }
+        in.swap(out);
+    }
+    double area = 0;
+    for (size_t k = 1; k + 1 < in.size(); ++k) area += 0.5 * std::fabs(dot(cross(in[k] - in[0], in[k + 1] - in[0]), n));
+    return area;
+}
+
 }  // namespace
 
 uint64_t PatchCovers::find(const std::vector<const PrimGeom*>& items) {
@@ -139,7 +166,17 @@ bool PatchCovers::covered(const Winding& face, const Vec3& normal) const {
         }
         if (!in) return false;
     }
-    return true;
+    // The samples can all be covered while a strip between two patches is not: the patch triangles must also hold the
+    // face's whole area. (Patches that lie over each other count twice; a paint mesh does not do that.)
+    double faceArea = 0, held = 0;
+    for (size_t k = 1; k + 1 < face.size(); ++k) faceArea += 0.5 * std::fabs(dot(cross(face[k] - face[0], face[k + 1] - face[0]), normal));
+    if (!(faceArea > 0)) return false;
+    for (const Cover* c : plane) {
+        for (const Winding& t : *c->tris)
+            for (size_t k = 1; k + 1 < t.size(); ++k) held += clippedArea(t[0], t[k], t[k + 1], face, normal);
+        if (held >= faceArea * 0.999) return true;
+    }
+    return false;
 }
 
 }  // namespace iw8r::app

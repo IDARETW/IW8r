@@ -70,6 +70,7 @@ KEY_INFO = {
     "nophysics": ("bool", "", "Disables physics on the entity (inferred from stock values)."),
     "radius": ("float", "", "Radius in map units. gsc gametypes/ball.gsc:163 passes it to spawn('trigger_radius'); inferred for other classes."),
     "height": ("float", "", "Height in map units. gsc gametypes/ball.gsc:163 passes it as the height argument of spawn('trigger_radius')."),
+    "hint": ("string", "", "Use triggers: the text shown to a player who stands in the trigger, for example Press ^3[{+activate}]^7 to open. The build makes it a localized string of the map and the map script shows it (IW8 Radiant; not seen in game)."),
     "dmg": ("int", "", "Damage applied to what is inside the trigger (inferred from stock values)."),
     "index": ("int", "", "Index value (inferred from stock values)."),
     "name": ("string", "", "Name key on infil structs (inferred from stock values)."),
@@ -142,6 +143,8 @@ SKIP_KEYS = {"classname"}
 # Classes that are not in the stock dump but are needed by the rest of the table.
 # name -> keys beyond those in the stock dump. Spawn and bcs classes are handled by rules below.
 EXTRA_KEYS = {
+    "trigger_use": ["hint"],
+    "trigger_use_touch": ["hint"],
     "trigger_damage": ["dmg", "footprint_mask_group", "model", "physasset", "script_exploder", "targetname", "target"],
     "triggermodeldummydefault": ["origin"],
     "misc_prefab": ["origin", "angles", "model"],

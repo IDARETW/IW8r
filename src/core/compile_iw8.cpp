@@ -3331,25 +3331,44 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             }
         }
         for (const std::string& w : hudWarnings) rep.warnings.push_back(w);
+        std::sort(rep.hudImages.begin(), rep.hudImages.end());  // searched below (the script check)
         if (!rep.hudImages.empty()) {
             std::string names;
             for (const std::string& n : rep.hudImages) names += (names.empty() ? "" : ", ") + n;
             rep.warnings.push_back(std::to_string(rep.hudImages.size()) + " HUD image(s) for the map script (setshader(\"<name>\", width, height)): " + names);
         }
     }
-    // 4.27: the map's own text for its script.
-    if (!opt.stringsFile.empty()) {
+    // 4.27: the map's own text: the entries of its text file for the script, and the hints of its use triggers.
+    {
+        std::vector<MapString> strings;
         std::string strText;
-        if (readFile(opt.stringsFile, strText)) {
+        if (!opt.stringsFile.empty() && readFile(opt.stringsFile, strText)) {
             std::vector<std::string> strWarnings;
-            const std::vector<MapString> strings = parseMapStrings(strText, id, &strWarnings);
+            strings = parseMapStrings(strText, id, &strWarnings);
             for (const std::string& w : strWarnings) rep.warnings.push_back(w);
-            if (!strings.empty()) {
-                customFiles.push_back({root / "extracted" / "localize" / "strings.tsv", mapStringsTsv(strings)});
-                for (const MapString& s : strings) rep.mapStrings.push_back(s.key);
-                rep.warnings.push_back(std::to_string(strings.size()) + " text entr" + (strings.size() == 1 ? "y" : "ies") +
-                                       " for the map script (&\"" + strings.front().key + "\"" + (strings.size() > 1 ? ", ..." : "") + ")");
+        } else if (!opt.stringsFile.empty()) {
+            rep.warnings.push_back("the map's text file " + opt.stringsFile + " cannot be read; its entries are not built");
+        }
+        const size_t fromFile = strings.size();
+        std::vector<MapScriptExtras::TriggerVolume> hintVolumes = readTriggerVolumes(map);
+        size_t hints = 0;
+        for (const auto& [key, text] : assignTriggerHintRefs(hintVolumes, id)) {
+            const bool taken = std::any_of(strings.begin(), strings.end(), [&](const MapString& s) { return s.key == key; });
+            if (taken) {
+                rep.warnings.push_back("the text file has an entry " + key + ", which is the name of a trigger's hint; the trigger's hint is used");
+                strings.erase(std::remove_if(strings.begin(), strings.end(), [&](const MapString& s) { return s.key == key; }), strings.end());
             }
+            strings.push_back({key, text});
+            ++hints;
+        }
+        std::sort(strings.begin(), strings.end(), [](const MapString& a, const MapString& b) { return a.key < b.key; });
+        if (!strings.empty()) {
+            customFiles.push_back({root / "extracted" / "localize" / "strings.tsv", mapStringsTsv(strings)});
+            for (const MapString& s : strings) rep.mapStrings.push_back(s.key);
+            if (fromFile)
+                rep.warnings.push_back(std::to_string(fromFile) + " text entr" + (fromFile == 1 ? "y" : "ies") + " for the map script (&\"" +
+                                       strings.front().key + "\"" + (strings.size() > 1 ? ", ..." : "") + ")");
+            if (hints) rep.warnings.push_back(std::to_string(hints) + " use trigger(s) show a hint (key hint)");
         }
     }
     for (const auto& [name, text] : physicPresets) customFiles.push_back({root / "extracted" / "physic" / name, text});
@@ -3581,6 +3600,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     solid.insert(*tn);
             }
             extras.triggerVolumes = readTriggerVolumes(map);
+            assignTriggerHintRefs(extras.triggerVolumes, id);  // the same names as in localize/strings.tsv
             for (const auto& e : map.entities) {
                 const std::string* vis = e.value("iw8r_visual");
                 const std::string* tn = e.value("targetname");
@@ -3980,6 +4000,28 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     // Read by ReadPreparedRawFiles / ReadDeclaredFx / AuditSourceAssetDeclarations (doc 17 §4.1).
                     writeFile(root / "extracted" / "zone_source" / (id + ".zone"), "", werr) &&
                     writeFile(root / "extracted" / "impactfx" / "_default.iw3.json", buildImpactTableJson() + "\n", werr);
+    {
+        // The folder may hold an earlier build of this map. The converter takes every hud_* image and the text file it
+        // finds there: what this build does not write must go, or a picture or text taken out of the map stays in it.
+        std::error_code ec;
+        const fs::path images = root / "extracted" / "images";
+        std::vector<fs::path> stale;
+        for (fs::directory_iterator it(images, ec), end; !ec && it != end; it.increment(ec)) {
+            std::string stem, ext;
+            try {
+                stem = it->path().stem().string();
+                ext = it->path().extension().string();
+            } catch (...) {
+                continue;  // a name outside the system's character set is not one of ours
+            }
+            for (char& c : stem) c = char(std::tolower(static_cast<unsigned char>(c)));
+            for (char& c : ext) c = char(std::tolower(static_cast<unsigned char>(c)));
+            if (stem.rfind("hud_", 0) == 0 && (ext == ".dds" || ext == ".iwi") && !std::binary_search(rep.hudImages.begin(), rep.hudImages.end(), stem))
+                stale.push_back(it->path());
+        }
+        for (const fs::path& p : stale) fs::remove(p, ec);
+        if (rep.mapStrings.empty()) fs::remove(root / "extracted" / "localize" / "strings.tsv", ec);
+    }
     for (size_t i = 0; ok && i < customFiles.size(); ++i) ok = writeFile(customFiles[i].first, customFiles[i].second, werr);
     for (size_t i = 0; ok && i < lightmapFiles.size(); ++i) ok = writeFile(lightmapFiles[i].first, lightmapFiles[i].second, werr);
     if (!ok) return fail(werr);

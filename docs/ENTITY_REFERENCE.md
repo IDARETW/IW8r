@@ -12,8 +12,8 @@ Sources: `data/iw8_entity_defs.json` (classes and keys) and `docs/research/10_iw
 
 ## Summary
 
-- 110 classes in 9 categories.
-- 100 kept by the build, 10 dropped.
+- 113 classes in 9 categories.
+- 102 kept by the build, 11 dropped.
 - Stock usage is listed for 35 classes, from the two zones in the inventory (mp_shipment and mp_backlot2).
 
 ## Reading the entries
@@ -42,7 +42,7 @@ Sources: `data/iw8_entity_defs.json` (classes and keys) and `docs/research/10_iw
 
 **[Models and prefabs](#models-and-prefabs)** (6 classes): [`collmap_scriptable`](#collmap_scriptable), [`misc_model`](#misc_model), [`misc_prefab`](#misc_prefab), [`script_brushmodel`](#script_brushmodel), [`script_model`](#script_model), [`triggermodeldummydefault`](#triggermodeldummydefault)
 
-**[Miscellaneous](#miscellaneous)** (8 classes): [`dynamic_prop`](#dynamic_prop), [`export_volume`](#export_volume), [`func_group`](#func_group), [`iw8r_decal`](#iw8r_decal), [`iw8r_loot_point`](#iw8r_loot_point), [`iw8r_volume`](#iw8r_volume), [`mp_global_intermission`](#mp_global_intermission), [`scriptable`](#scriptable)
+**[Miscellaneous](#miscellaneous)** (11 classes): [`dynamic_prop`](#dynamic_prop), [`export_volume`](#export_volume), [`func_group`](#func_group), [`iw8r_decal`](#iw8r_decal), [`iw8r_loot_cluster`](#iw8r_loot_cluster), [`iw8r_loot_point`](#iw8r_loot_point), [`iw8r_loot_zone`](#iw8r_loot_zone), [`iw8r_remove_world`](#iw8r_remove_world), [`iw8r_volume`](#iw8r_volume), [`mp_global_intermission`](#mp_global_intermission), [`scriptable`](#scriptable)
 
 ## Spawns
 
@@ -1320,6 +1320,7 @@ Brush trigger for player use (inferred from stock values).
 | Key | Type / values | Default | Required | Help |
 |---|---|---|---|---|
 | `footprint_mask_group` | string: any text | `default` | no | Footprint mask group name (inferred from stock values; stock value 'default'). Examples: `default`. |
+| `hint` | string: any text | none | no | Use triggers: the text shown to a player who stands in the trigger, for example Press ^3[{+activate}]^7 to open. The build makes it a localized string of the map and the map script shows it (IW8 Radiant; not seen in game). |
 | `model` | model: a model name, or a brush model index written as \*N | none | no | xmodel name for point models; '\*N' selects brush model N and is written by the compiler (inferred from stock values). Examples: `?38`, `?41`, `?42`. |
 | `origin` | vec3: three numbers, x y z | `0 0 0` | no | Position x y z in map units (inferred from stock values). Examples: `-864 -144 110`, `960 -24 62`, `224 8 64`. |
 | `physasset` | string: any text | none | no | Physics asset name (inferred from stock values). Examples: `TriggerModelStaticDummyDefault`. |
@@ -1338,6 +1339,7 @@ Brush trigger for use on touch. Its classname is removed by gsc gametypes/arm.gs
 | Key | Type / values | Default | Required | Help |
 |---|---|---|---|---|
 | `footprint_mask_group` | string: any text | `default` | no | Footprint mask group name (inferred from stock values; stock value 'default'). Examples: `default`. |
+| `hint` | string: any text | none | no | Use triggers: the text shown to a player who stands in the trigger, for example Press ^3[{+activate}]^7 to open. The build makes it a localized string of the map and the map script shows it (IW8 Radiant; not seen in game). |
 | `model` | model: a model name, or a brush model index written as \*N | none | no | xmodel name for point models; '\*N' selects brush model N and is written by the compiler (inferred from stock values). Examples: `?28`, `?29`, `?31`. |
 | `origin` | vec3: three numbers, x y z | `0 0 0` | no | Position x y z in map units (inferred from stock values). Examples: `-3792 4784 2208`, `-8576 9408 24`, `-1144 -152 114`. |
 | `physasset` | string: any text | none | no | Physics asset name (inferred from stock values). Examples: `TriggerModelStaticDummyDefault`. |
@@ -1536,8 +1538,25 @@ World geometry and global map settings. One per map (contract 15 s3.1).
 | `iw8r_ambient` | string: any text | none | no | Ambient bed of the zone: the name of one of the map's own sounds (&lt;map dir&gt;/sounds/&lt;name&gt;.wav or .mp3), built into the map sound bank and played as a 2D loop while in the zone. Stock aliases cannot be used here (silent in the map bank); use a looping sound_emitter for those. In game NOT VERIFIED. Examples: `wind_bed`, `factory_hum`. |
 | `iw8r_ambient_oneshots` | string: any text | none | no | Ambient one-shots of the zone: "&lt;min s&gt; &lt;max s&gt; &lt;sound&gt;[:weight] ..." with the map's own sounds (&lt;map dir&gt;/sounds); one of them plays at random every min..max seconds while in the zone. In game NOT VERIFIED. Examples: `6 12 bird_call:3 dog_bark`. |
 | `iw8r_audio_interior` | bool: 0, 1, true or false | `0` | no | 1: the zone uses the stock "interior" occlusion and filter presets (sounds behind walls muffled as indoors); 0: the stock "default" ones. Written to the sound table (research 63). In game NOT VERIFIED. |
+| `iw8r_bake_lightmaps` | string: any text | `0` | no | 1: the build bakes a lightmap for the world (5.11): the sky and the bounce of the sun and lights (the game draws the sun and the lights in real time on top), and the sun visibility. The converter turns it into the game's lightmap (offline proof tools/lightmap_bake_build_test.py; not seen in game). Examples: `1`. |
+| `iw8r_bake_rays` | float: a number | `32` | no | Lightmap bake: sky rays per texel (more rays: smoother ambient, slower bake; at most 1024). Examples: `64`. |
+| `iw8r_bake_sky` | string: any text | none | no | Lightmap bake: the sky light as "r g b intensity" (default a pale blue at 0.35 of the sun). Examples: `0.55 0.65 0.8 0.35`. |
+| `iw8r_br` | string: any text | none | no | What a small map switches off in the Warzone (br) game type: nocircle, nogulag, skipdrop (Tools &gt; Game Modes). Also marks the map as a Warzone map for scriptables and vehicles. Examples: `nocircle nogulag skipdrop`. |
+| `iw8r_collision` | string: any text | `auto` | no | How the build keeps the map's collision: auto (streamed tiles for a map wider than 20000 units), one (one piece; also full) or tiles (the game's streamed collision tiles, research 90). Overrides Edit &gt; Preferences &gt; Build: collision. Examples: `auto`, `one`, `tiles`. |
+| `iw8r_gametype_script` | string: any text | none | no | A game type of the map's own (research 91 / 92): a GSC file beside the map whose file name is the game type name. The build checks it (a new name, main(), calls only into stock scripts stored by number) and compiles it into the map zone; map.json lists the name. Tools &gt; Game Modes &gt; New game type script writes a template. Not seen in game. Examples: `gametypes/teamkills.gsc`. |
 | `iw8r_gametypes` | string: any text | none | no | The game modes the game offers for this map, as ui_gametype names with spaces between them (war dm dom sd ctf ...). Left out, the editor lists the modes the map has spawns and objects for. Written to map.json as gameTypes; needs a client that reads it. Examples: `war dm`, `war dom sd`. |
+| `iw8r_lightmap_texel` | float: a number | `16` | no | Lightmap bake: world units per lightmap texel (grows by itself when the atlas does not fit 2048 x 2048). Examples: `8`, `32`. |
+| `iw8r_loot_zone` | string: any text | `map_quarry` | no | The loot zone name of the map's loot points when no iw8r_loot_zone brush entity names one; the loot tables pick the loot by it (research 87). Examples: `map_quarry`, `tutorial_scavenger`. |
+| `iw8r_mode_dvars` | string: any text | none | no | Game mode settings the map's script sets at every start, 'name=value; name=value' (Tools &gt; Game Modes &gt; Carry in this map). Not seen in game. Examples: `scr_br_teamsize=3; loot_table_name=mp/loot_item_defs_s3.csv`. |
+| `iw8r_mode_rules` | string: any text | none | no | Game mode rules applied to every player at each spawn by the map's script, which runs after the game type's own start (research 91): health=&lt;1..1000&gt;; speed=&lt;0.2..3&gt;; weapon=&lt;name&gt;; ammo=infinite. Not seen in game. Examples: `health=50; speed=1.2; weapon=iw8_pi_golf21_mp; ammo=infinite`. |
+| `iw8r_no_loot` | int: a whole number | `0` | no | 1 writes an empty loot list (removes all loot points of a stock Warzone map on Rebuild Stock Zone). Examples: `1`. |
 | `iw8r_reverb` | string: any text | none | no | The map's reverb everywhere outside audio zones. Reverb room type (one of the 59 stock types, e.g. iw8_md_room, iw8_ext_open_space_med_1; Help lists them in research 63) and optional dry wet fade: "&lt;room&gt; [dry wet fade]". The build writes the map sound table (in game NOT VERIFIED). Examples: `iw8_ext_open_space_med_1`, `iw8_md_room`, `iw8_lg_room_warehouse`. |
+| `iw8r_script` | string: any text | none | no | The map's own GSC file (relative to the map folder). It must define user_main(), which runs after the load script. Edited in the Script dock. Examples: `mp_mymap_logic.gsc`. |
+| `iw8r_sky_from` | string: any text | none | no | Stock maps (11.6): use another stock map's sky (File &gt; Relight Stock Map Sky). Rebuild Stock Zone carries its sky material (tw/sky_&lt;map&gt;) and puts it on this map's sky surfaces. The baked lighting stays. Not seen in game. Examples: `mp_backlot2`. |
+| `iw8r_stock_retexture` | string: any text | none | no | Stock maps: 'from=to; from=to' material swaps on the world surfaces. Rebuild Stock Zone carries each new material from the zone the material catalogue names (map materials only). Not seen in game. Examples: `tm2co/me_curb_stone_01=tm2co/me_plaster_barrier_fence_wall`. |
+| `iw8r_sun_color` | string: any text | none | no | Stock maps (11.6): the sun's new colour, linear r g b 0 to 16 (File &gt; Relight Stock Map Sun). Rebuild Stock Zone writes it. Not seen in game. Examples: `1 0.55 0.35`. |
+| `iw8r_sun_direction` | string: any text | none | no | Stock maps (11.6): the sun's new direction, pitch yaw in degrees as sundirection (pitch -90 to -1, negative = above the horizon; stock mp_shipment -20.261 -15.4) (File &gt; Relight Stock Map Sun). Rebuild Stock Zone turns the sun light and the vision's sun fog and bakes the map's sun shadow again (ACTS exports the static models); the lightmaps keep the old sun's bounce light. A wide map whose new shadow does not fit is cropped to the play space and a margin. Not seen in game. Examples: `-20.261 -15.4`, `-45 120`. |
+| `iw8r_sun_intensity` | float: a number | none | no | Stock maps (11.6): the sun's new intensity (stock: mp_shipment 8.6, mp_br_tut 30.7). Rebuild Stock Zone writes it. Not seen in game. Examples: `7.5`. |
 | `iw8r_sun_shadow_range` | string: any text | `3 2` | no | Sun shadow cascade size multipliers sent to every player (sm_sunCascadeSizeMultiplier1 / 2); "0" turns it off. Longer values push sun shadows further. Examples: `3 2`, `4 3`, `0`. |
 | `iw8r_sun_sprite` | string: any text | none | no | Sun sprite and flare: "&lt;size 1..64&gt; [flare alpha 0..1] [blind darken 0..1] [glare lighten 0..1]". Draws a sun disc in the sky in the sundirection (size in 480-line virtual pixels, CoD-style), a lens flare when looking at it, and the blind / glare strength. Written to extracted/sun/&lt;map&gt;.sun (research 39). In game NOT VERIFIED. Examples: `16 0.5`, `20 0.7 0.5 0.3`. |
 | `lightmapcount` | int: a whole number | none | no | Lightmap count (inferred from stock values). Examples: `4`. |
@@ -1806,7 +1825,7 @@ Listed by the converter as an accepted class (compile_iw8.cpp). In stock data it
 
 ## Miscellaneous
 
-8 classes.
+11 classes.
 
 ### `dynamic_prop`
 
@@ -1877,6 +1896,16 @@ A decal: a picture projected onto the surfaces inside a box (stains, paint, mark
 | `uv_scale` | string: any text | `1 1` | no | Tiling of the picture across the box: two numbers above 0. Examples: `1 1`, `2 2`. |
 | `uv_shift` | string: any text | `0 0` | no | Shifts the picture: two numbers. Examples: `0 0`, `0.5 0`. |
 
+### `iw8r_loot_cluster`
+
+A new loot cluster on a Warzone stock map: a box (the bounds of this entity's brushes) that groups the loot points inside it. File &gt; Rebuild Stock Zone adds it after the map's own clusters; loot points inside it whose cluster is auto join it. The map's own clusters win where boxes overlap. Not kept in the entity text. Not seen in game.
+
+- **Kind:** brush entity, no box.
+- **Editor colour:** `#33E659` (RGB 0.2, 0.9, 0.35).
+- **Build:** kept by the converter. File &gt; Rebuild Stock Zone adds it after the map's own clusters; loot points inside it whose cluster is auto join it.
+
+This class has no keys.
+
 ### `iw8r_loot_point`
 
 A loot point: a place where the battle royale scripts may put loot (a weapon, armour, cash, a supply box). On a Warzone stock map, File &gt; Edit Loot Points turns the map's own points into these entities; move, add or delete them and File &gt; Rebuild Stock Zone writes them back. On your own map, place them where loot should appear under the battle royale game type. Not kept in the entity text: the build writes them into the map's loot table. Not seen in game.
@@ -1893,6 +1922,31 @@ A loot point: a place where the battle royale scripts may put loot (a weapon, ar
 | `loot_zone` | string: any text | `auto` | no | auto: the build picks the named zone of the stock map by position. A number: that zone (0 = none). Not used on your own maps. Examples: `auto`, `0`. |
 | `loot_zone_name` | string: any text | none | no | Information only: the name of the stock zone the point was in when it was read. |
 | `origin` | vec3: three numbers, x y z | none | yes | Where the loot lies (on the floor). Examples: `0 0 0`. |
+
+### `iw8r_loot_zone`
+
+A new named loot zone on a Warzone stock map: a box (the bounds of this entity's brushes) whose name the loot tables pick the loot by. File &gt; Rebuild Stock Zone adds it after the map's own zones; loot points and new clusters inside it take it. Use a name the map's loot tables know (a zone name of the map, e.g. map_quarry). Not kept in the entity text. Not seen in game.
+
+- **Kind:** brush entity, no box.
+- **Editor colour:** `#F2BF33` (RGB 0.95, 0.75, 0.2).
+- **Build:** kept by the converter. File &gt; Rebuild Stock Zone adds it after the map's own zones; loot points and new clusters inside it take it.
+
+| Key | Type / values | Default | Required | Help |
+|---|---|---|---|---|
+| `name` | string: any text | none | no | The zone name the loot tables pick the loot by (lower-case letters, digits and '_'). Empty: the map's first zone name. Examples: `map_quarry`, `map_hospital`, `tutorial_scavenger`. |
+
+### `iw8r_remove_world`
+
+Stock maps: takes the stock world geometry inside this entity's brushes out on File &gt; Rebuild Stock Zone (research 96). Each brush (or patch) is a box; every world triangle whose three vertices lie inside a box stops drawing in every pass, and the world collision triangles and brush hulls inside it go. The stock sun shadow is baked again without them (worldspawn iw8r_remove_world_sun keep: not). Static models are not world geometry: hide them with Hide Stock Props In Selection. What stays: the baked lighting under and around it, and the stock occlusion data (something behind a removed wall can be culled from some views). Use a tool texture. Not kept in the entity text; not built into own maps. Not seen in game.
+
+- **Kind:** brush entity, no box.
+- **Editor colour:** `#F24040` (RGB 0.95, 0.25, 0.25).
+- **Build:** dropped by the converter. Stock maps: takes the stock world geometry inside this entity's brushes out on File &gt; Rebuild Stock Zone (research 96). Not kept in the entity text; not built into own maps.
+
+| Key | Type / values | Default | Required | Help |
+|---|---|---|---|---|
+| `collision` | bool: 0, 1, true or false | `1` | no | 0 keeps the collision: only the triangles inside the boxes stop drawing (an invisible wall). Examples: `0`. |
+| `render` | bool: 0, 1, true or false | `1` | no | 0 keeps the triangles drawn: only the collision inside the boxes goes (a walk-through wall). Examples: `0`. |
 
 ### `iw8r_volume`
 

@@ -133,12 +133,25 @@ iw8r_trigger_poll()
             continue;
         foreach (p in level.players)
         {
-            if (!isdefined(p) || !isalive(p))
+            if (!isdefined(p))
                 continue;
+            if (!isalive(p))
+            {
+                if (isdefined(level.iw8r_hints))
+                    p iw8r_hint_show(undefined, 0);
+                continue;
+            }
+            hint = undefined;
+            hintid = 0;
             foreach (t in level.iw8r_trig)
             {
                 if (!iw8r_trigger_holds(t, p.origin))
                     continue;
+                if (isdefined(t.hint) && !isdefined(hint))
+                {
+                    hint = t.hint;
+                    hintid = t.hintid;
+                }
                 if (t.use && !p usebuttonpressed())
                     continue;
                 if (t.dmg > 0)
@@ -153,7 +166,44 @@ iw8r_trigger_poll()
                 if (isdefined(t.ent))
                     t.ent notify("trigger", p);
             }
+            if (isdefined(level.iw8r_hints))
+                p iw8r_hint_show(hint, hintid);
         }
+    }
+}
+
+// The hint of a use trigger (its key "hint"), in the player's own HUD element while the trigger holds them. Only
+// reached on a map that has such a trigger (level.iw8r_hints).
+iw8r_hint_show(hint, hintid)
+{
+    if (!isdefined(hint))
+    {
+        if (isdefined(self.iw8r_hint))
+        {
+            self.iw8r_hint destroy();
+            self.iw8r_hint = undefined;
+            self.iw8r_hintid = 0;
+        }
+        return;
+    }
+    if (!isdefined(self.iw8r_hint))
+    {
+        h = newclienthudelem(self);
+        h.x = 0;
+        h.y = 110;
+        h.alignx = "center";
+        h.aligny = "middle";
+        h.horzalign = "center";
+        h.vertalign = "middle";
+        h.fontscale = 1.2;
+        h.alpha = 1;
+        self.iw8r_hint = h;
+        self.iw8r_hintid = 0;
+    }
+    if (self.iw8r_hintid != hintid)
+    {
+        self.iw8r_hint settext(hint);
+        self.iw8r_hintid = hintid;
     }
 }
 )GSC";
@@ -265,6 +315,15 @@ std::vector<MapScriptExtras::TriggerVolume> readTriggerVolumes(const MapFile& ma
         if (boxes.empty()) continue;
         auto& v = volumeFor(name);
         v.use = v.use || cls.rfind("trigger_use", 0) == 0;
+        // The hint of a use trigger: the first one of the entities that share the name. Line breaks and tabs become
+        // spaces; 255 characters at most.
+        if (cls.rfind("trigger_use", 0) == 0 && v.hintText.empty())
+            if (const std::string* h = e.value("hint"); h && !h->empty()) {
+                std::string text = h->substr(0, 255);
+                for (char& c : text)
+                    if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+                v.hintText = text;
+            }
         if (cls == "trigger_hurt" || cls == "trigger_damage") {
             const std::string* d = e.value("dmg");
             v.damage = d ? std::atof(d->c_str()) : 5;
@@ -273,6 +332,22 @@ std::vector<MapScriptExtras::TriggerVolume> readTriggerVolumes(const MapFile& ma
         }
         for (auto& b : boxes) v.boxes.push_back(std::move(b));
     }
+    return out;
+}
+
+std::vector<std::pair<std::string, std::string>> assignTriggerHintRefs(std::vector<MapScriptExtras::TriggerVolume>& volumes,
+                                                                        const std::string& prefix) {
+    std::string pre = prefix;
+    for (char& c : pre) c = char(std::toupper(static_cast<unsigned char>(c)));
+    std::vector<std::pair<std::string, std::string>> out;
+    size_t n = 0;
+    for (auto& v : volumes) {
+        v.hintRef.clear();
+        if (!v.use || v.hintText.empty()) continue;
+        v.hintRef = pre + "/TRIGGER_HINT_" + std::to_string(++n);
+        out.emplace_back(v.hintRef, v.hintText);
+    }
+    std::sort(out.begin(), out.end());
     return out;
 }
 
@@ -537,9 +612,16 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
     s += "}\n";
     if (triggers) {
         s += "\n// Trigger volumes of the map, tested by this script (see iw8r_trigger).\niw8r_trigger_setup()\n{\n    level.iw8r_trig = [];\n";
+        size_t hintCount = 0;
         for (const auto& tv : extras.triggerVolumes) {
             s += "    t = iw8r_trigger_add(\"" + tv.targetname + "\", " + (tv.use ? "1" : "0") + ", " + num(tv.damage) + ", " +
                  std::to_string(tv.damageIntervalMs) + ");\n";
+            // A hint (key "hint" of a use trigger): its localized string, shown while a player stands in the trigger.
+            const bool refOk = !tv.hintRef.empty() && tv.hintRef.size() <= 120 &&
+                               std::all_of(tv.hintRef.begin(), tv.hintRef.end(), [](unsigned char c) { return std::isalnum(c) || c == '_' || c == '/'; });
+            if (refOk) {
+                s += "    t.hint = &\"" + tv.hintRef + "\";\n    t.hintid = " + std::to_string(++hintCount) + ";\n    level.iw8r_hints = 1;\n";
+            }
             for (const auto& b : tv.boxes) {
                 s += "    b = iw8r_trigger_box(t, " + vec(b.mins) + ", " + vec(b.maxs) + ", " + num(b.radius) + ");\n";
                 for (const auto& pl : b.planes) s += "    iw8r_trigger_plane(b, " + vec(pl.n) + ", " + num(pl.d) + ");\n";

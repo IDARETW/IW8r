@@ -140,6 +140,9 @@ struct MapScriptExtras {
     struct TriggerVolume {
         std::string targetname;  // may be empty (a nameless trigger_hurt still hurts)
         bool use = false;
+        // A use trigger's key "hint": the text shown to a player standing in it. hintRef is its localized string name
+        // ("<MAP ID>/TRIGGER_HINT_<n>", set by assignTriggerHintRefs); the script shows a hint only when it is set.
+        std::string hintText, hintRef;
         double damage = 0;       // per hit; 0 = none
         int damageIntervalMs = 50;
         struct Box {
@@ -196,6 +199,10 @@ std::string prefabScriptsError(const std::vector<MapScriptExtras::PrefabScript>&
 
 // Every brush trigger and trigger_radius of the map as a script-tested volume (entities sharing a targetname merge).
 std::vector<MapScriptExtras::TriggerVolume> readTriggerVolumes(const MapFile& map);
+// Names the hints of the volumes: the n-th volume with a hint text gets "<PREFIX IN CAPITALS>/TRIGGER_HINT_<n>" (n from
+// 1, in the volumes' order, so two calls on the same map agree). Returns the name and text pairs, sorted by name.
+std::vector<std::pair<std::string, std::string>> assignTriggerHintRefs(std::vector<MapScriptExtras::TriggerVolume>& volumes,
+                                                                        const std::string& prefix);
 
 // Where a door brush model hinges: the vertical edge at one end of its longer horizontal side, at the middle of its
 // thickness, on the floor of the brush. Key iw8r_hinge "x y z" names the hinge point itself; iw8r_hinge "far" takes the

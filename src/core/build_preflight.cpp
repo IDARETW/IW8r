@@ -274,7 +274,9 @@ void checkScript(const std::string& text, const std::string& file, const std::st
         }
         // self / level / game are entities: `self takeallweapons()` is a method call.
         if (!prev.empty() && (!keywords().count(prev) || prev == "self" || prev == "level" || prev == "game")) {
-            if (!cat.methods.count(lname))
+            // A function of this script called on an entity (`player give_kit();`) is ordinary GSC: the entity is its
+            // `self`. Only a name that is neither a builtin method nor defined here is unknown.
+            if (!cat.methods.count(lname) && !defined.count(lname))
                 out.push_back({true, "script", where + ": unknown method '" + name + "()' called on '" + prev + "'"});
         } else if (!defined.count(lname) && !cat.functions.count(lname) && !cat.converterFunctions.count(lname)) {
             out.push_back({true, "script", where + ": unknown function '" + name +
