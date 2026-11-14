@@ -2,6 +2,15 @@
 
 ## Latest (2026-11-13)
 
+- Hidden faces (follow-up of the owner's "lines at slices / z-fighting" request): core face_edges hiddenCovers +
+  EdgeBrush::opaque + edgeBrushOpaque (a brush whose drawn faces are all opaque). A face piece inside or flat against
+  an opaque brush is dropped in edgeBrushMeshes (build and viewport share it). Build: opaque from the material library
+  (no alphaTest, no blend, blendMode 0). Viewport: Scene::opaqueFor (main_window.cpp: custom material flags, else
+  materialBlendFromTechset == Opaque; unknown = not opaque; invalidateSceneSoon on materialReady; bench switch
+  IW8R_NO_HIDE_FACES). Test face_edges_hidden_faces_are_not_drawn. Cinder Rail (Toon): 147,754 -> 109,224 world
+  triangles, 5 zones pass ACTS (out/agent/toon_build). Viewport A/B with the real material cache (out/agent/hf_on1/2
+  vs hf_off1/2): 0.04-0.16 % of pixels differ, thin lines at joints only (out/agent/hf_cmp_1.png). Full suite passed
+  (core 180,478 checks / 1,297 tests, GUI 1,016).
 - Owner (2026-11-13 night): the Shipment toon patch crashed the game in the lobby, "Disc read error [3.1]:
   'techsets_mp_shipment.fp'" (the owner had copied the .fp into zone\ by hand; no editor markers). Research 116 (IDA,
   game_dx12_ship_replay.exe): error 3 = DB_AsyncIWFileLoad_PumpDecodeQueue's result; a patch's signed flag comes from

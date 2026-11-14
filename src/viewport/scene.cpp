@@ -772,6 +772,7 @@ void SceneCache::updateFaceEdges() {
     if (items.empty()) return;
     IW8R_PROF("s.face_edges");
     std::vector<EdgeBrush> brushes(items.size());
+    std::unordered_map<std::string, bool> opaque;  // opaqueFor per material, asked once per sync
     for (size_t i = 0; i < items.size(); ++i) {
         const PrimGeom& g = *items[i];
         EdgeBrush& b = brushes[i];
@@ -785,6 +786,12 @@ void SceneCache::updateFaceEdges() {
             b.drawn[f] = !isIw8ToolMaterial(g.polyMaterial[f]);
         }
         finishEdgeBrush(b);
+        b.opaque = opaqueFor && edgeBrushOpaque(b, g.polyMaterial, [](const std::string& m) { return isIw8ToolMaterial(m); },
+                                                [&](const std::string& m) {
+                                                    auto it = opaque.find(m);
+                                                    if (it == opaque.end()) it = opaque.emplace(m, opaqueFor(m)).first;
+                                                    return it->second;
+                                                });
     }
     const std::vector<std::vector<uint32_t>> near = edgeNeighbours(brushes);
     for (size_t i = 0; i < items.size(); ++i) {
@@ -793,13 +800,16 @@ void SceneCache::updateFaceEdges() {
         uint64_t key = (1469598103934665603ull ^ g.rev) * 1099511628211ull;
         key = (key ^ uint64_t(g.edgeSet)) * 1099511628211ull;
         key = (key ^ uint64_t(faceEdges ? 2 : 1)) * 1099511628211ull;
+        key = (key ^ uint64_t(brushes[i].opaque ? 5 : 3)) * 1099511628211ull;
         // ... and the neighbours' neighbours: they shape the neighbours' pieces, whose corners this brush's seams share.
         for (uint32_t n : near[i]) {
             key = (key ^ uint64_t(items[n]->ref.item)) * 1099511628211ull;
             key = (key ^ items[n]->rev) * 1099511628211ull;
+            key = (key ^ uint64_t(brushes[n].opaque ? 5 : 3)) * 1099511628211ull;
             for (uint32_t m : near[n]) {
                 key = (key ^ uint64_t(items[m]->ref.item)) * 1099511628211ull;
                 key = (key ^ items[m]->rev) * 1099511628211ull;
+                key = (key ^ uint64_t(brushes[m].opaque ? 5 : 3)) * 1099511628211ull;
             }
         }
         if (key == 0) key = 1;

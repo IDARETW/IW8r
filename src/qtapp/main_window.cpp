@@ -282,7 +282,10 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     // Textured camera: custom materials, then exported stock images, then the ACTS material cache (fetched on demand).
     customMaterials_ = std::make_unique<MaterialLibrary>();
     matCache_ = new MaterialCache([this](const QString& k) { return toolPath(k); }, this);
-    connect(matCache_, &MaterialCache::materialReady, this, [this](const QString&) { camera_->materialImagesChanged(); });
+    connect(matCache_, &MaterialCache::materialReady, this, [this](const QString&) {
+        camera_->materialImagesChanged();
+        invalidateSceneSoon();  // a material's blend class is known now: brushes of it may hide faces (opaqueFor)
+    });
     camera_->setToolPathSource([this](const QString& k) { return toolPath(k); });
     connect(matCache_, &MaterialCache::progress, this, [this](const QString& m) { ctx_.setStatus(m); });
     // A map material's custom surface shader (core custom_shader, "shader" in its .iw8mat.json).
@@ -456,6 +459,18 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         if (!e || e->failed) return 0;
         const MaterialBlend b = materialBlendFromTechset(e->techset.toStdString());
         return b == MaterialBlend::Blend ? 1 : b == MaterialBlend::Additive ? 2 : 0;
+    };
+    // A material that is opaque for sure: a custom one without cut-out or blending, a stock one whose techset says so.
+    // A brush made of such materials hides the faces inside or against it (core face_edges); unknown hides nothing.
+    ctx_.scene.opaqueFor = [this](const std::string& m) -> bool {
+        static const bool off = qEnvironmentVariableIsSet("IW8R_NO_HIDE_FACES");  // bench switch: every face is drawn
+        if (off) return false;
+        if (const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr)
+            return !cm->alphaTest && !cm->blend && cm->blendMode == 0;
+        if (qs(m).compare("iw8r_glass", Qt::CaseInsensitive) == 0) return false;
+        const auto e = matCache_->lookup(qs(m));
+        if (!e || e->failed || e->techset.isEmpty()) return false;
+        return materialBlendFromTechset(e->techset.toStdString()) == MaterialBlend::Opaque;
     };
     camera_->setEffectSource([this](const std::string& fx) -> std::shared_ptr<const VfxSimDef> {
         auto it = fxSims_.find(fx);

@@ -491,6 +491,42 @@ std::vector<Winding> coplanarCovers(const std::vector<EdgeBrush>& brushes, size_
     return out;
 }
 
+std::vector<Winding> hiddenCovers(const std::vector<EdgeBrush>& brushes, size_t self, size_t face,
+                                  const std::vector<uint32_t>& neighbours) {
+    std::vector<Winding> out;
+    if (self >= brushes.size()) return out;
+    const EdgeBrush& B = brushes[self];
+    if (face >= B.wins.size() || face >= B.planes.size() || B.wins[face].size() < 3) return out;
+    const Vec3 nA = normalize(B.planes[face].n);
+    // The face a little in front of itself: where that lies in an opaque brush, nothing can look at the face. (Well
+    // clear of the cut tolerance: a coplanar face of the other brush, facing the same way, is not "in front".)
+    constexpr double lift = 0.05;
+    Winding lifted = B.wins[face];
+    AABB ab;
+    for (Vec3& p : lifted) {
+        p = p + nA * lift;
+        ab.add(p);
+    }
+    for (uint32_t ci : neighbours) {
+        if (ci == self || ci >= brushes.size()) continue;
+        const EdgeBrush& C = brushes[ci];
+        if (C.set != B.set || !C.opaque) continue;
+        if (C.bounds.mins.x > ab.maxs.x || C.bounds.maxs.x < ab.mins.x || C.bounds.mins.y > ab.maxs.y || C.bounds.maxs.y < ab.mins.y ||
+            C.bounds.mins.z > ab.maxs.z || C.bounds.maxs.z < ab.mins.z)
+            continue;
+        Winding in = lifted;
+        for (size_t g = 0; g < C.planes.size() && !in.empty(); ++g) {
+            const double len = length(C.planes[g].n);
+            if (len < 1e-12) continue;
+            in = clipKeep(in, C.planes[g].n * (1.0 / len), C.planes[g].d / len);
+        }
+        if (in.empty() || polyArea(in) < 0.05) continue;
+        for (Vec3& p : in) p = p - nA * lift;
+        out.push_back(std::move(in));
+    }
+    return out;
+}
+
 namespace {
 
 // The pieces without the part under a convex polygon of their plane.
@@ -539,7 +575,9 @@ std::vector<Piece> brushFacePieces(const std::vector<EdgeBrush>& brushes, size_t
     const std::vector<EdgeSpan> spans = withEdges ? faceEdgeSpans(brushes, self, f, neighbours) : std::vector<EdgeSpan>();
     const Vec3 n = normalize(B.planes[f].n);
     std::vector<Piece> pieces = facePieces(B.wins[f], n, spans, range, fields);
-    const std::vector<Winding> covers = coplanarCovers(brushes, self, f, neighbours);
+    std::vector<Winding> covers = coplanarCovers(brushes, self, f, neighbours);
+    // ... and the parts no one can see (inside or against an opaque brush).
+    for (Winding& hidden : hiddenCovers(brushes, self, f, neighbours)) covers.push_back(std::move(hidden));
     for (const Winding& cover : covers) pieces = withoutCover(std::move(pieces), cover, n);
     if (coversOut) *coversOut = covers;
     return pieces;

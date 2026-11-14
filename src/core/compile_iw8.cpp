@@ -300,7 +300,7 @@ struct EdgeData {
 struct Gather {
     const EdgeData* edges = nullptr;  // set: brush faces are written as their face meshes (coplanar overlaps cut away)
     bool edgeColours = false;         // ... with the edge data in the vertex colour (a surface shader reads it)
-    size_t coveredFaces = 0;          // faces not written: wholly under coplanar faces of other brushes
+    size_t coveredFaces = 0;          // faces not written: wholly under coplanar faces of other brushes, or hidden
     size_t paintedPatches = 0;        // patches whose painted colours were left out because the colour holds edge data
     int subdiv = 4;
     bool patchBackFaces = true;
@@ -386,7 +386,7 @@ void gatherBrush(const Primitive& p, size_t entity, size_t group, Gather& g, boo
         c.editorMaterial = mat;
         if (haveMeshes && fi < edgeMeshes.size()) {
             if (edgeMeshes[fi].idx.empty()) {
-                ++g.coveredFaces;  // wholly under coplanar faces of other brushes
+                ++g.coveredFaces;  // wholly under coplanar faces of other brushes, or inside / against an opaque brush
                 continue;
             }
             for (const EdgeVertex& q : edgeMeshes[fi].verts) {
@@ -1651,6 +1651,16 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     b.drawn.push_back(!isIw8ToolMaterial(firstToken(f.suffix)));
                 }
                 finishEdgeBrush(b);
+                {
+                    // Opaque: every drawn face a material of the library without cut-out or blending (the editor
+                    // puts the stock materials a map uses into the library with their blend class).
+                    std::vector<std::string> mats;
+                    for (const auto& f : cb) mats.push_back(firstToken(f.suffix));
+                    b.opaque = edgeBrushOpaque(b, mats, [](const std::string& m) { return isIw8ToolMaterial(m); }, [&](const std::string& m) {
+                        const CustomMaterial* cm = opt.library ? opt.library->find(m) : nullptr;
+                        return cm && !cm->alphaTest && !cm->blend && cm->blendMode == 0;
+                    });
+                }
                 edgeData.index.emplace(p, edgeData.brushes.size());
                 edgeData.brushes.push_back(std::move(b));
             }
@@ -3087,8 +3097,8 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         warn.push_back("surface shader not used: " + surfaceShaderError);
     }
     if (g.coveredFaces)
-        warn.push_back(std::to_string(g.coveredFaces) + " brush face(s) not built: each lies wholly under faces of other brushes in the "
-                       "same plane (overlapping faces are drawn once: the smaller one where they overlap)");
+        warn.push_back(std::to_string(g.coveredFaces) + " brush face(s) not built: each is wholly hidden (inside or against an opaque "
+                       "brush) or lies under faces of other brushes in the same plane (overlapping faces are drawn once)");
     const std::string world =
         "{\"schema\":1,\"name\":" + quote(mapName) + ",\"sky\":" + quote(skyValue) + ",\"bounds\":" + boundsJson +
         ",\"sun\":{\"ambient\":[0.5,0.5,0.5],\"angles\":" + vec3raw(sunPitch, sunYaw, sunRoll) +

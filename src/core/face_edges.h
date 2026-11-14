@@ -23,6 +23,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "geometry.h"
@@ -41,7 +42,29 @@ struct EdgeBrush {
     std::vector<uint8_t> drawn;
     AABB bounds;
     int set = 0;
+    // The brush hides what is inside it or flush against it: all its faces are drawn with opaque materials or are
+    // caulk / nodraw, and at least one is drawn. The host sets it from what it knows of the materials (unknown: false).
+    bool opaque = false;
 };
+// The opaque flag of a brush from its faces: `materials[i]` of face i, `isOpaque(material)` for a drawn material.
+// Tool materials: caulk and nodraw are allowed, any other (clip, trigger, sky, ...) makes the brush hide nothing.
+template <class Names, class IsTool, class IsOpaque>
+bool edgeBrushOpaque(const EdgeBrush& b, const Names& materials, IsTool isTool, IsOpaque isOpaque) {
+    bool drawn = false;
+    for (size_t f = 0; f < b.wins.size() && f < materials.size(); ++f) {
+        if (b.wins[f].size() < 3) continue;
+        const auto& m = materials[f];
+        if (isTool(m)) {
+            std::string low;
+            for (const char ch : m) low += char(ch >= 'A' && ch <= 'Z' ? ch + 32 : ch);
+            if (low.find("caulk") == std::string::npos && low.find("nodraw") == std::string::npos) return false;
+            continue;
+        }
+        if (!isOpaque(m)) return false;
+        drawn = true;
+    }
+    return drawn;
+}
 // Fills bounds from the windings.
 void finishEdgeBrush(EdgeBrush& b);
 
@@ -78,8 +101,13 @@ EdgeFaceMesh edgeFaceMesh(const Winding& face, const Vec3& normal, const std::ve
 std::vector<Winding> coplanarCovers(const std::vector<EdgeBrush>& brushes, size_t self, size_t face,
                                     const std::vector<uint32_t>& neighbours);
 
-// Every face of brushes[self]: meshes[face] (empty for a face without a winding, or wholly under coplanar faces of
-// other brushes: coplanarCovers). Vertices the pieces of one face put on an edge are added to the other pieces along
+// The parts of face `face` of brushes[self] that no one can see: inside an opaque brush of its set, or flush against
+// one (the open side of the face is in that brush). Convex polygons in the face's plane.
+std::vector<Winding> hiddenCovers(const std::vector<EdgeBrush>& brushes, size_t self, size_t face,
+                                  const std::vector<uint32_t>& neighbours);
+
+// Every face of brushes[self]: meshes[face] (empty for a face without a winding, wholly under coplanar faces of
+// other brushes (coplanarCovers), or wholly hidden (hiddenCovers)). Vertices the pieces of one face put on an edge are added to the other pieces along
 // it, across the brush's faces too, so no seam can open between them. withEdges false: no edge data (edge 1
 // everywhere), only the faces themselves with the covered parts cut away.
 // allNear (edgeNeighbours of `brushes`): when given, the vertices the touching brushes' own pieces put on this brush's

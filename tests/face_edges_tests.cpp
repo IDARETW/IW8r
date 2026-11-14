@@ -269,3 +269,44 @@ TEST(face_edges_hidden_faces_have_no_edges) {
     const std::vector<EdgeBrush> crate{boxBrush({-256, -256, -16}, {256, 256, 0}), boxBrush({0, 0, 0}, {32, 32, 32})};
     CHECK(faceEdgeSpans(crate, 1, size_t(faceWithNormal(crate[1], {1, 0, 0})), edgeNeighbours(crate)[1]).size() == 4);
 }
+
+TEST(face_edges_hidden_faces_are_not_drawn) {
+    // Two opaque wall slices side by side: the faces between them are gone, the rest of each slice is whole.
+    std::vector<EdgeBrush> slices{boxBrush({0, 0, 0}, {64, 16, 128}), boxBrush({64, 0, 0}, {128, 16, 128})};
+    for (auto& b : slices) b.opaque = true;
+    const auto near = edgeNeighbours(slices);
+    const int between = faceWithNormal(slices[0], {1, 0, 0}), front = faceWithNormal(slices[0], {0, -1, 0});
+    CHECK(hiddenCovers(slices, 0, size_t(between), near[0]).size() == 1);
+    CHECK(hiddenCovers(slices, 0, size_t(front), near[0]).empty());
+    const auto m = edgeBrushMeshes(slices, 0, near[0], kEdgeRange, true, &near);
+    CHECK(m[size_t(between)].idx.empty());
+    CHECK(std::fabs(meshArea(m[size_t(front)]) - 64.0 * 128.0) < 1e-6);
+    // A brush that is not opaque hides nothing (glass, a fence, a material the host does not know).
+    slices[1].opaque = false;
+    CHECK(hiddenCovers(slices, 0, size_t(between), near[0]).empty());
+    CHECK(std::fabs(meshArea(edgeBrushMeshes(slices, 0, near[0])[size_t(between)]) - 16.0 * 128.0) < 1e-6);
+    // Overlapping opaque brushes: only the part of a face inside the other brush goes.
+    std::vector<EdgeBrush> over{boxBrush({0, 0, 0}, {64, 16, 128}), boxBrush({48, 0, 0}, {128, 16, 96})};
+    for (auto& b : over) b.opaque = true;
+    const auto on = edgeNeighbours(over);
+    const int side = faceWithNormal(over[0], {1, 0, 0});  // x = 64, inside the second brush for z < 96
+    const auto om = edgeBrushMeshes(over, 0, on[0], kEdgeRange, true, &on);
+    CHECK(std::fabs(meshArea(om[size_t(side)]) - 16.0 * 32.0) < 1e-6);
+    // Two equal brushes on top of each other: neither hides the other (their faces are in one plane, facing the same
+    // way: the coplanar rule draws one of them).
+    std::vector<EdgeBrush> twins{boxBrush({0, 0, 0}, {64, 64, 16}), boxBrush({0, 0, 0}, {64, 64, 16})};
+    for (auto& b : twins) b.opaque = true;
+    const auto tn = edgeNeighbours(twins);
+    double total = 0;
+    for (size_t bi = 0; bi < 2; ++bi)
+        for (const auto& fm : edgeBrushMeshes(twins, bi, tn[bi])) total += meshArea(fm);
+    CHECK(std::fabs(total - 2.0 * (64 * 64 + 64 * 16 + 64 * 16)) < 1e-6);
+    // edgeBrushOpaque: opaque drawn faces and caulk give an opaque brush; one unknown or see-through face does not.
+    const EdgeBrush box = boxBrush({0, 0, 0}, {8, 8, 8});
+    const auto isTool = [](const std::string& m) { return m == "caulk" || m == "clip"; };
+    const auto isOpaque = [](const std::string& m) { return m == "wall"; };
+    CHECK(edgeBrushOpaque(box, std::vector<std::string>{"wall", "wall", "caulk", "wall", "wall", "wall"}, isTool, isOpaque));
+    CHECK(!edgeBrushOpaque(box, std::vector<std::string>{"wall", "wall", "glass", "wall", "wall", "wall"}, isTool, isOpaque));
+    CHECK(!edgeBrushOpaque(box, std::vector<std::string>{"wall", "wall", "clip", "wall", "wall", "wall"}, isTool, isOpaque));
+    CHECK(!edgeBrushOpaque(box, std::vector<std::string>(6, "caulk"), isTool, isOpaque));
+}

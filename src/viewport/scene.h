@@ -170,6 +170,9 @@ public:
     // at every full sync.
     bool faceEdges = false;
     std::function<bool()> faceEdgesWanted;
+    // Is a drawn material opaque for sure (no cut-out, no blending)? A brush of such materials hides the faces inside
+    // or against it, which are then not drawn (core face_edges hiddenCovers). Null or false: hides nothing.
+    std::function<bool(const std::string& material)> opaqueFor;
     // How a material draws in the textured view (3.17): 0 opaque / alpha test, 1 alpha blend, 2 additive (null = all 0).
     std::function<int(const std::string& material)> blendFor;
     // Foliage materials (5.23 wind preview): their textured batches are marked to sway (null = none).

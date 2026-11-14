@@ -5,6 +5,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Brush faces nobody can see are not drawn and not built.** A face that lies inside another brush, or flat against
+  one, is left out when that brush is opaque: in the viewport and in the built map. A brush with a cut-out or
+  see-through material (glass, fences, foliage cards) hides nothing, and neither does a material the editor does not
+  know yet. Cinder Rail (Toon) builds with 109,224 world triangles instead of 147,754, and the toon shader's lines no
+  longer show where such a face met a wall. Checked: the built map passes the game's loaders; the viewport picture
+  with and without the rule (bench switch `IW8R_NO_HIDE_FACES`) differs in at most 0.16 % of the pixels, all thin
+  lines at such joints. Not seen in game.
+
 - **Fixed: an installed stock edit stopped the game ("Disc read error [3.1]: '<map>.fp'").** The game reads a patch
   file of one of its signed zones only when the patch carries the game's own signature, which nobody else can make;
   every stock edit was installed as such a patch. File > Install Edited Stock Map Into Game now installs the edited
