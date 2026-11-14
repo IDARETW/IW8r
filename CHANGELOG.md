@@ -3,6 +3,16 @@
 Newest first. "Not seen in game" means built and checked offline (converter read-back, the game's own loaders through
 ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md) lists the in-game checks.
 
+## 2026-11-14
+
+- **Web: building in the browser.** "Draw brush" in the page, then a drag in a Top, Front or Side view, makes a
+  brush with the current material (64 units in the third direction). A selected brush shows a box with a handle on
+  each side: drag one to resize along that side while the opposite side stays. The Inspector shows what the entity's
+  class is, the help text of each key (required keys are marked), suggests the keys the class knows, and lists what
+  Check Map says about the entity. "Entity class to place" under the entity list places a point entity of any
+  class: on the surface at the centre of the live view, or at the 2D view's centre. API: `POST /api/brush`,
+  `POST /api/resize`, `GET /api/entityclasses`, `GET /api/entitydef`, `POST /api/entity`. Checked in a real browser.
+
 ## 2026-11-13
 
 - **Web: assets land on the surface in the live view.** With "Editor view (live)" shown, a model, effect or sound

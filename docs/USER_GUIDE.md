@@ -689,6 +689,12 @@ one undo history, and each side sees the other's edits at once.
   picture, drawn by the editor for your browser: drag to look, W A S D and Q E to fly (Shift is faster), wheel to
   move forward and back, right-drag to slide, click to select. Camera modes, Lit Preview and Game Lighting from the
   View menu apply to it.
+- **Building.** **Draw brush**, then drag a rectangle in a Top, Front or Side view: a brush with the current
+  material, 64 units in the third direction. A selected brush has a handle on each side of its box: drag one to
+  resize. Clone, delete, copy, paste and rotate are in the page's Edit and Brush menus.
+- **Entities.** Type a class under the entity list and press Place: a point entity of that class, on the surface at
+  the centre of the live view or at the 2D view's centre. The Inspector shows what the class is, each key's help
+  (hover the key; required keys are marked), suggests the class's keys, and lists what Check Map says about it.
 - **Panels.** Entities (with a filter), the Inspector (edit, add and remove keys), Assets (click a material to apply
   it, a model, effect or sound to place it) and the Log. In the live editor view an asset is placed on the surface
   at the centre of the picture; in the drawn 2D views at the view's centre, at height 0.

@@ -74,6 +74,7 @@ class EntityDefs;
 namespace iw8r::qt {
 // Entity definitions used by Check Map (set once by the main window).
 void setCheckMapEntityDefs(const EntityDefs* defs);
+const EntityDefs* checkMapEntityDefs();  // null until the main window has loaded them
 
 class CheckMapDialog : public QDialog {
     Q_OBJECT

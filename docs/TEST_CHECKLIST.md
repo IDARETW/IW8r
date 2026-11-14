@@ -50,6 +50,8 @@ Each point was run by me in a browser against a running editor; this list is for
 - [ ] View box > "Editor view (live)": the editor's own picture; drag to look, W A S D to fly, click selects.
       A model clicked in Assets lands on the surface at the centre of the picture.
 - [ ] A big map (Cinder Rail) opens in the page within a few seconds.
+- [ ] Draw brush, drag a rectangle in the Top view: a brush appears in the editor too. Drag a handle of its box:
+      it grows on that side only. Select a spawn: the Inspector shows what the class is and help for its keys.
 
 ## In game: your map's model light (2026-11-13), not seen in game
 

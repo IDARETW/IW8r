@@ -26,6 +26,8 @@
 #include <QPasswordDigestor>
 
 #include "brush_tools.h"
+#include "entity_defs.h"
+#include "find_dialog.h"
 #include "editor_context.h"
 #include "editor_log.h"
 #include <QTextStream>
@@ -550,6 +552,44 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
             r.extraHeaders = "Cache-Control: no-store\r\n";
             return r;
         }
+        if (path == "/api/entityclasses") {
+            QJsonArray classes;
+            if (const EntityDefs* defs = checkMapEntityDefs())
+                for (const std::string& n : defs->classNames())
+                    if (const ClassDef* c = defs->find(n))
+                        classes.append(QJsonObject{{"name", qs(c->name)}, {"kind", qs(c->kind)}, {"description", qs(c->description).section('.', 0, 0)},
+                                                   {"built", c->buildAccepted}});
+            Response r;
+            r.body = json({{"classes", classes}});
+            return r;
+        }
+        if (path == "/api/entitydef") {
+            const EntityDefs* defs = checkMapEntityDefs();
+            const ClassDef* c = defs ? defs->find(q.queryItemValue("class").toStdString()) : nullptr;
+            QJsonObject o{{"name", q.queryItemValue("class")}, {"known", c != nullptr}};
+            if (c) {
+                QJsonArray keys;
+                for (const KeyDef& k : c->keys) {
+                    QJsonArray examples;
+                    for (const std::string& e : k.examples) examples.append(qs(e));
+                    keys.append(QJsonObject{{"name", qs(k.name)}, {"type", qs(k.type)}, {"default", qs(k.defaultValue)},
+                                            {"description", qs(k.description)}, {"required", k.required}, {"examples", examples}});
+                }
+                o.insert("description", qs(c->description));
+                o.insert("kind", qs(c->kind));
+                o.insert("built", c->buildAccepted);
+                o.insert("keys", keys);
+            }
+            if (q.hasQueryItem("e") && defs)
+                if (const Entity* e = ctx_->doc.findEntity(Id(q.queryItemValue("e").toUInt()))) {
+                    QJsonArray problems;
+                    for (const std::string& m : defs->validate(*e)) problems.append(qs(m));
+                    o.insert("problems", problems);
+                }
+            Response r;
+            r.body = json(o);
+            return r;
+        }
         if (path == "/api/forms") {
             Response r;
             r.body = json({{"forms", hooks_.forms ? hooks_.forms() : QJsonArray()}});
@@ -630,6 +670,54 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
         const double x = in.value("x").toDouble(-1), y = in.value("y").toDouble(-1);
         if (x < 0 || x > 1 || y < 0 || y > 1) return error(400, "x and y are 0..1 from the top left of the view");
         hooks_.pickFrame(cam, x, y, std::clamp(in.value("aspect").toDouble(16.0 / 9.0), 0.2, 5.0), in.value("add").toBool());
+    } else if (path == "/api/brush") {
+        const QJsonArray lo = in.value("mins").toArray(), hi = in.value("maxs").toArray();
+        if (lo.size() != 3 || hi.size() != 3) return error(400, "need mins:[x,y,z] and maxs:[x,y,z]");
+        AABB box;
+        box.add(Vec3{lo[0].toDouble(), lo[1].toDouble(), lo[2].toDouble()});
+        box.add(Vec3{hi[0].toDouble(), hi[1].toDouble(), hi[2].toDouble()});
+        for (int a = 0; a < 3; ++a)
+            if (!(box.maxs[a] - box.mins[a] >= 1.0) || std::fabs(box.mins[a]) > 131072 || std::fabs(box.maxs[a]) > 131072)
+                return error(400, "a brush is at least 1 unit on every side and inside the map's limits");
+        if (!createBoxBrush(*ctx_, box)) return error(400, "the brush could not be made (no worldspawn?)");
+        ctx_->documentEdited("Brush created from the browser");
+    } else if (path == "/api/resize") {
+        const int axis = in.value("axis").toInt(-1);
+        const double factor = in.value("factor").toDouble(0);
+        const QJsonArray pv = in.value("pivot").toArray();
+        if (axis < 0 || axis > 2 || pv.size() != 3 || !(factor >= 0.01 && factor <= 100.0) || ctx_->doc.selection().empty())
+            return error(400, "need axis 0..2, factor 0.01..100, pivot:[x,y,z] and a selection");
+        if (scaleSelectionAbout(*ctx_, axis, factor, Vec3{pv[0].toDouble(), pv[1].toDouble(), pv[2].toDouble()}))
+            ctx_->documentEdited("Resized from the browser");
+    } else if (path == "/api/entity") {
+        const std::string cls = in.value("classname").toString().trimmed().toStdString();
+        const EntityDefs* defs = checkMapEntityDefs();
+        const ClassDef* c = defs ? defs->find(cls) : nullptr;
+        bool nameOk = !cls.empty() && cls.size() <= 64;
+        for (const char ch : cls) nameOk = nameOk && ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_');
+        if (!nameOk) return error(400, "a class name is a-z, 0-9 and _");
+        if (c && c->kind == "brush") return error(400, qs(cls) + " is a brush class: select brushes and give them this class in the editor");
+        QJsonArray at = in.value("at").toArray();
+        if (in.value("view").isObject()) {
+            const QJsonObject v = in.value("view").toObject();
+            const QJsonArray pos = v.value("pos").toArray();
+            WebCamera cam;
+            for (int k = 0; k < 3 && pos.size() == 3; ++k) cam.pos[k] = pos[k].toDouble();
+            cam.yaw = v.value("yaw").toDouble();
+            cam.pitch = std::clamp(v.value("pitch").toDouble(), -89.0, 89.0);
+            cam.fov = std::clamp(v.value("fov").toDouble(90), 10.0, 150.0);
+            double point[3] = {0, 0, 0};
+            if (pos.size() != 3 || !hooks_.surfacePoint ||
+                !hooks_.surfacePoint(cam, std::clamp(v.value("x").toDouble(0.5), 0.0, 1.0), std::clamp(v.value("y").toDouble(0.5), 0.0, 1.0),
+                                     std::clamp(v.value("aspect").toDouble(16.0 / 9.0), 0.2, 5.0), point))
+                return error(400, "there is nothing under the centre of the view to place it on");
+            at = QJsonArray{std::round(point[0]), std::round(point[1]), std::round(point[2])};
+        }
+        if (at.size() != 3) return error(400, "need at:[x,y,z] or view");
+        const std::string origin = formatNumber(at[0].toDouble()) + " " + formatNumber(at[1].toDouble()) + " " + formatNumber(at[2].toDouble());
+        const Id id = ctx_->doc.addEntity({{"classname", cls}, {"origin", origin}}, {}, "Place " + cls + " from the browser");
+        ctx_->doc.select({id, kNoId}, false);
+        ctx_->documentEdited(QString("Placed %1 from the browser").arg(qs(cls)));
     } else if (path == "/api/form") {
         QString why;
         if (!hooks_.applyForm || !hooks_.applyForm(in.value("id").toString(), in.value("values").toObject(), &why))

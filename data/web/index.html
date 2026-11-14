@@ -13,6 +13,7 @@
   <span class="sep"></span>
   <label>View <select id="axis"><option value="0">Top (XY)</option><option value="1">Front (XZ)</option><option value="2">Side (YZ)</option><option value="3">3D</option><option value="4">Editor view (live)</option></select></label>
   <button id="fit" title="Frame the whole map">Fit</button>
+  <button id="drawBrush" title="Then drag a rectangle in a Top, Front or Side view: a brush with the current material. Its third size is 64 units from 0; resize it in another view">Draw brush</button>
   <button id="undo" title="Undo (shared with the editor)">Undo</button>
   <button id="redo">Redo</button>
   <button id="save">Save</button>
@@ -37,11 +38,14 @@
     <div class="panel">
       <h2>Entities <input id="filter" placeholder="filter class or key"></h2>
       <ul id="entities"></ul>
+      <form id="addEntity"><input id="newClass" placeholder="entity class to place" list="classList" autocomplete="off"><datalist id="classList"></datalist><button>Place</button></form>
     </div>
     <div class="panel">
       <h2>Inspector <span id="inspTitle"></span></h2>
+      <div id="classHelp"></div>
+      <div id="entityProblems"></div>
       <table id="keys"></table>
-      <form id="addKey"><input id="newKey" placeholder="key"><input id="newValue" placeholder="value"><button>Set</button></form>
+      <form id="addKey"><input id="newKey" placeholder="key" list="keyList" autocomplete="off"><datalist id="keyList"></datalist><input id="newValue" placeholder="value"><button>Set</button></form>
     </div>
     <div class="panel assets">
       <h2>Assets

@@ -33,6 +33,12 @@
 //                                    Game Lighting, the stock reference)
 //   POST /api/pick     {pos, yaw, pitch, fov, x, y, aspect, add}   select what lies under the point (x, y in 0..1
 //                                    from the top left) of that view; nothing there deselects
+//   POST /api/brush    {mins, maxs}  a box brush with the current material (one undo step)
+//   POST /api/resize   {axis, factor, pivot:[x,y,z]}   scales the selection along axis 0..2 about the pivot
+//   GET  /api/entityclasses          the entity classes: {name, kind, description, built}
+//   GET  /api/entitydef?class=C&e=ID one class: description, kind, built, keys [{name, type, default, description,
+//                                    required, examples}]; with e, "problems": what Check Map says about that entity
+//   POST /api/entity   {classname, at:[x,y,z] | view:{...}}   a point entity of that class
 //   GET  /api/commands               every editor command in menu order: {id, label, menu, shortcut, checkable,
 //                                    checked, enabled, blocked} ("blocked": why the browser cannot run it, "" = it
 //                                    can) and {sep: true, menu} between groups

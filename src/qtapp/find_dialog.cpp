@@ -263,6 +263,7 @@ namespace {
 const EntityDefs* g_defs = nullptr;
 }
 void setCheckMapEntityDefs(const EntityDefs* defs) { g_defs = defs; }
+const EntityDefs* checkMapEntityDefs() { return g_defs; }
 
 size_t CheckMapDialog::fixAll() {
     if (fixes_.empty()) return 0;

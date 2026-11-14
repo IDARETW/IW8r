@@ -2189,6 +2189,61 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             auto jsNow = web.handle("GET", "/app.js", {}, true, {});
             r.check(jsNow.body.contains("applyMap") && jsNow.body.contains("/api/map?since="), "the browser page asks for differences");
         }
+        {
+            // Plan 3.4: a brush drawn in the browser, a resize by a handle, the entity definitions and any class placed.
+            const size_t undoE = ctx.doc.undoPosition();
+            const auto brushCount = [&] {
+                ctx.scene.sync(ctx.doc);
+                int n = 0;
+                for (const auto* g : ctx.scene.items()) n += g->kind == iw8r::app::PrimGeom::Brush ? 1 : 0;
+                return n;
+            };
+            const int brushesBefore = brushCount();
+            ctx.doc.deselectAll();
+            const auto mk = web.handle("POST", "/api/brush", "{\"mins\":[4096,4096,0],\"maxs\":[4160,4224,64]}", true, {});
+            const int brushesAfter = brushCount();
+            Id be = 0, bi = 0;
+            AABB made;
+            for (const auto* g : ctx.scene.items())
+                if (g->kind == iw8r::app::PrimGeom::Brush && g->bounds.valid() && g->bounds.mins.x > 4000) be = g->ref.entity, bi = g->ref.item, made = g->bounds;
+            r.check(mk.status == 200 && brushesAfter == brushesBefore + 1 && std::fabs(made.mins.x - 4096) < 0.01 && std::fabs(made.maxs.y - 4224) < 0.01 &&
+                        std::fabs(made.maxs.z - 64) < 0.01,
+                    "POST /api/brush makes a box brush of the given size");
+            ctx.doc.select({be, bi}, false);
+            const auto rs = web.handle("POST", "/api/resize", "{\"axis\":0,\"factor\":2,\"pivot\":[4096,4160,32]}", true, {});
+            ctx.scene.sync(ctx.doc);
+            AABB grown;
+            for (const auto* g : ctx.scene.items())
+                if (g->ref.entity == be && g->ref.item == bi) grown = g->bounds;
+            r.check(rs.status == 200 && grown.valid() && std::fabs(grown.mins.x - 4096) < 0.01 && std::fabs(grown.maxs.x - 4224) < 0.01 &&
+                        std::fabs(grown.maxs.y - 4224) < 0.01,
+                    QString("POST /api/resize scales the selection along one axis about the pivot (x %1 .. %2)").arg(grown.mins.x).arg(grown.maxs.x));
+            const auto badBrush = web.handle("POST", "/api/brush", "{\"mins\":[0,0,0],\"maxs\":[0,64,64]}", true, {});
+            const auto badResize = web.handle("POST", "/api/resize", "{\"axis\":5,\"factor\":2,\"pivot\":[0,0,0]}", true, {});
+            r.check(badBrush.status == 400 && badResize.status == 400, "a flat brush and a bad resize are refused");
+            const QJsonArray classes = QJsonDocument::fromJson(web.handle("GET", "/api/entityclasses", {}, true, {}).body).object().value("classes").toArray();
+            const QJsonObject def = QJsonDocument::fromJson(web.handle("GET", "/api/entitydef?class=mp_tdm_spawn", {}, true, {}).body).object();
+            bool hasOrigin = false;
+            for (const QJsonValue& k : def.value("keys").toArray()) hasOrigin = hasOrigin || k.toObject().value("name").toString() == "origin";
+            const auto pl = web.handle("POST", "/api/entity", "{\"classname\":\"mp_tdm_spawn\",\"at\":[4096,4096,64]}", true, {});
+            const Entity* placedEnt = ctx.doc.map().entities.empty() ? nullptr : &ctx.doc.map().entities.back();
+            const bool placedOk = pl.status == 200 && placedEnt && placedEnt->classname() == "mp_tdm_spawn" && placedEnt->value("origin") &&
+                                  *placedEnt->value("origin") == "4096 4096 64";
+            const QJsonObject withProblems = placedEnt ? QJsonDocument::fromJson(web.handle("GET", QString("/api/entitydef?class=mp_tdm_spawn&e=%1").arg(placedEnt->id).toUtf8(), {}, true, {}).body).object()
+                                                       : QJsonObject();
+            const auto badClass = web.handle("POST", "/api/entity", "{\"classname\":\"Bad Class\",\"at\":[0,0,0]}", true, {});
+            r.check(classes.size() > 20 && def.value("known").toBool() && !def.value("description").toString().isEmpty() && hasOrigin && placedOk &&
+                        withProblems.contains("problems") && badClass.status == 400,
+                    QString("the entity definitions reach the browser (%1 classes; mp_tdm_spawn with its keys) and any point class can be placed").arg(classes.size()));
+            while (ctx.doc.undoPosition() > undoE) ctx.doc.undo();
+            ctx.doc.deselectAll();
+            ctx.documentEdited();
+            auto editJs = web.handle("GET", "/app.js", {}, true, {});
+            auto editPage = web.handle("GET", "/", {}, true, {});
+            r.check(brushCount() == brushesBefore && editJs.body.contains("/api/brush") && editJs.body.contains("/api/resize") &&
+                        editJs.body.contains("/api/entitydef") && editPage.body.contains("drawBrush") && editPage.body.contains("classHelp"),
+                    "the browser page has Draw brush, the resize handles and the inspector's key help");
+        }
         // Edits go through the shared document (one undo history).
         const std::string before = ctx.doc.text();
         const size_t pos = ctx.doc.undoPosition();

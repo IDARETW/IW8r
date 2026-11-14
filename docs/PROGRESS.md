@@ -2,6 +2,12 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-14, plan 3.4: POST /api/brush (createBoxBrush), POST /api/resize (scaleSelectionAbout), GET
+  /api/entityclasses + /api/entitydef (checkMapEntityDefs(), a new getter in find_dialog; "problems" = validate),
+  POST /api/entity (point classes; at or view). Page: drawBrush button and drag mode "draw", selectionBox / handleAt
+  and drag mode "resize", inspector classHelp / entityProblems / keyList, addEntity form. Browser check on 8791.
+  Open in 3.4: vertex and edge modes, region, layers in the page (clone, delete, copy, paste, rotate run from the
+  web menu as commands).
 - Plan 3.4 (placement): POST /api/place takes "view" (the browser camera + a point of the view) instead of "at";
   hook surfacePoint -> MainWindow::webSurfacePoint (scene.pick, hits nearer than 1 unit refused). app.js sends it when
   the live view is shown. GUI check. Open in 3.4: brush creation / resize handles in the page, vertex and edge

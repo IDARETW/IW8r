@@ -82,3 +82,11 @@ body { grid-template-rows: auto auto 1fr auto; }
 #formFields label.wide { grid-template-columns: 1fr; }
 #formFields pre.report { margin: 0; max-height: 46vh; overflow: auto; white-space: pre-wrap; font: 11px/1.4 ui-monospace, monospace;
   background: #1a1c20; border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+
+/* Editing tools (plan 3.4). */
+#drawBrush.on { border-color: var(--accent); color: var(--accent); }
+#addEntity { display: flex; gap: 4px; margin-top: 6px; }
+#addEntity input { flex: 1; min-width: 0; }
+#classHelp { color: var(--muted); font-size: 11px; margin: 0 0 4px; }
+#entityProblems { color: #ff8080; font-size: 11px; margin: 0 0 4px; white-space: pre-wrap; }
+td.required { color: var(--accent); }

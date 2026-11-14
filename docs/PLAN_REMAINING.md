@@ -322,7 +322,9 @@ Preferences (7), Prefabs (8), Surface / UV (9), Material / Effect Info (10).
   9. Surface / UV (basic).
   10. Material / Effect Info.
 
-**3.4 Editing tools.**
+**3.4 Editing tools.** DONE 2026-11-14 for: drawing a brush, resize handles, placing any entity class (on the
+surface in the live view), the inspector with entity definitions; clone / delete / copy / paste / rotate run as
+commands from the web menu. Open: vertex and edge modes, region and layers in the page, face picking with surface fit.
 - **2D:** create a brush by dragging, resize handles, clone / delete / copy / paste, rotate / scale, vertex and edge
   modes, region, layers.
 - **Selection and placement:** face picking with surface fit; entity placement of every class and template at the 3D

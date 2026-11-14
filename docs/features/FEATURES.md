@@ -739,7 +739,8 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 - "Editor view (live)": the editor's own camera picture in the browser, drawn by the editor's renderer from a camera each browser owns. It shows what the desktop camera view shows (textures, lit preview, Game Lighting, the stock map, selection). Drag to look, W A S D and Q E to fly, wheel to move, click to select. About 20 ms per 1280 x 720 picture on Cinder Rail. (tested in a browser)
 - A simple 3D view drawn in the browser itself draws the textured scene with thumbnails (models as boxes).
 - The browser can compile, deploy, build and play, load in game, and place assets.
-- Not in the browser yet: creating and resizing brushes by dragging, vertex and face tools, the Vision Editor, Preferences, the prefab and surface tools as forms.
+- Building in the page: Draw brush (drag a rectangle in a 2D view), resize handles on the selected brushes, placing a point entity of any class, and an inspector with the entity definitions (class description, key help, required keys, Check Map's findings for the entity). (tested in a browser)
+- Not in the browser yet: vertex, edge and face tools, the Vision Editor, Preferences, the prefab and surface tools as forms.
 
 ## 15. Automation and command line
 

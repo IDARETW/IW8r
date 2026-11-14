@@ -85,6 +85,45 @@ function draw() {
   };
   for (const it of map.items) if (!sel.has(selKey(it.e, it.i)) && !sel.has(selKey(it.e, -1))) drawItem(it, false);
   for (const it of map.items) if (sel.has(selKey(it.e, it.i)) || sel.has(selKey(it.e, -1))) drawItem(it, true);
+  // The selection's box with a handle on each side (drag one to resize along that axis).
+  const box = selectionBox();
+  if (box) {
+    let lo = [box.lo[a], box.lo[b]], hi = [box.hi[a], box.hi[b]];
+    if (drag && drag.mode === "resize") { lo = drag.lo.slice(); hi = drag.hi.slice(); }
+    const [x0, y1] = toScreen(lo[0], lo[1]), [x1, y0] = toScreen(hi[0], hi[1]);
+    g.strokeStyle = "#e8b84a"; g.lineWidth = 1; g.setLineDash([4, 3]);
+    g.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    g.setLineDash([]);
+    g.fillStyle = "#e8b84a";
+    for (const [hx, hy] of [[x0, (y0 + y1) / 2], [x1, (y0 + y1) / 2], [(x0 + x1) / 2, y0], [(x0 + x1) / 2, y1]]) g.fillRect(hx - 4, hy - 4, 8, 8);
+    if (drag && drag.mode === "resize") setStatus(`Size ${(hi[0] - lo[0]).toFixed(0)} x ${(hi[1] - lo[1]).toFixed(0)}`);
+  }
+  if (drag && drag.mode === "draw" && drag.moved) {
+    const [x0, y0] = toScreen(drag.from[0], drag.from[1]), [x1, y1] = toScreen(drag.to[0], drag.to[1]);
+    g.strokeStyle = "#7fd0ff"; g.lineWidth = 1.5;
+    g.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+  }
+}
+// The box around the selected brushes and patches (world space), or null.
+function selectionBox() {
+  const sel = selectedSet();
+  let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity], any = false;
+  for (const it of map.items) {
+    if (it.kind === "entity" || (!sel.has(selKey(it.e, it.i)) && !sel.has(selKey(it.e, -1)))) continue;
+    for (const p of it.polys) for (const q of p) for (let k = 0; k < 3; ++k) { lo[k] = Math.min(lo[k], q[k]); hi[k] = Math.max(hi[k], q[k]); }
+    any = true;
+  }
+  return any ? { lo, hi } : null;
+}
+// The handle of the selection's box under a canvas point: {side: 0 low | 1 high, dim: 0 horizontal | 1 vertical}.
+function handleAt(x, y) {
+  const box = selectionBox();
+  if (!box) return null;
+  const [a, b] = axes();
+  const [x0, y1] = toScreen(box.lo[a], box.lo[b]), [x1, y0] = toScreen(box.hi[a], box.hi[b]);
+  const spots = [[x0, (y0 + y1) / 2, 0, 0], [x1, (y0 + y1) / 2, 0, 1], [(x0 + x1) / 2, y1, 1, 0], [(x0 + x1) / 2, y0, 1, 1]];
+  for (const [hx, hy, dim, side] of spots) if (Math.abs(x - hx) <= 7 && Math.abs(y - hy) <= 7) return { dim, side, box };
+  return null;
 }
 
 // Dragging the selection previews the move locally; the server moves it on release (one undo step).
@@ -112,8 +151,21 @@ function pick(x, y) {
   return best;
 }
 
+let drawing = false;   // "Draw brush" is on: the next drag in a 2D view makes a brush
+$("drawBrush").onclick = () => { drawing = !drawing; $("drawBrush").classList.toggle("on", drawing); setStatus(drawing ? "Drag a rectangle in the view" : ""); };
 canvas.addEventListener("pointerdown", (ev) => {
   canvas.setPointerCapture(ev.pointerId);
+  if (drawing) {
+    const w = toWorld(ev.offsetX, ev.offsetY).map(snap);
+    drag = { mode: "draw", x: ev.offsetX, y: ev.offsetY, from: w, to: w, moved: false };
+    return;
+  }
+  const handle = handleAt(ev.offsetX, ev.offsetY);
+  if (handle) {
+    const [a, b] = axes();
+    drag = { mode: "resize", x: ev.offsetX, y: ev.offsetY, handle, lo: [handle.box.lo[a], handle.box.lo[b]], hi: [handle.box.hi[a], handle.box.hi[b]], moved: false };
+    return;
+  }
   const hit = pick(ev.offsetX, ev.offsetY);
   const sel = selectedSet();
   if (hit && (sel.has(selKey(hit.e, hit.i)) || sel.has(selKey(hit.e, -1))) && !ev.shiftKey) {
@@ -125,6 +177,13 @@ canvas.addEventListener("pointerdown", (ev) => {
 canvas.addEventListener("pointermove", (ev) => {
   if (!drag) return;
   if (Math.abs(ev.offsetX - drag.x) + Math.abs(ev.offsetY - drag.y) > 3) drag.moved = true;
+  if (drag.mode === "draw") { drag.to = toWorld(ev.offsetX, ev.offsetY).map(snap); draw(); return; }
+  if (drag.mode === "resize") {
+    const w = toWorld(ev.offsetX, ev.offsetY).map(snap), h = drag.handle, step = state.grid || 8;
+    if (h.side) drag.hi[h.dim] = Math.max(w[h.dim], drag.lo[h.dim] + step); else drag.lo[h.dim] = Math.min(w[h.dim], drag.hi[h.dim] - step);
+    draw();
+    return;
+  }
   if (drag.mode === "pan" && drag.moved) {
     view.cx -= (ev.offsetX - drag.x) / view.scale; view.cy += (ev.offsetY - drag.y) / view.scale;
     drag.x = ev.offsetX; drag.y = ev.offsetY; draw();
@@ -138,6 +197,28 @@ canvas.addEventListener("pointermove", (ev) => {
 canvas.addEventListener("pointerup", async (ev) => {
   const d = drag; drag = null;
   if (!d) return;
+  if (d.mode === "draw") {
+    drawing = false; $("drawBrush").classList.remove("on");
+    const [a, b] = axes(), third = 3 - a - b;
+    const mins = [0, 0, 0], maxs = [0, 0, 0];
+    mins[a] = Math.min(d.from[0], d.to[0]); maxs[a] = Math.max(d.from[0], d.to[0]);
+    mins[b] = Math.min(d.from[1], d.to[1]); maxs[b] = Math.max(d.from[1], d.to[1]);
+    mins[third] = 0; maxs[third] = 64;
+    if (d.moved && maxs[a] > mins[a] && maxs[b] > mins[b]) { try { await post("/api/brush", { mins, maxs }); setStatus("Brush made; resize it in another view"); } catch (e) { /* shown */ } }
+    draw();
+    return;
+  }
+  if (d.mode === "resize") {
+    const [a, b] = axes(), h = d.handle, ax = h.dim ? b : a;
+    const was = h.box.hi[ax] - h.box.lo[ax], now = d.hi[h.dim] - d.lo[h.dim];
+    if (d.moved && was > 0 && now > 0 && Math.abs(now - was) > 1e-6) {
+      const pivot = [0, 1, 2].map((k) => (h.box.lo[k] + h.box.hi[k]) / 2);
+      pivot[ax] = h.side ? h.box.lo[ax] : h.box.hi[ax];   // the opposite side stays where it is
+      try { await post("/api/resize", { axis: ax, factor: now / was, pivot }); } catch (e) { /* shown */ }
+    }
+    draw();
+    return;
+  }
   if (d.mode === "move" && d.moved && d.delta.some((x) => x)) { await post("/api/move", { d: d.delta }); return; }
   if (!d.moved) {
     if (d.hit) await post("/api/select", { e: d.hit.e, i: d.hit.i, add: d.shift });
@@ -177,14 +258,44 @@ function inspected() {
   const ids = [...new Set(state.selection.map(([e]) => e))];
   return ids.length === 1 ? map.entities.find((e) => e.id === ids[0]) : null;
 }
+// Entity definitions (GET /api/entitydef): what a class is, its keys with help, and what Check Map says about the
+// inspected entity. Asked once per class and again for the entity whenever it changes.
+const classDefs = new Map();
+let defAsked = "";
+async function loadDef(e) {
+  const stamp = e.id + ":" + JSON.stringify(e.keys);
+  if (defAsked === stamp) return;
+  defAsked = stamp;
+  try {
+    const d = await get(`/api/entitydef?class=${encodeURIComponent(e.classname)}&e=${e.id}`);
+    classDefs.set(e.classname, d);
+    const cur = inspected();
+    if (cur && cur.id === e.id) renderInspector();
+  } catch (_) { /* the inspector works without definitions */ }
+}
 function renderInspector() {
   const e = inspected(), t = $("keys"); t.textContent = "";
   $("inspTitle").textContent = e ? e.classname : state.selection.length ? state.selection.length + " selected" : "nothing selected";
+  $("classHelp").textContent = ""; $("entityProblems").textContent = ""; $("keyList").textContent = "";
   if (!e) return;
+  const def = classDefs.get(e.classname);
+  loadDef(e);
+  const keyDefs = new Map(((def && def.keys) || []).map((k) => [k.name, k]));
+  if (def && def.known) $("classHelp").textContent = def.description + (def.built ? "" : "  (The build leaves this class out.)");
+  if (def && def.problems && def.problems.length && defAsked === e.id + ":" + JSON.stringify(e.keys)) $("entityProblems").textContent = def.problems.join("\n");
+  for (const k of keyDefs.values()) {
+    if (k.name in e.keys) continue;
+    const o = document.createElement("option");
+    o.value = k.name; o.label = (k.required ? "required: " : "") + k.description;
+    $("keyList").append(o);
+  }
   for (const [k, v] of Object.entries(e.keys)) {
     const tr = document.createElement("tr"), tk = document.createElement("td"), tv = document.createElement("td");
     tk.textContent = k;
+    const kd = keyDefs.get(k);
+    if (kd) { tk.title = kd.description + (kd.type ? "  (" + kd.type + (kd.default ? ", default " + kd.default : "") + ")" : ""); if (kd.required) tk.className = "required"; }
     const inp = document.createElement("input"); inp.value = v;
+    if (kd && kd.examples && kd.examples.length) inp.placeholder = kd.examples[0];
     inp.onchange = () => post("/api/key", { e: e.id, key: k, value: inp.value });
     inp.onkeydown = (ev) => { if (ev.key === "Delete" && ev.ctrlKey) post("/api/key", { e: e.id, key: k, value: null }); };
     inp.title = "Enter to set; Ctrl+Delete removes the key";
@@ -501,3 +612,28 @@ $("formCancel").onclick = closeForm;
 $("formShade").addEventListener("mousedown", (ev) => { if (ev.target === $("formShade")) closeForm(); });
 document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && openFormId) closeForm(); });
 window.radiant.openForm = openForm;
+
+// --- Placing an entity of any class (plan 3.4): on the surface at the live view's centre, else at the 2D view centre. ---
+get("/api/entityclasses").then((j) => {
+  for (const c of j.classes || []) {
+    if (c.kind !== "point") continue;
+    const o = document.createElement("option");
+    o.value = c.name; o.label = c.description + (c.built ? "" : " (not built)");
+    $("classList").append(o);
+  }
+}).catch(() => {});
+$("addEntity").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const classname = $("newClass").value.trim();
+  if (!classname) return;
+  const body = { classname };
+  const liveCam = !$("viewLive").hidden && window.viewLive && window.viewLive.camera();
+  if (liveCam) {
+    const r = $("viewLive").getBoundingClientRect();
+    body.view = { pos: liveCam.pos, yaw: liveCam.yaw, pitch: liveCam.pitch, fov: liveCam.fov, x: 0.5, y: 0.5, aspect: r.width / r.height };
+  } else {
+    const [h, v] = axes();
+    body.at = [0, 0, 0]; body.at[h] = snap(view.cx); body.at[v] = snap(view.cy);
+  }
+  try { await post("/api/entity", body); setStatus("Placed " + classname); $("newClass").value = ""; } catch (e) { /* shown */ }
+};
