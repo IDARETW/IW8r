@@ -28,6 +28,7 @@ struct GameBakeInput {
     struct Poly {
         std::vector<Vec3> pts;
         Vec3 normal, centroid;
+        Vec3 albedo{-1, -1, -1};  // the material's bounce colour (BakeSurface::albedo); negative: the bake's grey
     };
     std::vector<Poly> polys;                 // lit by the lightmap
     std::vector<RayBvh::Triangle> occluders;  // cast shadows only
@@ -55,7 +56,9 @@ struct GameLightmap {
 // What the build would lightmap, from the camera's scene (call on the thread that owns the scene). drawClassFor: the
 // stock draw class of a material (0 drawn, 1 shadow only, 2 hidden), null = all drawn. The scene's sun / sky / lights
 // are set by the caller.
-GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(const std::string&)>& drawClassFor);
+// albedoFor: a material's bounce colour (negative x or no function: the bake's grey).
+GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(const std::string&)>& drawClassFor,
+                             const std::function<Vec3(const std::string&)>& albedoFor = {});
 // The geometry part of gatherGameBake's key (every item's stamp), without gathering: a cheap "did anything change".
 uint64_t gameBakeGeometryKey(const SceneCache& scene);
 

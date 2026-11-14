@@ -2712,6 +2712,25 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     // 5.11 (research 94 / 95): baked lightmaps, when the map asks for them (worldspawn iw8r_bake_lightmaps 1). The
     // surfaces get lightmap UVs (vertices split between charts), and the converter turns the extraction's lightmap pair
     // (IW7 layout, constant ambient) into the game's three native planes.
+    // The bounce colour of a material: the average of its colour image (library materials: own ones, and the stock
+    // ones the editor put there with their textures). Not known: the bake's grey.
+    std::map<std::string, Vec3> bounceColour;
+    const auto bounceOf = [&](const std::string& material) {
+        auto it = bounceColour.find(material);
+        if (it != bounceColour.end()) return it->second;
+        Vec3 a{-1, -1, -1};
+        if (const CustomMaterial* cm = opt.library ? opt.library->find(material) : nullptr; cm && !cm->colorImage.empty()) {
+            int w = 0, h = 0;
+            std::vector<uint8_t> px;
+            std::string ierr;
+            if (decodeImageFile(cm->colorImage, w, h, px, &ierr) && w > 0 && h > 0) {
+                a = bakeAlbedoFromRgba(px.data(), size_t(w) * size_t(h), std::max<size_t>(1, size_t(w) * size_t(h) / 4096));
+                if (cm->hasTint() && a.x >= 0)
+                    a = Vec3{std::min(0.9, a.x * cm->tint[0]), std::min(0.9, a.y * cm->tint[1]), std::min(0.9, a.z * cm->tint[2])};
+            }
+        }
+        return bounceColour.emplace(material, a).first->second;
+    };
     std::vector<std::vector<std::array<float, 2>>> lightmapUv;
     std::vector<bool> lightmapped;
     std::string lightmapKeys;
@@ -2722,6 +2741,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             BakeSurface b;
             const std::string m = lower(s.editorMaterial);
             b.lit = m.find("sky") == std::string::npos;
+            b.albedo = bounceOf(s.editorMaterial);
             for (const RenderVertex& v : s.verts) b.verts.push_back({v.pos, v.normal, v.tangent});
             b.idx = s.idx;
             scene.surfaces.push_back(std::move(b));
@@ -2823,9 +2843,12 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                            quote(stem + "_secondary.bin") + "}]],\"lightmap_encoding\":{\"log_scale\":" + num(enc.logScale) +
                            ",\"maximum\":" + num(enc.maximum) + ",\"constant_ambient\":true}";
             const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+            size_t coloured = 0;
+            for (const auto& [name, colour] : bounceColour) coloured += colour.x >= 0;
             warn.push_back("lightmap baked: " + std::to_string(baked.width) + " x " + std::to_string(baked.height) + ", " +
                            std::to_string(baked.charts) + " chart(s), " + std::to_string(baked.texelsLit) + " texels at " +
-                           num(baked.texelSize) + " units, " + std::to_string(scene.lights.size()) + " light(s), " +
+                           num(baked.texelSize) + " units, " + std::to_string(scene.lights.size()) + " light(s), bounce colours of " +
+                           std::to_string(coloured) + " of " + std::to_string(bounceColour.size()) + " material(s), " +
                            num(std::round(seconds * 10) / 10) + " s (research 94 / 95; in game not verified)");
         }
     }
@@ -3824,16 +3847,23 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             return floors;
         };
         // ROADMAP 5.20: each palette cell's light from the map itself (unless worldspawn iw8r_flat_light_grid 1): the sky
-        // where rays escape upward, one bounce of the sun and the sky off what they hit (albedo 0.45, as the bake), as
+        // where rays escape upward, one bounce of the sun and the sky off what they hit (in the surface's own colour, as the bake), as
         // the 56 samples of the converter's model-lighting volume. Indoors props and the viewmodel go dark; under the
         // open sky they take its colour. Units: the bake's (the sun colour x 1 = 255).
         RayBvh gridBvh;
+        std::vector<Vec3> gridAlbedo;  // the bounce colours the triangles' ids name
         {
             std::vector<RayBvh::Triangle> tris;
             for (const RenderSurface& s : surfaces) {
                 if (lower(s.editorMaterial).find("sky") != std::string::npos) continue;
+                // id: 0 = the bake's grey, else 1 + the entry of the surface's own bounce colour.
+                uint32_t id = 0;
+                if (const Vec3 a = bounceOf(s.editorMaterial); a.x >= 0) {
+                    gridAlbedo.push_back(a);
+                    id = uint32_t(gridAlbedo.size());
+                }
                 for (size_t t = 0; t + 2 < s.idx.size(); t += 3)
-                    tris.push_back({s.verts[s.idx[t]].pos, s.verts[s.idx[t + 1]].pos, s.verts[s.idx[t + 2]].pos, 0});
+                    tris.push_back({s.verts[s.idx[t]].pos, s.verts[s.idx[t + 1]].pos, s.verts[s.idx[t + 2]].pos, id});
             }
             gridBvh.build(std::move(tris));
         }
@@ -3847,7 +3877,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         const bool flatGrid = worldspawn && worldspawn->value("iw8r_flat_light_grid") && *worldspawn->value("iw8r_flat_light_grid") == "1";
         if (!gridBvh.empty() && !flatGrid) {
             const Vec3 sunC{sunColor[0], sunColor[1], sunColor[2]};
-            lg.samplesAt = [&gridBvh, sunDir, sunC, gridSky, gridSkyI, reach](const Vec3& p, std::array<std::array<float, 3>, 56>& out) {
+            lg.samplesAt = [&gridBvh, &gridAlbedo, sunDir, sunC, gridSky, gridSkyI, reach](const Vec3& p, std::array<std::array<float, 3>, 56>& out) {
                 static const std::vector<Vec3> rays = [] {  // 96 directions spread evenly over the sphere
                     std::vector<Vec3> r;
                     const double ga = kPi * (3.0 - std::sqrt(5.0));
@@ -3876,7 +3906,8 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                         const double ns = dot(n, sunDir);
                         const double eSun = ns > 0 && !gridBvh.occluded(hp, sunDir, 0.1, reach) ? ns : 0.0;
                         const Vec3 e = sunC * eSun + gridSky * (gridSkyI * 0.25 * (1.0 + n.z));  // about half its sky seen
-                        rad = e * (0.45 / kPi);
+                        const Vec3 rho = t.id > 0 && t.id <= gridAlbedo.size() ? gridAlbedo[t.id - 1] : Vec3{0.45, 0.45, 0.45};
+                        rad = Vec3{e.x * rho.x, e.y * rho.y, e.z * rho.z} * (1.0 / kPi);
                     }
                     for (int s = 0; s < 56; ++s) {
                         const double c = dot(sdirs[size_t(s)], d);

@@ -129,7 +129,8 @@ uint64_t gameBakeGeometryKey(const SceneCache& scene) {
     return key;
 }
 
-GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(const std::string&)>& drawClassFor) {
+GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(const std::string&)>& drawClassFor,
+                             const std::function<Vec3(const std::string&)>& albedoFor) {
     GameBakeInput in;
     uint64_t key = 1469598103934665603ull;
     for (const PrimGeom* g : scene.items()) {
@@ -153,6 +154,7 @@ GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(co
                 Vec3 c;
                 for (const Vec3& v : w) c += v;
                 p.centroid = c * (1.0 / double(w.size()));
+                if (albedoFor) p.albedo = albedoFor(*mat);
                 in.polys.push_back(std::move(p));
             } else if (!tool || sky) {
                 for (size_t k = 1; k + 1 < w.size(); ++k) in.occluders.push_back({w[0], w[k], w[k + 1], 0});
@@ -190,6 +192,7 @@ std::shared_ptr<GameLightmap> bakeGameLightmap(const GameBakeInput& in, const st
             s.idx.push_back(base);
             s.idx.push_back(base + uint32_t(k));
             s.idx.push_back(base + uint32_t(k + 1));
+            s.triAlbedo.push_back(p.albedo);
         }
     }
     out->polys = in.polys.size();

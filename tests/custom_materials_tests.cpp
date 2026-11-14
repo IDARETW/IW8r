@@ -475,3 +475,32 @@ TEST(compile_occlusion_bake_fits_boxes_into_slanted_brushes) {
         said = said || (contains(w, "occlusion bake: 2 occluder box(es)") && contains(w, "(1 of them fitted") && contains(w, "; 1 opaque brush(es) are too thin"));
     CHECK(said);
 }
+
+// The lightmap bake takes each surface's bounce colour from its material's colour image (library materials); a
+// material without one bounces the bake's grey. The build log says how many it knew.
+TEST(compile_lightmap_bake_reads_bounce_colours) {
+    const std::string dir = freshDir("bounce");
+    writeBytes(dir + "/library/custom/red.png", pngBytes(8, 8, flatRgba(8, 8, 230, 40, 30, 255)));
+    writeText(dir + "/library/custom/red.iw8mat.json", "{\"name\":\"custom/red\",\"color\":\"red.png\",\"surface\":\"concrete\"}");
+    MaterialLibrary library;
+    std::string err;
+    CHECK(library.load({dir + "/library"}, &err));
+    const std::string text = "iwmap 4\n{\n\"classname\" \"worldspawn\"\n\"iw8r_bake_lightmaps\" \"1\"\n" +
+                             makeBrushPrimitive(makeBox({{-256, -256, -16}, {256, 256, 0}}, " custom/red 128 128 0 0 0 0"), "\n")->text() +
+                             makeBrushPrimitive(makeBox({{-256, 240, 0}, {256, 256, 128}}, " tm/not_in_the_library 128 128 0 0 0 0"), "\n")->text() + "}\n";
+    Id next = 1;
+    ParseResult pr = parseMap(text, next);
+    CHECK(pr.map.has_value());
+    if (!pr.map) return;
+    CompileOptions opt;
+    opt.mapId = "mp_bounce";
+    opt.library = &library;
+    CompileReport rep;
+    CHECK(compileIw8Extraction(*pr.map, dir + "/out", opt, rep, &err));
+    bool said = false;
+    for (const std::string& w : rep.warnings) said = said || (contains(w, "lightmap baked:") && contains(w, "bounce colours of 1 of 2 material(s)"));
+    if (!said)
+        for (const std::string& w : rep.warnings)
+            if (contains(w, "lightmap")) std::printf("  %s\n", w.c_str());
+    CHECK(said);
+}

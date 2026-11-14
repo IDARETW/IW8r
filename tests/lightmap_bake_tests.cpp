@@ -3,6 +3,7 @@
 #include "ray_bvh.h"
 #include "test_harness.h"
 
+#include <array>
 #include <cmath>
 
 using namespace iw8r;
@@ -136,4 +137,68 @@ TEST(lightmap_bake_charts_split_vertices) {
     const BakeResult r = bakeLightmap(scene, settings);
     CHECK(r.ok && r.charts == 2 && r.surfaces[0].verts.size() == 6 && r.uv[0].size() == 6);
     CHECK(r.sourceVertex[0].size() == 6 && r.sourceVertex[0][4] < 4 && r.sourceVertex[0][5] < 4);
+}
+
+// Plan 1.11: the bounce takes the colour of the surface it leaves, and the bounces after the first are added.
+TEST(lightmap_bake_bounce_colour_and_later_bounces) {
+    // A floor under a lit ceiling: a light between them, sky off, so the floor's ambient is only what the ceiling
+    // sends back down.
+    BakeScene scene;
+    scene.surfaces.push_back(floorQuad(256));
+    BakeSurface ceiling;
+    {
+        const Vec3 n{0, 0, -1}, t{1, 0, 0};
+        ceiling.verts = {{{-1000, -1000, 96}, n, t}, {{1000, -1000, 96}, n, t}, {{1000, 1000, 96}, n, t}, {{-1000, 1000, 96}, n, t}};
+        ceiling.idx = {0, 2, 1, 0, 3, 2};
+        ceiling.lit = false;
+    }
+    scene.surfaces.push_back(ceiling);
+    scene.sunIntensity = 0;
+    scene.skyIntensity = 0;
+    BakeLight l;
+    l.pos = Vec3(0, 0, 48);
+    l.radius = 600;
+    l.intensity = 4;
+    l.direct = false;
+    scene.lights.push_back(l);
+    BakeSettings settings;
+    settings.skyRays = 64;
+    settings.threads = 1;
+    settings.laterBounces = false;
+    const auto ambientAtCentre = [&](const BakeResult& r) {
+        // The texel nearest the floor's middle.
+        const size_t i = size_t(r.height / 2) * size_t(r.width) + size_t(r.width / 2);
+        return r.covered[i] ? r.ambient[i] : std::array<float, 3>{-1, -1, -1};
+    };
+    // Grey by default: the three channels are equal.
+    const BakeResult grey = bakeLightmap(scene, settings);
+    CHECK(grey.ok);
+    if (!grey.ok) return;
+    const auto g = ambientAtCentre(grey);
+    CHECK(g[0] > 0.001f && std::fabs(g[0] - g[1]) < 1e-6f && std::fabs(g[1] - g[2]) < 1e-6f);
+    // A red ceiling: the bounce is red, in the ratio of the albedo to the default grey.
+    scene.surfaces[1].albedo = Vec3{0.9, 0.09, 0.045};
+    const BakeResult red = bakeLightmap(scene, settings);
+    CHECK(red.ok);
+    if (!red.ok) return;
+    const auto rd = ambientAtCentre(red);
+    CHECK(std::fabs(rd[0] / g[0] - 0.9 / 0.45) < 1e-3 && std::fabs(rd[1] / g[1] - 0.09 / 0.45) < 1e-3 && std::fabs(rd[2] / g[2] - 0.045 / 0.45) < 1e-3);
+    // The same per triangle: one triangle red, the other at the default (negative).
+    scene.surfaces[1].albedo = Vec3{-1, -1, -1};
+    scene.surfaces[1].triAlbedo = {Vec3{0.9, 0.09, 0.045}, Vec3{0.9, 0.09, 0.045}};
+    const BakeResult perTri = bakeLightmap(scene, settings);
+    CHECK(perTri.ok && std::fabs(ambientAtCentre(perTri)[0] - rd[0]) < 1e-6f && std::fabs(ambientAtCentre(perTri)[2] - rd[2]) < 1e-6f);
+    // Later bounces: under a ceiling that covers every ray, each channel grows by 1 / (1 - albedo).
+    settings.laterBounces = true;
+    const BakeResult more = bakeLightmap(scene, settings);
+    CHECK(more.ok);
+    if (!more.ok) return;
+    const auto m = ambientAtCentre(more);
+    CHECK(std::fabs(m[0] / rd[0] - 1.0 / (1.0 - 0.9)) < 1e-2 && std::fabs(m[1] / rd[1] - 1.0 / (1.0 - 0.09)) < 1e-3 &&
+          std::fabs(m[2] / rd[2] - 1.0 / (1.0 - 0.045)) < 1e-3);
+    // The average colour of an image: sRGB bytes to linear light, inside 0.02 .. 0.9.
+    const uint8_t px[8] = {255, 128, 0, 255, 255, 128, 0, 255};
+    const Vec3 a = bakeAlbedoFromRgba(px, 2);
+    CHECK(std::fabs(a.x - 0.9) < 1e-9 && std::fabs(a.y - 0.2158605) < 1e-5 && std::fabs(a.z - 0.02) < 1e-9);
+    CHECK(bakeAlbedoFromRgba(nullptr, 0).x < 0);
 }

@@ -591,6 +591,9 @@ private:
     int normalFor(const std::string& material);
     MaskLookup emissiveLookup_;
     std::unordered_map<std::string, int> emiIds_;
+    // A material's bounce colour for the preview bake (the average of its colour image), kept per image file.
+    Vec3 bakeAlbedoFor(const std::string& material);
+    std::unordered_map<std::string, Vec3> bakeAlbedo_;
     MaskLookup specLookup_;
     int specFor(const std::string& material);
     std::unordered_map<std::string, int> specIds_;

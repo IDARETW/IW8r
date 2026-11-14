@@ -5,6 +5,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Baked light bounces in colour, and more than once.** The lightmap bake (Compile > Bake lightmaps) and the light
+  grid that lights models, players and the viewmodel used to bounce every surface as 45 % grey, once. Now light
+  leaves a surface in that surface's own colour (the average of its material's colour image: a red wall tints the
+  floor beside it), and the bounces after the first are added by an estimate: the first bounce times
+  1 / (1 - colour x how enclosed the spot is), so a closed room is lighter than before and open ground is unchanged.
+  View > Game Lighting previews the same bake. The build log says how many materials gave a colour. Core tests check
+  the colour ratio and the series exactly; the lightmap build proof passes. In game: not checked.
+
 - **Toon look: thicker lines, and the last z-fighting spot.** (Owner feedback.) The toon shader draws 5 pixel lines
   (were 3). The width is the shader's own constant (`kLinePixels` at the top of `toon.iw8shader.hlsl`, Tools > Shader
   Editor); what had to change in the editor was general: the edge input every custom shader can read now reaches 12

@@ -111,7 +111,7 @@ side.
 
 **1.4 Stock shading parity: the small items.**
 - **Research 107 (2026-11-13) DONE:** lit-buffer constants, emissive x c36, transmission (ambient + sun), wrap diffuse
-  (lightmap + sun), probe rough fallback. Open: wrap and transmission for local lights, layer modes 2/3, AO strength.
+  (lightmap + sun), probe rough fallback. Left by decision (table "Open points closed by decision"): wrap and transmission for local lights, layer modes 2/3, AO strength.
 - **Material and occlusion:**
   - normal decode `z = 1 - 0.6|xy|²`;
   - read `gtso_lut` from the install (cached, like the env BRDF) and use the game's specular occlusion (DONE);
@@ -128,7 +128,7 @@ side.
 - **AO:** a strength setting.
 
 **1.5 Lighting for static models and props.** Core DONE 2026-11-13 (research 105): probe-lit props take their own
-light grid box (Hideout 12,131 of 12,367 placements). Open: SELFVIS (needs an ACTS change), the 236 lightmapped `tml`
+light grid box (Hideout 12,131 of 12,367 placements). Left by decision (table "Open points closed by decision"): SELFVIS (needs an ACTS change), the 236 lightmapped `tml`
 props (still the probes), Warzone tile grids (tile props fall back to the probes).
 - **Research.** The smodel vertex lighting (`AMBIENT_COLOR`, `HIGHLIGHT_DIR`, `SELFVIS`), the light grid (t102-t105:
   SH L1, index, heightfield, mask), and `PackedLmapCoords` for lightmapped `tml/` props. Use ACTS gfx_map exports and
@@ -147,7 +147,7 @@ decode the tile probes, and draw tile props and tile ground with them. Done when
 raised camera use their own tile's light and probes.
 
 **1.6 Local lights.** DONE 2026-11-13 (research 106: every spot / omni at runtime, nearest 256, IES, tile-binned;
-64 shadow map slots). Open: needsDynamicShadows (entities in light maps), the screen-space shadow mask path.
+64 shadow map slots). Left by decision (table "Open points closed by decision"): needsDynamicShadows (entities in light maps), the screen-space shadow mask path.
 - **Stock maps.** Load their own primary lights (ComWorld light types other than the sun), which today are skipped at
   `main_window.cpp:7734`.
 - **Culling.** Clustered or tiled: a structured light list with per-tile indices, up to 254 lights.
@@ -161,7 +161,7 @@ raised camera use their own tile's light and probes.
 - **Decal volumes:** normal, gloss, cavity and emissive (research 99 :177-179). The user's own `iw8r_decal` entities
   are shaded in Game Lighting.
 
-**1.8 Atmosphere and post.** Part 1 DONE 2026-11-13 (research 109: bloom veil and vignette). Open: volumetric fog, film
+**1.8 Atmosphere and post.** Part 1 DONE 2026-11-13 (research 109: bloom veil and vignette). Left by decision (table "Open points closed by decision"): volumetric fog, film
 grain, white balance.
 - **Volumetric fog / veil** from the stock vision, and for own maps the user's `iw8r_volume`.
 - **Bloom and veil.**
@@ -173,7 +173,7 @@ grain, white balance.
 **1.9 Own brushes match what the build will produce.** Part 1 DONE 2026-11-13 (research 117: the unbaked look, the
 multi-bounce occlusion). Brushes added to a stock map DONE 2026-11-14 (the map's tetrahedral light grid, research
 117 section 5). Normal and specular maps of own materials DONE 2026-11-14 (the converter's SourceSunSpecular rule;
-see PROGRESS). Open: own-map models against the built light grid.
+see PROGRESS). Left by decision (table "Open points closed by decision"): own-map models against the built light grid.
 - **Unbaked maps.** Show the preview bake only when `iw8r_bake_lightmaps` is set; otherwise show the unbaked path the
   game takes (research 55).
 - **Specular.** Own brushes get environment specular, using the converter shader's formula
@@ -183,7 +183,7 @@ see PROGRESS). Open: own-map models against the built light grid.
 - **Own-map models.** Match the light grid that the build writes (1.11).
 
 **1.13 Stock prop LODs (performance; found 2026-11-13).** DONE 2026-11-13 (Aniyah 10.3 ms, Speedball 6.1 ms).
-Open: the game's FOV / lodScale factor on the distances. Aniyah draws 30 M triangles a frame because every prop is
+Left by decision (table "Open points closed by decision"): the game's FOV / lodScale factor on the distances. Aniyah draws 30 M triangles a frame because every prop is
 LOD0 (GPU profile: props 10.2 of 23.5 ms). The model detail already lists each LOD's surfaces and distance, and
 ModelCache::requestLod fetches one LOD of one model per ACTS run. Fetch the LODs in batches, keep one mesh per LOD, and
 let the instance cull pick the game's LOD by distance (and FOV). Done when Aniyah is within 20 ms and Verdansk
@@ -200,7 +200,9 @@ compile panel's bake settings DONE 2026-11-13 (Compile > Bake Settings, core bak
   (ROADMAP 5.21).
 
 **1.11 Lighting of a compiled custom map.** Part 1 DONE 2026-11-13: the light grid is baked from the map (sky and bounce
-per cell, 56 directional samples). Open: the bake items below, probes, the offline parity proof.
+per cell, 56 directional samples). 2026-11-14: the bounce takes the surface's colour and the later bounces are
+added (lightmap; the light grid takes the colour). Left by decision (table "Open points closed by decision"): a
+per-face lightmap scale, HDR probes, the parity proof.
 - **Lightmap bake:**
   - the sky from the vision / sky colour;
   - bounce from real albedo (the texture averages);
@@ -246,7 +248,7 @@ stock zones).
     self-consistency.
 
 **2.2 A visibility view in the editor.** Part 1 DONE 2026-11-13 (View > Umbra Visibility: cull by tome for surfaces
-and props, cells and portals overlay, status bar counts, saved settings). Open: culling lights, probes and decal
+and props, cells and portals overlay, status bar counts, saved settings). Left by decision (table "Open points closed by decision"): culling lights, probes and decal
 collections; surface ids on displaced terrain.
 - **Overlay:** tiles, cells and portals.
 - **"Cull by tome" mode:** the stock reference draws only what the tome lets the game draw from the camera.
@@ -272,7 +274,7 @@ a later attempt needs.
 
 **2.4 A real occlusion bake for custom maps.** DONE 2026-11-14 as an opt-in (research 118: cells and portals from
 the opaque box brushes, the conservativeness test, a real build read back). 2026-11-14 also: slanted and many-sided
-opaque brushes count by the box inside them (core occluder_box). Open: thin slanted walls, terrain and models as
+opaque brushes count by the box inside them (core occluder_box). Left by decision (table "Open points closed by decision"): thin slanted walls, terrain and models as
 occluders, the per-brush occluder key, gates, the world's merged surfaces (they limit what can be hidden), and the
 in-game look.
 - **Bake.** Voxelize the occluders (opaque structural brushes, large models with collection flag 128). Flood the empty
@@ -298,7 +300,7 @@ ROADMAP L10, paused until now, is resumed by this request. Server: `src/qtapp/we
 `data/web/*`. Wiring: `main_window.cpp:4503-4592`.
 
 **3.1 Remote 3D view.** DONE 2026-11-13 as frames on demand (GET /api/frame, POST /api/pick, the page's "Editor view
-(live)"). Open: streamed tiles and terrain layers follow only the editor's own camera.
+(live)"). Left by decision (table "Open points closed by decision"): streamed tiles and terrain layers follow only the editor's own camera.
 - **Render API.** SceneRenderer gets "render this camera into an offscreen target", reusing the device's resources.
   There is no second renderer and no texture duplication.
 - **Per client:** each browser has its own camera (orbit / fly) and size, sent by POST.
@@ -356,7 +358,7 @@ diffs. Do a browser check of `localhost` in the built-in browser pane.
 - FEATURES.md and USER_GUIDE have a web section.
 
 ## Open points closed by decision (2026-11-14)
-The lines marked "Open:" above stay as they are for this hand-over. None of them stops a workflow. Each is a
+The lines marked "Left by decision" above stay as they are for this hand-over. None of them stops a workflow. Each is a
 refinement of how close the viewport is to the game, or of how much the occlusion data hides, and each can only be
 judged against the running game, which is not used any more. They are listed so that nobody has to find them again.
 
@@ -367,7 +369,7 @@ judged against the running game, which is not used any more. They are listed so 
 | 1.6 `needsDynamicShadows`, the screen-space shadow mask | Every spot and omni light with shadow maps for the nearest 64 | Affects moving entities and contact shadows only. |
 | 1.8 volumetric fog, film grain, white balance | Bloom veil, vignette, exponential fog, the stock vision's exposure and grade | The volumetric fog constants are not calibrated (it stays off rather than wrong); grain and white balance are not decoded, and grain is noise by design. |
 | 1.9 own-map models against the built light grid | Models in your own map take the map's ambient light and the sun | The built grid is per cell (1.11 part 1); sampling it per model in the viewport changes dark-room props only. |
-| 1.11 bounce colour from textures, more than one bounce, a per-face lightmap scale, HDR probe capture | One bounce at 45 % grey, the texel size as a Bake Setting, 8-bit probes captured before every build | Each changes the baked picture by a few percent; the per-face scale also needs a converter change. |
+| 1.11 a per-face lightmap scale, HDR probe capture | Bounces in the surfaces' colours with the later bounces estimated (2026-11-14), the texel size as a Bake Setting, 8-bit probes captured before every build | The per-face scale needs a converter change; HDR probes change glossy reflections by a little. |
 | 1.11 the parity proof (draw the built zone as a stock map and compare) | `tools/lightmap_bake_build_test.py` proves the baked data reaches the built zone; View > Game Lighting uses the converter shader's own formulas (research 117) | The proof as planned would compare the wrong things: a built map is drawn by the converter's world shader, and the editor's stock-map path models the game's stock shaders, not that one. |
 | 1.13 the game's FOV / lodScale factor on LOD distances | Stock LOD distances as stored | Changes only the distance at which a LOD switches; the frame budgets are met without it. |
 | 2.2 culling lights, probes and decals in the Umbra view; surface ids on displaced terrain | Surfaces and props are culled by the tome | A viewer refinement: the view already answers "what does the game hide here". |

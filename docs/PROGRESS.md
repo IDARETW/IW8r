@@ -50,6 +50,11 @@
   face_edges; tests use the constant), toon kLinePixels 3 -> 5 and kLineMaxUnits 3.4 -> 10 (template and the map's
   copy), kBoundsSlack in coplanarCovers / hiddenCovers (the missed roof slab pair), tests/face_overlap_tests.cpp,
   zones of out/agent/mp_cinderrail_toon rebuilt (out/agent/toonbuild). Check renders: out/agent/toonchk.
+  Bake (plan 1.11): BakeSurface::albedo / triAlbedo, BakeSettings::laterBounces (on), bakeAlbedoFromRgba (core
+  lightmap_bake); compile_iw8.cpp bounceOf(material) from the library's colour image, used by the lightmap bake and by
+  the light grid's rays (triangle id -> gridAlbedo); viewport: GameBakeInput::Poly::albedo, gatherGameBake(albedoFor),
+  CameraView::bakeAlbedoFor (a 32 px level of the DDS, or the image file), the bake key takes the count of loaded
+  textures so a bake is redone when images arrive. The light grid still bounces once.
   The web list of plan 3.3 / 3.4 is done (the Vision Editor form closed it). Earlier note: (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder

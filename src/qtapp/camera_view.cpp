@@ -44,6 +44,7 @@
 #include "brush_tools.h"
 #include "compile_iw8.h"
 #include "custom_materials.h"
+#include "lightmap_bake.h"
 #include "normal_pack.h"
 #include "texture_decode.h"
 #include "game_look.h"
@@ -1532,6 +1533,28 @@ int CameraView::emissiveFor(const std::string& material) {
     return emiIds_[material] = id;
 }
 
+Vec3 CameraView::bakeAlbedoFor(const std::string& material) {
+    const Vec3 unknown{-1, -1, -1};
+    if (material.empty() || !imageLookup_) return unknown;
+    const std::optional<QString> path = imageLookup_(material);
+    if (!path || path->isEmpty()) return unknown;  // not exported yet, or no image
+    const std::string file = path->toStdString();
+    if (const auto it = bakeAlbedo_.find(file); it != bakeAlbedo_.end()) return it->second;
+    Vec3 a = unknown;
+    if (path->endsWith(".dds", Qt::CaseInsensitive)) {
+        app::Rgba8Image img;  // a small level is enough for an average
+        if (app::loadDdsPreview(file, 32, img) && img.width > 0 && img.height > 0)
+            a = bakeAlbedoFromRgba(img.pixels.data(), size_t(img.width) * size_t(img.height));
+    } else {
+        int w = 0, h = 0;
+        std::vector<uint8_t> px;
+        std::string err;
+        if (decodeImageFile(file, w, h, px, &err) && w > 0 && h > 0)
+            a = bakeAlbedoFromRgba(px.data(), size_t(w) * size_t(h), std::max<size_t>(1, size_t(w) * size_t(h) / 4096));
+    }
+    return bakeAlbedo_[file] = a;
+}
+
 int CameraView::specFor(const std::string& material) {
     if (material.empty() || isIw8ToolMaterial(material)) return -1;
     if (auto it = specIds_.find(material); it != specIds_.end()) return it->second;
@@ -2427,6 +2450,12 @@ void CameraView::maybeBakeGameLook() {
         mixD(in.scene.sunIntensity), mixD(in.scene.skyIntensity), mixD(in.settings.texelSize), mixD(double(in.settings.skyRays));
         mixD(double(in.key));
         mixD(in.scene.ambientAt ? 1.0 : 0.0);
+        // The bounce colours come from the materials' images: bake again when more of them have arrived.
+        {
+            size_t loaded = 0;
+            for (const auto& [m, id] : texIds_) loaded += id >= 0 && id != checkerTex_;
+            mixD(double(loaded));
+        }
         for (const BakeLight& b : in.scene.lights)
             mixD(b.pos.x), mixD(b.pos.y), mixD(b.pos.z), mixD(b.color.x), mixD(b.color.y), mixD(b.color.z), mixD(b.radius),
                 mixD(b.dir.x), mixD(b.dir.y), mixD(b.dir.z), mixD(b.cosOuter), mixD(b.cosInner);
@@ -2437,7 +2466,7 @@ void CameraView::maybeBakeGameLook() {
         gameBakeInputKey_ = h;
     }
     {
-        app::GameBakeInput g = app::gatherGameBake(ctx_->scene, ctx_->scene.drawClassFor);
+        app::GameBakeInput g = app::gatherGameBake(ctx_->scene, ctx_->scene.drawClassFor, [this](const std::string& m) { return bakeAlbedoFor(m); });
         in.polys = std::move(g.polys);
         in.occluders = std::move(g.occluders);
         in.key ^= g.key;

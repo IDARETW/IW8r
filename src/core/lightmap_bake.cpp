@@ -87,6 +87,20 @@ bool pack(std::vector<Chart>& charts, int side) {
 
 }  // namespace
 
+Vec3 bakeAlbedoFromRgba(const uint8_t* rgba, size_t texels, size_t step) {
+    if (!rgba || texels == 0) return Vec3{-1, -1, -1};
+    const auto linear = [](uint8_t b) {
+        const double c = b / 255.0;
+        return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+    };
+    double sum[3] = {0, 0, 0};
+    size_t n = 0;
+    for (size_t k = 0; k < texels; k += std::max<size_t>(1, step), ++n)
+        for (int c = 0; c < 3; ++c) sum[c] += linear(rgba[k * 4 + size_t(c)]);
+    if (n == 0) return Vec3{-1, -1, -1};
+    return Vec3{std::clamp(sum[0] / double(n), 0.02, 0.9), std::clamp(sum[1] / double(n), 0.02, 0.9), std::clamp(sum[2] / double(n), 0.02, 0.9)};
+}
+
 BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, const std::function<void(double)>& progress) {
     BakeResult r;
     r.surfaces = scene.surfaces;
@@ -254,9 +268,26 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
         }
     }
     // ---- the ray scene: every surface (lit or not) and the extra occluders
+    // A triangle's id: 0 for the default bounce reflectance, else 1 + its entry in `albedos` (the surface's own, or the
+    // triangle's own where the surface gives one per triangle; the split surfaces keep the input's triangle order).
     std::vector<RayBvh::Triangle> tris = scene.extraOccluders;
-    for (const BakeSurface& s : r.surfaces)
-        for (size_t t = 0; t + 2 < s.idx.size(); t += 3) tris.push_back({s.verts[s.idx[t]].pos, s.verts[s.idx[t + 1]].pos, s.verts[s.idx[t + 2]].pos, 0});
+    for (RayBvh::Triangle& t : tris) t.id = 0;
+    std::vector<Vec3> albedos;
+    const auto albedoId = [&](const Vec3& a) {
+        albedos.push_back(Vec3{std::clamp(a.x, 0.0, 0.95), std::clamp(a.y, 0.0, 0.95), std::clamp(a.z, 0.0, 0.95)});
+        return uint32_t(albedos.size());
+    };
+    for (size_t si = 0; si < r.surfaces.size(); ++si) {
+        const BakeSurface& s = r.surfaces[si];
+        const BakeSurface* in = si < scene.surfaces.size() ? &scene.surfaces[si] : nullptr;
+        const bool perTri = in && !in->triAlbedo.empty() && in->triAlbedo.size() * 3 == in->idx.size() && in->idx.size() == s.idx.size();
+        const uint32_t whole = in && !perTri && in->albedo.x >= 0 ? albedoId(in->albedo) : 0;
+        for (size_t t = 0; t + 2 < s.idx.size(); t += 3) {
+            uint32_t id = whole;
+            if (perTri && in->triAlbedo[t / 3].x >= 0) id = albedoId(in->triAlbedo[t / 3]);
+            tris.push_back({s.verts[s.idx[t]].pos, s.verts[s.idx[t + 1]].pos, s.verts[s.idx[t + 2]].pos, id});
+        }
+    }
     RayBvh bvh;
     bvh.build(std::move(tris));
     // ---- light
@@ -351,6 +382,8 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                     continue;
                 }
                 const int rays = std::max(1, settings.skyRays);
+                Vec3 sky{0, 0, 0}, bounce{0, 0, 0}, hitAlbedo{0, 0, 0};
+                int hits = 0;
                 const uint32_t seed = hash3(uint32_t(i), uint32_t(i >> 32), 7u);
                 const double r1 = (seed & 0xFFFF) / 65536.0, r2 = (seed >> 16) / 65536.0;
                 for (int k = 0; k < rays; ++k) {
@@ -359,7 +392,7 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                     const Vec3 dir = safeNormalize(T * (rr * std::cos(phi)) + B * (rr * std::sin(phi)) + N * std::sqrt(std::max(0.0, 1.0 - u1)), N);
                     RayBvh::Hit hit;
                     if (!bvh.intersect(P, dir, 0.05, 1e6, hit)) {
-                        A = A + skyE;
+                        sky = sky + skyE;
                         continue;
                     }
                     const RayBvh::Triangle& ht = bvh.triangles()[hit.tri];
@@ -384,9 +417,21 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                         if (a <= 0 || bvh.occluded(H, L, 0.05, dist - 0.5)) continue;
                         Eh = Eh + l.color * (l.intensity * a * ndl);
                     }
-                    A = A + Eh * settings.bounceAlbedo;
+                    // The light leaves the surface in the surface's own colour.
+                    const Vec3 rho = ht.id > 0 && ht.id <= albedos.size() ? albedos[ht.id - 1]
+                                                                          : Vec3{settings.bounceAlbedo, settings.bounceAlbedo, settings.bounceAlbedo};
+                    bounce = bounce + Vec3{Eh.x * rho.x, Eh.y * rho.y, Eh.z * rho.z};
+                    hitAlbedo = hitAlbedo + rho;
+                    ++hits;
                 }
-                A = A * (1.0 / rays);
+                if (settings.laterBounces && hits > 0) {
+                    // The bounces after the first: each sends on albedo x enclosure of what the one before it brought.
+                    const double enclosure = double(hits) / double(rays);
+                    const Vec3 mean = hitAlbedo * (1.0 / hits);
+                    bounce = Vec3{bounce.x / (1.0 - std::min(0.9, mean.x * enclosure)), bounce.y / (1.0 - std::min(0.9, mean.y * enclosure)),
+                                  bounce.z / (1.0 - std::min(0.9, mean.z * enclosure))};
+                }
+                A = (sky + bounce) * (1.0 / rays);
                 r.ambient[i] = {float(A.x), float(A.y), float(A.z)};
             }
             const size_t d = done.fetch_add(end - begin) + (end - begin);

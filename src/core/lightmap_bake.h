@@ -33,7 +33,17 @@ struct BakeSurface {
     std::vector<BakeVertex> verts;
     std::vector<uint32_t> idx;  // triangles
     bool lit = true;            // false: no lightmap (sky, tool surfaces); still casts shadows
+    // What the surface reflects of the light that bounces off it (linear, 0..1 per channel): the average of its
+    // material's colour image. A negative x: not known, BakeSettings::bounceAlbedo grey is used. triAlbedo, when it has
+    // one entry per triangle, gives it per triangle instead (the viewport bakes every polygon in one surface).
+    Vec3 albedo{-1, -1, -1};
+    std::vector<Vec3> triAlbedo;
 };
+
+// The bounce reflectance of a material from its colour image: the average of the sRGB bytes in linear light, kept
+// inside 0.02 .. 0.9 (nothing reflects all light, and nothing none). `rgba` holds `texels` RGBA8 pixels; `step` reads
+// every step-th pixel (1 = all).
+Vec3 bakeAlbedoFromRgba(const uint8_t* rgba, size_t texels, size_t step = 1);
 
 // A light entity in the game's units (core game_look): colour x intensity is the IW3 colour (the _color and
 // intensity keys); the converter turns the radius and a reference distance into the game light's intensity, which
@@ -56,7 +66,11 @@ struct BakeSettings {
     int maxSize = 2048;         // the atlas side limit
     int padding = 2;            // texels around each chart
     int skyRays = 32;           // hemisphere rays per texel
-    double bounceAlbedo = 0.45; // the bounce surface reflectance
+    double bounceAlbedo = 0.45; // the bounce surface reflectance where a surface does not give its own
+    // Bounces after the first, estimated: the first bounce times 1 / (1 - albedo x enclosure), where enclosure is the
+    // share of a texel's rays that hit geometry (0 under the open sky, 1 in a closed room) and albedo the mean of what
+    // they hit. False: one bounce only.
+    bool laterBounces = true;
     int threads = 0;            // 0: all cores
     double chartNormalDot = 0.95;
 };
