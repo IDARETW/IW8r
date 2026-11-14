@@ -435,8 +435,8 @@ State on 2026-11-14:
 - **Release:** done. `out\installer\IW8RadiantSuite-Setup-0.1.0.exe` and `out\package\IW8RadiantSuite-<date>.zip`,
   rebuilt after the last change; no ini and no game file inside; the packaged exe passes its start-up test.
 - **Docs:** done. HANDOVER.md, USER_GUIDE.md, FEATURES.md, KEYS_REFERENCE.md, FEATURE_MATRIX.md and MILESTONES.md
-  are current. The pictures of FEATURES.md (`--feature-shots`) are from 2026-11-12; the web page and Game Lighting
-  have changed since, the other pictures are still what the editor shows.
+  are current. The pictures of FEATURES.md (`--feature-shots`) were taken again on 2026-11-14 with the current
+  build (45 pictures, all written).
 - **Owner checklist:** done. docs/TEST_CHECKLIST.md starts its In game part with "the short list" (six items).
 - **Parking:** done. The editor is left open on a compiled map; PROGRESS.md and HANDOVER.md are current.
 - **What the hand-over cannot contain:** a look in the game. Everything built since 2026-11-11 is proven offline
