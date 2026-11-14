@@ -71,6 +71,13 @@
   places), compile_iw8.cpp Chunk::lmDensity -> RenderSurface::triDensity, viewport PrimGeom::polyLmDensity ->
   GameBakeInput::Poly::density. Tests: lightmap_bake_face_density, lightmap_density_of_suffix,
   compile_lightmap_bake_honours_face_lightmap_scale.
+  Plan 1.4, lamps: gameLocalLight(…, wrap, trans, …) in render.cpp. Plain materials keep research 106's bulb-capped
+  irradiance; wrap (matW.w) and transmission (matTr.w) materials take diffuse = pow(att, e) x cap x wrapF(N.L, w'),
+  specular = att x cap x sat(N.L), cap = sat(bulbRadius^2 / (d + collimationOffset)^2), w' = clamp(sqrt(w^2 + h^2),
+  1e-6, 1.25), h = .77 s + .33 s^2 (88d201db.asm:1041-1093, e2969e82.asm:1269-1327; the plain world shader 01631f08
+  has no .77 constant, so 106 and 107 are both right for their shaders). Transmission adds the back lobe with the
+  lamp's point along -V. A/B on Hideout (out/agent/mapcam_real.ps1, real material cache): identical, no lamp near such
+  a material in that view. Open in 1.4: layer colour modes 2 / 3, the AO strength constant.
   The web list of plan 3.3 / 3.4 is done (the Vision Editor form closed it). Earlier note: (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder

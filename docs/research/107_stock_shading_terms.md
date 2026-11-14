@@ -484,3 +484,20 @@ ACTS command lines (short output roots):
 - `acts --noUpdater fastfile -r mw19replay -g <replay exe> --oodle <oo2core dll> -a material,techset -l -o <dir> <zone>\techsets_mp_m_speedball.ff`
 - `acts ... -a pixelshader -n <hash>[,<hash>...] -l -o <dir> <techsets zone>.ff`
 - `acts ... --xpak <each zone\*.xpak over 64 KB> -a image -n "<name>~<hash>" -l -o <dir> <zone>\mp_m_speedball.ff`
+
+## Addendum 2026-11-14: lamps, read again
+
+Research 106 gives a lamp's diffuse as the bulb-capped irradiance with a horizon term; section 2.2 above gives
+`wrapF(N.L, h)`. Both are right, for different shaders (VERIFIED in the listings):
+
+- The plain world and static-model shaders (W `01631f08`, SM) hold no `0.77` constant: research 106's form.
+- The wrap shaders (W2 `e2969e82`, Wm) and the transmission shaders (L `88d201db`, Lw `eba993c4`) hold
+  `h = 0.77 s + 0.33 s^2`, `s = bulbRadius / distance to the bulb point`, and:
+  - `cap = saturate(bulbRadius^2 / (d + collimationOffset)^2)` (record offset 0x0C, which research 106 lists as not
+    read by W or SM; `d` is the distance to the nearest point of the tube) (L:1041-1048, W2:1269-1277);
+  - diffuse `= pow(att, e_c) x cap x wrapF(N.L, clamp(sqrt(w_c^2 + h^2), 1e-6, 1.25))`, with `w = 0` and `e = 1` in a
+    shader without the wrap bit (L:1066-1093, W2:1297-1327; `att` is the falloff x shadow product, `e_c` the
+    sun's per-channel shadow power, applied by the same integer bit trick);
+  - specular `= att x cap x saturate(N.L)` times the usual lobe.
+
+The viewport follows this since 2026-11-14 (`gameLocalLight` in `src/viewport/render.cpp`).

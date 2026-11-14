@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Stock maps in Game Lighting: lamps on foliage, cloth and wrap materials.** The game lights these materials from
+  lamps by a different rule than plain ones: the light wraps past the edge of the lit side (grass, pebbles, snow,
+  tarps), and thin materials let a lamp shine through from behind. The viewport drew every material with the plain
+  rule. It now uses the game's rule for those materials, read again from the game's own shaders (the two research
+  notes described two shader families, not one rule). A before / after of a daytime Hideout view is identical, as it
+  should be with no lamp near such a surface; a night scene with a lamp beside grass was not compared with the game.
+
 - **The lightmap scale of a face now does something.** The Surface panel (and the web page's Surface form) has had
   "Lightmap scale" fields, but the bake gave every face the same texel size. Now a face with half the scale (8192
   instead of 16384) gets twice the lightmap texels along each side, so its shadows are sharper; a larger scale makes

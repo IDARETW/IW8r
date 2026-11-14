@@ -676,8 +676,11 @@ float3 glSegPoint(GameLight l, float3 p) {
 }
 // One light (research 106 section 3.2 / 5.3, world space): tube closest point, spot apex, IES, smoothstep window,
 // bulb-capped diffuse at a representative point, GGX specular toward the tube with the sphere-light normalisation.
+// wrap: the material's wrap diffuse (rgb, .w = 1 when it has one); trans: its transmission colour (.w = 1 when it has
+// one). Those two kinds of material take the lamp's diffuse light by the wrap rule (research 107 section 2.2), and a
+// transmission material also lets the lamp shine through (section 1).
 void gameLocalLight(GameLight l, float3 P, float3 N, float3 V, float3 diffuseColor, float3 f0, float gp, float cavity,
-                    inout float3 diffSum, inout float3 specSum) {
+                    float4 wrap, float4 trans, inout float3 diffSum, inout float3 specSum) {
     const float3 Q = glSegPoint(l, P), v = Q - P;
     const float d = length(v);
     if (d * l.invRadius >= 1.0 || d < 1e-4) return;
@@ -705,8 +708,30 @@ void gameLocalLight(GameLight l, float3 P, float3 N, float3 V, float3 diffuseCol
     const float dd = max(length(vd), 1e-4);
     const float3 Ld = vd / dd;
     const float NdotL = dot(N, Ld), s2 = l.bulbRadius * l.bulbRadius / (dd * dd), y = NdotL * rsqrt(s2);
-    const float E = att * ((1.0 - y * y > 0.0) ? pow(saturate(s2 * (0.5 + 0.5 * y)), 1.5) : saturate(NdotL * s2));
-    if (E <= 0.0) return;
+    // Plain materials: the bulb-capped irradiance with its horizon term, for the diffuse and the specular alike.
+    float Es = att * ((1.0 - y * y > 0.0) ? pow(saturate(s2 * (0.5 + 0.5 * y)), 1.5) : saturate(NdotL * s2));
+    float3 Ed = Es;
+    const bool wrapKind = wrap.w > 0.5 || trans.w > 0.5;
+    float cap = 1.0;
+    if (wrapKind) {
+        // Wrap and transmission materials: the cap by the distance to the bulb, the wrap merged with the bulb's horizon
+        // softening, and on wrap materials the falloff x shadow product raised per channel as the sun's shadow is.
+        const float dc = d + l.collimationOffset;
+        cap = saturate(l.bulbRadius * l.bulbRadius / max(dc * dc, 1e-8));
+        const float sb = l.bulbRadius / dd, h = 0.77 * sb + 0.33 * sb * sb;
+        const float3 w0 = wrap.w > 0.5 ? wrap.rgb : float3(0, 0, 0);
+        const float3 wq = clamp(sqrt(w0 * w0 + h * h), 1e-6, 1.25);
+        float3 attC = att;
+        if (wrap.w > 0.5) {
+            const float mw = min(w0.r, min(w0.g, w0.b));
+            const float3 kw = 1.0 + 1.35 * (w0 - mw);
+            attC = pow(saturate(att), float3(kw.b * kw.g, kw.b * kw.r, kw.g * kw.r));
+        }
+        Ed = attC * cap * wrap3(NdotL, wq);
+        Es = att * cap * saturate(NdotL);
+    }
+    const float E = Es;
+    if (E <= 0.0 && max(Ed.r, max(Ed.g, Ed.b)) <= 0.0 && trans.w < 0.5) return;
     const float3 R = reflect(-V, N), QP = Q - P;
     const float aR = dot(l.bulbDir, R);
     float t = clamp((aR * dot(R, QP) - dot(l.bulbDir, QP)) / max(dot(l.bulbDir, l.bulbDir) - aR * aR, 1e-12), -1.5, 1.5);
@@ -723,8 +748,30 @@ void gameLocalLight(GameLight l, float3 P, float3 N, float3 V, float3 diffuseCol
     const float3 F = f0 + (1.0 - f0) * pow(1.0 - abs(dot(V, normalize(Ld + V))), 5.0);
     const float2 AB = gameEnvBrdf(saturate(NdotL), gp);
     const float3 Fl = f0 * AB.x + AB.y;
-    diffSum += diffuseColor * l.diffuse * E * (1.0 - max(Fl.r, max(Fl.g, Fl.b)));
+    diffSum += diffuseColor * l.diffuse * Ed * (1.0 - max(Fl.r, max(Fl.g, Fl.b)));
     specSum += l.diffuse * F * (D * Vis * norm * E * cavity);
+    if (trans.w > 0.5) {
+        // The lamp through the surface: lit from behind (N.L < 0), the lamp's point picked along the eye ray continued
+        // through the surface, a GGX lobe of the surface's roughness about -N, the sphere-light energy factor.
+        const float nlb = -NdotL;
+        if (nlb > 0.0 && att > 0.0) {
+            const float3 Rb = -V;
+            const float aB = dot(l.bulbDir, Rb);
+            float tb = clamp((aB * dot(Rb, QP) - dot(l.bulbDir, QP)) / max(dot(l.bulbDir, l.bulbDir) - aB * aB, 1e-12), -1.5, 1.5);
+            tb -= tb * tb * tb * (4.0 / 27.0);
+            const float3 Sb = QP + tb * l.bulbDir, perpB = Rb * dot(Sb, Rb) - Sb;
+            float xb = l.bulbRadius * rsqrt(max(dot(perpB, perpB), 1e-8));
+            xb *= rsqrt(xb * xb + 0.125);
+            const float3 Hb = normalize(normalize(Sb + perpB * xb) - R);
+            const float hb = dot(-N, Hb), qb = hb * hb * (a2 - 1.0) + 1.0;
+            const float Db = a2 / max(qb * qb, 1e-8);
+            const float Vb = 1.0 / ((nlb + sqrt(a2 + (1.0 - a2) * nlb * nlb)) * (NdotV + sqrt(a2 + (1.0 - a2) * NdotV * NdotV)));
+            const float normB = ap / (ap + 0.375892 * l.bulbRadius * rsqrt(max(dot(Sb, Sb), 1e-8)));
+            const float2 ABb = gameEnvBrdf(saturate(nlb), gp);
+            const float3 Flb = f0 * ABb.x + ABb.y;
+            diffSum += l.diffuse * trans.rgb * (att * cap * nlb * Db * Vb * normB * (1.0 - max(Flb.r, max(Flb.g, Flb.b))));
+        }
+    }
 }
 Texture2D revealTex : register(t12);
 // vs_tex_inst: a prop lit from its light grid box carries that light in t (no tangent) and lm = (-2, -2).
@@ -1051,6 +1098,8 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             if (matE.w > 0.5) c += srgbToLinear3(emi0.Sample(samp0, uvS).rgb) * matE.rgb * (1.0 - fmax);
             // The map's local lights (research 106): the drawn ones of this pixel's 32-pixel tile; no AO, as the game.
             if (localInfo.x > 0.5) {
+                // The transmission colour for the lamps (the image x the material's constant), as the sun's above.
+                const float4 lampT = matTr.w > 0.5 ? float4(srgbToLinear3(tr0.Sample(samp0, uvS).rgb) * matTr.rgb, 1.0) : float4(0, 0, 0, 0);
                 const uint2 tile = uint2(i.pos.xy) / uint(localInfo.z);
                 const uint base = (tile.y * uint(localInfo.y) + tile.x) * 8u;
                 float3 dSum = 0, sSum = 0;
@@ -1059,7 +1108,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                     [loop] while (bits != 0u) {
                         const uint b = firstbitlow(bits);
                         bits &= bits - 1u;
-                        gameLocalLight(gameLights[wd * 32u + b], i.w, N, Vs, diffAlbedo, f0, gp, baseMat ? nmCavity : 1.0, dSum, sSum);
+                        gameLocalLight(gameLights[wd * 32u + b], i.w, N, Vs, diffAlbedo, f0, gp, baseMat ? nmCavity : 1.0, matW, lampT, dSum, sSum);
                     }
                 }
                 c += dSum + sSum;

@@ -111,7 +111,8 @@ side.
 
 **1.4 Stock shading parity: the small items.**
 - **Research 107 (2026-11-13) DONE:** lit-buffer constants, emissive x c36, transmission (ambient + sun), wrap diffuse
-  (lightmap + sun), probe rough fallback. Left by decision (table "Open points closed by decision"): wrap and transmission for local lights, layer modes 2/3, AO strength.
+  (lightmap + sun), probe rough fallback. Wrap and transmission for local lights DONE 2026-11-14. Left by decision
+  (table "Open points closed by decision"): layer modes 2/3, AO strength.
 - **Material and occlusion:**
   - normal decode `z = 1 - 0.6|xy|²`;
   - read `gtso_lut` from the install (cached, like the env BRDF) and use the game's specular occlusion (DONE);
@@ -364,7 +365,7 @@ judged against the running game, which is not used any more. They are listed so 
 
 | Point | What is there now | Why it stays |
 |---|---|---|
-| 1.4 wrap and transmission for local lights, layer colour modes 2 / 3, the AO strength constant | Sun and lightmap wrap and transmission, layer mode 1, AO at its default strength | Small differences on foliage near lamps and on a few layered materials; the decode exists (research 107), the gain cannot be checked without game pictures. |
+| 1.4 layer colour modes 2 / 3, the AO strength constant | Sun, lightmap and lamp wrap and transmission (lamps 2026-11-14), layer mode 1, AO at its default strength | A few layered materials and a global strength; the gain cannot be checked without game pictures. |
 | 1.5 SELFVIS, the 236 lightmapped `tml` props, Warzone tile grids for tile props | Props take their own light grid box; the rest fall back to the probes | SELFVIS needs a new ACTS export; the others touch 2 % of placements. |
 | 1.6 `needsDynamicShadows`, the screen-space shadow mask | Every spot and omni light with shadow maps for the nearest 64 | Affects moving entities and contact shadows only. |
 | 1.8 volumetric fog, film grain, white balance | Bloom veil, vignette, exponential fog, the stock vision's exposure and grade | The volumetric fog constants are not calibrated (it stays off rather than wrong); grain and white balance are not decoded, and grain is noise by design. |
