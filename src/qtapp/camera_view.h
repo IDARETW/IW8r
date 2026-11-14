@@ -674,6 +674,16 @@ private:
     std::string customShaderError_;
     GameFogRefdef stockFogRefdef_{};  // the game's fog from the same vision (core game_fog, research 111)
     GamePostFx stockPostFx_;  // the stock map's veil and vignette (research 109)
+    // An own map's haze (worldspawn iw8r_haze under iw8r_vision, research 126), read the way a stock vision is.
+    GameFog ownFog_;
+    GameFogRefdef ownFogRefdef_{};
+    GamePostFx ownPostFx_;
+    // The map's volumetric boxes for the preview: centre, density, axes, half sizes, 1 / falloff, height factor.
+    struct OwnVolumeBox {
+        Vec3 center, axis[3];
+        double half[3] = {0, 0, 0}, density = 0, invFalloff = 0, heightK = 0;
+    };
+    std::vector<OwnVolumeBox> ownVolumes_;
     double stockSkyIntensity_ = 0;
     double stockBakedScale_ = 1.0;
     std::shared_ptr<const GameGradingClut> stockGrade_;

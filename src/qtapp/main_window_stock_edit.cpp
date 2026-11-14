@@ -1,6 +1,7 @@
 // MainWindow: rebuilding the open stock map through the converter's editzone command (roadmap 11.2 / 11.4 / 11.5,
 // docs/research/88_stock_map_editing.md). Kept out of main_window.cpp, which is at the compiler's section limit.
 #include "main_window.h"
+#include "compile_panel.h"
 #include "render.h"
 #include "custom_shader.h"
 #include <map>
@@ -361,10 +362,28 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
             return false;
         }
         pf.close();
-        litFilter = stockLitFilterJson(QDir::toNativeSeparators(programPath).toStdString());
+        // The filter with the screen (iw8rFilterScreen: the toon shader's ink lines from the scene depth), when the
+        // shader has one.
+        QString screenPath;
+        if (customShaderHasScreenFilter(shader->code)) {
+            std::vector<uint8_t> screen;
+            screenPath = work + "/lit_filter_screen.cso";
+            QFile sf(screenPath);
+            if (!iw8r::app::SceneRenderer::compileProgram(customShaderScreenFilterProgramSource(*shader), kIw8rFilterEntry, screen, &cerr)) {
+                if (err) *err = "The shader's screen filter (iw8rFilterScreen) does not compile: " + qs(cerr);
+                return false;
+            }
+            if (!sf.open(QIODevice::WriteOnly) || sf.write(reinterpret_cast<const char*>(screen.data()), qint64(screen.size())) != qint64(screen.size())) {
+                if (err) *err = "Cannot write " + screenPath;
+                return false;
+            }
+        }
+        litFilter = stockLitFilterJson(QDir::toNativeSeparators(programPath).toStdString(), QDir::toNativeSeparators(screenPath).toStdString());
         if (notes)
             *notes << "the map shader " + qs(shader->name) + " filters the map's lit surfaces (world and static props; characters, weapons and "
-                      "effects use shared shaders and keep their look); needs a converter with editzone \"lit_filter\"";
+                      "effects use shared shaders and keep their look)" +
+                          (screenPath.isEmpty() ? QString() : QString(", with the screen where a shader can take it (lines from the scene depth)")) +
+                          "; needs a converter with editzone \"lit_filter\"";
     } else if (const auto any = mapSurfaceShader(); any && notes) {
         *notes << "the map shader " + qs(any->name) + " has no iw8rFilter function: a stock map's surfaces keep the game's lighting, "
                   "so only a filter can change their look";
@@ -764,6 +783,15 @@ bool MainWindow::restoreStockZonesQuiet(const QString& zone, QStringList& out) {
     }
     out << QString("ok %1 file(s) removed, %2 stock file(s) put back").arg(report.removed.size()).arg(report.restored.size());
     return true;
+}
+
+bool MainWindow::deployBuiltMapQuiet(QString* err) {
+    const QString replay = toolPath("replay");
+    if (replay.isEmpty() || !QFileInfo(replay).isFile()) {
+        if (err) *err = "the game is not set (Tools > Tool Paths)";
+        return false;
+    }
+    return compile_->deploy(QFileInfo(replay).absolutePath(), err);
 }
 
 void MainWindow::restoreStockMap() {

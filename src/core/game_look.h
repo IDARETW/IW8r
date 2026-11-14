@@ -123,10 +123,15 @@ struct GamePostFx {
     // The volumetric fog (research 109 section 2): on when volumetricAirDensity > 0 (vision default 0). sigma per unit =
     // air x 0.01 x exp(max(z - heightBase, 0) x -ln2 / heightHalf) (heightHalf 0 = uniform).
     double volAir = 0, volAbsorption = 0, volAlbedo[3] = {1, 1, 1}, volAmbient = 1, volSun = 1, volAnisotropy = 0;
+    double volSpot = 1, volOmni = 1;  // volumetricSpotBrightness / OmniBrightness: flagged lamps in the air
     double volHeightBase = 0, volHeightHalf = 0;
     GameWhiteBalance whiteBalance;  // research 120 (core white_balance.h); the defaults change nothing
 };
 GamePostFx gamePostFxFromVision(const std::string& visionText);
+// An own map's fog, veil and volumetric fields as the vision text the readers above take: `overridesText` is
+// "name=value; ..." (worldspawn iw8r_vision, with the iw8r_haze preset under it: core atmosphere), names or tokens;
+// fields of other groups are left out. "" when it names none.
+std::string hazeVisionFromOverrides(const std::string& overridesText);
 // The vignette's constants (cb7[214..216], research 109 section 4.1) for a view whose half-FOV tangents are tanX, tanY:
 // out[0..3] = (scaleX, scaleY, intensity, 0), out[4..7] = (offsetX, offsetY, boxX, boxY),
 // out[8..11] = (1 / falloff, -falloffStart / falloff, 0, 0). All zero when the intensity is 0.

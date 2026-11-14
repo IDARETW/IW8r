@@ -537,6 +537,16 @@ Texture2D<float4> hdrScene : register(t15);
 // depth, with the view they were drawn from.
 Texture2D<float4> prevColor : register(t16);
 Texture2D<float> prevZ : register(t17);
+// The scene depth custom surface shaders may read (core custom_shader iw8rSceneDepth): the frame before, at full
+// size, as linear view depth (1e9: sky; 0: off the screen). Unbound (no frame kept yet): Load gives 0, "no depth".
+Texture2D<float> iw8rSceneZ : register(t31);
+static const float iw8rSceneDepthStep = 1.0 / 1024.0;
+float iw8rSceneDepth(float2 pixel) {
+    uint zw, zh;
+    iw8rSceneZ.GetDimensions(zw, zh);
+    if (pixel.x < 0.0 || pixel.y < 0.0 || pixel.x >= float(zw) || pixel.y >= float(zh)) return 0.0;
+    return iw8rSceneZ.Load(int3(int2(pixel), 0));
+}
 cbuffer Prev : register(b10) { row_major float4x4 prevVP; float4 prevFwd; float4 prevSize; };  // prevSize: w, h, valid
 struct VFull { float4 pos : SV_POSITION; };
 VFull vs_post(uint id : SV_VertexID) {
@@ -590,7 +600,51 @@ float4 ps_veil_up(VFull i) : SV_TARGET {
 // without the slice thickness (as the game's shader), then out = scene x T + S. The sky takes the whole volume.
 Texture2D<float> volDepth : register(t28);
 cbuffer Volume : register(b13) { row_major float4x4 volInvVP; float4 volEye; float4 volSunDir; float4 volSunRad; float4 volAlbedo;
-                                 float4 volP; float4 volQ; float4 volAmb; };
+                                 float4 volP; float4 volQ; float4 volAmb;
+                                 float4 volBoxInfo;      // x: boxes in use (0..8)
+                                 float4 volBox[40];      // per box 5 rows: centre + density, three axes + half sizes,
+                                                         // (1 / falloff, -0.1 x height fade, 0, 0)
+                                 float4 volLampInfo;     // x: lamps in use (0..8), y: spot brightness, z: omni brightness
+                                 float4 volLamp[24]; };  // per lamp 3 rows, as PixelLight: position + radius, colour + cos
+                                                         // outer (below -1.5: omni), axis + cos inner
+// The light of the flagged lamps in the air at a point, seen along V (research 126 section 1.4): each lamp's light
+// there (the falloff and cone it has on surfaces), the phase toward the eye, pi, and the vision's lamp brightness.
+float3 volLampLight(float3 P, float3 V, float g) {
+    float3 sum = 0.0;
+    const int n = int(volLampInfo.x);
+    [loop] for (int k = 0; k < n; ++k) {
+        const float3 dl = volLamp[k * 3].xyz - P;
+        const float dist = length(dl);
+        const float radius = volLamp[k * 3].w;
+        if (dist >= radius) continue;
+        const float3 l = dl / max(dist, 1e-3);
+        const bool omni = volLamp[k * 3 + 1].w < -1.5;
+        float cone = 1.0;
+        if (!omni)
+            cone = saturate((dot(-l, volLamp[k * 3 + 2].xyz) - volLamp[k * 3 + 1].w) / max(1e-4, volLamp[k * 3 + 2].w - volLamp[k * 3 + 1].w));
+        const float w = saturate(1.0 - dist / radius) * cone;
+        const float cth = dot(V, -l);  // the light travels from the lamp to P, then along -V to the eye
+        const float ph = min((1.0 - g * g) / (12.566371 * pow(max(1.0 + g * g + 2.0 * g * cth, 1e-4), 1.5)), 1.0);
+        sum += volLamp[k * 3 + 1].rgb * (w * w * (3.0 - 2.0 * w) / max(dist * dist, 1.0)) * ph * 3.141593 * (omni ? volLampInfo.z : volLampInfo.y);
+    }
+    return sum;
+}
+// The fog a volumetric box adds at a point (research 127 section A.2): extinction per unit.
+float volBoxSigma(float3 P) {
+    float sum = 0.0;
+    const int n = int(volBoxInfo.x);
+    [loop] for (int b = 0; b < n; ++b) {
+        const float3 rel = P - volBox[b * 5].xyz;
+        const float3 local = float3(dot(rel, volBox[b * 5 + 1].xyz), dot(rel, volBox[b * 5 + 2].xyz), dot(rel, volBox[b * 5 + 3].xyz));
+        const float3 halfSize = float3(volBox[b * 5 + 1].w, volBox[b * 5 + 2].w, volBox[b * 5 + 3].w);
+        if (any(abs(local) > halfSize)) continue;
+        const float invFalloff = volBox[b * 5 + 4].x;
+        // 0 in the core, 1 at a face; the corners are rounded.
+        const float3 q = max(abs(local) * invFalloff - (halfSize * invFalloff - 1.0), 0.0);
+        sum += volBox[b * 5].w * saturate(1.0 - length(q)) * exp(volBox[b * 5 + 4].y * (local.z + halfSize.z));
+    }
+    return sum;
+}
 float3 volumetricFog(float2 px, float3 c) {
     if (volQ.z < 0.5) return c;
     const float z = volDepth.Load(int3(px, 0));
@@ -610,8 +664,8 @@ float3 volumetricFog(float2 px, float3 c) {
         if (d > D) break;
         const float dz = (k < 8 ? 128.0 : k < 16 ? 384.0 : k < 24 ? 640.0 : 1024.0) / 32.0 * 4.0;
         const float3 P = volEye.xyz + V * d;
-        const float sig = volAlbedo.w * exp(max(P.z - volP.z, 0.0) * volP.w);
-        const float3 sun = sunShadow(P) * volQ.x * ph * 3.141593 * volSunRad.rgb * dz;
+        const float sig = volAlbedo.w * exp(max(P.z - volP.z, 0.0) * volP.w) + volBoxSigma(P);
+        const float3 sun = (sunShadow(P) * volQ.x * ph * 3.141593 * volSunRad.rgb + volLampLight(P, V, g)) * dz;
         const float3 amb = volP.y * volAmb.rgb * 4.0;
         S += T * volAlbedo.rgb * sig * (sun + amb);
         T *= exp(-(sig + volP.x) * dz);
@@ -1143,6 +1197,9 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             s.uv = i.uv, s.sunDir = gameSun.xyz, s.sunColor = gameSunCol.rgb, s.sunShadow = visibility;
             s.ambient = indirect * aoOwn, s.gloss = 0.3;
             s.faceNormal = dot(i.n, i.n) > 0.5 ? normalize(i.n) : N;
+            s.pixel = i.pos.xy;
+            s.viewDepth = mul(float4(i.w, 1.0), viewProj).w;
+            s.eye = eyeStart.xyz;
             iw8rEdgeFields(s, i.edge, ddx(i.w), ddy(i.w));
             c = iw8rSurface(s);
 #else
@@ -1199,7 +1256,14 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             // A map shader's filter (core custom_shader): on the lit, fogged colour with the exposure applied, as the
             // game's lit pixel shaders end (their last step multiplies by the exposure, cb7[42].x).
             const float pre = max(game0.y, 1e-9);
+#ifdef IW8R_FILTER_SCREEN
+            // With the screen (iw8rFilterScreen: the pixel, its view depth, a pixel's size per unit of depth).
+            const float filterDepth = mul(float4(i.w, 1.0), viewProj).w;
+            const float3 filterRay = (i.w - eyeStart.xyz) / max(filterDepth, 1e-3);
+            c = iw8rFilterScreen(c * pre, i.pos.xy, filterDepth, max(length(ddx(filterRay)), length(ddy(filterRay)))) / pre;
+#else
             c = iw8rFilter(c * pre) / pre;
+#endif
         }
 #endif
         if (gameAo.w < 0.5) c = gamePost(c);  // HDR frames: the post pass applies it (drawPost)
@@ -1334,6 +1398,40 @@ float ps_ao(V i) : SV_TARGET {
 // Kept for the next frame's screen-space reflections: the linear view depth (clip w; 1e9 for the sky) at half size,
 // the farther of each 2 x 2 (the game's floatZ max chain), and the HDR scene averaged over 2 x 2.
 Texture2D<float4> hdrIn : register(t2);
+// The same at full size, one pixel each: the scene depth custom surface shaders read in the next frame.
+// The faces were drawn with a depth offset of 1.5 x their steepest depth step per pixel (rsTris_, so that editor
+// lines lie in front of them); the game's depth has none, so it is taken off here. The buffer's depth is linear across
+// a face on screen, so the face's step along an axis is the difference to a neighbour on the same face: on the side
+// where this pixel and the next two lie on one line (the other side crosses an edge of the face; at a corner where two
+// faces meet the difference across the edge can be the smaller one, so the smaller difference alone is not enough).
+// A face too narrow for that gets the smaller difference.
+float faceStep(float d, float a1, float a2, float b1, float b2) {
+    const float bendA = abs(a2 - 2.0 * a1 + d), bendB = abs(b2 - 2.0 * b1 + d);
+    const float stepA = abs(a1 - d), stepB = abs(b1 - d);
+    if (min(bendA, bendB) > 4e-7 + 0.1 * min(stepA, stepB)) return min(stepA, stepB);
+    return bendA < bendB ? stepA : bendB < bendA ? stepB : min(stepA, stepB);
+}
+float ps_scenez(V i) : SV_TARGET {
+    const int2 q = int2(i.pos.xy);
+    float d = depthTex.Load(int3(q, 0));
+    const float l = depthAt(q + int2(-1, 0)), r = depthAt(q + int2(1, 0));
+    const float u = depthAt(q + int2(0, -1)), b = depthAt(q + int2(0, 1));
+    if (d >= 0.999999) {
+        // A face a pixel wide and nearly edge-on is pushed to the far plane: with a surface on both sides it is
+        // taken as the farther of the two, not as a pixel of sky.
+        const float acrossX = max(l, r), acrossY = max(u, b);
+        d = min(acrossX, acrossY);
+        if (d >= 0.999999) return 1e9;
+    } else {
+        const float stepX = faceStep(d, l, depthAt(q + int2(-2, 0)), r, depthAt(q + int2(2, 0)));
+        const float stepY = faceStep(d, u, depthAt(q + int2(0, -2)), b, depthAt(q + int2(0, 2)));
+        d -= 1.5 * max(stepX, stepY);
+    }
+    // Kept with the game's precision (its scene depth is depth / 6 in a 16-bit float, research 104), so that a shader
+    // sees in the viewport what it will see in the game.
+    const float z = mul(float4(worldAt((float2(q) + 0.5) / aoPrm.zw, d), 1.0), aoVp).w;
+    return f16tof32(f32tof16(z / 6.0)) * 6.0;
+}
 float ps_prevz(V i) : SV_TARGET {
     int2 p = int2(i.pos.xy) * 2;
     float w = 0.0;
@@ -1514,6 +1612,7 @@ SceneRenderer::~SceneRenderer() {
     releaseVeilResources();
     safeRelease(aoVs_), safeRelease(aoPs_), safeRelease(aoBlurPs_), safeRelease(cbAo_);
     safeRelease(prevZPs_), safeRelease(prevColorPs_), safeRelease(cbPrev_);
+    safeRelease(sceneZPs_);
     safeRelease(layoutTex_);
     for (auto& g : refTexInst_) safeRelease(g.vb), safeRelease(g.ib), safeRelease(g.inst), safeRelease(g.visInst);
     refTexInst_.clear();
@@ -1595,6 +1694,7 @@ bool SceneRenderer::pixelShaderAccepted(const std::vector<uint8_t>& program) {
 bool SceneRenderer::setReferenceFilterShader(const std::string& source, std::string* err) {
     if (source.empty()) {
         safeRelease(filterPs_);
+        filterScreen_ = false;
         return true;
     }
     if (!dev_) return false;
@@ -1616,6 +1716,7 @@ bool SceneRenderer::setReferenceFilterShader(const std::string& source, std::str
     }
     safeRelease(filterPs_);
     filterPs_ = ps;
+    filterScreen_ = source.find("#define IW8R_FILTER_SCREEN") != std::string::npos;
     return true;
 }
 
@@ -1901,6 +2002,8 @@ void SceneRenderer::releaseTargets() {
     safeRelease(hdrSrv_), safeRelease(hdrRtv_), safeRelease(hdrTex_);
     safeRelease(prevColorSrv_), safeRelease(prevColorRtv_), safeRelease(prevColorTex_);
     safeRelease(prevZSrv_), safeRelease(prevZRtv_), safeRelease(prevZTex_);
+    safeRelease(sceneZSrv_), safeRelease(sceneZRtv_), safeRelease(sceneZTex_);
+    sceneZValid_ = false;
     prevValid_ = false;
     for (int k = 0; k < 2; ++k) safeRelease(aoSrv_[k]), safeRelease(aoRtv_[k]), safeRelease(aoTex_[k]);
     aoValid_ = false;
@@ -1922,6 +2025,8 @@ bool SceneRenderer::createAoResources() {
         dev_->CreatePixelShader(pbb->GetBufferPointer(), pbb->GetBufferSize(), nullptr, &aoBlurPs_);
         ID3DBlob *zb = nullptr, *cb = nullptr;
         if (compile("ps_prevz", "ps_5_0", zb)) dev_->CreatePixelShader(zb->GetBufferPointer(), zb->GetBufferSize(), nullptr, &prevZPs_);
+        safeRelease(zb);
+        if (compile("ps_scenez", "ps_5_0", zb)) dev_->CreatePixelShader(zb->GetBufferPointer(), zb->GetBufferSize(), nullptr, &sceneZPs_);
         if (compile("ps_prevcolor", "ps_5_0", cb)) dev_->CreatePixelShader(cb->GetBufferPointer(), cb->GetBufferSize(), nullptr, &prevColorPs_);
         safeRelease(zb), safeRelease(cb);
     }
@@ -1961,6 +2066,45 @@ bool invert4(const float* m, float* out) {
     return true;
 }
 }  // namespace
+
+// The finished frame's depth as linear view depth at full size (ps_scenez), for custom surface shaders in the next
+// frame. Only while a custom shader exists.
+void SceneRenderer::keepSceneDepth(const float* viewProj) {
+    if (!sceneDepthWanted() || !sceneZRtv_ || !sceneZPs_ || !depthSrv_ || !aoVs_ || !createAoResources()) {
+        sceneZValid_ = false;
+        return;
+    }
+    float cb[40];
+    std::memcpy(cb, viewProj, 64);
+    if (!invert4(viewProj, cb + 16)) {
+        sceneZValid_ = false;
+        return;
+    }
+    cb[32] = fog_[0], cb[33] = fog_[1], cb[34] = fog_[2], cb[35] = 0;
+    cb[36] = 40.0f, cb[37] = 1.0f, cb[38] = float(w_), cb[39] = float(h_);
+    ctx_->UpdateSubresource(cbAo_, 0, nullptr, cb, 0, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    ctx_->PSSetShaderResources(31, 1, &none);  // this frame's input becomes the output
+    D3D11_VIEWPORT fv{0, 0, float(w_), float(h_), 0, 1};
+    ctx_->RSSetViewports(1, &fv);
+    ctx_->OMSetBlendState(nullptr, nullptr, 0xffffffff);
+    ctx_->OMSetDepthStencilState(dsOff_, 0);
+    ctx_->RSSetState(rsTris_);
+    ctx_->IASetInputLayout(nullptr);
+    ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx_->VSSetShader(aoVs_, nullptr, 0);
+    ctx_->PSSetConstantBuffers(8, 1, &cbAo_);
+    ctx_->OMSetRenderTargets(1, &sceneZRtv_, nullptr);
+    ctx_->PSSetShader(sceneZPs_, nullptr, 0);
+    ctx_->PSSetShaderResources(0, 1, &depthSrv_);
+    ctx_->Draw(3, 0);
+    ctx_->PSSetShaderResources(0, 1, &none);
+    ctx_->OMSetRenderTargets(1, &sceneRtv_, nullptr);
+    // The frame just drawn read the depth of the view before: stale when that was another view.
+    sceneZStale_ = !sceneZValid_ || std::memcmp(sceneZViewProj_, viewProj, 64) != 0;
+    std::memcpy(sceneZViewProj_, viewProj, 64);
+    sceneZValid_ = true;
+}
 
 void SceneRenderer::keepFrameForSsr(const float* viewProj) {
     if (!prevColorRtv_ || !prevZRtv_ || !prevZPs_ || !prevColorPs_ || !depthSrv_ || !hdrSrv_ || !createAoResources()) {
@@ -2123,14 +2267,20 @@ void SceneRenderer::drawPost() {
     {
         // The volumetric fog's constants (b13) and inputs: the depth (t28), the sun shadow maps (t2, s1) and the
         // frame's constants (b0: the shadow matrices).
-        float cb[44] = {};
-        const bool volOn = game_.on && volumetricOn_ && game_.vol[2][2] > 0.5f && depthSrv_ && invert4(lastViewProj_, cb);
+        float cb[308] = {};
+        const bool volOn = game_.on && (volumetricOn_ || game_.volOwn) && game_.vol[2][2] > 0.5f && depthSrv_ && invert4(lastViewProj_, cb);
         if (volOn) {
             cb[16] = fog_[0], cb[17] = fog_[1], cb[18] = fog_[2];
             cb[20] = game_.sunToward[0], cb[21] = game_.sunToward[1], cb[22] = game_.sunToward[2];
             cb[24] = game_.sunColor[0], cb[25] = game_.sunColor[1], cb[26] = game_.sunColor[2];
             std::memcpy(cb + 28, game_.vol, sizeof(game_.vol));
             cb[40] = game_.sky[0], cb[41] = game_.sky[1], cb[42] = game_.sky[2];
+            const int boxes = std::clamp(game_.volBoxCount, 0, 8);
+            cb[44] = float(boxes);
+            std::memcpy(cb + 48, game_.volBoxes, size_t(boxes) * 20 * sizeof(float));
+            const int lamps = std::clamp(game_.volLampCount, 0, 8);
+            cb[208] = float(lamps), cb[209] = game_.volLampBrightness[0], cb[210] = game_.volLampBrightness[1];
+            std::memcpy(cb + 212, game_.volLamps, size_t(lamps) * 12 * sizeof(float));
         }
         if (!cbVol_ && dev_) {
             D3D11_BUFFER_DESC bd{};
@@ -2991,6 +3141,12 @@ void SceneRenderer::resize(int w, int h) {
             dev_->CreateRenderTargetView(prevZTex_, nullptr, &prevZRtv_);
             dev_->CreateShaderResourceView(prevZTex_, nullptr, &prevZSrv_);
         }
+        hd.Width = td.Width, hd.Height = td.Height;
+        if (SUCCEEDED(dev_->CreateTexture2D(&hd, nullptr, &sceneZTex_))) {
+            dev_->CreateRenderTargetView(sceneZTex_, nullptr, &sceneZRtv_);
+            dev_->CreateShaderResourceView(sceneZTex_, nullptr, &sceneZSrv_);
+        }
+        sceneZValid_ = false;
     }
     td.Format = DXGI_FORMAT_R8_UNORM;
     td.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
@@ -4317,6 +4473,8 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         }
         ID3D11ShaderResourceView* ps[2] = {ssrNow ? prevColorSrv_ : nullptr, ssrNow ? prevZSrv_ : nullptr};
         ctx_->PSSetShaderResources(16, 2, ps);
+        ID3D11ShaderResourceView* sceneZ = hdrFrame_ && sceneZValid_ && sceneDepthWanted() ? sceneZSrv_ : nullptr;
+        ctx_->PSSetShaderResources(31, 1, &sceneZ);
     }
     if (hdrFrame_) {
         const float zero[4] = {0, 0, 0, 0};
@@ -5012,6 +5170,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     if (hdrFrame_) {
         // The lit scene is done: kept for the next frame's reflections, the post chain into the frame, then the unlit
         // pieces and the editor's overlays.
+        keepSceneDepth(viewProj);
         keepFrameForSsr(viewProj);
         std::memcpy(lastViewProj_, viewProj, sizeof(lastViewProj_));
         drawPost();

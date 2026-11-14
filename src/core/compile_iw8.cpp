@@ -725,7 +725,7 @@ bool isLightClass(const std::string& lcls) { return lcls == "light" || lcls == "
 //   Finite / Positive / NonNegative: one number, checked for finite, > 0 or >= 0.
 //   Pair: two numbers, "near far", written as a JSON array.
 //   Switch: 0, 1, true or false. 1 sets can_use_shadow_map (spot lights only; see localPrimaryLights).
-enum class LightKind { Finite, Positive, NonNegative, Pair, Switch };
+enum class LightKind { Finite, Positive, NonNegative, Pair, Switch , Flag};
 struct LightKey {
     const char* key;    // Radiant key
     const char* field;  // ComPrimaryLight JSON field (convert.cpp reads each one by this name)
@@ -741,6 +741,9 @@ constexpr LightKey kLightKeys[] = {
     {"iw8r_intensity_units", "intensity", LightKind::NonNegative, "must be a number of 0 or more"},
     {"iw8r_uv_intensity", "uv_intensity", LightKind::Finite, "must be a number"},
     {"iw8r_ir_intensity", "ir_intensity", LightKind::Finite, "must be a number"},
+    // The lamp lights the volumetric air (a glow and beams in fog): the game adds a lamp's light to the air only when
+    // the lamp is flagged (research 126 section 1.4; stock maps flag their feature lamps, not every lamp).
+    {"iw8r_volumetric", "volumetric", LightKind::Flag, "must be 0, 1, true or false"},
 };
 
 // One ComPrimaryLight object (doc 24 section 3). `direction` points back toward the light, as the sun's does.
@@ -907,6 +910,12 @@ std::vector<std::string> localPrimaryLights(const MapFile& map, const std::vecto
         for (const LightKey& lk : kLightKeys) {
             const std::string* s = pe->value(lk.key);
             if (!s) continue;
+            if (lk.kind == LightKind::Flag) {  // a true / false field of its own
+                const std::string t = lower(*s);
+                if (t != "0" && t != "1" && t != "true" && t != "false") warn.push_back(where + ": " + lk.key + " '" + *s + "' " + lk.rule + ": left out");
+                else if (t == "1" || t == "true") extra += std::string(",\"") + lk.field + "\":true";
+                continue;
+            }
             if (lk.kind == LightKind::Switch) {
                 const std::string t = lower(*s);
                 if (t != "0" && t != "1" && t != "true" && t != "false") {
@@ -2469,6 +2478,13 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             std::string src, serr;
             SkyConvertOptions so;
             so.faceSize = opt.skyFaceSize;
+            {
+                bool badBrightness = false;
+                const std::string* sb = worldspawn->value(kSkyBrightnessKey);
+                so.brightness = parseSkyBrightness(sb, &badBrightness);
+                if (badBrightness)
+                    warn.push_back("worldspawn " + std::string(kSkyBrightnessKey) + " '" + *sb + "' is not a number from 0.1 to 16: using 1");
+            }
             SkyConvertInfo si;
             // The sky turned as the game turns a stock map's (worldspawn skyrotation), else so that its sun is on the
             // map sun's yaw (the game draws a converted sky unturned).
@@ -2997,10 +3013,16 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     warn.push_back("iw8r_lut and iw8r_film are both set: the converter uses the film and ignores the LUT (doc 31)");
             }
         }
-    // Volumetric boxes (5.7, research 46): `iw8r_volume` point entities (origin, mins / maxs relative to it, default
-    // +-128; angles; density >= 0, default 0.2; falloff > 0, default 64; color; height_fade; anisotropy) become
-    // world.json `volumetrics` (iw3_render_assets.cpp 5682, validated by replay_render.cpp 1406-1465). Bad values are
-    // reported and the volume left out, so it cannot stop the build. Units and look NOT VERIFIED in game.
+    // Volumetric boxes (5.7, research 46 and 127 part A): `iw8r_volume` point entities (origin, mins / maxs relative to
+    // it, default +-128; angles) become world.json `volumetrics` (iw3_render_assets.cpp 5682, validated by
+    // replay_render.cpp 1406-1465). The game's units: density is extinction per world unit, added to the vision's air
+    // (default 0.001; stock boxes hold 0.0002 to 0.04); falloff is the soft border in world units (default 32, at most
+    // the smallest half size); height_half is the height above the box's bottom where the fog is half as thick
+    // (height_fade = 6.931 / height_half, which the game clamps to 0..1; height_fade itself is still read). color and
+    // anisotropy are written but Replay 1.20 reads neither (the vision's volumetricAlbedo and volumetricSunAnisotropy
+    // apply). A box has no light of its own: the sun, the light grid and lamps flagged iw8r_volumetric light it, by
+    // the vision's volumetric*Brightness. Bad values are reported and the volume left out, so it cannot stop the
+    // build. Look NOT VERIFIED in game.
     std::string volumeJson;
     size_t volumeCount = 0;
     for (const Entity* pe : points) {
@@ -3027,8 +3049,23 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             }
             return d;
         };
-        const double density = number("density", 0.2, 0, false), falloff = number("falloff", 64, 0, true);
-        const double heightFade = number("height_fade", 0, -1e9, false), anisotropy = number("anisotropy", 0, -1, false);
+        const double density = number("density", 0.001, 0, false);
+        double falloff = number("falloff", 32, 0, true);
+        const double smallestHalf = std::min({mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]}) / 2;
+        if (falloff > smallestHalf) {
+            warn.push_back(where + ": falloff " + num(falloff) + " is more than its smallest half size; using " + num(smallestHalf));
+            falloff = smallestHalf;
+        }
+        if (density > 0.05)
+            warn.push_back(where + ": density " + num(density) + " is very thick (extinction per unit: 256 units of 0.05 let 0.0003 % of the light "
+                           "through; stock boxes hold 0.0002 to 0.04, 0.001 is a light haze)");
+        double heightFade = std::clamp(number("height_fade", 0, 0, false), 0.0, 1.0);
+        if (const std::string* hh = pe->value("height_half"); hh && !hh->empty()) {
+            double h = 0;
+            if (parseNumber(*hh, h) && std::isfinite(h) && h >= 6.931) heightFade = 6.931 / h;
+            else warn.push_back(where + ": height_half '" + *hh + "' must be 6.931 or more (units above the box's bottom where the fog is half as thick); ignored");
+        }
+        const double anisotropy = number("anisotropy", 0, -1, false);
         double color[3] = {1, 1, 1};
         if (const std::string* cv = pe->value("color"); cv && !parseVec3Text(*cv, color)) color[0] = color[1] = color[2] = 1;
         double ang[3] = {0, 0, 0};
@@ -3421,7 +3458,31 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     // Atmosphere (doc 31): worldspawn iw8r_fog -> maps/mp/<id>.gsc setExpFog, iw8r_film -> vision/<id>.vision r_film*.
     if (worldspawn) {
         std::string awarn;
-        const Atmosphere atmo = readAtmosphere(*worldspawn, &awarn);
+        Atmosphere atmo = readAtmosphere(*worldspawn, &awarn);
+        // iw8r_haze (research 126): the game's own fog and volumetric air, as vision overrides under the user's
+        // iw8r_vision. The fog's brightness follows this map's sun; the ground layers sit at the spawn points' height
+        // (the lowest geometry without spawns). The game then fogs every opaque pixel, so iw8r_fog (baked into the
+        // surface shader) is left out.
+        std::string hazeVision;
+        if (atmo.haze) {
+            std::vector<double> heights;
+            for (const Entity* pe : points)
+                if (const std::string* cn = pe->value("classname"); cn && cn->find("spawn") != std::string::npos)
+                    if (auto o = pe->origin()) heights.push_back(o->z);
+            double groundZ = geom.mins.z;
+            if (!heights.empty()) {
+                std::nth_element(heights.begin(), heights.begin() + long(heights.size() / 2), heights.end());
+                groundZ = heights[heights.size() / 2];
+            }
+            const double sunLuma = 0.2126 * sunColor[0] + 0.7152 * sunColor[1] + 0.0722 * sunColor[2];
+            hazeVision = hazeVisionText(*atmo.haze, sunLuma, sunDir, std::round(groundZ));
+            warn.push_back("haze '" + formatHaze(*atmo.haze) + "': the game's own fog, sky blend and volumetric air (ground layers at height " +
+                           formatNumber(std::round(groundZ)) + "; any field can be changed in iw8r_vision; research 126; not seen in game)");
+            if (atmo.fog) {
+                warn.push_back("iw8r_fog is left out of the build: iw8r_haze uses the game's own fog (two fogs would add up)");
+                atmo.fog.reset();
+            }
+        }
         for (size_t a = 0, b; a < awarn.size(); a = b + 1) {
             b = awarn.find('\n', a);
             if (b == std::string::npos) b = awarn.size();
@@ -3894,9 +3955,10 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         }
         if (opt.prefabScripts) extras.prefabScripts = *opt.prefabScripts;  // prefab bundles (the prefab step fills it)
         if (const std::string gsc = mapScriptGsc(atmo.fog, fx, sounds, extras); !gsc.empty()) customFiles.push_back({mapDir / (id + ".gsc"), gsc});
-        if (const std::string* vo = worldspawn->value(kVisionKey); vo && !vo->empty()) {
+        const std::string* userVision = worldspawn->value(kVisionKey);
+        if (const std::string visionText = mergeVisionText(hazeVision, userVision ? *userVision : std::string()); !visionText.empty()) {
             std::string verr;
-            const std::string json = visionOverridesJson(*vo, &verr);
+            const std::string json = visionOverridesJson(visionText, &verr);
             if (json.empty())
                 warn.push_back(verr.empty() ? std::string("iw8r_vision is empty") : verr + "; no vision overrides");
             else

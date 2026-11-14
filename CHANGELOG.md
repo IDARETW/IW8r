@@ -5,6 +5,41 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Toon lines redone: found on screen from the scene's depth.** The lines of the toon shader now come from what is
+  drawn around each pixel, not from each brush face's edges. Faces in one plane have no line between them, lines run
+  into each other without ends or gaps, a wall standing in a floor gets its line, and models get lines too.
+  Outlines are the full width, inner lines thinner and thinner still on a soft fold; far lines thin out and fade.
+  New shader inputs for any map shader: `s.pixel`, `s.viewDepth`, `s.eye` and the function `iw8rSceneDepth(pixel)`.
+  The viewport keeps the scene depth with the game's own precision (a 16-bit float), so it shows what the game will.
+  The build binds the game's scene depth for the map's shader (converter `a0a50852`; proof
+  `tools/scene_depth_build_test.py`). Not seen in game.
+- **Toon lines on stock maps.** A map shader may have a third function, `iw8rFilterScreen(colour, pixel, viewDepth,
+  pixelSize)`: the filter with the screen. File > Rebuild Stock Zone builds it into every stock shader that has the
+  screen position and a slot for the scene depth, and the plain filter into the rest. The toon shader uses it for the
+  same ink lines on a stock map's world and props. The slot is the one the thermal sight's mask used, so thermal
+  sights look wrong on a map rebuilt this way. Not seen in game.
+- **Haze: the game's own fog, sky blend and volumetric air for a built map** (research 126). Compile > Atmosphere has
+  a Haze group: a preset (Desert haze, Clear day, Overcast mist, Golden dusk, Dense fog) and an amount. It is the
+  worldspawn key `iw8r_haze "<preset> [amount]"`. The game then fogs the map and the sky itself: distance and ground
+  fog with a glow toward the sun, blended into the low sky, and volumetric air that the sun lights and shadows. Any
+  single value can be changed in Vision overrides (the volumetric fields and `veilStrength` now have names). It
+  replaces the old baked fog (`iw8r_fog`), which never reached the sky. View > Game Lighting previews it on an own
+  map. Not seen in game.
+- **Lamps that glow in the air:** the light key `iw8r_volumetric 1`. The game adds a lamp's light to the volumetric
+  air only when the lamp is flagged; stock maps flag their feature lamps.
+- **Volumetric boxes have the game's units** (research 127). `density` is extinction per unit (default 0.001; the old
+  default 0.2 was about 1000 times a stock box and turned a box black), `falloff` is the soft border in units,
+  `height_half` (new) the height where the fog is half as thick. `color` and `anisotropy` do nothing in this game
+  version; the definitions say so. The viewport's volumetric preview draws the boxes.
+- **Fog on glass and other see-through surfaces.** The game's fog pass covers solid surfaces only. With a haze, the
+  volumetric air or a volumetric box in the map, the built map's blended, additive and multiply surfaces now fog
+  themselves and take the air before them, as the game's own see-through shaders do (research 127 part B).
+- **Sky brightness:** Compile > Sun & Sky has a Sky brightness value (worldspawn `iw8r_sky_brightness`, 0.1 to 16). A
+  built map's sky is an 8-bit picture exposed so that its brightest clouds stay below white; 2 or 3 gives a bright
+  day sky. The viewport shows it, and now also honours Map Info's exposure (`iw8r_exposure_adjust`) on an own map.
+- **Build and install from the command line:** `IW8Radiant.exe --compile <map> --out <folder> --deploy` installs the
+  built package into the game's maps folder after a good build (the same steps as F6).
+
 - **Seen in the game: an edited stock map installed as a whole zone works.** The Shipment toon zone loads and shows
   the filter. The first try showed an invisible map and a blank minimap; the cause was the patch file of the earlier
   attempt, still beside the zone after a copy by hand: the game then refuses the zone without a message (research

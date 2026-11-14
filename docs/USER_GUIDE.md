@@ -250,8 +250,15 @@ Commands in the Tools menu:
   `s.edgeUnits` the same in units (up to 12), `s.edgeNormal` the normal of the face across that edge, and
   `s.faceNormal` the surface's own normal without the normal map. With them a shader can draw lines of a constant
   width on screen. Seams between flush brushes are not edges. Models have no edge data (`edgePixels` is 1e6).
-- The whole toon look is in `toon.iw8shader.hlsl`: its constants at the top set the line width (`kLinePixels`), the
-  colour strength, the tones and the shade level. Make a copy with New to change them for your map.
+- **Screen inputs.** `s.pixel` is the pixel's place on screen, `s.viewDepth` its depth along the view, `s.eye` the
+  camera's position, and `iw8rSceneDepth(pixel)` gives the depth of what is drawn at any pixel (1e9 for the sky, 0
+  where there is none). With them a shader finds outlines and folds from the picture itself: the toon shader's lines
+  work this way, so they join without ends, and a wall standing in a floor gets its line. The game keeps this depth
+  as a 16-bit number; `iw8rSceneDepthStep` (1 / 1024) is how exact it is, and the viewport uses the same precision.
+- The whole toon look is in `toon.iw8shader.hlsl`: its constants at the top set the line width (`kLinePixels` near
+  the eye, `kLineMaxUnits` on the surface, so far lines are thinner), the inner lines' share (`kCrease`), how soft a
+  fold may be and still get a line (`kFoldLow`, `kFoldHigh`), the colour strength, the tones and the shade level.
+  Make a copy with New to change them for your map.
 - The example map Cinder Rail (Toon) uses it. Custom shaders are built and checked offline but not yet seen in game.
 - **Stock maps.** A stock map's surfaces keep the game's own lighting, so a shader changes them through a second
   function: `float3 iw8rFilter(float3 colour)`, which gets the finished colour of a pixel and returns the new one.
@@ -259,6 +266,11 @@ Commands in the Tools menu:
   and props through it. File > Rebuild Stock Zone builds it into the map's lit shaders; File > Install Edited Stock
   Map Into Game installs the changed zone as for any stock edit. The filter cannot use textures or the edge inputs,
   and it does not reach characters, weapons or effects.
+- **Lines on a stock map.** A shader may add `float3 iw8rFilterScreen(float3 colour, float2 pixel, float viewDepth,
+  float pixelSize)`: the filter with the screen. It may call `iw8rSceneDepth`. The rebuild uses it in every stock
+  shader that can take it and `iw8rFilter` in the rest; the log says how many. The toon shader has it, so a stock map
+  gets the same ink lines. One cost: the rebuilt map's thermal sights look wrong (the lines use the slot of the
+  thermal mask).
 
 ### What the game draws from here (Umbra visibility)
 
@@ -280,6 +292,20 @@ Commands in the Tools menu:
 - **Lights**: `light` entities (omni and spot) become primary lights; `reflection_probe` entities become probes.
   A spot with a cone of 150 degrees or more is built as an omni light. The build log notes it.
 - **Compile > Sun & Sky**: sun pitch/yaw/colour and a stock sky (`sky_mp_*`; exported and converted at build time).
+  **Sky brightness** makes the built sky brighter or darker (1 keeps its brightest clouds just below white; 2 or 3
+  is a bright day sky, with the brightest parts going to white).
+- **Haze (Compile > Atmosphere).** Pick a preset and an amount and the game itself fogs your map: fog by distance and
+  near the ground, with a glow toward the sun, blended into the low sky, plus volumetric air that the sun lights, so
+  light shafts show through gaps. Presets: Desert haze, Clear day, Overcast mist, Golden dusk, Dense fog. Amount 1
+  is the preset as designed, 0.5 half as thick, 2 twice. Every value behind a preset is a vision field you can
+  change in the Vision overrides line or Map > Vision Fields (`fog...`, `volumetric...`, `veilStrength`); your
+  values win. View > Game Lighting shows the result. The older exponential fog in the same dialog is baked into the
+  surfaces and never reaches the sky; a haze replaces it.
+- **Lamps in the haze**: give a `light` the key `iw8r_volumetric 1` and it glows in the volumetric air. Only flagged
+  lamps do, as in the stock maps.
+- **Volumetric boxes** (Primitives > Volumetric Box): fog inside a box, for a misty corner or a dusty room. `density`
+  is how thick (0.0002 light, 0.001 default, 0.005 thick), `falloff` the soft border in units, `height_half` the
+  height where it is half as thick (a ground mist). The sun, the sky light and flagged lamps light it.
 - **Baked lightmaps**: tick **Bake lightmaps** on the Compile panel and the build bakes the world's lightmap: the
   light of the sky, the light bounced off surfaces, and where the sun reaches. The sun itself and the light entities
   are not baked; the game draws them live on top. **Bake Settings...** beside it sets the sky's colour and strength

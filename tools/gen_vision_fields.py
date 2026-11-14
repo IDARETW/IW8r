@@ -26,7 +26,7 @@ TEMPLATE_RE = re.compile(r'^\s*\{"([A-Za-z0-9_]+)",\s*"([^"]*)"\}')
 
 # Group keywords, checked in this order against the lower-cased dev name. Unnamed fields (token only) are "misc".
 GROUP_RULES = [
-    ("fog", ("fog",)),
+    ("fog", ("fog", "volumetric", "veil")),
     ("sky", ("sky",)),
     ("sun", ("sun",)),
     ("tonemap", ("tonemap", "tone")),

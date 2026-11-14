@@ -120,8 +120,36 @@ bool customShaderHasFilter(const std::string& code) {
     return std::regex_search(withoutComments(code), re);
 }
 
+bool customShaderHasScreenFilter(const std::string& code) {
+    static const std::regex re(R"(float3\s+iw8rFilterScreen\s*\(\s*float3\s+\w+\s*,\s*float2\s+\w+\s*,\s*float\s+\w+\s*,\s*float\s+\w+\s*\))");
+    return std::regex_search(withoutComments(code), re);
+}
+
+std::string customShaderScreenFilterProgramSource(const CustomShader& shader) {
+    if (!customShaderHasScreenFilter(shader.code)) return {};
+    // The game's scene depth as the converter's surface shader reads it (research 104: depth / 6 in a 16-bit float,
+    // negative on viewmodel pixels, 65500 and up for the sky). A stock lit pass draws at the depth image's own size.
+    return std::string("Texture2D<float4> iw8rSceneZ : register(t0);\n"
+                       "static const float iw8rSceneDepthStep = 1.0 / 1024.0;\n"
+                       "float iw8rSceneDepth(float2 pixel) {\n"
+                       "    if (pixel.x < 0 || pixel.y < 0) return 0;\n"
+                       "    const float depth = abs(iw8rSceneZ.Load(int3(int2(pixel), 0)).x) * 6.0;\n"
+                       "    return depth >= 392999.0 ? 1e9 : depth;\n"
+                       "}\n") +
+           customShaderPreamble() + "#line 1 \"" + shader.name + ".iw8shader.hlsl\"\n" + shader.code + "\n#line 1 \"filter\"\nfloat4 " +
+           kIw8rFilterEntry +
+           "(float4 colour : TEXCOORD0, float4 position : SV_Position) : SV_Target {\n"
+           "    uint w, h;\n"
+           "    iw8rSceneZ.GetDimensions(w, h);\n"
+           "    return float4(iw8rFilterScreen(colour.rgb, position.xy, position.w, 2.0 / float(max(w, 1u))), colour.a);\n"
+           "}\n";
+}
+
 std::string customShaderFilterProgramSource(const CustomShader& shader) {
-    return customShaderPreamble() + "#line 1 \"" + shader.name + ".iw8shader.hlsl\"\n" + shader.code +
+    // The file's other functions may call iw8rSceneDepth (a surface shader, a screen filter). The plain filter has no
+    // texture, so the name is there for them to compile and gives "no depth"; iw8rFilter itself cannot use it.
+    return std::string("static const float iw8rSceneDepthStep = 1.0 / 1024.0;\nfloat iw8rSceneDepth(float2 pixel) { return 0.0; }\n") +
+           customShaderPreamble() + "#line 1 \"" + shader.name + ".iw8shader.hlsl\"\n" + shader.code +
            "\n#line 1 \"filter\"\nfloat4 " + kIw8rFilterEntry +
            "(float4 colour : TEXCOORD0) : SV_Target { return float4(iw8rFilter(colour.rgb), colour.a); }\n";
 }
@@ -130,6 +158,7 @@ std::string customShaderFilterViewportSource(const std::string& baseSource, cons
     const size_t at = baseSource.find(insertBefore);
     if (at == std::string::npos) return {};
     std::string out = "#define IW8R_FILTER 1\n";
+    if (customShaderHasScreenFilter(shader.code)) out += "#define IW8R_FILTER_SCREEN 1\n";
     out += baseSource.substr(0, at);
     out += customShaderPreamble();
     out += "#line 1 \"" + shader.name + ".iw8shader.hlsl\"\n";
@@ -137,6 +166,11 @@ std::string customShaderFilterViewportSource(const std::string& baseSource, cons
     out += "\n#line 1 \"viewport\"\n";
     out += baseSource.substr(at);
     return out;
+}
+
+bool customShaderUsesSceneDepth(const std::string& code) {
+    static const std::regex re(R"(\biw8rSceneDepth\b)");
+    return std::regex_search(withoutComments(code), re);
 }
 
 bool customShaderUsesEdges(const std::string& code) {

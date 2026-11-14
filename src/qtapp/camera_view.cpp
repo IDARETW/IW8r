@@ -13,6 +13,7 @@
 #include <QTimerEvent>
 #include "tool_commands.h"
 #include "sky_image.h"
+#include "stock_smodels.h"
 #include "sky_sun.h"
 #include "prefab.h"
 #include "scriptable_catalog.h"
@@ -455,9 +456,67 @@ void CameraView::render() {
             settingsPath_ = ctx_->doc.path();
             atmo_ = Atmosphere{};
             wind_ = WindSettings{};
+            ownFog_ = GameFog{};
+            ownFogRefdef_ = GameFogRefdef{};
+            ownPostFx_ = GamePostFx{};
+            // Volumetric boxes, read as the build reads them (core compile_iw8: defaults, the falloff cap, height_half).
+            ownVolumes_.clear();
+            for (const Entity& e : ctx_->doc.map().entities) {
+                if (e.classname() != "iw8r_volume") continue;
+                const auto three = [&](const char* key, double a, double b, double c) {
+                    std::array<double, 3> v{a, b, c};
+                    if (const std::string* s = e.value(key)) {
+                        double x = 0, y = 0, z = 0;
+                        if (std::sscanf(s->c_str(), "%lf %lf %lf", &x, &y, &z) == 3) v = {x, y, z};
+                    }
+                    return v;
+                };
+                const auto one = [&](const char* key, double def) {
+                    const std::string* s = e.value(key);
+                    char* end = nullptr;
+                    const double v = s ? std::strtod(s->c_str(), &end) : def;
+                    return s && end != s->c_str() && std::isfinite(v) ? v : def;
+                };
+                const auto mn = three("mins", -128, -128, -128), mx = three("maxs", 128, 128, 128);
+                if (!(mx[0] > mn[0] && mx[1] > mn[1] && mx[2] > mn[2])) continue;
+                const auto ang = three("angles", 0, 0, 0);
+                const auto ax = anglesToAxis(Vec3{ang[0], ang[1], ang[2]});
+                OwnVolumeBox box;
+                const Vec3 o = e.origin().value_or(Vec3{});
+                box.center = o + ax[0] * ((mn[0] + mx[0]) / 2) + ax[1] * ((mn[1] + mx[1]) / 2) + ax[2] * ((mn[2] + mx[2]) / 2);
+                for (int k = 0; k < 3; ++k) box.axis[k] = ax[size_t(k)], box.half[k] = (mx[size_t(k)] - mn[size_t(k)]) / 2;
+                box.density = std::max(one("density", 0.001), 0.0);
+                const double falloff = std::min(std::max(one("falloff", 32), 1e-3), std::min({box.half[0], box.half[1], box.half[2]}));
+                box.invFalloff = 1.0 / falloff;
+                double fade = std::clamp(one("height_fade", 0), 0.0, 1.0);
+                if (const double hh = one("height_half", 0); hh >= 6.931) fade = 6.931 / hh;
+                box.heightK = -0.1 * fade;
+                if (box.density > 0) ownVolumes_.push_back(box);
+            }
             if (const Entity* ws = ctx_->doc.worldspawn()) {
                 atmo_ = readAtmosphere(*ws);
                 if (auto r = readWind(*ws)) wind_ = *r;
+                // The haze as the build will write it (core compile_iw8: the preset under the user's iw8r_vision, the
+                // fog's brightness from the map's sun, the ground layers at the spawn points' height).
+                std::string hazeText;
+                if (atmo_.haze) {
+                    std::vector<double> heights;
+                    for (const Entity& e : ctx_->doc.map().entities)
+                        if (const std::string* cn = e.value("classname"); cn && cn->find("spawn") != std::string::npos)
+                            if (auto o = e.origin()) heights.push_back(o->z);
+                    double groundZ = 0;
+                    if (!heights.empty()) {
+                        std::nth_element(heights.begin(), heights.begin() + long(heights.size() / 2), heights.end());
+                        groundZ = heights[heights.size() / 2];
+                    }
+                    const Vec3 sc = ctx_->scene.sunColor;
+                    hazeText = hazeVisionText(*atmo_.haze, 0.2126 * sc.x + 0.7152 * sc.y + 0.0722 * sc.z, gameSunToward(), std::round(groundZ));
+                }
+                if (const std::string vision = hazeVisionFromOverrides(mergeVisionText(hazeText, atmo_.vision)); !vision.empty()) {
+                    ownFog_ = gameFogFromVision(vision);
+                    ownFogRefdef_ = gameFogRefdef(gameFogVisionFromText(vision));
+                    ownPostFx_ = gamePostFxFromVision(vision);
+                }
             }
             lutPath_ = atmo_.lut;
             if (!lutPath_.empty() && QFileInfo(QString::fromStdString(lutPath_)).isRelative() && !ctx_->doc.path().empty())
@@ -475,7 +534,8 @@ void CameraView::render() {
         pollFiles_ = poll || docChanged;  // the sky image is named by the worldspawn: asked again when the document changes
         // Fog preview from worldspawn iw8r_fog (Compile > Atmosphere), the same 50%-at-halfway curve as setExpFog.
         const float eye[3] = {float(ctx_->cam.pos.x), float(ctx_->cam.pos.y), float(ctx_->cam.pos.z)};
-        const ExpFog* fog = ctx_->fogPreview && atmo_.fog ? &*atmo_.fog : nullptr;
+        // (Left out with iw8r_haze, as in the build: the game's own fog replaces it.)
+        const ExpFog* fog = ctx_->fogPreview && atmo_.fog && !atmo_.haze ? &*atmo_.fog : nullptr;
         const float col[3] = {fog ? float(fog->color.x) : 0.f, fog ? float(fog->color.y) : 0.f, fog ? float(fog->color.z) : 0.f};
         renderer_.setFog(eye, fog ? float(fog->start) : 0.f, fog ? float(fog->halfway) : 0.f, col);
         renderer_.setPixelAngle(float(2.0 * std::tan(ctx_->cam.fov * 3.14159265358979 / 360.0) / std::max(1, fixedW_ > 0 ? fixedW_ : width())));
@@ -621,7 +681,12 @@ void CameraView::render() {
             }
             skyRot[1] = skyAutoYaw_;
         }
-        const QString skyKey = sky.isEmpty() ? QString() : sky + QString("|%1 %2 %3").arg(skyRot[0]).arg(skyRot[1]).arg(skyRot[2]);
+        // An own map's sky brightness (worldspawn iw8r_sky_brightness), as the build applies it. A stock map's sky keeps
+        // its own radiance (the preview's exposure is undone for it below).
+        float skyBrightness = 1.0f;
+        if (!gameStockLook())
+            if (const Entity* ws = ctx_->doc.worldspawn()) skyBrightness = parseSkyBrightness(ws->value(kSkyBrightnessKey));
+        const QString skyKey = sky.isEmpty() ? QString() : sky + QString("|%1 %2 %3|%4").arg(skyRot[0]).arg(skyRot[1]).arg(skyRot[2]).arg(skyBrightness);
         if (skyKey != skyPath_) {
             skyPath_ = skyKey;
             skyTex_.clear();
@@ -630,6 +695,7 @@ void CameraView::render() {
             so.faceSize = 256;
             // The map's sky rotation (worldspawn skyrotation; stock maps: from their entity string).
             for (int k = 0; k < 3; ++k) so.rotation[k] = skyRot[k];
+            so.brightness = skyBrightness;
             SkyConvertInfo skyInfo;
             if (!sky.isEmpty() && readFile(sky.toStdString(), bytes) && skyCubemapFromDds(bytes, cube, so, &skyInfo, &err)) {
                 skyExposure_ = skyInfo.hdr ? skyInfo.exposure : 0.0f;
@@ -771,6 +837,16 @@ void CameraView::render() {
         in.capture = cleanCapture_ || ctx_->scene.captureMode;  // no editor-only reference markers in a capture
         in.geometryChanged = rebuild;
         renderer_.drawFrame(in);
+        // A custom surface shader reads the depth of the frame before (iw8rSceneDepth). After a frame from a new view
+        // one more shows the settled picture: at once for a capture, as the next frame on screen.
+        if (renderer_.sceneDepthStale()) {
+            if (in.capture || captureW_ > 0) {
+                in.geometryChanged = false;
+                renderer_.drawFrame(in);
+            } else {
+                QMetaObject::invokeMethod(this, [this] { update(); }, Qt::QueuedConnection);
+            }
+        }
     }
     if (moreToLoad_ || refMoreToLoad_)
         QMetaObject::invokeMethod(this, [this] { update(); }, Qt::QueuedConnection);  // finish loading next frame
@@ -2380,16 +2456,25 @@ void CameraView::prepareGameLook() {
             c = stockSunKnown_ ? stockSunColor_ * stockSunIntensity_
                                : Vec3{stock->sunColor[0], stock->sunColor[1], stock->sunColor[2]} * stock->sunIntensity;
             exposure = stock->exposure;
+        } else if (const Entity* ws = ctx_->doc.worldspawn()) {
+            // An own map: Map Info's exposure (worldspawn iw8r_exposure_adjust, EV: +1 doubles the picture), as the build
+            // hands it to the converter.
+            if (const std::string* ea = ws->value("iw8r_exposure_adjust")) {
+                char* end = nullptr;
+                const double v = std::strtod(ea->c_str(), &end);
+                if (end != ea->c_str() && std::isfinite(v) && std::fabs(v) <= 8) exposure.exposureAdjust = v;
+            }
         }
         g.sunToward[0] = float(t.x), g.sunToward[1] = float(t.y), g.sunToward[2] = float(t.z);
         g.sunColor[0] = float(c.x), g.sunColor[1] = float(c.y), g.sunColor[2] = float(c.z);
         const Vec3 sky = gameSkyOf(ctx_->doc);
         g.sky[0] = float(sky.x), g.sky[1] = float(sky.y), g.sky[2] = float(sky.z);
         g.skyIsUnbaked = gameLookUnbaked();
-        if (stock) {  // the stock map's bloom veil and vignette (research 109)
-            g.veil = float(stockPostFx_.veil);
-            g.grain = float(stockPostFx_.grain);
-        }
+        // The vision's post effects and fog: a stock map's own vision, an own map's haze (research 126).
+        const GamePostFx& postFx = stock ? stockPostFx_ : ownPostFx_;
+        const GameFog& gameFog = stock ? stockFog_ : ownFog_;
+        g.veil = float(postFx.veil);  // the bloom veil and vignette (research 109)
+        if (stock) g.grain = float(stockPostFx_.grain);
         {
             // The white balance (research 120): the stock map's vision, or an own map's worldspawn iw8r_vision.
             GameWhiteBalance wb = stockPostFx_.whiteBalance;
@@ -2405,22 +2490,63 @@ void CameraView::prepareGameLook() {
                 for (int k = 0; k < 9; ++k) g.whiteBalance[k] = float(wbm[k]);
             }
         }
-        if (stock) {
-            const GamePostFx& p = stockPostFx_;
-            if (p.volAir > 0) {  // the volumetric fog (research 109 section 2)
+        {
+            const GamePostFx& p = postFx;
+            // An own map's volumetric boxes (research 127): the 8 nearest to the camera go to the march.
+            if (!stock && !ownVolumes_.empty()) {
+                std::vector<const OwnVolumeBox*> closest;
+                for (const OwnVolumeBox& b : ownVolumes_) closest.push_back(&b);
+                const Vec3 eye = ctx_->cam.pos;
+                const auto far2 = [&](const OwnVolumeBox* b) {
+                    const Vec3 d = b->center - eye;
+                    return d.x * d.x + d.y * d.y + d.z * d.z;
+                };
+                std::sort(closest.begin(), closest.end(), [&](const OwnVolumeBox* a, const OwnVolumeBox* b) { return far2(a) < far2(b); });
+                g.volBoxCount = int(std::min<size_t>(closest.size(), 8));
+                for (int i = 0; i < g.volBoxCount; ++i) {
+                    const OwnVolumeBox& b = *closest[size_t(i)];
+                    float* r = g.volBoxes[i];
+                    r[0] = float(b.center.x), r[1] = float(b.center.y), r[2] = float(b.center.z), r[3] = float(b.density);
+                    for (int k = 0; k < 3; ++k)
+                        r[4 + k * 4] = float(b.axis[k].x), r[5 + k * 4] = float(b.axis[k].y), r[6 + k * 4] = float(b.axis[k].z), r[7 + k * 4] = float(b.half[k]);
+                    r[16] = float(b.invFalloff), r[17] = float(b.heightK);
+                }
+            }
+            // An own map's lamps that light the air (iw8r_volumetric), in the units the surfaces get: the 8 nearest.
+            if (!stock && (p.volAir > 0 || g.volBoxCount > 0)) {
+                std::vector<std::pair<double, size_t>> order;
+                const auto& pl = pixelLightScratch_;
+                for (size_t k = 0; k < ctx_->scene.lights.size() && k < pl.size(); ++k)
+                    if (ctx_->scene.lights[k].volumetric) {
+                        const Vec3 d = ctx_->scene.lights[k].pos - ctx_->cam.pos;
+                        order.push_back({d.x * d.x + d.y * d.y + d.z * d.z, k});
+                    }
+                std::sort(order.begin(), order.end());
+                g.volLampCount = int(std::min<size_t>(order.size(), 8));
+                for (int i = 0; i < g.volLampCount; ++i) {
+                    const auto& l = pl[order[size_t(i)].second];
+                    float* r = g.volLamps[i];
+                    r[0] = l.pos[0], r[1] = l.pos[1], r[2] = l.pos[2], r[3] = l.radius;
+                    r[4] = l.color[0], r[5] = l.color[1], r[6] = l.color[2], r[7] = l.cosOuter;
+                    r[8] = l.dir[0], r[9] = l.dir[1], r[10] = l.dir[2], r[11] = l.cosInner;
+                }
+                g.volLampBrightness[0] = float(p.volSpot), g.volLampBrightness[1] = float(p.volOmni);
+            }
+            if (p.volAir > 0 || g.volBoxCount > 0) {  // the volumetric fog (research 109 section 2)
                 const float hExp = p.volHeightHalf != 0 ? float(-0.693147 / std::max(p.volHeightHalf, 0.1)) : 0.0f;
                 const float vol[3][4] = {{float(p.volAlbedo[0]), float(p.volAlbedo[1]), float(p.volAlbedo[2]), float(p.volAir * 0.01)},
                                          {float(p.volAbsorption), float(p.volAmbient), float(p.volHeightBase), hExp},
                                          {float(p.volSun), float(p.volAnisotropy), 1.0f, 0.0f}};
                 std::memcpy(g.vol, vol, sizeof(vol));
+                g.volOwn = !stock;
             }
             // The shape of what is being drawn: a capture's own, else the widget's.
             double aspect = height() > 0 ? double(width()) / double(height()) : 16.0 / 9.0;
             if (captureW_ > 0 && captureH_ > 0) aspect = captureAspect_ > 0 ? captureAspect_ : double(captureW_) / double(captureH_);
-            gameVignetteConstants(stockPostFx_, aspect, 1.0, g.vignette);
+            gameVignetteConstants(postFx, aspect, 1.0, g.vignette);
         }
-        if (stock && stockFog_.on) {
-            const GameFog& f = stockFog_;
+        if (gameFog.on) {
+            const GameFog& f = gameFog;
             const double s = gameFogInscatter(f);
             const float fog[6][4] = {{float(f.start), float(f.halfPlane), float(f.maxOpacity), 1.0f},
                                      {float(f.color[0] * s), float(f.color[1] * s), float(f.color[2] * s), float(f.mieBlend)},
@@ -2430,7 +2556,7 @@ void CameraView::prepareGameLook() {
                                      {float(f.maxDistance), float(f.skyMinAngle), float(f.skyMaxAngle), 0}};
             std::memcpy(g.fog, fog, sizeof(fog));
             // The game's own constants (research 111); 135.w follows the camera's height.
-            const GameFogConstants k = gameFogConstants(stockFogRefdef_, float(ctx_->cam.pos.z));
+            const GameFogConstants k = gameFogConstants(stock ? stockFogRefdef_ : ownFogRefdef_, float(ctx_->cam.pos.z));
             std::memcpy(g.fogK, k.c, sizeof(g.fogK));
         }
         // The sky preview is an 8-bit copy of the HDR stock sky times its conversion exposure: undo it, so the sky has

@@ -357,6 +357,13 @@ Map: `out/agent/mp_iw8r_fix1/mp_iw8r_fix1.map` (already built; Ctrl+F7, then Loc
       near a probe should reflect the room, not flat grey. Since 2026-11-14 they are stored in colour at the
       game's own level (research 123): a weapon's metal and a glossy floor should reflect about as strongly as on
       a stock map (rebuild the map first).
+- [ ] Toon lines (Cinder Rail Toon, rebuilt 2026-11-14): lines join without ends or gaps, no lines between faces in
+      one plane, outlines heavier than inner lines, far lines thin. If the lines look like the old ones (square
+      ends), the game's scene depth did not reach the shader: say so.
+- [ ] Toon lines on Shipment (stock rebuild with the screen filter): the world and props have ink lines.
+- [ ] Haze (Cinder Rail Toon: Desert haze 0.7, sky brightness 3, exposure +1): warm haze toward the horizon that
+      meets the sky, light shafts where the sun passes gaps, glass and other see-through surfaces fogged like the
+      walls behind them, nothing black or washed out.
 - [ ] Killstreak aircraft that fly high or start far out (gunship, cruise missile, advanced UAV, airstrike planes)
       move normally: the map's physics world is now as large as a stock map's (research 124; rebuild first).
 - [ ] Killstreaks, radar: with a UAV (not the Personal Radar) enemies without the Ghost perk ping on the minimap

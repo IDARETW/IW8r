@@ -19,6 +19,7 @@ struct SunSky {
     double pitch = -50, yaw = 45;  // compiler defaults (compile_iw8.cpp)
     Vec3 color{1, 1, 1};
     QString sky;                   // "" = no sky key
+    double skyBrightness = 1.0;    // iw8r_sky_brightness (1 = the key is absent)
 };
 
 SunSky currentSunSky(const EditorContext& ctx);
@@ -32,7 +33,7 @@ public:
     SunSky value() const;
 
 private:
-    QDoubleSpinBox *pitch_ = nullptr, *yaw_ = nullptr;
+    QDoubleSpinBox *pitch_ = nullptr, *yaw_ = nullptr, *skyBrightness_ = nullptr;
     QPushButton* colorButton_ = nullptr;
     Vec3 color_;
     QComboBox* sky_ = nullptr;

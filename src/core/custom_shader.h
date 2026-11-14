@@ -31,6 +31,9 @@ inline constexpr const char* kIw8rSurfaceStruct = R"(struct IW8RSurface {
     float3 ambient;    // baked indirect irradiance at the surface (lightmap, light grid or probes), with occlusion
     float  gloss;      // 0 rough .. 1 mirror (the material's gloss, 0.3 without a gloss map)
     float3 faceNormal; // world space, unit: the surface's own normal, without the normal map
+    float2 pixel;      // this pixel's position on screen (pixel centres at .5)
+    float  viewDepth;  // this pixel's depth along the view, world units (compare with iw8rSceneDepth)
+    float3 eye;        // the camera's position, world space
     float  edgePixels; // distance to the nearest edge of the brush face, in screen pixels (1e6: none near, or no data)
     float  edgeUnits;  // the same distance in world units (1e6: none near)
     float3 edgeNormal; // the normal of the face across that edge (faceNormal when none)
@@ -86,6 +89,19 @@ std::string customShaderViewportSource(const std::string& baseSource, const std:
 // The first file found is read; false with *err when none is found or it does not check.
 bool findCustomShader(const std::string& name, const std::vector<std::string>& folders, CustomShader& out, std::string* err = nullptr);
 
+// Besides IW8RSurface a surface shader may call
+//   float iw8rSceneDepth(float2 pixel)
+// the view depth (world units along the view; 1e9 for the sky, 0 where there is none: off the screen) of what is drawn at a pixel of
+// the screen. Each host defines it: the viewport from the frame before (a moving camera sees it one frame late), the
+// built map from the game's scene depth. A shader finds outlines with it by comparing a pixel's neighbours
+// (data/shaders/toon.iw8shader.hlsl); a value at `s.pixel` that is not near `s.viewDepth` means the host has no
+// usable depth right now. The world position of what is drawn at a pixel `o` pixels away is
+//   s.eye + (ray + o.x * ddx(ray) + o.y * ddy(ray)) * iw8rSceneDepth(s.pixel + o),  ray = (s.position - s.eye) / s.viewDepth
+// (the ray per unit of view depth changes linearly across the screen).
+// The depth is as exact as the game keeps it: iw8rSceneDepthStep (a constant every host defines, 1 / 1024) is the
+// largest step between two depths it can tell apart, as a share of the depth. A value read can be off by half of it.
+bool customShaderUsesSceneDepth(const std::string& code);
+
 // A shader file may hold two functions (at least one):
 //   float3 iw8rSurface(IW8RSurface s)   the whole lighting of the map's own surfaces (above)
 //   float3 iw8rFilter(float3 colour)    a filter on the finished colour of surfaces that keep the game's own lighting:
@@ -93,12 +109,24 @@ bool findCustomShader(const std::string& name, const std::vector<std::string>& f
 //                                       colour the game's pixel shader ends with; the result replaces it. The function
 //                                       may use only its argument, constants and intrinsics (it is spliced into the
 //                                       game's compiled shaders, core dxbc_splice).
+//   float3 iw8rFilterScreen(float3 colour, float2 pixel, float viewDepth, float pixelSize)
+//                                       optional, beside iw8rFilter: the same filter with the screen. `pixel` and
+//                                       `viewDepth` as IW8RSurface's, `pixelSize` a pixel's size per unit of depth
+//                                       (the build has no view constants in a stock shader: it takes a 90 degree
+//                                       view over the depth image's width). It may call iw8rSceneDepth (Load only)
+//                                       and use screen derivatives; no other texture, no constant tables. The build
+//                                       uses it where a stock shader has the screen position and a slot for the
+//                                       scene depth, iw8rFilter elsewhere.
 bool customShaderHasSurface(const std::string& code);
 bool customShaderHasFilter(const std::string& code);
+bool customShaderHasScreenFilter(const std::string& code);
 // The pixel shader that holds the filter alone (entry point kIw8rFilterEntry, ps_5_0): it reads the colour from
 // TEXCOORD0 and writes the filtered colour, alpha unchanged. The hosts compile it; the build splices it.
 inline constexpr const char* kIw8rFilterEntry = "iw8rFilterMain";
 std::string customShaderFilterProgramSource(const CustomShader& shader);
+// The same for iw8rFilterScreen: input 1 is SV_Position and the texture t0 the game's scene depth (the build splices
+// it with core dxbc_splice's screen mode). "" when the shader has no iw8rFilterScreen.
+std::string customShaderScreenFilterProgramSource(const CustomShader& shader);
 // The viewport's textured shader with the filter (IW8R_FILTER defined): for the stock reference.
 std::string customShaderFilterViewportSource(const std::string& baseSource, const std::string& insertBefore, const CustomShader& shader);
 

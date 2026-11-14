@@ -3267,11 +3267,12 @@ void MainWindow::buildMenus() {
         addCommand(prims, "AddVolumetricBox", "Volumetric Box (iw8r_volume)", QKeySequence(), [this] {
             const Vec3 at = placementPoint();
             const Id id = ctx_.doc.addEntity({{"classname", "iw8r_volume"}, {"origin", formatNumber(at.x) + " " + formatNumber(at.y) + " " + formatNumber(at.z + 64)},
-                                              {"mins", "-128 -128 -64"}, {"maxs", "128 128 128"}, {"density", "0.2"}, {"falloff", "64"}, {"color", "1 1 1"}},
+                                              {"mins", "-128 -128 -64"}, {"maxs", "128 128 128"}, {"density", "0.001"}, {"falloff", "32"}},
                                              {}, "Add Volumetric Box");
             ctx_.doc.select({id, kNoId}, false);
             ctx_.scene.invalidate();
-            ctx_.documentEdited("Volumetric box (mins / maxs, density, falloff, color); in-game look not verified");
+            ctx_.documentEdited("Volumetric box: fog inside the box (density per unit, falloff border, height_half); the sun and lamps "
+                                "with iw8r_volumetric light it; in-game look not verified");
         });
     }
     // Triggers and callout zones (6.17 / 6.20, core trigger_templates): the volume is the selection's bounds, or a

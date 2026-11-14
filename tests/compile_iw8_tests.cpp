@@ -2314,3 +2314,65 @@ TEST(compile_iw8_airspace_cell) {
     for (const std::string& w : warnings) said = said || w.find("iw8r_airspace 'high' not understood") != std::string::npos;
     CHECK(said);
 }
+
+// The game's own fog and volumetric air (worldspawn iw8r_haze, research 126): written as vision overrides under the
+// user's iw8r_vision, with iw8r_fog left out of the map script; a lamp's iw8r_volumetric; a volumetric box with the
+// game's units (research 127 part A).
+TEST(compile_iw8_haze_and_volumes) {
+    const auto build = [&](const std::string& worldKeys, const std::string& entities, const char* name, std::vector<std::string>& warnings,
+                           std::string& world, std::string& overrides, std::string& script) {
+        std::string text = roomMapText();
+        const std::string ws = "\"classname\" \"worldspawn\"";
+        text.insert(text.find(ws) + ws.size(), worldKeys);
+        text += entities;
+        Id next = 1;
+        ParseResult pr = parseMap(text, next);
+        if (!pr.map) return false;
+        const std::string dir = scratch(name);
+        CompileOptions opt;
+        opt.mapId = "mp_room";
+        CompileReport rep;
+        std::string err;
+        if (!compileIw8Extraction(*pr.map, dir, opt, rep, &err)) return false;
+        warnings = rep.warnings;
+        world = readAll((fs::path(dir) / "extracted" / "maps" / "mp" / "mp_room.d3dbsp.replay-world.json").string());
+        overrides = readAll((fs::path(dir) / "extracted" / "vision" / "mp_room.overrides.json").string());
+        script = readAll((fs::path(dir) / "extracted" / "maps" / "mp" / "mp_room.gsc").string());
+        return true;
+    };
+    const auto warned = [](const std::vector<std::string>& w, const char* part) {
+        for (const std::string& s : w)
+            if (s.find(part) != std::string::npos) return true;
+        return false;
+    };
+    std::vector<std::string> w;
+    std::string world, overrides, script;
+    // A haze with a fog key and the user's own field: the overrides hold the preset, the user's value wins, the script
+    // has no setExpFog.
+    CHECK(build("\n\"iw8r_haze\" \"desert 0.5\"\n\"iw8r_fog\" \"100 2000 0.5 0.5 0.5\"\n\"iw8r_vision\" \"volumetricAirDensity=0.02; tonemapExposureAdjust=0.5\"",
+                "", "haze_on", w, world, overrides, script));
+    CHECK(overrides.find("\"fogAtmosphericScattering\":1") != std::string::npos);
+    CHECK(overrides.find("\"volumetricAirDensity\":0.02") != std::string::npos && overrides.find("\"volumetricAirDensity\":0.006") == std::string::npos);
+    CHECK(overrides.find("\"tonemapExposureAdjust\":0.5") != std::string::npos && overrides.find("\"fogSunDir\":[") != std::string::npos);
+    CHECK(overrides.find("\"fogHalfPlaneDistance\":10000") != std::string::npos);  // 5000 / 0.5
+    CHECK(script.find("setExpFog") == std::string::npos);
+    CHECK(warned(w, "haze 'desert 0.5'") && warned(w, "iw8r_fog is left out"));
+    // Without a haze: the fog key is the map script's setExpFog and there are no overrides.
+    CHECK(build("\n\"iw8r_fog\" \"100 2000 0.5 0.5 0.5\"", "", "haze_off", w, world, overrides, script));
+    CHECK(script.find("setExpFog(100, 2000") != std::string::npos && overrides.empty() && !warned(w, "haze"));
+    // An unknown preset: reported, no haze.
+    CHECK(build("\n\"iw8r_haze\" \"thick\"", "", "haze_bad", w, world, overrides, script));
+    CHECK(overrides.empty() && warned(w, "iw8r_haze 'thick'"));
+    // A lamp flagged for the air, and volumetric boxes with the game's units.
+    const std::string ents =
+        "{\n\"classname\" \"light\"\n\"origin\" \"0 0 64\"\n\"radius\" \"300\"\n\"iw8r_volumetric\" \"1\"\n}\n"
+        "{\n\"classname\" \"iw8r_volume\"\n\"origin\" \"0 0 32\"\n\"mins\" \"-64 -64 -32\"\n\"maxs\" \"64 64 32\"\n}\n"
+        "{\n\"classname\" \"iw8r_volume\"\n\"origin\" \"0 0 32\"\n\"mins\" \"-64 -64 -32\"\n\"maxs\" \"64 64 32\"\n\"density\" \"0.2\"\n"
+        "\"falloff\" \"100\"\n\"height_half\" \"69.31\"\n}\n";
+    CHECK(build("", ents, "haze_volumes", w, world, overrides, script));
+    CHECK(readAll((fs::path(scratch("haze_volumes_keep")).parent_path() / "haze_volumes" / "extracted" / "maps" / "mp" /
+                   "mp_room.d3dbsp.replay-comworld.json").string()).find("\"volumetric\":true") != std::string::npos);
+    CHECK(world.find("\"density\":0.001,\"falloff\":32,\"height_fade\":0,") != std::string::npos);  // the defaults
+    CHECK(world.find("\"density\":0.2,\"falloff\":32,\"height_fade\":0.1,") != std::string::npos);  // falloff capped, half height 69.31
+    CHECK(warned(w, "is very thick") && warned(w, "more than its smallest half size"));
+}

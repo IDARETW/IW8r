@@ -139,12 +139,16 @@ std::vector<uint32_t> stockEditHiddenProps(const MapFile& map) {
     return {found.begin(), found.end()};
 }
 
-std::string stockLitFilterJson(const std::string& programPath) {
-    std::string path;
-    for (const char ch : programPath) {
-        if (ch == '\\' || ch == '"') path += '\\';
-        path += ch;
-    }
+std::string stockLitFilterJson(const std::string& programPath, const std::string& screenProgramPath) {
+    const auto escaped = [](const std::string& text) {
+        std::string out;
+        for (const char ch : text) {
+            if (ch == '\\' || ch == '"') out += '\\';
+            out += ch;
+        }
+        return out;
+    };
+    const std::string path = escaped(programPath) + (screenProgramPath.empty() ? std::string() : "\",\"screen_program\":\"" + escaped(screenProgramPath));
     // The zones the game loads with every multiplayer map: a map's techset zone names their shaders without holding them.
     return "{\"program\":\"" + path +
            "\",\"shared\":[\"techsets_common_mp\",\"techsets_common_core_mp\",\"techsets_common_base_mp\",\"techsets_common\","

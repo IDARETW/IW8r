@@ -130,6 +130,7 @@ public:
     struct PreviewLight {
         Vec3 pos, color{1, 1, 1}, dir;  // dir: spot axis (unit), zero for omni
         double radius = 400, cosOuter = -2, cosInner = -2;
+        bool volumetric = false;  // iw8r_volumetric: the lamp lights the volumetric air
     };
     bool litPreview = false;
     bool litShadows = true;

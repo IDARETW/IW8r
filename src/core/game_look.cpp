@@ -368,6 +368,45 @@ std::map<std::string, std::string> visionValues(const std::string& text) {
 }
 }  // namespace
 
+std::string hazeVisionFromOverrides(const std::string& overridesText) {
+    // The converter's names (x64-zt replay_vision_names.inc) for the fog, veil and volumetric fields.
+    static const std::pair<const char*, const char*> kNames[] = {
+        {"fogDensity", "MSTOLQOTKN"}, {"fogStartDist", "RPNOKKL"}, {"fogColorIntensity", "NTPTLNNQQL"}, {"fogColor", "NMLMMNQLSQ"},
+        {"fogMaxOpacity", "TRPROKTLS"}, {"fogSunDensity", "MPNPSMMTTT"}, {"fogSunColorIntensity", "MLORTTKOLN"},
+        {"fogSunColor", "MRTOMMTTQM"}, {"fogSunBeginFadeAngle", "NKLTMMOOLP"}, {"fogSunEndFadeAngle", "NONQQTPNLT"},
+        {"fogSunDir", "RLNQONPKS"}, {"fogSkyIntensity", "NORQKLTPTR"}, {"fogSkyMinAngle", "LOROLOTNMP"},
+        {"fogSkyMaxAngle", "SPQNRNKQR"}, {"fogAtmosphericScattering", "MKKLQTSKSO"}, {"fogHalfPlaneDistance", "SNNNRLTML"},
+        {"fogMaxDistance", "NRTMTRQTRQ"}, {"fogSkyDistance", "NLQKSSPMKP"}, {"fogExtinctionDesaturation", "MKQSQRPPQR"},
+        {"fogInscatteringEv", "LNOQTMMLSP"}, {"fogRayleighAlbedo", "LNMRMNLNTT"}, {"fogMieAlbedo", "LRKPNSNORL"},
+        {"fogMieAnisotropy", "MPRLMQNQO"}, {"fogMieBlendStrength", "NPMPRRLNPO"}, {"fogHeightFogBaseHeight", "NOSTLRKPQ"},
+        {"fogHeightFogHalfPlaneDistance", "POKSTQPPQ"}, {"fogHeightFogMaximumOffset", "LOLKSRNSMR"},
+        {"fogHeightFogAdditionalFog", "NKOQRKQRMT"}, {"veilStrength", "MMQLTMKTPK"}, {"volumetricAirDensity", "NSKNLMKQSR"},
+        {"volumetricAbsorption", "MQMPKLKK"}, {"volumetricAlbedo", "NKKRQROOQK"}, {"volumetricSunBrightness", "LKNNNKTPTM"},
+        {"volumetricSpotBrightness", "MQSQOLLMRM"}, {"volumetricOmniBrightness", "RRKMLNPKP"},
+        {"volumetricAmbientBrightness", "MQRSTPRORQ"}, {"volumetricHeightFogBaseHeight", "NPKPLTKRNS"},
+        {"volumetricHeightFogHalfPlaneDistance", "MLPOMNQPPK"}, {"volumetricSunAnisotropy", "MTNSRNMTKN"},
+    };
+    std::string out;
+    size_t at = 0;
+    while (at <= overridesText.size()) {
+        size_t end = overridesText.find(';', at);
+        if (end == std::string::npos) end = overridesText.size();
+        const std::string item = overridesText.substr(at, end - at);
+        at = end + 1;
+        const size_t eq = item.find('=');
+        if (eq == std::string::npos) continue;
+        const auto trim = [](std::string s) {
+            const size_t b = s.find_first_not_of(" \t"), e = s.find_last_not_of(" \t");
+            return b == std::string::npos ? std::string() : s.substr(b, e - b + 1);
+        };
+        const std::string name = trim(item.substr(0, eq)), value = trim(item.substr(eq + 1));
+        if (name.empty() || value.empty()) continue;
+        for (const auto& [dev, token] : kNames)
+            if (name == dev || name == token) out += std::string(token) + " \"" + value + "\"\n";
+    }
+    return out;
+}
+
 GamePostFx gamePostFxFromVision(const std::string& text) {
     const std::map<std::string, std::string> v = visionValues(text);
     GamePostFx p;
@@ -394,6 +433,8 @@ GamePostFx gamePostFxFromVision(const std::string& text) {
     num("MQMPKLKK", p.volAbsorption);    // volumetricAbsorption
     num("MQRSTPRORQ", p.volAmbient);     // volumetricAmbientBrightness
     num("LKNNNKTPTM", p.volSun);         // volumetricSunBrightness
+    num("MQSQOLLMRM", p.volSpot);        // volumetricSpotBrightness
+    num("RRKMLNPKP", p.volOmni);         // volumetricOmniBrightness
     num("MTNSRNMTKN", p.volAnisotropy);  // volumetricSunAnisotropy
     num("NPKPLTKRNS", p.volHeightBase);  // volumetricHeightFogBaseHeight
     num("MLPOMNQPPK", p.volHeightHalf);  // volumetricHeightFogHalfPlaneDistance

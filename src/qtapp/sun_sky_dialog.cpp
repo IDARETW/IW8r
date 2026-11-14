@@ -8,9 +8,11 @@
 #include <QLabel>
 #include <QPushButton>
 
+#include <cmath>
 #include <cstdio>
 
 #include "editor_context.h"
+#include "sky_image.h"
 
 namespace iw8r::qt {
 
@@ -38,6 +40,7 @@ SunSky currentSunSky(const EditorContext& ctx) {
                 s.sky = QString::fromStdString(*k);
                 break;
             }
+        s.skyBrightness = double(parseSkyBrightness(e.value(kSkyBrightnessKey)));
         break;
     }
     return s;
@@ -50,7 +53,8 @@ bool applySunSky(EditorContext& ctx, const SunSky& s) {
     const std::pair<std::string, std::string> want[] = {
         {"sundirection", num(s.pitch) + " " + num(s.yaw) + " 0"},
         {"suncolor", num(s.color.x) + " " + num(s.color.y) + " " + num(s.color.z)},
-        {"skyname", s.sky.trimmed().toStdString()}};
+        {"skyname", s.sky.trimmed().toStdString()},
+        {kSkyBrightnessKey, std::fabs(s.skyBrightness - 1.0) < 1e-6 ? std::string() : num(s.skyBrightness)}};
     bool changed = false;
     for (const auto& [k, v] : want) {
         const std::string* cur = w->value(k);
@@ -105,6 +109,15 @@ SunSkyDialog::SunSkyDialog(const SunSky& s, const QStringList& skies, QWidget* p
     form->addRow("Sun yaw", yaw_);
     form->addRow("Sun colour", colorButton_);
     form->addRow("Sky", sky_);
+    skyBrightness_ = new QDoubleSpinBox(this);
+    skyBrightness_->setObjectName("skyBrightness");
+    skyBrightness_->setRange(0.1, 16);
+    skyBrightness_->setDecimals(2);
+    skyBrightness_->setSingleStep(0.25);
+    skyBrightness_->setValue(s.skyBrightness);
+    skyBrightness_->setToolTip("The built sky is an 8-bit picture exposed so that its brightest clouds stay below white. Above 1 the "
+                               "whole sky is brighter and its brightest parts go to white; below 1 it is darker.");
+    form->addRow("Sky brightness", skyBrightness_);
     auto* note = new QLabel("The lit preview (Ctrl+L) shows the sun and draws its direction. A sky is built when its "
                             "cubemap can be exported; the compile log says so.", this);
     note->setWordWrap(true);
@@ -128,6 +141,7 @@ SunSky SunSkyDialog::value() const {
     s.yaw = yaw_->value();
     s.color = color_;
     s.sky = sky_->currentText().trimmed();
+    s.skyBrightness = skyBrightness_->value();
     return s;
 }
 

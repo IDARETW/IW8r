@@ -88,7 +88,9 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
                           const std::vector<StockPatchOverride>* stockZones = nullptr, bool patchFiles = true);
 // The "lit_filter" value for stockEditJson: the compiled filter program (customShaderFilterProgramSource, core
 // custom_shader) and the shared zones a lit shader's program may live in when the map's techset zone only names it.
-std::string stockLitFilterJson(const std::string& programPath);
+// `screenProgramPath`: the compiled iw8rFilterScreen program ("" = none), used for every lit shader that has the
+// screen position and a slot for the scene depth ("screen_program"; the converter re-points that slot).
+std::string stockLitFilterJson(const std::string& programPath, const std::string& screenProgramPath = {});
 
 // 11.5: stock world geometry taken out (docs/research/96_stock_world_removal.md). An iw8r_remove_world brush entity's
 // brushes (and patches) each give a world-space box; on File > Rebuild Stock Zone the converter (editzone

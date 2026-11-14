@@ -1,6 +1,7 @@
 #include "atmosphere_dialog.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QPushButton>
 #include <QLineEdit>
 #include <QFileDialog>
@@ -41,8 +42,26 @@ QWidget* rgbRow(QWidget* parent, QDoubleSpinBox* (&out)[3], const Vec3& v, doubl
 }  // namespace
 
 AtmosphereDialog::AtmosphereDialog(const Atmosphere& a, QWidget* parent) : QDialog(parent) {
-    setWindowTitle("Atmosphere (fog and film grade)");
+    setWindowTitle("Atmosphere (haze, fog and film grade)");
     auto* top = new QVBoxLayout(this);
+
+    // The game's own fog, its blend into the sky and the volumetric air (research 126).
+    auto* hazeBox = new QGroupBox("Haze: the game's fog, sky blend and volumetric air", this);
+    hazeBox->setObjectName("atmoHaze");
+    auto* hf = new QFormLayout(hazeBox);
+    haze_ = new QComboBox(hazeBox);
+    haze_->setObjectName("atmoHazePreset");
+    haze_->addItem("None", QString());
+    for (const HazePreset& p : hazePresets()) haze_->addItem(p.label, QString::fromLatin1(p.id));
+    hazeAmount_ = spin(hazeBox, 0.1, 4, 0.1, a.haze ? a.haze->amount : 1.0);
+    hazeAmount_->setObjectName("atmoHazeAmount");
+    hazeAmount_->setToolTip("How thick: 1 is the preset as designed, 2 twice the fog and air, 0.5 half");
+    hazeAbout_ = new QLabel(hazeBox);
+    hazeAbout_->setWordWrap(true);
+    hf->addRow("Preset", haze_);
+    hf->addRow("Amount", hazeAmount_);
+    hf->addRow(hazeAbout_);
+    top->addWidget(hazeBox);
 
     const ExpFog fog = a.fog.value_or(ExpFog{});
     fogBox_ = new QGroupBox("Exponential fog (setExpFog)", this);
@@ -56,6 +75,22 @@ AtmosphereDialog::AtmosphereDialog(const Atmosphere& a, QWidget* parent) : QDial
     ff->addRow("Halfway distance", fogHalf_);
     ff->addRow("Colour (RGB 0..1)", rgbRow(fogBox_, fogRgb_, fog.color, 1));
     top->addWidget(fogBox_);
+    auto hazeChanged = [this] {
+        const QString id = haze_->currentData().toString();
+        QString about = "No haze: no volumetric air; the exponential fog below, when on, is baked into the map's surfaces "
+                        "(the sky is not fogged).";
+        for (const HazePreset& p : hazePresets())
+            if (id == QLatin1String(p.id))
+                about = QString::fromLatin1(p.about) + ". The game fogs the map and the sky itself, the sun lights the air, and a lamp "
+                        "with iw8r_volumetric 1 glows in it. Any single value can be changed in Vision overrides or Map > Vision "
+                        "Fields (fog..., volumetric..., veilStrength). It replaces the exponential fog below.";
+        hazeAbout_->setText(about);
+        hazeAmount_->setEnabled(!id.isEmpty());
+        fogBox_->setEnabled(id.isEmpty());
+    };
+    connect(haze_, &QComboBox::currentIndexChanged, this, hazeChanged);
+    haze_->setCurrentIndex(a.haze ? std::max(0, haze_->findData(QString::fromStdString(a.haze->preset))) : 0);
+    hazeChanged();
 
     const FilmGrade film = a.film.value_or(FilmGrade{});
     filmBox_ = new QGroupBox("Film grade (vision r_film*)", this);
@@ -126,6 +161,7 @@ AtmosphereDialog::AtmosphereDialog(const Atmosphere& a, QWidget* parent) : QDial
 
 Atmosphere AtmosphereDialog::value() const {
     Atmosphere a;
+    if (const QString id = haze_->currentData().toString(); !id.isEmpty()) a.haze = Haze{id.toStdString(), hazeAmount_->value()};
     if (fogBox_->isChecked()) {
         ExpFog f;
         f.start = fogStart_->value();
@@ -158,17 +194,17 @@ bool applyAtmosphere(EditorContext& ctx, const Atmosphere& a) {
     Entity* w = ctx.doc.worldspawn();
     if (!w) return false;
     const Id wid = w->id;
-    const std::string want[4] = {a.fog ? formatFog(*a.fog) : std::string(), a.film ? formatFilm(*a.film) : std::string(), a.lut,
-                                a.vision};
-    const char* keys[4] = {kFogKey, kFilmKey, kLutKey, kVisionKey};
+    const std::string want[5] = {a.fog ? formatFog(*a.fog) : std::string(), a.film ? formatFilm(*a.film) : std::string(), a.lut,
+                                a.vision, a.haze ? formatHaze(*a.haze) : std::string()};
+    const char* keys[5] = {kFogKey, kFilmKey, kLutKey, kVisionKey, kHazeKey};
     bool changed = false;
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 5; ++i) {
         const std::string* cur = w->value(keys[i]);
         changed |= want[i].empty() ? cur != nullptr : (!cur || *cur != want[i]);
     }
     if (!changed) return false;
     ctx.doc.beginGroup("Atmosphere");
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 5; ++i) {
         const std::string* cur = ctx.doc.findEntity(wid)->value(keys[i]);
         if (want[i].empty()) {
             if (cur) ctx.doc.removeKey(wid, keys[i]);

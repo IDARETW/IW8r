@@ -13,6 +13,12 @@
 // `ret` and has no other `ret` / `retc` / discard after an output write; the filter shader declares only v0, o0 and
 // temps (no resources, constant buffers, immediate constant buffers or indexable temps).
 //
+// A filter that reads the screen (DxbcSpliceOptions::sceneDepthRegister >= 0; a map shader's iw8rFilterScreen, the ink
+// lines of a stock map): its program also has input 1, SV_Position, and the texture t0, read with Load only. Input 1
+// becomes the stock shader's own position input (it must have one that carries every part the filter reads), t0
+// becomes the stock shader's texture register `sceneDepthRegister`, where the technique binds the scene depth; when
+// the stock shader does not declare that register the filter's declaration is added.
+//
 // The container's checksum is recomputed (dxbcChecksum: Direct3D refuses a blob whose checksum is wrong).
 #pragma once
 
@@ -39,9 +45,14 @@ struct DxbcInfo {
 };
 bool dxbcInspect(const std::vector<uint8_t>& blob, DxbcInfo& info, std::string* err = nullptr);
 
+struct DxbcSpliceOptions {
+    // >= 0: the filter reads the screen (see the top); the stock shader's texture register for the scene depth.
+    int sceneDepthRegister = -1;
+};
+
 // The stock shader with the filter shader's instructions between its last output write and its final ret (see the
 // top). False with *err when a requirement is not met; `out` is then empty.
 bool dxbcSpliceFilter(const std::vector<uint8_t>& stock, const std::vector<uint8_t>& filter, std::vector<uint8_t>& out,
-                      std::string* err = nullptr);
+                      std::string* err = nullptr, const DxbcSpliceOptions& options = {});
 
 }  // namespace iw8r

@@ -7,6 +7,8 @@
 #include "atmosphere.h"
 
 class QCheckBox;
+class QComboBox;
+class QLabel;
 class QLineEdit;
 class QDoubleSpinBox;
 class QGroupBox;
@@ -22,6 +24,10 @@ public:
     Atmosphere value() const;
 
 private:
+    // The game's own fog and volumetric air (iw8r_haze): the preset ("" = none) and its amount.
+    QComboBox* haze_ = nullptr;
+    QDoubleSpinBox* hazeAmount_ = nullptr;
+    QLabel* hazeAbout_ = nullptr;
     QGroupBox* fogBox_ = nullptr;
     QDoubleSpinBox *fogStart_ = nullptr, *fogHalf_ = nullptr, *fogRgb_[3] = {};
     QGroupBox* filmBox_ = nullptr;

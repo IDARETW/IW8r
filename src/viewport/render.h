@@ -375,6 +375,11 @@ public:
     // screen (they still cast sun shadows); what the tome does not know is drawn. Empty vectors turn it off.
     void setReferenceTomeVisibility(std::vector<uint32_t> surfaceBits, std::vector<uint32_t> modelBits);
     void bindTomeVisibility();  // (internal) the surface bits for the vertex shader, uploaded when they changed
+    // Custom surface shaders read the frame before (iw8rSceneDepth). True after a frame that was drawn from another
+    // view than the depth it read, while a custom shader is in use: one more frame shows the settled picture.
+    bool sceneDepthStale() const { return sceneZStale_ && sceneDepthWanted(); }
+    // A shader that may read the scene depth is in use: a map's surface shader, or a filter with iw8rFilterScreen.
+    bool sceneDepthWanted() const { return !customPs_.empty() || (filterPs_ && filterScreen_); }
     bool referenceTomeCull() const { return !tomeSurfBits_.empty() || !tomeModelBits_.empty(); }
     size_t tomeCulledProps() const { return tomeCulledProps_; }  // placements the tome hid in the last frame
     // The same cull for the stock map's lamps (bits by primaryLights row), its reflection probe boxes (by probe
@@ -497,6 +502,18 @@ public:
         // The volumetric fog (research 109 section 2): albedo rgb + air x 0.01; (absorption, ambient brightness, height
         // base, height exponent -ln2 / half or 0); (sun brightness, anisotropy g, on, 0).
         float vol[3][4] = {};
+        // The volumetric air is an own map's (its haze, research 126): always drawn. The Volumetric Fog option is for
+        // stock maps, where the match with the game is not calibrated yet.
+        bool volOwn = false;
+        // Volumetric boxes (an own map's iw8r_volume, research 127): per box centre + density, the three axes with the
+        // half sizes, (1 / falloff, -0.1 x height fade, 0, 0). At most 8 (the nearest to the camera).
+        float volBoxes[8][20] = {};
+        int volBoxCount = 0;
+        // Lamps that light the air (iw8r_volumetric): as PixelLight (position + radius, colour + cos outer, axis + cos
+        // inner), the 8 nearest; the vision's spot and omni brightness (volumetricSpotBrightness / OmniBrightness).
+        float volLamps[8][12] = {};
+        int volLampCount = 0;
+        float volLampBrightness[2] = {1, 1};
         float skyScale = 1.0f;
         float bakedScale = 1.0f;  // the stock map's bakedLightScale, on its lightmap
         float lutScale = 1.0f;
@@ -928,6 +945,7 @@ private:
     // first through the clip shader with colour writes off, then the shading pass tests depth without writing it.
     struct ID3D11BlendState* blendNoColor_ = nullptr;
     ID3D11PixelShader* filterPs_ = nullptr;  // setReferenceFilterShader
+    bool filterScreen_ = false;              // ... and it has iw8rFilterScreen (reads the scene depth)
     ID3D11PixelShader* texPsOverride_ = nullptr;  // set during the pre-pass: drawReferenceTexInstances uses it
     ID3D11Texture2D* probeArrTex_ = nullptr;
     ID3D11ShaderResourceView* probeArrSrv_ = nullptr;
@@ -1011,6 +1029,15 @@ private:
     ID3D11ShaderResourceView* prevZSrv_ = nullptr;
     ID3D11PixelShader* prevColorPs_ = nullptr;
     ID3D11PixelShader* prevZPs_ = nullptr;
+    // The finished frame's depth at full size, for custom surface shaders in the next frame (iw8rSceneDepth, t31).
+    ID3D11Texture2D* sceneZTex_ = nullptr;
+    ID3D11RenderTargetView* sceneZRtv_ = nullptr;
+    ID3D11ShaderResourceView* sceneZSrv_ = nullptr;
+    ID3D11PixelShader* sceneZPs_ = nullptr;
+    bool sceneZValid_ = false;     // it holds a frame
+    bool sceneZStale_ = false;     // ... drawn from another view than the frame just drawn
+    float sceneZViewProj_[16] = {};
+    void keepSceneDepth(const float* viewProj);
     ID3D11Buffer* cbPrev_ = nullptr;
     float prevViewProj_[16] = {};
     bool prevValid_ = false;   // the copies hold a usable previous frame

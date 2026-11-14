@@ -76,6 +76,133 @@
   tools/physics_bounds_build_test.py). OPEN, next: mount edges (research 125 by an Opus agent, read-only IDA): the
   converter writes ladder edges only (edgeListUsedQueryTypes 4); mounting queries bucket 0 of the edge list and has
   no trace fallback; mantle falls back to Mantle_TraceLedgeFace while bit 2 is clear.
+  STATE 2026-11-14 16:15 (read this first; the 16:00 block below lists the same work as "not built": it is all built
+  now). Converter a0a50852 is committed in the worktree and LIVE (E:\mw124\x64-zt fast-forwarded and rebuilt 16:06;
+  old exe out/zt_backup/zonetool_1d3ff9c0.exe). Suites: core 181,925 checks / 1,377 tests, GUI 1,082, smoke ok, 0
+  failures. 25 offline proofs pass against a0a50852 (the two live-vs-new ones rerun after the deploy). Stand-alone
+  proof tools/scene_depth_build_test.py: Cinder Rail Toon package 26 of 26 lit techniques read the scene depth;
+  Shipment (--stock --min 300) 365 techniques, ACTS 621 tested 0 failed.
+  DEPLOYED 16:01-16:04 at the owner's request: mp_cinderrail_t (built from out/agent/mp_cinderrail_toon with
+  --compile --deploy; old package in <game>\.proxy\backups\mw120r-map-20261114-160421; haze desert 0.7, sky
+  sky_mp_aniyah_tac x 3, exposure +1, baked lightmaps and occlusion as the owner set) and Shipment's
+  techsets_mp_shipment.ff (out/agent/toon_ship/edit3, 3,694,056 bytes, md5 76E8FCF2...; 215 of 217 lit shaders with
+  the screen filter; the zone installed before it is in out/agent/toon_ship/game_backup_20261114b; stock in
+  <game>\iw8r_stock, restore with --restore-stock mp_shipment). Recipe for Shipment: IW8Radiant.exe
+  --shader-filter-program data\shaders\toon.iw8shader.hlsl --out toon_filter3.cso (also writes .screen.cso), then
+  zonetool -game iw8 -path <game> editzone mp_shipment edits3.json edit3, then --install-stock edit3.
+  NOT SEEN IN GAME: all of it. docs/TEST_CHECKLIST.md has three new rows (toon lines, Shipment lines, haze).
+  OPEN after this round: the toon on the viewmodel (shared techset zones: ask the owner first); the viewport's
+  preview of a stock map with the screen filter is wired (IW8R_FILTER_SCREEN) but no picture of it was taken; the
+  viewport volumetric march is still not compared with the game's numbers (research 109 section 2.7); volumetric
+  boxes' masks; fog spline (t120) for see-through surfaces; mount edges (research 125); the installer is not
+  rebuilt since f082308.
+  STATE 2026-11-14 16:00 (read this first; everything below it in this block is older detail).
+  Owner said since: "make it a little less thick ... not the ink, the fog/volumetrics" (the haze on Cinder Rail Toon
+  is now "desert 0.7"; ink widths stay kLinePixels 5 / kLineMaxUnits 2.2) and "the unimplemented volumetric
+  capabilities need to be implemented" (nothing volumetric is to stay behind an option or as a note).
+  THE OWNER HAS out/agent/mp_cinderrail_toon/mp_cinderrail_toon.map OPEN IN THEIR EDITOR (bin/release, started 15:29)
+  and saves it (they turned on iw8r_bake_lightmaps and iw8r_umbra_bake). The editor does not watch the file: a script
+  edit of the worldspawn is lost at their next save. Check the keys before a build: skyname sky_mp_aniyah_tac,
+  sundirection -46 235 0, suncolor 1 0.97 0.9, iw8r_haze "desert 0.7", iw8r_sky_brightness 3,
+  iw8r_exposure_adjust 1 (backup before these: mp_cinderrail_toon.map.before_haze). Never close their editor.
+  DONE IN SOURCE, editor built 15:45 (later edits NOT built yet: see the list), nothing committed:
+  - Haze: core atmosphere (Haze, hazePresets, parseHaze / formatHaze, hazeVisionText with the EV shift
+    log2(11.7 / sun luminance), mergeVisionText; worldspawn iw8r_haze), compile_iw8 (haze -> vision overrides under
+    iw8r_vision, iw8r_fog dropped, ground z = median spawn height), light key iw8r_volumetric (LightKind::Flag),
+    Atmosphere dialog group, entity defs, vision field names (gen_vision_fields.py groups volumetric / veil under
+    fog), viewport (camera_view ownFog_ / ownFogRefdef_ / ownPostFx_ through core game_look
+    hazeVisionFromOverrides; the volumetric march is on for own maps: GameLook::volOwn).
+  - Sky brightness: core sky_image (SkyConvertOptions::brightness, parseSkyBrightness, kSkyBrightnessKey), compile,
+    viewport, Sun & Sky dialog, entity defs. Viewport honours iw8r_exposure_adjust on an own map.
+  - Volumetric boxes (research 127 A): compile defaults density 0.001 / falloff 32, falloff cap, height_half,
+    warnings; menu default; entity defs; viewport march draws up to 8 boxes (render.cpp volBoxSigma, cbuffer Volume
+    208 floats, GameLook::volBoxes; camera_view ownVolumes_). NOT BUILT YET.
+  - Stock ink lines: core dxbc_splice screen mode (DxbcSpliceOptions::sceneDepthRegister), custom_shader
+    (customShaderHasScreenFilter, customShaderScreenFilterProgramSource, IW8R_FILTER_SCREEN in the viewport
+    variant), toon shader iw8rFilterScreen (toonInkScene now takes pixel / viewDepth / pixelSize), render.cpp filter
+    branch + sceneDepthWanted(), stock rebuild writes lit_filter_screen.cso and "screen_program"
+    (stockLitFilterJson), --shader-filter-program writes <out>.screen.cso. NOT BUILT YET.
+  - Tests written, NOT RUN YET: tests/haze_tests.cpp, dxbc_splice_screen_filter (tests/dxbc_splice_tests.cpp, blobs
+    from tools/gen_dxbc_test_blobs.py), compile_iw8_haze_and_volumes (tests/compile_iw8_tests.cpp).
+  - Docs patch written, NOT APPLIED: tools/patches/docs_haze_ink_1114.py <converter commit>.
+  CONVERTER WORKTREE (C:\zsw-iw8r\scriptables, nothing committed; live E:\mw124\x64-zt still 1d3ff9c0, so the
+  owner's own F7 of the toon map FAILS until the deploy: its shader calls iw8rSceneDepth):
+  - applied and built 15:20: zt_scene_depth.py, zt_game_fog.py (vision names, fogSunDir, no baked fog when the
+    overrides turn fogAtmosphericScattering on). The 25 proofs ran against this exe from 15:41
+    (out/agent/proofs_1114c.log).
+  - written, NOT APPLIED: zt_filter_screen.py (editzone lit_filter "screen_program", code image 79 -> 0 per
+    technique, re-copies dxbc_splice.hpp), zt_translucent_fog.py (MAP_GAME_FOG: GameFogTranslucent + the
+    volumetric images on blended / additive / multiply surfaces; defined when the overrides turn the fog or the air
+    on or the map has volumetric boxes).
+  NEXT, in order: apply the two converter patches, MSBuild, rebuild the editor, run core + GUI suites, render the
+  toon map and a box; compile Cinder Rail Toon (--compile ... --deploy; proof tools/scene_depth_build_test.py on the
+  package); rebuild Shipment with the screen filter (work folder out/agent/toon_ship; edits2.json is the last recipe)
+  and check the report's shaders_with_screen and a spliced shader's disassembly; commit the worktree, back up the live
+  exe to out/zt_backup, ff-merge, build live; install Shipment with --install-stock (game closed); docs patch;
+  PROGRESS; commit + push (no trailer). Still open after that: lamp glow in the viewport's volumetric preview
+  (flagged lamps), the viewport march against the game's numbers (research 109 section 2.7), viewmodel toon (ask
+  first: shared zones).
+  OWNER QUEUE 2026-11-14 15:00, in this order (their words): "the ends of lines are still visible, they should be
+  seamless, this toon shader should look professionally and intricately made"; "when done developing the toon shader,
+  make sure it will work with shipment, and build and deploy both the toon ship and cinderrail toon files"; "also
+  implement proper volumetric sky/fog, make cinderrail have a brighter scene and sky, make the fog/volumetrics similar
+  to how rust is, but don't just copy it, this is to see how customizable the scene in the radiant tool is"; "then get
+  shipment working and continue with the radiant development". The deploy of both toon maps is asked for (not a
+  standing permission for other game-folder writes). Cinder Rail changes go to out/agent/mp_cinderrail_toon (map id
+  mp_cinderrail_t), not to the kept project out/agent/mp_cinderrail.
+  TOON INK, DONE in the viewport (uncommitted until the suites ran): lines from the scene's depth
+  (data/shaders/toon.iw8shader.hlsl toonInkScene: per pixel 8 ways x 4 pixels, each sample's "rise" off the pixel's
+  own plane; behind = fold or outline, in front = inner corner only when the rise holds over three samples; a face
+  no wider than a line is part of the line; the edge inputs stay as the fallback, toonInkEdges). New shader inputs
+  IW8RSurface.pixel / viewDepth / eye, host function iw8rSceneDepth(pixel) (0 = none, 1e9 = sky) and constant
+  iw8rSceneDepthStep (1 / 1024): core custom_shader.h; viewport render.cpp (t31, ps_scenez, keepSceneDepth,
+  sceneDepthStale -> camera_view redraws). The game's scene depth is depth / 6 in a 16-bit float (research 104), so
+  the viewport stores its own the same way (f16tof32(f32tof16(z / 6)) * 6) and takes off the editor's slope depth
+  bias first (rsTris_ 1.5 x slope: faceStep in ps_scenez; without that thin tilted faces read as sky and folds
+  between tilted and upright faces showed steps). Patch scripts tools/patches/scene_depth_*.py, toon_scene_ink*.py.
+  Bench: out/agent/mapcam_file.ps1 -Name x -Cam '-1500 -120 100 55 8 90' -MapFile <toon map>, MCROOT = the real
+  material cache folder under LOCALAPPDATA (read only use). Pictures sent: out/agent/toon_ink_scene_1/2.png.
+  Converter side DONE in the worktree, not committed (tools/patches/zt_scene_depth.py): map_surface_realtime.hlsl
+  iw8rSceneDepth under IW8R_SCENE_DEPTH (texture t4, models t3, Load at pixel * replayView[7].x >> mip
+  replayView[7].z, |v| * 6, >= 392999 sky), IW8R_SURFACE_SCREEN fills pixel / viewDepth (SV_POSITION.w) / eye
+  (replayView[4]); iw3_render_assets.cpp g_surfaceSceneDepth + RepointCodeImage(lit, 79, 0) (the lit technique's
+  type-1 argument: thermal mask -> code image 0 "Frontend FloatZ"); replay_render.cpp checks the binding. Other code
+  images a shader could read: 1 "Frontend EntityID_Velocity", 2 "Frontend Tangent Frame" (game-test r_scene.cpp
+  10489 / 10517; formats not decoded, not used).
+  Headless deploy added: IW8Radiant.exe --compile <map> --out <folder> --deploy (MainWindow::deployBuiltMapQuiet ->
+  CompilePanel::deploy; built maps live in <game>\mods\mw120r\maps\<id>, old package to <game>\.proxy\backups).
+  SHIPMENT LINES, PLAN (not started): extend core dxbc_splice (and the converter's copy) so a filter program may
+  also read input 1 = SV_Position (mapped to the stock shader's position input, its mask widened to xyzw) and
+  texture t0 (mapped to the register of the technique's code image 79 argument, which the editzone re-points to
+  code image 0), instructions ld / resinfo / derivatives / flow control copied as they are; no constant buffers and
+  no constant arrays. New optional shader function for stock surfaces with (colour, pixel, viewDepth); the ink code
+  is the same as toonInkScene, which needs only pixel, view depth, its screen derivatives and the pixel size (stock:
+  2 / the depth texture's width, a 90 degree view assumed). Viewport parity: render.cpp IW8R_FILTER branch
+  (line ~1210) calls it with i.pos.xy and the view depth. Stock pixel shaders to check first: every lit PS of
+  techsets_mp_shipment must declare SV_Position (dxbc_dis.py over out/agent/toon_ship/ps).
+  VOLUMETRIC FOG / SKY, research 126 (Opus agent, to be verified while building): a built map has no game fog (iw3
+  style: fog baked into the surface shader, sky never fogged, air density 0, veil 0). Its change list: vision field
+  names for veilStrength and the volumetric* fields (replay_vision_names.inc -> vision_fields.inc), fogSunDir in
+  BuildReplayVision, drop the baked fog when the vision has fogAtmosphericScattering 1, fog for blended layers in
+  map_surface_realtime.hlsl, light key iw8r_volumetric, an atmosphere preset key, own maps in camera_view's fog /
+  veil preview. Suggested desert haze values are in the note's table.
+  OWNER IN GAME 2026-11-14 13:00 (they test again): the Shipment toon zone works once the old .fp is gone (research
+  116 section 7; installed with --install-stock, stock kept in <game>\iw8r_stock and in
+  out/agent/toon_ship/game_backup_20261114). Owner wants: (1) ink lines on stock geometry ("looks a bit toony, but no
+  lines"), (2) the toon on the viewmodel, (3) "the toon effect still doesnt look right" on mp_cinderrail_t.
+  Done for (3): data/shaders/toon.iw8shader.hlsl kLineMaxUnits 3 (was 10), kLineMinPixels, kLineFarFade, kCrease
+  (lines thin with distance, inner creases lighter); pictures out/agent/toon_lines_before/after.png sent; the owner
+  has not answered whether that is what they meant.
+  PLAN for (1), in work: lines from scene depth inside the lit filter. Facts (stock bytecode, techsets_mp_shipment):
+  code texture index 0 is the scene depth (effect PS 4de524e0...: ld t5, |value| x 6 = view depth compared with
+  v0.w; GT name "Frontend FloatZ", r_scene.cpp:10872); every lit technique has one PS CODE_TEXTURE argument with
+  index 79 (thermal screen mask) at a register that differs per shader (t3..t18); 7 lit techniques already have
+  index 0. So: re-point that argument to index 0, extend core dxbc_splice so a filter may read input 1 =
+  SV_POSITION (mapped to stock v0) and texture t0 (mapped to that register, Load only), new optional shader
+  function iw8rFilterScreen(colour, IW8RScreen), editzone "lit_filter" gets "screen_program". Viewport parity (a
+  depth texture for the reference pass) comes after the game side.
+  For (2): viewmodel shaders are in shared techset zones (research 115 section 6); a filtered shared zone would
+  change every map while installed. Ask the owner before building.
   Parking state 2026-11-14 (after the physics bounds fix): repo at the commit after 69eba3d, converter live at 1d3ff9c0, suites core 181,832 checks / 1,369 tests and GUI 1,082 checks, 0 failures; 25 offline proofs pass; zones of mp_cinderrail_t rebuilt 10:12 with that converter (x64zt_output; its occlusion data reaches 131072 units past the map, its probe is stored at mean luminance 0.896 in colour); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe and out/package/IW8RadiantSuite-20261114.zip rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
   GET /api/handles (control points of the selected patches, at most 20,000) and POST /api/vertices moves with
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.

@@ -21,11 +21,18 @@ struct SkyConvertOptions {
     // HDR sources: linear colour times this before the sRGB encode; <= 0 picks it from the image (the 99.5th
     // percentile luminance maps to 0.9, see the .cpp).
     float exposure = 0.0f;
+    // HDR sources: times that exposure (worldspawn iw8r_sky_brightness, kSkyBrightnessKey). Above 1 the sky is
+    // brighter and its brightest parts (sun, cloud edges) go to white.
+    float brightness = 1.0f;
     // The map's worldspawn "skyrotation" (pitch yaw roll, degrees; key 47372): the game turns the view direction into
     // the sky's frame with it before the lookup (sky VS a6bc8f6e: o1 = cb7[153..155] x direction). Mp_m_speedball:
     // 0 -111 0. Only hemi-octahedral sources (a converter cube passes through unchanged).
     float rotation[3] = {0, 0, 0};
 };
+
+// An own map's sky brightness: a number from 0.1 to 16, 1 when absent. `bad` is set when the text is not one.
+inline constexpr const char* kSkyBrightnessKey = "iw8r_sky_brightness";
+float parseSkyBrightness(const std::string* text, bool* bad = nullptr);
 
 struct SkyConvertInfo {
     bool passedThrough = false;  // the source was already a converter cube map

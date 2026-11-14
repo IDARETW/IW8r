@@ -1048,6 +1048,7 @@ int main(int argc, char** argv) {
     // --install-stock <folder with edited zone files> / --restore-stock <map>: File > Install Edited Stock Map Into
     // Game and Restore Stock Map In Game without a dialog; the report goes to <--out folder>/stock-install.txt.
     QString installStockDir, restoreStockZone;
+    bool compileDeploy = false;  // --deploy with --compile: install the built package into the game's maps folder
     QString compileFile, openFile, keysPath, guiTestSample, smokeFile, outDir, materialTest, modelTest, worldTest, skyTest;
     QString benchMap, benchReference;
     QString propsZone;       // --stock-props-test
@@ -1079,6 +1080,7 @@ int main(int argc, char** argv) {
         else if (a == "--set-web-credentials" && i + 1 < argc) webUser = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--shader-filter-program" && i + 1 < argc) filterShaderFile = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--install-stock" && i + 1 < argc) installStockDir = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--deploy") compileDeploy = true;
         else if (a == "--restore-stock" && i + 1 < argc) restoreStockZone = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--safe-mode") continue;
         else if (!a.startsWith("-")) openFile = a;
@@ -1095,6 +1097,16 @@ int main(int argc, char** argv) {
         QFile out(outDir);
         if (ok && (outDir.isEmpty() || !out.open(QIODevice::WriteOnly) || out.write(reinterpret_cast<const char*>(program.data()), qint64(program.size())) != qint64(program.size())))
             ok = false, err = "cannot write --out " + outDir.toStdString();
+        // The filter with the screen (iw8rFilterScreen), when the shader has one: <out>.screen.cso (editzone
+        // lit_filter "screen_program").
+        if (ok && iw8r::customShaderHasScreenFilter(shader.code)) {
+            std::vector<uint8_t> screen;
+            QFile sout(outDir + ".screen.cso");
+            ok = iw8r::app::SceneRenderer::compileProgram(iw8r::customShaderScreenFilterProgramSource(shader), iw8r::kIw8rFilterEntry, screen, &err);
+            if (ok && (!sout.open(QIODevice::WriteOnly) || sout.write(reinterpret_cast<const char*>(screen.data()), qint64(screen.size())) != qint64(screen.size())))
+                ok = false, err = "cannot write " + outDir.toStdString() + ".screen.cso";
+            if (ok) std::printf("shader screen filter program written: %s.screen.cso\n", outDir.toStdString().c_str());
+        }
         std::printf("%s%s\n", ok ? "shader filter program written: " : "shader filter program FAILED: ", ok ? outDir.toStdString().c_str() : err.c_str());
         std::fflush(stdout);
         return ok ? 0 : 1;
@@ -1359,6 +1371,13 @@ int main(int argc, char** argv) {
                     QFile rf(QDir(outDir).filePath("compile-result.txt"));
                     if (rf.open(QIODevice::WriteOnly | QIODevice::Truncate))
                         rf.write(QString("%1 map=%2 package=%3\n").arg(ok ? "ok" : "FAIL", cp->mapId(), cp->zonesDir()).toUtf8());
+                    // --deploy: the built package into <game>/mods/mw120r/maps (F6 without the dialog).
+                    if (ok && compileDeploy) {
+                        QString derr;
+                        const bool deployed = w.deployBuiltMapQuiet(&derr);
+                        if (rf.isOpen()) rf.write(deployed ? QByteArray("deploy ok\n") : ("deploy FAIL " + derr + "\n").toUtf8());
+                        if (!deployed) ok = false;
+                    }
                     app.exit(ok ? 0 : 1);
                 });
                 cp->run({iw8r::qt::CompilePanel::Stage::Extraction, iw8r::qt::CompilePanel::Stage::Zones,

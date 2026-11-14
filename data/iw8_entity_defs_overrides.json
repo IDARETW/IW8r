@@ -141,6 +141,15 @@
           "description": "Thermal vision intensity (converter default 0). Written as ir_intensity.",
           "required": false,
           "examples": []
+        },
+        "iw8r_volumetric": {
+          "type": "bool",
+          "default": "0",
+          "description": "1 makes the lamp light the volumetric air: a glow around it and beams in fog. The game adds a lamp to the air only when it is flagged; stock maps flag their feature lamps, not every lamp. It shows only when the map has volumetric air (worldspawn iw8r_haze, or volumetricAirDensity in iw8r_vision). Written as volumetric. Research 126. Not seen in game.",
+          "required": false,
+          "examples": [
+            "1"
+          ]
         }
       }
     },
@@ -284,6 +293,15 @@
           "description": "Thermal vision intensity (converter default 0). Written as ir_intensity.",
           "required": false,
           "examples": []
+        },
+        "iw8r_volumetric": {
+          "type": "bool",
+          "default": "0",
+          "description": "1 makes the lamp light the volumetric air: a glow around it and beams in fog. The game adds a lamp to the air only when it is flagged; stock maps flag their feature lamps, not every lamp. It shows only when the map has volumetric air (worldspawn iw8r_haze, or volumetricAirDensity in iw8r_vision). Written as volumetric. Research 126. Not seen in game.",
+          "required": false,
+          "examples": [
+            "1"
+          ]
         }
       }
     },
@@ -407,38 +425,54 @@
         },
         "density": {
           "type": "float",
-          "default": "0.2",
-          "description": "Fog density (0 or more).",
+          "default": "0.001",
+          "description": "How thick the fog in the box is: extinction per world unit, added to the map's air. 0.0002 is a light haze, 0.001 the default (256 units let 77 % through), 0.005 thick; above 0.05 the build warns. Stock boxes hold 0.0002 to 0.04. Research 127.",
           "required": false,
-          "examples": []
+          "examples": [
+            "0.0005",
+            "0.004"
+          ]
         },
         "falloff": {
           "type": "float",
-          "default": "64",
-          "description": "Edge falloff (above 0).",
+          "default": "32",
+          "description": "The soft border in world units: the fog is full this far inside each face and fades to nothing at the face, with rounded corners. At most the box's smallest half size. Stock boxes use 8 to 20.",
           "required": false,
-          "examples": []
+          "examples": [
+            "16",
+            "64"
+          ]
         },
         "color": {
           "type": "vec3",
           "default": "1 1 1",
-          "description": "Scatter colour r g b, 0 to 1.",
+          "description": "No effect in Replay 1.20: the game's volumetric pass does not read a box's color. Tint the air with the vision field volumetricAlbedo (iw8r_vision, or a haze preset).",
           "required": false,
           "examples": []
         },
         "height_fade": {
           "type": "float",
           "default": "0",
-          "description": "Fade with height.",
+          "description": "The game's own height value, 0 to 1 (it clamps): thickness x exp(-0.1 x height_fade x height above the box's bottom). height_half is the easier key and wins when both are set.",
           "required": false,
           "examples": []
         },
         "anisotropy": {
           "type": "float",
           "default": "0",
-          "description": "Forward scattering (-1 to 1).",
+          "description": "No effect in Replay 1.20: the game's volumetric pass does not read a box's anisotropy. Tint the air with the vision field volumetricSunAnisotropy (iw8r_vision, or a haze preset).",
           "required": false,
           "examples": []
+        },
+        "height_half": {
+          "type": "float",
+          "default": "",
+          "description": "Height in units above the box's bottom (along the box's own up axis) where the fog is half as thick: a ground mist. 6.931 or more; empty = the same thickness at every height. Written as height_fade.",
+          "required": false,
+          "examples": [
+            "64",
+            "200"
+          ]
         }
       }
     },
@@ -1741,6 +1775,27 @@
             "tm2co/me_curb_stone_01=tm2co/me_plaster_barrier_fence_wall"
           ],
           "description": "Stock maps: 'from=to; from=to' material swaps on the world surfaces. Rebuild Stock Zone carries each new material from the zone the material catalogue names (map materials only). Not seen in game."
+        },
+        "iw8r_haze": {
+          "type": "string",
+          "default": "",
+          "description": "The game's own fog and volumetric air: \"<preset> [amount]\". Presets: desert, clear, overcast, dusk, fog. Amount 0.1 to 4 (1 = as designed) scales how thick it is. The game fogs the map and the sky itself (distance and ground fog with a glow toward the sun, blended into the low sky), and fills the air with volumetric fog that the sun lights and shadows (light shafts) and lamps with iw8r_volumetric 1 glow in. It replaces iw8r_fog. Any single value can be changed in iw8r_vision (fog..., volumetric..., veilStrength), which wins over the preset. Map > Atmosphere edits it; Game Lighting previews it. Research 126. Not seen in game.",
+          "required": false,
+          "examples": [
+            "desert",
+            "clear 0.5",
+            "fog 1.5"
+          ]
+        },
+        "iw8r_sky_brightness": {
+          "type": "float",
+          "default": "1",
+          "description": "Brightness of the built sky, 0.1 to 16. A built map's sky is an 8-bit picture made from the stock sky, exposed so that its brightest clouds stay below white; most of a bright sky then looks dark beside sunlit walls. 2 doubles the sky (its brightest parts go to white), 0.5 halves it. Compile > Sun & Sky edits it; the viewport shows it. Not seen in game.",
+          "required": false,
+          "examples": [
+            "2",
+            "3.5"
+          ]
         }
       }
     },

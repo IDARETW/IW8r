@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -282,6 +283,19 @@ bool isConverterSkyCubemap(const std::string& dds, std::string* why) {
     return true;
 }
 
+float parseSkyBrightness(const std::string* text, bool* bad) {
+    if (bad) *bad = false;
+    if (!text || text->empty()) return 1.0f;
+    char* end = nullptr;
+    const double v = std::strtod(text->c_str(), &end);
+    while (end && (*end == ' ' || *end == '\t')) ++end;
+    if (end == text->c_str() || (end && *end) || !(v >= 0.1 && v <= 16.0)) {
+        if (bad) *bad = true;
+        return 1.0f;
+    }
+    return float(v);
+}
+
 bool skyCubemapFromDds(const std::string& dds, std::string& cube, const SkyConvertOptions& opt, SkyConvertInfo* info,
                        std::string* err) {
     SkyConvertInfo local;
@@ -325,6 +339,7 @@ bool skyCubemapFromDds(const std::string& dds, std::string& cube, const SkyConve
         // Auto exposure: the bright end of the sky (99.5th percentile, past the sun's few texels) at 0.9, so the 8-bit
         // cube keeps the sky's range; only the sun disc clamps. An APPROXIMATION of Replay's tone mapping (doc 33).
         exposure = opt.exposure > 0.0f ? opt.exposure : (inf.highLuminance > 1e-6f ? 0.9f / inf.highLuminance : 1.0f);
+        exposure *= std::clamp(opt.brightness, 0.1f, 16.0f);
     }
     inf.exposure = exposure;
 

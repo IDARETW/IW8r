@@ -978,6 +978,7 @@ void SceneCache::sync(const Document& doc) {
         L.pos = *o;
         L.color = colour(e);
         if (const std::string* r = e.value("radius")) L.radius = std::max(1.0, std::atof(r->c_str()));
+        if (const std::string* v = e.value("iw8r_volumetric")) L.volumetric = *v == "1" || *v == "true";
         bool spot = cls == "light_spot" || e.value("fov_outer");
         Vec3 dir{0, 0, -1};
         if (const std::string* t = e.value("target"))

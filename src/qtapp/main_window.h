@@ -332,6 +332,8 @@ public:
     // install is taken from the folder's first zone file (techsets_<zone>.ff or <zone>.ff).
     bool installStockZonesQuiet(const QString& outDir, QStringList& report);
     bool restoreStockZonesQuiet(const QString& zone, QStringList& report);
+    // The compile panel's built package into <game>\mods\mw120r\maps without a dialog (--compile ... --deploy).
+    bool deployBuiltMapQuiet(QString* err);
     QString stockZone() const { return stockZone_; }
     // Prefabs (also used by --gui-test): a misc_prefab at the 2D view centre, explode, save selection.
     // `file` is a plain .map prefab, or a prefab bundle (its .iw8prefab folder, or a file inside it).
