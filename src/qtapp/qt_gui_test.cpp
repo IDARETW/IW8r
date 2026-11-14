@@ -1958,6 +1958,18 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 const auto bad1 = vweb.handle("GET", "/api/frame?pos=0,0&yaw=0&pitch=0&w=320&h=180", {}, true, {});
                 const auto bad2 = vweb.handle("GET", "/api/frame?pos=0,0,0&yaw=0&pitch=0&w=9000&h=180", {}, true, {});
                 r.check(bad1.status == 400 && bad2.status == 400, "a frame request without a full camera or with a size out of range is refused");
+                {
+                    // The streamed world's focus: the browser's camera while its view draws, the editor's own after.
+                    w.setWebFollowHoldMs(150);
+                    vweb.handle("GET", "/api/frame?pos=9000,-7000,500&yaw=0&pitch=0&fov=90&w=128&h=72&q=50", {}, true, {});
+                    const Vec3 during = w.followCameraPos();
+                    QTest::qWait(220);
+                    const Vec3 after = w.followCameraPos();
+                    w.setWebFollowHoldMs(4000);
+                    r.check(std::fabs(during.x - 9000) < 1e-6 && std::fabs(during.y + 7000) < 1e-6 && after.x == ctx.cam.pos.x && after.y == ctx.cam.pos.y &&
+                                ctx.cam.pos.x == camWas.pos.x,
+                            "streamed tiles and terrain layers follow the browser's live view while it draws, and the editor's camera after");
+                }
                 // A pick through the browser's camera: down at the first brush selects it; up at the sky deselects.
                 ctx.doc.deselectAll();
                 Vec3 centre{};

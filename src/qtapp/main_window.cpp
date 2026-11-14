@@ -4856,6 +4856,9 @@ QByteArray MainWindow::webRenderFrame(const WebCamera& cam, int w, int h, int qu
     const app::Camera saved = ctx_.cam;
     ctx_.cam.pos = Vec3{cam.pos[0], cam.pos[1], cam.pos[2]};
     ctx_.cam.yaw = cam.yaw, ctx_.cam.pitch = cam.pitch, ctx_.cam.fov = cam.fov;
+    // The streamed world follows this view while it is in use (followCameraPos).
+    webFollowPos_ = ctx_.cam.pos;
+    webFollowAt_.restart();
     const QImage img = camera_->renderImage(w, h, false, 0, 0, true);
     ctx_.cam = saved;
     if (img.isNull()) return {};
@@ -4864,6 +4867,10 @@ QByteArray MainWindow::webRenderFrame(const WebCamera& cam, int w, int h, int qu
     buf.open(QIODevice::WriteOnly);
     img.save(&buf, "JPG", quality);
     return out;
+}
+
+Vec3 MainWindow::followCameraPos() const {
+    return webFollowAt_.isValid() && webFollowAt_.elapsed() < webFollowHoldMs_ ? webFollowPos_ : ctx_.cam.pos;
 }
 
 bool MainWindow::webPick(const WebCamera& cam, double x, double y, double aspect, bool add) {
@@ -8078,7 +8085,7 @@ void MainWindow::pushDecalExtras() {
 
 void MainWindow::updateTerrainLayers() {
     if (!terrainLayers_ || terrainLayerBusy_ || referenceZone_.isEmpty() || terrainLayers_->zone != referenceZone_) return;
-    const Vec3 c = ctx_.cam.pos;
+    const Vec3 c = followCameraPos();
     if (std::hypot(c.x - terrainLayerCentre_.x, c.y - terrainLayerCentre_.y) < std::min(2000.0, terrainLayerRadius() / 3.0)) return;  // the stride-2 ring is 4,000 units
     terrainLayerBusy_ = true;
     terrainLayerCentre_ = c;
@@ -8736,7 +8743,7 @@ void MainWindow::loadStockProbes(const QString& zone) {
 
 void MainWindow::updateProbeSubset(bool force) {
     if (!refProbesFull_) return;
-    const Vec3 c = ctx_.cam.pos;
+    const Vec3 c = followCameraPos();
     if (!force && length(c - refProbeSubsetAt_) < 1500.0) return;
     refProbeSubsetAt_ = c;
     QPointer<MainWindow> self(this);
@@ -9102,7 +9109,7 @@ std::pair<double, size_t> MainWindow::streamTileReach() const {
 void MainWindow::updateStreamedTiles() {
     updateProbeSubset();  // Warzone probes follow the camera too
     if (streamZones_.empty() || !worldCache_ || !stockWorld_ || !stockWorld_->surfaceTable || referenceZone_.isEmpty()) return;
-    const Vec3 c = ctx_.cam.pos;
+    const Vec3 c = followCameraPos();
     const bool moved = std::hypot(c.x - streamCentre_.x, c.y - streamCentre_.y) > 1500.0;
     if (!moved && !streamDirty_) return;
     streamDirty_ = false;
@@ -9167,7 +9174,8 @@ QString MainWindow::streamedTilesReport() const {
     if (streamZones_.empty() || !worldCache_) return QString();
     const auto dir = worldCache_->lookup(referenceZone_);
     const auto [radius, limit] = streamTileReach();
-    const auto wanted = streamedZonesNear(streamZones_, ctx_.cam.pos.x, ctx_.cam.pos.y, radius, limit);
+    const Vec3 focus = followCameraPos();
+    const auto wanted = streamedZonesNear(streamZones_, focus.x, focus.y, radius, limit);
     size_t built = 0, empty = 0, notExported = 0;
     QStringList emptyNames, missingNames;
     for (const auto& z : wanted) {

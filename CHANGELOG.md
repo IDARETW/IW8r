@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Web: the Warzone world follows the browser's view.** On Verdansk and Quarry the streamed tiles, the near
+  terrain layers and the probes were loaded around the editor's own camera only, so flying away in the web page's
+  live view showed the coarse far terrain. They now follow the browser's camera while its view is being drawn, and
+  go back to the editor's camera about four seconds after its last picture. One camera leads at a time, so the two
+  cannot throw each other's tiles out of the cache. The switch is tested; a flight over Verdansk in a browser was
+  not run this round.
+
 - **Stock maps in Game Lighting: film grain.** The game puts a fine grain on the finished picture, as strong as the
   map's vision asks (Hideout 5 %, Speedball 2.5 %, none where the vision leaves it out). The viewport now draws it
   with the game's own noise formula (research 109), standing still instead of moving. View > Game Lighting Options >

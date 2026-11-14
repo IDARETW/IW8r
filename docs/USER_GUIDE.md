@@ -721,6 +721,8 @@ one undo history, and each side sees the other's edits at once.
 - **Entities.** Type a class under the entity list and press Place: a point entity of that class, on the surface at
   the centre of the live view or at the 2D view's centre. The Inspector shows what the class is, each key's help
   (hover the key; required keys are marked), suggests the class's keys, and lists what Check Map says about it.
+- **Warzone maps.** While you fly in "Editor view (live)", the detailed world (streamed tiles, terrain layers) loads
+  around the browser's camera; a few seconds after you stop it goes back to the editor's own camera.
 - **Vertices and edges.** Tool in the toolbar: with Vertices or Edges, the selected brushes show a handle on every
   corner or edge of a Top, Front or Side view. Drag a handle: every corner under it moves, so the faces stay flat. A
   move the brush cannot take is refused with the reason in the status line. A selected patch shows its control

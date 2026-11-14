@@ -139,6 +139,10 @@ public:
     // The browser's live view (plan 3.1): the camera view's own render from a camera of the browser's, as a JPEG; a
     // pick through that camera; the editor's camera as JSON. The editor's own camera is put back after each.
     QByteArray webRenderFrame(const struct WebCamera& cam, int w, int h, int quality);
+    // Where the streamed tiles, the terrain layers and the Warzone probes are kept around: the camera of a browser's
+    // live view while it draws frames (and webFollowHoldMs after its last one), else the editor's own camera.
+    Vec3 followCameraPos() const;
+    void setWebFollowHoldMs(int ms) { webFollowHoldMs_ = ms; }  // tests
     bool webPick(const struct WebCamera& cam, double x, double y, double aspect, bool add);
     bool webPickFace(const struct WebCamera& cam, double x, double y, double aspect, bool add);
     QJsonObject webCamera() const;
@@ -471,6 +475,9 @@ private:
     std::set<int64_t> streamBuilding_;
     std::set<QString> streamRequested_;
     QTimer* streamTimer_ = nullptr;
+    Vec3 webFollowPos_;
+    QElapsedTimer webFollowAt_;
+    int webFollowHoldMs_ = 4000;
     Vec3 streamCentre_{1e30, 1e30, 0};
     bool streamDirty_ = false;
     uint64_t streamVersion_ = 0;

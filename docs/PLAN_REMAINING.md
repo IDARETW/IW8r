@@ -301,7 +301,7 @@ ROADMAP L10, paused until now, is resumed by this request. Server: `src/qtapp/we
 `data/web/*`. Wiring: `main_window.cpp:4503-4592`.
 
 **3.1 Remote 3D view.** DONE 2026-11-13 as frames on demand (GET /api/frame, POST /api/pick, the page's "Editor view
-(live)"). Left by decision (table "Open points closed by decision"): streamed tiles and terrain layers follow only the editor's own camera.
+(live)"). Streamed tiles and terrain layers follow the browser's view while it draws DONE 2026-11-14.
 - **Render API.** SceneRenderer gets "render this camera into an offscreen target", reusing the device's resources.
   There is no second renderer and no texture duplication.
 - **Per client:** each browser has its own camera (orbit / fly) and size, sent by POST.
@@ -375,7 +375,6 @@ judged against the running game, which is not used any more. They are listed so 
 | 2.2 culling lights, probes and decals in the Umbra view; surface ids on displaced terrain | Surfaces and props are culled by the tome | A viewer refinement: the view already answers "what does the game hide here". |
 | 2.3 local occlusion updates for edited stock maps | The whole map's occlusion opens when stock geometry is removed | See 2.3: a mistake makes objects vanish in the game. |
 | 2.4 thin slanted walls, terrain and models as occluders, gates, splitting merged surfaces | Opaque structural brushes (boxes, and other shapes by the box inside them); a detail brush is left out, which is the per-brush switch (2026-11-14) | The bake is opt-in and unseen in the game; widening it before a first look would only widen what could go wrong. |
-| 3.1 streamed tiles and terrain layers around the browser's camera | They follow the editor's own camera | Two cameras asking for different tiles would evict each other's from the cache; fly the editor's camera there first. |
 
 ## Milestone 4 — The remaining pieces
 Ordered by the owner's scope. ROADMAP rows are in brackets; each row there has the full state and the proofs.
