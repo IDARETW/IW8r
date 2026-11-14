@@ -5,6 +5,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **View > Game Lighting Options > Sun Shadow Detail.** The sun's shadow maps (the lit preview and Game Lighting) can
+  be Low (1024 texels), Normal (2048, as before) or High (4096). High draws thin shadows such as cables and railings
+  sharply; it costs 128 MB of video memory instead of 32 and no measurable frame time on Cinder Rail. The choice is
+  saved.
+
 - **Game Lighting shows a map without baked lightmaps the way the game draws it.** When "Bake lightmaps" is off, the
   built map has no lightmap: the game gives every surface the same soft sky light (a little brighter on faces that
   look up) and adds the sun with its shadows. The editor used to bake a preview lightmap anyway, so corners and

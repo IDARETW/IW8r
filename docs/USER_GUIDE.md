@@ -308,7 +308,8 @@ background (the status bar says what); later opens are quick.
 Reflections, Stock Map Lamps, Lamp Shadows and Prop Levels of Detail (far props use the game's simpler models, which is
 much faster on big maps). **Ambient Occlusion Strength** (1 is the game's), **Exposure Override** (a fixed EV instead of
 the map's auto exposure, for comparing screenshots), **Re-bake Lighting Now**, and **Debug View** (the AO buffer, the
-albedo, or where reflections are traced) are there too.
+albedo, or where reflections are traced) are there too. **Sun Shadow Detail** sets the size of the sun's shadow maps: Low, Normal or High (High draws thin
+shadows such as cables sharply and uses 128 MB of video memory).
 
 ### Decals
 

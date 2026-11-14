@@ -295,6 +295,8 @@ public slots:
     }
     size_t stockLightShadowsDrawn() const { return renderer_.stockLightShadowsDrawn(); }
     // View > Game Lighting options (MainWindow keeps them in the settings).
+    void setSunShadowMapSize(unsigned size) { renderer_.setSunShadowMapSize(size); update(); }
+    unsigned sunShadowMapSize() const { return renderer_.sunShadowMapSize(); }
     void setGameAoEnabled(bool on) { renderer_.setGameAo(on); update(); }
     void setGameSsrEnabled(bool on) { renderer_.setGameSsr(on); update(); }
     void setStockLightsEnabled(bool on) { renderer_.setStockLightsEnabled(on); update(); }

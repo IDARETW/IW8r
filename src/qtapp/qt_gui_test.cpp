@@ -2406,8 +2406,25 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         } else {
             r.check(false, "Volumetric Fog is in View > Game Lighting Options");
         }
-        for (const char* id : {"GameAoStrength", "GameExposureOverride", "GameRebake"})
+        for (const char* id : {"GameAoStrength", "GameExposureOverride", "GameRebake", "GameSunShadowDetail"})
             r.check(w.action(id) != nullptr, QString("%1 is in View > Game Lighting Options").arg(id));
+        if (CameraView* cv = w.cameraView()) {
+            // Sun Shadow Detail: the shadow maps are made again at the new size and the lit view still draws.
+            const unsigned was = cv->sunShadowMapSize();
+            const bool litWas = ctx.scene.litPreview;
+            if (!litWas && w.action("ToggleLitPreview")) w.action("ToggleLitPreview")->trigger();
+            cv->setSunShadowMapSize(4096);
+            const QImage high = cv->renderImage(320, 180, true, 0, 200);
+            const bool highOk = cv->sunShadowMapSize() == 4096 && !high.isNull();
+            cv->setSunShadowMapSize(1000);  // to the nearest of the three sizes
+            const QImage low = cv->renderImage(320, 180, true, 0, 200);
+            const bool lowOk = cv->sunShadowMapSize() == 1024 && !low.isNull();
+            cv->setSunShadowMapSize(was);
+            cv->renderImage(320, 180, true, 0, 100);
+            if (!litWas && w.action("ToggleLitPreview")) w.action("ToggleLitPreview")->trigger();
+            r.check(highOk && lowOk && cv->sunShadowMapSize() == was && (was == 1024 || was == 2048 || was == 4096),
+                    QString("Sun Shadow Detail changes the shadow maps' size (4096, 1024, back to %1) and the view keeps drawing").arg(was));
+        }
         if (CameraView* cv = w.cameraView()) {
             const double before = cv->gameExposureOverride();
             cv->setGameExposureOverride(12.0);

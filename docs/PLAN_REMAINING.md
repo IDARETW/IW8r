@@ -189,7 +189,8 @@ let the instance cull pick the game's LOD by distance (and FOV). Done when Aniya
 within 28 ms with no visible popping at the bench cameras.
 
 **1.10 GUI and settings.** Part 1 DONE 2026-11-13 (View > Game Lighting Options, saved settings, GUI test). The
-compile panel's bake settings DONE 2026-11-13 (Compile > Bake Settings, core bake_options). Open: shadow quality.
+compile panel's bake settings DONE 2026-11-13 (Compile > Bake Settings, core bake_options). Shadow quality DONE
+2026-11-13 (Sun Shadow Detail: 1024 / 2048 / 4096). Nothing open in 1.10.
 - **View > Game Lighting submenu:** AO (on/off, strength, radius), SSR (on/off, quality), shadow quality, an exposure
   override (EV), Re-bake Now (`rebakeGameLighting`), and debug views (AO buffer, SSR mask).
 - **Saved settings:** these, and the Game Lighting toggle itself, are saved in Settings. Environment variables stay as

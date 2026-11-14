@@ -2279,6 +2279,22 @@ void MainWindow::buildMenus() {
             camera_->setGameAoStrength(v);
         });
         camera_->setGameAoStrength(st.value("game/aoStrength", 1.0).toDouble());
+        // The side of the sun shadow maps (the whole map and the box around the camera): sharper edges for memory.
+        addCommand(gm, "GameSunShadowDetail", "Sun Shadow Detail...", QKeySequence(), [this] {
+            const QStringList items{"Low (1024 texels, 8 MB)", "Normal (2048 texels, 32 MB)", "High (4096 texels, 128 MB)"};
+            const unsigned cur = camera_->sunShadowMapSize();
+            bool ok = false;
+            const QString pick = QInputDialog::getItem(this, "Sun Shadow Detail", "The sun's shadow maps (lit preview and Game Lighting):", items,
+                                                       cur <= 1024 ? 0 : (cur >= 4096 ? 2 : 1), false, &ok);
+            if (!ok) return;
+            const int size = 1024 << std::max(0, int(items.indexOf(pick)));
+            Settings::instance().setValue("game/sunShadowSize", size);
+            camera_->setSunShadowMapSize(unsigned(size));
+            ctx_.setStatus(QString("Sun shadow maps: %1 x %1 texels").arg(camera_->sunShadowMapSize()));
+        });
+        // IW8R_SUN_SHADOW_SIZE: a bench override of the saved size.
+        const int benchShadow = qEnvironmentVariableIntValue("IW8R_SUN_SHADOW_SIZE");
+        camera_->setSunShadowMapSize(unsigned(std::clamp(benchShadow > 0 ? benchShadow : st.value("game/sunShadowSize", 2048).toInt(), 1024, 4096)));
         addCommand(gm, "GameExposureOverride", "Exposure Override...", QKeySequence(), [this] {
             QStringList items{"The map's own (auto exposure / its vision)"};
             for (int ev = 6; ev <= 16; ++ev) items << QString("EV %1").arg(ev);

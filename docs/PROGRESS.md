@@ -2,6 +2,10 @@
 
 ## Latest (2026-11-13)
 
+- Plan 1.10 closed: Sun Shadow Detail (SceneRenderer::setSunShadowMapSize 1024 / 2048 / 4096, shadowSize_ replaces
+  kShadowSize, shadowPcf reads the map's size with GetDimensions; CameraView::setSunShadowMapSize; command
+  GameSunShadowDetail, setting game/sunShadowSize, bench override IW8R_SUN_SHADOW_SIZE). Cinder Rail A/B:
+  out/agent/sh_cmp.png (2.05 to 2.12 ms at all three sizes). GUI check in "game lighting options".
 - Plan 1.9 part 1 (research 117, converter shader read by an Opus agent and checked by me at hlsl:1385, 1468, 1573,
   1620, convert.cpp:99, iw3_vision.cpp:471): editor builds use style iw3 (no MAP_IW8_LIGHTING); an unbaked map's
   surfaces get the constant fill lerp((.22,.23,.24), (.38,.41,.44), N.z/2+.5) + shadowed sun; indirect x multi-bounce

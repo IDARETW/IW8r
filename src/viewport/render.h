@@ -718,7 +718,7 @@ private:
     size_t refChunkTotal_ = 0, refCulledLast_ = 0;
     int whiteTex_ = -1;
     bool createShadowResources();
-    static constexpr unsigned kShadowSize = 2048;
+    unsigned shadowSize_ = 2048;  // the side of both sun shadow maps (setSunShadowMapSize)
     float litDecode_ = 1, exposure_ = 1, shadowBias_ = 0.0005f;
     float sunViewProj_[16] = {};
     bool shadowEnabled_ = false, shadowDirty_ = true, shadowFailed_ = false;
@@ -828,6 +828,10 @@ private:
 public:
     // View > Game Lighting: screen-space ambient occlusion on the indirect light (on by default).
     void setGameAo(bool on) { aoOn_ = on; }
+    // The side of the sun shadow maps in texels (the lit preview and Game Lighting): 1024, 2048 (the default) or 4096.
+    // Other values go to the nearest of the three. The maps are made again at the next frame that draws shadows.
+    void setSunShadowMapSize(unsigned size);
+    unsigned sunShadowMapSize() const { return shadowSize_; }
     bool gameAo() const { return aoOn_; }
     bool gameAoDrawn() const { return aoValid_; }
     bool gameHdrDrawn() const { return hdrFrame_; }

@@ -189,10 +189,12 @@ float3 applyGrade(float3 c) {
 Texture2DArray<float> shadowMap : register(t2);
 SamplerComparisonState shadowSamp : register(s1);
 float shadowPcf(float2 uv, float z, float slice) {
+    float sw, sh, sn;
+    shadowMap.GetDimensions(sw, sh, sn);  // the map's side (View > Game Lighting Options > Sun Shadow Detail)
     float s = 0;
     [unroll] for (int y = -1; y <= 1; ++y)
         [unroll] for (int x = -1; x <= 1; ++x)
-            s += shadowMap.SampleCmpLevelZero(shadowSamp, float3(uv + float2(x, y) / 2048.0, slice), z);
+            s += shadowMap.SampleCmpLevelZero(shadowSamp, float3(uv + float2(x, y) / sw, slice), z);
     return s / 9.0;
 }
 float sunShadow(float3 w) {
@@ -267,10 +269,12 @@ float3 applyGrade(float3 c) {
 Texture2DArray<float> shadowMap : register(t2);
 SamplerComparisonState shadowSamp : register(s1);
 float shadowPcf(float2 uv, float z, float slice) {
+    float sw, sh, sn;
+    shadowMap.GetDimensions(sw, sh, sn);  // the map's side (View > Game Lighting Options > Sun Shadow Detail)
     float s = 0;
     [unroll] for (int y = -1; y <= 1; ++y)
         [unroll] for (int x = -1; x <= 1; ++x)
-            s += shadowMap.SampleCmpLevelZero(shadowSamp, float3(uv + float2(x, y) / 2048.0, slice), z);
+            s += shadowMap.SampleCmpLevelZero(shadowSamp, float3(uv + float2(x, y) / sw, slice), z);
     return s / 9.0;
 }
 float sunShadow(float3 w) {
@@ -4232,7 +4236,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         IW8R_PROF("d.shadow");
         ID3D11RenderTargetView* noRtv = nullptr;
         inShadowPass_ = true;
-        D3D11_VIEWPORT svp{0, 0, float(kShadowSize), float(kShadowSize), 0, 1};
+        D3D11_VIEWPORT svp{0, 0, float(shadowSize_), float(shadowSize_), 0, 1};
         ctx_->RSSetViewports(1, &svp);
         const auto drawCasters = [&](ID3D11DepthStencilView* sdsv, const float* sm, bool cull) {
         ctx_->OMSetRenderTargets(1, &noRtv, sdsv);
@@ -4867,11 +4871,21 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         }
 }
 
+void SceneRenderer::setSunShadowMapSize(unsigned size) {
+    size = size < 1536 ? 1024u : (size < 3072 ? 2048u : 4096u);
+    if (size == shadowSize_) return;
+    shadowSize_ = size;
+    // The maps of the old size go; createShadowResources makes the new ones (the sampler and the raster state stay).
+    safeRelease(shadowSrv_), safeRelease(shadowDsv_), safeRelease(shadowDsvNear_), safeRelease(shadowTex_);
+    shadowFailed_ = false;
+    shadowDirty_ = nearDirty_ = true;
+}
+
 bool SceneRenderer::createShadowResources() {
     if (shadowSrv_ && shadowDsv_ && shadowDsvNear_ && cmpSampler_) return true;
     if (!dev_ || shadowFailed_) return false;
     D3D11_TEXTURE2D_DESC td{};
-    td.Width = td.Height = kShadowSize;
+    td.Width = td.Height = shadowSize_;
     td.MipLevels = 1;
     td.ArraySize = 2;  // 0: the whole scene, 1: the near cascade
     td.Format = DXGI_FORMAT_R32_TYPELESS;
@@ -4904,11 +4918,12 @@ bool SceneRenderer::createShadowResources() {
     rd.SlopeScaledDepthBias = 2.0f;
     if (FAILED(dev_->CreateTexture2D(&td, nullptr, &shadowTex_)) || FAILED(dev_->CreateDepthStencilView(shadowTex_, &dd, &shadowDsv_)) ||
         FAILED(dev_->CreateDepthStencilView(shadowTex_, &ddNear, &shadowDsvNear_)) ||
-        FAILED(dev_->CreateShaderResourceView(shadowTex_, &sd, &shadowSrv_)) || FAILED(dev_->CreateSamplerState(&cs, &cmpSampler_))) {
+        FAILED(dev_->CreateShaderResourceView(shadowTex_, &sd, &shadowSrv_)) ||
+        (!cmpSampler_ && FAILED(dev_->CreateSamplerState(&cs, &cmpSampler_)))) {
         shadowFailed_ = true;
         return false;
     }
-    dev_->CreateRasterizerState(&rd, &rsShadow_);
+    if (!rsShadow_) dev_->CreateRasterizerState(&rd, &rsShadow_);
     shadowDirty_ = true;
     return true;
 }
