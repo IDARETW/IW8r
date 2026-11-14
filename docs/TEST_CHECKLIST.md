@@ -402,6 +402,13 @@ Zone, then install.)
 - [ ] Characters, weapons and effects look as always.
 - [ ] The first load may take longer (the game builds the changed shaders' pipelines).
 
+## In game (optional, 2026-11-13): an own map with and without baked lightmaps
+
+- [ ] A map built with Compile > Bake lightmaps **off**: in the game the shadowed sides of buildings are lit evenly,
+      with no darker corners, as View > Game Lighting now shows it.
+- [ ] The same map built with Bake lightmaps **on**: corners and covered places are darker, as View > Game Lighting
+      shows it with the key on.
+
 ## What is not expected to work yet
 
 Decal volumes, volumetrics, custom music states, custom fonts and LUI (research 36) (docs/ROADMAP.md lists every

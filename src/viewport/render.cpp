@@ -842,6 +842,9 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // here from the reflection probes' blurriest level (luminance-normalised) at the map's mean baked light
         // (gameSky.rgb, gameSky.w = 1); otherwise the unbaked light.
         float3 indirect = gameSky.rgb * (0.6 + 0.4 * saturate(N.z));  // the probes' light, below, where no lightmap
+        // An own map built without lightmaps (gameSky.w = 2): the converter's world shader gives every surface this
+        // constant sky fill by the vertex normal (map_surface_realtime.hlsl, "Soft hemispherical sky fill"; research 117).
+        if (gameSky.w > 1.5) indirect = lerp(float3(0.22, 0.23, 0.24), float3(0.38, 0.41, 0.44), saturate(Nf.z * 0.5 + 0.5));
         float3 stockDw = Nf, stockB = 0;  // the stock lightmap's directional part, for E(R) below
         float3 stockDirN = 0;  // that part as it entered `indirect` (wrapped on wrap-diffuse materials)
         float visibility = 1.0;
@@ -880,7 +883,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // lookups that were thrown away).
         if (!lmOk && stockRef && propLit(i)) {
             indirect = propLgv * gameSkyScale.y;  // the prop's light grid box (vs_tex_inst), x bakedLightScale
-        } else if (!lmOk && gameSky.w > 0.5 && probeCount.x > 0.5)
+        } else if (!lmOk && gameSky.w > 0.5 && gameSky.w < 1.5 && probeCount.x > 0.5)
             indirect = stockProbeLight(i.w, N, 0.0) * dot(gameSky.rgb, float3(0.2126, 0.7152, 0.0722));
         // The sun: the baked sun depth where it covers the point (here the sun shadow map), else the lightmap's mask.
         if (litParams.y > 0.5) visibility = sunShadow(i.w);
@@ -1053,17 +1056,20 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 c += dSum + sSum;
             }
         } else {
+            // The converter's world shader occludes only the indirect light, in the multi-bounce form
+            // ao / (1 - min(albedo, .85) (1 - ao)) (map_surface_realtime.hlsl; research 117).
+            const float3 aoOwn = aoV / max(1.0 - min(albedo, 0.85) * (1.0 - aoV), 1e-3);
 #ifdef IW8R_CUSTOM
             // A custom surface shader (core custom_shader): the map's own lighting function.
             IW8RSurface s;
             s.albedo = albedo, s.alpha = outA, s.normal = N, s.view = normalize(eyeStart.xyz - i.w), s.position = i.w;
             s.uv = i.uv, s.sunDir = gameSun.xyz, s.sunColor = gameSunCol.rgb, s.sunShadow = visibility;
-            s.ambient = indirect * aoV, s.gloss = 0.3;
+            s.ambient = indirect * aoOwn, s.gloss = 0.3;
             s.faceNormal = dot(i.n, i.n) > 0.5 ? normalize(i.n) : N;
             iw8rEdgeFields(s, i.edge, ddx(i.w), ddy(i.w));
             c = iw8rSurface(s);
 #else
-            float3 light = indirect * aoV + visibility * saturate(dot(N, gameSun.xyz)) * gameSunCol.rgb;
+            float3 light = indirect * aoOwn + visibility * saturate(dot(N, gameSun.xyz)) * gameSunCol.rgb;
             c = albedo * light;
 #endif
         }
@@ -2615,7 +2621,7 @@ void SceneRenderer::writeGameCb() {
     float g[84] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
                    game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], on && gtsoSrv_ ? 1.0f : 0.0f,
                    game_.sunColor[0], game_.sunColor[1], game_.sunColor[2], 0,
-                   game_.sky[0], game_.sky[1], game_.sky[2], game_.skyIsStock ? 1.0f : 0.0f};
+                   game_.sky[0], game_.sky[1], game_.sky[2], game_.skyIsStock ? 1.0f : (game_.skyIsUnbaked ? 2.0f : 0.0f)};
     for (int r = 0; r < 6; ++r)
         for (int k = 0; k < 4; ++k) g[16 + 4 * r + k] = game_.fog[r][k];
     g[40] = game_.skyScale;

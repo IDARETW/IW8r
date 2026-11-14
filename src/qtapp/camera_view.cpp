@@ -2070,6 +2070,8 @@ iw8r::MapBakeOptions gameBakeOptionsOf(const iw8r::Document& doc) {
 iw8r::Vec3 gameSkyOf(const iw8r::Document& doc) { return gameBakeOptionsOf(doc).skyLight(); }
 }  // namespace
 
+bool CameraView::gameLookUnbaked() const { return !gameStockLook() && !gameBakeOptionsOf(ctx_->doc).bake; }
+
 void CameraView::prepareGameLook() {
     const bool game = gameLookOn();
     if (game != gameWasOn_) {
@@ -2152,6 +2154,7 @@ void CameraView::prepareGameLook() {
         g.sunColor[0] = float(c.x), g.sunColor[1] = float(c.y), g.sunColor[2] = float(c.z);
         const Vec3 sky = gameSkyOf(ctx_->doc);
         g.sky[0] = float(sky.x), g.sky[1] = float(sky.y), g.sky[2] = float(sky.z);
+        g.skyIsUnbaked = gameLookUnbaked();
         if (stock) {  // the stock map's bloom veil and vignette (research 109)
             g.veil = float(stockPostFx_.veil);
             const GamePostFx& p = stockPostFx_;
@@ -2233,6 +2236,23 @@ void CameraView::prepareGameLook() {
 
 void CameraView::maybeBakeGameLook() {
     if (!gameLookOn() || gameBaking_) return;
+    // An own map without "Bake lightmaps": the build makes no lightmap, and the game lights the map with the
+    // converter's constant sky fill and the live sun. Nothing to bake; a lightmap of an earlier bake goes.
+    if (gameLookUnbaked()) {
+        if (gameLm_) {
+            gameLm_.reset();
+            renderer_.setGameLightmap(0, 0, nullptr, nullptr, nullptr);
+            geomDirty_ = true;
+            update();
+        }
+        if (!gameUnbakedTold_) {
+            gameUnbakedTold_ = true;
+            emit ctx_->statusMessage("Game lighting: this map is built without lightmaps (Compile > Bake lightmaps is off), so the "
+                                     "game's flat sky light and the live sun are shown");
+        }
+        return;
+    }
+    gameUnbakedTold_ = false;
     const uint64_t rev = ctx_->doc.revision() * 1000003ull ^ ctx_->scene.generation();
     if (rev == gameBakeRev_) return;
     if (rev != gameSeenRev_) {

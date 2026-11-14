@@ -722,9 +722,10 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         while (bt.elapsed() < 600000) {
             frame(nullptr);
             QApplication::processEvents(QEventLoop::AllEvents, 20);
-            if (cam->gameLightmap() && !cam->gameBaking()) break;
+            if ((cam->gameLightmap() || cam->gameLookUnbaked()) && !cam->gameBaking()) break;
         }
         const auto lm = cam->gameLightmap();
+        if (cam->gameLookUnbaked()) report << "game_unbaked 1 (no lightmap in the build: the converter's sky fill and the live sun)";
         report << QString("game_bake ms=%1 lightmap=%2x%3 faces=%4 bake_s=%5 %6").arg(bt.elapsed()).arg(lm ? lm->width : 0)
                       .arg(lm ? lm->height : 0).arg(lm ? lm->polys : 0).arg(lm ? lm->seconds : 0, 0, 'f', 2)
                       .arg(lm && !lm->error.empty() ? QString::fromStdString(lm->error) : QString());

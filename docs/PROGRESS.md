@@ -2,6 +2,13 @@
 
 ## Latest (2026-11-13)
 
+- Plan 1.9 part 1 (research 117, converter shader read by an Opus agent and checked by me at hlsl:1385, 1468, 1573,
+  1620, convert.cpp:99, iw3_vision.cpp:471): editor builds use style iw3 (no MAP_IW8_LIGHTING); an unbaked map's
+  surfaces get the constant fill lerp((.22,.23,.24), (.38,.41,.44), N.z/2+.5) + shadowed sun; indirect x multi-bounce
+  AO. Viewport: GameLook::skyIsUnbaked (gameSky.w = 2 in ps_tex), aoOwn, CameraView::gameLookUnbaked (own map, bake key
+  not 1: no preview bake, lightmap dropped, status once), bench line game_unbaked, GUI check. Cinder Rail A/B:
+  out/agent/unb_cr_cmp.png. Open in 1.9: specular-map materials, brushes on a stock map lit as models, fog form,
+  exposure parity, cb7[43].z.
 - Plan 1.10 (compile panel bake settings): core bake_options (MapBakeOptions, mapBakeOptions, bakeOptionKeys) is the
   one reader of iw8r_bake_lightmaps / iw8r_bake_sky / iw8r_lightmap_texel / iw8r_bake_rays for compile_iw8.cpp and
   camera_view.cpp (gameBakeOptionsOf); CompilePanel::editBakeSettings / applyBakeSettings (button

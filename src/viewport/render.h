@@ -468,6 +468,8 @@ public:
         float sunColor[3] = {1, 1, 1};
         float sky[3] = {0.2f, 0.2f, 0.2f};
         bool skyIsStock = false;  // sky = the stock map's mean baked light: unlit surfaces take the probes at that level
+        // An own map that the build gives no lightmap: surfaces take the converter's constant sky fill (research 117).
+        bool skyIsUnbaked = false;
         // The stock map's atmosphere (core GameFog): fog0 = start, half distance, max opacity, on; fog1 = inscattered
         // radiance (rgb, fog colour x scale), Mie blend; fog2 = Rayleigh albedo, Mie anisotropy; fog3 = Mie albedo,
         // desaturation; fog4 = height base, height half distance, sky distance, sky intensity; fog5.x = max distance;

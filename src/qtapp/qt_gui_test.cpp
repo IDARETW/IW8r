@@ -2535,6 +2535,12 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         ctx.cam.pitch = -25;
         ctx.cameraMoved();
         const QImage before = cv->renderImage(320, 180, true, 0, 300);
+        // The preview bake belongs to a map with "Bake lightmaps" on (the build then makes the same lightmap).
+        const bool bakeKeyWas = iw8r::mapBakeOptions(ctx.doc.worldspawn()).bake;
+        if (const Entity* ws = ctx.doc.worldspawn(); ws && !bakeKeyWas) {
+            ctx.doc.setKeyValue(ws->id, "iw8r_bake_lightmaps", "1");
+            ctx.documentEdited();
+        }
         if (game) game->trigger();
         r.check(ctx.scene.gameLook && game && game->isChecked(), "Ctrl+Alt+L turns game lighting on (checked)");
         QElapsedTimer t;
@@ -2569,6 +2575,42 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         if (!shot.isEmpty()) {
             after.save(QString::fromLocal8Bit(shot));
             before.save(QString::fromLocal8Bit(shot).replace(".png", "_editor.png"));
+        }
+        // Without "Bake lightmaps" the build makes no lightmap and the game lights the map with the converter's constant
+        // sky fill and the live sun: the view shows that, with no preview bake (research 117).
+        {
+            const bool bakedHad = cv->gameLightmap() != nullptr && !cv->gameLookUnbaked();
+            if (const Entity* ws = ctx.doc.worldspawn()) ctx.doc.removeKey(ws->id, "iw8r_bake_lightmaps");
+            ctx.documentEdited();
+            QElapsedTimer ut;
+            ut.start();
+            QImage unbaked;
+            while (ut.elapsed() < 10000) {
+                unbaked = cv->renderImage(320, 180, true, 0, 0);
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+                if (!cv->gameLightmap() && cv->gameLookUnbaked()) break;
+                QThread::msleep(20);
+            }
+            unbaked = cv->renderImage(320, 180, true, 0, 300);
+            double change = 0, lum = 0;
+            size_t px = 0;
+            for (int y = 0; y < unbaked.height() && unbaked.size() == after.size(); ++y)
+                for (int x = 0; x < unbaked.width(); ++x) {
+                    const QRgb a = unbaked.pixel(x, y), b = after.pixel(x, y);
+                    change += std::abs(qRed(a) - qRed(b)) + std::abs(qGreen(a) - qGreen(b)) + std::abs(qBlue(a) - qBlue(b));
+                    lum += (qRed(a) + qGreen(a) + qBlue(a)) / 765.0;
+                    ++px;
+                }
+            const double perPixel = px ? change / double(px) : 0, meanU = px ? lum / double(px) : 0;
+            r.check(bakedHad && !cv->gameLightmap() && cv->gameLookUnbaked() && perPixel > 0.3 && meanU > 0.02 && meanU < 0.98,
+                    QString("a map without Bake lightmaps is shown unbaked: no preview lightmap, the constant sky fill (mean %1, change %2 per pixel)")
+                        .arg(meanU, 0, 'f', 3).arg(perPixel, 0, 'f', 1));
+            if (!shot.isEmpty()) unbaked.save(QString::fromLocal8Bit(shot).replace(".png", "_unbaked.png"));
+            if (bakeKeyWas)
+                if (const Entity* ws = ctx.doc.worldspawn()) {
+                    ctx.doc.setKeyValue(ws->id, "iw8r_bake_lightmaps", "1");
+                    ctx.documentEdited();
+                }
         }
         // The stock world shader's environment BRDF table comes from the install once (ACTS, game_look_assets.h).
         {

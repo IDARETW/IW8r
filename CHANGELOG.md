@@ -5,6 +5,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Game Lighting shows a map without baked lightmaps the way the game draws it.** When "Bake lightmaps" is off, the
+  built map has no lightmap: the game gives every surface the same soft sky light (a little brighter on faces that
+  look up) and adds the sun with its shadows. The editor used to bake a preview lightmap anyway, so corners and
+  shadowed walls looked darker and richer in the editor than in the game. Now View > Game Lighting shows the game's
+  flat sky light for such a map, and the baked look only when "Bake lightmaps" is on (then the build makes the same
+  lightmap). The status bar says which one is shown. Read from the converter's shader (research 117); not seen in
+  game.
+
 - **Compile > Bake Settings.** A dialog for the lightmap bake of your map: the sky's colour and strength, the texel
   size and the number of sky rays, with Restore Defaults. The values are worldspawn keys (`iw8r_bake_sky`,
   `iw8r_lightmap_texel`, `iw8r_bake_rays`), saved with the map and undoable in one step. The build and View > Game

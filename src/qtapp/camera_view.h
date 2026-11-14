@@ -237,6 +237,9 @@ public slots:
     // View > Game Lighting: the last preview bake (null until one finished) and a forced re-bake.
     std::shared_ptr<const app::GameLightmap> gameLightmap() const { return gameLm_; }
     bool gameBaking() const { return gameBaking_; }
+    // Game Lighting on an own map that the build gives no lightmap (worldspawn iw8r_bake_lightmaps is not 1): there
+    // is no preview bake; the surfaces take the converter's constant sky fill and the live sun, as in the game.
+    bool gameLookUnbaked() const;
     void rebakeGameLighting() { gameBakeRev_ = ~0ull; gameSeenAt_.invalidate(); update(); }
     // The stock map shown as the reference ("" = none): Game Lighting then uses that map's sun and auto exposure
     // (core game_look stockMapLook).
@@ -593,6 +596,7 @@ private:
     // View > Game Lighting (game_lightmap.h): the preview bake, made again in the background once edits settle.
     std::shared_ptr<const app::GameLightmap> gameLm_;
     bool gameBaking_ = false, gameLutReady_ = false, gameWasOn_ = false, gameMetering_ = false;
+    bool gameUnbakedTold_ = false;  // the status line said once that the map has no lightmap
     std::string gameStockMap_;
     bool stockSunKnown_ = false;
     GameFog stockFog_;
