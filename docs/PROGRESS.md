@@ -86,6 +86,8 @@
   Plan 3.1: MainWindow::followCameraPos() (the last /api/frame camera for webFollowHoldMs_ = 4000 ms, else
   ctx_.cam.pos) is the centre for updateStreamedTiles, updateTerrainLayers, updateProbeSubset and
   streamedTilesReport. GUI test with a 150 ms hold. Not run on Verdansk in a browser.
+  Plan 1.13: lodFov in SceneRenderer::cullTexInstances (research 119; IW8R_NO_LOD_FOV turns it off). The
+  placement's own lodScale (instanceFlags & 0xF) is not in the stock placement data: taken as 1.
   The web list of plan 3.3 / 3.4 is done (the Vision Editor form closed it). Earlier note: (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder

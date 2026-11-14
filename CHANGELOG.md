@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Stock maps: props change detail level where the game would.** The game picks a prop's level of detail by its
+  distance times a factor for the field of view (1 at the game's own 80 degree view; a wider view switches to the
+  simpler models sooner, a zoomed view later). The viewport used the plain distance, so a wide editor view showed
+  more detail than the game would at that view. It now uses the game's factor (research 119, read in the game-test
+  source, not checked against the running game). Hideout: 1.3 % of the picture changes, the frame is a little
+  faster.
+
 - **Web: the Warzone world follows the browser's view.** On Verdansk and Quarry the streamed tiles, the near
   terrain layers and the probes were loaded around the editor's own camera only, so flying away in the web page's
   live view showed the coarse far terrain. They now follow the browser's camera while its view is being drawn, and

@@ -3391,6 +3391,13 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
     static const float bigPx = std::getenv("IW8R_PREPASS_PX") ? std::max(0.0f, float(std::atof(std::getenv("IW8R_PREPASS_PX")))) : 24.0f;
     static const float kPx = std::getenv("IW8R_INST_CULL_PX") ? std::max(0.5f, float(std::atof(std::getenv("IW8R_INST_CULL_PX")))) : 4.0f;
     static const bool noLodOut = std::getenv("IW8R_NO_FOLIAGE_LOD_OUT") != nullptr;
+    // The game's field-of-view factor on LOD distances (GT R_SetLodParms): tanHalfFovY x 2.1186731, which is 1 at the
+    // game's own view. The view-projection's second column holds the up axis x (1 / tanHalfFovY). IW8R_NO_LOD_FOV: off
+    // (a bench switch).
+    static const bool noLodFov = std::getenv("IW8R_NO_LOD_FOV") != nullptr;
+    const float ysProj = std::sqrt(viewProj[1] * viewProj[1] + viewProj[5] * viewProj[5] + viewProj[9] * viewProj[9]);
+    const float lodFov = noLodFov || !(ysProj > 1e-6f) ? 1.0f : std::clamp(2.1186731f / ysProj, 0.05f, 8.0f);
+    const float lodFovCapped = std::min(lodFov, 1.0f);  // the cull past the last level never comes nearer than its distance
     // The visible placements, those large on screen first: the depth pre-pass draws only that prefix (`big`). One
     // buffer instead of two of the full size (Verdansk's instance buffers were 877 MB with every prop drawn).
     const auto upload = [&](GpuTexInstanced& g) {
@@ -3455,7 +3462,9 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             const float farD = g.lodFar > 0 && !(noLodOut && lastFoliage) ? g.lodFar : 1e30f;
             for (size_t i = 0; i < n; ++i) {
                 const PlaceEval& e = ev[i];
-                if (e.out || e.dist < g.lodNear || e.dist >= farD) continue;
+                // The level by distance x the view factor; the end of the last level by the capped factor.
+                const float dSel = e.dist * lodFov, dEnd = lastFoliage ? e.dist * lodFovCapped : dSel;
+                if (e.out || dSel < g.lodNear || dEnd >= farD) continue;
                 const float* r = &g.rows[i * 12];
                 std::vector<float>& to = e.dist <= e.rad || e.rad >= e.dist * pixelAngle * bigPx ? keepBig : keep;
                 to.insert(to.end(), r, r + 12);
@@ -3489,7 +3498,7 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                 const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
                 out = dist > rad && rad < dist * pixelAngle * kPx;  // radius under k pixels (4: Verdansk 37 -> 15.5 ms)
                 // Stock foliage past its last LOD distance: the game does not draw it (research 100 section 3.3).
-                if (!noLodOut && g.lodOut > 0 && dist > g.lodOut) out = true;
+                if (!noLodOut && g.lodOut > 0 && dist * lodFovCapped > g.lodOut) out = true;
             }
             if (out) {
                 ++instCulledLast_;
