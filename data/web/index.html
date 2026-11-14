@@ -11,7 +11,7 @@
   <strong>IW8 Radiant</strong>
   <span id="map">-</span>
   <span class="sep"></span>
-  <label>View <select id="axis"><option value="0">Top (XY)</option><option value="1">Front (XZ)</option><option value="2">Side (YZ)</option><option value="3">3D</option></select></label>
+  <label>View <select id="axis"><option value="0">Top (XY)</option><option value="1">Front (XZ)</option><option value="2">Side (YZ)</option><option value="3">3D</option><option value="4">Editor view (live)</option></select></label>
   <button id="fit" title="Frame the whole map">Fit</button>
   <button id="undo" title="Undo (shared with the editor)">Undo</button>
   <button id="redo">Redo</button>
@@ -28,6 +28,7 @@
   <section id="viewWrap">
     <canvas id="view"></canvas>
     <canvas id="view3d" hidden></canvas>
+    <img id="viewLive" hidden alt="" tabindex="0" draggable="false">
     <div id="hint">Drag: pan (empty space) or move the selection &middot; Wheel: zoom &middot; Click: select (Shift adds)</div>
   </section>
   <aside>
@@ -57,5 +58,6 @@
 <footer id="status">Connecting...</footer>
 <script src="app.js"></script>
 <script src="view3d.js"></script>
+<script src="viewlive.js"></script>
 </body>
 </html>

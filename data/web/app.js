@@ -199,8 +199,13 @@ $("addKey").onsubmit = (ev) => {
 $("filter").oninput = renderEntities;
 $("axis").onchange = () => {
   const v = +$("axis").value;
-  const is3d = v === 3;
-  $("view").hidden = is3d; $("view3d").hidden = !is3d;
+  const is3d = v === 3, live = v === 4;
+  $("view").hidden = is3d || live; $("view3d").hidden = !is3d; $("viewLive").hidden = !live;
+  if (window.viewLive) window.viewLive.shown(live, state);
+  if (live) {
+    $("hint").textContent = "Drag: look · W A S D, Q E: fly (Shift faster) · Wheel: forward / back · Right-drag: slide · Click: select (Shift adds)";
+    return;
+  }
   $("hint").textContent = is3d ? "Drag: orbit · Right-drag: pan · Wheel: zoom · Click: select (Shift adds)"
                                : "Drag: pan (empty space) or move the selection · Wheel: zoom · Click: select (Shift adds)";
   if (is3d) { window.view3d && window.view3d.show(map, state); return; }
@@ -289,6 +294,7 @@ async function refresh() {
   if (!fitted) { fitted = true; fit(); }
   renderEntities(); draw();
   if (window.view3d && !$("view3d").hidden) window.view3d.update(map, state);
+  if (window.viewLive) window.viewLive.refresh();
 }
 let refreshQueued = false;
 function queueRefresh() {

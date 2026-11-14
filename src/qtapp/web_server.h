@@ -26,6 +26,11 @@
 //   GET  /api/thumb?kind=..&name=..  a cached thumbnail image (404 when none yet)
 //   POST /api/place    {kind, name, at:[x,y,z]}   models -> misc_model, effects -> fx_origin, sounds -> sound_emitter
 //   POST /api/material {name}        apply to the selected brushes / faces
+//   GET  /api/frame?pos=x,y,z&yaw=&pitch=&fov=&w=&h=&q=   the editor's own 3D render from that camera, as a JPEG
+//                                    (w 64..2560, h 64..1440, q 30..95); the editor's modes apply (textured, lit,
+//                                    Game Lighting, the stock reference)
+//   POST /api/pick     {pos, yaw, pitch, fov, x, y, aspect, add}   select what lies under the point (x, y in 0..1
+//                                    from the top left) of that view; nothing there deselects
 //   GET  /api/commands               every editor command in menu order: {id, label, menu, shortcut, checkable,
 //                                    checked, enabled, blocked} ("blocked": why the browser cannot run it, "" = it
 //                                    can) and {sep: true, menu} between groups
@@ -52,6 +57,13 @@ namespace iw8r::qt {
 
 class EditorContext;
 
+// A camera a browser sends with its view requests (each browser has its own).
+struct WebCamera {
+    double pos[3] = {0, 0, 0};
+    double yaw = 0, pitch = 0;  // degrees: yaw around +Z from +X, pitch up
+    double fov = 90;            // horizontal degrees
+};
+
 class WebServer : public QObject {
     Q_OBJECT
 public:
@@ -64,6 +76,12 @@ public:
         std::function<void()> buildDeployLoad; // F5
         std::function<bool(QString*)> loadInGame;  // Live Link: load the compiled map in the running game
         std::function<QByteArray(const QString& kind, const QString& name)> thumbnail;  // JPEG bytes, empty = none yet
+        // The editor's own 3D render from a browser's camera (plan 3.1): JPEG bytes, empty when it cannot draw.
+        std::function<QByteArray(const WebCamera& cam, int w, int h, int quality)> renderFrame;
+        // Selects what lies under a point of that view (x, y in 0..1 from the top left); false when nothing is there.
+        std::function<bool(const WebCamera& cam, double x, double y, double aspect, bool add)> pickFrame;
+        // The editor's own camera, as {pos: [x, y, z], yaw, pitch, fov}: where a browser's view starts.
+        std::function<QJsonObject()> camera;
         // Every command of the editor's menus, in menu order (MainWindow::webCommandList).
         std::function<QJsonArray()> commands;
         // Runs one by id; false with *why when it is unknown, not available now, or not for the browser.

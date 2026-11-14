@@ -287,7 +287,8 @@ collections; surface ids on displaced terrain.
 ROADMAP L10, paused until now, is resumed by this request. Server: `src/qtapp/web_server.{h,cpp}`. Client:
 `data/web/*`. Wiring: `main_window.cpp:4503-4592`.
 
-**3.1 Remote 3D view.**
+**3.1 Remote 3D view.** DONE 2026-11-13 as frames on demand (GET /api/frame, POST /api/pick, the page's "Editor view
+(live)"). Open: streamed tiles and terrain layers follow only the editor's own camera.
 - **Render API.** SceneRenderer gets "render this camera into an offscreen target", reusing the device's resources.
   There is no second renderer and no texture duplication.
 - **Per client:** each browser has its own camera (orbit / fly) and size, sent by POST.

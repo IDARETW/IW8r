@@ -2,6 +2,13 @@
 
 ## Latest (2026-11-13)
 
+- Plan 3.1: WebCamera; hooks renderFrame / pickFrame / camera; GET /api/frame?pos=&yaw=&pitch=&fov=&w=&h=&q= (JPEG of
+  CameraView::renderImage with the browser's camera; renderImage got keepGeometry so a frame does not remake the scene
+  geometry: 250-440 ms -> 19-28 ms at 1280 x 720 on Cinder Rail, 10 ms at 768 x 432), POST /api/pick (scene.pick
+  through app::cameraRay), /api/state "camera". MainWindow::webRenderFrame / webPick / webCamera. Page: view option 4,
+  img#viewLive, data/web/viewlive.js (own camera, one request at a time, light frames while moving, hidden tab asks
+  nothing). Browser check on 8791: flying, pick, Game Lighting from the web menu. Open in 3.1: a continuous stream
+  (now a frame per change), terrain / streamed tiles following a browser's camera.
 - Plan 3.2 part 1: WebServer::syncWebMap (per item / entity: the JSON last sent, mapRev_ at its last change, gone
   lists; resynced when doc revision x scene generation changes) and mapJson(since, epoch): GET /api/map?since=&epoch=
   gives {full, mapRev, epoch, items, entities, removed, removedEntities}; an entity item with more than 48 faces is

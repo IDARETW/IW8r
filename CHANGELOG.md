@@ -5,6 +5,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Web: the editor's own 3D view in the browser.** The page's View box has "Editor view (live)": the picture is
+  drawn by the editor's renderer from a camera the browser owns, so it shows exactly what the desktop camera view
+  shows (textures, lit preview, Game Lighting, the stock map, selection and gizmo) and each browser looks where it
+  wants. Drag to look, W A S D and Q E to fly (Shift is faster), wheel to move forward and back, right-drag to
+  slide, click to select (Shift adds). It starts at the editor's camera. A 1280 x 720 picture of Cinder Rail takes
+  about 20 ms (lighter ones while moving); nothing is drawn for a hidden tab. API: `GET /api/frame`, `POST /api/pick`.
+  Checked in a real browser against a running editor.
+
 - **Web: big maps open in the browser.** The map data the page loads was every triangle of every model: 64 MB for
   the small showcase map and 248 MB for Cinder Rail, which no browser tab survived. A model is now sent as its box
   (the 2D views and picking need no more), and after the first load the page asks only for what changed. Cinder Rail:

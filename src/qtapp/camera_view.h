@@ -69,7 +69,9 @@ public:
     // clean: game surfaces only (no outlines, gizmo, entity markers, tool faces or volumes); aspect > 0 renders that
     // aspect into the w x h image (stretched back by whoever shows it). Textures still loading are drawn as they are;
     // settleMs keeps rendering until they arrive. Null on failure (size over the D3D limit, no device).
-    QImage renderImage(int w, int h, bool clean, double aspect = 0, int settleMs = 0);
+    // keepGeometry (not with clean): the scene geometry of the last frame is drawn as it is, for many frames in a row
+    // (the browser view, plan 3.1); otherwise it is made again before and after.
+    QImage renderImage(int w, int h, bool clean, double aspect = 0, int settleMs = 0, bool keepGeometry = false);
     // Reflection probe capture (5.5): renders the scene from `pos` along the six world axes and resamples it into six
     // size x size RGBA faces in the converter's cube layout (D3D face order, world Z-up directions; x64-zt
     // SampleCubemapLinear). Empty on failure. The camera and selection are restored afterwards.

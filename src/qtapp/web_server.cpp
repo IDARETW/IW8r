@@ -1,5 +1,6 @@
 #include "web_server.h"
 
+#include <cmath>
 #include <QSet>
 #include <QCoreApplication>
 #include <QDir>
@@ -371,6 +372,7 @@ QByteArray WebServer::stateJson() const {
                   {"canUndo", ctx_->doc.undoPosition() > 0},
                   {"compiling", hooks_.compileBusy ? hooks_.compileBusy() : false},
                   {"logNext", double(logTail().next)}};
+    if (hooks_.camera) o.insert("camera", hooks_.camera());
     return json(o);
 }
 
@@ -528,6 +530,26 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
             r.body = img;
             return r;
         }
+        if (path == "/api/frame") {
+            WebCamera cam;
+            const QStringList pos = q.queryItemValue("pos").split(',');
+            bool ok = pos.size() == 3;
+            for (int k = 0; k < 3 && ok; ++k) cam.pos[k] = pos[k].toDouble(&ok);
+            cam.yaw = q.queryItemValue("yaw").toDouble();
+            cam.pitch = std::clamp(q.queryItemValue("pitch").toDouble(), -89.0, 89.0);
+            if (q.hasQueryItem("fov")) cam.fov = std::clamp(q.queryItemValue("fov").toDouble(), 10.0, 150.0);
+            const int w = q.queryItemValue("w").toInt(), h = q.queryItemValue("h").toInt();
+            if (!ok || w < 64 || h < 64 || w > 2560 || h > 1440 || !std::isfinite(cam.pos[0] + cam.pos[1] + cam.pos[2] + cam.yaw))
+                return error(400, "need pos=x,y,z, yaw, pitch, w (64..2560) and h (64..1440)");
+            const int quality = std::clamp(q.hasQueryItem("q") ? q.queryItemValue("q").toInt() : 75, 30, 95);
+            const QByteArray jpeg = hooks_.renderFrame ? hooks_.renderFrame(cam, w, h, quality) : QByteArray();
+            if (jpeg.isEmpty()) return error(503, "the editor cannot draw the view now");
+            Response r;
+            r.type = "image/jpeg";
+            r.body = jpeg;
+            r.extraHeaders = "Cache-Control: no-store\r\n";
+            return r;
+        }
         if (path == "/api/commands") {
             Response r;
             r.body = json({{"commands", hooks_.commands ? hooks_.commands() : QJsonArray()}});
@@ -585,6 +607,17 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
     } else if (path == "/api/load") {
         QString why;
         if (!hooks_.loadInGame || !hooks_.loadInGame(&why)) return error(400, why.isEmpty() ? QString("the game is not reachable") : why);
+    } else if (path == "/api/pick") {
+        WebCamera cam;
+        const QJsonArray pos = in.value("pos").toArray();
+        if (pos.size() != 3 || !hooks_.pickFrame) return error(400, "need pos:[x,y,z], yaw, pitch, x and y");
+        for (int k = 0; k < 3; ++k) cam.pos[k] = pos[k].toDouble();
+        cam.yaw = in.value("yaw").toDouble();
+        cam.pitch = std::clamp(in.value("pitch").toDouble(), -89.0, 89.0);
+        cam.fov = std::clamp(in.value("fov").toDouble(90), 10.0, 150.0);
+        const double x = in.value("x").toDouble(-1), y = in.value("y").toDouble(-1);
+        if (x < 0 || x > 1 || y < 0 || y > 1) return error(400, "x and y are 0..1 from the top left of the view");
+        hooks_.pickFrame(cam, x, y, std::clamp(in.value("aspect").toDouble(16.0 / 9.0), 0.2, 5.0), in.value("add").toBool());
     } else if (path == "/api/command") {
         const QString id = in.value("id").toString();
         QString why;

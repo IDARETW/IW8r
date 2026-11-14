@@ -4786,6 +4786,41 @@ int MainWindow::captureReflectionProbes(QString* dirOut) {
     return done;
 }
 
+QJsonObject MainWindow::webCamera() const {
+    const app::Camera& c = ctx_.cam;
+    return QJsonObject{{"pos", QJsonArray{c.pos.x, c.pos.y, c.pos.z}}, {"yaw", c.yaw}, {"pitch", c.pitch}, {"fov", c.fov}};
+}
+
+QByteArray MainWindow::webRenderFrame(const WebCamera& cam, int w, int h, int quality) {
+    if (!camera_) return {};
+    // The editor's renderer draws the browser's camera into an off-screen target (no second renderer, no second set
+    // of textures); the editor's own camera comes back before anything else runs.
+    const app::Camera saved = ctx_.cam;
+    ctx_.cam.pos = Vec3{cam.pos[0], cam.pos[1], cam.pos[2]};
+    ctx_.cam.yaw = cam.yaw, ctx_.cam.pitch = cam.pitch, ctx_.cam.fov = cam.fov;
+    const QImage img = camera_->renderImage(w, h, false, 0, 0, true);
+    ctx_.cam = saved;
+    if (img.isNull()) return {};
+    QByteArray out;
+    QBuffer buf(&out);
+    buf.open(QIODevice::WriteOnly);
+    img.save(&buf, "JPG", quality);
+    return out;
+}
+
+bool MainWindow::webPick(const WebCamera& cam, double x, double y, double aspect, bool add) {
+    app::Camera c = ctx_.cam;
+    c.pos = Vec3{cam.pos[0], cam.pos[1], cam.pos[2]};
+    c.yaw = cam.yaw, c.pitch = cam.pitch, c.fov = cam.fov;
+    ctx_.scene.sync(ctx_.doc);
+    double t = 0;
+    const auto hit = ctx_.scene.pick(app::cameraRay(c, 2.0 * x - 1.0, 1.0 - 2.0 * y, aspect), &t);
+    if (hit) ctx_.doc.select(*hit, add);
+    else if (!add) ctx_.doc.deselectAll();
+    ctx_.documentEdited(hit ? "Selected from the browser's view" : QString());
+    return hit.has_value();
+}
+
 QString MainWindow::webCommandBlocked(const QString& id, const QString& label) {
     static const QSet<QString> editorOnly{"Exit", "WebServer", "WebServerSettings", "InstallStockMap", "RestoreStockMap", "OpenInNewWindow"};
     if (editorOnly.contains(id)) return "only at the editor itself";
@@ -4902,6 +4937,9 @@ bool MainWindow::applyWebServerSettings(QString* message) {
             cache.insert(key, jpeg);
             return jpeg;
         };
+        hooks.renderFrame = [this](const WebCamera& cam, int w, int h, int quality) { return webRenderFrame(cam, w, h, quality); };
+        hooks.pickFrame = [this](const WebCamera& cam, double x, double y, double aspect, bool add) { return webPick(cam, x, y, aspect, add); };
+        hooks.camera = [this] { return webCamera(); };
         hooks.commands = [this] { return webCommandList(); };
         hooks.runCommand = [this](const QString& id, QString* why) { return runWebCommand(id, why); };
         web_ = new WebServer(&ctx_, hooks, this);

@@ -62,3 +62,7 @@ body { grid-template-rows: auto auto 1fr auto; }
 #menuPopup .key, #menuPopup .where { color: var(--muted); font-size: 11px; }
 #menuPopup .caption { padding: 4px 8px 2px; color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 #menuPopup hr { border: 0; border-top: 1px solid var(--line); margin: 3px 0; }
+
+/* The editor's own render as the 3D view (plan 3.1). */
+#viewLive { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; background: #1a1c20; outline: none;
+  cursor: crosshair; user-select: none; -webkit-user-drag: none; touch-action: none; }

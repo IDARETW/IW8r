@@ -672,6 +672,23 @@ Select the door brush and choose Primitives > Scripted Objects > Make Hinged Doo
 
 File > New Custom Material and File > Edit Custom Material show the material on a sphere, a plane or a cube. The picture follows every control as you change it: blend mode, unlit, emission, tint, two-sided and alpha test. Drag the picture to turn the object, move the sun with the sliders, or tick Spin. It uses the editor's own renderer, so it is close to the game but not identical: it has no shadows, no reflections, no fog and no colour grade.
 
+### Using the editor from a browser
+
+**Tools > Web Server** serves the editor to a browser on the same machine (`http://127.0.0.1:8780`; **Web Server
+Settings** has the port, a login for other machines and HTTPS). The page works on the same live map as the window:
+one undo history, and each side sees the other's edits at once.
+
+- **Menu bar.** The editor's own menus, with ticks and shortcuts. **Find a command** searches them all; Enter runs
+  the first match. A command that would open a dialog on the editor's screen is greyed, with that reason.
+- **View box.** Top, Front and Side are drawn in the browser (drag to pan or move the selection, wheel to zoom,
+  click to select). **3D** is a simple view drawn in the browser. **Editor view (live)** is the editor's own camera
+  picture, drawn by the editor for your browser: drag to look, W A S D and Q E to fly (Shift is faster), wheel to
+  move forward and back, right-drag to slide, click to select. Camera modes, Lit Preview and Game Lighting from the
+  View menu apply to it.
+- **Panels.** Entities (with a filter), the Inspector (edit, add and remove keys), Assets (click a material to apply
+  it, a model, effect or sound to place it) and the Log.
+- Big maps load: models are sent as boxes for the drawn views, and after the first load only changes travel.
+
 ## 12. Known limits
 
 Not verified in game for every feature (see docs/MILESTONES.md). Stock xmodels are rebuilt as copies, not referenced

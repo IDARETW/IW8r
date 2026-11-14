@@ -1928,6 +1928,60 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             r.check(refuse1.status == 400 && refuse1.body.contains("only at the editor") && refuse2.status == 400 && refuse2.body.contains("dialog") &&
                         refuse3.status == 400 && w.isVisible(),
                     "the editor's own commands, dialogs and unknown ids are refused with the reason");
+            {
+                // Plan 3.1: the browser's 3D view is the editor's own render from the browser's camera.
+                ch.renderFrame = [&w](const WebCamera& cam, int fw, int fh, int quality) { return w.webRenderFrame(cam, fw, fh, quality); };
+                ch.pickFrame = [&w](const WebCamera& cam, double x, double y, double aspect, bool add) { return w.webPick(cam, x, y, aspect, add); };
+                ch.camera = [&w] { return w.webCamera(); };
+                WebServer vweb(&ctx, ch);
+                const app::Camera camWas = ctx.cam;
+                const QJsonObject sc = QJsonDocument::fromJson(vweb.handle("GET", "/api/state", {}, true, {}).body).object().value("camera").toObject();
+                r.check(sc.value("pos").toArray().size() == 3 && std::fabs(sc.value("yaw").toDouble() - camWas.yaw) < 1e-9 && sc.value("fov").toDouble() > 0,
+                        "GET /api/state carries the editor's camera for the browser's view to start from");
+                const auto fr = vweb.handle("GET", "/api/frame?pos=0,-200,120&yaw=90&pitch=-25&fov=90&w=320&h=180&q=80", {}, true, {});
+                const QImage shot = QImage::fromData(fr.body, "JPG");
+                double sum = 0, sum2 = 0;
+                for (int y = 0; y < shot.height(); ++y)
+                    for (int x = 0; x < shot.width(); ++x) {
+                        const double l = qGray(shot.pixel(x, y)) / 255.0;
+                        sum += l, sum2 += l * l;
+                    }
+                const double n = std::max(1, shot.width() * shot.height()), mean = sum / n, var = sum2 / n - mean * mean;
+                r.check(fr.status == 200 && fr.type == "image/jpeg" && fr.body.startsWith("\xFF\xD8") && shot.width() == 320 && shot.height() == 180 && var > 1e-4,
+                        QString("GET /api/frame returns the editor's render of the browser's camera as a JPEG (%1 bytes, variance %2)")
+                            .arg(fr.body.size()).arg(var, 0, 'f', 4));
+                r.check(ctx.cam.pos.x == camWas.pos.x && ctx.cam.pos.y == camWas.pos.y && ctx.cam.yaw == camWas.yaw && ctx.cam.pitch == camWas.pitch,
+                        "the editor's own camera is where it was after a browser frame");
+                const auto bad1 = vweb.handle("GET", "/api/frame?pos=0,0&yaw=0&pitch=0&w=320&h=180", {}, true, {});
+                const auto bad2 = vweb.handle("GET", "/api/frame?pos=0,0,0&yaw=0&pitch=0&w=9000&h=180", {}, true, {});
+                r.check(bad1.status == 400 && bad2.status == 400, "a frame request without a full camera or with a size out of range is refused");
+                // A pick through the browser's camera: down at the first brush selects it; up at the sky deselects.
+                ctx.doc.deselectAll();
+                Vec3 centre{};
+                bool haveBrush = false;
+                ctx.scene.sync(ctx.doc);
+                for (const auto* g : ctx.scene.items())
+                    if (g->kind == iw8r::app::PrimGeom::Brush && g->bounds.valid()) {
+                        centre = (g->bounds.mins + g->bounds.maxs) * 0.5;
+                        centre.z = g->bounds.maxs.z;
+                        haveBrush = true;
+                        break;
+                    }
+                const QByteArray down = QString("{\"pos\":[%1,%2,%3],\"yaw\":0,\"pitch\":-89,\"fov\":90,\"x\":0.5,\"y\":0.5,\"aspect\":1.7778}")
+                                            .arg(centre.x).arg(centre.y).arg(centre.z + 300).toUtf8();
+                const auto pk = vweb.handle("POST", "/api/pick", down, true, {});
+                const bool picked = !ctx.doc.selection().empty();
+                const QByteArray up = QString("{\"pos\":[%1,%2,%3],\"yaw\":0,\"pitch\":89,\"fov\":90,\"x\":0.5,\"y\":0.5,\"aspect\":1.7778}")
+                                          .arg(centre.x).arg(centre.y).arg(centre.z + 90000).toUtf8();
+                vweb.handle("POST", "/api/pick", up, true, {});
+                r.check(haveBrush && pk.status == 200 && picked && ctx.doc.selection().empty(),
+                        "POST /api/pick selects what the browser's view shows under the pointer, and nothing there deselects");
+                auto livePage = web.handle("GET", "/", {}, true, {});
+                auto liveJs = web.handle("GET", "/viewlive.js", {}, true, {});
+                r.check(livePage.body.contains("viewLive") && livePage.body.contains("Editor view (live)") && liveJs.status == 200 &&
+                            liveJs.body.contains("/api/frame") && liveJs.body.contains("/api/pick"),
+                        "the browser page has the live editor view");
+            }
             auto pageNow = web.handle("GET", "/", {}, true, {});
             auto jsNow = web.handle("GET", "/app.js", {}, true, {});
             r.check(pageNow.body.contains("id=\"menubar\"") && pageNow.body.contains("cmdSearch") && jsNow.body.contains("/api/commands"),

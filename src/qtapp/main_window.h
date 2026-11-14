@@ -3,6 +3,7 @@
 #include "umbra_view.h"
 #include "command_script.h"
 
+#include <QJsonObject>
 #include <QJsonArray>
 #include <QElapsedTimer>
 #include <QMainWindow>
@@ -126,6 +127,11 @@ public:
     // one run by id. A command is not run from the browser when it opens a dialog on the editor's screen (its label
     // ends in "...") or belongs to the person at the editor (exit, the web server itself, installs into the game).
     QJsonArray webCommandList() const;
+    // The browser's live view (plan 3.1): the camera view's own render from a camera of the browser's, as a JPEG; a
+    // pick through that camera; the editor's camera as JSON. The editor's own camera is put back after each.
+    QByteArray webRenderFrame(const struct WebCamera& cam, int w, int h, int quality);
+    bool webPick(const struct WebCamera& cam, double x, double y, double aspect, bool add);
+    QJsonObject webCamera() const;
     bool runWebCommand(const QString& id, QString* why);
     static QString webCommandBlocked(const QString& id, const QString& label);
     // Reflection probe capture (5.5): renders every probe position (the world-default probe 0 at the brush bounds

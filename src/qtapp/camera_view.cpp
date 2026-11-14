@@ -1598,10 +1598,11 @@ size_t CameraView::renderAndCount() {
     return renderer_.countNonClearPixels(kClear);
 }
 
-QImage CameraView::renderImage(int w, int h, bool clean, double aspect, int settleMs) {
+QImage CameraView::renderImage(int w, int h, bool clean, double aspect, int settleMs, bool keepGeometry) {
     if (!rendererOk_ || w < 1 || h < 1 || w > 16384 || h > 16384) return {};
     captureW_ = w, captureH_ = h, captureAspect_ = aspect, cleanCapture_ = clean;
-    geomDirty_ = true;
+    const bool remake = clean || !keepGeometry;
+    if (remake) geomDirty_ = true;
     QElapsedTimer t;
     t.start();
     render();
@@ -1614,7 +1615,7 @@ QImage CameraView::renderImage(int w, int h, bool clean, double aspect, int sett
     int rw = 0, rh = 0;
     const bool ok = renderer_.readback(px, rw, rh);
     captureW_ = captureH_ = 0, captureAspect_ = 0, cleanCapture_ = false;
-    geomDirty_ = true;
+    if (remake) geomDirty_ = true;
     update();
     if (!ok || rw != w || rh != h) return {};
     QImage img(px.data(), w, h, w * 4, QImage::Format_RGBA8888);
