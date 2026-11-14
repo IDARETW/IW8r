@@ -1586,8 +1586,30 @@ void CameraView::updateReflectionProbe() {
     activeProbeMtime_ = best ? best->mtime : 0;
     activeProbe_ = best ? best->rgba + "|" + QString::number(best->mtime) : QString();
     std::string bytes;
-    if (best && readFile(best->rgba.toStdString(), bytes) && bytes.size() == size_t(6) * 64 * 64 * 4)
-        renderer_.setReflectionProbe(reinterpret_cast<const uint8_t*>(bytes.data()), 64);
+    // The capture's face size (kIw8ProbeCaptureSize since research 123; a 64-texel capture of an older build still shows).
+    int side = 0;
+    if (best && readFile(best->rgba.toStdString(), bytes))
+        for (const int candidate : {kIw8ProbeCaptureSize, 64})
+            if (bytes.size() == size_t(6) * size_t(candidate) * size_t(candidate) * 4) side = candidate;
+    if (side > 64) {
+        // The preview's shader blurs by levels of a 64-texel cube (the game's rule for its probes): halve the capture.
+        std::string half(size_t(6) * 64 * 64 * 4, '\0');
+        const int step = side / 64;
+        for (int f = 0; f < 6; ++f)
+            for (int y = 0; y < 64; ++y)
+                for (int x = 0; x < 64; ++x)
+                    for (int c = 0; c < 4; ++c) {
+                        unsigned sum = 0;
+                        for (int sy = 0; sy < step; ++sy)
+                            for (int sx = 0; sx < step; ++sx)
+                                sum += uint8_t(bytes[((size_t(f) * size_t(side) + size_t(y * step + sy)) * size_t(side) + size_t(x * step + sx)) * 4 + size_t(c)]);
+                        half[((size_t(f) * 64 + size_t(y)) * 64 + size_t(x)) * 4 + size_t(c)] = char((sum + unsigned(step * step) / 2) / unsigned(step * step));
+                    }
+        bytes.swap(half);
+        side = 64;
+    }
+    if (side > 0)
+        renderer_.setReflectionProbe(reinterpret_cast<const uint8_t*>(bytes.data()), side);
     else
         renderer_.setReflectionProbe(nullptr, 0);
 }
@@ -1906,31 +1928,39 @@ std::vector<uint8_t> CameraView::captureCube(const Vec3& pos, int size) {
         const float* m = vp.m;
         for (int y = 0; y < size; ++y)
             for (int x = 0; x < size; ++x) {
-                const double u = 2.0 * (x + 0.5) / size - 1.0, v = 2.0 * (y + 0.5) / size - 1.0;
-                // Inverse of the converter's per-face (u, v) for a direction on that face.
-                Vec3 d;
-                switch (f) {
-                    case 0: d = {1, -v, -u}; break;
-                    case 1: d = {-1, -v, u}; break;
-                    case 2: d = {u, 1, v}; break;
-                    case 3: d = {u, -1, -v}; break;
-                    case 4: d = {u, -v, 1}; break;
-                    default: d = {-u, -v, -1}; break;
-                }
-                const Vec3 p = pos + normalize(d) * 1024.0;
-                // Row-vector times row-major matrix.
-                const double cx = p.x * m[0] + p.y * m[4] + p.z * m[8] + m[12];
-                const double cy = p.x * m[1] + p.y * m[5] + p.z * m[9] + m[13];
-                const double cw = p.x * m[3] + p.y * m[7] + p.z * m[11] + m[15];
                 uint8_t* o = &out[((size_t(f) * size_t(size) + size_t(y)) * size_t(size) + size_t(x)) * 4];
                 o[3] = 255;
-                if (cw <= 1e-6) continue;
-                const int px = std::clamp(int((cx / cw * 0.5 + 0.5) * fw), 0, fw - 1);
-                const int py = std::clamp(int((0.5 - cy / cw * 0.5) * fh), 0, fh - 1);
-                const uint8_t* s = &frames[size_t(f)][(size_t(py) * size_t(fw) + size_t(px)) * 4];
-                o[0] = s[0];
-                o[1] = s[1];
-                o[2] = s[2];
+                // The mean of four samples inside the texel (the frame has several pixels per texel: one sample
+                // made sparkling reflections).
+                unsigned sum[3] = {0, 0, 0}, taken = 0;
+                for (int sub = 0; sub < 4; ++sub) {
+                    const double u = 2.0 * (x + (sub & 1 ? 0.75 : 0.25)) / size - 1.0, v = 2.0 * (y + (sub & 2 ? 0.75 : 0.25)) / size - 1.0;
+                    // Inverse of the converter's per-face (u, v) for a direction on that face.
+                    Vec3 d;
+                    switch (f) {
+                        case 0: d = {1, -v, -u}; break;
+                        case 1: d = {-1, -v, u}; break;
+                        case 2: d = {u, 1, v}; break;
+                        case 3: d = {u, -1, -v}; break;
+                        case 4: d = {u, -v, 1}; break;
+                        default: d = {-u, -v, -1}; break;
+                    }
+                    const Vec3 p = pos + normalize(d) * 1024.0;
+                    // Row-vector times row-major matrix.
+                    const double cx = p.x * m[0] + p.y * m[4] + p.z * m[8] + m[12];
+                    const double cy = p.x * m[1] + p.y * m[5] + p.z * m[9] + m[13];
+                    const double cw = p.x * m[3] + p.y * m[7] + p.z * m[11] + m[15];
+                    if (cw <= 1e-6) continue;
+                    const int px = std::clamp(int((cx / cw * 0.5 + 0.5) * fw), 0, fw - 1);
+                    const int py = std::clamp(int((0.5 - cy / cw * 0.5) * fh), 0, fh - 1);
+                    const uint8_t* s = &frames[size_t(f)][(size_t(py) * size_t(fw) + size_t(px)) * 4];
+                    sum[0] += s[0], sum[1] += s[1], sum[2] += s[2];
+                    ++taken;
+                }
+                if (!taken) continue;
+                o[0] = uint8_t((sum[0] + taken / 2) / taken);
+                o[1] = uint8_t((sum[1] + taken / 2) / taken);
+                o[2] = uint8_t((sum[2] + taken / 2) / taken);
             }
     }
     return out;

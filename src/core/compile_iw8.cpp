@@ -64,8 +64,8 @@ constexpr size_t kMaxVerticesPerSurface = 60000;  // task rule: split surfaces a
 constexpr size_t kMaxSurfaces = 65535;            // doc 15 §2.1: surfaces is 1..65535
 constexpr double kBoundsPad = 16.0;               // task rule: world bounds padded by 16
 constexpr double kDefaultTexSize = 128.0;         // texture size assumed when a face has no texture fields
-constexpr int kProbeSize = 64;                    // doc 15 §7: 64x64 cube, 7 mips
-constexpr int kProbeMips = 7;
+constexpr int kProbeSize = kIw8ProbeCaptureSize;  // the probe cube's face (research 123), every level down to 1
+constexpr int kProbeMips = 8;
 
 // ---------------------------------------------------------------- small helpers
 
@@ -1002,8 +1002,8 @@ void put32(std::string& s, uint32_t v) {
     for (int i = 0; i < 4; ++i) s.push_back(char((v >> (8 * i)) & 0xFF));
 }
 
-// 64x64 cube map, B8G8R8A8, 7 mips: neutral grey (128) with opaque alpha, or the six captured RGBA faces (each
-// 64*64*4 bytes, mips by 2x2 box filter). 128 + 6 * 21844 bytes.
+// A cube map of kProbeSize faces, B8G8R8A8, every level: neutral grey (128) with opaque alpha, or the six captured
+// RGBA faces (each kProbeSize^2 * 4 bytes, mips by 2x2 box filter).
 std::string buildProbeDds(const std::vector<uint8_t>* faces = nullptr) {
     std::string out = "DDS ";
     put32(out, 124);                                       // dwSize
@@ -2955,7 +2955,10 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         if (pi >= 1 && pi - 1 < probeVolumes.size() && probeVolumes[pi - 1])
             volumeJson = ",\"volume\":[" + vec3(probeVolumes[pi - 1]->mins) + "," + vec3(probeVolumes[pi - 1]->maxs) + "]";
         if (pi >= 1 && pi - 1 < probeBlendJson.size()) volumeJson += probeBlendJson[pi - 1];
-        probeJson += std::string(pi ? "," : "") + "{\"image\":" + quote(image) + ",\"origin\":" + vec3(probes[pi]) + volumeJson + "}";
+        // "capture": "editor": the picture is the editor's own render of the map (or its neutral grey), not an IW3
+        // capture: the converter keeps its colour and stores it at the stock probes' level (research 123).
+        probeJson += std::string(pi ? "," : "") + "{\"image\":" + quote(image) + ",\"origin\":" + vec3(probes[pi]) + volumeJson +
+                     ",\"capture\":\"editor\"}";
         probeIndexJson += std::string(pi ? "," : "") + std::to_string(pi);
     }
     for (size_t mi = 0; mi < placements.size(); ++mi) {

@@ -353,7 +353,9 @@ Map: `out/agent/mp_iw8r_fix1/mp_iw8r_fix1.map` (already built; Ctrl+F7, then Loc
 - [ ] Reverb: inside the 400 x 400 box at the centre (now from the floor to z 160) gunshots ring like a tunnel;
       outside it they sound like open space. (In the last test the box was above head height.)
 - [ ] Reflection probes now carry a picture of their surroundings (captured before every build): glossy surfaces
-      near a probe should reflect the room, not flat grey.
+      near a probe should reflect the room, not flat grey. Since 2026-11-14 they are stored in colour at the
+      game's own level (research 123): a weapon's metal and a glossy floor should reflect about as strongly as on
+      a stock map (rebuild the map first).
 - [ ] Killstreaks, radar: with a UAV (not the Personal Radar) enemies without the Ghost perk ping on the minimap
       and the sweep line crosses it; with the Personal Radar the drone is visible about 1,500 units above you
       (research 122 says what each should do).

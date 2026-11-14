@@ -5,6 +5,20 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Reflections on a built map: the cause of "probes make no visible change" was found and fixed** (research 123).
+  The game multiplies a probe's picture by the brightness of the baked light, so its own probes are stored with a
+  mean brightness of about 0.9 and in colour. A built map's probe was stored grey at 0.14 (the converter read it by
+  the rules made for Call of Duty 4 captures): every reflection in a built map, on its own surfaces and on weapons,
+  players and stock props, was six to seven times too dark and had no colour.
+  - A built map's probes now keep their colour and are stored at the stock level (measured on a built zone: mean
+    0.907, colour 0.188 where it was 0.001; stock maps 0.82 to 0.93).
+  - The capture is 128 texels a face, was 64, and each texel is the mean of four samples: sharper mirror-like
+    reflections without sparkle.
+  - Converter (x64-zt `5ecf08a0`, deployed): only probes the editor marks as its own captures are read this way;
+    converted Call of Duty 4 and IW7 maps are read as before.
+  - New offline proof `tools/probe_capture_build_test.py` (24 proofs in the set). Rebuild a map to get it. Not seen
+    in game.
+
 - **View > Umbra Visibility > Cull by Tome now covers everything the game's visibility query decides.** Besides
   surfaces and props it leaves out the stock map's lamps, reflection probe boxes and decal groups that the game
   leaves out from the camera, and the displaced terrain is culled like every other surface (it kept none of its

@@ -4831,7 +4831,7 @@ int MainWindow::captureReflectionProbes(QString* dirOut) {
     QDir().mkpath(dir);
     int done = 0;
     for (size_t i = 0; i < positions.size(); ++i) {
-        const std::vector<uint8_t> faces = camera_->captureCube(positions[i], 64);
+        const std::vector<uint8_t> faces = camera_->captureCube(positions[i], kIw8ProbeCaptureSize);
         if (faces.empty()) continue;
         QFile rf(dir + QString("/probe%1.rgba").arg(i)), pf(dir + QString("/probe%1.pos").arg(i));
         if (!rf.open(QIODevice::WriteOnly) || !pf.open(QIODevice::WriteOnly)) continue;

@@ -272,14 +272,22 @@ TEST(compile_iw8_sample_writes_extraction) {
     CHECK(ents.find("mp_tdm_spawn_allies_start") != std::string::npos);
     CHECK(ents.find("\"script_model\"") != std::string::npos);
 
-    // Probe DDS: 64x64 B8G8R8A8 cube, 7 mips, 128 + 6 * 21844 bytes.
+    // Probe DDS: a B8G8R8A8 cube of kIw8ProbeCaptureSize faces with every level (research 123).
     const std::string dds = readAll(p.dds);
-    CHECK(dds.size() == 128 + 6 * 21844);
+    size_t faceBytes = 0;
+    int levels = 0;
+    for (int side = kIw8ProbeCaptureSize; side >= 1; side /= 2) faceBytes += size_t(side) * size_t(side) * 4, ++levels;
+    CHECK(kIw8ProbeCaptureSize == 128 && levels == 8);
+    CHECK(dds.size() == 128 + 6 * faceBytes);
     CHECK(dds.compare(0, 4, "DDS ") == 0);
     CHECK(u32(dds, 4) == 124);
-    CHECK(u32(dds, 12) == 64);
-    CHECK(u32(dds, 16) == 64);
-    CHECK(u32(dds, 28) == 7);
+    CHECK(u32(dds, 12) == uint32_t(kIw8ProbeCaptureSize));
+    CHECK(u32(dds, 16) == uint32_t(kIw8ProbeCaptureSize));
+    CHECK(u32(dds, 28) == uint32_t(levels));
+    // The world JSON says whose picture each probe is: the converter keeps an editor capture's colour and stores it
+    // at the stock probes' level.
+    const std::string worldText = readAll(p.world);
+    CHECK(worldText.find("\"capture\":\"editor\"") != std::string::npos);
     CHECK(u32(dds, 76) == 32);
     CHECK(u32(dds, 80) == 0x41);
     CHECK(u32(dds, 88) == 32);

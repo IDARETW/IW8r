@@ -1818,7 +1818,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 QString("a probe capture renders six 64x64 faces with the room in them (%1 colours sampled)").arg(colours.size()));
         QString dir;
         const int n = w.captureReflectionProbes(&dir);
-        r.check(n >= 1 && QFileInfo(dir + "/probe0.rgba").size() == 6 * 64 * 64 * 4 && QFileInfo::exists(dir + "/probe0.pos"),
+        r.check(n >= 1 && QFileInfo(dir + "/probe0.rgba").size() == qint64(6) * iw8r::kIw8ProbeCaptureSize * iw8r::kIw8ProbeCaptureSize * 4 && QFileInfo::exists(dir + "/probe0.pos"),
                 QString("Compile > Capture Reflection Probes writes %1 capture(s) to %2").arg(n).arg(dir));
         // 3.16: the textured camera then reflects the nearest captured probe on glossy surfaces.
         const bool wasTextured = ctx.texturedView;

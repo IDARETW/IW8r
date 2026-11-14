@@ -3,6 +3,8 @@
 Status: research only. No source, map or build was changed. Built test map: `out/agent/mp_iw8r_fix1` (build log at 16:53 on 2026-11-11).
 Converter: `E:\mw124\x64-zt`, branch `iw8radiant/build-extraction`, HEAD `062ec6b4`. Its `zonetool.exe` was built 16:48 on 2026-11-11.
 
+Update 2026-11-14: research 123 found the larger cause (the stored level and the missing colour) and its fix.
+
 Short answer: in this build every probe image is the same flat grey, and the converter assigns each surface one probe by its
 own tag, not by the player's position. The authored volume never changes which probe a surface uses. A matte grey material
 with no specular map is also unlikely to show any reflection even when the probe differs.

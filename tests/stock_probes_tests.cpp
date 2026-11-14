@@ -1208,3 +1208,64 @@ TEST(stock_probes_warzone_dec) {
         }
     }
 }
+
+// What a zone's reflection probes hold (research 123): set IW8R_TEST_PROBE_JSON (the zone's gfx_map export) and
+// IW8R_TEST_PROBE_DEC (the decompressed zone, ACTS -d), or IW8R_TEST_PROBE_CACHE (an editor probe cache file).
+// Prints per probe the mean luminance of level 0, its brightest texel and how coloured it is (the mean of
+// (max - min) / max over the texels: 0 = grey). A report; with IW8R_TEST_PROBE_EXPECT="<min mean> <max mean> <min colour>"
+// it checks that every probe's mean luminance lies in that range and the set's colour reaches that value.
+TEST(stock_probes_zone_report) {
+    const char* json = std::getenv("IW8R_TEST_PROBE_JSON");
+    const char* dec = std::getenv("IW8R_TEST_PROBE_DEC");
+    const char* cache = std::getenv("IW8R_TEST_PROBE_CACHE");
+    StockProbeSet set;
+    std::string err;
+    if (cache && *cache) {
+        if (!readStockProbeCache(cache, set, &err, true)) {
+            std::printf("  probereport: %s\n", err.c_str());
+            return;
+        }
+    } else if (json && *json && dec && *dec) {
+        if (!extractStockProbes(json, dec, set, &err) || !decodeStockProbeImages(set, &err)) {
+            std::printf("  probereport: %s\n", err.c_str());
+            return;
+        }
+    } else {
+        return;
+    }
+    double lo = 1e30, hi = 0, sum = 0, colourSum = 0, peak = 0;
+    size_t n = 0;
+    for (size_t k = 0; k < set.probes.size(); ++k) {
+        const StockProbe& p = set.probes[k];
+        if (p.mips.empty()) continue;
+        const double mean = stockProbeMeanLuminance(p, set.size, 0, true);
+        double colour = 0, brightest = 0;
+        size_t texels = 0;
+        for (int y = 4; y < set.size - 4; ++y)
+            for (int x = 4; x < set.size - 4; ++x) {
+                const ProbeVec3 t = stockProbeTexel(p, set.size, 0, x, y);
+                const double mx = std::max({double(t[0]), double(t[1]), double(t[2])}), mn = std::min({double(t[0]), double(t[1]), double(t[2])});
+                brightest = std::max(brightest, mx);
+                if (mx > 1e-4) colour += (mx - mn) / mx;
+                ++texels;
+            }
+        colour = texels ? colour / double(texels) : 0;
+        if (n < 6) std::printf("  probereport: probe %zu mean luminance %.3f, brightest %.2f, colour %.3f\n", k, mean, brightest, colour);
+        lo = std::min(lo, mean), hi = std::max(hi, mean), sum += mean, colourSum += colour, peak = std::max(peak, brightest);
+        ++n;
+    }
+    if (!n) {
+        std::printf("  probereport: no probe image\n");
+        return;
+    }
+    std::printf("  probereport: %zu probe(s), %d px, mean luminance %.3f .. %.3f (average %.3f), brightest texel %.2f, colour %.3f\n", n, set.size, lo,
+                hi, sum / double(n), peak, colourSum / double(n));
+    if (const char* expect = std::getenv("IW8R_TEST_PROBE_EXPECT")) {
+        double minMean = 0, maxMean = 0, minColour = 0;
+        if (std::sscanf(expect, "%lf %lf %lf", &minMean, &maxMean, &minColour) == 3) {
+            CHECK(lo >= minMean);
+            CHECK(hi <= maxMean);
+            CHECK(colourSum / double(n) >= minColour);
+        }
+    }
+}

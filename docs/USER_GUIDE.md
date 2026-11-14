@@ -771,7 +771,8 @@ The owner's playtest of 2026-11-11 left these open. docs/ROADMAP.md (fix queue F
   Not seen in game yet.
 - A looping sound of the map's own, played from an effect, was not heard in game, though the ambient bed was. Unresolved.
 - Reverb is not confirmed in game.
-- Reflection probes make no visible change in game.
+- Reflection probes made no visible change in game. The cause was found on 2026-11-14 (they were stored grey and
+  far too dark) and fixed; rebuild the map. Not seen in game yet.
 - Only Team Deathmatch can be picked in the game's lobby. Other modes say the map does not support them. Live Link >
   Quick match starts other modes directly.
 - Bullet impacts look alike on every surface in game. The build tags each surface correctly; the cause is not known yet.

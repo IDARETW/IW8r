@@ -211,7 +211,9 @@ HDR probes. The parity proof is DONE 2026-11-14 as a comparison of the data: the
   - multithreaded or GPU;
   - per-face lightmap scale. The converter must read it, which is an x64-zt change.
 - **Light grid from the bake** (sky, bounce, lights) instead of a flat ambient (ROADMAP 5.20).
-- **Reflection probes:**
+- **Reflection probes:** DONE 2026-11-14 for what F.10 needed (research 123): a built map's probes are stored in
+  colour at the stock probes' level (they were grey and six to seven times too dark) and captured at 128 texels a
+  face; offline proof `tools/probe_capture_build_test.py`. Left: a capture of the linear frame (highlights only).
   - captured with Game Lighting on, in game light units, HDR / BC6H, at a higher resolution;
   - this fixes F.10 ("probes make no visible change").
 - **Offline proof:**
@@ -370,7 +372,7 @@ judged against the running game, which is not used any more. They are listed so 
 | 1.5 SELFVIS, the 236 lightmapped `tml` props, Warzone tile grids for tile props | Props take their own light grid box; the rest fall back to the probes | SELFVIS needs a new ACTS export; the others touch 2 % of placements. |
 | 1.6 `needsDynamicShadows`, the screen-space shadow mask | Every spot and omni light with shadow maps for the nearest 64 | Affects moving entities and contact shadows only. |
 | 1.8 volumetric fog | Bloom veil, vignette, film grain and white balance (2026-11-14), exponential fog, the stock vision's exposure and grade; the volumetric march is built and off | Measured 2026-11-14 against the owner's Speedball picture: the frame is closer to the game with it off (block error 11.3 against 16.8). Its constants are verified in the Replay exe (research 109 section 2.7); the sky's own brightness has to be settled before it can go on. |
-| 1.11 HDR probe capture | Bounces in the surfaces' colours with the later bounces estimated, a lightmap scale per face, the texel size as a Bake Setting (all 2026-11-14), 8-bit probes captured before every build | HDR probes change glossy reflections by a little and need the converter to take another image format. |
+| 1.11 a capture of the renderer's linear frame for probes | Probes in colour at the stock level, 128 texels a face (2026-11-14, research 123), captured before every build | The level and the colour decide whether reflections show; the linear range only sharpens the highlights of very bright things in mirror-like surfaces. |
 | 2.3 local occlusion updates for edited stock maps | The whole map's occlusion opens when stock geometry is removed | See 2.3: a mistake makes objects vanish in the game. |
 | 2.4 thin slanted walls, terrain and models as occluders, gates, splitting merged surfaces | Opaque structural brushes (boxes, and other shapes by the box inside them); a detail brush is left out, which is the per-brush switch (2026-11-14) | The bake is opt-in and unseen in the game; widening it before a first look would only widen what could go wrong. |
 

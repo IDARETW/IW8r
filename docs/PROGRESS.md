@@ -57,7 +57,16 @@
   Research 122 (an Opus agent, read-only IDA; section 6 by the main session): the sweep / ping gate is ps+756 (has
   radar) or ps+760 (one-off sweep); setminimap arguments of a built map equal the stock ones; the report fits the
   Personal Radar (helper_drone.gsc: ground + 1500, triggerportableradarping, skips one specialty_ perk).
-  Parking state 2026-11-14 (after the Umbra view classes): repo at the commit after e0cd9b4, converter live at b3b21198, suites core 181,830 checks / 1,368 tests and GUI 1,082 checks, 0 failures; 23 offline proofs pass; zones of mp_cinderrail_t rebuilt 09:09 with that converter (x64zt_output; its occlusion data reaches 131072 units past the map); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe and out/package/IW8RadiantSuite-20261114.zip rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
+  Probe level (research 123, F.10): a built zone's probe measured mean luminance 0.139, no colour; stock 0.82-0.93
+  with colour (report test stock_probes_zone_report: IW8R_TEST_PROBE_CACHE, or IW8R_TEST_PROBE_JSON +
+  IW8R_TEST_PROBE_DEC, optional IW8R_TEST_PROBE_EXPECT "<min> <max> <colour>"). Editor: world JSON probe entries carry
+  "capture":"editor"; kIw8ProbeCaptureSize 128 (compile_iw8.h), 8 levels, captureCube takes four samples a texel; the
+  preview's own probe (updateReflectionProbe) halves a 128 capture to 64. Converter 5ecf08a0: DecodeDdsCubemap(path,
+  editorCapture) keeps colour, Cubemap::arrayGain = 0.9 / mean (StockProbeGain, at most 64) applied in
+  BuildReflectionProbeArray and to the zone SH; MAP_PROBE_LEVELS divided by it, MAP_GLASS_SH without it; the array
+  cache key holds the gain. Proof tools/probe_capture_build_test.py. Patches tools/patches/zt_probe_editor_capture.py,
+  probe_editor_capture.py.
+  Parking state 2026-11-14 (after the probe level fix): repo at the commit after abd4c75, converter live at 5ecf08a0, suites core 181,832 checks / 1,369 tests and GUI 1,082 checks, 0 failures; 24 offline proofs pass; zones of mp_cinderrail_t rebuilt 10:12 with that converter (x64zt_output; its occlusion data reaches 131072 units past the map, its probe is stored at mean luminance 0.896 in colour); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe and out/package/IW8RadiantSuite-20261114.zip rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
   GET /api/handles (control points of the selected patches, at most 20,000) and POST /api/vertices moves with
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.
   Web form "vision": every scalar / vector field of core vision_fields as a text field (key "v:<name>"), written

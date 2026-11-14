@@ -34,6 +34,10 @@
 
 namespace iw8r {
 
+// The face size of a reflection probe capture and of the cube the build writes (research 123: the game's probe
+// image is a 256-texel octahedron, which a cube of about 104-texel faces fills).
+constexpr int kIw8ProbeCaptureSize = 128;
+
 struct CompileOptions {
     std::string mapId;                        // mp_ + lower-case, <= 15 chars (doc 03 rule ^mp_[a-z0-9_]{1,12}$)
     std::string greyMaterial = "iw8r/grey";   // material name used by every surface without a custom material (doc 15 §4.2)
@@ -114,7 +118,7 @@ struct CompileOptions {
     // faces (D3D cube face order, world Z-up directions as the converter samples them) and <dir>/probe<N>.pos the
     // "x y z" it was captured at. A capture whose position differs from the probe's by more than one unit is ignored
     // (the probe moved); probes without one get the neutral grey cube.
-    std::string probeCaptureDir;
+    std::string probeCaptureDir;  // probe<N>.rgba (6 faces of kIw8ProbeCaptureSize^2 RGBA) + probe<N>.pos
     // Loadscreen / map-select preview (1.17): an image file (PNG, ...) written as extracted/images/loadscreen_<id>.dds;
     // the converter turns `loadscreen_<map>` into the package's preview.rgba (x64-zt BuildLoadscreenPreview). Empty or
     // unreadable: no preview (a warning for the second).
