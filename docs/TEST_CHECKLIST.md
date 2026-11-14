@@ -85,6 +85,12 @@ Each one names the longer section below that has the steps.
   and the walls, pipes and manhole covers should be there in both. If the editor shows less than the game, say which
   objects.
 
+## In game (optional, 2026-11-14): your own HUD picture
+- [ ] Put a PNG into `<map name>.hud` (Compile > HUD Images Folder), add a map script (worldspawn `iw8r_script`) with
+  `user_main() { icon = newhudelem(); icon.x = 20; icon.y = 120; icon setshader("hud_<file name>", 64, 64); }`, build
+  and play: the picture is on the screen at the left. If a grey or checkered square shows, the material loaded but
+  the image did not; if nothing shows, say so.
+
 ## In game: your map's model light (2026-11-13), not seen in game
 
 - [ ] Build the dev showcase (F7) and walk from outside into a closed room: the gun and nearby props get darker inside

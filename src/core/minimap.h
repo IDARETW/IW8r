@@ -44,5 +44,7 @@ MinimapImage renderMinimap(const MapFile& map, int size = 512);
 // weighting, then each level is BC3-encoded. The image must be square with a power-of-two side. Returns false and
 // sets `err` on failure.
 bool writeMinimapDds(const MinimapImage& img, const std::string& ddsPath, std::string* err);
+// The same file as bytes (the map's own HUD images use the same form, core hud_images).
+bool encodeMinimapDds(const MinimapImage& img, std::vector<uint8_t>& file, std::string* err);
 
 }  // namespace iw8r

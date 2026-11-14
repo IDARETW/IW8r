@@ -36,6 +36,7 @@ proofs = [
     ('stock_retexture_test', ['--exe', exe]),
     ('lightmap_bake_build_test', []),  # an editor map through --compile (the editor exe, not --exe)
     ('umbra_bake_build_test', []),  # the occlusion bake of an editor map, read back from the built zone
+    ('hud_image_build_test', ['--exe', exe]),  # a map's own HUD image, built through the editor with this converter
     ('warzone_custom_loot_test', None),
     ('warzone_custom_loot_boxes_test', None),
     ('scriptable_limits_test', None),

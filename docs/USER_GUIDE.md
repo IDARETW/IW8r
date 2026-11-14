@@ -287,6 +287,11 @@ Commands in the Tools menu:
   also aimed at the sun painted in that sky, in the same undo step.
 - **Compass**: the compass north is the top of the XY view (+Y). Builds write worldspawn `northyaw 90` unless the map
   sets its own, so the game's north matches the editor's.
+- **Your own pictures on the HUD.** Compile > HUD Images Folder opens the folder `<map name>.hud` beside your map.
+  Put pictures in it (PNG with transparency works best). A file `flag.png` becomes `hud_flag`; draw it from the
+  map's script: `icon = newhudelem(); icon.x = 20; icon.y = 120; icon setshader("hud_flag", 64, 64);`. Use names the
+  game does not already have (a name such as `hud_icon_c4` is a stock icon). Up to 64 pictures; each is stored
+  square, up to 1024 pixels a side.
 - **Painting a blend on a brush surface.** Select the faces (Ctrl+Shift+click) or whole brushes and run Brush >
   Paint Mesh on Faces. It asks how far apart the paint points should be (32 units is a good start; smaller is finer)
   and lays a mesh on each face with the same material and texture placement. The face under the mesh becomes caulk:

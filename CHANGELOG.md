@@ -5,6 +5,16 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Your own HUD pictures in a map script.** Until now a map script could only draw the game's own icons. Put
+  pictures (PNG, TGA, JPG, BMP or DDS) into the folder `<map name>.hud` beside the map (Compile > HUD Images Folder
+  makes and opens it); the build carries each one, and the script draws `flag.png` with
+  `setshader("hud_flag", width, height)`. A picture is stored as a square (it gets its shape back from the width and
+  height you draw it with), with its transparency. The build lists the names, and tells you when the script draws a
+  `hud_` name that is not one of your pictures. This needed a small converter change (x64-zt `1c70f6ed`, deployed).
+  Proven offline: `tools/hud_image_build_test.py` builds a map with a picture and a script, the game's loaders accept
+  all five zones, and the picture and its material are read back from them. Whether the game draws it has not been
+  seen.
+
 - **Fixes after a second pair of eyes read the day's changes** (an independent review of the code; nine defects, none
   of them a crash in normal use):
   - A stock prop made of several materials could lose one part before another at a distance (each part was measured

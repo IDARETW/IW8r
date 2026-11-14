@@ -57,6 +57,7 @@
 #include "zone_deps.h"
 #include "overview_image.h"
 #include "convert_ops.h"
+#include "hud_images.h"
 #include "sky_panorama.h"
 #include "bevel_ops.h"
 #include "scatter_rules.h"
@@ -3680,6 +3681,17 @@ void MainWindow::buildMenus() {
         pendingDeploy_ = true;
         compile_->run({CompilePanel::Stage::Extraction, CompilePanel::Stage::Zones, CompilePanel::Stage::Validate});
     });
+    addCommand(compile, "HudImagesFolder", "HUD Images Folder (pictures for the map script)...", QKeySequence(), [this] {
+        // 4.27: every picture in "<map name>.hud" becomes a HUD image the map script can draw with setshader.
+        const QString folder = qs(hudImageFolderFor(ctx_.doc.path()));
+        if (folder.isEmpty()) return ctx_.setStatus("Save the map first: its HUD images live in a folder beside it");
+        QDir().mkpath(folder);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(folder));
+        const size_t have = listHudImages(folder.toStdString()).size();
+        ctx_.setStatus(QString("HUD images: %1 picture(s) in %2. A file flag.png is drawn in the map script with "
+                               "setshader(\"hud_flag\", width, height); the next build carries them.")
+                           .arg(have).arg(QDir::toNativeSeparators(folder)));
+    });
     addCommand(compile, "SetLoadscreen", "Set Loadscreen From Camera", QKeySequence(), [this] {
         // 1.17: the current view (game surfaces only) becomes the loading screen / map-select preview of the next build.
         QString err;
@@ -4598,6 +4610,9 @@ QString MainWindow::toolPath(const QString& key) const {
         {"zonetool", "E:/mw124/x64-zt/build/bin/x64/Release/zonetool.exe"},
         {"gsc_tool", "C:/Users/user/Downloads/iw8 level maker/gsc-tool.exe"},
     };
+    // IW8R_TOOL_<KEY> (IW8R_TOOL_ZONETOOL, ...): another tool for this run, e.g. a converter build under test.
+    const QByteArray fromEnv = qgetenv(("IW8R_TOOL_" + key.toUpper()).toLatin1().constData());
+    if (!fromEnv.isEmpty()) return QString::fromLocal8Bit(fromEnv);
     return Settings::instance().value("tools/" + key, defaults.value(key)).toString();
 }
 

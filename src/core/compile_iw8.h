@@ -119,6 +119,10 @@ struct CompileOptions {
     // the converter turns `loadscreen_<map>` into the package's preview.rgba (x64-zt BuildLoadscreenPreview). Empty or
     // unreadable: no preview (a warning for the second).
     std::string loadscreenImagePath;
+    // The map's own HUD images (4.27, core hud_images.h): the folder "<map name>.hud". Each picture becomes
+    // extracted/images/hud_<name>.dds, which the converter carries with a 2D material of that name. Empty or not a
+    // folder: none.
+    std::string hudImageDir;
     // Extra folders where misc_prefab models are looked up (Settings prefabRoots), after the map's own folder.
     std::vector<std::string> prefabRoots;
     // Prefab bundles (docs/PREFAB_BUNDLES.md). prefabSupport: the build features this build has and, optionally, the
@@ -152,6 +156,7 @@ struct CompileReport {
     std::string sky;              // world.json "sky" (image name), empty when no sky was written (doc 33)
     std::string skyNote;          // how the sky image was made (source size/format, face size, exposure)
     bool loadscreen = false;      // extracted/images/loadscreen_<id>.dds written (1.17)
+    std::vector<std::string> hudImages;  // the hud_* images written (4.27), sorted
     std::vector<std::string> warnings;
     AABB bounds;  // padded by 16 (task rule); this is also the world bounds written to world.json
 };

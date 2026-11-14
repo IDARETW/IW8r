@@ -471,6 +471,10 @@ Shipped bundles:
 - Trigger calls for your own script: `iw8r_trigger("name")` returns an object that is notified with `"trigger"` and the player. `iw8r_in_trigger(player, "name")` tells you whether a player is inside the trigger.
 - HUD message and icon: a map script can set HUD text and an icon from stock names. (not yet seen in game)
 
+### HUD pictures
+
+- Your own pictures for script HUD elements: `Compile > HUD Images Folder` opens `<map name>.hud` beside the map; each picture in it is built into the map as `hud_<file name>` and drawn from the map script with `setshader("hud_<file name>", width, height)`. The build lists them and points out a `hud_` name in the script that is not one of them. (not yet seen in game)
+
 ### Keys that make things move or act
 
 Each key goes on the entity named. The keys are listed with examples in docs/KEYS_REFERENCE.md.

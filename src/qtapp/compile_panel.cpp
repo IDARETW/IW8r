@@ -16,6 +16,7 @@
 #include "prefab.h"
 #include "settings.h"
 #include "atmosphere_dialog.h"
+#include "hud_images.h"
 #include "editor_log.h"
 
 #include <QProcessEnvironment>
@@ -766,6 +767,8 @@ bool CompilePanel::runExtraction() {
     if (QFileInfo(buildRoot() + "/probe_capture").isDir()) opt.probeCaptureDir = (buildRoot() + "/probe_capture").toStdString();
     // 1.17: Compile > Set Loadscreen From Camera saves <map>.loadscreen.png beside the map.
     if (const QString ls = loadscreenImageFile(); !ls.isEmpty() && QFileInfo::exists(ls)) opt.loadscreenImagePath = ls.toStdString();
+    // 4.27: the pictures in "<map name>.hud" beside the map become the map's own HUD images.
+    opt.hudImageDir = hudImageFolderFor(ctx_->doc.path());
     MaterialLibrary library;
     {
         std::vector<std::string> roots;

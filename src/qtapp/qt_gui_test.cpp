@@ -5083,7 +5083,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 bool all = true;
                 QString missing;
                 for (const char* id : {"CloneStockMaterial", "AdjustImage", "TechsetInfo", "AssetUsage", "SoundSettings", "ReplaceMaterialInMap",
-                                       "ReplaceModelMaterial", "VisionEditor", "MakeLadder", "BehaviourPreview", "CompareWithBackup"})
+                                       "ReplaceModelMaterial", "VisionEditor", "MakeLadder", "BehaviourPreview", "CompareWithBackup", "HudImagesFolder"})
                     if (!w.action(id)) {
                         all = false;
                         missing += QString(" ") + id;

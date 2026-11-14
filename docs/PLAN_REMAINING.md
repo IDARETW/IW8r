@@ -402,8 +402,9 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
   - new game types (13.6): partial (research 91): a new game type name starts and the map script shapes it; a stock
     game type script cannot be replaced by a map zone.
   - killstreak airspace and compass (6.21 / F.14): open; research 75 found no per-map key for it. Game.
-  - fonts and LUI (4.27): HUD from the map script works with stock icons; own fonts and menus are not built
-    (deferred, as the plan allowed).
+  - fonts and LUI (4.27): HUD from the map script works with stock icons and, since 2026-11-14, with the map's own
+    pictures (`<map name>.hud`, proven offline; game). Own fonts and menus are not built (deferred, as the plan
+    allowed: no map-zone writer for them, and nothing shows the game would use one).
 - **Audio and effects**
   - the looping sound on an `fx_origin` (F.6), impacts (F.12): fixed offline; game.
   - the reverb zone (F.7), PA speakers and music states (6.22), ambient sound (6.7): built offline; reverb was not

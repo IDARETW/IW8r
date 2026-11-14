@@ -11,6 +11,8 @@
 #include <vector>
 
 #include "brush_ops.h"
+#include "hud_images.h"
+#include "overview_image.h"
 #include "convert_ops.h"
 #include "document.h"
 #include "map_script.h"
@@ -1964,4 +1966,76 @@ TEST(compile_iw8_paint_mesh_on_brush_faces_builds) {
     CHECK(after.collisionBrushes == before.collisionBrushes);  // the brush is still there to stand on
     CHECK(after.triangles > before.triangles);                 // 6 faces of 2 triangles became meshes of more
     CHECK(after.entities == before.entities && after.spawns == before.spawns);
+}
+
+// 4.27: pictures in the map's .hud folder are written as hud_* images of the extraction, and the map script's
+// hud_* names are checked against them.
+TEST(compile_iw8_hud_images_reach_the_extraction) {
+    const fs::path dir = fs::path(scratch("hud_map"));
+    fs::remove_all(dir);
+    fs::create_directories(dir / "room.hud");
+    std::vector<uint8_t> rgba(16 * 16 * 4, 255);
+    for (size_t i = 3; i < rgba.size(); i += 8) rgba[i] = 0;  // some transparent texels
+    std::string perr;
+    CHECK(writePng((dir / "room.hud" / "Flag Icon.png").string(), 16, 16, rgba, &perr));
+    CHECK(writePng((dir / "room.hud" / "zone.png").string(), 16, 16, rgba, &perr));
+    std::ofstream(dir / "room.hud" / "broken.png") << "this is not a png";
+    std::ofstream(dir / "user.gsc") << "user_main() {\n  i = newhudelem();\n  i setshader(\"hud_zone\", 32, 32);\n"
+                                       "  i setshader(\"hud_other\", 32, 32);\n}\n";
+
+    Id next = 1;
+    std::string text = roomMapText();
+    const std::string ws = "\"classname\" \"worldspawn\"";
+    const size_t at = text.find(ws);
+    CHECK(at != std::string::npos);
+    if (at == std::string::npos) return;
+    text.insert(at + ws.size(), "\n\"iw8r_script\" \"user.gsc\"");
+    ParseResult pr = parseMap(text, next);
+    CHECK(pr.map.has_value());
+    if (!pr.map) return;
+    CompileOptions opt;
+    opt.mapId = "mp_room";
+    opt.mapDir = dir.string();
+    opt.hudImageDir = hudImageFolderFor((dir / "room.map").string());
+    CompileReport rep;
+    std::string err;
+    const std::string out = scratch("hud_out");
+    const bool ok = compileIw8Extraction(*pr.map, out, opt, rep, &err);
+    if (!ok) std::printf("  compile error: %s\n", err.c_str());
+    CHECK(ok);
+    if (!ok) return;
+    CHECK(rep.hudImages.size() == 2);
+    if (rep.hudImages.size() == 2) CHECK(rep.hudImages[0] == "hud_flag_icon" && rep.hudImages[1] == "hud_zone");
+    const fs::path images = fs::path(out) / "extracted" / "images";
+    for (const char* name : {"hud_flag_icon.dds", "hud_zone.dds"}) {
+        std::ifstream f(images / name, std::ios::binary);
+        char magic[4] = {};
+        f.read(magic, 4);
+        CHECK(f.gcount() == 4 && std::string(magic, 4) == "DDS ");
+        // DXT5 with mips, 16 x 16: the form of the minimap image, which the converter's reader takes.
+        char header[124] = {};
+        f.read(header, 124);
+        CHECK(f.gcount() == 124 && std::string(header + 80, 4) == "DXT5" && header[8] == 16 && header[12] == 16 && header[24] == 5);
+        CHECK(fs::file_size(images / name) == 128 + 256 + 64 + 16 + 16 + 16);
+    }
+    CHECK(!fs::exists(images / "hud_broken.dds"));
+    bool listed = false, broken = false, other = false, zone = false;
+    for (const std::string& w : rep.warnings) {
+        listed = listed || (w.find("2 HUD image(s)") != std::string::npos && w.find("hud_flag_icon, hud_zone") != std::string::npos);
+        broken = broken || (w.find("broken.png") != std::string::npos && w.find("not used") != std::string::npos);
+        other = other || w.find("draws hud_other") != std::string::npos;
+        zone = zone || w.find("draws hud_zone") != std::string::npos;
+    }
+    CHECK(listed && broken);
+    CHECK(other && !zone);  // the script's unknown name is pointed out, its known one is not
+
+    // No folder: nothing written, nothing said.
+    CompileOptions plain;
+    plain.mapId = "mp_room";
+    CompileReport rep2;
+    Id next2 = 1;
+    ParseResult pr2 = parseMap(roomMapText(), next2);
+    CHECK(pr2.map.has_value() && compileIw8Extraction(*pr2.map, scratch("hud_none"), plain, rep2, &err));
+    CHECK(rep2.hudImages.empty());
+    for (const std::string& w : rep2.warnings) CHECK(w.find("HUD image") == std::string::npos);
 }

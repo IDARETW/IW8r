@@ -2,6 +2,7 @@
 #include "custom_shader.h"
 #include "ies_profiles.h"
 #include "compile_iw8.h"
+#include "hud_images.h"
 #include "occluder_box.h"
 #include "bake_options.h"
 #include "game_modes.h"
@@ -3315,6 +3316,26 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             rep.warnings.push_back("loadscreen image " + opt.loadscreenImagePath + " not used: " + imageErr);
         }
     }
+    // 4.27: the map's own HUD images (alpha kept: icons are cut out).
+    {
+        std::vector<std::string> hudWarnings;
+        for (const HudImage& h : listHudImages(opt.hudImageDir, &hudWarnings)) {
+            std::vector<uint8_t> dds;
+            std::string imageErr;
+            if (encodeHudImageDds(h.path, dds, &imageErr)) {
+                customFiles.push_back({root / "extracted" / "images" / (h.name + ".dds"), std::string(dds.begin(), dds.end())});
+                rep.hudImages.push_back(h.name);
+            } else {
+                rep.warnings.push_back("HUD image " + h.path + " not used: " + imageErr);
+            }
+        }
+        for (const std::string& w : hudWarnings) rep.warnings.push_back(w);
+        if (!rep.hudImages.empty()) {
+            std::string names;
+            for (const std::string& n : rep.hudImages) names += (names.empty() ? "" : ", ") + n;
+            rep.warnings.push_back(std::to_string(rep.hudImages.size()) + " HUD image(s) for the map script (setshader(\"<name>\", width, height)): " + names);
+        }
+    }
     for (const auto& [name, text] : physicPresets) customFiles.push_back({root / "extracted" / "physic" / name, text});
     // One cube per probe (doc 29), named <id>_probe<N> (the image of probe N): the editor's capture when it was taken at
     // this probe's position (5.5), else neutral grey.
@@ -3775,6 +3796,12 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                 else
                     extras.userScript = text;
                 if (!extras.userScript.empty()) warn.push_back("map script includes " + p.filename().string() + " (user_main runs after the load script)");
+                // The script's hud_* names against the map's own HUD images (only when the map has any): a name that
+                // is neither is drawn as the game's missing material, unless it is a stock one.
+                if (!rep.hudImages.empty())
+                    for (const std::string& n : hudNamesInScript(extras.userScript))
+                        if (!std::binary_search(rep.hudImages.begin(), rep.hudImages.end(), n))
+                            warn.push_back("the map script draws " + n + ", which is not one of this map's HUD images (fine if it is a stock material)");
             }
             // 13.6 (research 91 / 92): a new game type script the map carries (worldspawn iw8r_gametype_script, relative
             // to the map folder). Checked here; the converter compiles it into the map zone as it is.

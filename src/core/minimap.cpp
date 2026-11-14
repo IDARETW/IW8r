@@ -348,6 +348,22 @@ void encodeBc3Level(const std::vector<uint8_t>& rgba, int w, int h, std::vector<
 }  // namespace
 
 bool writeMinimapDds(const MinimapImage& img, const std::string& ddsPath, std::string* err) {
+    std::vector<uint8_t> file;
+    if (!encodeMinimapDds(img, file, err)) return false;
+    std::ofstream out(ddsPath, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        if (err) *err = "cannot open " + ddsPath + " for writing";
+        return false;
+    }
+    out.write(reinterpret_cast<const char*>(file.data()), static_cast<std::streamsize>(file.size()));
+    if (!out) {
+        if (err) *err = "failed to write " + ddsPath;
+        return false;
+    }
+    return true;
+}
+
+bool encodeMinimapDds(const MinimapImage& img, std::vector<uint8_t>& file, std::string* err) {
     const auto fail = [&](std::string message) {
         if (err) *err = std::move(message);
         return false;
@@ -396,7 +412,7 @@ bool writeMinimapDds(const MinimapImage& img, const std::string& ddsPath, std::s
 
     // DDS_HEADER (124 bytes) after the "DDS " magic, 128 bytes in total. Legacy FourCC DXT5.
     const uint32_t topBytes = static_cast<uint32_t>(std::max(1, (w + 3) / 4) * std::max(1, (h + 3) / 4) * 16);
-    std::vector<uint8_t> file(128 + body.size(), 0);
+    file.assign(128 + body.size(), 0);
     std::memcpy(file.data(), "DDS ", 4);
     putU32(file, 4, 124);
     putU32(file, 8, 0x000A1007);                  // DDSD_CAPS | HEIGHT | WIDTH | PIXELFORMAT | MIPMAPCOUNT | LINEARSIZE
@@ -410,11 +426,6 @@ bool writeMinimapDds(const MinimapImage& img, const std::string& ddsPath, std::s
     putU32(file, 84, 0x35545844);                 // 'DXT5'
     putU32(file, 108, 0x401008);                  // DDSCAPS_TEXTURE | DDSCAPS_MIPMAP | DDSCAPS_COMPLEX
     std::memcpy(file.data() + 128, body.data(), body.size());
-
-    std::ofstream out(ddsPath, std::ios::binary | std::ios::trunc);
-    if (!out) return fail("cannot open " + ddsPath + " for writing");
-    out.write(reinterpret_cast<const char*>(file.data()), static_cast<std::streamsize>(file.size()));
-    if (!out) return fail("failed to write " + ddsPath);
     return true;
 }
 
