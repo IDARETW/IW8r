@@ -76,6 +76,24 @@
   tools/physics_bounds_build_test.py). OPEN, next: mount edges (research 125 by an Opus agent, read-only IDA): the
   converter writes ladder edges only (edgeListUsedQueryTypes 4); mounting queries bucket 0 of the edge list and has
   no trace fallback; mantle falls back to Mantle_TraceLedgeFace while bit 2 is clear.
+  ADDED 2026-11-14 17:20. Suites with the game closed: core 181,970 checks / 1,377 tests, GUI 1,089, 0 failures.
+  - Bake fix proven on the failed map: the failed zone (<game>\.proxy\backups\mw120r-map-20261114-162449) read back
+    with IW8R_TEST_GFXMAP_JSON fails umbra_bake_built_zone_reads_back; the same map rebuilt with the fixed converter
+    (a private copy as mp_crbake, deleted again) passes: 432 cells, 259 objects, 94 % drawn from 216 cell centres.
+  - Shipment's popping objects (owner 16:15), RULED OUT offline: missing pipeline states (the zone has 2,455 state
+    records with 535 distinct hashes and main/techsets_mp_shipment.psob holds exactly 535 entries, written once at
+    16:08); argument order (stock code image arguments are sorted by register, not by index, and the re-point keeps
+    the register); a technique flag for depth readers (stock techniques with code image 0 have flags 0 like the
+    rest); shaders refused by the driver (all states are in the cache). All four output components are written by
+    every stock lit shader, so the splice leaves no alpha undefined. NOT RULED OUT: something the ink makes visible
+    that was there before (LOD and cull-distance changes of props show much more with outlines); the thermal mask
+    slot now holding the scene depth in a mode other than thermal (cb7[13].x == 2 in the stock shaders). If the owner
+    reports it again: build Shipment once with the plain filter only (edits2.json) to separate the ink from the
+    colour filter.
+  - GUI test: the Live Link check without a game is left out while a game from the game folder runs
+    (MainWindow::gameFolder, CompilePanel::gameRunningFrom); the suite must never read a running game.
+  - Disk: E: was down to 4.7 GB; out/agent/occ/iw8build, cr_toon_build/iw8build, cr_bake_check, hz_a, hz_b deleted
+    (all rebuildable, mine). 7.5 GB free.
   STATE 2026-11-14 17:00 (newest; read first). Converter 3b2bcc93 committed in the worktree and LIVE (old exe
   out/zt_backup/zonetool_a0a50852.exe). Core suite 181,961 checks / 1,377 tests, 0 failures; GUI 1,089 checks with
   one failure only while the game runs ("without a game the Live Link commands say why").

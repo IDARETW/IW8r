@@ -3,6 +3,7 @@
 #include "umbra_view.h"
 #include "command_script.h"
 
+#include <QFileInfo>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QElapsedTimer>
@@ -334,6 +335,8 @@ public:
     bool restoreStockZonesQuiet(const QString& zone, QStringList& report);
     // The compile panel's built package into <game>\mods\mw120r\maps without a dialog (--compile ... --deploy).
     bool deployBuiltMapQuiet(QString* err);
+    // The game folder (the folder of Tools > Tool Paths "replay"; "" when it is not set).
+    QString gameFolder() const { const QString r = toolPath("replay"); return r.isEmpty() ? QString() : QFileInfo(r).absolutePath(); }
     QString stockZone() const { return stockZone_; }
     // Prefabs (also used by --gui-test): a misc_prefab at the 2D view centre, explode, save selection.
     // `file` is a plain .map prefab, or a prefab bundle (its .iw8prefab folder, or a file inside it).

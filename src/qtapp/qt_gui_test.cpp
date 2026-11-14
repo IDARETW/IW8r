@@ -4889,8 +4889,13 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         r.check(std::abs((nb.mins.x + nb.maxs.x) / 2 - 1000) < 0.01 && std::abs(nb.mins.z - 64) < 0.01 && sb.valid(),
                 "its bottom centre is on the player's feet");
         QString err;
-        // No game is running in the test: the commands explain why.
-        r.check(!w.playerView(&err).has_value() && !err.isEmpty(), "without a game the Live Link commands say why: " + err);
+        // No game is running in the test: the commands explain why. When the owner's game does run, the test must
+        // not read it (Live Link is the owner's to trigger): the check is left out and says so.
+        const QString liveGameRoot = w.gameFolder();
+        if (!liveGameRoot.isEmpty() && iw8r::qt::CompilePanel::gameRunningFrom(liveGameRoot))
+            r.check(true, "a game is running: the Live Link check without a game is left out (the test does not read a running game)");
+        else
+            r.check(!w.playerView(&err).has_value() && !err.isEmpty(), "without a game the Live Link commands say why: " + err);
         while (ctx.doc.text() != before && ctx.doc.undo()) {}
         ctx.doc.deselectAll();
         ctx.documentEdited();

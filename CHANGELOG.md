@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **The occlusion bake fix is proven on the map that failed.** The failed Cinder Rail build's occlusion data, read
+  back by the editor's reader (which now follows the game's rule), fails the read-back test, as it failed in game.
+  The same map built again with the fixed bake passes it: 432 cells, 259 objects (27 surfaces, 230 models), no view
+  leaf without its cell, 94 % of the objects drawn on average from 216 cell centres. Not seen in game since the fix.
+- **The GUI test suite never reads a running game.** One check called the Live Link reader; with the game open it
+  read the game. It is now left out, with a line saying so, whenever a game from the game folder runs.
+
 - **The occlusion bake's fault is found and fixed** (research 129). The baked data carried the format flag of the
   one-cell data (3) where every stock map has 5. That flag tells the game how to read the camera's cell; with the
   wrong one it started from an unrelated cell almost everywhere, so surfaces came and went and models were never
