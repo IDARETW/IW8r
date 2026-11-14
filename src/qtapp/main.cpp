@@ -340,6 +340,8 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         ctx.cam.pitch = pitch;
         ctx.cam.fov = 90;
     };
+    // IW8R_BENCH_VOLUMETRIC: the volumetric fog on for this bench (View > Game Lighting Options has it off).
+    if (qEnvironmentVariableIsSet("IW8R_BENCH_VOLUMETRIC") && cam) cam->setVolumetricFogEnabled(true);
     // Fixed cameras: `a` sees the whole map from a corner, `b` stands inside it near the middle.
     // IW8R_BENCH_CAM="x y z yaw pitch [fov]" puts camera a where a comparison needs it (an in-game screenshot's spot).
     double benchCam[6] = {0, 0, 0, 0, 0, 90};

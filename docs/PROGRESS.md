@@ -87,6 +87,9 @@
   Plan 3.1: MainWindow::followCameraPos() (the last /api/frame camera for webFollowHoldMs_ = 4000 ms, else
   ctx_.cam.pos) is the centre for updateStreamedTiles, updateTerrainLayers, updateProbeSubset and
   streamedTilesReport. GUI test with a 150 ms hold. Not run on Verdansk in a browser.
+  Volumetric fog measured (research 109 section 2.7): IW8R_BENCH_VOLUMETRIC=1 turns it on in a bench; Speedball
+  block error against out/compare/speedball_ingame.webp 11.3 off, 16.8 on: stays off. The comparison script is the
+  one in that section (8 x 4 block means of luminance).
   Background texture decode: core keyed_job_pool.h (KeyedJobPool<Result>: take(key, job, out, wait)),
   CameraView::decodedTexture (modes 0 blocks-else-preview, 1 preview, 2 image file) used by textureFor, normalFor
   and emissiveFor; pending = return -1 with moreToLoad_. It waits (decodes in place) when captureW_ > 0, a clean
