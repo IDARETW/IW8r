@@ -326,6 +326,12 @@ void GridView::paintEvent(QPaintEvent*) {
             p.drawLine(worldToWidget(a[H], a[V]), worldToWidget(b[H], b[V]));
         }
     }
+    // The active Region: its box, dashed amber (what lies outside it is hidden).
+    if (ctx_->region && ctx_->region->valid()) {
+        p.setPen(QPen(QColor(255, 180, 48), 1.5, Qt::DashDotLine));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(QRectF(worldToWidget(ctx_->region->mins[H], ctx_->region->maxs[V]), worldToWidget(ctx_->region->maxs[H], ctx_->region->mins[V])));
+    }
     // Tool previews: new brush rectangle, resized brushes, clipper points and line.
     if (drag_ == Drag::Create) {
         const AABB b = createBox();

@@ -1570,6 +1570,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         r.check(hiddenPrims > 0 && hiddenPrims < totalPrims,
                 QString("the region hides %1 of %2 brushes outside the pillar").arg(hiddenPrims).arg(totalPrims));
         r.check(!ctx.scene.hiddenByRegion.count(pil.item), "the pillar itself stays visible in the region");
+        r.check(ctx.region && ctx.scene.regionLines.size() == 12, "the region's box has its outline (12 edges) for the views");
         bool hiddenDrawn = false;
         for (const app::PrimGeom* g : ctx.scene.items())
             if (ctx.scene.hiddenByRegion.count(g->ref.item) || ctx.scene.hiddenByRegion.count(g->ref.entity)) hiddenDrawn = true;
@@ -1591,7 +1592,8 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         r.check(ctx.region->contains(viewCentre), "the XY region contains the centre of the grid view");
         w.action("RegionOff")->trigger();
         ctx.scene.sync(ctx.doc);
-        r.check(!ctx.region && ctx.scene.hiddenByRegion.empty() && ctx.scene.items().size() == drawnBefore, "Region > Off shows everything again");
+        r.check(!ctx.region && ctx.scene.hiddenByRegion.empty() && ctx.scene.items().size() == drawnBefore && ctx.scene.regionLines.empty(),
+                "Region > Off shows everything again and takes the outline away");
         r.check(ctx.doc.text() == before && ctx.doc.undoPosition() == pos, "region and save commands leave the document unchanged");
     }
 

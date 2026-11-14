@@ -45,6 +45,9 @@ struct EdgeBrush {
     // The brush hides what is inside it or flush against it: all its faces are drawn with opaque materials or are
     // caulk / nodraw, and at least one is drawn. The host sets it from what it knows of the materials (unknown: false).
     bool opaque = false;
+    // `contents detail;`. The edge, cover and hidden-face rules do not read it; the occlusion bake leaves detail
+    // brushes out of its occluders (detail does not block sight).
+    bool detail = false;
 };
 // The opaque flag of a brush from its faces: `materials[i]` of face i, `isOpaque(material)` for a drawn material.
 // Tool materials: caulk and nodraw are allowed, any other (clip, trigger, sky, ...) makes the brush hide nothing.

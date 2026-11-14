@@ -81,6 +81,7 @@ tree would outgrow its node budget (1,000,000) the space is cut again with half 
 - **In game:** everything. In particular whether the game's Umbra accepts several cells in a tile of flags 3 without
   clusters, internal portals with no growth, and a view leaf inside a wall that names the nearest cell (stock tomes
   leave such a leaf empty).
+- (Per-brush control exists since 2026-11-14: a detail brush is not an occluder.)
 - Thin slanted walls and roofs, terrain, and models as occluders (thick slanted brushes are covered by their inner
   box since 2026-11-14).
 - The world's merged surfaces limit what can be hidden; splitting them by cell is a converter change.

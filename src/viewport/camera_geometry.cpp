@@ -975,6 +975,10 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
             d.mLines.push_back(gv(l.a, l.rgba));
             d.mLines.push_back(gv(l.b, l.rgba));
         }
+        for (const auto& [a, b] : scene.regionLines) {  // the active Region's box, amber
+            d.mLines.push_back(gv(a, 0xff30b4ffu));
+            d.mLines.push_back(gv(b, 0xff30b4ffu));
+        }
         for (const auto& [a, b] : scene.navLines) {  // the build's navmesh (6.23), green
             d.mLines.push_back(gv(a, 0xff30e060u));
             d.mLines.push_back(gv(b, 0xff30e060u));

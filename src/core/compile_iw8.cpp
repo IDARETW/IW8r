@@ -1663,6 +1663,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                         return cm && !cm->alphaTest && !cm->blend && cm->blendMode == 0;
                     });
                 }
+                b.detail = brushIsDetail(*p);
                 edgeData.index.emplace(p, edgeData.brushes.size());
                 edgeData.brushes.push_back(std::move(b));
             }
@@ -3100,14 +3101,19 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     // boxes; the converter cuts the map's free space into cells along them and joins the cells by portals, so the
     // game's Umbra hides what lies behind them. Brushes whose faces are all opaque (or caulk) count: an axis-aligned
     // box as it is, any other convex brush by the box found inside it (core occluder_box.h; at least 8 units on every
-    // side, which leaves out thin slanted walls). Without the key the converter writes its one-cell tome.
+    // side, which leaves out thin slanted walls). A detail brush (`contents detail;`) is never an occluder: that is
+    // the mapper's switch per brush. Without the key the converter writes its one-cell tome.
     std::string occludersKey;
     if (worldspawn && worldspawn->value("iw8r_umbra_bake") && *worldspawn->value("iw8r_umbra_bake") == "1") {
         std::string boxes;
-        size_t count = 0, skewed = 0, fitted = 0, open = 0;
+        size_t count = 0, skewed = 0, fitted = 0, open = 0, detail = 0;
         for (const EdgeBrush& b : edgeData.brushes) {
             if (!b.opaque) {
                 ++open;
+                continue;
+            }
+            if (b.detail) {  // the mapper's own switch: Brush > Make Detail takes a brush out of the occluders
+                ++detail;
                 continue;
             }
             bool isBox = b.planes.size() == 6 && b.bounds.valid();
@@ -3135,7 +3141,8 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         if (count) occludersKey = ",\"umbra_occluders\":[" + boxes + "]";
         warn.push_back("occlusion bake: " + std::to_string(count) + " occluder box(es) from the opaque brushes (" + std::to_string(fitted) +
                        " of them fitted inside brushes that are not axis-aligned boxes; " + std::to_string(skewed) +
-                       " opaque brush(es) are too thin or too slanted to hold a box and " + std::to_string(open) +
+                       " opaque brush(es) are too thin or too slanted to hold a box, " + std::to_string(detail) +
+                       " detail brush(es) are left out and " + std::to_string(open) +
                        " are not opaque: they hide nothing)" +
                        (count ? "; needs a converter with umbra_occluders; not seen in game" : ": nothing to bake, the one-cell tome is written"));
     }

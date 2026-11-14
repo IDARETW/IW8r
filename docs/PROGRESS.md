@@ -63,6 +63,9 @@
   props' light grid box; CameraView::maybeLightModels makes the table in a thread (BVH of the drawn brush faces and
   patches, settled 600 ms, redone only when the result differs). Sampled at the middle of the model's bounds; the
   build's grid has a point every 128 x 128 x 64 units, so the two can differ a little near a doorway.
+  EdgeBrush::detail (set by compile_iw8.cpp from brushIsDetail; the occluder list skips detail brushes, test
+  compile_occlusion_bake_leaves_detail_brushes_out). Region outline: SceneCache::regionLines (EditorContext::
+  refreshRegion), drawn in camera_geometry's misc lines and in GridView::paintEvent.
   The web list of plan 3.3 / 3.4 is done (the Vision Editor form closed it). Earlier note: (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder

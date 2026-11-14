@@ -373,7 +373,7 @@ judged against the running game, which is not used any more. They are listed so 
 | 1.13 the game's FOV / lodScale factor on LOD distances | Stock LOD distances as stored | Changes only the distance at which a LOD switches; the frame budgets are met without it. |
 | 2.2 culling lights, probes and decals in the Umbra view; surface ids on displaced terrain | Surfaces and props are culled by the tome | A viewer refinement: the view already answers "what does the game hide here". |
 | 2.3 local occlusion updates for edited stock maps | The whole map's occlusion opens when stock geometry is removed | See 2.3: a mistake makes objects vanish in the game. |
-| 2.4 thin slanted walls, terrain and models as occluders, a per-brush occluder key, gates, splitting merged surfaces | Opaque brushes (boxes, and other shapes by the box inside them) | The bake is opt-in and unseen in the game; widening it before a first look would only widen what could go wrong. |
+| 2.4 thin slanted walls, terrain and models as occluders, gates, splitting merged surfaces | Opaque structural brushes (boxes, and other shapes by the box inside them); a detail brush is left out, which is the per-brush switch (2026-11-14) | The bake is opt-in and unseen in the game; widening it before a first look would only widen what could go wrong. |
 | 3.1 streamed tiles and terrain layers around the browser's camera | They follow the editor's own camera | Two cameras asking for different tiles would evict each other's from the cache; fly the editor's camera there first. |
 
 ## Milestone 4 — The remaining pieces
@@ -417,8 +417,9 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
   each needs the running game to go further.
 - **Performance and UX**
   - per-item buffers (3.11): done (kept camera geometry, changed per item).
-  - preview decode off the GUI thread, one process per validation run, the region outline: not built; none blocks a
-    workflow (decode is budgeted per frame, validation runs per zone, the region hides what is outside it).
+  - the region outline: done 2026-11-14 (2D and camera views).
+  - preview decode off the GUI thread, one process per validation run: not built; neither blocks a workflow
+    (decode is budgeted per frame, validation runs per zone).
 - **Packaging**
   - RELEASE_CHECK decisions 1-4: settled with defaults on 2026-11-14 (docs/RELEASE_CHECK.md).
   - exe MD5 check (9.1): done (First-Run Setup).

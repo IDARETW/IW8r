@@ -22,6 +22,28 @@ void EditorContext::refreshRegion() {
         scene.hiddenByRegion = std::move(out);
         scene.invalidate();
     }
+    // The region's own outline, for the camera view (the 2D views draw it from `region`).
+    std::vector<std::pair<Vec3, Vec3>> lines;
+    if (region && region->valid()) {
+        const Vec3 a = region->mins, b = region->maxs;
+        const Vec3 c[8] = {{a.x, a.y, a.z}, {b.x, a.y, a.z}, {b.x, b.y, a.z}, {a.x, b.y, a.z},
+                           {a.x, a.y, b.z}, {b.x, a.y, b.z}, {b.x, b.y, b.z}, {a.x, b.y, b.z}};
+        for (int k = 0; k < 4; ++k) {
+            lines.push_back({c[k], c[(k + 1) % 4]});
+            lines.push_back({c[4 + k], c[4 + (k + 1) % 4]});
+            lines.push_back({c[k], c[4 + k]});
+        }
+    }
+    const auto same = [](const std::vector<std::pair<Vec3, Vec3>>& x, const std::vector<std::pair<Vec3, Vec3>>& y) {
+        if (x.size() != y.size()) return false;
+        for (size_t k = 0; k < x.size(); ++k)
+            if (length(x[k].first - y[k].first) > 1e-9 || length(x[k].second - y[k].second) > 1e-9) return false;
+        return true;
+    };
+    if (!same(lines, scene.regionLines)) {
+        scene.regionLines = std::move(lines);
+        scene.invalidate();
+    }
 }
 
 void EditorContext::refreshGameMode() {

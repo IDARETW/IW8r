@@ -296,7 +296,8 @@ Commands in the Tools menu:
   opaque box brushes, and the game then skips what lies in cells the camera cannot see into. It helps maps with
   rooms, corridors and closed streets; an open map gains little. Only brushes with opaque materials hide anything:
   an axis-aligned box as it is, a slanted or many-sided brush by the largest box that fits inside it (so build thick
-  walls from boxes; a thin slanted wall hides nothing). It is checked offline only: if something is missing in the game with it on, turn it off
+  walls from boxes; a thin slanted wall hides nothing). A detail brush (Brush > Make Detail) never hides anything:
+  mark what should not count. It is checked offline only: if something is missing in the game with it on, turn it off
   and build again.
 - **Compile > Atmosphere**: exponential fog (start, halfway distance, colour; previewed in the camera, View > Fog
   Preview) and a film grade. Exposure is in **Map Info** on the Compile panel, with title, description, compass and

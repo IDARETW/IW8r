@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Occlusion bake: you choose the occluders per brush.** A detail brush (Brush > Make Detail, `contents detail;`)
+  is never an occluder; structural brushes are, as before. That is the old Radiant rule (detail does not block
+  sight), and it lets you keep small or doubtful brushes out of the bake. The build log counts them.
+- **The region has an outline.** View > Region now draws the region's box: dashed in the 2D views, as a wire box in
+  the camera view, so you can see where the hidden part of the map begins.
+
 - **Game Lighting: models in your own map are lit where they stand.** The build lights every placed model from the
   light grid at its place, so a crate in a dark room is dark and one in the street takes the sky. The viewport gave
   every model the map's average light. Now View > Game Lighting works out the same light for every model (the

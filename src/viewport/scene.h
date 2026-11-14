@@ -219,6 +219,7 @@ public:
     std::set<Id> hidden;
     std::set<Id> hiddenByLayer;  // items of layers switched off in the Layers dock
     std::set<Id> hiddenByRegion; // primitives and point entities outside the active Region (see core/region.h)
+    std::vector<std::pair<Vec3, Vec3>> regionLines;  // the active Region's box as 12 edges (empty: no region)
     // View > Game Mode (core game_mode_view): the gametype shown ("" = every mode) and the entities it removes.
     std::string gameMode;
     std::set<Id> hiddenByMode;

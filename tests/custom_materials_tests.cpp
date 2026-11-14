@@ -504,3 +504,39 @@ TEST(compile_lightmap_bake_reads_bounce_colours) {
             if (contains(w, "lightmap")) std::printf("  %s\n", w.c_str());
     CHECK(said);
 }
+
+// The occlusion bake leaves detail brushes out: of two equal opaque boxes, the one marked `contents detail;` is not
+// an occluder.
+TEST(compile_occlusion_bake_leaves_detail_brushes_out) {
+    const std::string dir = freshDir("occluders_detail");
+    writeBytes(dir + "/library/custom/wall.png", pngBytes(8, 8, flatRgba(8, 8, 120, 120, 120, 255)));
+    writeText(dir + "/library/custom/wall.iw8mat.json", "{\"name\":\"custom/wall\",\"color\":\"wall.png\",\"surface\":\"concrete\"}");
+    MaterialLibrary library;
+    std::string err;
+    CHECK(library.load({dir + "/library"}, &err));
+    const std::string suffix = " custom/wall 128 128 0 0 0 0";
+    std::string detailBrush = makeBrushPrimitive(makeBox({{512, 0, 0}, {640, 256, 192}}, suffix), "\n")->text();
+    const size_t open = detailBrush.find("{\n");
+    CHECK(open != std::string::npos);
+    if (open == std::string::npos) return;
+    detailBrush.insert(open + 2, " contents detail;\n");
+    const std::string text = "iwmap 4\n{\n\"classname\" \"worldspawn\"\n\"iw8r_umbra_bake\" \"1\"\n" +
+                             makeBrushPrimitive(makeBox({{0, 0, 0}, {128, 256, 192}}, suffix), "\n")->text() + detailBrush + "}\n";
+    Id next = 1;
+    ParseResult pr = parseMap(text, next);
+    CHECK(pr.map.has_value());
+    if (!pr.map) return;
+    CompileOptions opt;
+    opt.mapId = "mp_occd";
+    opt.library = &library;
+    CompileReport rep;
+    CHECK(compileIw8Extraction(*pr.map, dir + "/out", opt, rep, &err));
+    const std::string world = readFileOrEmpty(dir + "/out/extracted/maps/mp/mp_occd.d3dbsp.replay-world.json");
+    CHECK(contains(world, "\"umbra_occluders\":[[0,0,0,128,256,192]]"));
+    bool said = false;
+    for (const std::string& w : rep.warnings) said = said || (contains(w, "occlusion bake: 1 occluder box(es)") && contains(w, "1 detail brush(es) are left out"));
+    if (!said)
+        for (const std::string& w : rep.warnings)
+            if (contains(w, "occlusion")) std::printf("  %s\n", w.c_str());
+    CHECK(said);
+}
