@@ -4792,6 +4792,38 @@ int MainWindow::captureReflectionProbes(QString* dirOut) {
     return done;
 }
 
+QJsonArray MainWindow::webPrefabList() const {
+    QJsonArray out;
+    if (!prefabs_) return out;
+    for (int row = 0; row < prefabs_->count(); ++row) {
+        QString name = prefabs_->titleAt(row);
+        name.replace('\n', ' ');
+        out.append(QJsonObject{{"name", name.trimmed()}, {"id", QString::number(row)},
+                               {"note", prefabs_->placeableAt(row) ? QString() : prefabs_->badgeReasonAt(row)}});
+    }
+    return out;
+}
+
+bool MainWindow::webPlacePrefab(const QString& id, const WebCamera* cam, QString* why) {
+    bool isRow = false;
+    const int row = id.toInt(&isRow);
+    if (!prefabs_ || !isRow || row < 0 || row >= prefabs_->count()) {
+        if (why) *why = "there is no prefab " + id;
+        return false;
+    }
+    // The dock places a prefab in front of the editor's camera: for a browser's view, in front of that camera.
+    const app::Camera saved = ctx_.cam;
+    if (cam) {
+        ctx_.cam.pos = Vec3{cam->pos[0], cam->pos[1], cam->pos[2]};
+        ctx_.cam.yaw = cam->yaw, ctx_.cam.pitch = cam->pitch, ctx_.cam.fov = cam->fov;
+    }
+    QString err;
+    const bool ok = prefabs_->stamp(row, &err);
+    ctx_.cam = saved;
+    if (!ok && why) *why = err.isEmpty() ? prefabs_->badgeReasonAt(row) : err;
+    return ok;
+}
+
 QJsonObject MainWindow::webCamera() const {
     const app::Camera& c = ctx_.cam;
     return QJsonObject{{"pos", QJsonArray{c.pos.x, c.pos.y, c.pos.z}}, {"yaw", c.yaw}, {"pitch", c.pitch}, {"fov", c.fov}};
@@ -4948,6 +4980,11 @@ bool MainWindow::applyWebServerSettings(QString* message) {
             const QString key = kind + ":" + name;
             if (auto it = cache.find(key); it != cache.end()) return *it;
             QImage img;
+            if (kind == "prefabs" && prefabs_) {
+                bool isRow = false;
+                const int row = name.toInt(&isRow);
+                if (isRow && row >= 0 && row < prefabs_->count()) img = prefabs_->pictureAt(row);
+            }
             if (kind == "materials") {
                 if (auto e = matCache_->lookup(name); e && !e->failed && !e->colorDds.isEmpty()) {
                     std::string bytes;
@@ -4981,6 +5018,12 @@ bool MainWindow::applyWebServerSettings(QString* message) {
         hooks.surfacePoint = [this](const WebCamera& cam, double x, double y, double aspect, double point[3]) {
             return webSurfacePoint(cam, x, y, aspect, point);
         };
+        // The Prefabs dock fills its list when it is first shown: a browser may ask before that.
+        hooks.prefabs = [this] {
+            if (prefabs_ && prefabs_->count() == 0) prefabs_->refresh();
+            return webPrefabList();
+        };
+        hooks.placePrefab = [this](const QString& id, const WebCamera* cam, QString* why) { return webPlacePrefab(id, cam, why); };
         hooks.forms = [this] { return webFormList(); };
         hooks.form = [this](const QString& id) { return webForm(id); };
         hooks.applyForm = [this](const QString& id, const QJsonObject& values, QString* why) { return applyWebForm(id, values, why); };

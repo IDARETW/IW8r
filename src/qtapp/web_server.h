@@ -22,7 +22,9 @@
 //   POST /api/key      {e, key, value}   set a key (value null: remove it)
 //   POST /api/move     {d:[x,y,z]}   move the selection (one undo step)
 //   POST /api/undo | /api/redo | /api/save | /api/compile | /api/deploy | /api/build (F5) | /api/load
-//   GET  /api/assets?kind=materials|models|effects|sounds&q=text&limit=N   catalog names (unbuildable ones left out)
+//   GET  /api/assets?kind=materials|models|effects|sounds|prefabs&q=text&limit=N   catalog names (unbuildable ones
+//                                    left out); prefabs: the editor's prefab library, each {name, id, note}, placed
+//                                    with POST /api/place {kind: "prefabs", name: id} in front of the view
 //   GET  /api/thumb?kind=..&name=..  a cached thumbnail image (404 when none yet)
 //   POST /api/place    {kind, name, at:[x,y,z]}   models -> misc_model, effects -> fx_origin, sounds -> sound_emitter;
 //                                    with view: {pos, yaw, pitch, fov, x, y, aspect} instead of at, on the surface
@@ -97,6 +99,10 @@ public:
         std::function<bool(const WebCamera& cam, double x, double y, double aspect, double point[3])> surfacePoint;
         // The editor's own camera, as {pos: [x, y, z], yaw, pitch, fov}: where a browser's view starts.
         std::function<QJsonObject()> camera;
+        // The prefab library (the Prefabs dock): [{name, id, note}] (note: why it cannot be placed, "" = it can), and
+        // placing one by id in front of the editor's camera or, with a camera, in front of that view.
+        std::function<QJsonArray()> prefabs;
+        std::function<bool(const QString& id, const WebCamera* cam, QString* why)> placePrefab;
         // The web forms (MainWindow::webFormList / webForm / applyWebForm).
         std::function<QJsonArray()> forms;
         std::function<QJsonObject(const QString& id)> form;

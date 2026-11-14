@@ -141,6 +141,9 @@ public:
     QByteArray webRenderFrame(const struct WebCamera& cam, int w, int h, int quality);
     bool webPick(const struct WebCamera& cam, double x, double y, double aspect, bool add);
     QJsonObject webCamera() const;
+    // The prefab library for the browser (the Prefabs dock's rows) and one placed by its row id.
+    QJsonArray webPrefabList() const;
+    bool webPlacePrefab(const QString& id, const struct WebCamera* cam, QString* why);
     bool webSurfacePoint(const struct WebCamera& cam, double x, double y, double aspect, double point[3]);
     bool runWebCommand(const QString& id, QString* why);
     static QString webCommandBlocked(const QString& id, const QString& label);

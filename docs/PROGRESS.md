@@ -2,6 +2,14 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-14: handover round. docs/HANDOVER.md rewritten for the current state; TEST_CHECKLIST starts its In game
+  part with "the short list" (six items, most important first). tools/package_release.ps1 copies data\shaders (was
+  missing from every package so far) and throws when a run-time file is missing; packaged exe smoke test ok.
+  run_offline_proofs.py: 19 of 19 pass with converter 24d1aec7. Web forms: preferences (currentPreferences /
+  applyPreferences, build/realScriptables, build/collisionLayout, DevmapRunner play options; no folders, no host
+  command), vision overrides in the atmosphere form (visionOverridesJson decides), prefabs in the Assets panel (hooks
+  prefabs / placePrefab over PrefabBrowser rows; thumbnails by row; the dock's list is loaded on the first request).
+  Open on the web list: Surface / UV as a form, Material / Effect Info, vertex and edge tools.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder
   boxes -> free boxes = cells, portals = shared rectangles both ways, per-cell object lists by real box, objects keep
   scene-sized bounds, a midpoint view tree with one cell per leaf and the nearest cell for solid / outside; a tree

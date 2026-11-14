@@ -514,6 +514,16 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
             const int limit = std::clamp(q.queryItemValue("limit").toInt() > 0 ? q.queryItemValue("limit").toInt() : 200, 1, 2000);
             QJsonArray names;
             int total = 0;
+            if (kind == "prefabs") {
+                for (const QJsonValue& v : hooks_.prefabs ? hooks_.prefabs() : QJsonArray()) {
+                    if (!needle.isEmpty() && !v.toObject().value("name").toString().toLower().contains(needle)) continue;
+                    ++total;
+                    if (names.size() < limit) names.append(v);
+                }
+                Response r;
+                r.body = json({{"kind", kind}, {"total", total}, {"names", names}});
+                return r;
+            }
             for (const QString& n : catalog(kind)) {
                 const QString name = n.section('\t', 0, 0);
                 if (!needle.isEmpty() && !name.toLower().contains(needle)) continue;
@@ -734,6 +744,27 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
     } else if (path == "/api/place") {
         const QString kind = in.value("kind").toString();
         const std::string name = in.value("name").toString().trimmed().toStdString();
+        if (kind == "prefabs") {
+            // A prefab of the library, in front of the browser's live view when one is given, else of the editor's camera.
+            WebCamera cam;
+            bool haveCam = false;
+            if (in.value("view").isObject()) {
+                const QJsonObject v = in.value("view").toObject();
+                const QJsonArray pos = v.value("pos").toArray();
+                if (pos.size() == 3) {
+                    for (int k = 0; k < 3; ++k) cam.pos[k] = pos[k].toDouble();
+                    cam.yaw = v.value("yaw").toDouble();
+                    cam.pitch = std::clamp(v.value("pitch").toDouble(), -89.0, 89.0);
+                    cam.fov = std::clamp(v.value("fov").toDouble(90), 10.0, 150.0);
+                    haveCam = true;
+                }
+            }
+            QString why;
+            if (!hooks_.placePrefab || !hooks_.placePrefab(in.value("name").toString(), haveCam ? &cam : nullptr, &why))
+                return error(400, why.isEmpty() ? QString("the prefab cannot be placed") : why);
+            ok.body = stateJson();
+            return ok;
+        }
         QJsonArray at = in.value("at").toArray();
         if (in.value("view").isObject()) {
             // On the surface the browser's live view shows under the given point.

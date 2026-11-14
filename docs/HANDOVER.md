@@ -52,8 +52,8 @@ be replaced (the client refuses unsigned tiles), so edits live in the main map z
 **Occlusion (optional).** Compile > Occlusion bake gives your map cells and portals so the game skips what is behind
 walls. Off by default; View > Umbra Visibility shows what a stock map's own occlusion data hides.
 
-**From a browser.** Tools > Web Server: the editor's menus, six dialogs as forms, the editor's own 3D picture with
-fly controls, drawing and resizing brushes, placing assets and entities, the inspector with key help.
+**From a browser.** Tools > Web Server: the editor's menus, seven dialogs as forms, the editor's own 3D picture with
+fly controls, drawing and resizing brushes, placing assets, prefabs and entities, the inspector with key help.
 
 ## 3. How it was proven
 
@@ -63,7 +63,7 @@ None of this needs the game running:
 - `IW8Radiant.exe --gui-test tests\data\iw8_sample_room.map --out <dir>`: about 1,050 checks of the editor itself,
   the web server and its page included.
 - `tools\run_all_tests.ps1`: both of those plus a start-up test, in one run.
-- `py -3 -I tools\run_offline_proofs.py <work dir>`: end-to-end proofs. Each one edits or builds a real map with the
+- `py -3 -I tools\run_offline_proofs.py <work dir>`: 19 end-to-end proofs (all pass, 2026-11-14). Each one edits or builds a real map with the
   live converter, reads the result back with ACTS, compares it with what was asked, and checks that the game's own
   loaders accept the zone (about 12 minutes).
 - `IW8Radiant.exe --viewport-bench <map> --out <dir>`: frame times and pictures of every view mode.
@@ -87,7 +87,7 @@ short list", is these in order:
 
 ## 5. Not built, or built in part
 
-- Web page: vertex, edge and face tools; forms for the Vision Editor, Preferences, prefabs and surface tools.
+- Web page: vertex, edge and face tools; the full Vision Editor and the surface tools as forms.
 - Occlusion: occluders that are not boxes; local updates of a stock map's occlusion data (removing stock geometry
   opens the whole map's occlusion).
 - Viewport: highlights of your own materials that have a specular map; volumetric fog is uncalibrated and off.

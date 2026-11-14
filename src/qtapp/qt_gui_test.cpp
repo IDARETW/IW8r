@@ -2019,6 +2019,31 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                             QString("POST /api/place with a view puts the asset on the surface under the view's centre (z %1, the brush top %2)")
                                 .arg(placedZ).arg(centre.z));
                 }
+                {
+                    // The prefab library in the browser: the Prefabs dock's rows, with a picture, placed like a double-click.
+                    ch.prefabs = [&w] { return w.webPrefabList(); };
+                    ch.placePrefab = [&w](const QString& id, const WebCamera* cam, QString* why) { return w.webPlacePrefab(id, cam, why); };
+                    if (w.prefabBrowser() && w.prefabBrowser()->count() == 0) w.prefabBrowser()->refresh();  // the dock fills when first shown
+                    WebServer bweb(&ctx, ch);
+                    const QJsonObject list = QJsonDocument::fromJson(bweb.handle("GET", "/api/assets?kind=prefabs&limit=2000", {}, true, {}).body).object();
+                    const QJsonArray rows = list.value("names").toArray();
+                    QString pick;
+                    for (const QJsonValue& v : rows)
+                        if (pick.isEmpty() && v.toObject().value("note").toString().isEmpty()) pick = v.toObject().value("id").toString();
+                    const size_t undoP = ctx.doc.undoPosition();
+                    const size_t entsP = ctx.doc.map().entities.size();
+                    const auto put = bweb.handle("POST", "/api/place", QString("{\"kind\":\"prefabs\",\"name\":\"%1\",\"view\":{\"pos\":[0,-300,120],\"yaw\":90,\"pitch\":-10,\"fov\":90}}").arg(pick).toUtf8(), true, {});
+                    const bool placedP = ctx.doc.map().entities.size() > entsP && ctx.doc.undoPosition() == undoP + 1;
+                    const bool camBack = ctx.cam.pos.x == camWas.pos.x && ctx.cam.yaw == camWas.yaw;
+                    while (ctx.doc.undoPosition() > undoP) ctx.doc.undo();
+                    ctx.doc.deselectAll();
+                    ctx.documentEdited();
+                    const auto none = bweb.handle("POST", "/api/place", "{\"kind\":\"prefabs\",\"name\":\"99999\"}", true, {});
+                    const auto filtered = QJsonDocument::fromJson(bweb.handle("GET", "/api/assets?kind=prefabs&q=zzzznothing", {}, true, {}).body).object();
+                    r.check(rows.size() > 3 && !pick.isEmpty() && put.status == 200 && placedP && camBack && none.status == 400 &&
+                                filtered.value("total").toInt() == 0 && ctx.doc.map().entities.size() == entsP,
+                            QString("the prefab library reaches the browser (%1 prefabs) and one is placed in one undo step").arg(rows.size()));
+                }
                 auto livePage = web.handle("GET", "/", {}, true, {});
                 auto liveJs = web.handle("GET", "/viewlive.js", {}, true, {});
                 r.check(livePage.body.contains("viewLive") && livePage.body.contains("Editor view (live)") && liveJs.status == 200 &&
@@ -2041,10 +2066,30 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 const QJsonObject sun = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=sunSky", {}, true, {}).body).object();
                 QStringList sunKeys;
                 for (const QJsonValue& f : sun.value("fields").toArray()) sunKeys << f.toObject().value("key").toString() + ":" + f.toObject().value("type").toString();
-                r.check(forms.size() == 6 && sun.value("title").toString() == "Sun & Sky" &&
+                r.check(forms.size() == 7 && sun.value("title").toString() == "Sun & Sky" &&
                             sunKeys == QStringList({"pitch:number", "yaw:number", "color:color", "sky:text"}) &&
                             fweb.handle("GET", "/api/form?id=nothing", {}, true, {}).status == 404,
                         "GET /api/forms lists the forms and GET /api/form gives a form's fields with the map's values");
+                {
+                    // Preferences: the editing, build and F5 settings; the host command and the folders stay at the editor.
+                    const MainWindow::Preferences before = w.currentPreferences();
+                    const QVariant layoutWas = Settings::instance().value("build/collisionLayout", "auto");
+                    const QJsonObject pf = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=preferences", {}, true, {}).body).object();
+                    QStringList keys;
+                    for (const QJsonValue& f : pf.value("fields").toArray()) keys << f.toObject().value("key").toString();
+                    const auto setP = fweb.handle("POST", "/api/form", "{\"id\":\"preferences\",\"values\":{\"cameraSpeed\":900,\"textureLock\":true,\"collisionLayout\":\"one\"}}", true, {});
+                    const MainWindow::Preferences now = w.currentPreferences();
+                    const bool applied = setP.status == 200 && now.cameraSpeed == 900 && now.textureLock && now.cameraFov == before.cameraFov &&
+                                         Settings::instance().value("build/collisionLayout").toString() == "one";
+                    const auto badP = fweb.handle("POST", "/api/form", "{\"id\":\"preferences\",\"values\":{\"playGametype\":\"war; quit\"}}", true, {});
+                    const auto badL = fweb.handle("POST", "/api/form", "{\"id\":\"preferences\",\"values\":{\"cameraSpeed\":1200,\"collisionLayout\":\"sideways\"}}", true, {});
+                    const bool untouched = w.currentPreferences().cameraSpeed == 900;  // a refused form writes nothing
+                    w.applyPreferences(before);
+                    Settings::instance().setValue("build/collisionLayout", layoutWas);
+                    r.check(keys.contains("cameraSpeed") && keys.contains("collisionLayout") && keys.contains("playBots") && !keys.contains("hostCommand") &&
+                                !keys.join(' ').contains("Root") && applied && badP.status == 400 && badL.status == 400 && untouched,
+                            "the Preferences form changes the editing, build and F5 settings; folders and the host command are not in it");
+                }
                 {
                     // Check Map: the dialog's findings as a report; "fix all" applies the automatic fixes in one step.
                     const Id bad = ctx.doc.addEntity({{"classname", "mp_dm_spawn"}, {"origin", "0 0 4000"}, {"angles", "12 400 3"}}, {}, "web check");
@@ -2111,6 +2156,18 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 const QString fogNow = key("iw8r_fog");
                 ctx.doc.undo();
                 ctx.documentEdited();
+                {
+                    // The vision overrides of the Atmosphere form: the build's own parser decides what is accepted.
+                    const QString visionWas = key("iw8r_vision");
+                    const auto okV = fweb.handle("POST", "/api/form", "{\"id\":\"atmosphere\",\"values\":{\"vision\":\"tonemapExposure=0.5\"}}", true, {});
+                    const QString visionNow = key("iw8r_vision");
+                    const auto badV = fweb.handle("POST", "/api/form", "{\"id\":\"atmosphere\",\"values\":{\"vision\":\"no equals sign here\"}}", true, {});
+                    const bool kept = key("iw8r_vision") == visionNow;
+                    ctx.doc.undo();
+                    ctx.documentEdited();
+                    r.check(okV.status == 200 && visionNow == "tonemapExposure=0.5" && badV.status == 400 && kept && key("iw8r_vision") == visionWas,
+                            "the Atmosphere form sets the vision overrides and refuses text the build would not read");
+                }
                 fweb.handle("POST", "/api/form", "{\"id\":\"mapInfo\",\"values\":{\"iw8r_title\":\"Web Title\",\"iw8r_minimap_scale\":\"1.2\"}}", true, {});
                 const bool infoSet = key("iw8r_title") == "Web Title" && key("iw8r_minimap_scale") == "1.2";
                 const auto infoBad = fweb.handle("POST", "/api/form", "{\"id\":\"mapInfo\",\"values\":{\"iw8r_minimap_scale\":\"9\"}}", true, {});

@@ -16,6 +16,8 @@
 #include "atmosphere_dialog.h"
 #include "bake_options.h"
 #include "compile_panel.h"
+#include "settings.h"
+#include "devmap_launch.h"
 #include "find_dialog.h"
 #include "map_gametypes.h"
 #include "sun_sky_dialog.h"
@@ -83,6 +85,7 @@ QString MainWindow::webFormForCommand(const QString& command) {
     if (command == "MapAtmosphere") return "atmosphere";
     if (command == "GameModes") return "gameModes";
     if (command == "CheckMap") return "checkMap";
+    if (command == "Preferences") return "preferences";
     return {};
 }
 
@@ -91,12 +94,39 @@ QJsonArray MainWindow::webFormList() const {
                       QJsonObject{{"id", "atmosphere"}, {"title", "Atmosphere (Fog / Film Grade)"}, {"command", "MapAtmosphere"}, {"menu", "Compile"}},
                       QJsonObject{{"id", "gameModes"}, {"title", "Game Modes"}, {"command", "GameModes"}, {"menu", "Tools"}},
                       QJsonObject{{"id", "checkMap"}, {"title", "Check Map"}, {"command", "CheckMap"}, {"menu", "Tools"}},
+                      QJsonObject{{"id", "preferences"}, {"title", "Preferences"}, {"command", "Preferences"}, {"menu", "Edit"}},
                       QJsonObject{{"id", "bakeSettings"}, {"title", "Lightmap Bake Settings"}, {"command", ""}, {"menu", "Compile"}},
                       QJsonObject{{"id", "mapInfo"}, {"title", "Map Info"}, {"command", ""}, {"menu", "Compile"}}};
 }
 
 QJsonObject MainWindow::webForm(const QString& id) const {
     if (id == "gameModes") return webGameModesForm();
+    if (id == "preferences") {
+        const Preferences p = currentPreferences();
+        const DevmapRunner::PlayOptions play = DevmapRunner::playOptions();
+        const QString layout = Settings::instance().value("build/collisionLayout", "auto").toString();
+        QJsonArray f{number("cameraSpeed", "Camera speed (units/s)", p.cameraSpeed, 50, 5000, 50),
+                     number("cameraFov", "Camera field of view", p.cameraFov, 30, 150, 1),
+                     number("autosaveMinutes", "Autosave every (minutes; 0 = off)", p.autosaveMinutes, 0, 60, 1),
+                     boolean("toasts", "Toast notifications", p.toasts),
+                     boolean("textureLock", "Texture lock", p.textureLock),
+                     boolean("fogPreview", "Fog preview", p.fogPreview),
+                     number("modelScale", "Custom model scale (OBJ units to map units)", p.modelScale, 0.001, 1000, 0.1),
+                     boolean("realScriptables", "Build: carry real stock scripted objects (doors, cones, cars) into the map",
+                             Settings::instance().value("build/realScriptables", true).toBool(),
+                             "If a map with such an object does not load in the game, turn this off and build again"),
+                     QJsonObject{{"key", "collisionLayout"}, {"label", "Build: collision"}, {"type", "choice"},
+                                 {"value", layout == "one" || layout == "tiles" ? layout : QString("auto")},
+                                 {"choices", QJsonArray{"auto", "one", "tiles"}},
+                                 {"choiceLabels", QJsonArray{"Automatic: streamed tiles for a map wider than 20000 units", "Always one piece",
+                                                             "Always streamed tiles"}},
+                                 {"help", ""}},
+                     text("playGametype", "F5: game mode", play.gametype, "A game type name: war, dm, dom, sd, ctf, koth, conf, br"),
+                     number("playBots", "F5: bots", play.bots, 0, 17, 1),
+                     boolean("playCover", "F5: cover the game window until the map loads", play.cover),
+                     boolean("playStartRequest", "F5: let a client that can start the map by itself", play.startRequest)};
+        return QJsonObject{{"id", id}, {"title", "Preferences"}, {"fields", f}};
+    }
     if (id == "checkMap") {
         // The dialog's own list, from a dialog that is never shown: the same checks in the same order.
         CheckMapDialog check(const_cast<EditorContext*>(&ctx_), nullptr);
@@ -139,7 +169,10 @@ QJsonObject MainWindow::webForm(const QString& id) const {
                   boolean("invert", "Invert", film.invert),
                   color("lightTint", "Light tint", film.lightTint),
                   color("darkTint", "Dark tint", film.darkTint),
-                  text("lut", "Colour grading LUT (.cube file; empty = none)", qs(a.lut))};
+                  text("lut", "Colour grading LUT (.cube file; empty = none)", qs(a.lut)),
+                  text("vision", "Vision overrides (empty = none)", qs(a.vision),
+                       "name=value; name=x y z, with the game's vision field names (tonemapExposure, ...). The Vision Editor of the "
+                       "editor lists all 218 fields")};
     } else if (id == "bakeSettings") {
         title = "Lightmap Bake Settings";
         const MapBakeOptions o = mapBakeOptions(w);
@@ -174,6 +207,46 @@ bool MainWindow::applyWebForm(const QString& id, const QJsonObject& values, QStr
         return false;
     };
     if (id == "gameModes") return applyWebGameModes(values, why);
+    if (id == "preferences") {
+        Preferences p = currentPreferences();
+        double autosave = p.autosaveMinutes;
+        if (!numberIn(values, "cameraSpeed", 50, 5000, p.cameraSpeed, why) || !numberIn(values, "cameraFov", 30, 150, p.cameraFov, why) ||
+            !numberIn(values, "autosaveMinutes", 0, 60, autosave, why) || !numberIn(values, "modelScale", 0.001, 1000, p.modelScale, why))
+            return false;
+        p.autosaveMinutes = int(std::lround(autosave));
+        if (values.contains("toasts")) p.toasts = values.value("toasts").toBool();
+        if (values.contains("textureLock")) p.textureLock = values.value("textureLock").toBool();
+        if (values.contains("fogPreview")) p.fogPreview = values.value("fogPreview").toBool();
+        DevmapRunner::PlayOptions play = DevmapRunner::playOptions();
+        double bots = play.bots;
+        if (!numberIn(values, "playBots", 0, 17, bots, why)) return false;
+        if (values.contains("playGametype")) {
+            const QString g = values.value("playGametype").toString().trimmed().toLower();
+            bool ok = !g.isEmpty() && g.size() <= 11;
+            for (const QChar c : g) ok = ok && ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_');
+            if (!ok) return no("a game type name is 1 to 11 of a-z, 0-9 and _");
+            play.gametype = g;
+        }
+        QString layout;
+        if (values.contains("collisionLayout")) {
+            layout = values.value("collisionLayout").toString();
+            if (layout != "auto" && layout != "one" && layout != "tiles") return no("the collision layout is auto, one or tiles");
+        }
+        // Everything was accepted: now write.
+        static const char* const editing[] = {"cameraSpeed", "cameraFov", "autosaveMinutes", "toasts", "textureLock", "fogPreview", "modelScale"};
+        bool editingChanged = false;
+        for (const char* k : editing) editingChanged = editingChanged || values.contains(k);
+        if (editingChanged) applyPreferences(p);
+        if (values.contains("realScriptables")) Settings::instance().setValue("build/realScriptables", values.value("realScriptables").toBool());
+        if (!layout.isEmpty()) Settings::instance().setValue("build/collisionLayout", layout);
+        play.bots = int(std::lround(bots));
+        if (values.contains("playCover")) play.cover = values.value("playCover").toBool();
+        if (values.contains("playStartRequest")) play.startRequest = values.value("playStartRequest").toBool();
+        if (values.contains("playGametype") || values.contains("playBots") || values.contains("playCover") || values.contains("playStartRequest"))
+            DevmapRunner::setPlayOptions(play);
+        ctx_.setStatus("Preferences changed from the browser");
+        return true;
+    }
     if (id == "checkMap") {
         if (!values.value("fixAll").toBool()) return true;  // a report: nothing to write
         CheckMapDialog check(&ctx_, nullptr);
@@ -218,6 +291,13 @@ bool MainWindow::applyWebForm(const QString& id, const QJsonObject& values, QStr
             const QString lut = values.value("lut").toString().trimmed();
             if (lut.contains('"')) return no("a file name has no quotes");
             a.lut = lut.toStdString();
+        }
+        if (values.contains("vision")) {
+            const std::string vision = values.value("vision").toString().trimmed().toStdString();
+            std::string verr;
+            if (vision.find('"') != std::string::npos) return no("the vision overrides have no quotes");
+            if (!vision.empty() && visionOverridesJson(vision, &verr).empty()) return no("vision overrides: " + qs(verr.empty() ? std::string("not name=value; name=value") : verr));
+            a.vision = vision;
         }
         a.fog = fogOn ? std::optional<ExpFog>(fog) : std::nullopt;
         a.film = filmOn ? std::optional<FilmGrade>(film) : std::nullopt;

@@ -5,6 +5,17 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Web: Preferences, vision overrides and prefabs.** Edit > Preferences opens in the web page with the editing,
+  build and F5 settings (the asset folders and the F5 host command stay at the editor: paths and a command line on
+  the editor's machine are not for a browser). The Atmosphere form has the map's vision overrides, checked by the
+  build's own parser. The Assets panel lists the prefab library with pictures; a click places one in front of the
+  live view. Checked in a real browser (a stock door prefab placed and undone).
+- **The installed editor has its shader files.** The release package left out `data\shaders`, so an installed copy had
+  no toon shader and no Shader Editor templates. The package now carries them and its build stops when a file the
+  editor needs is missing; the packaged editor passes its start-up test and compiles the toon filter from its own
+  folder.
+- All 19 end-to-end proofs pass again against the current converter (`tools\run_offline_proofs.py`).
+
 - **Occlusion bake for your own maps (off by default).** Compile > Occlusion bake (worldspawn `iw8r_umbra_bake 1`)
   makes the build give the map real occlusion data: the free space is cut into cells along the map's opaque box
   brushes, the cells are joined by portals, and the game's Umbra then stops drawing what lies in cells it cannot

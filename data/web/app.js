@@ -341,20 +341,28 @@ async function searchAssets() {
   catch (e) { $("assetMore").textContent = String(e.message || e); return; }
   for (const it of res.names) {
     const li = document.createElement("li");
-    if (kind === "materials" || kind === "models") {
+    if (kind === "materials" || kind === "models" || kind === "prefabs") {
       const img = document.createElement("img");
       img.loading = "lazy";
       img.alt = "";
-      img.src = api(`/api/thumb?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(it.name)}`);
+      img.src = api(`/api/thumb?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(kind === "prefabs" ? it.id : it.name)}`);
       img.onerror = () => { img.style.visibility = "hidden"; };
       li.appendChild(img);
     }
     const span = document.createElement("span");
-    span.textContent = it.name + (it.loop ? "  (loop)" : "");
+    span.textContent = it.name + (it.loop ? "  (loop)" : "") + (it.note ? "  (cannot be placed)" : "");
     li.appendChild(span);
-    li.title = it.name;
+    li.title = it.note || it.name;
     li.onclick = async () => {
       if (kind === "materials") { await post("/api/material", { name: it.name }); setStatus("Material " + it.name); return; }
+      if (kind === "prefabs") {
+        // In front of the live view's camera when it is shown, else of the editor's own camera.
+        const body = { kind, name: it.id };
+        const pc = !$("viewLive").hidden && window.viewLive && window.viewLive.camera();
+        if (pc) body.view = { pos: pc.pos, yaw: pc.yaw, pitch: pc.pitch, fov: pc.fov };
+        try { await post("/api/place", body); setStatus("Placed prefab " + it.name); } catch (e) { /* shown */ }
+        return;
+      }
       // In the live editor view: on the surface under the view's centre. Else at the 2D view centre (third axis 0).
       const liveCam = !$("viewLive").hidden && window.viewLive && window.viewLive.camera();
       if (liveCam) {
