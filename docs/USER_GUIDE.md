@@ -289,8 +289,9 @@ Commands in the Tools menu:
   sets its own, so the game's north matches the editor's.
 - **Occlusion bake** (Compile panel, off by default): the build cuts the map's free space into cells along its
   opaque box brushes, and the game then skips what lies in cells the camera cannot see into. It helps maps with
-  rooms, corridors and closed streets; an open map gains little. Only brushes that are axis-aligned boxes with opaque
-  materials hide anything. It is checked offline only: if something is missing in the game with it on, turn it off
+  rooms, corridors and closed streets; an open map gains little. Only brushes with opaque materials hide anything:
+  an axis-aligned box as it is, a slanted or many-sided brush by the largest box that fits inside it (so build thick
+  walls from boxes; a thin slanted wall hides nothing). It is checked offline only: if something is missing in the game with it on, turn it off
   and build again.
 - **Compile > Atmosphere**: exponential fog (start, halfway distance, colour; previewed in the camera, View > Fog
   Preview) and a film grade. Exposure is in **Map Info** on the Compile panel, with title, description, compass and

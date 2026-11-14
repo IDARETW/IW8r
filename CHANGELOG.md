@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Occlusion bake: slanted and many-sided brushes hide things too.** An opaque brush that is not an axis-aligned
+  box (a round tower, a wedge, a turned block) now gives the bake the box found inside it; before, only exact boxes
+  counted. The box lies wholly inside the brush, so it hides at most what the brush hides. Thin slanted walls hold no
+  such box and still hide nothing. The build log says how many boxes were fitted. Core tests: the box is inside the
+  brush for boxes, prisms of 3 to 24 sides and 300 random cut solids; a compile with a box, a prism and a sliver
+  writes two occluders.
+
 - **Game Lighting draws the normal and specular maps of your own materials.** A material made with File > New / Edit
   Custom Material that has a normal image and a specular image is now drawn with them in View > Game Lighting, by the
   rule of the build's own world shader: the specular map times a view-angle factor (0.8 head-on to 4 at a grazing

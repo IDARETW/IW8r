@@ -2,6 +2,7 @@
 #include "custom_shader.h"
 #include "ies_profiles.h"
 #include "compile_iw8.h"
+#include "occluder_box.h"
 #include "bake_options.h"
 #include "game_modes.h"
 #include "collision_world.h"
@@ -3074,12 +3075,13 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     const std::string decalsKey = decalCount ? ",\"decal_volumes\":[" + decalJson + "]" : std::string();
     // The occlusion bake (worldspawn iw8r_umbra_bake 1, plan 2.4): the opaque box brushes of the world as occluder
     // boxes; the converter cuts the map's free space into cells along them and joins the cells by portals, so the
-    // game's Umbra hides what lies behind them. Only axis-aligned boxes whose faces are all opaque (or caulk) count;
-    // anything else hides nothing. Without the key the converter writes its one-cell tome (nothing hidden by Umbra).
+    // game's Umbra hides what lies behind them. Brushes whose faces are all opaque (or caulk) count: an axis-aligned
+    // box as it is, any other convex brush by the box found inside it (core occluder_box.h; at least 8 units on every
+    // side, which leaves out thin slanted walls). Without the key the converter writes its one-cell tome.
     std::string occludersKey;
     if (worldspawn && worldspawn->value("iw8r_umbra_bake") && *worldspawn->value("iw8r_umbra_bake") == "1") {
         std::string boxes;
-        size_t count = 0, skewed = 0, open = 0;
+        size_t count = 0, skewed = 0, fitted = 0, open = 0;
         for (const EdgeBrush& b : edgeData.brushes) {
             if (!b.opaque) {
                 ++open;
@@ -3090,18 +3092,27 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                 const double m = std::max({std::fabs(p.n.x), std::fabs(p.n.y), std::fabs(p.n.z)});
                 if (m < 0.99999) isBox = false;
             }
+            AABB occluder = b.bounds;
             if (!isBox) {
-                ++skewed;
-                continue;
+                std::vector<Vec3> corners;
+                for (const Winding& w : b.wins) corners.insert(corners.end(), w.begin(), w.end());
+                const std::optional<AABB> in = inscribedBox(b.planes, corners);
+                if (!in || in->maxs.x - in->mins.x < 8 || in->maxs.y - in->mins.y < 8 || in->maxs.z - in->mins.z < 8) {
+                    ++skewed;
+                    continue;
+                }
+                occluder = *in;
+                ++fitted;
             }
             if (count) boxes += ",";
-            boxes += "[" + num(b.bounds.mins.x) + "," + num(b.bounds.mins.y) + "," + num(b.bounds.mins.z) + "," + num(b.bounds.maxs.x) + "," +
-                     num(b.bounds.maxs.y) + "," + num(b.bounds.maxs.z) + "]";
+            boxes += "[" + num(occluder.mins.x) + "," + num(occluder.mins.y) + "," + num(occluder.mins.z) + "," + num(occluder.maxs.x) + "," +
+                     num(occluder.maxs.y) + "," + num(occluder.maxs.z) + "]";
             ++count;
         }
         if (count) occludersKey = ",\"umbra_occluders\":[" + boxes + "]";
-        warn.push_back("occlusion bake: " + std::to_string(count) + " occluder box(es) from the opaque box brushes (" + std::to_string(skewed) +
-                       " opaque brush(es) are not axis-aligned boxes and " + std::to_string(open) +
+        warn.push_back("occlusion bake: " + std::to_string(count) + " occluder box(es) from the opaque brushes (" + std::to_string(fitted) +
+                       " of them fitted inside brushes that are not axis-aligned boxes; " + std::to_string(skewed) +
+                       " opaque brush(es) are too thin or too slanted to hold a box and " + std::to_string(open) +
                        " are not opaque: they hide nothing)" +
                        (count ? "; needs a converter with umbra_occluders; not seen in game" : ": nothing to bake, the one-cell tome is written"));
     }

@@ -89,8 +89,10 @@ short list", is these in order:
 ## 5. Not built, or built in part
 
 - Web page: patch vertex editing; the full Vision Editor (vision overrides by name are in the Atmosphere form).
-- Occlusion: occluders that are not boxes; local updates of a stock map's occlusion data (removing stock geometry
-  opens the whole map's occlusion).
+- Occlusion: thin slanted walls, terrain and models as occluders (other slanted and many-sided brushes hide by the
+  box inside them). Removing stock world geometry opens the whole map's occlusion: everything is drawn, which
+  costs frame time on that map and nothing else. A local update was decided against (a mistake there makes objects
+  vanish in the game, and only a playtest shows it).
 - Viewport: volumetric fog is uncalibrated and off. The normal and specular maps of your own materials are drawn by
   the build shader's rule, which has not been compared with the game.
 - Streamed Warzone tiles cannot be edited (a client matter, see section 2).

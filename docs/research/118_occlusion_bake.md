@@ -21,8 +21,11 @@ hides. It is **off by default** (worldspawn `iw8r_umbra_bake 1`, Compile > Occlu
   object is hidden only when no cell that lists it is reached; nothing is culled by size or by its own box.
 - **One leaf tile, flags 3, no clusters**, as the one-cell tome that the game has been running. Cells have no
   cluster (0xFFFFFFFF) and the flag word 0x80000000, as there.
-- **Occluders are boxes.** Only opaque brushes that are axis-aligned boxes count (a portal is an axis-aligned
-  rectangle in tile quanta). Their faces move inward to a grid of about 4 units, so a wall is never thicker in the
+- **Occluders are boxes.** An opaque brush that is an axis-aligned box counts as it is; any other opaque convex
+  brush counts by a box found inside it (core `occluder_box.h`, 2026-11-14: grown from the average of the brush's
+  corners, all sides together and then each side alone; at least 8 units a side). A box inside the brush hides at
+  most what the brush hides, so this keeps the bake conservative (a portal is an axis-aligned rectangle in tile
+  quanta). Their faces move inward to a grid of about 4 units, so a wall is never thicker in the
   tome than in the map.
 - **A camera is never without a cell.** The view tree covers the tile's cube; a leaf inside a wall or outside the
   map lists the nearest cell (INFERRED need: what the game does for a point with no cell is not known).
@@ -78,6 +81,7 @@ tree would outgrow its node budget (1,000,000) the space is cut again with half 
 - **In game:** everything. In particular whether the game's Umbra accepts several cells in a tile of flags 3 without
   clusters, internal portals with no growth, and a view leaf inside a wall that names the nearest cell (stock tomes
   leave such a leaf empty).
-- Occluders that are not boxes (slanted roofs, terrain), and models as occluders.
+- Thin slanted walls and roofs, terrain, and models as occluders (thick slanted brushes are covered by their inner
+  box since 2026-11-14).
 - The world's merged surfaces limit what can be hidden; splitting them by cell is a converter change.
 - Gates (doors that open) and LOD tiles are not written.

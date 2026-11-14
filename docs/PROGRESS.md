@@ -28,6 +28,10 @@
   SourceSunSpecular with the default envMapParms (.8, 4, 2.5, .625); probe = probeCube when a capture is bound, else
   grey 128. Not drawn for a material with a custom surface shader (the build adds none there either). Test scene:
   out/agent/spec (shot.ps1 renders a map through /api/frame of the test editor copy).
+  Occlusion bake: core occluder_box.h inscribedBox (grow from the corners' average: all sides together, then each
+  side alone, three rounds); compile_iw8.cpp uses it for opaque brushes that are not axis-aligned boxes (at least 8
+  units a side; the converter's minOccluderSide 64 still applies). Tests: tests/occluder_box_tests.cpp and
+  compile_occlusion_bake_fits_boxes_into_slanted_brushes in custom_materials_tests.cpp. The converter is unchanged.
   The web list of plan 3.3 / 3.4 is done except: the full Vision Editor (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder

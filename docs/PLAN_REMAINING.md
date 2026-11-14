@@ -172,7 +172,8 @@ grain, white balance.
 
 **1.9 Own brushes match what the build will produce.** Part 1 DONE 2026-11-13 (research 117: the unbaked look, the
 multi-bounce occlusion). Brushes added to a stock map DONE 2026-11-14 (the map's tetrahedral light grid, research
-117 section 5). Open: specular-map materials, own-map models against the built light grid.
+117 section 5). Normal and specular maps of own materials DONE 2026-11-14 (the converter's SourceSunSpecular rule;
+see PROGRESS). Open: own-map models against the built light grid.
 - **Unbaked maps.** Show the preview bake only when `iw8r_bake_lightmaps` is set; otherwise show the unbaked path the
   game takes (research 55).
 - **Specular.** Own brushes get environment specular, using the converter shader's formula
@@ -253,7 +254,12 @@ collections; surface ids on displaced terrain.
 - Menu entries and saved settings.
 - This shows what the game hides, offline.
 
-**2.3 Stock-map edits keep the tome correct.**
+**2.3 Stock-map edits keep the tome correct.** DECISION 2026-11-14: not built. Removing stock world geometry keeps
+opening the whole map's occlusion (everything is drawn, as it has been since research 96). That costs frame time on
+such a map and nothing else. A local update would rewrite single tiles of a stock tome and their links to the
+neighbouring tiles; an error there makes objects vanish in the game, which only a playtest shows, and the owner does
+no playtests. The safe form stays until someone can look in the game. The decoder (2.1) and the bake (2.4) hold what
+a later attempt needs.
 - **Local tile replacement.** Replace only the tiles that an edit touches (with one-cell tiles, or re-baked tiles once
   2.4 exists), instead of opening the tome across the whole map.
 - **Editor side.** `stockWorldRemovalJson` (`src/core/stock_zone_edit.cpp:273-297`) writes the `"occlusion"` key. This
@@ -265,7 +271,8 @@ collections; surface ids on displaced terrain.
 - **Stale text to fix:** CHANGELOG :66-68, ROADMAP 11.5, `main_window_stock_edit.cpp:314-315`.
 
 **2.4 A real occlusion bake for custom maps.** DONE 2026-11-14 as an opt-in (research 118: cells and portals from
-the opaque box brushes, the conservativeness test, a real build read back). Open: non-box occluders and models as
+the opaque box brushes, the conservativeness test, a real build read back). 2026-11-14 also: slanted and many-sided
+opaque brushes count by the box inside them (core occluder_box). Open: thin slanted walls, terrain and models as
 occluders, the per-brush occluder key, gates, the world's merged surfaces (they limit what can be hidden), and the
 in-game look.
 - **Bake.** Voxelize the occluders (opaque structural brushes, large models with collection flag 128). Flood the empty
