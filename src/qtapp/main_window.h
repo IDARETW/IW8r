@@ -281,6 +281,10 @@ public:
     QString newGameTypeScript(const QString& name, QString* err = nullptr);
     void restoreStockMap();
     QString stockBackupDir(const QString& zone) const;
+    // Where the game's stock zone files wait while an edit is installed in their place: beside the game's zone folder.
+    QString stockKeepDir() const;
+    // Installs the edited zones of a folder (a rebuild's out folder) for the map `zone`; asks first when `ask`.
+    bool installEditedStockZones(const QString& outDir, const QString& zone, bool ask);
     QString stockZone() const { return stockZone_; }
     // Prefabs (also used by --gui-test): a misc_prefab at the 2D view centre, explode, save selection.
     // `file` is a plain .map prefab, or a prefab bundle (its .iw8prefab folder, or a file inside it).

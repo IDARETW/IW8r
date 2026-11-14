@@ -2,6 +2,21 @@
 
 ## Latest (2026-11-13)
 
+- Owner (2026-11-13 night): the Shipment toon patch crashed the game in the lobby, "Disc read error [3.1]:
+  'techsets_mp_shipment.fp'" (the owner had copied the .fp into zone\ by hand; no editor markers). Research 116 (IDA,
+  game_dx12_ship_replay.exe): error 3 = DB_AsyncIWFileLoad_PumpDecodeQueue's result; a patch's signed flag comes from
+  its base header (DB_ReadFastfileHeaderData checks target then base), which must equal the signed stock zone header,
+  so its data must start with an RSA-signed IWffs100 block. No unsigned patch of a stock zone can load. The owner's
+  client (E:/DW/IW8 integration/replay/DB_ResetFileReader.cpp) does load unsigned IWffc100 zones under any name.
+  Change: core stock_install installStockZones / restoreStockZones / installedStockZones /
+  installedStockZoneOverrides / unsignedReplayZone / unsignedPatchOfSignedZone (old patch functions kept for
+  cleanup); editor installEditedStockZones (folder dialog when no rebuild in the session), stockKeepDir =
+  <game>/iw8r_stock, stockZoneForReading reads the kept zone, stockEditJson + "stock_zones" + "patch": false.
+  Converter x64-zt 5bb98fb9 (worktree, deployed, old exe out/zt_backup/zonetool_14bff0d5.exe): xfile::use_zone_file,
+  editzone "stock_zones". Proof: core tests; editzone with stock_zones writes the same Shipment toon zone byte for
+  byte (out/agent/toon_ship/edit2 vs edit). Deliverable for the owner: install the folder out/agent/toon_ship/edit
+  (File > Install Edited Stock Map Into Game, choose the folder). NOT seen in game: an unsigned zone under a stock
+  map's zone name. tools/patches/zt_stock_zones.py, stock_zone_install.py, stock_install_stray_patch.py.
 - Owner (2026-11-13 late night): "make a patch ff to make shipment use the toon shader". Research 115. Core
   dxbc_splice (DXBC container, SHEX tokens, checksum = modified MD5: reproduces all 218 stock checksums;
   dxbcSpliceFilter moves a filter shader's instructions before a shader's final ret). custom_shader: iw8rFilter

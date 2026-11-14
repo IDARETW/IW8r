@@ -186,8 +186,8 @@ Everything else in this list can wait. This one cannot be settled without the ga
 - [ ] File > Open IW8 Stock Map > mp_shipment. Map > Edit Compiled Spawns. Move one spawn a little, add a
       `script_model` with a model of another map (for example `door_wooden_panel_03_painted_left_mp_nophysics`).
 - [ ] File > Rebuild Stock Zone: a few seconds, the status line ends with "checked (ACTS, 0 failed)".
-- [ ] Close the game. File > Install Edited Stock Map Into Game: the dialog lists `mp_shipment.fp` (and
-      `techsets_mp_shipment.fp`). Confirm.
+- [ ] Close the game. File > Install Edited Stock Map Into Game: the dialog lists `mp_shipment.ff` (and
+      `techsets_mp_shipment.ff`) and the folder `iw8r_stock` the stock files move to. Confirm.
 - [ ] Draw a box brush with a stock material somewhere open on Shipment before the rebuild. The Console says "added
       brushes (entity 0): 12 triangles ... built as model iw8r_ovl_...".
 - [ ] Start Shipment in the game: say whether it loads and whether the added model, the box (can you stand on it?)
@@ -385,9 +385,16 @@ Map project out/agent/mp_cinderrail_toon (built as mp_cinderrail_t).
 
 ## In game (optional, 2026-11-13): Shipment with the toon shader's filter
 
-Patch: `out/agent/toon_ship/edit/patch/techsets_mp_shipment.fp` (or rebuild it: open Shipment, Tools > Shader Editor,
-toon, Use for This Map, File > Rebuild Stock Zone, File > Install Edited Stock Map Into Game). Game closed while
-installing; File > Restore Stock Map In Game (or deleting the copied `.fp`) takes it out again.
+The first try (a patch file `techsets_mp_shipment.fp` copied into `zone`) stopped the game with "Disc read error
+[3.1]": the game takes no unsigned patch of a stock zone (research 116). Delete that `.fp` from the `zone` folder if
+it is still there (the install below also removes it).
+
+Install, game closed: start the editor again (it was rebuilt), File > Install Edited Stock Map Into Game, answer Yes
+to "choose a folder", pick `E:\IW8-Radiant\out\agent\toon_ship\edit`. The dialog lists
+`techsets_mp_shipment.ff`; confirm. The stock file moves to `iw8r_stock` in the game folder. To take it out: open
+Shipment in the editor (File > Open IW8 Stock Map), then File > Restore Stock Map In Game.
+(Or rebuild it yourself first: open Shipment, Tools > Shader Editor, toon, Use for This Map, File > Rebuild Stock
+Zone, then install.)
 
 - [ ] Shipment loads and plays (this is the first stock map whose lit shaders were replaced: if it does not load, or
       the world is black or invisible, restore and tell me).

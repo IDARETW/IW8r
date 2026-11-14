@@ -156,7 +156,8 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints, const std::string* placedObjects,
                           const std::vector<StockPatchOverride>* stockPatches, const std::vector<StockPropCollision>* removeCollision,
                           const std::string* lootBoxes, const std::string* sun, const std::string* replaceMaterials,
-                          const std::string* removeWorld, const std::string* litFilter) {
+                          const std::string* removeWorld, const std::string* litFilter,
+                          const std::vector<StockPatchOverride>* stockZones, bool patchFiles) {
     std::string json = "{";
     bool first = true;
     const auto sep = [&] {
@@ -225,6 +226,17 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
         for (size_t i = 0; i < stockPatches->size(); ++i)
             json += std::string(i ? "," : "") + jsonText((*stockPatches)[i].name) + ":" + jsonText((*stockPatches)[i].stockFile);
         json += "}";
+    }
+    if (stockZones && !stockZones->empty()) {
+        sep();
+        json += "\"stock_zones\":{";
+        for (size_t i = 0; i < stockZones->size(); ++i)
+            json += std::string(i ? "," : "") + jsonText((*stockZones)[i].name) + ":" + jsonText((*stockZones)[i].stockFile);
+        json += "}";
+    }
+    if (!patchFiles) {
+        sep();
+        json += "\"patch\":false";
     }
     return json + "}";
 }

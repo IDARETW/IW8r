@@ -76,12 +76,16 @@ struct StockPropCollision {
 // its collision tiles, which this does not change).
 // `stockPatches` (stock_install.h): the saved stock patches of the edits that are installed in the game; the
 // converter then reads those zones as the stock game has them, not as the installed edit left them.
+// `stockZones`: the same for edits installed as whole zones (editzone "stock_zones": zone file name -> the kept stock
+// file). `patchFiles` false: the converter writes no <zone>.fp ("patch": false); the game does not load them on its
+// signed zones (research 116).
 std::string stockEditJson(const std::string& entitiesPath, const std::vector<uint32_t>& hiddenProps,
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints = nullptr,
                           const std::string* placedObjects = nullptr, const std::vector<StockPatchOverride>* stockPatches = nullptr,
                           const std::vector<StockPropCollision>* removeCollision = nullptr, const std::string* lootBoxes = nullptr,
                           const std::string* sun = nullptr, const std::string* replaceMaterials = nullptr,
-                          const std::string* removeWorld = nullptr, const std::string* litFilter = nullptr);
+                          const std::string* removeWorld = nullptr, const std::string* litFilter = nullptr,
+                          const std::vector<StockPatchOverride>* stockZones = nullptr, bool patchFiles = true);
 // The "lit_filter" value for stockEditJson: the compiled filter program (customShaderFilterProgramSource, core
 // custom_shader) and the shared zones a lit shader's program may live in when the map's techset zone only names it.
 std::string stockLitFilterJson(const std::string& programPath);

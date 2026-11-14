@@ -87,7 +87,9 @@ For every lit technique (types 34, 35, 36, 151) of every technique set the techs
 | Materials | none needed: they point at the set (same zone) | |
 
 Shipment: 366 technique sets, 369 techniques, 217 shaders (24 from shared zones), 1 shader without a program. The
-edited zone is 2.1 MB (stock 1.7 MB); its patch `techsets_mp_shipment.fp` is 140 KB.
+edited zone is 2.1 MB (stock 1.7 MB); its patch `techsets_mp_shipment.fp` is 140 KB. **The patch does not load in
+the game** (research 116: a patch of a signed zone needs the game's signature); the whole edited zone is installed
+instead.
 
 Read back from the edited zone (ACTS): 242 pixel shaders, all with a valid checksum; the 217 filtered ones are named
 after their checksum; 366 sets have new names, 13 keep theirs; of 227 lit pipeline-state hashes one equals a stock

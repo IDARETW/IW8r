@@ -1,5 +1,8 @@
 # 88. Stock map editing: working plan and notes
 
+> **2026-11-13:** the patch files (`<zone>.fp`) this note installs do not load in the game on its signed stock
+> zones. Edits are installed as whole unsigned zones now: [research 116](116_stock_zone_install.md).
+
 Date: 2026-11-12. Owner decision (asked which large features the finished product must include): "Stock map editing,
 warzone-specific editing and map/mode creation". This file is the working record of the stock map half; the Warzone
 survey is research 87. It replaces the limits listed in research 48 where they differ.

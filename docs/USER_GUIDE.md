@@ -255,7 +255,7 @@ Commands in the Tools menu:
   function: `float3 iw8rFilter(float3 colour)`, which gets the finished colour of a pixel and returns the new one.
   Open the stock map, choose the shader in Tools > Shader Editor (Use for This Map), and the viewport shows the world
   and props through it. File > Rebuild Stock Zone builds it into the map's lit shaders; File > Install Edited Stock
-  Map Into Game installs the patch files as for any stock edit. The filter cannot use textures or the edge inputs,
+  Map Into Game installs the changed zone as for any stock edit. The filter cannot use textures or the edge inputs,
   and it does not reach characters, weapons or effects.
 
 ### What the game draws from here (Umbra visibility)
@@ -328,10 +328,13 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
    is copied.
 4. File > Rebuild Stock Zone writes the changed map in a few seconds and checks it with the game's own loaders
    (ACTS). The Console shows the result and the folder. The game folder is only read.
-5. File > Install Edited Stock Map Into Game puts the edit into the game. It copies small patch files (`<map>.fp`)
-   beside the stock zones after showing you the list; the stock zones themselves are not changed, and a stock
-   patch of the same name is saved first. Close the game before installing. File > Restore Stock Map In Game
-   takes the edit out again.
+5. File > Install Edited Stock Map Into Game puts the edit into the game. After showing you the list, it moves the
+   stock zone files of the map (`<map>.ff`, `techsets_<map>.ff` and a stock patch `<map>.fp`) to the folder
+   `iw8r_stock` in the game folder and copies the edited zone files into the `zone` folder under the same names.
+   Close the game before installing. File > Restore Stock Map In Game deletes the edited files and moves the stock
+   files back; do not delete or rename the files in `iw8r_stock` yourself. The game cannot take a stock edit as a
+   small patch file: it reads a patch of its own zones only with its own signature (research 116). If no map was
+   rebuilt in this session, the install asks for a folder: choose the `out` folder of an earlier rebuild.
 
 6. To hide stock props: draw a brush around them, select it and use File > Hide Stock Props In Selection. The props
    leave the view and the rebuilt map draws them at size zero; their collision is taken out too (on the small maps;

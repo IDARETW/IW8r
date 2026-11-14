@@ -5,6 +5,15 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Fixed: an installed stock edit stopped the game ("Disc read error [3.1]: '<map>.fp'").** The game reads a patch
+  file of one of its signed zones only when the patch carries the game's own signature, which nobody else can make;
+  every stock edit was installed as such a patch. File > Install Edited Stock Map Into Game now installs the edited
+  zones as whole files, which the game loads unsigned: the stock zone file (and its stock patch) is moved to
+  `iw8r_stock` in the game folder and File > Restore Stock Map In Game moves it back. An old patch file of this
+  editor in the zone folder is removed by the install. With no rebuild in the session the install can take the folder
+  of an earlier rebuild. While an edit is installed, the editor and the rebuild read the stock map from the kept file.
+  Found in the game's code, checked offline; not seen in game (research 116).
+
 - **Custom shaders on stock maps.** A shader file can now hold a second function, `iw8rFilter`, for surfaces that keep
   the game's own lighting. Set a shader for an opened stock map (Tools > Shader Editor > Use for This Map) and the
   viewport shows its world and props through the filter; File > Rebuild Stock Zone builds the filter into the map's

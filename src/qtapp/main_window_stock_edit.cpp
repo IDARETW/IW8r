@@ -4,6 +4,7 @@
 #include "render.h"
 #include "custom_shader.h"
 #include <map>
+#include <QFileDialog>
 #include <QTextStream>
 
 #include <algorithm>
@@ -330,12 +331,15 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
 
     // Edits that are installed in the game replaced the game's own patch files, which carry real map data: the
     // converter reads those zones with the stock patch saved at install, so this rebuild starts from the stock map.
-    const std::vector<StockPatchOverride> stockPatches = installedStockPatchOverrides(
-        (QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/stock_backup").toStdString());
-    if (notes && !stockPatches.empty()) {
+    const std::string backupRoot = (QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/stock_backup").toStdString();
+    const std::vector<StockPatchOverride> stockPatches = installedStockPatchOverrides(backupRoot);
+    // An edit installed as a whole zone took the place of the stock zone file, which waits in stockKeepDir().
+    const std::vector<StockPatchOverride> stockZones = installedStockZoneOverrides(backupRoot, stockKeepDir().toStdString());
+    if (notes && (!stockPatches.empty() || !stockZones.empty())) {
         QStringList names;
+        for (const StockPatchOverride& o : stockZones) names << qs(o.name);
         for (const StockPatchOverride& o : stockPatches) names << qs(o.name);
-        *notes << QString("installed edit(s) in the game: %1. This rebuild starts from the stock map (the stock patch files saved at install)")
+        *notes << QString("installed edit(s) in the game: %1. This rebuild starts from the stock map (the stock files kept at install)")
                       .arg(names.join(", "));
     }
 
@@ -370,7 +374,7 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
     QFile jf(editsPath);
     const std::string json = stockEditJson(QDir::toNativeSeparators(entsPath).toStdString(), hidden, carry, writeLoot ? &loot : nullptr,
                                            &placed.json, &stockPatches, &removeCollision, &lootBoxes, &sun, &replaceMaterials,
-                                           &removeWorld, &litFilter);
+                                           &removeWorld, &litFilter, &stockZones, false);
     if (!jf.open(QIODevice::WriteOnly) || jf.write(json.data(), qint64(json.size())) != qint64(json.size())) {
         if (err) *err = "Cannot write " + editsPath;
         return false;
@@ -548,6 +552,20 @@ QString MainWindow::stockZoneForReading(const QString& zone, QString* tempDir, Q
     if (tempDir) tempDir->clear();
     const QString name = QFileInfo(zone).completeBaseName();
     const QString backup = stockBackupDir(name);
+    // An edit installed as a whole zone: the stock zone (and its stock patch) waits in the keep folder.
+    const std::vector<std::string> zones = installedStockZones(backup.toStdString());
+    if (std::find(zones.begin(), zones.end(), (name + ".ff").toStdString()) != zones.end()) {
+        const QString kept = stockKeepDir() + "/" + name + ".ff";
+        if (!QFileInfo::exists(kept)) {
+            if (err) *err = "An edit of " + name + " is installed in the game, but the stock zone is not in " + QDir::toNativeSeparators(stockKeepDir()) +
+                            ". Put the stock " + name + ".ff back there (or into the game's zone folder), then open the map again.";
+            return {};
+        }
+        EditorLog::instance().add(LogLevel::Info, "stock", "an edit of " + name + " is installed in the game: the stock map is read from " +
+                                                               QDir::toNativeSeparators(kept));
+        return kept;
+    }
+    // An edit installed by the old method (a patch file): the stock map is read from a copy with the stock patch.
     const std::vector<std::string> installed = installedStockPatches(backup.toStdString());
     if (std::find(installed.begin(), installed.end(), (name + ".fp").toStdString()) == installed.end()) return zone;
     const QString view = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/stock_view/" + name;
@@ -617,47 +635,76 @@ QString MainWindow::stockBackupDir(const QString& zone) const {
     return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/stock_backup/" + zone;
 }
 
-// The edited map goes into the game as patch files (<zone>.fp beside the stock <zone>.ff, which the game applies when
-// it loads the zone): the stock zones are not changed. Only this action and Restore write to the game folder, and
-// only after the owner confirms the list.
+QString MainWindow::stockKeepDir() const {
+    const QString replay = toolPath("replay");
+    return replay.isEmpty() ? QString() : QFileInfo(replay).absolutePath() + "/iw8r_stock";
+}
+
+// The edited map goes into the game as whole unsigned zone files in place of the stock ones (research 116: the game
+// reads a patch of a signed zone only with its own signature). The stock files are moved to stockKeepDir() and put
+// back by Restore. Only these two actions write to the game folder, and only after the owner confirms the list.
 void MainWindow::installEditedStockMap() {
-    if (lastStockRebuild_.isEmpty()) {
-        QMessageBox::information(this, "Install Edited Stock Map",
-                                 "Rebuild the stock map first (File > Rebuild Stock Zone). The install uses the last rebuild that passed its check.");
-        return;
+    QString outDir = lastStockRebuild_.isEmpty() ? QString() : lastStockRebuild_ + "/out";
+    QString zone = lastStockRebuildZone_;
+    if (outDir.isEmpty()) {
+        // No rebuild in this session: the out folder of an earlier rebuild can be installed.
+        if (QMessageBox::question(this, "Install Edited Stock Map",
+                                  "No stock map was rebuilt in this session (File > Rebuild Stock Zone).\n\n"
+                                  "Choose a folder with edited zone files (the out folder of an earlier rebuild) to install instead?",
+                                  QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
+            return;
+        outDir = QFileDialog::getExistingDirectory(this, "Folder with the edited zone files");
+        if (outDir.isEmpty()) return;
+        const std::vector<std::string> files = stockZoneFiles(outDir.toStdString());
+        if (!files.empty()) {
+            zone = QFileInfo(qs(files.front())).completeBaseName();
+            if (zone.startsWith("techsets_")) zone = zone.mid(9);
+        }
     }
+    installEditedStockZones(outDir, zone, true);
+}
+
+bool MainWindow::installEditedStockZones(const QString& outDir, const QString& zone, bool ask) {
     const QString replay = toolPath("replay");
     const QString zoneDir = QFileInfo(replay).absolutePath() + "/zone";
-    const QString patchDir = lastStockRebuild_ + "/out/patch";
-    const std::vector<std::string> files = stockPatchFiles(patchDir.toStdString());
-    if (replay.isEmpty() || !QFileInfo(zoneDir).isDir() || files.empty()) {
+    const std::vector<std::string> files = stockZoneFiles(outDir.toStdString());
+    if (replay.isEmpty() || !QFileInfo(zoneDir).isDir() || files.empty() || zone.isEmpty()) {
         QMessageBox::warning(this, "Install Edited Stock Map",
-                             files.empty() ? "The last rebuild wrote no patch files (" + patchDir + "). An old converter writes none: update it."
+                             files.empty() ? "There is no edited zone file (.ff) in " + QDir::toNativeSeparators(outDir) + "."
                                            : "The game folder is not set (Tools > Tool Paths).");
-        return;
+        return false;
     }
     QStringList names;
-    for (const std::string& f : files) names << qs(f);
-    const QString backup = stockBackupDir(lastStockRebuildZone_);
-    if (QMessageBox::question(this, "Install Edited Stock Map",
-                              QString("Copy %1 patch file(s) into the game?\n\n%2\n\nTo: %3\n\nThe stock zone files are not changed: the game "
-                                      "applies a patch beside its zone. A stock patch of the same name is saved first in\n%4\n\n"
-                                      "Close the game before you continue. File > Restore Stock Map In Game undoes this.")
-                                  .arg(names.size()).arg(names.join("\n"), QDir::toNativeSeparators(zoneDir), QDir::toNativeSeparators(backup)),
+    qint64 bytes = 0;
+    for (const std::string& f : files) {
+        names << qs(f);
+        bytes += QFileInfo(outDir + "/" + qs(f)).size();
+    }
+    const QString backup = stockBackupDir(zone), keep = stockKeepDir();
+    if (ask &&
+        QMessageBox::question(this, "Install Edited Stock Map",
+                              QString("Install %1 edited zone file(s) into the game?\n\n%2\n\nTo: %3\n\nThe stock files of the same "
+                                      "name, and their stock patch files, are moved to\n%4\nFile > Restore Stock Map In Game moves them "
+                                      "back. The copy needs about %5 MB free on the game's drive.\n\nClose the game before you continue.")
+                                  .arg(names.size()).arg(names.join("\n"), QDir::toNativeSeparators(zoneDir), QDir::toNativeSeparators(keep))
+                                  .arg(bytes / (1024 * 1024) + 1),
                               QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
-        return;
+        return false;
     StockInstallReport report;
     std::string err;
-    const bool ok = installStockPatches(patchDir.toStdString(), zoneDir.toStdString(), backup.toStdString(), report, &err);
-    for (const std::string& f : report.backedUp) EditorLog::instance().add(LogLevel::Info, "stock", "saved the stock " + qs(f) + " in " + backup);
+    const bool ok = installStockZones(outDir.toStdString(), zoneDir.toStdString(), keep.toStdString(), backup.toStdString(), report, &err);
+    for (const std::string& f : report.removed) EditorLog::instance().add(LogLevel::Info, "stock", "removed " + qs(f) + " from " + zoneDir);
+    for (const std::string& f : report.backedUp) EditorLog::instance().add(LogLevel::Info, "stock", "moved the stock " + qs(f) + " to " + keep);
     for (const std::string& f : report.installed) EditorLog::instance().add(LogLevel::Info, "stock", "installed " + qs(f) + " into " + zoneDir);
     if (!ok) {
         QMessageBox::warning(this, "Install Edited Stock Map", qs(err));
         ctx_.setStatus("Install Edited Stock Map failed: " + qs(err));
-        return;
+        return false;
     }
-    ctx_.setStatus(QString("Installed the edited %1 (%2 patch file(s)); File > Restore Stock Map In Game takes it out")
-                       .arg(lastStockRebuildZone_).arg(report.installed.size()));
+    lastStockRebuildZone_ = zone;
+    ctx_.setStatus(QString("Installed the edited %1 (%2 zone file(s)); File > Restore Stock Map In Game takes it out")
+                       .arg(zone).arg(report.installed.size()));
+    return true;
 }
 
 void MainWindow::restoreStockMap() {
@@ -667,7 +714,8 @@ void MainWindow::restoreStockMap() {
         return;
     }
     const QString backup = stockBackupDir(zone);
-    const std::vector<std::string> installed = installedStockPatches(backup.toStdString());
+    std::vector<std::string> installed = installedStockZones(backup.toStdString());
+    for (const std::string& f : installedStockPatches(backup.toStdString())) installed.push_back(f);
     if (installed.empty()) {
         QMessageBox::information(this, "Restore Stock Map", "No edit of " + zone + " is installed by this editor.");
         return;
@@ -676,14 +724,14 @@ void MainWindow::restoreStockMap() {
     QStringList names;
     for (const std::string& f : installed) names << qs(f);
     if (QMessageBox::question(this, "Restore Stock Map",
-                              QString("Take the edit of %1 out of the game?\n\n%2\n\nFrom: %3\n\nA stock patch that was saved at install "
-                                      "is put back. Close the game before you continue.")
+                              QString("Take the edit of %1 out of the game?\n\n%2\n\nFrom: %3\n\nThe stock files that were moved "
+                                      "away at install are put back. Close the game before you continue.")
                                   .arg(zone, names.join("\n"), QDir::toNativeSeparators(zoneDir)),
                               QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
         return;
     StockInstallReport report;
     std::string err;
-    const bool ok = restoreStockPatches(backup.toStdString(), zoneDir.toStdString(), report, &err);
+    const bool ok = restoreStockZones(backup.toStdString(), zoneDir.toStdString(), stockKeepDir().toStdString(), report, &err);
     for (const std::string& f : report.removed) EditorLog::instance().add(LogLevel::Info, "stock", "removed " + qs(f) + " from " + zoneDir);
     for (const std::string& f : report.restored) EditorLog::instance().add(LogLevel::Info, "stock", "put back the stock " + qs(f));
     if (!ok) {
