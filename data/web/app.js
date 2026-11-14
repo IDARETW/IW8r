@@ -253,9 +253,37 @@ $("assetKind").onchange = searchAssets;
 $("assetQuery").oninput = () => { clearTimeout(assetTimer); assetTimer = setTimeout(searchAssets, 250); };
 searchAssets();
 
+// The map comes whole once, then as differences (GET /api/map?since=): changed items and entities replace their
+// old ones, the ones in `removed` go.
+let mapRev = -1, mapEpoch = "";
+function applyMap(m) {
+  if (m.full || mapRev < 0) {
+    map = { items: m.items || [], entities: m.entities || [] };
+  } else {
+    const gone = new Set((m.removed || []).map(([e, i]) => selKey(e, i)));
+    const fresh = new Map((m.items || []).map((it) => [selKey(it.e, it.i), it]));
+    const items = [];
+    for (const it of map.items) {
+      const k = selKey(it.e, it.i);
+      if (gone.has(k)) continue;
+      if (fresh.has(k)) { items.push(fresh.get(k)); fresh.delete(k); } else items.push(it);
+    }
+    for (const it of fresh.values()) items.push(it);
+    const goneEnts = new Set(m.removedEntities || []);
+    const freshEnts = new Map((m.entities || []).map((e) => [e.id, e]));
+    const ents = [];
+    for (const e of map.entities) {
+      if (goneEnts.has(e.id)) continue;
+      if (freshEnts.has(e.id)) { ents.push(freshEnts.get(e.id)); freshEnts.delete(e.id); } else ents.push(e);
+    }
+    for (const e of freshEnts.values()) ents.push(e);
+    map = { items, entities: ents };
+  }
+  mapRev = m.mapRev; mapEpoch = m.epoch || "";
+}
 async function refresh() {
-  const [m, s] = await Promise.all([get("/api/map"), get("/api/state")]);
-  map = m; state = s;
+  const [m, s] = await Promise.all([get(mapRev < 0 ? "/api/map" : `/api/map?since=${mapRev}&epoch=${encodeURIComponent(mapEpoch)}`), get("/api/state")]);
+  applyMap(m); state = s;
   $("map").textContent = s.map + (s.modified ? " *" : "");
   $("state").textContent = s.compiling ? "compiling..." : "";
   if (!fitted) { fitted = true; fit(); }

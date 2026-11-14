@@ -2,6 +2,12 @@
 
 ## Latest (2026-11-13)
 
+- Plan 3.2 part 1: WebServer::syncWebMap (per item / entity: the JSON last sent, mapRev_ at its last change, gone
+  lists; resynced when doc revision x scene generation changes) and mapJson(since, epoch): GET /api/map?since=&epoch=
+  gives {full, mapRev, epoch, items, entities, removed, removedEntities}; an entity item with more than 48 faces is
+  its box ({box, faces}). app.js applyMap. Cinder Rail 248 MB -> 3.07 MB (151 ms), unchanged diff 121 bytes (2 ms).
+  Browser check on 8791 (move + undo through diffs). Open in 3.2: log backlog filters, undo history list; the 3D
+  page view still draws boxes for models until 3.1 (the streamed editor render).
 - Plan M3 started. 3.3 part 1: MainWindow::webCommandList (menu walk over addCommand's actions: id, label, menu path,
   shortcut, checkable, checked, enabled, blocked) / runWebCommand (queued trigger) / webCommandBlocked (label ends in
   "..." = dialog; Exit, WebServer, WebServerSettings, InstallStockMap, RestoreStockMap, OpenInNewWindow = editor

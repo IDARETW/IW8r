@@ -1,5 +1,6 @@
 #include "web_server.h"
 
+#include <QSet>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -191,6 +192,7 @@ bool WebServer::authorized(bool local, const QUrlQuery& q, const QByteArray& tok
 }
 
 WebServer::WebServer(EditorContext* ctx, Hooks hooks, QObject* parent) : QObject(parent), ctx_(ctx), hooks_(std::move(hooks)) {
+    epoch_ = QString::number(QRandomGenerator::global()->generate64(), 36);
     // A per-session token for non-local clients.
     token_ = QString::number(QRandomGenerator::system()->generate64(), 36);
     connect(ctx_, &EditorContext::documentChanged, this, [this] {
@@ -372,45 +374,118 @@ QByteArray WebServer::stateJson() const {
     return json(o);
 }
 
-QByteArray WebServer::mapJson() const {
-    ctx_->scene.sync(ctx_->doc);
-    QJsonArray items;
-    for (const auto* g : ctx_->scene.items()) {
-        QJsonArray polys, mats, uvs;
-        // 10.5: per poly material and texture coordinates (texture repeats) for the textured 3D view.
-        const bool textured = !g->polyMaterial.empty() && g->polyMaterial.size() == g->polys.size() && g->polyUV.size() == g->polys.size();
-        for (size_t pi = 0; pi < g->polys.size(); ++pi) {
-            const auto& w = g->polys[pi];
+// One scene item as the browser draws it. A model is thousands of triangles the 2D views do not need: an entity item
+// with more than kWebModelFaces faces is sent as the six sides of its box.
+namespace {
+constexpr size_t kWebModelFaces = 48;
+QJsonObject webItemJson(const app::PrimGeom& g) {
+    const auto num = [](double v) { return std::round(v * 100) / 100; };
+    QJsonArray polys, mats, uvs;
+    const bool asBox = g.kind != app::PrimGeom::Brush && g.kind != app::PrimGeom::Patch && g.polys.size() > kWebModelFaces && g.bounds.valid();
+    if (asBox) {
+        const Vec3 a = g.bounds.mins, b = g.bounds.maxs;
+        const Vec3 c[8] = {{a.x, a.y, a.z}, {b.x, a.y, a.z}, {b.x, b.y, a.z}, {a.x, b.y, a.z}, {a.x, a.y, b.z}, {b.x, a.y, b.z}, {b.x, b.y, b.z}, {a.x, b.y, b.z}};
+        static const int quads[6][4] = {{0, 1, 2, 3}, {4, 5, 6, 7}, {0, 1, 5, 4}, {1, 2, 6, 5}, {2, 3, 7, 6}, {3, 0, 4, 7}};
+        for (const auto& quad : quads) {
             QJsonArray poly;
-            for (const Vec3& p : w) poly.append(QJsonArray{std::round(p.x * 100) / 100, std::round(p.y * 100) / 100, std::round(p.z * 100) / 100});
+            for (const int k : quad) poly.append(QJsonArray{num(c[k].x), num(c[k].y), num(c[k].z)});
+            polys.append(poly);
+        }
+    } else {
+        // 10.5: per poly material and texture coordinates (texture repeats) for the textured 3D view.
+        const bool textured = !g.polyMaterial.empty() && g.polyMaterial.size() == g.polys.size() && g.polyUV.size() == g.polys.size();
+        for (size_t pi = 0; pi < g.polys.size(); ++pi) {
+            QJsonArray poly;
+            for (const Vec3& p : g.polys[pi]) poly.append(QJsonArray{num(p.x), num(p.y), num(p.z)});
             polys.append(poly);
             if (textured) {
-                mats.append(qs(g->polyMaterial[pi]));
+                mats.append(qs(g.polyMaterial[pi]));
                 QJsonArray uv;
-                for (const auto& t : g->polyUV[pi]) uv.append(QJsonArray{std::round(t[0] * 1000) / 1000, std::round(t[1] * 1000) / 1000});
+                for (const auto& t : g.polyUV[pi]) uv.append(QJsonArray{std::round(t[0] * 1000) / 1000, std::round(t[1] * 1000) / 1000});
                 uvs.append(uv);
             }
         }
-        const char* kind = g->kind == app::PrimGeom::Brush ? "brush" : g->kind == app::PrimGeom::Patch ? "patch" : "entity";
-        items.append(QJsonObject{{"e", double(g->ref.entity)},
-                                 {"i", g->ref.item == kNoId ? -1.0 : double(g->ref.item)},
-                                 {"kind", kind},
-                                 {"color", double(g->color & 0xffffffu)},
-                                 {"label", qs(g->label)},
-                                 {"polys", polys},
-                                 {"mats", mats},
-                                 {"uvs", uvs}});
     }
-    QJsonArray ents;
+    const char* kind = g.kind == app::PrimGeom::Brush ? "brush" : g.kind == app::PrimGeom::Patch ? "patch" : "entity";
+    QJsonObject o{{"e", double(g.ref.entity)},
+                  {"i", g.ref.item == kNoId ? -1.0 : double(g.ref.item)},
+                  {"kind", kind},
+                  {"color", double(g.color & 0xffffffu)},
+                  {"label", qs(g.label)},
+                  {"polys", polys},
+                  {"mats", mats},
+                  {"uvs", uvs}};
+    if (asBox) o.insert("box", true), o.insert("faces", double(g.polys.size()));
+    return o;
+}
+}  // namespace
+
+// Brings the browser's copy of the map up to date: every item and entity whose JSON differs from the one last sent
+// gets the next map revision; the ones that are gone are remembered with theirs.
+void WebServer::syncWebMap() const {
+    ctx_->scene.sync(ctx_->doc);
+    const quint64 at = quint64(ctx_->doc.revision()) * 1000003ull ^ quint64(ctx_->scene.generation());
+    if (at == webSyncedAt_) return;
+    webSyncedAt_ = at;
+    const qint64 next = mapRev_ + 1;
+    bool changed = false;
+    const auto update = [&](QHash<QString, WebEntry>& known, QHash<QString, qint64>& gone, QStringList& order,
+                            const std::vector<std::pair<QString, QJsonObject>>& now) {
+        QSet<QString> seen;
+        order.clear();
+        for (const auto& [key, obj] : now) {
+            if (seen.contains(key)) continue;  // two scene items of one reference: the first one stands
+            seen.insert(key);
+            order.append(key);
+            const QByteArray bytes = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+            auto it = known.find(key);
+            if (it != known.end() && it->bytes == bytes) continue;
+            known.insert(key, WebEntry{obj, bytes, next});
+            gone.remove(key);
+            changed = true;
+        }
+        for (auto it = known.begin(); it != known.end();) {
+            if (seen.contains(it.key())) {
+                ++it;
+                continue;
+            }
+            gone.insert(it.key(), next);
+            it = known.erase(it);
+            changed = true;
+        }
+    };
+    std::vector<std::pair<QString, QJsonObject>> items, ents;
+    for (const auto* g : ctx_->scene.items())
+        items.push_back({QString("%1:%2").arg(g->ref.entity).arg(g->ref.item == kNoId ? -1 : qint64(g->ref.item)), webItemJson(*g)});
     for (const auto& e : ctx_->doc.map().entities) {
         QJsonObject keys;
         for (const auto& it : e.items)
             if (const KeyValueLine* kv = it.kv()) keys.insert(qs(kv->name()), qs(kv->value));
         QJsonObject eo{{"id", double(e.id)}, {"classname", qs(e.classname())}, {"keys", keys}};
         if (const auto o = e.origin()) eo.insert("origin", vec(*o));
-        ents.append(eo);
+        ents.push_back({QString::number(e.id), eo});
     }
-    return json({{"revision", double(ctx_->doc.revision())}, {"items", items}, {"entities", ents}});
+    update(webItems_, webGoneItems_, webItemOrder_, items);
+    update(webEnts_, webGoneEnts_, webEntOrder_, ents);
+    if (changed) mapRev_ = next;
+}
+
+QByteArray WebServer::mapJson(qint64 since, const QString& epoch) const {
+    syncWebMap();
+    const bool full = since < 0 || epoch != epoch_ || since > mapRev_;
+    QJsonArray items, ents, removed, removedEnts;
+    for (const QString& key : webItemOrder_)
+        if (const auto it = webItems_.constFind(key); it != webItems_.constEnd() && (full || it->rev > since)) items.append(it->json);
+    for (const QString& key : webEntOrder_)
+        if (const auto it = webEnts_.constFind(key); it != webEnts_.constEnd() && (full || it->rev > since)) ents.append(it->json);
+    if (!full) {
+        for (auto it = webGoneItems_.constBegin(); it != webGoneItems_.constEnd(); ++it)
+            if (it.value() > since) removed.append(QJsonArray{it.key().section(':', 0, 0).toDouble(), it.key().section(':', 1, 1).toDouble()});
+        for (auto it = webGoneEnts_.constBegin(); it != webGoneEnts_.constEnd(); ++it)
+            if (it.value() > since) removedEnts.append(it.key().toDouble());
+    }
+    return json({{"revision", double(ctx_->doc.revision())}, {"mapRev", double(mapRev_)}, {"epoch", epoch_}, {"full", full},
+                 {"items", items}, {"entities", ents}, {"removed", removed}, {"removedEntities", removedEnts}});
 }
 
 WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray& target, const QByteArray& body, bool local,
@@ -427,7 +502,7 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
         if (path == "/api/state") return ok;
         if (path == "/api/map") {
             Response r;
-            r.body = mapJson();
+            r.body = q.hasQueryItem("since") ? mapJson(q.queryItemValue("since").toLongLong(), q.queryItemValue("epoch")) : mapJson();
             return r;
         }
         if (path == "/api/assets") {

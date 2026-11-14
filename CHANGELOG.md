@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Web: big maps open in the browser.** The map data the page loads was every triangle of every model: 64 MB for
+  the small showcase map and 248 MB for Cinder Rail, which no browser tab survived. A model is now sent as its box
+  (the 2D views and picking need no more), and after the first load the page asks only for what changed. Cinder Rail:
+  3 MB once (0.15 s), then 121 bytes when nothing changed, and a moved entity comes as one item. Checked in a real
+  browser: Cinder Rail draws, a move and an undo from the page arrive as differences.
+
 - **Web: every editor command from the browser.** The web page has the editor's own menu bar now (File, Edit, View,
   Grid, Brush, Primitives, Patch, Compile, Tools, Help), built from the editor's command list, with ticks, shortcuts
   and a "Find a command" box (Enter runs the first match). A command runs in the editor as its menu entry would.

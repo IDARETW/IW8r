@@ -1937,6 +1937,53 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         const QJsonObject mo = QJsonDocument::fromJson(mp.body).object();
         r.check(mp.status == 200 && mo.value("items").toArray().size() > 0 && mo.value("entities").toArray().size() > 0,
                 QString("GET /api/map lists %1 items").arg(mo.value("items").toArray().size()));
+        {
+            // Plan 3.2: the map goes to the browser whole once, then as differences; a model goes as its box.
+            const QJsonObject full = QJsonDocument::fromJson(web.handle("GET", "/api/map", {}, true, {}).body).object();
+            const qint64 rev0 = qint64(full.value("mapRev").toDouble());
+            const QString epoch = full.value("epoch").toString();
+            const auto diffOf = [&](qint64 since, const QString& ep) {
+                return QJsonDocument::fromJson(web.handle("GET", QString("/api/map?since=%1&epoch=%2").arg(since).arg(ep).toUtf8(), {}, true, {}).body).object();
+            };
+            const QJsonObject same = diffOf(rev0, epoch);
+            r.check(full.value("full").toBool() && rev0 > 0 && !epoch.isEmpty() && !same.value("full").toBool() &&
+                        same.value("items").toArray().isEmpty() && same.value("entities").toArray().isEmpty() &&
+                        same.value("removed").toArray().isEmpty() && qint64(same.value("mapRev").toDouble()) == rev0,
+                    QString("GET /api/map?since= of an unchanged map is empty (the whole map: %1 items)").arg(full.value("items").toArray().size()));
+            const Id added = ctx.doc.addEntity({{"classname", "script_origin"}, {"origin", "64 64 0"}}, {}, "web diff");
+            ctx.documentEdited();
+            const QJsonObject plus = diffOf(rev0, epoch);
+            const qint64 rev1 = qint64(plus.value("mapRev").toDouble());
+            bool entListed = false;
+            for (const QJsonValue& v : plus.value("entities").toArray()) entListed = entListed || Id(v.toObject().value("id").toDouble()) == added;
+            const int itemsPlus = plus.value("items").toArray().size();
+            ctx.doc.setKeyValue(added, "origin", "128 64 0");
+            ctx.documentEdited();
+            const QJsonObject moved = diffOf(rev1, epoch);
+            const qint64 rev2 = qint64(moved.value("mapRev").toDouble());
+            ctx.doc.undo();
+            ctx.doc.undo();
+            ctx.documentEdited();
+            const QJsonObject minus = diffOf(rev2, epoch);
+            bool entGone = false, itemGone = false;
+            for (const QJsonValue& v : minus.value("removedEntities").toArray()) entGone = entGone || Id(v.toDouble()) == added;
+            for (const QJsonValue& v : minus.value("removed").toArray()) itemGone = itemGone || Id(v.toArray().at(0).toDouble()) == added;
+            r.check(!plus.value("full").toBool() && rev1 > rev0 && entListed && itemsPlus >= 1 && itemsPlus <= 2 && rev2 > rev1 &&
+                        moved.value("entities").toArray().size() == 1 && moved.value("items").toArray().size() == 1 && entGone && itemGone,
+                    QString("an added, moved and removed entity each come as a small difference (%1 item(s), then 1, then removed)").arg(itemsPlus));
+            const QJsonObject other = diffOf(rev2, "another-editor");
+            r.check(other.value("full").toBool() && other.value("items").toArray().size() == full.value("items").toArray().size(),
+                    "a browser that last talked to another editor run gets the whole map again");
+            int boxes = 0, maxFaces = 0;
+            for (const QJsonValue& v : full.value("items").toArray()) {
+                const QJsonObject o = v.toObject();
+                if (o.value("box").toBool()) ++boxes, r.check(o.value("polys").toArray().size() == 6 && o.value("faces").toInt() > 48, "a model is sent as the six sides of its box");
+                if (o.value("kind").toString() == "entity") maxFaces = std::max(maxFaces, int(o.value("polys").toArray().size()));
+            }
+            r.check(maxFaces <= 48, QString("no entity item sends more than 48 faces (%1 model box(es), largest entity item %2 faces)").arg(boxes).arg(maxFaces));
+            auto jsNow = web.handle("GET", "/app.js", {}, true, {});
+            r.check(jsNow.body.contains("applyMap") && jsNow.body.contains("/api/map?since="), "the browser page asks for differences");
+        }
         // Edits go through the shared document (one undo history).
         const std::string before = ctx.doc.text();
         const size_t pos = ctx.doc.undoPosition();

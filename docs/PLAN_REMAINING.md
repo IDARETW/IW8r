@@ -296,7 +296,8 @@ ROADMAP L10, paused until now, is resumed by this request. Server: `src/qtapp/we
 - **Full parity:** every camera mode, Game Lighting, the stock reference, terrain and AO.
 - **Picking:** done server-side by ray at the click.
 
-**3.2 Protocol.** Send incremental scene diffs by item revision instead of re-sending the whole `/api/map` on every
+**3.2 Protocol.** Part 1 DONE 2026-11-13 (lean model boxes; `GET /api/map?since=` differences). Open: the log backlog
+with filters, an undo history list. Send incremental scene diffs by item revision instead of re-sending the whole `/api/map` on every
 revision. This is needed for Verdansk's 23k entities. Log backlog and filters through `/api/log`. An undo history list.
 
 **3.3 Every command from the browser.** Part 1 DONE 2026-11-13: the command registry (GET /api/commands, POST

@@ -10,7 +10,11 @@
 // API (JSON; all edits are ordinary undoable document edits):
 //   GET  /api/state                  revision, map name, grid, selection, status line, compile state
 //   GET  /api/map                    every drawable item: {e, i, kind, color, label, polys:[[[x,y,z],...],...]} and
-//                                    entities {id, classname, origin, keys}
+//                                    entities {id, classname, origin, keys}; with mapRev and epoch. A model (an
+//                                    entity item with more than 48 faces) comes as its box: {box: true, faces: N}.
+//   GET  /api/map?since=R&epoch=E    only what changed after mapRev R: {full: false, items, entities, removed:
+//                                    [[e, i], ...], removedEntities: [id, ...]}; the whole map (full: true) when E
+//                                    is not this editor's epoch
 //   GET  /api/log?since=N            log lines after N
 //   GET  /api/events                 server-sent events: "revision" (document changed), "status", "log"
 //   POST /api/select   {e, i, add}   select an item (i = -1: the entity); add = keep the selection
@@ -31,6 +35,8 @@
 #include <QByteArray>
 #include <QHash>
 #include <QJsonArray>
+#include <QStringList>
+#include <QJsonObject>
 #include <QList>
 #include <QObject>
 #include <QSet>
@@ -101,7 +107,8 @@ private:
     void onNewConnection();
     void onReadyRead(QTcpSocket* s);
     void broadcast(const QByteArray& event, const QByteArray& data);
-    QByteArray mapJson() const;
+    QByteArray mapJson(qint64 since = -1, const QString& epoch = {}) const;
+    void syncWebMap() const;
     QByteArray stateJson() const;
     Response staticFile(const QString& path) const;
 
@@ -116,6 +123,19 @@ private:
     bool authorized(bool local, const QUrlQuery& q, const QByteArray& tokenHeader, const QByteArray& authorization, const QString& peer,
                     Response* deny);
     QSet<QByteArray> acceptedAuth_;              // Authorization headers already verified this session
+    // The map as the browser has it (plan 3.2): per item and per entity the JSON last sent and the map revision
+    // (mapRev_, counted here) at which it last changed; what went away, with the revision of its going.
+    struct WebEntry {
+        QJsonObject json;
+        QByteArray bytes;
+        qint64 rev = 0;
+    };
+    mutable QHash<QString, WebEntry> webItems_, webEnts_;
+    mutable QHash<QString, qint64> webGoneItems_, webGoneEnts_;
+    mutable QStringList webItemOrder_, webEntOrder_;  // scene order, for the full answer
+    mutable qint64 mapRev_ = 0;
+    mutable quint64 webSyncedAt_ = ~0ull;  // document revision x scene generation of the last sync
+    QString epoch_;
     QHash<QString, QPair<int, qint64>> failures_;  // peer -> (failed logins, first failure ms)
 };
 
