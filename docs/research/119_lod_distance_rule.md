@@ -14,8 +14,15 @@ Nothing was run in the game.
 Replay `0x14197F880`: `tanHalfFovY x 2.118673 x lodOverride`, divided by the memory-pressure modifier, is stored as
 `invFovScale` (+64); `min(invFovScale, 1)` as `cappedLodScale` (+68); the ramp's scale and bias are that factor times
 `(dynResScale + r_lodScale)` and `r_lodBias`; `allowLODOutStatic` is `r_lodOutStaticRamp`. Replay's function has no
-split-screen factor (the game-test build doubles the value in split screen). The functions that use the two values
-per collection were read in GT only.
+split-screen factor (the game-test build doubles the value in split screen).
+
+Replay `0x1418D71A0` (one of the seven functions that read the scale table, which Replay holds at `0x142578690` with
+the same 16 values): the clutter test `flags & 0x20`, `instanceCount > 1 || clutter` for the many-instance path, the
+distance `sqrt(sum(max(|eye - mid| - half, 0)^2))` to the collection's bounds (and `|eye - mid| + half` for the far
+end of a many-instance collection), the call that returns the level, and `level == 6` returning nothing to draw. So
+the box distance, the two flags and "6 = not drawn" are VERIFIED in Replay. The inside of the level function
+(`dist x invFovScale` against the LOD distances, `dist x cappedLodScale / lodCullScale` against the last one) was read
+in GT only.
 
 `R_SetLodParms` (`gfx_d3d\r_scene.cpp`, around lines 14600-14660):
 
@@ -93,7 +100,8 @@ units outside 0.47 % differ and the frame goes from 9.2 to 8.3 ms. Verdansk, rai
 
 ## 3. Not determined
 
-- The per-collection functions (`R_GetStaticModelCollectionLODAndDists` and its callers) in Replay: read in GT only.
+- The inside of `R_GetStaticModelCollectionLODAndDists` in Replay (how the two scaled distances are compared): read
+  in GT only.
 - How a collection of several instances picks each instance's level between the nearest and the farthest (the
   viewport measures every placement on its own).
 - The clutter ramp (`r_st_clutterLodScale`, `r_st_clutterLodBias`): the viewport's ground clutter uses the plain rule.
