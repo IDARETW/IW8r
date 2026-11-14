@@ -140,6 +140,7 @@ public:
     // pick through that camera; the editor's camera as JSON. The editor's own camera is put back after each.
     QByteArray webRenderFrame(const struct WebCamera& cam, int w, int h, int quality);
     bool webPick(const struct WebCamera& cam, double x, double y, double aspect, bool add);
+    bool webPickFace(const struct WebCamera& cam, double x, double y, double aspect, bool add);
     QJsonObject webCamera() const;
     // The prefab library for the browser (the Prefabs dock's rows) and one placed by its row id.
     QJsonArray webPrefabList() const;

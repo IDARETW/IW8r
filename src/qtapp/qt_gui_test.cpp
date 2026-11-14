@@ -1978,6 +1978,32 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 r.check(haveBrush && pk.status == 200 && picked && ctx.doc.selection().empty(),
                         "POST /api/pick selects what the browser's view shows under the pointer, and nothing there deselects");
                 {
+                    // The same click with face: one brush face (the top, seen from above); the Surface form then names faces.
+                    ch.pickFace = [&w](const WebCamera& cam, double x, double y, double aspect, bool add) { return w.webPickFace(cam, x, y, aspect, add); };
+                    ch.forms = [&w] { return w.webFormList(); };
+                    ch.form = [&w](const QString& id) { return w.webForm(id); };
+                    WebServer faceWeb(&ctx, ch);
+                    QByteArray faceDown = down;
+                    faceDown.replace("\"aspect\":1.7778}", "\"aspect\":1.7778,\"face\":true}");
+                    const auto pf = faceWeb.handle("POST", "/api/pick", faceDown, true, {});
+                    const size_t faces = ctx.doc.faceSelection().size();
+                    bool topFace = false;
+                    if (faces == 1) {
+                        const FaceRef fr = *ctx.doc.faceSelection().begin();
+                        const EntityItem* it = ctx.doc.findItem(fr.entity, fr.item);
+                        const auto planes = it && it->prim() ? it->prim()->planes() : std::vector<Plane>{};
+                        topFace = fr.face < planes.size() && planes[fr.face].n.z > 0.9;
+                    }
+                    const QJsonObject sfF = QJsonDocument::fromJson(faceWeb.handle("GET", "/api/form?id=surface", {}, true, {}).body).object();
+                    const QString said = sfF.value("fields").toArray().first().toObject().value("value").toString();
+                    QByteArray faceUp = up;
+                    faceUp.replace("\"aspect\":1.7778}", "\"aspect\":1.7778,\"face\":true}");
+                    faceWeb.handle("POST", "/api/pick", faceUp, true, {});
+                    const bool cleared = ctx.doc.faceSelection().empty();
+                    r.check(pf.status == 200 && faces == 1 && topFace && said.startsWith("1 face(s)") && cleared,
+                            "POST /api/pick with face selects one brush face for the Surface form: " + said.section('\n', 0, 0));
+                }
+                {
                     // An asset placed through the live view lands on the surface under the view's centre.
                     ch.surfacePoint = [&w](const WebCamera& cam, double x, double y, double aspect, double point[3]) {
                         return w.webSurfacePoint(cam, x, y, aspect, point);

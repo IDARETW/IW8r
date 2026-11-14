@@ -4878,6 +4878,22 @@ bool MainWindow::webPick(const WebCamera& cam, double x, double y, double aspect
     return hit.has_value();
 }
 
+bool MainWindow::webPickFace(const WebCamera& cam, double x, double y, double aspect, bool add) {
+    app::Camera c = ctx_.cam;
+    c.pos = Vec3{cam.pos[0], cam.pos[1], cam.pos[2]};
+    c.yaw = cam.yaw, c.pitch = cam.pitch, c.fov = cam.fov;
+    ctx_.scene.sync(ctx_.doc);
+    const auto face = ctx_.scene.pickFace(app::cameraRay(c, 2.0 * x - 1.0, 1.0 - 2.0 * y, aspect));
+    if (face) {
+        if (add) ctx_.doc.toggleFace(*face);
+        else ctx_.doc.selectFace(*face, false);
+    } else if (!add) {
+        ctx_.doc.clearFaceSelection();
+    }
+    ctx_.documentEdited(face ? QString("%1 face(s) selected from the browser's view").arg(ctx_.doc.faceSelection().size()) : QString());
+    return face.has_value();
+}
+
 // A menu text without its keyboard marker: "E&xit" is Exit, "Sun && Sky" is Sun & Sky.
 static QString plainMenuText(QString text) {
     text.replace("&&", QString(QChar(1)));
@@ -5033,6 +5049,7 @@ bool MainWindow::applyWebServerSettings(QString* message) {
         };
         hooks.renderFrame = [this](const WebCamera& cam, int w, int h, int quality) { return webRenderFrame(cam, w, h, quality); };
         hooks.pickFrame = [this](const WebCamera& cam, double x, double y, double aspect, bool add) { return webPick(cam, x, y, aspect, add); };
+        hooks.pickFace = [this](const WebCamera& cam, double x, double y, double aspect, bool add) { return webPickFace(cam, x, y, aspect, add); };
         hooks.camera = [this] { return webCamera(); };
         hooks.surfacePoint = [this](const WebCamera& cam, double x, double y, double aspect, double point[3]) {
             return webSurfacePoint(cam, x, y, aspect, point);

@@ -5,6 +5,10 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Web: pick a single face.** Ctrl + click in the web page's live view selects the brush face under the pointer
+  (Ctrl + Shift + click adds or removes one). Edit > Surface then works on the selected faces: fit one face, justify
+  it, set its texture fields.
+
 - **Web: Undo History and a log you can filter.** Edit > Undo History in the web page lists the document's steps;
   choosing one undoes or redoes to it. The Log panel loads the lines from before the page was opened, and shows all
   lines, warnings and errors, or errors only, and only the lines that hold a text you type. Fixed on the way: with

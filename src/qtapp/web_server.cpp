@@ -702,7 +702,13 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
         cam.fov = std::clamp(in.value("fov").toDouble(90), 10.0, 150.0);
         const double x = in.value("x").toDouble(-1), y = in.value("y").toDouble(-1);
         if (x < 0 || x > 1 || y < 0 || y > 1) return error(400, "x and y are 0..1 from the top left of the view");
-        hooks_.pickFrame(cam, x, y, std::clamp(in.value("aspect").toDouble(16.0 / 9.0), 0.2, 5.0), in.value("add").toBool());
+        const double aspect = std::clamp(in.value("aspect").toDouble(16.0 / 9.0), 0.2, 5.0);
+        if (in.value("face").toBool()) {
+            if (!hooks_.pickFace) return error(400, "faces cannot be picked here");
+            hooks_.pickFace(cam, x, y, aspect, in.value("add").toBool());
+        } else {
+            hooks_.pickFrame(cam, x, y, aspect, in.value("add").toBool());
+        }
     } else if (path == "/api/brush") {
         const QJsonArray lo = in.value("mins").toArray(), hi = in.value("maxs").toArray();
         if (lo.size() != 3 || hi.size() != 3) return error(400, "need mins:[x,y,z] and maxs:[x,y,z]");

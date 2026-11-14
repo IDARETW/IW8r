@@ -94,8 +94,11 @@
     if (!d || !cam || d.travelled > 4 || d.button !== 0) return;
     const r = img.getBoundingClientRect();
     try {
+      // Ctrl: the brush face under the pointer (for Edit > Surface) instead of the whole brush.
       await R().post("/api/pick", { pos: cam.pos, yaw: cam.yaw, pitch: cam.pitch, fov: cam.fov, x: (ev.clientX - r.left) / r.width,
-                                    y: (ev.clientY - r.top) / r.height, aspect: r.width / r.height, add: ev.shiftKey });
+                                    y: (ev.clientY - r.top) / r.height, aspect: r.width / r.height, add: ev.shiftKey,
+                                    face: ev.ctrlKey || ev.metaKey });
+      if (ev.ctrlKey || ev.metaKey) R().setStatus("Face selected: Edit > Surface works on it");
     } catch (e) { /* post() showed the reason */ }
     frame();
   });

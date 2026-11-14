@@ -95,6 +95,8 @@ public:
         std::function<QByteArray(const WebCamera& cam, int w, int h, int quality)> renderFrame;
         // Selects what lies under a point of that view (x, y in 0..1 from the top left); false when nothing is there.
         std::function<bool(const WebCamera& cam, double x, double y, double aspect, bool add)> pickFrame;
+        // The same for one brush face (the editor's Ctrl + Shift + click): add toggles it in the face selection.
+        std::function<bool(const WebCamera& cam, double x, double y, double aspect, bool add)> pickFace;
         // The point of the scene under a point of that view; false when the ray hits nothing.
         std::function<bool(const WebCamera& cam, double x, double y, double aspect, double point[3])> surfacePoint;
         // The editor's own camera, as {pos: [x, y, z], yaw, pitch, fov}: where a browser's view starts.

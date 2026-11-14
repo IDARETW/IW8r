@@ -337,7 +337,8 @@ info button of the Assets panel), compile options and Build Budget (5). All ten 
 surface in the live view), the inspector with entity definitions; clone / delete / copy / paste / rotate run as
 commands from the web menu. 2026-11-14 also: vertex and edge handles (POST /api/vertices), layers (the Layers form;
 hidden layers leave the page's views), region (View > Region from the web menu; the page draws what the editor
-shows). Open: patch vertex editing, face picking with surface fit.
+shows), face picking (Ctrl + click in the live view; the Surface form fits and justifies the picked faces). Open:
+patch vertex editing.
 - **2D:** create a brush by dragging, resize handles, clone / delete / copy / paste, rotate / scale, vertex and edge
   modes, region, layers.
 - **Selection and placement:** face picking with surface fit; entity placement of every class and template at the 3D
