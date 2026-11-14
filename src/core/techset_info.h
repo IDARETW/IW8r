@@ -36,6 +36,9 @@ const char* techsetFamilyName(TechsetFamily f);  // "lit", "unlit effect", "dist
 
 // Material::surfaceFlags bits with a known meaning.
 constexpr uint32_t kIw8SurfNoDraw = 0x80;  // shadow-only: every *_shadowcaster, nodraw, caulk_shadow (research 66)
+// Casts no sun shadow: every *_noshadow material and the tree canopies' leaf cards (their trees cast from separate
+// *_shadowcaster meshes); 109 of 16,272 cached stock materials, 2026-11-13.
+constexpr uint32_t kIw8SurfNoCastShadow = 0x40000;
 
 // How the editor's textured view draws a material.
 enum class MaterialDraw {

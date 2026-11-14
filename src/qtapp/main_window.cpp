@@ -1,4 +1,5 @@
 #include "stock_terrain_layers.h"
+#include "stock_placed.h"
 #include "game_mode_view.h"
 #include "worker_guard.h"
 #include "stock_clutter.h"
@@ -355,6 +356,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         // Model decals (research 98's blend token on model techsets; sort keys 10-17 seen): grenade box stencils, frame
         // decals, reveal layers. Glass and other blended surfaces sort later (25, 30) and are not decals.
         if (ts.contains("_bad_") && e->sortKey > 0 && e->sortKey <= 17 && !e->techset.startsWith("tw")) f.propDecalSortKey = e->sortKey;
+        f.noCastShadow = e->surfaceFlags > 0 && (uint64_t(e->surfaceFlags) & kIw8SurfNoCastShadow) != 0;
         f.ssr = parseStockTechsetName(e->techset.toStdString()).ssr;
         f.tint = e->tint;
         f.tintMasked = e->tintMasked;
@@ -1904,6 +1906,16 @@ void MainWindow::buildMenus() {
         }
         if (findGameModeView(saved.toStdString())) ctx_.scene.gameMode = saved.toStdString();
     }
+    {
+        QAction* smooth = addCommand(view, "SmoothCameraMovement", "Smooth Camera Movement", QKeySequence(), [this] {
+            const bool on = action("SmoothCameraMovement")->isChecked();
+            Settings::instance().setValue("view/cameraRamp", on ? 0.2 : 0.0);
+            ctx_.cameraRamp = on ? 0.2 : 0.0;
+        });
+        smooth->setCheckable(true);
+        ctx_.cameraRamp = std::max(0.0, Settings::instance().value("view/cameraRamp", 0.2).toDouble());
+        smooth->setChecked(ctx_.cameraRamp > 0);
+    }
     QAction* spawnsToggle = addCommand(view, "ToggleCompiledSpawns", "Show IW8 Compiled Spawns", QKeySequence(), [this] {
         ctx_.showSpawns = !ctx_.showSpawns;
         ctx_.cameraMoved();
@@ -2161,7 +2173,7 @@ void MainWindow::buildMenus() {
         QMenu* gm = view->addMenu("Game Lighting Options");
         gm->setObjectName("gameLightingMenu");
         auto& st = Settings::instance();
-        const auto toggle = [&](const char* id, const QString& text, const QString& key, std::function<void(bool)> apply) {
+        const auto toggle = [&](const char* id, const QString& text, const QString& key, std::function<void(bool)> apply, bool byDefault = true) {
             QAction* a = addCommand(gm, id, text, QKeySequence(), [this, id, key, apply] {
                 QAction* self = action(id);
                 const bool on = self && self->isChecked();
@@ -2170,7 +2182,7 @@ void MainWindow::buildMenus() {
                 ctx_.cameraMoved();
             });
             a->setCheckable(true);
-            const bool on = st.value(key, true).toBool();
+            const bool on = st.value(key, byDefault).toBool();
             a->setChecked(on);
             apply(on);
         };
@@ -2179,6 +2191,10 @@ void MainWindow::buildMenus() {
         toggle("GameStockLights", "Stock Map Lamps", "game/stockLights", [this](bool on) { camera_->setStockLightsEnabled(on); });
         toggle("GameLightShadows", "Lamp Shadows", "game/lightShadows", [this](bool on) { camera_->setLightShadowsEnabled(on); });
         toggle("GamePostFx", "Bloom and Vignette", "game/postFx", [this](bool on) { camera_->setPostFxEnabled(on); });
+        // Research 109 section 2. Off by default: with the decoded constants it darkens Speedball's sky by a third, which
+        // the owner's in-game shot does not show (a scale of its scattered light, cb7[42].y, is not decoded yet).
+        toggle("GameVolumetricFog", "Volumetric Fog (uncalibrated)", "game/volumetricFog", [this](bool on) { camera_->setVolumetricFogEnabled(on); },
+               false);
         toggle("GamePropLods", "Prop Levels of Detail (as in game)", "game/propLods", [this](bool on) {
             if (propLodsEnabled_ == on) return;
             propLodsEnabled_ = on;
@@ -4819,7 +4835,17 @@ QString MainWindow::sunFromSky(bool automatic) {
     if (!s) return "no sun found in " + sky + (err.empty() ? QString() : ": " + qs(err));
     Entity* ws = ctx_.doc.worldspawn();
     if (!ws) return "no worldspawn";
-    const std::string key = sunDirectionKeyFor(s->dir);
+    // The sky as the game turns it (worldspawn skyrotation, pitch yaw roll): the stock sky images hold their sun at yaw 0
+    // and the stock maps set skyrotation to their sun's yaw (shipment -15.4, hideout -46, rust -20).
+    Vec3 dir = s->dir;
+    if (const std::string* r = ws->value("skyrotation")) {
+        double a[3] = {0, 0, 0};
+        if (std::sscanf(r->c_str(), "%lf %lf %lf", &a[0], &a[1], &a[2]) >= 2) {
+            const auto ax = anglesToAxis(Vec3{a[0], a[1], a[2]});
+            dir = normalize(ax[0] * s->dir.x + ax[1] * s->dir.y + ax[2] * s->dir.z);
+        }
+    }
+    const std::string key = sunDirectionKeyFor(dir);
     const std::string* cur = ws->value("sundirection");
     if (cur && *cur == key) return {};
     ctx_.doc.setKeyValue(ws->id, "sundirection", key);
@@ -6941,7 +6967,10 @@ void MainWindow::rebuildReferencePropsUnguarded() {
     constexpr size_t kPropTriangleBudget = 4'000'000;
     const Vec3 light = normalize(Vec3{0.35, 0.55, 0.75});
     const auto mesh = [&](const StockModelInstance& in) -> bool {
-        auto it = meshIndex.find(in.model);
+        // One mesh set per model and material skin (placements of one model can use different skins).
+        const std::string meshKey = in.surfaceMaterials ? in.model + '\x1f' + std::to_string(reinterpret_cast<uintptr_t>(in.surfaceMaterials.get()))
+                                                        : in.model;
+        auto it = meshIndex.find(meshKey);
         if (it == meshIndex.end()) {
             ModelMeshes mm;
             // A model is read and converted once and kept while models are still arriving (refPropBuilt_, dropped
@@ -6966,9 +6995,11 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                             fresh->lodOut = std::max(0.0, detail->lods.back().distance);
                 }
                 // Textured triangles of an imported mesh set (LOD0 also fills `plain` with its untextured surfaces).
+                // surfBase: the LOD's first surface in the model (XModelLod::surfIndex), -1 when its meshes do not match its
+                // surfaces one to one (then no material skin applies).
                 const auto toTex = [&](const ImportedModel& src,
                                        std::vector<std::pair<std::string, std::shared_ptr<const app::PropMeshData>>>& outTex,
-                                       std::vector<app::GpuVertex>* plainOut) {
+                                       std::vector<app::GpuVertex>* plainOut, std::vector<int>& outSurf, int surfBase) {
                     std::vector<app::GpuVertex> ignored;
                     std::vector<app::GpuVertex>& plain = plainOut ? *plainOut : ignored;
                     const auto zup = [](const Vec3& p) { return Vec3{p.x, -p.z, p.y}; };  // glTF Y-up -> Z-up
@@ -7025,9 +7056,25 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                             pv.rgba = 0xff000000u | (g << 16) | (g << 8) | g;
                         }
                         outTex.push_back({ms.material, std::move(pm)});
+                        outSurf.push_back(surfBase >= 0 ? surfBase + int(&ms - src.meshes.data()) : -1);
                     }
                 };
-                toTex(*im, fresh->tex, &fresh->plain);
+                const auto modelDetail = modelCacheStock_->loadDetail(qs(in.model));
+                const auto surfBaseOf = [&](size_t level, const ImportedModel& src) {
+                    if (!modelDetail || level >= modelDetail->lods.size()) return -1;
+                    const XModelLod& l = modelDetail->lods[level];
+                    if (l.surfCount != int(src.meshes.size())) return -1;
+                    // The meshes come in the LOD's surface order: their materials must be the LOD's, one for one.
+                    if (l.materials.size() == src.meshes.size())
+                        for (size_t k = 0; k < src.meshes.size(); ++k) {
+                            std::string a = l.materials[k], b = src.meshes[k].material;
+                            if (!a.empty() && a[0] == ',') a.erase(0, 1);
+                            if (!b.empty() && b[0] == ',') b.erase(0, 1);
+                            if (!a.empty() && !b.empty() && a != b) return -1;
+                        }
+                    return l.surfIndex;
+                };
+                toTex(*im, fresh->tex, &fresh->plain, fresh->texSurf, surfBaseOf(0, *im));
                 // Plan 1.13: the cached further LODs, with the game's distances (LOD i up to lods[i].distance); a LOD
                 // not cached yet is asked for and its range stays with the LOD before it.
                 if (const auto detail = modelCacheStock_->loadDetail(qs(in.model)); detail && detail->lods.size() > 1 && !fresh->tex.empty()) {
@@ -7043,7 +7090,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                         RefPropMesh::Lod lod;
                         lod.level = int(li);
                         lod.nearD = L[li - 1].distance;
-                        toTex(*lm, lod.tex, nullptr);
+                        toTex(*lm, lod.tex, nullptr, lod.texSurf, surfBaseOf(li, *lm));
                         if (!lod.tex.empty() && lod.nearD > 0) fresh->lods.push_back(std::move(lod));
                     }
                     // Each level runs to the next one's start; the last to the foliage LOD-out (others: no limit).
@@ -7061,7 +7108,15 @@ void MainWindow::rebuildReferencePropsUnguarded() {
             if (built && built->tris > 0 && meshTris + built->tris <= kPropTriangleBudget) {
                 meshTris += built->tris;
                 const int group = built->lods.empty() ? -1 : ++lodGroups;
-                for (const auto& [material, tris] : built->tex) {
+                // The map's material for a surface (its skin), else the model's own.
+                const auto skinned = [&](const std::string& own, const std::vector<int>& surfs, size_t k) -> std::string {
+                    if (!in.surfaceMaterials || k >= surfs.size() || surfs[k] < 0 || size_t(surfs[k]) >= in.surfaceMaterials->size()) return own;
+                    const std::string& m = (*in.surfaceMaterials)[size_t(surfs[k])];
+                    return m.empty() ? own : m;
+                };
+                for (size_t k = 0; k < built->tex.size(); ++k) {
+                    const auto& [ownMaterial, tris] = built->tex[k];
+                    const std::string material = skinned(ownMaterial, built->texSurf, k);
                     app::InstancedTexMesh tm;
                     tm.mesh = tris;
                     tm.lodOut = float(built->lodOut);
@@ -7072,7 +7127,9 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                     texMaterials.push_back(material);
                 }
                 for (const RefPropMesh::Lod& lod : built->lods)
-                    for (const auto& [material, tris] : lod.tex) {
+                    for (size_t k = 0; k < lod.tex.size(); ++k) {
+                        const auto& [ownMaterial, tris] = lod.tex[k];
+                        const std::string material = skinned(ownMaterial, lod.texSurf, k);
                         app::InstancedTexMesh tm;
                         tm.mesh = tris;
                         tm.lodOut = float(built->lodOut);
@@ -7090,7 +7147,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                 }
                 mm.any = mm.plain >= 0 || !mm.tex.empty();
             }
-            it = meshIndex.emplace(in.model, std::move(mm)).first;
+            it = meshIndex.emplace(meshKey, std::move(mm)).first;
         }
         if (!it->second.any) return false;
         if (meshed == 0) referencePropSample_ = in.origin;
@@ -7142,6 +7199,22 @@ void MainWindow::rebuildReferencePropsUnguarded() {
         withClutter = *refClutter_;
         withClutter.insert(withClutter.end(), refProps_->begin(), refProps_->end());
         drawProps = &withClutter;
+    }
+    // The map's scripted objects (scriptableMapEnts: doors, lamps, signal lights, targets; 106 on Speedball) as their
+    // definition's model, read-only like the static props, unless File > Edit Placed Objects made them entities (then
+    // the document draws them). Owner 2026-11-13: Speedball's signal lights were missing from the viewport.
+    if (!stockPlaced_.empty() && !hasPlacedObjects(ctx_.doc.map()) && ctx_.scene.scriptableModelFor) {
+        if (drawProps != &withClutter) withClutter = *refProps_, drawProps = &withClutter;
+        for (const StockPlacedObject& o : stockPlaced_) {
+            const std::string model = ctx_.scene.scriptableModelFor(o.definition);
+            if (model.empty()) continue;
+            StockModelInstance in;
+            in.model = model;
+            in.origin = o.origin;
+            in.axis = anglesToAxis(o.angles);
+            in.index = 0x80000000u | o.index;  // not a static model row (the hidden-props list names those)
+            withClutter.push_back(std::move(in));
+        }
     }
     for (const StockModelInstance& in : *drawProps) {
         if (std::binary_search(hiddenProps.begin(), hiddenProps.end(), in.index)) continue;

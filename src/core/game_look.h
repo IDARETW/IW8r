@@ -118,6 +118,10 @@ struct GamePostFx {
     double vignetteBox[2] = {0, 0}, vignetteOffset[2] = {0, 0};
     bool vignetteImage = false;  // vignetteImage set (not drawn by the editor: the analytic shape stands in)
     double grain = 0;            // tonemapGrainStrength (LNQNRRPNPP) x r_filmGrainAtten 0.25
+    // The volumetric fog (research 109 section 2): on when volumetricAirDensity > 0 (vision default 0). sigma per unit =
+    // air x 0.01 x exp(max(z - heightBase, 0) x -ln2 / heightHalf) (heightHalf 0 = uniform).
+    double volAir = 0, volAbsorption = 0, volAlbedo[3] = {1, 1, 1}, volAmbient = 1, volSun = 1, volAnisotropy = 0;
+    double volHeightBase = 0, volHeightHalf = 0;
 };
 GamePostFx gamePostFxFromVision(const std::string& visionText);
 // The vignette's constants (cb7[214..216], research 109 section 4.1) for a view whose half-FOV tangents are tanX, tanY:

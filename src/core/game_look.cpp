@@ -390,6 +390,19 @@ GamePostFx gamePostFxFromVision(const std::string& text) {
     num("NQTKKPORNO", p.vignetteOffset[0]);
     num("LOQRRKQSRL", p.vignetteOffset[1]);
     if (const auto it = v.find("MPKKMPRLRQ"); it != v.end() && !it->second.empty()) p.vignetteImage = true;
+    num("NSKNLMKQSR", p.volAir);         // volumetricAirDensity
+    num("MQMPKLKK", p.volAbsorption);    // volumetricAbsorption
+    num("MQRSTPRORQ", p.volAmbient);     // volumetricAmbientBrightness
+    num("LKNNNKTPTM", p.volSun);         // volumetricSunBrightness
+    num("MTNSRNMTKN", p.volAnisotropy);  // volumetricSunAnisotropy
+    num("NPKPLTKRNS", p.volHeightBase);  // volumetricHeightFogBaseHeight
+    num("MLPOMNQPPK", p.volHeightHalf);  // volumetricHeightFogHalfPlaneDistance
+    if (const auto it = v.find("NKKRQROOQK"); it != v.end()) {  // volumetricAlbedo
+        double a[3];
+        if (std::sscanf(it->second.c_str(), "%lf %lf %lf", &a[0], &a[1], &a[2]) == 3)
+            for (int k = 0; k < 3; ++k) p.volAlbedo[k] = a[k];
+    }
+    p.volAir = std::max(p.volAir, 0.0);
     double grain = 0;
     num("LNQNRRPNPP", grain);
     p.grain = grain * 0.25;  // r_filmGrainAtten

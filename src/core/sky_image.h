@@ -21,6 +21,10 @@ struct SkyConvertOptions {
     // HDR sources: linear colour times this before the sRGB encode; <= 0 picks it from the image (the 99.5th
     // percentile luminance maps to 0.9, see the .cpp).
     float exposure = 0.0f;
+    // The map's worldspawn "skyrotation" (pitch yaw roll, degrees; key 47372): the game turns the view direction into
+    // the sky's frame with it before the lookup (sky VS a6bc8f6e: o1 = cb7[153..155] x direction). Mp_m_speedball:
+    // 0 -111 0. Only hemi-octahedral sources (a converter cube passes through unchanged).
+    float rotation[3] = {0, 0, 0};
 };
 
 struct SkyConvertInfo {

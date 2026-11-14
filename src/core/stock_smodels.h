@@ -17,6 +17,7 @@
 #pragma once
 
 #include <array>
+#include <memory>
 #include <map>
 #include <string>
 #include <utility>
@@ -39,6 +40,12 @@ struct StockModelInstance {
     uint32_t lightingIndex = 0xFFFFFFFF;
     uint16_t worldTransient = 0;
     uint32_t modelFlags = 0;                             // smodels.models[collection.smodelIndex].flags
+    // The map's material for each surface of the model (every LOD, in the model's surface order; XModelLod::surfIndex
+    // and surfCount give a LOD's range): smodels.smodelSurfMatIndirection from models[].firstStaticModelSurfaceIndex,
+    // smodelExpansionData[].numSurfs entries, into smodels.materials (leading ',' dropped). The map chooses them per
+    // static model (a material skin): Speedball's containers use "..._second" / "_blue" materials, not the model's own
+    // (whose placeholder tint drew them pink). Null when the export lacks the tables; shared by a model's placements.
+    std::shared_ptr<const std::vector<std::string>> surfaceMaterials;
 };
 
 // Reads the static model instances of one gfx_map export. exportPathOrDir is either the gfx_map JSON file itself or

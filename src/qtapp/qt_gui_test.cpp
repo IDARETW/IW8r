@@ -2390,6 +2390,15 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             r.check(a->isChecked() == was && Settings::instance().value(key, true).toBool() == was,
                     QString("%1 back on its saved value").arg(id));
         }
+        if (QAction* v = w.action("GameVolumetricFog")) {
+            r.check(v->isCheckable(), "Volumetric Fog is a Game Lighting option");
+            const bool was = v->isChecked();
+            v->trigger();
+            r.check(Settings::instance().value("game/volumetricFog", false).toBool() == !was, "Volumetric Fog toggles and saves game/volumetricFog");
+            v->trigger();
+        } else {
+            r.check(false, "Volumetric Fog is in View > Game Lighting Options");
+        }
         for (const char* id : {"GameAoStrength", "GameExposureOverride", "GameRebake"})
             r.check(w.action(id) != nullptr, QString("%1 is in View > Game Lighting Options").arg(id));
         if (CameraView* cv = w.cameraView()) {
@@ -2400,6 +2409,35 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         }
         QMenu* gm = w.findChild<QMenu*>("gameLightingMenu");
         r.check(gm && gm->findChildren<QMenu*>().size() >= 1, "the Game Lighting Options menu has its Debug View submenu");
+    }
+
+    r.section("smooth camera movement (View > Smooth Camera Movement)");
+    {
+        // Holding W eases up to the camera speed; letting go eases back to rest instead of stopping dead.
+        const Vec3 p0 = ctx.cam.pos;
+        const double ramp0 = ctx.cameraRamp;
+        ctx.cameraRamp = 0.2;
+        ctx.camVelocity = Vec3{};
+        ctx.looking = true;
+        ctx.heldKeys.insert(Qt::Key_W);
+        ctx.tickCamera(1.0 / 60.0, false);
+        const double first = length(ctx.cam.pos - p0);
+        for (int i = 0; i < 60; ++i) ctx.tickCamera(1.0 / 60.0, false);
+        const Vec3 p1 = ctx.cam.pos;
+        ctx.tickCamera(1.0 / 60.0, false);
+        const double cruise = length(ctx.cam.pos - p1);
+        r.check(first > 0 && first < cruise * 0.5 && std::fabs(cruise - ctx.cam.speed / 60.0) < ctx.cam.speed / 60.0 * 0.05,
+                QString("the camera eases into its speed (first step %1, cruising %2 a frame)").arg(first).arg(cruise));
+        ctx.heldKeys.clear();
+        const Vec3 p2 = ctx.cam.pos;
+        ctx.tickCamera(1.0 / 60.0, false);
+        const double coast = length(ctx.cam.pos - p2);
+        for (int i = 0; i < 120; ++i) ctx.tickCamera(1.0 / 60.0, false);
+        r.check(coast > 0 && coast < cruise && length(ctx.camVelocity) == 0, "letting go eases to a stop");
+        ctx.cameraRamp = ramp0;
+        ctx.looking = false;
+        ctx.cam.pos = p0;
+        r.check(w.action("SmoothCameraMovement") && w.action("SmoothCameraMovement")->isCheckable(), "View > Smooth Camera Movement is a toggle");
     }
 
     r.section("game mode view (View > Game Mode, research 40)");
@@ -3499,7 +3537,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         const std::string* sd = ctx.doc.worldspawn()->value("sundirection");
         const QString got = sd ? QString::fromStdString(*sd) : QString();
         const bool cached = !w.currentSkyFile().isEmpty();
-        r.check(!cached || got.startsWith("-18.5 268.9"), "a new sky aims the sun at it: sundirection " + got +
+        r.check(!cached || got.startsWith("-18.5 358.9"), "a new sky aims the sun at it (the game's sky lookup, PS 8a61dcf2): sundirection " + got +
                                                             (cached ? QString() : QString(" (sky not cached here: skipped)")));
         while (ctx.doc.undoPosition() > pos) {
             ctx.doc.undo();
@@ -3519,7 +3557,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         const std::string* sd = ctx.doc.worldspawn()->value("sundirection");
         const QString got = sd ? QString::fromStdString(*sd) : QString();
         const bool cached = !w.currentSkyFile().isEmpty();
-        r.check(!cached || got.startsWith("-18.5 268.9"), "a new sky aims the sun at it: sundirection " + got +
+        r.check(!cached || got.startsWith("-18.5 358.9"), "a new sky aims the sun at it (the game's sky lookup, PS 8a61dcf2): sundirection " + got +
                                                             (cached ? QString() : QString(" (sky not cached here: skipped)")));
         while (ctx.doc.undoPosition() > pos) {
             ctx.doc.undo();

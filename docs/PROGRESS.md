@@ -2,6 +2,20 @@
 
 ## Latest (2026-11-13)
 
+- Owner round 2 (2026-11-13 night): sky = hemi-octahedral lookup u = (oy - ox + 1) / 2, v = (ox + oy + 1) / 2 (sky PS
+  8a61dcf2 VERIFIED; editor had it transposed and mirrored) after the sky VS a6bc8f6e turns the view by cb7[153..155]
+  = worldspawn skyrotation (key 47372; stock maps set it to their sun's yaw: shipment -15.4, hideout -46, rust -20,
+  speedball -111 vs sun -121); SkyConvertOptions::rotation, CameraView keys the sky cube on it, sunFromSky applies it;
+  owner confirmed the sky. Scriptables (scriptableMapEnts) appended to the prop draw list (index | 0x80000000) unless
+  the document holds placed objects. kIw8SurfNoCastShadow 0x40000 (tree canopies, *_noshadow) -> setReferenceNoCast /
+  setReferenceInstNoCast. Static model material skins: StockModelInstance::surfaceMaterials (smodelSurfMatIndirection
+  -> smodels.materials), RefPropMesh::texSurf (surfIndex + mesh, checked against the LOD's materials), meshIndex keyed
+  by model + skin. Speedball's pink containers are NOT the skin: their materials (flags 0x4f, tint ff96ab/ad with a
+  BC4 mask of mean 0.88) give pink by research 95's rule while the game shows grey; a helper decodes the tint rule
+  (research 113, pending). Volumetric fog (research 109 section 2) implemented in ps_post (b13, t28) behind
+  View > Game Lighting Options > Volumetric Fog (game/volumetricFog, off): it darkened Speedball's sky band 110.9 ->
+  84.6 (game 109.0), so a scale (cb7[42].y) is missing. Camera: EditorContext::cameraRamp (view/cameraRamp 0.2 s),
+  camVelocity / camYawRate eased exponentially; GUI test "smooth camera movement".
 - Owner round (2026-11-13 evening): (1) decals "clip" on Rust = model decal materials (`_bad_` blend, sort key <= 17,
   e.g. tm2co/ee_pillar_garage_painted_yellow_decal) drawn as opaque prop meshes -> StockMaterialFacts::propDecalSortKey,
   SceneRenderer::setReferenceInstDecal: drawn after the props with rsDecal_, dsTest_, not in the pre-pass or shadows

@@ -362,6 +362,8 @@ void CameraView::render() {
                     }
                     if (nid >= 0) renderer_.setReferenceNormal(k, nid);
                     if (ctx_ && ctx_->scene.drawClassFor) renderer_.setReferenceDrawClass(k, ctx_->scene.drawClassFor(refTexMaterials_[k]));
+                    if (factsLookup_)
+                        if (const auto f = factsLookup_(refTexMaterials_[k])) renderer_.setReferenceNoCast(k, f->noCastShadow);
                     setBaseMaterialConstants(k);
                     if (!applyMaterialExtras(refTexMaterials_[k], k, false)) {
                         pending = true;
@@ -396,7 +398,8 @@ void CameraView::render() {
                     if (nid >= 0) renderer_.setReferenceInstNormal(k, nid);
                     if (const auto p = materialConstantsFor(texInstMaterials_[k])) renderer_.setReferenceInstParams(k, p->data());
                     if (factsLookup_)
-                        if (const auto f = factsLookup_(texInstMaterials_[k])) renderer_.setReferenceInstDecal(k, f->propDecalSortKey);
+                        if (const auto f = factsLookup_(texInstMaterials_[k]))
+                            renderer_.setReferenceInstDecal(k, f->propDecalSortKey), renderer_.setReferenceInstNoCast(k, f->noCastShadow);
                     if (ctx_ && ctx_->scene.drawClassFor) renderer_.setReferenceInstDrawClass(k, ctx_->scene.drawClassFor(texInstMaterials_[k]));
                     if (!applyMaterialExtras(texInstMaterials_[k], k, true)) {
                         pending = true;
@@ -565,13 +568,24 @@ void CameraView::render() {
     mix(ctx_->scene.lights.size());
     // Sky preview: (re)load the face textures when the sky image changes.
     if (ctx_->texturedView && skySource_ && pollFiles_) {
+        // The map's sky rotation (worldspawn skyrotation; stock maps: from their entity string) is part of the key: the
+        // entity string may arrive after the sky image.
+        float skyRot[3] = {0, 0, 0};
+        for (const auto& e : ctx_->doc.map().entities)
+            if (e.isWorldspawn()) {
+                if (const std::string* r = e.value("skyrotation")) std::sscanf(r->c_str(), "%f %f %f", &skyRot[0], &skyRot[1], &skyRot[2]);
+                break;
+            }
         const QString sky = skySource_();
-        if (sky != skyPath_) {
-            skyPath_ = sky;
+        const QString skyKey = sky.isEmpty() ? QString() : sky + QString("|%1 %2 %3").arg(skyRot[0]).arg(skyRot[1]).arg(skyRot[2]);
+        if (skyKey != skyPath_) {
+            skyPath_ = skyKey;
             skyTex_.clear();
             std::string bytes, cube, err;
             SkyConvertOptions so;
             so.faceSize = 256;
+            // The map's sky rotation (worldspawn skyrotation; stock maps: from their entity string).
+            for (int k = 0; k < 3; ++k) so.rotation[k] = skyRot[k];
             SkyConvertInfo skyInfo;
             if (!sky.isEmpty() && readFile(sky.toStdString(), bytes) && skyCubemapFromDds(bytes, cube, so, &skyInfo, &err)) {
                 skyExposure_ = skyInfo.hdr ? skyInfo.exposure : 0.0f;
@@ -2092,6 +2106,14 @@ void CameraView::prepareGameLook() {
         g.sky[0] = float(sky.x), g.sky[1] = float(sky.y), g.sky[2] = float(sky.z);
         if (stock) {  // the stock map's bloom veil and vignette (research 109)
             g.veil = float(stockPostFx_.veil);
+            const GamePostFx& p = stockPostFx_;
+            if (p.volAir > 0) {  // the volumetric fog (research 109 section 2)
+                const float hExp = p.volHeightHalf != 0 ? float(-0.693147 / std::max(p.volHeightHalf, 0.1)) : 0.0f;
+                const float vol[3][4] = {{float(p.volAlbedo[0]), float(p.volAlbedo[1]), float(p.volAlbedo[2]), float(p.volAir * 0.01)},
+                                         {float(p.volAbsorption), float(p.volAmbient), float(p.volHeightBase), hExp},
+                                         {float(p.volSun), float(p.volAnisotropy), 1.0f, 0.0f}};
+                std::memcpy(g.vol, vol, sizeof(vol));
+            }
             const double aspect = height() > 0 ? double(width()) / double(height()) : 16.0 / 9.0;
             gameVignetteConstants(stockPostFx_, aspect, 1.0, g.vignette);
         }

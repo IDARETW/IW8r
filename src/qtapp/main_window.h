@@ -470,6 +470,9 @@ private:
         std::vector<app::GpuVertex> plain;                                           // untextured surfaces
         // Material, its indexed mesh (shared with the camera's instanced meshes: no copy per rebuild).
         std::vector<std::pair<std::string, std::shared_ptr<const app::PropMeshData>>> tex;
+        // Per tex entry, its model surface index (XModelLod::surfIndex + the mesh's place), -1 = unknown: the map's
+        // material skin (StockModelInstance::surfaceMaterials) replaces the material by it.
+        std::vector<int> texSurf;
         size_t tris = 0;
         double lodOut = 0;  // foliage: the last LOD distance (not drawn beyond it, as in game); 0 = always
         // Plan 1.13: the model's further LODs that are cached, each drawn from `near` to `far` inches from the camera
@@ -478,6 +481,7 @@ private:
             int level = 0;
             double nearD = 0, farD = 0;
             std::vector<std::pair<std::string, std::shared_ptr<const app::PropMeshData>>> tex;
+            std::vector<int> texSurf;
         };
         std::vector<Lod> lods;
         double lod0Far = 0;  // LOD0's far (0 = no limit)

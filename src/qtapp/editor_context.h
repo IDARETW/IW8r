@@ -97,6 +97,11 @@ public:
     double terrainStrength = 0.5; // Smooth / Flatten: fraction of the way to the target per step (0..1)
 
     QSet<int> heldKeys;   // camera keys currently down (Qt::Key values)
+    // View > Smooth Camera Movement (view/cameraRamp): the fly camera eases up to its speed and back down to rest
+    // over about `cameraRamp` seconds (0 = the old instant start and stop). Owner 2026-11-13.
+    double cameraRamp = 0.2;
+    Vec3 camVelocity;              // units per second, eased toward the keys' target
+    double camYawRate = 0, camPitchRate = 0;  // degrees per second (keyboard turning)
     bool looking = false; // right mouse held in the camera view
 
     int axisH() const { return gridAxis == 2 ? 1 : 0; }

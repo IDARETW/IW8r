@@ -368,7 +368,7 @@ TEST(sky_pano_faces_match_sky_image_hemi_mapping) {
     hemi += px;
 
     const double U = 2.0 * (ix + 0.5) / hw - 1.0, V = 2.0 * (iy + 0.5) / hh - 1.0;
-    const double ox = (U + V) / 2.0, oy = (U - V) / 2.0;
+    const double ox = (V - U) / 2.0, oy = (U + V) / 2.0;  // the inverse of u = oy - ox, v = ox + oy
     const Vec3 spot{ox, oy, 1.0 - std::fabs(ox) - std::fabs(oy)};
     CHECK(spot.z > 0.3);
 
@@ -391,4 +391,13 @@ TEST(sky_pano_faces_match_sky_image_hemi_mapping) {
     CHECK(fromSkyImage.faceMask == fromPanorama.faceMask);
     CHECK(angleDeg(fromSkyImage.centroid, spot) < 3.0);
     CHECK(angleDeg(fromPanorama.centroid, spot) < 3.0);
+
+    // The map's skyrotation (yaw 90): the same sky texel now lies 90 degrees further round, as the game turns the view
+    // into the sky's frame (its inverse rotation) before the lookup.
+    SkyConvertOptions rot = opt;
+    rot.rotation[1] = 90.0f;
+    std::string rotated;
+    CHECK(skyCubemapFromDds(hemi, rotated, rot, nullptr, &err));
+    const Vec3 turned{-spot.y, spot.x, spot.z};
+    CHECK(angleDeg(maxTexels(rotated, 256).centroid, turned) < 3.0);
 }

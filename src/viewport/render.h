@@ -352,6 +352,14 @@ public:
     void setReferenceDrawClass(size_t batch, int cls) {
         if (batch < refLayers_.size() && refLayers_[batch].drawClass != cls) refLayers_[batch].drawClass = cls, shadowDirty_ = nearDirty_ = true;
     }
+    // A material that casts no sun shadow (surfaceFlags 0x40000: tree canopies, *_noshadow): drawn, left out of the
+    // shadow maps. Owner 2026-11-13: shadows inside the trees' leaves were darker than in game.
+    void setReferenceNoCast(size_t batch, bool on) {
+        if (batch < refLayers_.size() && refLayers_[batch].noCast != on) refLayers_[batch].noCast = on, shadowDirty_ = nearDirty_ = true;
+    }
+    void setReferenceInstNoCast(size_t mesh, bool on) {
+        if (mesh < refTexInst_.size() && refTexInst_[mesh].noCast != on) refTexInst_[mesh].noCast = on, shadowDirty_ = nearDirty_ = true;
+    }
     void setReferenceInstDrawClass(size_t mesh, int cls) {
         if (mesh < refTexInst_.size() && refTexInst_[mesh].drawClass != cls) refTexInst_[mesh].drawClass = cls, shadowDirty_ = nearDirty_ = true;
     }
@@ -431,6 +439,9 @@ public:
         // skyScale: the sky texture (LDR) to scene light.
         float fog[6][4] = {};  // only fog[0][3] (on) is read now; the rest of the fit is kept for the GUI's reports
         float fogK[8][4] = {};  // the game's fog constants cb7[131..138] (core gameFogConstants, research 111)
+        // The volumetric fog (research 109 section 2): albedo rgb + air x 0.01; (absorption, ambient brightness, height
+        // base, height exponent -ln2 / half or 0); (sun brightness, anisotropy g, on, 0).
+        float vol[3][4] = {};
         float skyScale = 1.0f;
         float bakedScale = 1.0f;  // the stock map's bakedLightScale, on its lightmap
         float lutScale = 1.0f;
@@ -474,6 +485,7 @@ public:
     void setGameAoStrength(float s) { gameAoStrength_ = s; }
     // The map's bloom veil and vignette (research 109) in Game Lighting.
     void setPostFxEnabled(bool on) { postFxEnabled_ = on; }
+    void setVolumetricFogEnabled(bool on) { volumetricOn_ = on; }
     bool veilDrawn() const { return veilDrawn_; }  // the last post pass mixed the veil (bench)
     float gameVeil() const { return game_.veil; }
     size_t stockLocalLightCount() const { return stockLights_.size(); }
@@ -626,6 +638,7 @@ private:
         int normal = -1;            // setReferenceInstNormal
         int decal = 0;              // setReferenceInstDecal: the material's decal sort key (0 = not a decal)
         int drawClass = 0;          // setReferenceInstDrawClass: 1 shadow only, 2 never drawn
+        bool noCast = false;        // setReferenceInstNoCast: drawn, casting no shadow (tree canopy leaf cards)
         float params[16] = {};      // setReferenceInstParams
         float extra[16] = {};       // setReferenceInstExtra (RefLayer::extra)
         int emissive = -1, transmission = -1;
@@ -696,6 +709,7 @@ private:
         // Research 66 (materialDrawFor): 1 = shadow only (tw/shadowcaster: its "Shadow" image showed on mp_rust's
         // walls and floors), 2 = never drawn.
         int drawClass = 0;
+        bool noCast = false;  // surfaceFlags 0x40000: drawn, casting no shadow
         int sortKey = 0;
         int reveal = -1;
         float params[16] = {};
@@ -887,6 +901,9 @@ private:
     ID3D11PixelShader* veilKarisPs_ = nullptr;
     ID3D11PixelShader* veilUpPs_ = nullptr;
     ID3D11Buffer* cbVeil_ = nullptr;
+    ID3D11Buffer* cbVol_ = nullptr;  // b13: the volumetric fog (drawPost)
+    bool volumetricOn_ = false;      // View > Game Lighting Options > Volumetric Fog (game/volumetricFog, off by default)
+    float lastViewProj_[16] = {};    // the frame's view (drawPost's volumetric march)
     bool postFxEnabled_ = true;
     bool veilDrawn_ = false;
     bool createVeilResources();

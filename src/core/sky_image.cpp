@@ -208,7 +208,10 @@ constexpr std::array<CubeFace, 6> kCubeFaces{{
 }};
 
 // Hemi-octahedral lookup of a direction (Z up). Below the horizon the horizon texel is used. Returns texel coordinates
-// (continuous, texel centres at +0.5) of the source. The axis orientation is inferred (doc 33: UNKNOWN in game).
+// (continuous, texel centres at +0.5) of the source. The game's stock sky shader (PS 8a61dcf2, hemi mode: cb3[0].y bit 0;
+// out/agent/post109/asm/SKY_8a61dcf2.asm lines 18-34) reads u = (oy - ox + 1) / 2, v = (ox + oy + 1) / 2 with
+// (ox, oy) = (x, y) / (|x| + |y| + |z|). VERIFIED 2026-11-13; the editor had u and v transposed and mirrored (owner:
+// the clouds did not match the game).
 void hemiOctTexel(float x, float y, float z, int w, int h, float& px, float& py) {
     z = std::max(z, 0.0f);
     const float n = std::fabs(x) + std::fabs(y) + z;
@@ -217,8 +220,7 @@ void hemiOctTexel(float x, float y, float z, int w, int h, float& px, float& py)
         ox = x / n;
         oy = y / n;
     }
-    // x = (u + v) / 2, y = (u - v) / 2 (the hemi-octahedral form x64-zt documents for IW7 normals, export_materials.cpp:399-401).
-    const float u = ox + oy, v = ox - oy;
+    const float u = oy - ox, v = ox + oy;
     px = (u + 1.0f) * 0.5f * float(w);
     py = (v + 1.0f) * 0.5f * float(h);
 }
@@ -343,6 +345,18 @@ bool skyCubemapFromDds(const std::string& dds, std::string& cube, const SkyConve
         for (int y = 1; y + 1 < img.h; ++y) add(0, y), add(img.w - 1, y);
         for (int c = 0; c < 3; ++c) ring[c] = n ? float(acc[c] / double(n)) : 0.0f;
     }
+    // The sky's frame (skyrotation): rows = the rotated axes (forward, left, up) of the angles, so the direction in
+    // the sky's frame is their dot products with the world direction (the inverse rotation).
+    float rot[3][3];
+    {
+        const double p = opt.rotation[0] * 3.14159265358979 / 180.0, y = opt.rotation[1] * 3.14159265358979 / 180.0,
+                     r = opt.rotation[2] * 3.14159265358979 / 180.0;
+        const double sp = std::sin(p), cp = std::cos(p), sy = std::sin(y), cy = std::cos(y), sr = std::sin(r), cr = std::cos(r);
+        const double fwd[3] = {cp * cy, cp * sy, -sp};
+        const double left[3] = {sr * sp * cy - cr * sy, sr * sp * sy + cr * cy, sr * cp};  // -right; (0, 1, 0) at zero angles
+        const double upv[3] = {cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp};
+        for (int k = 0; k < 3; ++k) rot[0][k] = float(fwd[k]), rot[1][k] = float(left[k]), rot[2][k] = float(upv[k]);
+    }
     cube = cubeHeader(size);
     cube.reserve(cube.size() + size_t(size) * size * 4 * 6);
     for (const CubeFace& f : kCubeFaces)
@@ -353,7 +367,9 @@ bool skyCubemapFromDds(const std::string& dds, std::string& cube, const SkyConve
                 const float d[3] = {f.w[0] + a * f.u[0] + b * f.v[0], f.w[1] + a * f.u[1] + b * f.v[1],
                                     f.w[2] + a * f.u[2] + b * f.v[2]};
                 float px, py, rgb[3];
-                hemiOctTexel(d[0], d[1], d[2], img.w, img.h, px, py);
+                const float s[3] = {d[0] * rot[0][0] + d[1] * rot[0][1] + d[2] * rot[0][2], d[0] * rot[1][0] + d[1] * rot[1][1] + d[2] * rot[1][2],
+                                    d[0] * rot[2][0] + d[1] * rot[2][1] + d[2] * rot[2][2]};
+                hemiOctTexel(s[0], s[1], s[2], img.w, img.h, px, py);
                 sampleBilinear(img, px, py, rgb);
                 if (d[2] < 0.0f) {
                     const float len = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);

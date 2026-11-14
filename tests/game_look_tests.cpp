@@ -137,3 +137,14 @@ TEST(game_post_fx_from_vision) {
     gameVignetteConstants(none, 16.0 / 9.0, 1.0, c);
     CHECK(none.veil == 0 && c[2] == 0 && gameVignetteFactor(c, 0.0, 0.0) == 1.0);
 }
+
+TEST(game_post_fx_volumetric_fields) {
+    // Research 109 section 2: the vision's volumetric fog fields (Hideout's values; Speedball is uniform).
+    const std::string hideout = "NSKNLMKQSR \"0.1\"\nMQMPKLKK \"0\"\nNKKRQROOQK \"0.7098039 0.9294118 1\"\nMQRSTPRORQ \"1\"\n"
+                                "NPKPLTKRNS \"0\"\nMLPOMNQPPK \"20\"\nMTNSRNMTKN \"0.35\"\nLKNNNKTPTM \"0.4\"\n";
+    const GamePostFx h = gamePostFxFromVision(hideout);
+    CHECK(std::fabs(h.volAir - 0.1) < 1e-9 && std::fabs(h.volHeightHalf - 20) < 1e-9 && std::fabs(h.volAnisotropy - 0.35) < 1e-9);
+    CHECK(std::fabs(h.volSun - 0.4) < 1e-9 && std::fabs(h.volAlbedo[0] - 0.7098039) < 1e-6 && std::fabs(h.volAlbedo[2] - 1.0) < 1e-9);
+    const GamePostFx none = gamePostFxFromVision("MMQLTMKTPK \"0.08\"\n");
+    CHECK(none.volAir == 0);  // the vision default: no volumetric fog
+}

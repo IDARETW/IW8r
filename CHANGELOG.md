@@ -5,6 +5,20 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **The sky is turned as in game.** The stock sky images were read transposed and mirrored, and the map's own sky
+  rotation (worldspawn `skyrotation`, the same angle as its sun) was ignored; both now follow the game's sky shaders,
+  so the clouds sit where you see them in game (owner-confirmed on Speedball). Sun From Sky also uses the rotation.
+- **Scripted objects are drawn.** A stock map's scriptables (Speedball's signal lights, its caged lamps, the
+  firing-range targets, boxes and bins: 106 there) show in the viewport as read-only props, until File > Edit Placed
+  Objects makes them editable entities.
+- **Lighter shade inside trees.** The leaf cards of tree canopies (and every `*_noshadow` material) no longer cast sun
+  shadows, as in game: the trees' separate shadow meshes cast instead.
+- **Props use the map's own materials.** Each placed model takes the materials the map assigns to it (its material
+  skin) instead of the model's defaults.
+- **Smooth camera movement.** The fly camera now eases up to speed and back down to a stop (also turning with the
+  keys). View > Smooth Camera Movement turns it off.
+- **Volumetric fog (option, off).** The game's volumetric haze is in View > Game Lighting Options, off by default: with
+  the constants decoded so far it darkens Speedball's sky more than your in-game shot shows.
 - **The game's own fog in Game Lighting.** The fog is now the game's formula, decoded from its shader and executable
   (research 111), instead of a fit made on Speedball. On Rust it was more than twice too bright and greyed the scene;
   it now keeps the colours and the far refinery shows through as in game. Speedball's sky band now matches your

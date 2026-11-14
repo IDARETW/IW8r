@@ -139,6 +139,7 @@ public:
     struct StockMaterialFacts {
         int decalSortKey = 0;
         int propDecalSortKey = 0;  // a model material that is a decal (blended `_bad_`, sort key up to 17); 0 = not
+        bool noCastShadow = false;  // surfaceFlags kIw8SurfNoCastShadow: drawn, casting no shadow (tree canopies)
         bool ssr = false;  // its techset traces screen-space reflections (research 104)
         int tint = -1;
         bool tintMasked = false;
@@ -291,6 +292,7 @@ public slots:
     void setGameDebugView(int v) { renderer_.setGameDebugView(v); update(); }
     void setGameAoStrength(double s) { renderer_.setGameAoStrength(float(s)); update(); }
     void setPostFxEnabled(bool on) { renderer_.setPostFxEnabled(on); update(); }
+    void setVolumetricFogEnabled(bool on) { renderer_.setVolumetricFogEnabled(on); update(); }
     // Bench: the stock vision's veil and vignette intensity, the renderer's veil and whether it was drawn.
     QString postFxReport() const {
         return QString("veil %1 vignette %2 renderer_veil %3 drawn %4")
