@@ -5,6 +5,10 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Web: the Vision Editor.** Compile > Vision Editor (every field) in the web page lists all 213 vision fields a
+  number can set, group by group, with the stock value under each. A filled field is the map's override; an emptied
+  one goes back to stock. Each value is checked by the field's own rule before anything is written.
+
 - **Web: patch control points.** With Tool: Vertices, a selected patch shows a handle on every control point in the
   2D views; dragging one moves the points under it (one undo step). Locked points have no handle. Checked in a real
   browser with the mouse.

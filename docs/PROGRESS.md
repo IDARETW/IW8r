@@ -40,7 +40,9 @@
   Parking state 2026-11-14 (end of this round): repo at the commit after 95d40ac, suites core 181,372 checks / 1,313 tests and GUI 1,063 checks, 0 failures; installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
   GET /api/handles (control points of the selected patches, at most 20,000) and POST /api/vertices moves with
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.
-  The web list of plan 3.3 / 3.4 is done except: the full Vision Editor (218 fields; overrides by name are in the
+  Web form "vision": every scalar / vector field of core vision_fields as a text field (key "v:<name>"), written
+  to worldspawn iw8r_vision through parseVisionOverrides / checkVisionValue / formatVisionOverrides.
+  The web list of plan 3.3 / 3.4 is done (the Vision Editor form closed it). Earlier note: (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder
   boxes -> free boxes = cells, portals = shared rectangles both ways, per-cell object lists by real box, objects keep

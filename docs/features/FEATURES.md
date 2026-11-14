@@ -746,7 +746,7 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 - Layers (show, hide, select, move the selection, declare), the compile options with the Build Budget and the Undo History are forms too. The Log panel keeps the editor's earlier lines and filters by level and text.
 - Ctrl + click in the live view picks a single brush face for the Surface form.
 - Patch control points are moved the same way (Tool: Vertices).
-- Not in the browser yet: the full Vision Editor (all 218 fields by name; overrides by name are in the Atmosphere form).
+- The Vision Editor is a form too: every settable vision field by name, with its stock value.
 
 ## 15. Automation and command line
 

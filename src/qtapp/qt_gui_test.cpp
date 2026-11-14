@@ -2092,7 +2092,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 const QJsonObject sun = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=sunSky", {}, true, {}).body).object();
                 QStringList sunKeys;
                 for (const QJsonValue& f : sun.value("fields").toArray()) sunKeys << f.toObject().value("key").toString() + ":" + f.toObject().value("type").toString();
-                r.check(forms.size() == 11 && sun.value("title").toString() == "Sun & Sky" &&
+                r.check(forms.size() == 12 && sun.value("title").toString() == "Sun & Sky" &&
                             sunKeys == QStringList({"pitch:number", "yaw:number", "color:color", "sky:text"}) &&
                             fweb.handle("GET", "/api/form?id=nothing", {}, true, {}).status == 404,
                         "GET /api/forms lists the forms and GET /api/form gives a form's fields with the map's values");
@@ -2128,6 +2128,32 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                                 errs == 0 && text == 1 && other == 0,
                             QString("the Undo History form goes back and forward by step; the log is filtered by level, source and text (%1 %2 %3 %4 %5)")
                                 .arg(all).arg(warns).arg(errs).arg(text).arg(other));
+                }
+                {
+                    // The Vision Editor as a form: every settable field by name; a value is checked by the field's rule.
+                    const QString visWas = key("iw8r_vision");
+                    const size_t undoV = ctx.doc.undoPosition();
+                    const QJsonObject vf = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=vision", {}, true, {}).body).object();
+                    const QJsonArray vfields = vf.value("fields").toArray();
+                    bool hasExposure = false;
+                    for (const QJsonValue& f : vfields) hasExposure = hasExposure || f.toObject().value("key").toString() == "v:tonemapExposure";
+                    const auto setV = fweb.handle("POST", "/api/form", "{\"id\":\"vision\",\"values\":{\"v:tonemapExposure\":\"0.75\"}}", true, {});
+                    const QString one = key("iw8r_vision");
+                    const QJsonObject vf2 = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=vision", {}, true, {}).body).object();
+                    QString shown;
+                    for (const QJsonValue& f : vf2.value("fields").toArray())
+                        if (f.toObject().value("key").toString() == "v:tonemapExposure") shown = f.toObject().value("value").toString();
+                    const auto badV = fweb.handle("POST", "/api/form", "{\"id\":\"vision\",\"values\":{\"v:tonemapExposure\":\"bright\"}}", true, {});
+                    const auto noField = fweb.handle("POST", "/api/form", "{\"id\":\"vision\",\"values\":{\"v:noSuchVisionField\":\"1\"}}", true, {});
+                    const bool kept = key("iw8r_vision") == one;
+                    const auto clearV = fweb.handle("POST", "/api/form", "{\"id\":\"vision\",\"values\":{\"v:tonemapExposure\":\"\"}}", true, {});
+                    const QString cleared = key("iw8r_vision");
+                    while (ctx.doc.undoPosition() > undoV) ctx.doc.undo();
+                    ctx.documentEdited();
+                    r.check(vfields.size() > 200 && hasExposure && setV.status == 200 && one.contains("tonemapExposure=0.75") && shown == "0.75" &&
+                                badV.status == 400 && noField.status == 400 && kept && clearV.status == 200 && !cleared.contains("tonemapExposure") &&
+                                key("iw8r_vision") == visWas,
+                            QString("the Vision form lists every settable vision field (%1) and sets, refuses and clears an override").arg(vfields.size()));
                 }
                 {
                     // Compile options: the dock's map id and switches, and the Build Budget as a report.

@@ -52,7 +52,7 @@ be replaced (the client refuses unsigned tiles), so edits live in the main map z
 **Occlusion (optional).** Compile > Occlusion bake gives your map cells and portals so the game skips what is behind
 walls. Off by default; View > Umbra Visibility shows what a stock map's own occlusion data hides.
 
-**From a browser.** Tools > Web Server: the editor's menus, eleven dialogs and docks as forms, the editor's own 3D picture with
+**From a browser.** Tools > Web Server: the editor's menus, twelve dialogs and docks as forms, the editor's own 3D picture with
 fly controls, drawing, resizing and reshaping brushes (corner and edge handles), placing assets, prefabs and
 entities, the inspector with key help.
 
@@ -88,7 +88,6 @@ short list", is these in order:
 
 ## 5. Not built, or built in part
 
-- Web page: the full Vision Editor (vision overrides by name are in the Atmosphere form).
 - Occlusion: thin slanted walls, terrain and models as occluders (other slanted and many-sided brushes hide by the
   box inside them). Removing stock world geometry opens the whole map's occlusion: everything is drawn, which
   costs frame time on that map and nothing else. A local update was decided against (a mistake there makes objects

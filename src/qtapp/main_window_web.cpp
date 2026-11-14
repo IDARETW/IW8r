@@ -27,6 +27,7 @@
 #include "layers_panel.h"
 #include "panels.h"
 #include "sun_sky_dialog.h"
+#include "vision_fields.h"
 
 namespace iw8r::qt {
 
@@ -104,6 +105,7 @@ QJsonArray MainWindow::webFormList() const {
                       QJsonObject{{"id", "history"}, {"title", "Undo History"}, {"command", ""}, {"menu", "Edit"}},
                       QJsonObject{{"id", "surface"}, {"title", "Surface (texture of the selection)"}, {"command", ""}, {"menu", "Edit"}},
                       QJsonObject{{"id", "layers"}, {"title", "Layers"}, {"command", ""}, {"menu", "View"}},
+                      QJsonObject{{"id", "vision"}, {"title", "Vision Editor (every field)"}, {"command", ""}, {"menu", "Compile"}},
                       QJsonObject{{"id", "compile"}, {"title", "Compile Options and Build Budget"}, {"command", ""}, {"menu", "Compile"}},
                       QJsonObject{{"id", "bakeSettings"}, {"title", "Lightmap Bake Settings"}, {"command", ""}, {"menu", "Compile"}},
                       QJsonObject{{"id", "mapInfo"}, {"title", "Map Info"}, {"command", ""}, {"menu", "Compile"}}};
@@ -111,6 +113,37 @@ QJsonArray MainWindow::webFormList() const {
 
 QJsonObject MainWindow::webForm(const QString& id) const {
     if (id == "gameModes") return webGameModesForm();
+    if (id == "vision") {
+        // Every vision field a number can set, group by group; the value is the map's override, empty = stock.
+        std::string cur;
+        for (const Entity& e : ctx_.doc.map().entities)
+            if (e.classname() == "worldspawn") {
+                if (const std::string* v = e.value(kVisionKey)) cur = *v;
+                break;
+            }
+        std::vector<std::pair<std::string, std::string>> pairs;
+        std::string perr;
+        parseVisionOverrides(cur, pairs, &perr);
+        const auto overrideOf = [&](const char* name) {
+            for (const auto& [n, v] : pairs)
+                if (QString::fromStdString(n).compare(name, Qt::CaseInsensitive) == 0) return qs(v);
+            return QString();
+        };
+        static const char* const groups[] = {"tonemap", "exposure", "bloom", "grade", "film", "fog", "sky", "sun", "dof", "misc"};
+        QJsonArray f;
+        for (const char* group : groups)
+            for (const VisionField& vf : visionFields()) {
+                const QString type = vf.type;
+                if (QString(vf.group) != group || (type != "scalar" && type != "vector")) continue;
+                const QString def = vf.defaultText;
+                f.append(QJsonObject{{"key", QString("v:") + vf.name},
+                                     {"label", QString("%1: %2%3").arg(group, vf.name, type == "vector" ? " (x y z)" : "")},
+                                     {"type", "text"},
+                                     {"value", overrideOf(vf.name)},
+                                     {"help", def.isEmpty() ? QString() : "stock: " + def}});
+            }
+        return QJsonObject{{"id", id}, {"title", "Vision Editor"}, {"fields", f}, {"reload", true}};
+    }
     if (id == "history") {
         // The document's steps, the newest 200 at most: choosing one undoes or redoes to it.
         const auto& h = ctx_.doc.history();
@@ -311,6 +344,49 @@ bool MainWindow::applyWebForm(const QString& id, const QJsonObject& values, QStr
         return false;
     };
     if (id == "gameModes") return applyWebGameModes(values, why);
+    if (id == "vision") {
+        Entity* ws = ctx_.doc.worldspawn();
+        if (!ws) return no("the map has no worldspawn");
+        const Id wid = ws->id;
+        const std::string* curText = ws->value(kVisionKey);
+        std::vector<std::pair<std::string, std::string>> pairs;
+        std::string perr;
+        if (curText && !parseVisionOverrides(*curText, pairs, &perr)) return no("the map's vision overrides cannot be read: " + qs(perr));
+        for (auto it = values.begin(); it != values.end(); ++it) {
+            if (!it.key().startsWith("v:")) continue;
+            const std::string name = it.key().mid(2).toStdString();
+            const VisionField* vf = findVisionField(name);
+            if (!vf) return no("there is no vision field " + it.key().mid(2));
+            const std::string value = it.value().toString().trimmed().toStdString();
+            if (value.find_first_of("\";=") != std::string::npos) return no(qs(name) + ": a value is a number, or three numbers");
+            if (!value.empty())
+                if (const std::string bad = checkVisionValue(*vf, value); !bad.empty()) return no(qs(name) + ": " + qs(bad));
+            // Replace, add or (empty) take out this field's override; the others keep their order.
+            bool found = false;
+            for (auto p = pairs.begin(); p != pairs.end();) {
+                if (QString::fromStdString(p->first).compare(vf->name, Qt::CaseInsensitive) != 0) {
+                    ++p;
+                    continue;
+                }
+                if (value.empty() || found) {
+                    p = pairs.erase(p);
+                } else {
+                    p->second = value;
+                    ++p;
+                }
+                found = true;
+            }
+            if (!found && !value.empty()) pairs.push_back({vf->name, value});
+        }
+        const std::string out = formatVisionOverrides(pairs);
+        std::string verr;
+        if (!out.empty() && visionOverridesJson(out, &verr).empty()) return no("vision overrides: " + qs(verr));
+        bool changed = false;
+        if (out.empty()) changed = curText && ctx_.doc.removeKey(wid, kVisionKey);
+        else if (!curText || *curText != out) changed = ctx_.doc.setKeyValue(wid, kVisionKey, out);
+        if (changed) ctx_.documentEdited(QString("Vision: %1 field(s) overridden").arg(pairs.size()));
+        return true;
+    }
     if (id == "history") {
         if (!values.contains("step")) return true;
         bool ok = false;

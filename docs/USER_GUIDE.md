@@ -691,7 +691,8 @@ one undo history, and each side sees the other's edits at once.
   Tools > Game Modes is a form too: pick a mode and whether to carry it in the map, use it for F5, or insert the
   Warzone start entities. Tools > Check Map shows the findings and can apply the automatic fixes. Edit > Preferences
   has the editing, build and F5 settings (asset folders and the F5 host command are set at the editor only). The
-  Atmosphere form also takes vision overrides (`name=value; name=x y z`). Edit > Surface edits the texture of the
+  Atmosphere form also takes vision overrides (`name=value; name=x y z`), and Compile > Vision Editor (every
+  field) lists them all with their stock values. Edit > Surface edits the texture of the
   selected brushes (size, offsets, rotation, lightmap scale, Fit / Natural / Justify); Apply keeps the form open and
   shows the result. To work on one face, Ctrl + click it in the "Editor view (live)" first (Ctrl + Shift + click
   adds another). Edit > Undo History lists the steps; choose one to go back or forward to it. View > Layers shows
