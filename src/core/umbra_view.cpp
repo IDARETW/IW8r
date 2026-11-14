@@ -30,6 +30,9 @@ UmbraTomeIndex umbraTomeIndex(const UmbraTome& tome) {
         ++ix.idsByClass[cls];
         if (cls == kUmbraSurface) setBit(ix.knownSurfaces, umbraUserIdIndex(id));
         else if (cls == kUmbraStaticModel) setBit(ix.knownModels, umbraUserIdIndex(id));
+        else if (cls == kUmbraPrimaryLight) setBit(ix.knownLights, umbraUserIdIndex(id));
+        else if (cls == kUmbraReflectionProbe) setBit(ix.knownProbes, umbraUserIdIndex(id));
+        else if (cls == kUmbraDecalCollection) setBit(ix.knownDecals, umbraUserIdIndex(id));
     }
     return ix;
 }
@@ -57,11 +60,24 @@ UmbraViewResult umbraViewVisibility(const UmbraTome& tome, const UmbraTomeIndex&
     r.modelBits.assign(index.knownModels.size(), 0u);
     for (size_t i = 0; i < r.surfaceBits.size(); ++i) r.surfaceBits[i] = ~index.knownSurfaces[i];
     for (size_t i = 0; i < r.modelBits.size(); ++i) r.modelBits[i] = ~index.knownModels[i];
+    const auto unknown = [](const std::vector<uint32_t>& known, std::vector<uint32_t>& bits) {
+        bits.assign(known.size(), 0u);
+        for (size_t i = 0; i < bits.size(); ++i) bits[i] = ~known[i];
+    };
+    unknown(index.knownLights, r.lightBits);
+    unknown(index.knownProbes, r.probeBits);
+    unknown(index.knownDecals, r.decalBits);
+    const auto set = [](std::vector<uint32_t>& bits, uint32_t i) {
+        if ((i >> 5) < bits.size()) bits[i >> 5] |= 1u << (i & 31u);
+    };
     for (const uint32_t id : vis.userIds) {
         const unsigned cls = umbraUserIdClass(id);
         const uint32_t i = umbraUserIdIndex(id);
-        if (cls == kUmbraSurface && (i >> 5) < r.surfaceBits.size()) r.surfaceBits[i >> 5] |= 1u << (i & 31u);
-        else if (cls == kUmbraStaticModel && (i >> 5) < r.modelBits.size()) r.modelBits[i >> 5] |= 1u << (i & 31u);
+        if (cls == kUmbraSurface) set(r.surfaceBits, i);
+        else if (cls == kUmbraStaticModel) set(r.modelBits, i);
+        else if (cls == kUmbraPrimaryLight) set(r.lightBits, i);
+        else if (cls == kUmbraReflectionProbe) set(r.probeBits, i);
+        else if (cls == kUmbraDecalCollection) set(r.decalBits, i);
     }
     return r;
 }

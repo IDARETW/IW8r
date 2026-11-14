@@ -5,6 +5,19 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **View > Umbra Visibility > Cull by Tome now covers everything the game's visibility query decides.** Besides
+  surfaces and props it leaves out the stock map's lamps, reflection probe boxes and decal groups that the game
+  leaves out from the camera, and the displaced terrain is culled like every other surface (it kept none of its
+  surface numbers before). The status bar counts decal groups too. Hideout from one spot: 28 lamps in view, 15 probe
+  boxes and 556 decal batches are left out.
+  - When the camera is outside the map's occlusion data the status bar now says what the game does there: it draws
+    the whole map and no players or vehicles (research 121).
+- **The missing radar pings of the playtest: narrowed, not solved** (research 122). Read in the game's code and
+  scripts: nothing a map provides can switch the sweep or the pings off, and the build's minimap set-up gives the
+  game exactly the values a stock map gives. The killstreak of the report fits the Personal Radar drone, which flies
+  1,500 units above the ground: that put it outside the old occlusion data (invisible; fixed today). That drone never
+  pings an enemy who has the Ghost-like perk, and it draws no sweep line in the stock game either.
+
 - **Killstreak views on a built map: the cause was found and fixed** (research 121). In the playtest of
   2026-11-11 players were invisible from the Chopper Gunner and the UAV's aircraft was invisible. Read in the game's
   code: when a camera is outside the box of a map's occlusion data, the game draws the whole static map but no

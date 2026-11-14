@@ -229,6 +229,7 @@ void CameraView::render() {
             refTexLayer_.push_back(b.layer);
             RefDecalVolume dv;
             dv.on = b.decalVolume, dv.mask = b.decalMask, dv.a = b.decalA, dv.b = b.decalB, dv.order = b.decalOrder;
+            dv.collection = b.decalVolume ? b.decalCollection : -1;
             for (int c = 0; c < 3; ++c) dv.tint[c] = b.decalTint[c];
             refTexVolume_.push_back(dv);
             batches.push_back(std::move(b.tris));
@@ -295,6 +296,7 @@ void CameraView::render() {
                         dv.terrainLayer = b.terrainLayer, dv.flags = b.terrainFlags, dv.k = b.terrainK, dv.terrainBase = b.terrainBase;
                     }
                     for (int c = 0; c < 3; ++c) dv.tint[c] = b.decalTint[c];
+                    dv.collection = b.terrainLayer ? -1 : b.decalCollection;
                     refTexVolume_.push_back(dv);
                     refTexResolved_.push_back(false);
                     vb.push_back(b.tris);
@@ -356,6 +358,7 @@ void CameraView::render() {
                                          1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
                     renderer_.setReferenceTexture(k, cid);
                     renderer_.setReferenceDecal(k, 1000 + dv.order, mid == checkerTex_ ? -1 : mid, p);
+                    renderer_.setReferenceDecalCollection(k, dv.collection);
                     continue;
                 }
                 const int id = textureFor(refTexMaterials_[k]);

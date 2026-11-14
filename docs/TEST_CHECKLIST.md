@@ -354,6 +354,9 @@ Map: `out/agent/mp_iw8r_fix1/mp_iw8r_fix1.map` (already built; Ctrl+F7, then Loc
       outside it they sound like open space. (In the last test the box was above head height.)
 - [ ] Reflection probes now carry a picture of their surroundings (captured before every build): glossy surfaces
       near a probe should reflect the room, not flat grey.
+- [ ] Killstreaks, radar: with a UAV (not the Personal Radar) enemies without the Ghost perk ping on the minimap
+      and the sweep line crosses it; with the Personal Radar the drone is visible about 1,500 units above you
+      (research 122 says what each should do).
 - [ ] Killstreaks: the UAV aircraft is visible in the sky, and enemies are visible from the Chopper Gunner view
       (fixed 2026-11-14: the map's occlusion data now reaches as far as a stock map's, research 121; rebuild the
       map first).

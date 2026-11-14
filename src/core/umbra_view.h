@@ -5,6 +5,7 @@
 //     collection index (class 1; tests/umbra_tome_tests.cpp umbra_static_model_ids_on_shipment), plus counts per class.
 //     A bit is set for what is visible AND for what the tome does not list at all (it cannot hide what it does not
 //     know), so "bit clear" means exactly "the game culls this from here".
+//     The same for primary lights, reflection probe instances and decal volume collections (classes 4, 5, 6).
 //   - umbraOverlayLines: the camera's cell, its portals and the visible cells near the camera as coloured lines.
 #pragma once
 
@@ -21,6 +22,8 @@ namespace iw8r {
 struct UmbraTomeIndex {
     uint32_t idsByClass[kUmbraClassCount] = {};
     std::vector<uint32_t> knownSurfaces, knownModels;  // bit sets by index
+    // The same for primary lights (by primaryLights row), reflection probe instances and decal volume collections.
+    std::vector<uint32_t> knownLights, knownProbes, knownDecals;
 };
 UmbraTomeIndex umbraTomeIndex(const UmbraTome& tome);
 
@@ -31,6 +34,10 @@ struct UmbraViewResult {
     // are empty: nothing is hidden.
     bool culls = false;
     std::vector<uint32_t> surfaceBits, modelBits;
+    // By primary light row, reflection probe instance and decal volume collection (the game sets the light's
+    // primaryLightVisData bit, the probe's reflectionProbeVisData bit and the collection's decalVisData bit from the
+    // same query). Same rule: a clear bit means "the game leaves this out from here".
+    std::vector<uint32_t> lightBits, probeBits, decalBits;
     uint32_t visibleByClass[kUmbraClassCount] = {};
     uint32_t cells = 0;
     uint32_t tile = kUmbraNone;

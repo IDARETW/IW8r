@@ -141,6 +141,7 @@ struct StockDisplacedMesh {
     std::vector<uint32_t> vertexColor, vertexColorHigh;  // bytes interpolated
     std::vector<uint32_t> layerNormalTransform;          // [k * (layerCount - 1) + L - 1], bytes interpolated
     std::vector<float> offset;  // per vertex: how far it moved along the displacement direction, inches (signed)
+    std::vector<uint32_t> triOrigin;  // per triangle of mesh.idx: the source triangle it was cut from
     size_t sourceTriangles = 0, subdividedTriangles = 0;  // source triangles, and those with lo > 0 at a corner (displaced)
     int passes = 0;
     bool truncated = false;  // maxTriangles stopped the subdivision early

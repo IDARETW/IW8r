@@ -377,6 +377,14 @@ public:
     void bindTomeVisibility();  // (internal) the surface bits for the vertex shader, uploaded when they changed
     bool referenceTomeCull() const { return !tomeSurfBits_.empty() || !tomeModelBits_.empty(); }
     size_t tomeCulledProps() const { return tomeCulledProps_; }  // placements the tome hid in the last frame
+    // The same cull for the stock map's lamps (bits by primaryLights row), its reflection probe boxes (by probe
+    // instance) and its decal volume batches (by decal volume collection): the game sets a light's, a probe's and a
+    // collection's visibility bit from the same query. Empty = nothing hidden. The map-wide fallback probe stays.
+    void setReferenceTomeClasses(std::vector<uint32_t> lightBits, std::vector<uint32_t> probeBits, std::vector<uint32_t> decalBits);
+    void setReferenceDecalCollection(size_t batch, int collection);
+    size_t tomeCulledLights() const { return tomeCulledLights_; }   // lamps in view the tome hid in the last frame
+    size_t tomeCulledProbes() const { return tomeCulledProbes_; }   // probe boxes hidden now
+    size_t tomeCulledDecals() const { return tomeCulledDecals_; }   // decal batches the tome hid in the last frame
     // New per-placement light (InstancedTexMesh::light, 12 floats per instance) for mesh `mesh` of the last
     // setReferenceTexInstances: only its instance buffer is made again. False when the counts do not match.
     bool setReferenceTexInstanceLight(size_t mesh, const std::vector<float>& light);
@@ -658,6 +666,12 @@ private:
     ID3D11ShaderResourceView* tomeSrv_ = nullptr;
     size_t tomeBufWords_ = 0;
     size_t tomeCulledProps_ = 0;
+    std::vector<uint32_t> tomeLightBits_, tomeProbeBits_, tomeDecalBits_;
+    size_t tomeCulledLights_ = 0, tomeCulledProbes_ = 0, tomeCulledDecals_ = 0;
+    std::vector<float> probeCb_;         // setStockProbes: the probe constants as built (no box hidden)
+    std::vector<int> probeBoxInstance_;  // per packed box: its probe instance
+    int probeFallbackBox_ = -1;          // the packed box of the map-wide fallback probe, -1 none
+    void applyTomeProbes();
     ID3D11Buffer* vbRefTex_ = nullptr;
     std::vector<unsigned> refTexFirst_, refTexCount_;
     std::vector<int> refTexIds_;
@@ -770,6 +784,7 @@ private:
         int layer = 0;  // 0 = a base batch
         bool ready = false;
         bool decal = false;  // a decal material's batch (research 98): drawn after every opaque batch and layer
+        int tomeCollection = -1;  // a decal volume batch's collection (setReferenceDecalCollection), -1 none
         // Research 66 (materialDrawFor): 1 = shadow only (tw/shadowcaster: its "Shadow" image showed on mp_rust's
         // walls and floors), 2 = never drawn.
         int drawClass = 0;

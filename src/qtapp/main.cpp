@@ -781,11 +781,13 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                 }
                 settle();
                 const iw8r::UmbraViewResult& ur = w.umbraLastResult();
-                report << QString("umbra %1 status '%2' culls %3 surfaces %4 models %5 lights %6 probes %7 cells %8 query_ms %9 props_hidden %10 lines %11")
+                report << QString("umbra %1 status '%2' culls %3 surfaces %4 models %5 lights %6 probes %7 cells %8 query_ms %9 props_hidden %10 lines %11 lamps_hidden %12 probes_hidden %13 decals_hidden %14 decal_groups %15")
                               .arg(um).arg(iw8r::umbraStatusText(ur.status)).arg(ur.culls ? 1 : 0).arg(ur.visibleByClass[iw8r::kUmbraSurface])
                               .arg(ur.visibleByClass[iw8r::kUmbraStaticModel]).arg(ur.visibleByClass[iw8r::kUmbraPrimaryLight])
                               .arg(ur.visibleByClass[iw8r::kUmbraReflectionProbe]).arg(ur.cells).arg(ur.seconds * 1000, 0, 'f', 1)
-                              .arg(cam->tomeCulledProps()).arg(ctx.scene.tomeLines.size());
+                              .arg(cam->tomeCulledProps()).arg(ctx.scene.tomeLines.size())
+                              .arg(cam->tomeCulledLights()).arg(cam->tomeCulledProbes()).arg(cam->tomeCulledDecals())
+                              .arg(ur.visibleByClass[iw8r::kUmbraDecalCollection]);
             }
         }
         {

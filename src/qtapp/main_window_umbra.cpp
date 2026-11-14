@@ -126,7 +126,8 @@ void MainWindow::updateUmbraView() {
         QMetaObject::invokeMethod(this, [this, tome, index, res, lines] {
             umbraQueryRunning_ = false;
             if (tome == umbraTome_ && (umbraCull_ || umbraOverlay_)) {
-                if (umbraCull_ && res->culls) camera_->setTomeVisibility(res->surfaceBits, res->modelBits);
+                if (umbraCull_ && res->culls)
+                    camera_->setTomeVisibility(res->surfaceBits, res->modelBits, res->lightBits, res->probeBits, res->decalBits);
                 else camera_->setTomeVisibility({}, {});
                 ctx_.scene.tomeLines = umbraOverlay_ ? std::move(*lines) : std::vector<UmbraLine>();
                 ++ctx_.scene.tomeLinesVersion;
@@ -134,13 +135,19 @@ void MainWindow::updateUmbraView() {
                 const auto& t = index->idsByClass;
                 umbraLast_ = *res;
                 umbraLast_.surfaceBits.clear(), umbraLast_.modelBits.clear(), umbraLast_.visibleCells.clear();
+                umbraLast_.lightBits.clear(), umbraLast_.probeBits.clear(), umbraLast_.decalBits.clear();
                 QString text;
                 if (res->culls)
-                    text = QString("Umbra: %1 / %2 surfaces, %3 / %4 models, %5 / %6 lights, %7 / %8 probes, %9 cells (%10 ms)%11")
+                    text = QString("Umbra: %1 / %2 surfaces, %3 / %4 models, %5 / %6 lights, %7 / %8 probes, %9 / %10 decal groups, %11 cells (%12 ms)%13")
                                .arg(v[kUmbraSurface]).arg(t[kUmbraSurface]).arg(v[kUmbraStaticModel]).arg(t[kUmbraStaticModel])
                                .arg(v[kUmbraPrimaryLight]).arg(t[kUmbraPrimaryLight]).arg(v[kUmbraReflectionProbe]).arg(t[kUmbraReflectionProbe])
+                               .arg(v[kUmbraDecalCollection]).arg(t[kUmbraDecalCollection])
                                .arg(res->cells).arg(int(std::lround(res->seconds * 1000)))
                                .arg(res->truncated ? " (query cut short)" : "");
+                else if (res->status == UmbraQueryStatus::OutsideTome || res->status == UmbraQueryStatus::NoTile)
+                    // Research 121: the game's query fails here; it draws the whole static map and no moving object.
+                    text = QString("Umbra: camera %1: the game draws the whole map from here, and no players or vehicles")
+                               .arg(umbraStatusText(res->status));
                 else
                     text = QString("Umbra: camera %1: nothing is culled here").arg(umbraStatusText(res->status));
                 umbraLabel_->setText(text);

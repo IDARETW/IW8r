@@ -248,9 +248,10 @@ stock zones).
   - tests on stock tomes (mp_shipment, at least 5 more MP zones, Verdansk's main zone): CRC, counts and
     self-consistency.
 
-**2.2 A visibility view in the editor.** Part 1 DONE 2026-11-13 (View > Umbra Visibility: cull by tome for surfaces
-and props, cells and portals overlay, status bar counts, saved settings). Left by decision (table "Open points closed by decision"): culling lights, probes and decal
-collections; surface ids on displaced terrain.
+**2.2 A visibility view in the editor.** DONE. Part 1 2026-11-13 (View > Umbra Visibility: cull by tome for surfaces
+and props, cells and portals overlay, status bar counts, saved settings). Part 2 2026-11-14: the stock map's lamps,
+reflection probe boxes and decal groups are culled by the same query, and displaced terrain keeps its surface
+numbers, so it is culled too. Nothing open.
 - **Overlay:** tiles, cells and portals.
 - **"Cull by tome" mode:** the stock reference draws only what the tome lets the game draw from the camera.
 - **Statistics:** visible objects by class.
@@ -370,7 +371,6 @@ judged against the running game, which is not used any more. They are listed so 
 | 1.6 `needsDynamicShadows`, the screen-space shadow mask | Every spot and omni light with shadow maps for the nearest 64 | Affects moving entities and contact shadows only. |
 | 1.8 volumetric fog | Bloom veil, vignette, film grain and white balance (2026-11-14), exponential fog, the stock vision's exposure and grade; the volumetric march is built and off | Measured 2026-11-14 against the owner's Speedball picture: the frame is closer to the game with it off (block error 11.3 against 16.8). Its constants are verified in the Replay exe (research 109 section 2.7); the sky's own brightness has to be settled before it can go on. |
 | 1.11 HDR probe capture | Bounces in the surfaces' colours with the later bounces estimated, a lightmap scale per face, the texel size as a Bake Setting (all 2026-11-14), 8-bit probes captured before every build | HDR probes change glossy reflections by a little and need the converter to take another image format. |
-| 2.2 culling lights, probes and decals in the Umbra view; surface ids on displaced terrain | Surfaces and props are culled by the tome | A viewer refinement: the view already answers "what does the game hide here". |
 | 2.3 local occlusion updates for edited stock maps | The whole map's occlusion opens when stock geometry is removed | See 2.3: a mistake makes objects vanish in the game. |
 | 2.4 thin slanted walls, terrain and models as occluders, gates, splitting merged surfaces | Opaque structural brushes (boxes, and other shapes by the box inside them); a detail brush is left out, which is the per-brush switch (2026-11-14) | The bake is opt-in and unseen in the game; widening it before a first look would only widen what could go wrong. |
 
@@ -402,8 +402,10 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
     game type script cannot be replaced by a map zone.
   - killstreak airspace (6.21 / F.14): done offline (2026-11-14, research 121): the cause of the invisible players and
     aircraft was read in the Replay exe (a camera outside the occlusion data's box), a built map's occlusion data now
-    reaches as far as a stock map's, proof `tools/airspace_build_test.py`. Game: the look. The UAV's sweep and pings
-    on the minimap stay open (no cause found offline).
+    reaches as far as a stock map's, proof `tools/airspace_build_test.py`. Game: the look. The missing radar pings
+    stay open: research 122 found nothing a map provides that can switch them off (the minimap set-up equals a stock
+    map's), and that the killstreak of the report fits the Personal Radar drone, which skips enemies with the
+    Ghost-like perk. Only the game can say which it was.
   - fonts and LUI (4.27): HUD from the map script works with stock icons and, since 2026-11-14, with the map's own
     pictures (`<map name>.hud`) and the map's own text (`<map name>.str`), both proven offline; game. Own fonts and menus are not built (deferred, as the plan
     allowed: no map-zone writer for them, and nothing shows the game would use one).

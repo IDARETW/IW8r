@@ -524,7 +524,29 @@ TEST(stock_displacement_reader_matches_world) {
     CHECK(displaceStockMesh(world, data.meshes[0], {{0, 40.0f, -20.0f, 0.0f, &one}}, o, out, &err));
     const size_t nv = out.mesh.pos.size();
     CHECK(nv > wm.pos.size());
+    // Every new triangle names the source triangle it was cut from (plan 2.2: displaced terrain keeps its surface
+    // ids, so the Umbra view culls it).
+    const size_t srcTris = wm.idx.size() / 3, newTris = out.mesh.idx.size() / 3;
+    CHECK(out.triOrigin.size() == newTris && newTris > srcTris);
+    bool originsOk = true;
+    std::vector<uint8_t> originSeen(srcTris, 0);
+    for (const uint32_t o : out.triOrigin) {
+        if (o >= srcTris) originsOk = false;
+        else originSeen[o] = 1;
+    }
+    CHECK(originsOk);
+    for (const uint8_t seen : originSeen) CHECK(seen == 1);  // no source triangle is lost
+    const std::vector<uint32_t> origins = out.triOrigin;
+    const size_t meshIndex = data.meshes[0].mesh;
+    // Give the source triangles distinct surfaces; the displaced mesh must carry them over.
+    if (world.triSurface.size() <= meshIndex) world.triSurface.resize(meshIndex + 1);
+    world.triSurface[meshIndex].resize(srcTris);
+    for (size_t t = 0; t < srcTris; ++t) world.triSurface[meshIndex][t] = uint32_t(100 + t);
     replaceStockWorldMesh(world, data.meshes[0].mesh, std::move(out));
+    CHECK(world.triSurface[meshIndex].size() == newTris);
+    bool carried = world.triSurface[meshIndex].size() == origins.size();
+    for (size_t t = 0; carried && t < origins.size(); ++t) carried = world.triSurface[meshIndex][t] == 100 + origins[t];
+    CHECK(carried);
     const size_t mi = data.meshes[0].mesh;
     CHECK(world.meshes[mi].pos.size() == nv && world.lightmapUv[mi].size() == nv && world.layerUv[mi].size() == nv &&
           world.vertexColor[mi].size() == nv && world.lightmapIndex[mi].size() == nv && world.meshes[mi].uv.size() == nv);

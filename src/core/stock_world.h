@@ -94,8 +94,8 @@ struct StockWorld {
     // lightmapTransientIndex[i]), or -1 exactly where lightmapUv is (-1, -1).
     std::vector<std::vector<int>> lightmapIndex;
     // The GfxWorld surface (its index in the surface table: the Umbra tome's class 0 user ID) of each triangle,
-    // parallel to meshes: triSurface[m][t] for triangle t of meshes[m]. A mesh rebuilt later (displaced terrain) has
-    // none (size 0): its triangles are of no known surface.
+    // parallel to meshes: triSurface[m][t] for triangle t of meshes[m]. A mesh rebuilt later (displaced terrain) keeps
+    // each new triangle's surface (replaceStockWorldMesh); size 0 = its triangles are of no known surface.
     std::vector<std::vector<uint32_t>> triSurface;
     size_t lightmapSurfaces = 0;        // surfaces whose vertices got a lightmap UV
 

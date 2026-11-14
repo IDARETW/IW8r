@@ -279,6 +279,7 @@ struct ReferenceTexBatch {
     float decalA = 1, decalB = 0;  // the blend-map remap: op = m * saturate(m * A + B)
     float decalTint[3] = {1, 1, 1};
     int decalOrder = 0;
+    int decalCollection = -1;  // the volume's decal volume collection (the Umbra view culls by it), -1 unknown
     // A super-terrain layer near the camera (research 103), drawn with the decals: material = "\x05<colour image>",
     // decalMask = its alpha + reveal image ("" none), the weight in the tangent length (1 + w), the layer's UV as uv.
     bool terrainLayer = false;

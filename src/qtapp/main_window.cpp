@@ -8031,6 +8031,7 @@ bool stockDecalBatch(const StockDecalData& d, const StockDecalBatch& b, int orde
         rb.decalA = float(sh.opacityScale), rb.decalB = float(sh.opacityBias);
         rb.decalTint[0] = float(sh.tint.x), rb.decalTint[1] = float(sh.tint.y), rb.decalTint[2] = float(sh.tint.z);
         rb.decalOrder = order;
+        rb.decalCollection = vol.collection;
         for (uint32_t i : b.idx) {
             const StockDecalVertex& v = b.verts[i];
             app::GpuTexVertex g{float(v.pos.x), float(v.pos.y), float(v.pos.z), v.mu, v.mv, 0xFFFFFFFFu};
@@ -8807,6 +8808,7 @@ void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn)
                     if (packStockLight(l, d != defs.end() && !iesStrip->empty() ? &d->second : nullptr, g)) {
                         localLights->push_back(g);
                         lightShadows->push_back(stockLightShadowCamera(l, g));  // research 106 section 4
+                        lightShadows->back().primaryIndex = l.index;
                     }
                 }
             }

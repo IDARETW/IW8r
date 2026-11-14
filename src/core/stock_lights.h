@@ -91,6 +91,7 @@ StockLightEval evalStockLightDiffuse(const StockGameLight& g, const double P[3],
 // (1 - b)) with z = (far - depth) / (far - near) for receiver and occluder, k = (1 - softness) 88 + softness,
 // b = shadowBias. cast = false for lights without a shadow map (or no usable cone).
 struct StockLightShadow {
+    int primaryIndex = -1;  // the light's row in primaryLights (the Umbra view's light bits are by this row)
     bool cast = false;
     float eye[3] = {0, 0, 0}, forward[3] = {0, 0, -1}, up[3] = {0, 1, 0};
     float fov = 1.0f;  // radians, both axes

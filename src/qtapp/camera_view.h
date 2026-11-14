@@ -424,10 +424,15 @@ public slots:
     bool referenceFilterOn() const { return renderer_.referenceFilterShader(); }
     bool pixelShaderAccepted(const std::vector<uint8_t>& program) { return renderer_.pixelShaderAccepted(program); }
     // Cull by tome (View > Umbra Visibility): SceneRenderer::setReferenceTomeVisibility. Empty = off.
-    void setTomeVisibility(std::vector<uint32_t> surfaceBits, std::vector<uint32_t> modelBits) {
+    void setTomeVisibility(std::vector<uint32_t> surfaceBits, std::vector<uint32_t> modelBits, std::vector<uint32_t> lightBits = {},
+                           std::vector<uint32_t> probeBits = {}, std::vector<uint32_t> decalBits = {}) {
         renderer_.setReferenceTomeVisibility(std::move(surfaceBits), std::move(modelBits));
+        renderer_.setReferenceTomeClasses(std::move(lightBits), std::move(probeBits), std::move(decalBits));
         update();
     }
+    size_t tomeCulledLights() const { return renderer_.tomeCulledLights(); }
+    size_t tomeCulledProbes() const { return renderer_.tomeCulledProbes(); }
+    size_t tomeCulledDecals() const { return renderer_.tomeCulledDecals(); }
     bool tomeCull() const { return renderer_.referenceTomeCull(); }
     size_t tomeCulledProps() const { return renderer_.tomeCulledProps(); }
     std::string gpuMemoryReport() const { return renderer_.gpuMemoryReport(); }
@@ -528,6 +533,7 @@ private:
         std::string mask;
         float a = 1, b = 0, tint[3] = {1, 1, 1};
         int order = 0;
+        int collection = -1;  // the decal volume collection (Umbra view), -1 none
     };
     std::vector<RefDecalVolume> refTexVolume_;  // parallel: stock decal volume batches (research 99)
     std::vector<ExtraGroup> pendingExtraGroups_;

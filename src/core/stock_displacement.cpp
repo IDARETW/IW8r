@@ -1033,8 +1033,12 @@ bool displaceStockMesh(const StockWorld& world, const StockMeshDisplacement& dis
         out.offset[k] = moved;
     }
     out.mesh.idx.reserve(tris.size() * 3);
-    for (const SubTri& s : tris)
+    out.triOrigin.clear();
+    out.triOrigin.reserve(tris.size());
+    for (const SubTri& s : tris) {
         for (int c = 0; c < 3; ++c) out.mesh.idx.push_back(s.v[c]);
+        out.triOrigin.push_back(s.origin);
+    }
     // Normals of the displaced surface (area weighted), as StockWorld computes them.
     out.mesh.normal.assign(n, Vec3{});
     for (size_t i = 0; i + 2 < out.mesh.idx.size(); i += 3) {
@@ -1104,8 +1108,24 @@ double stockDisplacementEdgeForBudget(const StockWorld& world, const StockDispla
 void replaceStockWorldMesh(StockWorld& world, size_t mesh, StockDisplacedMesh&& m) {
     if (mesh >= world.meshes.size()) return;
     for (const Vec3& p : m.mesh.pos) world.bounds.add(p);
+    // A new triangle is of the surface its source triangle was of (the Umbra view culls by it). Without the origins,
+    // or when the source had none: of no known surface.
+    if (mesh < world.triSurface.size()) {
+        std::vector<uint32_t>& surf = world.triSurface[mesh];
+        std::vector<uint32_t> next;
+        if (!surf.empty() && surf.size() * 3 == world.meshes[mesh].idx.size() && m.triOrigin.size() * 3 == m.mesh.idx.size()) {
+            next.reserve(m.triOrigin.size());
+            for (const uint32_t o : m.triOrigin) {
+                if (o >= surf.size()) {
+                    next.clear();
+                    break;
+                }
+                next.push_back(surf[o]);
+            }
+        }
+        surf = std::move(next);
+    }
     world.meshes[mesh] = std::move(m.mesh);
-    if (mesh < world.triSurface.size()) world.triSurface[mesh].clear();  // new triangles: of no known surface
     const auto put = [&](auto& vecs, auto&& v) {
         if (mesh < vecs.size()) vecs[mesh] = std::move(v);
     };

@@ -820,6 +820,23 @@ TEST(umbra_view_on_shipment) {
         for (uint32_t w = v.surfaceBits[i] & ix.knownSurfaces[i]; w; w &= w - 1) ++visibleKnown;
     CHECK(visibleKnown == v.visibleByClass[kUmbraSurface]);
     for (size_t i = 0; i < v.surfaceBits.size(); ++i) CHECK((v.surfaceBits[i] | ix.knownSurfaces[i]) == 0xFFFFFFFFu);
+    // The same rule for primary lights, reflection probe instances and decal volume collections (plan 2.2).
+    const auto classBits = [&](const std::vector<uint32_t>& bits, const std::vector<uint32_t>& known, unsigned cls) {
+        CHECK(bits.size() == known.size());
+        CHECK(popcount(known) == ix.idsByClass[cls]);
+        size_t seen = 0;
+        for (size_t i = 0; i < bits.size() && i < known.size(); ++i) {
+            for (uint32_t w = bits[i] & known[i]; w; w &= w - 1) ++seen;
+            CHECK((bits[i] | known[i]) == 0xFFFFFFFFu);
+        }
+        CHECK(seen == v.visibleByClass[cls]);
+        return seen;
+    };
+    const size_t lightsSeen = classBits(v.lightBits, ix.knownLights, kUmbraPrimaryLight);
+    const size_t probesSeen = classBits(v.probeBits, ix.knownProbes, kUmbraReflectionProbe);
+    const size_t decalsSeen = classBits(v.decalBits, ix.knownDecals, kUmbraDecalCollection);
+    std::printf("  umbra view on Shipment: %zu of %u lights, %zu of %u probes, %zu of %u decal collections from one cell\n", lightsSeen,
+                ix.idsByClass[kUmbraPrimaryLight], probesSeen, ix.idsByClass[kUmbraReflectionProbe], decalsSeen, ix.idsByClass[kUmbraDecalCollection]);
     // The view sees less than all directions together.
     const float p[3] = {float(eye.x), float(eye.y), float(eye.z)};
     const UmbraVisibility all = tome.queryPoint(p);
@@ -829,4 +846,5 @@ TEST(umbra_view_on_shipment) {
     // Outside the tome nothing is culled.
     const UmbraViewResult out = umbraViewVisibility(tome, ix, Vec3{1e7, 0, 0}, Vec3{1, 0, 0}, Vec3{0, 0, 1}, 1.0, 0.5625);
     CHECK(!out.culls && out.surfaceBits.empty() && out.status == UmbraQueryStatus::OutsideTome);
+    CHECK(out.lightBits.empty() && out.probeBits.empty() && out.decalBits.empty());
 }

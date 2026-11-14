@@ -288,6 +288,12 @@ The conservative tome's `[0, 0xFFFFFFFF]` list is the same format.
 
 A ray-cast conservativeness check (plan 2.4) is still to be written.
 
+**The view's other classes (2026-11-14).** `umbraViewVisibility` also returns bit sets for primary lights (by
+`primaryLights` row), reflection probe instances and decal volume collections, and the viewport leaves out the stock
+lamps, probe boxes and decal batches whose bit is clear. The map-wide fallback probe is kept. Shipment lists 22 of its
+24 light rows (row 0 is empty, row 1 the sun), 18 of 19 probe instances and 6 of 7 decal collections. Displaced
+terrain keeps the surface of each source triangle (`StockDisplacedMesh::triOrigin`), so it is culled as its surface.
+
 ## 13. Per-zone numbers (all checks pass; `validate()` and `tests/umbra_tome_tests.cpp`)
 
 | Zone | Bytes | CRC32C | Objects / IDs | Tiles (leaf + LOD) | Cells | Portals int / fine / coarse / gate / out | Clusters | Visible* |

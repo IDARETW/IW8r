@@ -263,14 +263,17 @@ Commands in the Tools menu:
 ### What the game draws from here (Umbra visibility)
 
 - Every stock map carries occlusion data (an Umbra "tome") that tells the game what can be seen from where. **View >
-  Umbra Visibility > Cull by Tome** makes the editor draw a stock map the same way: surfaces and models the game
-  would not draw from the camera's spot are hidden. Use it to see why something pops in or out in game, or what an
+  Umbra Visibility > Cull by Tome** makes the editor draw a stock map the same way: surfaces (terrain included),
+  models, lamps, reflection probes and decal groups the game would leave out from the camera's spot are left out. Use it to see why something pops in or out in game, or what an
   edit would expose.
 - **Show Cells and Portals** draws the camera's visibility cell (yellow), its portals (orange; doors that can close in
   magenta) and the visible cells around it (blue).
-- The status bar shows the counts, for example "Umbra: 312 / 1,024 surfaces, 1,204 / 9,413 models". When the camera
-  is outside the map's data or inside a wall, nothing is culled and the status bar says so.
-- Hidden things still cast their sun shadows, as in game. Lamps and probes are counted but not hidden yet.
+- The status bar shows the counts, for example "Umbra: 312 / 1,024 surfaces, 1,204 / 9,413 models, 11 / 22 lights,
+  17 / 18 probes, 4 / 6 decal groups". When the camera is inside a wall, nothing is culled and the status bar says
+  so. When it is outside the map's data, the status bar says what the game does there: it draws the whole map and no
+  players or vehicles.
+- Hidden things still cast their sun shadows, as in game. A lamp the game leaves out lights nothing; a pixel whose
+  probe is left out takes the next probe, or the map-wide one.
 
 ## 6. Lighting and atmosphere
 
@@ -772,8 +775,10 @@ The owner's playtest of 2026-11-11 left these open. docs/ROADMAP.md (fix queue F
 - Only Team Deathmatch can be picked in the game's lobby. Other modes say the map does not support them. Live Link >
   Quick match starts other modes directly.
 - Bullet impacts look alike on every surface in game. The build tags each surface correctly; the cause is not known yet.
-- Killstreak visuals: the UAV shows no sweep or pings. Players were invisible in the Chopper Gunner view and the
-  UAV's aircraft was invisible; the cause was found and fixed on 2026-11-14 (rebuild the map; not seen in game yet).
+- Killstreak visuals: a radar killstreak showed no pings in one playtest. Nothing in a map can switch them off
+  (research 122); the Personal Radar drone does not ping enemies with the Ghost perk and has no sweep line. Players
+  were invisible in the Chopper Gunner view and the radar aircraft was invisible; the cause was found and fixed on
+  2026-11-14 (rebuild the map; not seen in game yet).
   Worldspawn `iw8r_airspace "<up> [out]"` sets how far the map's occlusion data reaches past its geometry (default
   131072 units, as in stock maps).
 - Prefabs made of models showed as boxes, and dragging a prefab did not work. Both were changed after the second

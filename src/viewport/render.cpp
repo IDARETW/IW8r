@@ -392,7 +392,7 @@ float3 stockProbeLight(float3 p, float3 R, float gp) {
     // The box nearest to p (largest inside margin, least outside): far terrain outside every box takes its probe for
     // the weight the boxes around p leave (owner 2026-11-12: Hideout's far ridge was black without one).
     float nearRem = -1e30;
-    float nearSlice = 0;
+    float nearSlice = probeGridMin.w;  // the fallback probe's image (0 without one): where every box is hidden
     // With the grid: only the cell's candidates (Hideout's 48 boxes per pixel per layer pass cost 40 ms a frame).
     const bool grid = probeGridCell.w > 0.5;
     uint4 cand = uint4(0, 0, 0, 0);
@@ -2343,10 +2343,18 @@ void SceneRenderer::setIesStrip(int width, const uint8_t* r8) {
         safeRelease(iesTex_);
 }
 
+namespace {
+// A clear bit: the tome hides it. Past the bits, or a negative index: not hidden.
+bool tomeBitClear(const std::vector<uint32_t>& bits, int i) {
+    return i >= 0 && size_t(i >> 5) < bits.size() && ((bits[size_t(i >> 5)] >> (unsigned(i) & 31u)) & 1u) == 0u;
+}
+}  // namespace
+
 void SceneRenderer::prepareStockLocalLights(const float* M) {
     constexpr uint32_t kMaxLights = 256, kTile = 32;
     stockLightsOn_ = false;
     stockLightsDrawn_ = 0;
+    tomeCulledLights_ = 0;
     if (!dev_) return;
     if (!cbLocal_) {
         D3D11_BUFFER_DESC bd{};
@@ -2373,6 +2381,11 @@ void SceneRenderer::prepareStockLocalLights(const float* M) {
                 break;
             }
         if (out) continue;
+        // Cull by tome: the game bins a light only when the camera's query returned it (research 110).
+        if (!tomeLightBits_.empty() && i < stockLightShadows_.size() && tomeBitClear(tomeLightBits_, stockLightShadows_[i].primaryIndex)) {
+            ++tomeCulledLights_;
+            continue;
+        }
         const float dx = l.pos[0] - eye[0], dy = l.pos[1] - eye[1], dz = l.pos[2] - eye[2];
         stockLightOrder_.push_back({dx * dx + dy * dy + dz * dz, i});
     }
@@ -2589,6 +2602,10 @@ void SceneRenderer::setStockProbes(const StockProbeSet* set) {
     }
     safeRelease(probeGridSrv_), safeRelease(probeGridTex_);
     std::vector<float> cb(size_t(12 + 20 * kMaxProbeBoxes), 0.0f);
+    probeCb_.clear();
+    probeBoxInstance_.clear();
+    probeFallbackBox_ = -1;
+    tomeCulledProbes_ = 0;
     const auto upload = [&] { ctx_->UpdateSubresource(cbProbes_, 0, nullptr, cb.data(), 0, 0); };
     if (!set || set->probes.empty() || set->size < 16 || set->mipCount < 1) {
         upload();
@@ -2640,6 +2657,10 @@ void SceneRenderer::setStockProbes(const StockProbeSet* set) {
         }
         e[16] = b.position[0], e[17] = b.position[1], e[18] = b.position[2];
         e[19] = std::max({b.feather[0], b.feather[1], b.feather[2], 1.0f});
+        probeBoxInstance_.push_back(int(k));
+        // The fallback box (priority -FLT_MAX, as large as the map): the last one. The Umbra view never hides it,
+        // and the shader starts from its image where no box is left (probeGridMin.w).
+        if (b.priority < -1.0e30f) probeFallbackBox_ = int(n), cb[7] = float(b.imageIndex);
         ++n;
     }
     cb[0] = perfOff("probes") ? 0.0f : float(n);  // benchmark switch: no probes
@@ -2715,7 +2736,8 @@ void SceneRenderer::setStockProbes(const StockProbeSet* set) {
             safeRelease(probeGridTex_);
         }
     }
-    upload();
+    probeCb_ = cb;
+    applyTomeProbes();  // uploads; hides what the Umbra view hides
 }
 
 void SceneRenderer::writeGameCb() {
@@ -3349,6 +3371,36 @@ void SceneRenderer::setReferenceTomeVisibility(std::vector<uint32_t> surfaceBits
     tomeSurfBits_ = std::move(surfaceBits);
     tomeModelBits_ = std::move(modelBits);
     tomeDirty_ = true;
+}
+
+void SceneRenderer::setReferenceTomeClasses(std::vector<uint32_t> lightBits, std::vector<uint32_t> probeBits, std::vector<uint32_t> decalBits) {
+    tomeLightBits_ = std::move(lightBits);
+    tomeDecalBits_ = std::move(decalBits);
+    const bool probesChanged = probeBits != tomeProbeBits_;
+    tomeProbeBits_ = std::move(probeBits);
+    if (probesChanged) applyTomeProbes();
+    if (tomeLightBits_.empty()) tomeCulledLights_ = 0;
+    if (tomeDecalBits_.empty()) tomeCulledDecals_ = 0;
+}
+
+void SceneRenderer::setReferenceDecalCollection(size_t batch, int collection) {
+    if (batch < refLayers_.size()) refLayers_[batch].tomeCollection = collection;
+}
+
+// The probe constants with the boxes the tome hides made empty (a half size far below zero: no point is inside, and
+// the box is never the nearest one). The fallback box is kept: a pixel no visible box covers takes it, as in the game.
+void SceneRenderer::applyTomeProbes() {
+    tomeCulledProbes_ = 0;
+    if (!cbProbes_ || probeCb_.empty()) return;
+    std::vector<float> cb = probeCb_;
+    if (!tomeProbeBits_.empty())
+        for (size_t i = 0; i < probeBoxInstance_.size(); ++i) {
+            if (int(i) == probeFallbackBox_ || !tomeBitClear(tomeProbeBits_, probeBoxInstance_[i])) continue;
+            float* e = cb.data() + 12 + 20 * i;
+            e[7] = e[11] = e[15] = -1.0e35f;
+            ++tomeCulledProbes_;
+        }
+    ctx_->UpdateSubresource(cbProbes_, 0, nullptr, cb.data(), 0, 0);
 }
 
 void SceneRenderer::bindTomeVisibility() {
@@ -4840,6 +4892,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             const size_t firstDecal = passOrder.size();
             passOrder.insert(passOrder.end(), refDecalOrder_.begin(), refDecalOrder_.end());
             layerPassDraws_ = layerPassTris_ = 0;
+            tomeCulledDecals_ = 0;
             layerPassBatches_ = passOrder.size();
             for (size_t pi = 0; pi < passOrder.size(); ++pi) {
                 const size_t k = passOrder[pi];
@@ -4850,6 +4903,11 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 }
                 const RefLayer& L = refLayers_[k];
                 if (!L.ready || L.drawClass != 0 || refTexIds_[k] < 0 || size_t(refTexIds_[k]) >= textures_.size()) continue;
+                // Cull by tome: the game draws a decal volume collection only with its visibility bit (research 110).
+                if (!tomeDecalBits_.empty() && tomeBitClear(tomeDecalBits_, L.tomeCollection)) {
+                    ++tomeCulledDecals_;
+                    continue;
+                }
                 if (k >= refTexExtraFrom_) {
                     // Prop decals: small detail; drawn in view and within 4,000 units (Hideout: 790k triangles, 38 ms).
                     if (noPropDecals && !(L.params[0] > 0.5f && L.params[0] < 1.5f)) continue;

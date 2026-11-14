@@ -4626,6 +4626,16 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             r.check(w.umbraOverlay() && iw8r::qt::Settings::instance().value("view/umbraOverlay").toBool(), "Show Cells and Portals turns on and is saved");
             // Without a stock map reference there is nothing to cull and nothing is drawn.
             r.check(!w.cameraView()->tomeCull() && ctx.scene.tomeLines.empty(), "without a stock map reference nothing is culled or drawn");
+            r.check(w.cameraView()->tomeCulledLights() == 0 && w.cameraView()->tomeCulledProbes() == 0 && w.cameraView()->tomeCulledDecals() == 0,
+                    "and no lamp, probe box or decal group is hidden (plan 2.2)");
+            {
+                // The class bits pass through the view and switch off again with the cull.
+                w.cameraView()->setTomeVisibility({}, {}, {0u}, {0u}, {0u});
+                QApplication::processEvents();
+                r.check(!w.cameraView()->tomeCull() && w.cameraView()->tomeCulledProbes() == 0,
+                        "class bits alone hide nothing without stock lamps, probes or decals");
+                w.cameraView()->setTomeVisibility({}, {});
+            }
             w.setUmbraView(false, false);
             r.check(!cull->isChecked() && !cells->isChecked() && !iw8r::qt::Settings::instance().value("view/umbraCull").toBool(),
                     "turning both off unchecks the menu and is saved");

@@ -47,7 +47,17 @@
   131072 (up / around / below, kAirspaceMax 524288), converter b3b21198 BuildUmbraTome unions m.cells bounds
   (tools/patches/zt_tome_airspace.py). The custom-loot and vehicle-carry proofs compare the live converter with the
   new one byte for byte, so they fail on the map zone until the deploy (only gfx_map umbraTomeData differs).
-  Parking state 2026-11-14 (after the airspace fix): repo at the commit after 4df7a52, converter live at b3b21198, suites core 181,805 checks / 1,368 tests and GUI 1,080 checks, 0 failures; 23 offline proofs pass; zones of mp_cinderrail_t rebuilt 09:09 with that converter (x64zt_output; its occlusion data reaches 131072 units past the map); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe and out/package/IW8RadiantSuite-20261114.zip rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
+  Umbra view, part 2 (plan 2.2 done): core umbra_view gives lightBits / probeBits / decalBits (UmbraTomeIndex
+  knownLights / knownProbes / knownDecals); renderer setReferenceTomeClasses, setReferenceDecalCollection,
+  applyTomeProbes (a hidden box gets half sizes of -1e35; the fallback box, priority below -1e30, is kept and its
+  slice is probeGridMin.w), prepareStockLocalLights skips by StockLightShadow::primaryIndex, the layer pass skips by
+  RefLayer::tomeCollection; ReferenceTexBatch::decalCollection; bench line adds lamps_hidden / probes_hidden /
+  decals_hidden. Displaced terrain: StockDisplacedMesh::triOrigin, replaceStockWorldMesh maps triSurface through it.
+  Patches tools/patches/umbra_view_classes*.py, displaced_surface_ids.py.
+  Research 122 (an Opus agent, read-only IDA; section 6 by the main session): the sweep / ping gate is ps+756 (has
+  radar) or ps+760 (one-off sweep); setminimap arguments of a built map equal the stock ones; the report fits the
+  Personal Radar (helper_drone.gsc: ground + 1500, triggerportableradarping, skips one specialty_ perk).
+  Parking state 2026-11-14 (after the Umbra view classes): repo at the commit after e0cd9b4, converter live at b3b21198, suites core 181,830 checks / 1,368 tests and GUI 1,082 checks, 0 failures; 23 offline proofs pass; zones of mp_cinderrail_t rebuilt 09:09 with that converter (x64zt_output; its occlusion data reaches 131072 units past the map); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe and out/package/IW8RadiantSuite-20261114.zip rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
   GET /api/handles (control points of the selected patches, at most 20,000) and POST /api/vertices moves with
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.
   Web form "vision": every scalar / vector field of core vision_fields as a text field (key "v:<name>"), written
@@ -289,8 +299,8 @@
   (umbraTomeIndex, umbraViewVisibility: bits set for visible or unknown to the tome; umbraOverlayLines). Qt:
   main_window_umbra.cpp (tome read and view queries in workers, one at a time, only when the camera pose changed),
   View > Umbra Visibility > Cull by Tome / Show Cells and Portals (view/umbraCull, view/umbraOverlay), status bar
-  counts, scene.tomeLines. Bench: IW8R_UMBRA=cull|cells|both adds an "umbra" report line. Open in 2.2: lights, probes
-  and decal collections are counted but not culled; displaced terrain has no surface ids.
+  counts, scene.tomeLines. Bench: IW8R_UMBRA=cull|cells|both adds an "umbra" report line. 2.2 was finished on
+  2026-11-14 (lights, probes, decal collections, displaced terrain: see the note above the parking line).
 - Owner (2026-11-13 late): the toon look must be a real custom shader, lines of constant screen width, nothing toon
   built into the editor. Done: the ink strip brushes (core toon_outline, Tools > Toon Ink Outlines, --ink-outlines,
   iw8r_ink) are removed. Core face_edges (generic): per brush face, convex pieces with the exact distance to the
