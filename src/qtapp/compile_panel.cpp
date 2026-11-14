@@ -5,6 +5,7 @@
 #include "build_preflight.h"
 #include "normal_pack.h"
 #include "compile_panel.h"
+#include "bake_options.h"
 
 #include "map_gametypes.h"
 
@@ -338,6 +339,12 @@ CompilePanel::CompilePanel(EditorContext* ctx, ToolPathFn toolPath, QWidget* par
         ctx_->doc.endGroup();
         ctx_->documentEdited(on ? "The build bakes lightmaps (worldspawn iw8r_bake_lightmaps 1)" : "The build makes no lightmap");
     });
+    auto* bakeSettings = new QPushButton("Bake Settings...", this);
+    bakeSettings->setObjectName("compileBakeSettings");
+    bakeSettings->setToolTip("The lightmap bake's sky colour and strength, texel size and sky rays (worldspawn iw8r_bake_sky, "
+                             "iw8r_lightmap_texel, iw8r_bake_rays). View > Game Lighting bakes its preview with the same values");
+    connect(bakeSettings, &QPushButton::clicked, this, &CompilePanel::editBakeSettings);
+    top->addWidget(bakeSettings);
     auto* info = new QPushButton("Map Info...", this);
     info->setObjectName("compileMapInfo");
     info->setToolTip("Title, description, compass rotation, minimap scale and exposure written to map.json");
@@ -1065,6 +1072,87 @@ QByteArray CompilePanel::metadataJson() const {
     if (const double l = value("iw8r_ladder_rung_distance").toDouble(&ok); ok && l >= 8 && l <= 32) o["ladderRungDistance"] = l;
     if (const double x = value("iw8r_exposure_adjust").toDouble(&ok); ok && std::isfinite(x) && std::fabs(x) <= 8) o["exposureAdjust"] = x;
     return QJsonDocument(o).toJson(QJsonDocument::Indented);
+}
+
+bool CompilePanel::applyBakeSettings(const MapBakeOptions& options) {
+    Entity* w = ctx_->doc.worldspawn();
+    if (!w) return false;
+    const BakeOptionKeys keys = bakeOptionKeys(options);
+    const std::pair<const char*, const std::string*> wanted[] = {
+        {"iw8r_bake_sky", &keys.sky}, {"iw8r_lightmap_texel", &keys.texel}, {"iw8r_bake_rays", &keys.rays}};
+    bool differs = false;
+    for (const auto& [key, value] : wanted) {
+        const std::string* cur = w->value(key);
+        differs = differs || (cur ? *cur : std::string()) != *value;
+    }
+    if (!differs) return false;
+    const Id wid = w->id;
+    ctx_->doc.beginGroup("Bake settings");
+    for (const auto& [key, value] : wanted) {
+        const Entity* now = ctx_->doc.worldspawn();
+        const std::string* cur = now ? now->value(key) : nullptr;
+        if (value->empty()) {
+            if (cur) ctx_->doc.removeKey(wid, key);
+        } else if (!cur || *cur != *value) {
+            ctx_->doc.setKeyValue(wid, key, *value);
+        }
+    }
+    ctx_->doc.endGroup();
+    ctx_->documentEdited("Lightmap bake settings changed (the build and View > Game Lighting bake with them)");
+    return true;
+}
+
+void CompilePanel::editBakeSettings() {
+    const Entity* w = ctx_->doc.worldspawn();
+    if (!w) return;
+    const MapBakeOptions cur = mapBakeOptions(w), def;
+    QDialog dlg(this);
+    dlg.setWindowTitle("Lightmap Bake Settings");
+    auto* form = new QFormLayout(&dlg);
+    auto spin = [&](double lo, double hi, double step, int decimals, double v) {
+        auto* s = new QDoubleSpinBox(&dlg);
+        s->setDecimals(decimals);
+        s->setRange(lo, hi);
+        s->setSingleStep(step);
+        s->setValue(v);
+        return s;
+    };
+    auto* red = spin(0, 1, 0.05, 3, cur.skyColor.x);
+    auto* green = spin(0, 1, 0.05, 3, cur.skyColor.y);
+    auto* blue = spin(0, 1, 0.05, 3, cur.skyColor.z);
+    auto* strength = spin(0, 16, 0.05, 3, cur.skyIntensity);
+    auto* texel = spin(1, 256, 1, 1, cur.texelSize);
+    auto* rays = spin(1, 1024, 8, 0, cur.skyRays);
+    red->setObjectName("bakeSkyRed"), green->setObjectName("bakeSkyGreen"), blue->setObjectName("bakeSkyBlue");
+    strength->setObjectName("bakeSkyStrength"), texel->setObjectName("bakeTexel"), rays->setObjectName("bakeRays");
+    strength->setToolTip("The light of the open sky on a surface facing up, as a part of the sun's light (0.35 = a clear day)");
+    texel->setToolTip("World units per lightmap texel. Smaller is sharper and slower; the bake raises it when the map does not fit");
+    rays->setToolTip("Sky rays per texel. More is smoother and slower");
+    auto* row = new QHBoxLayout;
+    row->addWidget(red), row->addWidget(green), row->addWidget(blue);
+    form->addRow("Sky colour (red, green, blue)", row);
+    form->addRow("Sky strength", strength);
+    form->addRow("Texel size (units)", texel);
+    form->addRow("Sky rays per texel", rays);
+    auto* note = new QLabel("The build bakes with these when \"Bake lightmaps\" is on. View > Game Lighting bakes its preview with "
+                            "the same values. The sun and the lights are not baked: the game draws them live.", &dlg);
+    note->setWordWrap(true);
+    form->addRow(note);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::RestoreDefaults, &dlg);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    connect(buttons->button(QDialogButtonBox::RestoreDefaults), &QPushButton::clicked, &dlg, [&] {
+        red->setValue(def.skyColor.x), green->setValue(def.skyColor.y), blue->setValue(def.skyColor.z);
+        strength->setValue(def.skyIntensity), texel->setValue(def.texelSize), rays->setValue(def.skyRays);
+    });
+    if (dlg.exec() != QDialog::Accepted) return;
+    MapBakeOptions out = cur;
+    out.skyColor = Vec3{red->value(), green->value(), blue->value()};
+    out.skyIntensity = strength->value();
+    out.texelSize = texel->value();
+    out.skyRays = int(std::lround(rays->value()));
+    applyBakeSettings(out);
 }
 
 void CompilePanel::editMapInfo() {

@@ -1,5 +1,6 @@
 #include <DockWidget.h>
 #include "custom_shader.h"
+#include "bake_options.h"
 #include "dxbc_splice.h"
 #include "shader_editor.h"
 #include "qt_gui_test_assets_b.h"
@@ -2499,6 +2500,33 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                     "Compile > Bake lightmaps sets and clears worldspawn iw8r_bake_lightmaps and follows undo");
         } else {
             r.check(false, "the Compile panel has a Bake lightmaps checkbox");
+        }
+        if (CompilePanel* cp = w.compilePanel()) {
+            // Compile > Bake Settings: the values go to worldspawn keys in one undo step; defaults remove the keys.
+            const auto key = [&](const char* k) {
+                const Entity* ws = ctx.doc.worldspawn();
+                const std::string* v = ws ? ws->value(k) : nullptr;
+                return v ? *v : std::string("(none)");
+            };
+            const iw8r::MapBakeOptions before = iw8r::mapBakeOptions(ctx.doc.worldspawn());
+            iw8r::MapBakeOptions o = before;
+            o.skyColor = Vec3{0.8, 0.7, 0.6};
+            o.skyIntensity = 0.5;
+            o.texelSize = 8;
+            o.skyRays = 48;
+            const bool changed = cp->applyBakeSettings(o);
+            const bool written = key("iw8r_bake_sky") == "0.8 0.7 0.6 0.5" && key("iw8r_lightmap_texel") == "8" && key("iw8r_bake_rays") == "48";
+            const bool same = !cp->applyBakeSettings(o);  // nothing to change the second time
+            ctx.doc.undo();
+            ctx.documentEdited();
+            const iw8r::MapBakeOptions undone = iw8r::mapBakeOptions(ctx.doc.worldspawn());
+            const bool oneStep = undone.skyIntensity == before.skyIntensity && undone.texelSize == before.texelSize && undone.skyRays == before.skyRays;
+            cp->applyBakeSettings(o);
+            const bool cleared = cp->applyBakeSettings(iw8r::MapBakeOptions()) && key("iw8r_bake_sky") == "(none)" &&
+                                 key("iw8r_lightmap_texel") == "(none)" && key("iw8r_bake_rays") == "(none)";
+            cp->applyBakeSettings(before);
+            r.check(changed && written && same && oneStep && cleared && cp->findChild<QPushButton*>("compileBakeSettings"),
+                    "Compile > Bake Settings writes the sky, texel size and rays as worldspawn keys, in one undo step, and defaults remove them");
         }
         const bool texWas = ctx.texturedView;
         if (!texWas && w.action("CameraModeTextured")) w.action("CameraModeTextured")->trigger();

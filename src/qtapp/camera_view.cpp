@@ -1,6 +1,7 @@
 #include "material_tints.h"
 #include "worker_guard.h"
 #include "camera_view.h"
+#include "bake_options.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFileInfo>
@@ -2060,18 +2061,13 @@ Vec3 CameraView::gameSunToward() const {
 
 namespace {
 // The worldspawn's "r g b intensity" sky for the bake (iw8r_bake_sky), default a pale blue at 0.35 of the sun.
-iw8r::Vec3 gameSkyOf(const iw8r::Document& doc) {
-    iw8r::Vec3 sky{0.55 * 0.35, 0.65 * 0.35, 0.8 * 0.35};
+// The map's bake settings (worldspawn keys, core bake_options: the reader the build uses).
+iw8r::MapBakeOptions gameBakeOptionsOf(const iw8r::Document& doc) {
     for (const auto& e : doc.map().entities)
-        if (e.isWorldspawn()) {
-            if (const std::string* s = e.value("iw8r_bake_sky")) {
-                double v[4];
-                if (std::sscanf(s->c_str(), "%lf %lf %lf %lf", &v[0], &v[1], &v[2], &v[3]) == 4) sky = iw8r::Vec3{v[0] * v[3], v[1] * v[3], v[2] * v[3]};
-            }
-            break;
-        }
-    return sky;
+        if (e.isWorldspawn()) return iw8r::mapBakeOptions(&e);
+    return iw8r::mapBakeOptions(nullptr);
 }
+iw8r::Vec3 gameSkyOf(const iw8r::Document& doc) { return gameBakeOptionsOf(doc).skyLight(); }
 }  // namespace
 
 void CameraView::prepareGameLook() {
@@ -2281,12 +2277,11 @@ void CameraView::maybeBakeGameLook() {
         b.direct = in.scene.lights.size() >= 254;  // past the real-time limit: baked whole
         in.scene.lights.push_back(b);
     }
-    for (const auto& e : ctx_->doc.map().entities)
-        if (e.isWorldspawn()) {
-            if (const std::string* ts = e.value("iw8r_lightmap_texel")) in.settings.texelSize = std::max(1.0, std::atof(ts->c_str()));
-            if (const std::string* rs = e.value("iw8r_bake_rays")) in.settings.skyRays = std::clamp(std::atoi(rs->c_str()), 1, 1024);
-            break;
-        }
+    {
+        const MapBakeOptions opt = gameBakeOptionsOf(ctx_->doc);
+        in.settings.texelSize = opt.texelSize;
+        in.settings.skyRays = opt.skyRays;
+    }
     {
         uint64_t h = app::gameBakeGeometryKey(ctx_->scene);
         const auto mixD = [&h](double v) {

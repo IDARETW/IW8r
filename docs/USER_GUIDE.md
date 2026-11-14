@@ -275,6 +275,12 @@ Commands in the Tools menu:
 - **Lights**: `light` entities (omni and spot) become primary lights; `reflection_probe` entities become probes.
   A spot with a cone of 150 degrees or more is built as an omni light. The build log notes it.
 - **Compile > Sun & Sky**: sun pitch/yaw/colour and a stock sky (`sky_mp_*`; exported and converted at build time).
+- **Baked lightmaps**: tick **Bake lightmaps** on the Compile panel and the build bakes the world's lightmap: the
+  light of the sky, the light bounced off surfaces, and where the sun reaches. The sun itself and the light entities
+  are not baked; the game draws them live on top. **Bake Settings...** beside it sets the sky's colour and strength
+  (0.35 is a clear day: the open sky gives about a third of the sun's light), the texel size (world units per
+  lightmap texel: smaller is sharper and slower) and the sky rays per texel (more is smoother and slower). View >
+  Game Lighting bakes its preview with the same values. Not seen in game.
 - **Compile > Time of Day**: a preset sets the sky. With **Compile > Aim the Sun When the Sky Changes** on, the sun is
   also aimed at the sun painted in that sky, in the same undo step.
 - **Compass**: the compass north is the top of the XY view (+Y). Builds write worldspawn `northyaw 90` unless the map
@@ -666,7 +672,7 @@ File > New Custom Material and File > Edit Custom Material show the material on 
 ## 12. Known limits
 
 Not verified in game for every feature (see docs/MILESTONES.md). Stock xmodels are rebuilt as copies, not referenced
-by name. Lightmap baking is not available yet.
+by name. Baked lightmaps (section 6) are built and checked offline but not yet seen in game.
 
 The owner's playtest of 2026-11-11 left these open. docs/ROADMAP.md (fix queue F.1 to F.18) has the details:
 

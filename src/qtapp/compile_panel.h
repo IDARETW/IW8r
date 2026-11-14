@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <set>
+#include "bake_options.h"
 #include "model_import.h"
 #include <QString>
 #include <QMap>
@@ -123,6 +124,12 @@ public:
     // iw8r_title / iw8r_description / iw8r_compass_rotation / iw8r_minimap_scale / iw8r_ladder_rung_distance /
     // iw8r_exposure_adjust so it saves with the map and is undoable.
     void editMapInfo();
+    // The lightmap bake settings (core bake_options: sky colour and strength, texel size, sky rays), stored as
+    // worldspawn keys so they save with the map and are undoable. The dialog calls applyBakeSettings.
+    void editBakeSettings();
+    // Writes the settings as worldspawn keys in one undo step (a value at its default removes its key). False when
+    // nothing changed or there is no worldspawn.
+    bool applyBakeSettings(const MapBakeOptions& options);
     QByteArray metadataJson() const;  // what --metadata receives (id always set)
     // Writes the map's game types into the built package's map.json ("gameTypes": "war dm"; core map_gametypes). The
     // converter writes map.json from fixed fields, so the editor adds this line after the zones stage. Returns the

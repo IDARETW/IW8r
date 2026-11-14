@@ -2,6 +2,7 @@
 #include "custom_shader.h"
 #include "ies_profiles.h"
 #include "compile_iw8.h"
+#include "bake_options.h"
 #include "game_modes.h"
 #include "collision_world.h"
 #include "light_grid.h"
@@ -2733,17 +2734,12 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         // The game's sun is the comworld sun light's colour (suncolor; the converter takes the compiled light over
         // worldspawn sunlight, iw3_fastfile.cpp ReadSun), so the bake's sun is suncolor x 1.
         scene.sunIntensity = 1.0;
-        // The sky: worldspawn iw8r_bake_sky "r g b intensity" (default a pale blue at 0.35 of the sun).
-        scene.skyIntensity = 0.35;
-        if (const std::string* sk = worldspawn->value("iw8r_bake_sky")) {
-            double v[4] = {0, 0, 0, 0};
-            if (std::sscanf(sk->c_str(), "%lf %lf %lf %lf", &v[0], &v[1], &v[2], &v[3]) == 4) {
-                scene.skyColor = Vec3{v[0], v[1], v[2]};
-                scene.skyIntensity = v[3];
-            } else {
-                warn.push_back("worldspawn iw8r_bake_sky '" + *sk + "' is not 'r g b intensity': the default sky is used");
-            }
-        }
+        // The sky (iw8r_bake_sky "r g b intensity", default a pale blue at 0.35 of the sun), the texel size and the ray
+        // count: core bake_options, the reader the viewport's preview bake uses too.
+        const MapBakeOptions bakeOpt = mapBakeOptions(worldspawn);
+        for (const std::string& n : bakeOpt.notes) warn.push_back(n);
+        scene.skyColor = bakeOpt.skyColor;
+        scene.skyIntensity = bakeOpt.skyIntensity;
         // Light entities: origin, colour x intensity, radius; a spot by its target or angles and fov (as the comworld).
         std::map<std::string, Vec3> lightTargets;
         for (const Entity* pe : points)
@@ -2798,14 +2794,8 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             scene.lights.push_back(l);
         }
         BakeSettings settings;
-        if (const std::string* ts = worldspawn->value("iw8r_lightmap_texel")) {
-            double v = 0;
-            if (parseNumber(*ts, v) && v >= 1) settings.texelSize = v;
-        }
-        if (const std::string* rs = worldspawn->value("iw8r_bake_rays")) {
-            double v = 0;
-            if (parseNumber(*rs, v) && v >= 1) settings.skyRays = int(std::min(v, 1024.0));
-        }
+        settings.texelSize = bakeOpt.texelSize;
+        settings.skyRays = bakeOpt.skyRays;
         const auto started = std::chrono::steady_clock::now();
         const BakeResult baked = bakeLightmap(scene, settings);
         if (!baked.ok) {

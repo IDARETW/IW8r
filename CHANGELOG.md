@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Compile > Bake Settings.** A dialog for the lightmap bake of your map: the sky's colour and strength, the texel
+  size and the number of sky rays, with Restore Defaults. The values are worldspawn keys (`iw8r_bake_sky`,
+  `iw8r_lightmap_texel`, `iw8r_bake_rays`), saved with the map and undoable in one step. The build and View > Game
+  Lighting now read them through the same code, so the preview bakes with exactly the build's values. A value that
+  cannot be read is reported in the build log and the default is used.
+
 - **Brush faces nobody can see are not drawn and not built.** A face that lies inside another brush, or flat against
   one, is left out when that brush is opaque: in the viewport and in the built map. A brush with a cut-out or
   see-through material (glass, fences, foliage cards) hides nothing, and neither does a material the editor does not

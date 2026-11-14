@@ -2,6 +2,10 @@
 
 ## Latest (2026-11-13)
 
+- Plan 1.10 (compile panel bake settings): core bake_options (MapBakeOptions, mapBakeOptions, bakeOptionKeys) is the
+  one reader of iw8r_bake_lightmaps / iw8r_bake_sky / iw8r_lightmap_texel / iw8r_bake_rays for compile_iw8.cpp and
+  camera_view.cpp (gameBakeOptionsOf); CompilePanel::editBakeSettings / applyBakeSettings (button
+  compileBakeSettings). Tests bake_options_*, GUI check in "game lighting". Still open in 1.10: shadow quality.
 - Hidden faces (follow-up of the owner's "lines at slices / z-fighting" request): core face_edges hiddenCovers +
   EdgeBrush::opaque + edgeBrushOpaque (a brush whose drawn faces are all opaque). A face piece inside or flat against
   an opaque brush is dropped in edgeBrushMeshes (build and viewport share it). Build: opaque from the material library
