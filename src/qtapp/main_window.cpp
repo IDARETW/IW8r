@@ -300,6 +300,12 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     });
     // A stock map with a map shader that has a filter: the reference world and props draw through it (what File >
     // Rebuild Stock Zone builds into the map's lit shaders).
+    // The stock map's tetrahedral light grid lies in its gfx_map_trzone export in the world cache.
+    camera_->setStockGridSource([this](const QString& zone) -> QString {
+        if (!worldCache_ || zone.isEmpty()) return {};
+        const QString file = worldCache_->cacheRoot() + "/" + zone + "/assets/gfx_map_trzone/" + zone + ".0.asset.json";
+        return QFileInfo::exists(file) ? file : QString();
+    });
     camera_->setReferenceFilterLookup([this]() -> std::shared_ptr<const CustomShader> {
         if (referenceZone_.isEmpty()) return nullptr;
         const auto s = mapSurfaceShader();

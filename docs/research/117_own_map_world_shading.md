@@ -54,8 +54,7 @@ color = texel * light;                                           // then fog, x 
 
 - `CameraView::gameLookUnbaked()`: an own map (not brushes on a stock map) whose worldspawn `iw8r_bake_lightmaps` is
   not 1. `maybeBakeGameLook` then bakes nothing and drops an earlier lightmap; the status line says so once.
-- Brushes added to a stock map keep their preview bake in the stock map's units (they are built as models; plan 1.9
-  has that item open).
+- Brushes added to a stock map: section 5.
 
 Checked: Cinder Rail with and without the key at the same camera (`out/agent/unb_cr_cmp.png`): the unbaked view has
 no corner darkening and brighter shadowed walls; 87 % of the pixels differ by more than 8 of 255. GUI test "game
@@ -69,3 +68,24 @@ lighting": the map without the key draws with no preview lightmap and a differen
 - Fog on own maps: the converter blends its fog in gamma space when the map has fog; not compared here.
 - Materials with a specular map: the converter's sun and probe specular (hlsl:761-781) is not in the viewport.
 - Not seen in game.
+
+## 5. Brushes added to a stock map (2026-11-14)
+
+Brushes added to a stock map are not world surfaces: the rebuild carries them as a model (`iw8r_ovl_...`, a script
+model). Research 105 section 2.1 found the map's tetrahedral light grid (`gpuLightGrid.gpuLightGrid` of the
+`gfx_map_trzone` export), which the static-model shader does not read and which is INFERRED to light dynamic models.
+
+- **Decode (VERIFIED on Shipment's export).** 223,432 probes (32-byte records, positions as three floats) and
+  1,330,096 tetrahedra (four probe indices, bit 31 a flag). A probe: the DC as R11G11B10F, then eight coefficients per
+  channel as bytes, `n = (byte - 127.5) / 127`, coefficient = `n x DC x sqrt3` (i < 4) or `sqrt5`, read literally. Of
+  2,013 probes sampled at their own position, all were found in a tetrahedron and gave their own light back; the mean
+  light on an upward face is 1.98 (research 105 measured 0.7 under cover and 3.4 in the open on another map).
+- **Sampling.** The tetrahedron holding the point (a uniform cell index over the tetrahedra's boxes), the four probes
+  blended by barycentric weights, then the static-model shader's irradiance formula (`evalStockLgv`) for the face's
+  normal, times the map's bakedLightScale.
+- **Viewport.** The preview bake of such brushes takes this as each texel's ambient light (`BakeScene::ambientAt`);
+  the sun and its shadow stay live. Where no tetrahedron holds the texel, the sky bake stays.
+- **Check.** A box added in a shaded alley of Shipment: its faces average 25.6 of 255 with the grid and 44.3 with
+  the sky bake, beside containers of the same darkness (`out/agent/gg_cmp.png`).
+- **Open.** Whether the game lights a script model per pixel or once per model from this grid (INFERRED per point
+  here); the probes' visibility byte and the tetrahedron visibility records are not used.

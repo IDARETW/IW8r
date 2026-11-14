@@ -11,6 +11,7 @@
 // Read-only. Nothing here writes a file.
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -68,6 +69,35 @@ StockLgvSh sampleStockLgv(const StockLgvAtlas& a, size_t volume, const double co
 
 // E(n) of research 105 §1.4 (band weights 1, 4/9, 1/16), clamped >= 0, before bakedLightScale. n: unit world normal.
 void evalStockLgv(const StockLgvSh& s, const double n[3], double outRgb[3]);
+
+// ---- The tetrahedral light grid (research 105 section 2.1) ----------------------------------------------------------
+// gpuLightGrid.gpuLightGrid of the gfx_map_trzone export: probes on an adaptive lattice, joined into tetrahedra. The
+// static-model shader does not read it; it is INFERRED to light dynamic models (characters, script models). A point is
+// lit by the four probes of the tetrahedron that holds it, blended by barycentric weights.
+struct StockGpuGrid {
+    std::vector<std::array<float, 3>> pos;        // probe positions
+    std::vector<StockLgvSh> sh;                   // the probes, in the LGV's slot order (evalStockLgv reads them)
+    std::vector<std::array<uint32_t, 4>> tets;    // probe indices of each tetrahedron
+    float mins[3] = {0, 0, 0}, maxs[3] = {0, 0, 0};
+    // A uniform grid over the bounds: the tetrahedra whose box touches each cell (cellStart has one more entry than
+    // there are cells).
+    double cell = 0;
+    int nx = 0, ny = 0, nz = 0;
+    std::vector<uint32_t> cellStart, cellTets;
+    bool empty() const { return tets.empty(); }
+};
+// One probe record (GfxSHCompressedProbeData, 32 bytes): dword 0 the DC as R11G11B10F; byte 4 + 8 c + (i - 1) the
+// coefficient i = 1..8 of channel c in standard order as n x 127 + 127.5, n = coefficient / (DC x sqrt3 | sqrt5).
+// Decoded literally (research 105: the stock bytes agree in sign with the LGV).
+StockLgvSh decodeStockGpuProbe(const uint8_t record[32]);
+// Builds the grid from probe records, positions (three floats each) and tetrahedra (four u32 each; bit 31 is a flag).
+// False when the sizes do not fit or an index is out of range.
+bool buildStockGpuGrid(const std::vector<uint8_t>& probes, const std::vector<uint8_t>& positions, const std::vector<uint8_t>& tetrahedra,
+                       StockGpuGrid& out, std::string* err = nullptr);
+// The same from the trzone export's text (the members probes / probePositions / tetrahedrons of gpuLightGrid).
+bool parseStockGpuGrid(const std::string& trzoneJson, StockGpuGrid& out, std::string* err = nullptr);
+// The light at p: false when no tetrahedron holds it (outside the grid's hull).
+bool sampleStockGpuGrid(const StockGpuGrid& g, const double p[3], StockLgvSh& out);
 
 // One R11G11B10F texel (texture 0) to linear rgb: R bits 0-10 (6-bit mantissa), G 11-21, B 22-31 (5-bit mantissa).
 void decodeR11G11B10F(uint32_t packed, float outRgb[3]);

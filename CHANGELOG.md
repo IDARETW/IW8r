@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Brushes added to a stock map are lit like the game lights models there.** The game builds such brushes as a
+  model and (by what the game's data shows) lights models from the map's own light grid: tens of thousands of
+  measured light probes joined into tetrahedra. View > Game Lighting now reads that grid (Shipment: 223,432 probes,
+  1.33 million tetrahedra) and gives the added brushes its light, so a box in a shaded alley is as dark as the
+  containers beside it instead of being lit by an open sky. Where the grid does not reach, the sky bake stays. Read
+  from the map's exported data and checked by render (`out/agent/gg_cmp.png`); not seen in game.
+
 - **Web: building in the browser.** "Draw brush" in the page, then a drag in a Top, Front or Side view, makes a
   brush with the current material (64 units in the third direction). A selected brush shows a box with a handle on
   each side: drag one to resize along that side while the opposite side stays. The Inspector shows what the entity's

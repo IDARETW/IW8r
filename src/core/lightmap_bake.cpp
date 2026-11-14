@@ -344,8 +344,12 @@ BakeResult bakeLightmap(const BakeScene& scene, const BakeSettings& settings, co
                 r.direction[i] = {float(sx * dz), float(sy * dz), float(dz)};
                 const Vec3 dw = safeNormalize(T * (sx * dz) + B * (sy * dz) + N * dz, N);
                 r.directionWorld[i] = {float(dw.x), float(dw.y), float(dw.z)};
-                // Ambient: the sky and one bounce of the sun, cosine-weighted.
+                // Ambient: given from outside for this texel, else the sky and one bounce of the sun, cosine-weighted.
                 Vec3 A{0, 0, 0};
+                if (scene.ambientAt && scene.ambientAt(tx.pos, N, A)) {
+                    r.ambient[i] = {float(A.x), float(A.y), float(A.z)};
+                    continue;
+                }
                 const int rays = std::max(1, settings.skyRays);
                 const uint32_t seed = hash3(uint32_t(i), uint32_t(i >> 32), 7u);
                 const double r1 = (seed & 0xFFFF) / 65536.0, r2 = (seed >> 16) / 65536.0;

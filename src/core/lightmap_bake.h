@@ -73,6 +73,9 @@ struct BakeScene {
     Vec3 skyColor{0.55, 0.65, 0.8};
     double skyIntensity = 0.35;                 // irradiance of an open sky on an upward surface, in sun units
     std::vector<BakeLight> lights;
+    // When set and it returns true for a texel, its result is the texel's ambient light and no sky or bounce ray is
+    // traced there (brushes on a stock map: the map's own light grid, plan 1.9). Called from the bake's threads.
+    std::function<bool(const Vec3& pos, const Vec3& normal, Vec3& ambient)> ambientAt;
 };
 
 struct BakeResult {

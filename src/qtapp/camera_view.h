@@ -6,6 +6,7 @@
 
 #include <memory>
 
+#include "stock_lightgrid.h"
 #include "custom_shader.h"
 #include "game_fog.h"
 #include "stock_probes.h"
@@ -243,6 +244,15 @@ public slots:
     // is no preview bake; the surfaces take the converter's constant sky fill and the live sun, as in the game.
     bool gameLookUnbaked() const;
     void rebakeGameLighting() { gameBakeRev_ = ~0ull; gameSeenAt_.invalidate(); update(); }
+public:
+    // Where a stock map's gfx_map_trzone export lies (the world cache; "" = not exported). With it, brushes added to
+    // that map take their indirect light from the map's tetrahedral light grid (core stock_lightgrid, plan 1.9).
+    void setStockGridSource(std::function<QString(const QString& zone)> source) { stockGridSource_ = std::move(source); }
+    // The grid in use (null: none read yet, or the map has none), and the map it belongs to.
+    std::shared_ptr<const StockGpuGrid> stockGpuGrid() const { return stockGrid_; }
+    bool stockGpuGridLoading() const { return stockGridLoading_; }
+    void setStockGpuGrid(const std::string& zone, std::shared_ptr<const StockGpuGrid> grid);
+public slots:
     // The stock map shown as the reference ("" = none): Game Lighting then uses that map's sun and auto exposure
     // (core game_look stockMapLook).
     void setGameStockMap(const std::string& zone) {
@@ -601,6 +611,10 @@ private:
     std::shared_ptr<const app::GameLightmap> gameLm_;
     bool gameBaking_ = false, gameLutReady_ = false, gameWasOn_ = false, gameMetering_ = false;
     bool gameUnbakedTold_ = false;  // the status line said once that the map has no lightmap
+    std::function<QString(const QString&)> stockGridSource_;
+    std::shared_ptr<const StockGpuGrid> stockGrid_;
+    std::string stockGridZone_;      // the map stockGrid_ (or the read in progress, or the failed read) belongs to
+    bool stockGridLoading_ = false;
     std::string gameStockMap_;
     bool stockSunKnown_ = false;
     GameFog stockFog_;

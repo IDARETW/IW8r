@@ -521,4 +521,159 @@ void evalStockLgv(const StockLgvSh& s, const double n[3], double outRgb[3]) {
     }
 }
 
+// ---- The tetrahedral light grid ----------------------------------------------------------------------------------------
+
+StockLgvSh decodeStockGpuProbe(const uint8_t record[32]) {
+    StockLgvSh out;
+    uint32_t dw = 0;
+    std::memcpy(&dw, record, 4);
+    decodeR11G11B10F(dw, out.dc);
+    // Standard order i = 1..8: -y, z, -x, xy, -yz, 3z^2-1, -xz, x^2-y^2. The LGV's slots: 0 z, 1 3z^2-1, 2 -y, 3 -x,
+    // 4 -xz, 5 -yz, 6 x^2-y^2, 7 xy.
+    static const int slotOf[9] = {-1, 2, 0, 3, 7, 5, 1, 4, 6};
+    for (int c = 0; c < 3; ++c) {
+        if (!std::isfinite(out.dc[c])) out.dc[c] = 0;
+        for (int i = 1; i <= 8; ++i) {
+            const double n = (double(record[4 + 8 * c + (i - 1)]) - 127.5) / 127.0;
+            out.sh[slotOf[i]][c] = float(n * double(out.dc[c]) * (i < 4 ? 1.7320508075688772 : 2.23606797749979));
+        }
+    }
+    return out;
+}
+
+bool buildStockGpuGrid(const std::vector<uint8_t>& probes, const std::vector<uint8_t>& positions, const std::vector<uint8_t>& tetrahedra,
+                       StockGpuGrid& out, std::string* err) {
+    out = StockGpuGrid{};
+    if (probes.size() % 32 || positions.size() % 12 || tetrahedra.size() % 16) return fail(err, "light grid arrays are not whole records");
+    const size_t n = probes.size() / 32, nt = tetrahedra.size() / 16;
+    if (n == 0 || nt == 0) return fail(err, "the light grid has no probes or no tetrahedra");
+    if (positions.size() / 12 != n) return fail(err, "the light grid has " + std::to_string(positions.size() / 12) + " positions for " + std::to_string(n) + " probes");
+    out.pos.resize(n);
+    out.sh.resize(n);
+    for (int k = 0; k < 3; ++k) out.mins[k] = 1e30f, out.maxs[k] = -1e30f;
+    for (size_t i = 0; i < n; ++i) {
+        std::memcpy(out.pos[i].data(), positions.data() + i * 12, 12);
+        for (int k = 0; k < 3; ++k) {
+            if (!std::isfinite(out.pos[i][k])) return fail(err, "a light grid probe has no finite position");
+            out.mins[k] = std::min(out.mins[k], out.pos[i][k]);
+            out.maxs[k] = std::max(out.maxs[k], out.pos[i][k]);
+        }
+        out.sh[i] = decodeStockGpuProbe(probes.data() + i * 32);
+    }
+    out.tets.resize(nt);
+    for (size_t t = 0; t < nt; ++t) {
+        uint32_t idx[4];
+        std::memcpy(idx, tetrahedra.data() + t * 16, 16);
+        for (int k = 0; k < 4; ++k) {
+            idx[k] &= 0x7FFFFFFFu;
+            if (idx[k] >= n) return fail(err, "a light grid tetrahedron names probe " + std::to_string(idx[k]) + " of " + std::to_string(n));
+            out.tets[t][size_t(k)] = idx[k];
+        }
+    }
+    // The cells: about 100 units a side, at most 256 a direction.
+    const double ext[3] = {double(out.maxs[0]) - out.mins[0], double(out.maxs[1]) - out.mins[1], double(out.maxs[2]) - out.mins[2]};
+    out.cell = std::max({96.0, ext[0] / 256.0, ext[1] / 256.0, ext[2] / 256.0});
+    out.nx = std::max(1, int(std::ceil(ext[0] / out.cell)));
+    out.ny = std::max(1, int(std::ceil(ext[1] / out.cell)));
+    out.nz = std::max(1, int(std::ceil(ext[2] / out.cell)));
+    const size_t cells = size_t(out.nx) * size_t(out.ny) * size_t(out.nz);
+    const auto range = [&](size_t t, int lo[3], int hi[3]) {
+        const int dim[3] = {out.nx, out.ny, out.nz};
+        for (int k = 0; k < 3; ++k) {
+            float a = 1e30f, b = -1e30f;
+            for (int v = 0; v < 4; ++v) a = std::min(a, out.pos[out.tets[t][size_t(v)]][size_t(k)]), b = std::max(b, out.pos[out.tets[t][size_t(v)]][size_t(k)]);
+            lo[k] = std::clamp(int(std::floor((double(a) - out.mins[k]) / out.cell)), 0, dim[k] - 1);
+            hi[k] = std::clamp(int(std::floor((double(b) - out.mins[k]) / out.cell)), 0, dim[k] - 1);
+        }
+    };
+    std::vector<uint32_t> count(cells + 1, 0);
+    for (size_t t = 0; t < nt; ++t) {
+        int lo[3], hi[3];
+        range(t, lo, hi);
+        for (int z = lo[2]; z <= hi[2]; ++z)
+            for (int y = lo[1]; y <= hi[1]; ++y)
+                for (int x = lo[0]; x <= hi[0]; ++x) ++count[(size_t(z) * size_t(out.ny) + size_t(y)) * size_t(out.nx) + size_t(x) + 1];
+    }
+    for (size_t c = 0; c < cells; ++c) count[c + 1] += count[c];
+    out.cellStart = count;
+    out.cellTets.resize(count[cells]);
+    std::vector<uint32_t> fill(count.begin(), count.end() - 1);
+    for (size_t t = 0; t < nt; ++t) {
+        int lo[3], hi[3];
+        range(t, lo, hi);
+        for (int z = lo[2]; z <= hi[2]; ++z)
+            for (int y = lo[1]; y <= hi[1]; ++y)
+                for (int x = lo[0]; x <= hi[0]; ++x) out.cellTets[fill[(size_t(z) * size_t(out.ny) + size_t(y)) * size_t(out.nx) + size_t(x)]++] = uint32_t(t);
+    }
+    return true;
+}
+
+bool parseStockGpuGrid(const std::string& trzoneJson, StockGpuGrid& out, std::string* err) {
+    out = StockGpuGrid{};
+    // Inside gpuLightGrid only: other parts of the export have members of the same names.
+    const size_t at = findMemberValue(trzoneJson, "gpuLightGrid");
+    if (at == std::string::npos) return fail(err, "trzone has no gpuLightGrid");
+    const size_t end = valueEnd(trzoneJson, at);
+    if (end == std::string::npos) return fail(err, "gpuLightGrid is not closed");
+    const std::string part = trzoneJson.substr(at, end - at);
+    const auto bytesOf = [&](const char* key, std::vector<uint8_t>& raw) {
+        std::string perr;
+        const auto node = parseMember(part, key, &perr);
+        if (!node || node->type != Value::Type::Object) return fail(err, std::string("gpuLightGrid has no ") + key + (perr.empty() ? "" : ": " + perr));
+        const Value* bytes = node->get("bytes");
+        if (!bytes || !bytes->string() || !unhex(*bytes->string(), raw)) return fail(err, std::string("gpuLightGrid ") + key + " has no hex bytes");
+        return true;
+    };
+    std::vector<uint8_t> probes, positions, tets;
+    if (!bytesOf("probes", probes) || !bytesOf("probePositions", positions) || !bytesOf("tetrahedrons", tets)) return false;
+    return buildStockGpuGrid(probes, positions, tets, out, err);
+}
+
+bool sampleStockGpuGrid(const StockGpuGrid& g, const double p[3], StockLgvSh& out) {
+    if (g.empty() || g.cell <= 0) return false;
+    int c[3];
+    const int dim[3] = {g.nx, g.ny, g.nz};
+    for (int k = 0; k < 3; ++k) {
+        if (p[k] < double(g.mins[k]) - 1e-3 || p[k] > double(g.maxs[k]) + 1e-3) return false;
+        c[k] = std::clamp(int(std::floor((p[k] - double(g.mins[k])) / g.cell)), 0, dim[k] - 1);
+    }
+    const size_t cellIndex = (size_t(c[2]) * size_t(g.ny) + size_t(c[1])) * size_t(g.nx) + size_t(c[0]);
+    for (uint32_t k = g.cellStart[cellIndex]; k < g.cellStart[cellIndex + 1]; ++k) {
+        const auto& tet = g.tets[g.cellTets[k]];
+        const auto& a = g.pos[tet[0]];
+        const auto& b = g.pos[tet[1]];
+        const auto& cc = g.pos[tet[2]];
+        const auto& d = g.pos[tet[3]];
+        // Solve [a-d, b-d, c-d] w = p - d (Cramer).
+        const double m[3][3] = {{double(a[0]) - d[0], double(b[0]) - d[0], double(cc[0]) - d[0]},
+                                {double(a[1]) - d[1], double(b[1]) - d[1], double(cc[1]) - d[1]},
+                                {double(a[2]) - d[2], double(b[2]) - d[2], double(cc[2]) - d[2]}};
+        const double r[3] = {p[0] - d[0], p[1] - d[1], p[2] - d[2]};
+        const double det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+                           m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+        if (std::fabs(det) < 1e-9) continue;
+        const double w0 = (r[0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (r[1] * m[2][2] - m[1][2] * r[2]) +
+                           m[0][2] * (r[1] * m[2][1] - m[1][1] * r[2])) / det;
+        const double w1 = (m[0][0] * (r[1] * m[2][2] - m[1][2] * r[2]) - r[0] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+                           m[0][2] * (m[1][0] * r[2] - r[1] * m[2][0])) / det;
+        const double w2 = (m[0][0] * (m[1][1] * r[2] - r[1] * m[2][1]) - m[0][1] * (m[1][0] * r[2] - r[1] * m[2][0]) +
+                           r[0] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])) / det;
+        const double w3 = 1.0 - w0 - w1 - w2;
+        const double tol = -1e-4;
+        if (w0 < tol || w1 < tol || w2 < tol || w3 < tol) continue;
+        const double w[4] = {w0, w1, w2, w3};
+        out = StockLgvSh{};
+        for (int v = 0; v < 4; ++v) {
+            const StockLgvSh& s = g.sh[tet[size_t(v)]];
+            for (int ch = 0; ch < 3; ++ch) {
+                out.dc[ch] += float(w[v] * double(s.dc[ch]));
+                for (int j = 0; j < 8; ++j) out.sh[j][ch] += float(w[v] * double(s.sh[j][ch]));
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+
 }  // namespace iw8r

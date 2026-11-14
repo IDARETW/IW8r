@@ -171,8 +171,8 @@ grain, white balance.
 - **Sun shadows:** 3-4 cascades fitted to the view on big maps.
 
 **1.9 Own brushes match what the build will produce.** Part 1 DONE 2026-11-13 (research 117: the unbaked look, the
-multi-bounce occlusion). Open: specular-map materials, brushes added to a stock map, own-map models against the built
-light grid.
+multi-bounce occlusion). Brushes added to a stock map DONE 2026-11-14 (the map's tetrahedral light grid, research
+117 section 5). Open: specular-map materials, own-map models against the built light grid.
 - **Unbaked maps.** Show the preview bake only when `iw8r_bake_lightmaps` is set; otherwise show the unbaked path the
   game takes (research 55).
 - **Specular.** Own brushes get environment specular, using the converter shader's formula

@@ -2071,6 +2071,20 @@ iw8r::MapBakeOptions gameBakeOptionsOf(const iw8r::Document& doc) {
 iw8r::Vec3 gameSkyOf(const iw8r::Document& doc) { return gameBakeOptionsOf(doc).skyLight(); }
 }  // namespace
 
+void CameraView::setStockGpuGrid(const std::string& zone, std::shared_ptr<const StockGpuGrid> grid) {
+    stockGridLoading_ = false;
+    if (zone != gameStockMap_) return;  // another map was opened meanwhile: read again at the next bake
+    stockGridZone_ = zone;
+    stockGrid_ = std::move(grid);
+    if (stockGrid_ && !stockGrid_->empty()) {
+        emit ctx_->statusMessage(QString("Game lighting: brushes added to %1 take their light from the map's light grid (%2 probes)")
+                                     .arg(QString::fromStdString(zone)).arg(stockGrid_->pos.size()));
+        rebakeGameLighting();
+    } else {
+        stockGrid_.reset();
+    }
+}
+
 bool CameraView::gameLookUnbaked() const { return !gameStockLook() && !gameBakeOptionsOf(ctx_->doc).bake; }
 
 void CameraView::prepareGameLook() {
@@ -2286,6 +2300,49 @@ void CameraView::maybeBakeGameLook() {
         in.scene.skyIntensity = in.scene.sunIntensity;
         in.scene.sunDir = gameSunToward();
         in.key ^= 0x5157u;
+        // The game builds these brushes as a script model and lights models from the map's tetrahedral light grid
+        // (research 105 section 2.1): the same grid gives the indirect light here, where it covers the point. The
+        // grid is read once per map, in the background; until it is there the sky bake above stands in.
+        if (stockGridZone_ != gameStockMap_ && !stockGridLoading_) {
+            stockGrid_.reset();
+            stockGridZone_ = gameStockMap_;
+            // IW8R_NO_STOCK_GRID: a bench switch, the sky bake lights the brushes as before.
+            const QString file = stockGridSource_ && !qEnvironmentVariableIsSet("IW8R_NO_STOCK_GRID") ? stockGridSource_(QString::fromStdString(gameStockMap_)) : QString();
+            if (!file.isEmpty()) {
+                stockGridLoading_ = true;
+                QPointer<CameraView> self(this);
+                const std::string zone = gameStockMap_;
+                std::thread(guardedWorker(__FILE__, __LINE__, [self, file, zone]() {
+                    auto grid = std::make_shared<StockGpuGrid>();
+                    QFile f(file);
+                    std::string err;
+                    bool ok = false;
+                    if (f.open(QIODevice::ReadOnly)) {
+                        const QByteArray text = f.readAll();
+                        ok = parseStockGpuGrid(std::string(text.constData(), size_t(text.size())), *grid, &err);
+                    }
+                    QMetaObject::invokeMethod(qApp, [self, zone, grid, ok]() {
+                        if (self) self->setStockGpuGrid(zone, ok ? grid : nullptr);
+                    }, Qt::QueuedConnection);
+                })).detach();
+            }
+        }
+        if (stockGrid_ && stockGridZone_ == gameStockMap_) {
+            const std::shared_ptr<const StockGpuGrid> grid = stockGrid_;
+            const double scale = stockBakedScale_;
+            in.scene.ambientAt = [grid, scale](const Vec3& pos, const Vec3& normal, Vec3& ambient) {
+                // Half a unit off the face, as the bake's own rays start.
+                const double p[3] = {pos.x + normal.x * 0.5, pos.y + normal.y * 0.5, pos.z + normal.z * 0.5};
+                StockLgvSh sh;
+                if (!sampleStockGpuGrid(*grid, p, sh)) return false;
+                const double n[3] = {normal.x, normal.y, normal.z};
+                double rgb[3];
+                evalStockLgv(sh, n, rgb);
+                ambient = Vec3{rgb[0] * scale, rgb[1] * scale, rgb[2] * scale};
+                return true;
+            };
+            in.key ^= 0x67726964u ^ uint64_t(grid->tets.size());
+        }
     }
     for (const auto& L : ctx_->scene.lights) {
         BakeLight b;
@@ -2314,6 +2371,7 @@ void CameraView::maybeBakeGameLook() {
         for (const Vec3& v : {in.scene.sunDir, in.scene.sunColor, in.scene.skyColor}) mixD(v.x), mixD(v.y), mixD(v.z);
         mixD(in.scene.sunIntensity), mixD(in.scene.skyIntensity), mixD(in.settings.texelSize), mixD(double(in.settings.skyRays));
         mixD(double(in.key));
+        mixD(in.scene.ambientAt ? 1.0 : 0.0);
         for (const BakeLight& b : in.scene.lights)
             mixD(b.pos.x), mixD(b.pos.y), mixD(b.pos.z), mixD(b.color.x), mixD(b.color.y), mixD(b.color.z), mixD(b.radius),
                 mixD(b.dir.x), mixD(b.dir.y), mixD(b.dir.z), mixD(b.cosOuter), mixD(b.cosInner);

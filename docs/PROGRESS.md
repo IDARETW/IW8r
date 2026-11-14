@@ -2,6 +2,16 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-14, plan 1.9 (brushes on a stock map): core stock_lightgrid StockGpuGrid (decodeStockGpuProbe,
+  buildStockGpuGrid with a uniform cell index, parseStockGpuGrid from the gfx_map_trzone export's gpuLightGrid,
+  sampleStockGpuGrid = barycentric over the holding tetrahedron); BakeScene::ambientAt (a texel's ambient from
+  outside, no sky rays there). CameraView: setStockGridSource (MainWindow: <world cache>/<zone>/assets/
+  gfx_map_trzone/<zone>.0.asset.json), the grid read in a worker at the first stock-map bake, setStockGpuGrid,
+  ambientAt = evalStockLgv x bakedLightScale. Bench: IW8R_BENCH_BOX / IW8R_BENCH_BOX_MATERIAL (a box added before the
+  shots), IW8R_NO_STOCK_GRID, report line game_grid. Tests stock_gpugrid_* (the real export through
+  IW8R_TEST_TRZONE: Shipment 2,013 of 2,013 sampled probes found and equal to their own light, mean E(up) 1.98),
+  lightmap_bake_ambient_from_outside, GUI check. Shipment box A/B: out/agent/gg_cmp.png (box region mean 25.6 with the
+  grid, 44.3 with the sky bake). INFERRED: that the game lights script models from this grid (research 105).
 - 2026-11-14, plan 3.4: POST /api/brush (createBoxBrush), POST /api/resize (scaleSelectionAbout), GET
   /api/entityclasses + /api/entitydef (checkMapEntityDefs(), a new getter in find_dialog; "problems" = validate),
   POST /api/entity (point classes; at or view). Page: drawBrush button and drag mode "draw", selectionBox / handleAt

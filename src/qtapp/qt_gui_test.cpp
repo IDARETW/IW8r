@@ -1,4 +1,5 @@
 #include <DockWidget.h>
+#include "stock_lightgrid.h"
 #include "custom_shader.h"
 #include "bake_options.h"
 #include "dxbc_splice.h"
@@ -3029,6 +3030,60 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         {
             const double manual = cv->gameExposure();
             cv->setGameStockMap("mp_shipment");
+            {
+                // Plan 1.9: brushes on a stock map take their indirect light from the map's tetrahedral light grid.
+                // Two grids of one big tetrahedron around the room, a dark one and a bright one: the preview
+                // lightmap's ambient layer follows the grid.
+                const auto gridOf = [](uint32_t dcPacked) {
+                    std::vector<uint8_t> probes, positions, tets;
+                    const float pts[4][3] = {{-3000, -3000, -1000}, {3000, -3000, -1000}, {0, 3000, -1000}, {0, 0, 5000}};
+                    for (const auto& p : pts) {
+                        std::vector<uint8_t> rec(32, 128);
+                        std::memcpy(rec.data(), &dcPacked, 4);
+                        probes.insert(probes.end(), rec.begin(), rec.end());
+                        for (const float f : p) {
+                            uint8_t b[4];
+                            std::memcpy(b, &f, 4);
+                            positions.insert(positions.end(), b, b + 4);
+                        }
+                    }
+                    for (const uint32_t i : {0u, 1u, 2u, 3u}) {
+                        uint8_t b[4];
+                        std::memcpy(b, &i, 4);
+                        tets.insert(tets.end(), b, b + 4);
+                    }
+                    auto g = std::make_shared<iw8r::StockGpuGrid>();
+                    iw8r::buildStockGpuGrid(probes, positions, tets, *g);
+                    return g;
+                };
+                const auto ambientMean = [&](const std::shared_ptr<iw8r::StockGpuGrid>& grid) {
+                    const auto before = cv->gameLightmap();
+                    cv->setStockGpuGrid("mp_shipment", grid);
+                    QElapsedTimer gt;
+                    gt.start();
+                    while (gt.elapsed() < 30000) {
+                        cv->renderImage(160, 90, true, 0, 0);
+                        QCoreApplication::processEvents(QEventLoop::AllEvents, 30);
+                        const auto now = cv->gameLightmap();
+                        if (now && now != before && !cv->gameBaking() && now->polys > 0) break;
+                        QThread::msleep(15);
+                    }
+                    const auto lm = cv->gameLightmap();
+                    double sum = 0;
+                    size_t n = 0;
+                    if (lm && lm != before)
+                        for (size_t i = 0; i + 3 < lm->a.size(); i += 4)
+                            if (lm->a[i] + lm->a[i + 1] + lm->a[i + 2] > 0 || lm->a[i + 3] > 0) sum += lm->a[i + 1], ++n;
+                    return n ? sum / double(n) : -1.0;
+                };
+                const uint32_t dcDark = 0;
+                const uint32_t dcBright = (17u << 6) | ((17u << 6) << 11) | ((17u << 5) << 22);  // 4.0 in each channel
+                const double dark = ambientMean(gridOf(dcDark));
+                const double bright = ambientMean(gridOf(dcBright));
+                r.check(dark >= 0 && dark < 0.05 && bright > 0.5 && cv->stockGpuGrid() && cv->stockGpuGrid()->tets.size() == 1,
+                        QString("brushes on a stock map take the map's light grid: ambient %1 under a dark grid, %2 under a bright one")
+                            .arg(dark, 0, 'f', 3).arg(bright, 0, 'f', 3));
+            }
             cv->renderImage(320, 180, true, 0, 0);
             const double guess = cv->gameExposure();
             QElapsedTimer mt;

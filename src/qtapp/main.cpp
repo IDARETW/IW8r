@@ -48,6 +48,7 @@
 #include <QStyleFactory>
 #include <QTimer>
 
+#include "brush_tools.h"
 #include "custom_shader.h"
 #include "devmap_cover.h"
 #include "devmap_launch.h"
@@ -715,6 +716,19 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         // turns the lit preview off for Game Lighting alone).
         setLit(qEnvironmentVariable("IW8R_BENCH_GAME_LIT") != "0");
         if (qEnvironmentVariable("IW8R_BENCH_NOSHADOW") == "1") ctx.scene.litShadows = false;  // diagnosis: no sun shadow map
+        bool benchBox = false;
+        // IW8R_BENCH_BOX="x0 y0 z0 x1 y1 z1": a box brush added before the shots (a brush on a stock map);
+        // IW8R_BENCH_BOX_MATERIAL names its material.
+        if (const QStringList v = qEnvironmentVariable("IW8R_BENCH_BOX").split(' ', Qt::SkipEmptyParts); v.size() == 6) {
+            iw8r::AABB box;
+            box.add(iw8r::Vec3{v[0].toDouble(), v[1].toDouble(), v[2].toDouble()});
+            box.add(iw8r::Vec3{v[3].toDouble(), v[4].toDouble(), v[5].toDouble()});
+            if (const QString m = qEnvironmentVariable("IW8R_BENCH_BOX_MATERIAL"); !m.isEmpty()) ctx.currentMaterial = m.toStdString();
+            const bool made = iw8r::qt::createBoxBrush(ctx, box);
+            ctx.documentEdited();
+            report << QString("bench_box %1 material %2").arg(made ? "made" : "FAILED").arg(QString::fromStdString(ctx.currentMaterial));
+            benchBox = made;
+        }
         if (!ctx.scene.gameLook) trigger("ToggleGameLighting");
         camA();
         QElapsedTimer bt;
@@ -722,8 +736,13 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         while (bt.elapsed() < 600000) {
             frame(nullptr);
             QApplication::processEvents(QEventLoop::AllEvents, 20);
-            if ((cam->gameLightmap() || cam->gameLookUnbaked()) && !cam->gameBaking()) break;
+            // With a bench box the bake must have seen it (the first bake may run before the scene has the brush).
+            const auto lmNow = cam->gameLightmap();
+            if (benchBox && !cam->gameLookUnbaked() && !(lmNow && lmNow->polys > 0)) continue;
+            if ((cam->gameLightmap() || cam->gameLookUnbaked()) && !cam->gameBaking() && !cam->stockGpuGridLoading()) break;
         }
+        if (const auto grid = cam->stockGpuGrid())
+            report << QString("game_grid probes=%1 tetrahedra=%2 (brushes on the stock map take the grid's light)").arg(grid->pos.size()).arg(grid->tets.size());
         const auto lm = cam->gameLightmap();
         if (cam->gameLookUnbaked()) report << "game_unbaked 1 (no lightmap in the build: the converter's sky fill and the live sun)";
         report << QString("game_bake ms=%1 lightmap=%2x%3 faces=%4 bake_s=%5 %6").arg(bt.elapsed()).arg(lm ? lm->width : 0)
