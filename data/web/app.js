@@ -134,10 +134,32 @@ function selectedBrushes() {
   const sel = selectedSet();
   return map.items.filter((it) => it.kind === "brush" && (sel.has(selKey(it.e, it.i)) || sel.has(selKey(it.e, -1))));
 }
+// The control points of the selected patches (Vertices tool), from the editor: [{e, i, k, p: [x, y, z], locked}].
+let patchPoints = [], patchPointsFor = "";
+async function loadPatchPoints() {
+  const want = $("editMode").value === "vertex" ? state.revision + "|" + JSON.stringify(state.selection) : "";
+  if (want === patchPointsFor) return;
+  patchPointsFor = want;
+  patchPoints = [];
+  if (want) {
+    try {
+      const j = await get("/api/handles");
+      for (const pt of j.patches) pt.points.forEach((p, k) => patchPoints.push({ e: pt.e, i: pt.i, k, p, locked: !!p[3] }));
+      if (j.truncated) setStatus("Too many control points selected to show them all");
+    } catch (e) { /* no handles then */ }
+  }
+  draw();
+}
 function shapeHandles() {
   const mode = $("editMode").value;
   if (!mode || Number($("axis").value) > 2) return [];
   const [a, b] = axes(), out = new Map();
+  if (mode === "vertex")
+    for (const pp of patchPoints) {
+      if (pp.locked) continue;
+      const k = key2(pp.p[a], pp.p[b]);
+      if (!out.has(k)) out.set(k, { key: k, h: pp.p[a], v: pp.p[b], ends: [k] });
+    }
   for (const it of selectedBrushes())
     for (const p of it.polys)
       p.forEach((q, n) => {
@@ -168,7 +190,8 @@ function shapeOffset(q, a, b) {
 }
 $("editMode").onchange = () => {
   const m = $("editMode").value;
-  setStatus(m === "vertex" ? "Drag a corner of a selected brush" : m === "edge" ? "Drag an edge of a selected brush" : "");
+  setStatus(m === "vertex" ? "Drag a corner of a selected brush or a control point of a selected patch" : m === "edge" ? "Drag an edge of a selected brush" : "");
+  loadPatchPoints();
   draw();
 };
 // The handle of the selection's box under a canvas point: {side: 0 low | 1 high, dim: 0 horizontal | 1 vertical}.
@@ -285,6 +308,14 @@ canvas.addEventListener("pointerup", async (ev) => {
         for (const p of it.polys) for (const q of p) if (d.handle.ends.includes(key2(q[a], q[b]))) from.set(q.join(","), q);
         if (from.size) moves.push({ e: it.e, i: it.i, from: [...from.values()] });
       }
+      const byPatch = new Map();
+      for (const pp of patchPoints) {
+        if (pp.locked || !d.handle.ends.includes(key2(pp.p[a], pp.p[b]))) continue;
+        const pk = pp.e + ":" + pp.i;
+        if (!byPatch.has(pk)) byPatch.set(pk, { e: pp.e, i: pp.i, points: [] });
+        byPatch.get(pk).points.push(pp.k);
+      }
+      moves.push(...byPatch.values());
       if (moves.length) { try { await post("/api/vertices", { moves, d: dd }); setStatus("Moved"); } catch (e) { /* the reason is shown */ } }
     }
     draw();
@@ -510,6 +541,7 @@ async function refresh() {
   renderEntities(); draw();
   if (window.view3d && !$("view3d").hidden) window.view3d.update(map, state);
   if (window.viewLive) window.viewLive.refresh();
+  loadPatchPoints();
 }
 let refreshQueued = false;
 function queueRefresh() {

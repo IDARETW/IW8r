@@ -616,6 +616,35 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
             r.body = json(info);
             return r;
         }
+        if (path == "/api/handles") {
+            // The control points of the selected patches (the page's Vertices tool): [[x, y, z, locked], ...] in the
+            // patch's own order. A selection with more than 20,000 points gets none (truncated: true).
+            QJsonArray patches;
+            size_t total = 0;
+            bool truncated = false;
+            for (const auto& sel : ctx_->doc.selection()) {
+                const EntityItem* it = sel.item ? ctx_->doc.findItem(sel.entity, sel.item) : nullptr;
+                const Primitive* prim = it ? it->prim() : nullptr;
+                if (!prim || prim->kind != PrimKind::Patch) continue;
+                const auto grid = patchGrid(*prim);
+                if (!grid) continue;
+                if (total + grid->pos.size() > 20000) {
+                    truncated = true;
+                    continue;
+                }
+                total += grid->pos.size();
+                const auto lk = ctx_->patchLocks.find({sel.entity, sel.item});
+                QJsonArray points;
+                for (size_t k = 0; k < grid->pos.size(); ++k) {
+                    const bool locked = lk != ctx_->patchLocks.end() && k < lk->second.size() && lk->second[k];
+                    points.append(QJsonArray{grid->pos[k].x, grid->pos[k].y, grid->pos[k].z, locked ? 1 : 0});
+                }
+                patches.append(QJsonObject{{"e", double(sel.entity)}, {"i", double(sel.item)}, {"rows", grid->rows}, {"cols", grid->cols}, {"points", points}});
+            }
+            Response r;
+            r.body = json({{"patches", patches}, {"total", double(total)}, {"truncated", truncated}});
+            return r;
+        }
         if (path == "/api/forms") {
             Response r;
             r.body = json({{"forms", hooks_.forms ? hooks_.forms() : QJsonArray()}});
@@ -732,7 +761,24 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
             const Id e = Id(m.value("e").toDouble(-1)), i = Id(m.value("i").toDouble(-1));
             const EntityItem* it = ctx_->doc.findItem(e, i);
             const Primitive* prim = it ? it->prim() : nullptr;
-            if (!prim || prim->kind != PrimKind::Brush) return error(400, "corners are moved on brushes only");
+            if (prim && prim->kind == PrimKind::Patch && m.value("points").isArray()) {
+                // A patch: its control points by index (row-major, as GET /api/handles lists them).
+                const auto grid = patchGrid(*prim);
+                const QJsonArray points = m.value("points").toArray();
+                if (!grid || points.isEmpty()) return error(400, "a patch move names control points by index");
+                std::vector<bool> taken(grid->pos.size(), false);
+                for (const QJsonValue& pv : points) {
+                    const double k = pv.toDouble(-1);
+                    if (!(k >= 0) || k >= double(grid->pos.size()) || k != std::floor(k)) return error(400, "there is no such control point");
+                    if (taken[size_t(k)]) continue;
+                    taken[size_t(k)] = true;
+                    VertexHandle h;
+                    h.pos = grid->pos[size_t(k)], h.entity = e, h.item = i, h.patch = true, h.index = size_t(k);
+                    handles.push_back(h);
+                }
+                continue;
+            }
+            if (!prim || prim->kind != PrimKind::Brush) return error(400, "corners are moved on brushes, control points on patches");
             const std::vector<Vec3> corners = brushVertices(*prim);
             std::vector<Vec3> from;
             for (const QJsonValue& pv : m.value("from").toArray()) {
@@ -757,8 +803,10 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
                 handles.push_back(h);
             }
         }
-        if (!moveVertexHandles(*ctx_, handles, delta)) return error(400, "nothing was moved");
-        ctx_->documentEdited("Corners moved from the browser");
+        size_t rejected = 0, locked = 0;
+        if (!moveVertexHandles(*ctx_, handles, delta, &rejected, &locked))
+            return error(400, locked ? QString("nothing was moved: the control points are locked") : QString("nothing was moved"));
+        ctx_->documentEdited("Points moved from the browser");
     } else if (path == "/api/resize") {
         const int axis = in.value("axis").toInt(-1);
         const double factor = in.value("factor").toDouble(0);

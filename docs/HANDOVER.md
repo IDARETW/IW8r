@@ -88,7 +88,7 @@ short list", is these in order:
 
 ## 5. Not built, or built in part
 
-- Web page: patch vertex editing; the full Vision Editor (vision overrides by name are in the Atmosphere form).
+- Web page: the full Vision Editor (vision overrides by name are in the Atmosphere form).
 - Occlusion: thin slanted walls, terrain and models as occluders (other slanted and many-sided brushes hide by the
   box inside them). Removing stock world geometry opens the whole map's occlusion: everything is drawn, which
   costs frame time on that map and nothing else. A local update was decided against (a mistake there makes objects

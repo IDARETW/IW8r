@@ -2492,6 +2492,39 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                             pageV.body.contains("/api/vertices") && pageV.body.contains("shapeHandles"),
                         QString("POST /api/vertices moves brush corners as one undo step and refuses a move that breaks the brush (x max %1)").arg(sheared.maxs.x));
             }
+            {
+                // A patch: its control points are listed for the selection, and one is moved by its index.
+                SelRef patchRef{};
+                for (const auto& ent : ctx.doc.map().entities)
+                    for (const auto& item : ent.items)
+                        if (!patchRef.item && item.prim() && item.prim()->kind == PrimKind::Patch && patchGrid(*item.prim())) patchRef = SelRef{ent.id, item.id};
+                ctx.doc.select(patchRef, false);
+                const size_t undoP = ctx.doc.undoPosition();
+                const QJsonObject hs = QJsonDocument::fromJson(web.handle("GET", "/api/handles", {}, true, {}).body).object();
+                const QJsonObject first = hs.value("patches").toArray().first().toObject();
+                const QJsonArray pts = first.value("points").toArray();
+                const auto gridOf = [&] {
+                    const EntityItem* it = ctx.doc.findItem(patchRef.entity, patchRef.item);
+                    return it && it->prim() ? patchGrid(*it->prim()) : std::nullopt;
+                };
+                const auto g0 = gridOf();
+                const QString mv = QString("{\"moves\":[{\"e\":%1,\"i\":%2,\"points\":[0,0]}],\"d\":[0,0,8]}").arg(patchRef.entity).arg(patchRef.item);
+                const auto moved = web.handle("POST", "/api/vertices", mv.toUtf8(), true, {});
+                const auto g1 = gridOf();
+                const bool one = ctx.doc.undoPosition() == undoP + 1;
+                const QString badIx = QString("{\"moves\":[{\"e\":%1,\"i\":%2,\"points\":[99999]}],\"d\":[0,0,8]}").arg(patchRef.entity).arg(patchRef.item);
+                const auto bad = web.handle("POST", "/api/vertices", badIx.toUtf8(), true, {});
+                while (ctx.doc.undoPosition() > undoP) ctx.doc.undo();
+                const auto g2 = gridOf();
+                ctx.doc.deselectAll();
+                ctx.documentEdited();
+                const auto pageP = web.handle("GET", "/app.js", {}, true, {});
+                r.check(patchRef.item && g0 && g1 && g2 && pts.size() == int(g0->pos.size()) && first.value("rows").toInt() == g0->rows &&
+                            std::fabs(pts.first().toArray().at(2).toDouble() - g0->pos[0].z) < 1e-9 && moved.status == 200 && one &&
+                            std::fabs(g1->pos[0].z - g0->pos[0].z - 8) < 1e-6 && std::fabs(g1->pos[1].z - g0->pos[1].z) < 1e-9 && bad.status == 400 &&
+                            std::fabs(g2->pos[0].z - g0->pos[0].z) < 1e-9 && pageP.body.contains("/api/handles"),
+                        QString("GET /api/handles lists a selected patch's control points (%1) and POST /api/vertices moves one by index").arg(pts.size()));
+            }
             const auto badBrush = web.handle("POST", "/api/brush", "{\"mins\":[0,0,0],\"maxs\":[0,64,64]}", true, {});
             const auto badResize = web.handle("POST", "/api/resize", "{\"axis\":5,\"factor\":2,\"pivot\":[0,0,0]}", true, {});
             r.check(badBrush.status == 400 && badResize.status == 400, "a flat brush and a bad resize are refused");

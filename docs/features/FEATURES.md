@@ -745,7 +745,8 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 - Vertex and edge tools in the 2D views: a handle on every corner or edge of the selected brushes, dragged with a live preview; one undo step, and a move that breaks the brush is refused.
 - Layers (show, hide, select, move the selection, declare), the compile options with the Build Budget and the Undo History are forms too. The Log panel keeps the editor's earlier lines and filters by level and text.
 - Ctrl + click in the live view picks a single brush face for the Surface form.
-- Not in the browser yet: patch vertex editing, the full Vision Editor (all 218 fields by name; overrides by name are in the Atmosphere form).
+- Patch control points are moved the same way (Tool: Vertices).
+- Not in the browser yet: the full Vision Editor (all 218 fields by name; overrides by name are in the Atmosphere form).
 
 ## 15. Automation and command line
 

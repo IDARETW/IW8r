@@ -711,7 +711,8 @@ one undo history, and each side sees the other's edits at once.
   (hover the key; required keys are marked), suggests the class's keys, and lists what Check Map says about it.
 - **Vertices and edges.** Tool in the toolbar: with Vertices or Edges, the selected brushes show a handle on every
   corner or edge of a Top, Front or Side view. Drag a handle: every corner under it moves, so the faces stay flat. A
-  move the brush cannot take is refused with the reason in the status line. Patches are shaped at the editor.
+  move the brush cannot take is refused with the reason in the status line. A selected patch shows its control
+  points with Vertices; locked points are left out.
 - **Panels.** Entities (with a filter), the Inspector (edit, add and remove keys), Assets (click a material to apply
   it, a model, effect, sound or prefab to place it; prefabs land in front of the live view; the round "i" button
   shows the info text of a material, model or effect) and the Log. In the live editor view an asset is placed on the surface
