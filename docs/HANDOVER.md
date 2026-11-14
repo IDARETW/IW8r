@@ -64,7 +64,7 @@ None of this needs the game running:
 - `IW8Radiant.exe --gui-test tests\data\iw8_sample_room.map --out <dir>`: about 1,050 checks of the editor itself,
   the web server and its page included.
 - `tools\run_all_tests.ps1`: both of those plus a start-up test, in one run.
-- `py -3 -I tools\run_offline_proofs.py <work dir>`: 19 end-to-end proofs (all pass, 2026-11-14). Each one edits or builds a real map with the
+- `py -3 -I tools\run_offline_proofs.py <work dir>`: 20 end-to-end proofs (the 19 converter ones passed on 2026-11-14 before the last two were added or rerun; the two that build through the editor pass on the current build). Each one edits or builds a real map with the
   live converter, reads the result back with ACTS, compares it with what was asked, and checks that the game's own
   loaders accept the zone (about 12 minutes).
 - `IW8Radiant.exe --viewport-bench <map> --out <dir>`: frame times and pictures of every view mode.

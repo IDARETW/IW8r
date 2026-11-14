@@ -42,9 +42,9 @@ static const float3 kLitTint = float3(1.04, 1.00, 0.94);    // light leans warm
 static const float3 kShadeTint = float3(0.86, 0.92, 1.12);  // shade leans cool
 static const float kShadeSaturation = 1.25;
 // ---- ink
-static const float kLinePixels = 3.0;     // line width on screen
-static const float kLineMaxUnits = 3.4;   // ... but never wider than this on the surface (far lines thin out;
-                                          // the edge inputs reach 4 units from an edge)
+static const float kLinePixels = 5.0;     // line width on screen
+static const float kLineMaxUnits = 10.0;  // ... but never wider than this on the surface (far lines thin out;
+                                          // the edge inputs reach 12 units from an edge)
 static const float kInk = 0.07;           // brightness left under a line (0 = black)
 static const float3 kInkTint = float3(0.85, 0.80, 1.0);  // ink leans to a dark violet rather than grey
 static const float kSoftFold = 0.90;      // cos of the fold below which an edge is hard (about 26 degrees)

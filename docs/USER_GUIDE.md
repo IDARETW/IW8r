@@ -247,7 +247,7 @@ Commands in the Tools menu:
   direction, position, UV, the sun (direction, colour, shadow), the baked light and the gloss, and returns the lit
   colour. It cannot read textures.
 - **Edge inputs.** `s.edgePixels` is the distance to the nearest edge of the brush face in screen pixels,
-  `s.edgeUnits` the same in units (up to 4), `s.edgeNormal` the normal of the face across that edge, and
+  `s.edgeUnits` the same in units (up to 12), `s.edgeNormal` the normal of the face across that edge, and
   `s.faceNormal` the surface's own normal without the normal map. With them a shader can draw lines of a constant
   width on screen. Seams between flush brushes are not edges. Models have no edge data (`edgePixels` is 1e6).
 - The whole toon look is in `toon.iw8shader.hlsl`: its constants at the top set the line width (`kLinePixels`), the

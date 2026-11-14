@@ -5,6 +5,23 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Toon look: thicker lines, and the last z-fighting spot.** (Owner feedback.) The toon shader draws 5 pixel lines
+  (were 3). The width is the shader's own constant (`kLinePixels` at the top of `toon.iw8shader.hlsl`, Tools > Shader
+  Editor); what had to change in the editor was general: the edge input every custom shader can read now reaches 12
+  units from an edge instead of 4, so a wide line keeps its width about three times as far away. Nothing of the toon
+  look is built into the editor: no command, no brushes, no material; it is that one shader file.
+- **Faces in one plane: one more case drawn once.** Two brushes whose faces lie in one plane and overlap are drawn
+  once (2026-11-13). One case slipped through: the neighbour was looked up by comparing bounds exactly, and a face
+  can measure a hair off its plane, so the pair was missed and both faces were drawn (Cinder Rail: the undersides of
+  two overlapping roof slabs). The comparison has a tolerance now. A new core test checks a whole map for this: no
+  two drawn triangles of different brushes may overlap in one plane (the sample room always; any map with
+  `IW8R_TEST_OVERLAP_MAP`). Cinder Rail Toon: 0 overlapping pairs (was 11), no line along the joins between the
+  brushes of a wall.
+- **Occlusion bake: an end-to-end proof.** `tools\umbra_bake_build_test.py` builds a small walled map with an
+  eight-sided tower through the editor's own build, checks the occluder boxes (the tower's box lies inside it) and
+  reads the built zone's occlusion data back with the stock reader's checks (61 cells, 452 portals, no leaf with
+  several cells). It is in `run_offline_proofs.py`.
+
 - **Web: the Vision Editor.** Compile > Vision Editor (every field) in the web page lists all 213 vision fields a
   number can set, group by group, with the stock value under each. A filled field is the map's override; an emptied
   one goes back to stock. Each value is checked by the field's own rule before anything is written.

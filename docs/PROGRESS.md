@@ -42,6 +42,14 @@
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.
   Web form "vision": every scalar / vector field of core vision_fields as a text field (key "v:<name>"), written
   to worldspawn iw8r_vision through parseVisionOverrides / checkVisionValue / formatVisionOverrides.
+  Owner feedback 2026-11-14 on the toon map (the last game run of mp_cinderrail_t was 2026-11-13 20:28, the first
+  toon build with ink strip brushes; the game's own shader cache main/techsets_mp_cinderrail_t.psob dates it): "not
+  a built in radiant piece of code, simply a custom shader; thicker lines; no lines of every slice of geometry on
+  building walls; z fighting on the squareish structures". State: the ink command and strips were removed on
+  2026-11-13 (commit 90b5f03), slice lines and coplanar double draws on 4cd4c61. Done now: kEdgeRange 4 -> 12 (core
+  face_edges; tests use the constant), toon kLinePixels 3 -> 5 and kLineMaxUnits 3.4 -> 10 (template and the map's
+  copy), kBoundsSlack in coplanarCovers / hiddenCovers (the missed roof slab pair), tests/face_overlap_tests.cpp,
+  zones of out/agent/mp_cinderrail_toon rebuilt (out/agent/toonbuild). Check renders: out/agent/toonchk.
   The web list of plan 3.3 / 3.4 is done (the Vision Editor form closed it). Earlier note: (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder

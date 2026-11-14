@@ -15,6 +15,7 @@ constexpr double kClipEps = 0.01;
 constexpr double kWeld = 0.004;     // vertices of different pieces closer than this are one
 constexpr double kMinHeight = 0.02; // a triangle flatter than this is not made
 constexpr double kMinSpan = 0.25;  // world units: shorter edge stretches and shorter seams are ignored
+constexpr double kBoundsSlack = 0.1;  // world units: bounds this close count as touching
 
 double polyArea(const Winding& w) {
     Vec3 s;
@@ -458,8 +459,9 @@ std::vector<Winding> coplanarCovers(const std::vector<EdgeBrush>& brushes, size_
         if (ci == self || ci >= brushes.size()) continue;
         const EdgeBrush& C = brushes[ci];
         if (C.set != B.set) continue;
-        if (C.bounds.mins.x > ab.maxs.x || C.bounds.maxs.x < ab.mins.x || C.bounds.mins.y > ab.maxs.y || C.bounds.maxs.y < ab.mins.y ||
-            C.bounds.mins.z > ab.maxs.z || C.bounds.maxs.z < ab.mins.z)
+        // With slack: bounds come from windings, and two faces of one plane can differ in the last bits.
+        if (C.bounds.mins.x > ab.maxs.x + kBoundsSlack || C.bounds.maxs.x < ab.mins.x - kBoundsSlack || C.bounds.mins.y > ab.maxs.y + kBoundsSlack ||
+            C.bounds.maxs.y < ab.mins.y - kBoundsSlack || C.bounds.mins.z > ab.maxs.z + kBoundsSlack || C.bounds.maxs.z < ab.mins.z - kBoundsSlack)
             continue;
         for (size_t g = 0; g < C.planes.size() && g < C.wins.size(); ++g) {
             const Winding& F = C.wins[g];
@@ -511,8 +513,9 @@ std::vector<Winding> hiddenCovers(const std::vector<EdgeBrush>& brushes, size_t 
         if (ci == self || ci >= brushes.size()) continue;
         const EdgeBrush& C = brushes[ci];
         if (C.set != B.set || !C.opaque) continue;
-        if (C.bounds.mins.x > ab.maxs.x || C.bounds.maxs.x < ab.mins.x || C.bounds.mins.y > ab.maxs.y || C.bounds.maxs.y < ab.mins.y ||
-            C.bounds.mins.z > ab.maxs.z || C.bounds.maxs.z < ab.mins.z)
+        // With slack: bounds come from windings, and two faces of one plane can differ in the last bits.
+        if (C.bounds.mins.x > ab.maxs.x + kBoundsSlack || C.bounds.maxs.x < ab.mins.x - kBoundsSlack || C.bounds.mins.y > ab.maxs.y + kBoundsSlack ||
+            C.bounds.maxs.y < ab.mins.y - kBoundsSlack || C.bounds.mins.z > ab.maxs.z + kBoundsSlack || C.bounds.maxs.z < ab.mins.z - kBoundsSlack)
             continue;
         Winding in = lifted;
         for (size_t g = 0; g < C.planes.size() && !in.empty(); ++g) {

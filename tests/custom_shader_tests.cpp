@@ -36,8 +36,8 @@ TEST(custom_shader_edge_inputs) {
     CHECK(!customShaderUsesEdges("float3 iw8rSurface(IW8RSurface s) { return s.faceNormal; }"));
     // Both hosts get the struct, the range and the helper that fills the edge inputs before the shader's code.
     const std::string pre = customShaderPreamble();
-    CHECK(pre.find("struct IW8RSurface") < pre.find("#define IW8R_EDGE_RANGE 4"));
-    CHECK(pre.find("#define IW8R_EDGE_RANGE 4") < pre.find("void iw8rEdgeFields("));
+    CHECK(pre.find("struct IW8RSurface") < pre.find("#define IW8R_EDGE_RANGE 12"));
+    CHECK(pre.find("#define IW8R_EDGE_RANGE 12") < pre.find("void iw8rEdgeFields("));
     for (const char* field : {"faceNormal", "edgePixels", "edgeUnits", "edgeNormal"}) CHECK(pre.find(field) != std::string::npos);
     CustomShader s;
     s.name = "lines";

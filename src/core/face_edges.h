@@ -30,7 +30,7 @@
 
 namespace iw8r {
 
-inline constexpr double kEdgeRange = 4.0;       // world units the edge distance is kept over
+inline constexpr double kEdgeRange = 12.0;      // world units the edge distance is kept over (4 until 2026-11-14)
 inline constexpr double kEdgeSoftAngle = 0.35;  // radians (20 degrees): flatter folds between brushes are soft
 
 // One brush for the edge search: planes[i] (dot(n, x) = d, n outward) with its winding (empty: no face), whether the

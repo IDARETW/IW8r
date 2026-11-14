@@ -4,6 +4,7 @@
 #include "test_harness.h"
 
 #include <cmath>
+#include <cstdio>
 #include <map>
 #include <set>
 
@@ -91,8 +92,8 @@ TEST(face_edges_box_face_distance_is_exact) {
     const int side = faceWithNormal(brushes[0], {1, 0, 0});  // 32 x 16
     const EdgeFaceMesh& sm = meshes[size_t(side)];
     CHECK(std::fabs(meshArea(sm) - 32.0 * 16.0) < 1e-6);
-    CHECK(std::fabs(edgeAt(sm, {64, 16, 8}, {1, 0, 0}) - 1.0) < 1e-6);   // 8 units from the nearest edge
-    CHECK(std::fabs(edgeAt(sm, {64, 16, 2}, {1, 0, 0}) - 0.5) < 1e-6);
+    CHECK(std::fabs(edgeAt(sm, {64, 16, 8}, {1, 0, 0}) - std::min(1.0, 8.0 / kEdgeRange)) < 1e-6);   // 8 units from the nearest edge
+    CHECK(std::fabs(edgeAt(sm, {64, 16, 2}, {1, 0, 0}) - 2.0 / kEdgeRange) < 1e-6);
 }
 
 TEST(face_edges_seams_and_partial_edges) {
@@ -106,7 +107,7 @@ TEST(face_edges_seams_and_partial_edges) {
         CHECK(spans.size() == 3);
         const auto meshes = edgeBrushMeshes(brushes, 0, near[0]);
         CHECK(std::fabs(edgeAt(meshes[size_t(top)], {63, 32, 16}, {0, 0, 1}) - 1.0) < 1e-6);  // beside the seam: no edge
-        CHECK(std::fabs(edgeAt(meshes[size_t(top)], {1, 32, 16}, {0, 0, 1}) - 0.25) < 1e-6);   // the open side
+        CHECK(std::fabs(edgeAt(meshes[size_t(top)], {1, 32, 16}, {0, 0, 1}) - 1.0 / kEdgeRange) < 1e-6);   // the open side
         // A brush of another set (a moving brush entity) is not a seam.
         std::vector<EdgeBrush> other{brushes[0], boxBrush({64, 0, 0}, {128, 64, 16}, 7)};
         CHECK(edgeNeighbours(other)[0].empty());
@@ -129,7 +130,7 @@ TEST(face_edges_seams_and_partial_edges) {
         CHECK(cut == 1);
         const EdgeFaceMesh m = edgeBrushMeshes(brushes, 0, near[0])[size_t(top)];
         CHECK(std::fabs(meshArea(m) - 64.0 * 64.0) < 1e-6);
-        CHECK(std::fabs(edgeAt(m, {63, 48, 16}, {0, 0, 1}) - 0.25) < 1e-6);  // beside the open half
+        CHECK(std::fabs(edgeAt(m, {63, 48, 16}, {0, 0, 1}) - 1.0 / kEdgeRange) < 1e-6);  // beside the open half
         CHECK(std::fabs(edgeAt(m, {63, 16, 16}, {0, 0, 1}) - 1.0) < 1e-6);   // beside the seam
     }
     // A crate on a floor: the crate's sides keep their bottom edge (a real line where wall meets floor); a taller
@@ -309,4 +310,43 @@ TEST(face_edges_hidden_faces_are_not_drawn) {
     CHECK(!edgeBrushOpaque(box, std::vector<std::string>{"wall", "wall", "glass", "wall", "wall", "wall"}, isTool, isOpaque));
     CHECK(!edgeBrushOpaque(box, std::vector<std::string>{"wall", "wall", "clip", "wall", "wall", "wall"}, isTool, isOpaque));
     CHECK(!edgeBrushOpaque(box, std::vector<std::string>(6, "caulk"), isTool, isOpaque));
+}
+
+// Two roof slabs that overlap each other by 8 units and stand 4 units out over the walls under them (Cinder Rail's
+// roofs): where the slabs' undersides overlap beside the walls, one of them is drawn, not both.
+TEST(face_edges_overlapping_slabs_over_walls_draw_once) {
+    std::vector<EdgeBrush> b{boxBrush({-68, -228, 144}, {68, 228, 152}), boxBrush({-68, 220, 144}, {68, 348, 152}),
+                             boxBrush({-64, -224, 0}, {64, 224, 144}), boxBrush({-64, 224, 0}, {64, 344, 144})};
+    for (auto& x : b) x.opaque = true;
+    const auto near = edgeNeighbours(b);
+    const Vec3 down{0, 0, -1};
+    const double a0 = meshArea(edgeBrushMeshes(b, 0, near[0], kEdgeRange, true, &near)[size_t(faceWithNormal(b[0], down))]);
+    const double a1 = meshArea(edgeBrushMeshes(b, 1, near[1], kEdgeRange, true, &near)[size_t(faceWithNormal(b[1], down))]);
+    // What can be seen from below: the slabs' footprint (136 x 576) less the walls' (128 x 568).
+    if (std::fabs(a0 + a1 - 5632.0) > 1e-3) std::printf("  undersides %.3f + %.3f (5632 wanted)\n", a0, a1);
+    CHECK(std::fabs(a0 + a1 - 5632.0) < 1e-3);
+    // The same without the walls: the whole footprint once.
+    std::vector<EdgeBrush> s{b[0], b[1]};
+    const auto sn = edgeNeighbours(s);
+    const double s0 = meshArea(edgeBrushMeshes(s, 0, sn[0], kEdgeRange, true, &sn)[size_t(faceWithNormal(s[0], down))]);
+    const double s1 = meshArea(edgeBrushMeshes(s, 1, sn[1], kEdgeRange, true, &sn)[size_t(faceWithNormal(s[1], down))]);
+    if (std::fabs(s0 + s1 - 136.0 * 576.0) > 1e-3) std::printf("  slabs alone %.3f + %.3f (%.0f wanted)\n", s0, s1, 136.0 * 576.0);
+    CHECK(std::fabs(s0 + s1 - 136.0 * 576.0) < 1e-3);
+}
+
+// The same roofs with the pilaster that stands in the wall under them (the brushes of Cinder Rail's centre building).
+TEST(face_edges_overlapping_slabs_with_pilaster_draw_once) {
+    std::vector<EdgeBrush> b{boxBrush({-64, -224, 0}, {64, 224, 144}), boxBrush({-64, 224, 0}, {64, 344, 144}),
+                             boxBrush({-68, -228, 144}, {68, 228, 152}), boxBrush({-68, 220, 144}, {68, 348, 152}),
+                             boxBrush({-64, 220, 0}, {-52, 348, 144})};
+    for (auto& x : b) x.opaque = true;
+    const auto near = edgeNeighbours(b);
+    const Vec3 down{0, 0, -1};
+    for (int withEdges = 0; withEdges < 2; ++withEdges) {
+        const double a0 = meshArea(edgeBrushMeshes(b, 2, near[2], kEdgeRange, withEdges != 0, &near)[size_t(faceWithNormal(b[2], down))]);
+        const double a1 = meshArea(edgeBrushMeshes(b, 3, near[3], kEdgeRange, withEdges != 0, &near)[size_t(faceWithNormal(b[3], down))]);
+        // As above, less the 12 x 4 units where the pilaster stands out past the wall's end under the slab.
+        if (std::fabs(a0 + a1 - 5584.0) > 1e-3) std::printf("  with pilaster (edges %d): undersides %.3f + %.3f (5584 wanted)\n", withEdges, a0, a1);
+        CHECK(std::fabs(a0 + a1 - 5584.0) < 1e-3);
+    }
 }
