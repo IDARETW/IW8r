@@ -5,10 +5,17 @@ camera. The game scales that distance by the view's field of view first. This no
 editor does with it.
 
 **Labels.** INFERRED = read in the IW8 game-test decompile ("GT",
-`game-test-src-cleaned\code_source\src\`), which is not Replay; the arithmetic is as written there, and Replay was
-not checked. Nothing was run in the game.
+`game-test-src-cleaned\code_source\src\`), which is not Replay. VERIFIED = read in the Replay 1.20 exe: its copy of
+`R_SetLodParms` is at `0x14197F880` (found by the constant 2.1186731, which the exe holds once, at `0x1424CE830`).
+Nothing was run in the game.
 
-## 1. The rule (INFERRED, GT)
+## 1. The rule (the factor VERIFIED in Replay; the per-model use INFERRED from GT)
+
+Replay `0x14197F880`: `tanHalfFovY x 2.118673 x lodOverride`, divided by the memory-pressure modifier, is stored as
+`invFovScale` (+64); `min(invFovScale, 1)` as `cappedLodScale` (+68); the ramp's scale and bias are that factor times
+`(dynResScale + r_lodScale)` and `r_lodBias`; `allowLODOutStatic` is `r_lodOutStaticRamp`. Replay's function has no
+split-screen factor (the game-test build doubles the value in split screen). The functions that use the two values
+per collection were read in GT only.
 
 `R_SetLodParms` (`gfx_d3d\r_scene.cpp`, around lines 14600-14660):
 
@@ -86,7 +93,7 @@ units outside 0.47 % differ and the frame goes from 9.2 to 8.3 ms. Verdansk, rai
 
 ## 3. Not determined
 
-- Whether Replay's constants equal the game-test build's (the 2.1186731 and the split-screen 2).
+- The per-collection functions (`R_GetStaticModelCollectionLODAndDists` and its callers) in Replay: read in GT only.
 - How a collection of several instances picks each instance's level between the nearest and the farthest (the
   viewport measures every placement on its own).
 - The clutter ramp (`r_st_clutterLodScale`, `r_st_clutterLodBias`): the viewport's ground clutter uses the plain rule.
