@@ -587,7 +587,7 @@
       }
     },
     "iw8r_volume": {
-      "description": "Volumetric box (editor class, 5.7): written as a world volumetric (lit fog / light shafts inside the box). Density and falloff units and the in-game look are not verified yet.",
+      "description": "Volumetric box (editor class, 5.7): a box of fog in the game's volumetric air, lit by the sun, the sky light and lamps with iw8r_volumetric. Density is extinction per unit (0.001 is a light haze, stock boxes hold 0.0002 to 0.04); falloff is the soft border in units. Mask pictures (mask .. mask4) break it into drifting patches. Game Lighting shows it. Seen in game only as part of a haze.",
       "kind": "point",
       "size": [
         [
@@ -686,6 +686,39 @@
             "64",
             "200"
           ]
+        },
+        "mask": {
+          "type": "string",
+          "default": "",
+          "description": "A picture that thins the box's fog (white keeps it, black removes it): \"<picture> [x|y|z] <sizeU> [<sizeV> [<scrollU> <scrollV> [<offsetU> <offsetV>]]]\". The picture is projected through the box along the axis (default z, the box's up) and repeats every size units; scroll moves it, in units per second. Pictures: a file name without its ending from the map's volume_masks folder (PNG, TGA, JPG, BMP), or the editor's clouds_soft and clouds_hard. Game Lighting shows it. Up to four masks multiply (mask2, mask3, mask4): two cloud layers moving at different speeds look like drifting mist. Not seen in game.",
+          "required": false,
+          "examples": [
+            "clouds_soft 800",
+            "clouds_hard z 400 400 60 20"
+          ]
+        },
+        "mask2": {
+          "type": "string",
+          "default": "",
+          "description": "A second mask picture, as mask. All masks of a box multiply.",
+          "required": false,
+          "examples": [
+            "clouds_hard 400 400 -40 15"
+          ]
+        },
+        "mask3": {
+          "type": "string",
+          "default": "",
+          "description": "A third mask picture, as mask.",
+          "required": false,
+          "examples": []
+        },
+        "mask4": {
+          "type": "string",
+          "default": "",
+          "description": "A fourth mask picture, as mask.",
+          "required": false,
+          "examples": []
         }
       }
     },

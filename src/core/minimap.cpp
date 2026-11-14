@@ -153,8 +153,55 @@ void putU32(std::vector<uint8_t>& bytes, size_t offset, uint32_t value) {
 
 }  // namespace
 
-MinimapImage renderMinimap(const MapFile& map, int size) {
+int minimapNorthQuarter(double yaw, bool* exact) {
+    const double turns = yaw / 90.0;
+    const double nearest = std::round(turns);
+    if (exact) *exact = std::isfinite(yaw) && std::abs(turns - nearest) < 1e-4;
+    if (!std::isfinite(yaw)) return 1;
+    return int(((static_cast<long long>(nearest) % 4) + 4) % 4);
+}
+
+double mapNorthYaw(const MapFile& map) {
+    for (const Entity& e : map.entities) {
+        if (!e.isWorldspawn()) continue;
+        if (const std::string* v = e.value("northyaw"); v && !v->empty()) {
+            char* end = nullptr;
+            const double yaw = std::strtod(v->c_str(), &end);
+            if (end != v->c_str() && std::isfinite(yaw)) return yaw;
+        }
+        break;
+    }
+    return 90.0;
+}
+
+int minimapQuarterForBuild(const MapFile& map, std::string* warning) {
+    bool exact = true;
+    const double yaw = mapNorthYaw(map);
+    const int quarter = minimapNorthQuarter(yaw, &exact);
+    if (exact) return quarter;
+    if (warning) {
+        char buf[200];
+        std::snprintf(buf, sizeof buf, "northyaw %.6g is not a quarter turn: the minimap is drawn with +Y up, and the compass's north will not "
+                                       "point along it (use 0, 90, 180 or 270)", yaw);
+        *warning = buf;
+    }
+    return 1;
+}
+
+void minimapPixel(const AABB& rect, int size, int quarter, double x, double y, double& column, double& row) {
+    const double span = rect.maxs.x - rect.mins.x;
+    const double scale = span > 0 ? size / span : 0.0;
+    switch (((quarter % 4) + 4) % 4) {
+    case 1: column = (x - rect.mins.x) * scale, row = (rect.maxs.y - y) * scale; break;
+    case 2: column = (y - rect.mins.y) * scale, row = (x - rect.mins.x) * scale; break;
+    case 3: column = (rect.maxs.x - x) * scale, row = (y - rect.mins.y) * scale; break;
+    default: column = (rect.maxs.y - y) * scale, row = (rect.maxs.x - x) * scale; break;
+    }
+}
+
+MinimapImage renderMinimap(const MapFile& map, int size, int northQuarter) {
     MinimapImage img;
+    img.northQuarter = ((northQuarter % 4) + 4) % 4;
     img.width = img.height = normalizeSize(size);
     img.rgba.assign(size_t(img.width) * size_t(img.height) * 4, 0);
 
@@ -184,11 +231,12 @@ MinimapImage renderMinimap(const MapFile& map, int size) {
     const double span = rect.maxs.x - rect.mins.x;
     if (!(span > 0.0)) return img;
     const int n = img.width;
-    const double scale = n / span;
 
-    // Source frame (minimap.h): column = (maxY - y) * scale, row = (maxX - x) * scale.
+    // North up (minimap.h): quarter 0 gives column = (maxY - y) * scale, row = (maxX - x) * scale.
     const auto toPixel = [&](const Vec3& p) {
-        return Vec3{(rect.maxs.y - p.y) * scale, (rect.maxs.x - p.x) * scale, p.z};
+        double column = 0, row = 0;
+        minimapPixel(rect, n, img.northQuarter, p.x, p.y, column, row);
+        return Vec3{column, row, p.z};
     };
 
     std::vector<double> depth(size_t(n) * size_t(n), -std::numeric_limits<double>::infinity());

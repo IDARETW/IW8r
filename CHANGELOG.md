@@ -5,6 +5,22 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Fixed: the minimap was a quarter turn off in game** (owner's run of Cinder Rail Toon). The minimap picture was
+  always drawn for a map whose north is +X, but since 2026-11-11 the build writes north = +Y (the top of the XY
+  view), so the converter no longer turned it and the game showed it turned against the player. The picture is now
+  drawn with the map's north up, for whatever `northyaw` the map has (a value that is no quarter turn gets a
+  warning). Proof `tools/minimap_build_test.py`: two maps are built (north +Y, north +X), the picture is read back
+  from each zone, and a block in the +X +Y corner is at the top right in both. Rebuild a map to get it.
+- **Seen in game by the owner (evening):** Cinder Rail Toon without the occlusion bake is fine, and the map built
+  again with the fixed occlusion bake works. The bake's build note and tooltip say so.
+- **Volumetric boxes: mask pictures.** An `iw8r_volume` takes up to four masks (`mask`, `mask2`, `mask3`, `mask4`):
+  `"<picture> [x|y|z] <sizeU> [<sizeV> [<scrollU> <scrollV> [<offsetU> <offsetV>]]]"`. A mask thins the box's fog by
+  a picture projected through the box and repeated every size units; scroll makes it drift. This is how stock
+  mp_village2 makes its moving mist. The editor ships two cloud pictures (`clouds_soft`, `clouds_hard`,
+  `data/volume_masks`); a map's own go into `<map folder>/volume_masks`. Game Lighting shows the masks, moving.
+  Proof `tools/volume_mask_build_test.py` (the masks and both pictures are read back from the built zone).
+  Not seen in game.
+
 - **Fixed: a lamp's glow in the haze was missing in the viewport.** A lamp with `iw8r_volumetric` lights the
   volumetric air in the built map; the viewport's Game Lighting never showed it, because the glow read the frame's
   light list before it was filled. Found by rendering the same room with and without the key (the two pictures were

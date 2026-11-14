@@ -299,3 +299,23 @@ py -3 -I out/agent/post109/py/vision_dump.py <vision> volumetric
 py -3 -I out/agent/post109/py/disx.py 0x18B6EC0 0x18B7100                               (R_VOL_AddVolumetric)
 copy out/agent/toon_ship/ps/.../pixelshader/*.cso to scratch; py -3 -I out/agent/shader_research/py/dxbc_dis.py <scratch>
 ```
+
+## Masks on a built map (added 2026-11-14, main session)
+
+Built, proven offline, not seen in game.
+
+- Keys `mask`, `mask2`, `mask3`, `mask4` of an `iw8r_volume` (core `src/core/volume_mask.*`):
+  `"<picture> [x|y|z] <sizeU> [<sizeV> [<scrollU> <scrollV> [<offsetU> <offsetV>]]]"`. The build writes them as the
+  box's `masks` (type 2, the only kind the game draws; axis 0, 1 or 2; scale = the sizes in units; offset; scroll)
+  and each picture as `images/iw8r_vmask_<picture>.dds`; the converter's existing volumetric path makes the picture
+  a resident image of the map's zone.
+- Pictures: `<map folder>/volume_masks`, then the editor's `data/volume_masks` (`clouds_soft`, `clouds_hard`: tileable
+  noise made by `tools/gen_volume_masks.py`; stock mp_village2 uses its own `clouds_med_vol` / `clouds_hard_vol` at
+  800, 400 and 200 units with scrolls of 50 to 75 units a second).
+- The viewport (Game Lighting) samples them by the rule of A.2: `uv = (u / sizeU, -v / sizeV) + (offset + t * scroll)
+  / size + 0.5`, u and v the two box axes other than the mask's, the red channel, repeated.
+- Still not read from the exe (A.6): the sampler's address mode (taken as repeat: a scrolling picture needs it) and
+  the unit of the scroll's time (taken as seconds).
+- Proof `tools/volume_mask_build_test.py`: the built world's box has both masks with the keys' axes, sizes, offsets
+  and scrolls, masks 2 and 3 unused; both images are in the map's zone, and a striped test picture comes back pixel
+  for pixel.

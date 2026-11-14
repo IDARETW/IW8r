@@ -3554,6 +3554,19 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             ctx.documentEdited();
             cv->renderImage(320, 180, true, 0, 100);
             const int plain = cv->gameLookForTest().volLampCount;
+            // A volumetric box with a mask: the mask's code (the picture's slice and its axis) and its sizes reach the
+            // renderer; a mask whose picture does not exist does nothing.
+            const Id fogBox = ctx.doc.addEntity({{"classname", "iw8r_volume"}, {"origin", "0 0 64"}, {"density", "0.01"},
+                                                 {"mask", "clouds_soft x 400 200"}, {"mask2", "no_such_picture 100"}}, {}, "t");
+            ctx.documentEdited();
+            cv->renderImage(320, 180, true, 0, 100);
+            const auto& look = cv->gameLookForTest();
+            const bool masked = look.volBoxCount == 1 && look.volBoxMasks[0][0] == 0.0f && look.volBoxMasks[0][1] < 0.0f &&
+                                std::fabs(look.volBoxMasks[0][4] - 1.0f / 400) < 1e-7f && std::fabs(look.volBoxMasks[0][5] - 1.0f / 200) < 1e-7f;
+            r.check(masked, QString("a volumetric box's mask reaches the renderer with its picture, axis and sizes (%1 box(es), code %2)")
+                                .arg(look.volBoxCount).arg(double(look.volBoxMasks[0][0])));
+            (void)fogBox;
+            ctx.doc.undo();  // the box
             for (int k = 0; k < (ws0 ? 3 : 2); ++k) ctx.doc.undo();  // the key, the lamp, the haze
             ctx.documentEdited();
             r.check(flagged == 1 && radius == 300.0f && plain == 0,

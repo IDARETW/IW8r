@@ -64,10 +64,9 @@ zones, buy stations, and the streamed world that follows the camera. Limit: the 
 be replaced (the client refuses unsigned tiles), so edits live in the main map zone.
 
 **Occlusion (optional).** Compile > Occlusion bake gives your map cells and portals so the game skips what is behind
-walls. Off by default, and leave it off for a map you want to play: its first game test (2026-11-14) lost surfaces
-and models. The cause was found and fixed the same day (research 129) and the fix is proven on that very map
-offline, but it has not been seen in game since. View > Umbra Visibility shows what a stock map's own occlusion data
-hides.
+walls. Off by default. Its first game test (2026-11-14) lost surfaces and models; the cause was found and fixed the
+same day (research 129), and Cinder Rail Toon built again with the fixed bake worked in game that evening. View >
+Umbra Visibility shows what a stock map's own occlusion data hides.
 
 **From a browser.** Tools > Web Server: the editor's menus, twelve dialogs and docks as forms, the editor's own 3D picture with
 fly controls, drawing, resizing and reshaping brushes (corner and edge handles), placing assets, prefabs and
@@ -102,8 +101,11 @@ lines from the scene depth on Cinder Rail Toon and on Shipment's stock geometry;
   states, the order of shader arguments, technique flags, shaders the driver refused, the image the lines take over
   (all 192 stock shaders read it only in thermal view). The zone changes shaders only, not what the game draws or
   hides. File > Restore Stock Map In Game takes the zone out.
-- Cinder Rail Toon lost surfaces and models: that build had the occlusion bake on. The map in the game folder is a
-  build without it (since 16:25 that day); not looked at since.
+- Cinder Rail Toon lost surfaces and models: that build had the first occlusion bake. Settled the same evening: the
+  build without the bake is fine in game, and so is a build with the fixed bake.
+- The minimap was a quarter turn off against the player on built maps (seen on Cinder Rail Toon). Cause: the picture
+  was drawn for a map whose north is +X while the build writes north = +Y. Fixed (the picture is drawn with the
+  map's north up) and proven offline on two built maps; rebuild a map to get it. Not seen in game since.
 
 **Built and proven offline, not seen in game.** `docs\TEST_CHECKLIST.md` has the steps:
 1. **The first-person look** after File > First-Person Look > Install Into Game.
@@ -112,7 +114,7 @@ lines from the scene depth on Cinder Rail Toon and on Shipment's stock geometry;
 4. **A stock door carried into your own map opens** (real stock scripted objects).
 5. **A stock map rebuilt with removed world geometry**: the object is gone and you walk through where it was.
 6. **Copied loot, doors and extraction sites on Quarry** work like the originals.
-7. **The occlusion bake after its fix** (only if you want it): nothing is missing anywhere on a map built with it.
+7. **The minimap** on a map built on or after the evening of 2026-11-14: the player arrow sits where the player is.
 
 ## 5. Not built, or built in part
 

@@ -50,6 +50,8 @@ proofs = [
     ('probe_capture_build_test', ['--exe', exe]),  # a built map's probes: coloured, at the stock probes' level
     ('physics_bounds_build_test', ['--exe', exe]),  # a built map's physics world is as large as a stock map's
     ('mount_edges_build_test', ['--exe', exe]),  # a built map's mount edges, read back and queried as the game does
+    ('volume_mask_build_test', ['--exe', exe]),  # a volumetric box's mask pictures, read back from the built zone
+    ('minimap_build_test', ['--exe', exe]),  # the minimap picture is the right way up for both norths
     ('viewmodel_look_build_test', []),  # the first-person look: the shared weapon and arm zone, built by the editor
     ('warzone_custom_loot_test', None),
     ('warzone_custom_loot_boxes_test', None),

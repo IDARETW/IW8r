@@ -367,15 +367,18 @@ Map: `out/agent/mp_iw8r_fix1/mp_iw8r_fix1.map` (already built; Ctrl+F7, then Loc
       haze toward the horizon, bright sky.
 - [ ] Haze details: light shafts where the sun passes gaps; glass and other see-through surfaces fogged like the
       walls behind them.
-- [ ] Cinder Rail Toon without the occlusion bake (redeployed 2026-11-14 16:25): no surface or model goes missing.
+- [x] (owner, 2026-11-14 evening: "seemed to be fine") Cinder Rail Toon without the occlusion bake (redeployed
+      2026-11-14 16:25): no surface or model goes missing.
       (With Occlusion bake on, surfaces came and went and models were not drawn: the bake is experimental.)
 - [ ] Toon look on the first-person weapon and hands: built and waiting in the editor. File > First-Person Look
       (weapon and hands) > Install Into Game (game closed); then weapons and hands show the toon colours and ink lines
       on every map, and nothing else changes. Restore In Game takes it out.
 - [ ] Weapon mounting on a map built on or after 2026-11-14: at a wall corner and at a waist-high ledge the mount
       prompt shows and the weapon rests on the edge; mantling still works as before.
-- [ ] Occlusion bake after the fix of 2026-11-14 (research 129): a map built with Occlusion bake on keeps all its
-      surfaces and models from every camera position.
+- [x] (owner, 2026-11-14 evening) Occlusion bake after the fix of 2026-11-14 (research 129): Cinder Rail Toon built
+      with Occlusion bake on "seems to give a working map".
+- [ ] Minimap after the fix of 2026-11-14 evening (rebuild the map): the player arrow sits where the player stands
+      and the picture turns with the player as on a stock map.
 - [ ] Killstreak aircraft that fly high or start far out (gunship, cruise missile, advanced UAV, airstrike planes)
       move normally: the map's physics world is now as large as a stock map's (research 124; rebuild first).
 - [ ] Killstreaks, radar: with a UAV (not the Personal Radar) enemies without the Ghost perk ping on the minimap

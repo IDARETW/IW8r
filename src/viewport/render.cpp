@@ -605,8 +605,13 @@ cbuffer Volume : register(b13) { row_major float4x4 volInvVP; float4 volEye; flo
                                  float4 volBox[40];      // per box 5 rows: centre + density, three axes + half sizes,
                                                          // (1 / falloff, -0.1 x height fade, 0, 0)
                                  float4 volLampInfo;     // x: lamps in use (0..8), y: spot brightness, z: omni brightness
-                                 float4 volLamp[24]; };  // per lamp 3 rows, as PixelLight: position + radius, colour + cos
+                                 float4 volLamp[24];     // per lamp 3 rows, as PixelLight: position + radius, colour + cos
                                                          // outer (below -1.5: omni), axis + cos inner
+                                 float4 volBoxMask[40]; };  // per box 5 rows: a code per mask (picture x 4 + axis, below 0:
+                                                            // none), then per mask 1 / sizeU, 1 / sizeV, the two offsets
+// The mask pictures of the volumetric boxes (research 127 section A.2): one grey picture per slice, repeated.
+Texture2DArray<float> volMask : register(t24);
+SamplerState volMaskSamp : register(s3);
 // The light of the flagged lamps in the air at a point, seen along V (research 126 section 1.4): each lamp's light
 // there (the falloff and cone it has on surfaces), the phase toward the eye, pi, and the vision's lamp brightness.
 float3 volLampLight(float3 P, float3 V, float g) {
@@ -641,7 +646,18 @@ float volBoxSigma(float3 P) {
         const float invFalloff = volBox[b * 5 + 4].x;
         // 0 in the core, 1 at a face; the corners are rounded.
         const float3 q = max(abs(local) * invFalloff - (halfSize * invFalloff - 1.0), 0.0);
-        sum += volBox[b * 5].w * saturate(1.0 - length(q)) * exp(volBox[b * 5 + 4].y * (local.z + halfSize.z));
+        // Each mask multiplies: the picture lies on the two box axes other than the mask's own, v turned over.
+        float m = 1.0;
+        const float4 codes = volBoxMask[b * 5];
+        [loop] for (int k = 0; k < 4; ++k) {
+            const float code = codes[k];
+            if (code < 0.0) continue;
+            const int axis = int(code) & 3;
+            const float2 uv = axis == 0 ? local.yz : (axis == 1 ? local.xz : local.xy);
+            const float4 t = volBoxMask[b * 5 + 1 + k];
+            m *= volMask.SampleLevel(volMaskSamp, float3(uv.x * t.x + t.z, -uv.y * t.y + t.w, floor(code * 0.25)), 0);
+        }
+        sum += volBox[b * 5].w * saturate(1.0 - length(q)) * exp(volBox[b * 5 + 4].y * (local.z + halfSize.z)) * m;
     }
     return sum;
 }
@@ -1567,6 +1583,8 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(cbLights_);
     safeRelease(cbGame_);
     safeRelease(cbVol_);
+    safeRelease(volMaskSrv_);
+    volMaskVersion_ = 0;
     for (auto*& ps : customPs_) safeRelease(ps);
     customPs_.clear();
     for (int k = 0; k < 3; ++k) safeRelease(gameLmSrv_[k]), safeRelease(gameLmTex_[k]);
@@ -2267,7 +2285,7 @@ void SceneRenderer::drawPost() {
     {
         // The volumetric fog's constants (b13) and inputs: the depth (t28), the sun shadow maps (t2, s1) and the
         // frame's constants (b0: the shadow matrices).
-        float cb[308] = {};
+        float cb[468] = {};
         const bool volOn = game_.on && (volumetricOn_ || game_.volOwn) && game_.vol[2][2] > 0.5f && depthSrv_ && invert4(lastViewProj_, cb);
         if (volOn) {
             cb[16] = fog_[0], cb[17] = fog_[1], cb[18] = fog_[2];
@@ -2281,6 +2299,9 @@ void SceneRenderer::drawPost() {
             const int lamps = std::clamp(game_.volLampCount, 0, 8);
             cb[208] = float(lamps), cb[209] = game_.volLampBrightness[0], cb[210] = game_.volLampBrightness[1];
             std::memcpy(cb + 212, game_.volLamps, size_t(lamps) * 12 * sizeof(float));
+            // Masks: without a picture array every code is "none".
+            for (int b = 0; b < boxes; ++b)
+                for (int k = 0; k < 20; ++k) cb[308 + b * 20 + k] = volMaskSrv_ || k >= 4 ? game_.volBoxMasks[b][k] : -1.0f;
         }
         if (!cbVol_ && dev_) {
             D3D11_BUFFER_DESC bd{};
@@ -2296,6 +2317,9 @@ void SceneRenderer::drawPost() {
         ctx_->PSSetConstantBuffers(0, 1, &cb_);
         ID3D11ShaderResourceView* d = volOn ? depthSrv_ : nullptr;
         ctx_->PSSetShaderResources(28, 1, &d);
+        ID3D11ShaderResourceView* masks = volOn ? volMaskSrv_ : nullptr;
+        ctx_->PSSetShaderResources(24, 1, &masks);
+        if (sampler_) ctx_->PSSetSamplers(3, 1, &sampler_);
         if (shadowSrv_ && cmpSampler_) {
             ctx_->PSSetShaderResources(2, 1, &shadowSrv_);
             ctx_->PSSetSamplers(1, 1, &cmpSampler_);
@@ -2957,6 +2981,32 @@ void SceneRenderer::setGameTonemapLut(int size, const uint8_t* rgba) {
         sd.MaxLOD = D3D11_FLOAT32_MAX;
         dev_->CreateSamplerState(&sd, &lutSampler_);
     }
+}
+
+void SceneRenderer::setVolumeMasks(const std::vector<std::vector<uint8_t>>& pictures, uint64_t version) {
+    if (version == volMaskVersion_) return;
+    volMaskVersion_ = version;
+    if (volMaskSrv_) volMaskSrv_->Release(), volMaskSrv_ = nullptr;
+    if (!dev_ || pictures.empty()) return;
+    const UINT n = UINT(std::min<size_t>(pictures.size(), size_t(kVolMaskSlices)));
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = td.Height = UINT(kVolMaskSize);
+    td.MipLevels = 1;
+    td.ArraySize = n;
+    td.Format = DXGI_FORMAT_R8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_IMMUTABLE;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    std::vector<D3D11_SUBRESOURCE_DATA> init(n);
+    for (UINT i = 0; i < n; ++i) {
+        if (pictures[i].size() != size_t(kVolMaskSize) * kVolMaskSize) return;
+        init[i].pSysMem = pictures[i].data();
+        init[i].SysMemPitch = UINT(kVolMaskSize);
+    }
+    ID3D11Texture2D* tex = nullptr;
+    if (FAILED(dev_->CreateTexture2D(&td, init.data(), &tex)) || !tex) return;
+    dev_->CreateShaderResourceView(tex, nullptr, &volMaskSrv_);
+    tex->Release();
 }
 
 void SceneRenderer::setGameMetering(const float* inverseGrey256) {

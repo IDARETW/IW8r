@@ -509,6 +509,10 @@ public:
         // half sizes, (1 / falloff, -0.1 x height fade, 0, 0). At most 8 (the nearest to the camera).
         float volBoxes[8][20] = {};
         int volBoxCount = 0;
+        // Per box: four mask codes (picture slice x 4 + axis; below 0: none), then per mask 1 / sizeU, 1 / sizeV and
+        // the two offset terms (core volume_mask, volumeMaskTerms).
+        float volBoxMasks[8][20] = {{-1, -1, -1, -1}, {-1, -1, -1, -1}, {-1, -1, -1, -1}, {-1, -1, -1, -1},
+                                    {-1, -1, -1, -1}, {-1, -1, -1, -1}, {-1, -1, -1, -1}, {-1, -1, -1, -1}};
         // Lamps that light the air (iw8r_volumetric): as PixelLight (position + radius, colour + cos outer, axis + cos
         // inner), the 8 nearest; the vision's spot and omni brightness (volumetricSpotBrightness / OmniBrightness).
         float volLamps[8][12] = {};
@@ -567,6 +571,10 @@ public:
     void setWhiteBalanceEnabled(bool on) { whiteBalanceEnabled_ = on; }
     bool whiteBalanceDrawn() const { return whiteBalanceDrawn_; }  // the last frame's post pass applied a matrix
     void setVolumetricFogEnabled(bool on) { volumetricOn_ = on; }
+    // The mask pictures of the volumetric boxes: each kVolMaskSize x kVolMaskSize grey bytes, at most kVolMaskSlices.
+    // `version` names the set: the same number again does nothing.
+    static constexpr int kVolMaskSize = 256, kVolMaskSlices = 4;
+    void setVolumeMasks(const std::vector<std::vector<uint8_t>>& pictures, uint64_t version);
     bool veilDrawn() const { return veilDrawn_; }  // the last post pass mixed the veil (bench)
     float gameVeil() const { return game_.veil; }
     size_t stockLocalLightCount() const { return stockLights_.size(); }
@@ -1006,6 +1014,8 @@ private:
     ID3D11PixelShader* veilUpPs_ = nullptr;
     ID3D11Buffer* cbVeil_ = nullptr;
     ID3D11Buffer* cbVol_ = nullptr;  // b13: the volumetric fog (drawPost)
+    ID3D11ShaderResourceView* volMaskSrv_ = nullptr;  // t24: the volumetric boxes' mask pictures
+    uint64_t volMaskVersion_ = 0;
     bool volumetricOn_ = false;      // View > Game Lighting Options > Volumetric Fog (game/volumetricFog, off by default)
     float lastViewProj_[16] = {};    // the frame's view (drawPost's volumetric march)
     bool postFxEnabled_ = true;

@@ -211,6 +211,12 @@ ignored. Tools > Sound Settings edits it.
 | `loop` | `true` or `false` | `true` | Loops the sound. |
 | `two_d` | `true` or `false` | `true` | Plays the sound as 2D (no position in the world). |
 
+## iw8r_volume (masks)
+
+| Key | Value format | Example | What it does |
+|---|---|---|---|
+| `mask`, `mask2`, `mask3`, `mask4` | `<picture> [x\|y\|z] <sizeU> [<sizeV> [<scrollU> <scrollV> [<offsetU> <offsetV>]]]` | `clouds_soft 800 800 50 0` | On `iw8r_volume`: a picture that thins the box's fog (white keeps it, black removes it), projected through the box along the axis (default z) and repeated every size units; scroll is in units per second. Pictures: `<map folder>/volume_masks/<picture>.png` (or TGA, JPG, BMP), or the editor's `clouds_soft` and `clouds_hard`. Up to four multiply. Game Lighting shows it. Not seen in game. |
+
 ## Counts
 
 - 65 key rows in the entity tables above (light and light_spot share one table of 10 keys), and 4 rows for the Warzone loot entities.

@@ -76,7 +76,24 @@
   tools/physics_bounds_build_test.py). OPEN, next: mount edges (research 125 by an Opus agent, read-only IDA): the
   converter writes ladder edges only (edgeListUsedQueryTypes 4); mounting queries bucket 0 of the edge list and has
   no trace fallback; mantle falls back to Mantle_TraceLedgeFace while bit 2 is clear.
-  ADDED 2026-11-14 18:10 (newest). MOUNT EDGES on built maps (plan 6.8, research 125 section 10).
+  ADDED 2026-11-14 20:40 (newest; read first).
+  - OWNER, evening (their own game runs): Cinder Rail Toon without the occlusion bake "seemed to be fine", and
+    "rebuilding with occlusion bake also seems to give a working map". New report: "the minimap doesn't seem aligned
+    with the player correctly". New scope: "fill in any and all gaps that remain, including scripted object
+    functionality and visibility in game/in the viewport, any rendering paths not yet accounted for, everything".
+  - MINIMAP FIX: core minimap.* (renderMinimap(map, size, northQuarter); minimapQuarterForBuild; minimapPixel); the
+    picture is drawn with the map's north up (the build's default northyaw 90: +Y up, +X right, not turned by the
+    converter). Before, it was always drawn for northyaw 0 while the build wrote 90. Proof
+    tools/minimap_build_test.py. The owner's built maps need a rebuild; nothing was deployed.
+  - VOLUMETRIC BOX MASKS: core volume_mask.*, compile_iw8.cpp (masks in world.json, pictures as
+    images/iw8r_vmask_*.dds), viewport (render.cpp: Texture2DArray t24, cbuffer Volume grown to 468 floats;
+    camera_view.cpp loads the pictures and animates scrolling masks), data/volume_masks (tools/gen_volume_masks.py),
+    package script, entity defs. Proof tools/volume_mask_build_test.py.
+  - Converter 11eef2fc (ledger origins for mask pictures and the edge list), LIVE (old exe
+    out/zt_backup/zonetool_7076f8da.exe).
+  - Two Opus audits were started (docs/research/131 scripted objects, 132 rendering paths): their gap lists are the
+    work queue that follows.
+  ADDED 2026-11-14 18:10. MOUNT EDGES on built maps (plan 6.8, research 125 section 10).
   - Core: src/core/map_edges.h (header only, shared with the converter: MapEdge, makeMapEdge, mapEdgeNormals,
     buildMapEdgeList with the stock octree layout, queryMapEdgeList, validateMapEdgeList), src/core/mount_edges.*
     (findMountEdges over MountSolid planes; MountEdgeOptions; mountEdgesJson), compile_iw8.cpp (CollisionBrush::

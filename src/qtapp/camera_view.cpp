@@ -491,7 +491,46 @@ void CameraView::render() {
                 double fade = std::clamp(one("height_fade", 0), 0.0, 1.0);
                 if (const double hh = one("height_half", 0); hh >= 6.931) fade = 6.931 / hh;
                 box.heightK = -0.1 * fade;
+                box.masks = volumeMasksOf(e);
                 if (box.density > 0) ownVolumes_.push_back(box);
+            }
+            {
+                // The boxes' mask pictures: the first four names in use, from the map's volume_masks folder or the
+                // editor's, each scaled to the renderer's slice size (the red channel).
+                std::vector<std::string> folders;
+                if (!ctx_->doc.path().empty())
+                    folders.push_back(QFileInfo(QString::fromStdString(ctx_->doc.path())).absoluteDir().filePath(kVolumeMaskFolder).toStdString());
+                QDir data(QCoreApplication::applicationDirPath());
+                for (int up = 0; up < 3 && !QFileInfo::exists(data.filePath("data/volume_masks")); ++up) data.cdUp();
+                folders.push_back(data.filePath("data/volume_masks").toStdString());
+                ownMaskImages_.clear();
+                ownMaskScroll_ = false;
+                std::vector<std::vector<uint8_t>> pictures;
+                uint64_t version = 1469598103934665603ull;
+                for (const OwnVolumeBox& box : ownVolumes_)
+                    for (const VolumeMask& m : box.masks) {
+                        if (std::find(ownMaskImages_.begin(), ownMaskImages_.end(), m.image) != ownMaskImages_.end()) {
+                            ownMaskScroll_ = ownMaskScroll_ || m.scroll[0] != 0 || m.scroll[1] != 0;
+                            continue;
+                        }
+                        if (int(ownMaskImages_.size()) >= app::SceneRenderer::kVolMaskSlices) continue;
+                        const std::string file = findVolumeMaskFile(m.image, folders);
+                        QImage img = file.empty() ? QImage() : QImage(QString::fromStdString(file));
+                        if (img.isNull()) continue;
+                        const int n = app::SceneRenderer::kVolMaskSize;
+                        img = img.convertToFormat(QImage::Format_RGBA8888).scaled(n, n, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                        std::vector<uint8_t> grey(size_t(n) * n);
+                        for (int y = 0; y < n; ++y) {
+                            const uchar* row = img.constScanLine(y);
+                            for (int x = 0; x < n; ++x) grey[size_t(y) * n + x] = row[x * 4];
+                        }
+                        for (const char ch : m.image) version = (version ^ uint8_t(ch)) * 1099511628211ull;
+                        version = (version ^ uint64_t(QFileInfo(QString::fromStdString(file)).lastModified().toMSecsSinceEpoch())) * 1099511628211ull;
+                        ownMaskImages_.push_back(m.image);
+                        ownMaskScroll_ = ownMaskScroll_ || m.scroll[0] != 0 || m.scroll[1] != 0;
+                        pictures.push_back(std::move(grey));
+                    }
+                renderer_.setVolumeMasks(pictures, pictures.empty() ? 0 : version);
             }
             if (const Entity* ws = ctx_->doc.worldspawn()) {
                 atmo_ = readAtmosphere(*ws);
@@ -613,7 +652,9 @@ void CameraView::render() {
         renderer_.setWind(float(std::cos(yaw)), float(std::sin(yaw)),
                           ctx_->windPreview ? float(kSwayAmplitude * std::clamp(ws.strength, 0.0, kSwayMaxStrength)) : 0.0f,
                           float(2.0 * 3.14159265358979 * std::clamp(ws.gustFreq, 0.0, kSwayMaxGustHz) * t));
-        const bool animate = ctx_->windPreview || ctx_->behaviourPreview || (ctx_->effectPreview && ctx_->texturedView);
+        // (Scrolling masks of volumetric boxes move while Game Lighting shows them.)
+        const bool animate = ctx_->windPreview || ctx_->behaviourPreview || (ctx_->effectPreview && ctx_->texturedView) ||
+                             (ownMaskScroll_ && game && ctx_->texturedView);
         if (animate && !windTimer_.isActive()) {
             if (!windClock_.isValid()) windClock_.start();
             windTimer_.start(33, this);
@@ -2514,6 +2555,17 @@ void CameraView::prepareGameLook() {
                     for (int k = 0; k < 3; ++k)
                         r[4 + k * 4] = float(b.axis[k].x), r[5 + k * 4] = float(b.axis[k].y), r[6 + k * 4] = float(b.axis[k].z), r[7 + k * 4] = float(b.half[k]);
                     r[16] = float(b.invFalloff), r[17] = float(b.heightK);
+                    // Masks: the code of each (its picture's slice and its axis) and where it reads the picture now.
+                    float* mk = g.volBoxMasks[i];
+                    for (int k = 0; k < 4; ++k) mk[k] = -1.0f;
+                    if (!maskClock_.isValid()) maskClock_.start();
+                    const double now = ctx_->scene.captureMode ? 0.0 : maskClock_.elapsed() / 1000.0;
+                    for (size_t k = 0; k < b.masks.size() && k < 4; ++k) {
+                        const auto found = std::find(ownMaskImages_.begin(), ownMaskImages_.end(), b.masks[k].image);
+                        if (found == ownMaskImages_.end()) continue;  // no picture: the mask does nothing in the preview
+                        mk[k] = float((found - ownMaskImages_.begin()) * 4 + b.masks[k].axis);
+                        volumeMaskTerms(b.masks[k], now, mk + 4 + k * 4);
+                    }
                 }
             }
             // An own map's lamps that light the air (iw8r_volumetric), in the units the surfaces get: the 8 nearest.

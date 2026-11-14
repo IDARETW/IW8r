@@ -35,6 +35,7 @@
 #include "editor_context.h"
 #include "player_move.h"
 #include "render.h"
+#include "volume_mask.h"
 #include "scene.h"
 
 struct IDXGISwapChain;
@@ -682,8 +683,13 @@ private:
     struct OwnVolumeBox {
         Vec3 center, axis[3];
         double half[3] = {0, 0, 0}, density = 0, invFalloff = 0, heightK = 0;
+        std::vector<VolumeMask> masks;  // keys mask .. mask4 (core volume_mask)
     };
     std::vector<OwnVolumeBox> ownVolumes_;
+    // The mask pictures in use, by name, in the order of the renderer's slices; whether any mask scrolls.
+    std::vector<std::string> ownMaskImages_;
+    bool ownMaskScroll_ = false;
+    QElapsedTimer maskClock_;
     double stockSkyIntensity_ = 0;
     double stockBakedScale_ = 1.0;
     std::shared_ptr<const GameGradingClut> stockGrade_;

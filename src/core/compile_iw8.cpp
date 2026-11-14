@@ -3,6 +3,7 @@
 #include "ies_profiles.h"
 #include "compile_iw8.h"
 #include "mount_edges.h"
+#include "volume_mask.h"
 #include "hud_images.h"
 #include "map_strings.h"
 #include "occluder_box.h"
@@ -3072,6 +3073,13 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     // build. Look NOT VERIFIED in game.
     std::string volumeJson;
     size_t volumeCount = 0;
+    // Mask pictures (keys mask .. mask4, core volume_mask): looked for in <map folder>/volume_masks, then beside the
+    // editor's shader folders (data/volume_masks). Name in the build -> file.
+    std::map<std::string, std::string> volumeMaskFiles;
+    std::vector<std::string> volumeMaskDirs;
+    volumeMaskDirs.push_back((fs::path(opt.mapDir.empty() ? "." : opt.mapDir) / kVolumeMaskFolder).string());
+    for (const std::string& d : opt.shaderDirs) volumeMaskDirs.push_back((fs::path(d).parent_path() / kVolumeMaskFolder).string());
+    size_t volumeMaskCount = 0;
     for (const Entity* pe : points) {
         if (lower(pe->classname()) != "iw8r_volume") continue;
         const std::string where = "iw8r_volume entity " + std::to_string(pe - map.entities.data());
@@ -3125,10 +3133,31 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                       vec3(ax[0]) + "," + vec3(ax[1]) + "," + vec3(ax[2]) + "],\"half_size\":" +
                       vec3raw((mx[0] - mn[0]) / 2, (mx[1] - mn[1]) / 2, (mx[2] - mn[2]) / 2) + ",\"color\":" +
                       vec3raw(std::max(0.0, color[0]), std::max(0.0, color[1]), std::max(0.0, color[2])) + ",\"density\":" + num(density) +
-                      ",\"falloff\":" + num(falloff) + ",\"height_fade\":" + num(heightFade) + ",\"anisotropy\":" + num(anisotropy) + "}";
+                      ",\"falloff\":" + num(falloff) + ",\"height_fade\":" + num(heightFade) + ",\"anisotropy\":" + num(anisotropy);
+        // Masks: each multiplies the box's fog by its picture's red channel (type 2, the only kind the game draws).
+        std::vector<std::string> maskWarnings;
+        std::string masksJson;
+        for (const VolumeMask& m : volumeMasksOf(*pe, &maskWarnings)) {
+            const std::string file = findVolumeMaskFile(m.image, volumeMaskDirs);
+            if (file.empty()) {
+                warn.push_back(where + ": mask picture '" + m.image + "' not found in the map's volume_masks folder or the editor's; mask left out");
+                continue;
+            }
+            const std::string name = volumeMaskImageName(m.image);
+            volumeMaskFiles[name] = file;
+            masksJson += std::string(masksJson.empty() ? "" : ",") + "{\"type\":2,\"axis\":" + std::to_string(m.axis) + ",\"image\":" + quote(name) +
+                         ",\"scale\":[" + num(m.size[0]) + "," + num(m.size[1]) + "],\"offset\":[" + num(m.offset[0]) + "," + num(m.offset[1]) +
+                         "],\"scroll\":[" + num(m.scroll[0]) + "," + num(m.scroll[1]) + "]}";
+            ++volumeMaskCount;
+        }
+        for (const std::string& w : maskWarnings) warn.push_back(where + ": " + w);
+        if (!masksJson.empty()) volumeJson += ",\"masks\":[" + masksJson + "]";
+        volumeJson += "}";
         ++volumeCount;
     }
-    if (volumeCount) warn.push_back(std::to_string(volumeCount) + " volumetric box(es) written (iw8r_volume; in-game look not verified)");
+    if (volumeCount)
+        warn.push_back(std::to_string(volumeCount) + " volumetric box(es) written (iw8r_volume; in-game look not verified)" +
+                       (volumeMaskCount ? ", with " + std::to_string(volumeMaskCount) + " mask(s) of " + std::to_string(volumeMaskFiles.size()) + " picture(s)" : std::string()));
     const std::string volumesKey = volumeCount ? ",\"volumetrics\":[" + volumeJson + "]" : std::string();
     // Decal volumes (5.8, research 80 section 6): `iw8r_decal` point entities (origin, angles: the forward axis is the
     // projection direction and points into the surface; size "depth width height"; material; optional opacity,
@@ -3251,11 +3280,8 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         }
         if (count) occludersKey = ",\"umbra_occluders\":[" + boxes + "]";
         // The bake failed its first game test (2026-11-14, Cinder Rail Toon: surfaces came and went with the camera,
-        // placed models were not drawn). Cause found and fixed the same day (the tile's format flag: research 129); the
-        // fixed bake has not been seen in the game yet, which the build log says until it has.
-        warn.push_back("note on the occlusion bake: it failed its first game test on 2026-11-14 (surfaces and models went missing); the cause "
-                       "was found and fixed that day (research 129), but the fixed bake is not yet seen in game. If things go missing "
-                       "in game, turn Occlusion bake off (worldspawn iw8r_umbra_bake)");
+        // placed models were not drawn). Cause found and fixed the same day (the tile's format flag: research 129), and
+        // the owner then built the same map with the fixed bake and found it working in the game.
         warn.push_back("occlusion bake: " + std::to_string(count) + " occluder box(es) from the opaque brushes (" + std::to_string(fitted) +
                        " of them fitted inside brushes that are not axis-aligned boxes; " + std::to_string(skewed) +
                        " opaque brush(es) are too thin or too slanted to hold a box, " + std::to_string(detail) +
@@ -3423,6 +3449,15 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         } else {
             rep.warnings.push_back("loadscreen image " + opt.loadscreenImagePath + " not used: " + imageErr);
         }
+    }
+    // The pictures of the volumetric boxes' masks (above): uncompressed, with mips, as the converter reads them.
+    for (const auto& [name, file] : volumeMaskFiles) {
+        std::vector<uint8_t> dds;
+        std::string imageErr;
+        if (encodeDdsFromImage(file, false, false, dds, &imageErr))
+            customFiles.push_back({root / "extracted" / "images" / (name + ".dds"), std::string(dds.begin(), dds.end())});
+        else
+            return fail("volumetric mask picture " + file + " cannot be read: " + imageErr);
     }
     // 4.27: the map's own HUD images (alpha kept: icons are cut out).
     {
@@ -4170,7 +4205,11 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     rep.skyNote = skyNote;
     {
         // HUD compass image (docs/research/27): DXT5 with mips, the format the compass reader accepts.
-        const MinimapImage mm = renderMinimap(map, 512);
+        // Drawn with the map's north up, for the northyaw the entity text above carries (default 90): the converter
+        // turns it by 90 - northyaw and the game shows +Y up.
+        std::string northWarning;
+        const MinimapImage mm = renderMinimap(map, 512, minimapQuarterForBuild(map, &northWarning));
+        if (!northWarning.empty()) warn.push_back(northWarning);
         std::string merr;
         if (mm.width > 0 && !writeMinimapDds(mm, (root / "extracted" / "images" / ("compass_map_" + id + ".dds")).string(), &merr))
             warn.push_back("minimap not written: " + merr);

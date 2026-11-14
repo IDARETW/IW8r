@@ -296,3 +296,83 @@ TEST(minimap_size_is_clamped_to_power_of_two) {
     CHECK(renderMinimap(*map, 1).width == 4);
     CHECK(renderMinimap(*map, 64).height == 64);
 }
+
+// The owner's game test of 2026-11-14: the minimap was a quarter turn off. The picture is drawn with the map's north
+// up; the build's default north is +Y (northyaw 90), which the converter does not turn and the game shows as it is.
+TEST(minimap_follows_the_maps_north) {
+    // A floor with one raised block in the +X +Y corner.
+    const auto box = [](double x0, double y0, double z0, double x1, double y1, double z1) {
+        char buf[1024];
+        const char* m = "custom/a 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0";
+        std::snprintf(buf, sizeof buf,
+                      "{\n ( %g %g %g ) ( %g %g %g ) ( %g %g %g ) %s\n ( %g %g %g ) ( %g %g %g ) ( %g %g %g ) %s\n"
+                      " ( %g %g %g ) ( %g %g %g ) ( %g %g %g ) %s\n ( %g %g %g ) ( %g %g %g ) ( %g %g %g ) %s\n"
+                      " ( %g %g %g ) ( %g %g %g ) ( %g %g %g ) %s\n ( %g %g %g ) ( %g %g %g ) ( %g %g %g ) %s\n}\n",
+                      x1, y1, z0, x0, y1, z0, x0, y0, z0, m, x0, y0, z1, x0, y1, z1, x1, y1, z1, m,
+                      x0, y0, z1, x1, y0, z1, x1, y0, z0, m, x1, y1, z1, x0, y1, z1, x0, y1, z0, m,
+                      x1, y0, z1, x1, y1, z1, x1, y1, z0, m, x0, y1, z1, x0, y0, z1, x0, y0, z0, m);
+        return std::string(buf);
+    };
+    const auto mapWith = [&](const char* worldKeys) {
+        const std::string text = std::string("iwmap 4\n{\n\"classname\" \"worldspawn\"\n") + worldKeys + box(-256, -256, -16, 256, 256, 0) +
+                                 box(128, 128, 0, 256, 256, 200) + "}\n";
+        Id next = 1;
+        return parseMap(text, next);
+    };
+    // Where the block's top shows: the brightest quadrant of the picture.
+    const auto blockQuadrant = [](const MinimapImage& img) {
+        double best = -1;
+        int at = -1;
+        for (int q = 0; q < 4; ++q) {
+            double sum = 0;
+            const int x0 = (q % 2) * img.width / 2, y0 = (q / 2) * img.height / 2;
+            for (int y = y0; y < y0 + img.height / 2; ++y)
+                for (int x = x0; x < x0 + img.width / 2; ++x) sum += img.rgba[(size_t(y) * img.width + x) * 4];
+            if (sum > best) best = sum, at = q;
+        }
+        return at;  // 0 top left, 1 top right, 2 bottom left, 3 bottom right
+    };
+    ParseResult plain = mapWith("");
+    CHECK(plain.map.has_value());
+    if (!plain.map) return;
+    // The build's default: north +Y. The +X +Y block is at the top right, as the game shows the map.
+    CHECK(mapNorthYaw(*plain.map) == 90.0);
+    std::string warning;
+    CHECK(minimapQuarterForBuild(*plain.map, &warning) == 1 && warning.empty());
+    const MinimapImage north = renderMinimap(*plain.map, 64, 1);
+    CHECK(north.northQuarter == 1 && blockQuadrant(north) == 1);
+    // A map that says north is +X: the picture has +X up, +Y left (the converter turns it a quarter clockwise).
+    ParseResult east = mapWith("\"northyaw\" \"0\"\n");
+    CHECK(east.map.has_value() && minimapQuarterForBuild(*east.map) == 0);
+    if (east.map) CHECK(blockQuadrant(renderMinimap(*east.map, 64, 0)) == 0);
+    CHECK(blockQuadrant(renderMinimap(*plain.map, 64, 2)) == 3);  // north -X (east +Y): the block at the bottom right
+    CHECK(blockQuadrant(renderMinimap(*plain.map, 64, 3)) == 2);  // north -Y (east -X): at the bottom left
+    // Turning the quarter-0 picture clockwise, as the converter does for northyaw 0, gives the quarter-1 picture.
+    const MinimapImage zero = renderMinimap(*plain.map, 64, 0);
+    size_t differ = 0;
+    for (int y = 0; y < 64; ++y)
+        for (int x = 0; x < 64; ++x) {
+            // clockwise by 90: the pixel (x, y) of the result comes from (y, 63 - x) of the source
+            const uint8_t* a = &north.rgba[(size_t(y) * 64 + x) * 4];
+            const uint8_t* b = &zero.rgba[(size_t(63 - x) * 64 + y) * 4];
+            differ += a[0] != b[0] || a[3] != b[3];
+        }
+    CHECK(differ == 0);
+    // Quarters of a yaw, and a yaw that is none: drawn in the game's frame, with a warning.
+    bool exact = false;
+    CHECK(minimapNorthQuarter(0, &exact) == 0 && exact);
+    CHECK(minimapNorthQuarter(-90, &exact) == 3 && exact);
+    CHECK(minimapNorthQuarter(450, &exact) == 1 && exact);
+    CHECK(minimapNorthQuarter(45, &exact) >= 0 && !exact);
+    ParseResult odd = mapWith("\"northyaw\" \"30\"\n");
+    CHECK(odd.map.has_value() && minimapQuarterForBuild(*odd.map, &warning) == 1 && warning.find("not a quarter turn") != std::string::npos);
+    // A world point's pixel.
+    AABB rect;
+    rect.add({-256, -256, 0});
+    rect.add({256, 256, 0});
+    double col = 0, row = 0;
+    minimapPixel(rect, 64, 1, 256, 256, col, row);
+    CHECK(col == 64 && row == 0);  // +X +Y: the top right corner
+    minimapPixel(rect, 64, 0, 256, 256, col, row);
+    CHECK(col == 0 && row == 0);   // north +X: the top left corner
+}
