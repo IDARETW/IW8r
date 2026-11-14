@@ -11,7 +11,8 @@ Mark each line OK / wrong (with a screenshot) and send it back.
 
 - [ ] New on 2026-11-14 (editor only, nothing here needs the game; all are covered by tests, these are for your own look):
   - Brush > Paint Mesh on Faces: Ctrl+Shift+click a floor face, run the command, keep 32. A mesh lies on the face, the
-    brush under it shows caulk on that face only from the side, and Vertex Paint Mode starts. Ctrl+Z removes it all.
+    face under it is caulk now (not drawn while the mesh covers it), and Vertex Paint Mode starts. Ctrl+Z takes the
+    whole step back.
   - Open Hideout, View > Game Lighting: the picture is warm. View > Game Lighting Options > White Balance off: it
     turns cold and grey. On again.
   - Open a large stock map and move the camera at once: textures arrive while you move, without the view stalling.
