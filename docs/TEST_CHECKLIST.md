@@ -53,6 +53,24 @@ Each point was run by me in a browser against a running editor; this list is for
 - [ ] Draw brush, drag a rectangle in the Top view: a brush appears in the editor too. Drag a handle of its box:
       it grows on that side only. Select a spawn: the Inspector shows what the class is and help for its keys.
 
+## In game: the short list (2026-11-14), what only the game can settle, most important first
+
+Everything else in this file was proven without the game. If you look at nothing else, look at these, in this order.
+Each one names the longer section below that has the steps.
+
+- [ ] SHORT 1. An installed stock edit loads: install the Shipment toon zone (folder `out\agent\toon_ship\edit`,
+      File > Install Edited Stock Map Into Game) and start Shipment. Every stock-map and Warzone edit goes into the
+      game this way, and it has never been run. Section "Shipment with the toon shader's filter".
+- [ ] SHORT 2. Your own map looks like View > Game Lighting, once with Compile > Bake lightmaps off and once on.
+      Section "an own map with and without baked lightmaps".
+- [ ] SHORT 3. A stock door carried into your own map opens. Section "real stock doors and objects".
+- [ ] SHORT 4. A stock map rebuilt with removed world geometry: the object is gone and you can walk through where it
+      was. Section "an edited stock map".
+- [ ] SHORT 5. Copied loot, doors and extraction sites on Quarry work like the originals. Section "game modes and a
+      small Warzone map".
+- [ ] SHORT 6. Only if you want it: a map built with Compile > Occlusion bake shows nothing missing. Section "the
+      occlusion bake".
+
 ## In game: your map's model light (2026-11-13), not seen in game
 
 - [ ] Build the dev showcase (F7) and walk from outside into a closed room: the gun and nearby props get darker inside

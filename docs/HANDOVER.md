@@ -1,16 +1,19 @@
 # IW8 Radiant Suite: handover
 
-What you are given, how to install it, what each part does, how it was proven, and the few things only a look in the
-game can settle. Scope, as decided on 2026-11-12: stock map editing, Warzone editing, and map and mode creation, plus
-lightmap baking with a viewport that shows the map as the game draws it. Ground War scale is outside that scope.
+What you are given, how to install it, what each part does, how it was proven, and what only a look in the game can
+settle. Scope, as decided on 2026-11-12: stock map editing, Warzone editing, and map and mode creation, with a
+viewport that shows the map as the game draws it. Ground War scale is outside that scope.
+
+State on 2026-11-14: everything below is built and checked without the game. **Nothing in section 4 has been seen in
+the game.** Section 5 lists what is not built.
 
 ## 1. What to install
 
 | Piece | Where | Notes |
 |---|---|---|
-| Editor installer | `out\installer\IW8RadiantSuite-Setup-0.1.0.exe` | Or the portable zip `out\package\IW8RadiantSuite-<date>.zip`. Neither contains game files or your settings. |
-| Converter (x64-zt fork) | `E:\mw124\x64-zt\build\bin\x64\Release\zonetool.exe` | Branch `iw8radiant/build-extraction`, built from the editor work branch `iw8radiant/scriptables` (latest commit in `docs/PROGRESS.md`). Older builds are kept in `out\zt_backup`. Local only, never pushed. |
-| ACTS, Oodle, the game | your existing paths | The editor asks for them once (Tools > Tool Paths). The game folder is only read. |
+| Editor installer | `out\installer\IW8RadiantSuite-Setup-0.1.0.exe` | Or the portable zip `out\package\IW8RadiantSuite-<date>.zip`. Neither contains game files or your settings. The packaged editor passes its own start-up test. |
+| Converter (x64-zt fork) | `E:\mw124\x64-zt\build\bin\x64\Release\zonetool.exe` | Branch `iw8radiant/build-extraction`, built from the work branch `iw8radiant/scriptables` (worktree `C:\zsw-iw8r\scriptables`). Earlier builds are kept in `out\zt_backup`. |
+| ACTS, Oodle, the game | your existing paths | The editor asks for them once (Tools > Tool Paths). The editor itself only reads the game folder; the two install actions in section 2 are the exception and are yours to run. |
 
 Start the editor, open a map (or File > New), and read `docs\USER_GUIDE.md` (the packaged copy is in `docs\`).
 `docs\KEYS_REFERENCE.md` lists every worldspawn and entity key the build understands.
@@ -18,59 +21,78 @@ Start the editor, open a map (or File > New), and read `docs\USER_GUIDE.md` (the
 ## 2. What it does
 
 **Make your own maps and modes.** Brushes, patches, terrain, prefabs and prefab bundles, stock models and effects,
-lights, probes, spawns, game type templates and your own game type scripts, mode rules (health, speed, one weapon,
-infinite ammo), Warzone objects (loot points, clusters and zones, buy stations, vehicles), traversals for bots, map
-scripts. Compile > Compile + Build + Validate makes the game's zones and checks them with ACTS.
+lights, probes, spawns, game type templates and your own game type scripts, mode rules, Warzone objects (loot points,
+clusters and zones, buy stations, vehicles), traversals for bots, map scripts. F7 builds the game's zones and checks
+them with the game's own loaders (ACTS).
 
-**Bake lighting.** Compile panel > Bake lightmaps (worldspawn `iw8r_bake_lightmaps`): the build bakes the world's
-lightmap (sky light, bounce of the sun and lights, sun visibility); the game draws the sun and lights live on top.
+**Light it.** Compile > Bake lightmaps bakes the world's lightmap (sky light, bounce, where the sun reaches);
+Bake Settings sets the sky and the detail. Without a bake the game lights the map with a flat sky light and the sun.
 
-**See it as the game draws it.** View > Game Lighting (Ctrl+Alt+L): the same bake, made in the background and again
-after edits, shaded with the converter's world shader and the game's exposure and tone curve. On a stock map: the map's
-own baked lightmap, reflection probes, sun, auto exposure and the stock world shader's specular; on Warzone maps the
-lightmaps of the streamed tiles around the camera (Verdansk, Quarry, the tutorial map). Measured cost: about
-0.5 to 2.2 ms per frame at 1920 x 1080 on stock worlds (Shipment runs about 200 fps in game).
+**See it as the game draws it.** View > Game Lighting (Ctrl+Alt+L) shows your map the way the built map is shaded:
+the baked look when Bake lightmaps is on, the flat sky light when it is off. On a stock map it draws the map's own
+lightmaps, probes, lamps, sun and exposure; brushes you add to a stock map take that map's light grid.
 
-**Edit stock maps.** File > Open stock zone, edit, File > Rebuild Stock Zone (and Install / Restore, which you run):
-- entities, spawns, added geometry and models (overlay builds);
-- hide stock props and remove their collision; remove stock world geometry with `iw8r_remove_world` boxes (drawing,
-  collision, sun shadow, occlusion);
-- move, copy and delete placed objects, including doors, signs, props and extraction sites (File > Edit Placed Objects);
-- relight: sun colour, intensity and direction (the sun shadow is baked again), sky from another map, fog and vision,
-  retexture.
+**Your own look.** Tools > Shader Editor: a shader file for your map's surfaces (the toon shader is the example), and
+a colour filter for a stock map's surfaces.
 
-**Edit Warzone maps.** The same stock tools on mp_br_tut, mp_br_quarry and mp_donetsk, plus loot points (File > Edit Loot
-Points), new loot clusters and zones, buy stations and the streamed world around the camera.
+**Edit stock maps.** File > Open IW8 Stock Map, edit, File > Rebuild Stock Zone:
+- entities, spawns, added brushes and models;
+- hide stock props and remove their collision; remove stock world geometry with `iw8r_remove_world` boxes;
+- move, copy and delete placed objects (doors, signs, props, extraction sites);
+- relight (sun, sky, fog, vision), retexture, a shader filter.
+
+File > Install Edited Stock Map Into Game puts the rebuilt zones into the game: the stock zone files move to
+`iw8r_stock` in the game folder and the edited ones take their place. File > Restore Stock Map In Game moves them
+back. (The game does not take a small patch file for its own zones: research 116.)
+
+**Edit Warzone maps.** The same tools on mp_br_tut, mp_br_quarry and mp_donetsk, plus loot points, loot clusters and
+zones, buy stations, and the streamed world that follows the camera. Limit: the streamed tile files themselves cannot
+be replaced (the client refuses unsigned tiles), so edits live in the main map zone.
+
+**Occlusion (optional).** Compile > Occlusion bake gives your map cells and portals so the game skips what is behind
+walls. Off by default; View > Umbra Visibility shows what a stock map's own occlusion data hides.
+
+**From a browser.** Tools > Web Server: the editor's menus, six dialogs as forms, the editor's own 3D picture with
+fly controls, drawing and resizing brushes, placing assets and entities, the inspector with key help.
 
 ## 3. How it was proven
 
-Nothing below needs the game running:
-- `bin\release\iw8r_tests.exe`: about 140,000 checks of the core (map format, geometry, builds, bakes, decoders).
-- `IW8Radiant.exe --gui-test tests\data\iw8_sample_room.map --out <dir>`: about 960 checks of the editor itself.
-- `py -3 -I tools\run_offline_proofs.py <work dir>`: 19 end-to-end proofs. Each one edits or builds a real map with the
-  live converter, reads the result back with ACTS, compares it field by field with what was asked, and checks the game's
-  own loaders accept the zone like the stock one (about 12 minutes).
+None of this needs the game running:
+- `bin\release\iw8r_tests.exe`: about 180,000 checks in 1,308 tests of the core (map format, geometry, builds, bakes,
+  decoders, the install logic, the occlusion bake).
+- `IW8Radiant.exe --gui-test tests\data\iw8_sample_room.map --out <dir>`: about 1,050 checks of the editor itself,
+  the web server and its page included.
+- `tools\run_all_tests.ps1`: both of those plus a start-up test, in one run.
+- `py -3 -I tools\run_offline_proofs.py <work dir>`: end-to-end proofs. Each one edits or builds a real map with the
+  live converter, reads the result back with ACTS, compares it with what was asked, and checks that the game's own
+  loaders accept the zone (about 12 minutes).
 - `IW8Radiant.exe --viewport-bench <map> --out <dir>`: frame times and pictures of every view mode.
+- The web page was driven in a real browser against a running editor for every feature listed above.
 
-The state of each item, the research behind it and every proof are in `docs\ROADMAP.md`, `docs\research\` and
-`CHANGELOG.md`.
+The state of each item, the research behind it and every proof are in `docs\ROADMAP.md`, `docs\research\`
+(more than 110 notes, the latest numbered 118) and `CHANGELOG.md`.
 
 ## 4. Only the game can settle these
 
-Everything was built and checked offline; none of the following has been seen in the game. `docs\TEST_CHECKLIST.md`
-lists them as optional checks, most important first:
-1. A stock door carried into your own map opens (real stock scripted objects).
-2. A map with Bake lightmaps next to View > Game Lighting from the same spot: brightness and colours should match. The
-   exposure constants are read from the game's shaders but a few are inferred.
-3. A stock map rebuilt with removed world geometry: the object is gone and you walk through where it was; frame rate
-   is a little lower there (occlusion is opened for that map).
-4. A stock map with a turned sun: shadows follow; the baked bounce light keeps the old sun.
-5. Copied loot rocks, doors and extraction sites on Quarry work like the originals.
+Everything was built and checked offline. `docs\TEST_CHECKLIST.md` has the steps; its first "In game" section, "the
+short list", is these in order:
+1. **An installed stock edit loads.** The toon filter on Shipment (`out\agent\toon_ship\edit`, installed with File >
+   Install Edited Stock Map Into Game) is the smallest case. This is the one check everything in "Edit stock maps"
+   depends on: the first install method (patch files) stopped the game, and the new one has not been run.
+2. **Your own map looks like View > Game Lighting**, with Bake lightmaps off and on.
+3. **A stock door carried into your own map opens** (real stock scripted objects).
+4. **A stock map rebuilt with removed world geometry**: the object is gone and you walk through where it was.
+5. **Copied loot, doors and extraction sites on Quarry** work like the originals.
+6. **The occlusion bake** (only if you want it): nothing is missing anywhere on a map built with it.
 
-## 5. Known limits
+## 5. Not built, or built in part
 
-- Stock world removal opens the whole map's occlusion when the removed geometry was an occluder (a local fix needs the
-  occlusion data's format decoded).
-- A turned stock sun keeps the old sun in the baked lightmap's bounce light; cut-out props (fences, leaves) do not cast
-  in the re-baked sun shadow.
+- Web page: vertex, edge and face tools; forms for the Vision Editor, Preferences, prefabs and surface tools.
+- Occlusion: occluders that are not boxes; local updates of a stock map's occlusion data (removing stock geometry
+  opens the whole map's occlusion).
+- Viewport: highlights of your own materials that have a specular map; volumetric fog is uncalibrated and off.
+- Streamed Warzone tiles cannot be edited (a client matter, see section 2).
+- A turned stock sun keeps the old sun in the baked bounce light.
+- Items the game must answer before more work makes sense (reverb zones, killstreak airspace, intro cameras) are
+  listed with their state in `docs\ROADMAP.md`.
 - Ground War scale maps are out of scope.

@@ -31,7 +31,7 @@ foreach ($d in 'platforms', 'styles', 'imageformats', 'iconengines', 'generic', 
 # Editor data the editor finds beside itself: the browser client (Tools > Web Server), the stock asset catalogs and
 # availability lists, the canonical key table and the entity definitions.
 $dataDest = Join-Path $dest 'data'
-foreach ($d in 'web', 'asset_catalog', 'generated', 'prefabs', 'ies', 'stock_assets', 'fx') {
+foreach ($d in 'web', 'asset_catalog', 'generated', 'prefabs', 'ies', 'stock_assets', 'fx', 'shaders') {
     $src = Join-Path $root "data\$d"
     if (Test-Path $src) { Copy-Item -Recurse $src (Join-Path $dataDest $d) }
 }
@@ -54,6 +54,13 @@ IW8 Radiant Suite third-party components
 Requires the Microsoft Visual C++ 2015-2022 x64 redistributable (vc_redist.x64.exe from Microsoft).
 No game data, game executables, x64-zt, ACTS or Oodle binaries are included; the editor asks for their paths.
 "@ | Set-Content -Encoding utf8 (Join-Path $lic 'THIRD_PARTY.txt')
+
+# Files the editor needs at run time: stop when one did not reach the package (the shaders folder was once left out).
+foreach ($need in 'data\shaders\toon.iw8shader.hlsl', 'data\shaders\stock.iw8shader.hlsl', 'data\web\index.html', 'data\web\app.js',
+                  'data\web\viewlive.js', 'data\iw8_entity_defs.json', 'data\iw8_entity_classes.json', 'data\hotkey_presets.json',
+                  'data\generated\iw8_canonical_keys.tsv') {
+    if (-not (Test-Path (Join-Path $dest $need))) { throw "package is missing $need" }
+}
 
 # Docs for the mapper.
 $docs = Join-Path $dest 'docs'

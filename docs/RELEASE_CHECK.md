@@ -27,6 +27,7 @@ from its own path to find `data\generated\iw8_canonical_keys.tsv`.
 | `data/generated/entity_reference.html` | `main_window.cpp:3452` (Help > entity reference) | walk up 4 | yes |
 | `data/iw8_entity_defs.json` | `main_window.cpp:440` (Check Map); `panels.cpp:73` | walk up 3 | yes |
 | `data/iw8_entity_classes.json` | `panels.cpp:53`; `brush_tools.cpp:402` | walk up 3 | added |
+| `data/shaders/` (`toon.iw8shader.hlsl`, `stock.iw8shader.hlsl`) | `main_window.cpp` (Shader Editor templates, map shader lookup); `compile_panel.cpp` (build) | walk up 3, `data/shaders` | added 2026-11-14 (was missing: the installed editor had no toon shader) |
 | `data/hotkey_presets.json` | `main_window.cpp:878` (hotkey presets, on start) | walk up 4 | added |
 | `data/prefabs/` (stock + iw8r) | `prefab_browser.cpp:314` | beside exe | yes (17 MB) |
 | `data/ies/` (.ies profiles, README) | `ies_browser.cpp:84` | beside exe | yes |
