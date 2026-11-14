@@ -1,4 +1,6 @@
 #include <DockWidget.h>
+#include "custom_shader.h"
+#include "dxbc_splice.h"
 #include "shader_editor.h"
 #include "qt_gui_test_assets_b.h"
 #include "qt_gui_test_assets_a.h"
@@ -3528,6 +3530,52 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                     CompilePanel::lineLevel("FAILED: zonetool exited with 1") == LL::Error &&
                     CompilePanel::lineLevel("preflight error script: missing user_main") == LL::Error,
                 "compile summaries with zero failures are not errors; real failures are");
+    }
+
+    r.section("shader filter on stock shaders");
+    {
+        // A shader file's iw8rFilter compiled as the stock rebuild does, spliced into a lit pixel shader (core
+        // dxbc_splice), and the result offered to the device: Direct3D checks the checksum and the bytecode.
+        QDir d(QCoreApplication::applicationDirPath());
+        for (int up = 0; up < 3 && !QFileInfo::exists(d.filePath("data/shaders")); ++up) d.cdUp();
+        iw8r::CustomShader toon;
+        std::string err;
+        const bool read = iw8r::readCustomShader(d.filePath("data/shaders/toon.iw8shader.hlsl").toStdString(), toon, &err);
+        r.check(read && iw8r::customShaderHasFilter(toon.code) && iw8r::customShaderHasSurface(toon.code), "the toon shader has a surface function and a filter");
+        std::vector<uint8_t> filter, host, spliced;
+        const bool fc = read && iw8r::app::SceneRenderer::compileProgram(iw8r::customShaderFilterProgramSource(toon), iw8r::kIw8rFilterEntry, filter, &err);
+        r.check(fc && iw8r::dxbcChecksumValid(filter), "its filter compiles to a program with a valid checksum " + QString::fromStdString(fc ? "" : err));
+        const char* hostSource =
+            "Texture2D colorMap : register(t0); SamplerState colorSampler : register(s0); cbuffer Frame : register(b0) { float4 exposure; };\n"
+            "float4 main(float4 pos : SV_Position, float2 uv : TEXCOORD0, float3 normal : TEXCOORD1) : SV_Target {\n"
+            "  float4 texel = colorMap.Sample(colorSampler, uv);\n"
+            "  float light = saturate(dot(normalize(normal), float3(0.3, 0.5, 0.8))) + 0.2;\n"
+            "  return min(float4(texel.rgb * light * exposure.x, 1.0), 32255.0); }\n";
+        const bool hc = iw8r::app::SceneRenderer::compileProgram(hostSource, "main", host, &err);
+        r.check(hc, "a lit pixel shader compiles " + QString::fromStdString(hc ? "" : err));
+        const bool sp = fc && hc && iw8r::dxbcSpliceFilter(host, filter, spliced, &err);
+        r.check(sp && iw8r::dxbcChecksumValid(spliced), "the filter is spliced into it " + QString::fromStdString(sp ? "" : err));
+        CameraView* cv = w.cameraView();
+        r.check(sp && cv->pixelShaderAccepted(host) && cv->pixelShaderAccepted(spliced), "the device accepts the spliced shader");
+        if (sp) {
+            std::vector<uint8_t> broken = spliced;
+            broken[broken.size() - 9] ^= 0x40;  // a changed byte without a new checksum: refused
+            r.check(!cv->pixelShaderAccepted(broken), "the device refuses a program whose checksum is stale");
+        }
+        // The game's own lit shaders with the filter, when a stock map's edited techset zone was exported here
+        // (out/agent/toon_ship/v_pixelshader: the project's offline proof; skipped elsewhere).
+        QDir real(d.filePath("out/agent/toon_ship/v_pixelshader/mw19replay/techsets_mp_shipment/assets/pixelshader"));
+        const QStringList blobs = real.entryList({"iw8rf_*.cso"}, QDir::Files);
+        if (!blobs.isEmpty()) {
+            int accepted = 0;
+            for (const QString& b : blobs) {
+                QFile f(real.filePath(b));
+                if (!f.open(QIODevice::ReadOnly)) continue;
+                const QByteArray bytes = f.readAll();
+                accepted += cv->pixelShaderAccepted(std::vector<uint8_t>(bytes.begin(), bytes.end())) ? 1 : 0;
+            }
+            r.check(accepted == blobs.size(), QString("the device accepts every filtered stock lit shader of Shipment (%1 of %2)").arg(accepted).arg(blobs.size()));
+        }
     }
 
     r.section("umbra visibility");

@@ -86,6 +86,22 @@ std::string customShaderViewportSource(const std::string& baseSource, const std:
 // The first file found is read; false with *err when none is found or it does not check.
 bool findCustomShader(const std::string& name, const std::vector<std::string>& folders, CustomShader& out, std::string* err = nullptr);
 
+// A shader file may hold two functions (at least one):
+//   float3 iw8rSurface(IW8RSurface s)   the whole lighting of the map's own surfaces (above)
+//   float3 iw8rFilter(float3 colour)    a filter on the finished colour of surfaces that keep the game's own lighting:
+//                                       a stock map's world and props. `colour` is the lit, fogged, pre-exposed linear
+//                                       colour the game's pixel shader ends with; the result replaces it. The function
+//                                       may use only its argument, constants and intrinsics (it is spliced into the
+//                                       game's compiled shaders, core dxbc_splice).
+bool customShaderHasSurface(const std::string& code);
+bool customShaderHasFilter(const std::string& code);
+// The pixel shader that holds the filter alone (entry point kIw8rFilterEntry, ps_5_0): it reads the colour from
+// TEXCOORD0 and writes the filtered colour, alpha unchanged. The hosts compile it; the build splices it.
+inline constexpr const char* kIw8rFilterEntry = "iw8rFilterMain";
+std::string customShaderFilterProgramSource(const CustomShader& shader);
+// The viewport's textured shader with the filter (IW8R_FILTER defined): for the stock reference.
+std::string customShaderFilterViewportSource(const std::string& baseSource, const std::string& insertBefore, const CustomShader& shader);
+
 // True when the code reads an edge input (edgePixels, edgeUnits or edgeNormal): the hosts then make the edge data of
 // the brush faces (core face_edges); shaders that do not read them cost nothing.
 bool customShaderUsesEdges(const std::string& code);

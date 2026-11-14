@@ -1,6 +1,8 @@
 // MainWindow: rebuilding the open stock map through the converter's editzone command (roadmap 11.2 / 11.4 / 11.5,
 // docs/research/88_stock_map_editing.md). Kept out of main_window.cpp, which is at the compiler's section limit.
 #include "main_window.h"
+#include "render.h"
+#include "custom_shader.h"
 #include <map>
 #include <QTextStream>
 
@@ -337,11 +339,38 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
                       .arg(names.join(", "));
     }
 
+    // The map shader's filter (worldspawn iw8r_surface_shader, a file with iw8rFilter): compiled here and spliced by the
+    // converter into every lit pixel shader of the map's techset zone (editzone "lit_filter"), so the world and the
+    // static props keep the game's lighting and get the filter's look.
+    std::string litFilter;
+    if (const auto shader = mapSurfaceShader(); shader && customShaderHasFilter(shader->code)) {
+        std::vector<uint8_t> program;
+        std::string cerr;
+        const QString programPath = work + "/lit_filter.cso";
+        QFile pf(programPath);
+        if (!iw8r::app::SceneRenderer::compileProgram(customShaderFilterProgramSource(*shader), kIw8rFilterEntry, program, &cerr)) {
+            if (err) *err = "The shader's filter does not compile: " + qs(cerr);
+            return false;
+        }
+        if (!pf.open(QIODevice::WriteOnly) || pf.write(reinterpret_cast<const char*>(program.data()), qint64(program.size())) != qint64(program.size())) {
+            if (err) *err = "Cannot write " + programPath;
+            return false;
+        }
+        pf.close();
+        litFilter = stockLitFilterJson(QDir::toNativeSeparators(programPath).toStdString());
+        if (notes)
+            *notes << "the map shader " + qs(shader->name) + " filters the map's lit surfaces (world and static props; characters, weapons and "
+                      "effects use shared shaders and keep their look); needs a converter with editzone \"lit_filter\"";
+    } else if (const auto any = mapSurfaceShader(); any && notes) {
+        *notes << "the map shader " + qs(any->name) + " has no iw8rFilter function: a stock map's surfaces keep the game's lighting, "
+                  "so only a filter can change their look";
+    }
+
     const QString editsPath = work + "/edits.json";
     QFile jf(editsPath);
     const std::string json = stockEditJson(QDir::toNativeSeparators(entsPath).toStdString(), hidden, carry, writeLoot ? &loot : nullptr,
                                            &placed.json, &stockPatches, &removeCollision, &lootBoxes, &sun, &replaceMaterials,
-                                           &removeWorld);
+                                           &removeWorld, &litFilter);
     if (!jf.open(QIODevice::WriteOnly) || jf.write(json.data(), qint64(json.size())) != qint64(json.size())) {
         if (err) *err = "Cannot write " + editsPath;
         return false;

@@ -251,6 +251,12 @@ Commands in the Tools menu:
 - The whole toon look is in `toon.iw8shader.hlsl`: its constants at the top set the line width (`kLinePixels`), the
   colour strength, the tones and the shade level. Make a copy with New to change them for your map.
 - The example map Cinder Rail (Toon) uses it. Custom shaders are built and checked offline but not yet seen in game.
+- **Stock maps.** A stock map's surfaces keep the game's own lighting, so a shader changes them through a second
+  function: `float3 iw8rFilter(float3 colour)`, which gets the finished colour of a pixel and returns the new one.
+  Open the stock map, choose the shader in Tools > Shader Editor (Use for This Map), and the viewport shows the world
+  and props through it. File > Rebuild Stock Zone builds it into the map's lit shaders; File > Install Edited Stock
+  Map Into Game installs the patch files as for any stock edit. The filter cannot use textures or the edge inputs,
+  and it does not reach characters, weapons or effects.
 
 ### What the game draws from here (Umbra visibility)
 

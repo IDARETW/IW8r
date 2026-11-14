@@ -5,6 +5,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Custom shaders on stock maps.** A shader file can now hold a second function, `iw8rFilter`, for surfaces that keep
+  the game's own lighting. Set a shader for an opened stock map (Tools > Shader Editor > Use for This Map) and the
+  viewport shows its world and props through the filter; File > Rebuild Stock Zone builds the filter into the map's
+  own lit shaders and writes the patch files as usual. The toon shader has such a filter: vivid colour and the light
+  in steps. Limits: no ink lines on stock maps (their geometry has no edge data), and characters, weapons and effects
+  keep their look (their shaders are shared by every map). Checked offline: the edited Shipment zone loads in the
+  game's own loaders and Direct3D accepts all 217 changed shaders. Not seen in game (research 115).
+
 - **No more z-fighting where brushes overlap.** Two brush faces lying in the same plane on top of each other used to
   be drawn both, flickering against each other in the viewport and in game (Cinder Rail had 2,636 such pairs). Now
   only one is drawn where they overlap: the smaller face, so a panel sits on its wall. The build says how many faces

@@ -2,6 +2,18 @@
 
 ## Latest (2026-11-13)
 
+- Owner (2026-11-13 late night): "make a patch ff to make shipment use the toon shader". Research 115. Core
+  dxbc_splice (DXBC container, SHEX tokens, checksum = modified MD5: reproduces all 218 stock checksums;
+  dxbcSpliceFilter moves a filter shader's instructions before a shader's final ret). custom_shader: iw8rFilter
+  (customShaderHasFilter / HasSurface, customShaderFilterProgramSource, customShaderFilterViewportSource). Viewport:
+  SceneRenderer::setReferenceFilterShader (IW8R_FILTER variant of ps_tex on the reference world and props, the
+  filter on colour x game0.y), compileProgram, pixelShaderAccepted; CameraView::setReferenceFilterLookup. Stock
+  rebuild: lit_filter.cso + stockLitFilterJson -> editzone "lit_filter". Converter x64-zt 14bff0d5 (worktree, deployed
+  to E:/mw124/x64-zt, old exe out/zt_backup/zonetool_7bc751ba.exe): dxbc_splice.hpp (copied by
+  tools/patches/zt_lit_filter.py), editzone "lit_filter" + "techsets_only". CLI --shader-filter-program; bench
+  IW8R_BENCH_SHADER. Shipment: 366 sets / 369 techniques / 217 shaders changed, patch
+  out/agent/toon_ship/edit/patch/techsets_mp_shipment.fp (140 KB, toon filter), ACTS loads the edited zone, a D3D11
+  device accepts all 217 (GUI test). NOT seen in game: pipeline states for the new hashes are the open risk.
 - Owner (2026-11-13 night): lines at the slices of walls, z-fighting on square structures. (1) Game Lighting no
   longer draws the editor's dark outlines of brush faces (scene.gameOutlines, View > Game Lighting Options > Brush
   Outlines, game/brushOutlines, off). (2) Core face_edges now always shapes brush faces in both hosts

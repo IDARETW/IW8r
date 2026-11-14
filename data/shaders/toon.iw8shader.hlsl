@@ -14,6 +14,11 @@
 //      edge of the face in pixels): a silhouette edge gets the full width on its face, an edge whose two faces both
 //      show gets half on each, so every line is the same width; soft folds are inked only as silhouettes. On rounded
 //      models from how fast the surface turns away from the eye.
+//
+// Two functions: iw8rSurface lights a map's own surfaces (all of the above). iw8rFilter, at the end, is the toon look
+// for surfaces that keep the game's own lighting: a stock map's world and props (File > Rebuild Stock Zone builds it
+// into the map's lit shaders). It sees only the finished colour, so it gives the vivid colour and the light in steps;
+// the ink lines need the edge inputs, which stock geometry does not have.
 
 // ---- colour
 static const float kVibrance = 1.10;      // extra saturation for dull colours (0 = the texture as it is)
@@ -43,6 +48,12 @@ static const float kLineMaxUnits = 3.4;   // ... but never wider than this on th
 static const float kInk = 0.07;           // brightness left under a line (0 = black)
 static const float3 kInkTint = float3(0.85, 0.80, 1.0);  // ink leans to a dark violet rather than grey
 static const float kSoftFold = 0.90;      // cos of the fold below which an edge is hard (about 26 degrees)
+
+// ---- stock surfaces (iw8rFilter)
+static const float kFilterVibrance = 0.70; // as kVibrance, on the finished colour (the light's own tint gains too)
+static const float kFilterStops = 0.75;    // the light in steps this many stops high (a stop is twice the light)
+static const float kFilterBands = 0.75;    // 0 the game's smooth light .. 1 flat steps
+static const float kFilterEdge = 0.10;     // softness of a step's border, as a share of a step
 
 static const float3 kLuma = float3(0.2126, 0.7152, 0.0722);
 
@@ -136,4 +147,20 @@ float3 iw8rSurface(IW8RSurface s)
     // Ink over it.
     const float ink = toonInk(s);
     return lerp(c, c * kInk * kInkTint, ink);
+}
+
+// The finished colour of a surface the game lights itself (lit, fogged, exposure applied): vivid, and its brightness
+// gathered into steps, the border in the middle of each step so that the picture is as bright as before on average.
+float3 iw8rFilter(float3 colour)
+{
+    const float hi = max(colour.r, max(colour.g, colour.b));
+    const float lo = min(colour.r, min(colour.g, colour.b));
+    const float saturation = hi > 1e-6 ? (hi - lo) / hi : 0.0;
+    const float3 c = toonSaturate(colour, kSaturation + kFilterVibrance * (1.0 - saturation));
+
+    const float light = max(dot(c, kLuma), 1e-6);
+    const float stops = log2(light) / kFilterStops;
+    const float stepped = floor(stops) + smoothstep(0.5 - kFilterEdge, 0.5 + kFilterEdge, frac(stops));
+    const float banded = lerp(stops, stepped, kFilterBands);
+    return c * (exp2(banded * kFilterStops) / light);
 }

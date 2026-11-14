@@ -383,6 +383,18 @@ Map project out/agent/mp_cinderrail_toon (built as mp_cinderrail_t).
       structures or anywhere two brushes overlap.
 - [ ] The bright sun in the sky is where the shadows come from (the sun is now 20 degrees up, like the sky's).
 
+## In game (optional, 2026-11-13): Shipment with the toon shader's filter
+
+Patch: `out/agent/toon_ship/edit/patch/techsets_mp_shipment.fp` (or rebuild it: open Shipment, Tools > Shader Editor,
+toon, Use for This Map, File > Rebuild Stock Zone, File > Install Edited Stock Map Into Game). Game closed while
+installing; File > Restore Stock Map In Game (or deleting the copied `.fp`) takes it out again.
+
+- [ ] Shipment loads and plays (this is the first stock map whose lit shaders were replaced: if it does not load, or
+      the world is black or invisible, restore and tell me).
+- [ ] The world and the containers have stronger colours and the light falls in steps instead of smooth gradients.
+- [ ] Characters, weapons and effects look as always.
+- [ ] The first load may take longer (the game builds the changed shaders' pipelines).
+
 ## What is not expected to work yet
 
 Decal volumes, volumetrics, custom music states, custom fonts and LUI (research 36) (docs/ROADMAP.md lists every

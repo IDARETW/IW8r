@@ -1091,6 +1091,14 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         }
         if (batchFlags2.x > 0.5) c += srgbToLinear3(emi0.Sample(samp0, i.uv).rgb);
         c = gameFog[0].w > 0.5 ? gameFogApply(c, i.w, false) : applyFog(c, i.w);
+#ifdef IW8R_FILTER
+        {
+            // A map shader's filter (core custom_shader): on the lit, fogged colour with the exposure applied, as the
+            // game's lit pixel shaders end (their last step multiplies by the exposure, cb7[42].x).
+            const float pre = max(game0.y, 1e-9);
+            c = iw8rFilter(c * pre) / pre;
+        }
+#endif
         if (gameAo.w < 0.5) c = gamePost(c);  // HDR frames: the post pass applies it (drawPost)
         if (batchFlags.y > 1.5) return float4(c * outA, 1.0);
         return float4(c, outA);
@@ -1394,6 +1402,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(blendMul_);
     safeRelease(vsTex_);
     safeRelease(psTex_);
+    safeRelease(filterPs_);
     safeRelease(psShadowClip_);
     safeRelease(psPrepass_);
     safeRelease(cbTiles_);
@@ -1445,6 +1454,67 @@ int SceneRenderer::createCustomShader(const std::string& source, std::string* er
 }
 
 const char* SceneRenderer::texShaderSource() { return kTexShader; }
+
+bool SceneRenderer::compileProgram(const std::string& source, const char* entry, std::vector<uint8_t>& program, std::string* err) {
+    program.clear();
+    ID3DBlob* blob = nullptr;
+    ID3DBlob* errb = nullptr;
+    const HRESULT hr = D3DCompile(source.data(), source.size(), "iw8r_program", nullptr, nullptr, entry, "ps_5_0",
+                                  D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &blob, &errb);
+    if (err) *err = errb ? std::string(static_cast<const char*>(errb->GetBufferPointer()), errb->GetBufferSize()) : std::string();
+    safeRelease(errb);
+    if (FAILED(hr) || !blob) {
+        safeRelease(blob);
+        if (err && err->empty()) *err = "D3DCompile failed";
+        return false;
+    }
+    // Reflection and debug data are not needed where the program goes (it is spliced into another shader).
+    ID3DBlob* stripped = nullptr;
+    if (SUCCEEDED(D3DStripShader(blob->GetBufferPointer(), blob->GetBufferSize(),
+                                 D3DCOMPILER_STRIP_REFLECTION_DATA | D3DCOMPILER_STRIP_DEBUG_INFO | D3DCOMPILER_STRIP_TEST_BLOBS, &stripped)) && stripped) {
+        safeRelease(blob);
+        blob = stripped;
+    }
+    const auto* p = static_cast<const uint8_t*>(blob->GetBufferPointer());
+    program.assign(p, p + blob->GetBufferSize());
+    safeRelease(blob);
+    return true;
+}
+
+bool SceneRenderer::pixelShaderAccepted(const std::vector<uint8_t>& program) {
+    if (!dev_ || program.empty()) return false;
+    ID3D11PixelShader* ps = nullptr;
+    const bool ok = SUCCEEDED(dev_->CreatePixelShader(program.data(), program.size(), nullptr, &ps)) && ps;
+    safeRelease(ps);
+    return ok;
+}
+
+bool SceneRenderer::setReferenceFilterShader(const std::string& source, std::string* err) {
+    if (source.empty()) {
+        safeRelease(filterPs_);
+        return true;
+    }
+    if (!dev_) return false;
+    ID3DBlob* blob = nullptr;
+    ID3DBlob* errb = nullptr;
+    const HRESULT hr = D3DCompile(source.data(), source.size(), "iw8r_filter", nullptr, nullptr, "ps_tex", "ps_5_0", 0, 0, &blob, &errb);
+    if (FAILED(hr)) {
+        if (err) *err = errb ? std::string(static_cast<const char*>(errb->GetBufferPointer()), errb->GetBufferSize()) : "D3DCompile failed";
+        safeRelease(errb);
+        return false;
+    }
+    safeRelease(errb);
+    ID3D11PixelShader* ps = nullptr;
+    const HRESULT ch = dev_->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &ps);
+    safeRelease(blob);
+    if (FAILED(ch)) {
+        if (err) *err = "CreatePixelShader failed";
+        return false;
+    }
+    safeRelease(filterPs_);
+    filterPs_ = ps;
+    return true;
+}
 
 bool SceneRenderer::compileCheck(const std::string& source, std::string* err) {
     ID3DBlob* blob = nullptr;
@@ -3561,7 +3631,7 @@ void SceneRenderer::drawReferenceTexInstances() {
     IW8R_PROF(texPsOverride_ ? "d.props_pre" : "d.props");
     ctx_->IASetInputLayout(layoutTexInst_);
     ctx_->VSSetShader(vsTexInst_, nullptr, 0);
-    ctx_->PSSetShader(texPsOverride_ ? texPsOverride_ : psTex_, nullptr, 0);
+    ctx_->PSSetShader(texPsOverride_ ? texPsOverride_ : (filterPs_ ? filterPs_ : psTex_), nullptr, 0);
     ctx_->PSSetSamplers(0, 1, &sampler_);
     static const bool hardCut = std::getenv("IW8R_HARD_CUTOUT") != nullptr;
     const bool soft = !texPsOverride_ && !hardCut && blend_;
@@ -4504,11 +4574,12 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         ctx_->VSSetShader(vs_, nullptr, 0);
         ctx_->PSSetShader(ps_, nullptr, 0);
     }
+    ID3D11PixelShader* const refPs = filterPs_ ? filterPs_ : psTex_;  // a map shader's filter on the stock reference
     if (vbRefTex_ && refVisible_ && vsTex_ && psTex_ && layoutTex_) {  // textured stock reference
         IW8R_PROF("d.ref");
         ctx_->IASetInputLayout(layoutTex_);
         ctx_->VSSetShader(vsTex_, nullptr, 0);
-        ctx_->PSSetShader(psTex_, nullptr, 0);
+        ctx_->PSSetShader(refPs, nullptr, 0);
         ctx_->PSSetSamplers(0, 1, &sampler_);
         ctx_->RSSetState(rsTris_);
         ctx_->OMSetDepthStencilState(texOpaqueDs, 0);

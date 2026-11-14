@@ -81,7 +81,10 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
                           const std::string* placedObjects = nullptr, const std::vector<StockPatchOverride>* stockPatches = nullptr,
                           const std::vector<StockPropCollision>* removeCollision = nullptr, const std::string* lootBoxes = nullptr,
                           const std::string* sun = nullptr, const std::string* replaceMaterials = nullptr,
-                          const std::string* removeWorld = nullptr);
+                          const std::string* removeWorld = nullptr, const std::string* litFilter = nullptr);
+// The "lit_filter" value for stockEditJson: the compiled filter program (customShaderFilterProgramSource, core
+// custom_shader) and the shared zones a lit shader's program may live in when the map's techset zone only names it.
+std::string stockLitFilterJson(const std::string& programPath);
 
 // 11.5: stock world geometry taken out (docs/research/96_stock_world_removal.md). An iw8r_remove_world brush entity's
 // brushes (and patches) each give a world-space box; on File > Rebuild Stock Zone the converter (editzone

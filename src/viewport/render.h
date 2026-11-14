@@ -239,6 +239,15 @@ public:
     static const char* texShaderSource();  // the base the custom shaders are made from
     // Compiles a textured pixel shader source (ps_tex, ps_5_0) without creating it: false with the compiler's errors.
     static bool compileCheck(const std::string& source, std::string* err);
+    // Compiles a pixel shader (ps_5_0) to its bytecode: false with the compiler's errors.
+    static bool compileProgram(const std::string& source, const char* entry, std::vector<uint8_t>& program, std::string* err);
+    // The stock reference (world and props) drawn with this textured pixel shader source instead of the editor's own
+    // (customShaderFilterViewportSource: a map shader's filter on surfaces that keep the game's lighting). Empty source:
+    // the editor's own again. False with the errors when it does not compile (the editor's own is kept).
+    bool setReferenceFilterShader(const std::string& source, std::string* err);
+    bool referenceFilterShader() const { return filterPs_ != nullptr; }
+    // Does the device take this compiled pixel shader (checksum and bytecode valid)? For checks of spliced programs.
+    bool pixelShaderAccepted(const std::vector<uint8_t>& program);
     // Video memory the renderer holds, by kind (MB): "props a+b world c extras d streams e textures f lightmaps g
     // probes h shadows i targets j". Windows charges video memory to the process's commit, so this is part of what
     // the bench's memory.log shows.
@@ -877,6 +886,7 @@ private:
     // Game Lighting's depth pre-pass (the game shader is costly and its alpha clip stops early depth rejection): depth
     // first through the clip shader with colour writes off, then the shading pass tests depth without writing it.
     struct ID3D11BlendState* blendNoColor_ = nullptr;
+    ID3D11PixelShader* filterPs_ = nullptr;  // setReferenceFilterShader
     ID3D11PixelShader* texPsOverride_ = nullptr;  // set during the pre-pass: drawReferenceTexInstances uses it
     ID3D11Texture2D* probeArrTex_ = nullptr;
     ID3D11ShaderResourceView* probeArrSrv_ = nullptr;

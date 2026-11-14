@@ -46,3 +46,28 @@ TEST(custom_shader_edge_inputs) {
     CHECK(plain.find("#define IW8R_EDGES") == std::string::npos && edges.rfind("#define IW8R_EDGES 1\n", 0) == 0);
     CHECK(edges.find("void iw8rEdgeFields(") < edges.find("float3 iw8rSurface(IW8RSurface s)"));
 }
+
+TEST(custom_shader_filter_function) {
+    // A shader file may hold a surface function, a filter, or both; one of them at least.
+    const std::string surface = "float3 iw8rSurface(IW8RSurface s) { return s.albedo; }";
+    const std::string filter = "float3 iw8rFilter(float3 colour) { return colour * 0.5; }";
+    std::string err;
+    CHECK(customShaderHasSurface(surface) && !customShaderHasFilter(surface));
+    CHECK(customShaderHasFilter(filter) && !customShaderHasSurface(filter));
+    CHECK(checkCustomShaderCode(filter, &err) && checkCustomShaderCode(surface + "\n" + filter, &err));
+    CHECK(!checkCustomShaderCode("float3 other(float3 c) { return c; }", &err) && err.find("iw8rFilter") != std::string::npos);
+    CHECK(!customShaderHasFilter("// float3 iw8rFilter(float3 c) in a comment\n" + surface));
+    CustomShader s;
+    s.name = "look";
+    s.code = filter;
+    // The program the build compiles: the filter alone behind an entry point that reads TEXCOORD0.
+    const std::string program = customShaderFilterProgramSource(s);
+    CHECK(program.find("float3 iw8rFilter(float3 colour)") < program.find(std::string("float4 ") + kIw8rFilterEntry));
+    CHECK(program.find("TEXCOORD0") != std::string::npos && program.find("iw8rFilter(colour.rgb)") != std::string::npos);
+    // The viewport's variant: IW8R_FILTER defined, the code before the textured shader's entry point.
+    const std::string base = "cbuffer A { float4 a; };\nfloat4 ps_tex(PSIn i) : SV_TARGET { return 0; }\n";
+    const std::string view = customShaderFilterViewportSource(base, "float4 ps_tex(PSIn i) : SV_TARGET {", s);
+    CHECK(view.rfind("#define IW8R_FILTER 1\n", 0) == 0);
+    CHECK(view.find("float3 iw8rFilter") < view.find("float4 ps_tex("));
+    CHECK(customShaderFilterViewportSource("no entry point", "float4 ps_tex(PSIn i) : SV_TARGET {", s).empty());
+}

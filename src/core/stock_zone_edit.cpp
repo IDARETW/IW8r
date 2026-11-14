@@ -139,11 +139,24 @@ std::vector<uint32_t> stockEditHiddenProps(const MapFile& map) {
     return {found.begin(), found.end()};
 }
 
+std::string stockLitFilterJson(const std::string& programPath) {
+    std::string path;
+    for (const char ch : programPath) {
+        if (ch == '\\' || ch == '"') path += '\\';
+        path += ch;
+    }
+    // The zones the game loads with every multiplayer map: a map's techset zone names their shaders without holding them.
+    return "{\"program\":\"" + path +
+           "\",\"shared\":[\"techsets_common_mp\",\"techsets_common_core_mp\",\"techsets_common_base_mp\",\"techsets_common\","
+           "\"techsets_common_stream_mp\",\"techsets_global_mp\",\"techsets_global_core_mp\",\"techsets_global\","
+           "\"techsets_global_stream_mp\",\"techsets_common_br_mp\"]}";
+}
+
 std::string stockEditJson(const std::string& entitiesPath, const std::vector<uint32_t>& hiddenProps,
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints, const std::string* placedObjects,
                           const std::vector<StockPatchOverride>* stockPatches, const std::vector<StockPropCollision>* removeCollision,
                           const std::string* lootBoxes, const std::string* sun, const std::string* replaceMaterials,
-                          const std::string* removeWorld) {
+                          const std::string* removeWorld, const std::string* litFilter) {
     std::string json = "{";
     bool first = true;
     const auto sep = [&] {
@@ -175,6 +188,10 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
     if (removeWorld && !removeWorld->empty()) {
         sep();
         json += "\"remove_world_surfaces\":" + *removeWorld;
+    }
+    if (litFilter && !litFilter->empty()) {
+        sep();
+        json += "\"lit_filter\":" + *litFilter;
     }
     if (sun && !sun->empty()) {
         sep();

@@ -48,6 +48,7 @@
 #include <QStyleFactory>
 #include <QTimer>
 
+#include "custom_shader.h"
 #include "devmap_cover.h"
 #include "devmap_launch.h"
 #include "cache_manager.h"
@@ -731,6 +732,21 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         {
             // IW8R_UMBRA=cull | cells | both: View > Umbra Visibility for the shots (always set, so a bench without it
             // is not left with the last run's choice).
+            // IW8R_BENCH_SHADER=<name>: the map's surface shader for the shots (a stock map: its filter on the reference).
+            if (const QString sh = qEnvironmentVariable("IW8R_BENCH_SHADER"); !sh.isEmpty()) {
+                if (const iw8r::Entity* ws = ctx.doc.worldspawn()) {
+                    ctx.doc.setKeyValue(ws->id, "iw8r_surface_shader", sh.toStdString());
+                    ctx.documentEdited();
+                }
+                QElapsedTimer st;
+                st.start();
+                while (st.elapsed() < 4000) {
+                    frame(nullptr);
+                    QApplication::processEvents(QEventLoop::AllEvents, 20);
+                }
+                settle();
+                report << QString("shader %1 reference_filter %2").arg(sh).arg(cam->referenceFilterOn() ? 1 : 0);
+            }
             const QString um = qEnvironmentVariable("IW8R_UMBRA");
             w.setUmbraView(um == "cull" || um == "both", um == "cells" || um == "both");
             if (!um.isEmpty()) {
@@ -1003,6 +1019,7 @@ int main(int argc, char** argv) {
     bool auditReverse = false;
     bool coverCheck = false;
     bool f5Check = false;
+    QString filterShaderFile;  // --shader-filter-program <file.iw8shader.hlsl> --out <file.cso>
     QString compileFile, openFile, keysPath, guiTestSample, smokeFile, outDir, materialTest, modelTest, worldTest, skyTest;
     QString benchMap, benchReference;
     QString propsZone;       // --stock-props-test
@@ -1032,8 +1049,25 @@ int main(int argc, char** argv) {
         else if (a == "--batch" && i + 1 < argc) auditBatch = std::atoi(argv[++i]);
         else if (a == "--reverse") auditReverse = true;
         else if (a == "--set-web-credentials" && i + 1 < argc) webUser = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--shader-filter-program" && i + 1 < argc) filterShaderFile = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--safe-mode") continue;
         else if (!a.startsWith("-")) openFile = a;
+    }
+    if (!filterShaderFile.isEmpty()) {
+        // A shader file's iw8rFilter as the compiled program File > Rebuild Stock Zone hands the converter (editzone
+        // "lit_filter"). No window, no device: the compiler only.
+        iw8r::CustomShader shader;
+        std::string err;
+        std::vector<uint8_t> program;
+        bool ok = iw8r::readCustomShader(filterShaderFile.toStdString(), shader, &err);
+        if (ok && !iw8r::customShaderHasFilter(shader.code)) ok = false, err = "the shader has no float3 iw8rFilter(float3 colour)";
+        if (ok) ok = iw8r::app::SceneRenderer::compileProgram(iw8r::customShaderFilterProgramSource(shader), iw8r::kIw8rFilterEntry, program, &err);
+        QFile out(outDir);
+        if (ok && (outDir.isEmpty() || !out.open(QIODevice::WriteOnly) || out.write(reinterpret_cast<const char*>(program.data()), qint64(program.size())) != qint64(program.size())))
+            ok = false, err = "cannot write --out " + outDir.toStdString();
+        std::printf("%s%s\n", ok ? "shader filter program written: " : "shader filter program FAILED: ", ok ? outDir.toStdString().c_str() : err.c_str());
+        std::fflush(stdout);
+        return ok ? 0 : 1;
     }
     if (!materialTest.isEmpty()) {
         // Headless: no window, no D3D device. Same app names as the editor so the cache sits in the same folder.

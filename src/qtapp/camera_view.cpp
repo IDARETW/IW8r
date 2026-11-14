@@ -569,6 +569,21 @@ void CameraView::render() {
     }
     mix(ctx_->scene.spawns.size());
     mix(ctx_->scene.lights.size());
+    // The map shader's filter on the stock reference: compiled when the shader (or its file) changes.
+    if (filterLookup_ && rendererOk_ && pollFiles_) {
+        const std::shared_ptr<const CustomShader> fs = filterLookup_();
+        const std::string key = fs ? fs->path + '\n' + fs->code : std::string();
+        if (key != filterKey_) {
+            filterKey_ = key;
+            std::string err;
+            const std::string src = fs ? customShaderFilterViewportSource(app::SceneRenderer::texShaderSource(), "float4 ps_tex(PSIn i) : SV_TARGET {", *fs)
+                                       : std::string();
+            if (!renderer_.setReferenceFilterShader(src, &err)) {
+                renderer_.setReferenceFilterShader({}, nullptr);
+                if (ctx_ && fs) emit ctx_->statusMessage(QString::fromStdString("Shader filter " + fs->name + ": " + err));
+            }
+        }
+    }
     // Sky preview: (re)load the face textures when the sky image changes.
     if (ctx_->texturedView && skySource_ && pollFiles_) {
         // The map's sky rotation (worldspawn skyrotation; stock maps: from their entity string) is part of the key: the
@@ -1473,7 +1488,7 @@ void CameraView::updateReflectionProbe() {
 int CameraView::customShaderFor(const std::string& material) {
     if (!shaderLookup_ || !rendererOk_) return -1;
     const std::shared_ptr<const CustomShader> shader = shaderLookup_(material);
-    if (!shader) return -1;
+    if (!shader || !customShaderHasSurface(shader->code)) return -1;  // a filter alone lights nothing itself
     const std::string key = shader->path + '\n' + shader->code;
     if (const auto it = customShaderIds_.find(key); it != customShaderIds_.end()) return it->second;
     std::string err;

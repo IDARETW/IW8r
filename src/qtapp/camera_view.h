@@ -383,6 +383,11 @@ public slots:
         update();
     }
     size_t referenceTexInstanceMeshes() const { return texInstMaterials_.size(); }
+    // The map shader's filter for the stock reference (core custom_shader iw8rFilter): the lookup gives the shader
+    // whose filter applies, or null. Checked when the files are polled; the reference then draws through it.
+    void setReferenceFilterLookup(std::function<std::shared_ptr<const CustomShader>()> lookup) { filterLookup_ = std::move(lookup); }
+    bool referenceFilterOn() const { return renderer_.referenceFilterShader(); }
+    bool pixelShaderAccepted(const std::vector<uint8_t>& program) { return renderer_.pixelShaderAccepted(program); }
     // Cull by tome (View > Umbra Visibility): SceneRenderer::setReferenceTomeVisibility. Empty = off.
     void setTomeVisibility(std::vector<uint32_t> surfaceBits, std::vector<uint32_t> modelBits) {
         renderer_.setReferenceTomeVisibility(std::move(surfaceBits), std::move(modelBits));
@@ -551,6 +556,8 @@ private:
     // 12.6: a custom material's tint (r, g, b multipliers; nullopt = none), so the camera shows what the build makes.
     std::function<std::optional<std::array<double, 3>>(const std::string& material)> customTint_;
     std::function<QString()> skySource_;
+    std::function<std::shared_ptr<const CustomShader>()> filterLookup_;
+    std::string filterKey_;  // path + code of the filter the renderer holds ("" none)
     QString skyAutoKey_;     // sky path | sun yaw of skyAutoYaw_
     float skyAutoYaw_ = 0;   // core autoSkyRotationYaw for a map without skyrotation
     QString skyPath_;

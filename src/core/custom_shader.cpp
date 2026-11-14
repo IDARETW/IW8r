@@ -33,8 +33,8 @@ std::string withoutComments(const std::string& s) {
 
 bool checkCustomShaderCode(const std::string& code, std::string* err) {
     const std::string c = withoutComments(code);
-    if (!std::regex_search(c, std::regex(R"(float3\s+iw8rSurface\s*\(\s*IW8RSurface\s+\w+\s*\))"))) {
-        if (err) *err = "the shader must define float3 iw8rSurface(IW8RSurface s)";
+    if (!customShaderHasSurface(code) && !customShaderHasFilter(code)) {
+        if (err) *err = "the shader must define float3 iw8rSurface(IW8RSurface s) or float3 iw8rFilter(float3 colour)";
         return false;
     }
     static const std::regex resources(R"(\b(Texture\w*|RWTexture\w*|SamplerState|SamplerComparisonState|cbuffer|tbuffer|StructuredBuffer|RWStructuredBuffer|ByteAddressBuffer|RWByteAddressBuffer)\b|\bregister\s*\()");
@@ -108,6 +108,35 @@ bool findCustomShader(const std::string& name, const std::vector<std::string>& f
             if (!f.empty()) *err += " " + f;
     }
     return false;
+}
+
+bool customShaderHasSurface(const std::string& code) {
+    static const std::regex re(R"(float3\s+iw8rSurface\s*\(\s*IW8RSurface\s+\w+\s*\))");
+    return std::regex_search(withoutComments(code), re);
+}
+
+bool customShaderHasFilter(const std::string& code) {
+    static const std::regex re(R"(float3\s+iw8rFilter\s*\(\s*float3\s+\w+\s*\))");
+    return std::regex_search(withoutComments(code), re);
+}
+
+std::string customShaderFilterProgramSource(const CustomShader& shader) {
+    return customShaderPreamble() + "#line 1 \"" + shader.name + ".iw8shader.hlsl\"\n" + shader.code +
+           "\n#line 1 \"filter\"\nfloat4 " + kIw8rFilterEntry +
+           "(float4 colour : TEXCOORD0) : SV_Target { return float4(iw8rFilter(colour.rgb), colour.a); }\n";
+}
+
+std::string customShaderFilterViewportSource(const std::string& baseSource, const std::string& insertBefore, const CustomShader& shader) {
+    const size_t at = baseSource.find(insertBefore);
+    if (at == std::string::npos) return {};
+    std::string out = "#define IW8R_FILTER 1\n";
+    out += baseSource.substr(0, at);
+    out += customShaderPreamble();
+    out += "#line 1 \"" + shader.name + ".iw8shader.hlsl\"\n";
+    out += shader.code;
+    out += "\n#line 1 \"viewport\"\n";
+    out += baseSource.substr(at);
+    return out;
 }
 
 bool customShaderUsesEdges(const std::string& code) {

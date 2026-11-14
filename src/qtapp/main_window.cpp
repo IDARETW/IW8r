@@ -294,6 +294,13 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         if (isIw8ToolMaterial(m)) return nullptr;
         return mapSurfaceShader();
     });
+    // A stock map with a map shader that has a filter: the reference world and props draw through it (what File >
+    // Rebuild Stock Zone builds into the map's lit shaders).
+    camera_->setReferenceFilterLookup([this]() -> std::shared_ptr<const CustomShader> {
+        if (referenceZone_.isEmpty()) return nullptr;
+        const auto s = mapSurfaceShader();
+        return s && customShaderHasFilter(s->code) ? s : nullptr;
+    });
     // Brush faces carry edge data (core face_edges) while a shader in use reads the edge inputs: the map's surface
     // shader, or a material's own.
     ctx_.scene.faceEdgesWanted = [this] {
