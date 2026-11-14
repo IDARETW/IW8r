@@ -5,7 +5,7 @@ It edits `iwmap 4` `.map` files, previews them with textures, lights and a walka
 Replay map package. The build uses x64-zt (zonetool) and ACTS (a game-data export tool). The package is then deployed
 into the game folder. Stock Replay maps can also be opened, changed and rebuilt.
 
-Date: 2026-11-12
+Date: 2026-11-12 (pictures taken again and Game Lighting added on 2026-11-14)
 
 ![The editor with the dev showcase map mp_iw8r_show2: textured camera, top (XY) view, and the Entity inspector with the keys of the selected fan](img/overview.png)
 
@@ -81,6 +81,7 @@ Date: 2026-11-12
 - Height map: `Patch > Height Map` imports a PNG, TGA, JPG or 8- or 16-bit PGM onto a terrain, exports 16-bit PGM, and runs thermal and hydraulic erosion. Blend By Slope writes the slope into the terrain's vertex alpha (flat up to one angle, fully blended from another), so the second layer of a layered material shows on the steep parts; colours already painted keep their red, green and blue.
 - Road: `Patch > Road Through Selected Points` drapes a road patch over the terrain through the selected points. It can flatten the terrain under the road.
 - Patches draw from both sides. Worldspawn `iw8r_patch_one_sided` set to 1 turns that off. (owner confirmed in game)
+- Paint on brush surfaces: `Brush > Paint Mesh on Faces` lays a mesh with a paint point every N units on the selected faces (Ctrl+Shift+click) or on every drawn face of the selected brushes, with the face's material and texture placement. The face under it becomes caulk, so the brush keeps its shape and collision. One undo step; Vertex Paint Mode starts right after. (not yet seen in game)
 - Vertex paint: `Patch > Vertex Paint Mode` paints control point colour and alpha in the camera. (owner confirmed in game: the colour or alpha shows.) How Replay's layered materials use the colour is not verified.
 
 ### Selection, grid and undo
@@ -146,6 +147,25 @@ Date: 2026-11-12
 - `View > Lit Preview Brightness` sets ambient, sun, light and exposure values. The values are saved. They were calibrated against the game.
 - Normal maps and gloss: `View > Normal Maps and Gloss` toggles the shading from the packed `_n&_g` images. (owner confirmed in the editor and in game)
 - Emissive materials (screens, lamps, signs) glow on top of the lighting in the camera.
+
+### Game Lighting
+
+- `View > Game Lighting` (Ctrl+Alt+L) draws the camera the way the game shades the map. (owner check pending: built
+  from the game's shaders and data, compared with one in-game picture of Speedball, not with the running game since.)
+- Your own map: what the built map will look like. With `Compile > Bake lightmaps` on, a preview of the baked
+  lightmap (sky light, bounce in the surfaces' colours, sun shadows); with it off, the flat sky light and the live
+  sun the game then uses. Placed models take their light from the place they stand in.
+- A stock map: its own lightmaps, the light grid on its props, its reflection probes, its lamps (spot and omni, with
+  shadows for the nearest ones), the sun with shadows, its exposure and colour grade, fog, bloom, vignette, film
+  grain and white balance (the warm cast of Hideout or Verdansk), screen-space reflections and ambient occlusion,
+  glowing materials and decals.
+- Stock props switch to their simpler models and disappear at the distances the game uses, including the distance
+  scale a level designer set on a single placement.
+- `View > Game Lighting Options`: Ambient Occlusion, Screen-Space Reflections, Stock Map Lamps, Lamp Shadows, Bloom
+  and Vignette, Film Grain, White Balance, Prop LODs, the sun shadow detail and an exposure override. Each one is
+  saved. Volumetric Fog is there too, off and marked uncalibrated.
+- A screenshot without the editor's markers has the same bloom, vignette and white balance as the view.
+- Textures are read and decoded in the background while a map loads, so the view keeps moving.
 
 ### Fog, grade, wind and behaviour in the views
 
