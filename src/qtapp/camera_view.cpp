@@ -1270,7 +1270,11 @@ bool CameraView::decodedTexture(const std::string& path, int side, int mode, Dec
     const bool wait = !g_backgroundDecode || captureW_ > 0 || cleanCapture_ || (ctx_ && ctx_->scene.captureMode);
     if (!decodePool_) {
         if (wait) {
-            out = job();
+            try {
+                out = job();
+            } catch (...) {
+                out = DecodedTexture{};
+            }
             return true;
         }
         decodePool_ = std::make_unique<KeyedJobPool<DecodedTexture>>();
@@ -1280,6 +1284,12 @@ bool CameraView::decodedTexture(const std::string& path, int side, int mode, Dec
                 if (self) self->update();  // the frame that went on without the texture asks again
             }, Qt::QueuedConnection);
         });
+    }
+    // The preview size changed (the texture budget was reached): what was decoded at the old size will not be asked
+    // for again, and would fill the pool until it went stale.
+    if (side != decodeSide_) {
+        if (decodeSide_ != 0) decodePool_->clear();
+        decodeSide_ = side;
     }
     const std::string key = std::to_string(mode) + ":" + std::to_string(side) + ":" + path;
     if (!decodePool_->take(key, job, out, wait)) return false;
@@ -2371,7 +2381,9 @@ void CameraView::prepareGameLook() {
                                          {float(p.volSun), float(p.volAnisotropy), 1.0f, 0.0f}};
                 std::memcpy(g.vol, vol, sizeof(vol));
             }
-            const double aspect = height() > 0 ? double(width()) / double(height()) : 16.0 / 9.0;
+            // The shape of what is being drawn: a capture's own, else the widget's.
+            double aspect = height() > 0 ? double(width()) / double(height()) : 16.0 / 9.0;
+            if (captureW_ > 0 && captureH_ > 0) aspect = captureAspect_ > 0 ? captureAspect_ : double(captureW_) / double(captureH_);
             gameVignetteConstants(stockPostFx_, aspect, 1.0, g.vignette);
         }
         if (stock && stockFog_.on) {

@@ -38,7 +38,7 @@
   WebServer object). The page: logLines / renderLog / addLogLine, #logLevel, #logFilter. Plan 3.2 is done.
   POST /api/pick {face: true} (hook pickFace, MainWindow::webPickFace: scene.pickFace, selectFace / toggleFace);
   viewlive.js sends it on Ctrl + click.
-  Parking state 2026-11-14 (after the background texture decode): repo at the commit after 3a876b4, suites core 181,546 checks / 1,346 tests and GUI 1,078 checks, 0 failures; zones of mp_cinderrail_t rebuilt 02:58 (x64zt_output; 0 overlapping faces, 5 px lines, the light grid with coloured bounce); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
+  Parking state 2026-11-14 (after the review fixes): repo at the commit after 1132fc2, suites core 181,568 checks / 1,348 tests and GUI 1,080 checks, 0 failures; zones of mp_cinderrail_t rebuilt 02:58 (x64zt_output; 0 overlapping faces, 5 px lines, the light grid with coloured bounce); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
   GET /api/handles (control points of the selected patches, at most 20,000) and POST /api/vertices moves with
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.
   Web form "vision": every scalar / vector field of core vision_fields as a text field (key "v:<name>"), written
@@ -87,6 +87,12 @@
   Plan 3.1: MainWindow::followCameraPos() (the last /api/frame camera for webFollowHoldMs_ = 4000 ms, else
   ctx_.cam.pos) is the centre for updateStreamedTiles, updateTerrainLayers, updateProbeSubset and
   streamedTilesReport. GUI test with a 150 ms hold. Not run on Verdansk in a browser.
+  Review fixes (tools/patches/review_fixes_1114.py): viewport/patch_covers.{h,cpp} (PatchCovers: find / covered by
+  the patch triangles; used by camera_geometry.cpp and scene.cpp buildCameraGeometryImpl), InstancedTexMesh::
+  hasModelBox / modelBox (RefPropMesh::box), InstCell::maxScale + cellCullOn_ / cellCullFov_ (shadow passes skip
+  cells past the cull distance), instCull_ also for clean captures, RefPropMesh.lodOut = 0 when the model has plain
+  parts, KeyedJobPool catches job exceptions, decodeSide_ clears the pool, <cache>/export.incomplete marker and
+  exportingMapEnts_ in exportStockMapEnts.
   Volumetric fog measured (research 109 section 2.7): IW8R_BENCH_VOLUMETRIC=1 turns it on in a bench; Speedball
   block error against out/compare/speedball_ingame.webp 11.3 off, 16.8 on: stays off. The comparison script is the
   one in that section (8 x 4 block means of luminance).

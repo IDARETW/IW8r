@@ -483,6 +483,7 @@ private:
     std::set<int64_t> streamBuilding_;
     std::set<QString> streamRequested_;
     QTimer* streamTimer_ = nullptr;
+    bool exportingMapEnts_ = false;  // exportStockMapEnts is running (it waits in the event loop)
     Vec3 webFollowPos_;
     QElapsedTimer webFollowAt_;
     int webFollowHoldMs_ = 4000;
@@ -543,6 +544,9 @@ private:
         };
         std::vector<Lod> lods;
         double lod0Far = 0;  // LOD0's far (0 = no limit)
+        // The box of LOD0's textured parts in model space (mins, maxs); hasBox false: no textured part.
+        bool hasBox = false;
+        float box[6] = {1e30f, 1e30f, 1e30f, -1e30f, -1e30f, -1e30f};
     };
     QList<QPair<QString, int>> wantLods_;
     bool propLodsEnabled_ = true;  // View > Game Lighting Options > Prop Levels of Detail (game/propLods)  // rebuildReferenceProps: prop LODs not cached yet (asked for at its end)

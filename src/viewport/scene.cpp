@@ -1,6 +1,7 @@
 #include "brush_flags.h"
 #include "game_lightmap.h"
 #include "scene.h"
+#include "patch_covers.h"
 #include "light_grid.h"
 #include "lightmap_fields.h"
 #include "texel_density.h"
@@ -1190,6 +1191,8 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
     const bool collisionMode = mode == CameraMode::Collision;
     std::unordered_map<std::string, double> texSide;  // material -> sqrt(width * height) in pixels
     const bool texturesOn = mode == CameraMode::Textured || mode == CameraMode::Fullbright;
+    PatchCovers covers;  // as the kept geometry (camera_geometry.cpp): a tool face under a flat patch is not drawn
+    covers.find(scene.items());
     for (const PrimGeom* g : scene.items()) {
         // Probe capture keeps only what the game draws: brushes, patches, models and prefab contents.
         if (scene.captureMode && ((g->kind == PrimGeom::PointEntity && !g->prefab) || g->volume)) continue;
@@ -1371,7 +1374,9 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
                 auto& dst = marker || tool || g->volume ? noCast : tris;
                 // Not in the game: no sun shadow falls on it either (sun share 0 in the lit encoding).
                 if (&dst == &noCast && encodedMode) c = (c & 0x00ffffffu) | 0x80000000u;
-                for (size_t k = 1; k + 1 < w.size(); ++k) {
+                const bool covered = tool && !sel && !wire && covers.any() && g->kind == PrimGeom::Brush && i < g->faceNormals.size() &&
+                                     covers.covered(w, g->faceNormals[i]);
+                for (size_t k = 1; !covered && k + 1 < w.size(); ++k) {
                     dst.push_back(gv(w[0], c));
                     dst.push_back(gv(w[k], c));
                     dst.push_back(gv(w[k + 1], c));

@@ -5,6 +5,23 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Fixes after a second pair of eyes read the day's changes** (an independent review of the code; nine defects, none
+  of them a crash in normal use):
+  - A stock prop made of several materials could lose one part before another at a distance (each part was measured
+    on its own). The whole model is measured now. Models with untextured parts are not dropped by distance at all,
+    so they stay whole.
+  - A prop the view had dropped still cast its sun and lamp shadow. The shadow passes now leave out the areas whose
+    props are all past their distance (inside such an area a small prop near its limit can still cast one).
+  - A screenshot without markers dropped no props at all, so it showed more than the view. It follows the view now.
+    Its vignette used the window's shape instead of the picture's.
+  - A paint mesh on a face with five or more corners still flickered against the caulk under it; the test of what a
+    mesh covers is exact now (by its triangles), which also stops a slanted mesh from hiding a tool face beside it.
+  - Cancelling "Open IW8 Stock Map" while it read the entities could leave a half-written file that the next open
+    read. The next open reads the map again. A second open cannot start inside the first.
+  - When the texture memory limit was reached during a load, finished textures of the old size blocked the queue for
+    some seconds. A decoder that runs out of memory now gives a missing texture instead of ending the program.
+  - A nonsense white balance value in a map's vision overrides is ignored safely.
+
 - **Textures are decoded off the main thread.** The camera view read and decoded every texture file while it built
   a frame (up to 12 ms of each frame while a map loaded). Worker threads do that now; the view goes on without a
   texture that is not ready and picks it up a few frames later, and only the upload to the graphics card is left

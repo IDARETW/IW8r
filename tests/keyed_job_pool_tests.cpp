@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -134,4 +135,22 @@ TEST(keyed_job_pool_destructor_ends_with_work_queued) {
             }, out);
     }  // joins: the running job ends, the queued ones are dropped
     CHECK(runs.load() <= 10);
+}
+
+TEST(keyed_job_pool_a_throwing_job_ends_as_an_empty_result) {
+    KeyedJobPool<int> pool(1);
+    std::atomic<int> notified{0};
+    pool.setReadyCallback([&] { ++notified; });
+    const auto bad = []() -> int { throw std::runtime_error("decoder ran out of memory"); };
+    int out = 99;
+    CHECK(!pool.take("bad", bad, out));
+    CHECK(waitFor([&] { return notified.load() == 1; }));  // the entry became ready all the same
+    CHECK(pool.take("bad", bad, out) && out == 0);
+    // The worker is still alive for the next job.
+    CHECK(!pool.take("good", [] { return 5; }, out));
+    CHECK(waitFor([&] { return pool.take("good", [] { return 5; }, out); }));
+    CHECK(out == 5);
+    // Waiting for a job that throws returns too.
+    out = 99;
+    CHECK(pool.take("bad2", bad, out, true) && out == 0);
 }

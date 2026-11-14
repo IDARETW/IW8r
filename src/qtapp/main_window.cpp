@@ -6980,9 +6980,25 @@ void MainWindow::openStockZoneDialog() {
 
 QString MainWindow::exportStockMapEnts(const QString& zone, const QString& cache, QString* err, bool* viaRunner) {
     if (viaRunner) *viaRunner = false;
+    // One at a time: the wait below runs the event loop, and a second "Open Stock Map" could start inside this one.
+    if (exportingMapEnts_) {
+        if (err) *err = "A stock map is being read already; wait for it to finish.";
+        return {};
+    }
+    exportingMapEnts_ = true;
+    struct Done {
+        bool& flag;
+        ~Done() { flag = false; }
+    } exportDone{exportingMapEnts_};
     const QString acts = toolPath("acts"), replay = toolPath("replay"), oodle = toolPath("oodle");
     const QString name = QFileInfo(zone).completeBaseName();
     QDir().mkpath(cache);
+    // The marker stays unless the export ends well: a cancelled run may still be writing (openStockZone looks for it).
+    const QString marker = cache + "/export.incomplete";
+    {
+        QFile mf(marker);
+        if (mf.open(QIODevice::WriteOnly)) mf.write("the map_ents export into this folder did not finish\n");
+    }
     // While an edit of this map is installed, the patch beside the zone is ours: the stock map is read from a
     // copy with the stock patch saved at install (main_window_stock_edit.cpp).
     QString viewDir;
@@ -7052,6 +7068,7 @@ QString MainWindow::exportStockMapEnts(const QString& zone, const QString& cache
         if (err) *err = "ACTS did not produce map_ents for " + name + " (exit " + QString::number(exitCode) + ").\n\n" + log.right(1500);
         return {};
     }
+    QFile::remove(marker);
     return json;
 }
 
@@ -7064,7 +7081,9 @@ bool MainWindow::openStockZone(const QString& zone, QString* err) {
         }
     const QString name = QFileInfo(zone).completeBaseName();
     const QString cache = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/stock_cache/" + name;
-    QString json = findMapEntsJson(cache);
+    // An export that was cancelled or failed left its marker: what is in the folder may be half written.
+    if (QFileInfo::exists(cache + "/export.incomplete")) QDir(cache + "/mw19replay").removeRecursively();
+    QString json = QFileInfo::exists(cache + "/export.incomplete") ? QString() : findMapEntsJson(cache);
     if (json.isEmpty()) json = exportStockMapEnts(zone, cache, err);
     if (json.isEmpty()) return false;
     loadDocument(json);
@@ -7529,6 +7548,8 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                     return l.surfIndex;
                 };
                 toTex(*im, fresh->tex, &fresh->plain, fresh->texSurf, surfBaseOf(0, *im));
+                // Untextured parts are drawn with every placement (no distance cull): the model then stays whole.
+                if (!fresh->plain.empty()) fresh->lodOut = 0;
                 // Plan 1.13: the cached further LODs, with the game's distances (LOD i up to lods[i].distance); a LOD
                 // not cached yet is asked for and its range stays with the LOD before it.
                 if (const auto detail = modelCacheStock_->loadDetail(qs(in.model)); detail && detail->lods.size() > 1 && !fresh->tex.empty()) {
@@ -7552,6 +7573,14 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                         fresh->lods[k].farD = k + 1 < fresh->lods.size() ? fresh->lods[k + 1].nearD : fresh->lodOut;
                     fresh->lod0Far = fresh->lods.empty() ? fresh->lodOut : fresh->lods[0].nearD;
                 }
+                // The model's box (every textured part of LOD0): the distance of its LOD and cull is measured to it.
+                for (const auto& part : fresh->tex)
+                    for (const app::PropVertex& v : part.second->vertices) {
+                        const float p[3] = {v.x, v.y, v.z};
+                        for (int c = 0; c < 3; ++c)
+                            fresh->box[c] = std::min(fresh->box[c], p[c]), fresh->box[c + 3] = std::max(fresh->box[c + 3], p[c]);
+                    }
+                fresh->hasBox = !fresh->tex.empty();
                 built = fresh;
                 refPropTrisKnown_[in.model] = fresh->tris;
                 if (refPropBuiltTris_ + fresh->tris <= kPropTriangleBudget) {  // kept copies stay within the draw budget
@@ -7576,6 +7605,8 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                     tm.lodOut = float(built->lodOut);
                     tm.lodGroup = group;
                     tm.lodNear = 0, tm.lodFar = float(built->lod0Far);
+                    tm.hasModelBox = built->hasBox;
+                    std::copy(built->box, built->box + 6, tm.modelBox);
                     mm.tex.push_back(int(texInstanced.size()));
                     texInstanced.push_back(std::move(tm));
                     texMaterials.push_back(material);
@@ -7589,6 +7620,8 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                         tm.lodOut = float(built->lodOut);
                         tm.lodGroup = group;
                         tm.lodNear = float(lod.nearD), tm.lodFar = float(lod.farD);
+                        tm.hasModelBox = built->hasBox;
+                        std::copy(built->box, built->box + 6, tm.modelBox);
                         mm.tex.push_back(int(texInstanced.size()));
                         texInstanced.push_back(std::move(tm));
                         texMaterials.push_back(material);

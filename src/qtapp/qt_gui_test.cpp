@@ -3286,6 +3286,57 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         }
     }
 
+    if (CameraView* cv = w.cameraView()) {
+        // A six-sided face is fanned into four triangle patches: together they cover the caulk face under them, and
+        // no single patch's box holds the whole face.
+        const Entity* ws = ctx.doc.worldspawn();
+        std::string material;
+        if (ws)
+            for (const auto& it : ws->items)
+                if (const Primitive* p = it.prim(); p && p->kind == PrimKind::Brush)
+                    for (const auto& f : p->faces)
+                        if (material.empty() && !f.material().empty() && !isIw8ToolMaterial(f.material())) material = f.material();
+        AABB box;
+        box.add(Vec3{4000, 4000, 0});
+        box.add(Vec3{4256, 4256, 64});
+        const auto prim = makeBrushPrimitive(makePrism(box, 6, 2, " " + material + " 64 64 0 0 0 0"), ctx.doc.eol(), "");
+        r.check(ws && prim && !material.empty(), "a six-sided prism brush for the paint mesh check");
+        if (ws && prim && !material.empty()) {
+            const std::string textWas = ctx.doc.text();
+            ctx.doc.editPrimitives({{ws->id, kNoId, *prim}}, "test: add a prism");
+            ctx.documentEdited();
+            const std::set<SelRef> added = ctx.doc.selection();
+            const size_t made = w.addPaintMeshes(32);
+            const app::Camera camWas3 = ctx.cam;
+            ctx.cam.pos = Vec3{4128, 4128, 420};
+            ctx.cam.yaw = 90;
+            ctx.cam.pitch = -89;
+            ctx.cameraMoved();
+            ctx.doc.deselectAll();
+            const QImage with = cv->renderImage(320, 180, false, 0, 200);
+            std::vector<Document::PrimEdit> removal;
+            for (const SelRef& a : added) removal.push_back({a.entity, a.item, std::nullopt});
+            ctx.doc.editPrimitives(removal, "test: remove the prism", false);
+            ctx.documentEdited();
+            const QImage without = cv->renderImage(320, 180, false, 0, 200);
+            size_t differ = 0, total = 0;
+            for (int y = 0; y < with.height() && with.size() == without.size(); ++y)
+                for (int x = 0; x < with.width(); ++x, ++total) {
+                    const QRgb p1 = with.pixel(x, y), p2 = without.pixel(x, y);
+                    if (std::abs(qRed(p1) - qRed(p2)) + std::abs(qGreen(p1) - qGreen(p2)) + std::abs(qBlue(p1) - qBlue(p2)) > 48) ++differ;
+                }
+            ctx.doc.undo();
+            ctx.doc.undo();
+            ctx.doc.undo();
+            ctx.documentEdited();
+            ctx.cam = camWas3;
+            ctx.cameraMoved();
+            r.check(added.size() == 1 && made == 14 && ctx.doc.text() == textWas && total > 0 && differ * 500 < total,
+                    QString("a six-sided brush gets %1 paint meshes (four triangles on each cap) and its caulk faces under them are not drawn "
+                            "(%2 of %3 pixels differ without the brush)").arg(made).arg(differ).arg(total));
+        }
+    }
+
     r.section("game lighting (View > Game Lighting)");
     if (CameraView* cv = w.cameraView()) {
         // The preview bake runs in the background; the camera shades with the game's world shader and post chain.

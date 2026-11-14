@@ -86,7 +86,11 @@ public:
             queue_.erase(std::remove(queue_.begin(), queue_.end(), key), queue_.end());
         }
         lock.unlock();
-        out = job();
+        try {
+            out = job();
+        } catch (...) {
+            out = Result{};
+        }
         return true;
     }
 
@@ -140,7 +144,14 @@ private:
                 e = it->second;
                 e->state = State::Running;
             }
-            Result r = e->job();
+            // A job that throws (out of memory in a decoder, say) ends as an empty result: the entry must become ready,
+            // or a waiter would wait for ever, and an exception must not leave the thread.
+            Result r{};
+            try {
+                r = e->job();
+            } catch (...) {
+                r = Result{};
+            }
             std::function<void()> cb;
             {
                 std::lock_guard<std::mutex> lock(m_);

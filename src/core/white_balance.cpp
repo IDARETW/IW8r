@@ -250,8 +250,9 @@ GameWhiteBalance gameWhiteBalanceFromVision(const std::string& text) {
     num("NLSRLSTPTN", illuminant);
     num("TRQLLNNLS", wb.colorTempK);
     num("OPSMSQNKQ", wb.tint);
-    wb.method = int(method);
-    wb.illuminant = int(illuminant);
+    // Out of range (or not a number) becomes -1, which the matrix answers with the identity.
+    wb.method = method >= 0 && method <= 6 ? int(method) : -1;
+    wb.illuminant = illuminant >= 0 && illuminant <= 21 ? int(illuminant) : -1;
     std::string s;
     if (value("LRROOOSOMM", s)) {
         double p[3];

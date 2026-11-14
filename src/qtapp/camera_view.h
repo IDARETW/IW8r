@@ -562,6 +562,7 @@ private:
     // goes on without this texture and asks again (moreToLoad_). Off-screen renders always get true.
     bool decodedTexture(const std::string& path, int side, int mode, DecodedTexture& out);
     std::unique_ptr<KeyedJobPool<DecodedTexture>> decodePool_;
+    int decodeSide_ = 0;  // the preview size of the pool's entries
     int backgroundDecodes_ = 0;
     int fixedW_ = 0, fixedH_ = 0;      // setFixedRenderSize
     double captureAspect_ = 0;

@@ -134,6 +134,10 @@ struct InstancedTexMesh {
     // Per instance, the scale on lodOut (the placement's lodScale, research 119); 0 = this placement is never left out
     // by distance. Empty: 1 for every instance.
     std::vector<float> cullScale;
+    // The whole model's box in model space (mins, maxs): the distance for the LOD and the cull is measured to it, so
+    // every material part of a placement goes at the same distance. hasModelBox false: this mesh's own box.
+    bool hasModelBox = false;
+    float modelBox[6] = {0, 0, 0, 0, 0, 0};
     // Per instance, the prop's light from its light grid box (research 105): 12 floats, DC rgb then the three first-
     // order terms per channel (slots 0, 2, 3), before bakedLightScale; DC r < 0 = none (the probes' fallback). Empty:
     // none for every instance.
@@ -680,6 +684,7 @@ private:
         struct InstCell {
             iw8r::AABB box;
             uint32_t first = 0, count = 0;
+            float maxScale = 1;  // the largest cullScale of its placements; 0 = one of them is never left out
         };
         std::vector<InstCell> cells;
         std::vector<uint32_t> order;
@@ -972,6 +977,10 @@ private:
     float lastViewProj_[16] = {};    // the frame's view (drawPost's volumetric march)
     bool postFxEnabled_ = true;
     bool filmGrainEnabled_ = true;
+    // The view's distance cull as the shadow passes need it (drawReferenceTexInstancesShadow): on for this frame, the
+    // capped field-of-view factor.
+    bool cellCullOn_ = false;
+    float cellCullFov_ = 1.0f;
     bool whiteBalanceEnabled_ = true, whiteBalanceDrawn_ = false;
     bool veilDrawn_ = false;
     bool createVeilResources();

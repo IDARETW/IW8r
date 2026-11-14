@@ -173,3 +173,15 @@ TEST(white_balance_white_point) {
     gameWhiteBalanceMatrix(plain, m);
     CHECK(isIdentity(m, 2e-3));
 }
+
+TEST(white_balance_values_out_of_range_are_not_converted) {
+    // A huge or negative method or illuminant must not reach an integer conversion: it reads as "none".
+    for (const char* text : {"MNMNSSLLOR \"1e12\"\nNLSRLSTPTN \"1\"\n", "MNMNSSLLOR \"4\"\nNLSRLSTPTN \"-3e30\"\n", "MNMNSSLLOR \"nan\"\n",
+                             "MNMNSSLLOR \"7\"\nNLSRLSTPTN \"1\"\n", "MNMNSSLLOR \"4\"\nNLSRLSTPTN \"22\"\n"}) {
+        const GameWhiteBalance wb = gameWhiteBalanceFromVision(text);
+        CHECK(!gameWhiteBalanceActive(wb));
+        double m[9];
+        gameWhiteBalanceMatrix(wb, m);
+        CHECK(isIdentity(m, 1e-12));
+    }
+}

@@ -109,4 +109,8 @@ units outside 0.47 % differ and the frame goes from 9.2 to 8.3 ms. Verdansk, rai
 - How a collection of several instances picks each instance's level between the nearest and the farthest (the
   viewport measures every placement on its own).
 - The clutter ramp (`r_st_clutterLodScale`, `r_st_clutterLodBias`): the viewport's ground clutter uses the plain rule.
-- Sun shadows of left-out props: the viewport still draws them into the shadow map (`shadowCutoffLod` is not read).
+- Shadows of left-out props: the viewport's sun and lamp shadow passes skip a cell of placements (2,048 units) when
+  all of them are past their cull distance; inside a nearer cell a left-out prop can still cast one. The game's own
+  shadow passes compute their levels separately (`shadowCutoffLod` is not read here).
+- A model with untextured parts in the viewport (a material that did not resolve) is never left out by distance, so
+  that it does not lose only its textured parts.
