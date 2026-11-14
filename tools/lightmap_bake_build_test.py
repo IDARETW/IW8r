@@ -113,6 +113,31 @@ if ff and os.path.isfile(ff):
 else:
     check(False, 'built zone ' + ff)
 
+# Parity (plan 1.11): the planes the game will sample, read from the decompressed built zone by the editor's stock
+# lightmap reader, against the planes the editor decodes from its own bake (the extraction's pair), texel by texel.
+tests = os.path.join(root, 'bin', 'release', 'iw8r_tests.exe')
+if ff and os.path.isfile(ff) and os.path.isfile(world_path) and os.path.isfile(tests):
+    dec_out = os.path.join(work, 'dec')
+    os.makedirs(dec_out, exist_ok=True)
+    subprocess.run([ACTS, '--noUpdater', 'fastfile', '-r', 'mw19replay', '-g', REPLAY, '--oodle', OODLE, '-d', '--noAssetDump',
+                    '-l', '-o', dec_out, ff], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=dec_out)
+    decs = [os.path.join(b, f) for b, _d, fs_ in os.walk(dec_out) for f in fs_ if f.endswith('.ff.dec')]
+    w = json.load(open(world_path, encoding='utf-8'))
+    lm = w.get('lightmaps', [])
+    enc = w.get('lightmap_encoding', {})
+    if decs and lm:
+        env = dict(os.environ, IW8R_TEST_BUILT_DEC=decs[0],
+                   IW8R_TEST_PAIR_PRIMARY=os.path.join(ext, lm[0][0]['file']), IW8R_TEST_PAIR_SECONDARY=os.path.join(ext, lm[0][1]['file']),
+                   IW8R_TEST_PAIR_W=str(lm[0][0]['width']), IW8R_TEST_PAIR_H=str(lm[0][0]['height']),
+                   IW8R_TEST_PAIR_LOGSCALE=repr(enc.get('log_scale', 0)), IW8R_TEST_PAIR_MAXIMUM=repr(enc.get('maximum', 0)))
+        run = subprocess.run([tests], env=env, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        text = run.stdout.decode('utf-8', 'replace')
+        line = next((l.strip() for l in text.splitlines() if 'built lightmap parity:' in l), '')
+        size = next((l.strip() for l in text.splitlines() if 'built lightmap:' in l), '')
+        check('[  OK  ] built_lightmap_matches_the_bake' in text and line != '', 'built zone against the bake: ' + (line or size or '-')[:330])
+    else:
+        check(False, 'decompressed built zone (%d file(s)) and the extraction pair' % len(decs))
+
 if package and os.path.basename(package.rstrip('/\\')) == MAP_ID:
     shutil.rmtree(package, ignore_errors=True)
 print('RESULT %s (%d failure(s))' % ('ok' if not failures else 'fail', failures))

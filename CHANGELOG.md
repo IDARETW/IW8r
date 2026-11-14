@@ -5,6 +5,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Proof that a built map holds the light the editor showed.** The lightmap proof now also reads the light planes
+  out of the built zone itself (with the reader the editor uses for stock maps) and compares them, texel by texel,
+  with what the editor baked and draws in View > Game Lighting. On the proof map: 10,328 lit texels, 0.23 % apart
+  on average, 99 % of them within 0.5 %, the total light 0.1 % apart. This is the plan's parity proof in the form
+  that can be made without the game: it shows the data the game will sample is the editor's; how the game's shader
+  then draws it is still only seen in the game. The proof map has no directional light share, so the stored light
+  direction was not exercised.
+
 - **Your own text in a map script: hint strings and labels.** Compile > Map Text File opens `<map name>.str` beside
   the map (a new one starts with an example), in the two-line form of the older games:
   `REFERENCE HINT_GATE` / `LANG_ENGLISH "Press ^3[{+activate}]^7 to open"`. The build carries the entries, and the

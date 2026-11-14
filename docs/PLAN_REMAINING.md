@@ -203,7 +203,7 @@ compile panel's bake settings DONE 2026-11-13 (Compile > Bake Settings, core bak
 **1.11 Lighting of a compiled custom map.** Part 1 DONE 2026-11-13: the light grid is baked from the map (sky and bounce
 per cell, 56 directional samples). 2026-11-14: the bounce takes the surface's colour and the later bounces are
 added (lightmap; the light grid takes the colour). Left by decision (table "Open points closed by decision"): a
-HDR probes, the parity proof. The per-face lightmap scale is DONE 2026-11-14 (in the bake itself; no converter change).
+HDR probes. The parity proof is DONE 2026-11-14 as a comparison of the data: the light planes read from the built zone against the editor's bake, texel by texel (0.23 % apart on average; `tools/lightmap_bake_build_test.py`). Drawing the built zone as a stock map was not done: it would compare two different shaders. The per-face lightmap scale is DONE 2026-11-14 (in the bake itself; no converter change).
 - **Lightmap bake:**
   - the sky from the vision / sky colour;
   - bounce from real albedo (the texture averages);
@@ -370,7 +370,6 @@ judged against the running game, which is not used any more. They are listed so 
 | 1.6 `needsDynamicShadows`, the screen-space shadow mask | Every spot and omni light with shadow maps for the nearest 64 | Affects moving entities and contact shadows only. |
 | 1.8 volumetric fog | Bloom veil, vignette, film grain and white balance (2026-11-14), exponential fog, the stock vision's exposure and grade; the volumetric march is built and off | Measured 2026-11-14 against the owner's Speedball picture: the frame is closer to the game with it off (block error 11.3 against 16.8). Its constants are verified in the Replay exe (research 109 section 2.7); the sky's own brightness has to be settled before it can go on. |
 | 1.11 HDR probe capture | Bounces in the surfaces' colours with the later bounces estimated, a lightmap scale per face, the texel size as a Bake Setting (all 2026-11-14), 8-bit probes captured before every build | HDR probes change glossy reflections by a little and need the converter to take another image format. |
-| 1.11 the parity proof (draw the built zone as a stock map and compare) | `tools/lightmap_bake_build_test.py` proves the baked data reaches the built zone; View > Game Lighting uses the converter shader's own formulas (research 117) | The proof as planned would compare the wrong things: a built map is drawn by the converter's world shader, and the editor's stock-map path models the game's stock shaders, not that one. |
 | 2.2 culling lights, probes and decals in the Umbra view; surface ids on displaced terrain | Surfaces and props are culled by the tome | A viewer refinement: the view already answers "what does the game hide here". |
 | 2.3 local occlusion updates for edited stock maps | The whole map's occlusion opens when stock geometry is removed | See 2.3: a mistake makes objects vanish in the game. |
 | 2.4 thin slanted walls, terrain and models as occluders, gates, splitting merged surfaces | Opaque structural brushes (boxes, and other shapes by the box inside them); a detail brush is left out, which is the per-brush switch (2026-11-14) | The bake is opt-in and unseen in the game; widening it before a first look would only widen what could go wrong. |
