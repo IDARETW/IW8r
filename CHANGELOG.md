@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **A built map's world and light assets checked against stock, field by field** (research 124). The occlusion
+  box and the probe level were both faults that only a comparison with stock zones showed, so the comparison is now
+  a tool: `tools/zone_field_audit.py` prints every field where a built zone does what no stock zone does. On the
+  dev showcase: 2 of 33 fields of the light asset (build stamps) and 59 of 713 of the world asset, each with an
+  answer (unbaked by choice, no decal volumes, resident images, tables for content the map does not have). No new
+  fault. Two fields are left without an answer: the world checksum and the map entity lookup table.
+
 - **Reflections on a built map: the cause of "probes make no visible change" was found and fixed** (research 123).
   The game multiplies a probe's picture by the brightness of the baked light, so its own probes are stored with a
   mean brightness of about 0.9 and in colour. A built map's probe was stored grey at 0.14 (the converter read it by
