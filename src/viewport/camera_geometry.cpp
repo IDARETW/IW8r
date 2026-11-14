@@ -997,8 +997,8 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
             d.mLines.push_back(gv(b, 0xffff50e0u));
         }
         for (const auto& h : scene.collisionPreview) {
-            // Solid cyan, player clip orange, ladder green, anything else magenta (R in the low byte).
-            const uint32_t c = h.ladder ? 0xff40ff40u : (h.contents & 0x10000u) && !(h.contents & 1u) ? 0xff2090ffu
+            // Solid cyan, player clip orange, ladder green, mount edges yellow, anything else magenta (R in the low byte).
+            const uint32_t c = h.mount ? 0xff20f0ffu : h.ladder ? 0xff40ff40u : (h.contents & 0x10000u) && !(h.contents & 1u) ? 0xff2090ffu
                                : (h.contents & 1u) ? 0xffffe040u : 0xffff40ffu;
             for (const auto& [a, b] : h.edges) {
                 d.mLines.push_back(gv(a, c));

@@ -5,6 +5,21 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Weapon mounting on built maps: the build writes mount edges.** The game rests a weapon only on edges the map
+  lists; a built map listed none. The build now finds them on the map's visible solid brushes: outside wall corners
+  (32 units and taller) and ledge tops (16 units and longer), only where nothing covers them and there is room to
+  stand and to hold the weapon. Brushes side by side or stacked count as one wall; clip brushes hide edges but give
+  none. The collision hulls of placed models give edges by the same rules (a crate, a barrier), with a stricter
+  corner rule so that a barrel built from facets gives none; `iw8r_mount_edges brushes` leaves the models out. The converter writes them into the map's edge list with the search tree stock maps use
+  (converter `a8114ae6`, `7076f8da`). A mounted player can change sides of thin cover: the two edges of a narrow face
+  (a thin wall's end, a thin wall's top, up to 16 units) name each other, by the rule that gives exactly the stock
+  maps' own tables (174 of 174 pairs on mp_m_speedball, 190 of 190 on mp_rust, 80 of 80 on mp_shipment). The build
+  log counts the edges; **View > Show Compiled Collision** draws them in yellow;
+  worldspawn `iw8r_mount_edges 0` builds without them. Proven offline (`tools/mount_edges_build_test.py`: the built
+  list is read back with the game's loaders, passes the same shape checks as a stock map's list, and a search box
+  round every edge finds it the way the game searches). Not seen in game. Mantling is unchanged (it never needed
+  edges).
+
 - **First-Person Look: the map shader on the weapon and hands, from the menu.** File > First-Person Look (weapon and
   hands) > Build From Shader takes the open map's shader (or asks for a shader file), builds the shared zone of the
   weapon and arm materials with the shader's filter and ink lines, and checks it with the game's loaders. Install Into

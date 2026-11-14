@@ -1796,6 +1796,16 @@
             "2",
             "3.5"
           ]
+        },
+        "iw8r_mount_edges": {
+          "type": "string",
+          "default": "1",
+          "description": "Mount edges: where a player can rest a weapon on cover. The game mounts only on edges the map lists. The build finds them on the map's visible solid brushes and on the collision hulls of placed models: outside wall corners at least 32 units tall and ledge tops at least 16 units long, where nothing covers them and there is room to stand. Brushes side by side or stacked count as one wall. Clip brushes hide edges but give none. 1 (default): brushes and models. brushes: brushes only. 0: none. Not seen in game.",
+          "required": false,
+          "examples": [
+            "brushes",
+            "0"
+          ]
         }
       }
     },

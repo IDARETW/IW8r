@@ -4,8 +4,9 @@ What you are given, how to install it, what each part does, how it was proven, a
 settle. Scope, as decided on 2026-11-12: stock map editing, Warzone editing, and map and mode creation, with a
 viewport that shows the map as the game draws it. Ground War scale is outside that scope.
 
-State on 2026-11-14: everything below is built and checked without the game. **Nothing in section 4 has been seen in
-the game.** Section 5 lists what is not built.
+State on the evening of 2026-11-14: everything below is built and checked without the game. Section 4 says what was
+seen in the game that day, what was reported from it and is not settled, and what has not been seen. Section 5 lists
+what is not built.
 
 ## 1. What to install
 
@@ -25,7 +26,9 @@ lights, probes, spawns, game type templates and your own game type scripts, mode
 clusters and zones, buy stations, vehicles), traversals for bots, map scripts. F7 builds the game's zones and checks
 them with the game's own loaders (ACTS). Brush > Paint Mesh on Faces lays a paintable mesh on brush surfaces for
 blended materials (Patch > Vertex Paint Mode paints it). A map script can draw your own pictures on the HUD
-(Compile > HUD Images Folder) and show your own text (Compile > Map Text File).
+(Compile > HUD Images Folder) and show your own text (Compile > Map Text File). The build marks where a weapon can
+be mounted (open wall corners and ledge tops of your brushes and placed models; View > Show Compiled Collision draws
+them in yellow).
 
 **Light it.** Compile > Bake lightmaps bakes the world's lightmap (sky light, bounce, where the sun reaches);
 Bake Settings sets the sky and the detail. Without a bake the game lights the map with a flat sky light and the sun.
@@ -37,7 +40,14 @@ a stock map take that map's light grid. Stock props change detail level and disa
 uses.
 
 **Your own look.** Tools > Shader Editor: a shader file for your map's surfaces (the toon shader is the example), and
-a colour filter for a stock map's surfaces.
+a filter for a stock map's surfaces. A shader can read the scene's depth, so outlines work on your own maps and on
+stock maps alike. File > First-Person Look (weapon and hands) builds the same filter into the weapon and arm
+materials; they belong to a zone every map loads, so the look is on every map while it is installed (Install Into
+Game / Restore In Game). The toon look is built and waits there for Install.
+
+**Air and sky.** Compile > Atmosphere: a haze preset (desert, clear, overcast, dusk, fog) with an amount sets the
+game's own fog, sky blend and volumetric air for a built map; `iw8r_volume` boxes add local air, a lamp with
+`iw8r_volumetric` glows in it, and Compile > Sun & Sky has the sky's brightness. The viewport shows all of it.
 
 **Edit stock maps.** File > Open IW8 Stock Map, edit, File > Rebuild Stock Zone:
 - entities, spawns, added brushes and models;
@@ -54,7 +64,10 @@ zones, buy stations, and the streamed world that follows the camera. Limit: the 
 be replaced (the client refuses unsigned tiles), so edits live in the main map zone.
 
 **Occlusion (optional).** Compile > Occlusion bake gives your map cells and portals so the game skips what is behind
-walls. Off by default; View > Umbra Visibility shows what a stock map's own occlusion data hides.
+walls. Off by default, and leave it off for a map you want to play: its first game test (2026-11-14) lost surfaces
+and models. The cause was found and fixed the same day (research 129) and the fix is proven on that very map
+offline, but it has not been seen in game since. View > Umbra Visibility shows what a stock map's own occlusion data
+hides.
 
 **From a browser.** Tools > Web Server: the editor's menus, twelve dialogs and docks as forms, the editor's own 3D picture with
 fly controls, drawing, resizing and reshaping brushes (corner and edge handles), placing assets, prefabs and
@@ -63,12 +76,12 @@ entities, the inspector with key help.
 ## 3. How it was proven
 
 None of this needs the game running:
-- `bin\release\iw8r_tests.exe`: about 181,500 checks in 1,346 tests of the core (map format, geometry, builds, bakes,
-  decoders, the install logic, the occlusion bake).
-- `IW8Radiant.exe --gui-test tests\data\iw8_sample_room.map --out <dir>`: about 1,080 checks of the editor itself,
+- `bin\release\iw8r_tests.exe`: about 182,800 checks in 1,384 tests of the core (map format, geometry, builds, bakes,
+  decoders, the install logic, the occlusion bake, the mount edges).
+- `IW8Radiant.exe --gui-test tests\data\iw8_sample_room.map --out <dir>`: about 1,090 checks of the editor itself,
   the web server and its page included.
 - `tools\run_all_tests.ps1`: both of those plus a start-up test, in one run.
-- `py -3 -I tools\run_offline_proofs.py <work dir>`: 25 end-to-end proofs; all passed on the last build of 2026-11-14. Each one edits or builds a real map with the
+- `py -3 -I tools\run_offline_proofs.py <work dir>`: 27 end-to-end proofs; all passed on the last build of 2026-11-14. Each one edits or builds a real map with the
   live converter, reads the result back with ACTS, compares it with what was asked, and checks that the game's own
   loaders accept the zone (about 11 minutes).
 - Among those proofs: the light planes of a built map, read back from the zone, equal the editor's bake texel by
@@ -77,20 +90,29 @@ None of this needs the game running:
 - The web page was driven in a real browser against a running editor for every feature listed above.
 
 The state of each item, the research behind it and every proof are in `docs\ROADMAP.md`, `docs\research\`
-(more than 110 notes, the latest numbered 120) and `CHANGELOG.md`.
+(more than 120 notes, the latest numbered 129) and `CHANGELOG.md`.
 
 ## 4. Only the game can settle these
 
-Everything was built and checked offline. `docs\TEST_CHECKLIST.md` has the steps; its first "In game" section, "the
-short list", is these in order:
-1. **An installed stock edit loads.** The toon filter on Shipment (`out\agent\toon_ship\edit`, installed with File >
-   Install Edited Stock Map Into Game) is the smallest case. This is the one check everything in "Edit stock maps"
-   depends on: the first install method (patch files) stopped the game, and the new one has not been run.
-2. **Your own map looks like View > Game Lighting**, with Bake lightmaps off and on.
-3. **A stock door carried into your own map opens** (real stock scripted objects).
-4. **A stock map rebuilt with removed world geometry**: the object is gone and you walk through where it was.
-5. **Copied loot, doors and extraction sites on Quarry** work like the originals.
-6. **The occlusion bake** (only if you want it): nothing is missing anywhere on a map built with it.
+**Seen in game on 2026-11-14** (the owner's runs): an installed stock edit loads (the toon zone of Shipment); the toon
+lines from the scene depth on Cinder Rail Toon and on Shipment's stock geometry; the haze; the bright sky.
+
+**Reported from those runs and not settled:**
+- Shipment with the toon zone: "objects appear in and out". No cause found. Ruled out offline: missing pipeline
+  states, the order of shader arguments, technique flags, shaders the driver refused, the image the lines take over
+  (all 192 stock shaders read it only in thermal view). The zone changes shaders only, not what the game draws or
+  hides. File > Restore Stock Map In Game takes the zone out.
+- Cinder Rail Toon lost surfaces and models: that build had the occlusion bake on. The map in the game folder is a
+  build without it (since 16:25 that day); not looked at since.
+
+**Built and proven offline, not seen in game.** `docs\TEST_CHECKLIST.md` has the steps:
+1. **The first-person look** after File > First-Person Look > Install Into Game.
+2. **Weapon mounting** on a map built on or after 2026-11-14.
+3. **Your own map looks like View > Game Lighting**, with Bake lightmaps off and on.
+4. **A stock door carried into your own map opens** (real stock scripted objects).
+5. **A stock map rebuilt with removed world geometry**: the object is gone and you walk through where it was.
+6. **Copied loot, doors and extraction sites on Quarry** work like the originals.
+7. **The occlusion bake after its fix** (only if you want it): nothing is missing anywhere on a map built with it.
 
 ## 5. Not built, or built in part
 
@@ -98,8 +120,12 @@ short list", is these in order:
   box inside them). Removing stock world geometry opens the whole map's occlusion: everything is drawn, which
   costs frame time on that map and nothing else. A local update was decided against (a mistake there makes objects
   vanish in the game, and only a playtest shows it).
-- Viewport: volumetric fog is uncalibrated and off. The normal and specular maps of your own materials are drawn by
-  the build shader's rule, which has not been compared with the game.
+- Viewport: the volumetric air of a haze follows the values the build writes, but its picture has not been compared
+  with the game's. The normal and specular maps of your own materials are drawn by the build shader's rule, which
+  has not been compared with the game either.
+- Mounting: a placed model without a collision hull (it gets a plain box) gives no mount edges, and there are no
+  mantle edges: mantling uses the game's own trace, as before.
+- The first-person look is all maps or none: the weapon and hands cannot take a look for one map only.
 - Streamed Warzone tiles cannot be edited (a client matter, see section 2).
 - A turned stock sun keeps the old sun in the baked bounce light.
 - Items the game must answer before more work makes sense (reverb zones, the UAV's minimap sweep, intro cameras) are

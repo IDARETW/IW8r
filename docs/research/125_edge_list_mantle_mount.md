@@ -267,3 +267,92 @@ kept): with a node's cube taken as `min = minExtent.xyz + uniformGridIndex * 2 *
   edges, at depths 1 to 7.
 - A leaf with no edge has flags 3 (EMPTY | LEAF); an inner node has flags 0 and `childNodeSetIndex`; the eight
   children of a set have grid indices `2 * parent + (0 or 1)` per axis, in any order.
+
+## 10. What the build writes now (added 2026-11-14, main session)
+
+Built, proven offline, not seen in game.
+
+**Which edges** (`src/core/mount_edges.cpp`, `findMountEdges`). From the world's collision brushes that are solid and
+have at least one drawn face (a clip or caulk hull gives none but still hides edges of others), and from the convex
+pieces of placed models' collision hulls (not from the plain box a model without a hull gets). For a model piece the
+two walls of a corner must be at least 60 degrees apart, so a barrel of eight or more facets gives no corners:
+
+- a wall corner: an edge within 15 degrees of upright between two faces within 15 degrees of upright, the faces
+  between 45 and 135 degrees apart, 32 units or longer;
+- a ledge top: an edge within 15 degrees of level between a top face (normal z above 0.7) and a wall face, 16 units
+  or longer.
+
+An edge is tested every 8 units. A part counts when the points 3 units out from the edge (along the middle of the two
+normals, and in front of each face just inside the other) are in no other solid; a wall corner also needs the point 16
+units out to be free; a ledge needs 20 units free above the edge on both sides of it and the point 16 units in front
+of the wall, 8 below the edge, free (a curb is no ledge). Parts on one line with the same two faces, from any number
+of brushes, are joined before the length is asked for. These rules are this editor's choice: only the result of
+stock's own rules is known (section 7). The game checks at run time whether a player fits at an edge
+(`BG_EdgeTuple_CheckMountCharacterSweep`), so an edge too many is only data. Not more than 60,000 (the longest are
+kept).
+
+**The metadata** (`src/core/map_edges.h`, `makeMapEdge`): flags 1 (mount) on every edge; the two faces ordered, or
+the edge turned round, so that `cross(adjacent, other)` points along the edge (section 8); a ledge keeps its top face
+as the adjacent face, which gives the stored angle 0 as on stock ledges; the open angle as a half float (a right
+angle is 15944, the stock value).
+
+**The trees** (`buildMapEdgeList`): one per bucket that has edges. The root cube is centred on the bucket's edges,
+its side their longest extent. A node with more than 8 edges is split (to depth 10 at most) into a set of eight
+children in the stock slot order (offsets 000, 001, 011, 010, 110, 111, 101, 100 for x, y, z); a leaf lists every
+edge that crosses its cube; an empty leaf has flags 3; an inner node names its parent as `set * 8 + slot`, the
+children of a root as 0xFFFFF8, as stock (checked on mp_m_speedball and mp_rust: 143 and 135 inner nodes). The ladder
+tree stays one leaf, as it has been written (and seen working) before.
+
+**The asset** (converter `map_zone.h`, `emitMapEdgeListBody`): `staticQueryTypes` = `dynamicQueryTypes` = the
+buckets present (1 mount, 4 ladder); `MapEnts.edgeListUsedQueryTypes` the same, so bit 1 (mantle) stays clear and
+mantling keeps its trace path (section 2.1). Node sets are aligned to 128 bytes in the zone (the converter's own
+reader, `asset_streams.cpp` `stream_mapedgelist`, mirrors the game's loader and refused 4). The adjacency tables
+follow the index list (section 11).
+
+**The proof** (`tools/mount_edges_build_test.py`): a room with a crate, a wall of two brushes, a pillar of two
+stacked brushes, a clip brush and a ladder is built; the edge list is read back from the zone with ACTS. The same
+shape checks (roots, parent indices, grid index by slot, leaf ranges, set counts, every listed edge crossing its
+leaf) pass on stock mp_m_speedball's list and on the built one; on the built one every crossing edge is listed, a box
+round each mount edge finds it through the MOUNT tree and never through the ladder tree, the metadata follows the
+rule above, and the expected edges are there with their joined lengths (none at a joint, none against the clip
+brush).
+Big-map check: a private copy of Cinder Rail (mp_crmnt, deleted again) built with 1,722 wall corners and 1,026 ledge tops (2,748 mount edges; 8,991 covered edges not counted); the zones pass the ACTS loader test; read back (tools/mount_edges_build_test.py --check <zone>): 451 node sets, 3,158 leaves, deepest node 8, at most 8 edges in a leaf, every crossing edge listed, a box round each edge finds it through the MOUNT tree.
+
+## 11. Mount adjacency: the rule, from the stock data (added 2026-11-14, main session)
+
+Section 2.3 found that moving from a mounted edge to a neighbour reads `edgeAdjacencyMetadata` and `edgeAdjacency`,
+and section 4 gave their layouts. What makes two edges neighbours was read off the stock tables (scratch scripts; the
+rule is kept, in Python, in `tools/mount_edges_build_test.py` `predicted_adjacency`, which the proof runs against a
+stock map every time).
+
+What the stock tables hold (mp_m_speedball 174 records, mp_rust 190, mp_shipment 90):
+
+- every record joins two mount edges (flags 1 with 1, or 11 with 11), and every record is answered: if A names B,
+  B names A;
+- the two edges are parallel; they are 4 to 15.75 units apart; one face of each has the same normal;
+- 144 of 174 (speedball) join two upright edges, 30 two level ones: the two corners at the end of a thin wall, the two
+  top edges of a thin wall;
+- `start`/`end` and `adjStart`/`adjEnd` are the parts that lie side by side, each in its own edge's measure (0 at the
+  first end point, 1 at the second, as half floats; 0x3C00 = 1), lower value first whichever way the edges run;
+- an edge has at most two records (`mountCount` 0, 1 or 2).
+
+The rule that gives exactly these tables. Two static mount edges are neighbours when all of this holds:
+
+1. parallel within about 2.5 degrees (|cos| at least 0.999);
+2. 0.5 to 16 units apart (the distance between the two lines);
+3. a face of one and a face of the other have the same normal (dot above 0.99), and the step from one line to the
+   other lies in that face's plane (within 0.5 units): they are the two long sides of one narrow face;
+4. each edge's other face is turned away from the other edge (so the narrow face is solid between them: two crates
+   10 units apart are no neighbours across the gap);
+5. at least 4 units of their lengths lie side by side.
+
+VERIFIED on data: the rule gives 174 pairs on mp_m_speedball and the table has the same 174, with the same parts
+(within 0.02); mp_rust 190 and 190; mp_shipment 80 and the same 80 among static edges (its other 10 records involve
+edges of brush models). With "parallel within 8 degrees" mp_rust would get one pair more that the table does not
+have (two edges 3.3 degrees apart), hence 0.999.
+
+The build writes the tables by this rule (`buildMapEdgeAdjacency` in `src/core/map_edges.h`): one word per edge
+(first record in the low 23 bits, the count in bits 23 and 24), the records after the index list, both aligned to 4
+bytes. An edge keeps at most three neighbours, the nearest first (the count has two bits). The proof reads the built
+tables back and finds exactly the pairs the Python rule gives (the test map's 16-unit wall: its two top edges and the
+corners at each end; the crate and the pillar none).

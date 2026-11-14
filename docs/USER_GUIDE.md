@@ -220,7 +220,8 @@ Commands in the Tools menu:
 - **Custom models**: File > Import Model (OBJ) copies the model next to the map.
 - **Collision**: every placed model without a `targetname` gets an invisible solid box (players and bullets) fitted to
   its size and angles. A `script_model` with a `targetname` is treated as scripted and gets none. Check them with
-  **View > Show Compiled Collision** after a compile (solid cyan, player clip orange, ladders green).
+  **View > Show Compiled Collision** after a compile (solid cyan, player clip orange, ladders green, the edges a
+  weapon can be mounted on yellow).
 - **Stock map references**: when you open a stock map, its props fill in over a few minutes. Each missing prop model is
   fetched in batches and the props are drawn as they arrive. mp_backlot2 took about seven minutes on first open.
 - Models can move without scripting. See section 11.
@@ -814,8 +815,13 @@ The owner's playtest of 2026-11-11 left these open. docs/ROADMAP.md (fix queue F
 - An edited stock map must be put into the game with File > Install Edited Stock Map Into Game (or
   `IW8Radiant.exe --install-stock <folder>`), not copied by hand: a patch file (`.fp`) left beside the zone makes
   the game drop the whole zone without a message (invisible map, blank minimap).
-- Weapon mounting (leaning a weapon on cover) does not work on a built map yet: the game needs mount edges that
-  the build does not write (found 2026-11-14 by comparing built maps with stock ones; research 125). Mantling works.
+- Weapon mounting (resting a weapon on cover): the build writes the mount edges the game needs since 2026-11-14
+  (research 125); rebuild the map. Proven offline, not seen in game yet. The edges are the open outside wall corners
+  (32 units and taller) and ledge tops (16 units and longer) of the map's visible solid brushes and of placed
+  models' collision hulls (a crate, a barrier; a round shape built from facets gives no corners); the build log
+  counts them and View > Show Compiled Collision draws them in yellow. Worldspawn `iw8r_mount_edges brushes` keeps
+  the brushes' edges only, `0` turns them off. A mounted player can change sides of cover up to 16 units thick.
+  Mantling works without them.
 - Killstreak visuals: a radar killstreak showed no pings in one playtest. Nothing in a map can switch them off
   (research 122); the Personal Radar drone does not ping enemies with the Ghost perk and has no sweep line. Players
   were invisible in the Chopper Gunner view and the radar aircraft was invisible; the cause was found and fixed on

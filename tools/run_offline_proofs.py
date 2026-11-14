@@ -49,6 +49,7 @@ proofs = [
     ('airspace_build_test', ['--exe', exe]),  # a built map's occlusion data reaches as far as a stock map's
     ('probe_capture_build_test', ['--exe', exe]),  # a built map's probes: coloured, at the stock probes' level
     ('physics_bounds_build_test', ['--exe', exe]),  # a built map's physics world is as large as a stock map's
+    ('mount_edges_build_test', ['--exe', exe]),  # a built map's mount edges, read back and queried as the game does
     ('viewmodel_look_build_test', []),  # the first-person look: the shared weapon and arm zone, built by the editor
     ('warzone_custom_loot_test', None),
     ('warzone_custom_loot_boxes_test', None),

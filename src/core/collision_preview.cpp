@@ -64,6 +64,18 @@ bool readCollisionHulls(const std::string& text, std::vector<CollisionHullEdges>
             }
         if (!h.edges.empty()) out.push_back(std::move(h));
     }
+    // The mount edges of the build (research 125): [ax, ay, az, bx, by, bz, ...] each.
+    if (const json::Value* list = root->get("mount_edges"); list && list->type == json::Value::Type::Array) {
+        CollisionHullEdges m;
+        m.mount = true;
+        for (const json::Value& e : list->arr) {
+            if (e.type != json::Value::Type::Array || e.arr.size() < 6) continue;
+            Vec3 a, b;
+            for (int i = 0; i < 3; ++i) a[i] = e.arr[size_t(i)].number().value_or(0), b[i] = e.arr[size_t(i) + 3].number().value_or(0);
+            m.edges.push_back({a, b});
+        }
+        if (!m.edges.empty()) out.push_back(std::move(m));
+    }
     return true;
 }
 

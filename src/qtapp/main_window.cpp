@@ -2590,8 +2590,11 @@ void MainWindow::buildMenus() {
         std::string text, err;
         if (!readFile(f.toStdString(), text) || !readCollisionHulls(text, ctx_.scene.collisionPreview, &err))
             ctx_.setStatus("No compiled collision for " + compile_->mapId() + " yet (compile the extraction first)");
-        else
-            ctx_.setStatus(QString("Compiled collision: %1 hulls").arg(ctx_.scene.collisionPreview.size()));
+        else {
+            size_t mount = 0, hulls = 0;
+            for (const auto& h : ctx_.scene.collisionPreview) (h.mount ? mount : hulls) += h.mount ? h.edges.size() : 1;
+            ctx_.setStatus(QString("Compiled collision: %1 hulls (cyan; clip orange, ladders green), %2 mount edge(s) (yellow)").arg(hulls).arg(mount));
+        }
         ctx_.cameraMoved();
     };
     QAction* colToggle = addCommand(view, "ToggleCompiledCollision", "Show Compiled Collision", QKeySequence(), loadCollisionPreview);

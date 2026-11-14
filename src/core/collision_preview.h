@@ -15,6 +15,7 @@ namespace iw8r {
 struct CollisionHullEdges {
     uint32_t contents = 0;
     bool ladder = false;
+    bool mount = false;  // not a hull: the build's mount edges ("mount_edges"), all in one entry, the last
     std::vector<std::pair<Vec3, Vec3>> edges;  // unique hull edges
 };
 

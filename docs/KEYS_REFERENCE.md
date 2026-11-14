@@ -23,6 +23,7 @@ A light with a `target` or a `fov` key is a spot. Both classes take the same key
 | `iw8r_intensity_units` | float, 0 or more (unset) | `4` | Intensity in light units. When set, the radius brightness calibration is skipped. When unset, it is calibrated from the radius. |
 | `iw8r_uv_intensity` | float (default 0) | `0.5` | UV vision intensity. |
 | `iw8r_ir_intensity` | float (default 0) | `0.5` | Thermal vision intensity. |
+| `iw8r_volumetric` | 0 or 1 (default 0) | `1` | 1 makes the lamp light the volumetric air: a glow around it and beams in fog. It shows only when the map has volumetric air (worldspawn `iw8r_haze`, or `volumetricAirDensity` in `iw8r_vision`). Not seen in game. |
 
 ## dynamic_prop
 
@@ -51,6 +52,7 @@ A brush model that scripts use. It is referenced as `*N`.
 | Key | Value format | Example | What it does |
 |---|---|---|---|
 | `iw8r_door` | `rotate <yaw> [time] [hold]` or `slide <x> <y> <z> [time] [hold]` | `rotate 90 1 3` or `slide 0 0 96 1.5 3` | A door. It needs a `targetname`, and a `trigger_use` or `trigger_multiple` with its own `targetname` whose `target` is this door. A player opens it, and it closes after the hold time. |
+| `iw8r_hinge` | `far` or `x y z` | `far` or `128 64 0` | Where a hinged door (`iw8r_door rotate`) turns. Without it the hinge is the end of the door's longer side with the lower coordinate. `far` takes the other end; `x y z` names the hinge point itself. |
 | `iw8r_lift` | `<dz> [time] [wait]` | `128 2 2` | A lift. It needs a `targetname`. It moves up `dz` units over `time` seconds, waits, moves back down, and repeats. |
 | `iw8r_spin` | `<seconds per turn> [yaw\|pitch\|roll]` | `4` or `2 roll` | Turns the brush model one full circle every given number of seconds. |
 | `iw8r_bob` | `<height> [seconds]` (seconds default 2) | `16 2` | Moves the brush model up by the height and back down, once every given number of seconds. |
@@ -120,6 +122,10 @@ The map's global settings. There is one worldspawn per map.
 | `iw8r_remove_world_sun` | `rebake` (default) or `keep` | `keep` | Stock maps with `iw8r_remove_world` boxes: `rebake` bakes the map's sun shadow again at the stock sun direction without the removed triangles on Rebuild Stock Zone (ACTS exports the static models' geometry; the converter's bake, larger than the stock one). `keep` leaves the stock sun shadow, so the removed geometry still casts its baked shadow. Not seen in game. |
 | `iw8r_collision` | `auto`, `one` (or `full`) or `tiles` | `tiles` | How the build keeps the map's collision: in one piece or as the game's streamed tiles (research 90). `auto`: tiles for a map wider than 20,000 units. |
 | `iw8r_sun_sprite` | `<size 1..64> [flare alpha 0..1] [blind darken 0..1] [glare lighten 0..1]` | `16 0.5` | Draws a sun disc in the sky in the sun direction. Adds a lens flare when the player looks at it, plus blind and glare strength. In game not verified. |
+| `iw8r_airspace` | `<up> [out]` in units (default `131072 131072`), or `0` | `16384 8192` | How far the map's visibility cell and occlusion data reach above (first number) and around and below (second number) the map's geometry. Aircraft killstreaks and their cameras fly there; from a camera outside it the game draws no players or vehicles. `0` keeps the tight cell. |
+| `iw8r_haze` | `<preset> [amount]`; presets `desert`, `clear`, `overcast`, `dusk`, `fog`; amount 0.1 to 4 (default 1) | `desert 0.7` | The game's own fog, sky blend and volumetric air for a built map (Compile > Atmosphere). The amount scales how thick it is. `iw8r_fog` is left out of the map script when a haze is set; fields in `iw8r_vision` win over the preset. Seen in game 2026-11-14. |
+| `iw8r_sky_brightness` | float 0.1 to 16 (default 1) | `3` | Brightness of the built sky (Compile > Sun & Sky). 2 doubles it (its brightest parts go to white), 0.5 halves it. Seen in game 2026-11-14. |
+| `iw8r_mount_edges` | `1` (default), `brushes` or `0` | `brushes` | Mount edges: where a player can rest a weapon on cover (open outside wall corners at least 32 units tall and ledge tops at least 16 units long). `1`: on the map's visible solid brushes and on placed models' collision hulls; `brushes`: brushes only; `0`: none. Not seen in game. |
 
 ## fx_origin
 
@@ -207,7 +213,7 @@ ignored. Tools > Sound Settings edits it.
 
 ## Counts
 
-- 59 key rows in the entity tables above (light and light_spot share one table of 9 keys), and 4 rows for the Warzone loot entities.
-- 41 distinct key names: 39 `iw8r_` keys, plus `soundalias` and `sound_loop` (the worldspawn keys of 2026-11-12 are in the overrides file too).
+- 65 key rows in the entity tables above (light and light_spot share one table of 10 keys), and 4 rows for the Warzone loot entities.
+- 47 distinct key names: 45 `iw8r_` keys, plus `soundalias` and `sound_loop` (the worldspawn keys of 2026-11-12 are in the overrides file too).
 - Key forms, not key names: `iw8r_mat:<material>` on models, and the 2 forms for `misc_prefab`.
 - 15 rows in the custom material table and 5 rows in the sound settings table.

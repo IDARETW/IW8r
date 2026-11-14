@@ -76,7 +76,39 @@
   tools/physics_bounds_build_test.py). OPEN, next: mount edges (research 125 by an Opus agent, read-only IDA): the
   converter writes ladder edges only (edgeListUsedQueryTypes 4); mounting queries bucket 0 of the edge list and has
   no trace fallback; mantle falls back to Mantle_TraceLedgeFace while bit 2 is clear.
-  ADDED 2026-11-14 17:40 (newest).
+  ADDED 2026-11-14 18:10 (newest). MOUNT EDGES on built maps (plan 6.8, research 125 section 10).
+  - Core: src/core/map_edges.h (header only, shared with the converter: MapEdge, makeMapEdge, mapEdgeNormals,
+    buildMapEdgeList with the stock octree layout, queryMapEdgeList, validateMapEdgeList), src/core/mount_edges.*
+    (findMountEdges over MountSolid planes; MountEdgeOptions; mountEdgesJson), compile_iw8.cpp (CollisionBrush::
+    mountSource = solid + a drawn face + no ladder; collision json "mount_edges" before "dynamic_model_count";
+    worldspawn iw8r_mount_edges 0), collision_preview (the overlay's yellow lines), entity defs.
+  - Converter (worktree C:\zsw-iw8r\scriptables, patch tools/patches/zt_map_edges.py; `--header-only` re-copies the
+    header): iw3_fastfile.cpp writes collision.native.edges ("MWEDGE01"), replay_havok reads it into
+    BakeResult::mountEdges, map_zone.h emitMapEdgeListBody writes both buckets (node sets aligned to 128), MapEnts
+    edgeListUsedQueryTypes = buckets present. Commit and deploy state: see the line below.
+  - Tests: tests/mount_edges_tests.cpp (4), compile_iw8_mount_edges, collision preview; proof
+    tools/mount_edges_build_test.py (in run_offline_proofs.py).
+  - Big-map check: a private copy of Cinder Rail (mp_crmnt, deleted again) built with 1,722 wall corners and 1,026 ledge tops (2,748 mount edges; 8,991 covered edges not counted); the zones pass the ACTS loader test; read back (tools/mount_edges_build_test.py --check <zone>): 451 node sets, 3,158 leaves, deepest node 8, at most 8 edges in a leaf, every crossing edge listed, a box round each edge finds it through the MOUNT tree.
+  - Adjacency (changing sides of thin cover while mounted; research 125 section 11): buildMapEdgeAdjacency in
+    map_edges.h by the rule that reproduces the stock tables exactly; converter 7076f8da writes the two tables
+    (patch tools/patches/zt_map_edges_adjacency.py). The proof checks the rule against stock mp_m_speedball and the
+    built tables against the rule.
+  - Converter commits in the worktree: a8114ae6 (mount edges), 7076f8da (adjacency). LIVE since 19:10: the shared
+    checkout E:\mw124\x64-zt is fast-forwarded to 7076f8da and rebuilt (old exe out/zt_backup/zonetool_3b2bcc93.exe).
+    All 27 offline proofs passed on 7076f8da (the run used the worktree exe and out/audit_bin; the mount proof was
+    run again on the live exe). Suites: core 182,854 checks / 1,385 tests, GUI 1,093, smoke ok, 0 failures.
+  - docs/HANDOVER.md and docs/KEYS_REFERENCE.md are brought up to this state (what was seen in game on 2026-11-14,
+    what is reported and not settled, the seven keys that had no row).
+  - STILL OPEN, in this order: (1) Shipment's popping objects: unexplained; IDA was not reachable for research 130
+    (does a first run compile pipeline states in the background? research 76 saw "Building PSOs" during loading,
+    which speaks against it); (2) the owner's steps: File > First-Person Look > Install Into Game; nothing else needs
+    them; (3) plan rows left: volumetric box masks, the fog spline for see-through surfaces, viewport volumetric air
+    against the game's numbers, radar pings, name-only models, fonts and menus (deferred by decision).
+  - Placed models: the convex pieces of a model's collision hull are sources too (CollisionBrush::modelHull,
+    MountSolid::model: corner walls at least 60 degrees apart; the piece's own box from its windings). Worldspawn
+    iw8r_mount_edges: 1 (default) / brushes / 0. Big-map check with models (a private copy of Cinder Rail, live converter 7076f8da, deleted again): 1,794 wall corners and 1,313 ledge tops = 3,107 mount edges, 2,748 on brushes and 359 on placed models (230 models, 671 hull pieces); 548 node sets, deepest node 8; 1,578 neighbour records, exactly the pairs the rule gives; all five zones pass the ACTS loader test.
+  - Not built: mantle edges.
+  ADDED 2026-11-14 17:40.
   - FIRST-PERSON LOOK is a product feature now: src/qtapp/main_window_look.cpp (buildViewmodelLook,
     buildViewmodelLookQuiet, installViewmodelLook, restoreViewmodelLook, prepareViewmodelLook), core
     stockSharedLookEditJson + kViewmodelLookZone / kViewmodelLookMaterials (stock_zone_edit), menu File > First-Person

@@ -419,10 +419,14 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
     reads something differently: suspects are the camera's cell lookup (view tree), the per-object bounds against the
     portal-clipped frustum, and contribution culling of small objects (the one-cell tome avoids all three). Until
     fixed the option is marked experimental in the Compile panel and the build log.
-  - weapon mounting on a built map (6.8, found 2026-11-14 by the field audit, research 124 / 125): OPEN, not built.
-    The game takes mount spots only from mount edges in the map's edge list; the converter writes ladder edges only.
-    To build: mount edges from the map's own brush edges (the layouts, the octree and the flags are in research
-    125), with the rules checked against the stock maps' edges.
+  - weapon mounting on a built map (6.8, found 2026-11-14 by the field audit, research 124 / 125): BUILT 2026-11-14
+    (research 125 section 10). Core src/core/mount_edges.* finds the edges on the world's visible solid brushes
+    (wall corners, ledge tops; open parts only; joined along a line); src/core/map_edges.h (shared with the
+    converter as map_edges.hpp) holds the record, the metadata rule and the octree; the collision file carries
+    "mount_edges"; the converter writes bucket 0 with node sets and sets the used query types. Proof
+    tools/mount_edges_build_test.py. NOT SEEN IN GAME. Adjacency (changing sides of thin cover while mounted)
+    is built too (section 11; buildMapEdgeAdjacency). Edges from placed models' collision hulls are built too (MountSolid::model). Not
+    built: mantle edges (the trace path works).
   - fonts and LUI (4.27): HUD from the map script works with stock icons and, since 2026-11-14, with the map's own
     pictures (`<map name>.hud`) and the map's own text (`<map name>.str`), both proven offline; game. Own fonts and menus are not built (deferred, as the plan
     allowed: no map-zone writer for them, and nothing shows the game would use one).

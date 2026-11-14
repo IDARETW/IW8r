@@ -17,6 +17,13 @@ TEST(collision_preview_box_and_wedge) {
     CHECK(hulls[1].contents == 65536 && hulls[1].ladder && hulls[1].edges.size() > 12);
     std::vector<CollisionHullEdges> none;
     CHECK(!readCollisionHulls("{}", none));
+    // The build's mount edges come as one entry after the hulls.
+    std::vector<CollisionHullEdges> withMount;
+    CHECK(readCollisionHulls("{\"brushes\":[],\"mount_edges\":[[0,0,0,0,0,64,0,15944,1],[8,0,40,72,0,40,0,15944,1]]}", withMount));
+    CHECK(withMount.size() == 1 && withMount[0].mount && withMount[0].edges.size() == 2);
+    if (withMount.size() == 1 && withMount[0].edges.size() == 2) {
+        CHECK(withMount[0].edges[0].second.z == 64 && withMount[0].edges[1].first.x == 8 && withMount[0].edges[1].second.x == 72);
+    }
 }
 
 // Compiled world preview (3.10): triangle edges of world.json surfaces, shared edges once.

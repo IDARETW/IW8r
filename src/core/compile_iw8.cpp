@@ -2,6 +2,7 @@
 #include "custom_shader.h"
 #include "ies_profiles.h"
 #include "compile_iw8.h"
+#include "mount_edges.h"
 #include "hud_images.h"
 #include "map_strings.h"
 #include "occluder_box.h"
@@ -281,6 +282,8 @@ struct CollisionBrush {
     uint32_t contents = 1;      // IW3-style source contents; the converter maps them (iw3_fastfile.cpp ConvertContents)
     int surfaceType = 0;        // Replay surface type for footsteps/impacts (brush "surface_type", iw3_fastfile.cpp:7194-7197)
     bool ladder = false;        // write ladder_planes: the converter keeps the widest vertical faces (iw3_fastfile.cpp:7250-7284)
+    bool mountSource = false;   // a solid brush of the map itself: its open corners and ledge tops become mount edges
+    bool modelHull = false;     // a convex piece of a placed model's collision hull (mount edges with the model rule)
 };
 
 // IW3 trigger material contents: the converter keeps bit 1 of 0x8000001 for trigger hulls
@@ -343,6 +346,10 @@ void gatherBrush(const Primitive& p, size_t entity, size_t group, Gather& g, boo
         CollisionBrush cbr;
         cbr.contents = bc.collides ? bc.contents : 1u;
         cbr.ladder = bc.ladder;
+        // Mount edges come from brushes a player sees: a brush of tool materials only (a clip, a caulk hull) hides
+        // edges of others but gives none.
+        cbr.mountSource = (cbr.contents & kIw3ContentsSolid) != 0 && !bc.ladder &&
+                          std::any_of(p.faces.begin(), p.faces.end(), [](const auto& f) { return !isIw8ToolMaterial(f.material()); });
         {
             // Surface type of the brush: the most common drawn face material (footsteps and impacts).
             std::map<std::string, int> uses;
@@ -1909,6 +1916,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     CollisionBrush hb;
                     hb.contents = 1u;
                     hb.surfaceType = surfaceOfModel(*mv);
+                    hb.modelHull = true;
                     for (const Plane& pl : pc) {
                         const Vec3 nz{pl.n.x, -pl.n.z, pl.n.y};
                         const Vec3 n = ax[0] * nz.x + ax[1] * nz.y + ax[2] * nz.z;
@@ -1948,6 +1956,45 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     }
     // Collision brush order: world brushes (submodel 0) first, then each brush model's (doc 15 §2.3).
     const size_t worldBrushCount = g.brushes.size();
+    // Mount edges (research 125): the game lets a player rest a weapon only on edges of the map's edge list. They are
+    // the open wall corners and ledge tops of the world's solid brushes; placed models' collision and clip brushes hide
+    // edges but give none. Worldspawn iw8r_mount_edges 0 builds without them.
+    std::string mountEdgesKey;
+    {
+        const std::string* off = worldspawn ? worldspawn->value(kMountEdgesKey) : nullptr;
+        const bool brushesOnly = off && *off == "brushes";
+        if (off && *off == "0") {
+            warn.push_back("mount edges off (worldspawn iw8r_mount_edges 0): weapons cannot be mounted on this map");
+        } else {
+            std::vector<MountSolid> solids;
+            solids.reserve(worldBrushCount);
+            for (size_t i = 0; i < worldBrushCount; ++i) {
+                const CollisionBrush& b = g.brushes[i];
+                if (!(b.contents & (kIw3ContentsSolid | kIw3ContentsPlayerClip))) continue;
+                MountSolid solid{b.planes, b.bounds, b.mountSource || (b.modelHull && !brushesOnly), b.modelHull};
+                if (b.modelHull) {
+                    // A hull piece carries its whole model's box: its own box, from its corners, makes the probes cheap.
+                    AABB own;
+                    for (const Winding& w : buildBrushWindings(b.planes))
+                        for (const Vec3& v : w) own.add(v);
+                    if (!own.valid()) continue;
+                    solid.bounds = own;
+                }
+                solids.push_back(std::move(solid));
+            }
+            MountEdgeStats st;
+            const std::vector<MapEdge> edges = findMountEdges(solids, {}, &st);
+            if (!edges.empty()) {
+                mountEdgesKey = ",\"mount_edges\":" + mountEdgesJson(edges);
+                warn.push_back("mount edges: " + std::to_string(st.corners) + " wall corner(s) and " + std::to_string(st.ledges) +
+                               " ledge top(s) where a weapon can be mounted (" + std::to_string(st.corners + st.ledges - st.fromModels) +
+                               " on brushes, " + std::to_string(st.fromModels) + " on placed models" +
+                               (brushesOnly ? " (worldspawn iw8r_mount_edges brushes)" : "") + "; " + std::to_string(st.hidden) +
+                               " covered edge(s) not counted" + (st.dropped ? ", " + std::to_string(st.dropped) + " over the limit dropped" : std::string()) +
+                               "; not seen in game)");
+            }
+        }
+    }
     for (auto& bm : brushModels)
         for (auto& i : bm.brushes) i += worldBrushCount;
     for (auto& b : entityBrushes) g.brushes.push_back(std::move(b));
@@ -3297,8 +3344,8 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         col += "}";
     }
     // triangle_contents is read with at() (iw3_fastfile.cpp:11516) and its schema tag checked at :7351 (doc 17 §4).
-    col += "],\"vertices\":[],\"triangles\":[],\"triangle_contents\":[],\"triangle_contents_schema\":\"material-partitions-v1\","
-           "\"dynamic_model_count\":" + std::to_string(dynModelCount) + ",\"dynamic_brush_count\":0,\"dynamic_models\":[" +
+    col += "],\"vertices\":[],\"triangles\":[],\"triangle_contents\":[],\"triangle_contents_schema\":\"material-partitions-v1\"" +
+           mountEdgesKey + ",\"dynamic_model_count\":" + std::to_string(dynModelCount) + ",\"dynamic_brush_count\":0,\"dynamic_models\":[" +
            dynModelsJson + "],\"dynamic_brushes\":[]" +
            (scriptableCount ? ",\"scriptable_instances\":[" + scriptablesJson + "]" : std::string()) +
            (lootCount ? ",\"loot_points\":[" + lootJson + "],\"loot_zone\":\"" + lootZone + "\"" : std::string()) +

@@ -2315,6 +2315,55 @@ TEST(compile_iw8_airspace_cell) {
     CHECK(said);
 }
 
+// Mount edges (research 125): the room's walls give open wall corners and ledge tops, written into the collision file;
+// worldspawn iw8r_mount_edges 0 leaves them out.
+TEST(compile_iw8_mount_edges) {
+    const auto build = [&](const std::string& worldKeys, const char* name, std::vector<std::string>& warnings, std::string& collision) {
+        std::string text = roomMapText();
+        const std::string ws = "\"classname\" \"worldspawn\"";
+        text.insert(text.find(ws) + ws.size(), worldKeys);
+        Id next = 1;
+        ParseResult pr = parseMap(text, next);
+        if (!pr.map) return false;
+        const std::string dir = scratch(name);
+        CompileOptions opt;
+        opt.mapId = "mp_room";
+        CompileReport rep;
+        std::string err;
+        if (!compileIw8Extraction(*pr.map, dir, opt, rep, &err)) return false;
+        warnings = rep.warnings;
+        collision = readAll((fs::path(dir) / "extracted" / "maps" / "mp" / "mp_room.d3dbsp.replay-collision.json").string());
+        return true;
+    };
+    const auto warned = [](const std::vector<std::string>& w, const char* part) {
+        for (const std::string& s : w)
+            if (s.find(part) != std::string::npos) return true;
+        return false;
+    };
+    std::vector<std::string> w;
+    std::string collision;
+    CHECK(build("", "mount_on", w, collision));
+    CHECK(warned(w, "mount edges: ") && warned(w, "ledge top(s)"));
+    const size_t at = collision.find("\"mount_edges\":[[");
+    CHECK(at != std::string::npos);
+    if (at != std::string::npos) {
+        // Each record: two end points, the adjacent face's angle, the open angle (a half float), flag 1 (mount).
+        const size_t end = collision.find("]]", at);
+        const std::string list = collision.substr(at, end - at);
+        size_t records = 0, mount = 0;
+        for (size_t k = list.find('['); k != std::string::npos; k = list.find("],[", k + 1)) {
+            ++records;
+            const size_t close = list.find(']', k + 2);
+            const std::string rec = list.substr(k, close == std::string::npos ? std::string::npos : close - k);
+            if (rec.size() > 2 && rec.compare(rec.size() - 2, 2, ",1") == 0) ++mount;
+        }
+        CHECK(records >= 8 && mount == records);
+        CHECK(list.find(",15944,1") != std::string::npos);  // right angles
+    }
+    CHECK(build("\n\"iw8r_mount_edges\" \"0\"", "mount_off", w, collision));
+    CHECK(collision.find("mount_edges") == std::string::npos && warned(w, "mount edges off"));
+}
+
 // The game's own fog and volumetric air (worldspawn iw8r_haze, research 126): written as vision overrides under the
 // user's iw8r_vision, with iw8r_fog left out of the map script; a lamp's iw8r_volumetric; a volumetric box with the
 // game's units (research 127 part A).

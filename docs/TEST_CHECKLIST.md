@@ -372,6 +372,8 @@ Map: `out/agent/mp_iw8r_fix1/mp_iw8r_fix1.map` (already built; Ctrl+F7, then Loc
 - [ ] Toon look on the first-person weapon and hands: built and waiting in the editor. File > First-Person Look
       (weapon and hands) > Install Into Game (game closed); then weapons and hands show the toon colours and ink lines
       on every map, and nothing else changes. Restore In Game takes it out.
+- [ ] Weapon mounting on a map built on or after 2026-11-14: at a wall corner and at a waist-high ledge the mount
+      prompt shows and the weapon rests on the edge; mantling still works as before.
 - [ ] Occlusion bake after the fix of 2026-11-14 (research 129): a map built with Occlusion bake on keeps all its
       surfaces and models from every camera position.
 - [ ] Killstreak aircraft that fly high or start far out (gunship, cruise missile, advanced UAV, airstrike planes)
