@@ -5,6 +5,15 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Web: Check Map in the browser.** Tools > Check Map opens in the web page as a report with the same findings, in
+  the same order, as the editor's dialog, and a "Fix all findings marked [fix]" box that applies the automatic fixes
+  as one undo step.
+
+- **Web: Game Modes in the browser.** Tools > Game Modes opens as a form in the web page: choose a mode (the
+  built-in ones, Warzone presets included, and your own) and what to do with it: carry it in the map, use it for F5,
+  or insert the Warzone start entities. Making your own presets stays in the editor's dialog. Restart in Safe Mode is
+  now one of the commands only the editor itself runs. Checked in a real browser (Warzone Trios carried and undone).
+
 - **Web: dialogs as forms in the browser.** Compile > Sun & Sky and Compile > Atmosphere open as forms in the web
   page, and Lightmap Bake Settings and Map Info are in the web Compile menu too. A form shows the map's values; OK
   or Apply sends only the fields you changed, through the same code as the desktop dialog, as one undo step. A value

@@ -2,6 +2,12 @@
 
 ## Latest (2026-11-13)
 
+- Plan 3.3 form 6: checkMap web form (a CheckMapDialog that is never shown gives itemTexts / fixableCount / fixAll;
+  field type "report" = read-only text). FEATURES.md web section rewritten (menu bar, forms, live view, differences).
+  Web forms so far: sunSky, atmosphere, bakeSettings, mapInfo, gameModes, checkMap.
+- Plan 3.3 form 2: MainWindow::webGameModesForm / applyWebGameModes (main_window_game_modes.cpp; actions carry / f5 /
+  warzoneStart through bakeGameMode, DevmapRunner::setModePreset, insertWarzoneStart); forms may set "sendAll" and
+  choices may carry "choiceLabels"; RestartSafeMode is editor-only. Browser check on 8791.
 - Plan 3.3 part 2: web forms in src/qtapp/main_window_web.cpp (webFormList / webForm / applyWebForm /
   webFormForCommand): sunSky (MapSunSky, via currentSunSky / applySunSky), atmosphere (MapAtmosphere, via
   currentAtmosphere / applyAtmosphere), bakeSettings (CompilePanel::applyBakeSettings + the bake key, one group),

@@ -732,11 +732,14 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 - Tools > Web Server runs a local web server so the suite can be used from a browser. It can be turned on in Web Server Settings.
 - The server is local only unless LAN access is turned on. Remote requests need a login or the session token. A login is locked for a time after eight failures.
 - UPnP port mapping can be set up. The owner confirmed access from outside (roadmap row 10.1).
-- The browser client has 2D top, front and side views, an entity list, an inspector, select and move, key editing, undo, redo, save, compile and a log. It fits a phone-width screen. (not yet seen in game)
-- Live updates reach the browser as the document changes.
-- A 3D view in the browser draws the textured scene with thumbnails.
+- The browser client has 2D top, front and side views, an entity list, an inspector, select and move, key editing, undo, redo, save, compile and a log. It fits a phone-width screen.
+- Live updates reach the browser as the document changes. After the first load only the changed items travel, and a model is sent as its box, so big maps open (Cinder Rail: 3 MB once, then a few hundred bytes per change). (tested in a browser)
+- The editor's own menu bar is in the page, built from the editor's command list, with ticks, shortcuts and a command search. A command runs in the editor as its menu entry would. Commands that open a dialog on the editor's screen are greyed with that reason; exit, the web server's switches and installs into the game stay with the person at the editor. (tested in a browser)
+- Dialogs as forms in the page: Sun & Sky, Atmosphere, Lightmap Bake Settings, Map Info, Game Modes (a preset and what to do with it) and Check Map (the findings, and Fix all). A form writes only the fields that were changed, through the dialog's own code, as one undo step. (tested in a browser)
+- "Editor view (live)": the editor's own camera picture in the browser, drawn by the editor's renderer from a camera each browser owns. It shows what the desktop camera view shows (textures, lit preview, Game Lighting, the stock map, selection). Drag to look, W A S D and Q E to fly, wheel to move, click to select. About 20 ms per 1280 x 720 picture on Cinder Rail. (tested in a browser)
+- A simple 3D view drawn in the browser itself draws the textured scene with thumbnails (models as boxes).
 - The browser can compile, deploy, build and play, load in game, and place assets.
-- The web access work is paused. The owner asked for the desktop app to come first, on 2026-11-10. The server stays on for the owner.
+- Not in the browser yet: creating and resizing brushes by dragging, vertex and face tools, the Vision Editor, Preferences, the prefab and surface tools as forms.
 
 ## 15. Automation and command line
 

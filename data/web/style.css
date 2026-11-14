@@ -78,3 +78,7 @@ body { grid-template-rows: auto auto 1fr auto; }
 #formFields input[type=checkbox] { justify-self: start; }
 #formError { color: #ff8080; min-height: 18px; margin-top: 6px; }
 #formDialog .buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+
+#formFields label.wide { grid-template-columns: 1fr; }
+#formFields pre.report { margin: 0; max-height: 46vh; overflow: auto; white-space: pre-wrap; font: 11px/1.4 ui-monospace, monospace;
+  background: #1a1c20; border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }

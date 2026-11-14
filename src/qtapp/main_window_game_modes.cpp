@@ -2,6 +2,8 @@
 // main_window.cpp, which is at the compiler's section limit.
 #include "main_window.h"
 
+#include <QJsonObject>
+#include <QJsonArray>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -119,6 +121,53 @@ int MainWindow::insertWarzoneStart() {
     ctx_.documentEdited(QString("Warzone start: %1 entities added around the 2D view centre (8 mp_dm_spawn_start, 1 prematch area); "
                                 "move the spawns onto the floor").arg(added));
     return added;
+}
+
+// The Game Modes dialog as a web form (plan 3.3): a preset and an action.
+QJsonObject MainWindow::webGameModesForm() const {
+    const std::vector<GameModePreset> modes = loadGameModes(userModesDir().toStdString(), nullptr);
+    const QString f5 = DevmapRunner::modePresetSetting();
+    QJsonArray ids, labels;
+    QString current;
+    for (const GameModePreset& m : modes) {
+        ids.append(qs(m.id));
+        labels.append(qs(m.title) + (m.builtin ? "" : "  (mine)") + (qs(m.id) == f5 ? "  [F5]" : "") + "  -  " + qs(m.gametype) +
+                      (m.dvars.empty() ? QString() : QString(", %1 dvar(s)").arg(m.dvars.size())));
+        if (qs(m.id) == f5) current = f5;
+    }
+    if (current.isEmpty() && !modes.empty()) current = qs(modes.front().id);
+    const QJsonArray actions{"carry", "f5", "warzoneStart"};
+    const QJsonArray actionLabels{"Carry in this map (the map's script sets the mode at every start)", "Use for F5 (sent when the editor starts the match)",
+                                  "Insert the Warzone start entities into the map"};
+    return QJsonObject{{"id", "gameModes"}, {"title", "Game Modes"}, {"sendAll", true},
+                       {"fields", QJsonArray{QJsonObject{{"key", "preset"}, {"label", "Mode"}, {"type", "choice"}, {"value", current}, {"choices", ids},
+                                                         {"choiceLabels", labels}, {"help", "A mode is a game type script plus dvars. Your own presets are made in the editor's Game Modes dialog"}},
+                                             QJsonObject{{"key", "action"}, {"label", "Do"}, {"type", "choice"}, {"value", "carry"}, {"choices", actions},
+                                                         {"choiceLabels", actionLabels}, {"help", "Not seen in game"}}}}};
+}
+
+bool MainWindow::applyWebGameModes(const QJsonObject& values, QString* why) {
+    const auto no = [&](const QString& text) {
+        if (why) *why = text;
+        return false;
+    };
+    const QString action = values.value("action").toString();
+    if (action == "warzoneStart") {
+        const int n = insertWarzoneStart();
+        return n >= 0 ? true : no("the Warzone start entities could not be inserted");
+    }
+    const QString id = values.value("preset").toString();
+    for (const GameModePreset& m : loadGameModes(userModesDir().toStdString(), nullptr)) {
+        if (qs(m.id) != id) continue;
+        if (action == "f5") {
+            DevmapRunner::setModePreset(qs(m.id), qs(m.gametype), qs(modeDvarsText(m.dvars)));
+            ctx_.setStatus(QString("F5 starts '%1' (game type %2, %3 dvar(s) sent before the start)").arg(qs(m.title), qs(m.gametype)).arg(m.dvars.size()));
+            return true;
+        }
+        if (action == "carry") return bakeGameMode(m) ? true : no("the map has no worldspawn");
+        return no("the action is carry, f5 or warzoneStart");
+    }
+    return no("there is no game mode " + id);
 }
 
 void MainWindow::showGameModes() {

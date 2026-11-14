@@ -414,9 +414,19 @@ get("/api/commands").then((j) => { commands = j.commands || []; buildMenuBar(); 
 let openFormId = "";
 function fieldInput(f) {
   let el;
+  if (f.type === "report") {            // read-only text: a list of findings
+    el = document.createElement("pre");
+    el.className = "report";
+    el.textContent = f.value || "";
+    return el;
+  }
   if (f.type === "choice") {
     el = document.createElement("select");
-    for (const c of f.choices || []) { const o = document.createElement("option"); o.value = o.textContent = c; el.append(o); }
+    (f.choices || []).forEach((c, k) => {
+      const o = document.createElement("option");
+      o.value = c; o.textContent = (f.choiceLabels && f.choiceLabels[k]) || c;
+      el.append(o);
+    });
     el.value = f.value;
   } else {
     el = document.createElement("input");
@@ -442,12 +452,14 @@ async function openForm(id) {
   let form;
   try { form = await get("/api/form?id=" + encodeURIComponent(id)); } catch (e) { setStatus(e.message); return; }
   openFormId = id;
+  $("formDialog").dataset.sendAll = form.sendAll ? "1" : "";
   $("formTitle").textContent = form.title;
   $("formError").textContent = "";
   const box = $("formFields");
   box.textContent = "";
   for (const f of form.fields) {
     const row = document.createElement("label");
+    if (f.type === "report") row.className = "wide";
     const name = document.createElement("span"); name.textContent = f.label;
     const input = fieldInput(f);
     row.append(name, input);
@@ -463,7 +475,7 @@ function closeForm() { $("formShade").hidden = true; openFormId = ""; }
 async function sendForm(thenClose) {
   const values = {};
   for (const el of $("formFields").querySelectorAll("[data-key]")) {
-    if (!el.dataset.changed) continue;
+    if (!el.dataset.changed && !$("formDialog").dataset.sendAll) continue;
     values[el.dataset.key] = el.dataset.type === "bool" ? el.checked : el.dataset.type === "number" ? Number(el.value) : el.value;
   }
   if (Object.keys(values).length) {

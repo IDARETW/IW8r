@@ -4830,7 +4830,7 @@ static QString plainMenuText(QString text) {
 }
 
 QString MainWindow::webCommandBlocked(const QString& id, const QString& label) {
-    static const QSet<QString> editorOnly{"Exit", "WebServer", "WebServerSettings", "InstallStockMap", "RestoreStockMap", "OpenInNewWindow"};
+    static const QSet<QString> editorOnly{"Exit", "WebServer", "WebServerSettings", "InstallStockMap", "RestoreStockMap", "OpenInNewWindow", "RestartSafeMode"};
     if (editorOnly.contains(id)) return "only at the editor itself";
     if (label.endsWith("...")) return "opens a dialog on the editor's screen";
     return {};

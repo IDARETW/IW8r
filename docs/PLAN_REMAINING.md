@@ -303,8 +303,10 @@ revision. This is needed for Verdansk's 23k entities. Log backlog and filters th
 
 **3.3 Every command from the browser.** Part 1 DONE 2026-11-13: the command registry (GET /api/commands, POST
 /api/command) and the generated menu bar with search. Part 2 DONE 2026-11-13: web forms (GET /api/forms, GET
-/api/form, POST /api/form) for Sun & Sky, Atmosphere, Lightmap Bake Settings and Map Info. Open: the forms 2 to 10
-of the list below (Vision of item 1 too).
+/api/form, POST /api/form) for Sun & Sky, Atmosphere, Lightmap Bake Settings, Map Info and Game Modes (preset +
+action; presets are made in the desktop dialog) and Check Map (report + fix all). Items 3 and 4 of the list below
+are plain commands and run from the web menu already. Open: Vision (item 1), compile options and Build Budget (5),
+Preferences (7), Prefabs (8), Surface / UV (9), Material / Effect Info (10).
 - **Command registry.** Expose the registry that `addCommand` builds (id, label, menu path, checkable, checked,
   enabled) as `/api/commands` and `POST /api/command`. The web menu bar is generated from it, so every action is
   reachable.

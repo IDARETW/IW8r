@@ -1998,10 +1998,52 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 const QJsonObject sun = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=sunSky", {}, true, {}).body).object();
                 QStringList sunKeys;
                 for (const QJsonValue& f : sun.value("fields").toArray()) sunKeys << f.toObject().value("key").toString() + ":" + f.toObject().value("type").toString();
-                r.check(forms.size() == 4 && sun.value("title").toString() == "Sun & Sky" &&
+                r.check(forms.size() == 6 && sun.value("title").toString() == "Sun & Sky" &&
                             sunKeys == QStringList({"pitch:number", "yaw:number", "color:color", "sky:text"}) &&
                             fweb.handle("GET", "/api/form?id=nothing", {}, true, {}).status == 404,
-                        "GET /api/forms lists four forms and GET /api/form gives a form's fields with the map's values");
+                        "GET /api/forms lists the forms and GET /api/form gives a form's fields with the map's values");
+                {
+                    // Check Map: the dialog's findings as a report; "fix all" applies the automatic fixes in one step.
+                    const Id bad = ctx.doc.addEntity({{"classname", "mp_dm_spawn"}, {"origin", "0 0 4000"}, {"angles", "12 400 3"}}, {}, "web check");
+                    ctx.documentEdited();
+                    const QJsonObject cm = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=checkMap", {}, true, {}).body).object();
+                    const QJsonArray cf = cm.value("fields").toArray();
+                    const QJsonObject report = cf.isEmpty() ? QJsonObject() : cf.at(0).toObject();
+                    CheckMapDialog same(&ctx);
+                    const bool matches = report.value("value").toString() == same.itemTexts().join('\n') && report.value("type").toString() == "report";
+                    const size_t fixable = same.fixableCount();
+                    const size_t undoC = ctx.doc.undoPosition();
+                    const auto fix = fweb.handle("POST", "/api/form", "{\"id\":\"checkMap\",\"values\":{\"fixAll\":true}}", true, {});
+                    CheckMapDialog after(&ctx);
+                    const bool fixedNow = fixable > 0 ? (after.fixableCount() < fixable && ctx.doc.undoPosition() == undoC + 1) : ctx.doc.undoPosition() == undoC;
+                    while (ctx.doc.undoPosition() > undoC) ctx.doc.undo();
+                    ctx.doc.undo();  // the test spawn
+                    ctx.documentEdited();
+                    r.check(matches && cf.size() == (fixable > 0 ? 2 : 1) && fix.status == 200 && fixedNow && !ctx.doc.findEntity(bad),
+                            QString("the Check Map form reports the dialog's findings (%1, %2 fixable) and fixes them in one undo step")
+                                .arg(report.value("label").toString()).arg(fixable));
+                }
+                {
+                    // Game Modes: a preset carried in the map through the form, as the dialog's "Carry in this map".
+                    const QJsonObject gm = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=gameModes", {}, true, {}).body).object();
+                    const QJsonArray gf = gm.value("fields").toArray();
+                    const QJsonArray presets = gf.isEmpty() ? QJsonArray() : gf.at(0).toObject().value("choices").toArray();
+                    const std::string textBefore = ctx.doc.text();
+                    const size_t undoG = ctx.doc.undoPosition();
+                    // A preset with dvars (a Warzone one): carrying it writes them into the map.
+                    const QJsonArray presetLabels = gf.isEmpty() ? QJsonArray() : gf.at(0).toObject().value("choiceLabels").toArray();
+                    QString pick;
+                    for (int k = 0; k < presets.size() && k < presetLabels.size() && pick.isEmpty(); ++k)
+                        if (presetLabels.at(k).toString().contains("dvar(s)")) pick = presets.at(k).toString();
+                    const auto carry = fweb.handle("POST", "/api/form", QString("{\"id\":\"gameModes\",\"values\":{\"preset\":\"%1\",\"action\":\"carry\"}}").arg(pick).toUtf8(), true, {});
+                    const bool carried = ctx.doc.text() != textBefore && ctx.doc.undoPosition() > undoG;
+                    while (ctx.doc.undoPosition() > undoG) ctx.doc.undo();
+                    ctx.documentEdited();
+                    const auto noMode = fweb.handle("POST", "/api/form", "{\"id\":\"gameModes\",\"values\":{\"preset\":\"no_such_mode\",\"action\":\"carry\"}}", true, {});
+                    r.check(gm.value("sendAll").toBool() && presets.size() >= 3 && gf.size() == 2 && carry.status == 200 && carried &&
+                                ctx.doc.text() == textBefore && noMode.status == 400,
+                            QString("the Game Modes form lists %1 presets and carries the chosen one in the map").arg(presets.size()));
+                }
                 const size_t undoAt = ctx.doc.undoPosition();
                 const QString dirWas = key("sundirection"), colWas = key("suncolor");
                 const auto ap = fweb.handle("POST", "/api/form", "{\"id\":\"sunSky\",\"values\":{\"pitch\":-33,\"yaw\":120}}", true, {});

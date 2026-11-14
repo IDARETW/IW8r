@@ -16,6 +16,7 @@
 #include "atmosphere_dialog.h"
 #include "bake_options.h"
 #include "compile_panel.h"
+#include "find_dialog.h"
 #include "map_gametypes.h"
 #include "sun_sky_dialog.h"
 
@@ -80,17 +81,33 @@ const char* const kMapInfoKeys[] = {"iw8r_title", "iw8r_description", "iw8r_comp
 QString MainWindow::webFormForCommand(const QString& command) {
     if (command == "MapSunSky") return "sunSky";
     if (command == "MapAtmosphere") return "atmosphere";
+    if (command == "GameModes") return "gameModes";
+    if (command == "CheckMap") return "checkMap";
     return {};
 }
 
 QJsonArray MainWindow::webFormList() const {
     return QJsonArray{QJsonObject{{"id", "sunSky"}, {"title", "Sun & Sky"}, {"command", "MapSunSky"}, {"menu", "Compile"}},
                       QJsonObject{{"id", "atmosphere"}, {"title", "Atmosphere (Fog / Film Grade)"}, {"command", "MapAtmosphere"}, {"menu", "Compile"}},
+                      QJsonObject{{"id", "gameModes"}, {"title", "Game Modes"}, {"command", "GameModes"}, {"menu", "Tools"}},
+                      QJsonObject{{"id", "checkMap"}, {"title", "Check Map"}, {"command", "CheckMap"}, {"menu", "Tools"}},
                       QJsonObject{{"id", "bakeSettings"}, {"title", "Lightmap Bake Settings"}, {"command", ""}, {"menu", "Compile"}},
                       QJsonObject{{"id", "mapInfo"}, {"title", "Map Info"}, {"command", ""}, {"menu", "Compile"}}};
 }
 
 QJsonObject MainWindow::webForm(const QString& id) const {
+    if (id == "gameModes") return webGameModesForm();
+    if (id == "checkMap") {
+        // The dialog's own list, from a dialog that is never shown: the same checks in the same order.
+        CheckMapDialog check(const_cast<EditorContext*>(&ctx_), nullptr);
+        const QStringList lines = check.itemTexts();
+        const QString head = lines.isEmpty() ? QString("No problems found")
+                                             : QString("%1 finding(s), %2 with an automatic fix").arg(lines.size()).arg(check.fixableCount());
+        QJsonArray f{QJsonObject{{"key", "findings"}, {"label", head}, {"type", "report"}, {"value", lines.join('\n')}}};
+        if (check.fixableCount() > 0)
+            f.append(boolean("fixAll", "Fix all findings marked [fix]", false, "One undo step: spawn angles, spawns onto the floor, dangling targets, broken primitives"));
+        return QJsonObject{{"id", id}, {"title", "Check Map"}, {"fields", f}};
+    }
     QJsonArray fields;
     QString title;
     const Entity* w = nullptr;
@@ -156,6 +173,14 @@ bool MainWindow::applyWebForm(const QString& id, const QJsonObject& values, QStr
         if (why) *why = text;
         return false;
     };
+    if (id == "gameModes") return applyWebGameModes(values, why);
+    if (id == "checkMap") {
+        if (!values.value("fixAll").toBool()) return true;  // a report: nothing to write
+        CheckMapDialog check(&ctx_, nullptr);
+        const size_t fixed = check.fixAll();
+        ctx_.setStatus(QString("Check Map: %1 finding(s) fixed from the browser").arg(fixed));
+        return true;
+    }
     Entity* w = ctx_.doc.worldspawn();
     if (!w) return no("the map has no worldspawn");
     if (id == "sunSky") {
