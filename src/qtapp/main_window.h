@@ -127,6 +127,12 @@ public:
     // one run by id. A command is not run from the browser when it opens a dialog on the editor's screen (its label
     // ends in "...") or belongs to the person at the editor (exit, the web server itself, installs into the game).
     QJsonArray webCommandList() const;
+    // Web forms (plan 3.3, main_window_web.cpp): the dialogs a browser can fill in. webForm gives one form's fields
+    // with the map's current values ({} for an unknown id); applyWebForm takes the changed fields only.
+    QJsonArray webFormList() const;
+    QJsonObject webForm(const QString& id) const;
+    bool applyWebForm(const QString& id, const QJsonObject& values, QString* why);
+    static QString webFormForCommand(const QString& command);  // the form that stands for a dialog command, or ""
     // The browser's live view (plan 3.1): the camera view's own render from a camera of the browser's, as a JPEG; a
     // pick through that camera; the editor's camera as JSON. The editor's own camera is put back after each.
     QByteArray webRenderFrame(const struct WebCamera& cam, int w, int h, int quality);

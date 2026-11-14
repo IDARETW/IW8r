@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Web: dialogs as forms in the browser.** Compile > Sun & Sky and Compile > Atmosphere open as forms in the web
+  page, and Lightmap Bake Settings and Map Info are in the web Compile menu too. A form shows the map's values; OK
+  or Apply sends only the fields you changed, through the same code as the desktop dialog, as one undo step. A value
+  the editor cannot take is refused with the reason. Fixed on the way: "Sun & Sky" lost its "&" in the web menu.
+  API: `GET /api/forms`, `GET /api/form?id=`, `POST /api/form`. Checked in a real browser (open, change the sun
+  pitch, apply, undo).
+
 - **Web: the editor's own 3D view in the browser.** The page's View box has "Editor view (live)": the picture is
   drawn by the editor's renderer from a camera the browser owns, so it shows exactly what the desktop camera view
   shows (textures, lit preview, Game Lighting, the stock map, selection and gizmo) and each browser looks where it

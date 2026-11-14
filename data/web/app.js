@@ -340,7 +340,7 @@ function commandRow(c, withPath) {
   row.append(tick, label);
   if (withPath) { const w = document.createElement("span"); w.className = "where"; w.textContent = c.menu.replace(/\//g, " > "); row.append(w); }
   if (c.shortcut) { const k = document.createElement("span"); k.className = "key"; k.textContent = c.shortcut; row.append(k); }
-  if (!off) row.onclick = () => runCommand(c);
+  if (!off) row.onclick = () => (c.form ? (closeMenu(), openForm(c.form)) : runCommand(c));
   return row;
 }
 async function runCommand(c) {
@@ -405,7 +405,79 @@ $("cmdSearch").addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") { $("cmdSearch").value = ""; closeMenu(); }
   if (ev.key !== "Enter") return;
   const first = searchCommands().find((c) => c.enabled && !c.blocked);
-  if (first) { $("cmdSearch").value = ""; runCommand(first); }
+  if (first) { $("cmdSearch").value = ""; closeMenu(); if (first.form) openForm(first.form); else runCommand(first); }
 });
 document.addEventListener("click", (ev) => { if (!$("menuPopup").contains(ev.target) && ev.target !== $("cmdSearch")) closeMenu(); });
 get("/api/commands").then((j) => { commands = j.commands || []; buildMenuBar(); }).catch(() => {});
+
+// --- Web forms (plan 3.3): a dialog of the editor as a form here. Only the fields that were changed are sent. ---
+let openFormId = "";
+function fieldInput(f) {
+  let el;
+  if (f.type === "choice") {
+    el = document.createElement("select");
+    for (const c of f.choices || []) { const o = document.createElement("option"); o.value = o.textContent = c; el.append(o); }
+    el.value = f.value;
+  } else {
+    el = document.createElement("input");
+    el.type = f.type === "number" ? "number" : f.type === "color" ? "color" : f.type === "bool" ? "checkbox" : "text";
+    if (f.type === "number") { el.min = f.min; el.max = f.max; el.step = "any"; }
+    if (f.type === "bool") el.checked = !!f.value; else el.value = f.value;
+    if (f.type === "text" && f.choices) {
+      const list = document.createElement("datalist");
+      list.id = "choices_" + f.key;
+      for (const c of f.choices) { const o = document.createElement("option"); o.value = c; list.append(o); }
+      el.setAttribute("list", list.id);
+      el.after(list);
+      el.dataset.list = "1";
+      el._list = list;
+    }
+  }
+  el.dataset.key = f.key; el.dataset.type = f.type;
+  el.addEventListener("input", () => { el.dataset.changed = "1"; });
+  el.addEventListener("change", () => { el.dataset.changed = "1"; });
+  return el;
+}
+async function openForm(id) {
+  let form;
+  try { form = await get("/api/form?id=" + encodeURIComponent(id)); } catch (e) { setStatus(e.message); return; }
+  openFormId = id;
+  $("formTitle").textContent = form.title;
+  $("formError").textContent = "";
+  const box = $("formFields");
+  box.textContent = "";
+  for (const f of form.fields) {
+    const row = document.createElement("label");
+    const name = document.createElement("span"); name.textContent = f.label;
+    const input = fieldInput(f);
+    row.append(name, input);
+    if (input._list) row.append(input._list);
+    if (f.help) { const h = document.createElement("small"); h.textContent = f.help; row.append(h); }
+    box.append(row);
+  }
+  $("formShade").hidden = false;
+  const first = box.querySelector("input, select");
+  if (first) first.focus();
+}
+function closeForm() { $("formShade").hidden = true; openFormId = ""; }
+async function sendForm(thenClose) {
+  const values = {};
+  for (const el of $("formFields").querySelectorAll("[data-key]")) {
+    if (!el.dataset.changed) continue;
+    values[el.dataset.key] = el.dataset.type === "bool" ? el.checked : el.dataset.type === "number" ? Number(el.value) : el.value;
+  }
+  if (Object.keys(values).length) {
+    try { await post("/api/form", { id: openFormId, values }); }
+    catch (e) { $("formError").textContent = e.message || "The editor did not accept the values"; return; }
+    for (const el of $("formFields").querySelectorAll("[data-changed]")) delete el.dataset.changed;
+    setStatus($("formTitle").textContent + " applied");
+    queueRefresh();
+  }
+  if (thenClose) closeForm();
+}
+$("formDialog").addEventListener("submit", (ev) => { ev.preventDefault(); sendForm(true); });
+$("formApply").onclick = () => sendForm(false);
+$("formCancel").onclick = closeForm;
+$("formShade").addEventListener("mousedown", (ev) => { if (ev.target === $("formShade")) closeForm(); });
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && openFormId) closeForm(); });
+window.radiant.openForm = openForm;

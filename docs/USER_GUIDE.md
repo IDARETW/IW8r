@@ -680,6 +680,8 @@ one undo history, and each side sees the other's edits at once.
 
 - **Menu bar.** The editor's own menus, with ticks and shortcuts. **Find a command** searches them all; Enter runs
   the first match. A command that would open a dialog on the editor's screen is greyed, with that reason.
+  Sun & Sky, Atmosphere, Lightmap Bake Settings and Map Info (all in the web Compile menu) open as forms in the
+  page instead: change what you want, then OK or Apply. Only the changed fields are written, as one undo step.
 - **View box.** Top, Front and Side are drawn in the browser (drag to pan or move the selection, wheel to zoom,
   click to select). **3D** is a simple view drawn in the browser. **Editor view (live)** is the editor's own camera
   picture, drawn by the editor for your browser: drag to look, W A S D and Q E to fly (Shift is faster), wheel to

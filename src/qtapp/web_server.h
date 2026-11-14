@@ -35,6 +35,11 @@
 //                                    checked, enabled, blocked} ("blocked": why the browser cannot run it, "" = it
 //                                    can) and {sep: true, menu} between groups
 //   POST /api/command  {id}          runs a command as the menu would (400 with the reason when it cannot)
+//   GET  /api/forms                  the dialogs that have a web form: {id, title, command, menu}
+//   GET  /api/form?id=ID             one form: {id, title, fields: [{key, label, type, value, min, max, step,
+//                                    choices, help}]}; type number | text | choice | color (#rrggbb) | bool
+//   POST /api/form     {id, values}  applies the changed fields (one undo step; 400 with the reason when a value
+//                                    is not accepted)
 #pragma once
 
 #include <QByteArray>
@@ -82,6 +87,10 @@ public:
         std::function<bool(const WebCamera& cam, double x, double y, double aspect, bool add)> pickFrame;
         // The editor's own camera, as {pos: [x, y, z], yaw, pitch, fov}: where a browser's view starts.
         std::function<QJsonObject()> camera;
+        // The web forms (MainWindow::webFormList / webForm / applyWebForm).
+        std::function<QJsonArray()> forms;
+        std::function<QJsonObject(const QString& id)> form;
+        std::function<bool(const QString& id, const QJsonObject& values, QString* why)> applyForm;
         // Every command of the editor's menus, in menu order (MainWindow::webCommandList).
         std::function<QJsonArray()> commands;
         // Runs one by id; false with *why when it is unknown, not available now, or not for the browser.

@@ -1,0 +1,260 @@
+// MainWindow: web forms (plan 3.3). The dialogs of the desktop window, as forms a browser can fill in.
+//
+// A form is a list of fields {key, label, type, value, ...}; type is "number" (min, max, step), "text" (choices: a
+// list of suggestions), "choice" (choices), "color" ("#rrggbb") or "bool". The browser sends back only the fields the
+// user changed; every other value stays exactly as the map has it. A form reads and writes through the same functions
+// as its dialog (currentSunSky / applySunSky and so on), so both give the same map and the same single undo step.
+#include "main_window.h"
+
+#include <QJsonArray>
+#include <QJsonObject>
+
+#include <algorithm>
+#include <cmath>
+
+#include "atmosphere.h"
+#include "atmosphere_dialog.h"
+#include "bake_options.h"
+#include "compile_panel.h"
+#include "map_gametypes.h"
+#include "sun_sky_dialog.h"
+
+namespace iw8r::qt {
+
+namespace {
+
+QString qs(const std::string& s) { return QString::fromStdString(s); }
+
+QString hexOf(const Vec3& c) {
+    const auto b = [](double v) { return int(std::lround(std::clamp(v, 0.0, 1.0) * 255.0)); };
+    return QString("#%1%2%3").arg(b(c.x), 2, 16, QChar('0')).arg(b(c.y), 2, 16, QChar('0')).arg(b(c.z), 2, 16, QChar('0'));
+}
+bool colorOf(const QJsonValue& v, Vec3& out) {
+    const QString s = v.toString().trimmed();
+    if (s.size() != 7 || s[0] != '#') return false;
+    bool ok = false;
+    const uint rgb = s.mid(1).toUInt(&ok, 16);
+    if (!ok) return false;
+    out = Vec3{((rgb >> 16) & 255) / 255.0, ((rgb >> 8) & 255) / 255.0, (rgb & 255) / 255.0};
+    return true;
+}
+
+QJsonObject number(const char* key, const QString& label, double value, double lo, double hi, double step, const QString& help = {}) {
+    return {{"key", key}, {"label", label}, {"type", "number"}, {"value", value}, {"min", lo}, {"max", hi}, {"step", step}, {"help", help}};
+}
+QJsonObject text(const char* key, const QString& label, const QString& value, const QString& help = {}, const QStringList& choices = {}) {
+    QJsonObject o{{"key", key}, {"label", label}, {"type", "text"}, {"value", value}, {"help", help}};
+    if (!choices.isEmpty()) o.insert("choices", QJsonArray::fromStringList(choices));
+    return o;
+}
+QJsonObject choice(const char* key, const QString& label, const QString& value, const QStringList& choices, const QString& help = {}) {
+    return {{"key", key}, {"label", label}, {"type", "choice"}, {"value", value}, {"choices", QJsonArray::fromStringList(choices)}, {"help", help}};
+}
+QJsonObject color(const char* key, const QString& label, const Vec3& value, const QString& help = {}) {
+    return {{"key", key}, {"label", label}, {"type", "color"}, {"value", hexOf(value)}, {"help", help}};
+}
+QJsonObject boolean(const char* key, const QString& label, bool value, const QString& help = {}) {
+    return {{"key", key}, {"label", label}, {"type", "bool"}, {"value", value}, {"help", help}};
+}
+
+// A number of the reply, kept inside the field's range; false when the value is not a number.
+bool numberIn(const QJsonObject& values, const char* key, double lo, double hi, double& out, QString* why) {
+    if (!values.contains(key)) return true;
+    const QJsonValue v = values.value(key);
+    bool ok = v.isDouble();
+    double d = v.toDouble();
+    if (v.isString()) d = v.toString().toDouble(&ok);
+    if (!ok || !std::isfinite(d)) {
+        if (why) *why = QString("%1 is not a number").arg(key);
+        return false;
+    }
+    out = std::clamp(d, lo, hi);
+    return true;
+}
+
+const char* const kMapInfoKeys[] = {"iw8r_title", "iw8r_description", "iw8r_compass_rotation", "iw8r_minimap_scale",
+                                    "iw8r_ladder_rung_distance", "iw8r_exposure_adjust", "iw8r_gametypes"};
+
+}  // namespace
+
+QString MainWindow::webFormForCommand(const QString& command) {
+    if (command == "MapSunSky") return "sunSky";
+    if (command == "MapAtmosphere") return "atmosphere";
+    return {};
+}
+
+QJsonArray MainWindow::webFormList() const {
+    return QJsonArray{QJsonObject{{"id", "sunSky"}, {"title", "Sun & Sky"}, {"command", "MapSunSky"}, {"menu", "Compile"}},
+                      QJsonObject{{"id", "atmosphere"}, {"title", "Atmosphere (Fog / Film Grade)"}, {"command", "MapAtmosphere"}, {"menu", "Compile"}},
+                      QJsonObject{{"id", "bakeSettings"}, {"title", "Lightmap Bake Settings"}, {"command", ""}, {"menu", "Compile"}},
+                      QJsonObject{{"id", "mapInfo"}, {"title", "Map Info"}, {"command", ""}, {"menu", "Compile"}}};
+}
+
+QJsonObject MainWindow::webForm(const QString& id) const {
+    QJsonArray fields;
+    QString title;
+    const Entity* w = nullptr;
+    for (const Entity& e : ctx_.doc.map().entities)
+        if (e.isWorldspawn()) {
+            w = &e;
+            break;
+        }
+    if (id == "sunSky") {
+        title = "Sun & Sky";
+        const SunSky s = currentSunSky(ctx_);
+        fields = {number("pitch", "Sun pitch (degrees; negative = above the horizon)", s.pitch, -90, 90, 1),
+                  number("yaw", "Sun yaw (degrees)", s.yaw, -360, 360, 1), color("color", "Sun colour", s.color),
+                  text("sky", "Sky (a stock sky name; empty = none)", s.sky, "The build converts the sky's image when the game files have it",
+                       stockSkyList())};
+    } else if (id == "atmosphere") {
+        title = "Atmosphere (Fog / Film Grade)";
+        const Atmosphere a = currentAtmosphere(ctx_);
+        const ExpFog fog = a.fog.value_or(ExpFog{});
+        const FilmGrade film = a.film.value_or(FilmGrade{});
+        fields = {boolean("fog", "Fog", a.fog.has_value()),
+                  number("fogStart", "Fog start (units)", fog.start, 0, 20000, 16),
+                  number("fogHalfway", "Fog halfway distance (units)", fog.halfway, 1, 70000, 50, "Where the fog hides half of what is behind it"),
+                  color("fogColor", "Fog colour", fog.color),
+                  boolean("film", "Film grade", a.film.has_value()),
+                  number("contrast", "Contrast", film.contrast, 0, 4, 0.05),
+                  number("brightness", "Brightness", film.brightness, -1, 1, 0.02),
+                  number("desaturation", "Desaturation", film.desaturation, 0, 1, 0.05),
+                  boolean("invert", "Invert", film.invert),
+                  color("lightTint", "Light tint", film.lightTint),
+                  color("darkTint", "Dark tint", film.darkTint),
+                  text("lut", "Colour grading LUT (.cube file; empty = none)", qs(a.lut))};
+    } else if (id == "bakeSettings") {
+        title = "Lightmap Bake Settings";
+        const MapBakeOptions o = mapBakeOptions(w);
+        fields = {boolean("bake", "Bake lightmaps", o.bake, "Off: the build has no lightmap and the game lights the map with a flat sky light"),
+                  color("skyColor", "Sky colour", o.skyColor),
+                  number("skyIntensity", "Sky strength", o.skyIntensity, 0, 16, 0.05, "The open sky's light as a part of the sun's (0.35 = a clear day)"),
+                  number("texelSize", "Texel size (units)", o.texelSize, 1, 256, 1, "Smaller is sharper and slower"),
+                  number("skyRays", "Sky rays per texel", o.skyRays, 1, 1024, 8, "More is smoother and slower")};
+    } else if (id == "mapInfo") {
+        title = "Map Info";
+        const auto value = [&](const char* key) {
+            const std::string* v = w ? w->value(key) : nullptr;
+            return v ? qs(*v) : QString();
+        };
+        const QString compass = value("iw8r_compass_rotation");
+        fields = {text("iw8r_title", "Title", value("iw8r_title")),
+                  text("iw8r_description", "Description", value("iw8r_description")),
+                  choice("iw8r_compass_rotation", "Compass rotation", compass.isEmpty() ? QString("auto") : compass, {"auto", "0", "90", "180", "270"}),
+                  text("iw8r_minimap_scale", "Minimap scale (0.5 to 1.5; empty = default)", value("iw8r_minimap_scale")),
+                  text("iw8r_ladder_rung_distance", "Ladder rung distance (8 to 32; empty = default)", value("iw8r_ladder_rung_distance")),
+                  text("iw8r_exposure_adjust", "Exposure adjust (EV, -8 to 8; empty = default)", value("iw8r_exposure_adjust")),
+                  text("iw8r_gametypes", "Game modes (empty = detected: " + qs(detectedGameTypes(ctx_.doc.map())) + ")", value("iw8r_gametypes"))};
+    } else {
+        return {};
+    }
+    return QJsonObject{{"id", id}, {"title", title}, {"fields", fields}};
+}
+
+bool MainWindow::applyWebForm(const QString& id, const QJsonObject& values, QString* why) {
+    const auto no = [&](const QString& text) {
+        if (why) *why = text;
+        return false;
+    };
+    Entity* w = ctx_.doc.worldspawn();
+    if (!w) return no("the map has no worldspawn");
+    if (id == "sunSky") {
+        SunSky s = currentSunSky(ctx_);
+        if (!numberIn(values, "pitch", -90, 90, s.pitch, why) || !numberIn(values, "yaw", -360, 360, s.yaw, why)) return false;
+        if (values.contains("color") && !colorOf(values.value("color"), s.color)) return no("the sun colour is not #rrggbb");
+        if (values.contains("sky")) {
+            s.sky = values.value("sky").toString().trimmed();
+            if (s.sky.contains(' ') || s.sky.contains('"')) return no("a sky name has no spaces or quotes");
+        }
+        applySunSky(ctx_, s);
+        return true;
+    }
+    if (id == "atmosphere") {
+        Atmosphere a = currentAtmosphere(ctx_);
+        ExpFog fog = a.fog.value_or(ExpFog{});
+        FilmGrade film = a.film.value_or(FilmGrade{});
+        bool fogOn = a.fog.has_value(), filmOn = a.film.has_value();
+        if (values.contains("fog")) fogOn = values.value("fog").toBool();
+        if (values.contains("film")) filmOn = values.value("film").toBool();
+        // A changed fog or film value turns its part on, as typing into the dialog's fields does.
+        for (const char* k : {"fogStart", "fogHalfway", "fogColor"})
+            if (values.contains(k) && !values.contains("fog")) fogOn = true;
+        for (const char* k : {"contrast", "brightness", "desaturation", "invert", "lightTint", "darkTint"})
+            if (values.contains(k) && !values.contains("film")) filmOn = true;
+        if (!numberIn(values, "fogStart", 0, 20000, fog.start, why) || !numberIn(values, "fogHalfway", 1, 70000, fog.halfway, why) ||
+            !numberIn(values, "contrast", 0, 4, film.contrast, why) || !numberIn(values, "brightness", -1, 1, film.brightness, why) ||
+            !numberIn(values, "desaturation", 0, 1, film.desaturation, why))
+            return false;
+        if (values.contains("fogColor") && !colorOf(values.value("fogColor"), fog.color)) return no("the fog colour is not #rrggbb");
+        if (values.contains("lightTint") && !colorOf(values.value("lightTint"), film.lightTint)) return no("the light tint is not #rrggbb");
+        if (values.contains("darkTint") && !colorOf(values.value("darkTint"), film.darkTint)) return no("the dark tint is not #rrggbb");
+        if (values.contains("invert")) film.invert = values.value("invert").toBool();
+        if (values.contains("lut")) {
+            const QString lut = values.value("lut").toString().trimmed();
+            if (lut.contains('"')) return no("a file name has no quotes");
+            a.lut = lut.toStdString();
+        }
+        a.fog = fogOn ? std::optional<ExpFog>(fog) : std::nullopt;
+        a.film = filmOn ? std::optional<FilmGrade>(film) : std::nullopt;
+        applyAtmosphere(ctx_, a);
+        return true;
+    }
+    if (id == "bakeSettings") {
+        MapBakeOptions o = mapBakeOptions(w);
+        double rays = o.skyRays;
+        if (!numberIn(values, "skyIntensity", 0, 16, o.skyIntensity, why) || !numberIn(values, "texelSize", 1, 256, o.texelSize, why) ||
+            !numberIn(values, "skyRays", 1, 1024, rays, why))
+            return false;
+        o.skyRays = int(std::lround(rays));
+        if (values.contains("skyColor") && !colorOf(values.value("skyColor"), o.skyColor)) return no("the sky colour is not #rrggbb");
+        const bool bakeWanted = values.contains("bake") ? values.value("bake").toBool() : o.bake;
+        ctx_.doc.beginGroup("Bake settings");
+        if (compile_) compile_->applyBakeSettings(o);
+        if (bakeWanted != o.bake) {
+            if (bakeWanted) ctx_.doc.setKeyValue(w->id, "iw8r_bake_lightmaps", "1");
+            else ctx_.doc.removeKey(w->id, "iw8r_bake_lightmaps");
+        }
+        ctx_.doc.endGroup();
+        ctx_.documentEdited(bakeWanted != o.bake ? (bakeWanted ? "The build bakes lightmaps" : "The build makes no lightmap") : QString());
+        return true;
+    }
+    if (id == "mapInfo") {
+        std::vector<std::pair<const char*, QString>> changes;
+        for (const char* key : kMapInfoKeys) {
+            if (!values.contains(key)) continue;
+            QString v = values.value(key).isDouble() ? QString::number(values.value(key).toDouble(), 'g', 6) : values.value(key).toString().trimmed();
+            if (v.contains('"') || v.contains('\n')) return no(QString("%1 has a quote or a line break").arg(key));
+            const QString k = key;
+            if (k == "iw8r_compass_rotation" && v == "auto") v.clear();
+            const auto ranged = [&](double lo, double hi) {
+                if (v.isEmpty()) return true;
+                bool ok = false;
+                const double d = v.toDouble(&ok);
+                return ok && d >= lo && d <= hi;
+            };
+            if (k == "iw8r_compass_rotation" && !v.isEmpty() && v != "0" && v != "90" && v != "180" && v != "270") return no("the compass rotation is auto, 0, 90, 180 or 270");
+            if (k == "iw8r_minimap_scale" && !ranged(0.5, 1.5)) return no("the minimap scale is 0.5 to 1.5, or empty");
+            if (k == "iw8r_ladder_rung_distance" && !ranged(8, 32)) return no("the ladder rung distance is 8 to 32, or empty");
+            if (k == "iw8r_exposure_adjust" && !ranged(-8, 8)) return no("the exposure adjust is -8 to 8, or empty");
+            changes.push_back({key, v});
+        }
+        const Id wid = w->id;
+        bool any = false;
+        ctx_.doc.beginGroup("Map Info");
+        for (const auto& [key, v] : changes) {
+            const Entity* now = ctx_.doc.findEntity(wid);
+            const std::string* cur = now ? now->value(key) : nullptr;
+            if (v.isEmpty()) {
+                if (cur) any = ctx_.doc.removeKey(wid, key) || any;
+            } else if (!cur || qs(*cur) != v) {
+                any = ctx_.doc.setKeyValue(wid, key, v.toStdString()) || any;
+            }
+        }
+        ctx_.doc.endGroup();
+        if (any) ctx_.documentEdited("Map info updated (written to map.json on the next build)");
+        return true;
+    }
+    return no("there is no form " + id);
+}
+
+}  // namespace iw8r::qt

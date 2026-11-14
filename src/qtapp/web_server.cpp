@@ -550,6 +550,18 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
             r.extraHeaders = "Cache-Control: no-store\r\n";
             return r;
         }
+        if (path == "/api/forms") {
+            Response r;
+            r.body = json({{"forms", hooks_.forms ? hooks_.forms() : QJsonArray()}});
+            return r;
+        }
+        if (path == "/api/form") {
+            const QJsonObject f = hooks_.form ? hooks_.form(q.queryItemValue("id")) : QJsonObject();
+            if (f.isEmpty()) return error(404, "there is no form " + q.queryItemValue("id"));
+            Response r;
+            r.body = json(f);
+            return r;
+        }
         if (path == "/api/commands") {
             Response r;
             r.body = json({{"commands", hooks_.commands ? hooks_.commands() : QJsonArray()}});
@@ -618,6 +630,10 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
         const double x = in.value("x").toDouble(-1), y = in.value("y").toDouble(-1);
         if (x < 0 || x > 1 || y < 0 || y > 1) return error(400, "x and y are 0..1 from the top left of the view");
         hooks_.pickFrame(cam, x, y, std::clamp(in.value("aspect").toDouble(16.0 / 9.0), 0.2, 5.0), in.value("add").toBool());
+    } else if (path == "/api/form") {
+        QString why;
+        if (!hooks_.applyForm || !hooks_.applyForm(in.value("id").toString(), in.value("values").toObject(), &why))
+            return error(400, why.isEmpty() ? QString("the form cannot be applied") : why);
     } else if (path == "/api/command") {
         const QString id = in.value("id").toString();
         QString why;

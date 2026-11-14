@@ -66,3 +66,15 @@ body { grid-template-rows: auto auto 1fr auto; }
 /* The editor's own render as the 3D view (plan 3.1). */
 #viewLive { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; background: #1a1c20; outline: none;
   cursor: crosshair; user-select: none; -webkit-user-drag: none; touch-action: none; }
+
+/* Web forms: the editor's dialogs in the page (plan 3.3). */
+#formShade { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, .55); display: flex; align-items: center; justify-content: center; }
+#formDialog { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; width: min(520px, 94vw);
+  max-height: 90vh; overflow: auto; box-shadow: 0 10px 30px rgba(0, 0, 0, .6); }
+#formDialog h2 { margin: 0 0 10px; font-size: 15px; color: var(--accent); }
+#formFields label { display: grid; grid-template-columns: 1fr 190px; gap: 10px; align-items: center; padding: 3px 0; }
+#formFields label small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; margin-top: -2px; }
+#formFields input[type=color] { padding: 0; height: 24px; }
+#formFields input[type=checkbox] { justify-self: start; }
+#formError { color: #ff8080; min-height: 18px; margin-top: 6px; }
+#formDialog .buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }

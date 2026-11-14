@@ -2,6 +2,15 @@
 
 ## Latest (2026-11-13)
 
+- Plan 3.3 part 2: web forms in src/qtapp/main_window_web.cpp (webFormList / webForm / applyWebForm /
+  webFormForCommand): sunSky (MapSunSky, via currentSunSky / applySunSky), atmosphere (MapAtmosphere, via
+  currentAtmosphere / applyAtmosphere), bakeSettings (CompilePanel::applyBakeSettings + the bake key, one group),
+  mapInfo (the seven iw8r_* keys with the dialog's ranges). Field types number / text / choice / color / bool; the
+  page sends only changed fields. webCommandList marks a command with "form" (no longer blocked) and appends
+  "form:<id>" entries for forms without a menu command; plainMenuText keeps "&&" as "&". Server: GET /api/forms,
+  GET /api/form, POST /api/form. Page: formShade / formDialog, openForm, sendForm. Browser check on 8791.
+  Next forms in owner-scope order: Game Modes, loot points / placed objects, stock-edit actions, compile options,
+  Check Map, Preferences.
 - Plan 3.1: WebCamera; hooks renderFrame / pickFrame / camera; GET /api/frame?pos=&yaw=&pitch=&fov=&w=&h=&q= (JPEG of
   CameraView::renderImage with the browser's camera; renderImage got keepGeometry so a frame does not remake the scene
   geometry: 250-440 ms -> 19-28 ms at 1280 x 720 on Cinder Rail, 10 ms at 768 x 432), POST /api/pick (scene.pick

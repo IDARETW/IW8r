@@ -302,7 +302,9 @@ with filters, an undo history list. Send incremental scene diffs by item revisio
 revision. This is needed for Verdansk's 23k entities. Log backlog and filters through `/api/log`. An undo history list.
 
 **3.3 Every command from the browser.** Part 1 DONE 2026-11-13: the command registry (GET /api/commands, POST
-/api/command) and the generated menu bar with search. Open: the web forms for the commands that open dialogs.
+/api/command) and the generated menu bar with search. Part 2 DONE 2026-11-13: web forms (GET /api/forms, GET
+/api/form, POST /api/form) for Sun & Sky, Atmosphere, Lightmap Bake Settings and Map Info. Open: the forms 2 to 10
+of the list below (Vision of item 1 too).
 - **Command registry.** Expose the registry that `addCommand` builds (id, label, menu path, checkable, checked,
   enabled) as `/api/commands` and `POST /api/command`. The web menu bar is generated from it, so every action is
   reachable.

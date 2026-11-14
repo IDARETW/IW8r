@@ -4821,6 +4821,14 @@ bool MainWindow::webPick(const WebCamera& cam, double x, double y, double aspect
     return hit.has_value();
 }
 
+// A menu text without its keyboard marker: "E&xit" is Exit, "Sun && Sky" is Sun & Sky.
+static QString plainMenuText(QString text) {
+    text.replace("&&", QString(QChar(1)));
+    text.remove('&');
+    text.replace(QChar(1), '&');
+    return text;
+}
+
 QString MainWindow::webCommandBlocked(const QString& id, const QString& label) {
     static const QSet<QString> editorOnly{"Exit", "WebServer", "WebServerSettings", "InstallStockMap", "RestoreStockMap", "OpenInNewWindow"};
     if (editorOnly.contains(id)) return "only at the editor itself";
@@ -4839,7 +4847,7 @@ QJsonArray MainWindow::webCommandList() const {
             }
             if (const QMenu* sub = a->menu()) {
                 QString title = sub->title();
-                title.remove('&');
+                title = plainMenuText(title);
                 walk(sub, path + "/" + title);
                 continue;
             }
@@ -4848,17 +4856,27 @@ QJsonArray MainWindow::webCommandList() const {
             if (separatorDue) out.append(QJsonObject{{"sep", true}, {"menu", path}});
             separatorDue = false, any = true;
             QString label = a->text();
-            label.remove('&');
-            out.append(QJsonObject{{"id", id}, {"label", label}, {"menu", path}, {"shortcut", a->shortcut().toString(QKeySequence::NativeText)},
-                                   {"checkable", a->isCheckable()}, {"checked", a->isChecked()}, {"enabled", a->isEnabled()},
-                                   {"blocked", webCommandBlocked(id, label)}});
+            label = plainMenuText(label);
+            const QString form = webFormForCommand(id);
+            QJsonObject c{{"id", id}, {"label", label}, {"menu", path}, {"shortcut", a->shortcut().toString(QKeySequence::NativeText)},
+                          {"checkable", a->isCheckable()}, {"checked", a->isChecked()}, {"enabled", a->isEnabled()},
+                          {"blocked", form.isEmpty() ? webCommandBlocked(id, label) : QString()}};
+            if (!form.isEmpty()) c.insert("form", form);
+            out.append(c);
         }
     };
     for (QAction* top : menuBar()->actions())
         if (const QMenu* m = top->menu()) {
             QString title = m->title();
-            title.remove('&');
+            title = plainMenuText(title);
             walk(m, title);
+            for (const QJsonValue& f : webFormList()) {
+                const QJsonObject fo = f.toObject();
+                if (!fo.value("command").toString().isEmpty() || fo.value("menu").toString() != title) continue;
+                out.append(QJsonObject{{"id", "form:" + fo.value("id").toString()}, {"label", fo.value("title").toString() + "..."}, {"menu", title},
+                                       {"shortcut", ""}, {"checkable", false}, {"checked", false}, {"enabled", true}, {"blocked", ""},
+                                       {"form", fo.value("id").toString()}});
+            }
         }
     return out;
 }
@@ -4870,8 +4888,9 @@ bool MainWindow::runWebCommand(const QString& id, QString* why) {
         return false;
     };
     if (!a) return no("there is no command " + id);
+    if (!webFormForCommand(id).isEmpty()) return no("this command has a web form: " + webFormForCommand(id));
     QString label = a->text();
-    label.remove('&');
+    label = plainMenuText(label);
     if (const QString blocked = webCommandBlocked(id, label); !blocked.isEmpty()) return no(label + ": " + blocked);
     if (!a->isEnabled()) return no(label + " is not available now");
     // After the reply has gone out: a command may take long, or show a message at the editor.
@@ -4940,6 +4959,9 @@ bool MainWindow::applyWebServerSettings(QString* message) {
         hooks.renderFrame = [this](const WebCamera& cam, int w, int h, int quality) { return webRenderFrame(cam, w, h, quality); };
         hooks.pickFrame = [this](const WebCamera& cam, double x, double y, double aspect, bool add) { return webPick(cam, x, y, aspect, add); };
         hooks.camera = [this] { return webCamera(); };
+        hooks.forms = [this] { return webFormList(); };
+        hooks.form = [this](const QString& id) { return webForm(id); };
+        hooks.applyForm = [this](const QString& id, const QJsonObject& values, QString* why) { return applyWebForm(id, values, why); };
         hooks.commands = [this] { return webCommandList(); };
         hooks.runCommand = [this](const QString& id, QString* why) { return runWebCommand(id, why); };
         web_ = new WebServer(&ctx_, hooks, this);

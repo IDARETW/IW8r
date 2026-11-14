@@ -1982,6 +1982,73 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                             liveJs.body.contains("/api/frame") && liveJs.body.contains("/api/pick"),
                         "the browser page has the live editor view");
             }
+            {
+                // Plan 3.3: web forms. A dialog's values come as fields; only the changed ones go back, through the
+                // dialog's own apply function, as one undo step.
+                ch.forms = [&w] { return w.webFormList(); };
+                ch.form = [&w](const QString& id) { return w.webForm(id); };
+                ch.applyForm = [&w](const QString& id, const QJsonObject& values, QString* why) { return w.applyWebForm(id, values, why); };
+                WebServer fweb(&ctx, ch);
+                const auto key = [&](const char* k) {
+                    const Entity* ws = ctx.doc.worldspawn();
+                    const std::string* v = ws ? ws->value(k) : nullptr;
+                    return v ? QString::fromStdString(*v) : QString("(none)");
+                };
+                const QJsonArray forms = QJsonDocument::fromJson(fweb.handle("GET", "/api/forms", {}, true, {}).body).object().value("forms").toArray();
+                const QJsonObject sun = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=sunSky", {}, true, {}).body).object();
+                QStringList sunKeys;
+                for (const QJsonValue& f : sun.value("fields").toArray()) sunKeys << f.toObject().value("key").toString() + ":" + f.toObject().value("type").toString();
+                r.check(forms.size() == 4 && sun.value("title").toString() == "Sun & Sky" &&
+                            sunKeys == QStringList({"pitch:number", "yaw:number", "color:color", "sky:text"}) &&
+                            fweb.handle("GET", "/api/form?id=nothing", {}, true, {}).status == 404,
+                        "GET /api/forms lists four forms and GET /api/form gives a form's fields with the map's values");
+                const size_t undoAt = ctx.doc.undoPosition();
+                const QString dirWas = key("sundirection"), colWas = key("suncolor");
+                const auto ap = fweb.handle("POST", "/api/form", "{\"id\":\"sunSky\",\"values\":{\"pitch\":-33,\"yaw\":120}}", true, {});
+                const bool sunSet = key("sundirection") == "-33 120 0" && ctx.doc.undoPosition() == undoAt + 1;
+                ctx.doc.undo();
+                ctx.documentEdited();
+                r.check(ap.status == 200 && sunSet && key("sundirection") == dirWas && key("suncolor") == colWas,
+                        "POST /api/form applies the changed fields as one undo step (Sun & Sky: pitch and yaw; the colour is not touched)");
+                const auto badNum = fweb.handle("POST", "/api/form", "{\"id\":\"sunSky\",\"values\":{\"pitch\":\"steep\"}}", true, {});
+                const auto badCol = fweb.handle("POST", "/api/form", "{\"id\":\"sunSky\",\"values\":{\"color\":\"red\"}}", true, {});
+                const auto badForm = fweb.handle("POST", "/api/form", "{\"id\":\"nothing\",\"values\":{}}", true, {});
+                r.check(badNum.status == 400 && badCol.status == 400 && badForm.status == 400 && key("sundirection") == dirWas,
+                        "a value the form cannot take is refused with the reason and changes nothing");
+                // Bake settings and the fog, through their forms.
+                const size_t undoB = ctx.doc.undoPosition();
+                fweb.handle("POST", "/api/form", "{\"id\":\"bakeSettings\",\"values\":{\"bake\":true,\"texelSize\":8}}", true, {});
+                const bool bakeSet = key("iw8r_bake_lightmaps") == "1" && key("iw8r_lightmap_texel") == "8" && ctx.doc.undoPosition() == undoB + 1;
+                ctx.doc.undo();
+                ctx.documentEdited();
+                const QString fogWas = key("iw8r_fog");
+                fweb.handle("POST", "/api/form", "{\"id\":\"atmosphere\",\"values\":{\"fogHalfway\":2400,\"fogColor\":\"#804020\"}}", true, {});
+                const QString fogNow = key("iw8r_fog");
+                ctx.doc.undo();
+                ctx.documentEdited();
+                fweb.handle("POST", "/api/form", "{\"id\":\"mapInfo\",\"values\":{\"iw8r_title\":\"Web Title\",\"iw8r_minimap_scale\":\"1.2\"}}", true, {});
+                const bool infoSet = key("iw8r_title") == "Web Title" && key("iw8r_minimap_scale") == "1.2";
+                const auto infoBad = fweb.handle("POST", "/api/form", "{\"id\":\"mapInfo\",\"values\":{\"iw8r_minimap_scale\":\"9\"}}", true, {});
+                ctx.doc.undo();
+                ctx.documentEdited();
+                r.check(bakeSet && fogNow.contains("2400") && fogNow != fogWas && key("iw8r_fog") == fogWas && infoSet && infoBad.status == 400 &&
+                            key("iw8r_title") != "Web Title",
+                        QString("the bake, atmosphere and map info forms write their keys and undo in one step (fog %1)").arg(fogNow));
+                // In the browser's menus a dialog command with a form is offered, with the form's id.
+                QJsonObject sunCmd, bakeCmd;
+                for (const QJsonValue& v : w.webCommandList()) {
+                    if (v.toObject().value("id").toString() == "MapSunSky") sunCmd = v.toObject();
+                    if (v.toObject().value("id").toString() == "form:bakeSettings") bakeCmd = v.toObject();
+                }
+                QString whyNot;
+                r.check(sunCmd.value("form").toString() == "sunSky" && sunCmd.value("blocked").toString().isEmpty() &&
+                            bakeCmd.value("menu").toString() == "Compile" && bakeCmd.value("form").toString() == "bakeSettings" &&
+                            !w.runWebCommand("MapSunSky", &whyNot) && whyNot.contains("web form"),
+                        "a dialog command with a web form is offered to the browser as that form, never as the desktop dialog");
+                auto formJs = web.handle("GET", "/app.js", {}, true, {});
+                auto formPage = web.handle("GET", "/", {}, true, {});
+                r.check(formJs.body.contains("/api/form") && formPage.body.contains("formDialog"), "the browser page has the form dialog");
+            }
             auto pageNow = web.handle("GET", "/", {}, true, {});
             auto jsNow = web.handle("GET", "/app.js", {}, true, {});
             r.check(pageNow.body.contains("id=\"menubar\"") && pageNow.body.contains("cmdSearch") && jsNow.body.contains("/api/commands"),

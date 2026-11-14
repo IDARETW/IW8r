@@ -24,6 +24,8 @@
 </header>
 <nav id="menubar"><input id="cmdSearch" placeholder="Find a command..." autocomplete="off"></nav>
 <div id="menuPopup" hidden></div>
+<div id="formShade" hidden><form id="formDialog"><h2 id="formTitle"></h2><div id="formFields"></div>
+  <div id="formError"></div><div class="buttons"><button type="submit">OK</button><button type="button" id="formApply">Apply</button><button type="button" id="formCancel">Cancel</button></div></form></div>
 <main>
   <section id="viewWrap">
     <canvas id="view"></canvas>
