@@ -9,6 +9,13 @@ Mark each line OK / wrong (with a screenshot) and send it back.
 
 ## In the editor
 
+- [ ] New on 2026-11-14 (editor only, nothing here needs the game; all are covered by tests, these are for your own look):
+  - Brush > Paint Mesh on Faces: Ctrl+Shift+click a floor face, run the command, keep 32. A mesh lies on the face, the
+    brush under it shows caulk on that face only from the side, and Vertex Paint Mode starts. Ctrl+Z removes it all.
+  - Open Hideout, View > Game Lighting: the picture is warm. View > Game Lighting Options > White Balance off: it
+    turns cold and grey. On again.
+  - Open a large stock map and move the camera at once: textures arrive while you move, without the view stalling.
+  - Fly away from Hideout: small props (straps, bottles, debris) go first; walls, pipes and towers stay.
 - [x] The map opens; the camera shows textured rows (stock textures may fill in over a few seconds on first open).
 - [x] View > Camera Mode: Wireframe / Flat / Fullbright / Normals all draw; Ctrl+L lit preview shows sun shadows and the yellow sun arrow.
 - [ ] Optional, only if you want to check it: a map with worldspawn `iw8r_bake_lightmaps 1` in game next to View > Game
