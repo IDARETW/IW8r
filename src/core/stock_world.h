@@ -93,6 +93,10 @@ struct StockWorld {
     // StockLightmap::index; 0 on every MP map, 0 .. N-1 on Warzone maps, where lightmap i belongs to transient zone
     // lightmapTransientIndex[i]), or -1 exactly where lightmapUv is (-1, -1).
     std::vector<std::vector<int>> lightmapIndex;
+    // The GfxWorld surface (its index in the surface table: the Umbra tome's class 0 user ID) of each triangle,
+    // parallel to meshes: triSurface[m][t] for triangle t of meshes[m]. A mesh rebuilt later (displaced terrain) has
+    // none (size 0): its triangles are of no known surface.
+    std::vector<std::vector<uint32_t>> triSurface;
     size_t lightmapSurfaces = 0;        // surfaces whose vertices got a lightmap UV
 
     // Layered world materials (tw4 / twc4, docs/research/97_stock_layered_materials.md), parallel to meshes.

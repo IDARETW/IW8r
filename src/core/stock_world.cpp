@@ -430,6 +430,7 @@ bool buildFromTable(const StockWorldSurfaceTable& table, std::map<int64_t, TrzDa
             out.meshes.back().material = name;
             out.lightmapUv.emplace_back();
             out.lightmapIndex.emplace_back();
+            out.triSurface.emplace_back();
             out.layerCount.push_back(std::max(1, materialLayers[name]));
             out.layerUv.emplace_back();
             out.vertexColor.emplace_back();
@@ -566,6 +567,7 @@ bool buildFromTable(const StockWorldSurfaceTable& table, std::map<int64_t, TrzDa
             m.idx.push_back(corner[0]);
             m.idx.push_back(corner[2]);
             m.idx.push_back(corner[1]);
+            out.triSurface[mi].push_back(uint32_t(si));
         }
     }
 

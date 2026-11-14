@@ -5,6 +5,21 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **No more z-fighting where brushes overlap.** Two brush faces lying in the same plane on top of each other used to
+  be drawn both, flickering against each other in the viewport and in game (Cinder Rail had 2,636 such pairs). Now
+  only one is drawn where they overlap: the smaller face, so a panel sits on its wall. The build says how many faces
+  it left out because they were wholly covered.
+- **No lines at the slices of a wall.** Toon lines never follow the joins between brushes that make one surface, and
+  hidden faces (inside or against another brush) carry no edge. The seams between touching brushes are also tight
+  now: no dark pixels can show through.
+- **Game Lighting hides the editor's brush outlines.** That view shows what the game shows; the outlines made every
+  join between brushes look like a line. Selected brushes keep theirs. View > Game Lighting Options > Brush Outlines
+  brings them back.
+- **View > Umbra Visibility.** For a stock map: Cull by Tome draws only what the game itself would draw from where
+  the camera is (its occlusion data hides the rest), and Show Cells and Portals draws the camera's visibility cell,
+  its portals and the visible cells around it. The status bar shows how many surfaces, models, lights and probes are
+  visible. Both choices are remembered.
+
 - **Custom shaders for your maps.** A map (worldspawn `iw8r_surface_shader`) or a single material (`"shader"` in its
   definition) can light its surfaces with your own shader function: `<map folder>/shaders/<name>.iw8shader.hlsl` or
   the editor's `data/shaders`. The same code runs in the viewport (Game Lighting) and in the built map. Example: a

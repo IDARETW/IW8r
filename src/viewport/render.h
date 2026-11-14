@@ -84,6 +84,13 @@ struct GpuTexVertex {
     uint32_t edge = 0xFFFFFFFFu;
 };
 
+// A stock reference vertex's GpuTexVertex::edge: the triangle's GfxWorld surface index + 1 in the low 24 bits (0: of no
+// known surface) and a zero top byte (edge data and "none" have 255 there). The vertex shader reads it for the Umbra
+// tome cull (SceneRenderer::setReferenceSurfaceVisibility).
+inline uint32_t referenceSurfaceTag(int64_t surface) {
+    return surface >= 0 && surface < 0xFFFFFE ? uint32_t(surface) + 1u : 0u;
+}
+
 // 3.20 instanced static models: one model's triangles (model space) drawn once per instance. Each instance is three
 // rows of a 3x4 transform: world_i = dot(row_i, (x, y, z, 1)).
 struct InstancedMesh {
@@ -133,6 +140,9 @@ struct InstancedTexMesh {
     // limit). -1: not part of a LOD group (every visible placement).
     int lodGroup = -1;
     float lodNear = 0, lodFar = 0;
+    // Per instance, the placement's static model collection in the stock map (the Umbra tome's class 1 user ID), or
+    // 0xFFFFFFFF for one the tome does not know (clutter, scripted objects). Empty: none known.
+    std::vector<uint32_t> ids;
 };
 
 struct TexturedBatch {
@@ -341,6 +351,13 @@ public:
     // Textured instanced reference props: uploaded once, each drawn with the texture setReferenceInstTexture gave it
     // (a plain white texture until then). Empty clears them.
     bool setReferenceTexInstances(const std::vector<InstancedTexMesh>& meshes);
+    // Cull by tome (View > Umbra Visibility): one bit per GfxWorld surface and one per static model collection, set =
+    // drawn. The reference world's triangles of a hidden surface and the props of a hidden collection are not drawn on
+    // screen (they still cast sun shadows); what the tome does not know is drawn. Empty vectors turn it off.
+    void setReferenceTomeVisibility(std::vector<uint32_t> surfaceBits, std::vector<uint32_t> modelBits);
+    void bindTomeVisibility();  // (internal) the surface bits for the vertex shader, uploaded when they changed
+    bool referenceTomeCull() const { return !tomeSurfBits_.empty() || !tomeModelBits_.empty(); }
+    size_t tomeCulledProps() const { return tomeCulledProps_; }  // placements the tome hid in the last frame
     // New per-placement light (InstancedTexMesh::light, 12 floats per instance) for mesh `mesh` of the last
     // setReferenceTexInstances: only its instance buffer is made again. False when the counts do not match.
     bool setReferenceTexInstanceLight(size_t mesh, const std::vector<float>& light);
@@ -605,7 +622,13 @@ private:
     ID3D11Buffer* cbLights_ = nullptr;
     std::vector<PixelLight> pixelLights_;
     float lightGain_ = 0.6f;
-    float wind_[4] = {0, 0, 0, 0};
+    float wind_[4] = {0, 0, 0, 0};  // w = 1 while the tome cull is on (the vertex shader reads the surface bits)
+    std::vector<uint32_t> tomeSurfBits_, tomeModelBits_;
+    bool tomeDirty_ = false;
+    ID3D11Buffer* tomeBuf_ = nullptr;
+    ID3D11ShaderResourceView* tomeSrv_ = nullptr;
+    size_t tomeBufWords_ = 0;
+    size_t tomeCulledProps_ = 0;
     ID3D11Buffer* vbRefTex_ = nullptr;
     std::vector<unsigned> refTexFirst_, refTexCount_;
     std::vector<int> refTexIds_;
@@ -640,6 +663,7 @@ private:
         // a dynamic buffer of the placements that pass (drawn instead of `inst` while culling is on).
         std::vector<float> rows;
         std::vector<float> light;  // InstancedTexMesh::light (12 per instance)
+        std::vector<uint32_t> ids; // InstancedTexMesh::ids in GPU order (empty: none)
         float centre[3] = {0, 0, 0}, radius = 0;
         float lodOut = 0;  // InstancedTexMesh::lodOut
         int lodGroup = -1;          // InstancedTexMesh::lodGroup / lodNear / lodFar

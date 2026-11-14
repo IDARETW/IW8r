@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <map>
+#include <set>
 
 using namespace iw8r;
 
@@ -191,4 +192,80 @@ TEST(face_edges_meshes_are_watertight_and_packed) {
     CHECK(packEdge(v) == (0xFF000000u | (130u << 8) | (128u << 16)));
     v.dir = 6.2831853f;  // a full turn is 0 again
     CHECK(((packEdge(v) >> 16) & 255u) == 0);
+}
+
+TEST(face_edges_coplanar_overlaps_are_drawn_once) {
+    // A panel lying in the top plane of a slab (its top face inside the slab's top face): the panel's face is drawn,
+    // the slab's face has a hole there, and together they cover the slab's top exactly once.
+    const std::vector<EdgeBrush> brushes{boxBrush({0, 0, 0}, {64, 64, 16}), boxBrush({16, 16, 8}, {48, 40, 16})};
+    const auto near = edgeNeighbours(brushes);
+    const int top0 = faceWithNormal(brushes[0], {0, 0, 1}), top1 = faceWithNormal(brushes[1], {0, 0, 1});
+    CHECK(coplanarCovers(brushes, 0, size_t(top0), near[0]).size() == 1);  // the smaller face wins
+    CHECK(coplanarCovers(brushes, 1, size_t(top1), near[1]).empty());
+    for (const bool withEdges : {false, true}) {
+        const auto m0 = edgeBrushMeshes(brushes, 0, near[0], kEdgeRange, withEdges);
+        const auto m1 = edgeBrushMeshes(brushes, 1, near[1], kEdgeRange, withEdges);
+        CHECK(std::fabs(meshArea(m0[size_t(top0)]) - (64.0 * 64.0 - 32.0 * 24.0)) < 1e-6);
+        CHECK(std::fabs(meshArea(m1[size_t(top1)]) - 32.0 * 24.0) < 1e-6);
+        CHECK(edgeAt(m0[size_t(top0)], {32, 28, 16}, {0, 0, 1}) < 0);   // under the panel: not part of the slab's mesh
+        CHECK(edgeAt(m1[size_t(top1)], {32, 28, 16}, {0, 0, 1}) >= 0);
+        if (!withEdges)
+            for (const EdgeVertex& v : m0[size_t(top0)].verts) CHECK(v.edge == 1.0f);
+    }
+    // The panel's top edges are seams (the slab's face carries on around it): no edge on the panel's top.
+    CHECK(faceEdgeSpans(brushes, 1, size_t(top1), near[1]).empty());
+    // Two equal faces on top of each other (a doubled brush): the later brush draws, the first does not.
+    const std::vector<EdgeBrush> twins{boxBrush({0, 0, 0}, {64, 64, 16}), boxBrush({0, 0, 0}, {64, 64, 16})};
+    const auto tn = edgeNeighbours(twins);
+    const auto a = edgeBrushMeshes(twins, 0, tn[0]), b = edgeBrushMeshes(twins, 1, tn[1]);
+    double areaA = 0, areaB = 0;
+    for (const auto& m : a) areaA += meshArea(m);
+    for (const auto& m : b) areaB += meshArea(m);
+    CHECK(areaA < 1e-9);
+    CHECK(std::fabs(areaB - 2.0 * (64 * 64 + 64 * 16 + 64 * 16)) < 1e-6);
+}
+
+TEST(face_edges_seams_between_brushes_share_vertices) {
+    // Two wall slices side by side, of different heights, with a third brush on top of one: along the seam both
+    // brushes' front faces hold the same vertices (no vertex of one inside an edge of the other).
+    const std::vector<EdgeBrush> brushes{boxBrush({0, 0, 0}, {64, 16, 128}), boxBrush({64, 0, 0}, {160, 16, 96}),
+                                        boxBrush({0, 0, 128}, {64, 16, 140})};
+    const auto near = edgeNeighbours(brushes);
+    using K = std::array<long long, 3>;
+    const auto key = [](const Vec3& p) { return K{std::llround(p.x * 4096), std::llround(p.y * 4096), std::llround(p.z * 4096)}; };
+    const int f0 = faceWithNormal(brushes[0], {0, -1, 0}), f1 = faceWithNormal(brushes[1], {0, -1, 0});
+    const auto onSeam = [&](const EdgeFaceMesh& m) {
+        std::set<K> s;
+        for (size_t t = 0; t + 2 < m.idx.size(); t += 3)
+            for (int e = 0; e < 3; ++e) {
+                const Vec3& p = m.verts[m.idx[t + e]].pos;
+                if (std::fabs(p.x - 64) < 1e-6 && p.z <= 96 + 1e-6) s.insert(key(p));
+            }
+        return s;
+    };
+    const auto a = onSeam(edgeBrushMeshes(brushes, 0, near[0], kEdgeRange, true, &near)[size_t(f0)]);
+    const auto b = onSeam(edgeBrushMeshes(brushes, 1, near[1], kEdgeRange, true, &near)[size_t(f1)]);
+    CHECK(a.size() >= 2 && a == b);
+    // Without the table each side has only its own vertices there (the old behaviour).
+    const auto a0 = onSeam(edgeBrushMeshes(brushes, 0, near[0])[size_t(f0)]);
+    const auto b0 = onSeam(edgeBrushMeshes(brushes, 1, near[1])[size_t(f1)]);
+    CHECK(a0 != b0);
+}
+
+TEST(face_edges_hidden_faces_have_no_edges) {
+    // Two wall slices side by side: the faces between them touch each other and are hidden: no edges on them.
+    const std::vector<EdgeBrush> slices{boxBrush({0, 0, 0}, {64, 16, 128}), boxBrush({64, 0, 0}, {128, 16, 128})};
+    const auto near = edgeNeighbours(slices);
+    const int between = faceWithNormal(slices[0], {1, 0, 0});
+    CHECK(faceEdgeSpans(slices, 0, size_t(between), near[0]).empty());
+    // Two overlapping brushes: the part of a face inside the other brush has no edge, the part in the open has.
+    const std::vector<EdgeBrush> over{boxBrush({0, 0, 0}, {64, 16, 128}), boxBrush({48, 0, 0}, {128, 16, 96})};
+    const auto on = edgeNeighbours(over);
+    const int side = faceWithNormal(over[0], {1, 0, 0});  // at x = 64, inside the second brush up to z = 96
+    const auto spans = faceEdgeSpans(over, 0, size_t(side), on[0]);
+    CHECK(!spans.empty());
+    for (const EdgeSpan& s : spans) CHECK(std::min(s.a.z, s.b.z) > 96 - 1e-6);
+    // A crate on a floor keeps the edges of its sides (they are in the open), as before.
+    const std::vector<EdgeBrush> crate{boxBrush({-256, -256, -16}, {256, 256, 0}), boxBrush({0, 0, 0}, {32, 32, 32})};
+    CHECK(faceEdgeSpans(crate, 1, size_t(faceWithNormal(crate[1], {1, 0, 0})), edgeNeighbours(crate)[1]).size() == 4);
 }

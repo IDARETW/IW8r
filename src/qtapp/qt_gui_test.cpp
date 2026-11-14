@@ -3530,6 +3530,26 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 "compile summaries with zero failures are not errors; real failures are");
     }
 
+    r.section("umbra visibility");
+    {
+        QAction* cull = w.action("UmbraCullByTome");
+        QAction* cells = w.action("UmbraShowCells");
+        r.check(cull && cells && cull->isCheckable() && cells->isCheckable(), "View > Umbra Visibility has Cull by Tome and Show Cells and Portals");
+        if (cull && cells) {
+            const bool wasCull = w.umbraCull(), wasCells = w.umbraOverlay();
+            if (!cull->isChecked()) cull->trigger();
+            r.check(w.umbraCull() && iw8r::qt::Settings::instance().value("view/umbraCull").toBool(), "Cull by Tome turns on and is saved");
+            if (!cells->isChecked()) cells->trigger();
+            r.check(w.umbraOverlay() && iw8r::qt::Settings::instance().value("view/umbraOverlay").toBool(), "Show Cells and Portals turns on and is saved");
+            // Without a stock map reference there is nothing to cull and nothing is drawn.
+            r.check(!w.cameraView()->tomeCull() && ctx.scene.tomeLines.empty(), "without a stock map reference nothing is culled or drawn");
+            w.setUmbraView(false, false);
+            r.check(!cull->isChecked() && !cells->isChecked() && !iw8r::qt::Settings::instance().value("view/umbraCull").toBool(),
+                    "turning both off unchecks the menu and is saved");
+            w.setUmbraView(wasCull, wasCells);
+        }
+    }
+
     r.section("shader editor");
     {
         // The editor's templates compile into the viewport's Game Lighting shader; a broken one reports its own line.
@@ -4847,9 +4867,12 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             const size_t moveShadowPasses = cv->frameStats().shadowPasses;
             const bool castersMoved = cv->shadowCasterVersion() != casters;
             const size_t moveUpload = cv->frameStats().uploadBytes;
-            r.check(cv->geometryBuilds() == builds2 && cv->geometryRelayouts() == relayouts2 && cv->itemsUpdatedInPlace() == inPlace + 1 && moveUpload > 0 &&
+            // The brushes touching it are written again too: their faces are shaped by their neighbours (core
+            // face_edges: shared seam vertices, coplanar overlaps), so a few items change, never everything.
+            (void)relayouts2;
+            r.check(cv->geometryBuilds() == builds2 && cv->itemsUpdatedInPlace() + (cv->geometryRelayouts() - relayouts2) >= inPlace + 1 && moveUpload > 0 &&
                         moveUpload < 64 * 1024 && ctx.scene.generation() != generation,
-                    QString("moving a brush writes only that brush (%1 mode: %2 bytes uploaded, %3 rebuilds)").arg(mode).arg(moveUpload).arg(cv->geometryBuilds() - builds2));
+                    QString("moving a brush writes only that brush and the ones touching it (%1 mode: %2 bytes uploaded, %3 rebuilds)").arg(mode).arg(moveUpload).arg(cv->geometryBuilds() - builds2));
             r.check(castersMoved && (!m.lit || moveShadowPasses >= 1), "a moved brush draws the sun shadow map again (" + mode + " mode)");
             r.check(sameAsFresh(), "the frame after a moved brush equals a fresh build (" + mode + " mode)");
             settle();

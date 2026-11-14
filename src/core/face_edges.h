@@ -17,7 +17,9 @@
 // Which edges count: every edge of a drawn face, except where the surface carries on past it into a drawn face of
 // another brush of the same set in the same plane (a seam: no edge) or in a plane bent away by less than
 // kEdgeSoftAngle (a soft fold: kept with its small fold, so a shader can tell it from a hard edge; bent toward the
-// viewer side it is no edge). A brush touching only part of an edge splits it.
+// viewer side it is no edge). Nor where the face itself is hidden beside the edge, inside or against another drawn
+// brush of the set (overlapping brushes, the side faces between the slices of a wall). A brush touching only part of
+// an edge splits it.
 #pragma once
 
 #include <cstdint>
@@ -70,10 +72,22 @@ struct EdgeFaceMesh {
 // The convex pieces of one face for its spans, triangulated. Without spans: the winding as a fan, edge 1 everywhere.
 EdgeFaceMesh edgeFaceMesh(const Winding& face, const Vec3& normal, const std::vector<EdgeSpan>& spans, double range = kEdgeRange);
 
-// Every face of brushes[self]: meshes[face] (empty for a face without a winding). Vertices the pieces of one face put
-// on an edge are added to the other pieces along it, across the brush's faces too, so no seam can open between them.
+// The faces of other brushes that are drawn instead of face `face` of brushes[self] where they lie on it: drawn faces
+// of the same set in the same plane, facing the same way, that overlap it and win (the smaller face; of two equal ones
+// the later brush). Without this both would be drawn in one plane and fight for every pixel.
+std::vector<Winding> coplanarCovers(const std::vector<EdgeBrush>& brushes, size_t self, size_t face,
+                                    const std::vector<uint32_t>& neighbours);
+
+// Every face of brushes[self]: meshes[face] (empty for a face without a winding, or wholly under coplanar faces of
+// other brushes: coplanarCovers). Vertices the pieces of one face put on an edge are added to the other pieces along
+// it, across the brush's faces too, so no seam can open between them. withEdges false: no edge data (edge 1
+// everywhere), only the faces themselves with the covered parts cut away.
+// allNear (edgeNeighbours of `brushes`): when given, the vertices the touching brushes' own pieces put on this brush's
+// edges are added here too, so the seam between two brushes is as tight as the edges inside one (both sides then hold
+// the same vertices along it). The result then depends on the neighbours and on their neighbours.
 std::vector<EdgeFaceMesh> edgeBrushMeshes(const std::vector<EdgeBrush>& brushes, size_t self,
-                                        const std::vector<uint32_t>& neighbours, double range = kEdgeRange);
+                                        const std::vector<uint32_t>& neighbours, double range = kEdgeRange, bool withEdges = true,
+                                        const std::vector<std::vector<uint32_t>>* allNear = nullptr);
 
 // The in-face axes the direction angle is measured in: a = normalize(cross(z, n)) (x made perpendicular to n when n is
 // within 2.5 degrees of +-z), b = cross(n, a). The shader computes the same (kIw8rEdgeHelper).

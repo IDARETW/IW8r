@@ -700,6 +700,60 @@ void SceneCache::clear() {
     spawns.clear();
 }
 
+void appendTexturedFace(const PrimGeom& g, size_t i, const Vec3& n, const Vec3& tan, uint32_t colour, const GameLightmap* gameLm,
+                        const Vec3& centre, std::vector<GpuTexVertex>& out) {
+    const Winding& w = g.polys[i];
+    const auto& uv = g.polyUV[i];
+    const EdgeFaceMesh* em = i < g.polyEdges.size() ? &g.polyEdges[i] : nullptr;
+    if (em && em->idx.empty()) return;  // wholly under coplanar faces of other brushes: not drawn
+    if (!em) {
+        const auto tv = [&](size_t k) {
+            GpuTexVertex v{float(w[k].x), float(w[k].y), float(w[k].z), uv[k][0], uv[k][1], colour};
+            v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
+            v.tx = float(tan.x), v.ty = float(tan.y), v.tz = float(tan.z);
+            if (gameLm) {
+                float luv[2];
+                if (gameLm->uvFor(w[k], n, centre, luv)) v.lu = luv[0], v.lv = luv[1];
+            }
+            return v;
+        };
+        for (size_t k = 1; k + 1 < w.size(); ++k) {
+            out.push_back(tv(0));
+            out.push_back(tv(k));
+            out.push_back(tv(k + 1));
+        }
+        return;
+    }
+    // The face as its mesh: the texture coordinates are the face's own, an affine function of the position, taken
+    // from the corner pair that spans the face best.
+    size_t far = 2;
+    double best = -1;
+    for (size_t k = 2; k < w.size(); ++k)
+        if (const double a = length(cross(w[1] - w[0], w[k] - w[0])); a > best) best = a, far = k;
+    const Vec3 e1 = w[1] - w[0], e2 = w[far] - w[0];
+    const double d11 = dot(e1, e1), d12 = dot(e1, e2), d22 = dot(e2, e2);
+    const double det = d11 * d22 - d12 * d12;
+    // The preview bake's lightmap UVs are kept per face corner: the same affine blend gives the others.
+    float l0[2], l1[2], l2[2];
+    const bool haveLm = gameLm && gameLm->uvFor(w[0], n, centre, l0) && gameLm->uvFor(w[1], n, centre, l1) && gameLm->uvFor(w[far], n, centre, l2);
+    for (const uint32_t vi : em->idx) {
+        const EdgeVertex& q = em->verts[vi];
+        const Vec3 d = q.pos - w[0];
+        const double b1 = dot(d, e1), b2 = dot(d, e2);
+        const double s = det > 1e-18 ? (b1 * d22 - b2 * d12) / det : 0.0, t = det > 1e-18 ? (b2 * d11 - b1 * d12) / det : 0.0;
+        GpuTexVertex v{float(q.pos.x), float(q.pos.y), float(q.pos.z), float(uv[0][0] + s * (uv[1][0] - uv[0][0]) + t * (uv[far][0] - uv[0][0])),
+                       float(uv[0][1] + s * (uv[1][1] - uv[0][1]) + t * (uv[far][1] - uv[0][1])), colour};
+        v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
+        v.tx = float(tan.x), v.ty = float(tan.y), v.tz = float(tan.z);
+        if (haveLm) {
+            v.lu = float(l0[0] + s * (l1[0] - l0[0]) + t * (l2[0] - l0[0]));
+            v.lv = float(l0[1] + s * (l1[1] - l0[1]) + t * (l2[1] - l0[1]));
+        }
+        v.edge = packEdge(q);
+        out.push_back(v);
+    }
+}
+
 void SceneCache::updateFaceEdges() {
     // Brushes whose faces are drawn with a texture: the ones a surface shader can light.
     std::vector<PrimGeom*> items;
@@ -707,7 +761,7 @@ void SceneCache::updateFaceEdges() {
         PrimGeom* g = const_cast<PrimGeom*>(cg);
         const bool brush = g->kind == PrimGeom::Brush && !g->volume && !g->prefab && g->polyMaterial.size() == g->polys.size() &&
                            g->faceNormals.size() == g->polys.size();
-        if (faceEdges && brush) {
+        if (brush) {
             items.push_back(g);
         } else if (!g->polyEdges.empty()) {
             g->polyEdges.clear();
@@ -738,13 +792,19 @@ void SceneCache::updateFaceEdges() {
         // The brush and the brushes touching it, as they are now: its edges change only when one of them does.
         uint64_t key = (1469598103934665603ull ^ g.rev) * 1099511628211ull;
         key = (key ^ uint64_t(g.edgeSet)) * 1099511628211ull;
+        key = (key ^ uint64_t(faceEdges ? 2 : 1)) * 1099511628211ull;
+        // ... and the neighbours' neighbours: they shape the neighbours' pieces, whose corners this brush's seams share.
         for (uint32_t n : near[i]) {
             key = (key ^ uint64_t(items[n]->ref.item)) * 1099511628211ull;
             key = (key ^ items[n]->rev) * 1099511628211ull;
+            for (uint32_t m : near[n]) {
+                key = (key ^ uint64_t(items[m]->ref.item)) * 1099511628211ull;
+                key = (key ^ items[m]->rev) * 1099511628211ull;
+            }
         }
         if (key == 0) key = 1;
         if (g.edgeKey == key && g.polyEdges.size() == g.polys.size()) continue;
-        g.polyEdges = edgeBrushMeshes(brushes, i, near[i]);
+        g.polyEdges = edgeBrushMeshes(brushes, i, near[i], kEdgeRange, faceEdges, &near);
         g.polyEdges.resize(g.polys.size());
         g.edgeKey = key;
         g.stamp = ++stampCounter_;
@@ -1260,21 +1320,7 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
                     for (const auto& p : w) centre += p;
                     centre = centre * (1.0 / double(std::max<size_t>(1, w.size())));
                 }
-                auto tv = [&](size_t k) {
-                    GpuTexVertex v{float(w[k].x), float(w[k].y), float(w[k].z), uv[k][0], uv[k][1], c};
-                    v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
-                    v.tx = float(tan.x), v.ty = float(tan.y), v.tz = float(tan.z);
-                    if (gameLm) {
-                        float luv[2];
-                        if (gameLm->uvFor(w[k], n, centre, luv)) v.lu = luv[0], v.lv = luv[1];
-                    }
-                    return v;
-                };
-                for (size_t k = 1; k + 1 < w.size(); ++k) {
-                    out.push_back(tv(0));
-                    out.push_back(tv(k));
-                    out.push_back(tv(k + 1));
-                }
+                appendTexturedFace(*g, i, n, tan, c, gameLm, centre, out);
             } else if (!wire) {
                 uint32_t c = normals ? normalColour(n) : litColor(contentsMode || collisionMode ? g->contentsColor : g->color);
                 if (!normals && !contentsMode && i < g->polyTint.size()) c = mixColor(c, g->polyTint[i] | 0xff000000u, 0.6);
@@ -1306,6 +1352,8 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
                 }
             }
             if (!g->edges.empty() || (g->meshPoly(i) && !sel && !wire)) continue;
+            // Game Lighting: no editor outlines on brush faces (camera_geometry.cpp has the same rule).
+            if (!sel && !wire && g->kind == PrimGeom::Brush && !g->volume && scene.gameLookActive() && !scene.gameOutlines) continue;
             auto& dst = sel ? overlay : lines;
             const uint32_t ec = sel ? kSelEdge : (wire ? kEdgeWire : kEdgeDark);
             for (size_t k = 0; k < w.size(); ++k) {
@@ -1411,6 +1459,10 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
                 for (const auto& v : b.tris) z = std::min(z, v.z);
                 b.baseZ = z;
             }
+    for (const UmbraLine& l : scene.tomeLines) {  // Umbra cells and portals (M2.2)
+        lines.push_back(gv(l.a, l.rgba));
+        lines.push_back(gv(l.b, l.rgba));
+    }
     for (const auto& [a, b] : scene.navLines) {  // the build's navmesh (6.23), green
         lines.push_back(gv(a, 0xff30e060u));
         lines.push_back(gv(b, 0xff30e060u));
@@ -1556,6 +1608,9 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
         const bool twc4 = lm.rfind("twc4/", 0) == 0, twc = !twc4 && lm.rfind("twc/", 0) == 0;
         const std::vector<uint32_t>* vcolHi =
             layered && mi < world.vertexColorHigh.size() && world.vertexColorHigh[mi].size() == m.pos.size() ? &world.vertexColorHigh[mi] : nullptr;
+        // The triangle's GfxWorld surface, for the Umbra tome cull (referenceSurfaceTag; 0 = of no known surface).
+        const std::vector<uint32_t>* triSurf =
+            mi < world.triSurface.size() && world.triSurface[mi].size() * 3 == m.idx.size() ? &world.triSurface[mi] : nullptr;
         for (size_t i = 0; i + 2 < m.idx.size(); i += 3) {
             const uint32_t a = m.idx[i], b = m.idx[i + 1], c = m.idx[i + 2];
             if (a >= m.pos.size() || b >= m.pos.size() || c >= m.pos.size()) continue;
@@ -1595,6 +1650,7 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
                 // ImportedMesh::uv is OBJ convention (v flipped); the textured camera uses the game's v.
                 GpuTexVertex v{float(m.pos[k].x), float(m.pos[k].y), float(m.pos[k].z), m.uv[k][0], 1.0f - m.uv[k][1], rgba};
                 v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
+                v.edge = referenceSurfaceTag(triSurf ? int64_t((*triSurf)[i / 3]) : -1);
                 {
                     const uint32_t col = vcol ? (*vcol)[k] : 0xFFFFFFFFu;
                     const double w0 = twc4 ? double(col & 0xFF) / 255.0 : twc ? double(col >> 24) / 255.0 : 1.0;

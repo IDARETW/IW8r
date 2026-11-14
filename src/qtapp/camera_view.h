@@ -383,6 +383,13 @@ public slots:
         update();
     }
     size_t referenceTexInstanceMeshes() const { return texInstMaterials_.size(); }
+    // Cull by tome (View > Umbra Visibility): SceneRenderer::setReferenceTomeVisibility. Empty = off.
+    void setTomeVisibility(std::vector<uint32_t> surfaceBits, std::vector<uint32_t> modelBits) {
+        renderer_.setReferenceTomeVisibility(std::move(surfaceBits), std::move(modelBits));
+        update();
+    }
+    bool tomeCull() const { return renderer_.referenceTomeCull(); }
+    size_t tomeCulledProps() const { return renderer_.tomeCulledProps(); }
     std::string gpuMemoryReport() const { return renderer_.gpuMemoryReport(); }
     // New per-placement light for every textured prop mesh (same order and counts as setReferenceTexInstances gave).
     void setReferenceTexInstanceLight(std::vector<std::vector<float>> light) {

@@ -379,6 +379,8 @@ Map project out/agent/mp_cinderrail_toon (built as mp_cinderrail_t).
 - [ ] Dark ink lines run along building corners, roof edges and window frames. They are about 3 pixels wide whether
       you stand next to a wall or far from it, and meet cleanly at corners (they are drawn by the shader, not geometry).
 - [ ] Colours are stronger than on the normal Cinder Rail, and shade is a cool darker tone, not black.
+- [ ] No lines run across a wall where it is made of several brushes, and nothing flickers (z-fights) on the square
+      structures or anywhere two brushes overlap.
 - [ ] The bright sun in the sky is where the shadows come from (the sun is now 20 degrees up, like the sky's).
 
 ## What is not expected to work yet

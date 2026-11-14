@@ -2,6 +2,28 @@
 
 ## Latest (2026-11-13)
 
+- Owner (2026-11-13 night): lines at the slices of walls, z-fighting on square structures. (1) Game Lighting no
+  longer draws the editor's dark outlines of brush faces (scene.gameOutlines, View > Game Lighting Options > Brush
+  Outlines, game/brushOutlines, off). (2) Core face_edges now always shapes brush faces in both hosts
+  (edgeBrushMeshes withEdges false = no edge data): coplanarCovers cuts a face away under a coplanar, same-facing,
+  overlapping drawn face of another brush of its set (the smaller face wins, the later brush of two equal ones);
+  Cinderrail had 2,636 such pairs. (3) Seams between brushes share vertices (allNear: the neighbours' piece corners
+  are added to this brush's edges; the viewport key covers the neighbours' neighbours); spans cut where a neighbour
+  ends land exactly on its plane. (4) An edge counts only where its face is in the open beside it: no edge where the
+  face is inside or against another drawn brush (hidden side faces of overlapping brushes fought with the wall plane
+  along a line of dark pixels). Folds under 2 degrees between brushes are seams. Not done: hidden faces are still
+  built and drawn (removing them needs to know which brushes are opaque).
+- Plan M2.2 (Umbra visibility view) part 1: class 1 user IDs are static model collection indices (VERIFIED,
+  tests/umbra_tome_tests.cpp umbra_static_model_ids_on_shipment: 9,336 of 9,413 origins inside their object's box;
+  as instance rows 1); StockModelInstance::collection. StockWorld::triSurface (GfxWorld surface of every triangle);
+  reference vertices carry it (referenceSurfaceTag in GpuTexVertex::edge, top byte 0). Renderer:
+  setReferenceTomeVisibility (surface bits in a Buffer<uint> at VS t30, wind.w = 1 while on; hidden surfaces go off
+  screen in vs_tex, still cast shadows; props culled in cullTexInstances by InstancedTexMesh::ids). Core umbra_view
+  (umbraTomeIndex, umbraViewVisibility: bits set for visible or unknown to the tome; umbraOverlayLines). Qt:
+  main_window_umbra.cpp (tome read and view queries in workers, one at a time, only when the camera pose changed),
+  View > Umbra Visibility > Cull by Tome / Show Cells and Portals (view/umbraCull, view/umbraOverlay), status bar
+  counts, scene.tomeLines. Bench: IW8R_UMBRA=cull|cells|both adds an "umbra" report line. Open in 2.2: lights, probes
+  and decal collections are counted but not culled; displaced terrain has no surface ids.
 - Owner (2026-11-13 late): the toon look must be a real custom shader, lines of constant screen width, nothing toon
   built into the editor. Done: the ink strip brushes (core toon_outline, Tools > Toon Ink Outlines, --ink-outlines,
   iw8r_ink) are removed. Core face_edges (generic): per brush face, convex pieces with the exact distance to the

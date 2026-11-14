@@ -325,6 +325,7 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
                                  orientComponent(u16At(inst, o + 16)), orientComponent(u16At(inst, o + 18)));
             s.scale = f32At(inst, o + 20);
             s.index = uint32_t(k);
+            s.collection = uint32_t(c);
             s.modelFlags = modelFlags[size_t(model)];
             s.surfaceMaterials = skins[size_t(model)];
             if (k < indirTotal) {

@@ -1105,6 +1105,7 @@ void replaceStockWorldMesh(StockWorld& world, size_t mesh, StockDisplacedMesh&& 
     if (mesh >= world.meshes.size()) return;
     for (const Vec3& p : m.mesh.pos) world.bounds.add(p);
     world.meshes[mesh] = std::move(m.mesh);
+    if (mesh < world.triSurface.size()) world.triSurface[mesh].clear();  // new triangles: of no known surface
     const auto put = [&](auto& vecs, auto&& v) {
         if (mesh < vecs.size()) vecs[mesh] = std::move(v);
     };

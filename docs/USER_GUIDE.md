@@ -252,6 +252,18 @@ Commands in the Tools menu:
   colour strength, the tones and the shade level. Make a copy with New to change them for your map.
 - The example map Cinder Rail (Toon) uses it. Custom shaders are built and checked offline but not yet seen in game.
 
+### What the game draws from here (Umbra visibility)
+
+- Every stock map carries occlusion data (an Umbra "tome") that tells the game what can be seen from where. **View >
+  Umbra Visibility > Cull by Tome** makes the editor draw a stock map the same way: surfaces and models the game
+  would not draw from the camera's spot are hidden. Use it to see why something pops in or out in game, or what an
+  edit would expose.
+- **Show Cells and Portals** draws the camera's visibility cell (yellow), its portals (orange; doors that can close in
+  magenta) and the visible cells around it (blue).
+- The status bar shows the counts, for example "Umbra: 312 / 1,024 surfaces, 1,204 / 9,413 models". When the camera
+  is outside the map's data or inside a wall, nothing is culled and the status bar says so.
+- Hidden things still cast their sun shadows, as in game. Lamps and probes are counted but not hidden yet.
+
 ## 6. Lighting and atmosphere
 
 - **Lights**: `light` entities (omni and spot) become primary lights; `reflection_probe` entities become probes.

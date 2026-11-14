@@ -206,7 +206,10 @@ The conservative tome's `[0, 0xFFFFFFFF]` list is the same format.
 - **m_objBounds** (24 B): min, max. Object 0 of shipment is reflection probe 0 and spans the whole tome.
 - **m_objDistances** (32 B): a box, near distance squared, a box max, far distance squared. The far values are squares
   of the cull distances (2.704e9 = 52000², 1.44e6 = 1200², 3.6e7 = 6000²). `+inf` means never culled. VERIFIED values;
-  the use (distance from the camera to the box, near <= d² < far) is INFERRED.
+  the use (distance from the camera to the box, near <= d² < far) is INFERRED. 2026-11-13: applied that way, a view
+  query on Shipment dropped the far container stacks (51 static model collections) that the uncut view shows through
+  a gap, so the rule is incomplete (a LOD or field-of-view scale on the distance is likely). The editor's Umbra view
+  does not apply the windows (occlusion only).
 - **User IDs.** One per object, or CSR ranges through `m_userIDStarts`: hideout 15,890 IDs for 11,575 objects,
   Verdansk 164,299 for 85,477.
   - The class is in bits 28-30 and the index in bits 0-27. The consumer at 0x18CCA80 sets the dpvs bits by class

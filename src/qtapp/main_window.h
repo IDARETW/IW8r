@@ -1,5 +1,6 @@
 // IW8 Radiant Suite (Qt shell) - main window: menus, rebindable commands, dock layout, file I/O.
 #pragma once
+#include "umbra_view.h"
 #include "command_script.h"
 
 #include <QElapsedTimer>
@@ -137,6 +138,14 @@ public:
     size_t exportReferenceRegion();
     // 11.8: stock triangles in the selection bounds as thin prism brushes (a func_group, one undo step).
     size_t exportReferenceBrushes();
+    // M2.2 View > Umbra Visibility (main_window_umbra.cpp): cull = the reference draws only what the tome's query from
+    // the camera made visible; overlay = the camera's cell, its portals and the visible cells. Saved in the settings.
+    void setUmbraView(bool cull, bool overlay);
+    void updateUmbraView();  // reads the tome when needed, then one query for the camera (a worker; one at a time)
+    bool umbraCull() const { return umbraCull_; }
+    bool umbraOverlay() const { return umbraOverlay_; }
+    const UmbraViewResult& umbraLastResult() const { return umbraLast_; }  // counts of the last query (no bit sets)
+    bool umbraBusy() const { return umbraLoading_ || umbraQueryRunning_ || umbraQueryPending_; }
     // 5.12: selected worldspawn brushes -> a script_brushmodel glass pane with the built-in iw8r_glass material.
     Id makeGlassPane();
     // A climbable ladder (owner playtest 2026-11-11: the ladder brush is invisible, so the ladder could not be seen):
@@ -629,6 +638,15 @@ private:
     MaterialCache* matCache_ = nullptr;
     ModelCache* modelCacheStock_ = nullptr;
     WorldCache* worldCache_ = nullptr;
+    void clearUmbraView(const QString& text);
+    std::shared_ptr<const UmbraTome> umbraTome_;
+    std::shared_ptr<const UmbraTomeIndex> umbraIndex_;
+    UmbraViewResult umbraLast_;
+    QString umbraZone_, umbraPose_;
+    bool umbraCull_ = false, umbraOverlay_ = false, umbraLoading_ = false, umbraFailed_ = false;
+    bool umbraQueryRunning_ = false, umbraQueryPending_ = false;
+    QLabel* umbraLabel_ = nullptr;
+    QTimer* umbraTimer_ = nullptr;
     QString referenceZone_;  // stock zone requested for the reference layer ("" = none)
 public:
     void loadStockReference(const QString& zone);

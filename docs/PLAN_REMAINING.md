@@ -241,7 +241,9 @@ stock zones).
   - tests on stock tomes (mp_shipment, at least 5 more MP zones, Verdansk's main zone): CRC, counts and
     self-consistency.
 
-**2.2 A visibility view in the editor.**
+**2.2 A visibility view in the editor.** Part 1 DONE 2026-11-13 (View > Umbra Visibility: cull by tome for surfaces
+and props, cells and portals overlay, status bar counts, saved settings). Open: culling lights, probes and decal
+collections; surface ids on displaced terrain.
 - **Overlay:** tiles, cells and portals.
 - **"Cull by tome" mode:** the stock reference draws only what the tome lets the game draw from the camera.
 - **Statistics:** visible objects by class.

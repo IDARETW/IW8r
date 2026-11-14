@@ -506,6 +506,8 @@ void CameraView::render() {
     mix(ctx_->scene.collisionPreview.size());
     mix(ctx_->scene.compiledWorld.size());
     mix(ctx_->scene.navLines.size() * 3 + 1);
+    mix(ctx_->scene.tomeLinesVersion * 7 + 5);
+    mix(ctx_->scene.gameOutlines ? 11 : 13);
     mix(ctx_->normalMaps ? 7 : 3);
     {
         IW8R_PROF("r.lights_wind");

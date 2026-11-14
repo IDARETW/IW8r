@@ -444,6 +444,7 @@ struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; 
               float4 edge : TEXCOORD6; };
 struct PSIn { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 w : TEXCOORD1; float3 n : TEXCOORD2; float3 t : TEXCOORD3; float2 lm : TEXCOORD4;
                float3 lgvBack : TEXCOORD5; float3 edge : TEXCOORD6; };
+Buffer<uint> tomeVis : register(t30);  // cull by tome: one bit per GfxWorld surface (wind.w = 1 while bound)
 PSIn vs_tex(VSIn i) {
     PSIn o;
     float3 p = i.pos;
@@ -457,6 +458,14 @@ PSIn vs_tex(VSIn i) {
     o.pos = mul(float4(p, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = p; o.n = i.n; o.t = i.t; o.lm = i.lm;
     o.lgvBack = float3(0, 0, 0);
     o.edge = i.edge.xyz;
+    if (wind.w > 0.5 && i.edge.a < 0.5) {
+        // A stock reference vertex: its surface + 1 (referenceSurfaceTag). A surface the tome hides goes off screen.
+        const uint tag = uint(i.edge.r * 255.0 + 0.5) | (uint(i.edge.g * 255.0 + 0.5) << 8) | (uint(i.edge.b * 255.0 + 0.5) << 16);
+        if (tag != 0u) {
+            const uint s = tag - 1u;
+            if (((tomeVis[s >> 5] >> (s & 31u)) & 1u) == 0u) o.pos = float4(0, 0, 0, -1);
+        }
+    }
     return o;
 }
 // Textured instanced reference props: the model's vertices placed by three transform rows per instance.
@@ -1342,6 +1351,10 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(vbRefTexExtra_);
     releaseExtraGroups();
     safeRelease(cbWind_);
+    safeRelease(tomeSrv_);
+    safeRelease(tomeBuf_);
+    tomeBufWords_ = 0;
+    tomeDirty_ = true;
     safeRelease(cbLights_);
     safeRelease(cbGame_);
     safeRelease(cbVol_);
@@ -3153,7 +3166,58 @@ bool SceneRenderer::setReferenceInstances(const std::vector<InstancedMesh>& mesh
     return true;
 }
 
+void SceneRenderer::setReferenceTomeVisibility(std::vector<uint32_t> surfaceBits, std::vector<uint32_t> modelBits) {
+    tomeSurfBits_ = std::move(surfaceBits);
+    tomeModelBits_ = std::move(modelBits);
+    tomeDirty_ = true;
+}
+
+void SceneRenderer::bindTomeVisibility() {
+    wind_[3] = 0.0f;
+    if (!dev_ || tomeSurfBits_.empty()) return;
+    if (!tomeBuf_ || tomeBufWords_ < tomeSurfBits_.size()) {
+        safeRelease(tomeSrv_);
+        safeRelease(tomeBuf_);
+        tomeBufWords_ = std::max<size_t>(tomeSurfBits_.size(), 64);
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = UINT(tomeBufWords_ * 4);
+        bd.Usage = D3D11_USAGE_DEFAULT;
+        bd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        if (FAILED(dev_->CreateBuffer(&bd, nullptr, &tomeBuf_))) {
+            tomeBufWords_ = 0;
+            return;
+        }
+        D3D11_SHADER_RESOURCE_VIEW_DESC sd{};
+        sd.Format = DXGI_FORMAT_R32_UINT;
+        sd.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+        sd.Buffer.FirstElement = 0;
+        sd.Buffer.NumElements = UINT(tomeBufWords_);
+        if (FAILED(dev_->CreateShaderResourceView(tomeBuf_, &sd, &tomeSrv_))) {
+            safeRelease(tomeBuf_);
+            tomeBufWords_ = 0;
+            return;
+        }
+        tomeDirty_ = true;
+    }
+    if (tomeDirty_) {
+        std::vector<uint32_t> words(tomeBufWords_, 0xFFFFFFFFu);  // past the tome's surfaces: drawn
+        std::copy(tomeSurfBits_.begin(), tomeSurfBits_.end(), words.begin());
+        ctx_->UpdateSubresource(tomeBuf_, 0, nullptr, words.data(), 0, 0);
+        tomeDirty_ = false;
+    }
+    ctx_->VSSetShaderResources(30, 1, &tomeSrv_);
+    wind_[3] = 1.0f;
+}
+
 void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3], float pixelAngle) {
+    // Cull by tome: a placement whose collection the tome hides (ids past the bits, or unknown, are drawn).
+    tomeCulledProps_ = 0;
+    const auto tomeHides = [&](const GpuTexInstanced& m, size_t i) {
+        if (tomeModelBits_.empty() || i >= m.ids.size()) return false;
+        const uint32_t id = m.ids[i];
+        if (id == 0xFFFFFFFFu || (id >> 5) >= tomeModelBits_.size()) return false;
+        return ((tomeModelBits_[id >> 5] >> (id & 31u)) & 1u) == 0u;
+    };
     const iw8r::Frustum fr = iw8r::frustumFromViewProj(viewProj);
     instCulledLast_ = 0;
     std::vector<float> keep, keepBig;
@@ -3203,7 +3267,8 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             const float sc = std::sqrt(r[0] * r[0] + r[4] * r[4] + r[8] * r[8]);
             PlaceEval& e = ev[i];
             e.rad = radius * std::max(sc, 1e-6f);
-            e.out = false;
+            e.out = tomeHides(lead, i);
+            if (e.out) ++tomeCulledProps_;
             for (const auto& pl : fr.planes)
                 if (pl.n.x * c[0] + pl.n.y * c[1] + pl.n.z * c[2] - pl.d > e.rad) {
                     e.out = true;
@@ -3245,7 +3310,8 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                                 r[8] * g.centre[0] + r[9] * g.centre[1] + r[10] * g.centre[2] + r[11]};
             const float sc = std::sqrt(r[0] * r[0] + r[4] * r[4] + r[8] * r[8]);
             const float rad = g.radius * std::max(sc, 1e-6f);
-            bool out = false;
+            bool out = tomeHides(g, i);
+            if (out) ++tomeCulledProps_;
             for (const auto& pl : fr.planes)
                 if (pl.n.x * c[0] + pl.n.y * c[1] + pl.n.z * c[2] - pl.d > rad) {
                     out = true;
@@ -3405,6 +3471,10 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
                 std::stable_sort(g.order.begin(), g.order.end(), [&](uint32_t a, uint32_t b) { return key[a] < key[b]; });
                 // 24 floats per instance on the GPU: the 3 transform rows, then the prop's light (research 105).
                 const bool haveLight = m.light.size() == count * 12;
+                if (m.ids.size() == count) {
+                    g.ids.resize(count);
+                    for (size_t i = 0; i < count; ++i) g.ids[i] = m.ids[g.order[i]];
+                }
                 g.rows.resize(count * 12);
                 g.light.assign(count * 12, 0.0f);
                 for (size_t i = 0; i < count; ++i) {
@@ -4268,6 +4338,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         ctx_->PSSetSamplers(0, 1, &sampler_);
         if (cbBatch_) ctx_->VSSetConstantBuffers(1, 1, &cbBatch_), ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
         if (cbLayer_) ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);
+        bindTomeVisibility();
         if (cbWind_) {
             ctx_->UpdateSubresource(cbWind_, 0, nullptr, wind_, 0, 0);
             ctx_->VSSetConstantBuffers(3, 1, &cbWind_);
@@ -4346,6 +4417,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         if (cbBatch_) ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
         if (cbBatch_) ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
+        bindTomeVisibility();
         if (cbWind_) {
             ctx_->UpdateSubresource(cbWind_, 0, nullptr, wind_, 0, 0);
             ctx_->VSSetConstantBuffers(3, 1, &cbWind_);

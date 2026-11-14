@@ -729,6 +729,28 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                       .arg(lm && !lm->error.empty() ? QString::fromStdString(lm->error) : QString());
         settle();
         {
+            // IW8R_UMBRA=cull | cells | both: View > Umbra Visibility for the shots (always set, so a bench without it
+            // is not left with the last run's choice).
+            const QString um = qEnvironmentVariable("IW8R_UMBRA");
+            w.setUmbraView(um == "cull" || um == "both", um == "cells" || um == "both");
+            if (!um.isEmpty()) {
+                QElapsedTimer ut;
+                ut.start();
+                while (ut.elapsed() < 120000) {
+                    frame(nullptr);
+                    QApplication::processEvents(QEventLoop::AllEvents, 20);
+                    if (!w.umbraBusy() && ut.elapsed() > 1500) break;
+                }
+                settle();
+                const iw8r::UmbraViewResult& ur = w.umbraLastResult();
+                report << QString("umbra %1 status '%2' culls %3 surfaces %4 models %5 lights %6 probes %7 cells %8 query_ms %9 props_hidden %10 lines %11")
+                              .arg(um).arg(iw8r::umbraStatusText(ur.status)).arg(ur.culls ? 1 : 0).arg(ur.visibleByClass[iw8r::kUmbraSurface])
+                              .arg(ur.visibleByClass[iw8r::kUmbraStaticModel]).arg(ur.visibleByClass[iw8r::kUmbraPrimaryLight])
+                              .arg(ur.visibleByClass[iw8r::kUmbraReflectionProbe]).arg(ur.cells).arg(ur.seconds * 1000, 0, 'f', 1)
+                              .arg(cam->tomeCulledProps()).arg(ctx.scene.tomeLines.size());
+            }
+        }
+        {
             const auto sl = cam->skyLuminance();
             report << QString("game_sky exposure=%1 mean_lum=%2 high_lum=%3").arg(sl[0]).arg(sl[1]).arg(sl[2]);
             report << QString("instances_culled %1").arg(cam->instancesCulled());

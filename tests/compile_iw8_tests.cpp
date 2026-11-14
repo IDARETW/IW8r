@@ -282,7 +282,7 @@ TEST(compile_iw8_sample_writes_extraction) {
 }
 
 // The doc 15 §7 room (floor and four walls): 5 surfaces and 5 collision brushes, as in the doc example.
-// The doc lists only the inner faces; the compiler renders every face, so 6 faces per box give 60 triangles.
+// The doc lists only the inner faces; the compiler renders every face: 6 faces per box, 60 triangles before seams.
 TEST(compile_iw8_doc_room_counts) {
     MapFile map;
     Id next = 1;
@@ -300,7 +300,9 @@ TEST(compile_iw8_doc_room_counts) {
     if (!ok) return;
     CHECK(rep.surfaces == 5);
     CHECK(rep.collisionBrushes == 5);
-    CHECK(rep.triangles == 60);
+    // 60 for the bare boxes, plus the triangles of the vertices that touching brushes share along their seams (core
+    // face_edges: the walls' corners on the floor's edges and the like, so no crack can open between brushes).
+    CHECK(rep.triangles == 76);
     CHECK(rep.spawns == 2);
 
     bool okW = false;

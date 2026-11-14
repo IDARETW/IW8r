@@ -19,6 +19,7 @@
 #include "collision_world.h"
 #include "collision_preview.h"
 #include "face_edges.h"
+#include "umbra_view.h"
 
 namespace iw8r::app {
 
@@ -30,9 +31,10 @@ struct PrimGeom {
     uint64_t seen = 0;   // the sync that last listed this item (items not listed are dropped from the cache)
     Kind kind = Brush;
     std::vector<Winding> polys;  // brush faces, tessellated patch triangles, entity box faces
-    // Face edge data for custom surface shaders (core face_edges), parallel to polys; empty unless SceneCache::faceEdges
-    // is on and the item is a drawn brush. A poly with a mesh is drawn as that mesh (the same surface, cut so that
-    // every vertex knows its distance to the face's edges). edgeSet / edgeKey: SceneCache::updateFaceEdges.
+    // The faces as their meshes (core face_edges), parallel to polys, for brushes (empty for other items). A textured
+    // poly is drawn as its mesh: the same surface without the parts that lie under a coplanar face of another brush,
+    // and (SceneCache::faceEdges) with every vertex knowing its distance to the face's edges. An empty mesh: the face
+    // is wholly under other faces and not drawn. edgeSet / edgeKey: SceneCache::updateFaceEdges.
     std::vector<EdgeFaceMesh> polyEdges;
     int edgeSet = 0;
     uint64_t edgeKey = 0;
@@ -94,6 +96,14 @@ enum class CameraMode { Textured, Flat, Wireframe, Fullbright, Normals, Contents
 
 struct GameLightmap;  // game_lightmap.h
 
+struct GameLightmap;
+// The textured triangles of poly `i` of an item: its face mesh when the item has one (PrimGeom::polyEdges; nothing for
+// an empty mesh, a face wholly under other faces), else the winding as a fan. `uv` are the winding's texture
+// coordinates (the mesh's are the same affine function of the position), `centre` the winding's centre when gameLm is
+// given (its lightmap UVs are kept per face corner).
+void appendTexturedFace(const PrimGeom& g, size_t i, const Vec3& n, const Vec3& tan, uint32_t colour, const GameLightmap* gameLm,
+                        const Vec3& centre, std::vector<GpuTexVertex>& out);
+
 class SceneCache {
 public:
     // Rebuilds only items whose id/rev changed since the last sync.
@@ -120,6 +130,9 @@ public:
     bool litShadows = true;
     // View > Game Lighting (game_lightmap.h): textured faces are shaded by the renderer as the game shades them; vertex
     // colours carry only tints, and vertices of baked polygons carry their lightmap UV.
+    // Game Lighting: the editor's dark outlines of unselected textured brush faces (off: the view shows the surfaces
+    // as the game does; View > Game Lighting Options > Brush Outlines).
+    bool gameOutlines = false;
     bool gameLook = false;
     // A stock map reference is shown (set by the camera): its lit preview is the game's lighting, as the editor's own
     // light bake has nothing to light there (owner report 2026-11-12: Lit Preview alone was blown out on Speedball).
@@ -170,6 +183,10 @@ public:
     double densityTarget = 2.0;  // texture pixels per world unit drawn green    // the camera draws the worldspawn sky: sky tool faces are left out so it shows through  // probe capture: no entity markers, tool volumes or overlays, only what the game draws
     // Build preview (View > Show Compiled Collision): the last extraction's collision hulls, drawn depth-tested.
     std::vector<CollisionHullEdges> collisionPreview;
+    // View > Umbra Visibility: the camera's cell, its portals and the visible cells around it (core umbra_view). The
+    // version moves with every change (the camera's geometry key reads it).
+    std::vector<UmbraLine> tomeLines;
+    uint64_t tomeLinesVersion = 0;
     std::vector<std::pair<Vec3, Vec3>> navLines;  // View > Show Navigation: the last build's navmesh areas, nodes and links
     std::vector<std::pair<Vec3, Vec3>> compiledWorld;  // View > Show Compiled World: the last build's render triangles  // lit preview: a face whose centre cannot see the sun gets no sun light
     // Collision world used for the lit preview's sun shadows, rebuilt when the document changes.

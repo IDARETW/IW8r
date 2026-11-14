@@ -20,6 +20,8 @@
 
 #include "test_harness.h"
 #include "umbra_tome.h"
+#include "stock_smodels.h"
+#include "umbra_view.h"
 
 using namespace iw8r;
 
@@ -715,4 +717,116 @@ TEST(umbra_stock_verdansk) {
     // Verdansk's main zone: a 420 MB export with a 60 MB tome.
     const ZoneExpect z{"mp_donetsk", 60383968, 0xE91F7509u, 85477, 20627, 10314, 24465, 10};
     if (!checkStockZone(z, true)) test::skipf("  SKIP umbra: world_cache/mp_donetsk gfx_map export not found\n");
+}
+
+// Which static model number a class 1 user ID is: the collection (GfxStaticModelCollection) or the instance row.
+TEST(umbra_static_model_ids_on_shipment) {
+    const fs::path json = gfxMapJson("mp_shipment");
+    if (json.empty()) {
+        test::skipf("  SKIP umbra: world_cache/mp_shipment gfx_map export not found\n");
+        return;
+    }
+    std::vector<uint8_t> bytes;
+    std::string err;
+    CHECK(extractUmbraTomeFromGfxMapJson(json.string(), bytes, &err));
+    UmbraTome tome;
+    CHECK(tome.parse(std::move(bytes), &err));
+    std::vector<StockModelInstance> inst;
+    CHECK(readStockModelInstances(json.string(), inst, &err));
+    uint32_t collections = 0;
+    for (const auto& i : inst) collections = std::max(collections, i.collection + 1);
+    // For every class 1 object: do the origins of the instances with that collection (or that row) lie in its box?
+    std::vector<std::vector<const StockModelInstance*>> byCollection(collections);
+    std::vector<const StockModelInstance*> byRow;
+    for (const auto& i : inst) {
+        byCollection[i.collection].push_back(&i);
+        if (i.index >= byRow.size()) byRow.resize(i.index + 1, nullptr);
+        byRow[i.index] = &i;
+    }
+    size_t ids = 0, asCollection = 0, asRow = 0;
+    uint32_t maxIndex = 0;
+    const auto inside = [](const Vec3& p, const float mn[3], const float mx[3]) {
+        return p.x >= mn[0] - 1 && p.x <= mx[0] + 1 && p.y >= mn[1] - 1 && p.y <= mx[1] + 1 && p.z >= mn[2] - 1 && p.z <= mx[2] + 1;
+    };
+    for (uint32_t o = 0; o < tome.objectCount(); ++o) {
+        uint32_t first = 0, count = 0;
+        tome.objectUserIds(o, first, count);
+        float mn[3], mx[3];
+        tome.objectBounds(o, mn, mx);
+        for (uint32_t k = first; k < first + count; ++k) {
+            const uint32_t id = tome.userId(k);
+            if (umbraUserIdClass(id) != kUmbraStaticModel) continue;
+            const uint32_t idx = umbraUserIdIndex(id);
+            ++ids;
+            maxIndex = std::max(maxIndex, idx);
+            if (idx < byCollection.size() && !byCollection[idx].empty()) {
+                bool all = true;
+                for (const auto* i : byCollection[idx]) all = all && inside(i->origin, mn, mx);
+                asCollection += all;
+            }
+            if (idx < byRow.size() && byRow[idx] && inside(byRow[idx]->origin, mn, mx)) ++asRow;
+        }
+    }
+    std::printf("  umbra smodel ids: %zu ids (max %u), %u collections, %zu instances; origin in box as collection %zu, as row %zu\n", ids,
+                maxIndex, collections, inst.size(), asCollection, asRow);
+    CHECK(ids > 9000);
+    CHECK(maxIndex < collections);
+    CHECK(asCollection > ids * 9 / 10);  // a model's origin can sit a little outside its drawn box
+    CHECK(asRow < asCollection);
+}
+
+// The view helper (core umbra_view): bit sets and counts of one view query, and the overlay.
+TEST(umbra_view_on_shipment) {
+    const fs::path json = gfxMapJson("mp_shipment");
+    if (json.empty()) {
+        test::skipf("  SKIP umbra: world_cache/mp_shipment gfx_map export not found\n");
+        return;
+    }
+    std::vector<uint8_t> bytes;
+    std::string err;
+    CHECK(extractUmbraTomeFromGfxMapJson(json.string(), bytes, &err));
+    UmbraTome tome;
+    CHECK(tome.parse(std::move(bytes), &err));
+    const UmbraTomeIndex ix = umbraTomeIndex(tome);
+    CHECK(ix.idsByClass[kUmbraSurface] == 1024 && ix.idsByClass[kUmbraStaticModel] == 9413);
+    CHECK(ix.idsByClass[kUmbraPrimaryLight] == 22 && ix.idsByClass[kUmbraReflectionProbe] == 18);
+    const auto popcount = [](const std::vector<uint32_t>& bits) {
+        size_t n = 0;
+        for (uint32_t w : bits)
+            for (; w; w &= w - 1) ++n;
+        return n;
+    };
+    CHECK(popcount(ix.knownSurfaces) == 1024);
+    // From the middle of a cell, looking along +x with a 90-degree view.
+    float mn[3], mx[3];
+    uint32_t cell = 0;
+    for (uint32_t c = 0; c < tome.cells().size(); ++c)
+        if (tome.cells()[c].flags & 1u) {
+            tome.cellBounds(c, mn, mx);
+            if (mx[0] - mn[0] > 16 && mx[1] - mn[1] > 16 && mx[2] - mn[2] > 16) {
+                cell = c;
+                break;
+            }
+        }
+    tome.cellBounds(cell, mn, mx);
+    const Vec3 eye{(mn[0] + mx[0]) * 0.5, (mn[1] + mx[1]) * 0.5, (mn[2] + mx[2]) * 0.5};
+    const UmbraViewResult v = umbraViewVisibility(tome, ix, eye, Vec3{1, 0, 0}, Vec3{0, 0, 1}, 1.0, 0.5625);
+    CHECK(v.status == UmbraQueryStatus::Ok && v.culls && !v.startCells.empty());
+    CHECK(v.visibleByClass[kUmbraSurface] > 0 && v.visibleByClass[kUmbraSurface] < 1024);
+    CHECK(v.visibleByClass[kUmbraStaticModel] < 9413);
+    // A bit is set for what is visible and for what the tome does not list: among the listed ones exactly the visible.
+    size_t visibleKnown = 0;
+    for (size_t i = 0; i < v.surfaceBits.size(); ++i)
+        for (uint32_t w = v.surfaceBits[i] & ix.knownSurfaces[i]; w; w &= w - 1) ++visibleKnown;
+    CHECK(visibleKnown == v.visibleByClass[kUmbraSurface]);
+    for (size_t i = 0; i < v.surfaceBits.size(); ++i) CHECK((v.surfaceBits[i] | ix.knownSurfaces[i]) == 0xFFFFFFFFu);
+    // The view sees less than all directions together.
+    const float p[3] = {float(eye.x), float(eye.y), float(eye.z)};
+    const UmbraVisibility all = tome.queryPoint(p);
+    CHECK(v.visibleByClass[kUmbraSurface] <= all.userIdsByClass[kUmbraSurface]);
+    const std::vector<UmbraLine> lines = umbraOverlayLines(tome, v, eye, 3000.0);
+    CHECK(lines.size() >= 12);  // at least the camera's cell
+    // Outside the tome nothing is culled.
+    const UmbraViewResult out = umbraViewVisibility(tome, ix, Vec3{1e7, 0, 0}, Vec3{1, 0, 0}, Vec3{0, 0, 1}, 1.0, 0.5625);
+    CHECK(!out.culls && out.surfaceBits.empty() && out.status == UmbraQueryStatus::OutsideTome);
 }

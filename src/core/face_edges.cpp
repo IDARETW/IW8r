@@ -287,10 +287,13 @@ void triangulate(const Welded& w, const Welded::Poly& q, const std::vector<Field
 bool segmentInBrush(const EdgeBrush& c, const Vec3& a, const Vec3& b, double& t0, double& t1) {
     t0 = 0, t1 = 1;
     for (const Plane& p : c.planes) {
-        const double fa = dot(p.n, a) - p.d - 1e-4, fb = dot(p.n, b) - p.d - 1e-4;
-        if (fa > 0 && fb > 0) return false;
-        if (fa > 0) t0 = std::max(t0, fa / (fa - fb));
-        else if (fb > 0) t1 = std::min(t1, fa / (fa - fb));
+        // A point within the tolerance of a plane is on it; where the segment really crosses a plane, the stretch
+        // ends exactly on that plane (the spans cut there must meet the other brush's corner, not miss it by the
+        // tolerance).
+        const double fa = dot(p.n, a) - p.d, fb = dot(p.n, b) - p.d;
+        if (fa > 1e-4 && fb > 1e-4) return false;
+        if (fa > 1e-4) t0 = std::max(t0, fa / (fa - fb));
+        else if (fb > 1e-4) t1 = std::min(t1, fa / (fa - fb));
     }
     return t1 > t0;
 }
@@ -377,6 +380,15 @@ std::vector<EdgeSpan> faceEdgeSpans(const std::vector<EdgeBrush>& brushes, size_
             if (C.bounds.mins.x > eb.maxs.x + 0.1 || C.bounds.maxs.x < eb.mins.x - 0.1 || C.bounds.mins.y > eb.maxs.y + 0.1 ||
                 C.bounds.maxs.y < eb.mins.y - 0.1 || C.bounds.mins.z > eb.maxs.z + 0.1 || C.bounds.maxs.z < eb.mins.z - 0.1)
                 continue;
+            // The face itself is inside or against this brush beside the edge (a point a little into the face from
+            // the edge, a little in front of it): hidden there, so no edge. Overlapping brushes and the side faces
+            // between the slices of a wall are such faces; their edges lie in the visible wall's plane and would
+            // fight with it for the pixels of a line.
+            if (std::find(C.drawn.begin(), C.drawn.end(), uint8_t(1)) != C.drawn.end()) {
+                const Vec3 inFront = outward * -0.05 + nA * 0.01;
+                double t0, t1;
+                if (segmentInBrush(C, a + inFront, b + inFront, t0, t1) && (t1 - t0) * len >= kMinSpan) covers.push_back({t0, t1, 0.0});
+            }
             for (size_t f = 0; f < C.planes.size(); ++f) {
                 if (f < C.drawn.size() && !C.drawn[f]) continue;
                 if (f >= C.wins.size() || C.wins[f].size() < 3) continue;
@@ -393,8 +405,9 @@ std::vector<EdgeSpan> faceEdgeSpans(const std::vector<EdgeBrush>& brushes, size_
                 double t0, t1;
                 if (!segmentInBrush(C, a + shift, b + shift, t0, t1)) continue;
                 if ((t1 - t0) * len < kMinSpan) continue;
+                // Within 2 degrees of the plane the surface simply carries on (a seam); a larger convex bend is a soft fold.
                 double fold = 0;
-                if (cosang < 0.99999) fold = dot(nF, outward) > 0 ? std::acos(std::clamp(cosang, -1.0, 1.0)) : 0.0;
+                if (cosang < 0.9994) fold = dot(nF, outward) > 0 ? std::acos(std::clamp(cosang, -1.0, 1.0)) : 0.0;
                 covers.push_back({t0, t1, fold});
             }
         }
@@ -428,6 +441,83 @@ std::vector<EdgeSpan> faceEdgeSpans(const std::vector<EdgeBrush>& brushes, size_
     return out;
 }
 
+std::vector<Winding> coplanarCovers(const std::vector<EdgeBrush>& brushes, size_t self, size_t face,
+                                    const std::vector<uint32_t>& neighbours) {
+    std::vector<Winding> out;
+    if (self >= brushes.size()) return out;
+    const EdgeBrush& B = brushes[self];
+    if (face >= B.wins.size() || face >= B.planes.size() || B.wins[face].size() < 3) return out;
+    if (face < B.drawn.size() && !B.drawn[face]) return out;
+    const Winding& A = B.wins[face];
+    const Vec3 nA = normalize(B.planes[face].n);
+    const double dA = B.planes[face].d / std::max(1e-12, length(B.planes[face].n));
+    const double areaA = polyArea(A);
+    AABB ab;
+    for (const Vec3& p : A) ab.add(p);
+    for (uint32_t ci : neighbours) {
+        if (ci == self || ci >= brushes.size()) continue;
+        const EdgeBrush& C = brushes[ci];
+        if (C.set != B.set) continue;
+        if (C.bounds.mins.x > ab.maxs.x || C.bounds.maxs.x < ab.mins.x || C.bounds.mins.y > ab.maxs.y || C.bounds.maxs.y < ab.mins.y ||
+            C.bounds.mins.z > ab.maxs.z || C.bounds.maxs.z < ab.mins.z)
+            continue;
+        for (size_t g = 0; g < C.planes.size() && g < C.wins.size(); ++g) {
+            const Winding& F = C.wins[g];
+            if (F.size() < 3 || (g < C.drawn.size() && !C.drawn[g])) continue;
+            const Vec3 nF = normalize(C.planes[g].n);
+            if (dot(nF, nA) < 0.99999) continue;
+            if (std::fabs(C.planes[g].d / std::max(1e-12, length(C.planes[g].n)) - dA) > 0.02) continue;
+            // Who is drawn where they overlap: the smaller face, the later brush of two equal ones.
+            const double areaF = polyArea(F);
+            const double tol = 1e-6 * std::max(1.0, std::max(areaA, areaF));
+            const bool wins = areaF < areaA - tol || (std::fabs(areaF - areaA) <= tol && ci > self);
+            if (!wins) continue;
+            // Do they overlap at all (more than touching)?
+            Winding common = A;
+            Vec3 fc;
+            for (const Vec3& p : F) fc += p;
+            fc = fc * (1.0 / double(F.size()));
+            for (size_t k = 0; k < F.size() && !common.empty(); ++k) {
+                Vec3 m = cross(F[(k + 1) % F.size()] - F[k], nF);
+                if (length(m) < 1e-12) continue;
+                m = normalize(m);
+                if (dot(m, fc - F[k]) > 0) m = m * -1.0;  // outward of F in the plane
+                common = clipKeep(common, m, dot(m, F[k]));
+            }
+            if (common.empty() || polyArea(common) < 0.05) continue;
+            out.push_back(F);
+        }
+    }
+    return out;
+}
+
+namespace {
+
+// The pieces without the part under a convex polygon of their plane.
+std::vector<Piece> withoutCover(std::vector<Piece> pieces, const Winding& cover, const Vec3& n) {
+    Vec3 cc;
+    for (const Vec3& p : cover) cc += p;
+    cc = cc * (1.0 / double(cover.size()));
+    std::vector<Piece> out;
+    for (Piece& pc : pieces) {
+        Winding cur = std::move(pc.poly);
+        for (size_t k = 0; k < cover.size() && !cur.empty(); ++k) {
+            Vec3 m = cross(cover[(k + 1) % cover.size()] - cover[k], n);
+            if (length(m) < 1e-12) continue;
+            m = normalize(m);
+            if (dot(m, cc - cover[k]) > 0) m = m * -1.0;
+            const double c = dot(m, cover[k]);
+            Winding outside = clipKeep(cur, m * -1.0, -c);
+            if (!outside.empty()) out.push_back({std::move(outside), pc.span});
+            cur = clipKeep(cur, m, c);
+        }
+        // What is left of cur lies under the cover: not drawn.
+    }
+    return out;
+}
+
+}  // namespace
+
 EdgeFaceMesh edgeFaceMesh(const Winding& face, const Vec3& normal, const std::vector<EdgeSpan>& spans, double range) {
     EdgeFaceMesh mesh;
     if (face.size() < 3) return mesh;
@@ -440,8 +530,26 @@ EdgeFaceMesh edgeFaceMesh(const Winding& face, const Vec3& normal, const std::ve
     return mesh;
 }
 
+namespace {
+
+// The pieces of one face before welding: its spans' bands, without the parts under coplanar faces of other brushes.
+std::vector<Piece> brushFacePieces(const std::vector<EdgeBrush>& brushes, size_t self, size_t f, const std::vector<uint32_t>& neighbours,
+                                   double range, bool withEdges, std::vector<Field>& fields, std::vector<Winding>* coversOut) {
+    const EdgeBrush& B = brushes[self];
+    const std::vector<EdgeSpan> spans = withEdges ? faceEdgeSpans(brushes, self, f, neighbours) : std::vector<EdgeSpan>();
+    const Vec3 n = normalize(B.planes[f].n);
+    std::vector<Piece> pieces = facePieces(B.wins[f], n, spans, range, fields);
+    const std::vector<Winding> covers = coplanarCovers(brushes, self, f, neighbours);
+    for (const Winding& cover : covers) pieces = withoutCover(std::move(pieces), cover, n);
+    if (coversOut) *coversOut = covers;
+    return pieces;
+}
+
+}  // namespace
+
 std::vector<EdgeFaceMesh> edgeBrushMeshes(const std::vector<EdgeBrush>& brushes, size_t self,
-                                        const std::vector<uint32_t>& neighbours, double range) {
+                                        const std::vector<uint32_t>& neighbours, double range, bool withEdges,
+                                        const std::vector<std::vector<uint32_t>>* allNear) {
     std::vector<EdgeFaceMesh> out;
     if (self >= brushes.size()) return out;
     const EdgeBrush& B = brushes[self];
@@ -450,8 +558,31 @@ std::vector<EdgeFaceMesh> edgeBrushMeshes(const std::vector<EdgeBrush>& brushes,
     Welded w;
     for (size_t f = 0; f < B.wins.size() && f < B.planes.size(); ++f) {
         if (B.wins[f].size() < 3) continue;
-        const std::vector<EdgeSpan> spans = faceEdgeSpans(brushes, self, f, neighbours);
-        for (const Piece& p : facePieces(B.wins[f], normalize(B.planes[f].n), spans, range, fields[f])) w.addPiece(p, f);
+        std::vector<Winding> covers;
+        const std::vector<Piece> pieces = brushFacePieces(brushes, self, f, neighbours, range, withEdges, fields[f], &covers);
+        for (const Piece& p : pieces) w.addPiece(p, f);
+        // The covers' corners become vertices of the pieces' edges they lie on (fixJunctions): no gap beside them.
+        if (!pieces.empty())
+            for (const Winding& cover : covers)
+                for (const Vec3& p : cover) w.add(p);
+    }
+    // The touching brushes' own piece corners, where they lie on this brush: fixJunctions puts them on the edges they
+    // sit on, and they put this brush's on theirs.
+    if (allNear && !w.polys.empty()) {
+        AABB mine = B.bounds;
+        mine.mins = mine.mins - Vec3{kWeld, kWeld, kWeld};
+        mine.maxs = mine.maxs + Vec3{kWeld, kWeld, kWeld};
+        std::vector<Field> scratch;
+        for (uint32_t ni : neighbours) {
+            if (ni == self || ni >= brushes.size() || ni >= allNear->size() || brushes[ni].set != B.set) continue;
+            const EdgeBrush& N = brushes[ni];
+            for (size_t f = 0; f < N.wins.size() && f < N.planes.size(); ++f) {
+                if (N.wins[f].size() < 3) continue;
+                for (const Piece& p : brushFacePieces(brushes, ni, f, (*allNear)[ni], range, withEdges, scratch, nullptr))
+                    for (const Vec3& v : p.poly)
+                        if (mine.contains(v)) w.add(v);
+            }
+        }
     }
     w.fixJunctions();
     for (const auto& q : w.polys) triangulate(w, q, fields[q.face], range, out[q.face]);

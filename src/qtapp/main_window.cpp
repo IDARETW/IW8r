@@ -1898,6 +1898,27 @@ void MainWindow::buildMenus() {
     {
         // View > Game Mode: show what one gametype keeps (its objectives, triggers, script models and brushmodels, and
         // its spawns); the game deletes every other mode's gameobjects when a match starts (research 40).
+        // M2.2: what the stock map's occlusion data (its Umbra tome) lets the game draw from the camera.
+        QMenu* umbra = view->addMenu("Umbra Visibility");
+        QAction* cull = addCommand(umbra, "UmbraCullByTome", "Cull by Tome (draw only what the game draws from here)", QKeySequence(), [this] {
+            setUmbraView(action("UmbraCullByTome")->isChecked(), action("UmbraShowCells")->isChecked());
+        });
+        QAction* cells = addCommand(umbra, "UmbraShowCells", "Show Cells and Portals", QKeySequence(), [this] {
+            setUmbraView(action("UmbraCullByTome")->isChecked(), action("UmbraShowCells")->isChecked());
+        });
+        cull->setCheckable(true);
+        cells->setCheckable(true);
+        umbraCull_ = Settings::instance().value("view/umbraCull", false).toBool();
+        umbraOverlay_ = Settings::instance().value("view/umbraOverlay", false).toBool();
+        cull->setChecked(umbraCull_);
+        cells->setChecked(umbraOverlay_);
+        umbraTimer_ = new QTimer(this);
+        umbraTimer_->setSingleShot(true);
+        umbraTimer_->setInterval(60);
+        connect(umbraTimer_, &QTimer::timeout, this, &MainWindow::updateUmbraView);
+        connect(&ctx_, &EditorContext::cameraChanged, this, [this] {
+            if ((umbraCull_ || umbraOverlay_) && !umbraTimer_->isActive()) umbraTimer_->start();
+        });
         QMenu* gmMenu = view->addMenu("Game Mode");
         gmMenu->setObjectName("gameModeMenu");
         auto* group = new QActionGroup(gmMenu);
@@ -2210,6 +2231,11 @@ void MainWindow::buildMenus() {
         toggle("GameStockLights", "Stock Map Lamps", "game/stockLights", [this](bool on) { camera_->setStockLightsEnabled(on); });
         toggle("GameLightShadows", "Lamp Shadows", "game/lightShadows", [this](bool on) { camera_->setLightShadowsEnabled(on); });
         toggle("GamePostFx", "Bloom and Vignette", "game/postFx", [this](bool on) { camera_->setPostFxEnabled(on); });
+        // Off by default: the game draws no brush outlines, and they show every seam between the brushes of a wall.
+        toggle("GameBrushOutlines", "Brush Outlines (editor only)", "game/brushOutlines", [this](bool on) {
+            ctx_.scene.gameOutlines = on;
+            camera_->materialImagesChanged();  // the kept geometry is made again
+        }, false);
         // Research 109 section 2. Off by default: with the decoded constants it darkens Speedball's sky by a third, which
         // the owner's in-game shot does not show (a scale of its scattered light, cb7[42].y, is not decoded yet).
         toggle("GameVolumetricFog", "Volumetric Fog (uncalibrated)", "game/volumetricFog", [this](bool on) { camera_->setVolumetricFogEnabled(on); },
@@ -7268,6 +7294,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
             dst.insert(dst.end(), rows, rows + 12);
             auto& ld = texInstanced[size_t(ti)].light;
             ld.insert(ld.end(), lit, lit + 12);
+            texInstanced[size_t(ti)].ids.push_back((in.index & 0x80000000u) ? 0xFFFFFFFFu : in.collection);
             lightKeys[size_t(ti)].push_back(key);
             key.first = false;
         }

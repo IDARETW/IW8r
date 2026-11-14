@@ -33,6 +33,8 @@ struct StockModelInstance {
     std::array<Vec3, 3> axis{Vec3{1, 0, 0}, Vec3{0, 1, 0}, Vec3{0, 0, 1}};  // model X, Y, Z in world space (unit columns)
     double scale = 1;                                    // uniform scale from smodelInstanceData (raw value)
     uint32_t index = 0;                                  // its row in GfxWorld.smodels.smodelInstanceData (11.5: hide)
+    uint32_t collection = 0xFFFFFFFFu;                   // its GfxStaticModelCollection (the unit the Umbra tome culls:
+                                                         // user ID class 1); 0xFFFFFFFF = not a placement of the map
     // Baked lighting (docs/research/105 section 1.1), from smodels.modelStaticIndirection[index] and the model's flags:
     // modelFlags & 1 (LIGHTPROBE): lightingIndex is the box in transient zone worldTransient's light grid volumes
     // (stock_lightgrid.h); modelFlags & 2 (LIGHTMAP): lightingIndex indexes GfxWorld.lmapLookup. Defaults when the

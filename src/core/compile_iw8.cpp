@@ -298,7 +298,9 @@ struct EdgeData {
 };
 
 struct Gather {
-    const EdgeData* edges = nullptr;  // set: brush faces are written as their edge meshes, the data in the colour
+    const EdgeData* edges = nullptr;  // set: brush faces are written as their face meshes (coplanar overlaps cut away)
+    bool edgeColours = false;         // ... with the edge data in the vertex colour (a surface shader reads it)
+    size_t coveredFaces = 0;          // faces not written: wholly under coplanar faces of other brushes
     size_t paintedPatches = 0;        // patches whose painted colours were left out because the colour holds edge data
     int subdiv = 4;
     bool patchBackFaces = true;
@@ -352,9 +354,12 @@ void gatherBrush(const Primitive& p, size_t entity, size_t group, Gather& g, boo
     // Face edge data for the map's surface shader: every face as its edge mesh (the same surface, cut so that each
     // vertex knows its distance to the face's edges).
     std::vector<EdgeFaceMesh> edgeMeshes;
+    bool haveMeshes = false;
     if (g.edges)
-        if (const auto it = g.edges->index.find(&p); it != g.edges->index.end())
-            edgeMeshes = edgeBrushMeshes(g.edges->brushes, it->second, g.edges->near[it->second]);
+        if (const auto it = g.edges->index.find(&p); it != g.edges->index.end()) {
+            edgeMeshes = edgeBrushMeshes(g.edges->brushes, it->second, g.edges->near[it->second], kEdgeRange, g.edgeColours, &g.edges->near);
+            haveMeshes = true;
+        }
 
     // Render (doc 15 §2.2): one fan per contributing face, indices [0,k,k+1] (CCW seen from outside).
     for (size_t fi = 0; fi < cb.size() && fi < wins.size(); ++fi) {
@@ -379,13 +384,19 @@ void gatherBrush(const Primitive& p, size_t entity, size_t group, Gather& g, boo
         c.entity = entity;
         c.group = group;
         c.editorMaterial = mat;
-        if (fi < edgeMeshes.size() && !edgeMeshes[fi].idx.empty()) {
+        if (haveMeshes && fi < edgeMeshes.size()) {
+            if (edgeMeshes[fi].idx.empty()) {
+                ++g.coveredFaces;  // wholly under coplanar faces of other brushes
+                continue;
+            }
             for (const EdgeVertex& q : edgeMeshes[fi].verts) {
                 const auto uv = faceUV(n, tp, q.pos);
                 c.verts.push_back({q.pos, n, faceTan, uv[0], uv[1]});
-                const uint32_t packed = packEdge(q);
-                c.verts.back().hasColor = true;
-                c.verts.back().color = {std::uint8_t(packed), std::uint8_t(packed >> 8), std::uint8_t(packed >> 16), std::uint8_t(packed >> 24)};
+                if (g.edgeColours) {
+                    const uint32_t packed = packEdge(q);
+                    c.verts.back().hasColor = true;
+                    c.verts.back().color = {std::uint8_t(packed), std::uint8_t(packed >> 8), std::uint8_t(packed >> 16), std::uint8_t(packed >> 24)};
+                }
                 g.bounds.add(q.pos);
             }
             // The converter refuses a triangle without an area in 32-bit positions: none is written.
@@ -431,8 +442,8 @@ void gatherPatch(const Primitive& p, size_t entity, size_t group, Gather& g) {
     const PatchMesh m = tessellatePrimitive(p, g.subdiv);
     // Painted vertex colours (8.11) follow the same tessellation; a patch without colour blocks writes none.
     // With edge data the world's vertex colour is read as that data: a painted patch keeps white (no edge).
-    if (g.edges && patchHasColours(p)) ++g.paintedPatches;
-    const std::vector<Rgba8> colours = patchHasColours(p) && !g.edges ? tessellatePatchColours(p, g.subdiv) : std::vector<Rgba8>{};
+    if (g.edgeColours && patchHasColours(p)) ++g.paintedPatches;
+    const std::vector<Rgba8> colours = patchHasColours(p) && !g.edgeColours ? tessellatePatchColours(p, g.subdiv) : std::vector<Rgba8>{};
     // The patch's own texture coordinates (file st / 1024, patch_ops kPatchStUnits), tessellated like the positions; a
     // patch without any keeps the planar projection below.
     const std::vector<std::array<double, 2>> stUv = tessellatePatchUVs(p, g.subdiv);
@@ -1622,7 +1633,9 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     }
     EdgeData edgeData;
     const bool surfaceEdges = haveSurfaceShader && customShaderUsesEdges(surfaceShader.code);
-    if (surfaceEdges) {
+    {
+        // Always: the static world's brush faces go through core face_edges, which also cuts away the part of a face
+        // that lies under a coplanar face of another brush (two faces in one plane fight for every pixel in game).
         for (const auto& ee : map.entities) {
             const std::string c = lower(ee.classname());
             if (c != "worldspawn" && c != "func_group") continue;
@@ -1644,6 +1657,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         }
         edgeData.near = edgeNeighbours(edgeData.brushes);
         g.edges = &edgeData;
+        g.edgeColours = surfaceEdges;
     }
     const Entity* worldspawn = nullptr;
     std::vector<const Entity*> points;
@@ -3072,6 +3086,9 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     } else if (!surfaceShaderError.empty()) {
         warn.push_back("surface shader not used: " + surfaceShaderError);
     }
+    if (g.coveredFaces)
+        warn.push_back(std::to_string(g.coveredFaces) + " brush face(s) not built: each lies wholly under faces of other brushes in the "
+                       "same plane (overlapping faces are drawn once: the smaller one where they overlap)");
     const std::string world =
         "{\"schema\":1,\"name\":" + quote(mapName) + ",\"sky\":" + quote(skyValue) + ",\"bounds\":" + boundsJson +
         ",\"sun\":{\"ambient\":[0.5,0.5,0.5],\"angles\":" + vec3raw(sunPitch, sunYaw, sunRoll) +
