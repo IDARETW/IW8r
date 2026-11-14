@@ -1881,6 +1881,58 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         }
         auto st = web.handle("GET", "/api/state", {}, true, {});
         r.check(st.status == 200 && QJsonDocument::fromJson(st.body).object().value("map").toString() == "test.map", "GET /api/state");
+        {
+            // Plan 3.3: the browser's menu bar. Every command of the editor's menus is listed in menu order and can be
+            // run by id; commands that open a dialog at the editor, and the editor's own (exit, installs), are refused.
+            WebServer::Hooks ch;
+            ch.mapName = [] { return QString("test.map"); };
+            ch.commands = [&w] { return w.webCommandList(); };
+            ch.runCommand = [&w](const QString& id, QString* why) { return w.runWebCommand(id, why); };
+            WebServer cweb(&ctx, ch);
+            const QJsonArray list = QJsonDocument::fromJson(cweb.handle("GET", "/api/commands", {}, true, {}).body).object().value("commands").toArray();
+            int runnable = 0, blocked = 0, separators = 0;
+            QSet<QString> tops, ids;
+            QJsonObject gameLighting, exitCmd, shaderEditor;
+            for (const QJsonValue& v : list) {
+                const QJsonObject c = v.toObject();
+                if (c.value("sep").toBool()) {
+                    ++separators;
+                    continue;
+                }
+                ids.insert(c.value("id").toString());
+                tops.insert(c.value("menu").toString().section('/', 0, 0));
+                (c.value("blocked").toString().isEmpty() ? runnable : blocked)++;
+                if (c.value("id").toString() == "ToggleGameLighting") gameLighting = c;
+                if (c.value("id").toString() == "Exit") exitCmd = c;
+                if (c.value("id").toString() == "GameAoStrength") shaderEditor = c;
+            }
+            r.check(runnable > 150 && blocked > 20 && separators > 10 && tops.contains("File") && tops.contains("View") && tops.contains("Tools"),
+                    QString("GET /api/commands lists the editor's menus: %1 runnable, %2 for the editor only, %3 menus")
+                        .arg(runnable).arg(blocked).arg(tops.size()));
+            r.check(gameLighting.value("menu").toString() == "View" && gameLighting.value("checkable").toBool() &&
+                        gameLighting.value("blocked").toString().isEmpty() && !exitCmd.value("blocked").toString().isEmpty() &&
+                        shaderEditor.value("menu").toString() == "View/Game Lighting Options" &&
+                        shaderEditor.value("blocked").toString().contains("dialog"),
+                    "a command carries its menu path, its tick and why the browser cannot run it");
+            QAction* snap = w.action("ToggleGameLighting");
+            const bool was = snap && snap->isChecked();
+            const auto run = cweb.handle("POST", "/api/command", "{\"id\":\"ToggleGameLighting\"}", true, {});
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+            const bool toggled = snap && snap->isChecked() != was;
+            cweb.handle("POST", "/api/command", "{\"id\":\"ToggleGameLighting\"}", true, {});
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+            r.check(run.status == 200 && toggled && snap && snap->isChecked() == was, "POST /api/command runs a command as its menu entry would");
+            const auto refuse1 = cweb.handle("POST", "/api/command", "{\"id\":\"Exit\"}", true, {});
+            const auto refuse2 = cweb.handle("POST", "/api/command", "{\"id\":\"GameAoStrength\"}", true, {});
+            const auto refuse3 = cweb.handle("POST", "/api/command", "{\"id\":\"NoSuchCommand\"}", true, {});
+            r.check(refuse1.status == 400 && refuse1.body.contains("only at the editor") && refuse2.status == 400 && refuse2.body.contains("dialog") &&
+                        refuse3.status == 400 && w.isVisible(),
+                    "the editor's own commands, dialogs and unknown ids are refused with the reason");
+            auto pageNow = web.handle("GET", "/", {}, true, {});
+            auto jsNow = web.handle("GET", "/app.js", {}, true, {});
+            r.check(pageNow.body.contains("id=\"menubar\"") && pageNow.body.contains("cmdSearch") && jsNow.body.contains("/api/commands"),
+                    "the browser page has the menu bar and the command search");
+        }
         auto mp = web.handle("GET", "/api/map", {}, true, {});
         const QJsonObject mo = QJsonDocument::fromJson(mp.body).object();
         r.check(mp.status == 200 && mo.value("items").toArray().size() > 0 && mo.value("entities").toArray().size() > 0,

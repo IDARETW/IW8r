@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Web: every editor command from the browser.** The web page has the editor's own menu bar now (File, Edit, View,
+  Grid, Brush, Primitives, Patch, Compile, Tools, Help), built from the editor's command list, with ticks, shortcuts
+  and a "Find a command" box (Enter runs the first match). A command runs in the editor as its menu entry would.
+  Commands that open a dialog on the editor's screen are shown greyed with that reason (web forms for them come
+  next), and exit, the web server's own switches and installs into the game stay with the person at the editor.
+  API: `GET /api/commands`, `POST /api/command {id}`. Checked in a real browser against a running editor.
+
 - **View > Game Lighting Options > Sun Shadow Detail.** The sun's shadow maps (the lit preview and Game Lighting) can
   be Low (1024 texels), Normal (2048, as before) or High (4096). High draws thin shadows such as cables and railings
   sharply; it costs 128 MB of video memory instead of 32 and no measurable frame time on Cinder Rail. The choice is

@@ -3,6 +3,7 @@
 #include "umbra_view.h"
 #include "command_script.h"
 
+#include <QJsonArray>
 #include <QElapsedTimer>
 #include <QMainWindow>
 #include <QSet>
@@ -121,6 +122,12 @@ public:
     // Browser access (L10): starts/stops the web server from Settings web/* (enabled, port, lan, upnp).
     bool applyWebServerSettings(QString* message = nullptr);
     WebServer* webServer() const { return web_; }
+    // The browser's menu bar (plan 3.3): every command of the menus in menu order, as the web API lists them, and
+    // one run by id. A command is not run from the browser when it opens a dialog on the editor's screen (its label
+    // ends in "...") or belongs to the person at the editor (exit, the web server itself, installs into the game).
+    QJsonArray webCommandList() const;
+    bool runWebCommand(const QString& id, QString* why);
+    static QString webCommandBlocked(const QString& id, const QString& label);
     // Reflection probe capture (5.5): renders every probe position (the world-default probe 0 at the brush bounds
     // centre, then each reflection_probe in map order) into <build>/probe_capture; the next compile uses them.
     int captureReflectionProbes(QString* dir = nullptr);

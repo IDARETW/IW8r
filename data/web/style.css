@@ -44,3 +44,21 @@ footer { padding: 4px 10px; border-top: 1px solid var(--line); color: var(--mute
   aside { border-left: 0; border-top: 1px solid var(--line); grid-template-rows: auto auto auto; }
   header { gap: 6px; }
 }
+
+/* The menu bar: every editor command (GET /api/commands). */
+body { grid-template-rows: auto auto 1fr auto; }
+#menubar { display: flex; align-items: center; gap: 2px; padding: 2px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+#menubar button { border-color: transparent; background: none; padding: 2px 8px; }
+#menubar button:hover, #menubar button.open { background: #30343c; border-color: var(--line); }
+#cmdSearch { margin-left: auto; width: 200px; }
+#menuPopup { position: fixed; z-index: 20; min-width: 260px; max-width: 460px; max-height: 70vh; overflow: auto; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 6px 18px rgba(0, 0, 0, .5); padding: 4px 0; }
+#menuPopup .item { display: flex; gap: 12px; padding: 3px 12px 3px 8px; cursor: pointer; white-space: nowrap; }
+#menuPopup .item:hover, #menuPopup .item.first { background: #30343c; }
+#menuPopup .item.off { color: var(--muted); cursor: default; }
+#menuPopup .item.off:hover { background: none; }
+#menuPopup .tick { width: 14px; flex: none; color: var(--accent); }
+#menuPopup .label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+#menuPopup .key, #menuPopup .where { color: var(--muted); font-size: 11px; }
+#menuPopup .caption { padding: 4px 8px 2px; color: var(--accent); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+#menuPopup hr { border: 0; border-top: 1px solid var(--line); margin: 3px 0; }

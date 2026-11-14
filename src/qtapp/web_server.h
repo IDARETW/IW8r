@@ -22,10 +22,15 @@
 //   GET  /api/thumb?kind=..&name=..  a cached thumbnail image (404 when none yet)
 //   POST /api/place    {kind, name, at:[x,y,z]}   models -> misc_model, effects -> fx_origin, sounds -> sound_emitter
 //   POST /api/material {name}        apply to the selected brushes / faces
+//   GET  /api/commands               every editor command in menu order: {id, label, menu, shortcut, checkable,
+//                                    checked, enabled, blocked} ("blocked": why the browser cannot run it, "" = it
+//                                    can) and {sep: true, menu} between groups
+//   POST /api/command  {id}          runs a command as the menu would (400 with the reason when it cannot)
 #pragma once
 
 #include <QByteArray>
 #include <QHash>
+#include <QJsonArray>
 #include <QList>
 #include <QObject>
 #include <QSet>
@@ -53,6 +58,10 @@ public:
         std::function<void()> buildDeployLoad; // F5
         std::function<bool(QString*)> loadInGame;  // Live Link: load the compiled map in the running game
         std::function<QByteArray(const QString& kind, const QString& name)> thumbnail;  // JPEG bytes, empty = none yet
+        // Every command of the editor's menus, in menu order (MainWindow::webCommandList).
+        std::function<QJsonArray()> commands;
+        // Runs one by id; false with *why when it is unknown, not available now, or not for the browser.
+        std::function<bool(const QString& id, QString* why)> runCommand;
     };
     WebServer(EditorContext* ctx, Hooks hooks, QObject* parent = nullptr);
     ~WebServer() override;

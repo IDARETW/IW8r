@@ -19,6 +19,7 @@
 #include "material_clone.h"
 #include "uv_editor.h"
 #include <cstring>
+#include <QSet>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -4785,6 +4786,68 @@ int MainWindow::captureReflectionProbes(QString* dirOut) {
     return done;
 }
 
+QString MainWindow::webCommandBlocked(const QString& id, const QString& label) {
+    static const QSet<QString> editorOnly{"Exit", "WebServer", "WebServerSettings", "InstallStockMap", "RestoreStockMap", "OpenInNewWindow"};
+    if (editorOnly.contains(id)) return "only at the editor itself";
+    if (label.endsWith("...")) return "opens a dialog on the editor's screen";
+    return {};
+}
+
+QJsonArray MainWindow::webCommandList() const {
+    QJsonArray out;
+    const std::function<void(const QMenu*, const QString&)> walk = [&](const QMenu* menu, const QString& path) {
+        bool separatorDue = false, any = false;
+        for (QAction* a : menu->actions()) {
+            if (a->isSeparator()) {
+                separatorDue = any;
+                continue;
+            }
+            if (const QMenu* sub = a->menu()) {
+                QString title = sub->title();
+                title.remove('&');
+                walk(sub, path + "/" + title);
+                continue;
+            }
+            const QString id = a->objectName();
+            if (id.isEmpty() || actions_.value(id) != a || !a->isVisible()) continue;  // only addCommand's actions
+            if (separatorDue) out.append(QJsonObject{{"sep", true}, {"menu", path}});
+            separatorDue = false, any = true;
+            QString label = a->text();
+            label.remove('&');
+            out.append(QJsonObject{{"id", id}, {"label", label}, {"menu", path}, {"shortcut", a->shortcut().toString(QKeySequence::NativeText)},
+                                   {"checkable", a->isCheckable()}, {"checked", a->isChecked()}, {"enabled", a->isEnabled()},
+                                   {"blocked", webCommandBlocked(id, label)}});
+        }
+    };
+    for (QAction* top : menuBar()->actions())
+        if (const QMenu* m = top->menu()) {
+            QString title = m->title();
+            title.remove('&');
+            walk(m, title);
+        }
+    return out;
+}
+
+bool MainWindow::runWebCommand(const QString& id, QString* why) {
+    QAction* a = actions_.value(id);
+    const auto no = [&](const QString& text) {
+        if (why) *why = text;
+        return false;
+    };
+    if (!a) return no("there is no command " + id);
+    QString label = a->text();
+    label.remove('&');
+    if (const QString blocked = webCommandBlocked(id, label); !blocked.isEmpty()) return no(label + ": " + blocked);
+    if (!a->isEnabled()) return no(label + " is not available now");
+    // After the reply has gone out: a command may take long, or show a message at the editor.
+    QPointer<QAction> ptr(a);
+    QTimer::singleShot(0, this, [ptr] {
+        if (ptr && ptr->isEnabled()) ptr->trigger();
+    });
+    ctx_.setStatus(label + " (from the browser)");
+    return true;
+}
+
 bool MainWindow::applyWebServerSettings(QString* message) {
     auto& s = Settings::instance();
     if (!web_) {
@@ -4839,6 +4902,8 @@ bool MainWindow::applyWebServerSettings(QString* message) {
             cache.insert(key, jpeg);
             return jpeg;
         };
+        hooks.commands = [this] { return webCommandList(); };
+        hooks.runCommand = [this](const QString& id, QString* why) { return runWebCommand(id, why); };
         web_ = new WebServer(&ctx_, hooks, this);
         upnp_ = new UpnpPortMapper(this);
         connect(upnp_, &UpnpPortMapper::changed, this, [this] {
@@ -4846,7 +4911,10 @@ bool MainWindow::applyWebServerSettings(QString* message) {
             ctx_.setStatus(upnp_->status());
         });
     }
-    const bool on = s.value("web/enabled", false).toBool();
+    // IW8R_WEB_PORT=<port>: this instance serves on this machine only at that port (browser checks during development);
+    // the saved settings are not read for it and not changed.
+    const int devPort = qEnvironmentVariableIntValue("IW8R_WEB_PORT");
+    const bool on = devPort > 0 || s.value("web/enabled", false).toBool();
     if (QAction* a = action("WebServer")) a->setChecked(on);
     upnp_->remove();
     web_->stop();
@@ -4854,16 +4922,16 @@ bool MainWindow::applyWebServerSettings(QString* message) {
         if (message) *message = "Web server off";
         return true;
     }
-    const bool lan = s.value("web/lan", false).toBool();
+    const bool lan = devPort <= 0 && s.value("web/lan", false).toBool();
     if (lan && !WebServer::hasCredentials()) {
         if (message) *message = "Web server: set a username and password first (Tools > Web Server Settings)";
         return false;
     }
-    const quint16 port = quint16(s.value("web/port", 8780).toInt());
+    const quint16 port = quint16(devPort > 0 ? devPort : s.value("web/port", 8780).toInt());
     QString err;
     // HTTPS (web/tls): PEM certificate and key, by default web_tls/cert.pem and key.pem beside the editor.
     const QString tlsDir = QCoreApplication::applicationDirPath() + "/web_tls";
-    const bool tls = s.value("web/tls", false).toBool();
+    const bool tls = devPort <= 0 && s.value("web/tls", false).toBool();
     const QString cert = tls ? s.value("web/cert", tlsDir + "/cert.pem").toString() : QString();
     const QString key = tls ? s.value("web/key", tlsDir + "/key.pem").toString() : QString();
     if (!web_->start(port, lan, &err, cert, key)) {

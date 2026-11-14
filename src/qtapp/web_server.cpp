@@ -453,6 +453,11 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
             r.body = img;
             return r;
         }
+        if (path == "/api/commands") {
+            Response r;
+            r.body = json({{"commands", hooks_.commands ? hooks_.commands() : QJsonArray()}});
+            return r;
+        }
         if (path == "/api/log") {
             const qint64 since = q.queryItemValue("since").toLongLong();
             QJsonArray lines;
@@ -505,6 +510,10 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
     } else if (path == "/api/load") {
         QString why;
         if (!hooks_.loadInGame || !hooks_.loadInGame(&why)) return error(400, why.isEmpty() ? QString("the game is not reachable") : why);
+    } else if (path == "/api/command") {
+        const QString id = in.value("id").toString();
+        QString why;
+        if (!hooks_.runCommand || !hooks_.runCommand(id, &why)) return error(400, why.isEmpty() ? QString("the command cannot be run") : why);
     } else if (path == "/api/material") {
         const std::string name = in.value("name").toString().trimmed().toStdString();
         if (name.empty() || name.find_first_of(" \t\"") != std::string::npos) return error(400, "bad material name");

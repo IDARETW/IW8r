@@ -2,6 +2,13 @@
 
 ## Latest (2026-11-13)
 
+- Plan M3 started. 3.3 part 1: MainWindow::webCommandList (menu walk over addCommand's actions: id, label, menu path,
+  shortcut, checkable, checked, enabled, blocked) / runWebCommand (queued trigger) / webCommandBlocked (label ends in
+  "..." = dialog; Exit, WebServer, WebServerSettings, InstallStockMap, RestoreStockMap, OpenInNewWindow = editor
+  only); WebServer hooks commands / runCommand, GET /api/commands, POST /api/command; data/web menubar + cmdSearch +
+  menuPopup. Dev switch IW8R_WEB_PORT=<port> (this instance serves on 127.0.0.1, settings untouched): browser check
+  done with out/audit_bin2 exe on 8791 (10 menus, View 93 items, Game Lighting toggled from the page). Found there:
+  GET /api/map is 64 MB for the 205-item showcase and 248 MB for Cinder Rail (every model triangle) = plan 3.2.
 - Plan 1.10 closed: Sun Shadow Detail (SceneRenderer::setSunShadowMapSize 1024 / 2048 / 4096, shadowSize_ replaces
   kShadowSize, shadowPcf reads the map's size with GetDimensions; CameraView::setSunShadowMapSize; command
   GameSunShadowDetail, setting game/sunShadowSize, bench override IW8R_SUN_SHADOW_SIZE). Cinder Rail A/B:

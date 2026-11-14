@@ -289,3 +289,89 @@ window.radiant = { post, setStatus, selectedSet, selKey, api };
 window.addEventListener("resize", resize);
 resize();
 refresh().then(connect).catch((e) => setStatus("Cannot reach the editor: " + e.message));
+
+// --- Menu bar (plan 3.3): the editor's own commands, listed by GET /api/commands and run by POST /api/command. ---
+let commands = [];
+function closeMenu() {
+  $("menuPopup").hidden = true;
+  for (const b of document.querySelectorAll("#menubar button.open")) b.classList.remove("open");
+}
+function commandRow(c, withPath) {
+  const row = document.createElement("div");
+  const off = !c.enabled || c.blocked;
+  row.className = "item" + (off ? " off" : "");
+  row.title = c.blocked ? c.label + ": " + c.blocked : (c.enabled ? "" : "Not available now");
+  const tick = document.createElement("span"); tick.className = "tick"; tick.textContent = c.checked ? "\u2713" : "";
+  const label = document.createElement("span"); label.className = "label"; label.textContent = c.label;
+  row.append(tick, label);
+  if (withPath) { const w = document.createElement("span"); w.className = "where"; w.textContent = c.menu.replace(/\//g, " > "); row.append(w); }
+  if (c.shortcut) { const k = document.createElement("span"); k.className = "key"; k.textContent = c.shortcut; row.append(k); }
+  if (!off) row.onclick = () => runCommand(c);
+  return row;
+}
+async function runCommand(c) {
+  closeMenu();
+  try { await post("/api/command", { id: c.id }); setStatus(c.label); queueRefresh(); } catch (e) { /* post() showed the reason */ }
+}
+function showPopup(rows, x, y) {
+  const pop = $("menuPopup");
+  pop.textContent = "";
+  pop.append(...rows);
+  pop.hidden = false;
+  pop.style.left = Math.max(4, Math.min(x, window.innerWidth - pop.offsetWidth - 4)) + "px";
+  pop.style.top = y + "px";
+}
+async function openMenu(top, anchor) {
+  const wasOpen = anchor.classList.contains("open");
+  closeMenu();
+  if (wasOpen) return;
+  try { commands = (await get("/api/commands")).commands || []; } catch (e) { return; }  // fresh ticks and states
+  const rows = [];
+  let sub = top;
+  for (const c of commands) {
+    if (c.menu !== top && !c.menu.startsWith(top + "/")) continue;
+    if (c.menu !== sub) {
+      sub = c.menu;
+      if (sub !== top) { const cap = document.createElement("div"); cap.className = "caption"; cap.textContent = sub.slice(top.length + 1).replace(/\//g, " > "); rows.push(cap); }
+      else rows.push(document.createElement("hr"));
+    }
+    if (c.sep) { rows.push(document.createElement("hr")); continue; }
+    rows.push(commandRow(c, false));
+  }
+  anchor.classList.add("open");
+  const r = anchor.getBoundingClientRect();
+  showPopup(rows, r.left, r.bottom + 2);
+}
+function buildMenuBar() {
+  const bar = $("menubar"), search = $("cmdSearch");
+  for (const b of bar.querySelectorAll("button")) b.remove();
+  const tops = [];
+  for (const c of commands) { const t = c.menu.split("/")[0]; if (!tops.includes(t)) tops.push(t); }
+  for (const t of tops) {
+    const b = document.createElement("button");
+    b.textContent = t;
+    b.onclick = (ev) => { ev.stopPropagation(); openMenu(t, b); };
+    bar.insertBefore(b, search);
+  }
+}
+function searchCommands() {
+  const text = $("cmdSearch").value.trim().toLowerCase();
+  closeMenu();
+  if (!text) return [];
+  const found = commands.filter((c) => !c.sep && (c.label.toLowerCase().includes(text) || c.menu.toLowerCase().includes(text))).slice(0, 40);
+  const rows = found.map((c) => commandRow(c, true));
+  if (!rows.length) { const none = document.createElement("div"); none.className = "caption"; none.textContent = "No command matches"; rows.push(none); }
+  else rows[0].classList.add("first");
+  const r = $("cmdSearch").getBoundingClientRect();
+  showPopup(rows, r.left, r.bottom + 2);
+  return found;
+}
+$("cmdSearch").addEventListener("input", searchCommands);
+$("cmdSearch").addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") { $("cmdSearch").value = ""; closeMenu(); }
+  if (ev.key !== "Enter") return;
+  const first = searchCommands().find((c) => c.enabled && !c.blocked);
+  if (first) { $("cmdSearch").value = ""; runCommand(first); }
+});
+document.addEventListener("click", (ev) => { if (!$("menuPopup").contains(ev.target) && ev.target !== $("cmdSearch")) closeMenu(); });
+get("/api/commands").then((j) => { commands = j.commands || []; buildMenuBar(); }).catch(() => {});
