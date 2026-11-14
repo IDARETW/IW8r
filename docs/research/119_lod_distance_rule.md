@@ -9,7 +9,7 @@ editor does with it.
 `R_SetLodParms` is at `0x14197F880` (found by the constant 2.1186731, which the exe holds once, at `0x1424CE830`).
 Nothing was run in the game.
 
-## 1. The rule (the factor VERIFIED in Replay; the per-model use INFERRED from GT)
+## 1. The rule (VERIFIED in Replay; first read in GT)
 
 Replay `0x14197F880`: `tanHalfFovY x 2.118673 x lodOverride`, divided by the memory-pressure modifier, is stored as
 `invFovScale` (+64); `min(invFovScale, 1)` as `cappedLodScale` (+68); the ramp's scale and bias are that factor times
@@ -20,9 +20,14 @@ Replay `0x1418D71A0` (one of the seven functions that read the scale table, whic
 the same 16 values): the clutter test `flags & 0x20`, `instanceCount > 1 || clutter` for the many-instance path, the
 distance `sqrt(sum(max(|eye - mid| - half, 0)^2))` to the collection's bounds (and `|eye - mid| + half` for the far
 end of a many-instance collection), the call that returns the level, and `level == 6` returning nothing to draw. So
-the box distance, the two flags and "6 = not drawn" are VERIFIED in Replay. The inside of the level function
-(`dist x invFovScale` against the LOD distances, `dist x cappedLodScale / lodCullScale` against the last one) was read
-in GT only.
+the box distance, the two flags and "6 = not drawn" are VERIFIED in Replay.
+
+Replay `0x1418D6C80` (the collection's level and distances) multiplies the distance by the factor and calls the
+model's level function, Replay `0x1414E9E20`. That one walks the model's LODs (`numLods` at model + 10, each LOD's
+distance at model + 240 + 64 x i): a level before the last is taken when the first distance is below its own LOD
+distance; the last level is taken while the second distance (the cull distance) is below the last LOD distance, and
+past it the answer is 6. So the whole rule of this note is VERIFIED in Replay: levels by `dist x invFovScale`, the
+end by `dist x min(invFovScale, 1) / lodCullScale` against the last LOD distance.
 
 `R_SetLodParms` (`gfx_d3d\r_scene.cpp`, around lines 14600-14660):
 
@@ -100,8 +105,7 @@ units outside 0.47 % differ and the frame goes from 9.2 to 8.3 ms. Verdansk, rai
 
 ## 3. Not determined
 
-- The inside of `R_GetStaticModelCollectionLODAndDists` in Replay (how the two scaled distances are compared): read
-  in GT only.
+- The debug overrides inside the level function (test LODs, a minimum level while streaming) are not modelled.
 - How a collection of several instances picks each instance's level between the nearest and the farthest (the
   viewport measures every placement on its own).
 - The clutter ramp (`r_st_clutterLodScale`, `r_st_clutterLodBias`): the viewport's ground clutter uses the plain rule.
