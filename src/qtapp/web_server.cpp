@@ -600,6 +600,13 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
             r.body = json(o);
             return r;
         }
+        if (path == "/api/assetinfo") {
+            const QJsonObject info = hooks_.assetInfo ? hooks_.assetInfo(q.queryItemValue("kind"), q.queryItemValue("name", QUrl::FullyDecoded)) : QJsonObject();
+            if (info.isEmpty()) return error(404, "there is no info for this");
+            Response r;
+            r.body = json(info);
+            return r;
+        }
         if (path == "/api/forms") {
             Response r;
             r.body = json({{"forms", hooks_.forms ? hooks_.forms() : QJsonArray()}});

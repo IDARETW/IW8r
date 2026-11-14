@@ -621,6 +621,33 @@ void SurfacePanel::apply(const Primitive::TexFields& f, const QString& what) {
     if (ctx_->doc.editPrimitives(edits, what.toStdString())) ctx_->documentEdited(what + " (undoable)");
 }
 
+SurfacePanel::Current SurfacePanel::current() const {
+    Current c;
+    const Primitive* p = nullptr;
+    size_t face = 0;
+    c.faces = !ctx_->doc.faceSelection().empty();
+    if (c.faces) {
+        const FaceRef& fr = *ctx_->doc.faceSelection().begin();
+        const EntityItem* it = ctx_->doc.findItem(fr.entity, fr.item);
+        p = it ? it->prim() : nullptr;
+        face = fr.face;
+        c.count = ctx_->doc.faceSelection().size();
+    } else {
+        for (const auto& r : ctx_->doc.selection()) {
+            const EntityItem* it = r.item ? ctx_->doc.findItem(r.entity, r.item) : nullptr;
+            if (!it || !it->prim() || it->prim()->kind != PrimKind::Brush) continue;
+            if (!p) p = it->prim();
+            ++c.count;
+        }
+    }
+    if (!p || face >= p->faces.size()) return c;
+    c.any = true;
+    c.material = qs(p->faces[face].material());
+    if (const auto v = p->textureFields(face)) c.tex = *v, c.hasTex = true;
+    if (const auto lp = lightmapParamsOfFace(*p, face)) c.lightmapX = lp->sx, c.lightmapY = lp->sy;
+    return c;
+}
+
 void SurfacePanel::nudge(int field, double delta, bool multiply) {
     // Per face: offsets/rotation add, width/height multiply; one undo step for the whole selection.
     std::vector<Document::PrimEdit> edits;

@@ -9,7 +9,12 @@
   applyPreferences, build/realScriptables, build/collisionLayout, DevmapRunner play options; no folders, no host
   command), vision overrides in the atmosphere form (visionOverridesJson decides), prefabs in the Assets panel (hooks
   prefabs / placePrefab over PrefabBrowser rows; thumbnails by row; the dock's list is loaded on the first request).
-  Open on the web list: Surface / UV as a form, Material / Effect Info, vertex and edge tools.
+  Then: form "surface" (SurfacePanel::current / apply / applyOp / applyLightmapScale through MainWindow::surface_; a
+  findChild lookup did not find the panel in a running editor with a restored layout, the GUI test did not show that),
+  forms may set "reload" (the page reads the form again after Apply), GET /api/assetinfo?kind=&name= (hook assetInfo,
+  showMaterialInfo / showModelInfo / showEffectInfo with show = false; names with a path are refused). The page takes
+  scripts, pictures and links out of that HTML before showing it.
+  Open on the web list: compile options and Build Budget as a form, vertex and edge tools.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder
   boxes -> free boxes = cells, portals = shared rectangles both ways, per-cell object lists by real box, objects keep
   scene-sized bounds, a midpoint view tree with one cell per leaf and the nearest cell for solid / outside; a tree

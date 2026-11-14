@@ -2066,10 +2066,71 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 const QJsonObject sun = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=sunSky", {}, true, {}).body).object();
                 QStringList sunKeys;
                 for (const QJsonValue& f : sun.value("fields").toArray()) sunKeys << f.toObject().value("key").toString() + ":" + f.toObject().value("type").toString();
-                r.check(forms.size() == 7 && sun.value("title").toString() == "Sun & Sky" &&
+                r.check(forms.size() == 8 && sun.value("title").toString() == "Sun & Sky" &&
                             sunKeys == QStringList({"pitch:number", "yaw:number", "color:color", "sky:text"}) &&
                             fweb.handle("GET", "/api/form?id=nothing", {}, true, {}).status == 404,
                         "GET /api/forms lists the forms and GET /api/form gives a form's fields with the map's values");
+                {
+                    // Surface: the Surface panel's fields on the selection. Nothing selected = nothing to edit.
+                    ctx.doc.deselectAll();
+                    const QJsonObject none = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=surface", {}, true, {}).body).object();
+                    const auto refused = fweb.handle("POST", "/api/form", "{\"id\":\"surface\",\"values\":{\"xoff\":32}}", true, {});
+                    const Entity* wsS = ctx.doc.worldspawn();
+                    SelRef brush{};
+                    for (size_t n = 0; wsS && n < 64 && !brush.item; ++n)
+                        if (const EntityItem* it = nthPrim(*wsS, n); it && it->prim() && it->prim()->kind == PrimKind::Brush && it->prim()->textureFields(0))
+                            brush = SelRef{wsS->id, it->id};
+                    ctx.doc.select(brush, false);
+                    const size_t undoS = ctx.doc.undoPosition();
+                    const auto fieldsOf = [&](size_t face) {
+                        const EntityItem* it = ctx.doc.findItem(brush.entity, brush.item);
+                        return it && it->prim() ? it->prim()->textureFields(face) : std::nullopt;
+                    };
+                    const auto before = fieldsOf(0);
+                    const QJsonObject sf = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=surface", {}, true, {}).body).object();
+                    QStringList skeys;
+                    for (const QJsonValue& f : sf.value("fields").toArray()) skeys << f.toObject().value("key").toString();
+                    const auto setS = fweb.handle("POST", "/api/form", "{\"id\":\"surface\",\"values\":{\"xoff\":32,\"rot\":45,\"op\":\"none\"}}", true, {});
+                    const auto after0 = fieldsOf(0), after1 = fieldsOf(1);
+                    const bool set = setS.status == 200 && before && after0 && after1 && (*after0)[2] == 32 && (*after0)[4] == 45 && (*after1)[2] == 32 &&
+                                     (*after0)[0] == (*before)[0] && ctx.doc.undoPosition() == undoS + 1;
+                    const auto fit = fweb.handle("POST", "/api/form", "{\"id\":\"surface\",\"values\":{\"op\":\"fit\",\"lightmapX\":8192}}", true, {});
+                    const bool oneStep = ctx.doc.undoPosition() == undoS + 2;
+                    const QJsonObject sf2 = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=surface", {}, true, {}).body).object();
+                    double lmShown = 0;
+                    for (const QJsonValue& f : sf2.value("fields").toArray())
+                        if (f.toObject().value("key").toString() == "lightmapX") lmShown = f.toObject().value("value").toDouble();
+                    const auto zero = fweb.handle("POST", "/api/form", "{\"id\":\"surface\",\"values\":{\"width\":0}}", true, {});
+                    const auto badOp = fweb.handle("POST", "/api/form", "{\"id\":\"surface\",\"values\":{\"xoff\":1,\"op\":\"melt\"}}", true, {});
+                    const bool kept = ctx.doc.undoPosition() == undoS + 2;
+                    while (ctx.doc.undoPosition() > undoS) ctx.doc.undo();
+                    const auto back = fieldsOf(0);
+                    ctx.doc.deselectAll();
+                    ctx.documentEdited();
+                    r.check(none.value("fields").toArray().size() == 1 && refused.status == 400 && brush.item && skeys.contains("width") && skeys.contains("op") &&
+                                set && fit.status == 200 && oneStep && lmShown == 8192 && zero.status == 400 && badOp.status == 400 && kept && back && before &&
+                                *back == *before,
+                            QString("the Surface form edits the selected brush's texture fields, one undo step per form (set %1, fit %2, lightmap %3)")
+                                .arg(set).arg(fit.status).arg(lmShown));
+                }
+                {
+                    // Asset info for the web Assets panel: the info window's text, and no window opens.
+                    ch.assetInfo = [&w](const QString& kind, const QString& name) { return w.webAssetInfo(kind, name); };
+                    WebServer iweb(&ctx, ch);
+                    const bool dialogBefore = w.findChild<QDialog*>("materialInfoDialog") != nullptr;
+                    const auto mi = iweb.handle("GET", "/api/assetinfo?kind=materials&name=caulk", {}, true, {});
+                    const QJsonObject mo = QJsonDocument::fromJson(mi.body).object();
+                    const auto fi = iweb.handle("GET", "/api/assetinfo?kind=effects&name=vfx/iw8r/no_such_effect_here", {}, true, {});
+                    const auto path = iweb.handle("GET", "/api/assetinfo?kind=effects&name=C:/secret/x.asset.json", {}, true, {});
+                    const auto up = iweb.handle("GET", "/api/assetinfo?kind=effects&name=../../x", {}, true, {});
+                    const auto sound = iweb.handle("GET", "/api/assetinfo?kind=sounds&name=amb_wind", {}, true, {});
+                    const auto page = iweb.handle("GET", "/app.js", {}, true, {});
+                    r.check(mi.status == 200 && mo.value("title").toString() == "Material Info: caulk" && mo.value("html").toString().contains("caulk") &&
+                                fi.status == 200 && path.status == 404 && up.status == 404 && sound.status == 404 &&
+                                (w.findChild<QDialog*>("materialInfoDialog") != nullptr) == dialogBefore && !w.findChild<QDialog*>("effectInfoDialog") &&
+                                page.body.contains("openInfo") && page.body.contains("safeHtml"),
+                            "material and effect info reach the browser as text; a file path is refused and no window opens at the editor");
+                }
                 {
                     // Preferences: the editing, build and F5 settings; the host command and the folders stay at the editor.
                     const MainWindow::Preferences before = w.currentPreferences();

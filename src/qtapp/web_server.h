@@ -103,6 +103,8 @@ public:
         // placing one by id in front of the editor's camera or, with a camera, in front of that view.
         std::function<QJsonArray()> prefabs;
         std::function<bool(const QString& id, const WebCamera* cam, QString* why)> placePrefab;
+        // The info text of a material, model or effect: {title, html}; empty = none.
+        std::function<QJsonObject(const QString& kind, const QString& name)> assetInfo;
         // The web forms (MainWindow::webFormList / webForm / applyWebForm).
         std::function<QJsonArray()> forms;
         std::function<QJsonObject(const QString& id)> form;

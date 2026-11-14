@@ -309,8 +309,8 @@ revision. This is needed for Verdansk's 23k entities. Log backlog and filters th
 /api/form, POST /api/form) for Sun & Sky, Atmosphere, Lightmap Bake Settings, Map Info and Game Modes (preset +
 action; presets are made in the desktop dialog) and Check Map (report + fix all). Items 3 and 4 of the list below
 are plain commands and run from the web menu already. 2026-11-14 also: vision overrides (item 1, in the Atmosphere
-form), Preferences (7), prefabs in the Assets panel (8). Open: compile options and Build Budget (5), Surface / UV
-(9), Material / Effect Info (10).
+form), Preferences (7), prefabs in the Assets panel (8), Surface / UV (9), Material / Model / Effect Info (10, the
+info button of the Assets panel). Open: compile options and Build Budget (5).
 - **Command registry.** Expose the registry that `addCommand` builds (id, label, menu path, checkable, checked,
   enabled) as `/api/commands` and `POST /api/command`. The web menu bar is generated from it, so every action is
   reachable.

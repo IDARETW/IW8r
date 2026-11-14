@@ -153,9 +153,12 @@ public:
     // Camera context menu (3.7): built for a widget position (exposed for --gui-test, which inspects it without exec).
     QMenu* buildCameraContextMenu(const QPointF& widgetPos);
     // Material Info / Model Info windows (4.16 / 4.18); the HTML is returned for the GUI test.
-    QString showMaterialInfo(const QString& name);
-    QString showModelInfo(const QString& name);
-    QString showEffectInfo(const QString& name);
+    // The info text of an asset; `show` false returns the text and opens no window (the web page shows it).
+    QString showMaterialInfo(const QString& name, bool show = true);
+    QString showModelInfo(const QString& name, bool show = true);
+    QString showEffectInfo(const QString& name, bool show = true);
+    // {title, html} for the web Assets panel; empty when the kind has no info or the name is not an asset name.
+    QJsonObject webAssetInfo(const QString& kind, const QString& name);
     QImage materialImage(const QString& material);  // colour image of a stock or custom material (UV editor, 2.27)
     class UvEditor* openUvEditor();
     class PortWizardDialog* openPortWizard();  // File > Port CoD4 Map (11.9)
@@ -660,6 +663,7 @@ private:
     OutlinerPanel* outliner_ = nullptr;
     ToastHost* toasts_ = nullptr;
     LayersPanel* layers_ = nullptr;
+    class SurfacePanel* surface_ = nullptr;  // the Surface dock; the web form "surface" works through it
     class PrefabBrowser* prefabs_ = nullptr;
     QString previewedModel_;
 public:

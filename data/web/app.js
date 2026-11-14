@@ -353,6 +353,12 @@ async function searchAssets() {
     span.textContent = it.name + (it.loop ? "  (loop)" : "") + (it.note ? "  (cannot be placed)" : "");
     li.appendChild(span);
     li.title = it.note || it.name;
+    if (kind === "materials" || kind === "models" || kind === "effects") {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "info"; b.textContent = "i"; b.title = "Info about " + it.name;
+      b.onclick = (ev) => { ev.stopPropagation(); window.radiant.openInfo(kind, it.name); };
+      li.appendChild(b);
+    }
     li.onclick = async () => {
       if (kind === "materials") { await post("/api/material", { name: it.name }); setStatus("Material " + it.name); return; }
       if (kind === "prefabs") {
@@ -579,7 +585,9 @@ async function openForm(id) {
   let form;
   try { form = await get("/api/form?id=" + encodeURIComponent(id)); } catch (e) { setStatus(e.message); return; }
   openFormId = id;
+  $("formApply").hidden = false;
   $("formDialog").dataset.sendAll = form.sendAll ? "1" : "";
+  $("formDialog").dataset.reload = form.reload ? "1" : "";
   $("formTitle").textContent = form.title;
   $("formError").textContent = "";
   const box = $("formFields");
@@ -611,9 +619,39 @@ async function sendForm(thenClose) {
     for (const el of $("formFields").querySelectorAll("[data-changed]")) delete el.dataset.changed;
     setStatus($("formTitle").textContent + " applied");
     queueRefresh();
+    if (!thenClose && $("formDialog").dataset.reload) { await openForm(openFormId); return; }  // the fields follow the edit
   }
   if (thenClose) closeForm();
 }
+// The editor's info text of an asset (Material / Model / Effect Info), shown in the form window. The text is the
+// editor's own HTML; anything that could run or load is taken out before it is shown.
+function safeHtml(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  for (const el of doc.body.querySelectorAll("script, style, iframe, object, embed, link, img, form, input, button, meta, base")) el.remove();
+  for (const el of doc.body.querySelectorAll("*"))
+    for (const a of [...el.attributes])
+      if (a.name.startsWith("on") || a.name === "href" || a.name === "src" || (a.name === "style" && /url|expression/i.test(a.value))) el.removeAttribute(a.name);
+  const box = document.createElement("div");
+  box.className = "info";
+  box.append(...doc.body.childNodes);
+  return box;
+}
+async function openInfo(kind, name) {
+  let info;
+  try { info = await get(`/api/assetinfo?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`); }
+  catch (e) { setStatus("No info: " + (e.message || e)); return; }
+  openFormId = "info";
+  $("formApply").hidden = true;
+  $("formDialog").dataset.sendAll = "";
+  $("formDialog").dataset.reload = "";
+  $("formTitle").textContent = info.title;
+  $("formError").textContent = "";
+  const box = $("formFields");
+  box.textContent = "";
+  box.append(safeHtml(info.html));
+  $("formShade").hidden = false;
+}
+window.radiant.openInfo = openInfo;
 $("formDialog").addEventListener("submit", (ev) => { ev.preventDefault(); sendForm(true); });
 $("formApply").onclick = () => sendForm(false);
 $("formCancel").onclick = closeForm;

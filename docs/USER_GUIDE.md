@@ -690,7 +690,9 @@ one undo history, and each side sees the other's edits at once.
   Tools > Game Modes is a form too: pick a mode and whether to carry it in the map, use it for F5, or insert the
   Warzone start entities. Tools > Check Map shows the findings and can apply the automatic fixes. Edit > Preferences
   has the editing, build and F5 settings (asset folders and the F5 host command are set at the editor only). The
-  Atmosphere form also takes vision overrides (`name=value; name=x y z`).
+  Atmosphere form also takes vision overrides (`name=value; name=x y z`). Edit > Surface edits the texture of the
+  selected brushes (size, offsets, rotation, lightmap scale, Fit / Natural / Justify); Apply keeps the form open and
+  shows the result.
 - **View box.** Top, Front and Side are drawn in the browser (drag to pan or move the selection, wheel to zoom,
   click to select). **3D** is a simple view drawn in the browser. **Editor view (live)** is the editor's own camera
   picture, drawn by the editor for your browser: drag to look, W A S D and Q E to fly (Shift is faster), wheel to
@@ -703,7 +705,8 @@ one undo history, and each side sees the other's edits at once.
   the centre of the live view or at the 2D view's centre. The Inspector shows what the class is, each key's help
   (hover the key; required keys are marked), suggests the class's keys, and lists what Check Map says about it.
 - **Panels.** Entities (with a filter), the Inspector (edit, add and remove keys), Assets (click a material to apply
-  it, a model, effect, sound or prefab to place it; prefabs land in front of the live view) and the Log. In the live editor view an asset is placed on the surface
+  it, a model, effect, sound or prefab to place it; prefabs land in front of the live view; the round "i" button
+  shows the info text of a material, model or effect) and the Log. In the live editor view an asset is placed on the surface
   at the centre of the picture; in the drawn 2D views at the view's centre, at height 0.
 - Big maps load: models are sent as boxes for the drawn views, and after the first load only changes travel.
 

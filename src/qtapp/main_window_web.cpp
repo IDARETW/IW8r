@@ -20,6 +20,7 @@
 #include "devmap_launch.h"
 #include "find_dialog.h"
 #include "map_gametypes.h"
+#include "panels.h"
 #include "sun_sky_dialog.h"
 
 namespace iw8r::qt {
@@ -95,12 +96,41 @@ QJsonArray MainWindow::webFormList() const {
                       QJsonObject{{"id", "gameModes"}, {"title", "Game Modes"}, {"command", "GameModes"}, {"menu", "Tools"}},
                       QJsonObject{{"id", "checkMap"}, {"title", "Check Map"}, {"command", "CheckMap"}, {"menu", "Tools"}},
                       QJsonObject{{"id", "preferences"}, {"title", "Preferences"}, {"command", "Preferences"}, {"menu", "Edit"}},
+                      QJsonObject{{"id", "surface"}, {"title", "Surface (texture of the selection)"}, {"command", ""}, {"menu", "Edit"}},
                       QJsonObject{{"id", "bakeSettings"}, {"title", "Lightmap Bake Settings"}, {"command", ""}, {"menu", "Compile"}},
                       QJsonObject{{"id", "mapInfo"}, {"title", "Map Info"}, {"command", ""}, {"menu", "Compile"}}};
 }
 
 QJsonObject MainWindow::webForm(const QString& id) const {
     if (id == "gameModes") return webGameModesForm();
+    if (id == "surface") {
+        const SurfacePanel* sp = surface_;
+        const SurfacePanel::Current c = sp ? sp->current() : SurfacePanel::Current{};
+        const auto report = [](const QString& t) { return QJsonObject{{"key", "selection"}, {"label", "Selection"}, {"type", "report"}, {"value", t}}; };
+        QJsonArray f;
+        if (!c.any) {
+            f.append(report("Nothing to edit: select one or more brushes first (click them in a 2D view or in the live view)."));
+        } else {
+            f.append(report(QString("%1 %2; material %3.\nThe fields show the first face. A field you change goes to %4.")
+                                .arg(c.count)
+                                .arg(c.faces ? "face(s)" : "brush(es)", c.material, c.faces ? "the selected faces" : "every face of the selected brushes")));
+            if (c.hasTex) {
+                f.append(number("width", "Texture width (units one repeat covers)", c.tex[0], -65536, 65536, 8));
+                f.append(number("height", "Texture height", c.tex[1], -65536, 65536, 8));
+                f.append(number("xoff", "Offset X", c.tex[2], -65536, 65536, 1));
+                f.append(number("yoff", "Offset Y", c.tex[3], -65536, 65536, 1));
+                f.append(number("rot", "Rotation (degrees)", c.tex[4], -360, 360, 15));
+            }
+            f.append(number("lightmapX", "Lightmap scale X (16384 = default; smaller = finer)", c.lightmapX, 1, 1048576, 1024));
+            f.append(number("lightmapY", "Lightmap scale Y", c.lightmapY, 1, 1048576, 1024));
+            f.append(QJsonObject{{"key", "op"}, {"label", "Then"}, {"type", "choice"}, {"value", "none"},
+                                 {"choices", QJsonArray{"none", "fit", "natural", "left", "right", "top", "bottom", "center"}},
+                                 {"choiceLabels", QJsonArray{"(nothing more)", "Fit the texture to each face", "Natural size", "Justify left", "Justify right",
+                                                             "Justify top", "Justify bottom", "Justify centre"}},
+                                 {"help", "One undo step for the whole form"}});
+        }
+        return QJsonObject{{"id", id}, {"title", "Surface"}, {"fields", f}, {"reload", true}};
+    }
     if (id == "preferences") {
         const Preferences p = currentPreferences();
         const DevmapRunner::PlayOptions play = DevmapRunner::playOptions();
@@ -207,6 +237,38 @@ bool MainWindow::applyWebForm(const QString& id, const QJsonObject& values, QStr
         return false;
     };
     if (id == "gameModes") return applyWebGameModes(values, why);
+    if (id == "surface") {
+        SurfacePanel* sp = surface_;
+        const SurfacePanel::Current c = sp ? sp->current() : SurfacePanel::Current{};
+        if (!c.any) return no("select one or more brushes first");
+        Primitive::TexFields tf;
+        std::optional<double>* slot[5] = {&tf.width, &tf.height, &tf.xoff, &tf.yoff, &tf.rot};
+        static const char* const keys[5] = {"width", "height", "xoff", "yoff", "rot"};
+        bool texChanged = false;
+        for (int i = 0; i < 5; ++i) {
+            if (!values.contains(keys[i])) continue;
+            double v = 0;
+            if (!numberIn(values, keys[i], i == 4 ? -360 : -65536, i == 4 ? 360 : 65536, v, why)) return false;
+            if (i < 2 && std::abs(v) < 0.001) return no("the texture width and height are not 0");
+            *slot[i] = v;
+            texChanged = true;
+        }
+        double lx = c.lightmapX, ly = c.lightmapY;
+        if (!numberIn(values, "lightmapX", 1, 1048576, lx, why) || !numberIn(values, "lightmapY", 1, 1048576, ly, why)) return false;
+        const QString op = values.value("op").toString("none");
+        static const char* const ops[] = {"fit", "natural", "left", "right", "top", "bottom", "center"};
+        int opIndex = -1;
+        for (int i = 0; i < 7; ++i)
+            if (op == ops[i]) opIndex = i;
+        if (opIndex < 0 && op != "none") return no("there is no surface action " + op);
+        // Everything was accepted: now write, as one undo step.
+        ctx_.doc.beginGroup("Surface");
+        if (texChanged) sp->apply(tf, "Surface");
+        if ((values.contains("lightmapX") || values.contains("lightmapY")) && sp->applyLightmapScale(lx, ly)) ctx_.documentEdited("Lightmap scale");
+        if (opIndex >= 0) sp->applyOp(SurfacePanel::Op(opIndex));
+        ctx_.doc.endGroup();
+        return true;
+    }
     if (id == "preferences") {
         Preferences p = currentPreferences();
         double autosave = p.autosaveMinutes;

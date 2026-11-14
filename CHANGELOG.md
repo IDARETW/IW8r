@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Web: Surface form and asset info.** Edit > Surface in the web page edits the texture of the selected brushes:
+  width, height, offsets, rotation, lightmap scale, and Fit / Natural / Justify, as one undo step; after Apply the
+  fields show the result. Each material, model and effect in the Assets panel has an info button with the text of the
+  editor's own info window (an effect that has no export yet is exported; open it again a moment later). Checked in a
+  real browser.
+
 - **Web: Preferences, vision overrides and prefabs.** Edit > Preferences opens in the web page with the editing,
   build and F5 settings (the asset folders and the F5 host command stay at the editor: paths and a command line on
   the editor's machine are not for a browser). The Atmosphere form has the map's vision overrides, checked by the

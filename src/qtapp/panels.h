@@ -1,6 +1,7 @@
 // IW8 Radiant Suite (Qt shell) - dockable panels: entity inspector, undo history, IW8 spawns, hotkeys.
 #pragma once
 
+#include <array>
 #include <QKeySequence>
 #include <QMap>
 #include <QWidget>
@@ -72,8 +73,21 @@ public:
     explicit SurfacePanel(EditorContext* ctx, QWidget* parent = nullptr);
 public slots:
     void refresh();
-private:
+public:
+    // The given texture fields on the selected faces, or on every face of the selected brushes (one undo step).
     void apply(const Primitive::TexFields& f, const QString& what);
+    // What the panel shows: the first selected face (or the first face of the first selected brush).
+    struct Current {
+        bool any = false;    // there is a brush or a face to edit
+        bool faces = false;  // faces are selected (else whole brushes)
+        size_t count = 0;    // selected faces, or selected brushes
+        QString material;
+        bool hasTex = false;
+        std::array<double, 5> tex{};  // width, height, offset x, offset y, rotation
+        double lightmapX = 16384, lightmapY = 16384;
+    };
+    Current current() const;
+private:
     void nudge(int field, double delta, bool multiply);
 public:
     // Fit / natural / justify on the selected faces, or every face of the selected brushes (one undo step).

@@ -1017,7 +1017,8 @@ void MainWindow::buildDocks() {
     auto* camArea = dock_->addDockWidget(ads::CenterDockWidgetArea, camDock);
     auto* gridArea = dock_->addDockWidget(ads::RightDockWidgetArea, gridDock, camArea);
     auto* entArea = dock_->addDockWidget(ads::BottomDockWidgetArea, entDock, gridArea);
-    dock_->addDockWidgetTabToArea(makeDock("Surface", new SurfacePanel(&ctx_), true), entArea);
+    surface_ = new SurfacePanel(&ctx_);
+    dock_->addDockWidgetTabToArea(makeDock("Surface", surface_, true), entArea);
     layers_ = new LayersPanel(&ctx_);
     dock_->addDockWidgetTabToArea(makeDock("Layers", layers_, true), entArea);
     outliner_ = new OutlinerPanel(&ctx_);
@@ -4792,6 +4793,17 @@ int MainWindow::captureReflectionProbes(QString* dirOut) {
     return done;
 }
 
+QJsonObject MainWindow::webAssetInfo(const QString& kind, const QString& name) {
+    // An asset name only: the effect info also reads an export file named by its path, which is not for a browser.
+    if (name.isEmpty() || name.size() > 200 || name.contains(':') || name.contains("..") || name.startsWith('/') || name.startsWith('\\') ||
+        name.endsWith(".json", Qt::CaseInsensitive) || name.contains('<') || name.contains('"'))
+        return {};
+    if (kind == "materials") return {{"title", "Material Info: " + name}, {"html", showMaterialInfo(name, false)}};
+    if (kind == "models") return {{"title", "Model Info: " + name}, {"html", showModelInfo(name, false)}};
+    if (kind == "effects") return {{"title", "Effect Info: " + name}, {"html", showEffectInfo(name, false)}};
+    return {};
+}
+
 QJsonArray MainWindow::webPrefabList() const {
     QJsonArray out;
     if (!prefabs_) return out;
@@ -5024,6 +5036,7 @@ bool MainWindow::applyWebServerSettings(QString* message) {
             return webPrefabList();
         };
         hooks.placePrefab = [this](const QString& id, const WebCamera* cam, QString* why) { return webPlacePrefab(id, cam, why); };
+        hooks.assetInfo = [this](const QString& kind, const QString& name) { return webAssetInfo(kind, name); };
         hooks.forms = [this] { return webFormList(); };
         hooks.form = [this](const QString& id) { return webForm(id); };
         hooks.applyForm = [this](const QString& id, const QJsonObject& values, QString* why) { return applyWebForm(id, values, why); };
@@ -5069,7 +5082,7 @@ bool MainWindow::applyWebServerSettings(QString* message) {
     return true;
 }
 
-QString MainWindow::showMaterialInfo(const QString& name) {
+QString MainWindow::showMaterialInfo(const QString& name, bool show) {
     MaterialInfoInput in;
     in.name = name;
     const std::string n = name.toStdString();
@@ -5084,7 +5097,7 @@ QString MainWindow::showMaterialInfo(const QString& name) {
     }
     in.buildsNormal = Settings::instance().value("compile/stockNormalMaps", true).toBool();
     const QString html = materialInfoHtml(in);
-    showAssetInfo(this, "materialInfoDialog", "Material Info: " + name, html);
+    if (show) showAssetInfo(this, "materialInfoDialog", "Material Info: " + name, html);
     return html;
 }
 
@@ -6257,7 +6270,7 @@ QString MainWindow::findVfxExport(const QString& name) const {
     return found;
 }
 
-QString MainWindow::showEffectInfo(const QString& name) {
+QString MainWindow::showEffectInfo(const QString& name, bool show) {
     // The stock vfx exports the converter keeps (x64-zt _stock_cache, `<name>.vfx.<n>.asset.json`), research 50.
     const QString root = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/x64zt_output/_stock_cache";
     QString stem = name;
@@ -6315,7 +6328,8 @@ QString MainWindow::showEffectInfo(const QString& name) {
     std::string err;
     if (found.isEmpty()) {
         html += vfxExporting_.contains(name)
-                    ? QString("<p>Exporting this effect with ACTS now; this window refreshes when it is done.</p>")
+                    ? (show ? QString("<p>Exporting this effect with ACTS now; this window refreshes when it is done.</p>")
+                            : QString("<p>Exporting this effect with ACTS now; open this again in a moment.</p>"))
                     : QString("<p>No export of this effect yet, and it is not in an always-loaded zone the editor can export it from. "
                               "The converter exports the stock effects a build uses (place it as an fx_origin and compile once), research 50.</p>");
     } else if (!readVfxExport(found.toStdString(), v, &err)) {
@@ -6331,8 +6345,9 @@ QString MainWindow::showEffectInfo(const QString& name) {
                         "<tr><td>Child effects</td><td>%6</td></tr></table><p style='color:#9aa'>%7</p>")
                     .arg(v.emitterCount)
                     .arg(v.looping ? QString("looping") : QString("one-shot, about %1 s").arg(v.lifeSeconds, 0, 'f', 1))
-                    .arg(list(v.materials), list(v.models), list(v.sounds), list(v.childEffects), found.toHtmlEscaped());
+                    .arg(list(v.materials), list(v.models), list(v.sounds), list(v.childEffects), show ? found.toHtmlEscaped() : QString());
     }
+    if (!show) return html;
     showAssetInfo(this, "effectInfoDialog", "Effect Info: " + name, html);
     // 8.1: animated preview of the export (simplified particle sim) above the text.
     if (auto* dlg = findChild<QDialog*>("effectInfoDialog")) {
@@ -6360,7 +6375,7 @@ QString MainWindow::showEffectInfo(const QString& name) {
     return html;
 }
 
-QString MainWindow::showModelInfo(const QString& name) {
+QString MainWindow::showModelInfo(const QString& name, bool show) {
     ModelInfoInput in;
     in.name = name;
     const std::string n = name.toStdString();
@@ -6378,7 +6393,7 @@ QString MainWindow::showModelInfo(const QString& name) {
                 if (in.cameraDistance < 0 || d < in.cameraDistance) in.cameraDistance = d;
             }
     const QString html = modelInfoHtml(in);
-    showAssetInfo(this, "modelInfoDialog", "Model Info: " + name, html);
+    if (show) showAssetInfo(this, "modelInfoDialog", "Model Info: " + name, html);
     return html;
 }
 
