@@ -188,6 +188,7 @@ SceneBatch* CameraGeometry::Impl::batchFor(const ItemOut::Tex& t, bool& created)
     b->sway = t.sway;
     // Same texture id = same material, so the batch's emissive map is the material's.
     if (scene->emissiveFor && !scene->captureMode && t.material) b->emissiveTexture = scene->emissiveFor(*t.material);
+    if (scene->specFor && !scene->captureMode && t.material) b->specTexture = scene->specFor(*t.material);
     if (scene->shaderFor && t.material) b->shader = scene->shaderFor(*t.material);
     created = true;
     return byKey.emplace(t.key, std::move(b)).first->second.get();
@@ -448,7 +449,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                            (uint64_t(scene.pixelLights) << 11) | (uint64_t(scene.captureMode) << 12) | (uint64_t(scene.skyActive) << 13) |
                            (uint64_t(textureFor != nullptr) << 14) | (uint64_t(bool(scene.normalFor)) << 15) | (uint64_t(bool(scene.emissiveFor)) << 16) |
                            (uint64_t(bool(scene.blendFor)) << 17) | (uint64_t(bool(scene.foliageFor)) << 18) | (uint64_t(bool(scene.drawClassFor)) << 19) |
-                           (uint64_t(bool(scene.textureSizeFor)) << 20));
+                           (uint64_t(bool(scene.textureSizeFor)) << 20) | (uint64_t(bool(scene.specFor)) << 21));
     key = mixBits(key, scene.selectionTint);
     key = mixDouble(key, scene.selectionTintAmount);
     key = mixDouble(key, scene.densityTarget);
@@ -806,6 +807,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                     nb->sway = t.sway;
                     nb->baseZ = 0;
                     nb->emissiveTexture = scene.emissiveFor && !scene.captureMode && t.material ? scene.emissiveFor(*t.material) : -1;
+                    nb->specTexture = scene.specFor && !scene.captureMode && t.material ? scene.specFor(*t.material) : -1;
                     nb->shader = scene.shaderFor && t.material ? scene.shaderFor(*t.material) : -1;
                     b = d.byKey.emplace(t.key, std::move(nb)).first->second.get();
                     order_.push_back(b);
@@ -1065,6 +1067,7 @@ void CameraGeometry::flatten(std::vector<GpuVertex>& tris, std::vector<GpuVertex
         t.tris = b->v;
         t.normalTexture = b->normalTexture;
         t.emissiveTexture = b->emissiveTexture;
+        t.specTexture = b->specTexture;
         t.blend = b->blend;
         t.sway = b->sway;
         t.baseZ = b->baseZ;

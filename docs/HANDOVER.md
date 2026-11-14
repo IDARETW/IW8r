@@ -91,7 +91,8 @@ short list", is these in order:
 - Web page: patch vertex editing; the full Vision Editor (vision overrides by name are in the Atmosphere form).
 - Occlusion: occluders that are not boxes; local updates of a stock map's occlusion data (removing stock geometry
   opens the whole map's occlusion).
-- Viewport: highlights of your own materials that have a specular map; volumetric fog is uncalibrated and off.
+- Viewport: volumetric fog is uncalibrated and off. The normal and specular maps of your own materials are drawn by
+  the build shader's rule, which has not been compared with the game.
 - Streamed Warzone tiles cannot be edited (a client matter, see section 2).
 - A turned stock sun keeps the old sun in the baked bounce light.
 - Items the game must answer before more work makes sense (reverb zones, killstreak airspace, intro cameras) are

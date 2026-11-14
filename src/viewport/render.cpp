@@ -304,6 +304,7 @@ float3 exposeSoft(float3 c) {
 float3 applyFog(float3 c, float3 w) { if (fogColHalf.a <= 0) return c; float d = max(0.0, distance(w, eyeStart.xyz) - eyeStart.w); return lerp(c, fogColHalf.rgb, 1.0 - exp2(-d / fogColHalf.a)); }
 cbuffer Batch : register(b1) { float4 batchFlags; float4 batchFlags2; };  // x = 1 when t1 holds the material's normal map, y = blend mode, z = sway, w = sway base z; batchFlags2.x = 1 when t3 holds an emissive map
 Texture2D emi0 : register(t3);
+Texture2D spec0 : register(t29);  // an own material's specular map (batchFlags2.w = 1 on a batch that is not the stock reference)
 TextureCube probeCube : register(t5);  // 3.16: the nearest captured reflection probe (batchFlags2.y = 1 when bound)
 cbuffer Wind : register(b3) { float4 wind; };         // xy = direction x amplitude, z = wave phase (core foliage_sway)
 struct PixelLight { float4 posRadius; float4 colorOuter; float4 dirInner; };
@@ -1075,6 +1076,26 @@ float4 ps_tex(PSIn i) : SV_TARGET {
 #else
             float3 light = indirect * aoOwn + visibility * saturate(dot(N, gameSun.xyz)) * gameSunCol.rgb;
             c = albedo * light;
+            if (batchFlags2.w > 0.5) {
+                // A material with a specular map, as the build's world shader draws it (the converter's
+                // SourceSunSpecular, map_surface_realtime.hlsl): specular map x lerp(.8, 4, (1 - |N.V|)^2.5) x
+                // (probe + .625 x lobe x sun^(1/2.2) x shadow), added in gamma space. The lobe is exp((R.L - .99925) x
+                // power), power 2^(9.3775 gloss) + 7, widened by the normal's screen variance with its energy kept.
+                // The probe: the map's captured one when there is one, else the build's default probe (grey 128).
+                const float4 sp = spec0.Sample(samp0, uvS);
+                const float3 Vo = normalize(eyeStart.xyz - i.w);
+                const float3 Ro = reflect(-Vo, N);
+                const float3 ndx = ddx(N), ndy = ddy(N);
+                const float variance = min(0.5 * (dot(ndx, ndx) + dot(ndy, ndy)), 0.18);
+                const float srcPower = exp2(sp.a * 9.3775177) + 7.0;
+                const float power = max(2.0 / (2.0 / (srcPower + 2.0) + variance) - 2.0, 1.0);
+                const float lobe = saturate(exp((dot(Ro, gameSun.xyz) - 0.99925) * power)) * (power + 2.0) / (srcPower + 2.0);
+                const float response = lerp(0.8, 4.0, pow(saturate(1.0 - abs(dot(Vo, N))), 2.5));
+                const float3 probe = batchFlags2.y > 0.5 ? probeCube.SampleLevel(samp0, Ro, clamp(6.0 - 8.0 * sp.a, 0.0, 6.0)).rgb
+                                                         : float3(0.50196, 0.50196, 0.50196);
+                const float3 sunTerm = 0.625 * lobe * pow(max(gameSunCol.rgb, 0.0), 1.0 / 2.2) * visibility;
+                c = pow(pow(max(c, 0.0), 1.0 / 2.2) + sp.rgb * response * (probe + sunTerm), 2.2);
+            }
 #endif
         }
         // Local lights (LocalLighting): colour x game intensity / d^2 x w^2 (3 - 2w), w = (1 - d / r) x spot cone;
@@ -4562,9 +4583,12 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             const bool hasEmissive = b.emissiveTexture >= 0 && size_t(b.emissiveTexture) < textures_.size();
             ID3D11ShaderResourceView* esrv = hasEmissive ? textures_[size_t(b.emissiveTexture)] : nullptr;
             ctx_->PSSetShaderResources(3, 1, &esrv);
+            const bool hasSpec = game_.on && b.specTexture >= 0 && size_t(b.specTexture) < textures_.size();
+            ID3D11ShaderResourceView* ssrv = hasSpec ? textures_[size_t(b.specTexture)] : nullptr;
+            ctx_->PSSetShaderResources(29, 1, &ssrv);
             if (cbBatch_) {
                 const float flags[8] = {hasNormal ? 1.0f : 0.0f, b.blend == 0 && textureRawAlpha(b.texture) ? -2.0f : float(b.blend), b.sway ? 1.0f : 0.0f, b.baseZ,
-                                        hasEmissive ? 1.0f : 0.0f, probeSrv_ ? 1.0f : 0.0f, 0, 0};
+                                        hasEmissive ? 1.0f : 0.0f, probeSrv_ ? 1.0f : 0.0f, 0, hasSpec ? 1.0f : 0.0f};
                 ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
             }
             ctx_->IASetVertexBuffers(0, 1, &g.vb, &tstride, &offset);

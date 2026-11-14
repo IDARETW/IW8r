@@ -44,6 +44,7 @@
 #include "brush_tools.h"
 #include "compile_iw8.h"
 #include "custom_materials.h"
+#include "normal_pack.h"
 #include "texture_decode.h"
 #include "game_look.h"
 #include "game_look_assets.h"
@@ -662,6 +663,8 @@ void CameraView::render() {
             ctx_->scene.normalFor = [this](const std::string& m) { return normalFor(m); };
         ctx_->scene.emissiveFor = ctx_->texturedView && emissiveLookup_ ? std::function<int(const std::string&)>([this](const std::string& m) { return emissiveFor(m); })
                                                                          : std::function<int(const std::string&)>();
+        ctx_->scene.specFor = ctx_->texturedView && specLookup_ && ctx_->normalMaps ? std::function<int(const std::string&)>([this](const std::string& m) { return specFor(m); })
+                                                                                      : std::function<int(const std::string&)>();
         ctx_->scene.shaderFor = shaderLookup_ ? std::function<int(const std::string&)>([this](const std::string& m) { return customShaderFor(m); })
                                               : std::function<int(const std::string&)>();
         // The kept geometry is brought up to date item by item (scene.h CameraGeometry); geomDirty_ (textures still
@@ -1160,6 +1163,10 @@ void CameraView::materialImagesChanged() {
         if (it->second < 0) it = emiIds_.erase(it);
         else ++it;
     }
+    for (auto it = specIds_.begin(); it != specIds_.end();) {
+        if (it->second < 0) it = specIds_.erase(it);
+        else ++it;
+    }
     update();
 }
 
@@ -1525,6 +1532,35 @@ int CameraView::emissiveFor(const std::string& material) {
     return emiIds_[material] = id;
 }
 
+int CameraView::specFor(const std::string& material) {
+    if (material.empty() || isIw8ToolMaterial(material)) return -1;
+    if (auto it = specIds_.find(material); it != specIds_.end()) return it->second;
+    // Only once the colour image is up, as the other maps.
+    if (auto t = texIds_.find(material); t == texIds_.end() || t->second < 0 || t->second == checkerTex_) return -1;
+    const QString path = specLookup_ ? specLookup_(material) : QString();
+    if (path.isEmpty()) return specIds_[material] = -1;
+    if (!textureLoadAllowed(loadsThisFrame_)) {
+        moreToLoad_ = true;
+        return -1;
+    }
+    ++loadsThisFrame_;
+    // The image as it is stored: the build's shader reads the specular map's bytes without a colour conversion.
+    int w = 0, h = 0, id = -1;
+    std::vector<uint8_t> px;
+    std::string err;
+    if (decodeImageFile(path.toStdString(), w, h, px, &err)) id = renderer_.createTexture(px.data(), w, h);
+    return specIds_[material] = id;
+}
+
+std::pair<int, int> CameraView::materialMapIds(const std::string& material) {
+    textureFor(material);
+    loadsThisFrame_ = 0;
+    const int n = normalFor(material);
+    loadsThisFrame_ = 0;
+    const int s = specFor(material);
+    return {nrmIds_.count(material) ? n : -2, specIds_.count(material) ? s : -2};
+}
+
 int CameraView::normalFor(const std::string& material) {
     if (material.empty() || isIw8ToolMaterial(material)) return -1;
     if (auto it = nrmIds_.find(material); it != nrmIds_.end()) return it->second;
@@ -1539,6 +1575,24 @@ int CameraView::normalFor(const std::string& material) {
         return -1;
     }
     ++loadsThisFrame_;
+    if (path.startsWith("slope:")) {
+        // An own material's normal image. The build reads it as an IW3 slope map (slope x = 4.08 R - 2.08, slope y =
+        // 4.0645 G - 2.0645, the converter's world shader); packed here the way the stock normal maps are, which is
+        // what the viewport's shaders decode. No gloss in it (that is the specular map's alpha), full occlusion.
+        int w = 0, h = 0, id = -1;
+        std::vector<uint8_t> px;
+        std::string err;
+        if (decodeImageFile(path.mid(6).toStdString(), w, h, px, &err)) {
+            for (size_t k = 0; k + 3 < px.size(); k += 4) {
+                uint8_t g = 0, a = 0;
+                replayNormalPack(4.08 * px[k] / 255.0 - 2.08, 4.06451607 * px[k + 1] / 255.0 - 2.06451607, g, a);
+                px[k] = 0, px[k + 1] = g, px[k + 2] = 255, px[k + 3] = a;
+            }
+            id = renderer_.createTexture(px.data(), w, h);
+        }
+        if (id >= 0) nrmByPath_[path.toStdString()] = id;
+        return nrmIds_[material] = id;
+    }
     const qint64 loadStart = QDateTime::currentMSecsSinceEpoch();
     int id = -1;
     app::Rgba8Image img;
@@ -1575,7 +1629,8 @@ QString CameraView::geometrySelfCheck() {
     for (size_t k = 0; k < x1.size(); ++k) {
         const app::TexturedBatch& a = x1[k];
         const app::TexturedBatch& b = x2[k];
-        if (a.texture != b.texture || a.normalTexture != b.normalTexture || a.emissiveTexture != b.emissiveTexture || a.blend != b.blend ||
+        if (a.texture != b.texture || a.normalTexture != b.normalTexture || a.emissiveTexture != b.emissiveTexture || a.specTexture != b.specTexture ||
+            a.blend != b.blend ||
             a.sway != b.sway || a.baseZ != b.baseZ)
             return QString("textured batch %1: settings differ").arg(k);
         if (a.tris.size() != b.tris.size() || (!a.tris.empty() && std::memcmp(a.tris.data(), b.tris.data(), a.tris.size() * sizeof(app::GpuTexVertex)) != 0)) {

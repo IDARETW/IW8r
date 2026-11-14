@@ -736,6 +736,10 @@ The owner's playtest of 2026-11-11 left these open. docs/ROADMAP.md (fix queue F
 - A ladder's bottom was not climbable in game, and the hands sat a little off the ladder. The ladder was rebuilt after
   the second playtest (section 3). Not seen in game yet.
 - Additive and multiply blending are not shown in the editor camera. The camera does show a custom material's tint.
+- A custom material's normal and specular images are drawn in View > Game Lighting as the build draws them: the
+  specular image's colour is how strongly the surface reflects, its alpha how tight the sun's highlight is. A bright
+  specular image also reflects the map's reflection probe everywhere (a grey one until you capture probes), so start
+  with a dark specular image (40 to 80 of 255) and raise it where the surface should shine.
   Gloss scale is not done yet. Not seen in game yet.
 - Make Editable Copy, Adjust Image, Techset Info and Asset Usage are tested offline only. The Techset export has not
   been run on a real cached material by a test.

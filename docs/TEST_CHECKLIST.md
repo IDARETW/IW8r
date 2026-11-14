@@ -441,6 +441,8 @@ Zone, then install.)
       with no darker corners, as View > Game Lighting now shows it.
 - [ ] The same map built with Bake lightmaps **on**: corners and covered places are darker, as View > Game Lighting
       shows it with the key on.
+- [ ] A floor with a custom material that has a specular image (2026-11-14): looking toward the sun across it, the
+      highlight and the overall lightening of the floor are as View > Game Lighting shows them.
 
 ## In game (optional, 2026-11-14): the occlusion bake
 

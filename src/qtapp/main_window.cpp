@@ -500,7 +500,14 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         if (auto e = matCache_->lookup(qs(m)); e && !e->failed) return e->emissiveDds;
         return {};
     });
+    camera_->setMaterialSpecular([this](const std::string& m) -> QString {
+        if (const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr) return qs(cm->specImage);
+        return {};
+    });
     camera_->setMaterialNormals([this](const std::string& m) -> QString {
+        // An own material's normal image ("slope:<file>": the build reads it as an IW3 slope map).
+        if (const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr)
+            return cm->normalImage.empty() ? QString() : "slope:" + qs(cm->normalImage);
         // A layer of a layered stock material ("<material>\x01<L>"): that layer's normal map.
         if (const size_t sep = m.find('\x01'); sep != std::string::npos && sep > 0) {
             const auto imgs = matCache_->layerImages(qs(m.substr(0, sep)));

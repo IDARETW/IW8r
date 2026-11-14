@@ -5,6 +5,17 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Game Lighting draws the normal and specular maps of your own materials.** A material made with File > New / Edit
+  Custom Material that has a normal image and a specular image is now drawn with them in View > Game Lighting, by the
+  rule of the build's own world shader: the specular map times a view-angle factor (0.8 head-on to 4 at a grazing
+  angle) times the reflection probe plus the sun's highlight, whose size comes from the specular map's alpha. A map
+  without a captured probe reflects the build's default grey probe, so a bright specular map makes the whole surface
+  lighter; that is what the build does, not a viewport effect. Before, such a material was drawn flat. Checked by two
+  renders of one room (same floor with and without the specular map). In game: not checked.
+- docs: FEATURE_MATRIX.md and MILESTONES.md brought to the current state (57 status cells; what the owner saw in game
+  on 2026-11-11 is named as such, everything later says "in game: not checked"); ROADMAP rows 2.16, 5.10, 5.11, 5.21
+  and 11.2 no longer describe the state before the lightmap bake, the occlusion bake and the zone install.
+
 - **Web: Layers, and Compile Options with the Build Budget.** View > Layers in the web page shows or hides a layer
   (the page's views follow), selects a layer's brushes and patches, moves the selection to a layer and declares a new
   one. Compile > Compile Options and Build Budget has the map id, the three build switches (stock textures, bake

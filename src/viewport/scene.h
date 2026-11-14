@@ -163,6 +163,8 @@ public:
     std::function<int(const std::string& material)> normalFor;
     // Emissive map of a material for the textured view (3.17 / 5.24): a texture id, or -1.
     std::function<int(const std::string& material)> emissiveFor;
+    // Specular map of an own material (TexturedBatch::specTexture): a texture id, or -1.
+    std::function<int(const std::string& material)> specFor;
     // The material's custom surface shader (SceneRenderer::createCustomShader id) or -1 (core custom_shader).
     std::function<int(const std::string& material)> shaderFor;
     // A custom shader in use reads the edge inputs: brush faces get their edge meshes (PrimGeom::polyEdges). Call

@@ -21,6 +21,13 @@
   Then: forms "layers" (LayersPanel::rows / setLayerVisible / selectLayer / moveSelectionToLayer / newLayer; rows()
   reads hiddenLayers_, and setLayerVisible now also sets the row's tick) and "compile" (CompilePanel::setMapId, the
   three check boxes by object name, budgetGauges / budgetWarnings of <build root>/last_build_report.json as a report).
+  Viewport: own materials' normal and specular images in Game Lighting (tools/patches/viewport_spec_maps.py):
+  TexturedBatch::specTexture / SceneBatch::specTexture, scene.specFor, CameraView::specFor + setMaterialSpecular,
+  normal lookup "slope:<file>" (IW3 slope map -> replayNormalPack), spec0 at t29, batchFlags2.w = 1 on an own batch
+  with a specular map (w is the stock reference's lightmap flag only while z = 1). Formula = the converter's
+  SourceSunSpecular with the default envMapParms (.8, 4, 2.5, .625); probe = probeCube when a capture is bound, else
+  grey 128. Not drawn for a material with a custom surface shader (the build adds none there either). Test scene:
+  out/agent/spec (shot.ps1 renders a map through /api/frame of the test editor copy).
   The web list of plan 3.3 / 3.4 is done except: the full Vision Editor (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder

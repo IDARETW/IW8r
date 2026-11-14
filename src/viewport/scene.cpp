@@ -1314,6 +1314,7 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
                     textured->push_back({texId, {}, nrmId, -1, blendMode, sway, 0.0f});
                     // Same texture id = same material, so the batch's emissive map is the material's.
                     if (scene.emissiveFor && !scene.captureMode) (*textured)[b->second].emissiveTexture = scene.emissiveFor(g->polyMaterial[i]);
+                    if (scene.specFor && !scene.captureMode) (*textured)[b->second].specTexture = scene.specFor(g->polyMaterial[i]);
                 }
                 auto& out = (*textured)[b->second].tris;
                 const auto& uv = g->polyUV[i];

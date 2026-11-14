@@ -175,6 +175,10 @@ public:
     // Normal map of a stock material ("" = none): the IW8 packed `_n&_g` image, used for bump and gloss shading (3.2).
     void setMaterialNormals(MaskLookup lookup) { normalLookup_ = std::move(lookup); }
     void setMaterialEmissive(MaskLookup lookup) { emissiveLookup_ = std::move(lookup); }
+    // The specular image file of an own material ("" = none): any format the material library reads.
+    void setMaterialSpecular(MaskLookup lookup) { specLookup_ = std::move(lookup); }
+    // Tests: the texture ids of a material's normal and specular maps once they are loaded (-1 = none, -2 = not yet).
+    std::pair<int, int> materialMapIds(const std::string& material);
     // 3.16: folder of captured reflection probes (probe<N>.rgba six 64x64 faces + probe<N>.pos); the probe nearest the
     // camera is used for reflections on glossy surfaces. "" = none.
     void setProbeFolder(std::function<QString()> fn) { probeFolder_ = std::move(fn); }
@@ -587,6 +591,9 @@ private:
     int normalFor(const std::string& material);
     MaskLookup emissiveLookup_;
     std::unordered_map<std::string, int> emiIds_;
+    MaskLookup specLookup_;
+    int specFor(const std::string& material);
+    std::unordered_map<std::string, int> specIds_;
     // Worldspawn settings parsed per document revision, and the files looked at now and then (render()).
     uint64_t settingsRev_ = 0;
     std::string settingsPath_;

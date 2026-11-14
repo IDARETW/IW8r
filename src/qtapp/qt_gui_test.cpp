@@ -5304,6 +5304,29 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         const iw8r::CustomMaterial* cm = w.customMaterials() ? w.customMaterials()->find("custom/test_glass") : nullptr;
         r.check(cm && cm->blend && cm->twoSided && cm->width == 64 && cm->surfaceType > 0,
                 "the library reloads with the new material (blend, two-sided, 64 units, glass surface)");
+        {
+            // A material with a normal and a specular image: the camera view loads both (Game Lighting draws them).
+            QImage nrm(32, 32, QImage::Format_RGBA8888), spc(32, 32, QImage::Format_RGBA8888);
+            nrm.fill(QColor(130, 129, 255, 255));  // slopes near 0: a flat normal in the build's slope layout
+            spc.fill(QColor(220, 220, 220, 200));
+            const QString nsrc = QDir(outDir).absoluteFilePath("shiny_n_src.png"), ssrc = QDir(outDir).absoluteFilePath("shiny_s_src.png");
+            nrm.save(nsrc);
+            spc.save(ssrc);
+            w.editCustomMaterial(QString(), [&](iw8r::qt::MaterialEditorDialog& d) {
+                d.setName("custom/test_shiny");
+                d.setImage(0, src);
+                d.setImage(1, nsrc);
+                d.setImage(2, ssrc);
+            });
+            const iw8r::CustomMaterial* shiny = w.customMaterials() ? w.customMaterials()->find("custom/test_shiny") : nullptr;
+            std::pair<int, int> ids{-2, -2}, plain{-2, -2};
+            for (int tries = 0; tries < 8 && (ids.first == -2 || ids.second == -2); ++tries) ids = w.cameraView()->materialMapIds("custom/test_shiny");
+            for (int tries = 0; tries < 8 && plain.second == -2; ++tries) plain = w.cameraView()->materialMapIds("custom/test_glass");
+            r.check(shiny && !shiny->normalImage.empty() && !shiny->specImage.empty() && ids.first >= 0 && ids.second >= 0 && ids.first != ids.second &&
+                        plain.first == -1 && plain.second == -1,
+                    QString("an own material's normal and specular images are loaded for the camera view (ids %1, %2; a material without them: %3, %4)")
+                        .arg(ids.first).arg(ids.second).arg(plain.first).arg(plain.second));
+        }
     }
 
     r.section("asset availability audit (4.12)");

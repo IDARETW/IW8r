@@ -1,5 +1,9 @@
 # Milestones
 
+This is the early milestone record (M1, M2.1 and M5.1, written 2026-11-08); those result sections are kept as history.
+The current state is in [HANDOVER.md](HANDOVER.md), [ROADMAP.md](ROADMAP.md) and [PLAN_REMAINING.md](PLAN_REMAINING.md).
+State on 2026-11-14: core tests about 180,700 checks in 1,308 tests; GUI test about 1,060 checks.
+
 ## M1: edit → save → reopen (done)
 
 **Goal.** A mapper opens a small IW8 scene, moves a brush on the grid, changes an entity property, undoes and redoes,
@@ -35,11 +39,19 @@ survive. At least one real IW8 format path must be exercised.
 | Item | Path to the game | Status |
 |---|---|---|
 | Edited stock MapEnts (moved `script_model`, new key) | M2: x64-zt `dumpzone` → swap the entity string in `map_ents/*.iw8` → `buildzone` into a *scratch copy* of the game folder → `verifyzone` → load the map | **NOT VERIFIED** |
-| Moved compiled spawn | M2 spawnList writer | **NOT VERIFIED** |
-| Editor-built sample room | M5: F7 in the editor (native extraction → x64-zt `buildextraction` → 5 zones + `map.json` → ACTS `--test` 0 failed) → Compile > Deploy into `mods/mw120r/maps/<id>` → F6 local play | Built and validated offline 2026-11-08; owner 2026-11-08: deployed packages are listed and selectable in the F6 browser; **loading and play NOT VERIFIED** |
+| Moved compiled spawn | M2 spawnList writer; now File > Edit Compiled Spawns + File > Rebuild Stock Zone (ROADMAP 6.1, 11.2) | Done offline (the spawn list reads back as edited); **NOT VERIFIED** in game |
+| An installed stock edit loads | File > Install Edited Stock Map Into Game (whole zone files; stock files kept in `iw8r_stock`). The first method, a patch file, stopped the game with "Disc read error [3.1]" (CHANGELOG 2026-11-13, research 116) | **NOT VERIFIED**: the new install has never been run (HANDOVER section 4, item 1) |
+| Editor-built sample room | M5: F7 in the editor (native extraction → x64-zt `buildextraction` → 5 zones + `map.json` → ACTS `--test` 0 failed) → Compile > Deploy into `mods/mw120r/maps/<id>` → F6 local play | Built and validated offline 2026-11-08; owner 2026-11-08: deployed packages are listed and selectable in the F6 browser |
+| Editor-built test maps (dev showcase, mp_iw8r_nov11, mp_iw8r_fix1) | F7 → Ctrl+F7 deploy → Local Play → F6 | **Owner playtests 2026-11-11**: the maps load and play. Seen working: stock materials, tool clips, ramps and stairs, static models, spawns, ladder and mantle, bots, coloured lights, stock effects, a looping sound, sky / fog / film grade, normal maps, lod_scale and no_shadow, ground lighting, live link and hot channels; after the second playtest also jump pad and teleporter, spinning and bobbing models, glass, two-sided patches, sun shadow direction, a dynamic traffic cone (TEST_CHECKLIST.md, ROADMAP fix queue). Still wrong or open then: damage triggers, the invisible door, the campfire sound, bullet impacts, reflection probes, reverb, game modes other than TDM. Exe hash not recorded in the checklist |
+| Own map vs View > Game Lighting, Bake lightmaps off and on | Compile > Bake lightmaps, build, compare at the same spot | **NOT VERIFIED** (HANDOVER section 4, item 2) |
+| Stock door carried into an own map | Real stock scripted objects in the build | **NOT VERIFIED** (item 3) |
+| Stock map with removed world geometry | `iw8r_remove_world` box, File > Rebuild Stock Zone | **NOT VERIFIED** (item 4) |
+| Copied loot, doors and extraction sites on Quarry | File > Edit Placed Objects / Edit Loot Points, Rebuild Stock Zone | **NOT VERIFIED** (item 5) |
+| Occlusion bake (optional) | Compile > Occlusion bake, build | **NOT VERIFIED** (item 6) |
 | Prior art on this build (not from this editor) | x64-zt/proxy conversions of mp_iw7_frontier, mp_iw7_scorch, mp_iw7_brkneck recorded as loading ([research/06](research/06_test_assets.md) §4) | Owner-recorded; build hash not recorded |
 
 Only an owner-run test on the named build can move a row to VERIFIED. Record the date, the exe MD5, and what was observed.
+The steps for every open row are in [TEST_CHECKLIST.md](TEST_CHECKLIST.md) ("In game: the short list").
 
 ## Roadmap
 
@@ -55,6 +67,15 @@ is the earlier coarse plan.
 | **M6** IW8 lighting and render tooling | Lights + IES, sun, probes, decal volumes, vision/fog/grading editor, volumetrics; bake strategy for lightmaps, light grid and probes | Spot light with IES profile visible in game |
 | **M7** Live link | Live-link server inside mw120rproxy: console commands, camera sync (after verifying set-origin/angles semantics), script-entity hot update, one-click launch | Moving a `script_model` in the editor moves it in game within 1 s |
 | **M8** FX, scriptables, prefabs, painting | createfx placement and preview, scriptables/dynents, glass, reactive motion, prefab enter/stamp/browser, mesh painter | A breakable scriptable placed in the editor breaks in game |
+
+State of each milestone on 2026-11-14 (details in [FEATURE_MATRIX.md](FEATURE_MATRIX.md) and [ROADMAP.md](ROADMAP.md)):
+- **M2**: done offline (entity string and spawn list written back; Rebuild Stock Zone through the converter's `editzone`); no stock edit has been loaded in game.
+- **M3**: done; every listed tool is built and GUI-tested, except filters by contents and by material.
+- **M4**: done; all browsers, thumbnail packs, textured and lit preview, model placement; stock materials and models seen in game (2026-11-11).
+- **M5**: done; editor-built maps loaded and played in game (owner, 2026-11-11); deploy, leak check, ACTS validation built.
+- **M6**: mostly done offline (lights, IES, sun, probes, decals, vision, volumetrics, light grid, opt-in lightmap and occlusion bakes); lights, sun and sky seen in game, probes showed no change, bakes not seen.
+- **M7**: mostly done offline through Live Link Direct (no proxy): console, F5 build-deploy-load, hot update; live link and hot channels seen in game; camera angles are not written to the game.
+- **M8**: done offline (effects with editor, scriptables, dynamic props, glass, prefab enter/leave and browser, painters); stock effects, glass and a dynamic prop seen in game; a breakable scriptable in game not checked.
 
 ## M2.1 result (2026-11-08): edited entities written into a real Replay 1.20 fastfile, verified offline
 
@@ -95,11 +116,28 @@ The Replay install is only read, and its timestamps are checked.
   [research/18](research/18_x64zt_stock_assets.md) for the stock-asset route.
 - **In game: NOT VERIFIED.** Owner test: F7, Compile > Deploy, start Replay, Local Play, F6, pick the map.
 
-## Next concrete task
+## What is left (2026-11-14)
 
-**M2.2: regenerate `spawnList` from spawn entities, then do the owner's in-game check of M2.1.** Spawns are the most visible
-IW8-only edit. Their 40-byte records sit in the same `map_ents` dump as the entity string. Keep the M2.1 path, add a
-spawn record writer that preserves untouched records byte for byte, and expose the IW8 Spawns panel as editable.
+M2.2 (the spawn list written back from spawn entities) is done offline; see ROADMAP 6.1 and 11.2. What is left comes
+from [HANDOVER.md](HANDOVER.md) sections 4 and 5.
+
+**Only the game can settle these** (owner checks, in this order; steps in [TEST_CHECKLIST.md](TEST_CHECKLIST.md)):
+1. An installed stock edit loads (the toon filter on Shipment, File > Install Edited Stock Map Into Game). Every stock
+   map edit depends on it.
+2. An own map looks like View > Game Lighting, with Bake lightmaps off and on.
+3. A stock door carried into an own map opens.
+4. A stock map rebuilt with removed world geometry: the object is gone and you walk through where it was.
+5. Copied loot, doors and extraction sites on Quarry work like the originals.
+6. Optional: nothing is missing on a map built with the occlusion bake.
+
+**Not built, or built in part:**
+- Web page: patch vertex editing; the full Vision Editor.
+- Occlusion: occluders that are not boxes; local updates of a stock map's occlusion data.
+- Viewport: highlights of own materials with a specular map; volumetric fog is uncalibrated and off.
+- Streamed Warzone tiles cannot be edited (the client refuses unsigned tiles).
+- A turned stock sun keeps the old sun in the baked bounce light.
+- Items the game must answer first (reverb zones, killstreak airspace, intro cameras) are listed in ROADMAP.md.
+- Ground War scale maps are out of scope.
 
 **Original M2.1 plan (done above):** write an edited entity string back into a real IW8 fastfile. Steps:
 1. Copy `E:\IW8\Builds\1.20-replay\zone\mp_shipment.*` and the Oodle DLL into a scratch game folder, never the real install.

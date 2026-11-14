@@ -156,6 +156,9 @@ struct TexturedBatch {
     // 5.23 wind preview: foliage batches sway in the vertex shader; baseZ is the lowest point of the batch (no sway there).
     bool sway = false;
     float baseZ = 0;
+    // An own material's specular map (RGB reflectance, alpha gloss; createTexture), -1 = none. Game Lighting draws its
+    // highlight and reflection as the build's world shader does.
+    int specTexture = -1;
 };
 
 // A vertex stream with the ranges the renderer has not uploaded yet.
@@ -181,7 +184,7 @@ struct GeoStream : GeoStreamBase {
 // One textured batch (a texture, normal map, blend mode and sway flag), as TexturedBatch plus its change state.
 struct SceneBatch : GeoStream<GpuTexVertex> {
     int key = 0;
-    int texture = -1, normalTexture = -1, emissiveTexture = -1;
+    int texture = -1, normalTexture = -1, emissiveTexture = -1, specTexture = -1;
     int shader = -1;  // SceneRenderer::createCustomShader id of the material's custom shader (Game Lighting), -1 none
     int blend = 0;
     bool sway = false;
