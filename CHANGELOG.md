@@ -5,6 +5,18 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Seen in the game (owner, 16:15): the new toon lines, the haze and the bright sky work.** Cinder Rail Toon shows
+  clean ink lines from the scene depth, the warm haze toward the horizon and the brighter sky; Shipment shows the toon
+  filter with ink lines on the stock world and props. Not yet right: the first-person weapon and hands have no toon
+  look (their shaders are in zones shared by every map; research 128 in work), and on Shipment some objects came and
+  went (to be checked on a second load: the game was building the new zone's shader cache).
+- **The occlusion bake is marked experimental: it failed its first game test.** The same test's first build had
+  Occlusion bake on: world surfaces came and went with the camera and placed models (foliage too) were not drawn,
+  while their shadows were. Rebuilt without it and redeployed. The Compile panel's tooltip and the build log now say
+  so; the cause is open (plan 2.4).
+- **The browser editor has the haze and the sky brightness too**: the Atmosphere form has Haze and Haze amount, the
+  Sun & Sky form has Sky brightness.
+
 - **Toon lines redone: found on screen from the scene's depth.** The lines of the toon shader now come from what is
   drawn around each pixel, not from each brush face's edges. Faces in one plane have no line between them, lines run
   into each other without ends or gaps, a wall standing in a floor gets its line, and models get lines too.

@@ -66,6 +66,7 @@
 #include "qt_gui_test_loot.h"
 #include "qt_gui_test_prefab_models.h"
 #include "model_preview.h"
+#include "sky_image.h"
 #include "sun_sky_dialog.h"
 #include "brush_flags.h"
 #include "brush_ops.h"
@@ -1334,6 +1335,43 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                         *ctx.doc.worldspawn()->value(kVisionKey) == "tonemapExposureAdjust=0.25; sunColor=1 0.9 0.8",
                     "the dialog's Vision overrides field writes worldspawn iw8r_vision");
         }
+        {
+            // The haze (research 126): the dialog's preset list and amount write worldspawn iw8r_haze; a preset turns the
+            // baked fog's group off; "None" removes the key.
+            AtmosphereDialog dlg(currentAtmosphere(ctx), &w);
+            auto* preset = dlg.findChild<QComboBox*>("atmoHazePreset");
+            auto* amount = dlg.findChild<QDoubleSpinBox*>("atmoHazeAmount");
+            auto* fogBox = dlg.findChild<QGroupBox*>("atmoFog");
+            const bool have = preset && amount && fogBox && preset->count() == int(hazePresets().size()) + 1;
+            r.check(have && !amount->isEnabled() && fogBox->isEnabled(), "the Atmosphere dialog lists the haze presets, none chosen at first");
+            if (have) {
+                preset->setCurrentIndex(preset->findData("desert"));
+                amount->setValue(0.7);
+                r.check(amount->isEnabled() && !fogBox->isEnabled() && applyAtmosphere(ctx, dlg.value()) && ctx.doc.worldspawn()->value(kHazeKey) &&
+                            *ctx.doc.worldspawn()->value(kHazeKey) == "desert 0.7",
+                        "a haze preset and amount write worldspawn iw8r_haze and turn the baked fog's group off");
+                AtmosphereDialog again(currentAtmosphere(ctx), &w);
+                auto* p2 = again.findChild<QComboBox*>("atmoHazePreset");
+                r.check(p2 && p2->currentData().toString() == "desert" && again.value().haze && std::fabs(again.value().haze->amount - 0.7) < 1e-9,
+                        "the dialog opens with the map's haze");
+                if (p2) p2->setCurrentIndex(0);
+                r.check(applyAtmosphere(ctx, again.value()) && !ctx.doc.worldspawn()->value(kHazeKey), "the preset None removes the haze key");
+            }
+        }
+        {
+            // Sun & Sky: the sky brightness writes worldspawn iw8r_sky_brightness, and 1 removes the key.
+            SunSky sun = currentSunSky(ctx);
+            const double was = sun.skyBrightness;
+            sun.skyBrightness = 2.5;
+            const bool set = applySunSky(ctx, sun) && ctx.doc.worldspawn()->value(kSkyBrightnessKey) &&
+                             *ctx.doc.worldspawn()->value(kSkyBrightnessKey) == "2.5" && std::fabs(currentSunSky(ctx).skyBrightness - 2.5) < 1e-9;
+            SunSkyDialog dlg(currentSunSky(ctx), {}, &w);
+            auto* spin = dlg.findChild<QDoubleSpinBox*>("skyBrightness");
+            const bool shown = spin && std::fabs(spin->value() - 2.5) < 1e-9;
+            sun.skyBrightness = 1.0;
+            const bool cleared = applySunSky(ctx, sun) && !ctx.doc.worldspawn()->value(kSkyBrightnessKey);
+            r.check(was == 1.0 && set && shown && cleared, "Sun & Sky's sky brightness writes iw8r_sky_brightness, shows it, and 1 removes it");
+        }
         r.check(applyAtmosphere(ctx, Atmosphere{}) && !currentAtmosphere(ctx).fog && !currentAtmosphere(ctx).film,
                 "an empty atmosphere removes both keys");
         for (int undoGuard = 0; undoGuard < 64 && ctx.doc.undoPosition() > pos; ++undoGuard) QTest::keyClick(&w, Qt::Key_Z, Qt::ControlModifier);
@@ -2108,7 +2146,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 QStringList sunKeys;
                 for (const QJsonValue& f : sun.value("fields").toArray()) sunKeys << f.toObject().value("key").toString() + ":" + f.toObject().value("type").toString();
                 r.check(forms.size() == 12 && sun.value("title").toString() == "Sun & Sky" &&
-                            sunKeys == QStringList({"pitch:number", "yaw:number", "color:color", "sky:text"}) &&
+                            sunKeys == QStringList({"pitch:number", "yaw:number", "color:color", "sky:text", "skyBrightness:number"}) &&
                             fweb.handle("GET", "/api/form?id=nothing", {}, true, {}).status == 404,
                         "GET /api/forms lists the forms and GET /api/form gives a form's fields with the map's values");
                 {
@@ -2396,6 +2434,29 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                     ctx.documentEdited();
                     r.check(okV.status == 200 && visionNow == "tonemapExposure=0.5" && badV.status == 400 && kept && key("iw8r_vision") == visionWas,
                             "the Atmosphere form sets the vision overrides and refuses text the build would not read");
+                }
+                {
+                    // The haze and the sky brightness from the browser, as the desktop dialogs write them.
+                    const QJsonObject af = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=atmosphere", {}, true, {}).body).object();
+                    bool hazeField = false;
+                    for (const auto f : af.value("fields").toArray())
+                        hazeField |= f.toObject().value("key").toString() == "haze" && f.toObject().value("choices").toArray().size() == int(hazePresets().size()) + 1;
+                    const auto okH = fweb.handle("POST", "/api/form", "{\"id\":\"atmosphere\",\"values\":{\"haze\":\"dusk\",\"hazeAmount\":1.5}}", true, {});
+                    const QString hazeNow = key("iw8r_haze");
+                    const auto badH = fweb.handle("POST", "/api/form", "{\"id\":\"atmosphere\",\"values\":{\"haze\":\"soup\"}}", true, {});
+                    const bool hazeKept = key("iw8r_haze") == hazeNow;
+                    const auto offH = fweb.handle("POST", "/api/form", "{\"id\":\"atmosphere\",\"values\":{\"haze\":\"none\"}}", true, {});
+                    const bool hazeGone = key("iw8r_haze") == "(none)";
+                    const auto okS = fweb.handle("POST", "/api/form", "{\"id\":\"sunSky\",\"values\":{\"skyBrightness\":3}}", true, {});
+                    const QString skyNow = key("iw8r_sky_brightness");
+                    fweb.handle("POST", "/api/form", "{\"id\":\"sunSky\",\"values\":{\"skyBrightness\":99}}", true, {});
+                    const QString skyHigh = key("iw8r_sky_brightness");  // out of range: held at the top of the range
+                    const auto badS = fweb.handle("POST", "/api/form", "{\"id\":\"sunSky\",\"values\":{\"skyBrightness\":\"bright\"}}", true, {});
+                    fweb.handle("POST", "/api/form", "{\"id\":\"sunSky\",\"values\":{\"skyBrightness\":1}}", true, {});
+                    r.check(hazeField && okH.status == 200 && hazeNow == "dusk 1.5" && badH.status == 400 && hazeKept && offH.status == 200 && hazeGone,
+                            QString("the Atmosphere form sets a haze preset and amount, refuses an unknown one and removes it (%1)").arg(hazeNow));
+                    r.check(okS.status == 200 && skyNow == "3" && skyHigh == "16" && badS.status == 400 && key("iw8r_sky_brightness") == "(none)",
+                            QString("the Sun & Sky form sets the sky brightness within its range (%1)").arg(skyNow));
                 }
                 fweb.handle("POST", "/api/form", "{\"id\":\"mapInfo\",\"values\":{\"iw8r_title\":\"Web Title\",\"iw8r_minimap_scale\":\"1.2\"}}", true, {});
                 const bool infoSet = key("iw8r_title") == "Web Title" && key("iw8r_minimap_scale") == "1.2";

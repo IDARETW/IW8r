@@ -408,6 +408,12 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
     stay open: research 122 found nothing a map provides that can switch them off (the minimap set-up equals a stock
     map's), and that the killstreak of the report fits the Personal Radar drone, which skips enemies with the
     Ghost-like perk. Only the game can say which it was.
+  - occlusion bake in game (2.4): FAILED its first game test 2026-11-14 16:15 (Cinder Rail Toon built with
+    iw8r_umbra_bake 1: world surfaces came and went with the camera, placed models were not drawn, their shadows
+    were). OPEN. The offline conservativeness test passes with the editor's own decoder, so the game's Umbra runtime
+    reads something differently: suspects are the camera's cell lookup (view tree), the per-object bounds against the
+    portal-clipped frustum, and contribution culling of small objects (the one-cell tome avoids all three). Until
+    fixed the option is marked experimental in the Compile panel and the build log.
   - weapon mounting on a built map (6.8, found 2026-11-14 by the field audit, research 124 / 125): OPEN, not built.
     The game takes mount spots only from mount edges in the map's edge list; the converter writes ladder edges only.
     To build: mount edges from the map's own brush edges (the layouts, the octree and the flags are in research

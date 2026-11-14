@@ -289,13 +289,23 @@ QJsonObject MainWindow::webForm(const QString& id) const {
         fields = {number("pitch", "Sun pitch (degrees; negative = above the horizon)", s.pitch, -90, 90, 1),
                   number("yaw", "Sun yaw (degrees)", s.yaw, -360, 360, 1), color("color", "Sun colour", s.color),
                   text("sky", "Sky (a stock sky name; empty = none)", s.sky, "The build converts the sky's image when the game files have it",
-                       stockSkyList())};
+                       stockSkyList()),
+                  number("skyBrightness", "Sky brightness", s.skyBrightness, 0.1, 16, 0.25,
+                         "1 keeps the sky's brightest clouds just below white; 2 or 3 is a bright day sky")};
     } else if (id == "atmosphere") {
         title = "Atmosphere (Fog / Film Grade)";
         const Atmosphere a = currentAtmosphere(ctx_);
         const ExpFog fog = a.fog.value_or(ExpFog{});
         const FilmGrade film = a.film.value_or(FilmGrade{});
-        fields = {boolean("fog", "Fog", a.fog.has_value()),
+        QStringList hazeIds{"none"};
+        QString hazeHelp = "The game's own fog, its blend into the sky and volumetric air (it replaces the fog below).";
+        for (const HazePreset& p : hazePresets()) {
+            hazeIds << QString::fromLatin1(p.id);
+            hazeHelp += QString(" %1: %2.").arg(QString::fromLatin1(p.id), QString::fromLatin1(p.about));
+        }
+        fields = {choice("haze", "Haze", a.haze ? qs(a.haze->preset) : QString("none"), hazeIds, hazeHelp),
+                  number("hazeAmount", "Haze amount", a.haze ? a.haze->amount : 1.0, 0.1, 4, 0.1, "1 = the preset as designed, 0.5 half as thick, 2 twice"),
+                  boolean("fog", "Fog", a.fog.has_value()),
                   number("fogStart", "Fog start (units)", fog.start, 0, 20000, 16),
                   number("fogHalfway", "Fog halfway distance (units)", fog.halfway, 1, 70000, 50, "Where the fog hides half of what is behind it"),
                   color("fogColor", "Fog colour", fog.color),
@@ -534,6 +544,7 @@ bool MainWindow::applyWebForm(const QString& id, const QJsonObject& values, QStr
         SunSky s = currentSunSky(ctx_);
         if (!numberIn(values, "pitch", -90, 90, s.pitch, why) || !numberIn(values, "yaw", -360, 360, s.yaw, why)) return false;
         if (values.contains("color") && !colorOf(values.value("color"), s.color)) return no("the sun colour is not #rrggbb");
+        if (!numberIn(values, "skyBrightness", 0.1, 16, s.skyBrightness, why)) return false;
         if (values.contains("sky")) {
             s.sky = values.value("sky").toString().trimmed();
             if (s.sky.contains(' ') || s.sky.contains('"')) return no("a sky name has no spaces or quotes");
@@ -572,6 +583,20 @@ bool MainWindow::applyWebForm(const QString& id, const QJsonObject& values, QStr
             if (vision.find('"') != std::string::npos) return no("the vision overrides have no quotes");
             if (!vision.empty() && visionOverridesJson(vision, &verr).empty()) return no("vision overrides: " + qs(verr.empty() ? std::string("not name=value; name=value") : verr));
             a.vision = vision;
+        }
+        // The haze: a preset name (or none) and its amount; a changed amount keeps the preset.
+        {
+            QString preset = a.haze ? qs(a.haze->preset) : QString("none");
+            double amount = a.haze ? a.haze->amount : 1.0;
+            if (values.contains("haze")) preset = values.value("haze").toString().trimmed();
+            if (!numberIn(values, "hazeAmount", 0.1, 4, amount, why)) return false;
+            if (preset.isEmpty() || preset == "none") {
+                a.haze.reset();
+            } else {
+                const auto parsed = parseHaze(preset.toStdString());
+                if (!parsed) return no("the haze is not one of the presets");
+                a.haze = Haze{parsed->preset, amount};
+            }
         }
         a.fog = fogOn ? std::optional<ExpFog>(fog) : std::nullopt;
         a.film = filmOn ? std::optional<FilmGrade>(film) : std::nullopt;

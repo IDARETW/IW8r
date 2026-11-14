@@ -76,6 +76,25 @@
   tools/physics_bounds_build_test.py). OPEN, next: mount edges (research 125 by an Opus agent, read-only IDA): the
   converter writes ladder edges only (edgeListUsedQueryTypes 4); mounting queries bucket 0 of the edge list and has
   no trace fallback; mantle falls back to Mantle_TraceLedgeFace while bit 2 is clear.
+  OWNER GAME TEST 2026-11-14 16:15 (their words): "in toon cinderrail, i see some surfaces disappearing and
+  appearing depending on the angle of the camera, and foliage and other objects seem invisible, and the viewmodel
+  still doesnt have the toon effect. in shipment, the toon effect now works (not the viewmodel), but objects also
+  appear in and out". Their screenshots show the new lines, the haze and the bright sky working in game.
+  - Cinder Rail: the build they tested had iw8r_umbra_bake 1 (their own setting, in their open map). Rebuilt from a
+    private copy without that key (out/agent/cr_toon_build, same shader and scene keys) and redeployed 16:25 with
+    --compile --deploy. NOT CONFIRMED yet that this cures it. Their open map still has the key: an F7 from their
+    editor brings the bake back. The bake is now marked experimental (compile log warning, Compile panel tooltip,
+    PLAN 2.4 OPEN with the suspects).
+  - Shipment popping: only the techset zone differs from stock. The game wrote main/techsets_mp_shipment.psob (41 MB)
+    at 16:08, so the guess is objects waiting for their pipeline states on the first load. Asked the owner to check a
+    second load. If it stays: look at the spliced shaders (alpha when the stock shader leaves o0.w unwritten on a
+    path, the 26 techniques that also read code image 6).
+  - Viewmodel toon: an Opus agent is writing docs/research/128_viewmodel_filter.md (which shared zones hold the
+    weapon / hands technique sets, what the filter must do differently since their materials live in other zones,
+    a scratch build, install risks). Build it from that note. The owner has asked for it three times: do not wait
+    for another confirmation, but an install of a shared zone changes every map while installed; say so.
+  - GUI suite while the game runs: 1,089 checks, 1 failure ("without a game the Live Link commands say why"); it
+    passes with the game closed. Core 181,940 / 1,377.
   STATE 2026-11-14 16:15 (read this first; the 16:00 block below lists the same work as "not built": it is all built
   now). Converter a0a50852 is committed in the worktree and LIVE (E:\mw124\x64-zt fast-forwarded and rebuilt 16:06;
   old exe out/zt_backup/zonetool_1d3ff9c0.exe). Suites: core 181,925 checks / 1,377 tests, GUI 1,082, smoke ok, 0
