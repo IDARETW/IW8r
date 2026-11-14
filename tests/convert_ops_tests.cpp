@@ -354,3 +354,116 @@ TEST(convert_ops_patch_to_terrain_one_undo_step) {
     CHECK(doc.undo());
     CHECK(doc.text() == before);
 }
+
+// ---- Paint meshes on brush faces (blend painting, ROADMAP 5.9 / 8.11)
+
+TEST(convert_ops_paint_mesh_density_and_uv) {
+    // A floor slab 256 x 128 x 16: the top face gets a control point every 32 units.
+    const Primitive slab = brushPrim(makeBox(boxOf({0, 0, 0}, {256, 128, 16}), kSuffix));
+    const auto ws = faceWindingsOf(slab);
+    size_t top = ws.size();
+    for (size_t f = 0; f < ws.size(); ++f)
+        if (const auto pl = facePlane(slab, f); pl && normalize(pl->n).z > 0.99) top = f;
+    CHECK(top < ws.size());
+    if (top >= ws.size()) return;
+    const auto meshes = brushFacePaintMeshes(slab, top, 32.0, true);
+    CHECK(meshes.size() == 1);
+    if (meshes.size() != 1) return;
+    const PatchGrid& g = meshes[0];
+    CHECK(std::max(g.cols, g.rows) == 9 && std::min(g.cols, g.rows) == 5);  // 256 / 32 + 1 and 128 / 32 + 1
+    CHECK(g.material == "ch_tile_floor05" && g.keyword == "mesh");
+    const Vec3 n = normalize(facePlane(slab, top)->n);
+    const MeshStats s = meshStats(g, n);
+    CHECK(s.outward && s.degenerate == 0);
+    CHECK(std::fabs(s.area - 256.0 * 128.0) < 1e-6 * 256.0 * 128.0);
+    // Every control point lies on the face and carries the face's own texture coordinates.
+    const TexParams tp = texParamsOfFace(slab, top).value_or(TexParams{});
+    bool onFace = true, sameUv = true;
+    for (size_t i = 0; i < g.pos.size(); ++i) {
+        onFace = onFace && std::fabs(g.pos[i].z - 16.0) < 1e-9;
+        const auto uv = faceUV(n, tp, g.pos[i]);
+        sameUv = sameUv && std::fabs(uv[0] - g.st[i][0]) < 1e-6 && std::fabs(uv[1] - g.st[i][1]) < 1e-6;
+    }
+    CHECK(onFace && sameUv);
+    // The spacing rounds up to whole cells and is limited to 65 points a side; no spacing gives the corners.
+    const auto fine = brushFacePaintMeshes(slab, top, 1.0, true);
+    CHECK(fine.size() == 1 && fine[0].cols == 65 && fine[0].rows == 65);
+    const auto odd = brushFacePaintMeshes(slab, top, 100.0, true);
+    CHECK(odd.size() == 1 && std::max(odd[0].cols, odd[0].rows) == 4 && std::min(odd[0].cols, odd[0].rows) == 3);
+    const auto corners = brushFacePaintMeshes(slab, top, 0.0, true);
+    CHECK(corners.size() == 1 && corners[0].cols == 2 && corners[0].rows == 2);
+    // A face that is not there, and a tool face when tool faces are skipped: nothing.
+    CHECK(brushFacePaintMeshes(slab, 99, 32.0, true).empty());
+    const Primitive caulked = brushPrim(makeBox(boxOf({0, 0, 0}, {64, 64, 64}), kToolSuffix));
+    CHECK(brushFacePaintMeshes(caulked, 0, 32.0, true).empty());
+    CHECK(brushFacePaintMeshes(caulked, 0, 32.0, false).size() == 1);
+}
+
+TEST(convert_ops_paint_mesh_on_selected_faces_one_undo_step) {
+    const Primitive slab = brushPrim(makeBox(boxOf({0, 0, 0}, {256, 128, 16}), kSuffix));
+    Document doc;
+    CHECK(loadWorld(doc, {slab}));
+    const auto ref = firstPrimRef(doc);
+    CHECK(ref.has_value());
+    if (!ref) return;
+    const Primitive* brush = doc.findItem(ref->entity, ref->item)->prim();
+    uint32_t top = 0;
+    for (size_t f = 0; f < brush->faces.size(); ++f)
+        if (const auto pl = facePlane(*brush, f); pl && normalize(pl->n).z > 0.99) top = uint32_t(f);
+    doc.selectFace(FaceRef{ref->entity, ref->item, top}, false);
+
+    const std::string before = doc.text();
+    const size_t historyBefore = doc.history().size();
+    CHECK(addPaintMeshesToBrushFaces(doc, 32.0) == 1);
+    CHECK(doc.history().size() == historyBefore + 1);
+    CHECK(countItems(doc, false) == 1 && countItems(doc, true) == 1);  // the brush stays, one patch on its top
+    // The covered face is caulk now, the others keep their material, and the brush has not moved.
+    const Primitive* after = doc.findItem(ref->entity, ref->item) ? doc.findItem(ref->entity, ref->item)->prim() : nullptr;
+    CHECK(after != nullptr);
+    if (!after) return;
+    size_t caulk = 0, tile = 0;
+    for (size_t f = 0; f < after->faces.size(); ++f) {
+        if (after->faces[f].material() == "caulk") {
+            ++caulk;
+            CHECK(f == top);
+        }
+        if (after->faces[f].material() == "ch_tile_floor05") ++tile;
+    }
+    CHECK(caulk == 1 && tile == after->faces.size() - 1);
+    CHECK(faceWindingsOf(*after).size() == faceWindingsOf(slab).size());
+    // The patch is the selection (it is what gets painted) and no face is selected any more.
+    CHECK(doc.selection().size() == 1 && doc.faceSelection().empty());
+    for (const SelRef& r : doc.selection()) {
+        const EntityItem* it = doc.findItem(r.entity, r.item);
+        CHECK(it && it->prim() && it->prim()->kind == PrimKind::Patch);
+    }
+    CHECK(doc.undo());
+    CHECK(doc.text() == before);
+}
+
+TEST(convert_ops_paint_mesh_on_whole_brushes_skips_tool_faces) {
+    // No face selection: every drawn face of the selected brush is covered; a brush of tool faces is left alone.
+    const Primitive cube = brushPrim(makeBox(boxOf({0, 0, 0}, {64, 64, 64}), kSuffix));
+    const Primitive tool = brushPrim(makeBox(boxOf({128, 0, 0}, {192, 64, 64}), kToolSuffix));
+    Document doc;
+    CHECK(loadWorld(doc, {cube, tool}));
+    Entity* w = doc.worldspawn();
+    CHECK(w != nullptr);
+    if (!w) return;
+    bool first = true;
+    for (const auto& it : w->items)
+        if (it.isPrimitive()) doc.select(SelRef{w->id, it.id}, !first), first = false;
+    CHECK(doc.selection().size() == 2);
+    const std::string before = doc.text();
+    CHECK(addPaintMeshesToBrushFaces(doc, 32.0) == 6);
+    CHECK(countItems(doc, false) == 2 && countItems(doc, true) == 6);
+    CHECK(doc.selection().size() == 6);
+    // Nothing selected, or only patches: nothing happens and nothing is recorded.
+    const size_t history = doc.history().size();
+    CHECK(addPaintMeshesToBrushFaces(doc, 32.0) == 0);
+    doc.deselectAll();
+    CHECK(addPaintMeshesToBrushFaces(doc, 32.0) == 0);
+    CHECK(doc.history().size() == history);
+    CHECK(doc.undo());
+    CHECK(doc.text() == before);
+}

@@ -5,6 +5,15 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Blend painting on brush surfaces: Brush > Paint Mesh on Faces.** A brush face has only its corners, so there
+  was nothing to paint a blend on; you had to turn the brush into patches and then into a terrain mesh by hand. The
+  new command lays a mesh patch with a control point every N units (you choose; 32 by default) on the faces you
+  selected with Ctrl+Shift+click, or on every drawn face of the selected brushes. The patch has the face's material
+  and texture placement. The face under it becomes caulk, so the brush keeps its shape and its collision and only
+  the patch is drawn. It is one undo step, and Vertex Paint Mode starts right after. The camera view no longer
+  draws a tool face that lies wholly under a flat patch (the two fought for every pixel). A map with such a mesh
+  compiles (test); how the game's layered materials use the painted colours is still not seen in the game.
+
 - **Game Lighting: the map's white balance.** Most stock maps set a white balance in their vision (Hideout,
   Verdansk, Rust, Quarry, Backlot and others: a warm one). The game applies it to the whole picture; the viewport
   did not, so Hideout looked cold and grey where the game is warm. The viewport now applies the game's matrix at the

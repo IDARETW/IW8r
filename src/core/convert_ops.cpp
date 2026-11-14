@@ -3,7 +3,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
+#include <map>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -74,6 +77,28 @@ double faceArea(const Winding& w) {
     return area;
 }
 
+// The patches of face f (its winding given), n x n control points each, appended to `out`.
+void appendFacePatches(const Primitive& brush, size_t f, const Winding& winding, bool skipToolFaces, int n, std::vector<PatchGrid>& out) {
+    const Winding w = dropCollinear(winding);
+    if (w.size() < 3) return;  // degenerate or non-contributing face
+    const std::string mat = brush.faces[f].material();
+    if (skipToolFaces && (mat.empty() || isIw8ToolMaterial(mat))) return;
+    const auto plane = facePlane(brush, f);
+    if (!plane) return;
+    const Vec3 normal = normalize(plane->n);
+    // A face without texture fields gets the compiler's default (tex_projection.h), as the compiler does.
+    const TexParams tp = texParamsOfFace(brush, f).value_or(TexParams{});
+
+    if (w.size() == 4) {
+        out.push_back(faceGrid({w[0], w[1], w[2], w[3]}, n, mat, normal, tp));
+    } else if (w.size() == 3) {
+        out.push_back(faceGrid({w[0], w[1], w[2], w[2]}, n, mat, normal, tp));
+    } else {
+        // Convex n-gon: fan from corner 0 into n - 2 triangle patches (each one exact, all on the face plane).
+        for (size_t k = 1; k + 1 < w.size(); ++k) out.push_back(faceGrid({w[0], w[k], w[k + 1], w[k + 1]}, n, mat, normal, tp));
+    }
+}
+
 }  // namespace
 
 std::vector<PatchGrid> brushFacesToPatches(const Primitive& brush, bool skipToolFaces, int subdiv) {
@@ -81,28 +106,75 @@ std::vector<PatchGrid> brushFacesToPatches(const Primitive& brush, bool skipTool
     if (brush.kind != PrimKind::Brush) return out;
     const int n = std::max(2, subdiv);
     const std::vector<Winding> windings = faceWindingsOf(brush);  // outward CCW about each face normal
-    for (size_t f = 0; f < windings.size(); ++f) {
-        const Winding w = dropCollinear(windings[f]);
-        if (w.size() < 3) continue;  // degenerate or non-contributing face
-        const std::string mat = brush.faces[f].material();
-        if (skipToolFaces && (mat.empty() || isIw8ToolMaterial(mat))) continue;
-        const auto plane = facePlane(brush, f);
-        if (!plane) continue;
-        const Vec3 normal = normalize(plane->n);
-        // A face without texture fields gets the compiler's default (tex_projection.h), as the compiler does.
-        const TexParams tp = texParamsOfFace(brush, f).value_or(TexParams{});
+    for (size_t f = 0; f < windings.size(); ++f) appendFacePatches(brush, f, windings[f], skipToolFaces, n, out);
+    return out;
+}
 
-        if (w.size() == 4) {
-            out.push_back(faceGrid({w[0], w[1], w[2], w[3]}, n, mat, normal, tp));
-        } else if (w.size() == 3) {
-            out.push_back(faceGrid({w[0], w[1], w[2], w[2]}, n, mat, normal, tp));
-        } else {
-            // Convex n-gon: fan from corner 0 into n - 2 triangle patches (each one exact, all on the face plane).
-            for (size_t k = 1; k + 1 < w.size(); ++k)
-                out.push_back(faceGrid({w[0], w[k], w[k + 1], w[k + 1]}, n, mat, normal, tp));
-        }
+std::vector<PatchGrid> brushFacePaintMeshes(const Primitive& brush, size_t face, double spacing, bool skipToolFaces) {
+    std::vector<PatchGrid> corners, out;
+    if (brush.kind != PrimKind::Brush) return out;
+    const std::vector<Winding> windings = faceWindingsOf(brush);
+    if (face >= windings.size() || face >= brush.faces.size()) return out;
+    appendFacePatches(brush, face, windings[face], skipToolFaces, 2, corners);
+    for (const PatchGrid& g : corners) {
+        // Control points along each side by its longer edge. Row 0 is corners 0 -> 1, the last row 3 -> 2.
+        const auto points = [&](double len) {
+            if (!(spacing > 0)) return 2;
+            return std::clamp(int(std::ceil(len / spacing - 1e-9)) + 1, 2, 65);
+        };
+        const int cols = points(std::max(length(g.pos[1] - g.pos[0]), length(g.pos[3] - g.pos[2])));
+        const int rows = points(std::max(length(g.pos[2] - g.pos[0]), length(g.pos[3] - g.pos[1])));
+        if (auto dense = patchToTerrain(g, cols, rows)) out.push_back(std::move(*dense));
     }
     return out;
+}
+
+size_t addPaintMeshesToBrushFaces(Document& doc, double spacing, const std::string& caulkMaterial) {
+    // The faces to cover, per brush: the face selection, else every face of the selected brushes.
+    std::map<std::pair<Id, Id>, std::set<uint32_t>> chosen;
+    const bool byFace = !doc.faceSelection().empty();
+    if (byFace) {
+        for (const FaceRef& f : doc.faceSelection()) chosen[{f.entity, f.item}].insert(f.face);
+    } else {
+        for (const SelRef& r : doc.selection())
+            if (r.item != kNoId) chosen[{r.entity, r.item}];
+    }
+    std::vector<Document::PrimEdit> edits;
+    size_t made = 0;
+    for (const auto& [key, faces] : chosen) {
+        const EntityItem* it = doc.findItem(key.first, key.second);
+        const Primitive* brush = it ? it->prim() : nullptr;
+        if (!brush || brush->kind != PrimKind::Brush) continue;
+        Primitive covered = *brush;
+        std::vector<Document::PrimEdit> patches;
+        for (size_t f = 0; f < brush->faces.size(); ++f) {
+            if (byFace && !faces.count(uint32_t(f))) continue;
+            // A chosen face is covered even when it is a tool face only if it was picked by hand.
+            const std::vector<PatchGrid> grids = brushFacePaintMeshes(*brush, f, spacing, !byFace);
+            if (grids.empty()) continue;
+            size_t here = 0;
+            for (const PatchGrid& g : grids) {
+                Primitive p = makePatchPrimitive(g, doc.eol(), "");
+                if (p.kind == PrimKind::Patch) patches.push_back({key.first, kNoId, std::move(p)}), ++here;
+            }
+            if (here) covered.setMaterial(caulkMaterial, int(f));
+        }
+        if (patches.empty()) continue;
+        made += patches.size();
+        edits.push_back({key.first, key.second, std::move(covered)});
+        edits.insert(edits.end(), patches.begin(), patches.end());
+    }
+    if (edits.empty() || !doc.editPrimitives(edits, "Paint Mesh On Faces")) return 0;
+    // The patches are what gets painted: they are the selection, not the brushes under them.
+    std::vector<SelRef> keep;
+    for (const SelRef& r : doc.selection()) {
+        const EntityItem* it = doc.findItem(r.entity, r.item);
+        if (it && it->prim() && it->prim()->kind == PrimKind::Patch) keep.push_back(r);
+    }
+    doc.deselectAll();
+    doc.clearFaceSelection();
+    for (const SelRef& r : keep) doc.select(r, true);
+    return made;
 }
 
 bool convertSelectedBrushesToPatches(Document& doc, bool keepBrush, bool skipToolFaces) {

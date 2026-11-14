@@ -139,6 +139,10 @@ public:
     // The browser's live view (plan 3.1): the camera view's own render from a camera of the browser's, as a JPEG; a
     // pick through that camera; the editor's camera as JSON. The editor's own camera is put back after each.
     QByteArray webRenderFrame(const struct WebCamera& cam, int w, int h, int quality);
+    // Brush > Paint Mesh on Faces (ROADMAP 5.9 / 8.11): mesh patches with a control point every `spacing` units on the
+    // selected faces (or on every drawn face of the selected brushes); the covered faces become caulk. One undo step.
+    // Returns the number of patches made.
+    size_t addPaintMeshes(double spacing);
     // Where the streamed tiles, the terrain layers and the Warzone probes are kept around: the camera of a browser's
     // live view while it draws frames (and webFollowHoldMs after its last one), else the editor's own camera.
     Vec3 followCameraPos() const;

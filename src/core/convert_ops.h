@@ -9,7 +9,9 @@
 // builds it with makeFlatPatch), so a terrain here is a "mesh" grid of control points.
 #pragma once
 
+#include <cstddef>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "patch_ops.h"
@@ -30,6 +32,19 @@ std::vector<PatchGrid> brushFacesToPatches(const Primitive& brush, bool skipTool
 // The brush is deleted unless keepBrush. A brush that yields no patch (every face skipped) is left alone.
 // The new patches become the selection. False when nothing changed.
 bool convertSelectedBrushesToPatches(Document& doc, bool keepBrush, bool skipToolFaces);
+
+// The flat patches of one face of a brush (see brushFacesToPatches for the shapes), each with a control point about
+// every `spacing` units along its sides (2 to 65 a side; spacing <= 0 gives the corners only). Empty for a face that
+// does not exist, has no winding, or (skipToolFaces) is a tool face.
+std::vector<PatchGrid> brushFacePaintMeshes(const Primitive& brush, size_t face, double spacing, bool skipToolFaces);
+
+// Paint meshes on brush faces (blend painting, ROADMAP 5.9 / 8.11): a brush face has only its corners, so a mesh patch
+// with a control point about every `spacing` units is laid on it, textured like the face, and the face gets
+// `caulkMaterial` so that only the patch is drawn. The brush keeps its shape and its collision.
+// Faces: the document's face selection when there is one, else every face of the selected brushes that is not a tool
+// face. One undo step; the new patches become the selection and the face selection is cleared. Returns the number of
+// patches made (0: nothing changed).
+size_t addPaintMeshesToBrushFaces(Document& doc, double spacing, const std::string& caulkMaterial = "caulk");
 
 // Resamples a patch onto a cols x rows grid of control points (rows along the patch's rows, cols along its columns).
 // The new grid is "mesh" and keeps the material. Positions and texture coordinates are sampled bilinearly from

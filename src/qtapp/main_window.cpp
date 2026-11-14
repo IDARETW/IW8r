@@ -3040,6 +3040,17 @@ void MainWindow::buildMenus() {
         ctx_.scene.invalidate();
         ctx_.documentEdited("Converted the brush faces to patches (one undo step)");
     });
+    addCommand(brush, "PaintMeshOnFaces", "Paint Mesh on Faces (for blend painting)...", QKeySequence(), [this] {
+        // A brush face has only its corners: nothing to paint a blend on. This lays a mesh patch on it.
+        bool ok = false;
+        const int spacing = QInputDialog::getInt(this, "Paint Mesh on Faces", "A control point every (units):",
+                                                 Settings::instance().value("paintMesh/spacing", 32).toInt(), 4, 512, 4, &ok);
+        if (!ok) return;
+        Settings::instance().setValue("paintMesh/spacing", spacing);
+        if (!addPaintMeshes(spacing)) return;
+        if (!ctx_.vertexPaint)
+            if (QAction* vp = action("VertexPaintMode")) vp->trigger();  // asks for the colour and the brush, then paints
+    });
     addCommand(brush, "ArbitraryRotation", "Arbitrary Rotation...", QKeySequence(), [this] {
         QDialog dlg(this);
         dlg.setWindowTitle("Arbitrary Rotation (degrees)");
@@ -4868,6 +4879,18 @@ QByteArray MainWindow::webRenderFrame(const WebCamera& cam, int w, int h, int qu
     buf.open(QIODevice::WriteOnly);
     img.save(&buf, "JPG", quality);
     return out;
+}
+
+size_t MainWindow::addPaintMeshes(double spacing) {
+    const size_t made = addPaintMeshesToBrushFaces(ctx_.doc, spacing);
+    if (!made) {
+        ctx_.setStatus("Paint mesh: select brush faces (Ctrl+Shift+click) or whole brushes first");
+        return 0;
+    }
+    ctx_.scene.invalidate();
+    ctx_.documentEdited(QString("Laid %1 paint mesh(es) on the faces; the faces under them are caulk now (one undo step). "
+                                "Paint them with Patch > Vertex Paint Mode.").arg(made));
+    return made;
 }
 
 Vec3 MainWindow::followCameraPos() const {

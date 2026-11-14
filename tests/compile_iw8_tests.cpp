@@ -11,6 +11,8 @@
 #include <vector>
 
 #include "brush_ops.h"
+#include "convert_ops.h"
+#include "document.h"
 #include "map_script.h"
 #include "atmosphere.h"
 #include "compile_iw8.h"
@@ -1931,4 +1933,35 @@ TEST(compile_iw8_vehicle_spawns) {
         notBr |= w.find("used by the Warzone (br) scripts only") != std::string::npos;
     }
     CHECK(counted && notBr);
+}
+
+// A paint mesh on brush faces (core addPaintMeshesToBrushFaces, ROADMAP 5.9 / 8.11) builds: the brush under it keeps
+// its collision, its covered faces (caulk now) are not rendered, and the denser patches are.
+TEST(compile_iw8_paint_mesh_on_brush_faces_builds) {
+    Document doc;
+    CHECK(doc.loadFromText(roomMapText(), "paint_mesh_room.map"));
+    Entity* w = doc.worldspawn();
+    CHECK(w != nullptr);
+    if (!w) return;
+    CompileOptions opt;
+    opt.mapId = "mp_room";
+    CompileReport before, after;
+    std::string err;
+    CHECK(compileIw8Extraction(doc.map(), scratch("paint_mesh_before"), opt, before, &err));
+
+    for (const auto& it : w->items)
+        if (it.isPrimitive() && it.prim()->kind == PrimKind::Brush) {
+            doc.select(SelRef{w->id, it.id}, false);
+            break;
+        }
+    CHECK(doc.selection().size() == 1);
+    const size_t made = addPaintMeshesToBrushFaces(doc, 64.0);
+    CHECK(made == 6);
+    const bool ok = compileIw8Extraction(doc.map(), scratch("paint_mesh_after"), opt, after, &err);
+    if (!ok) std::printf("  compile error: %s\n", err.c_str());
+    CHECK(ok);
+    if (!ok) return;
+    CHECK(after.collisionBrushes == before.collisionBrushes);  // the brush is still there to stand on
+    CHECK(after.triangles > before.triangles);                 // 6 faces of 2 triangles became meshes of more
+    CHECK(after.entities == before.entities && after.spawns == before.spawns);
 }

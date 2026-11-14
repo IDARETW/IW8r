@@ -3201,6 +3201,77 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         ctx.documentEdited();
     }
 
+    r.section("paint mesh on brush faces (Brush > Paint Mesh on Faces)");
+    if (CameraView* cv = w.cameraView()) {
+        // A worldspawn brush with drawn faces gets a mesh patch on each of them and caulk under them, in one undo step;
+        // the caulk faces under the patches are not drawn (they would fight with the patches for every pixel).
+        const auto patchCount = [&] {
+            size_t n = 0;
+            for (const auto& e : ctx.doc.map().entities)
+                for (const auto& it : e.items)
+                    if (it.prim() && it.prim()->kind == PrimKind::Patch) ++n;
+            return n;
+        };
+        SelRef pick{};
+        bool found = false;
+        AABB box;
+        if (const Entity* ws = ctx.doc.worldspawn())
+            for (const auto& it : ws->items) {
+                const Primitive* p = it.prim();
+                if (!p || p->kind != PrimKind::Brush || p->faces.empty()) continue;
+                bool drawn = true;
+                for (const auto& f : p->faces) drawn = drawn && !f.material().empty() && !isIw8ToolMaterial(f.material());
+                if (!drawn) continue;
+                box = AABB{};
+                for (const Winding& wd : faceWindingsOf(*p))
+                    for (const Vec3& v : wd) box.add(v);
+                pick = SelRef{ws->id, it.id}, found = true;
+                break;
+            }
+        r.check(found && w.action("PaintMeshOnFaces"), "Brush > Paint Mesh on Faces exists and the sample has a brush to try it on");
+        if (found) {
+            const std::string textWas = ctx.doc.text();
+            const size_t before = patchCount();
+            ctx.doc.deselectAll();
+            ctx.doc.clearFaceSelection();
+            ctx.doc.select(pick, false);
+            const size_t made = w.addPaintMeshes(32);
+            const EntityItem* it = ctx.doc.findItem(pick.entity, pick.item);
+            bool allCaulk = it && it->prim();
+            for (size_t f = 0; allCaulk && f < it->prim()->faces.size(); ++f) allCaulk = it->prim()->faces[f].material() == "caulk";
+            const Vec3 mid = (box.mins + box.maxs) * 0.5;
+            const double reach = length(box.maxs - box.mins) * 0.9 + 48.0;
+            const Vec3 eye = mid + normalize(Vec3{-0.7, -0.6, 0.45}) * reach;
+            const Vec3 dir = normalize(mid - eye);
+            const app::Camera camWas2 = ctx.cam;
+            ctx.cam.pos = eye;
+            ctx.cam.yaw = std::atan2(dir.y, dir.x) * 180.0 / 3.14159265358979;
+            ctx.cam.pitch = std::asin(dir.z) * 180.0 / 3.14159265358979;
+            ctx.cameraMoved();
+            ctx.doc.deselectAll();
+            const QImage with = cv->renderImage(320, 180, false, 0, 200);  // not "clean": tool faces are drawn
+            // The same view without the brush: only its covered tool faces are gone, so the picture stays.
+            ctx.doc.editPrimitives({{pick.entity, pick.item, std::nullopt}}, "test: remove the brush", false);
+            ctx.documentEdited();
+            const QImage without = cv->renderImage(320, 180, false, 0, 200);
+            size_t differ = 0, total = 0;
+            for (int y = 0; y < with.height() && with.size() == without.size(); ++y)
+                for (int x = 0; x < with.width(); ++x, ++total) {
+                    const QRgb p1 = with.pixel(x, y), p2 = without.pixel(x, y);
+                    if (std::abs(qRed(p1) - qRed(p2)) + std::abs(qGreen(p1) - qGreen(p2)) + std::abs(qBlue(p1) - qBlue(p2)) > 48) ++differ;
+                }
+            ctx.doc.undo();
+            ctx.doc.undo();
+            ctx.documentEdited();
+            ctx.cam = camWas2;
+            ctx.cameraMoved();
+            const bool restored = ctx.doc.text() == textWas;
+            r.check(made >= 4 && patchCount() == before && restored && allCaulk && total > 0 && differ * 500 < total,  // 516 pixels differ when the covered faces are drawn (IW8R_NO_PATCH_COVERS)
+                    QString("a brush gets %1 paint mesh(es) with caulk under them in one undo step, and the covered caulk faces are not drawn "
+                            "(%2 of %3 pixels differ without the brush)").arg(made).arg(differ).arg(total));
+        }
+    }
+
     r.section("game lighting (View > Game Lighting)");
     if (CameraView* cv = w.cameraView()) {
         // The preview bake runs in the background; the camera shades with the game's world shader and post chain.

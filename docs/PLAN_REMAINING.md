@@ -411,7 +411,8 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
   - the Effect Editor (8.2): done. Hot update (7.7): built; needs the running game.
 - **Assets**
   - techset state words (12.1), winding (4.11), physics assets (4.20), the tint rule (F.13): done offline.
-  - layered blend painting (5.9 / 8.11): vertex paint on patches is built; painting layer blends on brushes is not.
+  - layered blend painting (5.9 / 8.11): vertex paint on patches is built; brush surfaces get a paint mesh with
+    Brush > Paint Mesh on Faces (done 2026-11-14). How the game's layered materials use the colours: game.
 - **Live Link:** camera angles (7.3), capture (7.6 / 7.11), overlay fields (7.15): built against the owner's client;
   each needs the running game to go further.
 - **Performance and UX**

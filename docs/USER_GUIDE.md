@@ -287,6 +287,11 @@ Commands in the Tools menu:
   also aimed at the sun painted in that sky, in the same undo step.
 - **Compass**: the compass north is the top of the XY view (+Y). Builds write worldspawn `northyaw 90` unless the map
   sets its own, so the game's north matches the editor's.
+- **Painting a blend on a brush surface.** Select the faces (Ctrl+Shift+click) or whole brushes and run Brush >
+  Paint Mesh on Faces. It asks how far apart the paint points should be (32 units is a good start; smaller is finer)
+  and lays a mesh on each face with the same material and texture placement. The face under the mesh becomes caulk:
+  the brush still blocks the player, only the mesh is drawn. Vertex Paint Mode starts right after (colour, alpha,
+  radius, strength); click on the mesh to paint. Ctrl+Z takes the whole step back.
 - **Film grain.** On a stock map the picture has the game's fine grain, as strong as that map's vision sets it. View
   > Game Lighting Options > Film Grain turns it off (for screenshots, or if it bothers you while editing).
 - **White balance.** Many stock maps set a white balance (Hideout and Verdansk a warm one); View > Game Lighting
