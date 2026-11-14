@@ -2,7 +2,7 @@
 
 Scope: research only. Nothing was built, run, edited or committed. Read only: `E:\IW8-Radiant` (editor sources and
 outputs under `out\agent\mp_iw8r_fix1`), the x64-zt converter at `E:\mw124\x64-zt` (read only), and the translated
-script under `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\x64zt_output\.iw3-scripts\mp_iw8r_fix1`.
+script under `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\x64zt_output\.iw3-scripts\mp_iw8r_fix1`.
 Date: 2026-11-11. Short names used below:
 
 - `EDIT` = `E:\IW8-Radiant\`

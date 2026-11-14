@@ -40,7 +40,7 @@ cd E:\mw124\x64-zt
 - `vswhere -latest -requires Microsoft.Component.MSBuild` found the MSBuild above (VS 18 Community).
 - `generate.bat --games=iw3,iw8` writes `enabled_games.hpp` with `ZONETOOL_CONVERTERS(x) x(iw3, iw8)`. The `convert-iw3-iw8` lib links into `zonetool.exe`.
 - A run with `--games=iw8` alone fails at link time: `zone_commands.cpp` calls `convert_extraction` from `convert-iw3-iw8`.
-- Build log: `C:\Users\user\AppData\Local\Temp\claude\40643af5ee92b5b9\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\build1.log`. No compiler errors.
+- Build log: `%USERPROFILE%\AppData\Local\Temp\claude\40643af5ee92b5b9\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\build1.log`. No compiler errors.
 
 ## 3. Test extraction
 

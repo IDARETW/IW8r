@@ -5,7 +5,7 @@ against the editor (`E:\IW8-Radiant`), the x64-zt fork (`E:\mw124\x64-zt`) and t
 
 ## Sources and how the keys were named
 
-- **Stock dump:** `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\stock_cache\mp_shipment\mw19replay\mp_shipment\assets\map_ents\maps\mp\mp_shipment.d3dbsp.0.asset.json`
+- **Stock dump:** `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\stock_cache\mp_shipment\mw19replay\mp_shipment\assets\map_ents\maps\mp\mp_shipment.d3dbsp.0.asset.json`
   (MapEnts `entityString`, 62,892 bytes, hex-encoded). It is the only stock dump in the cache. `mp_backlot2` is named in
   the inventory doc but has no dump here, so every "stock value" below is from `mp_shipment` only.
 - **Key names:** the entity string writes keys as numeric canonical ids. Names were resolved with

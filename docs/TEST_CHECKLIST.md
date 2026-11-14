@@ -156,7 +156,7 @@ The local client was rebuilt with three additions (cold start, game-mode list, d
 - [ ] Close the game. In the editor press F5 on a map: the F5 lines say "the client was asked to boot straight into
       the map", then lines that start with `client:` (request, signed in, multiplayer active, front end ready,
       hosting, start requested, loading), and you see a dark screen and then the map loading screen.
-- [ ] Rollback, if needed (game closed): `"C:\Users\user\AppData\Local\Programs\Python\Python314\python.exe" -B
+- [ ] Rollback, if needed (game closed): `py -3 -B
       E:\IW8-Radiant\tools\dw_candidate_install.py --rollback E:\IW8-Radiant\out\dw_backup\20261111-191715-nov8-candidate`
 
 ## In game: F5 cold start to the loading screen (2026-11-11), not seen in game

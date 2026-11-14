@@ -238,7 +238,7 @@ not read. INFERRED. It matches the dvar next to it: `r_outdoor`, "Prevents snow 
 
 ### 4.2 Check on a built map
 
-Built package `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\x64zt_output\mp_iw8r_fix1\
+Built package `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\x64zt_output\mp_iw8r_fix1\
 mp_iw8r_fix1.ff`, exported read-only with ACTS (`-a image,gfx_map`, `ACTS_REPLAY_STRUCTURED=1`) into the scratchpad:
 
 - Build log: `out\agent\mp_iw8r_fix1\build\compile-log.txt:214`: `heightfield: 256x256 over 76 triangles`.

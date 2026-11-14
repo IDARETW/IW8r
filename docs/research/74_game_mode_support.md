@@ -41,7 +41,7 @@ Where `map.json` fits:
 - `[PX]custom_maps.cpp:296-318` reads only `id`, `title`, `name` and `description` from `map.json`. Any other key is ignored. No gametype or mode key is read.
 - `[X64]convert\iw3_iw8\convert.cpp:244-296` (`validateMetadata`, `writeMetadata`) writes the final `map.json` with fixed keys: `id`, `title`, `description`, `compassRotation`, `ladderRungDistance`, `minimapScale`, `exposureAdjust`. No gametype key.
 - `E:\IW8-Radiant\src\qtapp\compile_panel.cpp:910-930` (`metadataJson`) writes the editor metadata with `id`, `title`, `description`, `compassRotation`, `minimapScale`, `ladderRungDistance`, `exposureAdjust`. No gametype key. The editor passes this metadata to the converter as `--metadata` (`compile_panel.cpp:548-552`), so the converter's `writeMetadata` would drop an unknown key.
-- Built output `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\x64zt_output\mp_iw8r_fix1\map.json` contains only `id` and `title`.
+- Built output `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\x64zt_output\mp_iw8r_fix1\map.json` contains only `id` and `title`.
 
 Game table row injected by the converter for the custom map: NOT FOUND. The proxy writes the row itself at load time. The converter does not write a mapTable or gametype row (no hits in `[X64]`).
 

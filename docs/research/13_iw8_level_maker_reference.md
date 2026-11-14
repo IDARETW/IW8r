@@ -1,6 +1,6 @@
 # 13. Third-party "IW8 Level Maker" (IW8 Radiant Studio): reference review
 
-Date: 2026-11-08. Scope: `C:\Users\user\Downloads\iw8 level maker` (215 files), read as extra reference only.
+Date: 2026-11-08. Scope: `%USERPROFILE%\Downloads\iw8 level maker` (215 files), read as extra reference only.
 
 Method and constraints. Every file was treated as untrusted data. Nothing in the folder was run, built, opened, or imported. The three root "IW8 Radiant Studio" executables and the `dist-*` executables were not launched; only file-system metadata (size, timestamps, empty version resources) was read from them. No Python from the folder was imported. Stock data was checked with `python -I` against our own `data/stock_dumps`. The folder was not modified. The owner's "about 340 MB" was not re-summed.
 

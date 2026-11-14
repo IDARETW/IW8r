@@ -6,7 +6,7 @@ Scope: ACTS fork at `E:\mw124\atian-cod-tools`, branch `codex/mw2019-complete`, 
 
 ### 1a. Build acts.exe and acts-common.dll from the current checkout
 
-The existing `build\` and `build-workstation\` directories are stale. `build\CMakeCache.txt` has `CMAKE_HOME_DIRECTORY=E:/Users/Austin/Documents/mw124/atian-cod-tools`, a path that does not exist on this machine. Its `CMAKE_COMMAND` (`C:/Users/user/AppData/Local/Temp/mw120-cmake/...`) is also missing. `build-native\` points at `D:/mw124/atian-cod-tools`. None of them should be reused. Configure a fresh build directory outside the repo so the tracked tree is not dirtied:
+The existing `build\` and `build-workstation\` directories are stale. `build\CMakeCache.txt` has `CMAKE_HOME_DIRECTORY=E:/Users/Austin/Documents/mw124/atian-cod-tools`, a path that does not exist on this machine. Its `CMAKE_COMMAND` (`%USERPROFILE%/AppData/Local/Temp/mw120-cmake/...`) is also missing. `build-native\` points at `D:/mw124/atian-cod-tools`. None of them should be reused. Configure a fresh build directory outside the repo so the tracked tree is not dirtied:
 
 ```powershell
 # Generator in use by all existing caches: Visual Studio 18 2026, x64. Options: NO_QT_BUILD=ON, NO_OPEN_CL_BUILD=ON.
@@ -86,7 +86,7 @@ Command (per zone):
 ```
 acts.exe --noUpdater fastfile -r mw19replay -g E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe --oodle E:/IW8/Builds/1.20-replay/oo2core_7_win64.dll --test -o E:/IW8-Radiant/out/acts-baseline/<zone> E:/IW8/Builds/1.20-replay/zone/<zone>.ff
 ```
-Working directory and output: `E:\IW8-Radiant\out\acts-baseline\<zone>\`. Runner script: `C:\Users\user\AppData\Local\Temp\claude\40643af5ee92b5b9\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\run_baseline.sh`. Per-zone timeout 1500 s (none reached).
+Working directory and output: `E:\IW8-Radiant\out\acts-baseline\<zone>\`. Runner script: `%USERPROFILE%\AppData\Local\Temp\claude\40643af5ee92b5b9\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\run_baseline.sh`. Per-zone timeout 1500 s (none reached).
 
 No `--xpak` was supplied, so streamed XModel and SoundBank payloads are absent by design. That explains every `package_key_missing` result below.
 

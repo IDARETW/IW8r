@@ -6,7 +6,7 @@ Roots used in citations:
 
 - `X:` = `E:\mw124\x64-zt\src` (the x64-zt fork, read only).
 - `ED:` = `E:\IW8-Radiant` (the editor).
-- Stock: `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\stock_cache\mp_shipment\...` (only mp_shipment is cached there). The mp_backlot2 numbers come from `ED:\data\stock_dumps\mp_backlot2` (same entity format, decoded the same way).
+- Stock: `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\stock_cache\mp_shipment\...` (only mp_shipment is cached there). The mp_backlot2 numbers come from `ED:\data\stock_dumps\mp_backlot2` (same entity format, decoded the same way).
 - Stock decode: `scratchpad\decode\ents.py` (read-only parse of `assets/map_ents/.../*.asset.json` hex entity string; key names from `ED:\data\generated\iw8_canonical_keys.tsv`). Decoded output: `scratchpad\decode\ship.json`, `scratchpad\decode\backlot.json`. The decoded counts match the 611 and 3234 entity totals in `ED:\docs\research\10_iw8_entity_inventory.md`.
 
 ## Summary

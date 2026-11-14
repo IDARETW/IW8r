@@ -19,7 +19,7 @@ Path shorthands used below (all absolute):
 
 Binaries executed (help and usage only):
 
-- `E:\mw124\mw120rproxy\iw8-zonetool\xmake-out\x64\Release\iw8-zonetool.exe` (the named compiler): no arguments (exit 2), `--help` (exit 0), `help` (unknown command, usage, exit 2), `fromdump --help` (unknown command, exit 2), `validate-output --help` (usage, exit 2). Captured text: `C:\Users\user\AppData\Local\Temp\claude\40643af5ee92b5b9\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\help.txt`.
+- `E:\mw124\mw120rproxy\iw8-zonetool\xmake-out\x64\Release\iw8-zonetool.exe` (the named compiler): no arguments (exit 2), `--help` (exit 0), `help` (unknown command, usage, exit 2), `fromdump --help` (unknown command, exit 2), `validate-output --help` (usage, exit 2). Captured text: `%USERPROFILE%\AppData\Local\Temp\claude\40643af5ee92b5b9\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\help.txt`.
 - `E:\mw124\iw8-zonetool\xmake-out\x64\Release\iw8-zonetool.exe` (sibling, disclosed): `--help` and `fromdump --help` only. This binary is the one `build_mp_test.py` actually calls; I ran it outside the explicitly named binary, for help text only.
 
 ## Key findings (read first)

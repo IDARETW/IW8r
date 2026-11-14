@@ -23,7 +23,7 @@ Related docs: 24 (light entities), 39 (sun), 41 (dynamic entities; partly supers
 
 - Editor: `src/core/compile_iw8.cpp` (lights `:632-842`; dynamic props `:1527-1575`; collision JSON `:1964-1965`; physic files `:2014`), `src/core/build_preflight.cpp:470-510`, `src/core/unlit_baseline.cpp`.
 - Fork: `src/convert/iw3_iw8/convert.cpp`, `iw3_fastfile.cpp`, `iw3_vision.cpp`, `iw3_render_assets.cpp`, `iw3_lightgrid.cpp`; `src/games/iw8/zone/map_zone.h`, `src/games/iw8/assets/replay_locallights.h`, `replay_dynentity.cpp`, `write_maps.cpp`, `src/games/iw8/common/replay_havok.cpp`, `replay_havok.h`, `structs.hpp`.
-- Stock comparison: `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\stock_cache\mp_shipment` (see A.5), and `E:\IW8-Radiant\out\m2-x64zt\dump\mp_shipment\com_map\maps\mp\mp_shipment.d3dbsp.iw8`.
+- Stock comparison: `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\stock_cache\mp_shipment` (see A.5), and `E:\IW8-Radiant\out\m2-x64zt\dump\mp_shipment\com_map\maps\mp\mp_shipment.d3dbsp.iw8`.
 
 ## A. Light entities
 

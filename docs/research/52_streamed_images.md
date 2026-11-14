@@ -69,7 +69,7 @@ Every image has the streamed flag, and the four keys in a row are all non-zero, 
 - The DDS is the full chain. For streamed images `mw19_image.cpp:152-157` copies all `mipCount` levels, and `:130-149`
   writes a header with that mip count. The on-disk cache agrees. The three doc 20 materials are 2.8 MB (2048 BC1) and
   5.6 MB (2048 BC7), which matches `totalSize` 2,796,240 and 5,592,432, not the 43 KB smallest part.
-- Editor cache on disk, `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\material_cache\images`:
+- Editor cache on disk, `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\material_cache\images`:
   606 DDS files. 595 have the full mip count for their size. 11 are short: 4 cube sky BC6H files with one mip (expected for
   cubes, UNVERIFIED), plus 7 `_sdf` and `_alpha` files at 512 to 1024 with one or two levels missing. Those 7 were not traced.
 

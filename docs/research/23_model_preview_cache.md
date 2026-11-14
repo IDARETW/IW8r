@@ -126,7 +126,7 @@ indices, the raw option, mirrored winding, missing attributes, rejected input, a
 - `E:\IW8-Radiant\tests\glb_mesh_tests.cpp`
 - `E:\IW8-Radiant\src\qtapp\model_cache.h`, `E:\IW8-Radiant\src\qtapp\model_cache.cpp`
 - `E:\IW8-Radiant\src\qtapp\main.cpp`: `--model-cache-test` (argument, one early branch, usage comment)
-- Cache: `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\model_cache\` (`index.json`, `glb\`)
+- Cache: `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\model_cache\` (`index.json`, `glb\`)
 - Test output: `E:\IW8-Radiant\out\model-cache-test\cold.txt`, `...\warm.txt`, `...\model-cache-test\model-cache-test.txt`;
   negative case `E:\IW8-Radiant\out\model-cache-test-neg\model-cache-test.txt`
 - Probes (ACTS output, not part of the project): `C:\iw8mp\p1` to `C:\iw8mp\p4`

@@ -6,7 +6,7 @@ entity dumps and GSC source were read. Every behaviour claim that depends on the
 ## 0. Sources and caveats
 
 - Stock entities: `data/stock_dumps/mp_shipment` (611 blocks) and `data/stock_dumps/mp_backlot2` (3,234 blocks), and the
-  cache `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\stock_cache\mp_shipment`. The `fields.entityString.bytes`
+  cache `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\stock_cache\mp_shipment`. The `fields.entityString.bytes`
   hex was decoded (scratch only) and keys were resolved with `data/generated/iw8_canonical_keys.tsv`. Same method as doc 10 and doc 32.
 - GSC source: `E:\mw124\tools\dvar_search_web\src\combined\rawfile_source\scripts\mp` (cited below as `RAW/`). Its README says it was dumped
   from "IW8 8.19 build". It is NOT the Replay 1.20 build. The x64-zt comments refer to decompiled 1.20 scripts of common_base_mp, but

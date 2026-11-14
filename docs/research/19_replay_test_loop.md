@@ -2,7 +2,7 @@
 
 Date: 2026-11-08. Scope: what the editor needs to support the owner's test loop for maps it builds: install, log, launch, structural pre-check, process/lock facts, and unbaked-lighting risk.
 
-Read-only research. No game was started, stopped or injected. Nothing was written under `E:\IW8\Builds\1.20-replay`. No repo was edited, built or committed. The only file written is this report. The one scratch script (a read-only re-implementation of the proxy's package check) lives in the session scratchpad at `C:\Users\user\AppData\Local\Temp\claude\40643af5ee92b5b9\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\s19\check_pkgs.py`.
+Read-only research. No game was started, stopped or injected. Nothing was written under `E:\IW8\Builds\1.20-replay`. No repo was edited, built or committed. The only file written is this report. The one scratch script (a read-only re-implementation of the proxy's package check) lives in the session scratchpad at `%USERPROFILE%\AppData\Local\Temp\claude\40643af5ee92b5b9\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\s19\check_pkgs.py`.
 
 Legend: **VERIFIED** = read in source/file, or checked by a read-only command. **INFERRED** = derived from source, not executed in game. **UNKNOWN** = not established.
 

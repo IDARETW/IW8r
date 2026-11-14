@@ -26,7 +26,7 @@ Status words used below:
 | editor | `E:\IW8-Radiant\src\core\compile_iw8.cpp` (`E:`), `data\iw8_entity_defs.json`. |
 
 Scratch scripts (parser, decoder, disassembly listings) are in
-`C:\Users\user\AppData\Local\Temp\claude\2b25dc13d65a86cc\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\r80`
+`%USERPROFILE%\AppData\Local\Temp\claude\2b25dc13d65a86cc\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\r80`
 (`iw8d.py`, `decode.py`, `decoded.txt`, `roundtrip.py`, `pe.py`, `dis_1860_1890.txt`). The decode rules are repeated in
 section 2 so this document does not depend on them.
 

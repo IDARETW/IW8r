@@ -18,7 +18,7 @@ Roots used in citations:
 - `STK:` = `E:\mw124\tools\dvar_search_web\src\combined\rawfile_source\scripts` (decompiled stock scripts of a later
   build, "IW8 8.19 build win64 Apr 18 2020", `E:\mw124\tools\dvar_search_web\out\README.md:13`; most text in it is
   encrypted as `_encstr_<hex>`).
-- `SC:` = `C:\Users\user\AppData\Local\Temp\claude\2b25dc13d65a86cc\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\r83`
+- `SC:` = `%USERPROFILE%\AppData\Local\Temp\claude\2b25dc13d65a86cc\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\r83`
   (scratch folder of this session: read-only ACTS exports of Replay 1.20 files and small analysis scripts).
 - `TR:` = `ED:out\x64zt-verify\runs` (lists of the assets each Replay zone holds, lines `A <type number> <name>`).
 

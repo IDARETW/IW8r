@@ -121,7 +121,7 @@ with no image. Seeds are never written back, and a cache entry for the same mate
 
 Checked: `ecv/gfx_missing_fx` is answered from the seed (64x64 colour, no normal), with no ACTS run.
 
-## Other tested cases (cache folder: `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\material_cache`)
+## Other tested cases (cache folder: `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\material_cache`)
 
 - `tm2co/does_not_exist_xyz`: not in `iw8_materials.tsv`. Cached as failed with that error, and not retried.
   It stays failed until `index.json` is deleted.
@@ -139,5 +139,5 @@ Checked: `ecv/gfx_missing_fx` is answered from the seed (64x64 colour, no normal
 
 - `E:\IW8-Radiant\src\qtapp\material_cache.h`, `E:\IW8-Radiant\src\qtapp\material_cache.cpp`
 - `E:\IW8-Radiant\src\qtapp\main.cpp`: `--material-cache-test` (arguments and one early branch)
-- Cache: `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\material_cache\` (`index.json`, `images\`)
+- Cache: `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\material_cache\` (`index.json`, `images\`)
 - Test output: `E:\IW8-Radiant\out\material-cache-test\material-cache-test.txt`, `...\material-cache-test-run2\`

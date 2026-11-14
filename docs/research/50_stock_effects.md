@@ -102,7 +102,7 @@ Looping and life (the heuristic):
 
 ## 5. Exports already on disk (read-only)
 
-- `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\x64zt_output\_stock_cache\mp_shipment-0507CF8E24D3\` is an ACTS stock export of `mp_shipment.ff` with types `vfx,physicsfxshape,surfacefx,lightdef` (`complete.txt`, key `stock-export-1|mp_shipment.ff|187760776|134284587247023686|vfx,physicsfxshape,surfacefx,lightdef`). `acts.log` reports 10478 assets loaded, 454 tested, 0 failed.
+- `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\x64zt_output\_stock_cache\mp_shipment-0507CF8E24D3\` is an ACTS stock export of `mp_shipment.ff` with types `vfx,physicsfxshape,surfacefx,lightdef` (`complete.txt`, key `stock-export-1|mp_shipment.ff|187760776|134284587247023686|vfx,physicsfxshape,surfacefx,lightdef`). `acts.log` reports 10478 assets loaded, 454 tested, 0 failed.
 - The vfx files are at `mw19replay\mp_shipment\assets\vfx\vfx\...` (440 `*.asset.json`, 0 parse errors).
 - Survey of the 440 (done with a read-only script, `E:\IW8-Radiant\out\vfx_probe\survey.py`, `survey2.py`):
   - `numEmitters`: 0 (3 files), 1 (97), 2 (221), 3 (36), 4 (23), 5-19 (59), 23 (1).

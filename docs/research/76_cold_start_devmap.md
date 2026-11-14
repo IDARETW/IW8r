@@ -75,7 +75,7 @@ State of the install today (VERIFIED by listing the game folder):
 | `DW_LobbyControls_Frame` (DW code) | n/a | 0x15547CE20 |
 
 What was checked directly in the recompiled exe (`[DWEXE]` bytes, read only, script in the session scratchpad
-`C:\Users\user\AppData\Local\Temp\claude\2b25dc13d65a86cc\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\s76\check_dw.py`):
+`%USERPROFILE%\AppData\Local\Temp\claude\2b25dc13d65a86cc\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\s76\check_dw.py`):
 - The whitelist is there. The three pointers at 0x144618E68 point to `"connect_lobby "`, `"retaildev"`,
   `"devreplay"`. `Com_ParseCommandLine` at 0x1412E03B0 loads that table (`lea r13` at the same offset +0xEE) and has
   the same `cmp ebx,3 / jb / mov byte ptr [rsi],0` bytes at the same offset (+0x18A). VERIFIED IN THE RECOMPILED EXE.

@@ -1,7 +1,7 @@
 # 49. Match cameras: intro, infil, intermission, killcam and spectator points (roadmap 6.19)
 
 Status: research only. Nothing was built, run or written except this file. No game file was run. The stock entity
-dump was parsed with a scratch script (`C:\Users\user\AppData\Local\Temp\claude\2b25dc13d65a86cc\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\parse49.py`, plus `chain49.py` and `keys49.py` in the same folder). Everything that depends on the running game is marked **UNVERIFIED**.
+dump was parsed with a scratch script (`%USERPROFILE%\AppData\Local\Temp\claude\2b25dc13d65a86cc\f955f107-10f4-450a-a1df-e62aedc1d809\scratchpad\parse49.py`, plus `chain49.py` and `keys49.py` in the same folder). Everything that depends on the running game is marked **UNVERIFIED**.
 
 ## 0. Sources and caveats
 

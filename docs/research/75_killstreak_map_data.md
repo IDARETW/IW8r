@@ -16,7 +16,7 @@ Sources used:
 - Editor: `E:\IW8-Radiant\src\core\compile_iw8.cpp`, `map_script.cpp`, `gamemode_templates.cpp`.
 - Converter (x64-zt): `E:\mw124\x64-zt\src\convert\iw3_iw8\` (`iw3_fastfile.cpp`, `iw3_scripts.cpp`, `iw3_render_assets.cpp`).
 - Built output: `E:\IW8-Radiant\out\agent\mp_iw8r_fix1\iw8build\mp_iw8r_fix1\extraction\extracted\maps\mp\` (`.ents`, `replay-world.json`, `replay-collision.json`, generated `.gsc`).
-- Translated map script: `C:\Users\user\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\x64zt_output\.iw3-scripts\mp_iw8r_fix1\mp_iw8r_fix1.gsc`.
+- Translated map script: `%USERPROFILE%\AppData\Local\IW8 Radiant Suite\IW8 Radiant Suite\x64zt_output\.iw3-scripts\mp_iw8r_fix1\mp_iw8r_fix1.gsc`.
 - Stock entity dumps: `E:\IW8-Radiant\data\stock_dumps\mp_shipment\...` and `...\mp_backlot2\...`, decoded in this pass.
 
 ---

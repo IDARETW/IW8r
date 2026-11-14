@@ -223,7 +223,7 @@ Full suite (`bin\release\iw8r_tests.exe`, log `E:\IW8-Radiant\out\custom-model-t
    }
    ```
 4. Build (exit 0; log `E:\IW8-Radiant\out\custom-model-test\buildextraction_run1.log`):
-   `zonetool.exe -game iw8 -path E:/IW8/Builds/1.20-replay buildextraction E:/IW8-Radiant/out/custom-model-test/e2e_cmod --map mp_iw8r_cmod --replay E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe --acts E:/mw124/atian-cod-tools/build/bin/Release/acts.exe --output "C:/Users/user/AppData/Local/IW8 Radiant Suite/IW8 Radiant Suite/x64zt_output"`.
+   `zonetool.exe -game iw8 -path E:/IW8/Builds/1.20-replay buildextraction E:/IW8-Radiant/out/custom-model-test/e2e_cmod --map mp_iw8r_cmod --replay E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe --acts E:/mw124/atian-cod-tools/build/bin/Release/acts.exe --output "%USERPROFILE%/AppData/Local/IW8 Radiant Suite/IW8 Radiant Suite/x64zt_output"`.
 
 What the log shows:
 
