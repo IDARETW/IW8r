@@ -67,7 +67,6 @@
 #include "command_palette.h"
 #include "tod_presets.h"
 #include "iw8_contents.h"
-#include "toon_outline.h"
 #include "shader_editor.h"
 #include "asset_info.h"
 #include "compile_iw8.h"
@@ -295,6 +294,15 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         if (isIw8ToolMaterial(m)) return nullptr;
         return mapSurfaceShader();
     });
+    // Brush faces carry edge data (core face_edges) while a shader in use reads the edge inputs: the map's surface
+    // shader, or a material's own.
+    ctx_.scene.faceEdgesWanted = [this] {
+        if (const auto s = mapSurfaceShader(); s && customShaderUsesEdges(s->code)) return true;
+        if (customMaterials_)
+            for (const std::string& n : customMaterials_->names())
+                if (const CustomMaterial* cm = customMaterials_->find(n); cm && cm->shader && customShaderUsesEdges(cm->shader->code)) return true;
+        return false;
+    };
     camera_->setCustomTintSource([this](const std::string& m) -> std::optional<std::array<double, 3>> {
         const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr;
         if (!cm || !cm->hasTint()) return std::nullopt;
@@ -3716,16 +3724,6 @@ void MainWindow::buildMenus() {
         };
         dlg.exec();
     });
-    addCommand(tools, "ToonInkOutlines", "Toon Ink Outlines (hard brush edges)...", QKeySequence(), [this] {
-        // M6: cel-shaded maps (iw8r_surface_shader "toon") get their outlines as geometry; the game's lit pass has no
-        // depth to find edges in (research 114).
-        bool ok = false;
-        const double w = QInputDialog::getDouble(this, "Toon Ink Outlines",
-                                                 "Ink strips along the hard edges of the selected brushes (all world brushes "
-                                                 "when nothing is selected).\nStrip width (units):",
-                                                 2.0, 0.25, 16.0, 2, &ok);
-        if (ok) generateInkOutlines(w);
-    });
     addCommand(tools, "AdjustImage", "Adjust Image (brightness, tint, resize, normal map from height)...", QKeySequence(), [this] {
         // 12.4: a custom material's image (or any PNG / TGA / JPG) adjusted and saved as a new PNG.
         QString saved;
@@ -5919,37 +5917,6 @@ size_t MainWindow::exportReferenceBrushes() {
                             .arg(r.skipped ? QString(", %1 degenerate triangle(s) skipped").arg(r.skipped) : QString())
                             .arg(r.capped ? QString(", stopped at %1: select a smaller area").arg(kMaxBrushes) : QString()));
     return n;
-}
-
-size_t MainWindow::generateInkOutlines(double width) {
-    if (ctx_.doc.path().empty()) {
-        ctx_.setStatus("Toon Ink Outlines: save the map first (the ink material goes into its materials folder)");
-        return 0;
-    }
-    QString err;
-    bool written = false;
-    if (!writeInkMaterial(customMaterialRoots().front(), &written, &err)) {
-        ctx_.setStatus("Toon Ink Outlines: " + err);
-        return 0;
-    }
-    if (written) reloadCustomAssets();
-    InkOptions opt;
-    opt.width = width;
-    const InkResult r = applyInkOutlines(ctx_.doc, opt);
-    if (!r.strips) {
-        ctx_.setStatus(QString("Toon Ink Outlines: no hard edges on %1 brush(es)").arg(r.brushes));
-        return 0;
-    }
-    ctx_.scene.invalidate();
-    ctx_.documentEdited(QString("Toon Ink Outlines: %1 strip(s) %2 units wide along the hard edges of %3 brush(es)%4%5%6 "
-                                "(unlit iw8r_ink, no collision, a func_group; one undo step)")
-                            .arg(r.strips)
-                            .arg(width)
-                            .arg(r.brushes)
-                            .arg(r.fromSelection ? " in the selection" : "")
-                            .arg(r.replaced ? ", replacing the earlier outlines" : "")
-                            .arg(r.capped ? ", stopped at the strip limit: select fewer brushes" : ""));
-    return r.strips;
 }
 
 size_t MainWindow::exportReferenceRegion() {

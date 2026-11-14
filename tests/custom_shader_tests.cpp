@@ -27,3 +27,22 @@ TEST(custom_shader_viewport_splice) {
     CHECK(out.find("cbuffer A") < st);  // the host's declarations stay first
     CHECK(customShaderViewportSource(base, "no such entry", s).empty());
 }
+
+TEST(custom_shader_edge_inputs) {
+    // A shader that reads an edge input asks for the brush faces' edge data; one that does not costs nothing.
+    CHECK(customShaderUsesEdges("float3 iw8rSurface(IW8RSurface s) { return s.albedo * saturate(s.edgePixels); }"));
+    CHECK(customShaderUsesEdges("float3 iw8rSurface(IW8RSurface s) { return s.edgeNormal; }"));
+    CHECK(!customShaderUsesEdges("// uses s.edgePixels only in a comment\nfloat3 iw8rSurface(IW8RSurface s) { return s.albedo; }"));
+    CHECK(!customShaderUsesEdges("float3 iw8rSurface(IW8RSurface s) { return s.faceNormal; }"));
+    // Both hosts get the struct, the range and the helper that fills the edge inputs before the shader's code.
+    const std::string pre = customShaderPreamble();
+    CHECK(pre.find("struct IW8RSurface") < pre.find("#define IW8R_EDGE_RANGE 4"));
+    CHECK(pre.find("#define IW8R_EDGE_RANGE 4") < pre.find("void iw8rEdgeFields("));
+    for (const char* field : {"faceNormal", "edgePixels", "edgeUnits", "edgeNormal"}) CHECK(pre.find(field) != std::string::npos);
+    CustomShader s;
+    s.name = "lines";
+    s.code = "float3 iw8rSurface(IW8RSurface s) { return s.albedo; }";
+    const std::string plain = customShaderBuildSource(s), edges = customShaderBuildSource(s, true);
+    CHECK(plain.find("#define IW8R_EDGES") == std::string::npos && edges.rfind("#define IW8R_EDGES 1\n", 0) == 0);
+    CHECK(edges.find("void iw8rEdgeFields(") < edges.find("float3 iw8rSurface(IW8RSurface s)"));
+}

@@ -18,6 +18,7 @@
 #include "stock_world.h"
 #include "collision_world.h"
 #include "collision_preview.h"
+#include "face_edges.h"
 
 namespace iw8r::app {
 
@@ -29,6 +30,12 @@ struct PrimGeom {
     uint64_t seen = 0;   // the sync that last listed this item (items not listed are dropped from the cache)
     Kind kind = Brush;
     std::vector<Winding> polys;  // brush faces, tessellated patch triangles, entity box faces
+    // Face edge data for custom surface shaders (core face_edges), parallel to polys; empty unless SceneCache::faceEdges
+    // is on and the item is a drawn brush. A poly with a mesh is drawn as that mesh (the same surface, cut so that
+    // every vertex knows its distance to the face's edges). edgeSet / edgeKey: SceneCache::updateFaceEdges.
+    std::vector<EdgeFaceMesh> polyEdges;
+    int edgeSet = 0;
+    uint64_t edgeKey = 0;
     std::vector<std::pair<Vec3, Vec3>> edges;  // explicit wireframe (patch control net); empty = polygon outlines
     std::vector<Vec3> faceNormals;
     std::vector<Plane> planes;   // brush picking
@@ -145,6 +152,11 @@ public:
     std::function<int(const std::string& material)> emissiveFor;
     // The material's custom surface shader (SceneRenderer::createCustomShader id) or -1 (core custom_shader).
     std::function<int(const std::string& material)> shaderFor;
+    // A custom shader in use reads the edge inputs: brush faces get their edge meshes (PrimGeom::polyEdges). Call
+    // invalidate() after changing it. faceEdgesWanted (the shell: does a shader in use read the edge inputs?) sets it
+    // at every full sync.
+    bool faceEdges = false;
+    std::function<bool()> faceEdgesWanted;
     // How a material draws in the textured view (3.17): 0 opaque / alpha test, 1 alpha blend, 2 additive (null = all 0).
     std::function<int(const std::string& material)> blendFor;
     // Foliage materials (5.23 wind preview): their textured batches are marked to sway (null = none).
@@ -199,6 +211,7 @@ public:
     double behaviourTime = -1;
 
 private:
+    void updateFaceEdges();
     std::unordered_map<Id, PrimGeom> cache_;
     std::vector<const PrimGeom*> list_;
     std::vector<const PrimGeom*> prevList_;  // the list of the sync before (order hint), only inside sync()

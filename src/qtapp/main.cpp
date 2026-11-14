@@ -981,7 +981,6 @@ int main(int argc, char** argv) {
     bool auditReverse = false;
     bool coverCheck = false;
     bool f5Check = false;
-    double inkWidth = 0;  // --ink-outlines <width>
     QString compileFile, openFile, keysPath, guiTestSample, smokeFile, outDir, materialTest, modelTest, worldTest, skyTest;
     QString benchMap, benchReference;
     QString propsZone;       // --stock-props-test
@@ -1011,7 +1010,6 @@ int main(int argc, char** argv) {
         else if (a == "--batch" && i + 1 < argc) auditBatch = std::atoi(argv[++i]);
         else if (a == "--reverse") auditReverse = true;
         else if (a == "--set-web-credentials" && i + 1 < argc) webUser = QString::fromLocal8Bit(argv[++i]);
-        else if (a == "--ink-outlines" && i + 1 < argc) inkWidth = std::atof(argv[++i]);
         else if (a == "--safe-mode") continue;
         else if (!a.startsWith("-")) openFile = a;
     }
@@ -1221,21 +1219,6 @@ int main(int argc, char** argv) {
         // Browser access (L10): the web server starts with the editor when Settings web/enabled is on.
         if (!guiTest && !smoke) QTimer::singleShot(500, &w, [&w] { w.applyWebServerSettings(); });
         if (!openFile.isEmpty()) w.openPath(openFile);
-        if (inkWidth > 0) {
-            // Tools > Toon Ink Outlines on the opened map, saved; exit 0 when strips were written.
-            QTimer::singleShot(300, &w, [&] {
-                if (w.context().doc.path().empty()) {
-                    app.exit(3);
-                    return;
-                }
-                const size_t n = w.generateInkOutlines(inkWidth);
-                std::string err;
-                const bool ok = n > 0 && w.context().doc.save(&err);
-                std::printf("ink outlines: %zu strip(s)%s%s\n", n, ok ? ", saved" : ", not saved ", err.c_str());
-                std::fflush(stdout);
-                app.exit(ok ? 0 : 4);
-            });
-        }
         if (!compileFile.isEmpty()) {
             // Headless F7 of a map through the editor's own path (stock textures/models, sky, gsc-tool, ACTS
             // validation): writes <out>/compile-log.txt and <out>/compile-result.txt (ok/FAIL, map id, package folder).

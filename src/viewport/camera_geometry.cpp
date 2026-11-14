@@ -365,10 +365,44 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
                 }
                 return v;
             };
-            for (size_t k = 1; k + 1 < w.size(); ++k) {
-                dst.push_back(tv(0));
-                dst.push_back(tv(k));
-                dst.push_back(tv(k + 1));
+            const EdgeFaceMesh* em = i < g->polyEdges.size() && !g->polyEdges[i].idx.empty() ? &g->polyEdges[i] : nullptr;
+            if (em) {
+                // The face as its edge mesh (core face_edges): the same surface with the edge data on its vertices. The
+                // texture coordinates are the face's own, an affine function of the position.
+                size_t far = 2;
+                double best = -1;
+                for (size_t k = 2; k < w.size(); ++k)
+                    if (const double a = length(cross(w[1] - w[0], w[k] - w[0])); a > best) best = a, far = k;
+                const Vec3 e1 = w[1] - w[0], e2 = w[far] - w[0];
+                const double d11 = dot(e1, e1), d12 = dot(e1, e2), d22 = dot(e2, e2);
+                const double det = d11 * d22 - d12 * d12;
+                // The preview bake's lightmap UVs are kept per face corner: the same affine blend gives the others.
+                float l0[2], l1[2], l2[2];
+                const bool haveLm = gameLm && gameLm->uvFor(w[0], n, centre, l0) && gameLm->uvFor(w[1], n, centre, l1) &&
+                                    gameLm->uvFor(w[far], n, centre, l2);
+                auto ev = [&](const EdgeVertex& q) {
+                    const Vec3 d = q.pos - w[0];
+                    const double b1 = dot(d, e1), b2 = dot(d, e2);
+                    const double s = det > 1e-18 ? (b1 * d22 - b2 * d12) / det : 0.0, t = det > 1e-18 ? (b2 * d11 - b1 * d12) / det : 0.0;
+                    GpuTexVertex v{float(q.pos.x), float(q.pos.y), float(q.pos.z),
+                                   float(uv[0][0] + s * (uv[1][0] - uv[0][0]) + t * (uv[far][0] - uv[0][0])),
+                                   float(uv[0][1] + s * (uv[1][1] - uv[0][1]) + t * (uv[far][1] - uv[0][1])), c};
+                    v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
+                    v.tx = float(tan.x), v.ty = float(tan.y), v.tz = float(tan.z);
+                    if (haveLm) {
+                        v.lu = float(l0[0] + s * (l1[0] - l0[0]) + t * (l2[0] - l0[0]));
+                        v.lv = float(l0[1] + s * (l1[1] - l0[1]) + t * (l2[1] - l0[1]));
+                    }
+                    v.edge = packEdge(q);
+                    return v;
+                };
+                for (const uint32_t vi : em->idx) dst.push_back(ev(em->verts[vi]));
+            } else {
+                for (size_t k = 1; k + 1 < w.size(); ++k) {
+                    dst.push_back(tv(0));
+                    dst.push_back(tv(k));
+                    dst.push_back(tv(k + 1));
+                }
             }
         } else if (!wire) {
             uint32_t c = normals ? normalColour(n) : litColor(contentsMode || collisionMode ? g->contentsColor : g->color);

@@ -80,6 +80,8 @@ struct GpuTexVertex {
     float tx = 0, ty = 0, tz = 0;
     // View > Game Lighting: the vertex's lightmap UV in the preview bake (game_lightmap.h); negative = none.
     float lu = -1, lv = -1;
+    // Edge data of a brush face for custom surface shaders (core face_edges packEdge); 0xFFFFFFFF = none.
+    uint32_t edge = 0xFFFFFFFFu;
 };
 
 // 3.20 instanced static models: one model's triangles (model space) drawn once per instance. Each instance is three

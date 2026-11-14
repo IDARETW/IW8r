@@ -244,9 +244,13 @@ Commands in the Tools menu:
 - A shader is one HLSL function, `float3 iw8rSurface(IW8RSurface s)`. It gets the surface colour, normal, view
   direction, position, UV, the sun (direction, colour, shadow), the baked light and the gloss, and returns the lit
   colour. It cannot read textures.
-- **Tools > Toon Ink Outlines** adds black ink lines along the hard edges of brushes, for cel-shaded maps. The lines
-  have no collision, and running it again replaces them.
-- The example map Cinder Rail (Toon) uses both. Custom shaders are built and checked offline but not yet seen in game.
+- **Edge inputs.** `s.edgePixels` is the distance to the nearest edge of the brush face in screen pixels,
+  `s.edgeUnits` the same in units (up to 4), `s.edgeNormal` the normal of the face across that edge, and
+  `s.faceNormal` the surface's own normal without the normal map. With them a shader can draw lines of a constant
+  width on screen. Seams between flush brushes are not edges. Models have no edge data (`edgePixels` is 1e6).
+- The whole toon look is in `toon.iw8shader.hlsl`: its constants at the top set the line width (`kLinePixels`), the
+  colour strength, the tones and the shade level. Make a copy with New to change them for your map.
+- The example map Cinder Rail (Toon) uses it. Custom shaders are built and checked offline but not yet seen in game.
 
 ## 6. Lighting and atmosphere
 

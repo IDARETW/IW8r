@@ -2,6 +2,20 @@
 
 ## Latest (2026-11-13)
 
+- Owner (2026-11-13 late): the toon look must be a real custom shader, lines of constant screen width, nothing toon
+  built into the editor. Done: the ink strip brushes (core toon_outline, Tools > Toon Ink Outlines, --ink-outlines,
+  iw8r_ink) are removed. Core face_edges (generic): per brush face, convex pieces with the exact distance to the
+  nearest edge (EdgeVertex edge / fold / dir, packEdge 4 bytes), seams between flush brushes of a set excluded, soft
+  folds kept with their fold, T-junction free per brush, ear-clipped, slivers avoided (the converter throws on
+  degenerate triangles). IW8RSurface gained faceNormal, edgePixels, edgeUnits, edgeNormal; kIw8rEdgeHelper
+  (iw8rEdgeFields) is compiled into both hosts; customShaderUsesEdges decides whether edge data is made. Viewport:
+  GpuTexVertex::edge (60 bytes, TEXCOORD6), SceneCache::updateFaceEdges (PrimGeom::polyEdges, keyed by the brush and
+  its touching neighbours' revs), camera_geometry draws the edge meshes. Build: world brush faces as edge meshes, the
+  data in the vertex colour, "#define IW8R_EDGES" in the shader text; x64-zt 7bc751ba (hook reads input.color as edge
+  data on world surfaces, shader outside flow control). data/shaders/toon.iw8shader.hlsl v3 holds the whole look
+  (vibrance, painted steps, tones on faceNormal, shade level, 3 px lines; silhouette full width, crease half per
+  face). Cinder Rail (Toon): 141,946 world triangles (22,580 plain), validation clean. Test renders used a scratch
+  copy of the material cache (deleted after).
 - Custom shaders (plan M6, research 114): core custom_shader (IW8RSurface contract, checks, viewport splice, build
   source); materials take "shader", the map takes worldspawn iw8r_surface_shader (<map>/shaders, data/shaders);
   viewport binds a per-shader ps_tex (SceneBatch::shader, createCustomShader); compile writes world JSON

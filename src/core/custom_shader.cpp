@@ -1,5 +1,7 @@
 #include "custom_shader.h"
 
+#include "face_edges.h"
+
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -77,7 +79,7 @@ std::string customShaderViewportSource(const std::string& baseSource, const std:
     if (at == std::string::npos) return {};
     std::string out = "#define IW8R_CUSTOM 1\n";
     out += baseSource.substr(0, at);
-    out += kIw8rSurfaceStruct;
+    out += customShaderPreamble();
     out += "#line 1 \"" + shader.name + ".iw8shader.hlsl\"\n";
     out += shader.code;
     out += "\n#line 1 \"viewport\"\n";
@@ -108,8 +110,20 @@ bool findCustomShader(const std::string& name, const std::vector<std::string>& f
     return false;
 }
 
-std::string customShaderBuildSource(const CustomShader& shader) {
-    return std::string(kIw8rSurfaceStruct) + "#line 1 \"" + shader.name + ".iw8shader.hlsl\"\n" + shader.code + "\n";
+bool customShaderUsesEdges(const std::string& code) {
+    static const std::regex re(R"(\b(edgePixels|edgeUnits|edgeNormal)\b)");
+    return std::regex_search(withoutComments(code), re);
+}
+
+std::string customShaderPreamble() {
+    std::ostringstream o;
+    o << kIw8rSurfaceStruct << "#define IW8R_EDGE_RANGE " << kEdgeRange << "\n" << kIw8rEdgeHelper;
+    return o.str();
+}
+
+std::string customShaderBuildSource(const CustomShader& shader, bool edges) {
+    return std::string(edges ? "#define IW8R_EDGES 1\n" : "") + customShaderPreamble() + "#line 1 \"" + shader.name +
+           ".iw8shader.hlsl\"\n" + shader.code;
 }
 
 }  // namespace iw8r

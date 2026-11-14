@@ -440,9 +440,10 @@ float2 gameEnvBrdf(float nv, float g) {
 Texture2D tex0 : register(t0);
 Texture2D nrm0 : register(t1);
 SamplerState samp0 : register(s0);
-struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4; };
+struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4;
+              float4 edge : TEXCOORD6; };
 struct PSIn { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 w : TEXCOORD1; float3 n : TEXCOORD2; float3 t : TEXCOORD3; float2 lm : TEXCOORD4;
-               float3 lgvBack : TEXCOORD5; };
+               float3 lgvBack : TEXCOORD5; float3 edge : TEXCOORD6; };
 PSIn vs_tex(VSIn i) {
     PSIn o;
     float3 p = i.pos;
@@ -455,6 +456,7 @@ PSIn vs_tex(VSIn i) {
     }
     o.pos = mul(float4(p, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = p; o.n = i.n; o.t = i.t; o.lm = i.lm;
     o.lgvBack = float3(0, 0, 0);
+    o.edge = i.edge.xyz;
     return o;
 }
 // Textured instanced reference props: the model's vertices placed by three transform rows per instance.
@@ -465,7 +467,7 @@ PSIn vs_tex_inst(VSInInst i) {
     float3 w = float3(dot(i.r0, p), dot(i.r1, p), dot(i.r2, p));
     // The model's vertex normal turned by the instance (uniform scale; zero = none: the pixel shader derives one).
     float3 nw = float3(dot(i.r0.xyz, i.n), dot(i.r1.xyz, i.n), dot(i.r2.xyz, i.n));
-    PSIn o; o.pos = mul(float4(w, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = w; o.n = dot(nw, nw) > 1e-12 ? normalize(nw) : float3(0, 0, 0); o.t = float3(0, 0, 0); o.lm = float2(-1, -1);
+    PSIn o; o.pos = mul(float4(w, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = w; o.n = dot(nw, nw) > 1e-12 ? normalize(nw) : float3(0, 0, 0); o.t = float3(0, 0, 0); o.lm = float2(-1, -1); o.edge = float3(1, 0, 0);
     // The prop's light grid box (research 105 section 1.4, DC + first order), per vertex with the vertex normal as the
     // game's static-model shader does: E = 0.282095 DC + 4/9 0.488603 (s0 n.z - s2 n.y - s3 n.x), in lightmap units
     // (the pixel shader applies bakedLightScale). Props have no tangent and no lightmap UV: E rides in t, marked by
@@ -1048,6 +1050,8 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             s.albedo = albedo, s.alpha = outA, s.normal = N, s.view = normalize(eyeStart.xyz - i.w), s.position = i.w;
             s.uv = i.uv, s.sunDir = gameSun.xyz, s.sunColor = gameSunCol.rgb, s.sunShadow = visibility;
             s.ambient = indirect * aoV, s.gloss = 0.3;
+            s.faceNormal = dot(i.n, i.n) > 0.5 ? normalize(i.n) : N;
+            iw8rEdgeFields(s, i.edge, ddx(i.w), ddy(i.w));
             c = iw8rSurface(s);
 #else
             float3 light = indirect * aoV + visibility * saturate(dot(N, gameSun.xyz)) * gameSunCol.rgb;
@@ -1563,8 +1567,9 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
                 {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
                 {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
                 {"TEXCOORD", 4, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
+                {"TEXCOORD", 6, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 56, D3D11_INPUT_PER_VERTEX_DATA, 0},
             };
-            dev_->CreateInputLayout(til, 6, tvs->GetBufferPointer(), tvs->GetBufferSize(), &layoutTex_);
+            dev_->CreateInputLayout(til, 7, tvs->GetBufferPointer(), tvs->GetBufferSize(), &layoutTex_);
             ID3DBlob* tivs = nullptr;
             if (compileTex("vs_tex_inst", "vs_5_0", tivs)) {
                 dev_->CreateVertexShader(tivs->GetBufferPointer(), tivs->GetBufferSize(), nullptr, &vsTexInst_);

@@ -30,7 +30,39 @@ inline constexpr const char* kIw8rSurfaceStruct = R"(struct IW8RSurface {
     float  sunShadow;  // 0 in the sun's shadow .. 1 lit
     float3 ambient;    // baked indirect irradiance at the surface (lightmap, light grid or probes), with occlusion
     float  gloss;      // 0 rough .. 1 mirror (the material's gloss, 0.3 without a gloss map)
+    float3 faceNormal; // world space, unit: the surface's own normal, without the normal map
+    float  edgePixels; // distance to the nearest edge of the brush face, in screen pixels (1e6: none near, or no data)
+    float  edgeUnits;  // the same distance in world units (1e6: none near)
+    float3 edgeNormal; // the normal of the face across that edge (faceNormal when none)
 };
+)";
+
+// The edge inputs (core face_edges) are filled by this function in both hosts: `edge` is a vertex's packed edge data
+// as unorm (x distance / range, y fold / pi, z direction / 2 pi x 255 / 256), dpx / dpy the screen derivatives of the
+// position. IW8R_EDGE_RANGE is kEdgeRange.
+inline constexpr const char* kIw8rEdgeHelper = R"(void iw8rEdgeFields(inout IW8RSurface s, float3 edge, float3 dpx, float3 dpy)
+{
+    s.edgePixels = 1e6;
+    s.edgeUnits = 1e6;
+    s.edgeNormal = s.faceNormal;
+    if (edge.x > 0.998) return;
+    const float3 n = s.faceNormal;
+    float3 a = abs(n.z) < 0.999 ? cross(float3(0, 0, 1), n) : float3(1, 0, 0) - n * n.x;
+    a = normalize(a);
+    const float3 b = cross(n, a);
+    const float angle = edge.z * (255.0 / 256.0) * 6.28318530718;
+    const float3 away = cos(angle) * a + sin(angle) * b;  // in the face, leading away from the edge
+    s.edgeUnits = edge.x * IW8R_EDGE_RANGE;
+    const float xx = dot(dpx, dpx), xy = dot(dpx, dpy), yy = dot(dpy, dpy);
+    const float det = xx * yy - xy * xy;
+    if (det > 1e-24) {
+        // One world unit along `away` in screen pixels: the solution of away = px.x dpx + px.y dpy in the face.
+        const float ax = dot(away, dpx), ay = dot(away, dpy);
+        s.edgePixels = s.edgeUnits * length(float2(yy * ax - xy * ay, xx * ay - xy * ax)) / det;
+    }
+    const float fold = edge.y * 3.14159265359;
+    s.edgeNormal = cos(fold) * n - sin(fold) * away;
+}
 )";
 
 struct CustomShader {
@@ -54,7 +86,15 @@ std::string customShaderViewportSource(const std::string& baseSource, const std:
 // The first file found is read; false with *err when none is found or it does not check.
 bool findCustomShader(const std::string& name, const std::vector<std::string>& folders, CustomShader& out, std::string* err = nullptr);
 
+// True when the code reads an edge input (edgePixels, edgeUnits or edgeNormal): the hosts then make the edge data of
+// the brush faces (core face_edges); shaders that do not read them cost nothing.
+bool customShaderUsesEdges(const std::string& code);
+
+// The text both hosts put before a shader's code: the IW8RSurface struct, IW8R_EDGE_RANGE and iw8rEdgeFields.
+std::string customShaderPreamble();
+
 // What the build hands the converter (world JSON "iw8r_surface_shader"): the IW8RSurface struct and the shader's code.
-std::string customShaderBuildSource(const CustomShader& shader);
+// `edges`: the map's brush faces carry edge data in their vertex colour (IW8R_EDGES is defined for the converter).
+std::string customShaderBuildSource(const CustomShader& shader, bool edges = false);
 
 }  // namespace iw8r

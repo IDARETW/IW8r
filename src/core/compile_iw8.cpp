@@ -22,6 +22,7 @@
 #include "map_script.h"
 #include "iw8_contents.h"
 #include "sky_sun.h"
+#include "face_edges.h"
 #include "minimap.h"
 #include "model_import.h"
 #include "convex_hull.h"
@@ -289,7 +290,16 @@ struct BrushModelOut {
     size_t surfaceStart = 0, surfaceCount = 0;
 };
 
+// The brushes of the static world for the face edge data (core face_edges), by primitive.
+struct EdgeData {
+    std::vector<EdgeBrush> brushes;
+    std::vector<std::vector<uint32_t>> near;
+    std::map<const Primitive*, size_t> index;
+};
+
 struct Gather {
+    const EdgeData* edges = nullptr;  // set: brush faces are written as their edge meshes, the data in the colour
+    size_t paintedPatches = 0;        // patches whose painted colours were left out because the colour holds edge data
     int subdiv = 4;
     bool patchBackFaces = true;
     std::vector<Chunk> chunks;
@@ -339,6 +349,13 @@ void gatherBrush(const Primitive& p, size_t entity, size_t group, Gather& g, boo
         g.brushes.push_back(std::move(cbr));
     }
 
+    // Face edge data for the map's surface shader: every face as its edge mesh (the same surface, cut so that each
+    // vertex knows its distance to the face's edges).
+    std::vector<EdgeFaceMesh> edgeMeshes;
+    if (g.edges)
+        if (const auto it = g.edges->index.find(&p); it != g.edges->index.end())
+            edgeMeshes = edgeBrushMeshes(g.edges->brushes, it->second, g.edges->near[it->second]);
+
     // Render (doc 15 §2.2): one fan per contributing face, indices [0,k,k+1] (CCW seen from outside).
     for (size_t fi = 0; fi < cb.size() && fi < wins.size(); ++fi) {
         const Winding& w = wins[fi];
@@ -362,6 +379,30 @@ void gatherBrush(const Primitive& p, size_t entity, size_t group, Gather& g, boo
         c.entity = entity;
         c.group = group;
         c.editorMaterial = mat;
+        if (fi < edgeMeshes.size() && !edgeMeshes[fi].idx.empty()) {
+            for (const EdgeVertex& q : edgeMeshes[fi].verts) {
+                const auto uv = faceUV(n, tp, q.pos);
+                c.verts.push_back({q.pos, n, faceTan, uv[0], uv[1]});
+                const uint32_t packed = packEdge(q);
+                c.verts.back().hasColor = true;
+                c.verts.back().color = {std::uint8_t(packed), std::uint8_t(packed >> 8), std::uint8_t(packed >> 16), std::uint8_t(packed >> 24)};
+                g.bounds.add(q.pos);
+            }
+            // The converter refuses a triangle without an area in 32-bit positions: none is written.
+            const std::vector<uint32_t>& mi = edgeMeshes[fi].idx;
+            for (size_t t = 0; t + 2 < mi.size(); t += 3) {
+                const auto f32 = [&](uint32_t i) {
+                    const Vec3& q = c.verts[i].pos;
+                    return Vec3{double(float(q.x)), double(float(q.y)), double(float(q.z))};
+                };
+                const Vec3 A = f32(mi[t]), B = f32(mi[t + 1]), C = f32(mi[t + 2]);
+                const Vec3 cr = cross(B - A, C - A);
+                if (dot(cr, cr) < 1e-9) continue;
+                c.idx.push_back(mi[t]), c.idx.push_back(mi[t + 1]), c.idx.push_back(mi[t + 2]);
+            }
+            if (!c.idx.empty()) g.chunks.push_back(std::move(c));
+            continue;
+        }
         for (const Vec3& P : w) {
             const auto uv = faceUV(n, tp, P);
             c.verts.push_back({P, n, faceTan, uv[0], uv[1]});
@@ -389,7 +430,9 @@ void gatherPatch(const Primitive& p, size_t entity, size_t group, Gather& g) {
     }
     const PatchMesh m = tessellatePrimitive(p, g.subdiv);
     // Painted vertex colours (8.11) follow the same tessellation; a patch without colour blocks writes none.
-    const std::vector<Rgba8> colours = patchHasColours(p) ? tessellatePatchColours(p, g.subdiv) : std::vector<Rgba8>{};
+    // With edge data the world's vertex colour is read as that data: a painted patch keeps white (no edge).
+    if (g.edges && patchHasColours(p)) ++g.paintedPatches;
+    const std::vector<Rgba8> colours = patchHasColours(p) && !g.edges ? tessellatePatchColours(p, g.subdiv) : std::vector<Rgba8>{};
     // The patch's own texture coordinates (file st / 1024, patch_ops kPatchStUnits), tessellated like the positions; a
     // patch without any keeps the planar projection below.
     const std::vector<std::array<double, 2>> stUv = tessellatePatchUVs(p, g.subdiv);
@@ -1562,6 +1605,46 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             if (const std::string* os = we.value("iw8r_patch_one_sided"); os && *os == "1") g.patchBackFaces = false;
     g.warnings = &warn;
     g.library = opt.library;
+    // The map's surface shader (worldspawn iw8r_surface_shader, core custom_shader), found before the geometry is
+    // gathered: when it reads the edge inputs, the static world's brush faces carry the edge data.
+    CustomShader surfaceShader;
+    bool haveSurfaceShader = false;
+    std::string surfaceShaderError;
+    for (const auto& we : map.entities) {
+        if (!we.isWorldspawn()) continue;
+        if (const std::string* sname = we.value("iw8r_surface_shader"); sname && !sname->empty()) {
+            std::vector<std::string> dirs;
+            if (!opt.mapDir.empty()) dirs.push_back(opt.mapDir + "/shaders");
+            dirs.insert(dirs.end(), opt.shaderDirs.begin(), opt.shaderDirs.end());
+            haveSurfaceShader = findCustomShader(*sname, dirs, surfaceShader, &surfaceShaderError);
+        }
+        break;
+    }
+    EdgeData edgeData;
+    const bool surfaceEdges = haveSurfaceShader && customShaderUsesEdges(surfaceShader.code);
+    if (surfaceEdges) {
+        for (const auto& ee : map.entities) {
+            const std::string c = lower(ee.classname());
+            if (c != "worldspawn" && c != "func_group") continue;
+            for (const auto& it : ee.items) {
+                const Primitive* p = it.prim();
+                if (!p || p->kind != PrimKind::Brush) continue;
+                const ConvexBrush cb = brushFromPrimitive(*p);
+                if (!isValidBrush(cb)) continue;
+                EdgeBrush b;
+                b.wins = brushWindings(cb);
+                for (const auto& f : cb) {
+                    b.planes.push_back(f.plane);
+                    b.drawn.push_back(!isIw8ToolMaterial(firstToken(f.suffix)));
+                }
+                finishEdgeBrush(b);
+                edgeData.index.emplace(p, edgeData.brushes.size());
+                edgeData.brushes.push_back(std::move(b));
+            }
+        }
+        edgeData.near = edgeNeighbours(edgeData.brushes);
+        g.edges = &edgeData;
+    }
     const Entity* worldspawn = nullptr;
     std::vector<const Entity*> points;
     std::map<std::string, size_t> skippedBrushEntities;
@@ -2978,18 +3061,16 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     // The map's surface shader (worldspawn iw8r_surface_shader, core custom_shader): the converter compiles it into the
     // map's own surface shaders (needs the x64-zt converter with "iw8r_surface_shader"; plan M6).
     std::string surfaceShaderKey;
-    if (const std::string* sname = worldspawn ? worldspawn->value("iw8r_surface_shader") : nullptr; sname && !sname->empty()) {
-        std::vector<std::string> dirs;
-        if (!opt.mapDir.empty()) dirs.push_back(opt.mapDir + "/shaders");
-        dirs.insert(dirs.end(), opt.shaderDirs.begin(), opt.shaderDirs.end());
-        CustomShader shader;
-        std::string serr;
-        if (findCustomShader(*sname, dirs, shader, &serr)) {
-            surfaceShaderKey = ",\"iw8r_surface_shader\":" + quote(customShaderBuildSource(shader));
-            warn.push_back("surface shader '" + shader.name + "' lights the map's own surfaces (custom shader; in-game look not verified)");
-        } else {
-            warn.push_back("surface shader not used: " + serr);
-        }
+    if (haveSurfaceShader) {
+        surfaceShaderKey = ",\"iw8r_surface_shader\":" + quote(customShaderBuildSource(surfaceShader, surfaceEdges));
+        warn.push_back("surface shader '" + surfaceShader.name + "' lights the map's own surfaces" +
+                       (surfaceEdges ? " and reads the brush faces' edge data (written into their vertex colour)" : "") +
+                       " (custom shader; in-game look not verified)");
+        if (g.paintedPatches)
+            warn.push_back(std::to_string(g.paintedPatches) + " painted patch(es) built without their vertex colours: with a "
+                           "shader that reads edges the world's vertex colour holds the edge data");
+    } else if (!surfaceShaderError.empty()) {
+        warn.push_back("surface shader not used: " + surfaceShaderError);
     }
     const std::string world =
         "{\"schema\":1,\"name\":" + quote(mapName) + ",\"sky\":" + quote(skyValue) + ",\"bounds\":" + boundsJson +

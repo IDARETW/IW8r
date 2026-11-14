@@ -700,6 +700,57 @@ void SceneCache::clear() {
     spawns.clear();
 }
 
+void SceneCache::updateFaceEdges() {
+    // Brushes whose faces are drawn with a texture: the ones a surface shader can light.
+    std::vector<PrimGeom*> items;
+    for (const PrimGeom* cg : list_) {
+        PrimGeom* g = const_cast<PrimGeom*>(cg);
+        const bool brush = g->kind == PrimGeom::Brush && !g->volume && !g->prefab && g->polyMaterial.size() == g->polys.size() &&
+                           g->faceNormals.size() == g->polys.size();
+        if (faceEdges && brush) {
+            items.push_back(g);
+        } else if (!g->polyEdges.empty()) {
+            g->polyEdges.clear();
+            g->edgeKey = 0;
+            g->stamp = ++stampCounter_;
+        }
+    }
+    if (items.empty()) return;
+    IW8R_PROF("s.face_edges");
+    std::vector<EdgeBrush> brushes(items.size());
+    for (size_t i = 0; i < items.size(); ++i) {
+        const PrimGeom& g = *items[i];
+        EdgeBrush& b = brushes[i];
+        b.set = g.edgeSet;
+        b.wins = g.polys;
+        b.planes.resize(g.polys.size());
+        b.drawn.resize(g.polys.size());
+        for (size_t f = 0; f < g.polys.size(); ++f) {
+            b.planes[f].n = g.faceNormals[f];
+            b.planes[f].d = g.polys[f].empty() ? 0.0 : dot(g.faceNormals[f], g.polys[f][0]);
+            b.drawn[f] = !isIw8ToolMaterial(g.polyMaterial[f]);
+        }
+        finishEdgeBrush(b);
+    }
+    const std::vector<std::vector<uint32_t>> near = edgeNeighbours(brushes);
+    for (size_t i = 0; i < items.size(); ++i) {
+        PrimGeom& g = *items[i];
+        // The brush and the brushes touching it, as they are now: its edges change only when one of them does.
+        uint64_t key = (1469598103934665603ull ^ g.rev) * 1099511628211ull;
+        key = (key ^ uint64_t(g.edgeSet)) * 1099511628211ull;
+        for (uint32_t n : near[i]) {
+            key = (key ^ uint64_t(items[n]->ref.item)) * 1099511628211ull;
+            key = (key ^ items[n]->rev) * 1099511628211ull;
+        }
+        if (key == 0) key = 1;
+        if (g.edgeKey == key && g.polyEdges.size() == g.polys.size()) continue;
+        g.polyEdges = edgeBrushMeshes(brushes, i, near[i]);
+        g.polyEdges.resize(g.polys.size());
+        g.edgeKey = key;
+        g.stamp = ++stampCounter_;
+    }
+}
+
 void SceneCache::sync(const Document& doc) {
     if (doc_ == &doc && docRevision_ == doc.revision()) return;
     // The revision also moves when only the selection changed. Every mutation of an item gives it a new rev, so the
@@ -765,6 +816,7 @@ void SceneCache::sync(const Document& doc) {
                 pg->stamp = ++stampCounter_;
             }
             pg->seen = visit_;
+            pg->edgeSet = e.isWorldspawn() || cls == "func_group" ? 0 : int(e.id % 0x7fffffff) + 1;
             entBounds.add(pg->bounds);
             list_.push_back(pg);
         }
@@ -808,6 +860,8 @@ void SceneCache::sync(const Document& doc) {
     }
     for (const auto& [from, name] : targets)
         if (auto it = named.find(name); it != named.end()) connections_.push_back({from, it->second});
+    if (faceEdgesWanted) faceEdges = faceEdgesWanted();
+    updateFaceEdges();
     IW8R_PROF("s.lights_erase");
     // Lights for the lit preview (same keys the compiler reads, docs/research/24).
     lights.clear();

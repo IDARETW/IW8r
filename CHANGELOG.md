@@ -12,12 +12,16 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 - **Shader Editor.** Tools > Shader Editor makes, edits, checks and applies your map's shaders. Templates: Stock
   lighting (the game's own surface lighting, editable) and Toon. Errors show with the shader's own line numbers;
   saving updates Game Lighting at once; Use for This Map applies it to the map (models included) and to the build.
-- **Toon ink outlines.** Tools > Toon Ink Outlines draws thin black ink strips along the hard edges of the selected
-  brushes (all world brushes when nothing is selected). They are ordinary brushes in one func_group, with no
-  collision, using an unlit ink material written into the map's materials folder. Seams between flush brushes are
-  left out. Running it again replaces the old outlines.
-- **Example: Cinder Rail (Toon).** A copy of Cinder Rail with the toon shader, 7,805 ink strips and its sun matched to
-  its sky. It builds and passes validation. Not seen in game since these fixes.
+- **Edge inputs for custom shaders.** A shader can now ask how far a pixel is from the nearest edge of its brush
+  face, in screen pixels and in units, and which way the face across that edge points. Nothing about a look is built
+  in: the inputs are there for any shader (outlines, wear, highlights). Seams between flush brushes are no edge. Maps
+  whose shaders do not read them are unchanged.
+- **The toon shader is a real shader now.** `toon.iw8shader.hlsl` holds the whole look, editable in the Shader Editor:
+  more vivid, painted colour; the sun in flat tones with crisp shadow borders; shade as a cool tone instead of
+  blackness; and ink lines 3 pixels wide at any distance, with clean corners, drawn by the shader itself. The ink strip
+  brushes and Tools > Toon Ink Outlines are gone.
+- **Example: Cinder Rail (Toon).** A copy of Cinder Rail with the toon shader and its sun matched to its sky. It
+  builds and passes validation. Not seen in game since these changes.
 - **The sky's sun lines up with the map's sun.** A map without `skyrotation` now has its sky turned so the painted
   sun is where the light comes from, in the build and the viewport. The build warns when the sky's sun sits higher
   or lower than the map's sun. Compile > Sun From Sky now keeps your sun's yaw and takes only the sky sun's height.

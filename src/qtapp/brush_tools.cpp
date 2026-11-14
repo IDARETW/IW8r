@@ -65,31 +65,6 @@ std::string faceSuffix(const EditorContext& ctx) {
     return " " + ctx.currentMaterial + " 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0";
 }
 
-bool writeInkMaterial(const QString& root, bool* written, QString* err) {
-    if (written) *written = false;
-    const QString def = root + "/iw8r_ink.iw8mat.json";
-    if (QFileInfo::exists(def)) return true;
-    if (!QDir().mkpath(root)) {
-        if (err) *err = "cannot create " + root;
-        return false;
-    }
-    // Ink a touch off pure black (pure black reads as a hole next to cel-shaded colour).
-    QImage img(8, 8, QImage::Format_RGBA8888);
-    img.fill(QColor(20, 17, 24));
-    if (!img.save(root + "/iw8r_ink.png")) {
-        if (err) *err = "cannot write " + root + "/iw8r_ink.png";
-        return false;
-    }
-    QFile f(def);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        if (err) *err = "cannot write " + def;
-        return false;
-    }
-    f.write("{\n  \"color\": \"iw8r_ink.png\",\n  \"unlit\": true,\n  \"width\": 64,\n  \"height\": 64\n}\n");
-    if (written) *written = true;
-    return true;
-}
-
 bool createBoxBrush(EditorContext& ctx, const AABB& box) {
     Entity* w = ctx.doc.worldspawn();
     if (!w || !box.valid()) return false;
