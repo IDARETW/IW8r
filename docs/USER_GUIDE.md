@@ -693,7 +693,8 @@ one undo history, and each side sees the other's edits at once.
   has the editing, build and F5 settings (asset folders and the F5 host command are set at the editor only). The
   Atmosphere form also takes vision overrides (`name=value; name=x y z`). Edit > Surface edits the texture of the
   selected brushes (size, offsets, rotation, lightmap scale, Fit / Natural / Justify); Apply keeps the form open and
-  shows the result. View > Layers shows and hides layers, selects a layer's brushes and moves the selection to a
+  shows the result. Edit > Undo History lists the steps; choose one to go back or forward to it. View > Layers shows
+  and hides layers, selects a layer's brushes and moves the selection to a
   layer. Compile > Compile Options and Build Budget has the map id, the build switches and the last build's figures
   against their limits.
 - **View box.** Top, Front and Side are drawn in the browser (drag to pan or move the selection, wheel to zoom,

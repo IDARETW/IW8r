@@ -63,14 +63,16 @@ Nothing else in the script changed. `build_installer.ps1` was not changed.
 - Each needed file was checked at its package path (see the table): all present. The three absent items are the ones
   marked "no" above.
 
-## Decisions still needed
+## Decisions (settled 2026-11-14 with these defaults; say so if you want another)
 
-1. HTTPS: the package ships no certificate. Decide whether a self-signed certificate should be generated at install
-   time (installer) or the user should run `tools/make_web_cert.ps1` (current behaviour, HTTPS is off by default).
-2. Thumbnail packs: not shipped (game-derived images, 84 MB for the two full packs). Say so if a pre-built pack should
-   go in the package anyway.
-3. `docs\test_results.json` and `IW8Radiant.ini` are written beside the exe. If the installer puts the suite under
-   Program Files, those writes fail. The installer script (`tools/installer/iw8radiant.iss`) was not checked here;
-   this needs a look.
+1. HTTPS: the package ships no certificate and HTTPS is off by default. A certificate is made on the machine that
+   needs one with `tools/make_web_cert.ps1` (Tools > Web Server Settings names the files). The installer makes none:
+   a key made at install time would sit in a folder every later update overwrites.
+2. Thumbnail packs: not shipped. They are pictures of game assets (84 MB for the two full packs), and the package
+   holds nothing made from game files. The editor makes them on the machine (Tools > Thumbnail Packs).
+3. `docs\test_results.json` and `IW8Radiant.ini` are written beside the exe. The installer therefore installs for
+   the current user only (`%LOCALAPPDATA%\Programs\IW8 Radiant Suite`, no administrator rights); the "all users"
+   choice, which would put the suite under Program Files where those writes fail, is no longer offered
+   (`tools/installer/iw8radiant.iss`).
 4. ACTS-dependent features (relight, stock entity rebuild, thumbnail packs from ACTS) only work where ACTS and the
    game files are installed. The package does not include them, which is intended.

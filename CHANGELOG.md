@@ -5,6 +5,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Web: Undo History and a log you can filter.** Edit > Undo History in the web page lists the document's steps;
+  choosing one undoes or redoes to it. The Log panel loads the lines from before the page was opened, and shows all
+  lines, warnings and errors, or errors only, and only the lines that hold a text you type. Fixed on the way: with
+  more than one web server object every log line was kept several times.
+
 - **Occlusion bake: slanted and many-sided brushes hide things too.** An opaque brush that is not an axis-aligned
   box (a round tower, a wedge, a turned block) now gives the bake the box found inside it; before, only exact boxes
   counted. The box lies wholly inside the brush, so it hides at most what the brush hides. Thin slanted walls hold no

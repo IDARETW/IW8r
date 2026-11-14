@@ -32,6 +32,9 @@
   side alone, three rounds); compile_iw8.cpp uses it for opaque brushes that are not axis-aligned boxes (at least 8
   units a side; the converter's minOccluderSide 64 still applies). Tests: tests/occluder_box_tests.cpp and
   compile_occlusion_bake_fits_boxes_into_slanted_brushes in custom_materials_tests.cpp. The converter is unchanged.
+  Web form "history" (doc.history / undoPosition; undo or redo to the chosen step) and GET /api/log with level,
+  source and q; log lines carry their level; the kept lines are filled by one process-wide slot (was one per
+  WebServer object). The page: logLines / renderLog / addLogLine, #logLevel, #logFilter. Plan 3.2 is done.
   The web list of plan 3.3 / 3.4 is done except: the full Vision Editor (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder

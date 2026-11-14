@@ -518,18 +518,39 @@ function queueRefresh() {
   setTimeout(() => { refreshQueued = false; refresh().catch((e) => setStatus(e.message)); }, 60);
 }
 
+// The log (plan 3.2): the kept lines, shown through the level and text filters of the Log panel.
+const logLines = [];
+let logSeen = -1;
+function logShown(l) {
+  const f = $("logFilter").value.trim().toLowerCase();
+  return (l.level || 0) >= Number($("logLevel").value) && (!f || (l.source + " " + l.text).toLowerCase().includes(f));
+}
+const logText = (l) => `${l.level === 2 ? "ERROR " : l.level === 1 ? "warning " : ""}[${l.source}] ${l.text}\n`;
+function renderLog() {
+  const pre = $("log");
+  pre.textContent = logLines.filter(logShown).slice(-400).map(logText).join("");
+  pre.scrollTop = pre.scrollHeight;
+}
+function addLogLine(l, quiet) {
+  if (typeof l.seq === "number") { if (l.seq <= logSeen) return; logSeen = l.seq; }   // the backlog and the stream overlap
+  logLines.push(l);
+  if (logLines.length > 3000) logLines.splice(0, 1000);
+  if (quiet || !logShown(l)) return;
+  const pre = $("log");
+  pre.textContent += logText(l);
+  if (pre.textContent.length > 40000) renderLog();
+  pre.scrollTop = pre.scrollHeight;
+}
+$("logFilter").oninput = renderLog;
+$("logLevel").onchange = renderLog;
+
 function connect() {
   const es = new EventSource(api("/api/events"));
   es.addEventListener("revision", queueRefresh);
   es.addEventListener("status", (ev) => { try { setStatus(JSON.parse(ev.data).text); } catch (_) {} });
-  es.addEventListener("log", (ev) => {
-    try {
-      const l = JSON.parse(ev.data), pre = $("log");
-      pre.textContent += `[${l.source}] ${l.text}\n`;
-      if (pre.textContent.length > 20000) pre.textContent = pre.textContent.slice(-15000);
-      pre.scrollTop = pre.scrollHeight;
-    } catch (_) {}
-  });
+  es.addEventListener("log", (ev) => { try { addLogLine(JSON.parse(ev.data)); } catch (_) {} });
+  // The lines from before this page was opened (the editor keeps the last ones).
+  get("/api/log?since=0").then((j) => { for (const l of j.lines) addLogLine(l, true); renderLog(); }).catch(() => {});
   es.onopen = () => setStatus("Connected to the editor");
   es.onerror = () => setStatus("Connection lost; retrying...");
 }

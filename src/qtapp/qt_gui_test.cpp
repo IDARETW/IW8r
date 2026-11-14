@@ -2066,10 +2066,43 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 const QJsonObject sun = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=sunSky", {}, true, {}).body).object();
                 QStringList sunKeys;
                 for (const QJsonValue& f : sun.value("fields").toArray()) sunKeys << f.toObject().value("key").toString() + ":" + f.toObject().value("type").toString();
-                r.check(forms.size() == 10 && sun.value("title").toString() == "Sun & Sky" &&
+                r.check(forms.size() == 11 && sun.value("title").toString() == "Sun & Sky" &&
                             sunKeys == QStringList({"pitch:number", "yaw:number", "color:color", "sky:text"}) &&
                             fweb.handle("GET", "/api/form?id=nothing", {}, true, {}).status == 404,
                         "GET /api/forms lists the forms and GET /api/form gives a form's fields with the map's values");
+                {
+                    // Undo History: the steps as a choice; choosing one undoes or redoes to it. And the log's filters.
+                    const size_t undoH = ctx.doc.undoPosition();
+                    fweb.handle("POST", "/api/form", "{\"id\":\"mapInfo\",\"values\":{\"iw8r_title\":\"History One\"}}", true, {});
+                    fweb.handle("POST", "/api/form", "{\"id\":\"mapInfo\",\"values\":{\"iw8r_title\":\"History Two\"}}", true, {});
+                    const bool two = ctx.doc.undoPosition() == undoH + 2 && key("iw8r_title") == "History Two";
+                    const QJsonObject hf = QJsonDocument::fromJson(fweb.handle("GET", "/api/form?id=history", {}, true, {}).body).object();
+                    const QJsonObject stepField = hf.value("fields").toArray().first().toObject();
+                    const bool listed = stepField.value("value").toString() == QString::number(undoH + 2) &&
+                                        stepField.value("choices").toArray().size() >= 3;
+                    const auto back = fweb.handle("POST", "/api/form", QString("{\"id\":\"history\",\"values\":{\"step\":\"%1\"}}").arg(undoH + 1).toUtf8(), true, {});
+                    const bool one = ctx.doc.undoPosition() == undoH + 1 && key("iw8r_title") == "History One";
+                    const auto fwd = fweb.handle("POST", "/api/form", QString("{\"id\":\"history\",\"values\":{\"step\":\"%1\"}}").arg(undoH + 2).toUtf8(), true, {});
+                    const bool again = ctx.doc.undoPosition() == undoH + 2 && key("iw8r_title") == "History Two";
+                    const auto far = fweb.handle("POST", "/api/form", "{\"id\":\"history\",\"values\":{\"step\":\"999999\"}}", true, {});
+                    while (ctx.doc.undoPosition() > undoH) ctx.doc.undo();
+                    ctx.documentEdited();
+                    EditorLog::instance().add(LogLevel::Warning, "webtest", "a warning line for the web log filter");
+                    EditorLog::instance().add(LogLevel::Info, "webtest", "an info line for the web log filter");
+                    QApplication::processEvents();
+                    const auto count = [&](const char* query) {
+                        int n = 0;
+                        for (const QJsonValue& l : QJsonDocument::fromJson(fweb.handle("GET", query, {}, true, {}).body).object().value("lines").toArray())
+                            n += l.toObject().value("source").toString() == "webtest" ? 1 : 0;
+                        return n;
+                    };
+                    const int all = count("/api/log?since=0"), warns = count("/api/log?since=0&level=warning"), errs = count("/api/log?since=0&level=error");
+                    const int text = count("/api/log?since=0&q=INFO%20line"), other = count("/api/log?since=0&source=compile");
+                    r.check(two && listed && back.status == 200 && one && fwd.status == 200 && again && far.status == 400 && all == 2 && warns == 1 &&
+                                errs == 0 && text == 1 && other == 0,
+                            QString("the Undo History form goes back and forward by step; the log is filtered by level, source and text (%1 %2 %3 %4 %5)")
+                                .arg(all).arg(warns).arg(errs).arg(text).arg(other));
+                }
                 {
                     // Compile options: the dock's map id and switches, and the Build Budget as a report.
                     const QString idWas = w.compilePanel()->mapId();

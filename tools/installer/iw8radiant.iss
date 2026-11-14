@@ -33,9 +33,10 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 UsePreviousAppDir=yes
 UsePreviousGroup=yes
-; Per-user install by default (no administrator rights, %LOCALAPPDATA%\Programs); the wizard offers all-users.
+; Per-user install only (no administrator rights, %LOCALAPPDATA%\Programs). The editor keeps IW8Radiant.ini and
+; docs\test_results.json beside its exe; under Program Files those writes fail, so the wizard offers no all-users
+; install (RELEASE_CHECK decision 3, 2026-11-14).
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}

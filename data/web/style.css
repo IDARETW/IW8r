@@ -42,6 +42,8 @@ td:first-child { color: var(--muted); width: 38%; word-break: break-all; }
 td input { width: 100%; padding: 1px 4px; }
 #addKey { display: flex; gap: 4px; margin-top: 6px; }
 #addKey input { flex: 1; min-width: 0; }
+.log h2 select, .log h2 input { font-size: 11px; margin-left: 6px; }
+.log h2 input { width: 90px; }
 .log pre { margin: 0; font: 11px/1.35 ui-monospace, monospace; color: var(--muted); max-height: 160px; overflow: auto; white-space: pre-wrap; }
 footer { padding: 4px 10px; border-top: 1px solid var(--line); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 760px) {

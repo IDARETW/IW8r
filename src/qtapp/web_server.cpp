@@ -204,11 +204,18 @@ WebServer::WebServer(EditorContext* ctx, Hooks hooks, QObject* parent) : QObject
         broadcast("revision", QByteArray::number(qulonglong(ctx_->doc.revision())));
     });
     connect(ctx_, &EditorContext::statusMessage, this, [this](const QString& s) { broadcast("status", json({{"text", s}})); });
+    static bool tailHooked = false;
+    if (!tailHooked) {
+        // One keeper for the process, connected before any server's own slot: the line is kept when a server sends it.
+        tailHooked = true;
+        QObject::connect(&EditorLog::instance(), &EditorLog::added, &EditorLog::instance(), [](const LogEntry& e) {
+            LogTail& t = logTail();
+            t.lines.append({t.next++, e});
+            while (t.lines.size() > 2000) t.lines.removeFirst();
+        });
+    }
     connect(&EditorLog::instance(), &EditorLog::added, this, [this](const LogEntry& e) {
-        LogTail& t = logTail();
-        t.lines.append({t.next++, e});
-        while (t.lines.size() > 2000) t.lines.removeFirst();
-        broadcast("log", json({{"seq", double(t.next - 1)}, {"source", e.source}, {"text", e.text}}));
+        broadcast("log", json({{"seq", double(logTail().next - 1)}, {"source", e.source}, {"text", e.text}, {"level", int(e.level)}}));
     });
 }
 
@@ -627,10 +634,17 @@ WebServer::Response WebServer::handle(const QByteArray& method, const QByteArray
             return r;
         }
         if (path == "/api/log") {
+            // The kept lines from `since` on; level = warning | error (at least that), source = one source, q = text.
             const qint64 since = q.queryItemValue("since").toLongLong();
+            const QString lv = q.queryItemValue("level"), src = q.queryItemValue("source"), needle = q.queryItemValue("q", QUrl::FullyDecoded);
+            const int minLevel = lv == "error" ? int(LogLevel::Error) : lv == "warning" ? int(LogLevel::Warning) : int(LogLevel::Info);
             QJsonArray lines;
-            for (const auto& [seq, e] : logTail().lines)
-                if (seq >= since) lines.append(QJsonObject{{"seq", double(seq)}, {"source", e.source}, {"text", e.text}});
+            for (const auto& [seq, e] : logTail().lines) {
+                if (seq < since || int(e.level) < minLevel) continue;
+                if (!src.isEmpty() && e.source != src) continue;
+                if (!needle.isEmpty() && !e.text.contains(needle, Qt::CaseInsensitive)) continue;
+                lines.append(QJsonObject{{"seq", double(seq)}, {"source", e.source}, {"text", e.text}, {"level", int(e.level)}});
+            }
             Response r;
             r.body = json({{"lines", lines}, {"next", double(logTail().next)}});
             return r;

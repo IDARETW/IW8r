@@ -101,6 +101,7 @@ QJsonArray MainWindow::webFormList() const {
                       QJsonObject{{"id", "gameModes"}, {"title", "Game Modes"}, {"command", "GameModes"}, {"menu", "Tools"}},
                       QJsonObject{{"id", "checkMap"}, {"title", "Check Map"}, {"command", "CheckMap"}, {"menu", "Tools"}},
                       QJsonObject{{"id", "preferences"}, {"title", "Preferences"}, {"command", "Preferences"}, {"menu", "Edit"}},
+                      QJsonObject{{"id", "history"}, {"title", "Undo History"}, {"command", ""}, {"menu", "Edit"}},
                       QJsonObject{{"id", "surface"}, {"title", "Surface (texture of the selection)"}, {"command", ""}, {"menu", "Edit"}},
                       QJsonObject{{"id", "layers"}, {"title", "Layers"}, {"command", ""}, {"menu", "View"}},
                       QJsonObject{{"id", "compile"}, {"title", "Compile Options and Build Budget"}, {"command", ""}, {"menu", "Compile"}},
@@ -110,6 +111,20 @@ QJsonArray MainWindow::webFormList() const {
 
 QJsonObject MainWindow::webForm(const QString& id) const {
     if (id == "gameModes") return webGameModesForm();
+    if (id == "history") {
+        // The document's steps, the newest 200 at most: choosing one undoes or redoes to it.
+        const auto& h = ctx_.doc.history();
+        const size_t pos = ctx_.doc.undoPosition(), first = h.size() > 200 ? h.size() - 200 : 0;
+        QJsonArray steps, labels;
+        for (size_t i = first; i <= h.size(); ++i) {
+            steps.append(QString::number(i));
+            labels.append(i == 0 ? QString("0: (opened document)") : QString("%1: %2%3").arg(i).arg(qs(h[i - 1].name), i > pos ? "  (undone)" : ""));
+        }
+        QJsonArray f{QJsonObject{{"key", "step"}, {"label", QString("Go to step (now at %1 of %2)").arg(pos).arg(h.size())}, {"type", "choice"},
+                                 {"value", QString::number(std::max(pos, first))}, {"choices", steps}, {"choiceLabels", labels},
+                                 {"help", "Steps after the chosen one are undone; they stay in the list until a new edit replaces them"}}};
+        return QJsonObject{{"id", id}, {"title", "Undo History"}, {"fields", f}, {"reload", true}};
+    }
     if (id == "compile") {
         if (!compile_) return {};
         const auto checked = [this](const char* name) {
@@ -296,6 +311,17 @@ bool MainWindow::applyWebForm(const QString& id, const QJsonObject& values, QStr
         return false;
     };
     if (id == "gameModes") return applyWebGameModes(values, why);
+    if (id == "history") {
+        if (!values.contains("step")) return true;
+        bool ok = false;
+        const qlonglong want = values.value("step").toString().toLongLong(&ok);
+        if (!ok || want < 0 || size_t(want) > ctx_.doc.history().size()) return no("there is no such step");
+        size_t guard = ctx_.doc.history().size() + 1;
+        while (ctx_.doc.undoPosition() > size_t(want) && guard-- > 0 && ctx_.doc.undo()) {}
+        while (ctx_.doc.undoPosition() < size_t(want) && guard-- > 0 && ctx_.doc.redo()) {}
+        ctx_.documentEdited(QString("History: step %1").arg(ctx_.doc.undoPosition()));
+        return ctx_.doc.undoPosition() == size_t(want) ? true : no("the document could not go to that step");
+    }
     if (id == "compile") {
         if (!compile_) return no("the compile panel is not available");
         if (compile_->busy()) return no("a build is running: change the options when it is done");

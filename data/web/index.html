@@ -57,7 +57,9 @@
       <div id="assetMore"></div>
     </div>
     <div class="panel log">
-      <h2>Log</h2>
+      <h2>Log
+        <select id="logLevel" title="Which lines the log shows"><option value="0">All</option><option value="1">Warnings and errors</option><option value="2">Errors</option></select>
+        <input id="logFilter" placeholder="filter" title="Show only the lines that hold this text"></h2>
       <pre id="log"></pre>
     </div>
   </aside>

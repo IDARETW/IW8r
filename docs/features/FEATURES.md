@@ -743,7 +743,7 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 - The browser can compile, deploy, build and play, load in game, and place assets.
 - Building in the page: Draw brush (drag a rectangle in a 2D view), resize handles on the selected brushes, placing a point entity of any class, and an inspector with the entity definitions (class description, key help, required keys, Check Map's findings for the entity). (tested in a browser)
 - Vertex and edge tools in the 2D views: a handle on every corner or edge of the selected brushes, dragged with a live preview; one undo step, and a move that breaks the brush is refused.
-- Layers (show, hide, select, move the selection, declare) and the compile options with the Build Budget are forms too.
+- Layers (show, hide, select, move the selection, declare), the compile options with the Build Budget and the Undo History are forms too. The Log panel keeps the editor's earlier lines and filters by level and text.
 - Not in the browser yet: patch vertex editing, the full Vision Editor (all 218 fields by name; overrides by name are in the Atmosphere form).
 
 ## 15. Automation and command line
