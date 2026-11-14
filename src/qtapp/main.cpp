@@ -790,6 +790,7 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             const auto sl = cam->skyLuminance();
             report << QString("game_sky exposure=%1 mean_lum=%2 high_lum=%3").arg(sl[0]).arg(sl[1]).arg(sl[2]);
             report << QString("instances_culled %1").arg(cam->instancesCulled());
+            report << QString("background_decodes %1 (%2)").arg(cam->backgroundDecodes()).arg(iw8r::qt::CameraView::backgroundTextureDecode() ? "on" : "off: decoded in place");
             report << QString("terrain_patch centre %1 %2 batches %3 camera %4 %5").arg(w.terrainLayerCentre().x, 0, 'f', 0)
                           .arg(w.terrainLayerCentre().y, 0, 'f', 0).arg(w.terrainLayerBatchCount()).arg(ctx.cam.pos.x, 0, 'f', 0).arg(ctx.cam.pos.y, 0, 'f', 0);
             if (const auto* cl = w.stockClutter(); cl && !cl->empty()) {
@@ -1206,6 +1207,9 @@ int main(int argc, char** argv) {
     const bool bench = !benchMap.isEmpty();
     const bool guiTest = !guiTestSample.isEmpty() || bench;  // the benchmark runs like the GUI test: off-screen, volatile settings
     const bool smoke = !smokeFile.isEmpty() || !compileFile.isEmpty() || !propsZone.isEmpty() || featureShots;
+    // The start-up check writes its report into --out: a folder that is not there yet is made (it ended with exit
+    // code 0 and no report before).
+    if (!smokeFile.isEmpty() && !outDir.isEmpty()) QDir().mkpath(outDir);
     if (guiTest) qputenv("QT_QPA_PLATFORM", "offscreen");
     if (bench) {
         // The benchmark never writes the mapper's caches: without the overrides it uses (empty) scratch caches under
@@ -1237,6 +1241,9 @@ int main(int argc, char** argv) {
     bool safeMode = false;
     for (int i = 1; i < argc; ++i) safeMode |= QString::fromLocal8Bit(argv[i]) == "--safe-mode";
     if (!guiTest && !smoke && (QGuiApplication::queryKeyboardModifiers() & Qt::ShiftModifier)) safeMode = true;
+    // Runs that draw a fixed number of frames decode every texture where it is asked for (camera_view.h).
+    // IW8R_BACKGROUND_DECODE: keeps the workers on in such a run (a bench of the loading itself).
+    if ((guiTest || smoke) && !qEnvironmentVariableIsSet("IW8R_BACKGROUND_DECODE")) iw8r::qt::CameraView::setBackgroundTextureDecode(false);
     if (safeMode) {
         iw8r::qt::Settings::instance().setVolatile(true);
         qputenv("IW8R_SAFE_MODE", "1");

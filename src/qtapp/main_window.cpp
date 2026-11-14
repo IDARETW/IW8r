@@ -6978,6 +6978,83 @@ void MainWindow::openStockZoneDialog() {
     if (!openStockZone(zone, &err)) QMessageBox::critical(this, "Open IW8 Stock Map", err);
 }
 
+QString MainWindow::exportStockMapEnts(const QString& zone, const QString& cache, QString* err, bool* viaRunner) {
+    if (viaRunner) *viaRunner = false;
+    const QString acts = toolPath("acts"), replay = toolPath("replay"), oodle = toolPath("oodle");
+    const QString name = QFileInfo(zone).completeBaseName();
+    QDir().mkpath(cache);
+    // While an edit of this map is installed, the patch beside the zone is ours: the stock map is read from a
+    // copy with the stock patch saved at install (main_window_stock_edit.cpp).
+    QString viewDir;
+    const QString readZone = stockZoneForReading(zone, &viewDir, err);
+    if (readZone.isEmpty()) return {};
+    QProgressDialog progress("Reading " + name + " with ACTS (map_ents only)...", "Cancel", 0, 0, this);
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(500);
+    // The game's own zone goes through the shared runner: its server keeps the zone in memory, and the world export
+    // that follows does not load it a second time.
+    const QString gameZone = QFileInfo(QFileInfo(replay).absolutePath() + "/zone/" + name + ".ff").canonicalFilePath();
+    const bool useRunner = viewDir.isEmpty() && readZone == zone && !gameZone.isEmpty() &&
+                           gameZone.compare(QFileInfo(zone).canonicalFilePath(), Qt::CaseInsensitive) == 0;
+    int exitCode = -1;
+    QString log;
+    if (useRunner) {
+        if (viaRunner) *viaRunner = true;
+        ActsRequest req;
+        req.zone = name;
+        req.types = "map_ents";
+        req.outDir = cache;
+        QObject owner;  // this request alone: a cancel drops it without touching the other exports
+        bool done = false;
+        ActsResult res;
+        ActsRunner::shared()->submit([this](const QString& k) { return toolPath(k); }, req, &owner, [&done, &res](const ActsResult& r) {
+            res = r;
+            done = true;
+        });
+        while (!done) {
+            QApplication::processEvents(QEventLoop::AllEvents, 50);
+            if (progress.wasCanceled()) {
+                ActsRunner::shared()->cancel(&owner);
+                if (err) *err = "ACTS cancelled";
+                return {};
+            }
+            if (!done) QThread::msleep(5);
+        }
+        exitCode = res.started ? res.exitCode : -1;
+        log = QString::fromLocal8Bit(res.log);
+        if (!res.error.isEmpty()) log += "\n" + res.error;
+    } else {
+        QProcess proc;
+        proc.setProgram(acts);
+        proc.setArguments({"--noUpdater", "fastfile", "-r", "mw19replay", "-g", replay, "--oodle", oodle, "-a", "map_ents", "-o", cache, readZone});
+        proc.setProcessChannelMode(QProcess::MergedChannels);
+        proc.start();
+        while (!proc.waitForFinished(100)) {
+            QApplication::processEvents();
+            if (progress.wasCanceled()) {
+                proc.kill();
+                proc.waitForFinished(3000);
+                if (!viewDir.isEmpty()) QDir(viewDir).removeRecursively();
+                if (err) *err = "ACTS cancelled";
+                return {};
+            }
+            if (proc.state() == QProcess::NotRunning) break;
+        }
+        exitCode = proc.exitCode();
+        log = QString::fromLocal8Bit(proc.readAll());
+    }
+    if (!viewDir.isEmpty()) QDir(viewDir).removeRecursively();
+    QFile logFile(cache + "/acts.log");
+    if (logFile.open(QIODevice::WriteOnly)) logFile.write(log.toUtf8());
+    const QString json = findMapEntsJson(cache);
+    // 127: the export is complete but some asset was not available; the map_ents file decides.
+    if ((exitCode != 0 && exitCode != 127) || json.isEmpty()) {
+        if (err) *err = "ACTS did not produce map_ents for " + name + " (exit " + QString::number(exitCode) + ").\n\n" + log.right(1500);
+        return {};
+    }
+    return json;
+}
+
 bool MainWindow::openStockZone(const QString& zone, QString* err) {
     const QString acts = toolPath("acts"), replay = toolPath("replay"), oodle = toolPath("oodle");
     for (const QString& f : {acts, replay, oodle, zone})
@@ -6988,42 +7065,8 @@ bool MainWindow::openStockZone(const QString& zone, QString* err) {
     const QString name = QFileInfo(zone).completeBaseName();
     const QString cache = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/stock_cache/" + name;
     QString json = findMapEntsJson(cache);
-    if (json.isEmpty()) {
-        QDir().mkpath(cache);
-        // While an edit of this map is installed, the patch beside the zone is ours: the stock map is read from a
-        // copy with the stock patch saved at install (main_window_stock_edit.cpp).
-        QString viewDir;
-        const QString readZone = stockZoneForReading(zone, &viewDir, err);
-        if (readZone.isEmpty()) return false;
-        QProcess proc;
-        proc.setProgram(acts);
-        proc.setArguments({"--noUpdater", "fastfile", "-r", "mw19replay", "-g", replay, "--oodle", oodle, "-a", "map_ents", "-o", cache, readZone});
-        proc.setProcessChannelMode(QProcess::MergedChannels);
-        QProgressDialog progress("Reading " + name + " with ACTS (map_ents only)...", "Cancel", 0, 0, this);
-        progress.setWindowModality(Qt::WindowModal);
-        progress.setMinimumDuration(500);
-        proc.start();
-        while (!proc.waitForFinished(100)) {
-            QApplication::processEvents();
-            if (progress.wasCanceled()) {
-                proc.kill();
-                proc.waitForFinished(3000);
-                if (!viewDir.isEmpty()) QDir(viewDir).removeRecursively();
-                if (err) *err = "ACTS cancelled";
-                return false;
-            }
-            if (proc.state() == QProcess::NotRunning) break;
-        }
-        const QString log = QString::fromLocal8Bit(proc.readAll());
-        if (!viewDir.isEmpty()) QDir(viewDir).removeRecursively();
-        QFile logFile(cache + "/acts.log");
-        if (logFile.open(QIODevice::WriteOnly)) logFile.write(log.toUtf8());
-        json = findMapEntsJson(cache);
-        if (proc.exitCode() != 0 || json.isEmpty()) {
-            if (err) *err = "ACTS did not produce map_ents for " + name + " (exit " + QString::number(proc.exitCode()) + ").\n\n" + log.right(1500);
-            return false;
-        }
-    }
+    if (json.isEmpty()) json = exportStockMapEnts(zone, cache, err);
+    if (json.isEmpty()) return false;
     loadDocument(json);
     stockZone_ = name;
     stockSpawnsEditable_ = false;

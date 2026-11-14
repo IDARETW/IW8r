@@ -37,7 +37,7 @@
   WebServer object). The page: logLines / renderLog / addLogLine, #logLevel, #logFilter. Plan 3.2 is done.
   POST /api/pick {face: true} (hook pickFace, MainWindow::webPickFace: scene.pickFace, selectFace / toggleFace);
   viewlive.js sends it on Ctrl + click.
-  Parking state 2026-11-14 (after Paint Mesh on Faces): repo at the commit after b282487, suites core 181,493 checks / 1,341 tests and GUI 1,076 checks, 0 failures; zones of mp_cinderrail_t rebuilt 02:58 (x64zt_output; 0 overlapping faces, 5 px lines, the light grid with coloured bounce); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
+  Parking state 2026-11-14 (after the background texture decode): repo at the commit after 3a876b4, suites core 181,546 checks / 1,346 tests and GUI 1,078 checks, 0 failures; zones of mp_cinderrail_t rebuilt 02:58 (x64zt_output; 0 overlapping faces, 5 px lines, the light grid with coloured bounce); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
   GET /api/handles (control points of the selected patches, at most 20,000) and POST /api/vertices moves with
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.
   Web form "vision": every scalar / vector field of core vision_fields as a text field (key "v:<name>"), written
@@ -86,6 +86,12 @@
   Plan 3.1: MainWindow::followCameraPos() (the last /api/frame camera for webFollowHoldMs_ = 4000 ms, else
   ctx_.cam.pos) is the centre for updateStreamedTiles, updateTerrainLayers, updateProbeSubset and
   streamedTilesReport. GUI test with a 150 ms hold. Not run on Verdansk in a browser.
+  Background texture decode: core keyed_job_pool.h (KeyedJobPool<Result>: take(key, job, out, wait)),
+  CameraView::decodedTexture (modes 0 blocks-else-preview, 1 preview, 2 image file) used by textureFor, normalFor
+  and emissiveFor; pending = return -1 with moreToLoad_. It waits (decodes in place) when captureW_ > 0, a clean
+  capture, scene.captureMode, or CameraView::setBackgroundTextureDecode(false) (main.cpp: gui test, bench, smoke,
+  feature shots; IW8R_BACKGROUND_DECODE keeps the workers on there). The bench report has background_decodes.
+  MainWindow::exportStockMapEnts: map_ents through ActsRunner::shared() for the game's own zone file.
   ROADMAP 5.9 / 8.11: core convert_ops brushFacePaintMeshes / addPaintMeshesToBrushFaces (face selection, else the
   selected brushes' drawn faces; caulk under the patches; one undo step), MainWindow::addPaintMeshes, command
   PaintMeshOnFaces (setting paintMesh/spacing). CameraGeometry::Impl::findCovers / toolFaceCovered: a brush tool
@@ -1203,8 +1209,9 @@
     cache: 854,396 triangles; donetsk was checked at the ACTS level only: 283 records, 432 MB). The in-use
     `acts.exe` / `acts-common.dll` were moved aside as `*.inuse-204312` in the ACTS `build\bin\Release`; delete
     them once no editor from before 20:43 is running. The runner now ends its servers when `acts.exe` changes.
-  - Not done: preview decode still runs on the GUI thread (bounded per frame); `compile_panel` validation and the
-    `map_ents` export still start one process per run.
+  - Not done then: preview decode on the GUI thread and one process per `map_ents` export. Both DONE 2026-11-14
+    (worker decode; the export goes through the shared runner). `compile_panel` validation still starts one process
+    per built zone, by design: a built zone is a new file each time, and the server keeps zones by name.
 - **ROADMAP.md** (revised today; old text in `docs/archive/`): 137 rows done or partial, about 60 open. Browser work (L10)
   is paused by the owner; the HTTPS server stays enabled for them (port 8780). `tools/dev_rebuild_editor.ps1 -NoLaunch`
   does NOT close running editors (only a launching rebuild does): to pick up a new build, close the old window first

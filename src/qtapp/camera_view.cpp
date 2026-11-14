@@ -2,6 +2,7 @@
 #include "worker_guard.h"
 #include "camera_view.h"
 #include "bake_options.h"
+#include <atomic>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFileInfo>
@@ -1223,6 +1224,69 @@ int CameraView::systemMemoryMB() {
 
 int CameraView::textureSideNow() const { return renderer_.textureBytes() > textureBudget_ ? 128 : kViewTextureSide; }
 
+namespace {
+std::atomic<bool> g_backgroundDecode{true};
+}
+bool CameraView::backgroundDecodeSelfTest(const QString& imageFile, QString* note) {
+    // An image file through the worker path, whatever the process-wide switch says: not ready at once, ready soon after.
+    const bool was = g_backgroundDecode;
+    g_backgroundDecode = true;
+    const int before = backgroundDecodes_;
+    DecodedTexture d;
+    const std::string path = imageFile.toStdString();
+    const bool first = decodedTexture(path, 512, 2, d);
+    QElapsedTimer t;
+    t.start();
+    bool got = first;
+    while (!got && t.elapsed() < 5000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        got = decodedTexture(path, 512, 2, d);
+    }
+    g_backgroundDecode = was;
+    if (note)
+        *note = QString("first answer %1, ready after %2 ms, %3 x %4, counted %5")
+                    .arg(first ? "ready" : "pending").arg(t.elapsed()).arg(d.image.width).arg(d.image.height).arg(backgroundDecodes_ - before);
+    return !first && got && d.imageOk && d.image.width > 0 && d.image.pixels.size() == size_t(d.image.width) * size_t(d.image.height) * 4 &&
+           backgroundDecodes_ == before + 1;
+}
+void CameraView::setBackgroundTextureDecode(bool on) { g_backgroundDecode = on; }
+bool CameraView::backgroundTextureDecode() { return g_backgroundDecode; }
+
+bool CameraView::decodedTexture(const std::string& path, int side, int mode, DecodedTexture& out) {
+    static const bool noBc = qEnvironmentVariableIsSet("IW8R_NO_BC_TEXTURES");
+    const auto job = [path, side, mode] {
+        DecodedTexture d;
+        if (mode == 2) {
+            std::string err;
+            d.imageOk = decodeImageFile(path, d.image.width, d.image.height, d.image.pixels, &err) && d.image.width > 0 && d.image.height > 0;
+            d.fullW = d.image.width, d.fullH = d.image.height;
+            return d;
+        }
+        if (mode == 0 && !noBc) d.blocksOk = app::loadDdsBlocks(path, side, d.blocks, &d.fullW, &d.fullH);
+        if (!d.blocksOk) d.imageOk = app::loadDdsPreview(path, side, d.image, &d.fullW, &d.fullH) && d.image.width > 0 && d.image.height > 0;
+        return d;
+    };
+    // A render into an image (a screenshot, a test, a probe capture) draws a fixed number of frames: it waits.
+    const bool wait = !g_backgroundDecode || captureW_ > 0 || cleanCapture_ || (ctx_ && ctx_->scene.captureMode);
+    if (!decodePool_) {
+        if (wait) {
+            out = job();
+            return true;
+        }
+        decodePool_ = std::make_unique<KeyedJobPool<DecodedTexture>>();
+        QPointer<CameraView> self(this);
+        decodePool_->setReadyCallback([self] {
+            QMetaObject::invokeMethod(qApp, [self] {
+                if (self) self->update();  // the frame that went on without the texture asks again
+            }, Qt::QueuedConnection);
+        });
+    }
+    const std::string key = std::to_string(mode) + ":" + std::to_string(side) + ":" + path;
+    if (!decodePool_->take(key, job, out, wait)) return false;
+    if (!wait) ++backgroundDecodes_;
+    return true;
+}
+
 // A stock colour image no step edits: no cut-out mask, not a blended material, no tint (catalogue or the material's own).
 bool CameraView::colourImageKeptCompressed(const std::string& material) const {
     static const bool off = qEnvironmentVariableIsSet("IW8R_NO_BC_TEXTURES");  // A/B switch
@@ -1276,16 +1340,27 @@ int CameraView::textureFor(const std::string& material) {
     app::Rgba8Image img;
     int fullW = 0, fullH = 0;  // size of the whole image (Texel Density reads it), not of the level shown
     bool decoded = false;
-    if (path->endsWith(".dds", Qt::CaseInsensitive) && colourImageKeptCompressed(material)) {
-        // A stock image nothing edits (no cut-out mask, not blended, no tint): uploaded block-compressed as stored,
-        // its alpha the specular code (Verdansk with its streamed tiles ran past the texture budget decoded to RGBA).
-        // Nothing per material changes it, so materials that use the same file share one texture.
+    const bool isDds = path->endsWith(".dds", Qt::CaseInsensitive);
+    const bool compressed = isDds && colourImageKeptCompressed(material);
+    if (compressed)
         if (const auto it = texByPathBc_.find(path->toStdString()); it != texByPathBc_.end()) {
             --loadsThisFrame_;
             return texIds_[material] = it->second;
         }
-        app::DdsBlockLevels blocks;
-        if (app::loadDdsBlocks(path->toStdString(), textureSideNow(), blocks, &fullW, &fullH)) {
+    // The file is read and decoded by a worker (decodedTexture); this frame goes on without it until it is ready.
+    DecodedTexture dec;
+    if (!decodedTexture(path->toStdString(), textureSideNow(), !isDds ? 2 : compressed ? 0 : 1, dec)) {
+        --loadsThisFrame_;
+        moreToLoad_ = true;
+        return -1;
+    }
+    fullW = dec.fullW, fullH = dec.fullH;
+    if (compressed) {
+        // A stock image nothing edits (no cut-out mask, not blended, no tint): uploaded block-compressed as stored,
+        // its alpha the specular code (Verdansk with its streamed tiles ran past the texture budget decoded to RGBA).
+        // Nothing per material changes it, so materials that use the same file share one texture.
+        app::DdsBlockLevels& blocks = dec.blocks;
+        if (dec.blocksOk) {
             id = renderer_.createTextureBlocks(blocks.dxgiFormat, blocks.width, blocks.height, blocks.levels);
             if (id >= 0) {
                 texSizes_[material] = {fullW, fullH};
@@ -1297,10 +1372,15 @@ int CameraView::textureFor(const std::string& material) {
             }
         }
     }
-    if (path->endsWith(".dds", Qt::CaseInsensitive)) {
+    if (isDds) {
         // Only the mip level the viewport texture needs is read and decoded: the top level of a 2048x2048 stock
         // image is 16 MB of RGBA and cost 100 ms and more here, to be shrunk to 512 right after.
-        decoded = app::loadDdsPreview(path->toStdString(), textureSideNow(), img, &fullW, &fullH);
+        if (dec.imageOk) {
+            img = std::move(dec.image);
+            decoded = true;
+        } else if (dec.blocksOk) {  // the compressed upload failed: decode it here after all
+            decoded = app::loadDdsPreview(path->toStdString(), textureSideNow(), img, &fullW, &fullH);
+        }
         if (decoded && img.width > 0 && img.height > 0) {
             // Stock colour: alpha is specular, never opacity; a cut-out mask (when the material has one) replaces it.
             const QString maskPath = maskLookup_ ? maskLookup_(material) : QString();
@@ -1340,8 +1420,8 @@ int CameraView::textureFor(const std::string& material) {
         }
     } else {
         // Custom materials (doc 21): PNG / TGA / JPG / BMP through the same decoder the compiler uses.
-        std::string derr;
-        decoded = decodeImageFile(path->toStdString(), img.width, img.height, img.pixels, &derr);
+        decoded = dec.imageOk;
+        if (decoded) img = std::move(dec.image);
         if (decoded && customTint_)
             if (const auto tint = customTint_(material)) {
                 const size_t texels = img.pixels.size() / 4;
@@ -1530,10 +1610,15 @@ int CameraView::emissiveFor(const std::string& material) {
     int id = -1;
     app::Rgba8Image img;
     // The texture budget's size rule as the other images (emissive images always loaded at full preview size).
-    app::DdsBlockLevels blocks;
-    if (!qEnvironmentVariableIsSet("IW8R_NO_BC_TEXTURES") && app::loadDdsBlocks(path.toStdString(), textureSideNow(), blocks))
-        id = renderer_.createTextureBlocks(blocks.dxgiFormat, blocks.width, blocks.height, blocks.levels);
-    if (id < 0 && app::loadDdsPreview(path.toStdString(), textureSideNow(), img) && img.width > 0 && img.height > 0)
+    DecodedTexture dec;
+    if (!decodedTexture(path.toStdString(), textureSideNow(), 0, dec)) {  // a worker is decoding it
+        --loadsThisFrame_;
+        moreToLoad_ = true;
+        return -1;
+    }
+    if (dec.blocksOk) id = renderer_.createTextureBlocks(dec.blocks.dxgiFormat, dec.blocks.width, dec.blocks.height, dec.blocks.levels);
+    if (id < 0 && dec.imageOk) id = renderer_.createTexture(dec.image.pixels.data(), dec.image.width, dec.image.height);
+    if (id < 0 && dec.blocksOk && app::loadDdsPreview(path.toStdString(), textureSideNow(), img) && img.width > 0 && img.height > 0)
         id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
     return emiIds_[material] = id;
 }
@@ -1626,10 +1711,15 @@ int CameraView::normalFor(const std::string& material) {
     app::Rgba8Image img;
     // The same size rule as the colour images (they had always loaded at full preview size, over the budget). BC1 /
     // BC3 / BC7 normal maps go up compressed (every channel as stored); BC5 and the rest are decoded.
-    app::DdsBlockLevels blocks;
-    if (!qEnvironmentVariableIsSet("IW8R_NO_BC_TEXTURES") && app::loadDdsBlocks(path.toStdString(), textureSideNow(), blocks))
-        id = renderer_.createTextureBlocks(blocks.dxgiFormat, blocks.width, blocks.height, blocks.levels);
-    if (id < 0 && app::loadDdsPreview(path.toStdString(), textureSideNow(), img) && img.width > 0 && img.height > 0)
+    DecodedTexture dec;
+    if (!decodedTexture(path.toStdString(), textureSideNow(), 0, dec)) {  // a worker is decoding it
+        --loadsThisFrame_;
+        moreToLoad_ = true;
+        return -1;
+    }
+    if (dec.blocksOk) id = renderer_.createTextureBlocks(dec.blocks.dxgiFormat, dec.blocks.width, dec.blocks.height, dec.blocks.levels);
+    if (id < 0 && dec.imageOk) id = renderer_.createTexture(dec.image.pixels.data(), dec.image.width, dec.image.height);
+    if (id < 0 && dec.blocksOk && app::loadDdsPreview(path.toStdString(), textureSideNow(), img) && img.width > 0 && img.height > 0)
         id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
     g_frameLoadMs += QDateTime::currentMSecsSinceEpoch() - loadStart;
     if (id >= 0) nrmByPath_[path.toStdString()] = id;

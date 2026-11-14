@@ -36,6 +36,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
+#include "acts_runner.h"
 #include <QRegularExpression>
 #include <atomic>
 #include <thread>
@@ -3201,6 +3202,19 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         ctx.documentEdited();
     }
 
+    r.section("textures are decoded off the GUI thread");
+    if (CameraView* cv = w.cameraView()) {
+        QImage ramp(96, 48, QImage::Format_RGBA8888);
+        for (int y = 0; y < ramp.height(); ++y)
+            for (int x = 0; x < ramp.width(); ++x) ramp.setPixelColor(x, y, QColor(x * 2, y * 4, 128));
+        const QString file = QDir(outDir).filePath("background_decode.png");
+        QString note;
+        const bool saved = ramp.save(file);
+        const bool ok = saved && cv->backgroundDecodeSelfTest(file, &note);
+        r.check(ok && !CameraView::backgroundTextureDecode(),
+                "a texture file is decoded by a worker and picked up a moment later; this test run itself decodes in place (" + note + ")");
+    }
+
     r.section("paint mesh on brush faces (Brush > Paint Mesh on Faces)");
     if (CameraView* cv = w.cameraView()) {
         // A worldspawn brush with drawn faces gets a mesh patch on each of them and caulk under them, in one undo step;
@@ -6189,6 +6203,29 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
     r.section("open a stock IW8 zone through ACTS (mp_shipment, map_ents only)");
     const QString zone = "E:/IW8/Builds/1.20-replay/zone/mp_shipment.ff";
     if (QFile::exists(zone)) {
+        {
+            // The map_ents export goes through the shared ACTS runner (the zone stays loaded for the world export):
+            // twice into empty folders, the second one finds the zone in the server's memory.
+            ActsRunner* runner = ActsRunner::shared();
+            const int served0 = runner->servedRequests(), cached0 = runner->cachedRequests(), oneShot0 = runner->oneShotRuns();
+            const QString c1 = QDir(outDir).filePath("map_ents_runner_1"), c2 = QDir(outDir).filePath("map_ents_runner_2");
+            QDir(c1).removeRecursively();
+            QDir(c2).removeRecursively();
+            QString e1, e2;
+            bool via1 = false, via2 = false;
+            const QString j1 = w.exportStockMapEnts(zone, c1, &e1, &via1);
+            const QString j2 = w.exportStockMapEnts(zone, c2, &e2, &via2);
+            const int served = runner->servedRequests() - served0, cached = runner->cachedRequests() - cached0,
+                      oneShot = runner->oneShotRuns() - oneShot0;
+            const bool wrote = !j1.isEmpty() && !j2.isEmpty() && QFileInfo(j1).size() > 1000 && QFileInfo(j1).size() == QFileInfo(j2).size();
+            // An acts.exe without the serve mode runs each request as one process: then nothing is served or cached.
+            // Other exports of the editor may be served meanwhile: at least these two.
+            const bool reused = runner->serveSupported() ? served >= 2 && cached >= 1 : oneShot >= 2;
+            r.check(via1 && via2 && wrote && reused,
+                    QString("the stock map's entities are exported through the shared ACTS runner, the second time from the loaded zone "
+                            "(served %1, from memory %2, own processes %3)%4")
+                        .arg(served).arg(cached).arg(oneShot).arg(e1.isEmpty() && e2.isEmpty() ? QString() : " (" + (e1 + e2).left(160) + ")"));
+        }
         QString zerr;
         const bool ok = w.openStockZone(zone, &zerr);
         r.check(ok, "ACTS read mp_shipment and the editor opened it" + (zerr.isEmpty() ? QString() : " (" + zerr.left(200) + ")"));

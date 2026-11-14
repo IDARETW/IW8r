@@ -418,8 +418,9 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
 - **Performance and UX**
   - per-item buffers (3.11): done (kept camera geometry, changed per item).
   - the region outline: done 2026-11-14 (2D and camera views).
-  - preview decode off the GUI thread, one process per validation run: not built; neither blocks a workflow
-    (decode is budgeted per frame, validation runs per zone).
+  - preview decode off the GUI thread: done 2026-11-14 (worker threads; captures and tests still wait per file).
+  - one process per run: the stock map's entity export goes through the shared ACTS server (done 2026-11-14).
+    Validation of a built zone stays one process per zone: the zone is a new file after every build.
 - **Packaging**
   - RELEASE_CHECK decisions 1-4: settled with defaults on 2026-11-14 (docs/RELEASE_CHECK.md).
   - exe MD5 check (9.1): done (First-Run Setup).

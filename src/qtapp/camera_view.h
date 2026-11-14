@@ -13,6 +13,8 @@
 #include "stock_layered_material.h"
 #include "game_lightmap.h"
 #include "game_look.h"
+#include "keyed_job_pool.h"
+#include "texture_decode.h"
 #include "vfx_sim.h"
 #include "atmosphere.h"
 #include "foliage_sway.h"
@@ -321,6 +323,14 @@ public slots:
     void setGameAoStrength(double s) { renderer_.setGameAoStrength(float(s)); update(); }
     void setPostFxEnabled(bool on) { renderer_.setPostFxEnabled(on); update(); }
     void setFilmGrainEnabled(bool on) { renderer_.setFilmGrainEnabled(on); update(); }
+    // Texture files are read and decoded by worker threads while the view is on screen (decodedTexture). Runs that
+    // draw a fixed number of frames (tests, the bench, the start-up check, feature pictures) turn that off for the
+    // whole process: every file is then decoded where it is asked for, as before.
+    static void setBackgroundTextureDecode(bool on);
+    static bool backgroundTextureDecode();
+    // Files a worker decoded and the view then used (the status line and tests).
+    int backgroundDecodes() const { return backgroundDecodes_; }
+    bool backgroundDecodeSelfTest(const QString& imageFile, QString* note = nullptr);  // --gui-test
     void setWhiteBalanceEnabled(bool on) { renderer_.setWhiteBalanceEnabled(on); update(); }
     bool whiteBalanceDrawn() const { return renderer_.whiteBalanceDrawn(); }
     const GamePostFx& stockPostFx() const { return stockPostFx_; }
@@ -540,6 +550,19 @@ private:
     uint64_t geomKey_ = 0;
     bool geomDirty_ = true;
     int captureW_ = 0, captureH_ = 0;  // renderImage: target size instead of the widget's
+    // A texture file as a worker decoded it (decodedTexture). mode 0: block-compressed levels, else the preview image;
+    // 1: the preview image; 2: an image file (PNG / TGA / JPG / BMP).
+    struct DecodedTexture {
+        bool blocksOk = false, imageOk = false;
+        app::DdsBlockLevels blocks;
+        app::Rgba8Image image;
+        int fullW = 0, fullH = 0;
+    };
+    // True: `out` holds the decoded file (which may have failed: neither flag set). False: a worker is on it; the frame
+    // goes on without this texture and asks again (moreToLoad_). Off-screen renders always get true.
+    bool decodedTexture(const std::string& path, int side, int mode, DecodedTexture& out);
+    std::unique_ptr<KeyedJobPool<DecodedTexture>> decodePool_;
+    int backgroundDecodes_ = 0;
     int fixedW_ = 0, fixedH_ = 0;      // setFixedRenderSize
     double captureAspect_ = 0;
     bool cleanCapture_ = false;

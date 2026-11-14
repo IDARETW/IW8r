@@ -5,6 +5,20 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Textures are decoded off the main thread.** The camera view read and decoded every texture file while it built
+  a frame (up to 12 ms of each frame while a map loaded). Worker threads do that now; the view goes on without a
+  texture that is not ready and picks it up a few frames later, and only the upload to the graphics card is left
+  for the main thread. Hideout: the same picture (2,979 files decoded by the workers), and all its textures were up
+  within 20 s of the run where they took between 20 and 30 s before. Screenshots, tests and the build's own captures
+  still wait for each file, so they are unchanged. How much smoother the view feels while a big map loads was not
+  measured.
+- **Opening a stock map loads its zone once.** The entities were read by an ACTS run of their own, which loaded the
+  whole zone; the world export that followed loaded it a second time. Both now go through the editor's shared ACTS
+  server, so the second one finds the zone in memory (test: two exports, the second from the loaded zone). A zone
+  file from outside the game folder, and the view of a map with an installed edit, still run on their own.
+- **The start-up check makes its report folder.** `--smoke-test ... --out <folder>` ended with exit code 0 and no
+  report when the folder did not exist.
+
 - **Blend painting on brush surfaces: Brush > Paint Mesh on Faces.** A brush face has only its corners, so there
   was nothing to paint a blend on; you had to turn the brush into patches and then into a terrain mesh by hand. The
   new command lays a mesh patch with a control point every N units (you choose; 32 by default) on the faces you
