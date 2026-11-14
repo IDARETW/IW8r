@@ -2255,6 +2255,7 @@ void CameraView::prepareGameLook() {
         g.skyIsUnbaked = gameLookUnbaked();
         if (stock) {  // the stock map's bloom veil and vignette (research 109)
             g.veil = float(stockPostFx_.veil);
+            g.grain = float(stockPostFx_.grain);
             const GamePostFx& p = stockPostFx_;
             if (p.volAir > 0) {  // the volumetric fog (research 109 section 2)
                 const float hExp = p.volHeightHalf != 0 ? float(-0.693147 / std::max(p.volHeightHalf, 0.1)) : 0.0f;

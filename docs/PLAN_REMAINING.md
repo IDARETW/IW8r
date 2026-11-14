@@ -112,7 +112,7 @@ side.
 **1.4 Stock shading parity: the small items.**
 - **Research 107 (2026-11-13) DONE:** lit-buffer constants, emissive x c36, transmission (ambient + sun), wrap diffuse
   (lightmap + sun), probe rough fallback. Wrap and transmission for local lights DONE 2026-11-14. Left by decision
-  (table "Open points closed by decision"): layer modes 2/3, AO strength.
+  (table "Open points closed by decision"): the normal and gloss of detail layers on props.
 - **Material and occlusion:**
   - normal decode `z = 1 - 0.6|xy|²`;
   - read `gtso_lut` from the install (cached, like the env BRDF) and use the game's specular occlusion (DONE);
@@ -162,8 +162,8 @@ raised camera use their own tile's light and probes.
 - **Decal volumes:** normal, gloss, cavity and emissive (research 99 :177-179). The user's own `iw8r_decal` entities
   are shaded in Game Lighting.
 
-**1.8 Atmosphere and post.** Part 1 DONE 2026-11-13 (research 109: bloom veil and vignette). Left by decision (table "Open points closed by decision"): volumetric fog, film
-grain, white balance.
+**1.8 Atmosphere and post.** Part 1 DONE 2026-11-13 (research 109: bloom veil and vignette). Film grain DONE 2026-11-14. Left by decision (table "Open points closed by decision"): volumetric
+fog, white balance.
 - **Volumetric fog / veil** from the stock vision, and for own maps the user's `iw8r_volume`.
 - **Bloom and veil.**
 - **Own maps:** honour `iw8r_exposure_adjust` and `iw8r_vision`.
@@ -365,10 +365,10 @@ judged against the running game, which is not used any more. They are listed so 
 
 | Point | What is there now | Why it stays |
 |---|---|---|
-| 1.4 layer colour modes 2 / 3, the AO strength constant | Sun, lightmap and lamp wrap and transmission (lamps 2026-11-14), layer mode 1, AO at its default strength | A few layered materials and a global strength; the gain cannot be checked without game pictures. |
+| 1.4 the normal, cavity and gloss of detail layers on layered prop materials | Sun, lightmap and lamp wrap and transmission; layers with colour mode 2 or 3 leave the colour alone, as in the game; the AO strength is a setting at the game's value | 43 layer slots on props in the three maps read (crate foam, concrete slabs); they need the prop materials' layer tables, which the material export does not give. |
 | 1.5 SELFVIS, the 236 lightmapped `tml` props, Warzone tile grids for tile props | Props take their own light grid box; the rest fall back to the probes | SELFVIS needs a new ACTS export; the others touch 2 % of placements. |
 | 1.6 `needsDynamicShadows`, the screen-space shadow mask | Every spot and omni light with shadow maps for the nearest 64 | Affects moving entities and contact shadows only. |
-| 1.8 volumetric fog, film grain, white balance | Bloom veil, vignette, exponential fog, the stock vision's exposure and grade | The volumetric fog constants are not calibrated (it stays off rather than wrong); grain and white balance are not decoded, and grain is noise by design. |
+| 1.8 volumetric fog, white balance | Bloom veil, vignette, film grain (2026-11-14), exponential fog, the stock vision's exposure and grade | The volumetric fog constants are not calibrated (it stays off rather than wrong); white balance is not decoded. |
 | 1.11 HDR probe capture | Bounces in the surfaces' colours with the later bounces estimated, a lightmap scale per face, the texel size as a Bake Setting (all 2026-11-14), 8-bit probes captured before every build | HDR probes change glossy reflections by a little and need the converter to take another image format. |
 | 1.11 the parity proof (draw the built zone as a stock map and compare) | `tools/lightmap_bake_build_test.py` proves the baked data reaches the built zone; View > Game Lighting uses the converter shader's own formulas (research 117) | The proof as planned would compare the wrong things: a built map is drawn by the converter's world shader, and the editor's stock-map path models the game's stock shaders, not that one. |
 | 1.13 the game's FOV / lodScale factor on LOD distances | Stock LOD distances as stored | Changes only the distance at which a LOD switches; the frame budgets are met without it. |

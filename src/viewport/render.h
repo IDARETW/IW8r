@@ -489,6 +489,7 @@ public:
         // (core gameVignetteConstants); zero = none.
         float veil = 0;
         float vignette[12] = {};
+        float grain = 0;  // film grain strength (the vision's tonemapGrainStrength x 0.25; research 109 section 4.2)
     };
     void setGameLook(const GameLook& g) { game_ = g; }
     bool gameLookOn() const { return game_.on; }
@@ -525,6 +526,7 @@ public:
     void setGameAoStrength(float s) { gameAoStrength_ = s; }
     // The map's bloom veil and vignette (research 109) in Game Lighting.
     void setPostFxEnabled(bool on) { postFxEnabled_ = on; }
+    void setFilmGrainEnabled(bool on) { filmGrainEnabled_ = on; }
     void setVolumetricFogEnabled(bool on) { volumetricOn_ = on; }
     bool veilDrawn() const { return veilDrawn_; }  // the last post pass mixed the veil (bench)
     float gameVeil() const { return game_.veil; }
@@ -958,6 +960,7 @@ private:
     bool volumetricOn_ = false;      // View > Game Lighting Options > Volumetric Fog (game/volumetricFog, off by default)
     float lastViewProj_[16] = {};    // the frame's view (drawPost's volumetric march)
     bool postFxEnabled_ = true;
+    bool filmGrainEnabled_ = true;
     bool veilDrawn_ = false;
     bool createVeilResources();
     void releaseVeilResources();

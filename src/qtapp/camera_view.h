@@ -320,6 +320,7 @@ public slots:
     void setGameDebugView(int v) { renderer_.setGameDebugView(v); update(); }
     void setGameAoStrength(double s) { renderer_.setGameAoStrength(float(s)); update(); }
     void setPostFxEnabled(bool on) { renderer_.setPostFxEnabled(on); update(); }
+    void setFilmGrainEnabled(bool on) { renderer_.setFilmGrainEnabled(on); update(); }
     void setVolumetricFogEnabled(bool on) { renderer_.setVolumetricFogEnabled(on); update(); }
     // Bench: the stock vision's veil and vignette intensity, the renderer's veil and whether it was drawn.
     QString postFxReport() const {

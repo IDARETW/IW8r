@@ -287,6 +287,8 @@ Commands in the Tools menu:
   also aimed at the sun painted in that sky, in the same undo step.
 - **Compass**: the compass north is the top of the XY view (+Y). Builds write worldspawn `northyaw 90` unless the map
   sets its own, so the game's north matches the editor's.
+- **Film grain.** On a stock map the picture has the game's fine grain, as strong as that map's vision sets it. View
+  > Game Lighting Options > Film Grain turns it off (for screenshots, or if it bothers you while editing).
 - **Models.** A placed model is lit by the light at its place (the build's light grid: sky, sun bounce, how closed
   in the spot is), with or without baked lightmaps. View > Game Lighting shows it per model.
 - **Sharper shadows where you want them.** Select faces or brushes and lower "Lightmap scale" in the Surface panel

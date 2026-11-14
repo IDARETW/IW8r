@@ -5,6 +5,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Stock maps in Game Lighting: film grain.** The game puts a fine grain on the finished picture, as strong as the
+  map's vision asks (Hideout 5 %, Speedball 2.5 %, none where the vision leaves it out). The viewport now draws it
+  with the game's own noise formula (research 109), standing still instead of moving. View > Game Lighting Options >
+  Film Grain turns it off. A before / after of Hideout: the same average brightness, single pixels up to 5 % apart.
+
 - **Stock maps in Game Lighting: lamps on foliage, cloth and wrap materials.** The game lights these materials from
   lamps by a different rule than plain ones: the light wraps past the edge of the lit side (grass, pebbles, snow,
   tarps), and thin materials let a lamp shine through from behind. The viewport drew every material with the plain

@@ -545,7 +545,7 @@ VFull vs_post(uint id : SV_VertexID) {
     return o;
 }
 // The bloom veil (research 109 section 1.2): its chain's source / add levels, the result (V2) and the post constants:
-// veilDst = (dst w, dst h, 1 / w, 1 / h), veilW = (wIn, wOut); postFx0 = (veil, screen w, screen h); postVig0..2 = the
+// veilDst = (dst w, dst h, 1 / w, 1 / h), veilW = (wIn, wOut); postFx0 = (veil, screen w, screen h, film grain); postVig0..2 = the
 // vignette (core gameVignetteConstants).
 Texture2D<float4> veilSrc : register(t25);
 Texture2D<float4> veilAdd : register(t26);
@@ -629,7 +629,19 @@ float4 ps_post(VFull i) : SV_TARGET {
         const float t = saturate(r * postVig2.x + postVig2.y);
         c *= 1.0 - (t + 0.6 * (t * t * (3.0 - 2.0 * t) - t)) * postVig0.z;
     }
-    return float4(gamePost(c), 1.0);
+    float3 shown = gamePost(c);
+    if (postFx0.w > 0.0) {
+        // Film grain (research 109 section 4.2: the game's filmgrain shader): white noise times the display colour,
+        // none on black, fading toward white. The game moves the noise with time; here it stands still.
+        const float T = 0.7310586;
+        const float ga = frac(suv.y * T) * 1024.0 - 512.0, gb = frac(suv.x * T) * 1024.0 - 512.0;
+        const float pp = gb * frac(gb * 0.554550) + ga, qq = ga * frac(ga * 0.308517) + gb;
+        const float noise = frac(pp * qq) * 2.0 - 1.0;
+        const float med = max(min(max(shown.r, shown.g), shown.b), min(shown.r, shown.g));
+        const float k = med + 0.1 * saturate(1.0 - med);
+        shown += shown * noise * max(1.0 - k * k, 0.0) * postFx0.w;
+    }
+    return float4(shown, 1.0);
 }
 void ps_shadow_clip(PSIn i) {
     if (!rawSpecAlpha()) clip(tex0.Sample(samp0, i.uv).a - 0.3);
@@ -2086,6 +2098,7 @@ void SceneRenderer::drawPost() {
         // The post constants (b12): veil strength and screen size, the vignette.
         float cb[24] = {};
         cb[8] = veil ? game_.veil : 0.0f, cb[9] = float(w_), cb[10] = float(h_);
+        cb[11] = postFxEnabled_ && filmGrainEnabled_ ? game_.grain : 0.0f;
         if (postFxEnabled_) std::memcpy(cb + 12, game_.vignette, sizeof(game_.vignette));
         if (cbVeil_ || createVeilResources()) {
             ctx_->UpdateSubresource(cbVeil_, 0, nullptr, cb, 0, 0);

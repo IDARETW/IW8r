@@ -78,6 +78,11 @@
   has no .77 constant, so 106 and 107 are both right for their shaders). Transmission adds the back lobe with the
   lamp's point along -V. A/B on Hideout (out/agent/mapcam_real.ps1, real material cache): identical, no lamp near such
   a material in that view. Open in 1.4: layer colour modes 2 / 3, the AO strength constant.
+  Film grain: GameLook::grain (= GamePostFx::grain of the stock vision), postFx0.w, ps_post after gamePost (research
+  109 section 4.2, T fixed), SceneRenderer::setFilmGrainEnabled, command GameFilmGrain (game/filmGrain). Own maps: 0
+  (the vision default). Checked: 1.4's "AO strength" is the existing setting game/aoStrength (r_ssaoStrength, 1 on
+  every MP map), and colour modes 2 / 3 are skipped in camera_view.cpp (lc.colorMode >= 2), which is the game's rule
+  for the colour; what is not drawn of such layers is their normal, cavity and gloss.
   The web list of plan 3.3 / 3.4 is done (the Vision Editor form closed it). Earlier note: (218 fields; overrides by name are in the
   Atmosphere form), patch vertex editing, face picking with surface fit.
 - 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder
