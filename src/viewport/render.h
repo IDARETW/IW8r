@@ -225,6 +225,8 @@ public:
     // the Game Lighting colour. Returns its id (>= 0) or -1 with *err (the compiler's message).
     int createCustomShader(const std::string& source, std::string* err);
     static const char* texShaderSource();  // the base the custom shaders are made from
+    // Compiles a textured pixel shader source (ps_tex, ps_5_0) without creating it: false with the compiler's errors.
+    static bool compileCheck(const std::string& source, std::string* err);
     // Video memory the renderer holds, by kind (MB): "props a+b world c extras d streams e textures f lightmaps g
     // probes h shadows i targets j". Windows charges video memory to the process's commit, so this is part of what
     // the bench's memory.log shows.

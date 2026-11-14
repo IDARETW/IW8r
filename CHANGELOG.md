@@ -9,6 +9,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
   definition) can light its surfaces with your own shader function: `<map folder>/shaders/<name>.iw8shader.hlsl` or
   the editor's `data/shaders`. The same code runs in the viewport (Game Lighting) and in the built map. Example: a
   toon (anime cel) shader, `toon`, with flat light tones, cool shade and sharp borders (research 114).
+- **Shader Editor.** Tools > Shader Editor makes, edits, checks and applies your map's shaders. Templates: Stock
+  lighting (the game's own surface lighting, editable) and Toon. Errors show with the shader's own line numbers;
+  saving updates Game Lighting at once; Use for This Map applies it to the map (models included) and to the build.
 - **Toon ink outlines.** Tools > Toon Ink Outlines draws thin black ink strips along the hard edges of the selected
   brushes (all world brushes when nothing is selected). They are ordinary brushes in one func_group, with no
   collision, using an unlit ink material written into the map's materials folder. Seams between flush brushes are

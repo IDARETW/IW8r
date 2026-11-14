@@ -232,6 +232,22 @@ Commands in the Tools menu:
 - The camera shows the change, and the build makes a copy of the stock model with that slot replaced. Not seen in game
   yet.
 
+### Custom shaders (your map's own look)
+
+- **Tools > Shader Editor** lists your map's shaders (its `shaders` folder) and the editor's templates. **Stock
+  lighting** is the game's own lighting of a map's surfaces, as an editable shader. **Toon** is an anime cel look.
+- **New...** copies a template into your map under a new name. Edit it, then press **Check**: errors show with the
+  shader's own line numbers. **Save** shows the result at once in View > Game Lighting. **Use for This Map** makes
+  every surface of your map use it, including models, both in the viewport and in the built map. **No Map Shader**
+  goes back to the game's lighting.
+- One material can have its own shader instead: add `"shader": "<file>.iw8shader.hlsl"` to its definition.
+- A shader is one HLSL function, `float3 iw8rSurface(IW8RSurface s)`. It gets the surface colour, normal, view
+  direction, position, UV, the sun (direction, colour, shadow), the baked light and the gloss, and returns the lit
+  colour. It cannot read textures.
+- **Tools > Toon Ink Outlines** adds black ink lines along the hard edges of brushes, for cel-shaded maps. The lines
+  have no collision, and running it again replaces them.
+- The example map Cinder Rail (Toon) uses both. Custom shaders are built and checked offline but not yet seen in game.
+
 ## 6. Lighting and atmosphere
 
 - **Lights**: `light` entities (omni and spot) become primary lights; `reflection_probe` entities become probes.

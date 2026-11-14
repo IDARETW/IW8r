@@ -1429,6 +1429,17 @@ int SceneRenderer::createCustomShader(const std::string& source, std::string* er
 
 const char* SceneRenderer::texShaderSource() { return kTexShader; }
 
+bool SceneRenderer::compileCheck(const std::string& source, std::string* err) {
+    ID3DBlob* blob = nullptr;
+    ID3DBlob* errb = nullptr;
+    const HRESULT hr = D3DCompile(source.data(), source.size(), "iw8r_custom", nullptr, nullptr, "ps_tex", "ps_5_0", 0, 0, &blob, &errb);
+    if (err) *err = errb ? std::string(static_cast<const char*>(errb->GetBufferPointer()), errb->GetBufferSize()) : std::string();
+    safeRelease(errb);
+    safeRelease(blob);
+    if (FAILED(hr) && err && err->empty()) *err = "D3DCompile failed";
+    return SUCCEEDED(hr);
+}
+
 int SceneRenderer::createTextureBlocks(int dxgiFormat, int width, int height, const std::vector<std::string>& levels) {
     if (!dev_ || levels.empty() || width < 4 || height < 4) return -1;
     D3D11_TEXTURE2D_DESC td{};
