@@ -99,6 +99,10 @@
     run again on the live exe). Suites: core 182,854 checks / 1,385 tests, GUI 1,093, smoke ok, 0 failures.
   - docs/HANDOVER.md and docs/KEYS_REFERENCE.md are brought up to this state (what was seen in game on 2026-11-14,
     what is reported and not settled, the seven keys that had no row).
+  - 19:50: the viewport's lamp glow (iw8r_volumetric with a haze) was dead: CameraView::prepareGameLook read
+    pixelLightScratch_ right after it was cleared. Now pixelLightOf() makes a light's renderer record for both users.
+    Checked with two bench renders (the room with the key 1 and 0: identical before, +5 red on average after) and a
+    GUI check (gameLookForTest().volLampCount). Suites: core 182,854, GUI 1,094, 0 failures.
   - STILL OPEN, in this order: (1) Shipment's popping objects: unexplained; IDA was not reachable for research 130
     (does a first run compile pipeline states in the background? research 76 saw "Building PSOs" during loading,
     which speaks against it); (2) the owner's steps: File > First-Person Look > Install Into Game; nothing else needs

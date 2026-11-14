@@ -528,6 +528,7 @@ public:
         float whiteBalance[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     };
     void setGameLook(const GameLook& g) { game_ = g; }
+    const GameLook& gameLook() const { return game_; }
     bool gameLookOn() const { return game_.on; }
     // The preview lightmap: width x height texels of four floats each (a, b, d as GameLightmap). null = none.
     void setGameLightmap(int width, int height, const float* a, const float* b, const float* d);

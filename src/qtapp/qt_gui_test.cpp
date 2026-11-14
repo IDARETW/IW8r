@@ -3539,6 +3539,27 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         r.check(n > 0 && diff / std::max<size_t>(n, 1) > 2.0 && mean > 0.02 && mean < 0.98 && var > 1e-4,
                 QString("the game look renders a different, non-flat image (mean %1, variance %2, change %3 per pixel)")
                     .arg(mean, 0, 'f', 3).arg(var, 0, 'f', 4).arg(diff / std::max<size_t>(n, 1), 0, 'f', 1));
+        {
+            // A lamp that lights the volumetric air (iw8r_volumetric) reaches the renderer when the map has a haze, and
+            // one without the key does not. (It was lost once: the glow read the frame's light list before it was filled.)
+            const Entity* ws0 = ctx.doc.worldspawn();
+            const Id wsId = ws0 ? ws0->id : Id{};
+            if (ws0) ctx.doc.setKeyValue(wsId, "iw8r_haze", "fog 2");
+            const Id lamp = ctx.doc.addEntity({{"classname", "light"}, {"origin", "0 0 96"}, {"radius", "300"}, {"iw8r_volumetric", "1"}}, {}, "t");
+            ctx.documentEdited();
+            cv->renderImage(320, 180, true, 0, 100);
+            const int flagged = cv->gameLookForTest().volLampCount;
+            const float radius = cv->gameLookForTest().volLamps[0][3];
+            ctx.doc.setKeyValue(lamp, "iw8r_volumetric", "0");
+            ctx.documentEdited();
+            cv->renderImage(320, 180, true, 0, 100);
+            const int plain = cv->gameLookForTest().volLampCount;
+            for (int k = 0; k < (ws0 ? 3 : 2); ++k) ctx.doc.undo();  // the key, the lamp, the haze
+            ctx.documentEdited();
+            r.check(flagged == 1 && radius == 300.0f && plain == 0,
+                    QString("a lamp with iw8r_volumetric lights the haze in the viewport, one without does not (%1 lamp(s), radius %2; then %3)")
+                        .arg(flagged).arg(double(radius)).arg(plain));
+        }
         if (const Entity* ws = ctx.doc.worldspawn()) {
             // An own map's white balance (research 120): the fields in worldspawn iw8r_vision turn the picture warmer,
             // and View > Game Lighting Options > White Balance takes it off again.

@@ -591,24 +591,7 @@ void CameraView::render() {
         if (ctx_->scene.pixelLights)
             for (const auto& L : ctx_->scene.lights) {
                 if (pl.size() >= size_t(app::SceneRenderer::kMaxPixelLights)) break;
-                app::SceneRenderer::PixelLight p{};
-                p.pos[0] = float(L.pos.x), p.pos[1] = float(L.pos.y), p.pos[2] = float(L.pos.z), p.radius = float(L.radius);
-                p.color[0] = float(L.color.x), p.color[1] = float(L.color.y), p.color[2] = float(L.color.z);
-                p.cosOuter = float(L.cosOuter), p.cosInner = float(L.cosInner);
-                p.dir[0] = float(L.dir.x), p.dir[1] = float(L.dir.y), p.dir[2] = float(L.dir.z);
-                if (game) {
-                    // The converter's light units (core game_look): the reference is radius / 2, or a spot's axis to the
-                    // first surface (convert.cpp traces the render triangles; here the collision world).
-                    double ref = L.radius * 0.5;
-                    if (L.cosOuter > -1.5)
-                        if (const CollisionWorld* cw = ctx_->scene.shadowWorld(ctx_->doc)) {
-                            const double f = cw->traceRay(L.pos, L.pos + L.dir * ref).fraction;
-                            if (f < 1.0) ref = std::max(1.0, f * ref);
-                        }
-                    const double gi = gameLightIntensity(L.radius, ref);
-                    for (float& c : p.color) c = float(c * gi);
-                }
-                pl.push_back(p);
+                pl.push_back(pixelLightOf(L, game));
             }
         mix(ctx_->scene.pixelLights ? 11 : 5);
         renderer_.setPixelLights(pl);
@@ -2337,6 +2320,27 @@ size_t CameraView::referenceTexturesResolved() const {
 
 // ---- View > Game Lighting (game_lightmap.h, core game_look; research 95 "Editor maps in game")
 
+app::SceneRenderer::PixelLight CameraView::pixelLightOf(const app::SceneCache::PreviewLight& L, bool game) const {
+    app::SceneRenderer::PixelLight p{};
+    p.pos[0] = float(L.pos.x), p.pos[1] = float(L.pos.y), p.pos[2] = float(L.pos.z), p.radius = float(L.radius);
+    p.color[0] = float(L.color.x), p.color[1] = float(L.color.y), p.color[2] = float(L.color.z);
+    p.cosOuter = float(L.cosOuter), p.cosInner = float(L.cosInner);
+    p.dir[0] = float(L.dir.x), p.dir[1] = float(L.dir.y), p.dir[2] = float(L.dir.z);
+    if (game) {
+        // The converter's light units (core game_look): the reference is radius / 2, or a spot's axis to the first
+        // surface (convert.cpp traces the render triangles; here the collision world).
+        double ref = L.radius * 0.5;
+        if (L.cosOuter > -1.5)
+            if (const CollisionWorld* cw = ctx_->scene.shadowWorld(ctx_->doc)) {
+                const double f = cw->traceRay(L.pos, L.pos + L.dir * ref).fraction;
+                if (f < 1.0) ref = std::max(1.0, f * ref);
+            }
+        const double gi = gameLightIntensity(L.radius, ref);
+        for (float& c : p.color) c = float(c * gi);
+    }
+    return p;
+}
+
 bool CameraView::gameLookOn() const {
     ctx_->scene.gameLookAuto = !gameStockMap_.empty();
     return ctx_->scene.gameLookActive() && ctx_->texturedView && !ctx_->scene.captureMode;
@@ -2514,9 +2518,9 @@ void CameraView::prepareGameLook() {
             }
             // An own map's lamps that light the air (iw8r_volumetric), in the units the surfaces get: the 8 nearest.
             if (!stock && (p.volAir > 0 || g.volBoxCount > 0)) {
+                // (Straight from the light entities: this runs before the frame's per-pixel light list is filled.)
                 std::vector<std::pair<double, size_t>> order;
-                const auto& pl = pixelLightScratch_;
-                for (size_t k = 0; k < ctx_->scene.lights.size() && k < pl.size(); ++k)
+                for (size_t k = 0; k < ctx_->scene.lights.size(); ++k)
                     if (ctx_->scene.lights[k].volumetric) {
                         const Vec3 d = ctx_->scene.lights[k].pos - ctx_->cam.pos;
                         order.push_back({d.x * d.x + d.y * d.y + d.z * d.z, k});
@@ -2524,7 +2528,7 @@ void CameraView::prepareGameLook() {
                 std::sort(order.begin(), order.end());
                 g.volLampCount = int(std::min<size_t>(order.size(), 8));
                 for (int i = 0; i < g.volLampCount; ++i) {
-                    const auto& l = pl[order[size_t(i)].second];
+                    const app::SceneRenderer::PixelLight l = pixelLightOf(ctx_->scene.lights[order[size_t(i)].second], true);
                     float* r = g.volLamps[i];
                     r[0] = l.pos[0], r[1] = l.pos[1], r[2] = l.pos[2], r[3] = l.radius;
                     r[4] = l.color[0], r[5] = l.color[1], r[6] = l.color[2], r[7] = l.cosOuter;

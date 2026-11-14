@@ -715,6 +715,15 @@ private:
     QElapsedTimer gameSeenAt_;
     bool gameLookOn() const;
     void prepareGameLook();
+    // A light entity as the renderer's record: position, colour, cone; with `game` in the converter's light units (the
+    // reference distance is radius / 2, or a spot's axis to the first surface).
+    app::SceneRenderer::PixelLight pixelLightOf(const app::SceneCache::PreviewLight& L, bool game) const;
+
+public:
+    // What the last frame gave the renderer for Game Lighting (the GUI test reads it).
+    const app::SceneRenderer::GameLook& gameLookForTest() const { return renderer_.gameLook(); }
+
+private:
     void maybeBakeGameLook();
     void gameBakeDone(std::shared_ptr<const app::GameLightmap> lm);
     EffectSource effectSource_;

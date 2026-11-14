@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Fixed: a lamp's glow in the haze was missing in the viewport.** A lamp with `iw8r_volumetric` lights the
+  volumetric air in the built map; the viewport's Game Lighting never showed it, because the glow read the frame's
+  light list before it was filled. Found by rendering the same room with and without the key (the two pictures were
+  identical); they now differ, and the GUI test checks that a flagged lamp reaches the renderer and an unflagged
+  one does not.
+
 - **Weapon mounting on built maps: the build writes mount edges.** The game rests a weapon only on edges the map
   lists; a built map listed none. The build now finds them on the map's visible solid brushes: outside wall corners
   (32 units and taller) and ledge tops (16 units and longer), only where nothing covers them and there is room to
