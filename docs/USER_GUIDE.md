@@ -271,6 +271,15 @@ Commands in the Tools menu:
   shader that can take it and `iw8rFilter` in the rest; the log says how many. The toon shader has it, so a stock map
   gets the same ink lines. One cost: the rebuilt map's thermal sights look wrong (the lines use the slot of the
   thermal mask).
+- **The weapon and hands (First-Person Look).** The weapon and hands a player holds do not belong to a map: their
+  shaders are in a zone every map loads. File > First-Person Look (weapon and hands) > Build From Shader builds that
+  zone with the open map's shader (or a shader file you pick): the filter and the ink lines go into the weapon and arm
+  materials only, and every name stays as it is. The Console shows how many; the result is checked with the game's
+  own loaders and is not installed. Install Into Game puts it in; Restore In Game takes it out. **While it is
+  installed, weapons and hands have the look on every map**, also the weapons other players carry and some character
+  arms, and thermal sights look wrong. Close the game before either step. Without a dialog:
+  `IW8Radiant.exe --viewmodel-look <shader file> --out <folder>` builds (report in `<folder>\viewmodel-look.txt`),
+  `--install-stock <folder>\out` installs, `--restore-stock global_stream_mp` restores.
 
 ### What the game draws from here (Umbra visibility)
 

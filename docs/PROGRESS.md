@@ -76,6 +76,22 @@
   tools/physics_bounds_build_test.py). OPEN, next: mount edges (research 125 by an Opus agent, read-only IDA): the
   converter writes ladder edges only (edgeListUsedQueryTypes 4); mounting queries bucket 0 of the edge list and has
   no trace fallback; mantle falls back to Mantle_TraceLedgeFace while bit 2 is clear.
+  ADDED 2026-11-14 17:40 (newest).
+  - FIRST-PERSON LOOK is a product feature now: src/qtapp/main_window_look.cpp (buildViewmodelLook,
+    buildViewmodelLookQuiet, installViewmodelLook, restoreViewmodelLook, prepareViewmodelLook), core
+    stockSharedLookEditJson + kViewmodelLookZone / kViewmodelLookMaterials (stock_zone_edit), menu File > First-Person
+    Look (weapon and hands), command line --viewmodel-look <shader> --out <folder> (report viewmodel-look.txt; the
+    smoke screenshot is kept out of that run). Install / Restore are blocked for the browser (webCommandBlocked).
+    The toon look is PRE-BUILT in <AppLocalData>\first_person_look\out (16,173,584 bytes, identical to
+    out/agent/toon_vm/out): the owner only has to choose Install Into Game. NOT INSTALLED (it changes every map; the
+    owner's step). ACTS prints "9 tested" for this zone in --test mode (41,051 loaded, 0 failed): the count is the
+    export tasks, not the loaders run.
+  - Proof tools/viewmodel_look_build_test.py (in tools/run_offline_proofs.py): passes.
+  - tools/run_offline_proofs.py got --editor / --tests (passed on to the proofs that build through the editor): the
+    full run uses out/audit_bin, so bin/release can be rebuilt meanwhile. Full run on converter 3b2bcc93: see below.
+  - Shipment popping: tools/stock_mask_reads.py <techsets ff> <short work> shows all 192 stock lit shaders of
+    Shipment read code image 79 only under cb7[13].x == 2 (thermal): RULED OUT. An Opus helper looks at the exe for
+    the first-run pipeline-state compile (research 130).
   ADDED 2026-11-14 17:20. Suites with the game closed: core 181,970 checks / 1,377 tests, GUI 1,089, 0 failures.
   - Bake fix proven on the failed map: the failed zone (<game>\.proxy\backups\mw120r-map-20261114-162449) read back
     with IW8R_TEST_GFXMAP_JSON fails umbra_bake_built_zone_reads_back; the same map rebuilt with the fixed converter

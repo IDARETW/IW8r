@@ -1515,6 +1515,14 @@ void MainWindow::buildMenus() {
     addCommand(file, "RebuildStockZoneFast", "Rebuild Stock Zone...", QKeySequence(), [this] { rebuildStockZoneFast(); });
     addCommand(file, "InstallStockMap", "Install Edited Stock Map Into Game...", QKeySequence(), [this] { installEditedStockMap(); });
     addCommand(file, "RestoreStockMap", "Restore Stock Map In Game...", QKeySequence(), [this] { restoreStockMap(); });
+    {
+        // The map shader's filter on the weapon and hands a player holds (research 128): a shared zone, so the look is
+        // on every map while it is installed.
+        QMenu* look = file->addMenu("First-Person Look (weapon and hands)");
+        addCommand(look, "BuildViewmodelLook", "Build From Shader...", QKeySequence(), [this] { buildViewmodelLook(); });
+        addCommand(look, "InstallViewmodelLook", "Install Into Game...", QKeySequence(), [this] { installViewmodelLook(); });
+        addCommand(look, "RestoreViewmodelLook", "Restore In Game...", QKeySequence(), [this] { restoreViewmodelLook(); });
+    }
     addCommand(file, "HideStockProps", "Hide Stock Props In Selection", QKeySequence(), [this] { hideStockPropsInSelection(); });
     addCommand(file, "ShowStockProps", "Show All Stock Props", QKeySequence(), [this] { showAllStockProps(); });
     addCommand(file, "RebuildStockZone", "Rebuild Stock Zone (dump script, slow)...", QKeySequence(), [this] {
@@ -4980,7 +4988,9 @@ bool MainWindow::webSurfacePoint(const WebCamera& cam, double x, double y, doubl
 }
 
 QString MainWindow::webCommandBlocked(const QString& id, const QString& label) {
-    static const QSet<QString> editorOnly{"Exit", "WebServer", "WebServerSettings", "InstallStockMap", "RestoreStockMap", "OpenInNewWindow", "RestartSafeMode"};
+    static const QSet<QString> editorOnly{"Exit", "WebServer", "WebServerSettings", "InstallStockMap", "RestoreStockMap", "OpenInNewWindow", "RestartSafeMode",
+                                           // they write to the game folder
+                                           "InstallViewmodelLook", "RestoreViewmodelLook"};
     if (editorOnly.contains(id)) return "only at the editor itself";
     if (label.endsWith("...")) return "opens a dialog on the editor's screen";
     return {};

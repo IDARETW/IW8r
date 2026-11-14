@@ -85,6 +85,23 @@ TEST(stock_zone_edit_shipped_model_catalogue) {
 }
 
 // 11.5 (research 96): iw8r_remove_world brush entities become the edits file's "remove_world_surfaces" boxes.
+TEST(stock_zone_edit_shared_look) {
+    // The first-person look: only the techset zone, no patch file, the names kept, only the matching materials.
+    const std::string json = stockSharedLookEditJson("C:\\w\\f.cso", "C:\\w\\s.cso");
+    CHECK(json.rfind("{\"techsets_only\":true,\"patch\":false,\"lit_filter\":{\"program\":\"C:\\\\w\\\\f.cso\",\"screen_program\":\"C:\\\\w\\\\s.cso\",", 0) == 0);
+    CHECK(json.find("\"keep_names\":true,\"materials\":\"(_vm_|/vm_|_vm$|_arm_[lr]_)\"}}") != std::string::npos);
+    CHECK(json.find("\"shared\":[\"techsets_common_mp\"") != std::string::npos);
+    CHECK(json.find("stock_zones") == std::string::npos);
+    CHECK(json.back() == '}');
+    // Without a screen program; an installed edit's kept stock file is named.
+    const std::vector<StockPatchOverride> kept{{"techsets_global_stream_mp.ff", "D:\\g\\iw8r_stock\\techsets_global_stream_mp.ff"}};
+    const std::string two = stockSharedLookEditJson("f.cso", "", "_vm_", &kept);
+    CHECK(two.find("screen_program") == std::string::npos);
+    CHECK(two.find("\"materials\":\"_vm_\"}") != std::string::npos);
+    CHECK(two.find(",\"stock_zones\":{\"techsets_global_stream_mp.ff\":\"D:\\\\g\\\\iw8r_stock\\\\techsets_global_stream_mp.ff\"}}") != std::string::npos);
+    CHECK(std::string(kViewmodelLookZone) == "global_stream_mp");
+}
+
 TEST(stock_zone_edit_world_removal) {
     const auto brush = [](int x0, int y0, int z0, int x1, int y1, int z1) {
         const auto f = [](const std::string& a, const std::string& b, const std::string& c) {

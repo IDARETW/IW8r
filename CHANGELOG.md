@@ -5,6 +5,20 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **First-Person Look: the map shader on the weapon and hands, from the menu.** File > First-Person Look (weapon and
+  hands) > Build From Shader takes the open map's shader (or asks for a shader file), builds the shared zone of the
+  weapon and arm materials with the shader's filter and ink lines, and checks it with the game's loaders. Install Into
+  Game and Restore In Game put it in and take it out, after a message that says the look is on every map while it is
+  installed. From the command line: `IW8Radiant.exe --viewmodel-look <shader file> --out <folder>`, then
+  `--install-stock <folder>\out` and `--restore-stock global_stream_mp`. A browser cannot install or restore it.
+  The toon look is already built into the editor's own folder: only Install is left. Offline proof
+  `tools/viewmodel_look_build_test.py` (the editor's zone is the same, byte for byte, as the one checked by hand).
+- **Shipment's popping objects: the thermal mask is ruled out.** `tools/stock_mask_reads.py` reads every stock lit
+  shader of a zone and lists how it reads the image the ink lines take over: all 192 of Shipment's read it only in
+  thermal view, never in normal play.
+- **All offline proofs pass on the converter of today** (`3b2bcc93`), run from a copy of the editor
+  (`tools/run_offline_proofs.py --editor --tests`), so the editor can be rebuilt while they run.
+
 - **The occlusion bake fix is proven on the map that failed.** The failed Cinder Rail build's occlusion data, read
   back by the editor's reader (which now follows the game's rule), fails the read-back test, as it failed in game.
   The same map built again with the fixed bake passes it: 432 cells, 259 objects (27 surfaces, 230 models), no view

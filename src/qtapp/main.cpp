@@ -1048,6 +1048,9 @@ int main(int argc, char** argv) {
     // --install-stock <folder with edited zone files> / --restore-stock <map>: File > Install Edited Stock Map Into
     // Game and Restore Stock Map In Game without a dialog; the report goes to <--out folder>/stock-install.txt.
     QString installStockDir, restoreStockZone;
+    // --viewmodel-look <shader file> --out <folder>: File > First-Person Look > Build From Shader without a dialog; the
+    // zone goes to <folder>/out, the report to <folder>/viewmodel-look.txt. Nothing is installed.
+    QString viewmodelLookShader;
     bool compileDeploy = false;  // --deploy with --compile: install the built package into the game's maps folder
     QString compileFile, openFile, keysPath, guiTestSample, smokeFile, outDir, materialTest, modelTest, worldTest, skyTest;
     QString benchMap, benchReference;
@@ -1080,6 +1083,7 @@ int main(int argc, char** argv) {
         else if (a == "--set-web-credentials" && i + 1 < argc) webUser = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--shader-filter-program" && i + 1 < argc) filterShaderFile = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--install-stock" && i + 1 < argc) installStockDir = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--viewmodel-look" && i + 1 < argc) viewmodelLookShader = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--deploy") compileDeploy = true;
         else if (a == "--restore-stock" && i + 1 < argc) restoreStockZone = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--safe-mode") continue;
@@ -1228,8 +1232,9 @@ int main(int argc, char** argv) {
     const bool bench = !benchMap.isEmpty();
     const bool guiTest = !guiTestSample.isEmpty() || bench;  // the benchmark runs like the GUI test: off-screen, volatile settings
     const bool stockInstall = !installStockDir.isEmpty() || !restoreStockZone.isEmpty();
-    const bool smoke = !smokeFile.isEmpty() || !compileFile.isEmpty() || !propsZone.isEmpty() || featureShots || stockInstall;
-    if (stockInstall && !outDir.isEmpty()) QDir().mkpath(outDir);
+    const bool lookBuild = !viewmodelLookShader.isEmpty();
+    const bool smoke = !smokeFile.isEmpty() || !compileFile.isEmpty() || !propsZone.isEmpty() || featureShots || stockInstall || lookBuild;
+    if ((stockInstall || lookBuild) && !outDir.isEmpty()) QDir().mkpath(outDir);
     // The start-up check writes its report into --out: a folder that is not there yet is made (it ended with exit
     // code 0 and no report before).
     if (!smokeFile.isEmpty() && !outDir.isEmpty()) QDir().mkpath(outDir);
@@ -1325,6 +1330,17 @@ int main(int argc, char** argv) {
         // Browser access (L10): the web server starts with the editor when Settings web/enabled is on.
         if (!guiTest && !smoke) QTimer::singleShot(500, &w, [&w] { w.applyWebServerSettings(); });
         if (!openFile.isEmpty()) w.openPath(openFile);
+        if (lookBuild) {
+            QTimer::singleShot(300, &w, [&] {
+                QStringList report;
+                const QString dir = outDir.isEmpty() ? QDir::tempPath() + "/iw8r_look" : outDir;
+                QDir().mkpath(dir);
+                const bool ok = w.buildViewmodelLookQuiet(QDir::fromNativeSeparators(viewmodelLookShader), QDir::fromNativeSeparators(dir), report);
+                QFile rf(QDir(dir).filePath("viewmodel-look.txt"));
+                if (rf.open(QIODevice::WriteOnly | QIODevice::Text)) rf.write((report.join("\n") + "\n").toUtf8());
+                app.exit(ok ? 0 : 5);
+            });
+        }
         if (stockInstall) {
             QTimer::singleShot(300, &w, [&] {
                 QStringList report;
@@ -1393,7 +1409,7 @@ int main(int argc, char** argv) {
             });
         } else if (!propsZone.isEmpty()) {
             QTimer::singleShot(300, &w, [&] { app.exit(runStockPropsTest(w, propsZone, outDir)); });
-        } else if (smoke && !stockInstall) {
+        } else if (smoke && !stockInstall && !lookBuild) {
             QTimer::singleShot(300, &w, [&] {
                 QElapsedTimer openTimer;
                 openTimer.start();

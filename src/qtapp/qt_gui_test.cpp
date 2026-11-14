@@ -1956,6 +1956,33 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                         shaderEditor.value("menu").toString() == "View/Game Lighting Options" &&
                         shaderEditor.value("blocked").toString().contains("dialog"),
                     "a command carries its menu path, its tick and why the browser cannot run it");
+            {
+                // The first-person look (research 128): three commands under File; the two that write to the game folder
+                // are for the editor only, and the build refuses a shader without a filter before any tool runs.
+                QJsonObject lookBuild, lookInstall, lookRestore;
+                for (const QJsonValue& v : list) {
+                    const QJsonObject c = v.toObject();
+                    if (c.value("id").toString() == "BuildViewmodelLook") lookBuild = c;
+                    if (c.value("id").toString() == "InstallViewmodelLook") lookInstall = c;
+                    if (c.value("id").toString() == "RestoreViewmodelLook") lookRestore = c;
+                }
+                r.check(lookBuild.value("menu").toString() == "File/First-Person Look (weapon and hands)" &&
+                            lookInstall.value("blocked").toString() == "only at the editor itself" &&
+                            lookRestore.value("blocked").toString() == "only at the editor itself" && !lookBuild.value("blocked").toString().isEmpty(),
+                        "the first-person look has its menu, and a browser cannot install or restore it");
+                QString why;
+                r.check(!w.runWebCommand("InstallViewmodelLook", &why) && !why.isEmpty(), "a browser's install of the first-person look is refused: " + why);
+                iw8r::CustomShader plain;
+                plain.name = "plain";
+                plain.code = "void iw8rSurface(inout IW8RSurface s) {}";
+                QString program, lookErr;
+                QStringList lookArgs;
+                const QString lookWork = QDir(outDir).filePath("look_check");
+                const bool prepared = w.prepareViewmodelLook(plain, lookWork, &program, &lookArgs, &lookErr);
+                r.check(!prepared && !lookErr.isEmpty() && !QFileInfo::exists(lookWork + "/edits.json"),
+                        "the first-person look is not built without tools or from a shader without a filter: " + lookErr.left(90));
+                r.check(w.viewmodelLookDir().endsWith("/first_person_look"), "the first-person look has its own folder");
+            }
             QAction* snap = w.action("ToggleGameLighting");
             const bool was = snap && snap->isChecked();
             const auto run = cweb.handle("POST", "/api/command", "{\"id\":\"ToggleGameLighting\"}", true, {});

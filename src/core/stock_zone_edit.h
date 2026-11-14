@@ -92,6 +92,18 @@ std::string stockEditJson(const std::string& entitiesPath, const std::vector<uin
 // screen position and a slot for the scene depth ("screen_program"; the converter re-points that slot).
 std::string stockLitFilterJson(const std::string& programPath, const std::string& screenProgramPath = {});
 
+// The first-person look (research 128): the weapon and hands a player holds keep their materials and technique sets in
+// a zone every map loads. The filter goes only into the sets of that zone's materials whose name matches the pattern
+// (a regular expression, searched without case), and no set or shader changes its name, because other zones use them
+// by name. While the result is installed, the look is on every map.
+inline constexpr char kViewmodelLookZone[] = "global_stream_mp";
+inline constexpr char kViewmodelLookMaterials[] = "(_vm_|/vm_|_vm$|_arm_[lr]_)";
+// The edits file of such a look for the converter's editzone (only the techset zone is written, no patch file).
+// `stockZones` as for stockEditJson: the kept stock files of the edits that are installed in the game.
+std::string stockSharedLookEditJson(const std::string& programPath, const std::string& screenProgramPath,
+                                    const std::string& materials = kViewmodelLookMaterials,
+                                    const std::vector<StockPatchOverride>* stockZones = nullptr);
+
 // 11.5: stock world geometry taken out (docs/research/96_stock_world_removal.md). An iw8r_remove_world brush entity's
 // brushes (and patches) each give a world-space box; on File > Rebuild Stock Zone the converter (editzone
 // "remove_world_surfaces") stops drawing every world triangle whose three vertices lie inside a box, and takes the

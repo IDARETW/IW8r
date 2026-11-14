@@ -2,7 +2,9 @@
 RESULT line or the exit code). Each proof's work folder is deleted after it ran (they are large).
 
 Usage: py -3 -I tools/run_offline_proofs.py <work root> [--exe <zonetool.exe>] [--extraction <folder> <map id>]
-Default exe: the live converter; default extraction: out/scr-br/iw8build/mp_scrbr/extraction mp_scrbr."""
+       [--editor <IW8Radiant.exe>] [--tests <iw8r_tests.exe>]
+Default exe: the live converter; default extraction: out/scr-br/iw8build/mp_scrbr/extraction mp_scrbr. --editor and
+--tests go to the proofs that build through the editor (a copy of bin/release, so the editor can be rebuilt meanwhile)."""
 import os, shutil, subprocess, sys, time
 
 here = os.path.dirname(os.path.abspath(__file__))
@@ -17,6 +19,12 @@ if '--extraction' in args:
     i = args.index('--extraction')
     extraction, map_id = os.path.abspath(args[i + 1]), args[i + 2]
     del args[i:i + 3]
+through = []
+for flag in ('--editor', '--tests'):
+    if flag in args:
+        i = args.index(flag)
+        through += [flag, os.path.abspath(args[i + 1])]
+        del args[i:i + 2]
 work_root = os.path.abspath(args[0])
 
 proofs = [
@@ -41,6 +49,7 @@ proofs = [
     ('airspace_build_test', ['--exe', exe]),  # a built map's occlusion data reaches as far as a stock map's
     ('probe_capture_build_test', ['--exe', exe]),  # a built map's probes: coloured, at the stock probes' level
     ('physics_bounds_build_test', ['--exe', exe]),  # a built map's physics world is as large as a stock map's
+    ('viewmodel_look_build_test', []),  # the first-person look: the shared weapon and arm zone, built by the editor
     ('warzone_custom_loot_test', None),
     ('warzone_custom_loot_boxes_test', None),
     ('scriptable_limits_test', None),
@@ -53,6 +62,10 @@ for name, extra in proofs:
         cmd = [sys.executable, '-I', os.path.join(here, name + '.py'), extraction, map_id, work, flag, exe]
     else:
         cmd = [sys.executable, '-I', os.path.join(here, name + '.py'), work] + extra
+        text = open(os.path.join(here, name + '.py'), encoding='utf-8').read()
+        for k in range(0, len(through), 2):
+            if "'%s'" % through[k] in text:
+                cmd += through[k:k + 2]
     start = time.time()
     r = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
     out = (r.stdout + r.stderr).splitlines()

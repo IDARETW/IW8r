@@ -332,6 +332,19 @@ public:
     // file removed, moved to the keep folder, installed or put back, and the reason when it fails. `zone` of the
     // install is taken from the folder's first zone file (techsets_<zone>.ff or <zone>.ff).
     bool installStockZonesQuiet(const QString& outDir, QStringList& report);
+    // The first-person look (research 128; main_window_look.cpp): the map shader's filter on the weapon and hands a
+    // player holds, as an edit of the shared zone kViewmodelLookZone that every map loads. Build compiles the filter of
+    // the open map's shader (or asks for a shader file), runs the converter and the ACTS loader test in the background
+    // and leaves the zone in viewmodelLookDir()/out. Install and Restore work as for a stock map, after the owner
+    // confirms that the look is then on every map.
+    void buildViewmodelLook();
+    void installViewmodelLook();
+    void restoreViewmodelLook();
+    QString viewmodelLookDir() const;
+    // The same build without a dialog (--viewmodel-look <shader file> --out <folder>): waits for the converter and
+    // for ACTS; one line per step in `report`; the zone is left in <outDir>/out. Nothing is installed.
+    bool buildViewmodelLookQuiet(const QString& shaderFile, const QString& outDir, QStringList& report);
+    bool prepareViewmodelLook(const CustomShader& shader, const QString& work, QString* program, QStringList* args, QString* err);
     bool restoreStockZonesQuiet(const QString& zone, QStringList& report);
     // The compile panel's built package into <game>\mods\mw120r\maps without a dialog (--compile ... --deploy).
     bool deployBuiltMapQuiet(QString* err);

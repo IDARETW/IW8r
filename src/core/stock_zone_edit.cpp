@@ -156,6 +156,21 @@ std::string stockLitFilterJson(const std::string& programPath, const std::string
            "\"techsets_global_stream_mp\",\"techsets_common_br_mp\"]}";
 }
 
+std::string stockSharedLookEditJson(const std::string& programPath, const std::string& screenProgramPath, const std::string& materials,
+                                    const std::vector<StockPatchOverride>* stockZones) {
+    std::string filter = stockLitFilterJson(programPath, screenProgramPath);
+    filter.pop_back();  // the closing brace
+    filter += ",\"keep_names\":true,\"materials\":" + jsonText(materials) + "}";
+    std::string json = "{\"techsets_only\":true,\"patch\":false,\"lit_filter\":" + filter;
+    if (stockZones && !stockZones->empty()) {
+        json += ",\"stock_zones\":{";
+        for (size_t i = 0; i < stockZones->size(); ++i)
+            json += std::string(i ? "," : "") + jsonText((*stockZones)[i].name) + ":" + jsonText((*stockZones)[i].stockFile);
+        json += "}";
+    }
+    return json + "}";
+}
+
 std::string stockEditJson(const std::string& entitiesPath, const std::vector<uint32_t>& hiddenProps,
                           const std::vector<StockEditCarry>& carry, const std::string* lootPoints, const std::string* placedObjects,
                           const std::vector<StockPatchOverride>* stockPatches, const std::vector<StockPropCollision>* removeCollision,
