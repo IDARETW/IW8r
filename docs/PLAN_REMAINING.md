@@ -408,6 +408,10 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
     stay open: research 122 found nothing a map provides that can switch them off (the minimap set-up equals a stock
     map's), and that the killstreak of the report fits the Personal Radar drone, which skips enemies with the
     Ghost-like perk. Only the game can say which it was.
+  - weapon mounting on a built map (6.8, found 2026-11-14 by the field audit, research 124 / 125): OPEN, not built.
+    The game takes mount spots only from mount edges in the map's edge list; the converter writes ladder edges only.
+    To build: mount edges from the map's own brush edges (the layouts, the octree and the flags are in research
+    125), with the rules checked against the stock maps' edges.
   - fonts and LUI (4.27): HUD from the map script works with stock icons and, since 2026-11-14, with the map's own
     pictures (`<map name>.hud`) and the map's own text (`<map name>.str`), both proven offline; game. Own fonts and menus are not built (deferred, as the plan
     allowed: no map-zone writer for them, and nothing shows the game would use one).

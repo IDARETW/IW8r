@@ -68,7 +68,7 @@ None of this needs the game running:
 - `IW8Radiant.exe --gui-test tests\data\iw8_sample_room.map --out <dir>`: about 1,080 checks of the editor itself,
   the web server and its page included.
 - `tools\run_all_tests.ps1`: both of those plus a start-up test, in one run.
-- `py -3 -I tools\run_offline_proofs.py <work dir>`: 24 end-to-end proofs; all passed on the last build of 2026-11-14. Each one edits or builds a real map with the
+- `py -3 -I tools\run_offline_proofs.py <work dir>`: 25 end-to-end proofs; all passed on the last build of 2026-11-14. Each one edits or builds a real map with the
   live converter, reads the result back with ACTS, compares it with what was asked, and checks that the game's own
   loaders accept the zone (about 11 minutes).
 - Among those proofs: the light planes of a built map, read back from the zone, equal the editor's bake texel by

@@ -40,6 +40,7 @@ proofs = [
     ('map_strings_build_test', ['--exe', exe]),  # a map's own text, read back from eng_<map>
     ('airspace_build_test', ['--exe', exe]),  # a built map's occlusion data reaches as far as a stock map's
     ('probe_capture_build_test', ['--exe', exe]),  # a built map's probes: coloured, at the stock probes' level
+    ('physics_bounds_build_test', ['--exe', exe]),  # a built map's physics world is as large as a stock map's
     ('warzone_custom_loot_test', None),
     ('warzone_custom_loot_boxes_test', None),
     ('scriptable_limits_test', None),

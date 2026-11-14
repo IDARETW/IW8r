@@ -327,6 +327,11 @@ public:
     QString stockKeepDir() const;
     // Installs the edited zones of a folder (a rebuild's out folder) for the map `zone`; asks first when `ask`.
     bool installEditedStockZones(const QString& outDir, const QString& zone, bool ask);
+    // The same install and restore without any dialog (--install-stock / --restore-stock): `report` gets one line per
+    // file removed, moved to the keep folder, installed or put back, and the reason when it fails. `zone` of the
+    // install is taken from the folder's first zone file (techsets_<zone>.ff or <zone>.ff).
+    bool installStockZonesQuiet(const QString& outDir, QStringList& report);
+    bool restoreStockZonesQuiet(const QString& zone, QStringList& report);
     QString stockZone() const { return stockZone_; }
     // Prefabs (also used by --gui-test): a misc_prefab at the 2D view centre, explode, save selection.
     // `file` is a plain .map prefab, or a prefab bundle (its .iw8prefab folder, or a file inside it).

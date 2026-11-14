@@ -776,6 +776,11 @@ The owner's playtest of 2026-11-11 left these open. docs/ROADMAP.md (fix queue F
 - Only Team Deathmatch can be picked in the game's lobby. Other modes say the map does not support them. Live Link >
   Quick match starts other modes directly.
 - Bullet impacts look alike on every surface in game. The build tags each surface correctly; the cause is not known yet.
+- An edited stock map must be put into the game with File > Install Edited Stock Map Into Game (or
+  `IW8Radiant.exe --install-stock <folder>`), not copied by hand: a patch file (`.fp`) left beside the zone makes
+  the game drop the whole zone without a message (invisible map, blank minimap).
+- Weapon mounting (leaning a weapon on cover) does not work on a built map yet: the game needs mount edges that
+  the build does not write (found 2026-11-14 by comparing built maps with stock ones; research 125). Mantling works.
 - Killstreak visuals: a radar killstreak showed no pings in one playtest. Nothing in a map can switch them off
   (research 122); the Personal Radar drone does not ping enemies with the Ghost perk and has no sweep line. Players
   were invisible in the Chopper Gunner view and the radar aircraft was invisible; the cause was found and fixed on

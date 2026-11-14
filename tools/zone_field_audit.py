@@ -10,12 +10,19 @@ every stock zone does:
 A flag is a question, not a fault: research 124 lists the answers for the world asset (gfx_map) and the light
 asset (com_map). The occlusion box (research 121) and the probe level (research 123) were both of this kind.
 
-Usage: py -3 -I tools/zone_field_audit.py <built asset .json> <kind>
+Usage: py -3 -I tools/zone_field_audit.py <built asset .json> <kind> [--stock <folder>]
   kind: gfx_map (stock: world_cache/<zone>/assets/gfx_map/**) or com_map (world_cache/<zone>/com_map/**).
+  --stock <folder>: take the stock exports from ACTS output under that folder instead (any asset kind:
+  <folder>/**/<zone>/assets/<kind>/**/*.asset.json), for the kinds the cache does not hold.
 Prints one line per flag and "<n> flagged of <m> fields, <k> stock zones"."""
 import glob, json, os, sys  # noqa: E401
 
-built_path, kind = sys.argv[1], sys.argv[2]
+args = sys.argv[1:]
+stock_dir = ''
+if '--stock' in args:
+    stock_dir = os.path.abspath(args[args.index('--stock') + 1])
+    del args[args.index('--stock'):args.index('--stock') + 2]
+built_path, kind = args[0], args[1]
 cache = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'IW8 Radiant Suite', 'IW8 Radiant Suite', 'world_cache')
 SKIP = ('address', 'type', 'extent_evidence', 'stride')
 
@@ -54,6 +61,11 @@ def flat(o, path, out):
 
 def stock_exports():
     found = []
+    if stock_dir:
+        for hit in glob.glob(os.path.join(stock_dir, '**', 'assets', kind, '**', '*.asset.json'), recursive=True):
+            zone = hit.replace(os.sep, '/').split('/assets/' + kind + '/')[0].rsplit('/', 1)[-1]
+            found.append((zone, hit))
+        return sorted(found)
     for zone in sorted(os.listdir(cache)) if os.path.isdir(cache) else []:
         base = os.path.join(cache, zone)
         if kind == 'gfx_map':

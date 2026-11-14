@@ -1045,6 +1045,9 @@ int main(int argc, char** argv) {
     bool coverCheck = false;
     bool f5Check = false;
     QString filterShaderFile;  // --shader-filter-program <file.iw8shader.hlsl> --out <file.cso>
+    // --install-stock <folder with edited zone files> / --restore-stock <map>: File > Install Edited Stock Map Into
+    // Game and Restore Stock Map In Game without a dialog; the report goes to <--out folder>/stock-install.txt.
+    QString installStockDir, restoreStockZone;
     QString compileFile, openFile, keysPath, guiTestSample, smokeFile, outDir, materialTest, modelTest, worldTest, skyTest;
     QString benchMap, benchReference;
     QString propsZone;       // --stock-props-test
@@ -1075,6 +1078,8 @@ int main(int argc, char** argv) {
         else if (a == "--reverse") auditReverse = true;
         else if (a == "--set-web-credentials" && i + 1 < argc) webUser = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--shader-filter-program" && i + 1 < argc) filterShaderFile = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--install-stock" && i + 1 < argc) installStockDir = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--restore-stock" && i + 1 < argc) restoreStockZone = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--safe-mode") continue;
         else if (!a.startsWith("-")) openFile = a;
     }
@@ -1210,7 +1215,9 @@ int main(int argc, char** argv) {
     }
     const bool bench = !benchMap.isEmpty();
     const bool guiTest = !guiTestSample.isEmpty() || bench;  // the benchmark runs like the GUI test: off-screen, volatile settings
-    const bool smoke = !smokeFile.isEmpty() || !compileFile.isEmpty() || !propsZone.isEmpty() || featureShots;
+    const bool stockInstall = !installStockDir.isEmpty() || !restoreStockZone.isEmpty();
+    const bool smoke = !smokeFile.isEmpty() || !compileFile.isEmpty() || !propsZone.isEmpty() || featureShots || stockInstall;
+    if (stockInstall && !outDir.isEmpty()) QDir().mkpath(outDir);
     // The start-up check writes its report into --out: a folder that is not there yet is made (it ended with exit
     // code 0 and no report before).
     if (!smokeFile.isEmpty() && !outDir.isEmpty()) QDir().mkpath(outDir);
@@ -1306,6 +1313,16 @@ int main(int argc, char** argv) {
         // Browser access (L10): the web server starts with the editor when Settings web/enabled is on.
         if (!guiTest && !smoke) QTimer::singleShot(500, &w, [&w] { w.applyWebServerSettings(); });
         if (!openFile.isEmpty()) w.openPath(openFile);
+        if (stockInstall) {
+            QTimer::singleShot(300, &w, [&] {
+                QStringList report;
+                const bool ok = !installStockDir.isEmpty() ? w.installStockZonesQuiet(QDir::fromNativeSeparators(installStockDir), report)
+                                                           : w.restoreStockZonesQuiet(restoreStockZone, report);
+                QFile rf(QDir(outDir.isEmpty() ? QDir::tempPath() : outDir).filePath("stock-install.txt"));
+                if (rf.open(QIODevice::WriteOnly | QIODevice::Text)) rf.write((report.join("\n") + "\n").toUtf8());
+                app.exit(ok ? 0 : 5);
+            });
+        }
         if (!compileFile.isEmpty()) {
             // Headless F7 of a map through the editor's own path (stock textures/models, sky, gsc-tool, ACTS
             // validation): writes <out>/compile-log.txt and <out>/compile-result.txt (ok/FAIL, map id, package folder).
@@ -1357,7 +1374,7 @@ int main(int argc, char** argv) {
             });
         } else if (!propsZone.isEmpty()) {
             QTimer::singleShot(300, &w, [&] { app.exit(runStockPropsTest(w, propsZone, outDir)); });
-        } else if (smoke) {
+        } else if (smoke && !stockInstall) {
             QTimer::singleShot(300, &w, [&] {
                 QElapsedTimer openTimer;
                 openTimer.start();

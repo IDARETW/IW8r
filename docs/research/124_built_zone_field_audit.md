@@ -77,3 +77,23 @@ depends on; a built map is loaded as a package). Nothing in this list was traced
   read, all zero): what a missing table changes, if anything.
 - The other assets of a map (collision, navigation, map entities, glass) were not audited this way; the stock exports
   for them are not in the cache.
+
+## 7. Second pass: collision, map entities, navigation, paths, edges, glass (2026-11-14)
+
+The stock exports for these were made with ACTS from mp_shipment, mp_m_speedball and mp_rust
+(`-a col_map,map_ents,navmesh,glass_map,aipaths,tacgraph,edgelist`), and the tool takes them with `--stock <folder>`.
+Built zones: the dev showcase, and a map with audio zones for the entity asset.
+
+| Asset (flags of fields) | What differs | Answer |
+|---|---|---|
+| `col_map` (15 of 39) broadphase box | Stock small maps all store (-30720, -31744, -14336) .. (34816, 33792, 51200); the built map stored its geometry padded by 16384 / 8192 (z up to about 9,000) | **Fault, fixed.** The game sizes its physics world from this box and freezes a body that leaves it (the converter's own note at `map_zone.h`, from `q_HavokPhysics_OnBodyExitedBroadphase`). Killstreak aircraft fly higher and start further out. The converter now stores at least the stock box; proof `tools/physics_bounds_build_test.py`. |
+| `col_map` `stageTrigger` | 18 to 65 trigger volumes in stock, none built | By design since 2026-11-11 (ROADMAP F.1): a built map's triggers are tested by its script. |
+| `col_map` `collisionHeatmap`, `topDownMapData`, `checksum` | absent / 0 | Not determined. Maps load and play without them. |
+| `map_ents` client triggers | present and of the stock shape when the map has audio zones | No difference in kind (research 72 compared the values). |
+| `map_ents` `audioPropNodes` / `audioPropEdges`, `clientTriggerBlend` | 6 to 15 nodes, 14 to 36 edges, 4 to 11 blend nodes in stock; none built | Not built: the sound propagation graph and the blends between audio zones. A built map's zones switch without a blend. |
+| `map_ents` `clientSideEffects`, `createFx*` | stock ambient emitters and effects | By design: a built map plays its effects and sounds from its script. |
+| `map_ents` dynamic entity counts | 0 in a map without dynamic props | Content. |
+| `navmesh` (5 of 24) `linkCreationData`, `obstacleBounds` | 12 to 83 links, 38 to 72 obstacle boxes in stock; none built | By design for the links: the converter writes traversals as Begin / End path nodes, which the game turns into links at load (`replay_navigation.cpp`). Obstacle boxes: not built. |
+| `aipaths` (11 of 23) | one node tree and no `visDistData` where stock has 125 to 343 and 64 k to 515 k bytes | Not determined. Bots moved on built maps in both playtests. |
+| `edgelist` (15 of 25) | 8 edges and query types 4 where stock has 578 to 862 and 7 | **A real gap, not yet built**: research 125. Mantling works without edges (the game falls back to a collision trace); weapon mounting does not. |
+| `glass_map`, `tacgraph` | - | No flag. |

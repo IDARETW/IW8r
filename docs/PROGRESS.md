@@ -69,7 +69,14 @@
   Field audit (research 124): tools/zone_field_audit.py <built asset json> gfx_map|com_map against the cached stock
   MP zones; the showcase: com_map 2 flags (stamps), gfx_map 59, all answered but checksum and gfxMapEntLookup.
   lightAABB lists exactly the lamps with needsDynamicShadows (Shipment 5/5, Rust 23/23, Hideout 37/37).
-  Parking state 2026-11-14 (after the field audit): repo at the commit after 38dae11, converter live at 5ecf08a0, suites core 181,832 checks / 1,369 tests and GUI 1,082 checks, 0 failures; 24 offline proofs pass; zones of mp_cinderrail_t rebuilt 10:12 with that converter (x64zt_output; its occlusion data reaches 131072 units past the map, its probe is stored at mean luminance 0.896 in colour); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe and out/package/IW8RadiantSuite-20261114.zip rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
+  Field audit, second pass (research 124 section 7): tools/zone_field_audit.py --stock <ACTS output> for col_map,
+  map_ents, navmesh, aipaths, edgelist, glass_map, tacgraph (stock exports are not kept: make them with ACTS -a ...
+  from mp_shipment, mp_m_speedball, mp_rust into a scratch folder). Fixed: clipmap broadphase box at least the stock
+  box (converter 1d3ff9c0, map_zone.h; tools/patches/zt_broadphase_stock.py; proof
+  tools/physics_bounds_build_test.py). OPEN, next: mount edges (research 125 by an Opus agent, read-only IDA): the
+  converter writes ladder edges only (edgeListUsedQueryTypes 4); mounting queries bucket 0 of the edge list and has
+  no trace fallback; mantle falls back to Mantle_TraceLedgeFace while bit 2 is clear.
+  Parking state 2026-11-14 (after the physics bounds fix): repo at the commit after 69eba3d, converter live at 1d3ff9c0, suites core 181,832 checks / 1,369 tests and GUI 1,082 checks, 0 failures; 25 offline proofs pass; zones of mp_cinderrail_t rebuilt 10:12 with that converter (x64zt_output; its occlusion data reaches 131072 units past the map, its probe is stored at mean luminance 0.896 in colour); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe and out/package/IW8RadiantSuite-20261114.zip rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
   GET /api/handles (control points of the selected patches, at most 20,000) and POST /api/vertices moves with
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.
   Web form "vision": every scalar / vector field of core vision_fields as a text field (key "v:<name>"), written

@@ -121,3 +121,27 @@ Shipment toon zone byte for byte, while the game folder still held our old patch
   is the owner's decision and build; nothing here depends on it.
 - The pipeline-state file `main\techsets_<map>.psob` of a stock map does not hold the new hashes of a filtered techset
   zone (research 115, section 6): the game builds them at load, as for a converter-built map. Not seen in game.
+
+## 7. Seen in the game (2026-11-14)
+
+The owner ran the Shipment toon zone (`out/agent/toon_ship/edit/techsets_mp_shipment.ff`) in the game twice.
+
+1. **With our old patch file still beside it** (the edited zone copied in by hand, `techsets_mp_shipment.fp` of the
+   first attempt left in the `zone` folder): the map loaded, the world was invisible, the minimap showed the engine's
+   default pattern, effects and the weapon were drawn. No error was shown. The cause is the game's check 6041
+   (section 3): the patch's base header is not the header of the zone beside it, so the zone is refused, and none of
+   its 945 materials exist. Shown offline: ACTS, which uses the game's loader logic, refuses exactly that pair of
+   files ("The patch file is not for this fast file") and loads the zone alone with 0 failed.
+2. **Without the patch file**: Shipment loads and shows the filter (the light in steps, stronger colours).
+
+So, VERIFIED in the game: the client loads a whole unsigned zone under a stock map's zone name; the engine builds
+the pipeline states of the new hashes at load although `main\techsets_mp_shipment.psob` is the stock one (section 6
+had both as INFERRED). And the install rule of section 5 that removes a patch beside the zone is necessary, not
+tidiness: a hand copy that leaves it gives an invisible map without any message.
+
+The install is also a command now, for a deploy without the editor's window:
+`IW8Radiant.exe --install-stock <folder with the edited zones> [--out <report folder>]` and
+`IW8Radiant.exe --restore-stock <map>` (the same code and folders as the two menu commands; the report
+`stock-install.txt` lists every file removed, moved and installed). The zone above was installed with it on
+2026-11-14: the stock zone is in `<game>\iw8r_stock\`, and a second copy of the stock zone and of the removed patch
+is in `out/agent/toon_ship/game_backup_20261114/`.

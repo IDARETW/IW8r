@@ -707,6 +707,65 @@ bool MainWindow::installEditedStockZones(const QString& outDir, const QString& z
     return true;
 }
 
+bool MainWindow::installStockZonesQuiet(const QString& outDir, QStringList& out) {
+    const QString replay = toolPath("replay");
+    const QString zoneDir = QFileInfo(replay).absolutePath() + "/zone";
+    const std::vector<std::string> files = stockZoneFiles(outDir.toStdString());
+    if (replay.isEmpty() || !QFileInfo(zoneDir).isDir()) {
+        out << "FAIL the game folder is not set (Tools > Tool Paths)";
+        return false;
+    }
+    if (files.empty()) {
+        out << "FAIL there is no edited zone file (.ff) in " + QDir::toNativeSeparators(outDir);
+        return false;
+    }
+    QString zone = QFileInfo(qs(files.front())).completeBaseName();
+    if (zone.startsWith("techsets_")) zone = zone.mid(9);
+    const QString backup = stockBackupDir(zone), keep = stockKeepDir();
+    out << "zone " + zone << "game zone folder " + QDir::toNativeSeparators(zoneDir) << "stock files kept in " + QDir::toNativeSeparators(keep)
+        << "install markers in " + QDir::toNativeSeparators(backup);
+    StockInstallReport report;
+    std::string err;
+    const bool ok = installStockZones(outDir.toStdString(), zoneDir.toStdString(), keep.toStdString(), backup.toStdString(), report, &err);
+    for (const std::string& f : report.removed) out << "removed " + qs(f), EditorLog::instance().add(LogLevel::Info, "stock", "removed " + qs(f) + " from " + zoneDir);
+    for (const std::string& f : report.backedUp) out << "moved the stock " + qs(f) + " to the keep folder", EditorLog::instance().add(LogLevel::Info, "stock", "moved the stock " + qs(f) + " to " + keep);
+    for (const std::string& f : report.installed) out << "installed " + qs(f), EditorLog::instance().add(LogLevel::Info, "stock", "installed " + qs(f) + " into " + zoneDir);
+    if (!ok) {
+        out << "FAIL " + qs(err);
+        return false;
+    }
+    lastStockRebuildZone_ = zone;
+    out << QString("ok %1 zone file(s) installed").arg(report.installed.size());
+    return true;
+}
+
+bool MainWindow::restoreStockZonesQuiet(const QString& zone, QStringList& out) {
+    const QString replay = toolPath("replay");
+    const QString zoneDir = QFileInfo(replay).absolutePath() + "/zone";
+    if (replay.isEmpty() || !QFileInfo(zoneDir).isDir() || zone.isEmpty()) {
+        out << "FAIL the game folder is not set (Tools > Tool Paths), or no map was named";
+        return false;
+    }
+    const QString backup = stockBackupDir(zone);
+    std::vector<std::string> installed = installedStockZones(backup.toStdString());
+    for (const std::string& f : installedStockPatches(backup.toStdString())) installed.push_back(f);
+    if (installed.empty()) {
+        out << "FAIL no edit of " + zone + " is installed by this editor";
+        return false;
+    }
+    StockInstallReport report;
+    std::string err;
+    const bool ok = restoreStockZones(backup.toStdString(), zoneDir.toStdString(), stockKeepDir().toStdString(), report, &err);
+    for (const std::string& f : report.removed) out << "removed " + qs(f), EditorLog::instance().add(LogLevel::Info, "stock", "removed " + qs(f) + " from " + zoneDir);
+    for (const std::string& f : report.restored) out << "put back the stock " + qs(f), EditorLog::instance().add(LogLevel::Info, "stock", "put back the stock " + qs(f));
+    if (!ok) {
+        out << "FAIL " + qs(err);
+        return false;
+    }
+    out << QString("ok %1 file(s) removed, %2 stock file(s) put back").arg(report.removed.size()).arg(report.restored.size());
+    return true;
+}
+
 void MainWindow::restoreStockMap() {
     const QString zone = !stockZone_.isEmpty() ? stockZone_ : lastStockRebuildZone_;
     if (zone.isEmpty()) {

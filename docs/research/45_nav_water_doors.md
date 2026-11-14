@@ -189,6 +189,9 @@ Both stock maps pair 1:1: every begin's target matches exactly one end `targetna
 
 ### 3.3 Mantle
 
+Update 2026-11-14: research 125 settles the open point below from the Replay exe. Mantling needs no edge data while
+the map's edge query types leave the mantle bit clear (the converter does); weapon mounting needs mount edges.
+
 - Replay mantles are computed from collision at runtime (`ED:docs/ROADMAP.md:261`, and the editor mirror in `ED:src/core/player_mantle.cpp:10-21`: min ledge 16, max 72, high-mantle branch at 58). The editor's constants are cited to `walk_mantle.cpp` but that source is not in this repo.
 - **No mantle data from the fork.** Stock has no mantle or hint classname (doc 10). Grep of `X:convert/iw3_iw8` for `mantle` finds only GSC builtins.
 - **Edge data exists in the format but is not written.** The IW8 BSP has `BSP_VERSION_EDGE_MANTLE_ON_OVER_FLAGS = 176` (`X:games/iw8/structs.hpp:11838`) and map edge lists (`X:games/iw8/iw8_map_structs.h:222-225`; `X:games/iw8/dump.cpp:462`). `X` never writes an edge list. The only mention is an origin label (`X:convert/iw3_iw8/convert.cpp:1436`). Whether Replay needs edge data for a mantle over an edge is UNVERIFIED.

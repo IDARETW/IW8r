@@ -66,7 +66,8 @@ Each point was run by me in a browser against a running editor; this list is for
 Everything else in this file was proven without the game. If you look at nothing else, look at these, in this order.
 Each one names the longer section below that has the steps.
 
-- [ ] SHORT 1. An installed stock edit loads: install the Shipment toon zone (folder `out\agent\toon_ship\edit`,
+- [x] SHORT 1 (seen 2026-11-14: Shipment loads and shows the toon filter; no ink lines on stock geometry and no
+      toon on the weapon yet, both asked for). An installed stock edit loads: install the Shipment toon zone (folder `out\agent\toon_ship\edit`,
       File > Install Edited Stock Map Into Game) and start Shipment. Every stock-map and Warzone edit goes into the
       game this way, and it has never been run. Section "Shipment with the toon shader's filter".
 - [ ] SHORT 2. Your own map looks like View > Game Lighting, once with Compile > Bake lightmaps off and once on.
@@ -356,6 +357,8 @@ Map: `out/agent/mp_iw8r_fix1/mp_iw8r_fix1.map` (already built; Ctrl+F7, then Loc
       near a probe should reflect the room, not flat grey. Since 2026-11-14 they are stored in colour at the
       game's own level (research 123): a weapon's metal and a glossy floor should reflect about as strongly as on
       a stock map (rebuild the map first).
+- [ ] Killstreak aircraft that fly high or start far out (gunship, cruise missile, advanced UAV, airstrike planes)
+      move normally: the map's physics world is now as large as a stock map's (research 124; rebuild first).
 - [ ] Killstreaks, radar: with a UAV (not the Personal Radar) enemies without the Ghost perk ping on the minimap
       and the sweep line crosses it; with the Personal Radar the drone is visible about 1,500 units above you
       (research 122 says what each should do).

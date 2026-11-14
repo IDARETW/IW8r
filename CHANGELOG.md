@@ -5,6 +5,25 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Seen in the game: an edited stock map installed as a whole zone works.** The Shipment toon zone loads and shows
+  the filter. The first try showed an invisible map and a blank minimap; the cause was the patch file of the earlier
+  attempt, still beside the zone after a copy by hand: the game then refuses the zone without a message (research
+  116 section 7). The editor's install removes that file.
+- **Install and restore of an edited stock map as commands:** `IW8Radiant.exe --install-stock <folder>` and
+  `--restore-stock <map>` do what File > Install Edited Stock Map Into Game and Restore Stock Map In Game do, without
+  a window, and write a report of every file moved.
+
+- **The physics world of a built map is as large as a stock map's** (research 124). The game freezes a moving body
+  that leaves the box its physics world is sized from. Every small stock map stores the same large box (51,200 units
+  up, about 31,000 around); a built map's ended about 9,000 units up and 16,000 around its geometry, below and inside
+  where killstreak aircraft fly. Converter (x64-zt `1d3ff9c0`, deployed); offline proof
+  `tools/physics_bounds_build_test.py` (25 proofs in the set). Rebuild a map to get it. Not seen in game.
+- **The stock comparison now covers collision, map entities, navigation, paths, edges and glass** (research 124
+  section 7). One more fault found and fixed (the box above). One real gap found and not yet built: **weapon mounting
+  does not work on a built map** (research 125). The game finds a mount spot only from mount edges stored in the map,
+  and a built map has none (stock maps hold 578 to 862 edges). Mantling is not affected: without edges the game looks
+  for the ledge itself.
+
 - **A built map's world and light assets checked against stock, field by field** (research 124). The occlusion
   box and the probe level were both faults that only a comparison with stock zones showed, so the comparison is now
   a tool: `tools/zone_field_audit.py` prints every field where a built zone does what no stock zone does. On the
