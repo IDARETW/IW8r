@@ -37,6 +37,29 @@ lod = XModelGetDesiredLodForDist(model, dist * invFovScale, dist * cappedLodScal
   values of research 54). It moves only the cull distance, not the levels.
 - `XModelGetDesiredLodForDistInternal` itself is not in the decompile (inlined); that it compares against the
   model's per-LOD distances is INFERRED from its arguments and from research 100's LOD tables.
+- The result 6 means "not drawn": `R_GetStaticModelCollectionLODMaskInternal` returns an empty LOD mask for it
+  (`r_add_staticmodel.cpp:4149-4153`). This holds for every static model, not only foliage. The dvar
+  `r_lodOutStaticRamp` (default off) only decides whether `r_lodScale` / `r_lodBias` move that distance too.
+- `dist` (`R_GetStaticModelInstanceLODDistWithBounds`, `:4327-4376`): from the camera to the nearest point of the
+  collection's axis-aligned bounds, `length(max(|eye - mid| - half, 0))`; 0 inside the box.
+- `lodCullScale` is the placement's scale only for a collection of one instance without the clutter flag (collection
+  flag 0x20): `:4074`, `:4143-4145`, `:4210-4211`, `:4258-4267`. A collection of several instances, or clutter, uses
+  1, and takes its levels from the nearest and the farthest point of its bounds.
+
+### 1.1 The data (VERIFIED on the exports)
+
+- `GfxWorld.smodels.instanceFlags`: one byte per instance row, in the ACTS gfx_map export as hex bytes. Only the low
+  four bits are used on the maps looked at (the high four are 0).
+- `GfxStaticModelCollection` is u32 firstInstance, u32 instanceCount, u16 smodelIndex, u16 transientGfxWorldPlaced,
+  u16 clutterIndex, u8 flags, u8 pad (x64-zt `iw8/structs.hpp`; the exports' bytes agree: flags 0x80 / 0x81 / 0x84
+  at byte 14).
+- Hideout (12,367 placements, every collection holds one instance): 11,982 at index 6 (scale 1), 208 at 13 (3),
+  132 at 11 (2), 32 at 15 (4), 10 at 9 (1.5), 3 at 2 (0.5). The raised ones are walls
+  (`me_plaster_barrier_fence_wall_256_hideout` x153, last LOD distance 10,000), manhole covers, drain pipes, bricks,
+  conduit joints: objects whose absence would show. The three at 0.5 are palm trees. This fits the rule above: the
+  designers raise the scale where the model's own last distance would drop a visible object too soon.
+- With the rule, a camera in the middle of Hideout drops 831 of 11,043 non-foliage placements (DVD cases, conduit
+  straps, column caps) and 239 of 1,147 foliage ones.
 
 ## 2. What the editor does (2026-11-14)
 
@@ -44,15 +67,27 @@ lod = XModelGetDesiredLodForDist(model, dist * invFovScale, dist * cappedLodScal
 
 - `lodFov = 2.1186731 / |second column of the view-projection|` (that column holds the up axis times
   `1 / tanHalfFovY`), kept inside 0.05 .. 8;
-- a LOD level is drawn where `dist * lodFov` lies in its range; the last level ends, and foliage without a group is
-  culled, where `dist * min(lodFov, 1)` passes the cull distance;
-- the placement's `lodScale` is taken as 1 (the editor's stock placement data does not carry the instance flags);
-- `IW8R_NO_LOD_FOV` turns the factor off (a bench switch).
+- `dist` is the game's: to the nearest point of the placement's world box (the model's box through the placement's
+  transform; core `smodel_lod.h`);
+- a LOD level is drawn where `dist * lodFov` lies in its range;
+- every stock prop is left out where `dist * min(lodFov, 1) / lodScale` reaches the model's last LOD distance;
+  `lodScale` is read from `smodels.instanceFlags` by `readStockModelInstances` (`StockModelInstance::lodCullScale`),
+  with the game's rule for collections of several instances and clutter (1);
+- the map's scripted objects (doors, lamps; not static models) are never left out by distance;
+- bench switches: `IW8R_NO_LOD_FOV` (factor off), `IW8R_LOD_CENTRE_DIST` (the distances of before: to the model's
+  centre, scale 1), `IW8R_NO_FOLIAGE_LOD_OUT` (no distance cull).
 
 Hideout, bench camera `ent node_pathnode 30`: 1.3 % of the pixels differ by more than 8 levels against the plain
 distance, the frame goes from 8.31 to 8.06 ms.
 
+Hideout with the placement scale and the cull of every prop: from the bench camera inside the map 0.001 % of the
+pixels differ from "no distance cull" and 1.2 % from the centre distances (more detail on long objects); from 6,000
+units outside 0.47 % differ and the frame goes from 9.2 to 8.3 ms. Verdansk, raised bench camera: 2,684 more of the placements in view are left out than without the distance cull, and the frame is 13.4 to 16.9 ms over two runs (budget 28; Verdansk's picture differs from run to run with the streamed terrain, so its pictures were not compared).
+
 ## 3. Not determined
 
 - Whether Replay's constants equal the game-test build's (the 2.1186731 and the split-screen 2).
-- The per-placement `lodScale` in the viewport (needs `smodels.instanceFlags` in the world export).
+- How a collection of several instances picks each instance's level between the nearest and the farthest (the
+  viewport measures every placement on its own).
+- The clutter ramp (`r_st_clutterLodScale`, `r_st_clutterLodBias`): the viewport's ground clutter uses the plain rule.
+- Sun shadows of left-out props: the viewport still draws them into the shadow map (`shadowCutoffLod` is not read).

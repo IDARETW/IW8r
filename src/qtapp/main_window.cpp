@@ -7377,14 +7377,10 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                 ++loadedModels;
                 auto fresh = std::make_shared<RefPropMesh>();
                 for (const auto& ms : im->meshes) fresh->tris += ms.idx.size() / 3;
-                // Foliage (grass, weeds, plants, trees) stops drawing past its last LOD distance in game. Other props
-                // keep drawing: the map can override their LOD-out per placement, which the editor does not read.
-                {
-                    const QString lower = qs(in.model).toLower();
-                    if (lower.contains("foliage") || lower.contains("grass") || lower.contains("weed"))
-                        if (const auto detail = modelCacheStock_->loadDetail(qs(in.model)); detail && !detail->lods.empty())
-                            fresh->lodOut = std::max(0.0, detail->lods.back().distance);
-                }
+                // A placed model stops drawing past its last LOD distance x the placement's own scale in game (research
+                // 119; the scale goes with each placement below).
+                if (const auto detail = modelCacheStock_->loadDetail(qs(in.model)); detail && !detail->lods.empty())
+                    fresh->lodOut = std::max(0.0, detail->lods.back().distance);
                 // Textured triangles of an imported mesh set (LOD0 also fills `plain` with its untextured surfaces).
                 // surfBase: the LOD's first surface in the model (XModelLod::surfIndex), -1 when its meshes do not match its
                 // surfaces one to one (then no material skin applies).
@@ -7573,6 +7569,8 @@ void MainWindow::rebuildReferencePropsUnguarded() {
             auto& ld = texInstanced[size_t(ti)].light;
             ld.insert(ld.end(), lit, lit + 12);
             texInstanced[size_t(ti)].ids.push_back((in.index & 0x80000000u) ? 0xFFFFFFFFu : in.collection);
+            // The map's scripted objects (index bit 31) are not static models: never left out by distance here.
+            texInstanced[size_t(ti)].cullScale.push_back((in.index & 0x80000000u) ? 0.0f : in.lodCullScale);
             lightKeys[size_t(ti)].push_back(key);
             key.first = false;
         }

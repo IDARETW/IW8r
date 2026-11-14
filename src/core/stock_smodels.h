@@ -3,7 +3,10 @@
 //   Layout, verified on the mp_shipment cache (9,535 instances, 277 models; docs/research/48 section 4):
 //     smodels.models.values[i].model.name     XModel name of static model i
 //     smodels.collections.bytes               GfxStaticModelCollection, 16 bytes each: u32 firstInstance,
-//                                             u32 instanceCount, u32 smodelIndex, u32 flags
+//                                             u32 instanceCount, u16 smodelIndex, u16 transientGfxWorldPlaced,
+//                                             u16 clutterIndex, u8 flags (0x20 clutter, 0x80 occluder), u8 pad
+//     smodels.instanceFlags.bytes             one byte per instance row; the low four bits are the placement's LOD
+//                                             distance scale index (smodelLodScaleOfIndex; research 119)
 //     smodels.smodelInstanceData.bytes        GfxSModelInstanceData, 24 bytes each: int32 translation[3] in 1/4096
 //                                             inch, u16 orientation[4] (quaternion x, y, z, w; c = u / 32767.5 - 1),
 //                                             float scale
@@ -42,6 +45,10 @@ struct StockModelInstance {
     uint32_t lightingIndex = 0xFFFFFFFF;
     uint16_t worldTransient = 0;
     uint32_t modelFlags = 0;                             // smodels.models[collection.smodelIndex].flags
+    // The scale on the distance where the game stops drawing this placement (research 119): the placement's own
+    // lodScale when its collection holds this one instance and is not clutter, else 1 (the game's rule). 1 when the
+    // export has no instanceFlags.
+    float lodCullScale = 1.0f;
     // The map's material for each surface of the model (every LOD, in the model's surface order; XModelLod::surfIndex
     // and surfCount give a LOD's range): smodels.smodelSurfMatIndirection from models[].firstStaticModelSurfaceIndex,
     // smodelExpansionData[].numSurfs entries, into smodels.materials (leading ',' dropped). The map chooses them per

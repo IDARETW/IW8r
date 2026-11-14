@@ -71,6 +71,12 @@ Each one names the longer section below that has the steps.
 - [ ] SHORT 6. Only if you want it: a map built with Compile > Occlusion bake shows nothing missing. Section "the
       occlusion bake".
 
+## In game (optional, 2026-11-14): props at a distance
+- [ ] On Hideout, stand at one end of the map and look along it in the game and in the editor (View > Game Lighting,
+  the same place and view). Small props far away (conduit straps, bottles, small debris) should be missing in both,
+  and the walls, pipes and manhole covers should be there in both. If the editor shows less than the game, say which
+  objects.
+
 ## In game: your map's model light (2026-11-13), not seen in game
 
 - [ ] Build the dev showcase (F7) and walk from outside into a closed room: the gun and nearby props get darker inside

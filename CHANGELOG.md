@@ -5,6 +5,17 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Stock maps: props disappear at the distance the game drops them.** The game stops drawing a placed model past
+  its last level-of-detail distance, times a scale the level designer set on that one placement (0.25 to 4), and it
+  measures to the nearest point of the model's box, not to its centre. The viewport dropped only grass and foliage,
+  measured to the centre, and did not know the scale. It now reads the scale from the map (Hideout: 385 of 12,367
+  placements have their own, mostly 2 to 4 on walls, drain pipes and manhole covers so they stay visible) and applies
+  the game's rule to every placed model. Seen from inside Hideout the picture changes by 0.001 % (small far props);
+  the nearer box distance moves 1.2 % of the picture to a more detailed model. From 6,000 units outside, 0.47 % of
+  the picture changes (small props in the map's middle are gone, as the rule says) and the frame goes from 9.2 to
+  8.3 ms. Verdansk, raised bench camera: 2,684 more of the placements in view are left out than without the distance cull, and the frame is 13.4 to 16.9 ms over two runs (budget 28; Verdansk's picture differs from run to run with the streamed terrain, so its pictures were not compared). Read in the game-test source (research 119), not compared with the running game. The
+  map's scripted objects (doors, lamps) are never dropped by distance.
+
 - **Stock maps: props change detail level where the game would.** The game picks a prop's level of detail by its
   distance times a factor for the field of view (1 at the game's own 80 degree view; a wider view switches to the
   simpler models sooner, a zoomed view later). The viewport used the plain distance, so a wide editor view showed

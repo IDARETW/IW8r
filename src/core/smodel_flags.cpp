@@ -128,6 +128,10 @@ void writeSModelFlags(const SModelFlags& flags, std::map<std::string, std::strin
         keys.erase(kSModelKeyLodScale);
 }
 
+double smodelLodScaleOfIndex(unsigned index) {
+    return index < kLodScales.size() ? kLodScales[index] : 1.0;
+}
+
 bool parseGroundColor(const std::string& text, std::uint32_t& packed) {
     std::istringstream in(text);
     double c[3];

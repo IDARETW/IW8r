@@ -1,4 +1,5 @@
 #include "render.h"
+#include "smodel_lod.h"
 #include "stock_probes.h"
 
 #include <algorithm>
@@ -3396,8 +3397,10 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
     // (a bench switch).
     static const bool noLodFov = std::getenv("IW8R_NO_LOD_FOV") != nullptr;
     const float ysProj = std::sqrt(viewProj[1] * viewProj[1] + viewProj[5] * viewProj[5] + viewProj[9] * viewProj[9]);
-    const float lodFov = noLodFov || !(ysProj > 1e-6f) ? 1.0f : std::clamp(2.1186731f / ysProj, 0.05f, 8.0f);
-    const float lodFovCapped = std::min(lodFov, 1.0f);  // the cull past the last level never comes nearer than its distance
+    const float lodFov = noLodFov || !(ysProj > 1e-6f) ? 1.0f : iw8r::lodFovFactor(1.0f / ysProj);
+    // IW8R_LOD_CENTRE_DIST: the distances of before 2026-11-14 (to the model's centre, every placement's scale 1; a
+    // bench switch). The game measures to the nearest point of the placement's box.
+    static const bool lodCentreDist = std::getenv("IW8R_LOD_CENTRE_DIST") != nullptr;
     // The visible placements, those large on screen first: the depth pre-pass draws only that prefix (`big`). One
     // buffer instead of two of the full size (Verdansk's instance buffers were 877 MB with every prop drawn).
     const auto upload = [&](GpuTexInstanced& g) {
@@ -3419,6 +3422,7 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
     // goes to the mesh whose distance window holds it.
     struct PlaceEval {
         float dist, rad;
+        float lod;  // the game's LOD distance: to the nearest point of the placement's box
         bool out;
     };
     std::vector<PlaceEval> ev;
@@ -3431,6 +3435,16 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             const float d[3] = {m.centre[0] - lead.centre[0], m.centre[1] - lead.centre[1], m.centre[2] - lead.centre[2]};
             radius = std::max(radius, std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) + m.radius);
         }
+        // The model's box: every level's together.
+        float gLo[3] = {1e30f, 1e30f, 1e30f}, gHi[3] = {-1e30f, -1e30f, -1e30f};
+        for (size_t mi : grp) {
+            const GpuTexInstanced& m = refTexInst_[mi];
+            for (int c = 0; c < 3; ++c)
+                gLo[c] = std::min(gLo[c], m.boxMid[c] - m.boxHalf[c]), gHi[c] = std::max(gHi[c], m.boxMid[c] + m.boxHalf[c]);
+        }
+        const float gMid[3] = {0.5f * (gLo[0] + gHi[0]), 0.5f * (gLo[1] + gHi[1]), 0.5f * (gLo[2] + gHi[2])};
+        const float gHalf[3] = {0.5f * (gHi[0] - gLo[0]), 0.5f * (gHi[1] - gLo[1]), 0.5f * (gHi[2] - gLo[2])};
+        const bool scaled = !lodCentreDist && lead.cullScale.size() * 12 == lead.rows.size();
         const size_t n = lead.rows.size() / 12;
         ev.resize(n);
         for (size_t i = 0; i < n; ++i) {
@@ -3451,6 +3465,9 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
             e.dist = std::sqrt(dx * dx + dy * dy + dz * dz);
             if (!e.out) e.out = e.dist > e.rad && e.rad < e.dist * pixelAngle * kPx;
+            e.lod = lodCentreDist ? e.dist : iw8r::placementBoxDistance(r, gMid, gHalf, eye);
+            // Past the model's last LOD distance x the placement's scale the game does not draw it (research 119).
+            if (!e.out && !noLodOut) e.out = iw8r::placementLodCulled(e.lod, lodFov, scaled ? lead.cullScale[i] : 1.0f, lead.lodOut);
             if (e.out) ++instCulledLast_;
         }
         for (size_t mi : grp) {
@@ -3458,13 +3475,13 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             if (!g.visInst) continue;
             keep.clear();
             keepBig.clear();
-            const bool lastFoliage = g.lodOut > 0 && g.lodFar >= g.lodOut;  // IW8R_NO_FOLIAGE_LOD_OUT: the last level has no end
-            const float farD = g.lodFar > 0 && !(noLodOut && lastFoliage) ? g.lodFar : 1e30f;
+            // The last level has no end of its own: the placement is left out by the rule above (e.out).
+            const bool last = g.lodOut > 0 && g.lodFar >= g.lodOut;
+            const float farD = g.lodFar > 0 && !last ? g.lodFar : 1e30f;
             for (size_t i = 0; i < n; ++i) {
                 const PlaceEval& e = ev[i];
-                // The level by distance x the view factor; the end of the last level by the capped factor.
-                const float dSel = e.dist * lodFov, dEnd = lastFoliage ? e.dist * lodFovCapped : dSel;
-                if (e.out || dSel < g.lodNear || dEnd >= farD) continue;
+                const float dSel = e.lod * lodFov;  // the level by distance x the view factor
+                if (e.out || dSel < g.lodNear || dSel >= farD) continue;
                 const float* r = &g.rows[i * 12];
                 std::vector<float>& to = e.dist <= e.rad || e.rad >= e.dist * pixelAngle * bigPx ? keepBig : keep;
                 to.insert(to.end(), r, r + 12);
@@ -3497,8 +3514,13 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                 const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
                 const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
                 out = dist > rad && rad < dist * pixelAngle * kPx;  // radius under k pixels (4: Verdansk 37 -> 15.5 ms)
-                // Stock foliage past its last LOD distance: the game does not draw it (research 100 section 3.3).
-                if (!noLodOut && g.lodOut > 0 && dist * lodFovCapped > g.lodOut) out = true;
+                // A stock prop past its last LOD distance x the placement's scale: the game does not draw it (research
+                // 100 section 3.3, 119).
+                if (!out && !noLodOut && g.lodOut > 0) {
+                    const float ld = lodCentreDist ? dist : iw8r::placementBoxDistance(r, g.boxMid, g.boxHalf, eye);
+                    const float cs = !lodCentreDist && g.cullScale.size() == n ? g.cullScale[i] : 1.0f;
+                    out = iw8r::placementLodCulled(ld, lodFov, cs, g.lodOut);
+                }
             }
             if (out) {
                 ++instCulledLast_;
@@ -3651,6 +3673,11 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
                     g.ids.resize(count);
                     for (size_t i = 0; i < count; ++i) g.ids[i] = m.ids[g.order[i]];
                 }
+                if (m.cullScale.size() == count &&
+                    std::any_of(m.cullScale.begin(), m.cullScale.end(), [](float v) { return v != 1.0f; })) {
+                    g.cullScale.resize(count);
+                    for (size_t i = 0; i < count; ++i) g.cullScale[i] = m.cullScale[g.order[i]];
+                }
                 g.rows.resize(count * 12);
                 g.light.assign(count * 12, 0.0f);
                 for (size_t i = 0; i < count; ++i) {
@@ -3682,6 +3709,7 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
                     float r2 = 0;
                     for (int c = 0; c < 3; ++c) g.centre[c] = 0.5f * (lo[c] + hi[c]), r2 += 0.25f * (hi[c] - lo[c]) * (hi[c] - lo[c]);
                     g.radius = std::sqrt(r2);
+                    for (int c = 0; c < 3; ++c) g.boxMid[c] = g.centre[c], g.boxHalf[c] = 0.5f * (hi[c] - lo[c]);
                     // The cells: each one's placements' bounding spheres in world space.
                     for (size_t i = 0; i < count; ++i) {
                         if (i == 0 || key[g.order[i]] != key[g.order[i - 1]]) g.cells.push_back({iw8r::AABB{}, uint32_t(i), 0});

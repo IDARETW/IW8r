@@ -128,9 +128,12 @@ struct InstancedTexMesh {
     // Shared with the caller (a stock prop's converted mesh, kept between rebuilds): no copy per rebuild.
     std::shared_ptr<const PropMeshData> mesh;
     std::vector<float> rows;  // 12 floats per instance
-    // Stock foliage: the model's last LOD distance (inches). The game stops drawing a placement beyond it (the grass
+    // Stock props: the model's last LOD distance (inches). The game stops drawing a placement beyond it (the grass
     // dissolves there with a dither); 0 = always drawn.
     float lodOut = 0;
+    // Per instance, the scale on lodOut (the placement's lodScale, research 119); 0 = this placement is never left out
+    // by distance. Empty: 1 for every instance.
+    std::vector<float> cullScale;
     // Per instance, the prop's light from its light grid box (research 105): 12 floats, DC rgb then the three first-
     // order terms per channel (slots 0, 2, 3), before bakedLightScale; DC r < 0 = none (the probes' fallback). Empty:
     // none for every instance.
@@ -682,6 +685,8 @@ private:
         std::vector<uint32_t> ids; // InstancedTexMesh::ids in GPU order (empty: none)
         float centre[3] = {0, 0, 0}, radius = 0;
         float lodOut = 0;  // InstancedTexMesh::lodOut
+        std::vector<float> cullScale;  // InstancedTexMesh::cullScale in GPU order (empty: 1 for all)
+        float boxMid[3] = {0, 0, 0}, boxHalf[3] = {0, 0, 0};  // the mesh's box in model space
         int lodGroup = -1;          // InstancedTexMesh::lodGroup / lodNear / lodFar
         float lodNear = 0, lodFar = 0;
         int normal = -1;            // setReferenceInstNormal

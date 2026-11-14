@@ -45,6 +45,10 @@ void writeSModelFlags(const SModelFlags& flags, std::map<std::string, std::strin
 // The flag word for the flags above (bit values in kSModelBit*). Cull distance and LOD scale are not bits.
 std::uint32_t smodelFlagBits(const SModelFlags& flags);
 
+// The game's LOD distance scale for index 0..15 (the low four bits of a placement's instance flags; doc 54). 6 is 1.
+// An index out of range gives 1.
+double smodelLodScaleOfIndex(unsigned index);
+
 // Parses a ground_lighting colour "r g b" (0..1, or 0..255 when any channel is above 1) into the packed GfxColor
 // (alpha 0xFF). Returns false for anything else.
 bool parseGroundColor(const std::string& text, std::uint32_t& packed);

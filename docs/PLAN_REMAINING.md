@@ -184,7 +184,7 @@ see PROGRESS). Own-map models take the build's light grid light at their place D
 - **Own-map models.** Match the light grid that the build writes (1.11).
 
 **1.13 Stock prop LODs (performance; found 2026-11-13).** DONE 2026-11-13 (Aniyah 10.3 ms, Speedball 6.1 ms).
-The game's field-of-view factor on the distances DONE 2026-11-14 (research 119; the placement's own lodScale is taken as 1). Aniyah draws 30 M triangles a frame because every prop is
+The game's field-of-view factor on the distances DONE 2026-11-14 (research 119). The placement's own lodScale and the game's cull of every placed model past its last LOD distance DONE 2026-11-14. Aniyah draws 30 M triangles a frame because every prop is
 LOD0 (GPU profile: props 10.2 of 23.5 ms). The model detail already lists each LOD's surfaces and distance, and
 ModelCache::requestLod fetches one LOD of one model per ACTS run. Fetch the LODs in batches, keep one mesh per LOD, and
 let the instance cull pick the game's LOD by distance (and FOV). Done when Aniyah is within 20 ms and Verdansk
@@ -371,7 +371,6 @@ judged against the running game, which is not used any more. They are listed so 
 | 1.8 volumetric fog, white balance | Bloom veil, vignette, film grain (2026-11-14), exponential fog, the stock vision's exposure and grade | The volumetric fog constants are not calibrated (it stays off rather than wrong); white balance is not decoded. |
 | 1.11 HDR probe capture | Bounces in the surfaces' colours with the later bounces estimated, a lightmap scale per face, the texel size as a Bake Setting (all 2026-11-14), 8-bit probes captured before every build | HDR probes change glossy reflections by a little and need the converter to take another image format. |
 | 1.11 the parity proof (draw the built zone as a stock map and compare) | `tools/lightmap_bake_build_test.py` proves the baked data reaches the built zone; View > Game Lighting uses the converter shader's own formulas (research 117) | The proof as planned would compare the wrong things: a built map is drawn by the converter's world shader, and the editor's stock-map path models the game's stock shaders, not that one. |
-| 1.13 the placement's own lodScale on the cull distance | LOD levels by distance x the game's field-of-view factor (2026-11-14), stock cull distances | Needs the placements' instance flags in the world export; it moves only where a prop disappears. |
 | 2.2 culling lights, probes and decals in the Umbra view; surface ids on displaced terrain | Surfaces and props are culled by the tome | A viewer refinement: the view already answers "what does the game hide here". |
 | 2.3 local occlusion updates for edited stock maps | The whole map's occlusion opens when stock geometry is removed | See 2.3: a mistake makes objects vanish in the game. |
 | 2.4 thin slanted walls, terrain and models as occluders, gates, splitting merged surfaces | Opaque structural brushes (boxes, and other shapes by the box inside them); a detail brush is left out, which is the per-brush switch (2026-11-14) | The bake is opt-in and unseen in the game; widening it before a first look would only widen what could go wrong. |

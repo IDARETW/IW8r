@@ -1,5 +1,7 @@
 #include "stock_smodels.h"
 
+#include "smodel_flags.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -203,8 +205,10 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
         forEachRecord(collValues, [&](const Value& c) {
             put32(coll, uint64_t(num(c.get("firstInstance"))));
             put32(coll, uint64_t(num(c.get("instanceCount"))));
-            put32(coll, uint64_t(num(c.get("smodelIndex"))));
-            put32(coll, 0);
+            put32(coll, uint64_t(num(c.get("smodelIndex"))) & 0xFFFF);
+            const Value* fl = c.get("flags");  // {"value": n, "name": "..."} or a plain number
+            const Value* fv = fl && fl->type == Value::Type::Object ? fl->get("value") : fl;
+            put32(coll, (uint64_t(num(fv)) & 0xFF) << 16);  // byte 14
         });
         forEachRecord(instValues, [&](const Value& i) {
             const Value* t = i.get("translation");
@@ -243,6 +247,18 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
         }
     }
     const uint64_t indirTotal = indir.size() / kIndirectionBytes;
+
+    // The placements' flag bytes (optional, like the indirection): hex bytes, or an array of numbers.
+    std::vector<uint8_t> instFlags;
+    if (const json::View fl = sm.get("instanceFlags"); fl.valid()) {
+        const json::View fb = fl.get("bytes");
+        const json::View fv = fl.get("values");
+        if (stringOf(fb, scratch, hex)) {
+            if (!unhex(hex, instFlags)) instFlags.clear();
+        } else if (fv.type() == Value::Type::Array) {
+            forEachRecord(fv, [&](const Value& r) { instFlags.push_back(uint8_t(uint32_t(num(&r)) & 0xFF)); });
+        }
+    }
 
     std::vector<std::string> names;
     std::vector<uint32_t> modelFlags;
@@ -304,7 +320,8 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
     for (size_t c = 0; c < collectionCount; ++c) {
         const uint64_t first = u32At(coll, c * kCollectionBytes);
         const uint64_t count = u32At(coll, c * kCollectionBytes + 4);
-        const uint64_t model = u32At(coll, c * kCollectionBytes + 8);
+        const uint64_t model = u16At(coll, c * kCollectionBytes + 8);
+        const uint8_t collFlags = coll[c * kCollectionBytes + 14];
         if (model >= names.size()) {
             if (err) *err = "collection " + std::to_string(c) + " names model " + std::to_string(model) + " of " + std::to_string(names.size());
             out.clear();
@@ -327,6 +344,8 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
             s.index = uint32_t(k);
             s.collection = uint32_t(c);
             s.modelFlags = modelFlags[size_t(model)];
+            if (count == 1 && !(collFlags & 0x20) && k < instFlags.size())
+                s.lodCullScale = float(smodelLodScaleOfIndex(instFlags[size_t(k)] & 0xFu));
             s.surfaceMaterials = skins[size_t(model)];
             if (k < indirTotal) {
                 s.lightingIndex = u32At(indir, size_t(k) * kIndirectionBytes);
