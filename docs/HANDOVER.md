@@ -99,3 +99,5 @@ short list", is these in order:
 - Items the game must answer before more work makes sense (reverb zones, killstreak airspace, intro cameras) are
   listed with their state in `docs\ROADMAP.md`.
 - Ground War scale maps are out of scope.
+- The smaller points that were left on purpose, each with what is there now and why, are one table in
+  `docs\PLAN_REMAINING.md` ("Open points closed by decision").
