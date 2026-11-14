@@ -210,6 +210,24 @@ Verdict: this is the most practical HUD path. An editor snippet using `newhudele
 - Font names: the owner should confirm valid `hudelem` font names in game (or from a stock script dump run by the owner).
 - Test list for the owner: (a) title in the intro chyron; (b) `newhudelem` + `setshader("hud_icon_c4")` on a custom map; (c) custom `hud_*` image with the change in 8.2.1, once made; (d) `preview.rgba` on a custom map select; (e) a map-zone TTF or Lua file, only if the owner wants to test it.
 
+### 8.4 Built on 2026-11-14 (items 8.2.1 and 8.2.2)
+
+- **HUD images (8.2.1).** Pictures in `<map name>.hud` beside the map become `extracted/images/hud_<name>.dds` (core
+  `hud_images`; DXT5, square, the minimap's form, because the converter's reader for the map's own images takes BC1 /
+  BC2 / BC3 only). The converter copies every `hud_*` image beside the minimap and writes a 2D material of the same
+  name with `writeUiMaterial` (x64-zt `1c70f6ed`). The image lands in `<map>.ff`, the material in `techsets_<map>.ff`
+  (where the minimap's material is). Proof: `tools/hud_image_build_test.py`.
+- **Text (8.2.2).** `<map name>.str` beside the map (REFERENCE / LANG_ENGLISH pairs, core `map_strings`) becomes
+  `extracted/localize/strings.tsv`; the converter registers each entry with `iw8::localize::Register` in `eng_<map>`
+  (x64-zt `a2d67783`). Names are `<MAP ID>/<REFERENCE>` in capitals. Proof: `tools/map_strings_build_test.py`.
+- **How the game finds a text (VERIFIED, Replay `SEH_StringEd_GetString` at `0x1413CC2A0`).** It is an ordinary asset
+  lookup: `DB_FindXAssetHeader(0x29, name, 0)` and the entry's text. So an entry in any loaded zone is found by its
+  name; the map's `eng_` zone is loaded with the map.
+- **The stock naming (VERIFIED on the stock script dump).** Of 906 `&"FILE/REFERENCE"` names in the stock scripts, 904
+  are all capitals (`SCRIPT_PLATFORM/HINT_MELEE_TAP`, `CREDITS/ATVI_COPYRIGHT1`). The map's names follow that form.
+- Not seen in game: whether a script HUD element draws the map's material, and whether `sethintstring` shows the
+  map's text (docs/TEST_CHECKLIST.md has both looks).
+
 ## 9. Unverified (consolidated)
 
 - Game uses a map-zone `ttf` or `luafile` (section 3, 4).
