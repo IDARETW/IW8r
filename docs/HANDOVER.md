@@ -24,7 +24,8 @@ Start the editor, open a map (or File > New), and read `docs\USER_GUIDE.md` (the
 lights, probes, spawns, game type templates and your own game type scripts, mode rules, Warzone objects (loot points,
 clusters and zones, buy stations, vehicles), traversals for bots, map scripts. F7 builds the game's zones and checks
 them with the game's own loaders (ACTS). Brush > Paint Mesh on Faces lays a paintable mesh on brush surfaces for
-blended materials (Patch > Vertex Paint Mode paints it).
+blended materials (Patch > Vertex Paint Mode paints it). A map script can draw your own pictures on the HUD
+(Compile > HUD Images Folder) and show your own text (Compile > Map Text File).
 
 **Light it.** Compile > Bake lightmaps bakes the world's lightmap (sky light, bounce, where the sun reaches);
 Bake Settings sets the sky and the detail. Without a bake the game lights the map with a flat sky light and the sun.
@@ -67,7 +68,7 @@ None of this needs the game running:
 - `IW8Radiant.exe --gui-test tests\data\iw8_sample_room.map --out <dir>`: about 1,080 checks of the editor itself,
   the web server and its page included.
 - `tools\run_all_tests.ps1`: both of those plus a start-up test, in one run.
-- `py -3 -I tools\run_offline_proofs.py <work dir>`: 21 end-to-end proofs; all passed on the last build of 2026-11-14. Each one edits or builds a real map with the
+- `py -3 -I tools\run_offline_proofs.py <work dir>`: 22 end-to-end proofs; all passed on the last build of 2026-11-14. Each one edits or builds a real map with the
   live converter, reads the result back with ACTS, compares it with what was asked, and checks that the game's own
   loaders accept the zone (about 11 minutes).
 - `IW8Radiant.exe --viewport-bench <map> --out <dir>`: frame times and pictures of every view mode.

@@ -5,6 +5,15 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Your own text in a map script: hint strings and labels.** Compile > Map Text File opens `<map name>.str` beside
+  the map (a new one starts with an example), in the two-line form of the older games:
+  `REFERENCE HINT_GATE` / `LANG_ENGLISH "Press ^3[{+activate}]^7 to open"`. The build carries the entries, and the
+  script uses one as `&"<MAP ID>/HINT_GATE"` (the map id in capitals), for example in `sethintstring` or `settext`.
+  The build says how many entries it carried, names the mistakes in the file, and points out a name the script uses
+  that is not in it. Converter x64-zt `a2d67783` (deployed). Proven offline: `tools/map_strings_build_test.py`
+  builds a map with a text file and a script; the game's loaders accept all five zones and both entries, names and
+  text, are read back from the map's language zone. Whether the game shows them has not been seen.
+
 - **Your own HUD pictures in a map script.** Until now a map script could only draw the game's own icons. Put
   pictures (PNG, TGA, JPG, BMP or DDS) into the folder `<map name>.hud` beside the map (Compile > HUD Images Folder
   makes and opens it); the build carries each one, and the script draws `flag.png` with

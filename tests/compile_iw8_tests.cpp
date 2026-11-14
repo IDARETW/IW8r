@@ -12,6 +12,7 @@
 
 #include "brush_ops.h"
 #include "hud_images.h"
+#include "map_strings.h"
 #include "overview_image.h"
 #include "convert_ops.h"
 #include "document.h"
@@ -2038,4 +2039,62 @@ TEST(compile_iw8_hud_images_reach_the_extraction) {
     CHECK(pr2.map.has_value() && compileIw8Extraction(*pr2.map, scratch("hud_none"), plain, rep2, &err));
     CHECK(rep2.hudImages.empty());
     for (const std::string& w : rep2.warnings) CHECK(w.find("HUD image") == std::string::npos);
+}
+
+// 4.27: the map's text file becomes localize/strings.tsv of the extraction, and the script's names are checked.
+TEST(compile_iw8_map_strings_reach_the_extraction) {
+    const fs::path dir = fs::path(scratch("str_map"));
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    std::ofstream(dir / "room.str") << "REFERENCE HINT_GATE\nLANG_ENGLISH \"Press ^3[{+activate}]^7 to open\"\n"
+                                       "REFERENCE TITLE\nLANG_ENGLISH \"The Room\\nRound one\"\nREFERENCE BROKEN\n";
+    std::ofstream(dir / "user.gsc") << "user_main() {\n  t = getent(\"gate\", \"targetname\");\n"
+                                       "  t sethintstring( &\"MP_ROOM/HINT_GATE\" );\n  t sethintstring( &\"MP_ROOM/MISSING\" );\n"
+                                       "  t sethintstring( &\"MP/STOCK\" );\n}\n";
+    Id next = 1;
+    std::string text = roomMapText();
+    const std::string ws = "\"classname\" \"worldspawn\"";
+    const size_t at = text.find(ws);
+    CHECK(at != std::string::npos);
+    if (at == std::string::npos) return;
+    text.insert(at + ws.size(), "\n\"iw8r_script\" \"user.gsc\"");
+    ParseResult pr = parseMap(text, next);
+    CHECK(pr.map.has_value());
+    if (!pr.map) return;
+    CompileOptions opt;
+    opt.mapId = "mp_room";
+    opt.mapDir = dir.string();
+    opt.stringsFile = mapStringsFileFor((dir / "room.map").string());
+    CompileReport rep;
+    std::string err;
+    const std::string out = scratch("str_out");
+    const bool ok = compileIw8Extraction(*pr.map, out, opt, rep, &err);
+    if (!ok) std::printf("  compile error: %s\n", err.c_str());
+    CHECK(ok);
+    if (!ok) return;
+    CHECK(rep.mapStrings.size() == 2);
+    std::ifstream f(fs::path(out) / "extracted" / "localize" / "strings.tsv", std::ios::binary);
+    std::stringstream tsv;
+    tsv << f.rdbuf();
+    CHECK(tsv.str() == "MP_ROOM/HINT_GATE\tPress ^3[{+activate}]^7 to open\nMP_ROOM/TITLE\tThe Room\\nRound one\n");
+    bool listed = false, broken = false, missing = false, known = false, stock = false;
+    for (const std::string& w : rep.warnings) {
+        listed = listed || w.find("2 text entries for the map script") != std::string::npos;
+        broken = broken || w.find("BROKEN has no LANG_ENGLISH") != std::string::npos;
+        missing = missing || w.find("MP_ROOM/MISSING") != std::string::npos;
+        known = known || (w.find("MP_ROOM/HINT_GATE") != std::string::npos && w.find("not in the map's text file") != std::string::npos);
+        stock = stock || w.find("MP/STOCK") != std::string::npos;
+    }
+    CHECK(listed && broken && missing);
+    CHECK(!known && !stock);  // the known name and the stock name are not pointed out
+
+    // No file: nothing written.
+    CompileOptions plain;
+    plain.mapId = "mp_room";
+    CompileReport rep2;
+    Id next2 = 1;
+    ParseResult pr2 = parseMap(roomMapText(), next2);
+    const std::string out2 = scratch("str_none");
+    CHECK(pr2.map.has_value() && compileIw8Extraction(*pr2.map, out2, plain, rep2, &err));
+    CHECK(rep2.mapStrings.empty() && !fs::exists(fs::path(out2) / "extracted" / "localize"));
 }

@@ -58,6 +58,7 @@
 #include "overview_image.h"
 #include "convert_ops.h"
 #include "hud_images.h"
+#include "map_strings.h"
 #include "sky_panorama.h"
 #include "bevel_ops.h"
 #include "scatter_rules.h"
@@ -3691,6 +3692,21 @@ void MainWindow::buildMenus() {
         ctx_.setStatus(QString("HUD images: %1 picture(s) in %2. A file flag.png is drawn in the map script with "
                                "setshader(\"hud_flag\", width, height); the next build carries them.")
                            .arg(have).arg(QDir::toNativeSeparators(folder)));
+    });
+    addCommand(compile, "MapTextFile", "Map Text File (hints and labels for the map script)...", QKeySequence(), [this] {
+        // 4.27: "<map name>.str" beside the map; a new one starts with an example. Opened in the system's editor.
+        const QString file = qs(mapStringsFileFor(ctx_.doc.path()));
+        if (file.isEmpty()) return ctx_.setStatus("Save the map first: its text file lives beside it");
+        const QString prefix = compile_ ? compile_->mapId() : QString("mp_map");
+        if (!QFileInfo::exists(file)) {
+            QFile f(file);
+            if (f.open(QIODevice::WriteOnly)) f.write(QByteArray::fromStdString(mapStringsTemplate(prefix.toStdString())));
+        }
+        QDesktopServices::openUrl(QUrl::fromLocalFile(file));
+        QFile f(file);
+        const size_t have = f.open(QIODevice::ReadOnly) ? parseMapStrings(f.readAll().toStdString(), prefix.toStdString()).size() : 0;
+        ctx_.setStatus(QString("Map text: %1 entr%2 in %3. In the map script an entry NAME is &\"%4/NAME\"; the next build carries them.")
+                           .arg(have).arg(have == 1 ? "y" : "ies").arg(QDir::toNativeSeparators(file)).arg(prefix.toUpper()));
     });
     addCommand(compile, "SetLoadscreen", "Set Loadscreen From Camera", QKeySequence(), [this] {
         // 1.17: the current view (game surfaces only) becomes the loading screen / map-select preview of the next build.

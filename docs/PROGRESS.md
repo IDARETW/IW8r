@@ -38,7 +38,7 @@
   WebServer object). The page: logLines / renderLog / addLogLine, #logLevel, #logFilter. Plan 3.2 is done.
   POST /api/pick {face: true} (hook pickFace, MainWindow::webPickFace: scene.pickFace, selectFace / toggleFace);
   viewlive.js sends it on Ctrl + click.
-  Parking state 2026-11-14 (after the HUD images): repo at the commit after 43c1b44, converter live at 1c70f6ed, suites core 181,698 checks / 1,354 tests and GUI 1,080 checks, 0 failures; zones of mp_cinderrail_t rebuilt 02:58 (x64zt_output; 0 overlapping faces, 5 px lines, the light grid with coloured bounce); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
+  Parking state 2026-11-14 (after the map text): repo at the commit after b01cd1a, converter live at a2d67783, suites core 181,730 checks / 1,359 tests and GUI 1,080 checks, 0 failures; zones of mp_cinderrail_t rebuilt 02:58 (x64zt_output; 0 overlapping faces, 5 px lines, the light grid with coloured bounce); installer out/installer/IW8RadiantSuite-Setup-0.1.0.exe (20.1 MB) and out/package/IW8RadiantSuite-20261114.zip (29.5 MB) rebuilt from it, no ini and no game file inside, the packaged exe passes --smoke-test (give it a map and --out: without them it opens as a normal editor). The editor is left open on out/agent/mp_cinderrail_toon (that map takes about 30 s to open; the title says untitled.map until then).
   GET /api/handles (control points of the selected patches, at most 20,000) and POST /api/vertices moves with
   {e, i, points: [index]} for a patch; app.js patchPoints / loadPatchPoints. Plan 3.4 is done.
   Web form "vision": every scalar / vector field of core vision_fields as a text field (key "v:<name>"), written
@@ -87,6 +87,11 @@
   Plan 3.1: MainWindow::followCameraPos() (the last /api/frame camera for webFollowHoldMs_ = 4000 ms, else
   ctx_.cam.pos) is the centre for updateStreamedTiles, updateTerrainLayers, updateProbeSubset and
   streamedTilesReport. GUI test with a 150 ms hold. Not run on Verdansk in a browser.
+  ROADMAP 4.27 map text: core map_strings.{h,cpp} (parseMapStrings of "<map>.str", mapStringsTsv,
+  stringRefsInScript, mapStringsTemplate), CompileOptions::stringsFile / CompileReport::mapStrings, extraction file
+  extracted/localize/strings.tsv, command MapTextFile. Converter a2d67783 (worktree, deployed; old exe
+  out/zt_backup/zonetool_1c70f6ed.exe): ReadMapStrings -> PreparedMap::mapStrings -> iw8::localize::Register in
+  eng_<map>. Proof tools/map_strings_build_test.py (in run_offline_proofs.py: 22 proofs).
   ROADMAP 4.27 HUD images: core hud_images.{h,cpp} (hudImageName, listHudImages, encodeHudImageDds = square DXT5
   through minimap encodeMinimapDds, hudImageFolderFor, hudNamesInScript), CompileOptions::hudImageDir /
   CompileReport::hudImages, command HudImagesFolder. Converter 1c70f6ed (worktree, deployed; old exe

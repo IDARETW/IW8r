@@ -91,6 +91,12 @@ Each one names the longer section below that has the steps.
   and play: the picture is on the screen at the left. If a grey or checkered square shows, the material loaded but
   the image did not; if nothing shows, say so.
 
+## In game (optional, 2026-11-14): your own text
+- [ ] Compile > Map Text File, keep the example entry, and in the map script (worldspawn `iw8r_script`) put
+  `user_main() { t = newhudelem(); t.x = 20; t.y = 100; t settext( &"MP_YOURMAP/HINT_EXAMPLE" ); }` with your map id
+  in capitals. Build and play: the text is on the screen. If the name itself shows (MP_YOURMAP/HINT_EXAMPLE), the
+  game did not find the entry: say so.
+
 ## In game: your map's model light (2026-11-13), not seen in game
 
 - [ ] Build the dev showcase (F7) and walk from outside into a closed room: the gun and nearby props get darker inside

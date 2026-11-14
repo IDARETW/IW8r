@@ -475,6 +475,8 @@ Shipped bundles:
 
 - Your own pictures for script HUD elements: `Compile > HUD Images Folder` opens `<map name>.hud` beside the map; each picture in it is built into the map as `hud_<file name>` and drawn from the map script with `setshader("hud_<file name>", width, height)`. The build lists them and points out a `hud_` name in the script that is not one of them. (not yet seen in game)
 
+- Your own text for hint strings and HUD labels: `Compile > Map Text File` opens `<map name>.str` beside the map (`REFERENCE` / `LANG_ENGLISH` pairs); the build carries the entries as `<MAP ID>/<REFERENCE>` and the map script uses them as `&"<MAP ID>/<REFERENCE>"`. The build names mistakes in the file and names the script uses that are not in it. (not yet seen in game)
+
 ### Keys that make things move or act
 
 Each key goes on the entity named. The keys are listed with examples in docs/KEYS_REFERENCE.md.

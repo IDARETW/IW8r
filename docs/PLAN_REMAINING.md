@@ -403,7 +403,7 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
     game type script cannot be replaced by a map zone.
   - killstreak airspace and compass (6.21 / F.14): open; research 75 found no per-map key for it. Game.
   - fonts and LUI (4.27): HUD from the map script works with stock icons and, since 2026-11-14, with the map's own
-    pictures (`<map name>.hud`, proven offline; game). Own fonts and menus are not built (deferred, as the plan
+    pictures (`<map name>.hud`) and the map's own text (`<map name>.str`), both proven offline; game. Own fonts and menus are not built (deferred, as the plan
     allowed: no map-zone writer for them, and nothing shows the game would use one).
 - **Audio and effects**
   - the looping sound on an `fx_origin` (F.6), impacts (F.12): fixed offline; game.

@@ -3,6 +3,7 @@
 #include "ies_profiles.h"
 #include "compile_iw8.h"
 #include "hud_images.h"
+#include "map_strings.h"
 #include "occluder_box.h"
 #include "bake_options.h"
 #include "game_modes.h"
@@ -3336,6 +3337,21 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             rep.warnings.push_back(std::to_string(rep.hudImages.size()) + " HUD image(s) for the map script (setshader(\"<name>\", width, height)): " + names);
         }
     }
+    // 4.27: the map's own text for its script.
+    if (!opt.stringsFile.empty()) {
+        std::string strText;
+        if (readFile(opt.stringsFile, strText)) {
+            std::vector<std::string> strWarnings;
+            const std::vector<MapString> strings = parseMapStrings(strText, id, &strWarnings);
+            for (const std::string& w : strWarnings) rep.warnings.push_back(w);
+            if (!strings.empty()) {
+                customFiles.push_back({root / "extracted" / "localize" / "strings.tsv", mapStringsTsv(strings)});
+                for (const MapString& s : strings) rep.mapStrings.push_back(s.key);
+                rep.warnings.push_back(std::to_string(strings.size()) + " text entr" + (strings.size() == 1 ? "y" : "ies") +
+                                       " for the map script (&\"" + strings.front().key + "\"" + (strings.size() > 1 ? ", ..." : "") + ")");
+            }
+        }
+    }
     for (const auto& [name, text] : physicPresets) customFiles.push_back({root / "extracted" / "physic" / name, text});
     // One cube per probe (doc 29), named <id>_probe<N> (the image of probe N): the editor's capture when it was taken at
     // this probe's position (5.5), else neutral grey.
@@ -3798,6 +3814,16 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                 if (!extras.userScript.empty()) warn.push_back("map script includes " + p.filename().string() + " (user_main runs after the load script)");
                 // The script's hud_* names against the map's own HUD images (only when the map has any): a name that
                 // is neither is drawn as the game's missing material, unless it is a stock one.
+                // The script's &"<MAP ID>/..." names against the map's text file: one that is not there shows as its
+                // own name in the game.
+                {
+                    std::string pre = id + "/";
+                    for (char& c : pre) c = char(std::toupper(static_cast<unsigned char>(c)));
+                    for (const std::string& n : stringRefsInScript(extras.userScript))
+                        if (n.rfind(pre, 0) == 0 && !std::binary_search(rep.mapStrings.begin(), rep.mapStrings.end(), n))
+                            warn.push_back("the map script uses &\"" + n + "\", which is not in the map's text file (" +
+                                           (opt.stringsFile.empty() ? std::string("<map name>.str") : fs::path(opt.stringsFile).filename().string()) + ")");
+                }
                 if (!rep.hudImages.empty())
                     for (const std::string& n : hudNamesInScript(extras.userScript))
                         if (!std::binary_search(rep.hudImages.begin(), rep.hudImages.end(), n))

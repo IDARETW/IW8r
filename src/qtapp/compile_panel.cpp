@@ -17,6 +17,7 @@
 #include "settings.h"
 #include "atmosphere_dialog.h"
 #include "hud_images.h"
+#include "map_strings.h"
 #include "editor_log.h"
 
 #include <QProcessEnvironment>
@@ -769,6 +770,8 @@ bool CompilePanel::runExtraction() {
     if (const QString ls = loadscreenImageFile(); !ls.isEmpty() && QFileInfo::exists(ls)) opt.loadscreenImagePath = ls.toStdString();
     // 4.27: the pictures in "<map name>.hud" beside the map become the map's own HUD images.
     opt.hudImageDir = hudImageFolderFor(ctx_->doc.path());
+    // 4.27: "<map name>.str" beside the map holds the text for the map script.
+    if (const std::string sf = mapStringsFileFor(ctx_->doc.path()); !sf.empty() && QFileInfo::exists(qs(sf))) opt.stringsFile = sf;
     MaterialLibrary library;
     {
         std::vector<std::string> roots;
