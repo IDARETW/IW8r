@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <random>
 
 using namespace iw8r;
@@ -195,6 +196,20 @@ TEST(umbra_bake_limits) {
     CHECK(capped.ok && capped.stats.cells <= 20 && capped.stats.occludersUsed < 40);
     UmbraTome t2;
     CHECK(t2.parse(capped.tome) && t2.validate().ok && has(visibleFrom(t2, 1000, 1000, 250).userIds, 7));
+    // A view tree that would outgrow its budget: the space is cut again with fewer cells, and no leaf lists several.
+    umbrabake::Input tight;
+    tight.scene = box(0, 0, 0, 4096, 4096, 512);
+    tight.objects = {object(1, 100, 100, 100), object(2, 4000, 4000, 100)};
+    for (int i = 0; i < 12; ++i)
+        for (int j = 0; j < 12; ++j) tight.occluders.push_back(box(float(i) * 340 + 13, float(j) * 340 + 29, 0, float(i) * 340 + 213, float(j) * 340 + 229, 400));
+    tight.maxViewNodes = 3000;
+    const umbrabake::Result squeezed = umbrabake::bake(tight);
+    UmbraTome t4;
+    CHECK(squeezed.ok && squeezed.stats.retries > 0 && squeezed.stats.viewNodes <= 3000 && t4.parse(squeezed.tome));
+    if (squeezed.ok && !t4.cells().empty()) {
+        const UmbraTomeReport rr = t4.validate();
+        CHECK(rr.ok && rr.multiCellViewLeaves == 0 && rr.solidViewLeaves == 0 && rr.unmatchedInternal == 0);
+    }
     umbrabake::Input bad = in;
     bad.scene = box(0, 0, 0, 0, 10, 10);
     CHECK(!umbrabake::bake(bad).ok);
@@ -206,4 +221,38 @@ TEST(umbra_bake_limits) {
     const umbrabake::Result b = umbrabake::bake(buried);
     UmbraTome t3;
     CHECK(b.ok && b.stats.objectsByNearestCell == 1 && t3.parse(b.tome) && t3.validate().objectsReferenced == 2);
+}
+
+// A built map's tome, read back (set IW8R_TEST_GFXMAP_JSON to the ACTS gfx_map export of the built zone; skipped
+// without it): it parses, passes the stock reader's checks, and from the cells' centres it hides part of the objects.
+TEST(umbra_bake_built_zone_reads_back) {
+    const char* path = std::getenv("IW8R_TEST_GFXMAP_JSON");
+    if (!path || !*path) return;
+    std::vector<uint8_t> bytes;
+    std::string err;
+    CHECK(extractUmbraTomeFromGfxMapJson(path, bytes, &err));
+    UmbraTome tome;
+    CHECK(tome.parse(bytes, &err));
+    if (tome.cells().empty()) {
+        std::printf("  built tome: %s\n", err.c_str());
+        return;
+    }
+    const UmbraTomeReport rep = tome.validate();
+    for (const std::string& e : rep.errors) std::printf("  built tome: %s\n", e.c_str());
+    CHECK(rep.ok && rep.unmatchedInternal == 0 && rep.objectsReferenced == tome.objectCount());
+    size_t queries = 0, seen = 0;
+    const size_t step = std::max<size_t>(1, tome.cells().size() / 200);
+    for (size_t c = 0; c < tome.cells().size(); c += step) {
+        float mn[3], mx[3];
+        tome.cellBounds(uint32_t(c), mn, mx);
+        const UmbraVisibility v = visibleFrom(tome, 0.5f * (mn[0] + mx[0]), 0.5f * (mn[1] + mx[1]), 0.5f * (mn[2] + mx[2]));
+        if (v.status != UmbraQueryStatus::Ok) continue;
+        ++queries;
+        seen += v.objects.size();
+    }
+    std::printf("  built tome: %zu bytes, %u cells, %u portals, %u objects (%u surfaces, %u models), %u view leaves (%u with several cells); "
+                "from %zu cell centres %.0f%% of the objects are drawn on average\n",
+                bytes.size(), rep.cells, rep.portals, tome.objectCount(), rep.userIdsByClass[0], rep.userIdsByClass[1], rep.viewLeaves,
+                rep.multiCellViewLeaves, queries, queries ? 100.0 * double(seen) / double(queries * tome.objectCount()) : 0.0);
+    CHECK(queries > 0 && rep.multiCellViewLeaves == 0);
 }

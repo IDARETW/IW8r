@@ -512,6 +512,8 @@ Each key goes on the entity named. The keys are listed with examples in docs/KEY
 - Log output: the Compile dock shows each step. Double-click a line in the Compile log or the Replay Log that names a `.gsc` line to open it in the Script dock.
 - Tutorial: `docs/TUTORIAL.md` walks through `samples/tutorial/iw8r_tutorial.map`. It is an arena with a building, a ramp, cover, prefabs, a light, a probe, a sound, an effect, spawns and flags.
 
+- Occlusion bake (Compile panel, off by default): real occlusion cells and portals from the map's opaque box brushes, so the game skips what lies behind walls. Checked with the stock tome reader and a ray test; a real build loads in the game's loaders. (not yet seen in game)
+
 ### Deploy and rollback
 
 - Deploy refused: the message names the file in use. It is usually the map that Replay has loaded. Load another map first. An Explorer window on the map folder does not block a deploy.

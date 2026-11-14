@@ -2,6 +2,16 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-14, plan 2.4 (occlusion bake, opt-in): src/core/umbra_bake.h (header only, namespace umbrabake: occluder
+  boxes -> free boxes = cells, portals = shared rectangles both ways, per-cell object lists by real box, objects keep
+  scene-sized bounds, a midpoint view tree with one cell per leaf and the nearest cell for solid / outside; a tree
+  over budget = cut again with half the cells). Tests umbra_bake_* (UmbraTome parse / validate / query, ray test,
+  built-zone read-back through IW8R_TEST_GFXMAP_JSON). Converter x64-zt (worktree, deployed; old exe
+  out/zt_backup/zonetool_5bb98fb9.exe): umbra_bake.hpp (copied by tools/patches/zt_umbra_bake.py),
+  replayrender::SetUmbraOccluders / UmbraBakeSummary, world key "umbra_occluders" / "umbra_max_cells". Editor:
+  compile_iw8.cpp writes the opaque axis-aligned box brushes as umbra_occluders when worldspawn iw8r_umbra_bake = 1;
+  Compile panel checkbox compileOcclusionBake. Real build out/agent/occ/mp_cr_occ.map (Cinder Rail copy):
+  the converter used 200 of 1,816 occluder boxes: 1,245 cells, 8,048 portals, 746,547 view tree nodes, 240 objects in 12,806 list entries, 1,007,504 bytes, cut again once for the view tree to fit; all five zones pass ACTS; read back: it parses and validates, 373,274 view leaves and none lists several cells, 8 surfaces + 230 models, 85 % of the objects drawn on average from 208 cell centres. Research 118. NOT seen in game; default off.
 - 2026-11-14, plan 1.9 (brushes on a stock map): core stock_lightgrid StockGpuGrid (decodeStockGpuProbe,
   buildStockGpuGrid with a uniform cell index, parseStockGpuGrid from the gfx_map_trzone export's gpuLightGrid,
   sampleStockGpuGrid = barycentric over the holding tetrahedron); BakeScene::ambientAt (a texel's ambient from

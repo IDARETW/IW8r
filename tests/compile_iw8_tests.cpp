@@ -324,6 +324,37 @@ TEST(compile_iw8_doc_room_counts) {
     CHECK(dpvs && dpvs->get("cells") && dpvs->get("cells")->arr.size() == 1);
 }
 
+// Plan 2.4: the occlusion bake is asked for with worldspawn iw8r_umbra_bake 1. Occluder boxes are written only for
+// brushes whose materials are known to be opaque: with no material library nothing is known, so nothing is written
+// and the build says so. Without the key the build does not mention the bake at all.
+TEST(compile_iw8_umbra_bake_key) {
+    Id next = 1;
+    std::string text = roomMapText();
+    const std::string mark = "\"classname\" \"worldspawn\"\n";
+    const size_t at = text.find(mark);
+    CHECK(at != std::string::npos);
+    if (at == std::string::npos) return;
+    std::string asked = text;
+    asked.insert(at + mark.size(), "\"iw8r_umbra_bake\" \"1\"\n");
+    for (int pass = 0; pass < 2; ++pass) {
+        ParseResult pr = parseMap(pass ? asked : text, next);
+        CHECK(pr.map.has_value());
+        if (!pr.map) return;
+        const std::string out = scratch(pass ? "room_occ" : "room_noocc");
+        CompileOptions opt;
+        opt.mapId = "mp_room";
+        CompileReport rep;
+        std::string err;
+        CHECK(compileIw8Extraction(*pr.map, out, opt, rep, &err));
+        bool okW = false;
+        const json::Value world = loadJson(pathsFor(out, "mp_room").world, okW);
+        CHECK(okW && world.get("umbra_occluders") == nullptr);
+        bool said = false;
+        for (const std::string& w : rep.warnings) said = said || w.find("occlusion bake: 0 occluder box(es)") != std::string::npos;
+        CHECK(said == (pass == 1));
+    }
+}
+
 // Tool faces are not rendered; a caulk-only brush is still solid; a trigger brush is not collision.
 TEST(compile_iw8_tool_faces_and_trigger_brushes) {
     const std::string text =

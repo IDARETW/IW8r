@@ -339,6 +339,25 @@ CompilePanel::CompilePanel(EditorContext* ctx, ToolPathFn toolPath, QWidget* par
         ctx_->doc.endGroup();
         ctx_->documentEdited(on ? "The build bakes lightmaps (worldspawn iw8r_bake_lightmaps 1)" : "The build makes no lightmap");
     });
+    occlusionBake_ = new QCheckBox("Occlusion bake", this);
+    occlusionBake_->setObjectName("compileOcclusionBake");
+    occlusionBake_->setToolTip("Worldspawn iw8r_umbra_bake: the build makes occlusion data from the map's opaque box brushes, so the game "
+                               "stops drawing what lies behind walls (faster on maps with rooms and streets). Off: the game hides nothing "
+                               "by occlusion, which always works. Checked offline only; not seen in game");
+    top->addWidget(occlusionBake_);
+    connect(occlusionBake_, &QCheckBox::toggled, this, [this](bool on) {
+        Entity* w = ctx_->doc.worldspawn();
+        if (!w) return;
+        const std::string* cur = w->value("iw8r_umbra_bake");
+        if ((cur && *cur == "1") == on) return;
+        const Id wid = w->id;
+        ctx_->doc.beginGroup(on ? "Occlusion bake on" : "Occlusion bake off");
+        if (on) ctx_->doc.setKeyValue(wid, "iw8r_umbra_bake", "1");
+        else ctx_->doc.removeKey(wid, "iw8r_umbra_bake");
+        ctx_->doc.endGroup();
+        ctx_->documentEdited(on ? "The build bakes occlusion from the opaque box brushes (worldspawn iw8r_umbra_bake 1)"
+                                : "The build makes no occlusion bake (the game hides nothing by occlusion)");
+    });
     auto* bakeSettings = new QPushButton("Bake Settings...", this);
     bakeSettings->setObjectName("compileBakeSettings");
     bakeSettings->setToolTip("The lightmap bake's sky colour and strength, texel size and sky rays (worldspawn iw8r_bake_sky, "
@@ -413,6 +432,11 @@ void CompilePanel::syncBakeLightmaps() {
     const std::string* v = w ? w->value("iw8r_bake_lightmaps") : nullptr;
     const QSignalBlocker block(bakeLightmaps_);
     bakeLightmaps_->setChecked(v && *v == "1");
+    if (occlusionBake_) {
+        const std::string* o = w ? w->value("iw8r_umbra_bake") : nullptr;
+        const QSignalBlocker blockO(occlusionBake_);
+        occlusionBake_->setChecked(o && *o == "1");
+    }
 }
 
 QString CompilePanel::buildRoot() const {

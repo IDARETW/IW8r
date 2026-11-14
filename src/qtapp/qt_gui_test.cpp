@@ -2878,6 +2878,25 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         } else {
             r.check(false, "the Compile panel has a Bake lightmaps checkbox");
         }
+        if (auto* occ = w.compilePanel() ? w.compilePanel()->findChild<QCheckBox*>("compileOcclusionBake") : nullptr) {
+            const auto key = [&] {
+                const Entity* ws = ctx.doc.worldspawn();
+                const std::string* v = ws ? ws->value("iw8r_umbra_bake") : nullptr;
+                return v ? *v : std::string();
+            };
+            const bool was = occ->isChecked();
+            occ->setChecked(true);
+            const std::string on = key();
+            occ->setChecked(false);
+            const std::string off = key();
+            ctx.doc.undo();
+            ctx.documentEdited();
+            const bool followsUndo = occ->isChecked();
+            occ->setChecked(was);
+            r.check(on == "1" && off.empty() && followsUndo, "Compile > Occlusion bake sets and clears worldspawn iw8r_umbra_bake and follows undo");
+        } else {
+            r.check(false, "the Compile panel has an Occlusion bake checkbox");
+        }
         if (CompilePanel* cp = w.compilePanel()) {
             // Compile > Bake Settings: the values go to worldspawn keys in one undo step; defaults remove the keys.
             const auto key = [&](const char* k) {

@@ -3072,6 +3072,39 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         warn.push_back(std::to_string(decalCount) + " decal volume(s) written (iw8r_decal; needs a converter with the decal producer, " +
                        "research 80 and 82; in-game look not verified)");
     const std::string decalsKey = decalCount ? ",\"decal_volumes\":[" + decalJson + "]" : std::string();
+    // The occlusion bake (worldspawn iw8r_umbra_bake 1, plan 2.4): the opaque box brushes of the world as occluder
+    // boxes; the converter cuts the map's free space into cells along them and joins the cells by portals, so the
+    // game's Umbra hides what lies behind them. Only axis-aligned boxes whose faces are all opaque (or caulk) count;
+    // anything else hides nothing. Without the key the converter writes its one-cell tome (nothing hidden by Umbra).
+    std::string occludersKey;
+    if (worldspawn && worldspawn->value("iw8r_umbra_bake") && *worldspawn->value("iw8r_umbra_bake") == "1") {
+        std::string boxes;
+        size_t count = 0, skewed = 0, open = 0;
+        for (const EdgeBrush& b : edgeData.brushes) {
+            if (!b.opaque) {
+                ++open;
+                continue;
+            }
+            bool isBox = b.planes.size() == 6 && b.bounds.valid();
+            for (const Plane& p : b.planes) {
+                const double m = std::max({std::fabs(p.n.x), std::fabs(p.n.y), std::fabs(p.n.z)});
+                if (m < 0.99999) isBox = false;
+            }
+            if (!isBox) {
+                ++skewed;
+                continue;
+            }
+            if (count) boxes += ",";
+            boxes += "[" + num(b.bounds.mins.x) + "," + num(b.bounds.mins.y) + "," + num(b.bounds.mins.z) + "," + num(b.bounds.maxs.x) + "," +
+                     num(b.bounds.maxs.y) + "," + num(b.bounds.maxs.z) + "]";
+            ++count;
+        }
+        if (count) occludersKey = ",\"umbra_occluders\":[" + boxes + "]";
+        warn.push_back("occlusion bake: " + std::to_string(count) + " occluder box(es) from the opaque box brushes (" + std::to_string(skewed) +
+                       " opaque brush(es) are not axis-aligned boxes and " + std::to_string(open) +
+                       " are not opaque: they hide nothing)" +
+                       (count ? "; needs a converter with umbra_occluders; not seen in game" : ": nothing to bake, the one-cell tome is written"));
+    }
     // The map's surface shader (worldspawn iw8r_surface_shader, core custom_shader): the converter compiles it into the
     // map's own surface shaders (needs the x64-zt converter with "iw8r_surface_shader"; plan M6).
     std::string surfaceShaderKey;
@@ -3094,7 +3127,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         ",\"sun\":{\"ambient\":[0.5,0.5,0.5],\"angles\":" + vec3raw(sunPitch, sunYaw, sunRoll) +
         ",\"color\":" + vec3raw(sunColor[0], sunColor[1], sunColor[2]) + ",\"intensity\":1}" +
         ",\"sun_primary_light_index\":1,\"primary_light_count\":" + std::to_string(primaryLightCount) +
-        ",\"reflection_probes\":[" + probeJson + "]" + modelsKey + gradingKey + volumesKey + decalsKey + surfaceShaderKey + lightmapKeys +
+        ",\"reflection_probes\":[" + probeJson + "]" + modelsKey + gradingKey + volumesKey + decalsKey + surfaceShaderKey + occludersKey + lightmapKeys +
         ",\"dpvs\":{\"planes\":[],\"nodes\":[1],\"cells\":[{\"bounds\":" + cellBoundsJson +
         ",\"portals\":[],\"reflection_probes\":[" + probeIndexJson + "],\"surfaces\":[" + idxAll + "],\"models\":[" +
         modelIndexJson + "],\"trees\":[{\"bounds\":" + boundsJson + ",\"surfaces\":[" + idxAll + "],\"models\":[" +

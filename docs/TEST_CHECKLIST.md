@@ -424,6 +424,15 @@ Zone, then install.)
 - [ ] The same map built with Bake lightmaps **on**: corners and covered places are darker, as View > Game Lighting
       shows it with the key on.
 
+## In game (optional, 2026-11-14): the occlusion bake
+
+Only if you want the extra speed on a map with rooms. Compile > Occlusion bake on, build, play.
+
+- [ ] The map loads and nothing is missing from any spot (walk through doors, look along streets, look over walls
+      from high places, spectate).
+- [ ] If anything disappears, turn Occlusion bake off and build again: the map is then as before. Tell me where it
+      happened.
+
 ## What is not expected to work yet
 
 Decal volumes, volumetrics, custom music states, custom fonts and LUI (research 36) (docs/ROADMAP.md lists every

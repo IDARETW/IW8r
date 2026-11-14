@@ -264,7 +264,10 @@ collections; surface ids on displaced terrain.
   change by the owner.
 - **Stale text to fix:** CHANGELOG :66-68, ROADMAP 11.5, `main_window_stock_edit.cpp:314-315`.
 
-**2.4 A real occlusion bake for custom maps.**
+**2.4 A real occlusion bake for custom maps.** DONE 2026-11-14 as an opt-in (research 118: cells and portals from
+the opaque box brushes, the conservativeness test, a real build read back). Open: non-box occluders and models as
+occluders, the per-brush occluder key, gates, the world's merged surfaces (they limit what can be hidden), and the
+in-game look.
 - **Bake.** Voxelize the occluders (opaque structural brushes, large models with collection flag 128). Flood the empty
   space into cells and portals per tile, and encode a multi-tile tome with real per-object bounds.
 - **Where the code goes.** The bake algorithm goes in core `src/core/umbra_bake.*`, which emits a neutral description.

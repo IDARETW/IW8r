@@ -5,6 +5,16 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Occlusion bake for your own maps (off by default).** Compile > Occlusion bake (worldspawn `iw8r_umbra_bake 1`)
+  makes the build give the map real occlusion data: the free space is cut into cells along the map's opaque box
+  brushes, the cells are joined by portals, and the game's Umbra then stops drawing what lies in cells it cannot
+  reach. Without it the map keeps the data that hides nothing, which is what every build so far has used. Checked
+  offline: the data passes the same checks as the stock maps' own, a ray test over sixteen rooms never finds an
+  object that a straight line reaches but the bake hides (472 sightings, 0 missed, half the objects hidden), and a
+  real build of Cinder Rail loads in the game's loaders. On Cinder Rail it hides little (the world is a few large
+  merged surfaces); maps of closed rooms gain most. **Not seen in game: leave it off for a map you need to rely on**
+  (research 118).
+
 - **Brushes added to a stock map are lit like the game lights models there.** The game builds such brushes as a
   model and (by what the game's data shows) lights models from the map's own light grid: tens of thousands of
   measured light probes joined into tetrahedra. View > Game Lighting now reads that grid (Shipment: 223,432 probes,

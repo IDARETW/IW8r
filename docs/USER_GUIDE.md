@@ -287,6 +287,11 @@ Commands in the Tools menu:
   also aimed at the sun painted in that sky, in the same undo step.
 - **Compass**: the compass north is the top of the XY view (+Y). Builds write worldspawn `northyaw 90` unless the map
   sets its own, so the game's north matches the editor's.
+- **Occlusion bake** (Compile panel, off by default): the build cuts the map's free space into cells along its
+  opaque box brushes, and the game then skips what lies in cells the camera cannot see into. It helps maps with
+  rooms, corridors and closed streets; an open map gains little. Only brushes that are axis-aligned boxes with opaque
+  materials hide anything. It is checked offline only: if something is missing in the game with it on, turn it off
+  and build again.
 - **Compile > Atmosphere**: exponential fog (start, halfway distance, colour; previewed in the camera, View > Fog
   Preview) and a film grade. Exposure is in **Map Info** on the Compile panel, with title, description, compass and
   minimap settings.

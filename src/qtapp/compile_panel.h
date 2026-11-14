@@ -191,6 +191,7 @@ private:
     class QCheckBox* stockTextures_ = nullptr;
     // Worldspawn iw8r_bake_lightmaps (5.11): checked = the build bakes the world's lightmap.
     class QCheckBox* bakeLightmaps_ = nullptr;
+    class QCheckBox* occlusionBake_ = nullptr;  // worldspawn iw8r_umbra_bake (plan 2.4)
     void syncBakeLightmaps();
     QString lastInstalled_, lastBackup_;  // for undoDeploy
 };
