@@ -1,4 +1,5 @@
 // IW8 Radiant Suite - native IW8 map compiler front end. Contract: docs/research/15_iw8_extraction_contract.md.
+#include "custom_shader.h"
 #include "ies_profiles.h"
 #include "compile_iw8.h"
 #include "game_modes.h"
@@ -20,6 +21,7 @@
 #include "atmosphere.h"
 #include "map_script.h"
 #include "iw8_contents.h"
+#include "sky_sun.h"
 #include "minimap.h"
 #include "model_import.h"
 #include "convex_hull.h"
@@ -2346,6 +2348,26 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             SkyConvertOptions so;
             so.faceSize = opt.skyFaceSize;
             SkyConvertInfo si;
+            // The sky turned as the game turns a stock map's (worldspawn skyrotation), else so that its sun is on the
+            // map sun's yaw (the game draws a converted sky unturned).
+            double skyRot[3] = {0, 0, 0};
+            bool skyRotAuto = false;
+            if (const std::string* sr = worldspawn->value("skyrotation"); sr && parseVec3Text(*sr, skyRot)) {
+            } else if (!opt.skyDdsPath.empty() && !name.empty() && readFile(opt.skyDdsPath, src)) {
+                const auto skySun = sunFromSkyDds(src);
+                skyRot[1] = autoSkyRotationYaw(skySun, sunYaw);
+                skyRotAuto = true;
+                if (skySun && skySun->contrast >= 1.6) {
+                    const double skyUp = std::asin(std::clamp(skySun->dir.z, -1.0, 1.0)) * 180.0 / 3.14159265358979323846;
+                    const double mapUp = -sunPitch;
+                    if (std::fabs(skyUp - mapUp) > 10)
+                        warn.push_back("sky '" + *sk + "': its sun is " + formatNumber(std::round(skyUp)) + " degrees up, the map's sun " +
+                                       formatNumber(std::round(mapUp)) + " (sundirection pitch " + formatNumber(sunPitch) +
+                                       "): shadows fall from a different height than the sky shows; Compile > Sun From Sky lines them up "
+                                       "(it aims sundirection at the sky's sun)");
+                }
+            }
+            for (int k = 0; k < 3; ++k) so.rotation[k] = float(skyRot[k]);
             if (opt.skyDdsPath.empty()) {
                 warn.push_back("worldspawn " + std::string(key) + " '" + *sk +
                                "' not written: no sky image was provided (the converter needs images/" + name +
@@ -2365,6 +2387,9 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                                   si.sourceWidth, si.sourceHeight, si.hdr ? "HDR" : "LDR", si.sourceDxgiFormat, si.faceSize,
                                   si.exposure, si.meanLuminance, si.highLuminance);
                 skyNote = note;
+                if (skyRot[0] != 0 || skyRot[1] != 0 || skyRot[2] != 0)
+                    skyNote += ", turned " + formatNumber(skyRot[1]) + " degrees" +
+                               (skyRotAuto ? " (its sun on the map sun's yaw)" : " (worldspawn skyrotation)");
             }
             break;
         }
@@ -2950,12 +2975,28 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         warn.push_back(std::to_string(decalCount) + " decal volume(s) written (iw8r_decal; needs a converter with the decal producer, " +
                        "research 80 and 82; in-game look not verified)");
     const std::string decalsKey = decalCount ? ",\"decal_volumes\":[" + decalJson + "]" : std::string();
+    // The map's surface shader (worldspawn iw8r_surface_shader, core custom_shader): the converter compiles it into the
+    // map's own surface shaders (needs the x64-zt converter with "iw8r_surface_shader"; plan M6).
+    std::string surfaceShaderKey;
+    if (const std::string* sname = worldspawn ? worldspawn->value("iw8r_surface_shader") : nullptr; sname && !sname->empty()) {
+        std::vector<std::string> dirs;
+        if (!opt.mapDir.empty()) dirs.push_back(opt.mapDir + "/shaders");
+        dirs.insert(dirs.end(), opt.shaderDirs.begin(), opt.shaderDirs.end());
+        CustomShader shader;
+        std::string serr;
+        if (findCustomShader(*sname, dirs, shader, &serr)) {
+            surfaceShaderKey = ",\"iw8r_surface_shader\":" + quote(customShaderBuildSource(shader));
+            warn.push_back("surface shader '" + shader.name + "' lights the map's own surfaces (custom shader; in-game look not verified)");
+        } else {
+            warn.push_back("surface shader not used: " + serr);
+        }
+    }
     const std::string world =
         "{\"schema\":1,\"name\":" + quote(mapName) + ",\"sky\":" + quote(skyValue) + ",\"bounds\":" + boundsJson +
         ",\"sun\":{\"ambient\":[0.5,0.5,0.5],\"angles\":" + vec3raw(sunPitch, sunYaw, sunRoll) +
         ",\"color\":" + vec3raw(sunColor[0], sunColor[1], sunColor[2]) + ",\"intensity\":1}" +
         ",\"sun_primary_light_index\":1,\"primary_light_count\":" + std::to_string(primaryLightCount) +
-        ",\"reflection_probes\":[" + probeJson + "]" + modelsKey + gradingKey + volumesKey + decalsKey + lightmapKeys +
+        ",\"reflection_probes\":[" + probeJson + "]" + modelsKey + gradingKey + volumesKey + decalsKey + surfaceShaderKey + lightmapKeys +
         ",\"dpvs\":{\"planes\":[],\"nodes\":[1],\"cells\":[{\"bounds\":" + cellBoundsJson +
         ",\"portals\":[],\"reflection_probes\":[" + probeIndexJson + "],\"surfaces\":[" + idxAll + "],\"models\":[" +
         modelIndexJson + "],\"trees\":[{\"bounds\":" + boundsJson + ",\"surfaces\":[" + idxAll + "],\"models\":[" +

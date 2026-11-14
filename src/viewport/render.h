@@ -170,6 +170,7 @@ struct GeoStream : GeoStreamBase {
 struct SceneBatch : GeoStream<GpuTexVertex> {
     int key = 0;
     int texture = -1, normalTexture = -1, emissiveTexture = -1;
+    int shader = -1;  // SceneRenderer::createCustomShader id of the material's custom shader (Game Lighting), -1 none
     int blend = 0;
     bool sway = false;
     float baseZ = 0;
@@ -220,6 +221,10 @@ public:
     void releaseTextures();
     // 3.20 texture memory budget: GPU bytes of the textures made so far (with their mip chains).
     size_t textureBytes() const { return textureBytes_; }
+    // A map's custom surface shader (core custom_shader): the textured pixel shader with the shader's iw8rSurface for
+    // the Game Lighting colour. Returns its id (>= 0) or -1 with *err (the compiler's message).
+    int createCustomShader(const std::string& source, std::string* err);
+    static const char* texShaderSource();  // the base the custom shaders are made from
     // Video memory the renderer holds, by kind (MB): "props a+b world c extras d streams e textures f lightmaps g
     // probes h shadows i targets j". Windows charges video memory to the process's commit, so this is part of what
     // the bench's memory.log shows.
@@ -876,6 +881,7 @@ private:
     ID3D11BlendState* blendMul_ = nullptr;  // dst x src colour: stock layers in colour mode multiply
     ID3D11VertexShader* vsTex_ = nullptr;
     ID3D11PixelShader* psTex_ = nullptr;
+    std::vector<ID3D11PixelShader*> customPs_;  // createCustomShader
     ID3D11PixelShader* psShadowClip_ = nullptr;  // sun shadow pass: alpha-test clip of textured batches
     ID3D11PixelShader* psPrepass_ = nullptr;     // depth pre-pass: the shading pass's cut-outs and terrain cut
     // Game Lighting ambient occlusion (screen space, from the pre-pass depth; research 95 "GTAO"): the depth's shader

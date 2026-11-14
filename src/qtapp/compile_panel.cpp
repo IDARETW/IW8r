@@ -652,6 +652,11 @@ bool CompilePanel::runExtraction() {
     CompileOptions opt;
     opt.mapId = mapId().toStdString();
     if (!ctx_->doc.path().empty()) opt.mapDir = QFileInfo(qs(ctx_->doc.path())).absolutePath().toStdString();
+    {
+        QDir d(QCoreApplication::applicationDirPath());
+        for (int up = 0; up < 3 && !QFileInfo::exists(d.filePath("data/shaders")); ++up) d.cdUp();
+        opt.shaderDirs.push_back(d.filePath("data/shaders").toStdString());
+    }
     for (const QString& r : PrefabBrowser::searchRoots()) opt.prefabRoots.push_back(r.toStdString());
     // Prefab bundles: what this build can provide (features, and the stock catalogue their required names are checked
     // against), and the bundles' own material and model folders, which join the mapper's folders for this build.

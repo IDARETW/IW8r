@@ -5,6 +5,25 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-13
 
+- **Custom shaders for your maps.** A map (worldspawn `iw8r_surface_shader`) or a single material (`"shader"` in its
+  definition) can light its surfaces with your own shader function: `<map folder>/shaders/<name>.iw8shader.hlsl` or
+  the editor's `data/shaders`. The same code runs in the viewport (Game Lighting) and in the built map. Example: a
+  toon (anime cel) shader, `toon`, with flat light tones, cool shade and sharp borders (research 114).
+- **Toon ink outlines.** Tools > Toon Ink Outlines draws thin black ink strips along the hard edges of the selected
+  brushes (all world brushes when nothing is selected). They are ordinary brushes in one func_group, with no
+  collision, using an unlit ink material written into the map's materials folder. Seams between flush brushes are
+  left out. Running it again replaces the old outlines.
+- **Example: Cinder Rail (Toon).** A copy of Cinder Rail with the toon shader, 7,805 ink strips and its sun matched to
+  its sky. It builds and passes validation. Not seen in game since these fixes.
+- **The sky's sun lines up with the map's sun.** A map without `skyrotation` now has its sky turned so the painted
+  sun is where the light comes from, in the build and the viewport. The build warns when the sky's sun sits higher
+  or lower than the map's sun. Compile > Sun From Sky now keeps your sun's yaw and takes only the sky sun's height.
+- **Toon surfaces no longer wash out in game.** With a custom shader the build no longer adds its own sun and probe
+  shine on top (the viewport never did).
+- **Pink containers fixed.** Material constants stored as raw bits were read byte-reversed (research 113).
+- **Docking library rebuilt.** A failed build had left `qtadvanceddocking.dll` corrupt; it is rebuilt and every DLL in
+  the release folder checked.
+
 - **The sky is turned as in game.** The stock sky images were read transposed and mirrored, and the map's own sky
   rotation (worldspawn `skyrotation`, the same angle as its sun) was ignored; both now follow the game's sky shaders,
   so the clouds sit where you see them in game (owner-confirmed on Speedball). Sun From Sky also uses the rotation.

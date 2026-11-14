@@ -74,4 +74,19 @@ std::optional<SkySun> sunFromSkyDds(const std::string& dds, std::string* err) {
     return sunFromSkyCube(cube);
 }
 
+double autoSkyRotationYaw(const std::string& dds, double sunYaw, double* imageSunYaw) {
+    return autoSkyRotationYaw(sunFromSkyDds(dds), sunYaw, imageSunYaw);
+}
+
+double autoSkyRotationYaw(const std::optional<SkySun>& s, double sunYaw, double* imageSunYaw) {
+    double image = 0;
+    if (s && s->contrast >= 1.6 && (s->dir.x != 0 || s->dir.y != 0))
+        image = std::atan2(s->dir.y, s->dir.x) * 180.0 / 3.14159265358979323846;
+    if (imageSunYaw) *imageSunYaw = image;
+    double r = std::fmod(sunYaw - image, 360.0);
+    if (r > 180) r -= 360;
+    if (r <= -180) r += 360;
+    return r;
+}
+
 }  // namespace iw8r

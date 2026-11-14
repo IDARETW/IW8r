@@ -107,6 +107,9 @@ struct CompileOptions {
     int modelCollisionMaxPlanes = 24;   // planes per piece; a larger hull is simplified (simplifyHull)
     // Folder of the source map: relative worldspawn paths (iw8r_lut) resolve against it. Empty: the working folder.
     std::string mapDir;
+    // Where a worldspawn "iw8r_surface_shader" is looked for after <mapDir>/shaders (core custom_shader): the
+    // editor's data/shaders. The shader goes to the converter in the world JSON, which lights the map with it.
+    std::vector<std::string> shaderDirs;
     // Captured reflection probes (5.5, Compile > Capture Reflection Probes): <dir>/probe<N>.rgba holds six 64x64 RGBA
     // faces (D3D cube face order, world Z-up directions as the converter samples them) and <dir>/probe<N>.pos the
     // "x y z" it was captured at. A capture whose position differs from the probe's by more than one unit is ignored

@@ -67,6 +67,7 @@
 #include "command_palette.h"
 #include "tod_presets.h"
 #include "iw8_contents.h"
+#include "toon_outline.h"
 #include "asset_info.h"
 #include "compile_iw8.h"
 #include "main_window.h"
@@ -284,6 +285,15 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     connect(matCache_, &MaterialCache::materialReady, this, [this](const QString&) { camera_->materialImagesChanged(); });
     camera_->setToolPathSource([this](const QString& k) { return toolPath(k); });
     connect(matCache_, &MaterialCache::progress, this, [this](const QString& m) { ctx_.setStatus(m); });
+    // A map material's custom surface shader (core custom_shader, "shader" in its .iw8mat.json).
+    // Else the map's own surface shader (worldspawn "iw8r_surface_shader": a name looked up as
+    // <map folder>/shaders/<name>.iw8shader.hlsl, then the editor's data/shaders), for every material but tool ones.
+    camera_->setCustomShaderLookup([this](const std::string& m) -> std::shared_ptr<const CustomShader> {
+        const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr;
+        if (cm && cm->shader) return cm->shader;
+        if (isIw8ToolMaterial(m)) return nullptr;
+        return mapSurfaceShader();
+    });
     camera_->setCustomTintSource([this](const std::string& m) -> std::optional<std::array<double, 3>> {
         const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr;
         if (!cm || !cm->hasTint()) return std::nullopt;
@@ -3677,6 +3687,16 @@ void MainWindow::buildMenus() {
                        (res.warnings.isEmpty() ? QString() : " (" + res.warnings.join("; ") + ")"));
         editCustomMaterial(name);
     });
+    addCommand(tools, "ToonInkOutlines", "Toon Ink Outlines (hard brush edges)...", QKeySequence(), [this] {
+        // M6: cel-shaded maps (iw8r_surface_shader "toon") get their outlines as geometry; the game's lit pass has no
+        // depth to find edges in (research 114).
+        bool ok = false;
+        const double w = QInputDialog::getDouble(this, "Toon Ink Outlines",
+                                                 "Ink strips along the hard edges of the selected brushes (all world brushes "
+                                                 "when nothing is selected).\nStrip width (units):",
+                                                 2.0, 0.25, 16.0, 2, &ok);
+        if (ok) generateInkOutlines(w);
+    });
     addCommand(tools, "AdjustImage", "Adjust Image (brightness, tint, resize, normal map from height)...", QKeySequence(), [this] {
         // 12.4: a custom material's image (or any PNG / TGA / JPG) adjusted and saved as a new PNG.
         QString saved;
@@ -4838,12 +4858,19 @@ QString MainWindow::sunFromSky(bool automatic) {
     // The sky as the game turns it (worldspawn skyrotation, pitch yaw roll): the stock sky images hold their sun at yaw 0
     // and the stock maps set skyrotation to their sun's yaw (shipment -15.4, hideout -46, rust -20).
     Vec3 dir = s->dir;
-    if (const std::string* r = ws->value("skyrotation")) {
-        double a[3] = {0, 0, 0};
-        if (std::sscanf(r->c_str(), "%lf %lf %lf", &a[0], &a[1], &a[2]) >= 2) {
-            const auto ax = anglesToAxis(Vec3{a[0], a[1], a[2]});
-            dir = normalize(ax[0] * s->dir.x + ax[1] * s->dir.y + ax[2] * s->dir.z);
-        }
+    double a[3] = {0, 0, 0};
+    const std::string* r = ws->value("skyrotation");
+    if (!r || std::sscanf(r->c_str(), "%lf %lf %lf", &a[0], &a[1], &a[2]) < 2) {
+        // No skyrotation: the build and the preview turn the sky so its sun is on the map sun's yaw (core sky_sun), so
+        // the sun keeps its yaw and takes the sky sun's height.
+        double p = 0, y = 45;  // the build's default sundirection -50 45 0
+        if (const std::string* d = ws->value("sundirection")) std::sscanf(d->c_str(), "%lf %lf", &p, &y);
+        a[0] = a[2] = 0;
+        a[1] = autoSkyRotationYaw(s, y);
+    }
+    {
+        const auto ax = anglesToAxis(Vec3{a[0], a[1], a[2]});
+        dir = normalize(ax[0] * s->dir.x + ax[1] * s->dir.y + ax[2] * s->dir.z);
     }
     const std::string key = sunDirectionKeyFor(dir);
     const std::string* cur = ws->value("sundirection");
@@ -5865,6 +5892,37 @@ size_t MainWindow::exportReferenceBrushes() {
     return n;
 }
 
+size_t MainWindow::generateInkOutlines(double width) {
+    if (ctx_.doc.path().empty()) {
+        ctx_.setStatus("Toon Ink Outlines: save the map first (the ink material goes into its materials folder)");
+        return 0;
+    }
+    QString err;
+    bool written = false;
+    if (!writeInkMaterial(customMaterialRoots().front(), &written, &err)) {
+        ctx_.setStatus("Toon Ink Outlines: " + err);
+        return 0;
+    }
+    if (written) reloadCustomAssets();
+    InkOptions opt;
+    opt.width = width;
+    const InkResult r = applyInkOutlines(ctx_.doc, opt);
+    if (!r.strips) {
+        ctx_.setStatus(QString("Toon Ink Outlines: no hard edges on %1 brush(es)").arg(r.brushes));
+        return 0;
+    }
+    ctx_.scene.invalidate();
+    ctx_.documentEdited(QString("Toon Ink Outlines: %1 strip(s) %2 units wide along the hard edges of %3 brush(es)%4%5%6 "
+                                "(unlit iw8r_ink, no collision, a func_group; one undo step)")
+                            .arg(r.strips)
+                            .arg(width)
+                            .arg(r.brushes)
+                            .arg(r.fromSelection ? " in the selection" : "")
+                            .arg(r.replaced ? ", replacing the earlier outlines" : "")
+                            .arg(r.capped ? ", stopped at the strip limit: select fewer brushes" : ""));
+    return r.strips;
+}
+
 size_t MainWindow::exportReferenceRegion() {
     if (!stockWorld_) {
         ctx_.setStatus("Stock Reference to Model: load a stock map reference first (View > Stock Map Reference)");
@@ -6848,6 +6906,39 @@ void MainWindow::invalidateSceneSoon() {
         ctx_.scene.invalidate();
         ctx_.cameraMoved();
     });
+}
+
+std::shared_ptr<const CustomShader> MainWindow::mapSurfaceShader() {
+    const Entity* ws = nullptr;
+    for (const auto& e : ctx_.doc.map().entities)
+        if (e.isWorldspawn()) {
+            ws = &e;
+            break;
+        }
+    const std::string* name = ws ? ws->value("iw8r_surface_shader") : nullptr;
+    if (!name || name->empty()) return nullptr;
+    QStringList candidates;
+    const QString file = qs(*name).endsWith(".hlsl") ? qs(*name) : qs(*name) + ".iw8shader.hlsl";
+    if (!ctx_.doc.path().empty()) candidates << QFileInfo(qs(ctx_.doc.path())).absoluteDir().filePath("shaders/" + file);
+    {
+        QDir d(QCoreApplication::applicationDirPath());
+        for (int up = 0; up < 3 && !QFileInfo::exists(d.filePath("data/shaders")); ++up) d.cdUp();
+        candidates << d.filePath("data/shaders/" + file);
+    }
+    for (const QString& c : candidates) {
+        const QFileInfo fi(c);
+        if (!fi.exists()) continue;
+        const QString stamp = c + "|" + QString::number(fi.lastModified().toMSecsSinceEpoch());
+        if (stamp == mapShaderStamp_) return mapShader_;
+        auto shader = std::make_shared<CustomShader>();
+        std::string err;
+        mapShaderStamp_ = stamp;
+        mapShader_.reset();
+        if (readCustomShader(c.toStdString(), *shader, &err)) mapShader_ = shader;
+        else ctx_.setStatus("Map surface shader: " + qs(err));
+        return mapShader_;
+    }
+    return nullptr;
 }
 
 bool MainWindow::propLightFor(const PropLightKey& k, float out[12]) const {

@@ -1,10 +1,12 @@
 // IW8 Radiant Suite (Qt shell) - Direct3D 11 3D camera view in a native child window.
 #pragma once
 
+#include <map>
 #include <algorithm>
 
 #include <memory>
 
+#include "custom_shader.h"
 #include "game_fog.h"
 #include "stock_probes.h"
 #include "stock_layered_material.h"
@@ -41,6 +43,11 @@ struct GtsoLut;  // game_look_assets.h
 class CameraView : public QWidget {
     Q_OBJECT
 public:
+    // A map material's custom surface shader (core custom_shader), or null: compiled into the Game Lighting viewport.
+    void setCustomShaderLookup(std::function<std::shared_ptr<const CustomShader>(const std::string&)> fn) { shaderLookup_ = std::move(fn); }
+    int customShaderFor(const std::string& material);
+    // The last compile error of a custom shader ("" = none), for the status bar and the Check Map report.
+    const std::string& customShaderError() const { return customShaderError_; }
     CameraView(EditorContext* ctx, ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* parent = nullptr);
     ~CameraView() override;
     QPaintEngine* paintEngine() const override { return nullptr; }
@@ -537,6 +544,8 @@ private:
     // 12.6: a custom material's tint (r, g, b multipliers; nullopt = none), so the camera shows what the build makes.
     std::function<std::optional<std::array<double, 3>>(const std::string& material)> customTint_;
     std::function<QString()> skySource_;
+    QString skyAutoKey_;     // sky path | sun yaw of skyAutoYaw_
+    float skyAutoYaw_ = 0;   // core autoSkyRotationYaw for a map without skyrotation
     QString skyPath_;
     float skyExposure_ = 0, skyMeanLum_ = 0, skyHighLum_ = 0;  // the 8-bit sky preview = HDR sky x this (sky_image.h auto exposure); 0 = LDR source
     std::vector<int> skyTex_;  // six face textures (D3D order)
@@ -573,6 +582,9 @@ private:
     std::string gameStockMap_;
     bool stockSunKnown_ = false;
     GameFog stockFog_;
+    std::function<std::shared_ptr<const CustomShader>(const std::string&)> shaderLookup_;
+    std::map<std::string, int> customShaderIds_;  // path + code -> createCustomShader id (-1: failed to compile)
+    std::string customShaderError_;
     GameFogRefdef stockFogRefdef_{};  // the game's fog from the same vision (core game_fog, research 111)
     GamePostFx stockPostFx_;  // the stock map's veil and vignette (research 109)
     double stockSkyIntensity_ = 0;

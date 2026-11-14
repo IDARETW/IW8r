@@ -370,6 +370,16 @@ Separate maps (also built):
 - [ ] Quarry with copied loot rocks, doors and an extraction site (File > Edit Placed Objects): they work like the
       originals; a deleted door is gone.
 
+## In game (optional, 2026-11-13): Cinder Rail (Toon), rebuilt after your shots
+
+Map project out/agent/mp_cinderrail_toon (built as mp_cinderrail_t).
+
+- [ ] Sunlit walls keep their colour (no white wash-out), shade is a flat darker, slightly cool tone with a sharp
+      border, and the ground is not grey.
+- [ ] Black ink lines run along building corners, roof edges and window frames, and you can walk and shoot through
+      them as if they were not there.
+- [ ] The bright sun in the sky is where the shadows come from (the sun is now 20 degrees up, like the sky's).
+
 ## What is not expected to work yet
 
 Decal volumes, volumetrics, custom music states, custom fonts and LUI (research 36) (docs/ROADMAP.md lists every

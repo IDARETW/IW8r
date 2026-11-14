@@ -11,6 +11,7 @@
 #include <QTimerEvent>
 #include "tool_commands.h"
 #include "sky_image.h"
+#include "sky_sun.h"
 #include "prefab.h"
 #include "scriptable_catalog.h"
 #include "asset_browser.h"
@@ -571,12 +572,27 @@ void CameraView::render() {
         // The map's sky rotation (worldspawn skyrotation; stock maps: from their entity string) is part of the key: the
         // entity string may arrive after the sky image.
         float skyRot[3] = {0, 0, 0};
+        bool skyRotSet = false;
+        float sunYaw = 45;  // the build's default sundirection -50 45 0
         for (const auto& e : ctx_->doc.map().entities)
             if (e.isWorldspawn()) {
-                if (const std::string* r = e.value("skyrotation")) std::sscanf(r->c_str(), "%f %f %f", &skyRot[0], &skyRot[1], &skyRot[2]);
+                if (const std::string* r = e.value("skyrotation"))
+                    skyRotSet = std::sscanf(r->c_str(), "%f %f %f", &skyRot[0], &skyRot[1], &skyRot[2]) >= 2;
+                float p = 0, y = 0;
+                if (const std::string* d = e.value("sundirection"); d && std::sscanf(d->c_str(), "%f %f", &p, &y) == 2) sunYaw = y;
                 break;
             }
         const QString sky = skySource_();
+        // No skyrotation: the build turns the sky so its sun is on the map sun's yaw (core sky_sun); the preview does too.
+        if (!skyRotSet && !sky.isEmpty()) {
+            const QString autoKey = sky + QString("|%1").arg(sunYaw);
+            if (autoKey != skyAutoKey_) {
+                skyAutoKey_ = autoKey;
+                std::string bytes;
+                skyAutoYaw_ = readFile(sky.toStdString(), bytes) ? float(autoSkyRotationYaw(bytes, sunYaw)) : 0.0f;
+            }
+            skyRot[1] = skyAutoYaw_;
+        }
         const QString skyKey = sky.isEmpty() ? QString() : sky + QString("|%1 %2 %3").arg(skyRot[0]).arg(skyRot[1]).arg(skyRot[2]);
         if (skyKey != skyPath_) {
             skyPath_ = skyKey;
@@ -628,6 +644,8 @@ void CameraView::render() {
             ctx_->scene.normalFor = [this](const std::string& m) { return normalFor(m); };
         ctx_->scene.emissiveFor = ctx_->texturedView && emissiveLookup_ ? std::function<int(const std::string&)>([this](const std::string& m) { return emissiveFor(m); })
                                                                          : std::function<int(const std::string&)>();
+        ctx_->scene.shaderFor = shaderLookup_ ? std::function<int(const std::string&)>([this](const std::string& m) { return customShaderFor(m); })
+                                              : std::function<int(const std::string&)>();
         // The kept geometry is brought up to date item by item (scene.h CameraGeometry); geomDirty_ (textures still
         // arriving, a changed material image, a capture) makes everything again.
         if (!texFn_) texFn_ = [this](const std::string& m) { return textureFor(m); };
@@ -1448,6 +1466,23 @@ void CameraView::updateReflectionProbe() {
         renderer_.setReflectionProbe(reinterpret_cast<const uint8_t*>(bytes.data()), 64);
     else
         renderer_.setReflectionProbe(nullptr, 0);
+}
+
+int CameraView::customShaderFor(const std::string& material) {
+    if (!shaderLookup_ || !rendererOk_) return -1;
+    const std::shared_ptr<const CustomShader> shader = shaderLookup_(material);
+    if (!shader) return -1;
+    const std::string key = shader->path + '\n' + shader->code;
+    if (const auto it = customShaderIds_.find(key); it != customShaderIds_.end()) return it->second;
+    std::string err;
+    const std::string src = customShaderViewportSource(app::SceneRenderer::texShaderSource(), "float4 ps_tex(PSIn i) : SV_TARGET {", *shader);
+    const int id = src.empty() ? -1 : renderer_.createCustomShader(src, &err);
+    customShaderIds_[key] = id;
+    if (id < 0) {
+        customShaderError_ = shader->name + ": " + (err.empty() ? std::string("cannot be built into the viewport shader") : err);
+        if (ctx_) emit ctx_->statusMessage(QString::fromStdString("Custom shader " + customShaderError_));
+    }
+    return id;
 }
 
 int CameraView::emissiveFor(const std::string& material) {

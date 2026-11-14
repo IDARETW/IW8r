@@ -1042,8 +1042,17 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 c += dSum + sSum;
             }
         } else {
+#ifdef IW8R_CUSTOM
+            // A custom surface shader (core custom_shader): the map's own lighting function.
+            IW8RSurface s;
+            s.albedo = albedo, s.alpha = outA, s.normal = N, s.view = normalize(eyeStart.xyz - i.w), s.position = i.w;
+            s.uv = i.uv, s.sunDir = gameSun.xyz, s.sunColor = gameSunCol.rgb, s.sunShadow = visibility;
+            s.ambient = indirect * aoV, s.gloss = 0.3;
+            c = iw8rSurface(s);
+#else
             float3 light = indirect * aoV + visibility * saturate(dot(N, gameSun.xyz)) * gameSunCol.rgb;
             c = albedo * light;
+#endif
         }
         // Local lights (LocalLighting): colour x game intensity / d^2 x w^2 (3 - 2w), w = (1 - d / r) x spot cone;
         // specular as the iw3 style's (F0 .04, gloss .3).
@@ -1332,6 +1341,8 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(cbLights_);
     safeRelease(cbGame_);
     safeRelease(cbVol_);
+    for (auto*& ps : customPs_) safeRelease(ps);
+    customPs_.clear();
     for (int k = 0; k < 3; ++k) safeRelease(gameLmSrv_[k]), safeRelease(gameLmTex_[k]);
     safeRelease(gameLutSrv_);
     safeRelease(gameLutTex_);
@@ -1393,6 +1404,30 @@ void SceneRenderer::releaseTextures() {
     textures_.clear();
     textureBytes_ = 0;
 }
+
+int SceneRenderer::createCustomShader(const std::string& source, std::string* err) {
+    if (!dev_) return -1;
+    ID3DBlob* blob = nullptr;
+    ID3DBlob* errb = nullptr;
+    const HRESULT hr = D3DCompile(source.data(), source.size(), "iw8r_custom", nullptr, nullptr, "ps_tex", "ps_5_0", 0, 0, &blob, &errb);
+    if (FAILED(hr)) {
+        if (err) *err = errb ? std::string(static_cast<const char*>(errb->GetBufferPointer()), errb->GetBufferSize()) : "D3DCompile failed";
+        safeRelease(errb);
+        return -1;
+    }
+    safeRelease(errb);
+    ID3D11PixelShader* ps = nullptr;
+    const HRESULT ch = dev_->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &ps);
+    safeRelease(blob);
+    if (FAILED(ch)) {
+        if (err) *err = "CreatePixelShader failed";
+        return -1;
+    }
+    customPs_.push_back(ps);
+    return int(customPs_.size()) - 1;
+}
+
+const char* SceneRenderer::texShaderSource() { return kTexShader; }
 
 int SceneRenderer::createTextureBlocks(int dxgiFormat, int width, int height, const std::vector<std::string>& levels) {
     if (!dev_ || levels.empty() || width < 4 || height < 4) return -1;
@@ -4335,6 +4370,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             }
             drawOrder_[at] = uint32_t(k);
         }
+        ID3D11PixelShader* boundTexPs = psTex_;
         for (uint32_t k : drawOrder_) {
             const SceneBatch& b = *drawList_[k].b;
             StreamGpu& g = *drawList_[k].g;
@@ -4346,6 +4382,12 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 ctx_->OMSetBlendState(b.blend == 2 && blendAdd_ ? blendAdd_ : blend_, bf, 0xffffffff);
             }
             ctx_->PSSetShaderResources(0, 1, &textures_[size_t(b.texture)]);
+            // The material's custom shader in Game Lighting (createCustomShader), else the editor's own.
+            {
+                ID3D11PixelShader* want = game_.on && b.shader >= 0 && size_t(b.shader) < customPs_.size() && customPs_[size_t(b.shader)]
+                                              ? customPs_[size_t(b.shader)] : psTex_;
+                if (want != boundTexPs) ctx_->PSSetShader(want, nullptr, 0), boundTexPs = want;
+            }
             const bool hasNormal = b.normalTexture >= 0 && size_t(b.normalTexture) < textures_.size();
             ID3D11ShaderResourceView* nsrv = hasNormal ? textures_[size_t(b.normalTexture)] : nullptr;
             ctx_->PSSetShaderResources(1, 1, &nsrv);
@@ -4365,6 +4407,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 drawN(UINT(b.v.size()), 0);
             }
         }
+        if (boundTexPs != psTex_) ctx_->PSSetShader(psTex_, nullptr, 0);
         ctx_->OMSetDepthStencilState(dsWrite_, 0);
         ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
         ID3D11ShaderResourceView* noSrv[2] = {nullptr, nullptr};

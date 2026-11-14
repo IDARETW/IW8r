@@ -29,4 +29,11 @@ std::optional<SkySun> sunFromSkyCube(const std::string& legacyCubeDds);
 // Convenience: any sky DDS the editor can draw (converted with skyCubemapFromDds first).
 std::optional<SkySun> sunFromSkyDds(const std::string& ddsBytes, std::string* err = nullptr);
 
+// The skyrotation yaw (degrees, -180..180) of a map that sets none: the turn that puts the sky image's sun on the map
+// sun's yaw (worldspawn sundirection yaw), as stock maps do with their skyrotation. A sky without a clear sun (contrast
+// below 1.6, or none found) is taken to hold it at yaw 0, the stock convention. *imageSunYaw gets the yaw found.
+double autoSkyRotationYaw(const std::string& skyDdsBytes, double sunYaw, double* imageSunYaw = nullptr);
+// The same from the sun already found in the sky (nullopt: none).
+double autoSkyRotationYaw(const std::optional<SkySun>& skySun, double sunYaw, double* imageSunYaw = nullptr);
+
 }  // namespace iw8r

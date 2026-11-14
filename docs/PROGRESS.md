@@ -2,6 +2,21 @@
 
 ## Latest (2026-11-13)
 
+- Custom shaders (plan M6, research 114): core custom_shader (IW8RSurface contract, checks, viewport splice, build
+  source); materials take "shader", the map takes worldspawn iw8r_surface_shader (<map>/shaders, data/shaders);
+  viewport binds a per-shader ps_tex (SceneBatch::shader, createCustomShader); compile writes world JSON
+  "iw8r_surface_shader"; x64-zt worktree commits 38682a64 (hook in map_surface_realtime.hlsl, g_surfaceShaderSource),
+  5d5dc0f8 (gloss outside MAP_IW8_LIGHTING), bf81d4d1 (no converter specular on custom-lit surfaces: in game the toon
+  map washed out, owner shot 2026-11-13), deployed to E:/mw124/x64-zt (old exes in out/zt_backup). Toon shader v2:
+  sun N.L x shadow in tones (.42 / .78 of the sun, borders .10 / .38), cool saturated shade, no facing-ratio ink.
+  Ink outlines: core toon_outline (brushInkEdges, uniqueInkEdges with the buried / flush filter, inkStripPrimitive
+  with contents nonColliding, applyInkOutlines on a Document), Tools > Toon Ink Outlines, CLI
+  `IW8Radiant.exe <map> --ink-outlines <width>`, brush_tools writeInkMaterial. Sky alignment (owner shot: sky sun and
+  shadows apart): core autoSkyRotationYaw; compile turns the sky cube by it when skyrotation is unset, warns when the
+  sky sun height differs from the map's by more than 10 degrees; CameraView uses the same yaw; sunFromSky keeps the
+  map yaw then. Example out/agent/mp_cinderrail_toon (kept project, not committed): sundirection -20 235 0 (sky
+  sun 18 up), 7805 ink strips, world 22580 -> 116240 triangles, collision unchanged (2521), ACTS validation clean.
+  Built map id is mp_cinderrail_t (16-character limit).
 - Owner round 2 (2026-11-13 night): sky = hemi-octahedral lookup u = (oy - ox + 1) / 2, v = (ox + oy + 1) / 2 (sky PS
   8a61dcf2 VERIFIED; editor had it transposed and mirrored) after the sky VS a6bc8f6e turns the view by cb7[153..155]
   = worldspawn skyrotation (key 47372; stock maps set it to their sun's yaw: shipment -15.4, hideout -46, rust -20,

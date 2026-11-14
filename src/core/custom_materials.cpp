@@ -265,6 +265,15 @@ bool parseDefinition(const fs::path& file, const fs::path& root, CustomMaterial&
         if (v->type != json::Value::Type::Bool) return fail("'unlit' must be true or false");
         m.unlit = v->b;
     }
+    if (const json::Value* v = doc->get("shader")) {
+        if (!v->string() || v->string()->empty()) return fail("'shader' must be a file name (*.iw8shader.hlsl)");
+        fs::path p = fs::path(*v->string());
+        if (!p.is_absolute()) p = base / p;
+        auto shader = std::make_shared<CustomShader>();
+        std::string serr;
+        if (!readCustomShader(p.lexically_normal().string(), *shader, &serr)) return fail("shader: " + serr);
+        m.shader = std::move(shader);
+    }
     if (const json::Value* v = doc->get("emission")) {
         if (!v->number() || *v->number() < 0 || *v->number() > 64) return fail("'emission' must be a number from 0 to 64");
         m.emission = *v->number();

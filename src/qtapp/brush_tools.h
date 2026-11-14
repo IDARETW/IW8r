@@ -26,6 +26,10 @@ std::optional<Primitive> rebuildBrush(const Primitive& original, const ConvexBru
 std::string faceSuffix(const EditorContext& ctx);
 
 bool createBoxBrush(EditorContext& ctx, const AABB& box);
+
+// M6 toon maps: the unlit near-black ink material iw8r_ink (iw8r_ink.png + iw8r_ink.iw8mat.json) in `materialRoot`,
+// written when missing (*written = true then). False with *err when it cannot be written.
+bool writeInkMaterial(const QString& materialRoot, bool* written, QString* err);
 bool hollowSelection(EditorContext& ctx);
 bool subtractSelection(EditorContext& ctx);  // selected brushes cut every other world brush they touch
 bool clipSelection(EditorContext& ctx, const Plane& keep, bool split);

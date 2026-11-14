@@ -137,6 +137,9 @@ public:
     size_t exportReferenceRegion();
     // 11.8: stock triangles in the selection bounds as thin prism brushes (a func_group, one undo step).
     size_t exportReferenceBrushes();
+    // M6 toon maps: ink strips (unlit black, non-colliding brushes) along the hard edges of the selected brushes, or of
+    // every worldspawn / func_group brush when nothing is selected; replaces an earlier ink group. One undo step.
+    size_t generateInkOutlines(double width);
     // 5.12: selected worldspawn brushes -> a script_brushmodel glass pane with the built-in iw8r_glass material.
     Id makeGlassPane();
     // A climbable ladder (owner playtest 2026-11-11: the ladder brush is invisible, so the ladder could not be seen):
@@ -659,6 +662,9 @@ public:
     // (IW8R_SMOKE_REFERENCE). Out of memory: the props stay as they are (rebuildReferencePropsUnguarded does the work).
     void rebuildReferenceProps();
     void relightReferenceProps();  // new light grids: only the props' light (falls back to a rebuild)
+    std::shared_ptr<const CustomShader> mapSurfaceShader();  // worldspawn iw8r_surface_shader (null = none)
+    std::shared_ptr<const CustomShader> mapShader_;
+    QString mapShaderStamp_;
     std::pair<double, size_t> streamTileReach() const;  // streamed tiles: radius and count
     void rebuildReferencePropsUnguarded();
 private:

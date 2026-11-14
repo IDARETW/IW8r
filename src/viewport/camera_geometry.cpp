@@ -188,6 +188,7 @@ SceneBatch* CameraGeometry::Impl::batchFor(const ItemOut::Tex& t, bool& created)
     b->sway = t.sway;
     // Same texture id = same material, so the batch's emissive map is the material's.
     if (scene->emissiveFor && !scene->captureMode && t.material) b->emissiveTexture = scene->emissiveFor(*t.material);
+    if (scene->shaderFor && t.material) b->shader = scene->shaderFor(*t.material);
     created = true;
     return byKey.emplace(t.key, std::move(b)).first->second.get();
 }
@@ -816,6 +817,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                     nb->sway = t.sway;
                     nb->baseZ = 0;
                     nb->emissiveTexture = scene.emissiveFor && !scene.captureMode && t.material ? scene.emissiveFor(*t.material) : -1;
+                    nb->shader = scene.shaderFor && t.material ? scene.shaderFor(*t.material) : -1;
                     b = d.byKey.emplace(t.key, std::move(nb)).first->second.get();
                     order_.push_back(b);
                 }

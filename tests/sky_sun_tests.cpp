@@ -67,3 +67,14 @@ TEST(sky_sun_ignores_light_below_the_horizon_and_bad_input) {
     CHECK(!sunFromSkyCube(std::string(100, '\0')));
     CHECK(!sunFromSkyCube(std::string(128 + 6 * 4 * 4 * 4 + 3, '\0')));
 }
+
+TEST(sky_sun_auto_rotation_puts_the_sky_sun_on_the_map_sun) {
+    // The sky's sun at yaw 30, the map's at 235: turn the sky 205 degrees (-155).
+    double image = 0;
+    const double r = autoSkyRotationYaw(sunFromSkyCube(cubeWithSun(64, sunVector(-30, 30))), 235, &image);
+    CHECK(std::fabs(image - 30) < 2.5);
+    CHECK(std::fabs(r - -155) < 2.5);
+    // No sun found: the stock convention (the sky's sun at yaw 0), so the turn is the sun's yaw.
+    CHECK(std::fabs(autoSkyRotationYaw(std::string(100, '\0'), 235) - -125) < 1e-9);
+    CHECK(std::fabs(autoSkyRotationYaw(std::string(100, '\0'), -15.4) - -15.4) < 1e-9);
+}

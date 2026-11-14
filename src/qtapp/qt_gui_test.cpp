@@ -3537,7 +3537,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         const std::string* sd = ctx.doc.worldspawn()->value("sundirection");
         const QString got = sd ? QString::fromStdString(*sd) : QString();
         const bool cached = !w.currentSkyFile().isEmpty();
-        r.check(!cached || got.startsWith("-18.5 358.9"), "a new sky aims the sun at it (the game's sky lookup, PS 8a61dcf2): sundirection " + got +
+        r.check(!cached || got.startsWith("-18.5 45 "), "a new sky takes the height of its sun and keeps the map sun's yaw (the sky is turned to it): sundirection " + got +
                                                             (cached ? QString() : QString(" (sky not cached here: skipped)")));
         while (ctx.doc.undoPosition() > pos) {
             ctx.doc.undo();
@@ -3557,7 +3557,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         const std::string* sd = ctx.doc.worldspawn()->value("sundirection");
         const QString got = sd ? QString::fromStdString(*sd) : QString();
         const bool cached = !w.currentSkyFile().isEmpty();
-        r.check(!cached || got.startsWith("-18.5 358.9"), "a new sky aims the sun at it (the game's sky lookup, PS 8a61dcf2): sundirection " + got +
+        r.check(!cached || got.startsWith("-18.5 45 "), "a new sky takes the height of its sun and keeps the map sun's yaw (the sky is turned to it): sundirection " + got +
                                                             (cached ? QString() : QString(" (sky not cached here: skipped)")));
         while (ctx.doc.undoPosition() > pos) {
             ctx.doc.undo();

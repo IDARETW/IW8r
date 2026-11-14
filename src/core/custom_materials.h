@@ -9,6 +9,8 @@
 // minimal uncompressed reader.
 #pragma once
 
+#include <memory>
+#include "custom_shader.h"
 #include <cstdint>
 #include <map>
 #include <string>
@@ -39,6 +41,9 @@ struct CustomMaterial {
     double tint[3] = {1, 1, 1};
     int sortKey = 0;
     int polygonOffset = 0;
+    // "shader": a custom surface shader file (core custom_shader, *.iw8shader.hlsl, relative to the definition):
+    // the Game Lighting viewport and the build light the material with it. Null = the game's own lighting.
+    std::shared_ptr<const CustomShader> shader;
     bool hasTint() const { return tint[0] != 1 || tint[1] != 1 || tint[2] != 1; }
 };
 

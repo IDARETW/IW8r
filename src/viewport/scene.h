@@ -143,6 +143,8 @@ public:
     std::function<int(const std::string& material)> normalFor;
     // Emissive map of a material for the textured view (3.17 / 5.24): a texture id, or -1.
     std::function<int(const std::string& material)> emissiveFor;
+    // The material's custom surface shader (SceneRenderer::createCustomShader id) or -1 (core custom_shader).
+    std::function<int(const std::string& material)> shaderFor;
     // How a material draws in the textured view (3.17): 0 opaque / alpha test, 1 alpha blend, 2 additive (null = all 0).
     std::function<int(const std::string& material)> blendFor;
     // Foliage materials (5.23 wind preview): their textured batches are marked to sway (null = none).

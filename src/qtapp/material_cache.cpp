@@ -224,7 +224,7 @@ void MaterialCache::loadIndex() {
         // Resolved before slot-27 opacity masks and the body flags were kept (research 66): resolve again once.
         if (!e.failed && o.value("maskRules").toInt() < 4) continue;  // 4: + emissive (slot 18)
         // Resolved before the lit buffer and the constants by index were kept (research 107): resolve again once.
-        if (!e.failed && o.value("constRules").toInt() < 1) continue;
+        if (!e.failed && o.value("constRules").toInt() < 2) continue;  // 2: non-finite words in memory byte order
         // Layered materials (tw4 / twc4) resolved before their layer images and constants were kept (research 97), or
         // whose layer images were removed: resolve again once (images already cached are reused).
         if (!e.failed && (o.value("layerRules").toInt() < 1 || layerImageGone) &&
@@ -306,7 +306,7 @@ void MaterialCache::writeIndex() const {
         if (!e.failed && !e.emissiveDds.isEmpty()) o.insert("emissive", root.relativeFilePath(e.emissiveDds));
         if (!e.failed && !e.transmissionDds.isEmpty()) o.insert("transmission", root.relativeFilePath(e.transmissionDds));
         if (!e.failed) {
-            o.insert("constRules", 1);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68
+            o.insert("constRules", 2);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68; 2: bits order
             QJsonObject cs;
             for (const auto& [k, f] : e.consts) cs.insert(QString::number(k), QJsonArray{f[0], f[1], f[2], f[3]});
             if (!cs.isEmpty()) o.insert("consts", cs);
@@ -598,7 +598,11 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
                 f[size_t(k)] = float(v[k].toDouble());
                 std::memcpy(&u, &f[size_t(k)], 4);
             } else {
-                u = v[k].toObject().value("bits").toString().toUInt(nullptr, 16);
+                // ACTS writes a non-finite word as its bytes in memory order ("c1ad96ff" = c1 ad 96 ff): read as bytes,
+                // not as a number (which reversed them: Speedball's grey containers came out pink, the blue ones
+                // orange; research 113).
+                const QByteArray raw = QByteArray::fromHex(v[k].toObject().value("bits").toString().toLatin1());
+                if (raw.size() == 4) std::memcpy(&u, raw.constData(), 4);
                 finite = false;
             }
             std::memcpy(bytes.data() + 4 * k, &u, 4);
