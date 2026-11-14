@@ -115,7 +115,7 @@ first = result.splitlines()[0] if result else ''
 check(first.startswith('ok map=' + MAP_ID), 'build ok (%s)' % first[:120])
 m = re.search(r'package=(.+)$', first)
 package = m.group(1).strip() if m else ''
-line = next((l for l in (result + '\n' + log).splitlines() if 'occlusion bake:' in l), '')
+line = next((l for l in (result + '\n' + log).splitlines() if 'occlusion bake:' in l and 'occluder box' in l), '')
 mm = re.search(r'occlusion bake: (\d+) occluder box\(es\) from the opaque brushes \((\d+) of them fitted', line)
 check(mm is not None and int(mm.group(1)) >= 9 and int(mm.group(2)) == 1, 'bake line: ' + (line.strip()[:200] or '-'))
 acts = re.findall(r'ACTS\s+(\S+)\s+exit\s+(-?\d+)', log)

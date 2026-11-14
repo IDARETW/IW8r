@@ -345,8 +345,8 @@ CompilePanel::CompilePanel(EditorContext* ctx, ToolPathFn toolPath, QWidget* par
     occlusionBake_->setObjectName("compileOcclusionBake");
     occlusionBake_->setToolTip("Worldspawn iw8r_umbra_bake: the build makes occlusion data from the map's opaque box brushes, so the game "
                                "stops drawing what lies behind walls (faster on maps with rooms and streets). Off: the game hides nothing "
-                               "by occlusion, which always works. EXPERIMENTAL: in a game test of 2026-11-14 a map built with it lost "
-                               "surfaces at some camera angles and did not draw its placed models. Leave it off for a map you want to play");
+                               "by occlusion, which always works. It failed its first game test on 2026-11-14 (surfaces and models went missing); the "
+                               "cause was fixed that day, but the fixed bake is not yet seen in game. If things go missing, turn it off");
     top->addWidget(occlusionBake_);
     connect(occlusionBake_, &QCheckBox::toggled, this, [this](bool on) {
         Entity* w = ctx_->doc.worldspawn();

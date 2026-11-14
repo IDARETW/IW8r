@@ -76,6 +76,26 @@
   tools/physics_bounds_build_test.py). OPEN, next: mount edges (research 125 by an Opus agent, read-only IDA): the
   converter writes ladder edges only (edgeListUsedQueryTypes 4); mounting queries bucket 0 of the edge list and has
   no trace fallback; mantle falls back to Mantle_TraceLedgeFace while bit 2 is clear.
+  STATE 2026-11-14 17:00 (newest; read first). Converter 3b2bcc93 committed in the worktree and LIVE (old exe
+  out/zt_backup/zonetool_a0a50852.exe). Core suite 181,961 checks / 1,377 tests, 0 failures; GUI 1,089 checks with
+  one failure only while the game runs ("without a game the Live Link commands say why").
+  - Occlusion bake: cause found by an Opus agent (research 129) and fixed: core umbra_bake.h tile flags 5 (was 3);
+    core umbra_tome.cpp cellsAt / validate follow the game's rule (flag bit 2); the converter's copy re-made
+    (umbra_bake.hpp) and its validator accepts 3 or 5; tests/umbra_bake_tests.cpp checks flags 5 and that the same
+    tome with 3 is misread; tools/umbra_bake_build_test.py passes with the new converter. NOT SEEN IN GAME since.
+    The owner's open map still has iw8r_umbra_bake 1: their next F7 uses the fixed bake.
+  - Viewmodel toon (research 128): converter editzone lit_filter got "keep_names" and "materials"
+    (tools/patches/zt_filter_keep_names.py). Built zone: out/agent/toon_vm/out/techsets_global_stream_mp.ff
+    (16,173,584 bytes; recipe out/agent/toon_vm/edits_vm.json: editzone global_stream_mp, materials
+    (_vm_|/vm_|_vm$|_arm_[lr]_), 631 sets, 401 shader copies, all with the screen filter; ACTS 2,632 tested, 0 failed
+    when the output path is short; tools/scene_depth_build_test.py --stock: 617 techniques read the scene depth).
+    NOT INSTALLED: it changes weapons and hands on every map while installed and the game must be closed; the owner
+    was asked. Install: IW8Radiant.exe --install-stock out\agent\toon_vm\out (keeps the stock file in
+    <game>\iw8r_stock, does not touch global_stream_mp.fp, which belongs to another file); restore:
+    --restore-stock global_stream_mp. Third-person weapons and some operator arms share those sets and get the look
+    too.
+  - A helper deleted the whole Temp\iwb scratch folder by mistake (bench model cache, old proof folders): benches
+    refill their caches on the next run; nothing of the owner's was in it.
   OWNER GAME TEST 2026-11-14 16:15 (their words): "in toon cinderrail, i see some surfaces disappearing and
   appearing depending on the angle of the camera, and foliage and other objects seem invisible, and the viewmodel
   still doesnt have the toon effect. in shipment, the toon effect now works (not the viewmodel), but objects also

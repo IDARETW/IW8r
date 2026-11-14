@@ -408,6 +408,11 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
     stay open: research 122 found nothing a map provides that can switch them off (the minimap set-up equals a stock
     map's), and that the killstreak of the report fits the Personal Radar drone, which skips enemies with the
     Ghost-like perk. Only the game can say which it was.
+  - occlusion bake in game (2.4), update 2026-11-14 17:00: CAUSE FOUND AND FIXED (research 129): tile flags 3 instead
+    of the stock 5 (bit 2: a view leaf's value is an offset into the cell list; without it the game takes it for the
+    cell number). Bake writes 5, the decoder follows the game's rule, converter 3b2bcc93 live, proof
+    tools/umbra_bake_build_test.py passes. NOT SEEN IN GAME since the fix. Still different from stock and worth a
+    look if something is still wrong: cell flags without bit 0 and size bits, no clusters, portal growth 0.
   - occlusion bake in game (2.4): FAILED its first game test 2026-11-14 16:15 (Cinder Rail Toon built with
     iw8r_umbra_bake 1: world surfaces came and went with the camera, placed models were not drawn, their shadows
     were). OPEN. The offline conservativeness test passes with the editor's own decoder, so the game's Umbra runtime

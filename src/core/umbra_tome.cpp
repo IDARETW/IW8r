@@ -666,6 +666,13 @@ std::vector<uint32_t> UmbraTome::cellsAt(const float p[3], uint32_t* tileOut) co
         const uint64_t at = bit + b;
         v |= uint32_t((d_[t.viewMap + (at >> 3)] >> (at & 7)) & 1u) << b;
     }
+    // The tile's flag bit 2 says what the value is (research 129, the game's leaf reader): set, an offset into the cell
+    // index list (every stock leaf tile); clear, the cell number itself (the converter's one-cell tome: value 0, cell 0;
+    // a value with the top bit set points into a node tree no known tome has: no cell).
+    if (!(t.flags & 4u)) {
+        if (v < t.cellCount) out.push_back(t.cellBase + v);
+        return out;
+    }
     const uint64_t end = uint64_t(t.offset) + t.byteSize;
     for (uint64_t at = t.cellIndices + 4ull * v; at + 4 <= end; at += 4) {
         uint32_t c;
@@ -814,6 +821,13 @@ UmbraTomeReport UmbraTome::validate() const {
             for (uint32_t b = 0; b < t.viewMapWidth; ++b) {
                 const uint64_t at = bit + b;
                 v |= uint32_t((d_[t.viewMap + (at >> 3)] >> (at & 7)) & 1u) << b;
+            }
+            if (!(t.flags & 4u)) {
+                // Without flag bit 2 the game takes the value for the cell number (research 129).
+                ++rep.viewLeaves;
+                if (v >= t.cellCount) fail("view leaf of tile " + std::to_string(i) + " names cell " + std::to_string(v) + " of " +
+                                           std::to_string(t.cellCount) + " (tile flags without bit 2: the value is the cell number)");
+                continue;
             }
             uint32_t count = 0;
             bool terminated = false;

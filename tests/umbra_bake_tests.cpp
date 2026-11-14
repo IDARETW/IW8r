@@ -76,7 +76,24 @@ TEST(umbra_bake_two_sealed_rooms) {
     CHECK(rep.cells == r.stats.cells && rep.portals == r.stats.portals && rep.internalPortals == r.stats.portals);
     CHECK(rep.unmatchedInternal == 0 && rep.outsidePortals == 0 && rep.objectsReferenced == 3 && rep.userIdCount == 3);
     CHECK(rep.viewLeaves == r.stats.viewLeaves && rep.solidViewLeaves == 0);  // a camera is never without a cell
-    CHECK(tome.header().numTiles == 1 && tome.tiles()[0].flags == 3 && tome.tiles()[0].hasViewTree());
+    // The tile carries the stock flags (5): bit 2 tells the game that a view leaf's value is an offset into the cell
+    // list. The bake once wrote 3 and the game then took the offsets for cell numbers: surfaces and models vanished
+    // in the game test of 2026-11-14 (research 129).
+    CHECK(tome.header().numTiles == 1 && tome.tiles()[0].flags == 5 && tome.tiles()[0].hasViewTree());
+    {
+        // The same tome with that flag cleared, read by the game's rule: a leaf then names a cell that does not exist,
+        // or the camera starts in another cell than the one it stands in.
+        std::vector<uint8_t> wrong = r.tome;
+        wrong[size_t(tome.tiles()[0].offset) + 0x2C] = 3;
+        UmbraTome misread;
+        std::string werr;
+        if (misread.parse(wrong, &werr)) {
+            bool differs = !misread.validate().ok;
+            const float spots[4][3] = {{200, 200, 100}, {1800, 800, 60}, {600, 900, 200}, {1400, 100, 30}};
+            for (const auto& p : spots) differs = differs || misread.cellsAt(p) != tome.cellsAt(p);
+            CHECK(differs);
+        }
+    }
 
     const UmbraVisibility left = visibleFrom(tome, 200, 200, 100), right = visibleFrom(tome, 1800, 800, 60);
     CHECK(left.status == UmbraQueryStatus::Ok && right.status == UmbraQueryStatus::Ok);

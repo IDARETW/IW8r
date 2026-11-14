@@ -369,7 +369,10 @@ Map: `out/agent/mp_iw8r_fix1/mp_iw8r_fix1.map` (already built; Ctrl+F7, then Loc
       walls behind them.
 - [ ] Cinder Rail Toon without the occlusion bake (redeployed 2026-11-14 16:25): no surface or model goes missing.
       (With Occlusion bake on, surfaces came and went and models were not drawn: the bake is experimental.)
-- [ ] Toon look on the first-person weapon and hands: not built yet.
+- [ ] Toon look on the first-person weapon and hands: the zone is built (out/agent/toon_vm/out); after it is installed,
+      weapons and hands show the toon colours and ink lines on every map, and nothing else changes.
+- [ ] Occlusion bake after the fix of 2026-11-14 (research 129): a map built with Occlusion bake on keeps all its
+      surfaces and models from every camera position.
 - [ ] Killstreak aircraft that fly high or start far out (gunship, cruise missile, advanced UAV, airstrike planes)
       move normally: the map's physics world is now as large as a stock map's (research 124; rebuild first).
 - [ ] Killstreaks, radar: with a UAV (not the Personal Radar) enemies without the Ghost perk ping on the minimap

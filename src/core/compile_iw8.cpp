@@ -3203,10 +3203,12 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             ++count;
         }
         if (count) occludersKey = ",\"umbra_occluders\":[" + boxes + "]";
-        // Seen in the game on 2026-11-14 (Cinder Rail Toon): with the bake on, world surfaces came and went with the
-        // camera and placed models were not drawn. Said in the build log until the bake is fixed.
-        warn.push_back("occlusion bake: EXPERIMENTAL. In a game test of 2026-11-14 a map built with it lost surfaces at some camera angles "
-                       "and did not draw its placed models; turn Occlusion bake off (worldspawn iw8r_umbra_bake) for a map you want to play");
+        // The bake failed its first game test (2026-11-14, Cinder Rail Toon: surfaces came and went with the camera,
+        // placed models were not drawn). Cause found and fixed the same day (the tile's format flag: research 129); the
+        // fixed bake has not been seen in the game yet, which the build log says until it has.
+        warn.push_back("note on the occlusion bake: it failed its first game test on 2026-11-14 (surfaces and models went missing); the cause "
+                       "was found and fixed that day (research 129), but the fixed bake is not yet seen in game. If things go missing "
+                       "in game, turn Occlusion bake off (worldspawn iw8r_umbra_bake)");
         warn.push_back("occlusion bake: " + std::to_string(count) + " occluder box(es) from the opaque brushes (" + std::to_string(fitted) +
                        " of them fitted inside brushes that are not axis-aligned boxes; " + std::to_string(skewed) +
                        " opaque brush(es) are too thin or too slanted to hold a box, " + std::to_string(detail) +

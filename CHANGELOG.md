@@ -5,6 +5,19 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **The occlusion bake's fault is found and fixed** (research 129). The baked data carried the format flag of the
+  one-cell data (3) where every stock map has 5. That flag tells the game how to read the camera's cell; with the
+  wrong one it started from an unrelated cell almost everywhere, so surfaces came and went and models were never
+  reached. The bake now writes 5 (converter `3b2bcc93`, deployed), and the editor's own reader follows the game's
+  rule, so its tests fail on data with the wrong flag as the game did. The fixed bake is not yet seen in game; the
+  build log says so.
+- **Toon look for the first-person weapon and hands: built, not installed** (research 128). Their shaders are in a
+  zone every map loads (`techsets_global_stream_mp`). The converter's filter can now leave every name as it is and
+  filter only the sets of matching materials (`"keep_names"`, `"materials"`): 631 technique sets of 6,884 weapon and
+  arm materials got the toon filter with ink lines, and the game's loaders accept the zone (2,632 assets tested, 0
+  failed). Installing it changes weapons and hands on every map until it is restored, so it waits for the owner's
+  go-ahead (`--install-stock`, undone with `--restore-stock global_stream_mp`).
+
 - **Seen in the game (owner, 16:15): the new toon lines, the haze and the bright sky work.** Cinder Rail Toon shows
   clean ink lines from the scene depth, the warm haze toward the horizon and the brighter sky; Shipment shows the toon
   filter with ink lines on the stock world and props. Not yet right: the first-person weapon and hands have no toon
