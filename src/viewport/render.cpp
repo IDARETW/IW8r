@@ -616,7 +616,7 @@ cbuffer Layer : register(b7) { float4 layerP; float4 layerTint; float4 layerUvT;
                                float4 matRows8[4];  // rows 8-11: a prop's waves (PropWave, VS)
                                float4 matDual0; float4 matDual1;  // the water's constants 110 / 111 (research 133 section 5.3)
                                float4 matRows14[2];
-                               float4 foldL[8]; };  // rows 16-23: a prop mesh's two folded colour layers (research 136)
+                               float4 foldL[10]; };  // rows 16-25: a prop mesh's two folded layers (research 136)
 Texture2D tr0 : register(t19);  // the transmission image (texture slot 68, sRGB) when matTr.w = 1
 // Wrap diffuse (research 107 section 2.2): w = constant 103 per channel.
 float wrapF(float x, float w) {
@@ -975,9 +975,27 @@ Texture2D foldC1 : register(t44);  // the folded layers' colour and alpha / reve
 Texture2D foldR1 : register(t45);
 Texture2D foldC2 : register(t46);
 Texture2D foldR2 : register(t47);
+Texture2D foldN1 : register(t48);  // the folded layers' normal + gloss + cavity maps
+Texture2D foldN2 : register(t49);
 // A model layer folded into the prop's own pass (research 136 section 1.2-1.3): its weight from the vertex alpha
 // (vc.w = 1 + a), the reveal ramp, the alpha and the slot-126 mask, then lerp (0), multiply (1) or soft-light overlay
 // (2) of the linear albedo with the tinted layer colour.
+float foldWeight(PSIn i, float4 P, float4 T, float2 ar) {
+    const float w = saturate(i.vc.w - 1.0), k = P.z;
+    const uint fl = (uint)(P.y + 0.5);
+    float b = w;
+    if (fl & 16u) {
+        const float lo = saturate(1.0 - w - k * sqrt(w)), hi = saturate(1.0 - w + k * sqrt(1.0 - w));
+        b = saturate((ar.g - lo) / max(hi - lo, 1e-4));
+    }
+    if (fl & 8u) b *= ar.r;
+    if (T.w > 0.5) {
+        const float4 mk = layerMaskTex.Sample(samp0, i.uv);
+        const int ch = int(T.w + 0.5) - 1;
+        b *= ch == 0 ? mk.r : (ch == 1 ? mk.g : mk.b);
+    }
+    return b;
+}
 float3 foldLayer(float3 albedo, PSIn i, float4 P, float4 T, float4 UT, float4 UO, float4 c, float2 ar) {
     const float w = saturate(i.vc.w - 1.0), k = P.z;
     const uint fl = (uint)(P.y + 0.5);
@@ -992,7 +1010,7 @@ float3 foldLayer(float3 albedo, PSIn i, float4 P, float4 T, float4 UT, float4 UO
         const int ch = int(T.w + 0.5) - 1;
         b *= ch == 0 ? mk.r : (ch == 1 ? mk.g : mk.b);
     }
-    if (b < 1.0 / 255.0) return albedo;
+    if (b < 1.0 / 255.0 || P.w > 2.5) return albedo;  // kind 3: normal / gloss only
     const float3 cl = srgbToLinear3(c.rgb) * T.rgb;
     if (P.w > 1.5) {
         const float3 tt = 0.5 + b * (pow(saturate(cl), 1.0 / 2.2) - 0.5);
@@ -1196,6 +1214,40 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 nxy = sum;
                 // Each layer's gloss remapped, then summed by weight and saturated (the water is near-mirror).
                 dualGloss = saturate(nmGloss * layerTint.z + layerTint.w * (matDual0.x + matDual1.x));
+            }
+            // A prop's folded layers (research 136 sections 1.2-1.3): normal (lerp / add), cavity and gloss by their weight.
+            if (stockRef && baseMat && i.vc.w > 0.5 && (foldL[0].x > 0.5 || foldL[4].x > 0.5)) {
+                float g = saturate(max(nmGloss, 0.0) * layerTint.z + layerTint.w);
+                bool glossTouched = false;
+                [unroll] for (int fi = 0; fi < 2; ++fi) {
+                    const float4 P = foldL[4 * fi], T = foldL[4 * fi + 1], UT = foldL[4 * fi + 2], UO = foldL[4 * fi + 3], NR = foldL[8 + fi];
+                    if (P.x < 0.5 || NR.x < 0.5) continue;
+                    const float2 u = foldUv(i, UT, UO);
+                    const float2 ar = fi == 0 ? foldR1.Sample(samp0, u).rg : foldR2.Sample(samp0, u).rg;
+                    const float b = foldWeight(i, P, T, ar);
+                    if (b < 1.0 / 255.0) continue;
+                    float4 nl = fi == 0 ? foldN1.Sample(samp0, u) : foldN2.Sample(samp0, u);
+                    const float gL = saturate(nl.r * NR.z + NR.w), cL = nl.b;
+                    nl.ga = (nl.ga - 0.5) * NR.y + 0.5;
+                    const float2 sl = nl.ga * 2.0 - 1.0;
+                    const float2 ol = float2(sl.x + sl.y, sl.x - sl.y) * 0.5;
+                    const float2 lxy = normalize(float3(ol, max(1.0 - abs(ol.x) - abs(ol.y), 0.0))).xy;
+                    const uint fl = (uint)(P.y + 0.5);
+                    if (P.w > 1.5 && P.w < 2.5) {  // overlay: the normal added, cavity and gloss toward the lower value
+                        nxy += b * lxy;
+                        nmCavity = lerp(nmCavity, min(nmCavity, cL), b);
+                        g = lerp(g, min(g, gL), b), glossTouched = true;
+                    } else {
+                        const int nmode = int(NR.x + 0.5) - 1;
+                        if (nmode != 2) {
+                            const float bN = (fl & 1u) ? b : 0.0, bC = (fl & 2u) ? b : 0.0, bG = (fl & 4u) ? b : 0.0;
+                            nxy = nmode == 0 ? nxy * (1.0 - bN) + bN * lxy : nxy + bN * lxy;
+                            nmCavity = lerp(nmCavity, cL, bC);
+                            if (bG > 0.0) g = lerp(g, gL, bG), glossTouched = true;
+                        }
+                    }
+                }
+                if (glossTouched) dualGloss = g;
             }
             const float3 nT = normalize(float3(nxy, 1.0 - 0.6 * dot(nxy, nxy)));
             float2 slope = nT.xy / max(nT.z, 0.02);
@@ -4701,11 +4753,13 @@ void SceneRenderer::drawReferenceTexInstances() {
             ctx_->PSSetShaderResources(3, 1, &e);
             ctx_->PSSetShaderResources(19, 1, &t);
             // Research 136: the folded layers' images (t44-t47) and the slot-126 mask (t36).
-            ID3D11ShaderResourceView* fv[4] = {};
-            for (int k = 0; k < 4; ++k)
+            ID3D11ShaderResourceView* fv[6] = {};
+            for (int k = 0; k < 6; ++k)
                 fv[k] = g.foldTex[k] >= 0 && size_t(g.foldTex[k]) < textures_.size() ? textures_[size_t(g.foldTex[k])]
-                                                                                       : (k & 1) && whiteFullTex_ >= 0 ? textures_[size_t(whiteFullTex_)] : nullptr;
-            ctx_->PSSetShaderResources(44, 4, fv);
+                        : k < 4 && (k & 1) && whiteFullTex_ >= 0                   ? textures_[size_t(whiteFullTex_)]
+                        : k >= 4 && flatNrmTex_ >= 0                               ? textures_[size_t(flatNrmTex_)]
+                                                                                   : nullptr;
+            ctx_->PSSetShaderResources(44, 6, fv);
             ID3D11ShaderResourceView* fm = g.foldMask >= 0 && size_t(g.foldMask) < textures_.size() ? textures_[size_t(g.foldMask)] : nullptr;
             ctx_->PSSetShaderResources(36, 1, &fm);
         }
@@ -4773,7 +4827,7 @@ bool SceneRenderer::uploadInstParams() {
                 std::memcpy(&all[j * 128], gi.params, sizeof(gi.params));
                 std::memcpy(&all[j * 128 + 16], gi.extra, sizeof(gi.extra));
                 std::memcpy(&all[j * 128 + 32], gi.wave, sizeof(gi.wave));  // PropWave (b8) in vs_tex_inst
-                std::memcpy(&all[j * 128 + 64], gi.fold, sizeof(gi.fold));  // rows 16-23
+                std::memcpy(&all[j * 128 + 64], gi.fold, sizeof(gi.fold));  // rows 16-25
                 maskExtraTerms(&all[j * 128 + 16]);
                 if (textureRawAlpha(gi.texture)) all[j * 128 + 1] = 2.0f;  // opaque: alpha is the specular code
             }

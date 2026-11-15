@@ -129,6 +129,8 @@ struct PropLayer {
     float params[16] = {};  // layerP (on, flags, k, kind: 0 lerp, 1 multiply, 2 overlay), tint, UV transform
     int mask = -1;          // slot 126 (research 136), -1: none
     float aux[4] = {};      // row 8 of the layer buffer: the second UV set (1), the mask channel + 1
+    int normal = -1;        // the layer's normal + gloss + cavity map (folded layers only)
+    float nrm[4] = {};      // normal mode + 1 (0: none), normal strength, gloss scale, gloss bias
 };
 struct PropMeshData {
     std::vector<PropVertex> vertices;
@@ -324,7 +326,7 @@ public:
         std::vector<PropLayer> rest;
         for (PropLayer& L : layers) {
             if (noFold || f >= 2) {
-                rest.push_back(std::move(L));
+                if (L.params[3] < 2.5f) rest.push_back(std::move(L));  // kind 3 (normal / gloss only): not as a pass
                 continue;
             }
             float* r = &g.fold[16 * f];
@@ -332,7 +334,8 @@ public:
             r[4] = L.params[4], r[5] = L.params[5], r[6] = L.params[6], r[7] = L.aux[1];
             for (int k = 0; k < 4; ++k) r[8 + k] = L.params[8 + k];
             r[12] = L.params[12], r[13] = L.params[13], r[14] = L.aux[0];
-            g.foldTex[2 * f] = L.texture, g.foldTex[2 * f + 1] = L.reveal;
+            g.foldTex[2 * f] = L.texture, g.foldTex[2 * f + 1] = L.reveal, g.foldTex[4 + f] = L.normal;
+            for (int k = 0; k < 4; ++k) g.fold[32 + 4 * f + k] = L.nrm[k];
             if (L.mask >= 0) g.foldMask = L.mask;
             ++f;
         }
@@ -846,8 +849,8 @@ private:
         float wave[16] = {};        // setReferenceInstWave: constants 79-82 (research 133 section 6)
         // Research 136: the first two colour layers folded into the mesh's own pass (rows 16-23 of its record) and their
         // images (colour 1, alpha / reveal 1, colour 2, alpha / reveal 2; -1 none) and the slot-126 mask.
-        float fold[32] = {};
-        int foldTex[4] = {-1, -1, -1, -1};
+        float fold[40] = {};  // rows 16-23 colour, rows 24-25 normal (one per folded layer)
+        int foldTex[6] = {-1, -1, -1, -1, -1, -1};  // colour 1, alpha / reveal 1, colour 2, alpha / reveal 2, normal 1, normal 2
         int foldMask = -1;
         std::vector<PropLayer> layers;  // setReferenceInstLayers: layers 1.. of a model-layered material
         int emissive = -1, transmission = -1;

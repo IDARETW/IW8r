@@ -7,7 +7,8 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 - **Layered stock props show all their colour layers in Game Lighting** (research 136): dirt, paint, door and detail
   layers blend by the game's rule (the vertex alpha, the reveal and alpha maps, the layer mask, the second UV set), in
-  the prop's own shading pass, so containers, signs and walls look as in game without the cost of extra passes.
+  the prop's own shading pass, so containers, signs and walls look as in game without the cost of extra passes. Their
+  normal, cavity and gloss blend in too (chipped edges, worn paint), including the layers that change only those.
 - **Game Lighting's ambient occlusion is the game's GTAO** (research 135, decoded from the game's compute shader): the
   same slices, steps, 100-unit radius, falloff and thickness rule, so corners and contact shadows darken as wide and
   as deep as in game. Same frame cost. A/B: `IW8R_AO_SSAO=1` (the old stand-in).

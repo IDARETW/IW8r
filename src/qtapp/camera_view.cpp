@@ -1371,19 +1371,27 @@ bool CameraView::resolvePropLayers(size_t k) {
         if (kind == 2) continue;  // a code layer (vehicle dirt / rubble; not decoded)
         // Overlay layers (soft light) ignore the colour mode; standard layers: 0 lerp, 1 multiply, 2 / 3 normal and gloss
         // only (not drawn: a blended pass cannot change the normal under the shaded pixel).
+        // kind 3: modes 2 / 3, normal / cavity / gloss only (folded into the mesh's pass; never a pass of its own).
         float drawKind = kind == 1 ? 2.0f : 0.0f;
         if (kind == 0) {
-            if (lc.colorMode >= 2) continue;
-            if (lc.colorMode == 1) drawKind = 1.0f;
+            if (lc.colorMode >= 2) drawKind = 3.0f;
+            else if (lc.colorMode == 1) drawKind = 1.0f;
             else if (noLerp) continue;
         }
         const std::string ck = base + '\x01' + std::to_string(L), rk = base + '\x02' + std::to_string(L);
         const int cid = textureFor(ck), rid = textureFor(rk);
         if (!texIds_.count(ck) || !texIds_.count(rk)) return false;  // still loading
-        if (cid < 0 || cid == checkerTex_) continue;  // no colour image
+        const bool noColour = cid < 0 || cid == checkerTex_;
+        if (noColour && drawKind != 3.0f) continue;  // no colour image
+        // The layer's normal + gloss + cavity map (research 136): only a folded layer reads it.
+        const int nid = normalFor(ck);
+        if (!nrmIds_.count(ck)) return false;  // still loading
         app::PropLayer pl;
-        pl.texture = cid;
+        pl.texture = noColour ? -1 : cid;
         pl.reveal = rid == checkerTex_ ? -1 : rid;
+        pl.normal = nid;
+        pl.nrm[0] = nid >= 0 ? float(lc.normalMode + 1) : 0.0f;
+        pl.nrm[1] = lc.normalStrength, pl.nrm[2] = lc.glossScale, pl.nrm[3] = lc.glossBias;
         const float p[16] = {1.0f, float(lc.flags), lc.sharpness, drawKind, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,
                              lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
         std::copy(p, p + 16, pl.params);
@@ -2037,8 +2045,11 @@ std::pair<int, int> CameraView::materialMapIds(const std::string& material) {
 int CameraView::normalFor(const std::string& material) {
     if (material.empty() || isIw8ToolMaterial(material)) return -1;
     if (auto it = nrmIds_.find(material); it != nrmIds_.end()) return it->second;
-    // Only once the colour image is up: the material is then known to the cache, and colour loads go first.
-    if (auto t = texIds_.find(material); t == texIds_.end() || t->second < 0 || t->second == checkerTex_) return -1;
+    // Only once the colour image is up: the material is then known to the cache, and colour loads go first. A model
+    // layer's key ("<material>\x01<L>") only waits for that layer's colour lookup (a mode 3 layer has no colour image).
+    if (auto t = texIds_.find(material);
+        t == texIds_.end() || (material.find('\x01') == std::string::npos && (t->second < 0 || t->second == checkerTex_)))
+        return -1;
     const QString path = normalLookup_ ? normalLookup_(material) : QString();
     if (path.isEmpty()) return nrmIds_[material] = -1;
     // Normal maps are plain files: one texture per file (shared between the materials and layers that use it).
