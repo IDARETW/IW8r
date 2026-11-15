@@ -112,13 +112,23 @@ struct MapScriptExtras {
     //  trigger iw8r_jump "<vx> <vy> <vz>": a player touching it is launched with that velocity.
     //  trigger iw8r_damage "<amount> [interval]": a player inside takes that damage every interval seconds.
     //  script_brushmodel iw8r_lift "<dz> [time] [wait]": moves up dz and back forever, waiting at each end.
+    // Research 131 G14 / G15: the build writes the destination itself into the script (spots: one per trigger entity of
+    // that name, from = the trigger's centre, to / angles = the nearest entity named `dest`), so any class works as a
+    // destination (a script_struct is not an entity at run time) and two placements of one prefab each send the player
+    // to their own destination. Without spots the script looks `dest` up by name at run time.
     struct Teleport {
         std::string trigger, dest;
+        struct Spot {
+            Vec3 from, to, angles;
+        };
+        std::vector<Spot> spots;
     };
     std::vector<Teleport> teleports;
     struct JumpPad {
         std::string trigger;
         double velocity[3] = {0, 0, 600};
+        bool hasFrom = false;  // from: the trigger's centre (several pads with one name: the nearest one's velocity)
+        double from[3] = {0, 0, 0};
     };
     std::vector<JumpPad> jumpPads;
     struct DamageZone {
@@ -136,10 +146,13 @@ struct MapScriptExtras {
     // fire in built maps). Every brush trigger and trigger_radius is listed with its shape; a script thread tests each
     // living player against them 20 times a second and notifies "trigger" (with the player) on the object that
     // iw8r_trigger("<targetname>") returns, and on the entity itself when the game spawned it. trigger_use* volumes
-    // also need the use button; trigger_hurt / trigger_damage apply `dmg` themselves.
+    // also need the use button; trigger_hurt applies `dmg` itself. A trigger_damage (shot = true, research 131 G4) is not
+    // a presence volume: it fires when the game's entity is damaged, with the attacker as the activator.
+    // Volumes that share a name share the object iw8r_trigger returns.
     struct TriggerVolume {
         std::string targetname;  // may be empty (a nameless trigger_hurt still hurts)
         bool use = false;
+        bool shot = false;
         // A use trigger's key "hint": the text shown to a player standing in it. hintRef is its localized string name
         // ("<MAP ID>/TRIGGER_HINT_<n>", set by assignTriggerHintRefs); the script shows a hint only when it is set.
         std::string hintText, hintRef;
@@ -160,10 +173,15 @@ struct MapScriptExtras {
     std::vector<std::pair<std::string, std::string>> visualLinks;
     // 6.12: models that move without scripting (script_model / script_brushmodel keys, by targetname):
     //  iw8r_spin "<seconds per turn> [yaw|pitch|roll]", iw8r_bob "<height> <seconds>".
+    // A script_brushmodel turns about its own origin, which is the map origin (research 131 G1): it gets a pivot, a
+    // script_origin at the centre of its brushes (brushModelCentre) that it is linked to and that turns. Models turn
+    // about their own origin and have no pivot.
     struct Spinner {
         std::string targetname;
         double seconds = 4;
         int axis = 0;  // 0 yaw, 1 pitch, 2 roll
+        bool pivot = false;
+        double centre[3] = {0, 0, 0};
     };
     std::vector<Spinner> spinners;
     struct Bobber {
@@ -214,6 +232,10 @@ struct DoorHinge {
     double swing = 1;      // sign of the yaw that moves the free end along +normal
 };
 DoorHinge doorHingeOf(const Entity& e);
+
+// The centre of the bounds of an entity's brushes and patch control points: the pivot of a spinning script_brushmodel
+// (the build's and, for the same answer, the viewport's). nullopt when the entity has no primitives.
+std::optional<Vec3> brushModelCentre(const Entity& e);
 
 // The text the editor sets in the dvar iw8r_hot for one entity move.
 std::string hotUpdateValue(unsigned seq, const std::string& targetname, const Vec3& origin, const Vec3& angles);

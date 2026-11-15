@@ -951,7 +951,9 @@ TEST(compile_iw8_inspector_behaviours) {
     std::string err;
     CHECK(compileIw8Extraction(*pr.map, out, opt, rep, &err));
     const std::string gsc = readAll((fs::path(out) / "extracted" / "maps" / "mp" / (std::string(kSampleId) + ".gsc")).string());
-    CHECK(gsc.find("dest = getent(\"tp_out\", \"targetname\");") != std::string::npos);
+    // The destination is written into the script by the build (research 131 G15).
+    CHECK(gsc.find("user setorigin((0, 0, 64));") != std::string::npos && gsc.find("user setplayerangles((0, 0, 0));") != std::string::npos);
+    CHECK(gsc.find("dest = getent(") == std::string::npos);
     CHECK(gsc.find("nowhere") == std::string::npos);
     CHECK(gsc.find("user setvelocity((0, 0, 700));") != std::string::npos);
     CHECK(gsc.find("iw8r_jump_1") == std::string::npos);
@@ -973,7 +975,7 @@ TEST(compile_iw8_inspector_behaviours) {
     bool dynNote = false;
     for (const auto& w : rep.warnings) dynNote |= w.find("physics model 'com_trafficcone_01_dyn' stand still") != std::string::npos;
     CHECK(dynNote);
-    CHECK(gsc.find("lift moveto(bottom + (0, 0, 192), 2.5);") != std::string::npos);
+    CHECK(gsc.find("lift moveto(lift.iw8r_bottom + (0, 0, 192), 2.5);") != std::string::npos);
     bool lost = false, badJump = false, noName = false;
     for (const auto& w : rep.warnings) {
         lost |= w.find("no entity has targetname 'nowhere'") != std::string::npos;

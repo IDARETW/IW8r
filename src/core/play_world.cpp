@@ -58,7 +58,7 @@ void buildPlayWorld(const MapFile& map, const PlayWorldOptions& opt, CollisionWo
             st.warnings.push_back("prefabs not expanded for the play preview: " + err);
         }
     }
-    out.build(*use);
+    out.build(*use, 4, opt.skip);
 
     // Placed models: convex pieces (file Y-up coordinates) per model name, placed like the build does.
     std::map<const ImportedModel*, std::vector<std::vector<Plane>>> pieces;

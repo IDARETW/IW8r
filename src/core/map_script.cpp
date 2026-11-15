@@ -38,9 +38,35 @@ iw8r_trigger_add(name, use, dmg, interval)
     t.dmg = dmg;
     t.interval = interval;
     t.proxy = spawnstruct();
+    // Volumes with one name (a door's use area next to its trigger, a shot trigger) share what iw8r_trigger returns.
+    foreach (o in level.iw8r_trig)
+    {
+        if (name != "" && o.name == name)
+            t.proxy = o.proxy;
+    }
     t.boxes = [];
     level.iw8r_trig[level.iw8r_trig.size] = t;
     return t;
+}
+
+// A trigger_damage fires when it is damaged (shot, or caught in an explosion), not when a player stands in it: the
+// game's own entities of that name are watched and the attacker is passed on as the one who set it off.
+iw8r_trigger_shot(t)
+{
+    wait 0.05;
+    ents = getentarray(t.name, "targetname");
+    foreach (ent in ents)
+        ent thread iw8r_trigger_shot_wait(t);
+}
+
+iw8r_trigger_shot_wait(t)
+{
+    for (;;)
+    {
+        self waittill("damage", amount, attacker);
+        if (isdefined(attacker))
+            t.proxy notify("trigger", attacker);
+    }
 }
 
 iw8r_trigger_box(t, mins, maxs, radius)
@@ -79,7 +105,7 @@ iw8r_in_trigger(player, name)
 {
     foreach (t in level.iw8r_trig)
     {
-        if (t.name == name && iw8r_trigger_holds(t, player.origin))
+        if (t.name == name && !isdefined(t.shot) && iw8r_trigger_holds(t, player.origin))
             return 1;
     }
     return 0;
@@ -145,7 +171,7 @@ iw8r_trigger_poll()
             hintid = 0;
             foreach (t in level.iw8r_trig)
             {
-                if (!iw8r_trigger_holds(t, p.origin))
+                if (isdefined(t.shot) || !iw8r_trigger_holds(t, p.origin))
                     continue;
                 if (isdefined(t.hint) && !isdefined(hint))
                 {
@@ -236,7 +262,7 @@ DoorHinge doorHingeOf(const Entity& e) {
                        : Vec3{(box.mins.x + box.maxs.x) * 0.5, far ? box.maxs.y : box.mins.y, box.mins.z};
         h.ok = true;
     }
-    // d: from the hinge toward the free end; a positive yaw (counter-clockwise seen from above) moves the free end
+    // d: from the hinge toward the free end. A positive yaw (counter-clockwise seen from above) moves the free end
     // along (-d.y, d.x). normal is +Y for a door along X and +X for a door along Y.
     const double sign = far ? -1.0 : 1.0;
     const Vec3 d = alongX ? Vec3{sign, 0, 0} : Vec3{0, sign, 0};
@@ -245,14 +271,28 @@ DoorHinge doorHingeOf(const Entity& e) {
     return h;
 }
 
+std::optional<Vec3> brushModelCentre(const Entity& e) {
+    AABB box;
+    for (const auto& it : e.items) {
+        const Primitive* p = it.prim();
+        if (!p) continue;
+        if (p->kind == PrimKind::Brush) box.add(brushBounds(brushFromPrimitive(*p)));
+        else if (p->kind == PrimKind::Patch)
+            for (const PatchVertex& v : p->verts) box.add(v.pos);
+    }
+    if (!box.valid()) return std::nullopt;
+    return box.center();
+}
+
 std::vector<MapScriptExtras::TriggerVolume> readTriggerVolumes(const MapFile& map) {
     std::vector<MapScriptExtras::TriggerVolume> out;
-    const auto volumeFor = [&](const std::string& name) -> MapScriptExtras::TriggerVolume& {
+    const auto volumeFor = [&](const std::string& name, bool shot) -> MapScriptExtras::TriggerVolume& {
         if (!name.empty())
             for (auto& v : out)
-                if (v.targetname == name) return v;
+                if (v.targetname == name && v.shot == shot) return v;
         out.emplace_back();
         out.back().targetname = name;
+        out.back().shot = shot;
         return out.back();
     };
     for (const auto& e : map.entities) {
@@ -313,7 +353,11 @@ std::vector<MapScriptExtras::TriggerVolume> readTriggerVolumes(const MapFile& ma
             }
         }
         if (boxes.empty()) continue;
-        auto& v = volumeFor(name);
+        // trigger_damage (research 131 G4): fires when shot, never on presence and never hurts. Without a name nothing
+        // can be wired to it (the stock exploder code handles a nameless one with script_exploder by itself).
+        const bool shot = cls == "trigger_damage";
+        if (shot && name.empty()) continue;
+        auto& v = volumeFor(name, shot);
         v.use = v.use || cls.rfind("trigger_use", 0) == 0;
         // The hint of a use trigger: the first one of the entities that share the name. Line breaks and tabs become
         // spaces; 255 characters at most.
@@ -324,7 +368,7 @@ std::vector<MapScriptExtras::TriggerVolume> readTriggerVolumes(const MapFile& ma
                     if (c == '\n' || c == '\r' || c == '\t') c = ' ';
                 v.hintText = text;
             }
-        if (cls == "trigger_hurt" || cls == "trigger_damage") {
+        if (cls == "trigger_hurt") {
             const std::string* d = e.value("dmg");
             v.damage = d ? std::atof(d->c_str()) : 5;
             const std::string* sf = e.value("spawnflags");
@@ -572,35 +616,69 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
         if (safeEffectName(v.targetname) && safeEffectName(v.vision) && v.targetname.find('/') == std::string::npos) vols.push_back(v);
     const bool visionVolumes = !vols.empty() && safeEffectName(extras.baseVision);
     if (visionVolumes) s += "    level thread iw8r_vision_volumes();\n";
+    // One thread per name (research 131 G14): entries that repeat a name (two entities, or two placements of one bare
+    // prefab, with one targetname) would otherwise start two threads that drive the same entities. The first entry of
+    // a name is used; teleporters and jump pads keep every entry's spot and pick the one nearest the player.
     std::vector<MapScriptExtras::Door> doors;
     for (const auto& d : extras.doors)
-        if (safeEffectName(d.door) && safeEffectName(d.trigger) && d.door.find('/') == std::string::npos) doors.push_back(d);
+        if (safeEffectName(d.door) && safeEffectName(d.trigger) && d.door.find('/') == std::string::npos &&
+            std::none_of(doors.begin(), doors.end(), [&](const MapScriptExtras::Door& o) { return o.door == d.door; }))
+            doors.push_back(d);
     for (size_t i = 0; i < doors.size(); ++i) s += "    level thread iw8r_door_" + std::to_string(i) + "();\n";
     const auto plainName = [](const std::string& n) { return safeEffectName(n) && n.find('/') == std::string::npos; };
     std::vector<MapScriptExtras::Teleport> teleports;
-    for (const auto& t : extras.teleports)
-        if (plainName(t.trigger) && plainName(t.dest)) teleports.push_back(t);
-    std::vector<MapScriptExtras::JumpPad> jumps;
-    for (const auto& j : extras.jumpPads)
-        if (plainName(j.trigger)) jumps.push_back(j);
+    for (const auto& t : extras.teleports) {
+        if (!plainName(t.trigger) || !plainName(t.dest)) continue;
+        auto same = std::find_if(teleports.begin(), teleports.end(), [&](const MapScriptExtras::Teleport& o) { return o.trigger == t.trigger; });
+        if (same == teleports.end()) teleports.push_back(t);
+        else if (!same->spots.empty() && !t.spots.empty()) same->spots.insert(same->spots.end(), t.spots.begin(), t.spots.end());
+        else same->spots.clear();  // one of them is looked up at run time: the first entry's destination
+    }
+    std::vector<std::vector<MapScriptExtras::JumpPad>> jumps;
+    for (const auto& j : extras.jumpPads) {
+        if (!plainName(j.trigger)) continue;
+        auto same = std::find_if(jumps.begin(), jumps.end(), [&](const auto& g) { return g.front().trigger == j.trigger; });
+        if (same == jumps.end()) jumps.push_back({j});
+        else same->push_back(j);
+    }
     std::vector<MapScriptExtras::DamageZone> hurts;
     for (const auto& h : extras.damageZones)
-        if (plainName(h.trigger)) hurts.push_back(h);
+        if (plainName(h.trigger) && std::none_of(hurts.begin(), hurts.end(), [&](const auto& o) { return o.trigger == h.trigger; }))
+            hurts.push_back(h);
     std::vector<MapScriptExtras::Lift> lifts;
     for (const auto& l : extras.lifts)
-        if (plainName(l.targetname)) lifts.push_back(l);
+        if (plainName(l.targetname) && std::none_of(lifts.begin(), lifts.end(), [&](const auto& o) { return o.targetname == l.targetname; }))
+            lifts.push_back(l);
     for (size_t i = 0; i < teleports.size(); ++i) s += "    level thread iw8r_teleport_" + std::to_string(i) + "();\n";
     for (size_t i = 0; i < jumps.size(); ++i) s += "    level thread iw8r_jump_" + std::to_string(i) + "();\n";
     for (size_t i = 0; i < hurts.size(); ++i) s += "    level thread iw8r_damage_" + std::to_string(i) + "();\n";
     for (size_t i = 0; i < lifts.size(); ++i) s += "    level thread iw8r_lift_" + std::to_string(i) + "();\n";
-    for (const auto& sp : extras.spinners)
-        if (plainName(sp.targetname))
-            s += "    level thread iw8r_spin_model(\"" + sp.targetname + "\", " + num(std::max(0.1, sp.seconds)) + ", " +
-                 std::to_string(std::clamp(sp.axis, 0, 2)) + ");\n";
-    for (const auto& bo : extras.bobbers)
-        if (plainName(bo.targetname))
-            s += "    level thread iw8r_bob_model(\"" + bo.targetname + "\", " + num(bo.height) + ", " +
-                 num(std::max(0.1, bo.seconds)) + ");\n";
+    bool pivotSpinners = false, modelSpinners = false;
+    {
+        std::vector<std::string> seen;
+        for (const auto& sp : extras.spinners) {
+            if (!plainName(sp.targetname) || std::find(seen.begin(), seen.end(), sp.targetname) != seen.end()) continue;
+            seen.push_back(sp.targetname);
+            const std::string args = num(std::max(0.1, sp.seconds)) + ", " + std::to_string(std::clamp(sp.axis, 0, 2));
+            if (sp.pivot) {
+                pivotSpinners = true;
+                s += "    level thread iw8r_spin_pivot(\"" + sp.targetname + "\", " + vec(Vec3{sp.centre[0], sp.centre[1], sp.centre[2]}) +
+                     ", " + args + ");\n";
+            } else {
+                modelSpinners = true;
+                s += "    level thread iw8r_spin_model(\"" + sp.targetname + "\", " + args + ");\n";
+            }
+        }
+    }
+    {
+        std::vector<std::string> seen;
+        for (const auto& bo : extras.bobbers)
+            if (plainName(bo.targetname) && std::find(seen.begin(), seen.end(), bo.targetname) == seen.end()) {
+                seen.push_back(bo.targetname);
+                s += "    level thread iw8r_bob_model(\"" + bo.targetname + "\", " + num(bo.height) + ", " +
+                     num(std::max(0.1, bo.seconds)) + ");\n";
+            }
+    }
     // Prefab bundle scripts: the once function of each kind, then its entry function once per placement.
     for (const auto* ps : prefabScripts) {
         if (isScriptIdentifier(ps->once)) s += "    level thread " + prefabScriptFunctionName(ps->id, ps->prefix, ps->once) + "();\n";
@@ -616,6 +694,7 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
         for (const auto& tv : extras.triggerVolumes) {
             s += "    t = iw8r_trigger_add(\"" + tv.targetname + "\", " + (tv.use ? "1" : "0") + ", " + num(tv.damage) + ", " +
                  std::to_string(tv.damageIntervalMs) + ");\n";
+            if (tv.shot) s += "    t.shot = 1;\n    level thread iw8r_trigger_shot(t);\n";
             // A hint (key "hint" of a use trigger): its localized string, shown while a player stands in the trigger.
             const bool refOk = !tv.hintRef.empty() && tv.hintRef.size() <= 120 &&
                                std::all_of(tv.hintRef.begin(), tv.hintRef.end(), [](unsigned char c) { return std::isalnum(c) || c == '_' || c == '/'; });
@@ -638,8 +717,17 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
              "iw8r_link_visual(visName, parentName)\n{\n    wait 0.05;\n    vis = getent(visName, \"targetname\");\n"
              "    parent = getent(parentName, \"targetname\");\n    if (!isdefined(vis) || !isdefined(parent))\n        return;\n"
              "    vis linkto(parent);\n}\n";
-    if (!extras.spinners.empty())
-        s += "\n// script_model / script_brushmodel iw8r_spin: one turn every `seconds` (axis 0 yaw, 1 pitch, 2 roll).\n"
+    if (pivotSpinners)
+        s += "\n// script_brushmodel iw8r_spin: a brush model turns about its own origin, which is the map origin, so it is linked to\n"
+             "// a script_origin at the centre of its brushes and that pivot turns once every `seconds` (axis 0 yaw, 1 pitch, 2 roll).\n"
+             "iw8r_spin_pivot(name, centre, seconds, axis)\n{\n    wait 0.05;\n    ents = getentarray(name, \"targetname\");\n"
+             "    if (ents.size == 0)\n        return;\n    pivot = spawn(\"script_origin\", centre);\n    foreach (ent in ents)\n"
+             "        ent linkto(pivot);\n    for (;;)\n    {\n"
+             "        if (axis == 1)\n            pivot rotatepitch(360, seconds);\n        else if (axis == 2)\n"
+             "            pivot rotateroll(360, seconds);\n        else\n            pivot rotateyaw(360, seconds);\n"
+             "        wait seconds;\n    }\n}\n";
+    if (modelSpinners)
+        s += "\n// script_model iw8r_spin: one turn every `seconds` about the model's origin (axis 0 yaw, 1 pitch, 2 roll).\n"
              "iw8r_spin_model(name, seconds, axis)\n{\n    wait 0.05;\n    ents = getentarray(name, \"targetname\");\n"
              "    if (ents.size == 0)\n        return;\n    for (;;)\n    {\n        foreach (ent in ents)\n        {\n"
              "            if (axis == 1)\n                ent rotatepitch(360, seconds);\n            else if (axis == 2)\n"
@@ -658,25 +746,56 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
         return "\n// " + comment + "\n" + fn + "()\n{\n    wait 0.05;\n    trig = iw8r_trigger(\"" + trig +
                "\");\n    if (!isdefined(trig))\n        return;\n";
     };
+    bool nearest = false;  // iw8r_nearest is needed
     for (size_t i = 0; i < teleports.size(); ++i) {
         const auto& t = teleports[i];
         s += trigHead("iw8r_teleport_" + std::to_string(i), "Teleporter " + t.trigger + " -> " + t.dest + " (trigger iw8r_teleport)", t.trigger);
-        s += "    dest = getent(\"" + t.dest + "\", \"targetname\");\n    if (!isdefined(dest))\n        return;\n"
-             "    for (;;)\n    {\n        trig waittill(\"trigger\", user);\n"
+        std::string go;
+        if (t.spots.empty()) {
+            s += "    dest = getent(\"" + t.dest + "\", \"targetname\");\n    if (!isdefined(dest))\n        return;\n";
+            go = "        user setorigin(dest.origin);\n        user setplayerangles(dest.angles);\n";
+        } else if (t.spots.size() == 1) {
+            // The destination as the build found it (any class: a script_struct is not an entity at run time).
+            go = "        user setorigin(" + vec(t.spots[0].to) + ");\n        user setplayerangles(" + vec(t.spots[0].angles) + ");\n";
+        } else {
+            nearest = true;
+            s += "    from = [];\n    to = [];\n    ang = [];\n";
+            for (size_t k = 0; k < t.spots.size(); ++k) {
+                const std::string ix = "[" + std::to_string(k) + "]";
+                s += "    from" + ix + " = " + vec(t.spots[k].from) + ";\n    to" + ix + " = " + vec(t.spots[k].to) + ";\n    ang" + ix + " = " +
+                     vec(t.spots[k].angles) + ";\n";
+            }
+            go = "        k = iw8r_nearest(from, user.origin);\n        user setorigin(to[k]);\n        user setplayerangles(ang[k]);\n";
+        }
+        s += "    for (;;)\n    {\n        trig waittill(\"trigger\", user);\n"
              "        if (!isdefined(user) || !isplayer(user) || !isalive(user))\n            continue;\n"
              "        if (isdefined(user.iw8r_tp) && gettime() < user.iw8r_tp)\n            continue;\n"
-             "        user.iw8r_tp = gettime() + 1000;\n        user setorigin(dest.origin);\n"
-             "        user setplayerangles(dest.angles);\n    }\n}\n";
+             "        user.iw8r_tp = gettime() + 1000;\n" + go + "    }\n}\n";
     }
     for (size_t i = 0; i < jumps.size(); ++i) {
-        const auto& j = jumps[i];
+        const auto& g = jumps[i];
+        const auto& j = g.front();
+        const bool several = g.size() > 1 && std::all_of(g.begin(), g.end(), [](const MapScriptExtras::JumpPad& p) { return p.hasFrom; });
         s += trigHead("iw8r_jump_" + std::to_string(i), "Jump pad " + j.trigger + " (trigger iw8r_jump)", j.trigger);
+        std::string go = "        user setvelocity(" + vec(Vec3{j.velocity[0], j.velocity[1], j.velocity[2]}) + ");\n";
+        if (several) {
+            nearest = true;
+            s += "    from = [];\n    vel = [];\n";
+            for (size_t k = 0; k < g.size(); ++k)
+                s += "    from[" + std::to_string(k) + "] = " + vec(Vec3{g[k].from[0], g[k].from[1], g[k].from[2]}) + ";\n    vel[" +
+                     std::to_string(k) + "] = " + vec(Vec3{g[k].velocity[0], g[k].velocity[1], g[k].velocity[2]}) + ";\n";
+            go = "        user setvelocity(vel[iw8r_nearest(from, user.origin)]);\n";
+        }
         s += "    for (;;)\n    {\n        trig waittill(\"trigger\", user);\n"
              "        if (!isdefined(user) || !isplayer(user) || !isalive(user))\n            continue;\n"
              "        if (isdefined(user.iw8r_jp) && gettime() < user.iw8r_jp)\n            continue;\n"
-             "        user.iw8r_jp = gettime() + 500;\n        user setvelocity(" +
-             vec(Vec3{j.velocity[0], j.velocity[1], j.velocity[2]}) + ");\n    }\n}\n";
+             "        user.iw8r_jp = gettime() + 500;\n" + go + "    }\n}\n";
     }
+    if (nearest)
+        s += "\n// The index of the point nearest to pos: several triggers with one name (the same set placed twice) each use\n"
+             "// their own destination or velocity.\niw8r_nearest(points, pos)\n{\n    k = 0;\n    best = -1;\n"
+             "    for (i = 0; i < points.size; i += 1)\n    {\n        d = points[i] - pos;\n        dd = vectordot(d, d);\n"
+             "        if (best < 0 || dd < best)\n        {\n            best = dd;\n            k = i;\n        }\n    }\n    return k;\n}\n";
     for (size_t i = 0; i < hurts.size(); ++i) {
         const auto& h = hurts[i];
         const int ms = static_cast<int>(std::max(0.05, h.interval) * 1000 + 0.5);
@@ -690,11 +809,13 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
     for (size_t i = 0; i < lifts.size(); ++i) {
         const auto& l = lifts[i];
         const double t = std::max(0.05, l.moveTime), w = std::max(0.0, l.waitTime);
+        // Every entity of the name moves from its own start (two lifts with one name both run; research 131 G14).
         s += "\n// Lift " + l.targetname + " (script_brushmodel iw8r_lift)\niw8r_lift_" + std::to_string(i) +
-             "()\n{\n    wait 0.05;\n    lift = getent(\"" + l.targetname + "\", \"targetname\");\n    if (!isdefined(lift))\n"
-             "        return;\n    bottom = lift.origin;\n    for (;;)\n    {\n        wait " + num(w) + ";\n"
-             "        lift moveto(bottom + (0, 0, " + num(l.dz) + "), " + num(t) + ");\n        wait " + num(t + w) + ";\n"
-             "        lift moveto(bottom, " + num(t) + ");\n        wait " + num(t) + ";\n    }\n}\n";
+             "()\n{\n    wait 0.05;\n    lifts = getentarray(\"" + l.targetname + "\", \"targetname\");\n    if (lifts.size == 0)\n"
+             "        return;\n    foreach (lift in lifts)\n        lift.iw8r_bottom = lift.origin;\n    for (;;)\n    {\n        wait " + num(w) + ";\n"
+             "        foreach (lift in lifts)\n            lift moveto(lift.iw8r_bottom + (0, 0, " + num(l.dz) + "), " + num(t) + ");\n"
+             "        wait " + num(t + w) + ";\n"
+             "        foreach (lift in lifts)\n            lift moveto(lift.iw8r_bottom, " + num(t) + ");\n        wait " + num(t) + ";\n    }\n}\n";
     }
     if (!extras.solidTargetnames.empty())
         s += "\niw8r_make_solid(name)\n{\n    ents = getentarray(name, \"targetname\");\n"
@@ -715,9 +836,10 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
             // about its own origin (the map origin for an ordinary brush), so it is linked to a script_origin there.
             const std::string hinge = vec(Vec3{d.hinge[0], d.hinge[1], d.hinge[2]});
             const std::string normal = vec(Vec3{d.normal[0], d.normal[1], 0});
+            // getentarray: with two doors of one name (the build warns) the first one swings and the script does not stop.
             s += "\n// Hinged door " + d.door + " (script_brushmodel iw8r_door), used at " + d.trigger + "\niw8r_door_" + std::to_string(i) +
-                 "()\n{\n    wait 0.05;\n    door = getent(\"" + d.door + "\", \"targetname\");\n    trig = iw8r_trigger(\"" + d.trigger +
-                 "\");\n    if (!isdefined(door) || !isdefined(trig))\n        return;\n    hinge = " + hinge +
+                 "()\n{\n    wait 0.05;\n    doors = getentarray(\"" + d.door + "\", \"targetname\");\n    trig = iw8r_trigger(\"" + d.trigger +
+                 "\");\n    if (doors.size == 0 || !isdefined(trig))\n        return;\n    door = doors[0];\n    hinge = " + hinge +
                  ";\n    pivot = spawn(\"script_origin\", hinge);\n    door linkto(pivot);\n    for (;;)\n    {\n"
                  "        trig waittill(\"trigger\", user);\n        if (!isdefined(user) || !isplayer(user))\n            continue;\n"
                  "        dir = " + num(d.swing) + ";\n        if (vectordot(user.origin - hinge, " + normal + ") > 0)\n            dir = " +
@@ -731,15 +853,21 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
                  ";\n    }\n}\n";
             continue;
         }
-        const std::string open = d.rotate ? "door rotateyaw(" + num(d.yaw) + ", " + num(d.moveTime) + ");"
-                                          : "door moveto(door.origin + " + vec(Vec3{d.offset[0], d.offset[1], d.offset[2]}) + ", " +
-                                                num(d.moveTime) + ");";
-        const std::string close = d.rotate ? "door rotateyaw(" + num(-d.yaw) + ", " + num(d.moveTime) + ");"
-                                           : "door moveto(door.origin - " + vec(Vec3{d.offset[0], d.offset[1], d.offset[2]}) + ", " +
-                                                 num(d.moveTime) + ");";
+        // A rotate door that is not hinged (the build makes every rotate door hinged; this is for callers that fill Door
+        // themselves): it turns the same way every time, about a pivot at `hinge`, never about the map origin (G1).
+        // A slide door moves every entity of its name.
+        const std::string offset = vec(Vec3{d.offset[0], d.offset[1], d.offset[2]});
+        const std::string open = d.rotate ? "pivot rotateyaw(" + num(d.yaw) + ", " + num(d.moveTime) + ");"
+                                          : "foreach (door in doors)\n            door moveto(door.origin + " + offset + ", " + num(d.moveTime) + ");";
+        const std::string close = d.rotate ? "pivot rotateyaw(" + num(-d.yaw) + ", " + num(d.moveTime) + ");"
+                                           : "foreach (door in doors)\n            door moveto(door.origin - " + offset + ", " + num(d.moveTime) + ");";
         s += "\n// Door " + d.door + " (script_brushmodel iw8r_door), opened by " + d.trigger + "\niw8r_door_" + std::to_string(i) +
-             "()\n{\n    wait 0.05;\n    door = getent(\"" + d.door + "\", \"targetname\");\n    trig = iw8r_trigger(\"" + d.trigger +
-             "\");\n    if (!isdefined(door) || !isdefined(trig))\n        return;\n    for (;;)\n    {\n"
+             "()\n{\n    wait 0.05;\n    doors = getentarray(\"" + d.door + "\", \"targetname\");\n    trig = iw8r_trigger(\"" + d.trigger +
+             "\");\n    if (doors.size == 0 || !isdefined(trig))\n        return;\n";
+        if (d.rotate)
+            s += "    pivot = spawn(\"script_origin\", " + vec(Vec3{d.hinge[0], d.hinge[1], d.hinge[2]}) + ");\n    foreach (door in doors)\n"
+                 "        door linkto(pivot);\n";
+        s += "    for (;;)\n    {\n"
              "        trig waittill(\"trigger\", user);\n        if (!isdefined(user) || !isplayer(user))\n            continue;\n"
              "        " + open + "\n        wait " + num(d.moveTime + d.holdTime) + ";\n        " + close + "\n        wait " +
              num(d.moveTime + 0.1) + ";\n    }\n}\n";

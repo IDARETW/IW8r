@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 #include "geometry.h"
@@ -32,8 +33,8 @@ public:
     // Rebuilds from the map: worldspawn / func_group / script_brushmodel brushes that block players, and patch
     // triangles as thin convex facets. `patchSubdiv` matches the renderer (segments per sub-patch).
     void build(const MapFile& map, int patchSubdiv = 4);
-    // The same, leaving out the brushes of the entities in `skip` (movers added with addMover instead).
-    void build(const MapFile& map, int patchSubdiv, const std::vector<Id>& skip);
+    // The same, leaving out the brushes of the entities `skip` names (movers, added with addMover instead).
+    void build(const MapFile& map, int patchSubdiv, const std::function<bool(const Entity&)>& skip);
 
     // A moving brush entity (a door, a lift, a spinning brush model): its blocking brushes become a group whose
     // solids follow setMoverPose. Returns the group (-1 when the entity has no blocking brush).

@@ -290,6 +290,10 @@ float sunShadow(float3 w) {
     if (uv.x <= 0 || uv.y <= 0 || uv.x >= 1 || uv.y >= 1 || lp.z >= 1) return 1.0;
     return shadowPcf(uv, lp.z - litParams.z, 0.0);
 }
+// The alpha-test cut of cut-out surfaces: 0.5 in Game Lighting for every batch (the build's map_surface_realtime.hlsl
+// `clip(texel.a - .5)` in the shading pass and the depth pre-pass; the stock alpha-tested shaders keep 128 / 255,
+// research 100), the editor's 0.3 in the other views. sunNear.z = 1 while Game Lighting is on (also in the shadow passes).
+float cutoutAt() { return sunNear.z > 0.5 ? 0.5 : 0.3; }
 float3 litDecode(float3 c, float a, float3 w) {
     if (litParams.x < 1.5) return c;
     c *= litParams.x;
@@ -303,7 +307,9 @@ float3 exposeSoft(float3 c) {
     return c / (1.0 + max(c - 1.0, 0.0));  // soft shoulder above 1 instead of a hard clip
 }
 float3 applyFog(float3 c, float3 w) { if (fogColHalf.a <= 0) return c; float d = max(0.0, distance(w, eyeStart.xyz) - eyeStart.w); return lerp(c, fogColHalf.rgb, 1.0 - exp2(-d / fogColHalf.a)); }
-cbuffer Batch : register(b1) { float4 batchFlags; float4 batchFlags2; };  // x = 1 when t1 holds the material's normal map, y = blend mode, z = sway, w = sway base z; batchFlags2.x = 1 when t3 holds an emissive map
+cbuffer Batch : register(b1) { float4 batchFlags; float4 batchFlags2; float4 batchMat; };  // x = 1 when t1 holds the material's normal map, y = blend mode, z = sway, w = sway base z; batchFlags2.x = 1 when t3 holds an emissive map
+// batchMat (Game Lighting, an own material's shader state, SceneRenderer::TextureMaterial): x = 1 unlit (unlit, additive
+// and multiply materials: the colour as is), y = the unlit glow gain (> 1), z = 1 multiply, w = 1 blended glass.
 Texture2D emi0 : register(t3);
 Texture2D spec0 : register(t29);  // an own material's specular map (batchFlags2.w = 1 on a batch that is not the stock reference)
 TextureCube probeCube : register(t5);  // 3.16: the nearest captured reflection probe (batchFlags2.y = 1 when bound)
@@ -354,6 +360,9 @@ float3 gameFogApply(float3 c, float3 w, bool sky) {
     }
     return c * T + L;
 }
+// The surface's fog (the stock map's analytic fog, else the own map's exponential one). Both are affine in c:
+// fogAny(c) - fogAny(0) = c x T (the transmittance alone, for additive surfaces that only dim).
+float3 fogAny(float3 c, float3 w) { return gameFog[0].w > 0.5 ? gameFogApply(c, w, false) : applyFog(c, w); }
 Texture2D gameLmA : register(t6);
 // The stock reference's lightmap rectangles in its atlas (setStockLightmap): x, y, width, height per lightmap index,
 // and the atlas size in .x of lmInfo. A reference vertex carries index + u in its lightmap u.
@@ -721,12 +730,12 @@ float4 ps_post(VFull i) : SV_TARGET {
     return float4(shown, 1.0);
 }
 void ps_shadow_clip(PSIn i) {
-    if (!rawSpecAlpha()) clip(tex0.Sample(samp0, i.uv).a - 0.3);
+    if (!rawSpecAlpha()) clip(tex0.Sample(samp0, i.uv).a - cutoutAt());
 }
 // The depth pre-pass: the shading pass's own cut-out threshold and the coarse terrain cut, so the depths match.
 void ps_prepass(PSIn i) {
     if (tileFillHidden(i.col, i.w)) discard;
-    if (!rawSpecAlpha()) clip(tex0.Sample(samp0, i.uv).a - (game0.x > 0.5 && batchFlags2.z > 0.5 ? 0.5 : 0.3));
+    if (!rawSpecAlpha()) clip(tex0.Sample(samp0, i.uv).a - cutoutAt());
     if (gameTerrainCut.w > 0.5 && batchFlags2.z > 0.5 && i.col.a > 0.99 && i.col.a < 0.998 && distance(i.w.xy, gameTerrainCut.xy) < gameTerrainCut.z) discard;
 }
 // Stock local lights (research 106): Replay's packed records (96 bytes), the nearest 256 in view; per 32-pixel screen
@@ -902,10 +911,10 @@ float4 ps_tex(PSIn i) : SV_TARGET {
     // Blend 0: alpha-tested foliage and grates. Blended materials keep their coverage; without a mask (alpha 1) a
     // blended surface (glass, a decal sheet) shows at 60 percent so what is behind it stays visible.
     float outA = 1.0;
-    // Cut-outs: the stock alpha-tested shaders keep opacity above 128 / 255 (research 100); the editor's own materials
-    // keep the editor's 0.3.
+    // Cut-outs: the stock alpha-tested shaders keep opacity above 128 / 255 (research 100) and the build cuts own
+    // materials at .5 too: Game Lighting cuts every batch at 0.5, the other views at the editor's 0.3 (cutoutAt).
     if (batchFlags.y < 0.5 && !rawSpecAlpha()) {
-        const float cutAt = game0.x > 0.5 && batchFlags2.z > 0.5 ? 0.5 : 0.3;
+        const float cutAt = cutoutAt();
         if (batchFlags.y < -0.5) {
             // Placed props (blend mode -1): the cut-out edge is anti-aliased from the alpha's screen slope and blended,
             // depth still written. The game's TAA smooths its sub-pixel grass blades the same way; a hard cut leaves
@@ -917,7 +926,9 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             clip(t.a - cutAt);
         }
     } else if (batchFlags.y > 0.5) {
-        outA = t.a > 0.99 ? 0.6 : t.a;
+        // Game Lighting: the build's coverage, alpha = texel.a (map_surface_realtime.hlsl 1770; a blended material
+        // with alpha 1 is opaque there). The other views keep a mask-less blended surface at 60 percent.
+        outA = game0.x > 0.5 ? t.a : (t.a > 0.99 ? 0.6 : t.a);
     }
     if (layerB >= 0.0) outA = layerB;
     // Colour mode multiply (layerP.w = 1; puddles, edge wear): below x lerp(1, layer, b), drawn with a multiplying blend
@@ -939,6 +950,23 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         if (!stockRef && i.col.a < 0.5) {  // sky box
             const float3 sky = gameFogApply(albedo * gameSkyScale.x, i.w, true);
             return float4(gameAo.w > 0.5 ? sky : gamePost(sky), 1.0);
+        }
+        if (!stockRef && (batchMat.x > 0.5 || batchMat.z > 0.5)) {
+            // An own unlit, additive or multiply material (map_surface_realtime.hlsl 1626-1640): light = 1, or the
+            // unlit glow gain above 1 (MAP_EMISSION); no sun, lamps or specular.
+            if (batchMat.z > 0.5) {
+                // Multiply (MSR 1871-1881): what is behind x lerp(1, colour, the fog's transmittance), with the
+                // multiplying blend state; on the HDR scene a linear multiply, else in display terms.
+                const float3 T = fogAny(float3(1, 1, 1), i.w) - fogAny(float3(0, 0, 0), i.w);
+                const float3 m = lerp(float3(1, 1, 1), albedo, dot(T, float3(1, 1, 1) / 3.0));
+                return float4(gameAo.w > 0.5 ? m : pow(m, 1.0 / 2.2), 1.0);
+            }
+            float3 cu = albedo * (batchMat.y > 1.0 ? batchMat.y : 1.0);
+            // Additive (MSR 1887-1896): colour x alpha, dimmed by the fog (no in-scatter of its own).
+            cu = batchFlags.y > 1.5 ? fogAny(cu, i.w) - fogAny(float3(0, 0, 0), i.w) : fogAny(cu, i.w);
+            if (gameAo.w < 0.5) cu = gamePost(cu);
+            if (batchFlags.y > 1.5) return float4(cu * outA, 1.0);
+            return float4(cu, outA);
         }
         float3 Nf = dot(i.n, i.n) > 0.5 ? normalize(i.n) : normalize(cross(ddx(i.w), ddy(i.w)));
         // A normal from the screen derivatives has no reliable side (instanced props have none of their own): it faces
@@ -1649,6 +1677,15 @@ void SceneRenderer::releaseTextures() {
     for (auto*& t : textures_) safeRelease(t);
     textures_.clear();
     textureBytes_ = 0;
+    texMat_.clear(), texMatSet_.clear();
+}
+
+void SceneRenderer::writeBatchCb(const float flags[8], const float* mat) {
+    if (!cbBatch_) return;
+    float all[12] = {};
+    std::memcpy(all, flags, 8 * sizeof(float));
+    if (mat) std::memcpy(all + 8, mat, 4 * sizeof(float));
+    ctx_->UpdateSubresource(cbBatch_, 0, nullptr, all, 0, 0);
 }
 
 int SceneRenderer::createCustomShader(const std::string& source, std::string* err) {
@@ -1895,7 +1932,7 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
                 safeRelease(tivs);
             }
             D3D11_BUFFER_DESC bd{};
-            bd.ByteWidth = 32;  // batchFlags + batchFlags2
+            bd.ByteWidth = 48;  // batchFlags + batchFlags2 + batchMat (writeBatchCb)
             bd.Usage = D3D11_USAGE_DEFAULT;
             bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
             dev_->CreateBuffer(&bd, nullptr, &cbBatch_);
@@ -4056,7 +4093,7 @@ void SceneRenderer::drawReferenceTexInstances() {
     const bool instCb = (propNormals || (texPsOverride_ && texPsOverride_ == psPrepass_)) && uploadInstParams();
     if (cbBatch_) {
         const float flags[8] = {propNormals ? 1.0f : 0.0f, soft ? -1.0f : 0.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};
-        ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+        writeBatchCb(flags);
         ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
         ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
     }
@@ -4172,7 +4209,7 @@ void SceneRenderer::drawReferenceTexInstancesShadow(const iw8r::Frustum* view) {
     if (psShadowClip_ && sampler_) ctx_->PSSetSamplers(0, 1, &sampler_);
     if (cbBatch_) {
         const float zero[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-        ctx_->UpdateSubresource(cbBatch_, 0, nullptr, zero, 0, 0);
+        writeBatchCb(zero);
         ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
     }
     const bool instCb = psShadowClip_ && uploadInstParams();
@@ -4573,7 +4610,8 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         std::memcpy(cb + 56, sunViewProjNear_, 64);
         cb[72] = shadowBiasNear_;
         cb[73] = nearEnabled_ ? 1.0f : 0.0f;
-        cb[74] = cb[75] = 0;
+        cb[74] = game_.on && gameLutSrv_ ? 1.0f : 0.0f;  // sunNear.z: Game Lighting's cut-out threshold (cutoutAt)
+        cb[75] = 0;
         if (SUCCEEDED(ctx_->Map(cb_, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
             std::memcpy(m.pData, cb, sizeof(cb));
             ctx_->Unmap(cb_, 0);
@@ -4661,7 +4699,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ctx_->VSSetShader(vsTex_, nullptr, 0);
             if (cbBatch_) {
                 const float flags[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-                ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+                writeBatchCb(flags);
                 ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
             }
             // Opaque and alpha-tested batches only (glass and effects cast no shadow); the clip shader keeps the
@@ -4680,7 +4718,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                     ctx_->PSSetShaderResources(0, 1, &textures_[size_t(b.texture)]);
                 if (const bool raw = textureRawAlpha(b.texture); raw != lastRaw && cbBatch_) {
                     const float rf[8] = {0, raw ? -2.0f : 0.0f, 0, 0, 0, 0, 0, 0};
-                    ctx_->UpdateSubresource(cbBatch_, 0, nullptr, rf, 0, 0);
+                    writeBatchCb(rf);
                     lastRaw = raw;
                 }
                 ctx_->IASetVertexBuffers(0, 1, &d.g->vb, &tstride, &offset);
@@ -4699,7 +4737,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ctx_->PSSetSamplers(0, 1, &sampler_);
             if (cbBatch_) {
                 const float flags[8] = {0, 0, 0, 0, 0, 0, 1.0f, 0};
-                ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+                writeBatchCb(flags);
                 ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
                 ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
             }
@@ -4832,7 +4870,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             if (b.blend || b.texture < 0 || size_t(b.texture) >= textures_.size()) continue;
             if (cbBatch_) {  // the same vertex inputs as the shading pass (sway), so the depths match exactly
                 const float flags[8] = {0, b.blend == 0 && textureRawAlpha(b.texture) ? -2.0f : float(b.blend), b.sway ? 1.0f : 0.0f, b.baseZ, 0, 0, 0, 0};
-                ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+                writeBatchCb(flags);
             }
             ctx_->PSSetShaderResources(0, 1, &textures_[size_t(b.texture)]);
             ctx_->IASetVertexBuffers(0, 1, &g.vb, &tstride, &offset);
@@ -4846,7 +4884,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         if (vbRefTex_ && refVisible_) {
             if (cbBatch_) {
                 const float flags[8] = {0, 0, 0, 0, 0, 0, 1.0f, 0};
-                ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+                writeBatchCb(flags);
             }
             ctx_->IASetVertexBuffers(0, 1, &vbRefTex_, &tstride, &offset);
             const bool preCb = uploadLayerParams();
@@ -4888,7 +4926,42 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     // After the pre-pass the opaque geometry still writes depth (LESS_EQUAL: the pre-pass depths pass): the pre-pass
     // leaves out the props small on screen.
     ID3D11DepthStencilState* texOpaqueDs = dsWrite_;
-    if (!drawList_.empty()) {
+    // Opaque batches first, then blended ones farthest first (a stable sort, as before, without a heap buffer). In
+    // Game Lighting the blended ones go by their material's sort key first (the build's sortKey, the converter's
+    // default 4; SceneRenderer::TextureMaterial) and are drawn after the stock reference and its props, so a glass or
+    // decal of the map blends over the whole opaque scene.
+    drawOrder_.clear();
+    size_t firstBlendedScene = 0;
+    {
+        const size_t count = drawList_.size();
+        for (size_t k = 0; k < count; ++k)
+            if (!drawList_[k].b->blend) drawOrder_.push_back(uint32_t(k));
+        firstBlendedScene = drawOrder_.size();
+        const auto sortKeyOf = [&](const SceneBatch& b) {
+            const TextureMaterial* tm = game_.on ? textureMaterial(b.texture) : nullptr;
+            return tm ? tm->sortKey : 4;
+        };
+        for (size_t k = 0; k < count; ++k) {
+            BatchDraw& d = drawList_[k];
+            if (!d.b->blend) continue;
+            // The batch centre's clip-space w is its distance along the view direction.
+            d.depth = float(d.g->centroid[0] * viewProj[3] + d.g->centroid[1] * viewProj[7] + d.g->centroid[2] * viewProj[11] + viewProj[15]);
+            const int key = sortKeyOf(*d.b);
+            size_t at = drawOrder_.size();
+            drawOrder_.push_back(uint32_t(k));
+            while (at > firstBlendedScene) {
+                const BatchDraw& p = drawList_[drawOrder_[at - 1]];
+                const int pk = sortKeyOf(*p.b);
+                if (pk < key || (pk == key && p.depth >= d.depth)) break;
+                drawOrder_[at] = drawOrder_[at - 1];
+                --at;
+            }
+            drawOrder_[at] = uint32_t(k);
+        }
+    }
+    const bool deferSceneBlended = game_.on;
+    const auto drawSceneTex = [&](size_t from, size_t to) {
+        if (from >= to) return;
         // One vertex buffer per batch; one draw per texture, or one per run of visible chunks.
         IW8R_PROF("d.tex");
         ctx_->IASetInputLayout(layoutTex_);
@@ -4922,35 +4995,20 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ctx_->UpdateSubresource(cbLights_, 0, nullptr, &data, 0, 0);
             ctx_->PSSetConstantBuffers(2, 1, &cbLights_);
         }
-        // Opaque batches first, then blended ones farthest first (a stable sort, as before, without a heap buffer).
-        drawOrder_.clear();
-        const size_t count = drawList_.size();
-        for (size_t k = 0; k < count; ++k)
-            if (!drawList_[k].b->blend) drawOrder_.push_back(uint32_t(k));
-        const size_t firstBlended = drawOrder_.size();
-        for (size_t k = 0; k < count; ++k) {
-            BatchDraw& d = drawList_[k];
-            if (!d.b->blend) continue;
-            // The batch centre's clip-space w is its distance along the view direction.
-            d.depth = float(d.g->centroid[0] * viewProj[3] + d.g->centroid[1] * viewProj[7] + d.g->centroid[2] * viewProj[11] + viewProj[15]);
-            size_t at = drawOrder_.size();
-            drawOrder_.push_back(uint32_t(k));
-            while (at > firstBlended && drawList_[drawOrder_[at - 1]].depth < d.depth) {
-                drawOrder_[at] = drawOrder_[at - 1];
-                --at;
-            }
-            drawOrder_[at] = uint32_t(k);
-        }
         ID3D11PixelShader* boundTexPs = psTex_;
-        for (uint32_t k : drawOrder_) {
+        for (size_t oi = from; oi < to; ++oi) {
+            const uint32_t k = drawOrder_[oi];
             const SceneBatch& b = *drawList_[k].b;
             StreamGpu& g = *drawList_[k].g;
             if (b.texture < 0 || size_t(b.texture) >= textures_.size()) continue;
             const bool chunked = refCulling_ && g.chunked && !g.chunks.empty();
             ++stats_.batches;
+            // Game Lighting: the own material's shader state (unlit, glow, multiply, glass; TextureMaterial).
+            const TextureMaterial* tm = game_.on ? textureMaterial(b.texture) : nullptr;
             if (b.blend) {
                 ctx_->OMSetDepthStencilState(dsTest_, 0);
-                ctx_->OMSetBlendState(b.blend == 2 && blendAdd_ ? blendAdd_ : blend_, bf, 0xffffffff);
+                ID3D11BlendState* bs = tm && tm->multiply && blendMul_ ? blendMul_ : b.blend == 2 && blendAdd_ ? blendAdd_ : blend_;
+                ctx_->OMSetBlendState(bs, bf, 0xffffffff);
             }
             ctx_->PSSetShaderResources(0, 1, &textures_[size_t(b.texture)]);
             // The material's custom shader in Game Lighting (createCustomShader), else the editor's own.
@@ -4971,7 +5029,9 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             if (cbBatch_) {
                 const float flags[8] = {hasNormal ? 1.0f : 0.0f, b.blend == 0 && textureRawAlpha(b.texture) ? -2.0f : float(b.blend), b.sway ? 1.0f : 0.0f, b.baseZ,
                                         hasEmissive ? 1.0f : 0.0f, probeSrv_ ? 1.0f : 0.0f, 0, hasSpec ? 1.0f : 0.0f};
-                ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+                const float mat[4] = {tm && tm->unlit ? 1.0f : 0.0f, tm ? tm->emission : 0.0f, tm && tm->multiply && b.blend ? 1.0f : 0.0f,
+                                      tm && tm->glass && b.blend == 1 ? 1.0f : 0.0f};
+                writeBatchCb(flags, mat);
             }
             ctx_->IASetVertexBuffers(0, 1, &g.vb, &tstride, &offset);
             if (chunked) {
@@ -4989,7 +5049,8 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         ctx_->IASetInputLayout(layout_);
         ctx_->VSSetShader(vs_, nullptr, 0);
         ctx_->PSSetShader(ps_, nullptr, 0);
-    }
+    };
+    drawSceneTex(0, deferSceneBlended ? firstBlendedScene : drawOrder_.size());
     ID3D11PixelShader* const refPs = filterPs_ ? filterPs_ : psTex_;  // a map shader's filter on the stock reference
     if (vbRefTex_ && refVisible_ && vsTex_ && psTex_ && layoutTex_) {  // textured stock reference
         IW8R_PROF("d.ref");
@@ -5010,7 +5071,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         const bool refNormals = flatNrmTex_ >= 0 && size_t(flatNrmTex_) < textures_.size();
         if (cbBatch_) {
             const float flags[8] = {refNormals ? 1.0f : 0.0f, 0, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};
-            ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+            writeBatchCb(flags);
             ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
             ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
         }
@@ -5070,7 +5131,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         if (!noLayers && (!refLayerOrder_.empty() || refDecalDirty_ || !refDecalOrder_.empty()) && cbLayer_) {
             if (cbBatch_) {
                 const float flags[8] = {refNormals ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};  // y = 1: blended, no clip
-                ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+                writeBatchCb(flags);
             }
             ctx_->OMSetDepthStencilState(dsTest_, 0);
             ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);
@@ -5142,7 +5203,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 if (cbBatch_ && int(volume) != lastFlags) {
                     lastFlags = int(volume);
                     const float flags[8] = {refNormals && !volume ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};
-                    ctx_->UpdateSubresource(cbBatch_, 0, nullptr, flags, 0, 0);
+                    writeBatchCb(flags);
                 }
                 const int rv = L.reveal >= 0 && size_t(L.reveal) < textures_.size() ? L.reveal : whiteFullTex_;
                 if (rv < 0 || size_t(rv) >= textures_.size()) continue;
@@ -5217,6 +5278,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         drawReferenceTexInstances();
     }
+    if (deferSceneBlended) drawSceneTex(firstBlendedScene, drawOrder_.size());  // the map's blended batches, last
     if (hdrFrame_) {
         // The lit scene is done: kept for the next frame's reflections, the post chain into the frame, then the unlit
         // pieces and the editor's overlays.

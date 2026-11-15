@@ -25,6 +25,8 @@ struct PlayWorldOptions {
     std::function<std::shared_ptr<const ImportedModel>(const Entity&)> modelOf;
     double modelScale = 1.0;                // file units -> map units, as the build's modelScale
     int maxPieces = 4, maxPlanes = 24;      // CompileOptions::modelCollisionMaxPieces / MaxPlanes
+    // Brush entities left out of the static world (the play preview's movers, PlayBehaviours::moves).
+    std::function<bool(const Entity&)> skip;
 };
 
 struct PlayWorldStats {

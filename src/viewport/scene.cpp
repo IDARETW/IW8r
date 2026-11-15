@@ -372,6 +372,8 @@ struct BrushPose {
     Vec3 delta{0, 0, 0};
     Vec3 angles{0, 0, 0};  // pitch, yaw, roll in degrees about the pivot (anglesToMatrix)
     Vec3 pivot{0, 0, 0};
+    bool matrix = false;   // the play preview's pose: `rotation` instead of `angles`
+    Mat3 rotation;
 };
 
 BrushPose brushBehaviourPose(const Entity& e, double t) {
@@ -429,7 +431,7 @@ BrushPose brushBehaviourPose(const Entity& e, double t) {
 }
 
 void applyBrushPose(PrimGeom& g, const BrushPose& pose) {
-    const Mat3 r = anglesToMatrix(pose.angles);
+    const Mat3 r = pose.matrix ? pose.rotation : anglesToMatrix(pose.angles);
     const auto turn = [&](const Vec3& v) { return r * v; };
     const auto move = [&](const Vec3& v) { return pose.pivot + turn(v - pose.pivot) + pose.delta; };
     AABB b;
@@ -975,7 +977,7 @@ void SceneCache::sync(const Document& doc) {
         for (const auto& it : e.items) print = ((print ^ it.id) * 1099511628211ull ^ it.rev) * 1099511628211ull;
     }
     static const bool noFastSync = perfOff("syncfast");  // benchmark switch
-    if (!noFastSync && doc_ == &doc && docRevision_ != 0 && print == fingerprint_ && behaviourTime < 0) {
+    if (!noFastSync && doc_ == &doc && docRevision_ != 0 && print == fingerprint_ && behaviourTime < 0 && playPoses.empty()) {
         docRevision_ = doc.revision();
         return;
     }
@@ -1072,6 +1074,16 @@ void SceneCache::sync(const Document& doc) {
         AABB entBounds;
         BrushPose brushPose;
         if (behaviourTime >= 0 && cls == "script_brushmodel") brushPose = brushBehaviourPose(e, behaviourTime);
+        if (!playPoses.empty())
+            if (const auto pp = playPoses.find(e.id); pp != playPoses.end()) {
+                brushPose = BrushPose{};
+                brushPose.any = true;
+                brushPose.matrix = true;
+                for (int i = 0; i < 3; ++i)
+                    for (int j = 0; j < 3; ++j) brushPose.rotation.m[i][j] = pp->second.R[i][j];
+                brushPose.pivot = pp->second.pivot;
+                brushPose.delta = pp->second.move;
+            }
         // The owner's keys that buildPrim reads (a key change does not move the brushes' revs).
         uint64_t look = 0;
         if (!e.isWorldspawn()) {

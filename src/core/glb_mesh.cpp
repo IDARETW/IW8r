@@ -269,6 +269,19 @@ private:
                 m.uv.assign(n, std::array<double, 2>{0, 0});
             }
 
+            if (const json::Value* col = attrs->get("COLOR_0")) {
+                // VEC4 or VEC3 (alpha 1), float or normalised bytes / shorts.
+                const json::Value* accs = doc_.get("accessors");
+                const json::Value* acc = accs ? accs->at(size_t(std::max(0.0, col->num))) : nullptr;
+                const json::Value* ty = acc ? acc->get("type") : nullptr;
+                const size_t comps = ty && ty->string() && *ty->string() == "VEC3" ? 3 : 4;
+                size_t nc = 0;
+                if (!readAccessor(int(col->num), comps, v, nc)) return false;
+                if (nc != n) return fail("COLOR_0 count differs from POSITION");
+                m.color.resize(n);
+                for (size_t i = 0; i < n; ++i)
+                    for (size_t c = 0; c < 4; ++c) m.color[i][c] = c < comps ? float(v[i * comps + c]) : 1.0f;
+            }
             if (const json::Value* ind = prim.get("indices")) {
                 size_t ni = 0;
                 std::vector<double> iv;

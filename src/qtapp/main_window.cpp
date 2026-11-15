@@ -506,6 +506,23 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         if (const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr) return qs(cm->specImage);
         return {};
     });
+    // Game Lighting draws an own material's shader state as the build writes it (compile_iw8.cpp customMaterialJson) and
+    // the converter's world shader reads it (map_surface_realtime.hlsl; research 132 G4, G11, G12).
+    camera_->setMaterialState([this](const std::string& m) -> std::optional<CameraView::MaterialState> {
+        const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr;
+        if (!cm) return std::nullopt;
+        CameraView::MaterialState s;
+        const bool add = cm->blendMode == 1, mul = cm->blendMode == 2;
+        s.unlit = cm->unlit || add || mul;  // additive and multiply layers draw their colour as is (MSR 1378, 1627)
+        s.emission = cm->unlit && !mul && cm->emission > 1 ? float(cm->emission) : 0.0f;  // MAP_EMISSION: unlit only
+        s.multiply = mul;
+        // A blended material named glass is window glass (iw3_render_assets: the others are lit decal layers, 2048).
+        const QString built = qs(cm->buildName.empty() ? cm->name : cm->buildName);
+        s.glass = cm->blend && !add && !mul && built.contains("glass", Qt::CaseInsensitive);
+        s.sortKey = cm->sortKey > 0 ? cm->sortKey : 4;
+        s.cullBack = !cm->twoSided;
+        return s;
+    });
     camera_->setMaterialNormals([this](const std::string& m) -> QString {
         // An own material's normal image ("slope:<file>": the build reads it as an IW3 slope map).
         if (const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr)

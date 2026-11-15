@@ -180,6 +180,17 @@ public:
     void setMaterialEmissive(MaskLookup lookup) { emissiveLookup_ = std::move(lookup); }
     // The specular image file of an own material ("" = none): any format the material library reads.
     void setMaterialSpecular(MaskLookup lookup) { specLookup_ = std::move(lookup); }
+    // An own material's shader state for Game Lighting (unlit, glow, multiply, glass, sort key, culling; nullopt: not an
+    // own material). Given to the renderer with the material's colour texture.
+    using MaterialState = app::SceneRenderer::TextureMaterial;
+    using MaterialStateLookup = std::function<std::optional<MaterialState>(const std::string& material)>;
+    void setMaterialState(MaterialStateLookup lookup) { stateLookup_ = std::move(lookup); }
+    // Tests: the shader state the renderer holds for a material's colour texture (nullopt: none or not loaded).
+    std::optional<MaterialState> materialStateForTest(const std::string& material) const {
+        const auto it = texIds_.find(material);
+        const MaterialState* s = it == texIds_.end() ? nullptr : renderer_.textureMaterial(it->second);
+        return s ? std::optional<MaterialState>(*s) : std::nullopt;
+    }
     // Tests: the texture ids of a material's normal and specular maps once they are loaded (-1 = none, -2 = not yet).
     std::pair<int, int> materialMapIds(const std::string& material);
     // 3.16: folder of captured reflection probes (probe<N>.rgba six 64x64 faces + probe<N>.pos); the probe nearest the
@@ -639,6 +650,10 @@ private:
     Vec3 bakeAlbedoFor(const std::string& material);
     std::unordered_map<std::string, Vec3> bakeAlbedo_;
     MaskLookup specLookup_;
+    MaterialStateLookup stateLookup_;
+    // Gives the renderer the material's shader state for its colour texture (stateLookup_); materials that had one.
+    void applyMaterialState(const std::string& material, int texture);
+    std::set<std::string> stateMaterials_;
     int specFor(const std::string& material);
     std::unordered_map<std::string, int> specIds_;
     // Worldspawn settings parsed per document revision, and the files looked at now and then (render()).

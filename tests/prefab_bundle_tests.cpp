@@ -1319,7 +1319,7 @@ TEST(prefab_bundle_save_selection_keeps_entities_and_collects_assets) {
     CHECK(compileMap(host, out, CompileOptions{}, (dir / "out").string(), rep));
     CHECK(fs::exists(out / "extracted" / "materials" / "sub" / "plank.json") && fs::exists(out / "extracted" / "xmodel" / "own_crate.json"));
     const std::string gsc = slurp(mapsDir(out) / "mp_bundle_t.gsc");
-    CHECK(has(gsc, "getent(\"p1_door1\", \"targetname\")") && has(gsc, "iw8r_trigger(\"p1_door1_trig\")") && has(gsc, "iw8r_trigger(\"p2_door1_trig\")"));
+    CHECK(has(gsc, "getentarray(\"p1_door1\", \"targetname\")") && has(gsc, "iw8r_trigger(\"p1_door1_trig\")") && has(gsc, "iw8r_trigger(\"p2_door1_trig\")"));
     CHECK(count(gsc, "level thread iw8rp_door_set_wood_main(iw8r_prefab_inst(") == 2);
     CHECK(hasLine(rep.warnings, "prefab bundle 'door_set_wood' (door_set.iw8prefab): 2 placement(s), main contents"));
 }

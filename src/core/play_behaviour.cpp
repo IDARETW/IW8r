@@ -65,6 +65,20 @@ bool PlayBehaviours::Volume::touches(const AABB& p) const {
 }
 
 std::vector<Id> PlayBehaviours::build(const MapFile& map, CollisionWorld& world) {
+    const std::vector<Id> moving = read(map);
+    world.build(map, 4, [this](const Entity& e) { return moves(e); });
+    attach(map, world);
+    return moving;
+}
+
+bool PlayBehaviours::moves(const Entity& e) const {
+    if (lowered(e.classname()) != "script_brushmodel") return false;
+    const std::string* tn = e.value("targetname");
+    return tn && std::find(moverNames_.begin(), moverNames_.end(), *tn) != moverNames_.end();
+}
+
+std::vector<Id> PlayBehaviours::read(const MapFile& map) {
+    moverNames_.clear();
     doors_.clear();
     movers_.clear();
     triggers_.clear();
@@ -211,8 +225,13 @@ std::vector<Id> PlayBehaviours::build(const MapFile& map, CollisionWorld& world)
         triggers_.push_back(std::move(t));
     }
 
-    // The collision world without the movers, then each mover as a group.
-    world.build(map, 4, moving);
+    for (const Entity& e : map.entities)
+        if (std::find(moving.begin(), moving.end(), e.id) != moving.end())
+            if (const std::string* tn = e.value("targetname")) moverNames_.push_back(*tn);
+    return moving;
+}
+
+void PlayBehaviours::attach(const MapFile& map, CollisionWorld& world) {
     for (const Entity& e : map.entities) {
         for (Door& d : doors_)
             if (d.entity == e.id) d.group = world.addMover(e);
@@ -223,7 +242,6 @@ std::vector<Id> PlayBehaviours::build(const MapFile& map, CollisionWorld& world)
                 if (b.valid()) m.centre = (b.mins + b.maxs) * 0.5;
             }
     }
-    return moving;
 }
 
 std::vector<PlayBehaviours::Event> PlayBehaviours::tick(double dt, const Vec3& feet, const Vec3& mins, const Vec3& maxs, bool use,

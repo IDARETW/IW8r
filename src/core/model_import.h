@@ -21,6 +21,10 @@ struct ImportedMesh {
     std::vector<Vec3> pos, normal;           // per vertex
     std::vector<std::array<double, 2>> uv;   // per vertex, OBJ convention (v = 0 at the bottom)
     std::vector<uint32_t> idx;               // 3 per triangle
+    // glTF COLOR_0 as stored (0..1, RGBA; empty when the primitive has none). Stock models keep the game's raw vertex
+    // colour bytes here: RGB in sRGB (the game's vertex shader linearises it and multiplies the albedo of VERTCOL
+    // materials), alpha the flag / foliage wave weight (research 133 sections 4 and 6).
+    std::vector<std::array<float, 4>> color;
 };
 
 struct ImportedModel {

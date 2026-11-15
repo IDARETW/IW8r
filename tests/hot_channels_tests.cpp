@@ -302,7 +302,10 @@ TEST(map_script_doors) {
     const std::string g = mapScriptGsc(std::nullopt, {}, {}, ex);
     CHECK(g.find("level thread iw8r_door_0();") != std::string::npos && g.find("level thread iw8r_door_1();") != std::string::npos);
     CHECK(g.find("trig waittill(\"trigger\", user);") != std::string::npos);
-    CHECK(g.find("door rotateyaw(90, 1);") != std::string::npos && g.find("door rotateyaw(-90, 1);") != std::string::npos);
+    // A rotate door that is not hinged turns a pivot at its hinge point, never itself about the map origin (research 131 G1).
+    CHECK(g.find("pivot rotateyaw(90, 1);") != std::string::npos && g.find("pivot rotateyaw(-90, 1);") != std::string::npos);
+    CHECK(g.find("door rotateyaw(") == std::string::npos);
+    CHECK(g.find("doors = getentarray(\"gate1\", \"targetname\");") != std::string::npos);
     CHECK(g.find("door moveto(door.origin + (0, 0, 96), 1);") != std::string::npos);
 }
 
@@ -337,7 +340,9 @@ TEST(map_script_behaviours) {
     CHECK(g.find("level thread iw8r_damage_0();") != std::string::npos);
     CHECK(g.find("user.iw8r_dz = gettime() + 500;") != std::string::npos && g.find("radiusdamage(user.origin, 32, 15, 15);") != std::string::npos);
     CHECK(g.find("level thread iw8r_lift_0();") != std::string::npos);
-    CHECK(g.find("lift moveto(bottom + (0, 0, 256), 3);") != std::string::npos && g.find("lift moveto(bottom, 3);") != std::string::npos);
+    CHECK(g.find("lift moveto(lift.iw8r_bottom + (0, 0, 256), 3);") != std::string::npos &&
+          g.find("lift moveto(lift.iw8r_bottom, 3);") != std::string::npos);
+    CHECK(g.find("lifts = getentarray(\"elevator\", \"targetname\");") != std::string::npos);
     long braces = 0, parens = 0;
     for (char c : g) {
         braces += c == '{' ? 1 : c == '}' ? -1 : 0;

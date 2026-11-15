@@ -360,6 +360,25 @@ public:
         }
         return s;
     }
+    // An own (custom) material's shader state, keyed by its colour texture (createTexture id; the scene's batches are
+    // one per texture). What the build writes into the material (compile_iw8.cpp customMaterialJson) and the converter's
+    // world shader draws (map_surface_realtime.hlsl 1626-1640, 1770-1806, 1871-1896); Game Lighting only.
+    struct TextureMaterial {
+        bool unlit = false;     // the colour as is (unlit, additive and multiply materials)
+        float emission = 0;     // an unlit material's glow gain (> 1), 0 = none
+        bool multiply = false;  // dst x colour (blend zero / srccolor)
+        bool glass = false;     // a blended glass material: premultiplied, the probe reflection added unscaled
+        int sortKey = 4;        // blended batches draw in sort key order, then far to near (the converter's default 4)
+        bool cullBack = false;  // one-sided (not twoSided): back faces are culled
+    };
+    void setTextureMaterial(int texture, const TextureMaterial& m) {
+        if (texture < 0) return;
+        if (size_t(texture) >= texMat_.size()) texMat_.resize(size_t(texture) + 1), texMatSet_.resize(size_t(texture) + 1, 0);
+        texMat_[size_t(texture)] = m, texMatSet_[size_t(texture)] = 1;
+    }
+    const TextureMaterial* textureMaterial(int texture) const {
+        return texture >= 0 && size_t(texture) < texMat_.size() && texMatSet_[size_t(texture)] ? &texMat_[size_t(texture)] : nullptr;
+    }
     void setReferenceNormal(size_t batch, int textureId) {
         if (batch < refNrmIds_.size()) refNrmIds_[batch] = textureId;
     }
@@ -531,7 +550,11 @@ public:
         bool whiteBalanceOn = false;
         float whiteBalance[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     };
-    void setGameLook(const GameLook& g) { game_ = g; }
+    void setGameLook(const GameLook& g) {
+        // The shadow maps' cut-outs follow the view's threshold (0.5 in Game Lighting, 0.3 otherwise): drawn again.
+        if (g.on != game_.on) shadowDirty_ = nearDirty_ = true;
+        game_ = g;
+    }
     const GameLook& gameLook() const { return game_; }
     bool gameLookOn() const { return game_.on; }
     // The preview lightmap: width x height texels of four floats each (a, b, d as GameLightmap). null = none.
@@ -794,6 +817,10 @@ private:
     ID3D11RasterizerState* rsShadow_ = nullptr;
     ID3D11Buffer* cbWind_ = nullptr;
     ID3D11Buffer* cbBatch_ = nullptr;  // per textured batch: x = has a normal map
+    // b1 (cbuffer Batch): batchFlags + batchFlags2 (flags, 8 floats) and batchMat (mat, 4 floats; null = zero).
+    void writeBatchCb(const float flags[8], const float* mat = nullptr);
+    std::vector<TextureMaterial> texMat_;  // setTextureMaterial
+    std::vector<uint8_t> texMatSet_;
     ID3D11Buffer* cbLayer_ = nullptr;
     // Every layer / decal batch's constants in one buffer, 256 bytes per batch, bound per draw with a D3D 11.1 offset
     // (Hideout: 4,300 draws a frame each copying its constants cost 40 ms). Rebuilt when a batch's constants change.

@@ -471,3 +471,33 @@ TEST(scene_vehicle_struct_model_or_box) {
     const app::PrimGeom* gb = pointItem(bare, atv);
     CHECK(gb && boxNear(gb->bounds, {52, -48, 0}, {148, 48, 64}));
 }
+
+// The play preview's poses (core PlayBehaviours): a door is drawn where the play preview has moved it.
+TEST(scene_play_pose_moves_brushes) {
+    const AABB box{{0, -64, 0}, {8, 64, 112}};
+    Document doc;
+    emptyDoc(doc);
+    const Id gate = add(doc, {{"classname", "script_brushmodel"}, {"targetname", "gate"}, {"iw8r_door", "slide 0 0 128"}}, {boxPrim(box)});
+    app::SceneCache sc;
+    sc.sync(doc);
+    CHECK(boxNear(entityBounds(sc, gate), box.mins, box.maxs));
+    app::SceneCache::PlayPose up;
+    up.move = Vec3{0, 0, 100};
+    sc.playPoses[gate] = up;
+    sc.invalidate();
+    sc.sync(doc);
+    CHECK(boxNear(entityBounds(sc, gate), Vec3{0, -64, 100}, Vec3{8, 64, 212}));
+    // A quarter yaw turn about the hinge at (0, -64): the door now runs along -x.
+    app::SceneCache::PlayPose turn;
+    turn.R[0][0] = 0, turn.R[0][1] = -1, turn.R[1][0] = 1, turn.R[1][1] = 0;
+    turn.pivot = Vec3{0, -64, 0};
+    sc.playPoses[gate] = turn;
+    sc.invalidate();
+    sc.sync(doc);
+    CHECK(boxNear(entityBounds(sc, gate), Vec3{-128, -64, 0}, Vec3{0, -56, 112}));
+    // Playing stops: the door is drawn at rest again.
+    sc.playPoses.clear();
+    sc.invalidate();
+    sc.sync(doc);
+    CHECK(boxNear(entityBounds(sc, gate), box.mins, box.maxs));
+}

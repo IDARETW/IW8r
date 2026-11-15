@@ -1292,6 +1292,9 @@ void CameraView::materialImagesChanged() {
         if (it->second < 0) it = specIds_.erase(it);
         else ++it;
     }
+    // The own materials' shader state again (the library may have been reloaded with changed definitions).
+    for (const std::string& m : std::vector<std::string>(stateMaterials_.begin(), stateMaterials_.end()))
+        if (const auto it = texIds_.find(m); it != texIds_.end()) applyMaterialState(m, it->second);
     update();
 }
 
@@ -1600,7 +1603,18 @@ int CameraView::textureFor(const std::string& material) {
     }
     g_frameLoadMs += QDateTime::currentMSecsSinceEpoch() - loadStart;
     if (shareable && id >= 0) texByPath_[path->toStdString()] = id;
+    if (id >= 0 && !shareable) applyMaterialState(material, id);
     return texIds_[material] = id;
+}
+
+void CameraView::applyMaterialState(const std::string& material, int texture) {
+    if (!stateLookup_ || texture < 0) return;
+    if (const auto s = stateLookup_(material)) {
+        renderer_.setTextureMaterial(texture, *s);
+        stateMaterials_.insert(material);
+    } else if (stateMaterials_.erase(material)) {
+        renderer_.setTextureMaterial(texture, MaterialState{});  // no longer an own material: the plain state
+    }
 }
 
 void CameraView::dragEnterEvent(QDragEnterEvent* e) {

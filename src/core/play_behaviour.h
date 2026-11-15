@@ -43,6 +43,13 @@ public:
     // Reads the map's behaviours. Their brush entities are taken out of `world` (it is rebuilt from the map without
     // them) and added back as movers. Returns the entity ids of the movers.
     std::vector<Id> build(const MapFile& map, CollisionWorld& world);
+    // The same in two steps, for a world built some other way (core play_world): read the behaviours, build the world
+    // without the brush entities moves() names, then attach the movers to it.
+    std::vector<Id> read(const MapFile& map);
+    void attach(const MapFile& map, CollisionWorld& world);
+    // Whether an entity's brushes move (a script_brushmodel whose targetname is a door's or a mover's; by name, so it
+    // also answers for a copy of the map such as a flattened one).
+    bool moves(const Entity& e) const;
 
     // Advances `dt` seconds. `feet` and the box mins / maxs (relative to the feet) are the player; `use` is true on the
     // frame the Use key goes down. Movers in `world` get their new poses.
@@ -95,6 +102,7 @@ private:
     std::vector<Mover> movers_;
     std::vector<Trigger> triggers_;
     std::vector<Pose> poses_;
+    std::vector<std::string> moverNames_;
     double time_ = 0;
 };
 

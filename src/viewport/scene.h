@@ -248,6 +248,13 @@ public:
     // iw8r_lift and script_brushmodels with those keys or iw8r_door are drawn where the map script would have them at
     // that time (owner request 2026-11-11). Call invalidate() each tick.
     double behaviourTime = -1;
+    // The play preview's moving brush entities (core PlayBehaviours::poses): where each one is now. Every point p of
+    // the entity is drawn at pivot + R (p - pivot) + move. Empty when not playing. Call invalidate() after changing it.
+    struct PlayPose {
+        double R[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+        Vec3 pivot, move;
+    };
+    std::map<Id, PlayPose> playPoses;
     // The destroyed state of an exploder (a model with targetname "exploder", as the S&D template's destroyed crate):
     // hidden in game until the exploder fires, so drawn as a small marker unless this is set. Call invalidate() after
     // changing it.

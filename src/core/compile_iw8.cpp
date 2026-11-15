@@ -1481,12 +1481,15 @@ std::vector<StockOverlayModel> stockOverlayModels(const MapFile& map, int patchS
     return out;
 }
 
-// Models that move without scripting (iw8r_spin / iw8r_bob / iw8r_lift, map_script.h) must be live script_models with
-// a targetname: a misc_model with one of the keys is built as a script_model, and a nameless one gets a name.
+// Models that move without scripting (iw8r_spin / iw8r_bob / iw8r_lift / iw8r_anim, map_script.h) must be live
+// script_models with a targetname: a misc_model with one of the keys is built as a script_model, and a nameless one gets
+// a name. iw8r_anim follows the same rule (research 131 G11): the script names the model, so it stays live, and the
+// collision pass (staysEntity) gives it no static box.
 bool isMoverModel(const Entity& e) {
     const std::string c = lower(e.classname());
     if (c != "misc_model" && c != "script_model") return false;
     if (const std::string* nc = e.value("iw8r_no_collision"); nc && *nc == "1") return true;
+    if (const std::string* an = e.value("iw8r_anim"); an && !an->empty()) return true;
     return e.value("iw8r_spin") || e.value("iw8r_bob") || e.value("iw8r_lift");
 }
 
@@ -1525,7 +1528,7 @@ bool compileIw8ExtractionMovers(const MapFile& mapIn, const std::string& outDir,
         ++n;
     }
     const bool ok = compileIw8ExtractionBrushVisuals(work, outDir, opt, rep, err);
-    rep.warnings.insert(rep.warnings.begin(), std::to_string(n) + " moving model(s) (iw8r_spin / iw8r_bob / iw8r_lift): " +
+    rep.warnings.insert(rep.warnings.begin(), std::to_string(n) + " moving model(s) (iw8r_spin / iw8r_bob / iw8r_lift / iw8r_anim): " +
                                                   std::to_string(promoted) + " misc_model(s) built as script_model, " +
                                                   std::to_string(named) + " given a targetname");
     return ok;
@@ -3762,7 +3765,8 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             for (const auto& e : map.entities) {
                 if (lower(e.classname()) != "script_model" || e.value("script_gameobjectname") || e.value("script_exploder")) continue;
                 const std::string* tn = e.value("targetname");
-                if (tn && (targeted.count(*tn) || (!tn->empty() && (e.value("iw8r_spin") || e.value("iw8r_bob") || e.value("iw8r_lift")))))
+                if (tn && (targeted.count(*tn) ||
+                           (!tn->empty() && (e.value("iw8r_spin") || e.value("iw8r_bob") || e.value("iw8r_lift") || e.value("iw8r_anim")))))
                     solid.insert(*tn);
             }
             extras.triggerVolumes = readTriggerVolumes(map);
@@ -3805,20 +3809,40 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     ++volume;
                 }
             }
+            // Research 131 G14: a name that several entities with one behaviour key share drives them as one (the
+            // script finds entities by name). Said once per key and name.
+            std::set<std::pair<std::string, std::string>> sharedSaid;
+            const auto sharedName = [&](const char* key, const std::string& name, const char* what) {
+                size_t n = 0;
+                for (const auto& o : map.entities)
+                    if (const std::string* on = o.value("targetname"); on && *on == name && o.value(key)) ++n;
+                if (n > 1 && sharedSaid.insert({key, name}).second)
+                    warn.push_back(std::to_string(n) + " entities with " + key + " share the targetname '" + name + "': " + what +
+                                   " (give each its own targetname, or save the prefab as a bundle)");
+            };
             // 6.24: doors without scripting (script_brushmodel iw8r_door, opened by a trigger targeting it).
             for (const auto& e : map.entities) {
                 const std::string* dk = e.value("iw8r_door");
                 if (!dk || dk->empty()) continue;
                 const std::string* tn = e.value("targetname");
-                std::string trig;
+                std::string trig, unnamedTrig;
                 for (const auto& t : map.entities)
                     if (lower(t.classname()).rfind("trigger_", 0) == 0)
-                        if (const std::string* tt = t.value("target"); tt && tn && *tt == *tn)
-                            if (const std::string* ttn = t.value("targetname")) trig = *ttn;
+                        if (const std::string* tt = t.value("target"); tt && tn && *tt == *tn) {
+                            const std::string* ttn = t.value("targetname");
+                            if (ttn && !ttn->empty()) trig = *ttn;
+                            else unnamedTrig = t.classname();
+                        }
                 if (!tn || tn->empty()) {
                     warn.push_back(e.classname() + " with iw8r_door needs a targetname; not a door");
                     continue;
                 }
+                // Research 131 G7: the script finds a door's trigger by its name.
+                if (trig.empty() && !unnamedTrig.empty())
+                    warn.push_back(unnamedTrig + " targets the door '" + *tn + "' but has no targetname, so the map script cannot find it; "
+                                   "the door uses its own use area instead (give the trigger a targetname)");
+                sharedName("iw8r_door", *tn, "one door script runs for the name (a hinged door swings only the first of them, sliding doors all "
+                                             "move together)");
                 if (trig.empty()) {
                     // No trigger targets it: the door gets its own use volume (the script tests it, no entity is needed):
                     // the door's bounds grown by 40 units to every side, used with the Use button.
@@ -3886,15 +3910,46 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     warn.push_back(e.classname() + " with " + key + " needs a targetname (the map script finds it by name); skipped");
                     return false;
                 };
+                // Research 131 G4: a trigger_damage fires when it is shot, and the converter keeps it only with a
+                // script_exploder (contract 15 s3.3); without one, nothing wired to it can ever fire.
+                if (cls == "trigger_damage" && tn && !tn->empty() && !e.value("script_exploder"))
+                    warn.push_back("trigger_damage '" + *tn + "' has no script_exploder: the converter leaves such a trigger out of the "
+                                   "map, so shooting it does nothing (give it a script_exploder)");
+                // The centre of the trigger: where a player who sets it off is (several triggers with one name each use
+                // the destination / velocity nearest to them).
+                const auto centreOf = [](const Entity& t) { return brushModelCentre(t).value_or(t.origin().value_or(Vec3{})); };
                 if (const std::string* v = e.value("iw8r_teleport"); v && !v->empty()) {
                     if (!trigger) warn.push_back(e.classname() + ": iw8r_teleport only works on a trigger; skipped");
                     else if (needName("iw8r_teleport")) {
-                        bool found = false;
+                        // Research 131 G15: the destination's position goes into the script, so any class works (a
+                        // script_struct is not an entity at run time); with several of that name, the nearest one.
+                        const Vec3 from = centreOf(e);
+                        const Entity* dest = nullptr;
+                        double best = 0;
                         for (const auto& d : map.entities)
-                            if (const std::string* dn = d.value("targetname"); dn && *dn == *v) found = true;
-                        if (!found) warn.push_back("trigger '" + *tn + "' iw8r_teleport: no entity has targetname '" + *v +
-                                                   "' (add a script_origin there); skipped");
-                        else extras.teleports.push_back({*tn, *v});
+                            if (const std::string* dn = d.value("targetname"); dn && *dn == *v && &d != &e) {
+                                const Vec3 at = d.origin().value_or(centreOf(d));
+                                const double dd = dot(at - from, at - from);
+                                if (!dest || dd < best) {
+                                    dest = &d;
+                                    best = dd;
+                                }
+                            }
+                        if (!dest) {
+                            warn.push_back("trigger '" + *tn + "' iw8r_teleport: no entity has targetname '" + *v +
+                                           "' (add a script_origin there); skipped");
+                        } else {
+                            MapScriptExtras::Teleport tp{*tn, *v, {}};
+                            MapScriptExtras::Teleport::Spot spot;
+                            spot.from = from;
+                            spot.to = dest->origin().value_or(centreOf(*dest));
+                            if (const std::string* a = dest->value("angles"))
+                                std::sscanf(a->c_str(), "%lf %lf %lf", &spot.angles.x, &spot.angles.y, &spot.angles.z);
+                            else if (const std::string* a1 = dest->value("angle"))
+                                spot.angles.y = std::atof(a1->c_str());
+                            tp.spots.push_back(spot);
+                            extras.teleports.push_back(tp);
+                        }
                     }
                 }
                 if (const std::string* v = e.value("iw8r_jump"); v && !v->empty()) {
@@ -3904,6 +3959,11 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                         warn.push_back("iw8r_jump '" + *v + "' not understood (<vx> <vy> <vz>, units per second); skipped");
                     else if (needName("iw8r_jump")) {
                         j.trigger = *tn;
+                        const Vec3 c = centreOf(e);
+                        j.hasFrom = true;
+                        j.from[0] = c.x;
+                        j.from[1] = c.y;
+                        j.from[2] = c.z;
                         extras.jumpPads.push_back(j);
                     }
                 }
@@ -3926,6 +3986,10 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     const int n = std::sscanf(v->c_str(), "%lf %lf %lf", &l.dz, &l.moveTime, &l.waitTime);
                     if (cls != "script_brushmodel" && cls != "script_model")
                         warn.push_back(e.classname() + ": iw8r_lift only works on a script_brushmodel; skipped");
+                    else if (cls == "script_brushmodel" && e.value("iw8r_spin"))
+                        warn.push_back("script_brushmodel" + (tn ? " '" + *tn + "'" : std::string()) +
+                                       ": iw8r_lift and iw8r_spin together are not built (the spin links the brush model to its "
+                                       "pivot, so it cannot move by itself); iw8r_lift skipped");
                     else if (n < 1 || l.dz == 0)
                         warn.push_back("iw8r_lift '" + *v + "' not understood (<dz> [time] [wait]); skipped");
                     else if (needName("iw8r_lift")) {
@@ -3953,6 +4017,16 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     else {
                         sp.targetname = *tn;
                         sp.seconds = std::fabs(sp.seconds);
+                        // Research 131 G1: a brush model has no origin of its own (it is the map origin), so it turns about
+                        // a pivot at the centre of its brushes. The viewport's Behaviour Preview uses the same centre.
+                        if (cls == "script_brushmodel")
+                            if (const auto c = brushModelCentre(e)) {
+                                sp.pivot = true;
+                                sp.centre[0] = c->x;
+                                sp.centre[1] = c->y;
+                                sp.centre[2] = c->z;
+                            }
+                        sharedName("iw8r_spin", *tn, sp.pivot ? "they turn together about the centre of the first one" : "one spin script turns them all");
                         extras.spinners.push_back(sp);
                     }
                 }
@@ -3960,6 +4034,10 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     MapScriptExtras::Bobber bo;
                     const int n = std::sscanf(v->c_str(), "%lf %lf", &bo.height, &bo.seconds);
                     if (!mover) warn.push_back(e.classname() + ": iw8r_bob only works on a model or a script_brushmodel; skipped");
+                    else if (cls == "script_brushmodel" && e.value("iw8r_spin"))
+                        warn.push_back("script_brushmodel" + (tn ? " '" + *tn + "'" : std::string()) +
+                                       ": iw8r_bob and iw8r_spin together are not built (the spin links the brush model to its "
+                                       "pivot, so it cannot move by itself); iw8r_bob skipped");
                     else if (n < 1 || bo.height == 0 || bo.seconds <= 0)
                         warn.push_back("iw8r_bob '" + *v + "' not understood (<height> [seconds]); skipped");
                     else if (!tn || tn->empty()) warn.push_back(e.classname() + " with iw8r_bob needs a targetname; skipped");
@@ -3969,15 +4047,21 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     }
                 }
             }
-            // 4.21: stock animations on live script_models.
+            // 4.21: stock animations on live script_models. Research 131 G11: a targetname is enough, as for spin / bob
+            // (the generated script names the model, so the converter keeps it live; the collision pass gives a named
+            // iw8r_anim model no static box, and the script makes it solid). A misc_model with iw8r_anim was built as a
+            // named script_model by the movers pass (isMoverModel).
+            size_t animated = 0;
             for (const auto& e : map.entities) {
-                if (lower(e.classname()) != "script_model") continue;
                 const std::string* an = e.value("iw8r_anim");
                 if (!an || an->empty()) continue;
+                if (lower(e.classname()) != "script_model") {
+                    warn.push_back(e.classname() + " with iw8r_anim '" + *an + "': only a script_model or misc_model plays an animation; not animated");
+                    continue;
+                }
                 const std::string* tn = e.value("targetname");
-                if (!tn || tn->empty() || !targeted.count(*tn)) {
-                    warn.push_back("script_model with iw8r_anim '" + *an +
-                                   "' is not live (it needs a targetname that something targets: Brush > Make Scripted); not animated");
+                if (!tn || tn->empty()) {
+                    warn.push_back("script_model with iw8r_anim '" + *an + "' has no targetname; not animated");
                     continue;
                 }
                 MapScriptExtras::AnimPlacement ap;
@@ -3985,7 +4069,11 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                 ap.anim = *an;
                 if (const std::string* lp = e.value("iw8r_anim_loop")) ap.loopSeconds = std::max(0.0, std::atof(lp->c_str()));
                 extras.anims.push_back(ap);
+                ++animated;
             }
+            if (animated)
+                warn.push_back(std::to_string(animated) + " model(s) play a stock animation (iw8r_anim): each is kept live by its "
+                               "targetname, so it has no static collision box and the map script makes it solid");
             // The map's own GSC (worldspawn iw8r_script, relative to the map folder): carried in the map zone.
             if (const std::string* sp = worldspawn->value("iw8r_script"); sp && !sp->empty()) {
                 fs::path p(*sp);

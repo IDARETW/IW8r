@@ -48,13 +48,13 @@ void CollisionWorld::addSolid(std::vector<Plane> planes, uint32_t contents, bool
 
 void CollisionWorld::build(const MapFile& map, int patchSubdiv) { build(map, patchSubdiv, {}); }
 
-void CollisionWorld::build(const MapFile& map, int patchSubdiv, const std::vector<Id>& skip) {
+void CollisionWorld::build(const MapFile& map, int patchSubdiv, const std::function<bool(const Entity&)>& skip) {
     solids_.clear();
     movers_.clear();
     bounds_ = AABB{};
     for (const auto& e : map.entities) {
         if (!blocksPlayerClass(e.classname())) continue;  // triggers and other brush entities do not block
-        if (std::find(skip.begin(), skip.end(), e.id) != skip.end()) continue;
+        if (skip && skip(e)) continue;
         addBrushesOf(e, patchSubdiv);
     }
 }
