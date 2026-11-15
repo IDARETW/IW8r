@@ -1,6 +1,6 @@
 // MainWindow: the first-person look (research 128). The weapon and hands a player holds keep their materials and
 // technique sets in a zone every map loads (kViewmodelLookZone), so a map's own technique-set zone cannot give them the
-// map shader's filter. File > First-Person Look builds that shared zone with the filter spliced into the sets of the
+// map shader's filter. File > Stock Map > First-Person Look builds that shared zone with the filter spliced into the sets of the
 // weapon and arm materials only, every name kept; installing it puts the look on every map until it is restored.
 // Only Install and Restore write to the game folder, and only after the owner confirms.
 #include "main_window.h"
@@ -137,7 +137,7 @@ bool MainWindow::prepareViewmodelLook(const CustomShader& shader, const QString&
     return true;
 }
 
-// File > First-Person Look > Build: the open map's shader, or a shader file. The converter and the ACTS loader test
+// File > Stock Map > First-Person Look > Build: the open map's shader, or a shader file. The converter and the ACTS loader test
 // run in the background; nothing is installed.
 void MainWindow::buildViewmodelLook() {
     std::shared_ptr<const CustomShader> shader = mapSurfaceShader();
@@ -207,7 +207,7 @@ void MainWindow::buildViewmodelLook() {
                 ctx_.setStatus("First-person look: the ACTS loader test reports failures (see the Console); the zone was deleted");
                 return;
             }
-            ctx_.setStatus("First-person look built from " + name + " and checked (ACTS, 0 failed); not installed: File > First-Person Look > "
+            ctx_.setStatus("First-person look built from " + name + " and checked (ACTS, 0 failed); not installed: File > Stock Map > First-Person Look > "
                            "Install Into Game");
         });
         check->start();
@@ -279,20 +279,20 @@ bool MainWindow::buildViewmodelLookQuiet(const QString& shaderFile, const QStrin
 void MainWindow::installViewmodelLook() {
     const QString outDir = viewmodelLookDir() + "/out";
     if (!QFileInfo::exists(lookZoneFile(viewmodelLookDir()))) {
-        QMessageBox::information(this, "First-Person Look", "No first-person look is built yet (File > First-Person Look > Build From Shader).");
+        QMessageBox::information(this, "First-Person Look", "No first-person look is built yet (File > Stock Map > First-Person Look > Build From Shader).");
         return;
     }
     if (QMessageBox::question(this, "First-Person Look",
                               "The weapon and hands a player holds use shaders of a zone that every map loads.\n\n"
                               "While this look is installed, weapons and hands have it on EVERY map (also the weapons other "
-                              "players carry, and some character arms), not only on the map it was made for. File > First-Person Look "
+                              "players carry, and some character arms), not only on the map it was made for. File > Stock Map > First-Person Look "
                               "> Restore In Game takes it out again.\n\nGo on to the list of files?",
                               QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
         return;
     const QString mapZone = lastStockRebuildZone_;
     if (installEditedStockZones(outDir, kViewmodelLookZone, true))
-        ctx_.setStatus("First-person look installed (on every map); File > First-Person Look > Restore In Game takes it out");
-    lastStockRebuildZone_ = mapZone;  // the look is not the stock map File > Restore Stock Map In Game is about
+        ctx_.setStatus("First-person look installed (on every map); File > Stock Map > First-Person Look > Restore In Game takes it out");
+    lastStockRebuildZone_ = mapZone;  // the look is not the stock map File > Stock Map > Restore Stock Map In Game is about
 }
 
 void MainWindow::restoreViewmodelLook() {

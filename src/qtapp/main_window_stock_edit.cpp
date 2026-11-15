@@ -133,7 +133,7 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
         if (notes)
             for (const std::string& n : overlayNotes) *notes << qs(n);
         if (!models.empty() && !overlay) {
-            if (notes) *notes << QString("%1 group(s) of added brushes are left out: only File > Rebuild Stock Zone builds them").arg(models.size());
+            if (notes) *notes << QString("%1 group(s) of added brushes are left out: only File > Stock Map > Rebuild Stock Zone builds them").arg(models.size());
         } else if (!models.empty()) {
             const QString dir = work + "/overlay";
             QDir().mkpath(dir + "/models");
@@ -218,7 +218,7 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
                 ? QString(" and their collision is taken out (a big map keeps it in its collision tiles)")
                 : QString("; their collision stays (load the map's props in the reference view first to take it out)"));
 
-    // 13.5: the loot points, when the document holds some (File > Edit Loot Points): the whole list replaces the map's.
+    // 13.5: the loot points, when the document holds some (File > Stock Map > Edit Loot Points): the whole list replaces the map's.
     // No loot point entity (never made, or taken out again by Undo) leaves the map's loot alone; only the worldspawn
     // key iw8r_no_loot 1 writes an empty list.
     std::string loot;
@@ -418,7 +418,7 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
     return true;
 }
 
-// File > Rebuild Stock Zone: runs the converter in the background, then the ACTS loader test on what it wrote. The
+// File > Stock Map > Rebuild Stock Zone: runs the converter in the background, then the ACTS loader test on what it wrote. The
 // result stays in the work folder; installing it over the stock file is the owner's step.
 void MainWindow::rebuildStockZoneFast() {
     const QString work = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/stock_rebuild/" + stockZone_ + "-" +
@@ -519,7 +519,7 @@ void MainWindow::runStockEdit(const QString& work, const QString& program, const
                     lastStockRebuildZone_ = zone;
                 }
                 ctx_.setStatus(*failed == 0 ? "Stock zone rebuilt and checked (ACTS, 0 failed): " + work +
-                                                  "/out (not installed; File > Install Edited Stock Map Into Game)"
+                                                  "/out (not installed; File > Stock Map > Install Edited Stock Map Into Game)"
                                             : "Stock zone rebuilt, but the ACTS loader test reports failures; see the Console (" + work + "/out)");
             });
             check->start();
@@ -607,7 +607,7 @@ QString MainWindow::stockZoneForReading(const QString& zone, QString* tempDir, Q
     if (!QFile::copy(zone, copy) || (QFileInfo::exists(saved) && !QFile::copy(saved, view + "/" + name + ".fp"))) {
         QDir(view).removeRecursively();
         if (err) *err = "An edit of " + name + " is installed in the game, and the stock map could not be copied to " + view +
-                        " to read it (disk space?). File > Restore Stock Map In Game, then open the map again.";
+                        " to read it (disk space?). File > Stock Map > Restore Stock Map In Game, then open the map again.";
         return {};
     }
     if (tempDir) *tempDir = view;
@@ -680,7 +680,7 @@ void MainWindow::installEditedStockMap() {
     if (outDir.isEmpty()) {
         // No rebuild in this session: the out folder of an earlier rebuild can be installed.
         if (!confirmGameFolderAction(this, "Install Edited Stock Map",
-                                     "No stock map was rebuilt in this session (File > Rebuild Stock Zone).\n\n"
+                                     "No stock map was rebuilt in this session (File > Stock Map > Rebuild Stock Zone).\n\n"
                                      "Choose a folder with edited zone files (the out folder of an earlier rebuild) to install instead?",
                                      "Choose Folder..."))
             return;
@@ -715,7 +715,7 @@ bool MainWindow::installEditedStockZones(const QString& outDir, const QString& z
     if (ask &&
         !confirmGameFolderAction(this, "Install Edited Stock Map",
                                  QString("Install %1 edited zone file(s) into the game?\n\n%2\n\nTo: %3\n\nThe stock files of the same "
-                                         "name, and their stock patch files, are moved to\n%4\nFile > Restore Stock Map In Game moves them "
+                                         "name, and their stock patch files, are moved to\n%4\nFile > Stock Map > Restore Stock Map In Game moves them "
                                          "back. The copy needs about %5 MB free on the game's drive.\n\nClose the game before you continue.")
                                      .arg(names.size()).arg(names.join("\n"), QDir::toNativeSeparators(zoneDir), QDir::toNativeSeparators(keep))
                                      .arg(bytes / (1024 * 1024) + 1),
@@ -733,7 +733,7 @@ bool MainWindow::installEditedStockZones(const QString& outDir, const QString& z
         return false;
     }
     lastStockRebuildZone_ = zone;
-    ctx_.setStatus(QString("Installed the edited %1 (%2 zone file(s)); File > Restore Stock Map In Game takes it out")
+    ctx_.setStatus(QString("Installed the edited %1 (%2 zone file(s)); File > Stock Map > Restore Stock Map In Game takes it out")
                        .arg(zone).arg(report.installed.size()));
     return true;
 }
@@ -873,7 +873,7 @@ int MainWindow::hideStockPropsInSelection() {
             break;
         }
     rebuildReferenceProps();
-    ctx_.documentEdited(QString("%1 stock prop(s) hidden (%2 in all): File > Rebuild Stock Zone leaves them out; their collision stays")
+    ctx_.documentEdited(QString("%1 stock prop(s) hidden (%2 in all): File > Stock Map > Rebuild Stock Zone leaves them out; their collision stays")
                             .arg(added).arg(hidden.size()));
     return added;
 }

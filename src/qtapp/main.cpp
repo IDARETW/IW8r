@@ -1124,10 +1124,10 @@ int main(int argc, char** argv) {
     bool coverCheck = false;
     bool f5Check = false;
     QString filterShaderFile;  // --shader-filter-program <file.iw8shader.hlsl> --out <file.cso>
-    // --install-stock <folder with edited zone files> / --restore-stock <map>: File > Install Edited Stock Map Into
+    // --install-stock <folder with edited zone files> / --restore-stock <map>: File > Stock Map > Install Edited Stock Map Into
     // Game and Restore Stock Map In Game without a dialog; the report goes to <--out folder>/stock-install.txt.
     QString installStockDir, restoreStockZone;
-    // --viewmodel-look <shader file> --out <folder>: File > First-Person Look > Build From Shader without a dialog; the
+    // --viewmodel-look <shader file> --out <folder>: File > Stock Map > First-Person Look > Build From Shader without a dialog; the
     // zone goes to <folder>/out, the report to <folder>/viewmodel-look.txt. Nothing is installed.
     QString viewmodelLookShader;
     bool compileDeploy = false;  // --deploy with --compile: install the built package into the game's maps folder
@@ -1170,7 +1170,7 @@ int main(int argc, char** argv) {
         else if (!a.startsWith("-")) openFile = a;
     }
     if (!filterShaderFile.isEmpty()) {
-        // A shader file's iw8rFilter as the compiled program File > Rebuild Stock Zone hands the converter (editzone
+        // A shader file's iw8rFilter as the compiled program File > Stock Map > Rebuild Stock Zone hands the converter (editzone
         // "lit_filter"). No window, no device: the compiler only.
         iw8r::CustomShader shader;
         std::string err;

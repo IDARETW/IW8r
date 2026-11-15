@@ -99,6 +99,7 @@
 #include <QSslSocket>
 #include "settings.h"
 #include <QComboBox>
+#include <QListWidget>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -3585,6 +3586,166 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 "CSG Hollow with nothing selected says what to select: " + w.statusBar()->currentMessage());
     }
 
+    r.section("dialog quirks (second review, 2026-11-15)");
+    {
+        // Atmosphere: OK is off while the vision overrides do not parse; Cancel leaves the map as it was.
+        const std::string before = ctx.doc.text();
+        bool okWhenBad = true, okWhenGood = false, seen = false;
+        QTimer::singleShot(400, [&] {
+            QWidget* m = QApplication::activeModalWidget();
+            auto* vis = m ? m->findChild<QLineEdit*>("atmoVision") : nullptr;
+            auto* ok = m ? m->findChild<QPushButton*>("atmoOk") : nullptr;
+            if (vis && ok) {
+                seen = true;
+                vis->setText("tonemapExposureAdjust");  // no value
+                okWhenBad = ok->isEnabled();
+                vis->setText("tonemapExposureAdjust=0.25");
+                okWhenGood = ok->isEnabled();
+            }
+            if (auto* d = qobject_cast<QDialog*>(m)) d->reject();
+        });
+        w.action("MapAtmosphere")->trigger();
+        r.check(seen && !okWhenBad && okWhenGood && ctx.doc.text() == before,
+                "Atmosphere: OK is off while a vision override does not parse, on again once it does; Cancel changes nothing");
+
+        // Sun & Sky: a sky name that is not a stock sky gets a warning (nothing is blocked).
+        QString warnBad, warnGood;
+        int skies = 0;
+        QTimer::singleShot(400, [&] {
+            QWidget* m = QApplication::activeModalWidget();
+            auto* sky = m ? m->findChild<QComboBox*>("skyName") : nullptr;
+            auto* warn = m ? m->findChild<QLabel*>("skyNameWarning") : nullptr;
+            if (sky && warn) {
+                skies = sky->count();
+                sky->setCurrentText("iw8r_not_a_sky_xyz");
+                warnBad = warn->text();
+                if (sky->count() > 1) sky->setCurrentIndex(1);
+                warnGood = warn->text();
+            }
+            if (auto* d = qobject_cast<QDialog*>(m)) d->reject();
+        });
+        w.action("MapSunSky")->trigger();
+        if (skies > 1)
+            r.check(warnBad.contains("not a stock sky") && warnGood.isEmpty(), "Sun & Sky: a misspelled sky name is pointed out, a stock one is not: " + warnBad);
+        else
+            r.check(true, "Sun & Sky: no stock sky list here (game files not found), so no sky warning to check");
+        r.check(ctx.doc.text() == before, "Sun & Sky: Cancel changes nothing");
+
+        // Find / Replace Materials: Replace All with nothing to replace with says so.
+        w.action("FindReplace")->trigger();
+        if (auto* fd = w.findChild<QDialog*>("findReplaceDialog")) {
+            const QList<QLineEdit*> fields = fd->findChildren<QLineEdit*>();
+            QPushButton* replaceAll = nullptr;
+            for (QPushButton* b : fd->findChildren<QPushButton*>())
+                if (b->text() == "Replace All") replaceAll = b;
+            auto* info = fd->findChild<QLabel*>("findReplaceInfo");
+            if (fields.size() >= 2 && replaceAll && info) {
+                fields[0]->setText("iw8r_dev/checker");
+                fields[1]->clear();
+                replaceAll->click();
+                r.check(info->text().contains("Type the replacement text first") && ctx.doc.text() == before,
+                        "Find / Replace: Replace All with an empty replacement says what to type and changes nothing: " + info->text());
+            } else {
+                r.check(false, "the Find / Replace dialog has its find and replace fields, Replace All and its info line");
+            }
+            fd->hide();
+        }
+
+        // Game mode presets (in a temporary folder): saving over a saved preset and deleting one ask first.
+        QTemporaryDir modes;
+        qputenv("IW8R_GAME_MODES_DIR", modes.path().toLocal8Bit());
+        const QString presetFile = modes.path() + "/iw8r_gui_test_mode.iw8mode.json";
+        QString replaceAsked, deleteAsked;
+        bool savedFirst = false, keptAfterCancel = false;
+        QTimer::singleShot(400, [&] {
+            QWidget* m = QApplication::activeModalWidget();
+            auto* id = m ? m->findChild<QLineEdit*>("gameModeId") : nullptr;
+            auto* save = m ? m->findChild<QPushButton*>("gameModeSave") : nullptr;
+            auto* del = m ? m->findChild<QPushButton*>("gameModeDelete") : nullptr;
+            if (id && save && del) {
+                // A complete preset in the fields first (the first one listed), then a new id for it.
+                if (auto* list = m->findChild<QListWidget*>("gameModesList"); list && list->count() > 0) list->setCurrentRow(0);
+                id->setText("iw8r_gui_test_mode");
+                // A warning (fields that do not make a preset) is closed and reported instead of waiting.
+                QTimer::singleShot(300, [&] {
+                    if (auto* mb = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()); mb && !savedFirst && !QFile::exists(presetFile)) {
+                        replaceAsked = "first save refused: " + mb->text();
+                        mb->reject();
+                    }
+                });
+                save->click();  // a new file: no question
+                savedFirst = QFile::exists(presetFile);
+                QTimer::singleShot(200, [&] {
+                    if (auto* mb = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+                        replaceAsked = mb->text();
+                        mb->reject();  // Cancel: the saved preset stays as it was
+                    }
+                });
+                save->click();
+                keptAfterCancel = QFile::exists(presetFile);
+                id->setText("iw8r_gui_test_mode");
+                QTimer::singleShot(200, [&] {
+                    if (auto* mb = qobject_cast<QMessageBox*>(QApplication::activeModalWidget())) {
+                        deleteAsked = mb->text();
+                        for (QAbstractButton* b : mb->buttons())
+                            if (b->text() == "Delete") b->click();
+                    }
+                });
+                del->click();
+            }
+            if (auto* d = qobject_cast<QDialog*>(QApplication::activeModalWidget())) d->reject();
+        });
+        w.action("GameModes")->trigger();
+        qunsetenv("IW8R_GAME_MODES_DIR");
+        r.check(savedFirst && replaceAsked.startsWith("Replace the preset") && keptAfterCancel,
+                "Game Modes: saving over a saved preset asks first (Cancel keeps it): " + replaceAsked.section('\n', 0, 0));
+        r.check(deleteAsked.startsWith("Delete your preset") && !QFile::exists(presetFile),
+                "Game Modes: Delete my preset asks first, then removes the file: " + deleteAsked.section('\n', 0, 0));
+    }
+
+    r.section("3D camera quirks (second review, 2026-11-15)");
+    if (CameraView* cv = w.cameraView()) {
+        // The gizmo handle under a still mouse is highlighted (no button held), and fly keys without the right button
+        // say what to hold.
+        const size_t up = ctx.doc.undoPosition();
+        const auto savedCam = ctx.cam;
+        AABB a;
+        a.add(Vec3{22000, -16, -16});
+        a.add(Vec3{22032, 16, 16});
+        createBoxBrush(ctx, a);
+        ctx.documentEdited();
+        ctx.cam.pos = Vec3{21800, 0, 0};
+        ctx.cam.yaw = 0;
+        ctx.cam.pitch = 0;
+        ctx.cameraMoved();
+        cv->renderNow();
+        const Vec3 c{22016, 0, 0};
+        const double L = std::max(8.0, length(c - ctx.cam.pos) * 0.18);
+        int hover = -1;
+        for (double f : {0.5, 0.65, 0.8, 0.95}) {
+            if (const std::optional<QPointF> p = cv->widgetPointOf(c + Vec3{0, L * f, 0})) {
+                sendMouse(cv, QEvent::MouseMove, *p, Qt::NoButton, Qt::NoButton);
+                if (cv->gizmoHoverAxis() >= 0) {
+                    hover = cv->gizmoHoverAxis();
+                    break;
+                }
+            }
+        }
+        r.check(hover == 1, QString("hovering the Y handle of the move gizmo highlights it (hover axis %1)").arg(hover));
+        if (const std::optional<QPointF> away = cv->widgetPointOf(c + Vec3{0, 0, -300})) {
+            sendMouse(cv, QEvent::MouseMove, *away, Qt::NoButton, Qt::NoButton);
+            r.check(cv->gizmoHoverAxis() < 0, "moving away from the handles clears the highlight");
+        }
+        QTest::keyClick(cv, Qt::Key_W);
+        r.check(w.statusBar()->currentMessage().contains("Hold the right mouse button"),
+                "W without the right mouse button says to hold it: " + w.statusBar()->currentMessage());
+        while (ctx.doc.undoPosition() > up && ctx.doc.undo()) {}
+        ctx.doc.deselectAll();
+        ctx.cam = savedCam;
+        ctx.documentEdited();
+        ctx.cameraMoved();
+    }
+
     r.section("bottom area under the camera (owner 2026-11-15: console and compile logs under the viewport)");
     {
         ads::CDockManager* dm = w.findChild<ads::CDockManager*>();
@@ -5497,7 +5658,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         QFile cmd(work + "/command.txt");
         const QString c = cmd.open(QIODevice::ReadOnly) ? QString::fromUtf8(cmd.readAll()) : QString();
         r.check(!work.isEmpty() && QFileInfo::exists(work + "/edited.ents") && c.contains("m2_rebuild_mapents.ps1") && c.contains("-Ents"),
-                "File > Rebuild Stock Map prepares the entities and the pipeline command (not run in the test) " + err);
+                "File > Stock Map > Rebuild Stock Map prepares the entities and the pipeline command (not run in the test) " + err);
         QDir(work).removeRecursively();
     }
 
@@ -6778,7 +6939,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         const QString shot = QDir(outDir).filePath("camera_shot.png");
         QString err;
         r.check(w.exportCameraImage(shot, 1600, 900, true, &err) && QImage(shot).size() == QSize(1600, 900),
-                "File > Export Camera Image renders 1600 x 900 off-screen" + (err.isEmpty() ? QString() : " (" + err + ")"));
+                "File > Export > Export Camera Image renders 1600 x 900 off-screen" + (err.isEmpty() ? QString() : " (" + err + ")"));
         const QString big = QDir(outDir).filePath("camera_shot_4k.png");
         r.check(w.exportCameraImage(big, 3840, 2160, false, &err) && QImage(big).size() == QSize(3840, 2160),
                 "a 3840 x 2160 image larger than the viewport");
@@ -6818,7 +6979,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         err.clear();
         const int tn = w.exportTurntable(tt, 8, 256, 256, &err);
         r.check(tn == 8 && QImage(tt + "/turntable_00007.png").size() == QSize(256, 256) && ctx.doc.selection().size() == selBefore,
-                QString("File > Export Turntable writes 8 frames and keeps the selection (%1)").arg(tn) + (err.isEmpty() ? QString() : " " + err));
+                QString("File > Export > Export Turntable writes 8 frames and keeps the selection (%1)").arg(tn) + (err.isEmpty() ? QString() : " " + err));
         ctx.doc.deselectAll();
         ctx.documentEdited("turntable test");
     }
@@ -7008,7 +7169,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         const QString zip = QDir(outDir).filePath("map_package.zip");
         QFile::remove(zip);
         const int n = w.exportMapPackage(zip, &err);
-        r.check(n >= 1 && QFileInfo(zip).size() > 0, QString("File > Export Map Package wrote %1 file(s)").arg(n) + (err.isEmpty() ? QString() : " (" + err + ")"));
+        r.check(n >= 1 && QFileInfo(zip).size() > 0, QString("File > Export > Export Map Package wrote %1 file(s)").arg(n) + (err.isEmpty() ? QString() : " (" + err + ")"));
         const QString dest = QDir(outDir).filePath("package_import");
         QDir(dest).removeRecursively();
         QDir().mkpath(dest);

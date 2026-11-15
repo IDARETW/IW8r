@@ -1168,7 +1168,7 @@ int runFeatureShots(MainWindow& w, const QString& outDir) {
                     s.report << "-\tinfo\tloot_points.png " + why;
                     centerGrid(w, v.target.x, v.target.y, 0.5);
                 }
-                s.window("loot_points.png", QString("File > Edit Loot Points on mp_br_tut: its %1 loot points are entities (class iw8r_loot_point), selected, close up in the camera and in the 2D view").arg(loot), 5000);
+                s.window("loot_points.png", QString("File > Stock Map > Edit Loot Points on mp_br_tut: its %1 loot points are entities (class iw8r_loot_point), selected, close up in the camera and in the 2D view").arg(loot), 5000);
             } else {
                 s.skip("loot_points.png", "Edit Loot Points", "no loot points were added");
             }
@@ -1196,7 +1196,7 @@ int runFeatureShots(MainWindow& w, const QString& outDir) {
                     s.report << "-\tinfo\tbuy_stations.png " + why;
                     centerGrid(w, pick->second.x, pick->second.y, 0.5);
                 }
-                s.window("buy_stations.png", QString("File > Edit Placed Objects on mp_br_tut: its %1 buy stations as scriptable entities, one selected (yellow)").arg(placed), 6000);
+                s.window("buy_stations.png", QString("File > Stock Map > Edit Placed Objects on mp_br_tut: its %1 buy stations as scriptable entities, one selected (yellow)").arg(placed), 6000);
             } else {
                 s.skip("buy_stations.png", "Edit Placed Objects", "no buy stations were added");
             }

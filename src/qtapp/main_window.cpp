@@ -1657,7 +1657,7 @@ void MainWindow::buildMenus() {
     file->addSeparator();
     addCommand(stockMenu, "RelightStockMap", "Relight Stock Map (Fog / Vision)...", QKeySequence(), [this] { relightStockMapDialog(); });
     addCommand(stockMenu, "RelightStockSky", "Relight Stock Map Sky (another map's sky)...", QKeySequence(), [this] {
-        // 11.6: worldspawn iw8r_sky_from; File > Rebuild Stock Zone carries that map's sky material and puts it on this
+        // 11.6: worldspawn iw8r_sky_from; File > Stock Map > Rebuild Stock Zone carries that map's sky material and puts it on this
         // map's sky surfaces (converter replace_materials "@sky").
         const Entity* world = nullptr;
         for (const Entity& e : ctx_.doc.map().entities)
@@ -1687,11 +1687,11 @@ void MainWindow::buildMenus() {
         if (pick.startsWith("(")) ctx_.doc.removeKey(world->id, "iw8r_sky_from");
         else ctx_.doc.setKeyValue(world->id, "iw8r_sky_from", pick.toStdString());
         ctx_.documentEdited(pick.startsWith("(") ? QString("The map keeps its own sky")
-                                                 : "The sky of " + pick + " is used; File > Rebuild Stock Zone writes it (the sky's lighting stays)");
+                                                 : "The sky of " + pick + " is used; File > Stock Map > Rebuild Stock Zone writes it (the sky's lighting stays)");
     });
     addCommand(stockMenu, "RelightStockSun", "Relight Stock Map Sun (Colour / Intensity / Direction)...", QKeySequence(), [this] {
         // 11.6: worldspawn iw8r_sun_color (linear), iw8r_sun_intensity and iw8r_sun_direction ("pitch yaw");
-        // File > Rebuild Stock Zone writes them (a new direction bakes the sun shadow again).
+        // File > Stock Map > Rebuild Stock Zone writes them (a new direction bakes the sun shadow again).
         const Entity* world = nullptr;
         for (const Entity& e : ctx_.doc.map().entities)
             if (e.isWorldspawn()) {
@@ -1738,7 +1738,7 @@ void MainWindow::buildMenus() {
         ctx_.doc.endGroup();
         ctx_.documentEdited("Stock sun set (colour " + QString::fromStdString(color) + ", intensity " + QString::number(in) +
                             (direction.isEmpty() ? QString(", stock direction") : ", direction " + direction.simplified()) +
-                            "); File > Rebuild Stock Zone writes it" +
+                            "); File > Stock Map > Rebuild Stock Zone writes it" +
                             (direction.isEmpty() ? QString() : QString(" and bakes the sun shadow again")));
     });
     stockMenu->addSeparator();
@@ -5207,7 +5207,7 @@ void MainWindow::loadDocument(const QString& path) {
             stockPlaced_.clear();
             EditorLog::instance().add(LogLevel::Warning, "stock", "the placed objects could not be read: " + qs(perr));
         }
-        // 13.5: the loot points of a Warzone map (File > Edit Loot Points makes them entities).
+        // 13.5: the loot points of a Warzone map (File > Stock Map > Edit Loot Points makes them entities).
         if (std::string lerr; !readStockLoot(p, strings, stockLoot_, &lerr)) {
             stockLoot_ = StockLoot{};
             EditorLog::instance().add(LogLevel::Warning, "stock", "the loot points could not be read: " + qs(lerr));
@@ -5216,7 +5216,7 @@ void MainWindow::loadDocument(const QString& path) {
         ctx_.setStatus(QString("Opened IW8 MapEnts: %1 entities, %2 compiled spawns (read-only overlay)%3")
                            .arg(ctx_.doc.map().entities.size())
                            .arg(ctx_.scene.spawns.size())
-                           .arg(stockLoot_.points.empty() ? QString() : QString(", %1 loot points (File > Edit Loot Points)").arg(stockLoot_.points.size())));
+                           .arg(stockLoot_.points.empty() ? QString() : QString(", %1 loot points (File > Stock Map > Edit Loot Points)").arg(stockLoot_.points.size())));
     } else {
         if (!ctx_.doc.load(p, &err)) {
             QMessageBox::critical(this, "Open", qs(err) + "\n\nThe map that was open stays open.");
@@ -8526,7 +8526,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
         drawProps = &withClutter;
     }
     // The map's scripted objects (scriptableMapEnts: doors, lamps, signal lights, targets; 106 on Speedball) as their
-    // definition's model, read-only like the static props, unless File > Edit Placed Objects made them entities (then
+    // definition's model, read-only like the static props, unless File > Stock Map > Edit Placed Objects made them entities (then
     // the document draws them). Owner 2026-11-13: Speedball's signal lights were missing from the viewport.
     if (!stockPlaced_.empty() && !hasPlacedObjects(ctx_.doc.map()) && ctx_.scene.scriptableModelFor) {
         if (drawProps != &withClutter) withClutter = *refProps_, drawProps = &withClutter;

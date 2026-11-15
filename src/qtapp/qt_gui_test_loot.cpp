@@ -53,7 +53,7 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
     }
 
     check(w.editLootPoints() == int(stockPoints) && ctx.doc.map().entities.size() == entCount + stockPoints && hasLootPoints(ctx.doc.map()),
-          QString("File > Edit Loot Points adds %1 loot point entities").arg(stockPoints));
+          QString("File > Stock Map > Edit Loot Points adds %1 loot point entities").arg(stockPoints));
     check(w.editLootPoints() == 0 && ctx.doc.map().entities.size() == entCount + stockPoints, "a second call adds nothing");
     std::vector<Id> loot;
     size_t cache = 0, zoned = 0;
@@ -109,7 +109,7 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
     section("placed objects of a Warzone stock map (13.5: buy stations)");
     check(w.stockPlacedObjectCount() == 90, QString("the map's scriptable instances are read: %1").arg(w.stockPlacedObjectCount()));
     const int made = w.editPlacedObjects();
-    check(made == 90 && hasPlacedObjects(ctx.doc.map()), QString("File > Edit Placed Objects adds the %1 movable objects (none of this map is a door)").arg(made));
+    check(made == 90 && hasPlacedObjects(ctx.doc.map()), QString("File > Stock Map > Edit Placed Objects adds the %1 movable objects (none of this map is a door)").arg(made));
     check(w.editPlacedObjects() == 0, "a second call adds nothing");
     Id kiosk = kNoId;
     std::string kioskIndex;
@@ -187,7 +187,7 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
         for (const Entity& e : ctx.doc.map().entities)
             if (e.isWorldspawn())
                 if (const std::string* v = e.value("iw8r_hide_smodels")) list = *v;
-        check(hidden == 3 && list == "3 7 40", QString("File > Hide Stock Props In Selection hides the 3 props inside the brush (rows %1)").arg(QString::fromStdString(list)));
+        check(hidden == 3 && list == "3 7 40", QString("File > Stock Map > Hide Stock Props In Selection hides the 3 props inside the brush (rows %1)").arg(QString::fromStdString(list)));
         check(w.hideStockPropsInSelection() == 0, "a second call finds nothing new");
         QString program, err;
         QStringList args, notes;
@@ -201,7 +201,7 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
               "and takes their collision out by model and place");
         check(!ents.isEmpty() && !ents.contains("caulk") && !ents.contains("func_group"), "the helper brush left in the document is not written into the entity text");
         check(notes.join("; ").contains("1 brush(es)"), "the rebuild notes say the brush is left out");
-        check(w.showAllStockProps() == 3, "File > Show All Stock Props brings them back");
+        check(w.showAllStockProps() == 3, "File > Stock Map > Show All Stock Props brings them back");
         bool gone = true;
         for (const Entity& e : ctx.doc.map().entities)
             if (e.isWorldspawn() && e.value("iw8r_hide_smodels")) gone = false;
@@ -224,7 +224,7 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
         QString program, err;
         QStringList args, notes;
         const bool withoutPlan = w.prepareStockEdit(work + "/brush_noplan", &program, &args, &err, &notes);
-        check(withoutPlan && notes.join("; ").contains("left out: only File > Rebuild Stock Zone builds them"),
+        check(withoutPlan && notes.join("; ").contains("left out: only File > Stock Map > Rebuild Stock Zone builds them"),
               "without a build plan the brushes are left out with a note");
         MainWindow::StockOverlayPlan plan;
         notes.clear();
