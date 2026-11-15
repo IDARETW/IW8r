@@ -49,6 +49,22 @@ Findings without edits: `WeaponDef` 5296, `ADSOverlay` 112, `SwaySettings` 256, 
 ints, and the type already has that shift (A019); `usercmd_s` 264, `viewClamp` 24, `UsableHandleInfo` 8,
 `FootstepAnim` 516 confirmed (A011).
 
+## Wave 3
+
+| Struct | Change | Evidence |
+|---|---|---|
+| `SpawnVar` | relayout, size 9232 -> 8976: `spawnVarKeys` unsigned int[64] +8, `spawnVarValues` char *[64] +264, `numSpawnVarChars` +776, `spawnVarChars[8192]` +780 (the old 1024-byte `spawnVars` dropped) | `Scr_ParseSpawnVars2` 0x1412E0F50: `mov [r14+rax*4+8], ebx`, `mov [r14+rax*8+108h], rbx`, `mov [r14+308h], esi`, `lea rbx, [r14+30Ch]` (A027; `Scr_SetStructFields` reads the same offsets). Size: the used extent ends at 8972, the struct holds pointers so it is a multiple of 8 -> 8976 (INFERRED; the bss gap to `g_mainStateFloatMaxSentinel` caps it at 9136). Global `level_spawnVarsValid`; nothing embeds it |
+| `ScriptableStateDef` | `type` unsigned __int64 -> int + `_pad1C[4]` (no move; game-test: 4-byte `Scriptable_StateType`, not in this database) | `ScriptableCommon_GetPartHasUsableState` 0x1412DF7E8 `cmp dword ptr [rdx+r9+18h], 3`; `ScriptableCommon_GetPartFirstUsableState` and `Load_ScriptableStateDataDispatch` read a dword (A030). Note: IDA's `Load_ScriptableEventFootstepDef` (0x140DBDAD0) is really the usable-state loader (A030) |
+| `MapEnts` | `dynEntityListsCount` unsigned int -> unsigned __int16 + `_pad19E[2]` (no move) | `Load_MapEnts` and `Postload_MapEnts` read `*(unsigned __int16 *)(varMapEnts + 412)` (A027) |
+
+Findings without edits: all 10 `GfxWorld` sub-structs match their `Load_*` stream sizes, and
+`GfxWorldDpvsDynamic.dynEntVisData` was retyped to `void *[66]` (same size) by A023; 18 of A024's 19 asset structs and
+all 13 of A028's (terrain, `XModel` 688, `XSurface` 192, `XModelSurfs` 96, `StMesh` 296) match their loaders;
+`MapEnts` 1032 and 15 sub-structs match (A027); `clipMap_t` 248, `ComWorld` 168, `ComPrimaryLight` 160,
+`MapTriggers` 80 match (A026). A025 filled `GfxImage.residentMipCount` (u8 +0x34: `Load_ImageStream` 0x140F614A0 stores
+`Stream_ComputeImageResidentMipCount(image)` there; game-test has padding at +0x34) and two `GfxWrappedBuffer` members in
+`GfxLightGridVolumeAtlas` (same size); `GfxGpuLightGrid` 640 matches its loader.
+
 ### Open questions (need more Replay evidence)
 
 - `clientState_t` 408 -> 400? Strides of 400 in `CL_ParseMP_ParsePacketClients` 0x1415F1B80 (`+ 400 * (index % count)`,
@@ -69,6 +85,13 @@ ints, and the type already has that shift (A019); `usercmd_s` 264, `viewClamp` 2
 - `scrVarPub_t`: `m_classMap` is at +152 in Replay (scrContext+0x3560; `Scr_InitClassMap`, `Scr_SetClassMap`,
   `Scr_InitVariables`), the type has it at +248; members 152..416 overlap it and need a joint relayout (A014).
 - `scrVmPub_t.inparamcount` (+40) is read and written as bytes at +40 and +42 (A014, around 0x1413277DE): unconfirmed.
+- `GfxLightGridVolumeAtlas__AtlasState` 52632 -> 52648 (stride 52648 in `Update`, `PrepareForCopy`, `ShouldDefragment`,
+  `UpdatePackingBuffer`; A025): inside it the two 32-byte params arrays are two 64-byte `GfxWrappedBuffer`s at +472 and
+  +536 and `m_packing` starts at +600; the last four members do not fit. Ripples into `GfxLightGridVolumeAtlas`.
+  `StreamerMemLoan.mUpdateID` is 8 bytes (QWORD read in `GiveLoan`).
+- `GfxSunShadow` +19924..+20028: Replay has the cloud-shadow block at +19924 and lightDir at +19980 (type +20276 /
+  +20332), conflicting with the typed `overlaySetup` (A026); needs a relayout. `GfxSunShadowPartition.farDist` is
+  copied as an int. `GfxBackEndData` is probably 11801472 (`R_InitBackEndData` allocates 2 x 11801472; A058 has a note).
 - `cpose_t`: what replaced `actualOrigin` in the 4 bytes at +0x1C (A015 found no access). `CEntActorInfo.roll` is a float
   in the type but compared as a byte (A015).
 

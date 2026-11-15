@@ -2922,7 +2922,8 @@
       "R_AddAllStaticModelSurfacesSunShadow",
       "R_AddAllStaticModelsSurfacesCachedSunShadow",
       "R_ST_GenerateSunShadowDrawSurfsForNode"
-     ]
+     ],
+     "note": "A026 (wave 3): Replay puts the cloud-shadow block at +19924 and lightDir at +19980 (type +20276 / +20332); the typed overlaySetup at +19924 conflicts. Size lower bound 20028."
     },
     {
      "name": "GfxMatrix",
@@ -7055,7 +7056,8 @@
       "R_IssueRenderCommandsEnd",
       "R_BuildCachedSunShadowOverlap",
       "R_InitComputeCmdBufState"
-     ]
+     ],
+     "note": "A026 (wave 3): R_InitBackEndData allocates 2 x 11801472 bytes, so the element (GfxBackEndData) is probably 11801472 bytes in Replay (type 11144708, game-test 7711488); GfxSunShadow lives inside it. Verify from R_InitBackEndData and the per-frame index stride."
     }
    ]
   },
