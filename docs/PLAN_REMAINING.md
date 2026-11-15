@@ -21,7 +21,7 @@ the milestone's section) or a look in the game, which the owner said to ask for 
 | Milestone | State | Left |
 |---|---|---|
 | 0 Land the work in progress | done (a7bb3ae) | nothing |
-| 1 Lighting | done offline; every part of Game Lighting has a saved GUI toggle (View > Game Lighting Options, its Stock Map Detail submenu since 2026-11-15) and a GUI test | the screen distortion of two materials (G13, a one-unit shift, decided); the in-game look |
+| 1 Lighting | done offline; every part of Game Lighting has a saved GUI toggle (View > Game Lighting Options, its Stock Map Detail submenu since 2026-11-15) and a GUI test | nothing of the rendering audit (G13 distortion checked equivalent within half a unit on its only world user, 2026-11-15); the effect preview draws particles as coloured quads; the in-game look |
 | 2 Umbra | 2.1, 2.2 done; 2.4 done as an opt-in bake, its first game failure fixed offline (research 129) | 2.3 decided against (a mistake there hides objects in the game); the bake's in-game look |
 | 3 Web viewer | 3.1-3.6 done (render stream, protocol, every command and form, editing tools, security, tests) | nothing offline |
 | 4 Remaining pieces | each row has its state below; built offline except the decided ones | streamed Warzone tiles cannot be edited (the client loads no unsigned tile, research 116); own fonts / menus deferred; name-only model references not needed (carried copies work for every model); in-game looks |

@@ -307,6 +307,12 @@ x the vertex colour (alpha `saturate(4 m.z vertexAlpha)`; the technique replaces
 clip-to-UV scale. On the only stock world user, Shipment's `twc/dub_water_wall_waves_dist`, constant 127 is (1, 1):
 the scene moves by at most one unit, which no comparison shot can show, so the batch stays hidden. The effect
 materials (`elcq/vfx_dist_*`, c127 2 to 30) belong to placed effects, whose quads the viewport does not distort.
+**Equivalence check 2026-11-15 (VERIFIED from the world data):** the opt-in test
+`stock_world_distortion_colours_real_data` (`IW8R_DIST_ZONE`) reads that batch through the core world reader: 44
+vertices, 32 triangles, vertex RGB 255 on every vertex, alpha 0 to 162 (mean 73.6). With alpha at most 0.635,
+`k = saturate(m.z a - 0.25) x 4/3` is at most 0.51, so the game writes the scene behind the surface, untinted, moved by
+at most half a unit. The hidden batch shows that same scene unmoved: the viewport matches the game's picture there to
+within half a world unit. Nothing is left for the world distortion.
 Static-model displacement (research 133 section 3): its two stock users (`tmo/stone_wall_01`, `mo/skl_sand_dune_01_blend`)
 both have constant 45 = (2, -1), a shift of at most one unit along the normal; ~~left undrawn by decision~~ drawn since
 2026-11-15 (record row 30, the height image at VS t43, constant 45 kept: constRules 7; also Verdansk's

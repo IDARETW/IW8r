@@ -4,6 +4,8 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -782,4 +784,34 @@ TEST(stock_world_layers_and_vertex_colour) {
         CHECK(o.vertexColor[m].size() == o.meshes[m].pos.size());
         CHECK(o.layerNormalTransform[m].empty());
     }
+}
+
+// Research 132 G13: the world distortion shader writes the scene behind it, moved by c127 x the distortion image along
+// the tangent frame, times the vertex colour. Opt-in diagnostic (IW8R_DIST_ZONE = <world_cache>/<map>): the vertex
+// colours of every mesh whose material is a distortion one ("_dist"), so the hidden batch can be compared with what the
+// game draws (white = the scene unchanged, up to the shift).
+TEST(stock_world_distortion_colours_real_data) {
+    const char* zone = std::getenv("IW8R_DIST_ZONE");
+    if (!zone) return;
+    StockWorld w;
+    std::string err;
+    CHECK(readStockWorld(zone, w, &err, false));
+    size_t meshes = 0;
+    for (size_t m = 0; m < w.meshes.size() && m < w.vertexColor.size(); ++m) {
+        const std::string& mat = w.meshes[m].material;
+        if (mat.find("_dist") == std::string::npos && mat.find("distortion") == std::string::npos) continue;
+        ++meshes;
+        double sum[4] = {0, 0, 0, 0};
+        uint32_t lo[4] = {255, 255, 255, 255}, hi[4] = {0, 0, 0, 0};
+        for (const uint32_t c : w.vertexColor[m])
+            for (int k = 0; k < 4; ++k) {
+                const uint32_t b = (c >> (8 * k)) & 255u;
+                sum[k] += b, lo[k] = b < lo[k] ? b : lo[k], hi[k] = b > hi[k] ? b : hi[k];
+            }
+        const double n = double(w.vertexColor[m].size() ? w.vertexColor[m].size() : 1);
+        std::printf("  [dist] %s: %zu vertices, %zu triangles; colour mean %.1f %.1f %.1f %.1f, min %u %u %u %u, max %u %u %u %u\n",
+                    mat.c_str(), w.meshes[m].pos.size(), w.meshes[m].idx.size() / 3, sum[0] / n, sum[1] / n, sum[2] / n, sum[3] / n, lo[0],
+                    lo[1], lo[2], lo[3], hi[0], hi[1], hi[2], hi[3]);
+    }
+    std::printf("  [dist] %zu distortion meshes of %zu\n", meshes, w.meshes.size());
 }

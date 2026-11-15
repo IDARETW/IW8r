@@ -125,10 +125,13 @@ lines from the scene depth on Cinder Rail Toon and on Shipment's stock geometry;
 
 ## 5. Not built, or built in part
 
-- Game Lighting, left by decision (its reason in `docs/research/132_rendering_paths_audit.md`, G13): the screen
-  distortion of two stock materials (decoded; at most one unit of shift on the world one). Since 2026-11-15 the other
-  former leftovers are drawn: the vertex displacement of stock models with a height image, and the "code" layers,
-  which turned out to be clear coats (research 137).
+- Game Lighting: nothing left of the rendering audit (research 132 / 133). The last item, the world screen distortion
+  (Shipment's water wall, its only user), was checked against the world data on 2026-11-15: its vertices are white and
+  its strength caps at half a unit, so the game draws the scene behind it, untinted, moved by at most half a unit,
+  which is what the viewport shows. Since the same day the vertex displacement of stock models and the "code" layers
+  (clear coats, research 137) are drawn too.
+- Effect preview (View > Effect Preview): placed effects play as coloured camera-facing quads, not with their sprite
+  images, blend modes or heat-haze distortion. It shows where and how effects move, not their exact look.
 - Occlusion: thin slanted walls, terrain and models as occluders (other slanted and many-sided brushes hide by the
   box inside them). Removing stock world geometry opens the whole map's occlusion: everything is drawn, which
   costs frame time on that map and nothing else. A local update was decided against (a mistake there makes objects

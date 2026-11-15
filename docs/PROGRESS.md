@@ -45,8 +45,9 @@
   gameTime.y; GUI test 1,134 checks). PLAN_REMAINING has a status-at-a-glance table.
   Final benches on a4d87f3 (nothing pending at the shots): Speedball 6.7, Hideout 9.9, Aniyah 13.5, Verdansk ground
   22.2, Verdansk raised 25.5 ms (all within budget; out/agent/fin_*). Installer and zip rebuilt 05:53 (no ini).
-  Parked: editor open on out/agent/mp_cinderrail_toon. Left by decision of research 132/133: only G13 distortion (one
-  unit of shift). Owner: Cinder Rail in game (TEST_CHECKLIST item 0) and the editor look list at the top of
+  Parked: editor open on out/agent/mp_cinderrail_toon. G13 closed: opt-in test stock_world_distortion_colours_real_data
+  (IW8R_DIST_ZONE) shows Shipment's dub_water_wall_waves_dist white with alpha <= 162, so the game's output is the
+  scene moved <= 0.5 unit, as the hidden batch shows. Nothing of research 132/133 is left. Owner: Cinder Rail in game (TEST_CHECKLIST item 0) and the editor look list at the top of
   TEST_CHECKLIST.
 - 2026-11-14 late evening (after the Cinder Rail fix): converter e648a414 (research 134 rewritten from the client
   PDB: DB_PatchMem's asset stack of two is pushed by nearly every loader; every asset type counts) is live, and the
