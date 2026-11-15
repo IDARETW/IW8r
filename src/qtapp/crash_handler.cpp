@@ -59,11 +59,38 @@ LONG WINAPI onCrash(EXCEPTION_POINTERS* ep) {
         writeDump();
         return EXCEPTION_CONTINUE_SEARCH;
     }
+    // Unbuffered: a report that dies later (in the symbol lookup, on a damaged heap) keeps what was written.
+    std::setvbuf(f, nullptr, _IONBF, 0);
     std::fprintf(f, "IW8 Radiant Suite crash\nexception 0x%08lX at %p\n", ep->ExceptionRecord->ExceptionCode,
                  ep->ExceptionRecord->ExceptionAddress);
     if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && ep->ExceptionRecord->NumberParameters >= 2)
         std::fprintf(f, "access violation %s address 0x%llx\n", ep->ExceptionRecord->ExceptionInformation[0] ? "writing" : "reading",
                      (unsigned long long)ep->ExceptionRecord->ExceptionInformation[1]);
+    // The raw stack first, module + offset (resolve offline: llvm-symbolizer --obj=IW8Radiant.exe 0x<offset>), from the
+    // unwind tables, without symbols or allocation (the empty reports of 2026-11-15 died before writing anything).
+    {
+        CONTEXT raw = *ep->ContextRecord;
+        std::fprintf(f, "raw stack (thread %lu):\n", GetCurrentThreadId());
+        for (int i = 0; i < 48 && raw.Rip; ++i) {
+            char mod[MAX_PATH] = "?";
+            HMODULE hm = nullptr;
+            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                   reinterpret_cast<LPCSTR>(raw.Rip), &hm))
+                GetModuleFileNameA(hm, mod, MAX_PATH);
+            const char* base = std::strrchr(mod, '\\');
+            std::fprintf(f, "  r%02d %s+0x%llx\n", i, base ? base + 1 : mod, (unsigned long long)(raw.Rip - DWORD64(hm)));
+            DWORD64 imageBase = 0;
+            PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(raw.Rip, &imageBase, nullptr);
+            if (!fn) {
+                raw.Rip = *reinterpret_cast<DWORD64*>(raw.Rsp);  // a leaf: the return address is on top
+                raw.Rsp += 8;
+                continue;
+            }
+            void* handlerData = nullptr;
+            DWORD64 establisher = 0;
+            RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, raw.Rip, fn, &raw, &handlerData, &establisher, nullptr);
+        }
+    }
     SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
     SymInitialize(proc, nullptr, TRUE);
     CONTEXT ctx = *ep->ContextRecord;
@@ -151,6 +178,10 @@ void installCrashHandler(const QString& dir) {
     const std::wstring w = QDir::toNativeSeparators(dir).toStdWString();
     wcsncpy_s(g_dir, w.c_str(), _TRUNCATE);
     SetUnhandledExceptionFilter(onCrash);
+    // Stack kept for the report after a stack overflow on this (the GUI) thread: without it the report died on its
+    // first line (2026-11-15).
+    ULONG guarantee = 128 * 1024;
+    SetThreadStackGuarantee(&guarantee);
     std::signal(SIGABRT, onAbort);
     if (!g_reserve) g_reserve = VirtualAlloc(nullptr, 64u << 20, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);

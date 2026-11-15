@@ -426,9 +426,16 @@ void splitConcave(std::vector<Tri> tris, int depth, double minSize, std::vector<
             const int g = r.group[size_t(r.triCell[t])];
             parts[size_t(std::max(0, g))].push_back(tris[t]);
         }
-        for (auto& p : parts)
-            if (!p.empty()) splitConcave(std::move(p), depth, minSize, out);
-        return;
+        size_t nonEmpty = 0;
+        for (const auto& p : parts) nonEmpty += p.empty() ? 0 : 1;
+        // Only when the groups part the triangles: a thin diagonal triangle rasterises to cells that touch only at
+        // their corners (separate 4-connected groups) while every triangle's centre lies in one of them, and the same
+        // triangles came back here at the same depth until the stack ran out (walking Hideout, 2026-11-15).
+        if (nonEmpty > 1) {
+            for (auto& p : parts)
+                if (!p.empty()) splitConcave(std::move(p), depth, minSize, out);
+            return;
+        }
     }
     size_t occupied = 0;
     for (char c : r.occ) occupied += c ? 1 : 0;

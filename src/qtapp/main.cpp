@@ -1705,6 +1705,15 @@ int main(int argc, char** argv) {
                 app.exit(ok ? 0 : 2);
             });
         }
+        // IW8R_TEST_WALK_AFTER=<seconds>: View > Play Preview (Walk) then, for six seconds (render thread checks).
+        if (const int walkAfter = qEnvironmentVariableIntValue("IW8R_TEST_WALK_AFTER"); walkAfter > 0)
+            QTimer::singleShot(walkAfter * 1000, &w, [&w] {
+                if (QAction* a = w.action("PlayPreview")) a->trigger();
+                QTimer::singleShot(6000, &w, [&w] {
+                    if (QAction* a = w.action("PlayPreview")) a->trigger();
+                    std::fprintf(stderr, "walk test: done\n");
+                });
+            });
         // IW8R_QUIT_AFTER=<seconds>: a normal session that ends by itself (stall measurements with IW8R_STALL_WATCH).
         if (const int quitAfter = qEnvironmentVariableIntValue("IW8R_QUIT_AFTER"); quitAfter > 0)
             QTimer::singleShot(quitAfter * 1000, &app, &QCoreApplication::quit);

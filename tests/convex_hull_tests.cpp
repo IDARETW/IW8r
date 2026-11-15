@@ -115,6 +115,20 @@ TEST(convex_pieces_split_components_and_merge_to_budget) {
     if (one.size() == 1) CHECK(containsAll(one[0], mesh.pos, 1e-7));
 }
 
+// Walking Hideout in the play preview (2026-11-15) overflowed the stack in splitConcave: a long thin diagonal triangle
+// rasterises to cells that touch only at their corners (separate 4-connected groups), every triangle's centre lies in
+// one of them, and the "split" gave the same triangles back at the same depth forever.
+TEST(convex_pieces_thin_diagonal_part_does_not_recurse_forever) {
+    ImportedModel m;
+    ImportedMesh mesh;
+    const Vec3 c{100.5, 99.5, 0};
+    mesh.pos = {Vec3{0, 0, 0}, Vec3{200, 200, 0}, c, c + Vec3{1, 0, 0}, c + Vec3{0, 1, 0}, c + Vec3{-1, 0, 0}, c + Vec3{0, -1, 0}};
+    mesh.idx = {0, 1, 2, 2, 3, 4, 2, 4, 5, 2, 5, 6};
+    m.meshes.push_back(mesh);
+    const auto pieces = convexPieces(m, 8, 32);
+    CHECK(!pieces.empty());
+}
+
 TEST(hull_brushes_apply_placement) {
     std::vector<Vec3> cube;
     for (int c = 0; c < 8; ++c) cube.push_back(Vec3{double(c & 1), double((c >> 1) & 1), double((c >> 2) & 1)});
