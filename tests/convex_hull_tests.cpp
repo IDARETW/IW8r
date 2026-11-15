@@ -2,12 +2,15 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
 #include "brush_ops.h"
 #include "convex_hull.h"
 #include "geometry.h"
+#include "glb_mesh.h"
 #include "model_import.h"
 #include "test_harness.h"
 
@@ -170,4 +173,89 @@ TEST(convex_hull_corrugated_sheet_does_not_throw) {
     }
     CHECK(!threw && !pieces.empty());
     for (const auto& pc : pieces) CHECK(pc.size() >= 4);
+}
+
+// Map-agent report 2026-11-14: a door frame is one connected mesh, and its one hull filled the doorway. A notched part
+// is split (jambs, header), so the opening stays free and the frame still collides; a plain box stays one piece.
+TEST(convex_pieces_keep_a_door_frame_open) {
+    ImportedModel m;
+    ImportedMesh mesh;
+    addBox(mesh, Vec3{0, 0, 0}, Vec3{6, 6, 96});    // left jamb
+    addBox(mesh, Vec3{6, 0, 88}, Vec3{42, 6, 96});  // header (shares the jambs' top corners: one connected mesh)
+    addBox(mesh, Vec3{42, 0, 0}, Vec3{48, 6, 96});  // right jamb
+    m.meshes.push_back(mesh);
+    const auto pieces = convexPieces(m, 4, 24);
+    CHECK(pieces.size() >= 2 && pieces.size() <= 4);
+    const auto inside = [&](const Vec3& p) {
+        for (const auto& pc : pieces) {
+            bool in = true;
+            for (const Plane& pl : pc)
+                if (dot(pl.n, p) > pl.d - 1e-6) in = false;
+            if (in) return true;
+        }
+        return false;
+    };
+    CHECK(!inside(Vec3{24, 3, 40}));  // the doorway
+    CHECK(!inside(Vec3{8, 3, 80}));   // beside a jamb, under the header
+    CHECK(!inside(Vec3{40, 3, 10}));
+    CHECK(inside(Vec3{3, 3, 40}));    // the jambs and the header still collide
+    CHECK(inside(Vec3{45, 3, 40}));
+    CHECK(inside(Vec3{24, 3, 92}));
+    std::vector<Vec3> all = mesh.pos;  // every point of the frame is inside some piece (within its planes)
+    for (const Vec3& p : all) {
+        bool covered = false;
+        for (const auto& pc : pieces) covered = covered || containsAll(pc, {p}, 1e-6);
+        CHECK(covered);
+    }
+
+    // The same frame in metres (a custom model's file units): split the same way.
+    ImportedModel metres = m;
+    for (Vec3& p : metres.meshes[0].pos) p = p * 0.0254;
+    CHECK(convexPieces(metres, 4, 24).size() == pieces.size());
+
+    // The stock frame of the report (tm/door_frame_wooden_panel_03_painted_mp, from the model cache when present; file
+    // space is Y-up: map z is y). Its doorway at mid height is free, its jambs collide.
+    const char* lad = std::getenv("LOCALAPPDATA");
+    const std::string glb = std::string(lad ? lad : "") +
+                            "/IW8 Radiant Suite/IW8 Radiant Suite/model_cache/glb/tm_door_frame_wooden_panel_03_painted_mp.glb";
+    ImportedModel frame;
+    GlbReadOptions ro;
+    ro.scale = 1.0 / 0.0254;  // as the model cache reads it: glTF metres to inches, Y-up
+    if (lad && readGlb(glb, frame, nullptr, ro)) {
+        const auto fp = convexPieces(frame, 4, 24);
+        const auto in = [&](const Vec3& p) {
+            for (const auto& pc : fp) {
+                bool all = true;
+                for (const Plane& pl : pc)
+                    if (dot(pl.n, p) > pl.d - 1e-6) all = false;
+                if (all) return true;
+            }
+            return false;
+        };
+        CHECK(!fp.empty());
+        CHECK(!in(Vec3{0, 50, 0}));
+        CHECK(!in(Vec3{-20, 30, 0}));
+        CHECK(!in(Vec3{20, 80, 0}));
+        int jambs = 0, header = 0;  // some point across each jamb's width, and near the top, collides
+        for (double x = 24; x <= 32; x += 0.5)
+            for (double z = -6; z <= 8; z += 1) {
+                jambs += in(Vec3{-x, 50, z}) ? 1 : 0;
+                jambs += in(Vec3{x, 50, z}) ? 100 : 0;
+            }
+        for (double y = 88; y <= 100; y += 0.5)
+            for (double z = -6; z <= 8; z += 1) header += in(Vec3{0, y, z}) ? 1 : 0;
+        CHECK(jambs % 100 > 0 && jambs / 100 > 0);
+        CHECK(header > 0);
+        std::printf("  stock door frame: %zu pieces\n", fp.size());
+    } else {
+        std::printf("  (stock door frame not in the model cache: real-frame check skipped)\n");
+    }
+
+    ImportedModel box;
+    ImportedMesh bm;
+    addBox(bm, Vec3{0, 0, 0}, Vec3{64, 48, 96});
+    box.meshes.push_back(bm);
+    const auto one = convexPieces(box, 4, 24);
+    CHECK(one.size() == 1);
+    if (one.size() == 1) CHECK(one[0].size() == 6);
 }

@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Door frames keep their opening** (map agent's report): a stock or custom model's generated collision hull no
+  longer fills a doorway. A connected part whose surface leaves a large notch (a door frame, an arch, an L of walls)
+  is cut where the cut leaves least empty space, and each side again, so a frame collides as its jambs and its header.
+  Over the piece budget, a small piece joins the piece whose bounds grow least (no longer the nearest one, which could
+  bridge the doorway). The build, Play Preview and the model preview share the code. Tested on a synthetic frame and on
+  the stock frame of the wooden door bundle (`tm/door_frame_wooden_panel_03_painted_mp`); not seen in game.
 - **Fixes from the map agent's editor issue list** (out/agent/mp_cinderrail/EDITOR_ISSUES.md):
   - a build no longer crashes on a stock model whose collision hull defeats the hull code (the corrugated metal
     awning): the hull gives up cleanly, retries with welded points, and a piece without a hull collides as its box;
