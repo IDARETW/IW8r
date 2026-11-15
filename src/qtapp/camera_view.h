@@ -182,6 +182,8 @@ public:
         bool translucent = false;
         // Research 133 section 1: constant 63, UV animation (u / s, v / s, radians / s about the texture centre).
         std::array<float, 4> uvAnim{0, 0, 0, 0};
+        // Research 133 section 6: the flag / foliage waves, constants 79, 80, 81, 82 (zero = none).
+        std::array<float, 16> wave{};
     };
     using FactsLookup = std::function<std::optional<StockMaterialFacts>(const std::string& material)>;
     void setMaterialFacts(FactsLookup lookup) { factsLookup_ = std::move(lookup); }

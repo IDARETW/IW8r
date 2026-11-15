@@ -485,10 +485,24 @@ PSIn vs_tex(VSIn i) {
     return o;
 }
 // Textured instanced reference props: the model's vertices placed by three transform rows per instance.
+// A prop mesh's flag / foliage waves (research 133 section 6): constants 79-82 at rows 8..11 of its per-mesh record
+// (the same range as cbuffer Layer, bound to b8 for the vertex shader; unbound = zero = no waves).
+cbuffer PropWave : register(b8) { float4 pwRows[8]; float4 wave79; float4 wave80; float4 wave81; float4 wave82; };
 struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float4 vcol : COLOR1; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
                   float4 l0 : INSTROW3; float4 l1 : INSTROW4; float4 l2 : INSTROW5; };
 PSIn vs_tex_inst(VSInInst i) {
     float4 p = float4(i.pos, 1.0);
+    if (wave80.w != 0 || wave81.w != 0 || wave82.w != 0) {
+        // The static-model VS (research 133 section 5.2): speed from the placement's origin, three sines over the clock
+        // and the UV, weighted by the vertex colour alpha, along the vertex normal.
+        const float s = (i.r0.w + i.r1.w + i.r2.w) / 4096.0;
+        const float tri = abs(1.0 - 2.0 * frac(wave79.z * s)) * 2.0 - 1.0;
+        const float phase = (wave79.x + wave79.w * tri) * (gameTime.x + wave79.y);
+        const float2 q = 1.0 - i.uv;
+        const float h = sin(phase * wave80.z + dot(q, wave80.xy)) * wave80.w + sin(phase * wave81.z + dot(q, wave81.xy)) * wave81.w +
+                        sin(phase * wave82.z + dot(q, wave82.xy)) * wave82.w;
+        p.xyz += h * i.vcol.a * i.n;
+    }
     float3 w = float3(dot(i.r0, p), dot(i.r1, p), dot(i.r2, p));
     // The model's vertex normal turned by the instance (uniform scale; zero = none: the pixel shader derives one).
     float3 nw = float3(dot(i.r0.xyz, i.n), dot(i.r1.xyz, i.n), dot(i.r2.xyz, i.n));
@@ -3005,6 +3019,7 @@ void SceneRenderer::writeGameCb() {
     g[84] = float(std::fmod(gameTime_, 43200.0));  // the game's clock wraps (research 133 section 0)
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
+    ctx_->VSSetConstantBuffers(4, 1, &cbGame_);  // the clock of the prop waves (vs_tex_inst)
     ID3D11ShaderResourceView* gl[3] = {gameLutSrv_, envBrdfSrv_, probeArrSrv_};
     ctx_->PSSetShaderResources(9, 3, gl);
     ctx_->PSSetShaderResources(13, 1, &probeGridSrv_);
@@ -3294,6 +3309,12 @@ void SceneRenderer::setReferenceBaseExtra(size_t batch, const float extra[16], i
     std::memcpy(refLayers_[batch].extra, extra, sizeof(refLayers_[batch].extra));
     refLayers_[batch].emissive = emissiveTexture, refLayers_[batch].transmission = transmissionTexture;
     layerParamsDirty_ = true;
+}
+
+void SceneRenderer::setReferenceInstWave(size_t mesh, const float wave[16]) {
+    if (mesh >= refTexInst_.size()) return;
+    std::memcpy(refTexInst_[mesh].wave, wave, sizeof(refTexInst_[mesh].wave));
+    instParamsDirty_ = true;
 }
 
 void SceneRenderer::setReferenceInstExtra(size_t mesh, const float extra[16], int emissiveTexture, int transmissionTexture) {
@@ -4187,6 +4208,7 @@ void SceneRenderer::drawReferenceTexInstances() {
             if (cbInstAll_[mi / kInstPerCb]) {
                 const UINT first = UINT((mi % kInstPerCb) * 16), num = 16;
                 ctx1_->PSSetConstantBuffers1(7, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);
+                ctx1_->VSSetConstantBuffers1(8, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);  // PropWave
             }
         }
         ID3D11Buffer* bufs[2] = {g.vb, culled ? g.visInst : g.inst};  // the pre-pass: the visible buffer's large prefix
@@ -4201,6 +4223,10 @@ void SceneRenderer::drawReferenceTexInstances() {
         if (savedDs) savedDs->Release();
     }
     if (instCb && cbLayer_) ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);  // the plain (zero) layer buffer
+    if (instCb) {
+        ID3D11Buffer* none = nullptr;  // no waves for what is drawn next
+        ctx_->VSSetConstantBuffers(8, 1, &none);
+    }
     if (propNormals) {
         ID3D11ShaderResourceView* noN = nullptr;
         ctx_->PSSetShaderResources(1, 1, &noN);
@@ -4239,6 +4265,7 @@ bool SceneRenderer::uploadInstParams() {
                 const GpuTexInstanced& gi = refTexInst_[c * kInstPerCb + j];
                 std::memcpy(&all[j * 64], gi.params, sizeof(gi.params));
                 std::memcpy(&all[j * 64 + 16], gi.extra, sizeof(gi.extra));
+                std::memcpy(&all[j * 64 + 32], gi.wave, sizeof(gi.wave));  // PropWave (b8) in vs_tex_inst
                 maskExtraTerms(&all[j * 64 + 16]);
                 if (textureRawAlpha(gi.texture)) all[j * 64 + 1] = 2.0f;  // opaque: alpha is the specular code
             }
@@ -4275,6 +4302,7 @@ void SceneRenderer::drawReferenceTexInstancesShadow(const iw8r::Frustum* view) {
             if (cbInstAll_[mi / 256]) {
                 const UINT first = UINT((mi % 256) * 16), num = 16;
                 ctx1_->PSSetConstantBuffers1(7, 1, &cbInstAll_[mi / 256], &first, &num);
+                ctx1_->VSSetConstantBuffers1(8, 1, &cbInstAll_[mi / 256], &first, &num);  // PropWave
             }
         }
         ID3D11Buffer* bufs[2] = {g.vb, g.inst};
@@ -4305,6 +4333,10 @@ void SceneRenderer::drawReferenceTexInstancesShadow(const iw8r::Frustum* view) {
     ID3D11ShaderResourceView* noTex[1] = {nullptr};
     ctx_->PSSetShaderResources(0, 1, noTex);
     if (instCb && cbLayer_) ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);
+    if (instCb) {
+        ID3D11Buffer* none = nullptr;
+        ctx_->VSSetConstantBuffers(8, 1, &none);
+    }
     ctx_->IASetInputLayout(layout_);
     ctx_->VSSetShader(vs_, nullptr, 0);
     ctx_->PSSetShader(nullptr, nullptr, 0);

@@ -1336,6 +1336,8 @@ int main(int argc, char** argv) {
         if (!guiTest && !smoke) QTimer::singleShot(0, &w, [&w] { w.showFirstRunSetup(true); });
         // Browser access (L10): the web server starts with the editor when Settings web/enabled is on.
         if (!guiTest && !smoke) QTimer::singleShot(500, &w, [&w] { w.applyWebServerSettings(); });
+        // The textured picture packs of the Models and Prefabs tabs stay complete by themselves (idle top-up).
+        if (!guiTest && !smoke) w.startThumbnailTopUp();
         if (!openFile.isEmpty()) w.openPath(openFile);
         if (lookBuild) {
             QTimer::singleShot(300, &w, [&] {

@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Stock flags, tarps, canopies and foliage wave** as in game (research 133 sections 5.2 and 6): the three-sine
+  vertex waves of constants 79-82, weighted by the vertex colour alpha, with each placement's own speed, in Game
+  Lighting. Proven offline on Hideout's fabric canopy (two clock values against a same-clock control: 6x the
+  change along its edge). Materials of the model families that wave resolve again once to pick up the constants.
+- **The textured picture packs fill themselves**: the editor pictures the catalogued models and prefabs that have
+  no picture yet while it is idle (30 s without input), so the Models and Prefabs tabs use cached pictures by
+  default with no command; `--thumb-pack` remains for filling them ahead of time.
 - **Game Lighting hides the back faces of one-sided own materials** (research 132 G11), as the build culls them:
   a material without `twoSided` is not drawn from behind (its surface normal faces away from the eye), in the
   shading pass and the depth pre-pass; two-sided materials and the other view modes are unchanged.

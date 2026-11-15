@@ -426,6 +426,8 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         }
         if (const auto* c103 = cst(103)) f.wrap = {(*c103)[0], (*c103)[1], (*c103)[2], 1.0f};
         if (const auto* c63 = cst(63)) f.uvAnim = *c63;  // UV animation (research 133 section 1)
+        for (int k = 0; k < 4; ++k)  // the flag / foliage waves (research 133 section 6)
+            if (const auto* c = cst(79 + k)) std::copy(c->begin(), c->end(), f.wave.begin() + 4 * k);
         f.unlit = parseTechset(e->techset.section('/', -1).toStdString()).family == TechsetFamily::UnlitEffect;
         // Blended model materials past the decal sort keys (glass 25, 30): see-through (research 132 G1).
         f.translucent = !e->techset.startsWith("tw") && (ts.contains("_bad_") || ts.contains("_bar_")) && f.propDecalSortKey == 0;
@@ -7655,7 +7657,9 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                             pv.normal = 0;
                             if (vertCol) {
                                 const auto byte = [](float c) { return uint32_t(std::clamp(c, 0.0f, 1.0f) * 255.0f + 0.5f); };
-                                pv.color = byte(ms.color[v][0]) | (byte(ms.color[v][1]) << 8) | (byte(ms.color[v][2]) << 16) | 0xff000000u;
+                                // Alpha: the weight of the flag / foliage waves (research 133 section 4).
+                                pv.color = byte(ms.color[v][0]) | (byte(ms.color[v][1]) << 8) | (byte(ms.color[v][2]) << 16) |
+                                           (byte(ms.color[v][3]) << 24);
                             }
                             Vec3 sn = shadeN[v];
                             if (ownNormals) {
@@ -9807,6 +9811,73 @@ AssetPreviewWindow* MainWindow::makeAssetPreviewWindow() {
             return QImage(file);
         };
         return new AssetPreviewWindow(dev_, dc_, camera_, ctx_.scene, std::move(src), this);
+    }
+}
+
+void MainWindow::startThumbnailTopUp() {
+    lastInput_.start();
+    qApp->installEventFilter(this);
+    auto* timer = new QTimer(this);
+    timer->setInterval(5000);
+    connect(timer, &QTimer::timeout, this, [this] { topUpThumbnails(); });
+    timer->start();
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    switch (event->type()) {
+        case QEvent::KeyPress:
+        case QEvent::MouseButtonPress:
+        case QEvent::Wheel:
+            if (lastInput_.isValid()) lastInput_.restart();
+            break;
+        default:
+            break;
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::topUpThumbnails() {
+    constexpr qint64 kIdleMs = 30000;
+    constexpr int kPerTick = 12;
+    TexturedThumbs* t = texturedThumbs();
+    if (!t || !modelCacheStock_ || t->busy() || modelCacheStock_->busy()) return;
+    if (!lastInput_.isValid() || lastInput_.elapsed() < kIdleMs) return;
+    if (topUpNames_.isEmpty()) {
+        // The work list: every catalogued model and every prefab of the search folders (made once per session).
+        for (const QString& n : auditCatalogNames("models")) topUpNames_ << n;
+        for (const QString& root : PrefabBrowser::searchRoots())
+            for (QDirIterator it(root, {"*.map"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) topUpNames_ << "p:" + it.next();
+        topUpAt_ = 0;
+        topUpFound_ = 0;
+        if (topUpNames_.isEmpty()) topUpNames_ << QString();  // nothing to do: never built again
+    }
+    QStringList exportNames;
+    int queued = 0;
+    while (topUpAt_ < topUpNames_.size() && queued < kPerTick && exportNames.size() < 40) {
+        const QString n = topUpNames_[topUpAt_++];
+        if (n.isEmpty()) continue;
+        if (n.startsWith("p:")) {
+            const QString file = n.mid(2);
+            if (!t->store(TexturedThumbs::Prefab).contains(file)) t->request(TexturedThumbs::Prefab, file), ++queued;
+            continue;
+        }
+        if (t->store(TexturedThumbs::Model).contains(n)) continue;
+        const auto e = modelCacheStock_->lookup(n);
+        if (!e) {
+            if (!topUpAsked_.contains(n)) topUpAsked_.insert(n), exportNames << n;  // exported now, pictured next sweep
+        }
+        else if (!e->failed) t->request(TexturedThumbs::Model, n), ++queued;
+    }
+    if (!exportNames.isEmpty()) modelCacheStock_->request(exportNames);
+    topUpFound_ += queued + int(exportNames.size());
+    if (topUpAt_ >= topUpNames_.size()) {
+        if (topUpFound_ == 0) {
+            topUpNames_ = QStringList{QString()};  // a whole sweep found nothing missing: done for this session
+            topUpAt_ = 1;
+        } else {
+            topUpAt_ = 0;  // sweep again for what was being exported
+            topUpFound_ = 0;
+        }
     }
 }
 

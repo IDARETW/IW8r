@@ -865,7 +865,9 @@ void CameraView::render() {
         in.geometryChanged = rebuild;
         // The game's clock for animated materials (research 133 section 1); a capture shows time 0.
         if (!maskClock_.isValid()) maskClock_.start();
-        renderer_.setGameTime(in.capture ? 0.0 : maskClock_.elapsed() / 1000.0);
+        // IW8R_CAPTURE_TIME (bench switch): the clock of a capture, in seconds, to compare animated materials offline.
+        static const double captureTime = qEnvironmentVariableIsSet("IW8R_CAPTURE_TIME") ? qEnvironmentVariable("IW8R_CAPTURE_TIME").toDouble() : 0.0;
+        renderer_.setGameTime(in.capture ? captureTime : maskClock_.elapsed() / 1000.0);
         renderer_.drawFrame(in);
         // While a material with UV animation is drawn, the view keeps redrawing (30 a second, the editor's window active).
         if (uvAnimSeen_ && !in.capture && !uvAnimTick_ && window() && window()->isActiveWindow()) {
@@ -1235,6 +1237,11 @@ bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool pr
     if (m.empty() || !factsLookup_ || m.find_first_of("\x01\x02\x05\x06") != std::string::npos) return true;
     const auto f = factsLookup_(m);
     const bool uvAnim = f && (f->uvAnim[0] != 0 || f->uvAnim[1] != 0 || f->uvAnim[2] != 0);
+    const bool waves = f && propMesh && (f->wave[7] != 0 || f->wave[11] != 0 || f->wave[15] != 0);  // c80..c82 amplitudes
+    if (waves) {
+        renderer_.setReferenceInstWave(index, f->wave.data());
+        uvAnimSeen_ = true;  // the view keeps redrawing while it moves
+    }
     if (!f || (f->emissiveScale[3] <= 0 && f->transTint[3] <= 0 && f->wrap[3] <= 0 && !f->unlit && !uvAnim)) return true;
     if (uvAnim) uvAnimSeen_ = true;
     int ids[2] = {-1, -1};

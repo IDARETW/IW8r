@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QElapsedTimer>
+#include <QSet>
 #include <QMainWindow>
 #include <QSet>
 #include <QMap>
@@ -711,6 +712,12 @@ private:
     class AssetPreviewWindow* assetPreview_ = nullptr;
     // Textured pictures of models and prefabs for the browsers (textured_thumbs.h), made once and kept in packs.
     class TexturedThumbs* thumbs3d_ = nullptr;
+    // The idle top-up of the picture packs: the last user input, the catalogue sweep's position and its work list.
+    QElapsedTimer lastInput_;
+    QStringList topUpNames_;  // models by name, prefabs by .map path (prefixed "p:")
+    int topUpAt_ = 0, topUpFound_ = 0;
+    QSet<QString> topUpAsked_;  // models whose export this session already asked for
+    void topUpThumbnails();
     class TexturedThumbs* texturedThumbs();
     // The hooks of an asset preview window (the window and the picture maker share them).
     class AssetPreviewWindow* makeAssetPreviewWindow();
@@ -722,6 +729,10 @@ public:
     // the picture view held (bounds, camera, scene items, textures waiting).
     int runThumbTest(const QString& asset, const QString& outDir);
     class TexturedThumbs* thumbs3dForTests() { return texturedThumbs(); }
+    // Keeps the textured picture packs complete while the editor is idle (normal runs only; main.cpp).
+    void startThumbnailTopUp();
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
 private:
 public:
     // Opens the asset preview window (a textured, navigable 3D view) on a model or a prefab .map file.

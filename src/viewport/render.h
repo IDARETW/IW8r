@@ -284,6 +284,8 @@ public:
     // Research 107 terms of a base batch / a prop mesh (RefLayer::extra layout) and their images (-1 = none).
     void setReferenceBaseExtra(size_t batch, const float extra[16], int emissiveTexture, int transmissionTexture);
     void setReferenceInstExtra(size_t mesh, const float extra[16], int emissiveTexture, int transmissionTexture);
+    // A prop mesh's flag / foliage waves (research 133 section 6): constants 79, 80, 81, 82.
+    void setReferenceInstWave(size_t mesh, const float wave[16]);
     // The near-camera terrain layer patch's core (x, y, radius; radius 0 = none): the coarse terrain is not drawn there.
     void setTerrainCut(float x, float y, float radius) { terrainCut_[0] = x, terrainCut_[1] = y, terrainCut_[2] = radius; }
     // The loaded streamed tiles' areas (x0, y0, x1, y1; at most 256): the terrain's hole filler (vertex alpha 253) is
@@ -778,6 +780,7 @@ private:
         bool noCast = false;        // setReferenceInstNoCast: drawn, casting no shadow (tree canopy leaf cards)
         float params[16] = {};      // setReferenceInstParams
         float extra[16] = {};       // setReferenceInstExtra (RefLayer::extra)
+        float wave[16] = {};        // setReferenceInstWave: constants 79-82 (research 133 section 6)
         int emissive = -1, transmission = -1;
         ID3D11Buffer* visInst = nullptr;
         unsigned visible = 0;

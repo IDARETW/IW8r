@@ -243,6 +243,15 @@ void MaterialCache::loadIndex() {
         // Read from a zone that an installed edit replaced (its technique sets renamed iw8rf_<hash>; the cut-out masks
         // were lost): resolve again from the stock zone (stockZoneFile).
         if (!e.failed && e.techset.section('/', -1).startsWith("iw8rf_")) continue;
+        // Resolved before the wave constants 79-82 were kept (research 133 section 6): the vertex-colour model families
+        // (tmco, tm2co, mco, ...: the vertex alpha is the wave weight) resolve again once.
+        if (!e.failed && o.value("constRules").toInt() < 4) {
+            const QString prefix = e.material.section('/', 0, 0), leaf = e.material.section('/', 1).toLower();
+            static const QStringList kWaveWords = {"flag", "tarp", "foliage", "canopy", "curtain", "fabric", "cloth", "grass", "vine", "leaves", "tree"};
+            bool waveName = false;
+            for (const QString& w : kWaveWords) waveName = waveName || leaf.contains(w);
+            if ((prefix.contains('c') || waveName) && (prefix.startsWith('m') || prefix.startsWith("tm"))) continue;
+        }
         // Layered materials (tw4 / twc4) resolved before their layer images and constants were kept (research 97), or
         // whose layer images were removed: resolve again once (images already cached are reused).
         if (!e.failed && (o.value("layerRules").toInt() < 1 || layerImageGone) &&
@@ -324,7 +333,7 @@ void MaterialCache::writeIndex() const {
         if (!e.failed && !e.emissiveDds.isEmpty()) o.insert("emissive", root.relativeFilePath(e.emissiveDds));
         if (!e.failed && !e.transmissionDds.isEmpty()) o.insert("transmission", root.relativeFilePath(e.transmissionDds));
         if (!e.failed) {
-            o.insert("constRules", 3);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68; 2: bits order; 3: + 63
+            o.insert("constRules", 4);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68; 2: bits order; 3: + 63; 4: + 79-82
             QJsonObject cs;
             for (const auto& [k, f] : e.consts) cs.insert(QString::number(k), QJsonArray{f[0], f[1], f[2], f[3]});
             if (!cs.isEmpty()) o.insert("consts", cs);
@@ -628,7 +637,8 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
             std::memcpy(bytes.data() + 4 * k, &u, 4);
         }
         constBytes[index] = bytes;
-        if (finite && (index == 18 || index == 36 || index == 63 || index == 103 || index == 104)) work.consts[index] = f;
+        if (finite && (index == 18 || index == 36 || index == 63 || (index >= 79 && index <= 82) || index == 103 || index == 104))
+            work.consts[index] = f;
     }
     // Single-layer materials: the rows in the order the decoders read (row 0 c72, 1 c0, 2 c9, 3 c54). The lit
     // technique puts transmission (18) and emissive (36) constants before 54, which then sits on row 4 to 6.
