@@ -5,6 +5,8 @@
 #include <QPushButton>
 #include <QLineEdit>
 #include <QFileDialog>
+#include <QDir>
+#include <QFileInfo>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -71,8 +73,8 @@ AtmosphereDialog::AtmosphereDialog(const Atmosphere& a, QWidget* parent) : QDial
     auto* ff = new QFormLayout(fogBox_);
     fogStart_ = spin(fogBox_, 0, 20000, 64, fog.start, 0);
     fogHalf_ = spin(fogBox_, 1, 70000, 64, fog.halfway, 0);
-    ff->addRow("Start distance", fogStart_);
-    ff->addRow("Halfway distance", fogHalf_);
+    ff->addRow("Start distance (units)", fogStart_);
+    ff->addRow("Halfway distance (units)", fogHalf_);
     ff->addRow("Colour (RGB 0..1)", rgbRow(fogBox_, fogRgb_, fog.color, 1));
     top->addWidget(fogBox_);
     auto hazeChanged = [this] {
@@ -107,8 +109,8 @@ AtmosphereDialog::AtmosphereDialog(const Atmosphere& a, QWidget* parent) : QDial
     fm->addRow("Brightness", brightness_);
     fm->addRow("Desaturation", desat_);
     fm->addRow("Invert", invert_);
-    fm->addRow("Light tint", rgbRow(filmBox_, light_, film.lightTint, 4));
-    fm->addRow("Dark tint", rgbRow(filmBox_, dark_, film.darkTint, 4));
+    fm->addRow("Light tint (RGB 0..4)", rgbRow(filmBox_, light_, film.lightTint, 4));
+    fm->addRow("Dark tint (RGB 0..4)", rgbRow(filmBox_, dark_, film.darkTint, 4));
     top->addWidget(filmBox_);
 
     auto* lutRow = new QWidget(this);
@@ -119,7 +121,13 @@ AtmosphereDialog::AtmosphereDialog(const Atmosphere& a, QWidget* parent) : QDial
     lut_->setPlaceholderText("colour grading LUT (.cube), relative to the map or absolute");
     auto* lutBrowse = new QPushButton("Browse...", lutRow);
     connect(lutBrowse, &QPushButton::clicked, this, [this] {
-        const QString f = QFileDialog::getOpenFileName(this, "Colour grading LUT", QString(), "3D LUT (*.cube)");
+        // Start where the LUT in the field is, else in the map's folder (a relative LUT is relative to the map).
+        QString start = lutFolder_;
+        if (const QString cur = lut_->text().trimmed(); !cur.isEmpty()) {
+            const QFileInfo fi(QDir(lutFolder_).filePath(cur));
+            if (fi.absoluteDir().exists()) start = fi.absolutePath();
+        }
+        const QString f = QFileDialog::getOpenFileName(this, "Colour grading LUT", start, "3D LUT (*.cube)");
         if (!f.isEmpty()) lut_->setText(f);
     });
     lutLay->addWidget(new QLabel("Grading LUT", lutRow));
@@ -135,13 +143,21 @@ AtmosphereDialog::AtmosphereDialog(const Atmosphere& a, QWidget* parent) : QDial
     vision_->setObjectName("atmoVision");
     vision_->setPlaceholderText("name=value; name=x y z   e.g. tonemapExposureAdjust=0.25");
     auto* visState = new QLabel(visRow);
-    auto validate = [this, visState] {
+    visState->setObjectName("atmoVisionState");
+    // Made here so the check below can switch OK off; added to the layout at the bottom.
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    QPushButton* okButton = buttons->button(QDialogButtonBox::Ok);
+    okButton->setObjectName("atmoOk");
+    // As in the Vision Editor: OK is off while the overrides do not parse, so a bad line is never written.
+    auto validate = [this, visState, okButton] {
         std::string err;
         const std::string t = vision_->text().trimmed().toStdString();
-        const bool ok = t.empty() || !visionOverridesJson(t, &err).empty();
-        visState->setText(ok ? QString() : QString("invalid"));
+        const bool ok = t.empty() || !visionOverridesJson(t, &err).empty() || err.empty();  // err empty: only separators
+        visState->setText(ok ? QString() : QString("invalid: fix or clear it before OK"));
         visState->setToolTip(QString::fromStdString(err));
+        vision_->setToolTip(QString::fromStdString(err));
         vision_->setStyleSheet(ok ? QString() : QString("QLineEdit { border: 1px solid #c55; }"));
+        okButton->setEnabled(ok);
     };
     connect(vision_, &QLineEdit::textChanged, this, validate);
     validate();
@@ -153,7 +169,6 @@ AtmosphereDialog::AtmosphereDialog(const Atmosphere& a, QWidget* parent) : QDial
                             "\"iw3: exponential fog\" / \"iw3: film\" when they are read.", this);
     note->setWordWrap(true);
     top->addWidget(note);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     top->addWidget(buttons);
@@ -219,6 +234,7 @@ bool applyAtmosphere(EditorContext& ctx, const Atmosphere& a) {
 
 void editAtmosphere(EditorContext& ctx, QWidget* parent) {
     AtmosphereDialog dlg(currentAtmosphere(ctx), parent);
+    if (!ctx.doc.path().empty()) dlg.setLutFolder(QFileInfo(QString::fromStdString(ctx.doc.path())).absolutePath());
     if (dlg.exec() == QDialog::Accepted) applyAtmosphere(ctx, dlg.value());
 }
 

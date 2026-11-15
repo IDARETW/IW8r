@@ -1091,8 +1091,14 @@ void GridView::showContextMenu(const QPoint& globalPos, double wh, double wv) {
             });
         menu.addAction("Ungroup to world", this, [this] { if (ctx_->doc.ungroupSelection()) ctx_->documentEdited("Ungrouped"); });
         menu.addSeparator();
-        menu.addAction("CSG Hollow", this, [this] { if (hollowSelection(*ctx_)) ctx_->documentEdited("Hollowed"); });
-        menu.addAction("CSG Subtract", this, [this] { if (subtractSelection(*ctx_)) ctx_->documentEdited("Subtracted"); });
+        menu.addAction("CSG Hollow", this, [this] {
+            if (hollowSelection(*ctx_)) ctx_->documentEdited("Hollowed");
+            else ctx_->setStatus("CSG Hollow: select one or more brushes first");
+        });
+        menu.addAction("CSG Subtract", this, [this] {
+            if (subtractSelection(*ctx_)) ctx_->documentEdited("Subtracted");
+            else ctx_->setStatus("CSG Subtract: select the brushes to cut with, touching the brushes to cut");
+        });
         menu.addAction("Apply material " + QString::fromStdString(ctx_->currentMaterial), this, [this] {
             if (applyMaterialToSelection(*ctx_, ctx_->currentMaterial)) ctx_->documentEdited("Material applied");
         });

@@ -2229,7 +2229,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                     if (c.value("id").toString() == "InstallViewmodelLook") lookInstall = c;
                     if (c.value("id").toString() == "RestoreViewmodelLook") lookRestore = c;
                 }
-                r.check(lookBuild.value("menu").toString() == "File/First-Person Look (weapon and hands)" &&
+                r.check(lookBuild.value("menu").toString() == "File/Stock Map/First-Person Look (weapon and hands)" &&
                             lookInstall.value("blocked").toString() == "only at the editor itself" &&
                             lookRestore.value("blocked").toString() == "only at the editor itself" && !lookBuild.value("blocked").toString().isEmpty(),
                         "the first-person look has its menu, and a browser cannot install or restore it");
@@ -3549,6 +3549,40 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         w.openPath(gone);
         r.check(ctx.doc.path() == pathBefore,
                 "opening a map that no longer exists says so and keeps the current map");
+    }
+
+    r.section("menus regrouped (second review, 2026-11-15)");
+    {
+        QMenu* fileMenu = nullptr;
+        QMenu* editMenu = nullptr;
+        for (QAction* a : w.menuBar()->actions()) {
+            if (a->menu() && a->text().remove('&') == "File") fileMenu = a->menu();
+            if (a->menu() && a->text().remove('&') == "Edit") editMenu = a->menu();
+        }
+        const auto sub = [](QMenu* m, const char* objectName) { return m ? m->findChild<QMenu*>(objectName) : nullptr; };
+        QMenu* stock = sub(fileMenu, "stockMapMenu");
+        QMenu* exportMenu = sub(fileMenu, "exportMenu");
+        QMenu* prefabs = sub(fileMenu, "prefabsMenu");
+        r.check(stock && stock->actions().contains(w.action("RelightStockMap")) && stock->actions().contains(w.action("InstallStockMap")) &&
+                    stock->actions().contains(w.action("RebuildStockZone")) && !fileMenu->actions().contains(w.action("RelightStockMap")),
+                "File > Stock Map holds the stock map commands (not the File menu itself)");
+        r.check(exportMenu && exportMenu->actions().contains(w.action("ExportOverview")) && prefabs && prefabs->actions().contains(w.action("InsertPrefab")),
+                "File > Export and File > Prefabs hold their commands");
+        if (editMenu) {
+            const QList<QAction*> acts = editMenu->actions();
+            const int i = int(acts.indexOf(w.action("SelectConnected")));
+            r.check(i >= 0 && i + 1 < acts.size() && acts[i + 1] == w.action("SelectLinked"), "Edit > Select Linked comes right after Select Connected");
+        }
+        r.check(w.action("PatchSplit") && w.action("PatchSplit")->text() == "Split Patch" && w.action("UndoDeploy")->text() == "Revert Last Deploy",
+                "clearer labels: Split Patch, Revert Last Deploy");
+        r.check(w.action("Workspace1") && w.action("Workspace1")->shortcut() == QKeySequence("Alt+Shift+1"),
+                "workspaces 1-9 are commands with Alt+Shift+number (listed in Tools > Hotkeys)");
+        ctx.doc.deselectAll();
+        ctx.documentEdited();
+        const size_t up = ctx.doc.undoPosition();
+        w.action("CSGHollow")->trigger();
+        r.check(ctx.doc.undoPosition() == up && w.statusBar()->currentMessage().contains("select one or more brushes"),
+                "CSG Hollow with nothing selected says what to select: " + w.statusBar()->currentMessage());
     }
 
     r.section("bottom area under the camera (owner 2026-11-15: console and compile logs under the viewport)");

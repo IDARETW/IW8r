@@ -115,10 +115,10 @@ The map's global settings. There is one worldspawn per map.
 | `iw8r_loot_zone` | lower-case name (default `map_quarry`) | `tutorial_scavenger` | The loot zone name of the map's loot points when no `iw8r_loot_zone` brush entity names one. The loot tables pick the loot by it. |
 | `iw8r_no_loot` | 0 or 1 | `1` | 1 writes an empty loot list (all loot of a stock Warzone map is removed on Rebuild Stock Zone). |
 | `iw8r_stock_retexture` | `from=to; from=to` (material names) | `tm2co/a=tm2co/b` | Stock maps: world material swaps on Rebuild Stock Zone; each new material is carried from its catalogue zone. Not seen in game. |
-| `iw8r_sky_from` | a stock map id | `mp_backlot2` | Stock maps: use that map's sky (File > Relight Stock Map Sky); Rebuild Stock Zone carries it in. Not seen in game. |
-| `iw8r_sun_color` | linear `r g b`, 0 to 16 | `1 0.55 0.35` | Stock maps: the sun's new colour (File > Relight Stock Map Sun); Rebuild Stock Zone writes it. Not seen in game. |
+| `iw8r_sky_from` | a stock map id | `mp_backlot2` | Stock maps: use that map's sky (File > Stock Map > Relight Stock Map Sky); Rebuild Stock Zone carries it in. Not seen in game. |
+| `iw8r_sun_color` | linear `r g b`, 0 to 16 | `1 0.55 0.35` | Stock maps: the sun's new colour (File > Stock Map > Relight Stock Map Sun); Rebuild Stock Zone writes it. Not seen in game. |
 | `iw8r_sun_intensity` | number 0 to 1000000 | `7.5` | Stock maps: the sun's new intensity (stock: mp_shipment 8.6, mp_br_tut 30.7). Not seen in game. |
-| `iw8r_sun_direction` | `pitch yaw` in degrees, as `sundirection`; pitch -90 to -1 (negative = above the horizon) | `-45 120` | Stock maps: the sun's new direction (File > Relight Stock Map Sun; stock mp_shipment `-20.261 -15.4`). Rebuild Stock Zone turns the sun light, the vision's sun fog and the worldspawn `sundirection`, and bakes the map's sun shadow again (ACTS exports the static models' geometry). The lightmaps and light grid keep the old sun's bounce light, the sky texture its old sun. A shadow too big for a wide map is cropped to the play space and a margin. Warzone maps (streamed sun shadow) are refused. Not seen in game. |
+| `iw8r_sun_direction` | `pitch yaw` in degrees, as `sundirection`; pitch -90 to -1 (negative = above the horizon) | `-45 120` | Stock maps: the sun's new direction (File > Stock Map > Relight Stock Map Sun; stock mp_shipment `-20.261 -15.4`). Rebuild Stock Zone turns the sun light, the vision's sun fog and the worldspawn `sundirection`, and bakes the map's sun shadow again (ACTS exports the static models' geometry). The lightmaps and light grid keep the old sun's bounce light, the sky texture its old sun. A shadow too big for a wide map is cropped to the play space and a margin. Warzone maps (streamed sun shadow) are refused. Not seen in game. |
 | `iw8r_remove_world_sun` | `rebake` (default) or `keep` | `keep` | Stock maps with `iw8r_remove_world` boxes: `rebake` bakes the map's sun shadow again at the stock sun direction without the removed triangles on Rebuild Stock Zone (ACTS exports the static models' geometry; the converter's bake, larger than the stock one). `keep` leaves the stock sun shadow, so the removed geometry still casts its baked shadow. Not seen in game. |
 | `iw8r_collision` | `auto`, `one` (or `full`) or `tiles` | `tiles` | How the build keeps the map's collision: in one piece or as the game's streamed tiles (research 90). `auto`: tiles for a map wider than 20,000 units. |
 | `iw8r_sun_sprite` | `<size 1..64> [flare alpha 0..1] [blind darken 0..1] [glare lighten 0..1]` | `16 0.5` | Draws a sun disc in the sky in the sun direction. Adds a lens flare when the player looks at it, plus blind and glare strength. In game not verified. |
@@ -143,9 +143,9 @@ The overrides file has no `iw8r_` keys for `misc_prefab`. These two key forms ar
 
 | Key | Value format | Example | What it does |
 |---|---|---|---|
-| `iw8r_ovr:<targetname \| class=<class> \| *>:<key>` | the value for that key | `iw8r_ovr:class=light:radius` = `300` | Sets a key on the matching entities inside this prefab instance. Applied in the views and in builds. File > Prefab Parameters lists the keys. |
+| `iw8r_ovr:<targetname \| class=<class> \| *>:<key>` | the value for that key | `iw8r_ovr:class=light:radius` = `300` | Sets a key on the matching entities inside this prefab instance. Applied in the views and in builds. File > Prefabs > Prefab Parameters lists the keys. |
 | `iw8r_pid` | placement id, set by the editor | `p7` | The placement id of a bundle placement: names local to the prefab become `<pid>_<name>` in the build, so two placements never share one. |
-| `angles` | `pitch yaw roll` | `0 90 0` | Turns the placement. A wall bundle gets its yaw from the wall it is placed on; File > Rotate Selected Prefab adds the bundle's yaw step. |
+| `angles` | `pitch yaw roll` | `0 90 0` | Turns the placement. A wall bundle gets its yaw from the wall it is placed on; File > Prefabs > Rotate Selected Prefab adds the bundle's yaw step. |
 | `iw8r_mat:<from>` | material name | `iw8r_mat:tm2co/me_curb_stone_01` = `tm2co/me_curb_stone_02` | Swaps the material `<from>` for the given material in this instance. Used for variants. |
 
 ## Warzone loot entities
@@ -160,7 +160,7 @@ The overrides file has no `iw8r_` keys for `misc_prefab`. These two key forms ar
 ## Stock world removal
 
 `iw8r_remove_world` is a brush entity for stock maps (docs/research/96_stock_world_removal.md). Give its brushes a tool
-texture. Each brush or patch is one box. File > Rebuild Stock Zone takes out the stock world geometry inside the boxes:
+texture. Each brush or patch is one box. File > Stock Map > Rebuild Stock Zone takes out the stock world geometry inside the boxes:
 every world triangle whose three vertices are all inside a box stops drawing, and the world collision triangles and
 brush hulls inside it go. A triangle that reaches outside the box stays, so make the box a little larger than the
 object, but keep the ground out of it. Props (static models) are not world geometry; hide them with Hide Stock Props

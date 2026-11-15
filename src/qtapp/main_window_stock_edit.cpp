@@ -17,6 +17,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QProcess>
 #include <QStandardPaths>
 
@@ -37,6 +38,17 @@ namespace iw8r::qt {
 
 namespace {
 QString qs(const std::string& s) { return QString::fromStdString(s); }
+// A question whose button says what it does ("Install", "Restore") next to Cancel, the default: these write to the
+// game folder, so Enter alone must not start them.
+bool confirmGameFolderAction(QWidget* parent, const QString& title, const QString& text, const QString& action) {
+    QMessageBox box(QMessageBox::Question, title, text, QMessageBox::Cancel, parent);
+    box.setObjectName("stockEditConfirm");
+    QPushButton* go = box.addButton(action, QMessageBox::AcceptRole);
+    box.setDefaultButton(QMessageBox::Cancel);
+    box.setEscapeButton(QMessageBox::Cancel);
+    box.exec();
+    return box.clickedButton() == go;
+}
 }  // namespace
 
 // Writes <work>/edit.ents (the entity text, with the spawn entities when the compiled spawns were made editable) and
@@ -667,10 +679,10 @@ void MainWindow::installEditedStockMap() {
     QString zone = lastStockRebuildZone_;
     if (outDir.isEmpty()) {
         // No rebuild in this session: the out folder of an earlier rebuild can be installed.
-        if (QMessageBox::question(this, "Install Edited Stock Map",
-                                  "No stock map was rebuilt in this session (File > Rebuild Stock Zone).\n\n"
-                                  "Choose a folder with edited zone files (the out folder of an earlier rebuild) to install instead?",
-                                  QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
+        if (!confirmGameFolderAction(this, "Install Edited Stock Map",
+                                     "No stock map was rebuilt in this session (File > Rebuild Stock Zone).\n\n"
+                                     "Choose a folder with edited zone files (the out folder of an earlier rebuild) to install instead?",
+                                     "Choose Folder..."))
             return;
         outDir = QFileDialog::getExistingDirectory(this, "Folder with the edited zone files");
         if (outDir.isEmpty()) return;
@@ -701,13 +713,13 @@ bool MainWindow::installEditedStockZones(const QString& outDir, const QString& z
     }
     const QString backup = stockBackupDir(zone), keep = stockKeepDir();
     if (ask &&
-        QMessageBox::question(this, "Install Edited Stock Map",
-                              QString("Install %1 edited zone file(s) into the game?\n\n%2\n\nTo: %3\n\nThe stock files of the same "
-                                      "name, and their stock patch files, are moved to\n%4\nFile > Restore Stock Map In Game moves them "
-                                      "back. The copy needs about %5 MB free on the game's drive.\n\nClose the game before you continue.")
-                                  .arg(names.size()).arg(names.join("\n"), QDir::toNativeSeparators(zoneDir), QDir::toNativeSeparators(keep))
-                                  .arg(bytes / (1024 * 1024) + 1),
-                              QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
+        !confirmGameFolderAction(this, "Install Edited Stock Map",
+                                 QString("Install %1 edited zone file(s) into the game?\n\n%2\n\nTo: %3\n\nThe stock files of the same "
+                                         "name, and their stock patch files, are moved to\n%4\nFile > Restore Stock Map In Game moves them "
+                                         "back. The copy needs about %5 MB free on the game's drive.\n\nClose the game before you continue.")
+                                     .arg(names.size()).arg(names.join("\n"), QDir::toNativeSeparators(zoneDir), QDir::toNativeSeparators(keep))
+                                     .arg(bytes / (1024 * 1024) + 1),
+                                 "Install"))
         return false;
     StockInstallReport report;
     std::string err;
@@ -810,11 +822,11 @@ void MainWindow::restoreStockMap() {
     const QString zoneDir = QFileInfo(toolPath("replay")).absolutePath() + "/zone";
     QStringList names;
     for (const std::string& f : installed) names << qs(f);
-    if (QMessageBox::question(this, "Restore Stock Map",
-                              QString("Take the edit of %1 out of the game?\n\n%2\n\nFrom: %3\n\nThe stock files that were moved "
-                                      "away at install are put back. Close the game before you continue.")
-                                  .arg(zone, names.join("\n"), QDir::toNativeSeparators(zoneDir)),
-                              QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
+    if (!confirmGameFolderAction(this, "Restore Stock Map",
+                                 QString("Take the edit of %1 out of the game?\n\n%2\n\nFrom: %3\n\nThe stock files that were moved "
+                                         "away at install are put back. Close the game before you continue.")
+                                     .arg(zone, names.join("\n"), QDir::toNativeSeparators(zoneDir)),
+                                 "Restore"))
         return;
     StockInstallReport report;
     std::string err;

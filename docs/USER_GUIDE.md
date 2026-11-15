@@ -135,7 +135,7 @@ is drawn as a small box. The picture in the dock shows the real models.
 and description, its badge with the reason, and one field per parameter with its range and default (the jump pad has
 "Launch speed"). A value you set is written as one key on this placement only, and Undo takes it back. The button
 **Default** removes the key again. The buttons **Edit Prefab**, **Open Bundle Folder**, **Explode** and **Make Unique**
-are there too. File > Prefab Parameters still lists every key of every entity inside any prefab.
+are there too. File > Prefabs > Prefab Parameters still lists every key of every entity inside any prefab.
 
 **Save Selection As Prefab** (File menu): select the brushes and entities, then fill in the title, description,
 category and tags. The id is made from the title; it names the folder. The dialog lists what will travel with the
@@ -280,7 +280,7 @@ Commands in the Tools menu:
 - **Stock maps.** A stock map's surfaces keep the game's own lighting, so a shader changes them through a second
   function: `float3 iw8rFilter(float3 colour)`, which gets the finished colour of a pixel and returns the new one.
   Open the stock map, choose the shader in Tools > Shader Editor (Use for This Map), and the viewport shows the world
-  and props through it. File > Rebuild Stock Zone builds it into the map's lit shaders; File > Install Edited Stock
+  and props through it. File > Stock Map > Rebuild Stock Zone builds it into the map's lit shaders; File > Stock Map > Install Edited Stock
   Map Into Game installs the changed zone as for any stock edit. The filter cannot use textures or the edge inputs,
   and it does not reach characters, weapons or effects.
 - **Lines on a stock map.** A shader may add `float3 iw8rFilterScreen(float3 colour, float2 pixel, float viewDepth,
@@ -289,7 +289,7 @@ Commands in the Tools menu:
   gets the same ink lines. One cost: the rebuilt map's thermal sights look wrong (the lines use the slot of the
   thermal mask).
 - **The weapon and hands (First-Person Look).** The weapon and hands a player holds do not belong to a map: their
-  shaders are in a zone every map loads. File > First-Person Look (weapon and hands) > Build From Shader builds that
+  shaders are in a zone every map loads. File > Stock Map > First-Person Look (weapon and hands) > Build From Shader builds that
   zone with the open map's shader (or a shader file you pick): the filter and the ink lines go into the weapon and arm
   materials only, and every name stays as it is. The Console shows how many; the result is checked with the game's
   own loaders and is not installed. Install Into Game puts it in; Restore In Game takes it out. **While it is
@@ -453,27 +453,27 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
 
 1. File > Open IW8 Stock Map opens a stock map: its entities are the document, its world and props are shown as a
    reference.
-2. File > Edit Compiled Spawns turns the spawn points into entities you can move, add and delete.
+2. File > Stock Map > Edit Compiled Spawns turns the spawn points into entities you can move, add and delete.
 3. Add things: a `script_model` with any stock model works even when the model belongs to another stock map. The
    rebuild copies that model with its materials and textures from the map that has it, and the Console lists what
    is copied.
-4. File > Rebuild Stock Zone writes the changed map in a few seconds and checks it with the game's own loaders
+4. File > Stock Map > Rebuild Stock Zone writes the changed map in a few seconds and checks it with the game's own loaders
    (ACTS). The Console shows the result and the folder. The game folder is only read.
-5. File > Install Edited Stock Map Into Game puts the edit into the game. After showing you the list, it moves the
+5. File > Stock Map > Install Edited Stock Map Into Game puts the edit into the game. After showing you the list, it moves the
    stock zone files of the map (`<map>.ff`, `techsets_<map>.ff` and a stock patch `<map>.fp`) to the folder
    `iw8r_stock` in the game folder and copies the edited zone files into the `zone` folder under the same names.
-   Close the game before installing. File > Restore Stock Map In Game deletes the edited files and moves the stock
+   Close the game before installing. File > Stock Map > Restore Stock Map In Game deletes the edited files and moves the stock
    files back; do not delete or rename the files in `iw8r_stock` yourself. The game cannot take a stock edit as a
    small patch file: it reads a patch of its own zones only with its own signature (research 116). If no map was
    rebuilt in this session, the install asks for a folder: choose the `out` folder of an earlier rebuild.
 
-6. To hide stock props: draw a brush around them, select it and use File > Hide Stock Props In Selection. The props
+6. To hide stock props: draw a brush around them, select it and use File > Stock Map > Hide Stock Props In Selection. The props
    leave the view and the rebuilt map draws them at size zero; their collision is taken out too (on the small maps;
-   a Warzone map keeps prop collision in its collision tiles, which stay as they are). File > Show All Stock Props
+   a Warzone map keeps prop collision in its collision tiles, which stay as they are). File > Stock Map > Show All Stock Props
    brings them back. The helper brush is not built into the stock map (the Console says so); delete it when you
    are done.
 
-7. Loot points (Warzone maps): File > Edit Loot Points turns the map's loot points into green `iw8r_loot_point`
+7. Loot points (Warzone maps): File > Stock Map > Edit Loot Points turns the map's loot points into green `iw8r_loot_point`
    entities (Quarry has 2,924, Verdansk 23,446). Move, delete or copy them; a new point needs only an origin. The
    rebuild writes them back and the Console says how many. A point you move out of its area finds its new cluster and
    zone by position; `loot_cluster` `cache` makes a supply box point. If you undo back to no loot point entity, the
@@ -486,29 +486,29 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
    (`script_struct_mp_atv`, `_tacrover`, `_jeep`, `_cargotruck`, `_littlebird`; Quarry has 183). Copy one, move the
    copy, or delete some; the rebuild writes them like any other entity.
 9. Big Warzone maps (Quarry, Verdansk) keep most of their world in streamed tiles: the reference first shows only
-   what the map zone holds. Fly to the area you work on and use File > Load Streamed World Around Camera: the tiles
+   what the map zone holds. Fly to the area you work on and use File > Stock Map > Load Streamed World Around Camera: the tiles
    near the camera are read (a few seconds each, kept for next time) and drawn.
-10. Buy stations: File > Edit Placed Objects turns the buy stations of the map into `scriptable` entities (Quarry and
+10. Buy stations: File > Stock Map > Edit Placed Objects turns the buy stations of the map into `scriptable` entities (Quarry and
    Verdansk have 120 each). Move one, or copy one and move the copy for an extra station; the rebuild writes it and the
    Console counts what was moved, added and removed. Delete a station's entity to remove it from the map. Other placed
    objects (signs, fences, props with physics, doors) become entities too and can be moved; a door only a little (inside
    the area of the stock doors near it; the rebuild says when a move goes too far).
 
-11. New brushes: draw brushes and patches as usual (in the worldspawn or grouped in func_groups). File > Rebuild
+11. New brushes: draw brushes and patches as usual (in the worldspawn or grouped in func_groups). File > Stock Map > Rebuild
     Stock Zone builds the visible ones as one model per group (with collision) and places it where you drew it; the
     first part of the rebuild is a normal build of a small helper map, so it takes a minute or two. Brushes made only
     of tool materials (caulk, clip, nodraw), such as the helper brush for hiding props, are not built. Not seen in
     game.
 
 **Retexture a stock map**: set worldspawn `iw8r_stock_retexture` to `from=to` pairs (stock material names, `;` between
-pairs); File > Rebuild Stock Zone swaps them on the world surfaces. Replace like with like (a terrain blend with a blend):
+pairs); File > Stock Map > Rebuild Stock Zone swaps them on the world surfaces. Replace like with like (a terrain blend with a blend):
 the surfaces keep their vertex data. Material Info in the Materials browser shows a material's name.
 
-**Sky of a stock map**: File > Relight Stock Map Sky picks another stock map whose sky this map uses (worldspawn
-`iw8r_sky_from`); File > Rebuild Stock Zone carries that sky in. The map's baked lighting stays as it was.
+**Sky of a stock map**: File > Stock Map > Relight Stock Map Sky picks another stock map whose sky this map uses (worldspawn
+`iw8r_sky_from`); File > Stock Map > Rebuild Stock Zone carries that sky in. The map's baked lighting stays as it was.
 
-**Sun of a stock map**: File > Relight Stock Map Sun picks a new colour and intensity for the stock sun (worldspawn
-`iw8r_sun_color`, linear, and `iw8r_sun_intensity`); File > Rebuild Stock Zone writes them. The sun keeps its direction,
+**Sun of a stock map**: File > Stock Map > Relight Stock Map Sun picks a new colour and intensity for the stock sun (worldspawn
+`iw8r_sun_color`, linear, and `iw8r_sun_intensity`); File > Stock Map > Rebuild Stock Zone writes them. The sun keeps its direction,
 because the stock map's baked sun shadows hold it. The rebuild report in the Console shows the old values.
 
 ### Stock scripted objects (scriptables)
@@ -876,7 +876,7 @@ The owner's playtest of 2026-11-11 left these open. docs/ROADMAP.md (fix queue F
 - Only Team Deathmatch can be picked in the game's lobby. Other modes say the map does not support them. Live Link >
   Quick match starts other modes directly.
 - Bullet impacts look alike on every surface in game. The build tags each surface correctly; the cause is not known yet.
-- An edited stock map must be put into the game with File > Install Edited Stock Map Into Game (or
+- An edited stock map must be put into the game with File > Stock Map > Install Edited Stock Map Into Game (or
   `IW8Radiant.exe --install-stock <folder>`), not copied by hand: a patch file (`.fp`) left beside the zone makes
   the game drop the whole zone without a message (invisible map, blank minimap).
 - Weapon mounting (resting a weapon on cover): the build writes the mount edges the game needs since 2026-11-14

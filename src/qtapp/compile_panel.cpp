@@ -8,8 +8,11 @@
 #include "bake_options.h"
 
 #include "map_gametypes.h"
+#include "game_mode_view.h"
+#include "gametype_script.h"
 
 #include <algorithm>
+#include <sstream>
 #include "map_doctor.h"
 #include "autosave_history.h"
 #include "prefab_browser.h"
@@ -1235,11 +1238,65 @@ void CompilePanel::editBakeSettings() {
     applyBakeSettings(out);
 }
 
+namespace {
+// The stock game type scripts (scripts/mp/gametypes/<name>): the index the build checks a map's own game type script
+// against (data/generated/iw8_stock_scripts.tsv). Empty when the file is not found.
+const StockScriptIndex& stockGameTypeScripts() {
+    static const StockScriptIndex index = [] {
+        StockScriptIndex i;
+        QDir d(QCoreApplication::applicationDirPath());
+        for (int up = 0; up < 4; ++up, d.cdUp())
+            if (QFileInfo::exists(d.filePath("data/generated/iw8_stock_scripts.tsv"))) {
+                i.load(d.filePath("data/generated/iw8_stock_scripts.tsv").toStdString());
+                break;
+            }
+        return i;
+    }();
+    return index;
+}
+
+// Game type names the editor knows besides the stock scripts: the ones it detects (map_gametypes), the ones it can
+// preview (game_mode_view) and the map's own game type script.
+std::set<std::string> knownGameTypes(const MapFile& map) {
+    std::set<std::string> known;
+    for (const GameTypeCheck& g : gameTypeChecks(map)) known.insert(g.gametype);
+    for (const GameModeView& v : gameModeViews()) known.insert(v.id);
+    for (const Entity& e : map.entities)
+        if (e.isWorldspawn()) {
+            if (const std::string* s = e.value(kGameTypeScriptKey)) known.insert(gameTypeNameOfScript(*s));
+            break;
+        }
+    return known;
+}
+
+// What Map Info says under its Game modes field ("" = nothing to say). Only a warning: the list is still stored, as
+// typed (a client may know more game types than the editor).
+QString gameTypeListWarning(const QString& text, const std::set<std::string>& known) {
+    const std::string raw = text.trimmed().toStdString();
+    if (raw.empty()) return {};
+    std::string list;
+    if (!normalizeGameTypeList(raw, list))
+        return "Not a list of game type names (lower-case names of a-z, 0-9 and _, up to 11 characters each, spaces between, at "
+               "most 16): the build uses the detected list instead.";
+    const StockScriptIndex& stock = stockGameTypeScripts();
+    QStringList unknown;
+    std::istringstream in(list);
+    for (std::string name; in >> name;)
+        if (!known.count(name) && (stock.size() == 0 || stock.form("scripts/mp/gametypes/" + name) == StockScriptIndex::Form::Unknown))
+            unknown << qs(name);
+    if (unknown.isEmpty()) return {};
+    return QString("Not a known game type: %1. A name is a stock game type script (war, dm, dom, sd, ...) or the map's own; "
+                   "check the spelling.").arg(unknown.join(", "));
+}
+}  // namespace
+
 void CompilePanel::editMapInfo() {
     Entity* w = ctx_->doc.worldspawn();
     if (!w) return;
     QDialog dlg(this);
     dlg.setWindowTitle("Map Info (map.json)");
+    dlg.setObjectName("mapInfoDialog");
+    dlg.setMinimumWidth(560);  // room for the description and the detected game type list
     auto* form = new QFormLayout(&dlg);
     auto value = [&](const char* key) {
         const std::string* v = w->value(key);
@@ -1268,9 +1325,9 @@ void CompilePanel::editMapInfo() {
     auto* exposure = spin(-8, 8, 0.25, "iw8r_exposure_adjust");
     form->addRow("Title (map.json)", title);
     form->addRow("Description", desc);
-    form->addRow("Compass rotation", compass);
+    form->addRow("Compass rotation (degrees)", compass);
     form->addRow("Minimap scale", minimap);
-    form->addRow("Ladder rung distance", ladder);
+    form->addRow("Ladder rung distance (units)", ladder);
     form->addRow("Exposure adjust (EV)", exposure);
     // Game types: blank = what the map has spawns and objects for (shown as the placeholder).
     auto* gametypes = new QLineEdit(value("iw8r_gametypes"), &dlg);
@@ -1279,11 +1336,27 @@ void CompilePanel::editMapInfo() {
     gametypes->setToolTip("The game modes the game offers for this map (ui_gametype names with spaces: war dm dom sd ctf ...).\n"
                           "Leave blank to list the modes the map has spawns and objects for. Needs a client that reads map.json gameTypes.");
     form->addRow("Game modes", gametypes);
+    // A misspelled game type is offered in the game's menu but cannot start: say so while typing (not blocked).
+    auto* gametypesWarning = new QLabel(&dlg);
+    gametypesWarning->setObjectName("mapInfoGameTypesWarning");
+    gametypesWarning->setWordWrap(true);
+    gametypesWarning->setStyleSheet("color: #d08020");
+    form->addRow(gametypesWarning);
+    const std::set<std::string> known = knownGameTypes(ctx_->doc.map());
+    auto checkGameTypes = [gametypes, gametypesWarning, known] {
+        const QString warn = gameTypeListWarning(gametypes->text(), known);
+        gametypesWarning->setText(warn);
+        gametypesWarning->setVisible(!warn.isEmpty());
+    };
+    connect(gametypes, &QLineEdit::textChanged, &dlg, checkGameTypes);
+    checkGameTypes();
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     form->addRow(buttons);
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     if (dlg.exec() != QDialog::Accepted) return;
+    w = ctx_->doc.worldspawn();  // the dialog ran an event loop: look the worldspawn up again
+    if (!w) return;
     auto num = [](QDoubleSpinBox* s) { return s->value() <= s->minimum() ? QString() : QString::number(s->value(), 'g', 6); };
     const QString values[] = {title->text().trimmed(), desc->text().trimmed(), compass->currentIndex() > 0 ? compass->currentText() : QString(),
                               num(minimap), num(ladder), num(exposure), gametypes->text().trimmed()};

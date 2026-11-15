@@ -329,7 +329,7 @@ What the window does with bundles (`docs/USER_GUIDE.md`, section "Prefabs", is t
   first prefab folder of the Preferences (else `prefabs` beside the map), in a subfolder named after the category, and
   a 256 pixel `thumb.png` when every model could be drawn. A bundle with the same id in that prefab folder is replaced
   in its own folder, only after a question; `parameters`, `script.*`, `fallback.*`, `placement.*`, `names.keys`,
-  `game_modes`, `version` and unknown fields of the old `prefab.json` are kept. File > Save Selection As Plain .map
+  `game_modes`, `version` and unknown fields of the old `prefab.json` are kept. File > Prefabs > Save Selection As Plain .map
   Prefab is the old save.
 - **Explode** passes `prefabNameScope` to `explodePrefab`. **Enter Prefab** opens the bundle's main contents
   (`prefab.map`), also when a build makes the fallback. **Open Bundle Folder** shows the folder. **Make Unique** copies
@@ -348,11 +348,11 @@ What the window does with bundles (`docs/USER_GUIDE.md`, section "Prefabs", is t
    in only until a model arrives.
 2. (Done 2026-11-12) **Placement hints**: Insert Prefab uses `placement.surface`: a `wall` prefab placed on a wall
    turns its +X out of the wall (yaw from the face normal, rounded to `placement.yaw_step`), `snap` snaps x and y (and
-   the height on a wall); the status bar says when the surface does not fit. File > Rotate Selected Prefab turns a
+   the height on a wall); the status bar says when the surface does not fit. File > Prefabs > Rotate Selected Prefab turns a
    placement by its `yaw_step` (90 for a plain prefab). Core `prefabPlacementFor`.
 3. **No editor for parameters, script and fallback**: they are written into `prefab.json` and the bundle folder by
-   hand. (Done 2026-11-12: File > Convert Plain .map Prefab To Bundle wraps a plain `.map` with the pivot at its own
-   origin, as Save Selection As Prefab does with the mapper's own assets; File > Export Prefab Bundle As Zip and Import
+   hand. (Done 2026-11-12: File > Prefabs > Convert Plain .map Prefab To Bundle wraps a plain `.map` with the pivot at its own
+   origin, as Save Selection As Prefab does with the mapper's own assets; File > Prefabs > Export Prefab Bundle As Zip and Import
    Prefab Bundles From Zip share bundles: the import reads stored and deflated zips (Windows "Compressed folder"),
    takes "<name>.iw8prefab/" folders or one bundle's files at the top, never replaces an existing bundle and checks
    each bundle before it lands in the prefab folder. Core `prefabBundleFromPlainMap`, `exportPrefabBundleZip`,

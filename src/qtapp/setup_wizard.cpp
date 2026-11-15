@@ -251,6 +251,11 @@ void SetupWizard::accept() {
                                                   "The Replay exe is not set or is missing. Save anyway?");
         if (answer != QMessageBox::Yes) return;
     }
+    if (!isExistingFile(actsPath().toStdString()) &&
+        QMessageBox::question(this, "First-run setup",
+                              "ACTS (acts.exe) is not set or is missing: stock maps, stock assets and build validation will not work "
+                              "until it is (Tools > Tool Paths). Save anyway?") != QMessageBox::Yes)
+        return;
     // The same keys Tools > Tool Paths writes; toolPath() reads them back.
     Settings& s = Settings::instance();
     s.setValue("tools/acts", actsPath());

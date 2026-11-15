@@ -72,6 +72,7 @@ FindReplaceDialog::FindReplaceDialog(EditorContext* ctx, QWidget* parent) : QDia
     buttons->addWidget(close);
     lay->addLayout(buttons);
     info_ = new QLabel(this);
+    info_->setObjectName("findReplaceInfo");
     lay->addWidget(info_);
     usage_ = new QTableWidget(0, 3, this);
     usage_->setHorizontalHeaderLabels({"Material in this map", "Faces", "Primitives"});
@@ -148,6 +149,7 @@ KeyReplaceDialog::KeyReplaceDialog(EditorContext* ctx, QWidget* parent) : QDialo
     buttons->addWidget(close);
     lay->addLayout(buttons);
     info_ = new QLabel(this);
+    info_->setObjectName("keyReplaceInfo");
     lay->addWidget(info_);
     usage_ = new QTableWidget(0, 2, this);
     usage_->setHorizontalHeaderLabels({"Value in this map", "Entities"});
@@ -193,6 +195,11 @@ void KeyReplaceDialog::refreshUsage() {
 }
 
 size_t KeyReplaceDialog::selectMatches() {
+    // An empty key or value matches nothing; without this the selection was cleared with no word why.
+    if (key_->text().trimmed().isEmpty() || find_->text().trimmed().isEmpty()) {
+        info_->setText("Type the key and the value to find first (or click a value in the list).");
+        return 0;
+    }
     const auto ids = entitiesWithValue(ctx_->doc.map(), key_->text().trimmed().toStdString(), find_->text().trimmed().toStdString(),
                                        substring_->isChecked());
     ctx_->doc.deselectAll();
@@ -203,6 +210,15 @@ size_t KeyReplaceDialog::selectMatches() {
 }
 
 size_t KeyReplaceDialog::replaceAll() {
+    // An empty replacement is allowed here (it clears the value, or cuts the found part out of it), except for classname.
+    if (key_->text().trimmed().isEmpty() || find_->text().trimmed().isEmpty()) {
+        info_->setText("Type the key and the value to find first (or click a value in the list).");
+        return 0;
+    }
+    if (key_->text().trimmed() == "classname" && replace_->text().trimmed().isEmpty()) {
+        info_->setText("Type the replacement text first: an entity needs a classname.");
+        return 0;
+    }
     const size_t n = replaceKeyValues(ctx_->doc, key_->text().trimmed().toStdString(), find_->text().trimmed().toStdString(),
                                       replace_->text().trimmed().toStdString(), substring_->isChecked(), selectionOnly_->isChecked());
     info_->setText(QString("Replaced %1 value(s) (one undo step)").arg(n));
@@ -212,7 +228,10 @@ size_t KeyReplaceDialog::replaceAll() {
 
 size_t FindReplaceDialog::selectMatches() {
     const std::string m = find_->text().trimmed().toStdString();
-    if (m.empty()) return 0;
+    if (m.empty()) {
+        info_->setText("Type the material to find first (or click one in the list).");
+        return 0;
+    }
     const auto refs = findByMaterial(ctx_->doc.map(), m, substring_->isChecked());
     ctx_->doc.deselectAll();
     for (const auto& r : refs) ctx_->doc.select(r, true);
@@ -223,7 +242,20 @@ size_t FindReplaceDialog::selectMatches() {
 
 size_t FindReplaceDialog::replaceAll() {
     const std::string f = find_->text().trimmed().toStdString(), r = replace_->text().trimmed().toStdString();
-    if (f.empty() || r.empty()) return 0;
+    // Every face needs a material, so an empty replacement is never valid (replaceMaterial refuses it): say why
+    // nothing happened instead of leaving the last result on screen.
+    if (f.empty()) {
+        info_->setText("Type the material to find first (or click one in the list).");
+        return 0;
+    }
+    if (r.empty()) {
+        info_->setText("Type the replacement text first: every face needs a material.");
+        return 0;
+    }
+    if (r.find_first_of(" \t\r\n") != std::string::npos) {
+        info_->setText("A material name has no spaces: check the replacement text.");
+        return 0;
+    }
     const size_t n = replaceMaterial(ctx_->doc, f, r, substring_->isChecked(), selectionOnly_->isChecked());
     info_->setText(QString("Replaced %1 face(s)").arg(n));
     if (n) ctx_->documentEdited(QString("Replaced %1 face(s) of %2 with %3 (one undo step)").arg(n).arg(find_->text(), replace_->text()));

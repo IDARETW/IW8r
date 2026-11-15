@@ -105,10 +105,26 @@ SunSkyDialog::SunSkyDialog(const SunSky& s, const QStringList& skies, QWidget* p
     sky_->addItem("");
     sky_->addItems(skies);
     sky_->setCurrentText(s.sky);
-    form->addRow("Sun pitch", pitch_);
-    form->addRow("Sun yaw", yaw_);
+    // A misspelled sky builds with no sky, so say so; it is not blocked (a sky of the map's own may be named). With no
+    // stock list (game files not found) nothing is known, so nothing is said.
+    skyWarning_ = new QLabel(this);
+    skyWarning_->setObjectName("skyNameWarning");
+    skyWarning_->setStyleSheet("color: #d08020");
+    skyWarning_->setWordWrap(true);
+    auto checkSky = [this, skies] {
+        const QString t = sky_->currentText().trimmed();
+        const bool unknown = !t.isEmpty() && !skies.isEmpty() && !skies.contains(t);
+        skyWarning_->setText(unknown ? QString("'%1' is not a stock sky name. Check the spelling; the compile log says whether a sky was built.").arg(t)
+                                     : QString());
+        skyWarning_->setVisible(unknown);
+    };
+    connect(sky_, &QComboBox::currentTextChanged, this, checkSky);
+    checkSky();
+    form->addRow("Sun pitch (degrees)", pitch_);
+    form->addRow("Sun yaw (degrees)", yaw_);
     form->addRow("Sun colour", colorButton_);
     form->addRow("Sky", sky_);
+    form->addRow(skyWarning_);
     skyBrightness_ = new QDoubleSpinBox(this);
     skyBrightness_->setObjectName("skyBrightness");
     skyBrightness_->setRange(0.1, 16);

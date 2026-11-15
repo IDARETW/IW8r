@@ -16,6 +16,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSignalBlocker>
+#include <QMessageBox>
 #include <QStringListModel>
 #include <QApplication>
 #include <QHBoxLayout>
@@ -1078,9 +1079,31 @@ HotkeysPanel::HotkeysPanel(const QMap<QString, QAction*>& actions, QWidget* pare
         auto* edit = new QKeySequenceEdit(it.value()->shortcut(), table_);
         QAction* action = it.value();
         const QString command = it.key();
-        connect(edit, &QKeySequenceEdit::editingFinished, this, [action, edit, command] {
-            action->setShortcut(edit->keySequence());
-            Settings::instance().setShortcut(command, edit->keySequence());
+        connect(edit, &QKeySequenceEdit::editingFinished, this, [this, action, edit, command, actions] {
+            // A key another command has: ask, and take it from that command (two commands on one key both stop working).
+            const QKeySequence seq = edit->keySequence();
+            if (!seq.isEmpty())
+                for (auto o = actions.begin(); o != actions.end(); ++o) {
+                    if (o.value() == action || o.value()->shortcut() != seq) continue;
+                    if (QMessageBox::question(this, "Hotkeys",
+                                              QString("%1 is already the key of %2.\n\nUse it for %3 instead (%2 is left without a key)?")
+                                                  .arg(seq.toString(QKeySequence::NativeText), o.value()->text().remove('&'), action->text().remove('&'))) !=
+                        QMessageBox::Yes) {
+                        const QSignalBlocker block(edit);
+                        edit->setKeySequence(action->shortcut());
+                        return;
+                    }
+                    o.value()->setShortcut(QKeySequence());
+                    Settings::instance().setShortcut(o.key(), QKeySequence());
+                    for (int r = 0; r < table_->rowCount(); ++r)
+                        if (table_->item(r, 0) && table_->item(r, 0)->text() == o.key())
+                            if (auto* other = qobject_cast<QKeySequenceEdit*>(table_->cellWidget(r, 1))) {
+                                const QSignalBlocker block(other);
+                                other->clear();
+                            }
+                }
+            action->setShortcut(seq);
+            Settings::instance().setShortcut(command, seq);
         });
         table_->setCellWidget(r, 1, edit);
     }

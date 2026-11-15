@@ -1002,6 +1002,12 @@ Vec3 CameraView::gizmoPivot() const {
     return ctx_->doc.selectionBounds().center();
 }
 
+Vec3 CameraView::ringCentre() const {
+    if (ringDragAxis_ >= 0) return ringPivot_;
+    // On the grid with Snap on (as Radiant rotates): grid-aligned brushes stay on the grid after 90 degree turns.
+    return ctx_->snap ? snapToGrid(gizmoPivot(), ctx_->doc.grid()) : gizmoPivot();
+}
+
 Vec3 CameraView::gizmoAxisDir(int axis) const {
     Vec3 d;
     d[axis] = 1;
@@ -1078,7 +1084,71 @@ std::optional<QPointF> CameraView::gizmoRingPoint(int axis, double degrees) cons
     Vec3 u, v;
     ringBasis(axis, u, v);
     const double r = gizmoLength() * 0.9, a = degrees * 3.14159265358979 / 180.0;
-    return projectToWidget(gizmoPivot() + u * (r * std::cos(a)) + v * (r * std::sin(a)));
+    return projectToWidget(ringCentre() + u * (r * std::cos(a)) + v * (r * std::sin(a)));
+}
+
+int CameraView::gizmoRingAt(const QPointF& p) const {
+    if (!gizmoActive() || !gizmoRotate_) return -1;
+    // Rings seen edge-on project to a line through the centre and pass over the other rings' points; when two
+    // rings are about as close, prefer the one facing the camera (its angle is well defined there).
+    int best = -1;
+    double bestScore = 1e9;
+    const Vec3 view = ctx_->cam.forward();
+    for (int a = 0; a < 3; ++a) {
+        const double facing = std::fabs(view[a]);  // |cos| between the ring's axis and the view direction
+        for (int k = 0; k < 72; ++k) {
+            const auto q = gizmoRingPoint(a, k * 5.0);
+            if (!q) continue;
+            const double dist = std::hypot(p.x() - q->x(), p.y() - q->y());
+            if (dist >= 8.0) continue;
+            const double score = dist - 4.0 * facing;
+            if (score < bestScore) {
+                bestScore = score;
+                best = a;
+            }
+        }
+    }
+    return best;
+}
+
+int CameraView::gizmoHandleAt(const QPointF& p) const {
+    if (!gizmoActive() || gizmoRotate_) return -1;
+    int best = -1;
+    double bestD = 8.0;
+    for (int a = 0; a < 3; ++a) {
+        const GizmoAxis g = gizmoAxisOnScreen(a);
+        if (!g.visible) continue;
+        const QPointF ab = g.to - g.from;
+        const double len2 = ab.x() * ab.x() + ab.y() * ab.y();
+        if (len2 < 4) continue;
+        double t = ((p.x() - g.from.x()) * ab.x() + (p.y() - g.from.y()) * ab.y()) / len2;
+        t = std::clamp(t, 0.15, 1.0);  // ignore the shared centre
+        const QPointF q = g.from + ab * t;
+        const double dist = std::hypot(p.x() - q.x(), p.y() - q.y());
+        if (dist < bestD) {
+            bestD = dist;
+            best = a;
+        }
+    }
+    return best;
+}
+
+void CameraView::updateGizmoHover(const QPointF& p, Qt::KeyboardModifiers mods) {
+    // What a left press here would grab (Shift / Ctrl clicks select instead).
+    const bool grabs = !(mods & (Qt::ShiftModifier | Qt::ControlModifier)) && !ctx_->looking && !ctx_->playing;
+    const int axis = !grabs ? -1 : gizmoRotate_ ? gizmoRingAt(p) : gizmoHandleAt(p);
+    if (axis >= 0) setCursor(gizmoRotate_ ? Qt::OpenHandCursor : gizmoScale_ ? Qt::SizeFDiagCursor : Qt::SizeAllCursor);
+    else if (hoverAxis_ >= 0) unsetCursor();
+    if (axis == hoverAxis_) return;
+    hoverAxis_ = axis;
+    update();  // the hovered handle is drawn highlighted
+}
+
+void CameraView::clearGizmoHover() {
+    if (hoverAxis_ < 0) return;
+    hoverAxis_ = -1;
+    unsetCursor();
+    update();
 }
 
 std::optional<double> CameraView::ringAngleForMouse(const QPointF& p, int axis) const {
@@ -1097,14 +1167,15 @@ std::optional<double> CameraView::ringAngleForMouse(const QPointF& p, int axis) 
 
 void CameraView::addGizmoLines() {
     if (!gizmoActive()) return;
-    const Vec3 c = gizmoPivot();
+    const Vec3 c = gizmoRotate_ ? ringCentre() : gizmoPivot();
     const double L = gizmoLength();
     if (gizmoRotate_) {
         const uint32_t ringCols[3] = {0xff3040ffu, 0xff40ff40u, 0xffff6040u};
         for (int a = 0; a < 3; ++a) {
             Vec3 u, v;
             ringBasis(a, u, v);
-            const uint32_t col = ringDragAxis_ == a ? 0xff40ffffu : ringCols[a];
+            const bool hot = ringDragAxis_ >= 0 ? ringDragAxis_ == a : hoverAxis_ == a;
+            const uint32_t col = hot ? 0xff40ffffu : ringCols[a];
             const double r = L * 0.9;
             for (int k = 0; k < 48; ++k) {
                 const double a0 = k * 2 * 3.14159265358979 / 48, a1 = (k + 1) * 2 * 3.14159265358979 / 48;
@@ -1126,7 +1197,8 @@ void CameraView::addGizmoLines() {
     const uint32_t cols[3] = {0xff3040ffu, 0xff40ff40u, 0xffff6040u};  // X red, Y green, Z blue (ABGR)
     for (int a = 0; a < 3; ++a) {
         const Vec3 d = gizmoAxisDir(a);
-        const uint32_t col = gizmoDragAxis_ == a ? 0xff40ffffu : cols[a];
+        const bool hot = gizmoDragAxis_ >= 0 ? gizmoDragAxis_ == a : hoverAxis_ == a;
+        const uint32_t col = hot ? 0xff40ffffu : cols[a];
         auto line = [&](const Vec3& p, const Vec3& q) {
             gizmoLines_.scratch.push_back(app::GpuVertex{float(p.x), float(p.y), float(p.z), col});
             gizmoLines_.scratch.push_back(app::GpuVertex{float(q.x), float(q.y), float(q.z), col});
@@ -1178,6 +1250,9 @@ void CameraView::buildPlayWorld() {
 
 void CameraView::startPlay() {
     if (ctx_->playing) return;
+    // P mid-drag: the drag goes back first (its release would arrive while playing and leave the document's drag open).
+    cancelViewDrag();
+    clearGizmoHover();
     playMode_ = nullptr;
     buildPlayWorld();
     worldRevision_ = ctx_->doc.revision();
@@ -1227,7 +1302,7 @@ void CameraView::stopPlay() {
     ctx_->playing = false;
     ctx_->looking = false;
     ctx_->heldKeys.clear();
-    setMouseTracking(false);
+    setMouseTracking(true);  // stays on: the gizmo hover needs moves without a button
     unsetCursor();
     emit ctx_->playModeChanged(false);
     ctx_->setStatus("Play preview ended");
@@ -2543,80 +2618,56 @@ void CameraView::mousePressEvent(QMouseEvent* e) {
     }
     if (ctx_->playing) return;  // the mouse only looks around while playing
     if (e->button() == Qt::RightButton) {
+        // Mid-drag the right button would turn the view under the drag and open the menu on release.
+        if (gizmoDragAxis_ >= 0 || ringDragAxis_ >= 0) return;
+        clearGizmoHover();
         ctx_->looking = true;
         lookTravel_ = 0;
+        lmbDown_ = false;  // the view turns: a left release now would select whatever is under the cursor then
         lockPos_ = e->position().toPoint();
         setCursor(Qt::BlankCursor);
     } else if (e->button() == Qt::LeftButton) {
+        if (ctx_->looking) return;  // a left click while right-drag looking is not a select
         lmbDown_ = true;
         pressPos_ = e->position().toPoint();
+        const QPointF p = e->position();
+        const bool grab = !(e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier));
         // Rotate mode: grab a ring within 8 px.
-        if (!(e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier)) && gizmoActive() && gizmoRotate_) {
-            const QPointF p = e->position();
-            // Rings seen edge-on project to a line through the centre and pass over the other rings' points; when two
-            // rings are about as close, prefer the one facing the camera (its angle is well defined there).
-            int best = -1;
-            double bestScore = 1e9;
-            const Vec3 view = ctx_->cam.forward();
-            for (int a = 0; a < 3; ++a) {
-                const double facing = std::fabs(view[a]);  // |cos| between the ring's axis and the view direction
-                for (int k = 0; k < 72; ++k) {
-                    const auto q = gizmoRingPoint(a, k * 5.0);
-                    if (!q) continue;
-                    const double dist = std::hypot(p.x() - q->x(), p.y() - q->y());
-                    if (dist >= 8.0) continue;
-                    const double score = dist - 4.0 * facing;
-                    if (score < bestScore) {
-                        bestScore = score;
-                        best = a;
-                    }
-                }
-            }
-            if (best >= 0) {
-                ringDragAxis_ = best;
-                ringPivot_ = snapToGrid(gizmoPivot(), ctx_->doc.grid());
-                ringStartAngle_ = ringAngleForMouse(p, best).value_or(0);
-                ringDeltaDeg_ = 0;
-                lmbDown_ = false;
-                update();
-                return;
-            }
+        if (const int ring = grab ? gizmoRingAt(p) : -1; ring >= 0) {
+            ringPivot_ = ringCentre();
+            ringDragAxis_ = ring;
+            ringStartAngle_ = ringAngleForMouse(p, ring).value_or(0);
+            ringDeltaDeg_ = 0;
+            lmbDown_ = false;
+            update();
+            return;
         }
         // Grab a gizmo handle: within 8 px of an axis segment on screen.
-        if (!(e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier)) && gizmoActive() && !gizmoRotate_) {
-            const QPointF p = e->position();
-            int best = -1;
-            double bestD = 8.0;
-            for (int a = 0; a < 3; ++a) {
-                const GizmoAxis g = gizmoAxisOnScreen(a);
-                if (!g.visible) continue;
-                const QPointF ab = g.to - g.from;
-                const double len2 = ab.x() * ab.x() + ab.y() * ab.y();
-                if (len2 < 4) continue;
-                double t = ((p.x() - g.from.x()) * ab.x() + (p.y() - g.from.y()) * ab.y()) / len2;
-                t = std::clamp(t, 0.15, 1.0);  // ignore the shared centre
-                const QPointF q = g.from + ab * t;
-                const double dist = std::hypot(p.x() - q.x(), p.y() - q.y());
-                if (dist < bestD) {
-                    bestD = dist;
-                    best = a;
-                }
-            }
-            if (best >= 0 && gizmoScale_) {
-                gizmoDragAxis_ = best;
-                gizmoStartPivot_ = gizmoPivot();
-                gizmoStartT_ = axisParamForMouse(p, best);
+        if (const int best = grab ? gizmoHandleAt(p) : -1; best >= 0) {
+            gizmoDragAxis_ = best;
+            gizmoStartPivot_ = gizmoPivot();
+            gizmoStartT_ = axisParamForMouse(p, best);
+            lmbDown_ = false;  // not a click-select
+            if (gizmoScale_) {
                 scaleFactor_ = 1.0;
-                lmbDown_ = false;
-                update();
-            } else if (best >= 0) {
-                gizmoDragAxis_ = best;
-                gizmoStartPivot_ = gizmoPivot();
-                gizmoStartT_ = axisParamForMouse(p, best);
+            } else {
+                // A move along a world axis lands the selection on the grid (Snap To Grid's reference: the
+                // primitives' bounds minimum, else the lowest point entity origin), so an off-grid object snaps on.
+                AABB prims;
+                std::optional<double> origin;
+                for (const SelRef& r : ctx_->doc.selection()) {
+                    if (r.item == kNoId) {
+                        if (const Entity* en = ctx_->doc.findEntity(r.entity))
+                            if (auto o = en->origin()) origin = std::min(origin.value_or((*o)[best]), (*o)[best]);
+                    } else if (const EntityItem* it = ctx_->doc.findItem(r.entity, r.item); it && it->prim()) {
+                        prims.add(it->prim()->bounds());
+                    }
+                }
+                gizmoSnapFrom_ = prims.valid() ? prims.mins[best] : origin.value_or(gizmoStartPivot_[best]);
+                gizmoMoveBy_ = 0;
                 ctx_->doc.beginDrag();
-                lmbDown_ = false;  // not a click-select
-                update();
             }
+            update();
         }
     }
 }
@@ -2643,7 +2694,8 @@ void CameraView::mouseMoveEvent(QMouseEvent* e) {
             double d = std::remainder(*a - ringStartAngle_, 360.0);
             d = ctx_->snap ? std::round(d / 15.0) * 15.0 : d;  // Radiant rotation snap
             ringDeltaDeg_ = d;
-            ctx_->setStatus(QString("Rotate %1 %2 degrees").arg(QChar("XYZ"[ringDragAxis_])).arg(d));
+            // Drag progress goes to the status bar only (a Console line per mouse move would flood the log).
+            ctx_->setTransientStatus(QString("Rotate %1 %2 degrees").arg(QChar("XYZ"[ringDragAxis_])).arg(d));
             update();
         }
         return;
@@ -2654,19 +2706,30 @@ void CameraView::mouseMoveEvent(QMouseEvent* e) {
         double f = std::max(0.05, 1.0 + (t - gizmoStartT_) / std::max(1.0, gizmoLength()));
         if (ctx_->snap) f = std::max(0.05, std::round(f * 20.0) / 20.0);
         scaleFactor_ = f;
-        ctx_->setStatus(QString("Scale %1 x%2").arg(QChar("XYZ"[gizmoDragAxis_])).arg(f, 0, 'f', 2));
+        ctx_->setTransientStatus(QString("Scale %1 x%2").arg(QChar("XYZ"[gizmoDragAxis_])).arg(f, 0, 'f', 2));
         update();
         return;
     }
     if (gizmoDragAxis_ >= 0) {
-        const double t = axisParamForMouse(e->position(), gizmoDragAxis_);
-        const double s = ctx_->snap ? snapToGrid(t - gizmoStartT_, ctx_->doc.grid()) : t - gizmoStartT_;
-        const Vec3 d = gizmoAxisDir(gizmoDragAxis_) * s;  // world axes: s along X/Y/Z; local: along the entity's axis
-        ctx_->doc.updateDrag(d);
-        ctx_->documentEdited(QString("Move %1 %2").arg(QChar("XYZ"[gizmoDragAxis_])).arg(QString::fromStdString(formatNumber(d[gizmoDragAxis_]))));
+        const int axis = gizmoDragAxis_;
+        const double raw = axisParamForMouse(e->position(), axis) - gizmoStartT_;
+        const Vec3 dir = gizmoAxisDir(axis);  // world axes: along X/Y/Z; local: along the entity's axis
+        const double g = ctx_->doc.grid();
+        double s = raw;
+        if (ctx_->snap && g > 0) {
+            // World axis: snap where the selection ends up; a local (turned) axis keeps whole grid steps of travel.
+            s = std::fabs(dir[axis]) > 1.0 - 1e-9 ? std::round((gizmoSnapFrom_ + raw) / g) * g - gizmoSnapFrom_ : snapToGrid(raw, g);
+        }
+        gizmoMoveBy_ = s;
+        ctx_->doc.updateDrag(dir * s);
+        ctx_->documentEdited();
+        ctx_->setTransientStatus(QString("Move %1 %2").arg(QChar("XYZ"[axis])).arg(QString::fromStdString(formatNumber(s))));
         return;
     }
-    if (!ctx_->looking) return;
+    if (!ctx_->looking) {
+        if (e->buttons() == Qt::NoButton) updateGizmoHover(e->position(), e->modifiers());
+        return;
+    }
     const QPoint p = e->position().toPoint();
     const QPoint d = p - lockPos_;
     if (d.isNull()) return;
@@ -2688,12 +2751,14 @@ void CameraView::mouseMoveEvent(QMouseEvent* e) {
 void CameraView::mouseReleaseEvent(QMouseEvent* e) {
     if (orbit_) return;
     if (ctx_->playing) return;
+    // The drags log one Console line here, at the end (their moves only update the status bar).
     if (e->button() == Qt::LeftButton && ringDragAxis_ >= 0) {
         const int axis = ringDragAxis_;
         ringDragAxis_ = -1;
         const bool done = ringDeltaDeg_ != 0 && rotateSelectionAbout(*ctx_, axis, ringDeltaDeg_, ringPivot_);
         ctx_->documentEdited(done ? QString("Rotated %1 degrees about %2 (undoable)").arg(ringDeltaDeg_).arg(QChar("XYZ"[axis])) : QString());
         ringDeltaDeg_ = 0;
+        updateGizmoHover(e->position(), e->modifiers());
         return;
     }
     if (e->button() == Qt::LeftButton && gizmoDragAxis_ >= 0 && gizmoScale_) {
@@ -2703,15 +2768,20 @@ void CameraView::mouseReleaseEvent(QMouseEvent* e) {
         scaleFactor_ = 1.0;
         const bool done = scaleSelectionAbout(*ctx_, axis, f, gizmoStartPivot_);
         ctx_->documentEdited(done ? QString("Scaled %1 x%2 (models: modelscale; undoable)").arg(QChar("XYZ"[axis])).arg(f, 0, 'f', 2) : QString());
+        updateGizmoHover(e->position(), e->modifiers());
         return;
     }
     if (e->button() == Qt::LeftButton && gizmoDragAxis_ >= 0) {
+        const int axis = gizmoDragAxis_;
         gizmoDragAxis_ = -1;
         const bool moved = ctx_->doc.endDrag(true);
-        ctx_->documentEdited(moved ? QStringLiteral("Moved with the gizmo (undoable)") : QString());
+        ctx_->documentEdited(moved ? QString("Moved %1 %2 with the gizmo (undoable)").arg(QChar("XYZ"[axis])).arg(QString::fromStdString(formatNumber(gizmoMoveBy_)))
+                                   : QString());
+        updateGizmoHover(e->position(), e->modifiers());
         return;
     }
     if (e->button() == Qt::RightButton) {
+        if (!ctx_->looking) return;  // its press was ignored (mid-drag), or the look already ended: no menu
         ctx_->looking = false;
         unsetCursor();
         if (lookTravel_ < 4) emit contextMenuAt(mapToGlobal(lockPos_), QPointF(lockPos_));
@@ -2825,8 +2895,14 @@ void CameraView::wheelEvent(QWheelEvent* e) {
         applyOrbit();
         return;
     }
-    ctx_->cam.pos += ctx_->cam.forward() * (e->angleDelta().y() / 120.0 * ctx_->cam.speed * 0.25);
+    if (ctx_->playing) return;  // the player's eye is the camera while playing
+    const double step = e->angleDelta().y() / 120.0 * ctx_->cam.speed * 0.25;
+    if (step == 0) return;
+    ctx_->cam.pos += ctx_->cam.forward() * step;
     ctx_->cameraMoved();
+    ctx_->setTransientStatus(QString("Camera %1 %2 units (mouse wheel; the step follows the camera speed)")
+                                 .arg(step > 0 ? "forward" : "back")
+                                 .arg(QString::number(std::round(std::fabs(step) * 10) / 10)));
 }
 
 bool CameraView::event(QEvent* e) {
@@ -2886,6 +2962,10 @@ void CameraView::keyPressEvent(QKeyEvent* e) {
     }
     if (!e->isAutoRepeat() && isCameraKey(e->key()) && !(e->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
         ctx_->heldKeys.insert(e->key());
+        // W S Q E only fly while the right button is held (without it A and D are the stock pitch and up keys).
+        const int k = e->key();
+        if (!ctx_->looking && (k == Qt::Key_W || k == Qt::Key_S || k == Qt::Key_Q || k == Qt::Key_E))
+            ctx_->setTransientStatus("Hold the right mouse button to fly with W A S D");
         return;
     }
     QWidget::keyPressEvent(e);
@@ -2902,8 +2982,14 @@ void CameraView::focusOutEvent(QFocusEvent* e) {
     ctx_->heldKeys.clear();
     if (ctx_->playing) stopPlay();
     ctx_->looking = false;
+    clearGizmoHover();
     unsetCursor();
     QWidget::focusOutEvent(e);
+}
+
+void CameraView::leaveEvent(QEvent* e) {
+    clearGizmoHover();  // no highlighted handle or move cursor left behind
+    QWidget::leaveEvent(e);
 }
 
 void CameraView::timerEvent(QTimerEvent* e) {

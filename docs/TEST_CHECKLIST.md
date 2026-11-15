@@ -90,7 +90,7 @@ Each one names the longer section below that has the steps.
 
 - [x] SHORT 1 (seen 2026-11-14: Shipment loads and shows the toon filter; no ink lines on stock geometry and no
       toon on the weapon yet, both asked for). An installed stock edit loads: install the Shipment toon zone (folder `out\agent\toon_ship\edit`,
-      File > Install Edited Stock Map Into Game) and start Shipment. Every stock-map and Warzone edit goes into the
+      File > Stock Map > Install Edited Stock Map Into Game) and start Shipment. Every stock-map and Warzone edit goes into the
       game this way, and it has never been run. Section "Shipment with the toon shader's filter".
 - [ ] SHORT 2. Your own map looks like View > Game Lighting, once with Compile > Bake lightmaps off and once on.
       Section "an own map with and without baked lightmaps".
@@ -275,19 +275,19 @@ Everything else in this list can wait. This one cannot be settled without the ga
 
 - [ ] File > Open IW8 Stock Map > mp_shipment. Map > Edit Compiled Spawns. Move one spawn a little, add a
       `script_model` with a model of another map (for example `door_wooden_panel_03_painted_left_mp_nophysics`).
-- [ ] File > Rebuild Stock Zone: a few seconds, the status line ends with "checked (ACTS, 0 failed)".
-- [ ] Close the game. File > Install Edited Stock Map Into Game: the dialog lists `mp_shipment.ff` (and
+- [ ] File > Stock Map > Rebuild Stock Zone: a few seconds, the status line ends with "checked (ACTS, 0 failed)".
+- [ ] Close the game. File > Stock Map > Install Edited Stock Map Into Game: the dialog lists `mp_shipment.ff` (and
       `techsets_mp_shipment.ff`) and the folder `iw8r_stock` the stock files move to. Confirm.
 - [ ] Draw a box brush with a stock material somewhere open on Shipment before the rebuild. The Console says "added
       brushes (entity 0): 12 triangles ... built as model iw8r_ovl_...".
 - [ ] Start Shipment in the game: say whether it loads and whether the added model, the box (can you stand on it?)
       and the moved spawn are there.
-- [ ] File > Restore Stock Map In Game puts the stock map back (do this before playing online or with others).
-- [ ] Loot of a Warzone map: File > Open IW8 Stock Map > mp_br_quarry (or mp_br_tut, which is small). File > Edit
+- [ ] File > Stock Map > Restore Stock Map In Game puts the stock map back (do this before playing online or with others).
+- [ ] Loot of a Warzone map: File > Open IW8 Stock Map > mp_br_quarry (or mp_br_tut, which is small). File > Stock Map > Edit
       Loot Points: green points appear (Quarry 2,924). Delete the points of one building and add a few in another
       place. Rebuild, install, start the map in Warzone: say whether loot is gone there and appears at the new points.
 
-- [ ] Buy stations of a Warzone map: on mp_br_quarry, File > Edit Placed Objects (120 orange points). Move one a
+- [ ] Buy stations of a Warzone map: on mp_br_quarry, File > Stock Map > Edit Placed Objects (120 orange points). Move one a
       few metres and copy another to a new place. Rebuild (the Console says "1 placed object(s) moved, 1 added"),
       install, start the map: say whether the station stands at the new place and whether the extra one works.
 
@@ -392,7 +392,7 @@ Map: `out/agent/mp_iw8r_fix1/mp_iw8r_fix1.map` (already built; Ctrl+F7, then Loc
 - [x] (owner, 2026-11-14 evening: "seemed to be fine") Cinder Rail Toon without the occlusion bake (redeployed
       2026-11-14 16:25): no surface or model goes missing.
       (With Occlusion bake on, surfaces came and went and models were not drawn: the bake is experimental.)
-- [ ] Toon look on the first-person weapon and hands: built and waiting in the editor. File > First-Person Look
+- [ ] Toon look on the first-person weapon and hands: built and waiting in the editor. File > Stock Map > First-Person Look
       (weapon and hands) > Install Into Game (game closed); then weapons and hands show the toon colours and ink lines
       on every map, and nothing else changes. Restore In Game takes it out.
 - [ ] Weapon mounting on a map built on or after 2026-11-14: at a wall corner and at a waist-high ledge the mount
@@ -486,8 +486,8 @@ Separate maps (also built):
       spot: brightness, shadows, light pools and colours should match.
 - [ ] A stock map rebuilt with an `iw8r_remove_world` box: the object is gone, you walk through where it was, nothing
       behind it pops out of view.
-- [ ] A stock map with a new sun direction (File > Relight Stock Map Sun): shadows follow the new sun.
-- [ ] Quarry with copied loot rocks, doors and an extraction site (File > Edit Placed Objects): they work like the
+- [ ] A stock map with a new sun direction (File > Stock Map > Relight Stock Map Sun): shadows follow the new sun.
+- [ ] Quarry with copied loot rocks, doors and an extraction site (File > Stock Map > Edit Placed Objects): they work like the
       originals; a deleted door is gone.
 
 ## In game (optional, 2026-11-13): Cinder Rail (Toon), rebuilt after your shots
@@ -509,11 +509,11 @@ The first try (a patch file `techsets_mp_shipment.fp` copied into `zone`) stoppe
 [3.1]": the game takes no unsigned patch of a stock zone (research 116). Delete that `.fp` from the `zone` folder if
 it is still there (the install below also removes it).
 
-Install, game closed: start the editor again (it was rebuilt), File > Install Edited Stock Map Into Game, answer Yes
+Install, game closed: start the editor again (it was rebuilt), File > Stock Map > Install Edited Stock Map Into Game, answer Yes
 to "choose a folder", pick `E:\IW8-Radiant\out\agent\toon_ship\edit`. The dialog lists
 `techsets_mp_shipment.ff`; confirm. The stock file moves to `iw8r_stock` in the game folder. To take it out: open
-Shipment in the editor (File > Open IW8 Stock Map), then File > Restore Stock Map In Game.
-(Or rebuild it yourself first: open Shipment, Tools > Shader Editor, toon, Use for This Map, File > Rebuild Stock
+Shipment in the editor (File > Open IW8 Stock Map), then File > Stock Map > Restore Stock Map In Game.
+(Or rebuild it yourself first: open Shipment, Tools > Shader Editor, toon, Use for This Map, File > Stock Map > Rebuild Stock
 Zone, then install.)
 
 - [ ] Shipment loads and plays (this is the first stock map whose lit shaders were replaced: if it does not load, or

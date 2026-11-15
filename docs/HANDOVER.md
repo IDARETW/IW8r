@@ -54,7 +54,7 @@ uses.
 
 **Your own look.** Tools > Shader Editor: a shader file for your map's surfaces (the toon shader is the example), and
 a filter for a stock map's surfaces. A shader can read the scene's depth, so outlines work on your own maps and on
-stock maps alike. File > First-Person Look (weapon and hands) builds the same filter into the weapon and arm
+stock maps alike. File > Stock Map > First-Person Look (weapon and hands) builds the same filter into the weapon and arm
 materials; they belong to a zone every map loads, so the look is on every map while it is installed (Install Into
 Game / Restore In Game). The toon look is built and waits there for Install.
 
@@ -62,14 +62,14 @@ Game / Restore In Game). The toon look is built and waits there for Install.
 game's own fog, sky blend and volumetric air for a built map; `iw8r_volume` boxes add local air, a lamp with
 `iw8r_volumetric` glows in it, and Compile > Sun & Sky has the sky's brightness. The viewport shows all of it.
 
-**Edit stock maps.** File > Open IW8 Stock Map, edit, File > Rebuild Stock Zone:
+**Edit stock maps.** File > Open IW8 Stock Map, edit, File > Stock Map > Rebuild Stock Zone:
 - entities, spawns, added brushes and models;
 - hide stock props and remove their collision; remove stock world geometry with `iw8r_remove_world` boxes;
 - move, copy and delete placed objects (doors, signs, props, extraction sites);
 - relight (sun, sky, fog, vision), retexture, a shader filter.
 
-File > Install Edited Stock Map Into Game puts the rebuilt zones into the game: the stock zone files move to
-`iw8r_stock` in the game folder and the edited ones take their place. File > Restore Stock Map In Game moves them
+File > Stock Map > Install Edited Stock Map Into Game puts the rebuilt zones into the game: the stock zone files move to
+`iw8r_stock` in the game folder and the edited ones take their place. File > Stock Map > Restore Stock Map In Game moves them
 back. (The game does not take a small patch file for its own zones: research 116.)
 
 **Edit Warzone maps.** The same tools on mp_br_tut, mp_br_quarry and mp_donetsk, plus loot points, loot clusters and
@@ -119,7 +119,7 @@ in the game would confirm it; nothing is known to be missing.
 - Shipment with the toon zone: "objects appear in and out". No cause found. Ruled out offline: missing pipeline
   states, the order of shader arguments, technique flags, shaders the driver refused, the image the lines take over
   (all 192 stock shaders read it only in thermal view). The zone changes shaders only, not what the game draws or
-  hides. File > Restore Stock Map In Game takes the zone out.
+  hides. File > Stock Map > Restore Stock Map In Game takes the zone out.
 - Cinder Rail Toon lost surfaces and models: that build had the first occlusion bake. Settled the same evening: the
   build without the bake is fine in game, and so is a build with the fixed bake.
 - The minimap was a quarter turn off against the player on built maps (seen on Cinder Rail Toon). Cause: the picture
@@ -127,7 +127,7 @@ in the game would confirm it; nothing is known to be missing.
   map's north up) and proven offline on two built maps; rebuild a map to get it. Not seen in game since.
 
 **Built and proven offline, not seen in game.** `docs\TEST_CHECKLIST.md` has the steps:
-1. **The first-person look** after File > First-Person Look > Install Into Game.
+1. **The first-person look** after File > Stock Map > First-Person Look > Install Into Game.
 2. **Weapon mounting** on a map built on or after 2026-11-14.
 3. **Your own map looks like View > Game Lighting**, with Bake lightmaps off and on.
 4. **A stock door carried into your own map opens** (real stock scripted objects).

@@ -22,8 +22,12 @@ class AtmosphereDialog : public QDialog {
 public:
     AtmosphereDialog(const Atmosphere& initial, QWidget* parent = nullptr);
     Atmosphere value() const;
+    // The folder the LUT Browse starts in (the open map's folder; editAtmosphere sets it). "" = the process folder.
+    void setLutFolder(const QString& dir) { lutFolder_ = dir; }
+    QString lutFolder() const { return lutFolder_; }
 
 private:
+    QString lutFolder_;
     // The game's own fog and volumetric air (iw8r_haze): the preset ("" = none) and its amount.
     QComboBox* haze_ = nullptr;
     QDoubleSpinBox* hazeAmount_ = nullptr;

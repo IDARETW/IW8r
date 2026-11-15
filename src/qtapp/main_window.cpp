@@ -108,6 +108,7 @@
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QStandardPaths>
+#include <QRegularExpressionValidator>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDragEnterEvent>
@@ -1144,6 +1145,14 @@ std::set<SelRef> MainWindow::visibleSelectable() const {
     return out;
 }
 
+void MainWindow::applyWorkspace(const QString& n) {
+    const QByteArray st = Settings::instance().value("workspaces/state/" + n).toByteArray();
+    if (st.isEmpty() || !dock_->restoreState(st, kDockLayoutVersion))
+        return ctx_.setStatus("Workspace " + n + " was saved by an older version (new panels); save it again");
+    syncSideActions();
+    ctx_.setStatus("Workspace " + n);
+}
+
 void MainWindow::showDock(const QString& name) {
     if (ads::CDockWidget* d = dock_->findDockWidget(name); d && isBottomPanel(d) && d->dockAreaWidget() == bottomArea_) {
         setBottomArea(true, d);  // the whole bottom area, this tab in front
@@ -1247,9 +1256,17 @@ void MainWindow::buildDocks() {
     connect(camera_, &CameraView::assetDropped, this, [this](const QString& kind, const QString& name, bool loop, const QPointF& pos) {
         if (kind == "prefabs" && prefabDropKeepsPreview(name)) return;  // the previewed placement stays where it is
         SelRef hit{kNoId, kNoId};
-        const std::optional<Vec3> at = camera_->surfacePoint(pos, &hit);
-        if (!at && kind != "materials") return ctx_.setStatus("Drop onto a surface (nothing is under the cursor)");
-        dropAsset(kind, name, loop, at.value_or(Vec3{}), hit);
+        std::optional<Vec3> at = camera_->surfacePoint(pos, &hit);
+        if (!at && kind == "materials") return ctx_.setStatus("Drop materials onto a surface (nothing is under the cursor)");
+        if (!at) {
+            // Over the sky or open air: 256 units in front of the camera, on the grid (a surface under the cursor is
+            // still the better place; the status says so).
+            Vec3 p = ctx_.cam.pos + ctx_.cam.forward() * 256.0;
+            for (int a = 0; a < 3; ++a) p[a] = snapToGrid(p[a], ctx_.doc.grid());
+            at = p;
+            ctx_.setStatus("Nothing under the cursor: placed 256 units in front of the camera");
+        }
+        dropAsset(kind, name, loop, *at, hit);
     });
     connect(grid_, &GridView::assetDropped, this, [this](const QString& kind, const QString& name, bool loop, double h, double v) {
         if (kind == "materials") return ctx_.setStatus("Drop materials onto a surface in the camera view");
@@ -1622,7 +1639,7 @@ void MainWindow::buildMenus() {
     });
     addCommand(file, "NewMap", "&New Map", QKeySequence("Ctrl+N"), [this] {
         if (!confirmDiscard()) return;
-        ctx_.scene.clear();
+        resetForNewDocument();  // a stock map open before must not stay the target of stock commands
         prefabCache_.clear();
         std::string err;
         ctx_.doc.loadFromText("iwmap 4\r\n\"000_Global\" flags active\r\n\"The Map\" flags \r\n// entity 0\r\n{\r\n\"classname\" \"worldspawn\"\r\n}\r\n",
@@ -1632,9 +1649,14 @@ void MainWindow::buildMenus() {
         updateTitle();
     });
     addCommand(file, "Open", "&Open...", QKeySequence("Ctrl+O"), [this] { openDialog(); });
+    recentMenu_ = file->addMenu("Recent");
     addCommand(file, "OpenStockZone", "Open IW8 Stock &Map (ACTS)...", QKeySequence("Ctrl+Shift+O"), [this] { openStockZoneDialog(); });
-    addCommand(file, "RelightStockMap", "Relight Stock Map (Fog / Vision)...", QKeySequence(), [this] { relightStockMapDialog(); });
-    addCommand(file, "RelightStockSky", "Relight Stock Map Sky (another map's sky)...", QKeySequence(), [this] {
+    // What works on an open stock map: relighting, its compiled data, rebuilding and installing its zone.
+    QMenu* stockMenu = file->addMenu("Stoc&k Map");
+    stockMenu->setObjectName("stockMapMenu");
+    file->addSeparator();
+    addCommand(stockMenu, "RelightStockMap", "Relight Stock Map (Fog / Vision)...", QKeySequence(), [this] { relightStockMapDialog(); });
+    addCommand(stockMenu, "RelightStockSky", "Relight Stock Map Sky (another map's sky)...", QKeySequence(), [this] {
         // 11.6: worldspawn iw8r_sky_from; File > Rebuild Stock Zone carries that map's sky material and puts it on this
         // map's sky surfaces (converter replace_materials "@sky").
         const Entity* world = nullptr;
@@ -1667,7 +1689,7 @@ void MainWindow::buildMenus() {
         ctx_.documentEdited(pick.startsWith("(") ? QString("The map keeps its own sky")
                                                  : "The sky of " + pick + " is used; File > Rebuild Stock Zone writes it (the sky's lighting stays)");
     });
-    addCommand(file, "RelightStockSun", "Relight Stock Map Sun (Colour / Intensity / Direction)...", QKeySequence(), [this] {
+    addCommand(stockMenu, "RelightStockSun", "Relight Stock Map Sun (Colour / Intensity / Direction)...", QKeySequence(), [this] {
         // 11.6: worldspawn iw8r_sun_color (linear), iw8r_sun_intensity and iw8r_sun_direction ("pitch yaw");
         // File > Rebuild Stock Zone writes them (a new direction bakes the sun shadow again).
         const Entity* world = nullptr;
@@ -1719,19 +1741,39 @@ void MainWindow::buildMenus() {
                             "); File > Rebuild Stock Zone writes it" +
                             (direction.isEmpty() ? QString() : QString(" and bakes the sun shadow again")));
     });
-    addCommand(file, "EditStockSpawns", "Edit Compiled Spawns (stock map)", QKeySequence(), [this] { editStockSpawns(); });
-    addCommand(file, "EditLootPoints", "Edit Loot Points (Warzone stock map)", QKeySequence(), [this] { editLootPoints(); });
-    addCommand(file, "EditPlacedObjects", "Edit Placed Objects (Warzone buy stations)", QKeySequence(), [this] { editPlacedObjects(); });
-    addCommand(file, "LoadStreamedWorld", "Load Streamed World Around Camera (Warzone maps)", QKeySequence(), [this] { loadStreamedWorldAroundCamera(); });
-    addCommand(file, "RebuildStockEntities", "Rebuild Stock Map With These Entities...", QKeySequence(), [this] {
+    stockMenu->addSeparator();
+    addCommand(stockMenu, "EditStockSpawns", "Edit Compiled Spawns (stock map)", QKeySequence(), [this] { editStockSpawns(); });
+    addCommand(stockMenu, "EditLootPoints", "Edit Loot Points (Warzone stock map)", QKeySequence(), [this] { editLootPoints(); });
+    addCommand(stockMenu, "EditPlacedObjects", "Edit Placed Objects (Warzone buy stations)", QKeySequence(), [this] { editPlacedObjects(); });
+    addCommand(stockMenu, "LoadStreamedWorld", "Load Streamed World Around Camera (Warzone maps)", QKeySequence(), [this] { loadStreamedWorldAroundCamera(); });
+    stockMenu->addSeparator();
+    addCommand(stockMenu, "RebuildStockEntities", "Rebuild Stock Map With These Entities...", QKeySequence(), [this] {
         // 6.10: the M2 path from the menu: the open stock entity text (iw8-ents / .ents) is rebuilt into the stock
         // zone (tools/m2_rebuild_mapents.ps1: ACTS export, entity swap, x64-zt rebuild, ACTS --test) under out/.
         QString zone = QFileInfo(qs(ctx_.doc.path())).completeBaseName();
         zone = zone.section('.', 0, 0);
+        // The stock maps of the catalogue to pick from (a name can still be typed); a zone name only.
+        QStringList ids;
+        {
+            QDir d(QCoreApplication::applicationDirPath());
+            for (int up = 0; up < 4 && !QFileInfo::exists(d.filePath("data/asset_catalog/iw8_stock_maps.tsv")); ++up) d.cdUp();
+            QFile f(d.filePath("data/asset_catalog/iw8_stock_maps.tsv"));
+            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream in(&f);
+                while (!in.atEnd()) {
+                    const QStringList c = in.readLine().split('\t');
+                    if (c.size() >= 7 && !c[0].startsWith('#') && c[0] != "map_id" && c[6] == "yes") ids << c[0];
+                }
+            }
+        }
+        const QString guess = zone.startsWith("mp_") ? zone : QString("mp_shipment");
+        if (!ids.contains(guess)) ids.prepend(guess);
         bool ok = false;
-        zone = QInputDialog::getText(this, "Rebuild Stock Map", "Stock zone to rebuild with the open entities:", QLineEdit::Normal,
-                                     zone.startsWith("mp_") ? zone : QString("mp_shipment"), &ok).trimmed();
+        zone = QInputDialog::getItem(this, "Rebuild Stock Map", "Stock zone to rebuild with the open entities:", ids, int(ids.indexOf(guess)), true, &ok)
+                   .trimmed();
         if (!ok || zone.isEmpty()) return;
+        if (!QRegularExpression("^[a-z0-9_]+$").match(zone).hasMatch())
+            return ctx_.setStatus("Rebuild Stock Map: \"" + zone + "\" is not a zone name (lower-case letters, digits and _ only)");
         QString err;
         const QString work = rebuildStockEntities(zone, &err);
         ctx_.setStatus(work.isEmpty() ? "Rebuild Stock Map: " + err
@@ -1781,7 +1823,9 @@ void MainWindow::buildMenus() {
             return ctx_.setStatus("Compare With Backup: no " + QFileInfo(bak).fileName() + " yet (it is written when a saved map is saved again)");
         compareWith(bak);
     });
-    addCommand(file, "ExportOverview", "Export Overview Image (PNG)...", QKeySequence(), [this] {
+    QMenu* exportMenu = file->addMenu("E&xport");
+    exportMenu->setObjectName("exportMenu");
+    addCommand(exportMenu, "ExportOverview", "Export Overview Image (PNG)...", QKeySequence(), [this] {
         // 3.21 (core overview_image): top-down map image with spawns and objectives, e.g. for callout sheets.
         const QFileInfo mi(qs(ctx_.doc.path()));
         const QString f = QFileDialog::getSaveFileName(this, "Export Overview Image",
@@ -1798,7 +1842,7 @@ void MainWindow::buildMenus() {
         const size_t bytes = exportOverviewPng(ctx_.doc.map(), o, f.toStdString(), &err);
         ctx_.setStatus(bytes ? QString("Exported %1 (%2 KB)").arg(QFileInfo(f).fileName()).arg(bytes / 1024) : "Overview: " + qs(err));
     });
-    addCommand(file, "ExportCameraImage", "Export Camera Image (high resolution)...", QKeySequence(), [this] {
+    addCommand(exportMenu, "ExportCameraImage", "Export Camera Image (high resolution)...", QKeySequence(), [this] {
         const QFileInfo mi(qs(ctx_.doc.path()));
         const QString f = QFileDialog::getSaveFileName(this, "Export Camera Image",
                                                        mi.absoluteDir().filePath((mi.completeBaseName().isEmpty() ? QString("map") : mi.completeBaseName()) + "_shot.png"),
@@ -1821,7 +1865,7 @@ void MainWindow::buildMenus() {
         if (exportCameraImage(f, w, h, clean, &err)) ctx_.setStatus(QString("Exported %1 (%2 x %3)").arg(QFileInfo(f).fileName()).arg(w).arg(h));
         else ctx_.setStatus("Camera image: " + err);
     });
-    addCommand(file, "ExportTurntable", "Export Turntable of Selection (PNG frames)...", QKeySequence(), [this] {
+    addCommand(exportMenu, "ExportTurntable", "Export Turntable of Selection (PNG frames)...", QKeySequence(), [this] {
         const QString dir = QFileDialog::getExistingDirectory(this, "Export Turntable", QFileInfo(qs(ctx_.doc.path())).absolutePath());
         if (dir.isEmpty()) return;
         bool ok = false;
@@ -1831,7 +1875,7 @@ void MainWindow::buildMenus() {
         const int n = exportTurntable(dir, frames, 1024, 1024, &err);
         ctx_.setStatus(n > 0 ? QString("Turntable: %1 frame(s) (1024 x 1024) in %2").arg(n).arg(dir) : "Turntable: " + err);
     });
-    addCommand(file, "ExportMapPackage", "Export Map Package (.zip)...", QKeySequence(), [this] {
+    addCommand(exportMenu, "ExportMapPackage", "Export Map Package (.zip)...", QKeySequence(), [this] {
         // 4.26: the map with its prefabs, custom materials / models and sidecars (loadscreen, camera paths) in one zip.
         if (ctx_.doc.path().empty()) return ctx_.setStatus("Save the map first");
         const QFileInfo mi(qs(ctx_.doc.path()));
@@ -1865,20 +1909,22 @@ void MainWindow::buildMenus() {
     });
     // The stock map with the document's entities, spawns, added models and hidden props, through the converter's
     // editzone (a few seconds; research 88). The Replay install is only read; the result is not installed.
-    addCommand(file, "RebuildStockZoneFast", "Rebuild Stock Zone (fast)...", QKeySequence(), [this] { rebuildStockZoneFast(); });
-    addCommand(file, "InstallStockMap", "Install Edited Stock Map Into Game...", QKeySequence(), [this] { installEditedStockMap(); });
-    addCommand(file, "RestoreStockMap", "Restore Stock Map In Game...", QKeySequence(), [this] { restoreStockMap(); });
+    addCommand(stockMenu, "RebuildStockZoneFast", "Rebuild Stock Zone (fast)...", QKeySequence(), [this] { rebuildStockZoneFast(); });
+    stockMenu->addSeparator();
+    addCommand(stockMenu, "InstallStockMap", "Install Edited Stock Map Into Game...", QKeySequence(), [this] { installEditedStockMap(); });
+    addCommand(stockMenu, "RestoreStockMap", "Restore Stock Map In Game...", QKeySequence(), [this] { restoreStockMap(); });
     {
         // The map shader's filter on the weapon and hands a player holds (research 128): a shared zone, so the look is
         // on every map while it is installed.
-        QMenu* look = file->addMenu("First-Person Look (weapon and hands)");
+        QMenu* look = stockMenu->addMenu("First-Person Look (weapon and hands)");
         addCommand(look, "BuildViewmodelLook", "Build From Shader...", QKeySequence(), [this] { buildViewmodelLook(); });
         addCommand(look, "InstallViewmodelLook", "Install Into Game...", QKeySequence(), [this] { installViewmodelLook(); });
         addCommand(look, "RestoreViewmodelLook", "Restore In Game...", QKeySequence(), [this] { restoreViewmodelLook(); });
     }
-    addCommand(file, "HideStockProps", "Hide Stock Props In Selection", QKeySequence(), [this] { hideStockPropsInSelection(); });
-    addCommand(file, "ShowStockProps", "Show All Stock Props", QKeySequence(), [this] { showAllStockProps(); });
-    addCommand(file, "RebuildStockZone", "Rebuild Stock Zone (full dump, slow)...", QKeySequence(), [this] {
+    stockMenu->addSeparator();
+    addCommand(stockMenu, "HideStockProps", "Hide Stock Props In Selection", QKeySequence(), [this] { hideStockPropsInSelection(); });
+    addCommand(stockMenu, "ShowStockProps", "Show All Stock Props", QKeySequence(), [this] { showAllStockProps(); });
+    addCommand(stockMenu, "RebuildStockZone", "Rebuild Stock Zone (full dump, slow)...", QKeySequence(), [this] {
         // Runs in the background; the Console dock shows its log. The Replay install is only read.
         const QString work = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/stock_rebuild/" + stockZone_ + "-" +
                              QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss");
@@ -1947,17 +1993,19 @@ void MainWindow::buildMenus() {
         }
         editCustomMaterial(n);
     });
-    addCommand(file, "InsertPrefab", "Insert &Prefab...", QKeySequence(), [this] { insertPrefabDialog(); });
-    addCommand(file, "ExplodePrefab", "E&xplode Selected Prefab", QKeySequence(), [this] { explodeSelectedPrefab(); });
-    addCommand(file, "PrefabParameters", "Prefab Parameters (per-instance overrides)...", QKeySequence(), [this] { showPrefabParameters(); });
+    QMenu* prefabMenu = file->addMenu("&Prefabs");
+    prefabMenu->setObjectName("prefabsMenu");
+    addCommand(prefabMenu, "InsertPrefab", "Insert &Prefab...", QKeySequence(), [this] { insertPrefabDialog(); });
+    addCommand(prefabMenu, "ExplodePrefab", "E&xplode Selected Prefab", QKeySequence(), [this] { explodeSelectedPrefab(); });
+    addCommand(prefabMenu, "PrefabParameters", "Prefab Parameters (per-instance overrides)...", QKeySequence(), [this] { showPrefabParameters(); });
     // A prefab bundle: one folder with the contents, the behaviour and the mapper's own assets (docs/PREFAB_BUNDLES.md).
-    addCommand(file, "SaveSelectionAsPrefab", "Save Selection As Prefab...", QKeySequence(), [this] { saveSelectionAsBundleDialog(); });
-    addCommand(file, "SaveSelectionAsMapPrefab", "Save Selection As Plain .map Prefab...", QKeySequence(), [this] { saveSelectionAsMapPrefabDialog(); });
-    addCommand(file, "OpenBundleFolder", "Open Bundle Folder of Selected Prefab", QKeySequence(), [this] { openSelectedBundleFolder(); });
-    addCommand(file, "RotatePrefabStep", "Rotate Selected Prefab (its yaw step)", QKeySequence(), [this] {
+    addCommand(prefabMenu, "SaveSelectionAsPrefab", "Save Selection As Prefab...", QKeySequence(), [this] { saveSelectionAsBundleDialog(); });
+    addCommand(prefabMenu, "SaveSelectionAsMapPrefab", "Save Selection As Plain .map Prefab...", QKeySequence(), [this] { saveSelectionAsMapPrefabDialog(); });
+    addCommand(prefabMenu, "OpenBundleFolder", "Open Bundle Folder of Selected Prefab", QKeySequence(), [this] { openSelectedBundleFolder(); });
+    addCommand(prefabMenu, "RotatePrefabStep", "Rotate Selected Prefab (its yaw step)", QKeySequence(), [this] {
         if (!rotateSelectedPrefabsByStep()) ctx_.setStatus("Rotate Prefab: select misc_prefab placements first");
     });
-    addCommand(file, "ConvertPrefabMap", "Convert Plain .map Prefab To Bundle...", QKeySequence(), [this] {
+    addCommand(prefabMenu, "ConvertPrefabMap", "Convert Plain .map Prefab To Bundle...", QKeySequence(), [this] {
         const QString f = QFileDialog::getOpenFileName(this, "Convert Prefab To Bundle", prefabSaveFolder(), "Prefab maps (*.map)");
         if (f.isEmpty()) return;
         QString err;
@@ -1965,7 +2013,7 @@ void MainWindow::buildMenus() {
         if (folder.isEmpty()) return void(QMessageBox::warning(this, "Convert Prefab To Bundle", err));
         ctx_.setStatus("Bundle written: " + QDir::toNativeSeparators(folder) + " (the .map file is kept)");
     });
-    addCommand(file, "ExportPrefabZip", "Export Prefab Bundle As Zip...", QKeySequence(), [this] {
+    addCommand(prefabMenu, "ExportPrefabZip", "Export Prefab Bundle As Zip...", QKeySequence(), [this] {
         const QString folder = QFileDialog::getExistingDirectory(this, "Prefab bundle folder (.iw8prefab)", prefabSaveFolder());
         if (folder.isEmpty()) return;
         const QString zip = QFileDialog::getSaveFileName(this, "Export Prefab Bundle", folder + ".zip", "Zip (*.zip)");
@@ -1974,7 +2022,7 @@ void MainWindow::buildMenus() {
         if (!exportPrefabBundleAsZip(folder, zip, &err)) return void(QMessageBox::warning(this, "Export Prefab Bundle", err));
         ctx_.setStatus("Prefab bundle exported: " + QDir::toNativeSeparators(zip));
     });
-    addCommand(file, "ImportPrefabZip", "Import Prefab Bundles From Zip...", QKeySequence(), [this] {
+    addCommand(prefabMenu, "ImportPrefabZip", "Import Prefab Bundles From Zip...", QKeySequence(), [this] {
         const QString zip = QFileDialog::getOpenFileName(this, "Import Prefab Bundles", QString(), "Zip (*.zip)");
         if (zip.isEmpty()) return;
         QString err;
@@ -1983,7 +2031,7 @@ void MainWindow::buildMenus() {
         if (prefabs_) prefabs_->refresh();
         ctx_.setStatus(QString("Imported %1 prefab bundle(s) into %2").arg(bundles.size()).arg(QDir::toNativeSeparators(prefabSaveFolder())));
     });
-    addCommand(file, "MakePrefabUnique", "Make Selected Prefab Unique", QKeySequence(), [this] {
+    addCommand(prefabMenu, "MakePrefabUnique", "Make Selected Prefab Unique", QKeySequence(), [this] {
         QString err;
         if (!makeSelectedPrefabUnique(&err)) QMessageBox::warning(this, "Make Prefab Unique", err);
     });
@@ -2199,19 +2247,22 @@ void MainWindow::buildMenus() {
         // Workspaces (9.13): named panel layouts (e.g. Layout, Lighting, Scripting), saved in the settings.
         QMenu* ws = view->addMenu("Workspaces");
         ws->setObjectName("workspacesMenu");
+        for (int i = 0; i < 9; ++i)
+            addCommand(nullptr, QString("Workspace%1").arg(i + 1), QString("Workspace %1").arg(i + 1), QKeySequence(QString("Alt+Shift+%1").arg(i + 1)), [this, i] {
+                const QStringList names = Settings::instance().value("workspaces/names").toStringList();
+                if (i >= names.size()) return ctx_.setStatus(QString("No workspace %1 yet (View > Workspaces > Save Current Layout As...)").arg(i + 1));
+                applyWorkspace(names[i]);
+            });
         auto refill = std::make_shared<std::function<void()>>();
         *refill = [this, ws, refill] {
             ws->clear();
             const QStringList names = Settings::instance().value("workspaces/names").toStringList();
             for (int i = 0; i < names.size(); ++i) {
                 const QString n = names[i];
-                QAction* a = ws->addAction(n, this, [this, n] {
-                    const QByteArray st = Settings::instance().value("workspaces/state/" + n).toByteArray();
-                    if (st.isEmpty() || !dock_->restoreState(st, kDockLayoutVersion))
-                        return ctx_.setStatus("Workspace " + n + " was saved by an older version (new panels); save it again");
-                    ctx_.setStatus("Workspace " + n);
-                });
-                if (i < 9) a->setShortcut(QKeySequence(QString("Alt+Shift+%1").arg(i + 1)));
+                // The key is the WorkspaceN command's (Tools > Hotkeys can change it); shown here after a tab.
+                const QAction* cmd = i < 9 ? action(QString("Workspace%1").arg(i + 1)) : nullptr;
+                const QString key = cmd ? cmd->shortcut().toString(QKeySequence::NativeText) : QString();
+                ws->addAction(key.isEmpty() ? n : n + "\t" + key, this, [this, n] { applyWorkspace(n); });
             }
             if (!names.isEmpty()) ws->addSeparator();
             ws->addAction("Save Current Layout As...", this, [this, refill] {
@@ -2389,7 +2440,7 @@ void MainWindow::buildMenus() {
     });
     spawnsToggle->setCheckable(true);
     spawnsToggle->setChecked(true);
-    QAction* gizmoToggle = addCommand(view, "ToggleGizmo", "Transform Gizmo (camera view)", QKeySequence(Qt::Key_G), [this] {
+    QAction* gizmoToggle = addCommand(view, "ToggleGizmo", "Gizmo: Show in Camera View", QKeySequence(Qt::Key_G), [this] {
         ctx_.gizmo = !ctx_.gizmo;
         if (QAction* a = action("ToggleGizmo")) a->setChecked(ctx_.gizmo);
         Settings::instance().setValue("view/gizmo", ctx_.gizmo);
@@ -2649,6 +2700,11 @@ void MainWindow::buildMenus() {
         ctx_.cameraMoved();
     });
     gameToggle->setCheckable(true);
+    if (Settings::instance().value("view/gameLighting", false).toBool() && !qEnvironmentVariableIsSet("IW8R_SAFE_MODE")) {
+        // On when the editor was closed with it on (Safe Mode starts with the plain views).
+        ctx_.scene.gameLook = true;
+        gameToggle->setChecked(true);
+    }
     {
         // Plan 1.10: Game Lighting's parts, each saved (game/...). Defaults: everything on, the map's own exposure.
         QMenu* gm = view->addMenu("Game Lighting Options");
@@ -2793,6 +2849,7 @@ void MainWindow::buildMenus() {
         }
         camera_->setGameDebugView(savedView);
     }
+    view->addSeparator();
     addCommand(view, "StockReference", "Stock Map Reference...", QKeySequence(), [this] {
         const QDir zoneDir(QFileInfo(toolPath("replay")).absolutePath() + "/zone");
         QStringList zones;
@@ -2850,6 +2907,7 @@ void MainWindow::buildMenus() {
     addCommand(view, "ExportReferenceBrushes", "Stock Reference to Brushes (selection bounds)", QKeySequence(), [this] {
         exportReferenceBrushes();
     });
+    view->addSeparator();
     QAction* texToggle = addCommand(view, "ToggleTexturedView", "Textured Camera View", QKeySequence(), [this] {
         ctx_.texturedView = !ctx_.texturedView;
         if (QAction* a = action("ToggleTexturedView")) a->setChecked(ctx_.texturedView);
@@ -3202,9 +3260,18 @@ void MainWindow::buildMenus() {
         ctx_.documentEdited("Clipper side flipped");
     })->setEnabled(false);
     brush->addSeparator();
-    addCommand(brush, "CSGHollow", "CSG Hollow", QKeySequence(), [this] { if (hollowSelection(ctx_)) ctx_.documentEdited("Hollowed (wall = grid size)"); });
-    addCommand(brush, "CSGSubtract", "CSG Subtract", QKeySequence("Shift+U"), [this] { if (subtractSelection(ctx_)) ctx_.documentEdited("Subtracted"); });
-    addCommand(brush, "MakeCylinder", "Cylinder (8 sides) From Selection", QKeySequence(), [this] { if (prismFromSelection(ctx_, 8)) ctx_.documentEdited("Cylinder"); });
+    addCommand(brush, "CSGHollow", "CSG Hollow", QKeySequence(), [this] {
+        if (hollowSelection(ctx_)) ctx_.documentEdited("Hollowed (wall = grid size)");
+        else ctx_.setStatus("CSG Hollow: select one or more brushes first");
+    });
+    addCommand(brush, "CSGSubtract", "CSG Subtract", QKeySequence("Shift+U"), [this] {
+        if (subtractSelection(ctx_)) ctx_.documentEdited("Subtracted");
+        else ctx_.setStatus("CSG Subtract: select the brushes to cut with, touching the brushes to cut");
+    });
+    addCommand(brush, "MakeCylinder", "Cylinder (8 sides) From Selection", QKeySequence(), [this] {
+        if (prismFromSelection(ctx_, 8)) ctx_.documentEdited("Cylinder");
+        else ctx_.setStatus("Cylinder: select a brush first (its bounds become the cylinder)");
+    });
     brush->addSeparator();
     const char* axes[3] = {"X", "Y", "Z"};
     for (int a = 0; a < 3; ++a) {
@@ -3859,7 +3926,7 @@ void MainWindow::buildMenus() {
     addCommand(patch, "PatchThicken", "Thicken (grid, with seams)", QKeySequence(),
                [this, patchCmd] { patchCmd(thickenSelectedPatches(ctx_, ctx_.doc.grid(), true), "Thickened patch"); });
     patch->addSeparator();
-    addCommand(patch, "PatchCap", "Cap", QKeySequence(), [this, patchCmd] { patchCmd(capSelectedPatches(ctx_), "Capped patch"); });
+    addCommand(patch, "PatchCap", "Cap Patch", QKeySequence(), [this, patchCmd] { patchCmd(capSelectedPatches(ctx_), "Capped patch"); });
     addCommand(patch, "RoadThroughPoints", "Road Through Selected Points...", QKeySequence(), [this] {
         // 8.13 (core road_tools): a road patch draped on the terrain mesh patches through the selected point entities.
         bool ok = false;
@@ -3927,7 +3994,7 @@ void MainWindow::buildMenus() {
     }
     addCommand(patch, "PatchWeld", "Weld Two Patches", QKeySequence(), [this, patchCmd] { patchCmd(weldSelectedPatches(ctx_), "Welded patches"); });
     addCommand(patch, "PatchRedisperse", "Redisperse", QKeySequence(), [this, patchCmd] { patchCmd(redisperseSelectedPatches(ctx_), "Redispersed"); });
-    addCommand(patch, "PatchSplit", "Split", QKeySequence(), [this, patchCmd] { patchCmd(splitSelectedPatches(ctx_), "Split patch"); });
+    addCommand(patch, "PatchSplit", "Split Patch", QKeySequence(), [this, patchCmd] { patchCmd(splitSelectedPatches(ctx_), "Split patch"); });
     patch->addSeparator();
     addCommand(patch, "TerrainCreate", "Create Terrain (9x9)", QKeySequence(), [this, patchCmd] { patchCmd(createTerrain(ctx_), "Created terrain"); });
     addCommand(patch, "TerrainNoise", "Terrain Noise (grid amplitude)", QKeySequence(), [this, patchCmd] {
@@ -3959,6 +4026,7 @@ void MainWindow::buildMenus() {
         showCompile();
         compile_->run({CompilePanel::Stage::Extraction});
     });
+    compile->addSeparator();
     addCommand(compile, "MapAtmosphere", "Atmosphere (Fog / Film Grade)...", QKeySequence(), [this] { editAtmosphere(ctx_, this); });
     addCommand(compile, "MapSunSky", "Sun && Sky...", QKeySequence(), [this] { editSunSky(ctx_, stockSkyList(), this); });
     addCommand(compile, "ZoneDependencies", "Zone Dependencies (last build)...", QKeySequence(), [this] {
@@ -4127,6 +4195,7 @@ void MainWindow::buildMenus() {
         ctx_.cameraMoved();
         ctx_.setStatus("Editor camera at the player's view (Ctrl+Shift+1..9 saves it as a camera bookmark)");
     });
+    compile->addSeparator();
     addCommand(compile, "LoadMapInGame", "Load Map in Game (Live Link)", QKeySequence("Ctrl+F8"), [this] {
         // 7.2: the running Replay (direct link) loads the compiled map; deploy it first.
         if (liveLink_ && liveLink_->loadMapInGame()) ctx_.setStatus("Sent to the game: " + LiveLinkPanel::loadMapCommand(compile_->mapId()));
@@ -4154,6 +4223,7 @@ void MainWindow::buildMenus() {
         pendingDeploy_ = true;
         compile_->run({CompilePanel::Stage::Extraction, CompilePanel::Stage::Zones, CompilePanel::Stage::Validate});
     });
+    compile->addSeparator();
     addCommand(compile, "HudImagesFolder", "HUD Images Folder (pictures for the map script)...", QKeySequence(), [this] {
         // 4.27: every picture in "<map name>.hud" becomes a HUD image the map script can draw with setshader.
         const QString folder = qs(hudImageFolderFor(ctx_.doc.path()));
@@ -4190,6 +4260,7 @@ void MainWindow::buildMenus() {
         // Uses the current camera mode: Textured (with Lit preview for sun and lights) gives the closest reflections.
         captureReflectionProbes();
     });
+    compile->addSeparator();
     addCommand(compile, "BuildDeployLoad", "Build, Deploy and Play in Game (devmap)", QKeySequence("F5"), [this, showCompile] {
         // F5 devmap (docs/research/65): F7, then DevmapRunner deploys and puts you in game on the map: it starts the
         // game when it is not running, hosts a private match from the MP menu, ends a running match, or reloads the
@@ -4249,7 +4320,7 @@ void MainWindow::buildMenus() {
         else ctx_.setStatus("Could not start " + exe);
     });
     addCommand(compile, "ShowReplayLog", "Show Replay Log", QKeySequence(), [this] { showDock("Replay Log"); });
-    addCommand(compile, "UndoDeploy", "Undo Last Deploy", QKeySequence(), [this] {
+    addCommand(compile, "UndoDeploy", "Revert Last Deploy", QKeySequence(), [this] {
         QString err;
         if (!compile_->undoDeploy(&err)) QMessageBox::warning(this, "Undo Deploy", err);
     });
@@ -4398,6 +4469,7 @@ void MainWindow::buildMenus() {
         }
         ctx_.setStatus("Replace model material: select a stock model first");
     });
+    tools->addSeparator();
     addCommand(tools, "AssetUsage", "Asset Usage (what the map uses, unused own files)...", QKeySequence(), [this] {
         const QString base = ctx_.doc.path().empty() ? QString() : QFileInfo(customMaterialRoots().front()).absolutePath();
         showAssetUsageDialog(this, ctx_.doc.map(), customMaterialRoots(), customModelRoots(),
@@ -4572,6 +4644,7 @@ void MainWindow::buildMenus() {
         if (m) m->setCheckable(true);
     }
     {
+        tools->addSeparator();
         QAction* web = addCommand(tools, "WebServer", "Web Server (use the suite from a browser)", QKeySequence(), [this] {
             Settings::instance().setValue("web/enabled", !Settings::instance().value("web/enabled", false).toBool());
             QString msg;
@@ -4633,6 +4706,7 @@ void MainWindow::buildMenus() {
             ctx_.setStatus(msg);
         });
     }
+    tools->addSeparator();
     addCommand(tools, "DropToFloor", "Drop Selection To Floor", QKeySequence(), [this] {
         const size_t n = dropSelectionToFloor(ctx_);
         ctx_.documentEdited(QString("%1 entit%2 dropped to the floor").arg(n).arg(n == 1 ? "y" : "ies"));
@@ -4648,6 +4722,7 @@ void MainWindow::buildMenus() {
         ctx_.scene.pointfile.clear();
         ctx_.documentEdited();
     });
+    tools->addSeparator();
     addCommand(tools, "RecordMacro", "Start / Stop Macro Recording", QKeySequence(), [this] {
         if (!toggleMacroRecording().isEmpty())
             if (QAction* a = actions_.value("RunCommandScript")) a->trigger();  // review, save or replay the macro
@@ -4698,6 +4773,7 @@ void MainWindow::buildMenus() {
         lay->addWidget(box);
         dlg.exec();
     });
+    tools->addSeparator();
     addCommand(tools, "IesBrowser", "IES Profile Browser...", QKeySequence(), [this] {
         auto* d = new IesBrowserDialog(&ctx_, this);
         d->setAttribute(Qt::WA_DeleteOnClose);
@@ -4725,6 +4801,7 @@ void MainWindow::buildMenus() {
         box.setDetailedText(unused.join("\n"));
         box.exec();
     });
+    tools->addSeparator();
     addCommand(tools, "GenerateSpawns", "Generate Spawns...", QKeySequence(), [this] {
         // 6.18: a starting spawn set over the walkable floors (FFA / TDM / DOM spawns and team starts).
         bool ok = false;
@@ -4737,7 +4814,7 @@ void MainWindow::buildMenus() {
         ctx_.setStatus(n > 0 ? QString("Generated %1 spawn entities (one undo step)%2").arg(n).arg(msg.isEmpty() ? QString() : "; " + msg)
                              : "Generate Spawns: " + msg);
     });
-    addCommand(tools, "SelectLinked", "Select Linked (target / targetname chain)", QKeySequence("Ctrl+Shift+L"), [this] {
+    addCommand(edit, "SelectLinked", "Select Linked (whole target chain)", QKeySequence("Ctrl+Shift+L"), [this] {
         // Everything connected to the selection through target, target2..8 and script_linkto (6.25).
         const LinkGraph g = buildLinkGraph(ctx_.doc.map());
         std::set<Id> ents;
@@ -4760,6 +4837,14 @@ void MainWindow::buildMenus() {
         ctx_.documentEdited(added ? QString("Selected %1 linked entit%2").arg(added).arg(added == 1 ? "y" : "ies")
                                   : QString("Nothing is linked to the selection"));
     });
+    // Select Linked sits right after Select Connected in Edit (it is made here, after Edit's other entries).
+    if (QAction *linked = action("SelectLinked"), *conn = action("SelectConnected"); linked && conn) {
+        const QList<QAction*> acts = edit->actions();
+        if (const int i = int(acts.indexOf(conn)); i >= 0 && i + 1 < acts.size() && acts[i + 1] != linked) {
+            edit->removeAction(linked);
+            edit->insertAction(acts[i + 1], linked);
+        }
+    }
     addCommand(tools, "GameModes", "&Game Modes (Warzone and mode presets)...", QKeySequence(), [this] { showGameModes(); });
     addCommand(tools, "CheckMap", "&Check Map...", QKeySequence(), [this] {
         auto* d = new CheckMapDialog(&ctx_, this);
@@ -5038,20 +5123,22 @@ void MainWindow::openPath(const QString& path) {
     // it from Recent.
     if (!path.isEmpty() && !path.startsWith("stock:") && !QFileInfo::exists(path)) {
         QStringList recent = Settings::instance().recentFiles();
-        if (recent.removeAll(path) > 0) {
+        const bool wasRecent = recent.removeAll(path) > 0;
+        if (wasRecent) {
             Settings::instance().setValue("recentFiles", recent);
             rebuildRecentMenu();
         }
-        QMessageBox::warning(this, "Open", path + "\n\nThis file no longer exists (moved or deleted). It was removed from File > Recent.");
+        QMessageBox::warning(this, "Open", path + "\n\nThis file does not exist (moved or deleted)." +
+                                               (wasRecent ? QString(" It was removed from File > Recent.") : QString()));
         return;
     }
     if (!confirmDiscard()) return;
     loadDocument(path);
 }
 
-void MainWindow::loadDocument(const QString& path) {
-    std::string err;
-    const std::string p = path.toStdString();
+void MainWindow::resetForNewDocument() {
+    // What belongs to the document that was open: the scene caches, the stock map's state, selection sets (their ids
+    // are the old document's) and the stock effects the camera plays.
     ctx_.scene.clear();
     stockZone_.clear();  // openStockZone sets it again after loading its dump
     stockSpawnsEditable_ = false;
@@ -5059,8 +5146,15 @@ void MainWindow::loadDocument(const QString& path) {
     stockLootEditable_ = false;
     stockModelNames_.clear();
     stockPlaced_.clear();
-    selectionSets_.clear();  // ids belong to the previous document
+    selectionSets_.clear();
     if (selectionSetsMenu_) selectionSetsMenu_->clear();
+    if (camera_) camera_->setStockEffects({});
+}
+
+void MainWindow::loadDocument(const QString& path) {
+    std::string err;
+    const std::string p = path.toStdString();
+    // The open map and its state are reset only after the new one has loaded: a file that fails leaves them as they were.
     if (path.endsWith(".json", Qt::CaseInsensitive)) {
         // IW8 stock MapEnts from an ACTS mw19-asset-json dump (Replay 1.20 profile only).
         std::string strings;
@@ -5074,6 +5168,7 @@ void MainWindow::loadDocument(const QString& path) {
             QMessageBox::critical(this, "Open IW8 MapEnts", qs(err));
             return;
         }
+        resetForNewDocument();
         ctx_.scene.spawns = std::move(dump.spawns);
         stockModelNames_ = entityModelNames(ctx_.doc.map());
         {
@@ -5124,9 +5219,10 @@ void MainWindow::loadDocument(const QString& path) {
                            .arg(stockLoot_.points.empty() ? QString() : QString(", %1 loot points (File > Edit Loot Points)").arg(stockLoot_.points.size())));
     } else {
         if (!ctx_.doc.load(p, &err)) {
-            QMessageBox::critical(this, "Open", qs(err));
+            QMessageBox::critical(this, "Open", qs(err) + "\n\nThe map that was open stays open.");
             return;
         }
+        resetForNewDocument();
         displayName_ = QFileInfo(path).fileName();
         ctx_.setStatus("Opened " + path);
     }
@@ -5182,14 +5278,26 @@ void MainWindow::toolPathsDialog() {
     dlg.setWindowTitle("Tool Paths");
     auto* form = new QFormLayout(&dlg);
     QMap<QString, QLineEdit*> edits;
-    const QList<QPair<QString, QString>> rows = {{"acts", "ACTS (acts.exe)"}, {"replay", "Replay 1.20 game_dx12_ship_replay.exe"}, {"oodle", "Oodle (oo2core_7_win64.dll)"}, {"zonetool", "x64-zt (zonetool.exe)"}, {"gsc_tool", "gsc-tool (compiles the map script; empty = none)"}, {"x64zt_output", "x64-zt output folder (empty = app data)"},
+    const QList<QPair<QString, QString>> rows = {{"acts", "ACTS (acts.exe)"}, {"replay", "Replay 1.20 game_dx12_ship_replay.exe"}, {"oodle", "Oodle (oo2core_7_win64.dll)"}, {"zonetool", "x64-zt (zonetool.exe)"}, {"gsc_tool", "gsc-tool (compiles the map script; empty = the default location)"}, {"x64zt_output", "x64-zt output folder (empty = app data)"},
                                                  {"launch", "Game exe for Launch Replay (empty = the Replay exe)"}};
     for (const auto& [key, label] : rows) {
         auto* row = new QHBoxLayout();
         auto* edit = new QLineEdit(toolPath(key), &dlg);
         edit->setMinimumWidth(480);
-        auto* browse = new QPushButton("...", &dlg);
+        auto* browse = new QPushButton("Browse...", &dlg);
+        browse->setToolTip("Locate it on disk");
         const bool folder = key.endsWith("_output");
+        // Found / missing, as the field changes (a typo used to show up only in a build).
+        auto* state = new QLabel(&dlg);
+        state->setMinimumWidth(70);
+        const auto check = [state, edit, folder] {
+            const QString t = edit->text().trimmed();
+            const bool ok = t.isEmpty() || (folder ? QFileInfo(t).isDir() : QFileInfo(t).isFile());
+            state->setText(t.isEmpty() ? QString("default") : ok ? QString("found") : QString("not found"));
+            state->setStyleSheet(t.isEmpty() ? "color: gray" : ok ? "color: #6c6" : "color: #e66");
+        };
+        check();
+        connect(edit, &QLineEdit::textChanged, &dlg, check);
         connect(browse, &QPushButton::clicked, &dlg, [edit, &dlg, folder] {
             const QString f = folder ? QFileDialog::getExistingDirectory(&dlg, "Locate", edit->text())
                                      : QFileDialog::getOpenFileName(&dlg, "Locate", edit->text());
@@ -5197,6 +5305,7 @@ void MainWindow::toolPathsDialog() {
         });
         row->addWidget(edit, 1);
         row->addWidget(browse);
+        row->addWidget(state);
         form->addRow(label, row);
         edits.insert(key, edit);
     }
@@ -5209,7 +5318,12 @@ void MainWindow::toolPathsDialog() {
 }
 
 void MainWindow::showFirstRunSetup(bool onlyIfReplayMissing) {
-    if (onlyIfReplayMissing && QFileInfo::exists(toolPath("replay"))) return;
+    if (onlyIfReplayMissing && QFileInfo::exists(toolPath("replay"))) {
+        // The game is found; ACTS is the other tool most features need (stock maps, stock assets, validation).
+        if (!QFileInfo::exists(toolPath("acts")))
+            ctx_.setStatus("ACTS (acts.exe) is not set: stock maps, stock assets and build validation need it (Tools > Tool Paths)");
+        return;
+    }
     if (runFirstRunSetup(this, [this](const QString& k) { return toolPath(k); }))
         ctx_.setStatus("Tool paths saved (First-Run Setup)");
 }
@@ -5837,6 +5951,8 @@ void MainWindow::relightStockMapDialog() {
     dlg.setWindowTitle("Relight Stock Map (Fog / Vision)");
     auto* form = new QFormLayout(&dlg);
     auto* zone = new QLineEdit(stockZone().isEmpty() ? QString("mp_shipment") : stockZone(), &dlg);
+    // A zone name only (a typo or a path used to fail minutes into the rebuild).
+    zone->setValidator(new QRegularExpressionValidator(QRegularExpression("[a-z0-9_]+"), zone));
     auto* start = new QDoubleSpinBox(&dlg);
     start->setRange(0, 100000), start->setValue(600);
     auto* density = new QDoubleSpinBox(&dlg);
@@ -5860,6 +5976,7 @@ void MainWindow::relightStockMapDialog() {
     form->addRow(pick);
     auto* box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     box->button(QDialogButtonBox::Ok)->setText("Rebuild Zone");
+    connect(zone, &QLineEdit::textChanged, box, [box, zone] { box->button(QDialogButtonBox::Ok)->setEnabled(!zone->text().isEmpty()); });
     connect(box, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     form->addRow(box);
@@ -7797,13 +7914,20 @@ bool MainWindow::saveTo(const QString& path, QString* err) {
         if (err) *err = qs(e);
         return false;
     }
+    Settings::instance().setValue("lastDir", QFileInfo(path).absolutePath());  // the next Save As / Open starts here
     displayName_ = QFileInfo(path).fileName();
     ctx_.documentEdited("Saved " + path);
     return true;
 }
 
 bool MainWindow::saveAsDialog(bool copyOnly) {
-    const QString start = ctx_.doc.path().empty() ? Settings::instance().value("lastDir").toString() : qs(ctx_.doc.path());
+    // An untitled map: untitled.map in the last folder used (Open, Save As), so Enter saves it straight away.
+    QString start = qs(ctx_.doc.path());
+    if (start.isEmpty()) {
+        const QString dir = Settings::instance().value("lastDir").toString();
+        start = (dir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) : dir) + "/" +
+                (displayName_.endsWith(".map") ? displayName_ : QString("untitled.map"));
+    }
     QString filter;
     QString path = QFileDialog::getSaveFileName(this, copyOnly ? "Save a Copy" : "Save As", start,
                                                 "Map source (*.map);;IW8 entity string (*.ents);;All files (*)", &filter);
@@ -7832,17 +7956,35 @@ bool MainWindow::saveAsDialog(bool copyOnly) {
 void MainWindow::rebuildRecentMenu() {
     if (!recentMenu_) return;
     recentMenu_->clear();
+    recentMenu_->setToolTipsVisible(true);
     const QStringList recent = Settings::instance().recentFiles();
     recentMenu_->setEnabled(!recent.isEmpty());
+    // Numbered file names with their folder (shortened in the middle); the full path is the tooltip.
+    int n = 0;
     for (const QString& r : recent) {
-        QAction* a = recentMenu_->addAction(r);
+        const QFileInfo fi(r);
+        const QString folder = recentMenu_->fontMetrics().elidedText(QDir::toNativeSeparators(fi.absolutePath()), Qt::ElideMiddle, 360);
+        QString name = fi.fileName();
+        name.replace('&', "&&");
+        QAction* a = recentMenu_->addAction(QString("%1%2   %3").arg(++n <= 9 ? QString("&%1  ").arg(n) : QString("    "), name, folder));
+        a->setToolTip(QDir::toNativeSeparators(r));
         connect(a, &QAction::triggered, this, [this, r] { openPath(r); });
+    }
+    if (!recent.isEmpty()) {
+        recentMenu_->addSeparator();
+        recentMenu_->addAction("Clear Recent", this, [this] {
+            Settings::instance().setValue("recentFiles", QStringList());
+            rebuildRecentMenu();
+        });
     }
 }
 
 void MainWindow::updateTitle() {
-    setWindowTitle(QString("IW8 Radiant Suite - %1%2  [MW2019 Replay 1.20.4.7623265]%3")
-                       .arg(displayName_, ctx_.doc.modified() ? " *" : "", qEnvironmentVariableIsSet("IW8R_SAFE_MODE") ? "  (Safe Mode)" : ""));
+    // A new map that was never saved says so (it has no file yet, even when nothing was edited).
+    const bool neverSaved = ctx_.doc.path().empty() && displayName_ == "untitled.map";
+    setWindowTitle(QString("IW8 Radiant Suite - %1%2%3  [MW2019 Replay 1.20.4.7623265]%4")
+                       .arg(displayName_, neverSaved ? " (not saved yet)" : "", ctx_.doc.modified() ? " *" : "",
+                            qEnvironmentVariableIsSet("IW8R_SAFE_MODE") ? "  (Safe Mode)" : ""));
 }
 
 void MainWindow::updateStatus() {
@@ -7890,7 +8032,14 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* e) {
 
 void MainWindow::dropEvent(QDropEvent* e) {
     const auto urls = e->mimeData()->urls();
-    if (!urls.isEmpty() && urls.front().isLocalFile()) openPath(urls.front().toLocalFile());
+    if (urls.isEmpty() || !urls.front().isLocalFile()) return;
+    // Only what Open takes (a map, an entity string, an ACTS MapEnts dump); one file at a time.
+    const QString f = urls.front().toLocalFile();
+    const QString suffix = QFileInfo(f).suffix().toLower();
+    if (suffix != "map" && suffix != "ents" && suffix != "json")
+        return ctx_.setStatus(QFileInfo(f).fileName() + " is not a map (.map, .ents or an ACTS MapEnts .json); nothing was opened");
+    if (urls.size() > 1) ctx_.setStatus(QString("Opening %1 (one map at a time: the other %2 dropped file(s) were left)").arg(QFileInfo(f).fileName()).arg(urls.size() - 1));
+    openPath(f);
 }
 
 
@@ -10188,7 +10337,7 @@ void MainWindow::showPreferences() {
     auto* models = list(cur.modelRoots, "Folders with your own models (OBJ, glTF), shown in the Models panel.");
     auto* prefabs = list(cur.prefabRoots, "Folders with prefabs (.map files), shown in the Prefabs panel next to <map folder>/prefabs. "
                                           "Double-click a prefab there to place it.");
-    speed->setToolTip("How fast the camera flies with W A S D (the mouse wheel changes it while flying)");
+    speed->setToolTip("How fast the camera flies with W A S D while the right mouse button is held (the mouse wheel moves the camera forward by a quarter of it)");
     autosave->setToolTip("A copy of the map is saved this often into the autosave folder (File > Autosave History); 0 = off");
     texLock->setToolTip("Textures stay fixed to brushes when they are moved or rotated");
     scale->setToolTip("OBJ / glTF files are often in metres or centimetres: this scales them to map units");

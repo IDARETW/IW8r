@@ -23,6 +23,20 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
   graph fits with F and shows tooltips; Surface buttons are off with nothing to act on; Layers buttons are off without a
   picked layer; hidden layers reset for another map; the spawns list follows edits and arrow keys.
 - **Preferences** in sections (Editing, Assets, Build, Play in game), with tooltips on the folder fields.
+- **Menus regrouped**: File > Stock Map holds everything for an open stock map (relight, compiled spawns, loot and
+  placed objects, streamed world, rebuild, install / restore, first-person look, stock props); File > Export and
+  File > Prefabs hold theirs; Recent sits under Open, numbered, with the folder beside each name, the full path as the
+  tooltip and Clear Recent; Tools, View and Compile have separators between their groups; Select Linked is in Edit
+  beside Select Connected. Clearer names: Split Patch, Cap Patch, Revert Last Deploy, Gizmo: Show in Camera View.
+- **Files and first start**: New Map forgets the stock map that was open (its zone, placed objects, loot, spawns,
+  selection sets); a file that fails to open leaves the open map as it was; a dropped file that is not a map says so;
+  Recent keeps one entry per file; Save on a new map suggests untitled.map in the last folder used, and the title says
+  "(not saved yet)"; start-up says when ACTS is not set, and First-Run Setup asks before saving without it; Tool Paths
+  shows found / not found beside every path and has Browse... buttons; the stock rebuild prompts take only zone names
+  (and offer the stock map list). Game Lighting is on at start-up when it was on at closing. Workspaces 1-9 are
+  commands (Alt+Shift+number, rebindable). Tools > Hotkeys asks before giving a key that another command has. CSG
+  Hollow / Subtract / Cylinder say what to select. An asset dropped onto open air in the camera lands 256 units in
+  front of it.
 - **Overlapping objects**: clicking the same spot again in the camera selects the next object behind, round robin;
   the status bar says which of how many. Shift+Alt+click steps from the current selection.
 - **Edit > Select All** (Ctrl+A); Select All and Invert Selection leave hidden and filtered objects alone.

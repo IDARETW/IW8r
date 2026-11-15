@@ -282,12 +282,14 @@ public:
     GizmoAxis gizmoAxisOnScreen(int axis) const;
     // R toggles move / rotate. Rotate rings: the screen point of `degrees` on the ring around `axis`.
     void toggleGizmoMode() {
+        clearGizmoHover();  // the hovered handle belongs to the other mode
         gizmoRotate_ = !gizmoRotate_;
         gizmoScale_ = false;
         update();
     }
     // Scale gizmo (T): drag an axis handle; brushes scale along it, models scale uniformly (modelscale).
     void toggleGizmoScale() {
+        clearGizmoHover();
         gizmoScale_ = !gizmoScale_;
         if (gizmoScale_) gizmoRotate_ = false;
         update();
@@ -296,6 +298,8 @@ public:
     double scaleDragFactor() const { return scaleFactor_; }
     bool gizmoRotateMode() const { return gizmoRotate_; }
     std::optional<QPointF> gizmoRingPoint(int axis, double degrees) const;
+    // The handle or ring under the cursor while no button is held (drawn highlighted, move / rotate cursor); -1 none.
+    int gizmoHoverAxis() const { return hoverAxis_; }
 
     // Play preview: walk the map as the player with collision (P enters, Esc leaves). Collision is built from the
     // document when play starts (and rebuilt when the document changes). tickPlay is driven by the main tick.
@@ -605,6 +609,7 @@ protected:
     bool event(QEvent* e) override;
     void keyReleaseEvent(QKeyEvent*) override;
     void focusOutEvent(QFocusEvent*) override;
+    void leaveEvent(QEvent*) override;
 
     void dragEnterEvent(QDragEnterEvent*) override;
     void dragMoveEvent(QDragMoveEvent*) override;
@@ -743,8 +748,16 @@ private:
     uint64_t worldRevision_ = 0;
     int textureFor(const std::string& material);
     Vec3 gizmoPivot() const;
+    Vec3 ringCentre() const;  // where the rotate rings are drawn, and the pivot a ring drag turns about
     double gizmoLength() const;
     double axisParamForMouse(const QPointF& p, int axis) const;  // closest point on the drag axis to the mouse ray
+    int gizmoHandleAt(const QPointF& p) const;  // move / scale handle within 8 px of `p`, -1 none
+    int gizmoRingAt(const QPointF& p) const;    // rotate ring within 8 px of `p`, -1 none
+    void updateGizmoHover(const QPointF& p, Qt::KeyboardModifiers mods);
+    void clearGizmoHover();
+    int hoverAxis_ = -1;
+    double gizmoSnapFrom_ = 0;  // world-axis moves snap this coordinate (primitive bounds minimum, else origin) to the grid
+    double gizmoMoveBy_ = 0;    // the current move along the handle, for the release line
     void addGizmoLines();
     int gizmoDragAxis_ = -1;
     bool gizmoRotate_ = false;

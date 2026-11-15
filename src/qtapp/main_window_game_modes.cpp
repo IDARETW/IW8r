@@ -32,7 +32,22 @@ namespace iw8r::qt {
 
 namespace {
 QString qs(const std::string& s) { return QString::fromStdString(s); }
-QString userModesDir() { return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/game_modes"; }
+// IW8R_GAME_MODES_DIR puts the user's presets elsewhere: the GUI test saves and deletes in a temporary folder, never
+// in the owner's own list.
+QString userModesDir() {
+    const QString over = qEnvironmentVariable("IW8R_GAME_MODES_DIR");
+    return !over.isEmpty() ? over : QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/game_modes";
+}
+// A question whose button names what it does. Cancel is the default, so Enter does not delete or overwrite.
+bool askFirst(QWidget* parent, const QString& text, const QString& action, QMessageBox::ButtonRole role) {
+    QMessageBox box(QMessageBox::Question, "Game Modes", text, QMessageBox::Cancel, parent);
+    box.setObjectName("gameModesConfirm");
+    QPushButton* go = box.addButton(action, role);
+    box.setDefaultButton(QMessageBox::Cancel);
+    box.setEscapeButton(QMessageBox::Cancel);
+    box.exec();
+    return box.clickedButton() == go;
+}
 }  // namespace
 
 bool MainWindow::bakeGameMode(const GameModePreset& preset) {
@@ -231,7 +246,9 @@ void MainWindow::showGameModes() {
     newType->setToolTip("A game type of your own under a new name, carried in the map (research 91 / 92): writes a "
                         "template beside the map and points worldspawn iw8r_gametype_script at it");
     auto* save = new QPushButton("Save as my preset", &dlg);
+    save->setObjectName("gameModeSave");
     auto* del = new QPushButton("Delete my preset", &dlg);
+    del->setObjectName("gameModeDelete");
     for (QPushButton* b : {useF5, bake, start, newType, save, del}) buttons->addWidget(b);
     auto* close = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
     side->addWidget(close);
@@ -325,6 +342,19 @@ void MainWindow::showGameModes() {
         if (!fromFields(p, &err)) return void(QMessageBox::warning(this, "Game Modes", err));
         QDir().mkpath(userModesDir());
         QFile f(userModesDir() + "/" + qs(p.id) + ".iw8mode.json");
+        // The file name is the id: saving under the id of a saved preset overwrites it, and a built-in id hides the
+        // built-in preset in the list. Both are asked first.
+        if (f.exists()) {
+            if (!askFirst(this, QString("Replace the preset %1?\n\nYour saved preset of that id is overwritten:\n%2")
+                                    .arg(qs(p.id), QDir::toNativeSeparators(f.fileName())),
+                          "Replace", QMessageBox::AcceptRole))
+                return;
+        } else if (findGameMode(builtinGameModes(), p.id)) {
+            if (!askFirst(this, QString("Save your own %1?\n\nIt takes the place of the built-in preset %1 in the list; Delete my preset "
+                                        "brings the built-in one back.").arg(qs(p.id)),
+                          "Save", QMessageBox::AcceptRole))
+                return;
+        }
         const std::string json = gameModePresetJson(p);
         if (!f.open(QIODevice::WriteOnly) || f.write(json.data(), qint64(json.size())) != qint64(json.size()))
             return void(QMessageBox::warning(this, "Game Modes", "Cannot write " + f.fileName()));
@@ -334,8 +364,17 @@ void MainWindow::showGameModes() {
     });
     connect(del, &QPushButton::clicked, &dlg, [=, this] {
         const QString id = idEdit->text().trimmed();
-        if (id.isEmpty() || !QFile::remove(userModesDir() + "/" + id + ".iw8mode.json"))
+        const QString file = userModesDir() + "/" + id + ".iw8mode.json";
+        if (id.isEmpty() || !QFileInfo::exists(file))
             return void(QMessageBox::information(this, "Game Modes", "Only your own presets can be deleted."));
+        // The file is removed for good (no undo), so ask; Cancel is the default.
+        const bool builtin = findGameMode(builtinGameModes(), id.toStdString()) != nullptr;
+        if (!askFirst(this, QString("Delete your preset %1?\n\nIts file is removed (this cannot be undone):\n%2%3")
+                                .arg(id, QDir::toNativeSeparators(file), builtin ? "\n\nThe built-in preset " + id + " comes back." : QString()),
+                      "Delete", QMessageBox::DestructiveRole))
+            return;
+        if (!QFile::remove(file)) return void(QMessageBox::warning(this, "Game Modes", "Cannot delete " + QDir::toNativeSeparators(file)));
+        ctx_.setStatus("Game mode preset deleted: " + id);
         reload(QString());
     });
     reload(DevmapRunner::modePresetSetting());

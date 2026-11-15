@@ -2,6 +2,8 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFileInfo>
+#include <algorithm>
 #include <QSettings>
 
 namespace iw8r::qt {
@@ -38,9 +40,12 @@ QStringList Settings::recentFiles() const { return volatile_ ? QStringList() : s
 
 void Settings::addRecentFile(const QString& path) {
     if (volatile_) return;
+    // One entry per file: an absolute path in one spelling (E:/a/b.map and e:/A/B.map are one file on Windows).
+    const auto norm = [](const QString& p) { return p.startsWith("stock:") ? p : QDir::cleanPath(QFileInfo(p).absoluteFilePath()); };
+    const QString n = norm(path);
     QStringList r = recentFiles();
-    r.removeAll(path);
-    r.prepend(path);
+    r.erase(std::remove_if(r.begin(), r.end(), [&](const QString& o) { return norm(o).compare(n, Qt::CaseInsensitive) == 0; }), r.end());
+    r.prepend(n);
     while (r.size() > 10) r.removeLast();
     s_->setValue("recentFiles", r);
 }

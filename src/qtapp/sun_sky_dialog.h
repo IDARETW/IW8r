@@ -9,6 +9,7 @@
 
 class QComboBox;
 class QDoubleSpinBox;
+class QLabel;
 class QPushButton;
 
 namespace iw8r::qt {
@@ -37,6 +38,7 @@ private:
     QPushButton* colorButton_ = nullptr;
     Vec3 color_;
     QComboBox* sky_ = nullptr;
+    QLabel* skyWarning_ = nullptr;  // shown while the sky is not in the stock list
     void updateColorButton();
 };
 

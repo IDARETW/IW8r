@@ -2,6 +2,21 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-15 afternoon, parked for the owner's PC restart. Second quirk review: four Haiku audits (menus / shortcuts,
+  3D camera, feature dialogs, first start / file flow). Mine, done: tools/patches/file_flow2.py (New Map resets stock
+  state via resetForNewDocument, failed open keeps the map, Recent normalised + numbered + Clear, untitled save name,
+  "(not saved yet)", ACTS start-up note, wizard asks without ACTS, Tool Paths found / not found + Browse..., zone-name
+  validation in Relight / Rebuild prompts), menu_regroup.py (File > Stock Map / Export / Prefabs submenus, Recent under
+  Open, separators in Tools / View / Compile, Select Linked in Edit after Select Connected, Split Patch / Cap Patch /
+  Revert Last Deploy / Gizmo: Show in Camera View, Workspace1-9 commands, CSG empty-selection messages, Game Lighting
+  restored at start-up, Hotkeys conflict question), drop onto open air = 256 units ahead, menu_paths_docs.py (user
+  docs use the new File submenu paths). Two Opus helpers (3D camera quirks in camera_view.*; dialog quirks in
+  main_window_game_modes / atmosphere_dialog / sun_sky_dialog / find_dialog / compile_panel Map Info /
+  main_window_stock_edit wording) were asked to wrap up at parking time; whatever they did not finish is listed in the
+  commit message. Still to do after the restart: run menu_paths_docs.py over src/qtapp/*.cpp messages (and the GUI
+  tests that check those messages), the dialog helper's LUT start-folder wiring if it reported one, full suite,
+  installer.
+
 - 2026-11-15 midday, UI work (owner: "making the UI more streamlined, taking care of any and all edge cases ... the
   bottom set of editor tabs in a small side-bar in a side section"; then "run a series of haiku agents to find any
   little quirks", e.g. round-robin selection of overlapping objects). Side bar = a QToolBar in LeftToolBarArea plus an
