@@ -20,6 +20,10 @@ Mark each line OK / wrong (with a screenshot) and send it back.
     where the time went. Send me those lines if you see any.
   - The side panels (Materials, Models, Prefabs, Effects, Sounds, Images, IW8 Spawns, Undo History) fit a narrow
     column: options wrap, previews sit under the lists, no sideways scrolling.
+  - Walk (Play Preview, P) on Hideout: it no longer crashes.
+  - Stock map edits without a rebuild (open Hideout): File > Stock Map > Relight Stock Map Sky / Sun, a retexture pair
+    in worldspawn iw8r_stock_retexture, an iw8r_remove_world box around a wall: each shows in the viewport within a
+    second (the sky once it is fetched); the removal box is an outline. Rebuild Stock Zone is only for the game.
   - Shipment / Hideout, View > Effect Preview on, Game Lighting on: the sun flare on Shipment (hidden behind walls),
     the tandoor heat haze on Hideout, lit smoke (darker in shade). The flare layout is inferred (research 139).
 - [ ] New on 2026-11-14 night / 11-15 (editor only, all proven offline; for your own look, View > Game Lighting on):

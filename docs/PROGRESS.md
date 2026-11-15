@@ -2,6 +2,24 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-15 late evening (owner: "make the rendering thread for the viewport, and get the effect preview branch
+  integrated, and finalize the radiant tool"; then "the stock map edits should all be viewable in the viewport after
+  making the changes"; then a crash "when i clicked to walk in the viewport"). Done and pushed:
+  - Effect preview branch merged (d2d0e2e; flares, heat haze, per-particle light, research 139; worktree C:\iw8r-fx and
+    branch effect-preview can be removed).
+  - Camera geometry: arriving textures remake only the items that use them (112db4f).
+  - Viewport render thread (a034f6e): camera_view_render_thread.cpp, gpu_lock.h (one recursive timed mutex for every
+    view; renderer_ is Guarded, each renderer_-> call locks), D3D11 context multithread-protected, Present outside the
+    lock under swapMx_. render() prepares; captures / renderNow / profiled bench / windowless draw in place;
+    IW8R_RENDER_THREAD=0 = old path. GUI-thread heartbeat (20 ms): while it stops and the right button is held, the
+    render thread flies the camera (polled input) and the GUI thread takes it over. Smoke test checks it
+    (render_thread_frames / takeover_frames / takeover_moved).
+  - Walk crash fixed (9529269): convex_hull splitConcave recursed forever on a thin diagonal triangle (stack overflow);
+    crash reports now unbuffered with a raw stack and a 128 KB stack guarantee. IW8R_TEST_WALK_AFTER=<s> test hook.
+  - Stock edits live in the viewport (b94072e): MainWindow::stockWorldEdits / applyStockWorldEdits /
+    refreshStockWorldPreview / applyStockSunPreview (main_window_stock_edit.cpp); removal / loot helper brushes drawn as
+    volumes; bench IW8R_BENCH_STOCK_EDIT. Not covered: the flat (untextured) reference and picking still show removed
+    geometry; Game Lighting keeps the stock lightmap's baked shadow of removed geometry until the rebuild re-bakes it.
 - 2026-11-15 evening, threading (owner: "the viewport rendering being on one thread so its never frozen, and other
   workloads on others") and narrow side panels (owner: menus "need way too much horizontal space"; one Haiku agent per
   panel, 6eb38b5). Measured first: stall_watch.h (Tools > Report Freezes to the Console, or IW8R_STALL_WATCH=<ms>,
