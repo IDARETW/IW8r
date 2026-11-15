@@ -76,10 +76,8 @@ all 13 of A028's (terrain, `XModel` 688, `XSurface` 192, `XModelSurfs` 96, `StMe
 | `VehicleDef` | `type` unsigned __int64 -> unsigned __int8 + `_pad9[7]`; `ssAnimTree` u8[8] -> scr_string_t + pad 4; `trophyTags` u8[20] -> scr_string_t[4] + pad 4 (no moves, size 3848) | `BG_VehicleSlideMove` 0x141133E93 `cmp byte ptr [rax+8], 4` (x5 byte accesses; game-test `VehicleType` is 1 byte); `Load_VehicleDef` `add rax, 898h` (scr_string_t) and `add rax, 0CCCh` (`Load_scr_string_tArray(1, 4)`, next member loaded at +3296) (A034). `VehiclePhysicsDef` 1280 and all 146 of its game-test names match (A034) |
 | `cg_t` | A039 filled `patternCacheList` (`WeaponOffsetPatternCache[12]`, 10992 bytes) at +0x827E0 | `cg_t::cg_t` builds 12 caches from +534512 (A039) |
 
-Pending (after A036/A037 finish): `cg_t` size 620640 -> 599712 (0x926A0). A039: `CgGlobalsMP_ctor` writes its omnvar
-indexes at +599732 (= cg_t + 0x14, as in game-test) and `CG_AllocLocalClientGlobals` steps 677040 per `CgGlobalsMP`;
-the type's tail from ~599696 (e.g. `m_compassCarrierValue`) belongs to `CgGlobalsMP`. `CgGlobalsMP` itself is 747296 in
-the type but 677040 in Replay (A076 in wave 8).
+| `cg_t` | CORRECTION of the wave 2 ripple: members after `viewModelPoseLeftHand` restored to their earlier offsets (`firstPersonLegsPose` +8, everything after +16; pads absorb the 8 bytes each smaller `cpose_t` frees), size kept at 599712 | `cg_t::cg_t` 0x1416C1C29 `mov [rbx+92688h], r13` = `m_mlgSpectatorPtr` at +599688 (A036 measured `m_weaponHand` at +599608; A039 measured the `patternCacheList` construction at +534512; both land now). Lesson: letting parents move with a shrunk child was wrong here, so the same move in `CgPredictedEntity` and `MayhemObj` (wave 2) is suspect |
+| `cg_t` | size 620640 -> 599712 (0x926A0): cut the tail; dropped `m_compassFriendlyFlag` (+0x926A2), `m_compassCarrierValue` (+0x926C4), `m_compassSharedPtr` (+0x97858) and two pads, which are `CgGlobalsMP` members in Replay | A039: `CgGlobalsMP_ctor` writes its omnvar indexes at +599732 = cg_t + 0x14 (the game-test gap between `cg_t` and `m_omnvarIndexIsNightMap`); A037: `cg_t::cg_t` writes up to +599688; 599712 is 16-byte aligned. Nothing embeds `cg_t` by value. `CgGlobalsMP` is 747296 in the type but `CG_AllocLocalClientGlobals` steps 677040 (A076 in wave 8 has the dropped names) |
 
 ### Open questions (need more Replay evidence)
 
@@ -108,6 +106,11 @@ the type but 677040 in Replay (A076 in wave 8).
 - `GfxSunShadow` +19924..+20028: Replay has the cloud-shadow block at +19924 and lightDir at +19980 (type +20276 /
   +20332), conflicting with the typed `overlaySetup` (A026); needs a relayout. `GfxSunShadowPartition.farDist` is
   copied as an int. `GfxBackEndData` is probably 11801472 (`R_InitBackEndData` allocates 2 x 11801472; A058 has a note).
+- `CgPredictedEntity` (now 896) and `MayhemObj` (now 5048) moved with `cpose_t` in wave 2 without a Replay check; the
+  same move proved wrong for `cg_t`. Check their members after `pose` / `prePostPose` and restore if needed.
+- `DB_AssetEntryTable` (9314760) is too small: `DB_LinkXAssetEntry` writes a per-type head array at +9463304 (A035,
+  who also filled `m_hashTable` unsigned int[358400] at +0x6E0F08). `XAssetHeader` lacks the shader (enum 14..17) and
+  several other members (A035). `TransientInfo.transientInfoFlags` is read as one byte at +140 (A035).
 - `cpose_t`: what replaced `actualOrigin` in the 4 bytes at +0x1C (A015 found no access). `CEntActorInfo.roll` is a float
   in the type but compared as a byte (A015).
 

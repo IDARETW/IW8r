@@ -8363,7 +8363,7 @@
       "CgCompassSystem::DrawPlayerMap",
       "CG_EntityMP_AddPacketEntity"
      ],
-     "note": "Game-test: inherits cg_t (all 493 cg_t fields first). Work only on the MP fields after the base; propose 'cg_t baseclass_0' once cg_t's Replay size is settled."
+     "note": "Game-test: inherits cg_t. Coordinator (wave 4) set cg_t to its Replay size 599712, so model CgGlobalsMP as cg_t baseclass_0 (599712) + MP fields (first own field m_omnvarIndexIsNightMap at +599732, A039). Replay CgGlobalsMP size is 677040 (CG_AllocLocalClientGlobals stride, A039), not 747296. The coordinator dropped three compass members from cg_t that belong here: m_compassFriendlyFlag (was cg_t+0x926A2), m_compassCarrierValue (+0x926C4), m_compassSharedPtr (+0x97858, probably wrong). Propose the full layout."
     },
     {
      "name": "CgGlobalsSP",
