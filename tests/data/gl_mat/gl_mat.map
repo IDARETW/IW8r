@@ -1,0 +1,243 @@
+iwmap 4
+"000_Global" flags active
+"The Map" flags 
+// entity 0
+{
+"classname" "worldspawn"
+"editor_note" "unknown keys must survive"
+// brush 0
+{
+layer "000_Global/Floors"
+ ( 256 256 -16 ) ( -256 256 -16 ) ( -256 -256 -16 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 0 ) ( -256 256 0 ) ( 256 256 0 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 0 ) ( 256 -256 0 ) ( 256 -256 -16 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 256 0 ) ( -256 256 0 ) ( -256 256 -16 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -256 0 ) ( 256 256 0 ) ( 256 256 -16 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 256 0 ) ( -256 -256 0 ) ( -256 -256 -16 ) tm2co/me_curb_stone_01 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 1
+{
+ contents detail;
+ ( 256 -256 0 ) ( -256 -256 0 ) ( -256 -272 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -272 128 ) ( -256 -256 128 ) ( 256 -256 128 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -272 128 ) ( 256 -272 128 ) ( 256 -272 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -256 128 ) ( -256 -256 128 ) ( -256 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -272 128 ) ( 256 -256 128 ) ( 256 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 128 ) ( -256 -272 128 ) ( -256 -272 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 2
+{
+ ( 256 272 0 ) ( -256 272 0 ) ( -256 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 256 128 ) ( -256 272 128 ) ( 256 272 128 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 256 128 ) ( 256 256 128 ) ( 256 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 272 128 ) ( -256 272 128 ) ( -256 272 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 256 128 ) ( 256 272 128 ) ( 256 272 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 272 128 ) ( -256 256 128 ) ( -256 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 3
+{
+ ( -256 256 0 ) ( -272 256 0 ) ( -272 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -272 -256 128 ) ( -272 256 128 ) ( -256 256 128 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -272 -256 128 ) ( -256 -256 128 ) ( -256 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 256 128 ) ( -272 256 128 ) ( -272 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -256 -256 128 ) ( -256 256 128 ) ( -256 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -272 256 128 ) ( -272 -256 128 ) ( -272 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 4
+{
+ ( 272 256 0 ) ( 256 256 0 ) ( 256 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -256 128 ) ( 256 256 128 ) ( 272 256 128 ) tm2co/ee_trim_beam_airport_concrete 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 -256 128 ) ( 272 -256 128 ) ( 272 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 272 256 128 ) ( 256 256 128 ) ( 256 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 272 -256 128 ) ( 272 256 128 ) ( 272 256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 256 256 128 ) ( 256 -256 128 ) ( 256 -256 0 ) tm2co/me_plaster_barrier_fence_wall 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 6
+{
+ mesh
+ {
+  toolFlags splitGeo;
+  tm2co/ee_trim_beam_airport_concrete
+  lightmap_gray
+  2 2 16 8
+  (
+	v 64 128 0 t 0 0 0 0
+	v 64 128 64 t 0 -64 0 4
+  )
+  (
+	v 128 128 0 c 255 255 255 255 t 64 0 4 0
+	v 128 128 64 t 64 -64 4 4
+  )
+ }
+}
+// brush 100
+{
+ ( -184 104 8 ) ( -232 104 8 ) ( -232 96 8 ) custom__alpha 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -232 96 104 ) ( -232 104 104 ) ( -184 104 104 ) custom__alpha 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -232 96 104 ) ( -184 96 104 ) ( -184 96 8 ) custom__alpha 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -184 104 104 ) ( -232 104 104 ) ( -232 104 8 ) custom__alpha 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -184 96 104 ) ( -184 104 104 ) ( -184 104 8 ) custom__alpha 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -232 104 104 ) ( -232 96 104 ) ( -232 96 8 ) custom__alpha 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 101
+{
+ ( -126 104 8 ) ( -174 104 8 ) ( -174 96 8 ) custom__unlit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -174 96 104 ) ( -174 104 104 ) ( -126 104 104 ) custom__unlit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -174 96 104 ) ( -126 96 104 ) ( -126 96 8 ) custom__unlit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -126 104 104 ) ( -174 104 104 ) ( -174 104 8 ) custom__unlit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -126 96 104 ) ( -126 104 104 ) ( -126 104 8 ) custom__unlit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -174 104 104 ) ( -174 96 104 ) ( -174 96 8 ) custom__unlit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 102
+{
+ ( -68 104 8 ) ( -116 104 8 ) ( -116 96 8 ) custom__emit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -116 96 104 ) ( -116 104 104 ) ( -68 104 104 ) custom__emit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -116 96 104 ) ( -68 96 104 ) ( -68 96 8 ) custom__emit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -68 104 104 ) ( -116 104 104 ) ( -116 104 8 ) custom__emit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -68 96 104 ) ( -68 104 104 ) ( -68 104 8 ) custom__emit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -116 104 104 ) ( -116 96 104 ) ( -116 96 8 ) custom__emit 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 103
+{
+ ( -10 104 8 ) ( -58 104 8 ) ( -58 96 8 ) custom__add 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -58 96 104 ) ( -58 104 104 ) ( -10 104 104 ) custom__add 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -58 96 104 ) ( -10 96 104 ) ( -10 96 8 ) custom__add 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -10 104 104 ) ( -58 104 104 ) ( -58 104 8 ) custom__add 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -10 96 104 ) ( -10 104 104 ) ( -10 104 8 ) custom__add 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -58 104 104 ) ( -58 96 104 ) ( -58 96 8 ) custom__add 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 104
+{
+ ( 48 104 8 ) ( 0 104 8 ) ( 0 96 8 ) custom__mul 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 0 96 104 ) ( 0 104 104 ) ( 48 104 104 ) custom__mul 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 0 96 104 ) ( 48 96 104 ) ( 48 96 8 ) custom__mul 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 48 104 104 ) ( 0 104 104 ) ( 0 104 8 ) custom__mul 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 48 96 104 ) ( 48 104 104 ) ( 48 104 8 ) custom__mul 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 0 104 104 ) ( 0 96 104 ) ( 0 96 8 ) custom__mul 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 105
+{
+ ( 106 104 8 ) ( 58 104 8 ) ( 58 96 8 ) custom__blendopaque 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 58 96 104 ) ( 58 104 104 ) ( 106 104 104 ) custom__blendopaque 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 58 96 104 ) ( 106 96 104 ) ( 106 96 8 ) custom__blendopaque 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 106 104 104 ) ( 58 104 104 ) ( 58 104 8 ) custom__blendopaque 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 106 96 104 ) ( 106 104 104 ) ( 106 104 8 ) custom__blendopaque 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 58 104 104 ) ( 58 96 104 ) ( 58 96 8 ) custom__blendopaque 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 106
+{
+ ( 164 104 8 ) ( 116 104 8 ) ( 116 96 8 ) custom__glassclear 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 116 96 104 ) ( 116 104 104 ) ( 164 104 104 ) custom__glassclear 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 116 96 104 ) ( 164 96 104 ) ( 164 96 8 ) custom__glassclear 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 164 104 104 ) ( 116 104 104 ) ( 116 104 8 ) custom__glassclear 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 164 96 104 ) ( 164 104 104 ) ( 164 104 8 ) custom__glassclear 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 116 104 104 ) ( 116 96 104 ) ( 116 96 8 ) custom__glassclear 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 107
+{
+ ( 222 104 8 ) ( 174 104 8 ) ( 174 96 8 ) custom__blendhalf 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 174 96 104 ) ( 174 104 104 ) ( 222 104 104 ) custom__blendhalf 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 174 96 104 ) ( 222 96 104 ) ( 222 96 8 ) custom__blendhalf 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 222 104 104 ) ( 174 104 104 ) ( 174 104 8 ) custom__blendhalf 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 222 96 104 ) ( 222 104 104 ) ( 222 104 8 ) custom__blendhalf 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 174 104 104 ) ( 174 96 104 ) ( 174 96 8 ) custom__blendhalf 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 108
+{
+ ( 240 158 40 ) ( -240 158 40 ) ( -240 150 40 ) tm2co/ee_trim_beam_airport_concrete 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -240 150 72 ) ( -240 158 72 ) ( 240 158 72 ) tm2co/ee_trim_beam_airport_concrete 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -240 150 72 ) ( 240 150 72 ) ( 240 150 40 ) tm2co/ee_trim_beam_airport_concrete 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 240 158 72 ) ( -240 158 72 ) ( -240 158 40 ) tm2co/ee_trim_beam_airport_concrete 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 240 150 72 ) ( 240 158 72 ) ( 240 158 40 ) tm2co/ee_trim_beam_airport_concrete 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -240 158 72 ) ( -240 150 72 ) ( -240 150 40 ) tm2co/ee_trim_beam_airport_concrete 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+// brush 109
+{
+ mesh
+ {
+  custom__onesided
+  lightmap_gray
+  2 2 16 8
+  (
+	v -120 40 4 t 0 0 0 0
+	v -120 40 36 t 0 -64 0 4
+  )
+  (
+	v -72 40 4 t 64 0 4 0
+	v -72 40 36 t 64 -64 4 4
+  )
+ }
+}
+// brush 110
+{
+ mesh
+ {
+  custom__twosided
+  lightmap_gray
+  2 2 16 8
+  (
+	v -40 40 4 t 0 0 0 0
+	v -40 40 36 t 0 -64 0 4
+  )
+  (
+	v 8 40 4 t 64 0 4 0
+	v 8 40 36 t 64 -64 4 4
+  )
+ }
+}
+}
+// entity 1
+{
+"origin" "0 -192 16"
+"angles" "0 90 0"
+"classname" "info_player_start"
+}
+// entity 2
+{
+"origin" "0 0 256"
+"angles" "45 0 0"
+"classname" "mp_global_intermission"
+}
+// entity 3
+{
+"origin" "-192 -192 16"
+"angles" "0 45 0"
+"classname" "mp_tdm_spawn_allies_start"
+}
+// entity 4
+{
+"origin" "192 192 16"
+"angles" "0 225 0"
+"classname" "mp_tdm_spawn_axis_start"
+}
+// entity 5
+{
+"origin" "-192 192 16"
+"angles" "0 315 0"
+"classname" "mp_tdm_spawn"
+}
+// entity 6
+{
+"origin" "192 -192 16"
+"angles" "0 135 0"
+"classname" "mp_dm_spawn_start"
+}
+// entity 7
+{
+"origin" "160 -96 0"
+"angles" "0 180 0"
+"model" "automotive_truck_loading_ramp_short"
+"classname" "script_model"
+"targetname" "ramp"
+}
+// entity 8
+{
+"origin" "0 0 64"
+"classname" "reflection_probe"
+}
+// entity 9
+{
+"origin" "-128 0 32"
+"targetname" "room_center"
+"classname" "script_origin"
+}

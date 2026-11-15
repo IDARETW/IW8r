@@ -738,6 +738,7 @@ void ps_shadow_clip(PSIn i) {
 // The depth pre-pass: the shading pass's own cut-out threshold and the coarse terrain cut, so the depths match.
 void ps_prepass(PSIn i) {
     if (tileFillHidden(i.col, i.w)) discard;
+    if (batchFlags2.z < -0.5 && dot(i.n, i.n) > 1e-6 && dot(i.n, eyeStart.xyz - i.w) < 0.0) discard;  // G11, as ps_tex
     if (!rawSpecAlpha()) clip(tex0.Sample(samp0, i.uv).a - cutoutAt());
     if (gameTerrainCut.w > 0.5 && batchFlags2.z > 0.5 && i.col.a > 0.99 && i.col.a < 0.998 && distance(i.w.xy, gameTerrainCut.xy) < gameTerrainCut.z) discard;
 }
@@ -878,6 +879,8 @@ Texture2D revealTex : register(t12);
 // vs_tex_inst: a prop lit from its light grid box carries that light in t (no tangent) and lm = (-2, -2).
 bool propLit(PSIn i) { return i.lm.x < -1.5; }
 float4 ps_tex(PSIn i) : SV_TARGET {
+    // Research 132 G11: an own one-sided material is not drawn from behind (the build culls its back faces).
+    if (batchFlags2.z < -0.5 && dot(i.n, i.n) > 1e-6 && dot(i.n, eyeStart.xyz - i.w) < 0.0) discard;
     // UV animation (research 133 section 1, constant 63 in matX.yzw): turn about the texture centre, then scroll; every
     // texture of the material reads the animated UV. Stock reference batches only (the plain layer buffer is zero).
     if (batchFlags2.z > 0.5 && any(matX.yzw != 0)) {
@@ -4913,7 +4916,10 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             StreamGpu& g = *d.g;
             if (b.blend || b.texture < 0 || size_t(b.texture) >= textures_.size()) continue;
             if (cbBatch_) {  // the same vertex inputs as the shading pass (sway), so the depths match exactly
-                const float flags[8] = {0, b.blend == 0 && textureRawAlpha(b.texture) ? -2.0f : float(b.blend), b.sway ? 1.0f : 0.0f, b.baseZ, 0, 0, 0, 0};
+                // and the same hidden back faces of one-sided own materials (G11: flags[6] = -1).
+                const TextureMaterial* ptm = textureMaterial(b.texture);
+                const float flags[8] = {0, b.blend == 0 && textureRawAlpha(b.texture) ? -2.0f : float(b.blend), b.sway ? 1.0f : 0.0f, b.baseZ,
+                                        0, 0, ptm && ptm->cullBack ? -1.0f : 0.0f, 0};
                 writeBatchCb(flags);
             }
             ctx_->PSSetShaderResources(0, 1, &textures_[size_t(b.texture)]);
@@ -5071,8 +5077,9 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ID3D11ShaderResourceView* ssrv = hasSpec ? textures_[size_t(b.specTexture)] : nullptr;
             ctx_->PSSetShaderResources(29, 1, &ssrv);
             if (cbBatch_) {
+                // flags[6] (batchFlags2.z): -1 = an own one-sided material in Game Lighting (back faces hidden, G11).
                 const float flags[8] = {hasNormal ? 1.0f : 0.0f, b.blend == 0 && textureRawAlpha(b.texture) ? -2.0f : float(b.blend), b.sway ? 1.0f : 0.0f, b.baseZ,
-                                        hasEmissive ? 1.0f : 0.0f, probeSrv_ ? 1.0f : 0.0f, 0, hasSpec ? 1.0f : 0.0f};
+                                        hasEmissive ? 1.0f : 0.0f, probeSrv_ ? 1.0f : 0.0f, tm && tm->cullBack ? -1.0f : 0.0f, hasSpec ? 1.0f : 0.0f};
                 const float mat[4] = {tm && tm->unlit ? 1.0f : 0.0f, tm ? tm->emission : 0.0f, tm && tm->multiply && b.blend ? 1.0f : 0.0f,
                                       tm && tm->glass && b.blend == 1 ? 1.0f : 0.0f};
                 writeBatchCb(flags, mat);

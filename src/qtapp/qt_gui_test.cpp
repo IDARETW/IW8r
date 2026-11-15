@@ -6557,6 +6557,66 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         }
     }
 
+    r.section("own one-sided materials from behind in Game Lighting (research 132 G11)");
+    if (CameraView* cv = w.cameraView()) {
+        // The camera inside a closed box brush of custom__onesided (tests/data/gl_mat materials): every face of it is
+        // seen from behind, so Game Lighting hides the whole box (the build culls back faces of one-sided materials):
+        // the picture equals one with the box left out (caulk, never drawn in a capture) and differs from one where the
+        // box is two-sided.
+        const QString src = QDir(QCoreApplication::applicationDirPath() + "/../../tests/data/gl_mat").absolutePath();
+        const QString dir = QDir(outDir).filePath("gl_cull");
+        QDir(dir).removeRecursively();
+        QDir().mkpath(dir + "/materials");
+        for (const QFileInfo& f : QDir(src + "/materials").entryInfoList(QDir::Files)) QFile::copy(f.absoluteFilePath(), dir + "/materials/" + f.fileName());
+        const auto box = [](double x0, double y0, double z0, double x1, double y1, double z1, const char* m) {
+            const QString f = QString(" %1 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0\n").arg(m);
+            const auto p = [](double x, double y, double z) { return QString("( %1 %2 %3 )").arg(x).arg(y).arg(z); };
+            return "{\n " + p(x1, y1, z0) + " " + p(x0, y1, z0) + " " + p(x0, y0, z0) + f + " " + p(x0, y0, z1) + " " + p(x0, y1, z1) +
+                   " " + p(x1, y1, z1) + f + " " + p(x0, y0, z1) + " " + p(x1, y0, z1) + " " + p(x1, y0, z0) + f + " " + p(x1, y1, z1) +
+                   " " + p(x0, y1, z1) + " " + p(x0, y1, z0) + f + " " + p(x1, y0, z1) + " " + p(x1, y1, z1) + " " + p(x1, y1, z0) + f +
+                   " " + p(x0, y1, z1) + " " + p(x0, y0, z1) + " " + p(x0, y0, z0) + f + "}\n";
+        };
+        const QString text = "iwmap 4\n{\n\"classname\" \"worldspawn\"\n" + box(-512, -512, -16, 512, 512, 0, "custom__twosided") +
+                             box(-64, -64, 16, 64, 64, 144, "custom__onesided") + "}\n";
+        const auto variant = [&](const QString& name, const QString& material) {
+            QFile f(dir + "/" + name);
+            if (f.open(QIODevice::WriteOnly)) f.write(QString(text).replace("custom__onesided", material).toUtf8());
+            return dir + "/" + name;
+        };
+        const QString asIs = variant("cull_as_is.map", "custom__onesided"), two = variant("cull_two.map", "custom__twosided"),
+                      gone = variant("cull_gone.map", "common/caulk");
+        QAction* game = w.action("ToggleGameLighting");
+        const auto shot = [&](const QString& map) {
+            w.openPath(map);
+            if (!ctx.texturedView && w.action("CameraModeTextured")) w.action("CameraModeTextured")->trigger();
+            if (game && !game->isChecked()) game->trigger();
+            ctx.cam.pos = iw8r::Vec3{0, 0, 80};  // inside the box
+            ctx.cam.yaw = 30;
+            ctx.cam.pitch = -20;
+            ctx.cameraMoved();
+            cv->renderImage(320, 180, true, 0, 1500);
+            return cv->renderImage(320, 180, true, 0, 300);
+        };
+        const QImage a = shot(asIs), b = shot(two), c = shot(gone);
+        const auto diff = [](const QImage& x, const QImage& y) {
+            double d = 0;
+            if (x.size() != y.size() || x.isNull()) return 1e9;
+            for (int yy = 0; yy < x.height(); ++yy)
+                for (int xx = 0; xx < x.width(); ++xx) {
+                    const QRgb p = x.pixel(xx, yy), q = y.pixel(xx, yy);
+                    d += std::abs(qRed(p) - qRed(q)) + std::abs(qGreen(p) - qGreen(q)) + std::abs(qBlue(p) - qBlue(q));
+                }
+            return d / (x.width() * x.height());
+        };
+        const double hidden = diff(a, c), shown = diff(b, c);
+        a.save(QDir(outDir).filePath("cull_as_is.png"));
+        b.save(QDir(outDir).filePath("cull_two.png"));
+        r.check(game && game->isChecked() && shown > 20.0 && hidden < 0.1 * shown,  // (the box still casts its sun shadow)
+                QString("from behind, a one-sided own material is hidden (change %1 per pixel against the patch left out) and a "
+                        "two-sided one is drawn (change %2)").arg(hidden, 0, 'f', 2).arg(shown, 0, 'f', 2));
+        if (game && game->isChecked()) game->trigger();
+    }
+
     r.section("asset preview window (navigable textured 3D view of a model or prefab)");
     {
         QDir d(QCoreApplication::applicationDirPath());

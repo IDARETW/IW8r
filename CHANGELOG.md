@@ -5,6 +5,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Game Lighting hides the back faces of one-sided own materials** (research 132 G11), as the build culls them:
+  a material without `twoSided` is not drawn from behind (its surface normal faces away from the eye), in the
+  shading pass and the depth pre-pass; two-sided materials and the other view modes are unchanged.
 - **Textured pictures in the Models and Prefabs tabs** (owner request): the list thumbnails and the Models side
   picture are made by the 3D view in its Textured mode (the real textures, no lighting), once each, and kept in
   `thumbs\models.textured.pack` and `thumbs\prefabs.textured.pack`; the browsers only read them, and a picture

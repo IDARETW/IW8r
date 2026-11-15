@@ -372,7 +372,7 @@ public:
         bool multiply = false;  // dst x colour (blend zero / srccolor)
         bool glass = false;     // a blended glass material: premultiplied, the probe reflection added unscaled
         int sortKey = 4;        // blended batches draw in sort key order, then far to near (the converter's default 4)
-        bool cullBack = false;  // one-sided (not twoSided): back faces are culled
+        bool cullBack = false;  // one-sided (not twoSided): back faces are hidden in Game Lighting (ps_tex, batchFlags2.z = -1)
     };
     void setTextureMaterial(int texture, const TextureMaterial& m) {
         if (texture < 0) return;
