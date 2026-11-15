@@ -31,6 +31,7 @@
 #include <QPainter>
 #include <QPen>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QVBoxLayout>
 
 #include "model_import.h"
@@ -205,7 +206,7 @@ PrefabBrowser::PrefabBrowser(RootsFn roots, InsertFn insert, QWidget* parent)
     list_ = new DragList(this);
     list_->setViewMode(QListView::IconMode);
     list_->setIconSize(QSize(kThumb, kThumb));
-    list_->setGridSize(QSize(kThumb + 28, kThumb + 44));
+    list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);  // narrow panels: the tiles wrap, never scroll sideways
     list_->setDragEnabled(true);
     list_->setDragDropMode(QAbstractItemView::DragOnly);
     list_->setSpacing(4);
@@ -218,6 +219,7 @@ PrefabBrowser::PrefabBrowser(RootsFn roots, InsertFn insert, QWidget* parent)
     list_->setToolTip("Drag a prefab into the camera or a grid view, or double-click to place it in front of the camera "
                       "(misc_prefab, one undo step)");
     list_->setTextElideMode(Qt::ElideMiddle);
+    fitTiles();
     thumbTimer_ = new QTimer(this);
     thumbTimer_->setInterval(30);
     connect(thumbTimer_, &QTimer::timeout, this, [this] { loadVisibleThumbnails(); });
@@ -227,6 +229,7 @@ PrefabBrowser::PrefabBrowser(RootsFn roots, InsertFn insert, QWidget* parent)
     count_ = new QLabel(this);
     count_->setObjectName("prefabCount");
     count_->setStyleSheet("color: gray");
+    count_->setWordWrap(true);  // a long message wraps instead of widening the panel
     lay->addWidget(count_);
     connect(filter_, &QLineEdit::textChanged, this, &PrefabBrowser::setFilter);
     connect(rescan, &QPushButton::clicked, this, &PrefabBrowser::refresh);
@@ -276,7 +279,28 @@ QString PrefabBrowser::previewFileAt(int row) const {
 
 void PrefabBrowser::showEvent(QShowEvent* e) {
     QWidget::showEvent(e);
+    fitTiles();
     if (!scanned_) refresh();
+}
+
+void PrefabBrowser::resizeEvent(QResizeEvent* e) {
+    QWidget::resizeEvent(e);
+    fitTiles();
+}
+
+void PrefabBrowser::fitTiles() {
+    // The list's width: this panel less its margins, the list's frame and the scroll bar (always counted, so the
+    // tiles do not change size when the bar comes and goes). Two tiles fit at 300 px; the picture is 112 px at most.
+    const QLayout* lay = layout();
+    const int margins = lay ? lay->contentsMargins().left() + lay->contentsMargins().right() : 0;
+    const int sb = list_->verticalScrollBar()->sizeHint().width();
+    const int avail = width() - margins - sb - 2 * list_->frameWidth();
+    const int side = std::clamp((avail - 16) / 2 - 28, 64, kThumb);
+    // Two lines of name under the picture (a long name wraps, a longer one is elided).
+    const QSize icon(side, side);
+    const QSize grid(side + 28, side + 2 * list_->fontMetrics().lineSpacing() + 14);
+    if (list_->iconSize() != icon) list_->setIconSize(icon);
+    if (list_->gridSize() != grid) list_->setGridSize(grid);
 }
 
 namespace {

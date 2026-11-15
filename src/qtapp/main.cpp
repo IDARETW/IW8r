@@ -69,6 +69,7 @@
 #include "settings.h"
 #include "world_cache.h"
 #include "crash_handler.h"
+#include "stall_watch.h"
 #include "compile_panel.h"
 #include "grid_view.h"
 #include <QStandardPaths>
@@ -1389,6 +1390,10 @@ int main(int argc, char** argv) {
         if (const QString note = iw8r::qt::runCacheStartupTasks(); !note.isEmpty()) std::fprintf(stderr, "caches: %s\n", qPrintable(note));
 
     int rc = 0;
+    // GUI thread stall watch (IW8R_STALL_WATCH=<ms> or 1; or Tools > Report Freezes): from here, so a slow start counts.
+    if (const QString sw = qEnvironmentVariable("IW8R_STALL_WATCH");
+        !sw.isEmpty() || (!guiTest && !smoke && iw8r::qt::Settings::instance().value("debug/stallWatch", false).toBool()))
+        iw8r::qt::StallWatch::instance().start(sw.toInt() > 1 ? sw.toInt() : 250);
     {
         iw8r::qt::MainWindow w(device, context);
         if (texturedPack) return w.runTexturedThumbPack(thumbPackKind, auditLimit);  // the window is never shown
@@ -1416,7 +1421,13 @@ int main(int argc, char** argv) {
         if (!guiTest && !smoke) QTimer::singleShot(500, &w, [&w] { w.applyWebServerSettings(); });
         // The textured picture packs of the Models and Prefabs tabs stay complete by themselves (idle top-up).
         if (!guiTest && !smoke) w.startThumbnailTopUp();
-        if (!openFile.isEmpty()) w.openPath(openFile);
+        // A map to open, or stock:<zone .ff> for a stock map (as File > Open IW8 Stock Map).
+        if (openFile.startsWith("stock:")) {
+            QString err;
+            if (!w.openStockZone(openFile.mid(6), &err)) w.context().setStatus("Stock map not opened: " + err);
+        } else if (!openFile.isEmpty()) {
+            w.openPath(openFile);
+        }
         if (lookBuild) {
             QTimer::singleShot(300, &w, [&] {
                 QStringList report;
@@ -1620,8 +1631,12 @@ int main(int argc, char** argv) {
                 app.exit(ok ? 0 : 2);
             });
         }
+        // IW8R_QUIT_AFTER=<seconds>: a normal session that ends by itself (stall measurements with IW8R_STALL_WATCH).
+        if (const int quitAfter = qEnvironmentVariableIntValue("IW8R_QUIT_AFTER"); quitAfter > 0)
+            QTimer::singleShot(quitAfter * 1000, &app, &QCoreApplication::quit);
         rc = app.exec();
     }
+    iw8r::qt::StallWatch::instance().stop();
     if (context) context->Release();
     if (device) device->Release();
     return rc;

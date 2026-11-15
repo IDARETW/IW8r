@@ -95,6 +95,7 @@ signals:
 
 protected:
     void showEvent(QShowEvent*) override;
+    void resizeEvent(QResizeEvent*) override;
 
 private:
     RootsFn roots_;
@@ -106,6 +107,8 @@ private:
     class QTimer* thumbTimer_ = nullptr;  // draws thumbnails of the visible rows a few at a time (5,000+ prefabs)
     void loadVisibleThumbnails();
     void loadThumbnail(QListWidgetItem* item);
+    // Two tiles across the panel's width: the pictures shrink in a narrow side column (300 px) and stay 112 px at most.
+    void fitTiles();
 
 public:
     int thumbnailsLoaded() const;  // tests

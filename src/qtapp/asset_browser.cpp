@@ -1,5 +1,9 @@
 #include "settings.h"
 #include "asset_browser.h"
+
+#include <QSplitter>
+
+#include "flow_layout.h"
 #include <QVariantMap>
 #include <QSignalBlocker>
 #include <QInputDialog>
@@ -88,9 +92,14 @@ public:
     // Every tile is the same size (the grid cell), whatever its name or whether its thumbnail has loaded: a varying
     // size hint made the view re-flow (tiles per row changing) while scrolling.
     QSize sizeHint(const QStyleOptionViewItem& opt, const QModelIndex& idx) const override {
-        return tiles_ ? QSize(kTileW, kTileH) : QStyledItemDelegate::sizeHint(opt, idx);
+        if (tiles_) return QSize(kTileW, kTileH);
+        // List rows no wider than the view: a long name is elided in the middle instead of scrolling the list sideways.
+        QSize s = QStyledItemDelegate::sizeHint(opt, idx);
+        if (const auto* v = qobject_cast<const QAbstractItemView*>(opt.widget)) s.setWidth(std::min(s.width(), std::max(60, v->viewport()->width() - 4)));
+        return s;
     }
-    static constexpr int kTileW = 152, kTileH = 112, kIcon = 72;
+    // Narrow column: 124 px tiles (3 per row at about 400 px, 2 at 300); the grid widens each row to fill the view.
+    static constexpr int kTileW = 124, kTileH = 104, kIcon = 64;
     bool helpEvent(QHelpEvent* e, QAbstractItemView* view, const QStyleOptionViewItem& opt, const QModelIndex& idx) override {
         if (e && e->type() == QEvent::ToolTip && idx.isValid()) {
             const QString tip = idx.data(Qt::ToolTipRole).toString();
@@ -102,6 +111,30 @@ public:
 
 private:
     bool tiles_;
+};
+
+// Materials: as many tile columns as fit the view at kTileW, each column widened to fill the row, so the grid never
+// leaves an empty strip on the right and the columns follow the panel width.
+class TileGridFit : public QObject {
+public:
+    explicit TileGridFit(QListView* view) : QObject(view), view_(view) {}
+
+protected:
+    bool eventFilter(QObject* obj, QEvent* e) override {
+        if (e->type() == QEvent::Resize) {
+            // A few pixels of slack: cells adding up to the full viewport width wrapped the last one (the list keeps a
+            // small margin), so three columns showed as two.
+            const int w = view_->viewport()->width() - 6;
+            if (w > 0) {
+                const int cols = std::max(1, w / AssetTileDelegate::kTileW);
+                view_->setGridSize(QSize(w / cols, AssetTileDelegate::kTileH + 4));
+            }
+        }
+        return QObject::eventFilter(obj, e);
+    }
+
+private:
+    QListView* view_;
 };
 
 QDir repoData() {
@@ -181,26 +214,38 @@ void focusListOnDown(QLineEdit* search, QAbstractItemView* list) {
 AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWidget(parent), ctx_(ctx), kind_(kind) {
     auto* lay = new QVBoxLayout(this);
     lay->setContentsMargins(4, 4, 4, 4);
+    lay->setSpacing(4);
+    // Row 1: the search and the Apply / Place button; row 2: the options, wrapping to more lines in a narrow column.
     auto* top = new QHBoxLayout();
+    auto* optionsBox = new QWidget(this);
+    optionsBox->setObjectName("assetOptions");
+    auto* options = new FlowLayout(optionsBox);
     search_ = new QLineEdit(this);
     search_->setObjectName(kind == Kind::Materials ? "materialSearch" : kind == Kind::Effects ? "effectSearch"
                            : kind == Kind::Sounds ? "soundSearch" : "modelSearch");
-    search_->setPlaceholderText(kind == Kind::Images ? "Search 50k stock images (colour _c, normal _n, sky_, ...)"
-                                : kind == Kind::Effects ? "Search 1020 stock effects that load in any map (e.g. fire, smoke, spark)"
-                                : kind == Kind::Sounds ? "Search 11k stock sound aliases that load in any map (amb_, emt_ = ambient loops)"
-                                : kind == Kind::Materials ? "Search 46k stock IW8 materials (e.g. concrete, brick, plaster)"
-                                                        : "Search stock IW8 models (e.g. crate, barrel, car)");
+    // Short placeholders (the column is narrow); the longer hint is the tooltip.
+    search_->setPlaceholderText(kind == Kind::Images ? "Search images" : kind == Kind::Effects ? "Search effects"
+                                : kind == Kind::Sounds ? "Search sounds" : kind == Kind::Materials ? "Search materials"
+                                                                                                  : "Search models");
+    search_->setToolTip(kind == Kind::Images ? "50k stock images (colour _c, normal _n, sky_, ...)"
+                        : kind == Kind::Effects ? "1020 stock effects that load in any map (e.g. fire, smoke, spark)"
+                        : kind == Kind::Sounds ? "11k stock sound aliases that load in any map (amb_, emt_ = ambient loops)"
+                        : kind == Kind::Materials ? "46k stock IW8 materials (e.g. concrete, brick, plaster)"
+                                                  : "Stock IW8 models (e.g. crate, barrel, car)");
     search_->setClearButtonEnabled(true);
     top->addWidget(search_, 1);
     usedOnly_ = new QCheckBox("In this map", this);
     usedOnly_->setVisible(kind == Kind::Materials || kind == Kind::Models);
-    top->addWidget(usedOnly_);
+    options->addWidget(usedOnly_);
     listMode_ = new QComboBox(this);
     listMode_->setObjectName("assetListMode");
     listMode_->addItems({"All", "Favourites", "Recent"});
+    // Tag entries (#tag) can be long: elided in the box instead of widening the options row.
+    listMode_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    listMode_->setMinimumContentsLength(9);
     listMode_->setToolTip("Favourites: right-click an asset > Add to Favourites. Recent: the last 30 placed or applied. "
                           "#tag: assets you tagged (right-click > Tags...).");
-    top->addWidget(listMode_);
+    options->addWidget(listMode_);
     if (kind == Kind::Materials || kind == Kind::Models) {
         // Kits: stock families from tools/build_asset_kits.py (excluded_* kits are left out of the list).
         QFile kf(repoData().filePath("asset_catalog/iw8_kits.tsv"));
@@ -221,7 +266,9 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
             kit_->addItem("All kits");
             for (const QString& k : names) kit_->addItem(QString(k).replace('_', ' '), k);
             kit_->setToolTip("Stock families (containers, foliage, furniture, ...) from data/asset_catalog/iw8_kits.tsv");
-            top->addWidget(kit_);
+            kit_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+            kit_->setMinimumContentsLength(12);  // long kit names are elided, not widening the panel
+            options->addWidget(kit_);
         }
     }
     // The availability catalog (data/asset_catalog/iw8_<kind>_status.tsv, tools: --asset-audit): assets that cannot be
@@ -230,7 +277,7 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
     buildableOnly_->setChecked(true);
     buildableOnly_->setVisible(kind == Kind::Materials || kind == Kind::Models || kind == Kind::Effects || kind == Kind::Images);
     buildableOnly_->setToolTip("Hide stock assets the availability audit could not export from Replay");
-    top->addWidget(buildableOnly_);
+    options->addWidget(buildableOnly_);
     connect(buildableOnly_, &QCheckBox::toggled, this, [this] { load(); });
     auto* use = new QPushButton(kind == Kind::Materials ? "Apply" : "Place", this);
     use->setToolTip(kind == Kind::Materials ? "Apply to the selection (Shift+M)"
@@ -240,8 +287,10 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
     top->addWidget(use);
     use->setVisible(kind != Kind::Images);  // images are previewed only
     lay->addLayout(top);
+    lay->addWidget(optionsBox);
     info_ = new QLabel(this);
     info_->setStyleSheet("color: gray");
+    info_->setWordWrap(true);  // the summary wraps instead of widening the panel
     lay->addWidget(info_);
     // A list whose drags carry the asset (kind, name) so the camera and grid views can take the drop.
     class DragList : public QListView {
@@ -281,28 +330,43 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
         view_->setWrapping(true);
         view_->setIconSize(QSize(AssetTileDelegate::kIcon, AssetTileDelegate::kIcon));
         view_->setGridSize(QSize(AssetTileDelegate::kTileW + 4, AssetTileDelegate::kTileH + 4));
+        view_->viewport()->installEventFilter(new TileGridFit(view_));  // columns follow the panel width
         view_->setResizeMode(QListView::Adjust);
         view_->setWordWrap(false);
         view_->setSpacing(0);
         view_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     }
     if (kind == Kind::Models || kind == Kind::Images) {
-        // List and preview side by side.
-        auto* row = new QHBoxLayout();
-        row->addWidget(view_, 1);
-        auto* side = new QVBoxLayout();
+        // The list above, the preview under it (side by side took 256 px of the narrow column); a splitter between them.
+        auto* split = new QSplitter(Qt::Vertical, this);
+        split->setObjectName("assetPreviewSplit");
+        split->setChildrenCollapsible(false);
+        split->addWidget(view_);
+        auto* sideBox = new QWidget(split);
+        auto* side = new QVBoxLayout(sideBox);
+        side->setContentsMargins(0, 0, 0, 0);
         preview_ = new QLabel(this);
         preview_->setObjectName("modelPreview");
-        preview_->setFixedSize(256, 256);
+        preview_->setMinimumSize(128, 128);
+        preview_->setMaximumHeight(256);
+        preview_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         preview_->setAlignment(Qt::AlignCenter);
         preview_->setStyleSheet("background: #202226; border: 1px solid #3a3d44");
         previewCaption_ = new QLabel("Select a model to preview it", this);
         previewCaption_->setWordWrap(true);
-        previewCaption_->setFixedWidth(256);
         previewCaption_->setStyleSheet("color: gray");
+        // A long unbroken name clips instead of widening the column.
+        previewCaption_->setMinimumWidth(0);
+        previewCaption_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
         side->addWidget(preview_);
         side->addWidget(previewCaption_);
         if (kind == Kind::Models) {
+            // Narrow column: the caption and the 3D button share one row (the button no longer takes a full line of its
+            // own), and the empty preview box is shorter than the Images one.
+            preview_->setMaximumHeight(200);
+            side->removeWidget(previewCaption_);
+            auto* captionRow = new QHBoxLayout();
+            captionRow->setContentsMargins(0, 0, 0, 0);
             auto* open3d = new QPushButton("Preview in 3D...", this);
             open3d->setObjectName("modelPreview3d");
             open3d->setToolTip("A textured 3D view of the model: orbit, pan and zoom, levels of detail, materials, collision hull");
@@ -310,11 +374,21 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
                 const QModelIndex idx = view_->currentIndex();
                 if (idx.isValid()) emit previewRequested(idx.data(Qt::DisplayRole).toString());
             });
-            side->addWidget(open3d);
+            captionRow->addWidget(previewCaption_, 1);
+            captionRow->addWidget(open3d, 0, Qt::AlignTop);
+            side->addLayout(captionRow);
         }
-        side->addStretch(1);
-        row->addLayout(side);
-        lay->addLayout(row, 1);
+        split->addWidget(sideBox);
+        split->setStretchFactor(0, 3);
+        split->setStretchFactor(1, 2);
+        if (kind == Kind::Models) split->setStretchFactor(1, 1);  // the list gets the spare height, not blank preview space
+        lay->addWidget(split, 1);
+        if (kind == Kind::Images) {
+            // Images only: the caption says "image", and its text may not widen the narrow column (a long unbroken name did).
+            previewCaption_->setText("Select an image to preview it");
+            previewCaption_->setMinimumWidth(0);
+            previewCaption_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        }
     } else {
         lay->addWidget(view_, 1);
     }
@@ -541,6 +615,13 @@ void AssetBrowser::load() {
                 if (!img.isEmpty()) imageFiles_.insert(m.value("name").toString(), assets.filePath(zone + "/" + img));
             }
         }
+    }
+    if (kind_ == Kind::Effects) {
+        // Narrow column: the summary drops the source file name (the search tooltip says what the list is), so it stays on one line.
+        catalogInfo_ = QString("%1 stock effects (Replay 1.20)").arg(rows.size())
+                       + (hiddenMissing_ ? QString("; %1 not buildable hidden").arg(hiddenMissing_) : QString());
+        updateInfo();
+        return;
     }
     catalogInfo_ = (QString("%1 stock %2 (Replay 1.20, %3)%4")
                        .arg(rows.size())
@@ -803,6 +884,16 @@ void AssetBrowser::setPreview(const QImage& image, const QString& caption) {
     if (!pm.isNull() && (pm.width() > preview_->width() - 4 || pm.height() > preview_->height() - 4))
         pm = pm.scaled(preview_->size() - QSize(4, 4), Qt::KeepAspectRatio, Qt::SmoothTransformation);
     preview_->setPixmap(pm);
+    if (kind_ == Kind::Images) {
+        // Images only: the image name (the first line) is elided in the middle to the column width; the full caption is the
+        // tooltip. The text itself stays whole, so previewCaption() still returns it.
+        const QStringList lines = caption.split('\n');
+        const int width = std::max(120, previewCaption_->width() - 8);
+        previewCaption_->setText(lines.isEmpty() ? QString()
+                                 : QFontMetrics(previewCaption_->font()).elidedText(lines.first(), Qt::ElideMiddle, width) + caption.mid(lines.first().size()));
+        previewCaption_->setToolTip(caption);
+        return;
+    }
     previewCaption_->setText(caption);
 }
 

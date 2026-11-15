@@ -124,6 +124,7 @@ public slots:
 private:
     EditorContext* ctx_;
     QListWidget* list_;
+    QLabel* position_;     // "Position: n of m steps applied." (wraps in a narrow column)
     bool filling_ = false;
     std::vector<std::string> shownNames_;  // the step names and undo position the list shows
     size_t shownPos_ = size_t(-1);

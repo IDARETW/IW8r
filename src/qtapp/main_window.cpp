@@ -127,6 +127,7 @@
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <QGroupBox>
+#include "stall_watch.h"
 #include <algorithm>
 #include <cmath>
 
@@ -4850,6 +4851,20 @@ void MainWindow::buildMenus() {
         d->setAttribute(Qt::WA_DeleteOnClose);
         d->show();
     });
+    {
+        // Freezes of the window (the GUI thread busy for more than 250 ms) reported in the Console with where the time
+        // went (stall_watch.h); also IW8R_STALL_WATCH. Saved.
+        QAction* sw = addCommand(tools, "ToggleStallWatch", "Report Freezes to the Console", QKeySequence(), [this] {
+            const bool on = !StallWatch::instance().running();
+            if (on) StallWatch::instance().start(250);
+            else StallWatch::instance().stop();
+            Settings::instance().setValue("debug/stallWatch", on);
+            if (QAction* a = action("ToggleStallWatch")) a->setChecked(on);
+            ctx_.setStatus(on ? "Freezes of more than 250 ms are reported in the Console (source: stall)" : "Freeze reports off");
+        });
+        sw->setCheckable(true);
+        sw->setChecked(StallWatch::instance().running());
+    }
     QAction* paths = tools->addAction("Tool Paths (ACTS, Replay, Oodle, x64-zt)...");
     connect(paths, &QAction::triggered, this, [this] { toolPathsDialog(); });
     QAction* hk = tools->addAction("Hotkeys...");

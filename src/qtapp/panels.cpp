@@ -935,8 +935,18 @@ void SurfacePanel::refresh() {
 HistoryPanel::HistoryPanel(EditorContext* ctx, QWidget* parent) : QWidget(parent), ctx_(ctx) {
     auto* lay = new QVBoxLayout(this);
     lay->setContentsMargins(4, 4, 4, 4);
+    // Narrow side column (300-420 px): never scroll sideways, elide long step names (the full name is the tooltip), and
+    // do not let the list's own size hint widen the dock.
     list_ = new QListWidget(this);
-    lay->addWidget(list_);
+    list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    list_->setTextElideMode(Qt::ElideRight);
+    list_->setUniformItemSizes(true);
+    list_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+    lay->addWidget(list_, 1);
+    // Where the document is in its history: the current step is bold in the list, and this line says it in words.
+    position_ = new QLabel(this);
+    position_->setWordWrap(true);
+    lay->addWidget(position_);
     connect(list_, &QListWidget::currentRowChanged, this, [this](int row) {
         if (filling_ || row < 0) return;
         const size_t target = size_t(row);
@@ -963,14 +973,29 @@ void HistoryPanel::refresh() {
     }
     filling_ = true;
     list_->clear();
+    // Row 0 is the opened document; row k is step k (applied when k <= pos, otherwise undone and greyed).
+    QFont current = list_->font();
+    current.setBold(true);
     list_->addItem("(opened document)");
     for (size_t i = 0; i < h.size(); ++i) {
         auto* item = new QListWidgetItem(qs(h[i].name));
+        item->setToolTip(qs(h[i].name));  // the full name: the row elides it in a narrow column
         if (i >= pos) item->setForeground(QColor(120, 120, 120));
         list_->addItem(item);
     }
+    if (QListWidgetItem* cur = list_->item(int(pos))) {  // the current position: bold, and selected below
+        cur->setFont(current);
+        cur->setToolTip(pos == 0 ? QString("Current position: opened document")
+                                 : QString("Current position: ") + qs(h[pos - 1].name));
+    }
     list_->setCurrentRow(int(pos));
     filling_ = false;
+    const size_t steps = h.size();
+    position_->setText(steps == 0 ? QString("No steps yet.")
+                                  : QString("Position: %1 of %2 steps applied.%3")
+                                        .arg(pos)
+                                        .arg(steps)
+                                        .arg(steps > pos ? QString(" %1 undone (grey).").arg(steps - pos) : QString()));
 }
 
 // ------------------------------------------------------------------ IW8 spawns
@@ -983,7 +1008,15 @@ SpawnsPanel::SpawnsPanel(EditorContext* ctx, QWidget* parent) : QWidget(parent),
     lay->addWidget(info_);
     table_ = new QTableWidget(0, 4, this);
     table_->setHorizontalHeaderLabels({"#", "name", "origin", "yaw"});
-    table_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    // Narrow side column: the name takes the spare width and elides, the numbers keep their short width,
+    // and the table never scrolls sideways (the full name and exact numbers are in the tooltips).
+    table_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    table_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    table_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    table_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    table_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    table_->setWordWrap(false);
+    table_->setTextElideMode(Qt::ElideRight);
     table_->verticalHeader()->setVisible(false);
     table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -1027,6 +1060,12 @@ quint64 spawnsSignature(const std::vector<Iw8SpawnRecord>& sp) {
     }
     return h;
 }
+
+// Short table text for a spawn number: one decimal place (the tooltip keeps the exact float32 value).
+QString shortSpawnNumber(double v) {
+    if (qAbs(v) < 0.05) v = 0.0;  // no "-0.0"
+    return QString::number(v, 'f', 1);
+}
 }  // namespace
 
 void SpawnsPanel::refresh() {
@@ -1046,11 +1085,18 @@ void SpawnsPanel::refresh() {
     table_->setRowCount(int(sp.size()));
     for (size_t i = 0; i < sp.size(); ++i) {
         const auto& s = sp[i];
+        auto* name = new QTableWidgetItem(qs(s.name));
+        name->setToolTip(qs(s.name));
+        auto* origin = new QTableWidgetItem(shortSpawnNumber(s.origin.x) + " " + shortSpawnNumber(s.origin.y) + " " +
+                                            shortSpawnNumber(s.origin.z));
+        origin->setToolTip(qs(formatFloat32(float(s.origin.x)) + " " + formatFloat32(float(s.origin.y)) + " " +
+                              formatFloat32(float(s.origin.z))));
+        auto* yaw = new QTableWidgetItem(shortSpawnNumber(s.angles.y));
+        yaw->setToolTip(qs(formatFloat32(float(s.angles.y))));
         table_->setItem(int(i), 0, new QTableWidgetItem(QString::number(s.index)));
-        table_->setItem(int(i), 1, new QTableWidgetItem(qs(s.name)));
-        table_->setItem(int(i), 2, new QTableWidgetItem(qs(formatFloat32(float(s.origin.x)) + " " + formatFloat32(float(s.origin.y)) + " " +
-                                                           formatFloat32(float(s.origin.z)))));
-        table_->setItem(int(i), 3, new QTableWidgetItem(qs(formatFloat32(float(s.angles.y)))));
+        table_->setItem(int(i), 1, name);
+        table_->setItem(int(i), 2, origin);
+        table_->setItem(int(i), 3, yaw);
     }
     filling_ = false;
 }

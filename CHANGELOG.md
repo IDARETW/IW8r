@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Side panels fit a narrow column**: the asset browsers put the search and Apply / Place on one row and their options
+  in a row that wraps; the model and image preview sits under the list; material tiles fill the width (3 across at
+  about 400 px); long names are elided with the full name as the tooltip; Prefabs tiles shrink with the panel; IW8
+  Spawns sizes its columns to the column; Undo History marks the current step and says how many are undone.
+- **Report Freezes** (Tools menu, or IW8R_STALL_WATCH): when the window does not answer for more than 250 ms, the Console
+  says for how long and which functions were busy (the GUI thread's stack, sampled from another thread); with
+  IW8R_STALL_REPORT the reports also go to a file. A map can be opened at start-up as `stock:<zone .ff>`.
 - **Side bar and bottom area**: the panels that were tabbed along the bottom of the window are icons in a narrow bar
   at the left edge. The browsers (Materials, Models, Prefabs, Effects, Sounds, Images, IW8 Spawns, Undo History) open
   in a side section next to the views, one at a time, at the width you last gave it; a second click closes it. The

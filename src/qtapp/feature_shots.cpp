@@ -74,6 +74,7 @@
 #include "sun_sky_dialog.h"
 #include "vfx_preview.h"
 #include "vision_editor_dialog.h"
+#include "DockAreaWidget.h"
 
 namespace iw8r::qt {
 
@@ -759,6 +760,19 @@ int runFeatureShots(MainWindow& w, const QString& outDir) {
             w.showDock("Materials");
             settle(w, 1500);
             s.window("side_panel.png", "The side bar with the Materials panel open beside the camera", 4000);
+            // Every side section panel on its own at the section's width (layout work on each panel).
+            for (const char* panel : {"Materials", "Models", "Prefabs", "Effects", "Sounds", "Images", "IW8 Spawns", "Undo History"}) {
+                w.showDock(panel);
+                settle(w, 1200);
+                ads::CDockManager* dm = w.findChild<ads::CDockManager*>();
+                ads::CDockWidget* d = dm ? dm->findDockWidget(panel) : nullptr;
+                QWidget* area = d ? static_cast<QWidget*>(d->dockAreaWidget()) : nullptr;
+                const QString file = "panel_" + QString(panel).toLower().replace(' ', '_') + ".png";
+                if (area) s.widget(area, file, QString("The %1 panel in the side section (%2 px wide)").arg(panel).arg(area->width()), 1500);
+                else s.skip(file, QString("The %1 panel").arg(panel), "no dock area");
+            }
+            w.showDock("Materials");
+            settle(w, 800);
             // Another browser replaces it; Compile in front under the camera; the area folded away (Ctrl+J).
             if (QAction* a = w.findChild<QAction*>("side_Models")) a->trigger();
             s.window("side_models.png", "The Models browser in the side section (the Materials panel closed by itself)", 3000);
