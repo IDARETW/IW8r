@@ -133,6 +133,14 @@ inline uint32_t packPropNormal(float x, float y, float z) {
     return b(x) | (b(y) << 8) | (b(z) << 16);
 }
 
+// The stock props' light grid atlas for SceneRenderer::setStockLgvAtlas (core StockLgvAtlas; research 105): the two
+// textures as they are and five float4 per box (rows 0..2, uvScale, uvBias).
+struct LgvAtlasUpload {
+    int width = 0, depth = 0;
+    std::vector<uint32_t> tex0, tex1;
+    std::vector<float> boxes;  // 20 floats per box
+};
+
 struct InstancedTexMesh {
     // Shared with the caller (a stock prop's converted mesh, kept between rebuilds): no copy per rebuild.
     std::shared_ptr<const PropMeshData> mesh;
@@ -632,6 +640,12 @@ public:
     // The stock specular occlusion table (gtso_lut, one byte per texel, x fastest; research 95), t18.
     void setGtsoLut(int width, int height, int depth, const uint8_t* r);
     bool hasGtsoLut() const { return gtsoSrv_ != nullptr; }
+    // The stock props' light grid atlas (research 105 sections 1.3-1.4, research 132 G7): texture 0 (R11G11B10F,
+    // width x width x depth), texture 1 (RGBA8, 2 width x 3 width x depth, six tiles) and per box five float4 (the
+    // world -> box rows, uvScale, uvBias). A prop instance whose light record starts with -3 samples its box ([1]) per
+    // vertex in vs_tex_inst. width 0 clears it. False when the textures cannot be made (the records' fallback lights).
+    bool setStockLgvAtlas(int width, int depth, const uint32_t* tex0, const uint32_t* tex1, const float* boxes, size_t boxCount);
+    bool hasStockLgvAtlas() const { return lgvSrv_[2] != nullptr; }
     // The stock reference's reflection probes (core stock_probes, research 95 "Indirect specular"): every probe's
     // octahedral BC6H image as one array slice (all levels) and the influence boxes, drawn highest priority first.
     // null clears them.
@@ -964,6 +978,10 @@ private:
     static constexpr int kMaxLightmapRects = 1024;
     ID3D11Texture2D* envBrdfTex_ = nullptr;
     ID3D11Texture3D* gtsoTex_ = nullptr;
+    ID3D11Texture3D* lgvTex_[2] = {nullptr, nullptr};  // setStockLgvAtlas
+    ID3D11Buffer* lgvBoxBuf_ = nullptr;
+    ID3D11ShaderResourceView* lgvSrv_[3] = {nullptr, nullptr, nullptr};  // VS t40 / t41 / t42
+    ID3D11SamplerState* lgvSampler_ = nullptr;                          // VS s4
     ID3D11ShaderResourceView* gtsoSrv_ = nullptr;
     // Stock local lights (setStockLocalLights): all of the map's; per frame the drawn ones and the tile masks.
     void prepareStockLocalLights(const float* viewProj);

@@ -482,6 +482,13 @@ public slots:
     bool tomeCull() const { return renderer_.referenceTomeCull(); }
     size_t tomeCulledProps() const { return renderer_.tomeCulledProps(); }
     std::string gpuMemoryReport() const { return renderer_.gpuMemoryReport(); }
+    // The stock props' light grid atlas (research 105; null clears it): uploaded on the next frame. Props whose light
+    // record starts with -3 sample their box per vertex.
+    void setStockLgvAtlas(std::shared_ptr<const app::LgvAtlasUpload> atlas) {
+        pendingLgv_ = atlas ? std::move(atlas) : std::make_shared<const app::LgvAtlasUpload>();
+        update();
+    }
+    bool hasStockLgvAtlas() const { return renderer_.hasStockLgvAtlas(); }
     // New per-placement light for every textured prop mesh (same order and counts as setReferenceTexInstances gave).
     void setReferenceTexInstanceLight(std::vector<std::vector<float>> light) {
         if (texInstDirty_) {
@@ -565,6 +572,7 @@ private:
     std::vector<app::GpuVertex> pendingRef_;
     std::vector<app::InstancedTexMesh> pendingTexInst_;
     std::vector<std::vector<float>> pendingTexLight_;  // setReferenceTexInstanceLight
+    std::shared_ptr<const app::LgvAtlasUpload> pendingLgv_;  // setStockLgvAtlas
     bool texLightDirty_ = false;
     std::vector<std::string> texInstMaterials_;
     std::vector<bool> texInstResolved_;

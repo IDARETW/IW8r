@@ -261,7 +261,8 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         }
         report << benchMemoryNow("caches_idle");
         const auto pl = w.propLightStats();
-        report << QString("prop_light %1 of %2 textured placements lit from their light grid box").arg(pl[0]).arg(pl[1]);
+        report << QString("prop_light %1 of %2 textured placements lit from their light grid box (per vertex from the atlas: %3)")
+                      .arg(pl[0]).arg(pl[1]).arg(cam->hasStockLgvAtlas() ? "yes" : "no");
         report << QString("stock zone %1 opened, reference %2 triangles after %3 ms, stock lightmap %4, probes %5")
                       .arg(mapFile.mid(6)).arg(cam->referenceTriangles()).arg(wt.elapsed()).arg(cam->hasStockLightmap() ? "yes" : "no")
                       .arg(cam->stockProbeCount());

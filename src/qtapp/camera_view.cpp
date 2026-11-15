@@ -165,6 +165,14 @@ void CameraView::render() {
         texInstDirty_ = false;
         texInstPending_ = refPollDue_ = true;
     }
+    if (pendingLgv_) {
+        const app::LgvAtlasUpload& a = *pendingLgv_;
+        const bool ok = renderer_.setStockLgvAtlas(a.width, a.depth, a.tex0.empty() ? nullptr : a.tex0.data(),
+                                                   a.tex1.empty() ? nullptr : a.tex1.data(), a.boxes.empty() ? nullptr : a.boxes.data(),
+                                                   a.boxes.size() / 20);
+        if (!ok && a.width > 0) emit ctx_->statusMessage("Stock prop light grid: the atlas could not be uploaded (props use their box centre)");
+        pendingLgv_.reset();
+    }
     if (texLightDirty_) {
         IW8R_PROF("r.up_texlight");
         for (size_t i = 0; i < pendingTexLight_.size(); ++i)

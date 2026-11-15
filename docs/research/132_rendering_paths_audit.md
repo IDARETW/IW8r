@@ -192,6 +192,17 @@ The build writes it all (compile_iw8.cpp:1106-1134) and the converter draws it (
   slot order and band weights (stock_lightgrid.h:63-71). For flag 2 props, carry the instance's `lmapLookup` rect and
   the model's packed lightmap UVs (unorm16 pairs, research 105 s3.2) into the existing `lmRects` path.
 
+**Status 2026-11-14 (G7):** probe-lit props of the main transient zone are lit per vertex from the atlas, as the
+game's static-model VS does (research 105 section 1.4): the block's transform params (`StockLgvAtlas::xform`, equal to
+the exported box rows) and the packing go to the GPU as five float4 per box, texture 0 as R11G11B10F and texture 1 as
+RGBA8 (`SceneRenderer::setStockLgvAtlas`, vs_tex_inst `lgvLight`: DC, all eight slots, band weights 1, 4/9, 1/16). The
+instance record is `-3, box, centre DC, slots 0 / 2` (the fallback when no atlas is bound). Proven active by a one-off
+tinted build on Hideout (every probe-lit prop); against the old centre sample, Hideout's frame changes 0.4 % of
+pixels by more than 8 and Speedball's 2 % (gradients across multi-probe boxes); Hideout 8.9 ms, Speedball 5.6 ms.
+`IW8R_NO_PROP_LGV_GPU` = the centre sample (A/B). Left: the thin push (flag 4; its switch `cb7[185].x` is not
+decoded), Warzone tile props (their own atlases; still the centre sample) and the lightmapped `tml/` props (their
+second UV set is not in the GLB export).
+
 ### G8 (medium). Own-map local lights are simplified
 
 - Build: Replay's own `LocalLighting` (MSR:1063-1177): tube segment, IES profile strip, smoothstep window, sphere form

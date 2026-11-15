@@ -463,7 +463,15 @@ bool parseStockLgvBlock(const std::string& block, StockLgvAtlas& out, std::strin
             out.pack[v].uvBias[k] = finiteOr0(rdf(b + o + 16 + 4 * k));
         }
     }
-    return true;  // the transform params that follow repeat the exported box rows (research 105 §1.3)
+    // The transform params (64 B each): three rows (the exported box rows, research 105 section 1.3), the flags, three
+    // zero words.
+    out.xform.resize(n);
+    for (size_t v = 0; v < n; ++v, o += 64) {
+        for (int r = 0; r < 3; ++r)
+            for (int k = 0; k < 4; ++k) out.xform[v].row[r][k] = finiteOr0(rdf(b + o + 16 * r + 4 * k));
+        out.xform[v].flags = rd32(b + o + 48);
+    }
+    return true;
 }
 
 StockLgvSh sampleStockLgv(const StockLgvAtlas& a, size_t volume, const double coord[3]) {

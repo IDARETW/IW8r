@@ -329,6 +329,11 @@ TEST(stock_lgv_block_parse_and_sample) {
     if (a.pack.size() != 2) return;
     CHECK(a.pack[0].uvScale[0] == 0.25f && a.pack[0].uvScale[2] == 0.5f && a.pack[0].uvBias[1] == 0.125f);
     CHECK(a.pack[1].uvScale[0] == 0.0f && a.pack[1].uvBias[0] == 0.875f && a.pack[1].uvBias[2] == 0.75f);
+    CHECK(a.xform.size() == 2);
+    if (a.xform.size() == 2) {
+        CHECK(a.xform[1].row[0][0] == 1.0f && a.xform[1].row[1][1] == 1.0f && a.xform[1].row[2][2] == 1.0f);
+        CHECK(a.xform[1].row[0][3] == 0.0f && a.xform[1].row[2][1] == 0.0f && a.xform[1].flags == 0);
+    }
 
     // At a texel centre the sample is that texel: coord 0 = the first probe, coord 1 = the last.
     const auto expectAt = [&](size_t vol, double cx, double cy, double cz, const double dc[3], double q) {
@@ -559,6 +564,8 @@ TEST(stock_lgv_speedball_real) {
     CHECK(a.width == 64 && a.depth == 8 && a.pack.size() == n);
     if (a.pack.size() != n) return;
     CHECK(near(a.pack[0].uvBias[0] * 64, 62.5, 1e-4) && near(a.pack[0].uvBias[2] * 8, 6.5, 1e-4));
+    CHECK(a.xform.size() == n);
+    if (a.xform.size() == n) CHECK(near(a.xform[0].row[0][3], 6.9775495529174805, 1e-5));  // = the exported box rows
     checkRef(a, 0, kRef0);
     checkRef(a, 994, kRef994);
 }

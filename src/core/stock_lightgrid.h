@@ -43,6 +43,10 @@ struct StockLgvAtlas {
     std::vector<uint32_t> tex0, tex1;  // x fastest, then y, then z
     struct Pack { float uvScale[3] = {0, 0, 0}, uvBias[3] = {0, 0, 0}; };
     std::vector<Pack> pack;            // per volume
+    // Per volume, LightGridVolumeTransformParams: the world -> box coordinate rows (coord = row * (p, 1)), the same as
+    // the exported volumeTransform, and the box flags (LGV_SMODEL_FLAGS; research 105 section 1.3).
+    struct Xform { float row[3][4] = {}; uint32_t flags = 0; };
+    std::vector<Xform> xform;
 };
 
 // Finds the atlas root in a decompressed zone (the bytes of a .ff.dec): right after the exported box table bytes

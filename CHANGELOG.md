@@ -5,6 +5,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Stock props are lit per vertex from their light grid box in Game Lighting** (research 132 G7): the box's probes
+  are sampled at each vertex, as the game's static-model shader does, with all eight SH terms (before: one sample at
+  the box centre per placement, first order only), so a large prop (a container, a wall or a building made as a model)
+  shades across its length instead of flat. Main-zone props of every stock map; Warzone tile props keep the centre
+  sample for now. A/B: `IW8R_NO_PROP_LGV_GPU=1`. The bench report says whether the atlas is in use.
 - **Door frames keep their opening** (map agent's report): a stock or custom model's generated collision hull no
   longer fills a doorway. A connected part whose surface leaves a large notch (a door frame, an arch, an L of walls)
   is cut where the cut leaves least empty space, and each side again, so a frame collides as its jambs and its header.
