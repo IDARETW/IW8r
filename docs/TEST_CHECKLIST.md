@@ -9,6 +9,10 @@ Mark each line OK / wrong (with a screenshot) and send it back.
 
 ## In the editor
 
+- [ ] **Start here (2026-11-15 evening):** the focused list in [EDITOR_TEST_CHECKLIST.md](EDITOR_TEST_CHECKLIST.md)
+  (interactive copy: the "Compact Showcase Checklist" artifact page), on the compact showcase map
+  `samples/dev/iw8r_compact_showcase.map`.
+
 - [ ] New on 2026-11-15 evening (editor only; checked offline by the smoke test and the stall watch):
   - Start-up: the window answers at once (it froze up to 19 s before); the Materials and Models panels show plain
     swatches for a second or two, then their thumbnails.
