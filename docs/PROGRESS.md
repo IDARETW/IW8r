@@ -2,6 +2,15 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-14 night: door frames keep their opening (89dc57e: notched model parts are cut, budget merge by least
+  growth; test on the stock frame of the wooden door bundle). G7: stock props lit per vertex from the light grid atlas
+  (14e801d; IW8R_NO_PROP_LGV_GPU). Shipment water's dual scrolling normals (4f0431e; IW8R_NO_DUAL_NORMAL; bench camera
+  "mat <material> N"). SELFVIS (d512c41): ACTS fork 3667413c (pushed and deployed, old exe in
+  `E:\mw124\atian-cod-tools\build\bin\Release\prev-20261114-selfvis`) exports `_SELFVIS`; the model cache fetches drawn
+  models cached before again in the background (`refreshGeometry`, index key `selfvis`); IW8R_NO_SELFVIS. Installer
+  rebuilt 23:42 (before SELFVIS; no ini). Left of research 132/133: G9 rest (lerp layers, modes 2/3), G13 distortion,
+  G14 GTAO, static-model displacement (+-1 unit), the LGV thin push, Warzone tile props per vertex, lightmapped tml
+  props. All suites green at d512c41 (core 183,433 / 1,414 tests, GUI 1,105).
 - 2026-11-14 late evening (after the Cinder Rail fix): converter e648a414 (research 134 rewritten from the client
   PDB: DB_PatchMem's asset stack of two is pushed by nearly every loader; every asset type counts) is live, and the
   fixed Cinder Rail (same inputs as the 20:15 build) was installed at 20:40 with the owner's OK; not yet seen loading.
