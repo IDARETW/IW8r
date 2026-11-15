@@ -542,8 +542,18 @@ docs/KEYS_REFERENCE.md has the table for this file.
 
 Press **P** in the camera. Movement follows Replay 1.20's values: W A S D, **Space** jump (at a ledge: mantle; in the
 air: grab a high ledge; on a ladder: push off), **Shift** sprint, **C** crouch (while sprinting: slide), **Z** prone,
-**N** noclip, **Esc** leaves. Ladders are climbed by walking into them; look down to climb down. Collision uses the
-same rules as the build (clips block, triggers and weapon clips do not).
+**N** noclip, **F** use, **Esc** leaves. Ladders are climbed by walking into them; look down to climb down. Collision
+uses the same rules as the build (clips block, triggers and weapon clips do not), and you bump into prefabs and placed
+models as in game. The map's scripted objects work as the built map's script runs them: doors open with **F** (a hinged
+door swings away from you), lifts carry you, spinning and bobbing brush models move, teleporters and jump pads act.
+
+**Previewing a model or a prefab.** In the Models browser, the **Preview in 3D...** button under the picture (or the
+right-click menu), and in the Prefabs dock the right-click menu, open the asset preview window: the asset alone, with
+its textures, in a 3D view of its own. Left (or right) drag orbits, the middle button or Shift+drag pans, the wheel
+zooms, **F** frames it, **R** goes back. The side panel switches the view (Lit, Game Lighting, Textured, Wireframe,
+Normals), the floor, the collision hull the build gives the model, and its level of detail, and lists its size,
+triangles and materials (click one to see its colour image). The window stays open and shows the next asset you
+preview.
 
 ## 8. Compile, deploy, play
 

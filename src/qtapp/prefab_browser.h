@@ -32,6 +32,8 @@ public:
     PrefabBrowser(RootsFn roots, InsertFn insert, QWidget* parent = nullptr);
 
     void refresh();                  // rescans the folders
+    // The prefab's map file for a preview (a bundle: its main contents; "" when there is none).
+    QString previewFileAt(int row) const;
     int count() const;               // listed prefabs (bundles first, then plain .map prefabs)
     QString fileAt(int row) const;   // absolute path of a listed prefab: the .map file, or the bundle folder
     void setFilter(const QString& text);  // bundles: title, tags, category, id and description; plain prefabs: path
@@ -80,6 +82,9 @@ public:
     // drawn. modelRoots: folders with the mapper's own model files (a bundle's models folder), looked up before the
     // stock models.
     static QImage thumbnail(const QString& mapFile, int size = 96, const QStringList& modelRoots = {});
+
+signals:
+    void previewRequested(const QString& mapFile);  // context menu > Preview in 3D
 
 protected:
     void showEvent(QShowEvent*) override;

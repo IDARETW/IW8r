@@ -983,6 +983,18 @@ void SceneCache::sync(const Document& doc) {
     }
     IW8R_PROF("s.sync_full");
     fingerprint_ = print;
+    if (ownDecalPrint_ != print) {
+        // Own decal volumes: projected again whenever a drawn item changed (they follow the brushes under them).
+        ownDecalPrint_ = print;
+        ownDecals_.clear();
+        bool anyDecal = false;
+        for (const auto& e : doc.map().entities) anyDecal = anyDecal || e.classname() == "iw8r_decal";
+        if (anyDecal) {
+            std::vector<Id> ids;
+            std::vector<OwnDecal> decals = projectOwnDecals(doc.map(), &ids);
+            for (size_t i = 0; i < decals.size() && i < ids.size(); ++i) ownDecals_[ids[i]] = std::move(decals[i]);
+        }
+    }
     doc_ = &doc;
     docRevision_ = doc.revision();
     ++generation_;
@@ -1137,7 +1149,9 @@ void SceneCache::sync(const Document& doc) {
             const bool hiddenPiece = !showExploderPieces && isExploderPiece(e, cls);
             std::shared_ptr<const ImportedModel> model;
             if (!prefab && !hiddenPiece && modelSource && (isModelClass(cls) || asModel || vehicle)) model = modelSource(me);
-            const std::string label = prefab ? "misc_prefab:" + inst->model : model ? "model:" + model->name : cls;
+            std::string label = prefab ? "misc_prefab:" + inst->model : model ? "model:" + model->name : cls;
+            const auto ownDecal = cls == "iw8r_decal" ? ownDecals_.find(e.id) : ownDecals_.end();
+            if (ownDecal != ownDecals_.end()) label += "@decal" + std::to_string(ownDecalPrint_);
             if (behaviourTime >= 0 && model && movesInPreview(e, cls)) {
                 // Rebuilt every tick while the preview runs; the label differs, so the resting pose comes back after it.
                 pg = &cache_.insert_or_assign(e.id, buildModelGeom(behaviourPose(me, behaviourTime), *model, modelScale)).first->second;
@@ -1148,6 +1162,19 @@ void SceneCache::sync(const Document& doc) {
                                                     : model ? buildModelGeom(me, *model, modelScale)
                                                             : buildPointEntity(e)).first->second;
                 if (vehicle) pg->collides = false;  // a struct: the Warzone scripts spawn the vehicle, the build places no solid
+                if (ownDecal != ownDecals_.end()) {
+                    // The decal as the game projects it: textured pieces on the brushes inside its box (with its marker).
+                    pg->faceNormals.resize(pg->polys.size());
+                    pg->polyMaterial.resize(pg->polys.size());
+                    pg->polyUV.resize(pg->polys.size());
+                    for (const OwnDecalPiece& piece : ownDecal->second.pieces) {
+                        pg->polys.push_back({piece.pos[0], piece.pos[1], piece.pos[2]});
+                        pg->faceNormals.push_back(piece.normal);
+                        pg->polyMaterial.push_back(ownDecal->second.material);
+                        pg->polyUV.push_back({piece.uv[0], piece.uv[1], piece.uv[2]});
+                    }
+                    pg->label = label;
+                }
                 pg->stamp = ++stampCounter_;
             }
             pg->seen = visit_;

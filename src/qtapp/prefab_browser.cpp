@@ -6,6 +6,7 @@
 #include <QDrag>
 #include <QMimeData>
 #include "prefab_browser.h"
+#include <QMenu>
 #include <QScrollBar>
 #include <QTimer>
 #include <cstdio>
@@ -223,6 +224,34 @@ PrefabBrowser::PrefabBrowser(RootsFn roots, InsertFn insert, QWidget* parent)
         QString err;
         if (!stamp(list_->row(it), &err) && !err.isEmpty()) QMessageBox::warning(this, "Insert Prefab", err);
     });
+    list_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(list_, &QListWidget::customContextMenuRequested, this, [this](const QPoint& at) {
+        QListWidgetItem* it = list_->itemAt(at);
+        if (!it) return;
+        const int row = list_->row(it);
+        QMenu menu(this);
+        menu.addAction("Place", this, [this, row] {
+            QString err;
+            if (!stamp(row, &err) && !err.isEmpty()) QMessageBox::warning(this, "Insert Prefab", err);
+        });
+        const QString file = previewFileAt(row);
+        QAction* pv = menu.addAction("Preview in 3D...", this, [this, file] { emit previewRequested(file); });
+        pv->setEnabled(!file.isEmpty());
+        menu.exec(list_->viewport()->mapToGlobal(at));
+    });
+}
+
+QString PrefabBrowser::previewFileAt(int row) const {
+    const QString f = fileAt(row);
+    if (f.isEmpty()) return {};
+    const QFileInfo fi(f);
+    if (!fi.isDir()) return f;
+    // A bundle folder: its main contents (a .map named like the folder, else contents.map, else the first .map).
+    const QDir d(f);
+    for (const QString& name : {fi.fileName() + ".map", QString("contents.map"), QString("prefab.map")})
+        if (d.exists(name)) return d.filePath(name);
+    const QStringList maps = d.entryList({"*.map"}, QDir::Files, QDir::Name);
+    return maps.isEmpty() ? QString() : d.filePath(maps.front());
 }
 
 void PrefabBrowser::showEvent(QShowEvent* e) {

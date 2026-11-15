@@ -5,6 +5,27 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Game Lighting draws more of what the game draws** (research 132):
+  - stock `unlit_` materials (sign faces, glows, light cards) show their colour as is instead of being lit (G2);
+  - stock see-through prop materials (glass, visors; blended, not decals) are drawn see-through after the other
+    props, without writing depth and without a sun shadow (G1, props);
+  - the mapper's own material settings: unlit, glow, additive and multiply drawn as the build writes them, a blended
+    material with full alpha opaque, the alpha-test cut at 0.5 as in game, glass with its probe reflection, sort keys,
+    one-sided faces culled from behind (G4, G5, G11, G12);
+  - the mapper's own decal volumes (`iw8r_decal`) are projected onto the brushes inside their box, textured, as the
+    game projects them (G6);
+  - a stock map's own placed effects (fire, smoke, mist, glows) play with View > Effect Preview; their definitions are
+    exported once from the map's zone in the background (G3).
+
+- **Asset preview window** (owner request): Models browser > Preview in 3D, and Prefabs dock > right-click > Preview
+  in 3D, open a textured 3D view of the model or prefab alone: orbit, pan, zoom, frame and reset; Lit, Game Lighting,
+  Textured, Wireframe and Normals views; a floor; the collision hull the build gives the model; levels of detail; its
+  size, triangles and materials with their colour images. It is a second 3D view with the main view's materials,
+  textures and lighting.
+- **Play preview runs the scripted objects**: doors open with F (hinged doors swing away from the player), lifts carry
+  the player, brush models spin and bob, teleporters and jump pads act, by the same keys and numbers as the built
+  map's script (core `play_behaviour`); the moving brushes are drawn where they are.
+
 - **Play preview collides like the built map.** Walking the map in the editor (play preview) now meets the contents
   of prefabs and placed models (one convex brush per piece of the model's hull, or a box, as the build gives them),
   not only the map's own brushes; models the build keeps live (spinning, animated, `iw8r_no_collision 1`) are passed

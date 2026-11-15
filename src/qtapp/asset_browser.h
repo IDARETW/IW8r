@@ -94,6 +94,7 @@ signals:
     void soundChosen(const QString& name, bool loop);  // Sounds browser: place a sound_emitter with this stock alias
     void imageHighlighted(const QString& name);  // Images browser: the current row changed (preview)
     void modelHighlighted(const QString& name);  // the current model row changed (preview)
+    void previewRequested(const QString& name);  // Models: open the 3D preview window
 
 public:
     void reloadCatalog() { load(); }  // after an availability audit (4.12)

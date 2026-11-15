@@ -32,6 +32,7 @@
 #include <unordered_map>
 
 #include "collision_world.h"
+#include "play_behaviour.h"
 #include "editor_context.h"
 #include "player_move.h"
 #include "render.h"
@@ -54,6 +55,16 @@ public:
     const std::string& customShaderError() const { return customShaderError_; }
     CameraView(EditorContext* ctx, ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* parent = nullptr);
     ~CameraView() override;
+    // A second view (the asset preview window) draws with the same material, image, normal, specular, emissive, mask,
+    // layer, shader, tint, effect and tool-path hooks as `other`.
+    void copyHooksFrom(const CameraView& other);
+    // Orbit mode (the asset preview): the left or right button orbits about a target, the middle button or Shift+left
+    // pans, the wheel zooms, F asks for framing (orbitFrameRequested), R returns to the last setOrbit.
+    void setOrbitMode(bool on) { orbit_ = on; }
+    bool orbitMode() const { return orbit_; }
+    void setOrbit(const Vec3& target, double distance, double yawDeg, double pitchDeg);
+    Vec3 orbitTarget() const { return orbitTarget_; }
+    double orbitDistance() const { return orbitDist_; }
     QPaintEngine* paintEngine() const override { return nullptr; }
     bool hasSwapChain() const { return swap_ != nullptr; }
     // Renders now and returns the number of non-background pixels (smoke test).
@@ -162,6 +173,10 @@ public:
         // scale c36, transmission tint c18, wrap c103 (rgb; .w = 1 when the term applies).
         std::string emissiveFile, transmissionFile;
         std::array<float, 4> emissiveScale{0, 0, 0, 0}, transTint{0, 0, 0, 0}, wrap{0, 0, 0, 0};
+        // Research 132 G2: an `unlit_` technique set (TechsetFamily::UnlitEffect): drawn with its colour as is.
+        bool unlit = false;
+        // Research 132 G1: a blended model material that is no decal (glass and other see-through surfaces).
+        bool translucent = false;
     };
     using FactsLookup = std::function<std::optional<StockMaterialFacts>(const std::string& material)>;
     void setMaterialFacts(FactsLookup lookup) { factsLookup_ = std::move(lookup); }
@@ -199,6 +214,18 @@ public:
     // 8.1: the particle simulation of an effect name (nullptr when it has no export); the camera samples it per frame.
     using EffectSource = std::function<std::shared_ptr<const VfxSimDef>(const std::string& fx)>;
     void setEffectSource(EffectSource fn) { effectSource_ = std::move(fn); }
+    // A stock map's own placed effects (MapEnts clientSideEffects, research 132 G3): played with View > Effect Preview
+    // like fx_origin entities. Empty for an own map.
+    struct StockEffect {
+        Vec3 origin;
+        std::string name;
+    };
+    void setStockEffects(std::vector<StockEffect> fx) {
+        stockEffects_ = std::move(fx);
+        update();
+    }
+    size_t stockEffectCount() const { return stockEffects_.size(); }
+    size_t effectParticles() const { return fxParticles_; }
     size_t effectParticlesDrawn() const { return fxParticles_; }  // tests
     void setEffectTime(double t) { fxTimeOverride_ = t; }        // tests: < 0 = live
     QString activeProbe() const { return activeProbe_; }  // tests
@@ -481,6 +508,9 @@ protected:
     void mouseReleaseEvent(QMouseEvent*) override;
     void wheelEvent(QWheelEvent*) override;
     void keyPressEvent(QKeyEvent*) override;
+    // Orbit mode (the asset preview): every key is the view's own, never a shortcut of the main window (R would rotate
+    // the map's selection there).
+    bool event(QEvent* e) override;
     void keyReleaseEvent(QKeyEvent*) override;
     void focusOutEvent(QFocusEvent*) override;
 
@@ -490,6 +520,7 @@ protected:
     void dragLeaveEvent(QDragLeaveEvent*) override;
 
 signals:
+    void orbitFrameRequested();
     // A dragged asset is over widget position `pos` (material drags preview on the surface under it), or left the view.
     void assetHovered(const QString& kind, const QString& name, const QPointF& pos);
     void assetHoverEnded();
@@ -600,6 +631,11 @@ private:
     bool lmbDown_ = false;
     CollisionWorld world_;
     size_t playWorldModels_ = 0;  // placed models that collide in the play preview
+    PlayBehaviours playBehaviours_;  // the map's doors, lifts, spinners, teleporters and jump pads while playing
+    bool playUseHeld_ = false;
+public:
+    const PlayBehaviours& playBehavioursForTest() const { return playBehaviours_; }
+private:
     void buildPlayWorld();
     PlayerState player_;
     MoveParams params_;
@@ -651,6 +687,14 @@ private:
     std::unordered_map<std::string, Vec3> bakeAlbedo_;
     MaskLookup specLookup_;
     MaterialStateLookup stateLookup_;
+    // Orbit mode (setOrbitMode).
+    bool orbit_ = false;
+    Vec3 orbitTarget_;
+    double orbitDist_ = 256, orbitYaw_ = 45, orbitPitch_ = -25;
+    Vec3 orbitHomeTarget_;
+    double orbitHomeDist_ = 256, orbitHomeYaw_ = 45, orbitHomePitch_ = -25;
+    QPoint orbitLast_;
+    void applyOrbit();
     // Gives the renderer the material's shader state for its colour texture (stateLookup_); materials that had one.
     void applyMaterialState(const std::string& material, int texture);
     std::set<std::string> stateMaterials_;
@@ -750,6 +794,7 @@ private:
     void maybeBakeGameLook();
     void gameBakeDone(std::shared_ptr<const app::GameLightmap> lm);
     EffectSource effectSource_;
+    std::vector<StockEffect> stockEffects_;
     size_t fxParticles_ = 0;
     double fxTimeOverride_ = -1;
     int whiteTex_ = -1;

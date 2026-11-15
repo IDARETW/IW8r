@@ -425,6 +425,10 @@ public:
     void setReferenceInstDecal(size_t mesh, int sortKey) {
         if (mesh < refTexInst_.size()) refTexInst_[mesh].decal = sortKey;
     }
+    // A see-through prop mesh (glass): drawn after the others, blended by its alpha, without writing depth.
+    void setReferenceInstTranslucent(size_t mesh, bool on) {
+        if (mesh < refTexInst_.size()) refTexInst_[mesh].translucent = on;
+    }
     // A stock material's draw class (materialDrawFor: 0 drawn, 1 shadow only, 2 never) for a reference batch / prop mesh.
     void setReferenceDrawClass(size_t batch, int cls) {
         if (batch < refLayers_.size() && refLayers_[batch].drawClass != cls) refLayers_[batch].drawClass = cls, shadowDirty_ = nearDirty_ = true;
@@ -764,6 +768,7 @@ private:
         float lodNear = 0, lodFar = 0;
         int normal = -1;            // setReferenceInstNormal
         int decal = 0;              // setReferenceInstDecal: the material's decal sort key (0 = not a decal)
+        bool translucent = false;   // setReferenceInstTranslucent
         int drawClass = 0;          // setReferenceInstDrawClass: 1 shadow only, 2 never drawn
         bool noCast = false;        // setReferenceInstNoCast: drawn, casting no shadow (tree canopy leaf cards)
         float params[16] = {};      // setReferenceInstParams

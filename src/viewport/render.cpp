@@ -968,6 +968,16 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             if (batchFlags.y > 1.5) return float4(cu * outA, 1.0);
             return float4(cu, outA);
         }
+        if (stockRef && matX.x > 0.5) {
+            // A stock `unlit_` material (research 132 G2): its colour as is, x the emissive image and constant when it has
+            // them (research 107 section 5), fogged and exposed like the rest; no lightmap, probes, sun or lamps.
+            float3 cu = albedo;
+            if (matE.w > 0.5) cu = srgbToLinear3(emi0.Sample(samp0, uvS).rgb) * matE.rgb;
+            cu = fogAny(cu, i.w);
+            if (gameAo.w < 0.5) cu = gamePost(cu);
+            if (batchFlags.y > 1.5) return float4(cu * outA, 1.0);
+            return float4(cu, outA);
+        }
         float3 Nf = dot(i.n, i.n) > 0.5 ? normalize(i.n) : normalize(cross(ddx(i.w), ddy(i.w)));
         // A normal from the screen derivatives has no reliable side (instanced props have none of their own): it faces
         // the viewer.
@@ -4105,11 +4115,32 @@ void SceneRenderer::drawReferenceTexInstances() {
     ID3D11DepthStencilState* savedDs = nullptr;
     UINT savedRef = 0;
     bool decalStateSet = false;
-    for (int decalPass = 0; decalPass < 2; ++decalPass)
+    // Pass 0: the props; 1: their decal meshes; 2: see-through meshes (glass), blended by their alpha.
+    bool glassStateSet = false;
+    for (int decalPass = 0; decalPass < 3; ++decalPass)
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
-        if ((g.decal > 0) != (decalPass == 1) || g.drawClass != 0) continue;
-        if (decalPass == 1 && texPsOverride_) continue;
+        const int passOf = g.translucent && g.decal == 0 ? 2 : g.decal > 0 ? 1 : 0;
+        if (passOf != decalPass || g.drawClass != 0) continue;
+        if (decalPass >= 1 && texPsOverride_) continue;
+        if (decalPass == 2 && !glassStateSet) {
+            glassStateSet = true;
+            if (!decalStateSet) {
+                decalStateSet = true;
+                ctx_->RSGetState(&savedRs);
+                ctx_->OMGetDepthStencilState(&savedDs, &savedRef);
+            }
+            if (savedRs) ctx_->RSSetState(savedRs);
+            ctx_->OMSetDepthStencilState(dsTest_, 0);
+            if (blend_) {
+                const float bf[4] = {0, 0, 0, 0};
+                ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
+            }
+            if (cbBatch_) {
+                const float flags[8] = {propNormals ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};  // y = 1: blended
+                writeBatchCb(flags);
+            }
+        }
         if (decalPass == 1 && !decalStateSet && rsDecal_) {
             decalStateSet = true;
             ctx_->RSGetState(&savedRs);

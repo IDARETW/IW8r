@@ -708,6 +708,11 @@ private:
     LayersPanel* layers_ = nullptr;
     class SurfacePanel* surface_ = nullptr;  // the Surface dock; the web form "surface" works through it
     class PrefabBrowser* prefabs_ = nullptr;
+    class AssetPreviewWindow* assetPreview_ = nullptr;
+public:
+    // Opens the asset preview window (a textured, navigable 3D view) on a model or a prefab .map file.
+    class AssetPreviewWindow* openAssetPreview(const QString& modelOrPrefab, bool prefab);
+private:
     QString previewedModel_;
 public:
     void previewModel(const QString& name);  // Models browser preview (also used by the GUI test)

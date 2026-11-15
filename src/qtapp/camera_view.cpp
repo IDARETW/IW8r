@@ -414,7 +414,8 @@ void CameraView::render() {
                     if (const auto p = materialConstantsFor(texInstMaterials_[k])) renderer_.setReferenceInstParams(k, p->data());
                     if (factsLookup_)
                         if (const auto f = factsLookup_(texInstMaterials_[k]))
-                            renderer_.setReferenceInstDecal(k, f->propDecalSortKey), renderer_.setReferenceInstNoCast(k, f->noCastShadow);
+                            renderer_.setReferenceInstDecal(k, f->propDecalSortKey), renderer_.setReferenceInstNoCast(k, f->noCastShadow || f->translucent),
+                                renderer_.setReferenceInstTranslucent(k, f->translucent);
                     if (ctx_ && ctx_->scene.drawClassFor) renderer_.setReferenceInstDrawClass(k, ctx_->scene.drawClassFor(texInstMaterials_[k]));
                     if (!applyMaterialExtras(texInstMaterials_[k], k, true)) {
                         pending = true;
@@ -1063,7 +1064,10 @@ void CameraView::addGizmoLines() {
 // The play preview's collision as the built map has it (core play_world): the map's brushes, the contents of its
 // prefabs and its placed models' hulls.
 void CameraView::buildPlayWorld() {
+    // The movers first: their brushes are left out of the static world and added back as moving groups.
+    playBehaviours_.read(ctx_->doc.map());
     iw8r::PlayWorldOptions o;
+    o.skip = [this](const Entity& e) { return playBehaviours_.moves(e); };
     o.mapPath = ctx_->doc.path();
     for (const QString& r : PrefabBrowser::searchRoots()) o.prefabRoots.push_back(r.toStdString());
     o.modelOf = ctx_->scene.modelSource;
@@ -1071,6 +1075,7 @@ void CameraView::buildPlayWorld() {
     iw8r::PlayWorldStats st;
     iw8r::buildPlayWorld(ctx_->doc.map(), o, world_, &st);
     playWorldModels_ = st.models;
+    playBehaviours_.attach(ctx_->doc.map(), world_);
 }
 
 void CameraView::startPlay() {
@@ -1128,6 +1133,10 @@ void CameraView::stopPlay() {
     unsetCursor();
     emit ctx_->playModeChanged(false);
     ctx_->setStatus("Play preview ended");
+    if (!ctx_->scene.playPoses.empty()) {
+        ctx_->scene.playPoses.clear();  // the movers are drawn at rest again
+        ctx_->scene.invalidate();
+    }
     ctx_->cameraMoved();
 }
 
@@ -1150,6 +1159,35 @@ void CameraView::tickPlay(double dt) {
     if (player_.noclip) in.crouch = false;
     player_.yaw = ctx_->cam.yaw;
     player_.pitch = ctx_->cam.pitch;
+    // The map's scripted objects (core play_behaviour): F is the game's Use key.
+    {
+        const bool useDown = down(Qt::Key_F);
+        const bool use = useDown && !playUseHeld_;
+        playUseHeld_ = useDown;
+        const auto events = playBehaviours_.tick(std::min(dt, 0.25), player_.origin, playerMins(params_), playerMaxs(params_, player_.crouched),
+                                                 use, world_);
+        for (const auto& ev : events) {
+            if (ev.kind == PlayBehaviours::Event::Teleport) {
+                player_.origin = ev.position;
+                player_.velocity = Vec3{};
+                player_.yaw = ctx_->cam.yaw = ev.yaw;
+                ctx_->setStatus("Play: teleported by " + QString::fromStdString(ev.name));
+            } else if (ev.kind == PlayBehaviours::Event::Launch) {
+                player_.velocity = ev.velocity;
+                player_.onGround = false;
+            }
+        }
+        if (!playBehaviours_.poses().empty()) {
+            for (const auto& p : playBehaviours_.poses()) {
+                app::SceneCache::PlayPose& pp = ctx_->scene.playPoses[p.entity];
+                for (int i = 0; i < 3; ++i)
+                    for (int j = 0; j < 3; ++j) pp.R[i][j] = p.R[i][j];
+                pp.pivot = p.pivot;
+                pp.move = p.move;
+            }
+            ctx_->scene.invalidate();
+        }
+    }
     // Fixed 1/60 s steps (the mover clamps long frames; this keeps jumps identical at any frame rate).
     double left = std::min(dt, 0.25);
     do {
@@ -1163,7 +1201,7 @@ void CameraView::tickPlay(double dt) {
                        : player_.prone ? "prone" : player_.crouched ? "crouch" : !player_.onGround ? "air" : "walk";
     if (mode != playMode_) {
         playMode_ = mode;
-        ctx_->setStatus(QString("Play: %1  (WASD, Space jump/mantle, Shift sprint, C crouch/slide, Z prone, N noclip, Esc exit)").arg(mode));
+        ctx_->setStatus(QString("Play: %1  (WASD, Space jump/mantle, Shift sprint, C crouch/slide, Z prone, F use, N noclip, Esc exit)").arg(mode));
     }
     ctx_->cameraMoved();
 }
@@ -1185,7 +1223,7 @@ std::optional<std::array<float, 16>> CameraView::materialConstantsFor(const std:
 bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool propMesh) {
     if (m.empty() || !factsLookup_ || m.find_first_of("\x01\x02\x05\x06") != std::string::npos) return true;
     const auto f = factsLookup_(m);
-    if (!f || (f->emissiveScale[3] <= 0 && f->transTint[3] <= 0 && f->wrap[3] <= 0)) return true;
+    if (!f || (f->emissiveScale[3] <= 0 && f->transTint[3] <= 0 && f->wrap[3] <= 0 && !f->unlit)) return true;
     int ids[2] = {-1, -1};
     const std::string files[2] = {f->emissiveScale[3] > 0 ? f->emissiveFile : std::string(), f->transTint[3] > 0 ? f->transmissionFile : std::string()};
     for (int k = 0; k < 2; ++k) {
@@ -1197,7 +1235,7 @@ bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool pr
     }
     float x[16] = {f->emissiveScale[0], f->emissiveScale[1], f->emissiveScale[2], ids[0] >= 0 ? 1.0f : 0.0f,
                    f->transTint[0], f->transTint[1], f->transTint[2], ids[1] >= 0 ? 1.0f : 0.0f,
-                   f->wrap[0], f->wrap[1], f->wrap[2], f->wrap[3] > 0 ? 1.0f : 0.0f, 0, 0, 0, 0};
+                   f->wrap[0], f->wrap[1], f->wrap[2], f->wrap[3] > 0 ? 1.0f : 0.0f, f->unlit ? 1.0f : 0.0f, 0, 0, 0};
     if (propMesh) renderer_.setReferenceInstExtra(index, x, ids[0], ids[1]);
     else renderer_.setReferenceBaseExtra(index, x, ids[0], ids[1]);
     return true;
@@ -1659,13 +1697,22 @@ void CameraView::appendEffectParticles() {
     b.blend = 1;
     fxParticles_ = 0;
     uint32_t seed = 1;
+    // The mapper's fx_origin entities, then the stock map's own placed effects.
+    std::vector<std::pair<Vec3, const std::string*>> placed;
     for (const Entity& e : ctx_->doc.map().entities) {
         if (e.classname() != "fx_origin") continue;
         const std::string* fx = e.value("fx");
         const auto o = e.origin();
-        if (!fx || !o) continue;
-        const auto def = effectSource_(*fx);
+        if (fx && o) placed.push_back({*o, fx});
+    }
+    for (const StockEffect& s : stockEffects_) placed.push_back({s.origin, &s.name});
+    const Vec3 eye = ctx_->cam.pos;
+    for (const auto& [origin, fx] : placed) {
+        const auto o = std::optional<Vec3>(origin);
         ++seed;
+        // Far effects are left out (the game culls them by distance too); the 20,000 particle budget goes to near ones.
+        if (length(origin - eye) > 12000) continue;
+        const auto def = effectSource_(*fx);
         if (!def || def->emitters.empty()) continue;
         const double loop = def->duration > 0 ? def->duration + 0.5 : 4.0;  // one-shots replay after a short pause
         for (const VfxParticle& p : sampleVfx(*def, std::fmod(t, loop), seed)) {
@@ -2099,8 +2146,45 @@ void CameraView::paintEvent(QPaintEvent*) { render(); }
 
 void CameraView::resizeEvent(QResizeEvent*) { update(); }
 
+void CameraView::copyHooksFrom(const CameraView& o) {
+    shaderLookup_ = o.shaderLookup_;
+    layerLookup_ = o.layerLookup_;
+    factsLookup_ = o.factsLookup_;
+    maskLookup_ = o.maskLookup_;
+    normalLookup_ = o.normalLookup_;
+    emissiveLookup_ = o.emissiveLookup_;
+    specLookup_ = o.specLookup_;
+    stateLookup_ = o.stateLookup_;
+    effectSource_ = o.effectSource_;
+    toolPathFn_ = o.toolPathFn_;
+    customTint_ = o.customTint_;
+    imageLookup_ = o.imageLookup_;
+    imageRequest_ = o.imageRequest_;
+    materialImagesChanged();
+}
+
+void CameraView::setOrbit(const Vec3& target, double distance, double yawDeg, double pitchDeg) {
+    orbitTarget_ = orbitHomeTarget_ = target;
+    orbitDist_ = orbitHomeDist_ = std::max(1.0, distance);
+    orbitYaw_ = orbitHomeYaw_ = yawDeg;
+    orbitPitch_ = orbitHomePitch_ = std::clamp(pitchDeg, -89.0, 89.0);
+    applyOrbit();
+}
+
+void CameraView::applyOrbit() {
+    ctx_->cam.yaw = orbitYaw_;
+    ctx_->cam.pitch = orbitPitch_;
+    ctx_->cam.pos = orbitTarget_ - ctx_->cam.forward() * orbitDist_;
+    ctx_->cameraMoved();
+    update();
+}
+
 void CameraView::mousePressEvent(QMouseEvent* e) {
     setFocus(Qt::MouseFocusReason);
+    if (orbit_) {
+        orbitLast_ = e->position().toPoint();
+        return;
+    }
     if (ctx_->playing) return;  // the mouse only looks around while playing
     if (e->button() == Qt::RightButton) {
         ctx_->looking = true;
@@ -2182,6 +2266,22 @@ void CameraView::mousePressEvent(QMouseEvent* e) {
 }
 
 void CameraView::mouseMoveEvent(QMouseEvent* e) {
+    if (orbit_) {
+        const QPoint p = e->position().toPoint();
+        const QPoint d = p - orbitLast_;
+        orbitLast_ = p;
+        const bool pan = (e->buttons() & Qt::MiddleButton) || ((e->buttons() & Qt::LeftButton) && (e->modifiers() & Qt::ShiftModifier));
+        if (pan) {
+            const double k = orbitDist_ * 0.0018;
+            orbitTarget_ = orbitTarget_ - ctx_->cam.right() * (d.x() * k) + ctx_->cam.up() * (d.y() * k);
+            applyOrbit();
+        } else if (e->buttons() & (Qt::LeftButton | Qt::RightButton)) {
+            orbitYaw_ = std::fmod(orbitYaw_ - d.x() * 0.4, 360.0);
+            orbitPitch_ = std::clamp(orbitPitch_ - d.y() * 0.4, -89.0, 89.0);
+            applyOrbit();
+        }
+        return;
+    }
     if (ringDragAxis_ >= 0) {
         if (auto a = ringAngleForMouse(e->position(), ringDragAxis_)) {
             double d = std::remainder(*a - ringStartAngle_, 360.0);
@@ -2230,6 +2330,7 @@ void CameraView::mouseMoveEvent(QMouseEvent* e) {
 }
 
 void CameraView::mouseReleaseEvent(QMouseEvent* e) {
+    if (orbit_) return;
     if (ctx_->playing) return;
     if (e->button() == Qt::LeftButton && ringDragAxis_ >= 0) {
         const int axis = ringDragAxis_;
@@ -2330,11 +2431,29 @@ void CameraView::mouseReleaseEvent(QMouseEvent* e) {
 }
 
 void CameraView::wheelEvent(QWheelEvent* e) {
+    if (orbit_) {
+        orbitDist_ = std::clamp(orbitDist_ * std::pow(0.87, e->angleDelta().y() / 120.0), 1.0, 1e6);
+        applyOrbit();
+        return;
+    }
     ctx_->cam.pos += ctx_->cam.forward() * (e->angleDelta().y() / 120.0 * ctx_->cam.speed * 0.25);
     ctx_->cameraMoved();
 }
 
+bool CameraView::event(QEvent* e) {
+    if (orbit_ && e->type() == QEvent::ShortcutOverride) {
+        e->accept();
+        return true;
+    }
+    return QWidget::event(e);
+}
+
 void CameraView::keyPressEvent(QKeyEvent* e) {
+    if (orbit_) {
+        if (e->key() == Qt::Key_F) emit orbitFrameRequested();
+        else if (e->key() == Qt::Key_R) setOrbit(orbitHomeTarget_, orbitHomeDist_, orbitHomeYaw_, orbitHomePitch_);
+        return;
+    }
     if (ctx_->playing) {
         if (e->key() == Qt::Key_Escape || e->key() == Qt::Key_P) {
             stopPlay();

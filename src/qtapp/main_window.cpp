@@ -42,6 +42,7 @@
 #include "hot_channels.h"
 #include "port_wizard_dialog.h"
 #include "vfx_info.h"
+#include "asset_preview_window.h"
 #include "hotkey_presets.h"
 #include "decal_tools.h"
 #include "stock_smodels.h"
@@ -419,6 +420,9 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             f.transTint = c18 ? std::array<float, 4>{(*c18)[0], (*c18)[1], (*c18)[2], 1.0f} : std::array<float, 4>{1, 1, 1, 1};
         }
         if (const auto* c103 = cst(103)) f.wrap = {(*c103)[0], (*c103)[1], (*c103)[2], 1.0f};
+        f.unlit = parseTechset(e->techset.section('/', -1).toStdString()).family == TechsetFamily::UnlitEffect;
+        // Blended model materials past the decal sort keys (glass 25, 30): see-through (research 132 G1).
+        f.translucent = !e->techset.startsWith("tw") && (ts.contains("_bad_") || ts.contains("_bar_")) && f.propDecalSortKey == 0;
         return f;
     });
     camera_->setMaterialLayers([this](const std::string& m) -> std::optional<StockLayeredMaterial> {
@@ -1014,6 +1018,7 @@ void MainWindow::buildDocks() {
     });
     // Model preview (4.3): render the highlighted model from the ACTS model cache; request it when not exported yet.
     connect(models_, &AssetBrowser::modelHighlighted, this, [this](const QString& name) { previewModel(name); });
+    connect(models_, &AssetBrowser::previewRequested, this, [this](const QString& name) { openAssetPreview(name, false); });
     connect(modelCacheStock_, &ModelCache::modelReady, this, [this](const QString& name) {
         if (name == previewedModel_) previewModel(name);
     });
@@ -1073,6 +1078,7 @@ void MainWindow::buildDocks() {
                 return roots;
             },
             [this](const QString& f, QString* err) { return insertPrefab(f, err); });
+        connect(prefabs_, &PrefabBrowser::previewRequested, this, [this](const QString& f) { openAssetPreview(f, true); });
         PrefabBrowser::setModelBounds([this](const std::string& m, double b[6]) {
             const auto e = modelCacheStock_ ? modelCacheStock_->lookup(qs(m)) : std::nullopt;
             if (!e || e->failed) return false;
@@ -4594,6 +4600,38 @@ void MainWindow::loadDocument(const QString& path) {
         }
         ctx_.scene.spawns = std::move(dump.spawns);
         stockModelNames_ = entityModelNames(ctx_.doc.map());
+        {
+            // The map's own placed effects (research 132 G3): played by View > Effect Preview. Their definitions are
+            // exported once from the map's zone with ACTS (into vfx_cache/<zone>); the camera picks them up after.
+            std::vector<CameraView::StockEffect> fx;
+            QSet<QString> names;
+            for (const auto& e : dump.effects) {
+                fx.push_back({e.origin, e.effect});
+                names.insert(qs(e.effect));
+            }
+            camera_->setStockEffects(std::move(fx));
+            const QString zone = qs(dump.assetName).section('/', -1).section('.', 0, 0);
+            QStringList missing;
+            for (const QString& n : names)
+                if (findVfxExport(n).isEmpty() && !vfxExporting_.contains(n)) missing << n;
+            if (!missing.isEmpty() && !zone.isEmpty()) {
+                const QString ownCache = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/vfx_cache";
+                for (const QString& n : missing) vfxExporting_.insert(n);
+                ActsRequest req;
+                req.zone = zone;
+                req.types = "vfx";
+                req.names = missing;
+                req.outDir = ownCache + "/" + zone;
+                QDir().mkpath(req.outDir);
+                ActsRunner::shared()->submit([this](const QString& k) { return toolPath(k); }, req, this, [this, missing](const ActsResult&) {
+                    for (const QString& n : missing) {
+                        vfxExporting_.remove(n);
+                        fxSims_.erase(n.toStdString());
+                    }
+                    camera_->update();
+                });
+            }
+        }
         if (std::string perr; !readStockPlacedObjects(p, stockPlaced_, &perr)) {
             stockPlaced_.clear();
             EditorLog::instance().add(LogLevel::Warning, "stock", "the placed objects could not be read: " + qs(perr));
@@ -9639,6 +9677,59 @@ void MainWindow::previewImage(const QString& name) {
 
 // ---------------------------------------------------------------------------------------------------------------
 // 3.18 LOD preview
+
+AssetPreviewWindow* MainWindow::openAssetPreview(const QString& asset, bool prefab) {
+    if (!assetPreview_) {
+        AssetPreviewWindow::Sources src;
+        src.model = [this](const std::string& m, int lod) -> std::shared_ptr<const ImportedModel> {
+            const double s = ctx_.scene.modelScale > 0 ? 1.0 / ctx_.scene.modelScale : 1.0;
+            const auto scaled = [&](ImportedModel im) {
+                auto out = std::make_shared<ImportedModel>(std::move(im));
+                for (auto& mesh : out->meshes)
+                    for (auto& p : mesh.pos) p = p * s;
+                return out;
+            };
+            if (lod > 0 && modelCacheStock_) {
+                if (auto l = modelCacheStock_->loadModelLod(qs(m), lod)) return scaled(std::move(*l));
+                modelCacheStock_->requestLod(qs(m), lod);
+                return nullptr;
+            }
+            if (auto it = modelCache_.find(m); it != modelCache_.end() && it->second) return it->second;
+            if (modelCacheStock_)
+                if (auto ent = modelCacheStock_->lookup(qs(m)); ent && !ent->failed && !ent->glbPath.isEmpty())
+                    if (auto loaded = modelCacheStock_->loadModel(qs(m))) return scaled(std::move(*loaded));
+            return nullptr;
+        };
+        src.lodCount = [this](const std::string& m) -> int {
+            if (!modelCacheStock_) return 1;
+            const auto ent = modelCacheStock_->lookup(qs(m));
+            if (!ent || ent->failed) return 1;
+            const auto d = modelCacheStock_->loadDetail(qs(m));
+            return d ? std::max<int>(1, int(d->lods.size())) : 1;
+        };
+        src.materialImage = [this](const std::string& m) -> QImage {
+            const QString file = camera_->materialImagePath(m);
+            app::Rgba8Image img;
+            if (file.isEmpty()) return {};
+            if (file.endsWith(".dds", Qt::CaseInsensitive)) {
+                if (!app::loadDdsPreview(file.toStdString(), 256, img)) return {};
+                return QImage(img.pixels.data(), img.width, img.height, img.width * 4, QImage::Format_RGBA8888).convertToFormat(QImage::Format_RGB32);
+            }
+            return QImage(file);
+        };
+        assetPreview_ = new AssetPreviewWindow(dev_, dc_, camera_, ctx_.scene, std::move(src), this);
+    }
+    if (prefab) {
+        QString err;
+        if (!assetPreview_->showPrefab(asset, &err)) ctx_.setStatus("Preview: " + err);
+    } else {
+        assetPreview_->showModel(asset);
+    }
+    assetPreview_->show();
+    assetPreview_->raise();
+    assetPreview_->activateWindow();
+    return assetPreview_;
+}
 
 int MainWindow::stockLodFor(const Entity& e, const std::string& model) {
     const bool collision = ctx_.scene.cameraMode == iw8r::app::CameraMode::Collision;

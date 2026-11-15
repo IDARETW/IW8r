@@ -255,6 +255,16 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
         previewCaption_->setStyleSheet("color: gray");
         side->addWidget(preview_);
         side->addWidget(previewCaption_);
+        if (kind == Kind::Models) {
+            auto* open3d = new QPushButton("Preview in 3D...", this);
+            open3d->setObjectName("modelPreview3d");
+            open3d->setToolTip("A textured 3D view of the model: orbit, pan and zoom, levels of detail, materials, collision hull");
+            connect(open3d, &QPushButton::clicked, this, [this] {
+                const QModelIndex idx = view_->currentIndex();
+                if (idx.isValid()) emit previewRequested(idx.data(Qt::DisplayRole).toString());
+            });
+            side->addWidget(open3d);
+        }
         side->addStretch(1);
         row->addLayout(side);
         lay->addLayout(row, 1);
@@ -294,6 +304,7 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
             const QString name = idx.data(Qt::DisplayRole).toString();
             QMenu menu(this);
             menu.addAction(kind_ == Kind::Materials ? "Apply to Selection" : "Place", this, [choose, idx] { choose(idx); });
+            if (kind_ == Kind::Models) menu.addAction("Preview in 3D...", this, [this, name] { emit previewRequested(name); });
             if (kind_ == Kind::Materials || kind_ == Kind::Models || kind_ == Kind::Effects)
                 menu.addAction(kind_ == Kind::Materials ? "Material Info..." : kind_ == Kind::Models ? "Model Info..." : "Effect Info...", this,
                                [this, name] { emit infoRequested(name); });

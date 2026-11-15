@@ -18,6 +18,7 @@
 #include "stock_world.h"
 #include "collision_world.h"
 #include "collision_preview.h"
+#include "own_decals.h"
 #include "face_edges.h"
 #include "umbra_view.h"
 
@@ -283,6 +284,10 @@ private:
     uint64_t generation_ = 0;
     uint64_t stampCounter_ = 0;
     uint64_t fingerprint_ = 0;  // ids and revs of every item at the last full sync
+    // The mapper's own decal volumes projected onto the brushes (core own_decals, research 132 G6), per entity; made
+    // again when the drawn items change (fingerprint).
+    std::map<Id, OwnDecal> ownDecals_;
+    uint64_t ownDecalPrint_ = 0;
     uint64_t visit_ = 0;
     mutable std::shared_ptr<CollisionWorld> shadowWorld_;
     mutable uint64_t shadowRevision_ = ~0ull;
