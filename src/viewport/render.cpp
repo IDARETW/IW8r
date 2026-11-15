@@ -1740,12 +1740,84 @@ float4 ps_tex(PSIn i) : SV_TARGET {
 // Effect particles (research 138): world-space quads, the sprite's texel x the particle colour. pMode.x = 1: linear
 // output into the HDR scene (Game Lighting), else display space; pMode.y = 1: unlit (additive, output alpha 0).
 const char* kParticleShader = R"(
-cbuffer Part : register(b0) { row_major float4x4 pVp; float4 pLight; float4 pMode; };
+// pLight: lit = the map-wide light (or, per particle, the ambient where the grid has none); unlit = the emissive scale.
+// pMode: x = HDR scene, y = unlit, z = per-particle light (Game Lighting), w = the sun shadow map is there.
+// pSunNear: x = near cascade bias, y = near cascade on, z = whole-scene bias. pSun: the sun's share on a lit particle.
+// pDist: xy = a distortion material's constant 127 (inches), zw = the target size. pFlare: x = screen-space flare quads,
+// y = the occlusion test's depth bias.
+cbuffer Part : register(b0) {
+    row_major float4x4 pVp; float4 pLight; float4 pMode;
+    row_major float4x4 pSunVp; row_major float4x4 pSunVpNear; float4 pSunNear; float4 pSun; float4 pDist; float4 pFlare;
+};
 Texture2D pTex : register(t0);
+Texture2D pScene : register(t1);
+Texture2DArray<float> pShadow : register(t2);
 SamplerState pSamp : register(s0);
-struct VI { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; };
-struct PI { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; };
-PI vs_part(VI i) { PI o; o.pos = mul(float4(i.pos, 1.0), pVp); o.uv = i.uv; o.col = i.col; return o; }
+SamplerComparisonState pShadowSamp : register(s1);
+SamplerState pClamp : register(s2);
+Texture2D<float> pDepth : register(t3);
+// A flare's source seen from the camera (research 139 section 1.4): of a 3x3 grid over its occlusion area, the share of
+// points where nothing in the scene is nearer than the source.
+float flareVisible(float3 src, float3 area) {
+    if (area.z <= 0) return 1.0;
+    const float2 size = pDist.zw;
+    const float z = min(src.z, 0.999999) - pFlare.y;
+    float seen = 0;
+    [unroll] for (int y = -1; y <= 1; ++y)
+        [unroll] for (int x = -1; x <= 1; ++x) {
+            const float2 ndc = src.xy + float2(x, y) * area.xy;
+            const int2 px = int2(clamp((ndc * float2(0.5, -0.5) + 0.5) * size, float2(0, 0), size - 1));
+            seen += pDepth.Load(int3(px, 0)) >= z ? 1.0 : 0.0;
+        }
+    return seen / 9.0;
+}
+struct VI { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 aux0 : TEXCOORD1; float3 aux1 : TEXCOORD2; };
+struct PI { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 light : TEXCOORD1; float3 world : TEXCOORD2;
+            float3 t : TEXCOORD3; float3 b : TEXCOORD4; };
+float shadowTaps(float2 uv, float z, float slice) {
+    float sw, sh, sn;
+    pShadow.GetDimensions(sw, sh, sn);
+    float s = 0;
+    [unroll] for (int y = -1; y <= 1; ++y)
+        [unroll] for (int x = -1; x <= 1; ++x)
+            s += pShadow.SampleCmpLevelZero(pShadowSamp, float3(uv + float2(x, y) / sw, slice), z);
+    return s / 9.0;
+}
+// The scene's sun shadow test (render.cpp sunShadow), at one point: the near cascade, else the whole scene.
+float sunVisible(float3 w) {
+    if (pMode.w < 0.5) return 1.0;
+    if (pSunNear.y > 0.5) {
+        float4 ln = mul(float4(w, 1.0), pSunVpNear);
+        float2 un = float2(ln.x * 0.5 + 0.5, 0.5 - ln.y * 0.5);
+        if (un.x > 0.01 && un.y > 0.01 && un.x < 0.99 && un.y < 0.99 && ln.z < 1) return shadowTaps(un, ln.z - pSunNear.x, 1.0);
+    }
+    float4 lp = mul(float4(w, 1.0), pSunVp);
+    float2 uv = float2(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
+    if (uv.x <= 0 || uv.y <= 0 || uv.x >= 1 || uv.y >= 1 || lp.z >= 1) return 1.0;
+    return shadowTaps(uv, lp.z - pSunNear.z, 0.0);
+}
+PI vs_part(VI i) {
+    PI o;
+    if (pFlare.x > 0.5) {
+        // A flare piece: already on screen, over the scene, faded by its source's visibility.
+        o.pos = float4(i.pos.xy, 0.5, 1.0);
+        o.uv = i.uv;
+        o.col = float4(i.col.rgb * flareVisible(i.aux0, i.aux1), i.col.a);
+        o.world = 0, o.t = 0, o.b = 0, o.light = pLight.rgb;
+        return o;
+    }
+    o.pos = mul(float4(i.pos, 1.0), pVp);
+    o.uv = i.uv;
+    o.col = i.col;
+    o.world = i.pos;
+    o.t = i.aux0;
+    o.b = i.aux1;
+    o.light = pLight.rgb;
+    // Per particle (research 139 section 3): the grid's light at the particle (else the map-wide ambient) and the sun
+    // as seen from the particle's centre, one value for the whole sprite.
+    if (pMode.z > 0.5) o.light = (i.aux1.x >= 0 ? i.aux1 : pLight.rgb) + pSun.rgb * sunVisible(i.aux0);
+    return o;
+}
 float3 linOf(float3 c) { return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); }
 float4 ps_part(PI i) : SV_Target {
     const float4 t = pTex.Sample(pSamp, i.uv);
@@ -1753,8 +1825,24 @@ float4 ps_part(PI i) : SV_Target {
     const float3 tex = hdr ? linOf(saturate(t.rgb)) : t.rgb;
     const float3 col = hdr ? i.col.rgb : pow(max(i.col.rgb, 0.0), 1.0 / 2.2);
     if (pMode.y > 0.5) return float4(tex * col * pLight.rgb, 0.0);  // unlit: adds (pLight = the emissive scale)
+    float3 light = i.light;
+    if (!hdr && pMode.z > 0.5) light = min(1.5, pow(max(light, 0.0), 1.0 / 2.2));
     const float a = saturate(t.a * i.col.a);
-    return float4(tex * col * pLight.rgb * a, a);                  // lit: premultiplied
+    return float4(tex * col * light * a, a);                       // lit: premultiplied
+}
+// Research 132 G13 on an effect quad (research 139 section 2): the distortion image m (slot 157) moves the pixel's
+// point along the quad's tangent frame, and the scene drawn so far is shown from there.
+float4 ps_dist(PI i) : SV_Target {
+    const float3 m = pTex.Sample(pSamp, i.uv).rgb;
+    const float va = saturate(i.col.a);
+    if (pFlare.z > 0.5) return float4(m, 1.0);  // IW8R_DIST_DEBUG: the image as read
+    const float k = saturate(m.z * va - 0.25) * (4.0 / 3.0);
+    const float3 D = pDist.x * k * (2.0 * m.x - 1.0) * i.t + pDist.y * k * (2.0 * m.y - 1.0) * i.b;
+    const float4 c = mul(float4(i.world + D, 1.0), pVp);
+    float2 uv = c.xy / max(c.w, 1e-4) * float2(0.5, -0.5) + 0.5;
+    uv = clamp(uv, 0.5 / pDist.zw, 1.0 - 0.5 / pDist.zw);
+    const float3 scene = pScene.SampleLevel(pClamp, uv, 0).rgb;
+    return float4(scene * saturate(i.col.rgb), saturate(4.0 * m.z * va));
 }
 )";
 
@@ -2129,6 +2217,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(blend_);
     safeRelease(blendAdd_);
     safeRelease(partVs_), safeRelease(partPs_), safeRelease(partLayout_), safeRelease(partVb_), safeRelease(partCb_), safeRelease(blendPremul_);
+    safeRelease(partDistPs_), safeRelease(blendDist_), safeRelease(clampSampler_), safeRelease(distCopySrv_), safeRelease(distCopyTex_);
     safeRelease(blendMul_);
     safeRelease(vsTex_);
     safeRelease(psTex_);
@@ -2357,6 +2446,7 @@ void SceneRenderer::prewarmShaders() {
         {kAoShader, "iw8r_ao", "ps_ao_ssao", "ps_5_0"},
         {kParticleShader, "iw8r_part", "vs_part", "vs_5_0"},
         {kParticleShader, "iw8r_part", "ps_part", "ps_5_0"},
+        {kParticleShader, "iw8r_part", "ps_dist", "ps_5_0"},
         {kMeterShader, "iw8r_meter", "vs_full", "vs_5_0"},
         {kMeterShader, "iw8r_meter", "ps_meter", "ps_5_0"},
         {kMeterShader, "iw8r_meter", "ps_meter_hdr", "ps_5_0"},
@@ -2590,27 +2680,54 @@ void SceneRenderer::releaseTargets() {
 }
 
 bool SceneRenderer::createParticleResources() {
-    if (partVs_ && partPs_ && partLayout_ && partCb_ && blendPremul_) return true;
+    if (partVs_ && partPs_ && partLayout_ && partCb_ && blendPremul_ && partDistPs_ && blendDist_ && clampSampler_) return true;
     if (partTried_ || !dev_) return false;
     partTried_ = true;
-    ID3DBlob *vsb = nullptr, *psb = nullptr, *errb = nullptr;
-    const bool ok = SUCCEEDED(compileShaderCached(kParticleShader, std::strlen(kParticleShader), "iw8r_part", "vs_part", "vs_5_0", 0, &vsb, &errb)) &&
-                    SUCCEEDED(compileShaderCached(kParticleShader, std::strlen(kParticleShader), "iw8r_part", "ps_part", "ps_5_0", 0, &psb, &errb));
-    if (errb) OutputDebugStringA(static_cast<const char*>(errb->GetBufferPointer()));
-    safeRelease(errb);
+    ID3DBlob *vsb = nullptr, *psb = nullptr, *pdb = nullptr, *errb = nullptr;
+    const auto compile = [&](const char* entry, const char* target, ID3DBlob*& out) {
+        const bool good = SUCCEEDED(compileShaderCached(kParticleShader, std::strlen(kParticleShader), "iw8r_part", entry, target, 0, &out, &errb));
+        if (errb) OutputDebugStringA(static_cast<const char*>(errb->GetBufferPointer()));
+        safeRelease(errb);
+        return good;
+    };
+    const bool ok = compile("vs_part", "vs_5_0", vsb) && compile("ps_part", "ps_5_0", psb) && compile("ps_dist", "ps_5_0", pdb);
     if (ok) {
         dev_->CreateVertexShader(vsb->GetBufferPointer(), vsb->GetBufferSize(), nullptr, &partVs_);
         dev_->CreatePixelShader(psb->GetBufferPointer(), psb->GetBufferSize(), nullptr, &partPs_);
+        dev_->CreatePixelShader(pdb->GetBufferPointer(), pdb->GetBufferSize(), nullptr, &partDistPs_);
         const D3D11_INPUT_ELEMENT_DESC il[] = {
             {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
             {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 1, DXGI_FORMAT_R32G32B32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 2, DXGI_FORMAT_R32G32B32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
         };
-        dev_->CreateInputLayout(il, 3, vsb->GetBufferPointer(), vsb->GetBufferSize(), &partLayout_);
+        dev_->CreateInputLayout(il, 5, vsb->GetBufferPointer(), vsb->GetBufferSize(), &partLayout_);
     }
-    safeRelease(vsb), safeRelease(psb);
+    safeRelease(vsb), safeRelease(psb), safeRelease(pdb);
+    {
+        D3D11_SAMPLER_DESC sd{};
+        sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+        sd.MaxLOD = D3D11_FLOAT32_MAX;
+        sd.ComparisonFunc = D3D11_COMPARISON_NEVER;
+        if (!clampSampler_) dev_->CreateSamplerState(&sd, &clampSampler_);
+    }
+    {
+        // The distortion quads: the moved scene over the scene, by the shader's alpha.
+        D3D11_BLEND_DESC bd{};
+        bd.RenderTarget[0].BlendEnable = TRUE;
+        bd.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+        bd.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+        bd.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+        bd.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+        bd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+        bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+        if (!blendDist_) dev_->CreateBlendState(&bd, &blendDist_);
+    }
     D3D11_BUFFER_DESC cbd{};
-    cbd.ByteWidth = 96;
+    cbd.ByteWidth = 288;
     cbd.Usage = D3D11_USAGE_DEFAULT;
     cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     dev_->CreateBuffer(&cbd, nullptr, &partCb_);
@@ -2623,8 +2740,8 @@ bool SceneRenderer::createParticleResources() {
     bd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
     bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
     bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-    dev_->CreateBlendState(&bd, &blendPremul_);
-    return partVs_ && partPs_ && partLayout_ && partCb_ && blendPremul_;
+    if (!blendPremul_) dev_->CreateBlendState(&bd, &blendPremul_);
+    return partVs_ && partPs_ && partLayout_ && partCb_ && blendPremul_ && partDistPs_ && blendDist_ && clampSampler_;
 }
 
 void SceneRenderer::drawParticles(const float viewProj[16]) {
@@ -2652,14 +2769,23 @@ void SceneRenderer::drawParticles(const float viewProj[16]) {
     }
     ctx_->Unmap(partVb_, 0);
     const bool hdr = hdrFrame_;
-    // A lit particle takes the scene's ambient and a share of the sun in Game Lighting (the game lights each particle
-    // from the scene; research 138 section 6), 1 elsewhere.
-    float lit[3] = {1, 1, 1};
+    // A lit particle in Game Lighting (research 139 section 3): its light from the stock light grid at the particle
+    // (the vertex's aux1; the map's ambient where there is none) plus the sun's share, shadowed at the particle's centre
+    // by the scene's sun shadow map. Elsewhere 1.
+    float lit[3] = {1, 1, 1}, sunShare[3] = {0, 0, 0};
+    static const bool noParticleLight = std::getenv("IW8R_NO_PARTICLE_LIGHT") != nullptr;  // A/B: one map-wide light
+    const bool perParticle = game_.on && !noParticleLight;
+    const bool shadow = perParticle && shadowEnabled_ && shadowSrv_ && cmpSampler_;
     if (game_.on) {
         const float up = std::max(0.0f, game_.sunToward[2]);
-        for (int c = 0; c < 3; ++c) lit[c] = game_.sky[c] + game_.sunColor[c] * (0.15f + 0.2f * up);
-        if (!hdr) for (int c = 0; c < 3; ++c) lit[c] = std::min(1.5f, std::pow(std::max(lit[c], 0.0f), 1.0f / 2.2f));
+        for (int c = 0; c < 3; ++c) lit[c] = game_.sky[c], sunShare[c] = game_.sunColor[c] * (0.15f + 0.2f * up);
+        if (!perParticle) {
+            // The map-wide light of before (sky + a share of the sun), for comparisons.
+            for (int c = 0; c < 3; ++c) lit[c] += sunShare[c];
+            if (!hdr) for (int c = 0; c < 3; ++c) lit[c] = std::min(1.5f, std::pow(std::max(lit[c], 0.0f), 1.0f / 2.2f));
+        }
     }
+    partShadowLast_ = shadow;
     ctx_->IASetInputLayout(partLayout_);
     ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     const UINT stride = sizeof(ParticleVertex), offset = 0;
@@ -2673,22 +2799,114 @@ void SceneRenderer::drawParticles(const float viewProj[16]) {
     ctx_->OMSetDepthStencilState(dsTest_, 0);
     const float bf[4] = {0, 0, 0, 0};
     ctx_->OMSetBlendState(blendPremul_, bf, 0xffffffff);
+    if (shadow) {
+        ctx_->VSSetShaderResources(2, 1, &shadowSrv_);
+        ctx_->VSSetSamplers(1, 1, &cmpSampler_);
+    }
+    const auto writePartCb = [&](const ParticleBatch& b) {
+        float cb[72] = {};
+        std::memcpy(cb, viewProj, 16 * sizeof(float));
+        for (int c = 0; c < 3; ++c) cb[16 + c] = b.lit ? lit[c] : (game_.on ? b.emissive[c] : 1.0f);
+        cb[19] = 1.0f;
+        cb[20] = hdr ? 1.0f : 0.0f, cb[21] = b.lit ? 0.0f : 1.0f, cb[22] = perParticle && b.lit ? 1.0f : 0.0f, cb[23] = shadow ? 1.0f : 0.0f;
+        std::memcpy(cb + 24, sunViewProj_, 64);
+        std::memcpy(cb + 40, sunViewProjNear_, 64);
+        cb[56] = shadowBiasNear_, cb[57] = nearEnabled_ ? 1.0f : 0.0f, cb[58] = shadowBias_;
+        for (int c = 0; c < 3; ++c) cb[60 + c] = sunShare[c];
+        cb[64] = b.distScale[0], cb[65] = b.distScale[1], cb[66] = float(std::max(1, w_)), cb[67] = float(std::max(1, h_));
+        static const bool distDebug = std::getenv("IW8R_DIST_DEBUG") != nullptr;
+        cb[68] = b.screen ? 1.0f : 0.0f, cb[69] = 1e-5f, cb[70] = distDebug ? 1.0f : 0.0f;
+        ctx_->UpdateSubresource(partCb_, 0, nullptr, cb, 0, 0);
+    };
     UINT first = 0;
+    bool anyDistortion = false, anyFlare = false;
     for (const auto& b : particles_) {
         const UINT n = UINT(b.v.size());
+        anyDistortion = anyDistortion || (b.distortion && n);
+        anyFlare = anyFlare || (b.screen && n);
         const int tex = b.texture >= 0 && size_t(b.texture) < textures_.size() ? b.texture : whiteTex_;
-        if (n && tex >= 0 && size_t(tex) < textures_.size()) {
-            float cb[24] = {};
-            std::memcpy(cb, viewProj, 16 * sizeof(float));
-            for (int c = 0; c < 3; ++c) cb[16 + c] = b.lit ? lit[c] : (game_.on ? b.emissive[c] : 1.0f);
-            cb[19] = 1.0f;
-            cb[20] = hdr ? 1.0f : 0.0f, cb[21] = b.lit ? 0.0f : 1.0f;
-            ctx_->UpdateSubresource(partCb_, 0, nullptr, cb, 0, 0);
+        if (n && !b.distortion && !b.screen && tex >= 0 && size_t(tex) < textures_.size()) {
+            writePartCb(b);
             ctx_->PSSetShaderResources(0, 1, &textures_[size_t(tex)]);
             ctx_->Draw(n, first);
             stats_.drawCalls++;
         }
         first += n;
+    }
+    distQuads_ = 0;
+    static const bool noDistortion = std::getenv("IW8R_NO_DISTORTION") != nullptr;  // A/B: the scene as it was
+    if (anyDistortion && !noDistortion) {
+        // Research 139 section 2 (sortKey 36, after the effects): the scene drawn so far, copied once, then each
+        // distortion quad shows it moved by its image.
+        ID3D11Texture2D* target = hdr ? hdrTex_ : color_;
+        D3D11_TEXTURE2D_DESC td{};
+        if (target) target->GetDesc(&td);
+        D3D11_TEXTURE2D_DESC have{};
+        if (distCopyTex_) distCopyTex_->GetDesc(&have);
+        if (target && (!distCopyTex_ || have.Width != td.Width || have.Height != td.Height || have.Format != td.Format)) {
+            safeRelease(distCopySrv_), safeRelease(distCopyTex_);
+            D3D11_TEXTURE2D_DESC cd = td;
+            cd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            cd.MiscFlags = 0;
+            cd.MipLevels = 1;
+            if (SUCCEEDED(dev_->CreateTexture2D(&cd, nullptr, &distCopyTex_))) dev_->CreateShaderResourceView(distCopyTex_, nullptr, &distCopySrv_);
+        }
+        if (target && distCopyTex_ && distCopySrv_) {
+            ctx_->CopyResource(distCopyTex_, target);
+            ctx_->PSSetShader(partDistPs_, nullptr, 0);
+            ctx_->PSSetShaderResources(1, 1, &distCopySrv_);
+            ctx_->PSSetSamplers(2, 1, &clampSampler_);
+            ctx_->OMSetBlendState(blendDist_, bf, 0xffffffff);
+            first = 0;
+            for (const auto& b : particles_) {
+                const UINT n = UINT(b.v.size());
+                const int tex = b.texture;
+                if (n && b.distortion && tex >= 0 && size_t(tex) < textures_.size()) {
+                    writePartCb(b);
+                    ctx_->PSSetShaderResources(0, 1, &textures_[size_t(tex)]);
+                    ctx_->Draw(n, first);
+                    stats_.drawCalls++;
+                    distQuads_ += n / 6;
+                }
+                first += n;
+            }
+            ID3D11ShaderResourceView* noScene = nullptr;
+            ctx_->PSSetShaderResources(1, 1, &noScene);
+        }
+    }
+    flareQuads_ = 0;
+    if (anyFlare && depthSrv_) {
+        // Research 139 section 1: flares over the scene (the depthless effect state), after the distortion. The depth
+        // buffer is read by their occlusion test, so it is unbound as a target while they draw.
+        ID3D11RenderTargetView* rtv = nullptr;
+        ID3D11DepthStencilView* dsv = nullptr;
+        ctx_->OMGetRenderTargets(1, &rtv, &dsv);
+        ctx_->OMSetRenderTargets(1, &rtv, nullptr);
+        ctx_->VSSetShaderResources(3, 1, &depthSrv_);
+        ctx_->PSSetShader(partPs_, nullptr, 0);
+        ctx_->OMSetBlendState(blendPremul_, bf, 0xffffffff);
+        first = 0;
+        for (const auto& b : particles_) {
+            const UINT n = UINT(b.v.size());
+            const int tex = b.texture >= 0 && size_t(b.texture) < textures_.size() ? b.texture : whiteTex_;
+            if (n && b.screen && tex >= 0 && size_t(tex) < textures_.size()) {
+                writePartCb(b);
+                ctx_->PSSetShaderResources(0, 1, &textures_[size_t(tex)]);
+                ctx_->Draw(n, first);
+                stats_.drawCalls++;
+                flareQuads_ += n / 6;
+            }
+            first += n;
+        }
+        ID3D11ShaderResourceView* noDepth = nullptr;
+        ctx_->VSSetShaderResources(3, 1, &noDepth);
+        ctx_->OMSetRenderTargets(1, &rtv, dsv);
+        if (rtv) rtv->Release();
+        if (dsv) dsv->Release();
+    }
+    if (shadow) {
+        ID3D11ShaderResourceView* noShadow = nullptr;
+        ctx_->VSSetShaderResources(2, 1, &noShadow);
     }
     ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
     ctx_->OMSetDepthStencilState(dsWrite_, 0);

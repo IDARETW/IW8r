@@ -565,7 +565,16 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         pm.ready = true;
         if (e->failed) return pm;
         const QString ts = e->techset.section('/', -1);
-        pm.skip = ts.startsWith("dist_") || ts.contains("distortion") || qs(m).startsWith("ecf/");
+        // Distortion sets (research 139 section 2): the scene behind, moved by the slot 157 image x constant 127.
+        pm.distortion = ts.startsWith("dist_") || ts.contains("distortion");
+        if (pm.distortion) {
+            pm.distortionFile = e->distortionDds.toStdString();
+            if (const auto c = e->consts.find(127); c != e->consts.end())
+                pm.distScale[0] = std::max(0.0f, c->second[0]), pm.distScale[1] = std::max(0.0f, c->second[1]);
+            if (pm.distortionFile.empty() || pm.distScale[0] + pm.distScale[1] <= 0) pm.skip = true;  // not exported, or no strength
+        }
+        // Flare sets (research 139 section 1): drawn on screen by their own path, adding their image.
+        if (qs(m).startsWith("ecf/")) pm.flare = true, pm.lit = false;
         const QStringList tok = ts.split('_');
         if (tok.size() > 12) pm.lit = !tok[12].endsWith("23");
         if (e->colorDds.isEmpty() && !e->emissiveDds.isEmpty()) pm.lit = false;

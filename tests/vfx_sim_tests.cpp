@@ -1,8 +1,10 @@
 // FX preview simulation (src/core/vfx_sim.*): one real export (tests/data/vfx_sim), synthetic exports, and sampling rules.
 #include "vfx_sim.h"
 #include "vfx_info.h"
+#include "stock_lightgrid.h"
 #include "test_harness.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -497,5 +499,107 @@ TEST(vfx_sim_shipment_exports_real_data) {
         for (const auto& p : sampleVfx(smoke, 40.0)) n0 += p.emitter == 0 ? 1 : 0;
         CHECK(n0 > 0 && n0 <= 15);
         CHECK(smoke.emitters[1].atlas.present && smoke.emitters[1].atlas.overLife);
+    }
+}
+
+// Research 139 section 2: the effect distortion is research 132 G13's world rule on the quad's tangent frame.
+TEST(vfx_distortion_follows_the_world_rule) {
+    const double T[3] = {1, 0, 0}, B[3] = {0, 1, 0}, scale[2] = {30, 30};
+    {
+        const double m[3] = {1, 0.5, 1};  // full strength, x pushed right, y centred
+        const VfxDistortion d = vfxDistortion(m, 1.0, scale, T, B);
+        CHECK(std::fabs(d.k - 1.0) < 1e-9 && std::fabs(d.offset[0] - 30) < 1e-9 && std::fabs(d.offset[1]) < 1e-9 && std::fabs(d.alpha - 1) < 1e-9);
+    }
+    {
+        const double m[3] = {0, 1, 0.5};  // m.z x a = 0.2 is under the 0.25 floor: no offset, alpha 0.8
+        const VfxDistortion d = vfxDistortion(m, 0.4, scale, T, B);
+        CHECK(d.k == 0 && d.offset[0] == 0 && d.offset[1] == 0 && std::fabs(d.alpha - 0.8) < 1e-9);
+    }
+    {
+        const double m[3] = {0.75, 0.25, 0.6};  // k = 0.35 x 4/3; D = 30 k (0.5 T - 0.5 B) = (7, -7, 0)
+        const VfxDistortion d = vfxDistortion(m, 1.0, scale, T, B);
+        CHECK(std::fabs(d.k - 0.35 * 4.0 / 3.0) < 1e-9 && std::fabs(d.offset[0] - 7) < 1e-9 && std::fabs(d.offset[1] + 7) < 1e-9);
+        CHECK(std::fabs(d.offset[2]) < 1e-12 && std::fabs(d.alpha - 1) < 1e-9);
+    }
+    {
+        const double m[3] = {0.75, 0.75, 1}, Tz[3] = {0, 0, 1}, Bx[3] = {-1, 0, 0}, s2[2] = {2, 4};  // another frame and scale
+        const VfxDistortion d = vfxDistortion(m, 1.0, s2, Tz, Bx);
+        CHECK(std::fabs(d.offset[2] - 1.0) < 1e-9 && std::fabs(d.offset[0] + 2.0) < 1e-9);
+    }
+}
+
+// Research 139 section 3: a particle's light from the grid is the probe averaged over all directions.
+TEST(stock_lgv_average_is_the_mean_over_directions) {
+    StockLgvSh s;
+    s.dc[0] = 1.0f, s.dc[1] = 2.0f, s.dc[2] = 3.0f;
+    s.sh[0][0] = 0.3f, s.sh[2][1] = -0.4f, s.sh[3][2] = 0.2f, s.sh[1][0] = 0.1f, s.sh[6][1] = 0.15f, s.sh[7][2] = -0.1f;
+    double avg[3];
+    stockLgvAverage(s, avg);
+    double sum[3] = {0, 0, 0};
+    const int n = 4000;
+    for (int i = 0; i < n; ++i) {  // Fibonacci sphere
+        const double z = 1 - (2.0 * i + 1) / n, r = std::sqrt(std::max(0.0, 1 - z * z)), phi = i * 2.399963229728653;
+        const double dir[3] = {r * std::cos(phi), r * std::sin(phi), z};
+        double rgb[3];
+        evalStockLgv(s, dir, rgb);
+        for (int c = 0; c < 3; ++c) sum[c] += rgb[c];
+    }
+    for (int c = 0; c < 3; ++c) CHECK(std::fabs(sum[c] / n - avg[c]) < 2e-3);
+    CHECK(std::fabs(avg[2] - 0.282095 * 3.0) < 1e-6);
+    StockLgvSh dark;
+    dark.dc[0] = -1.0f;
+    stockLgvAverage(dark, avg);
+    CHECK(avg[0] == 0.0);
+}
+
+// Research 139 section 1: Shipment's sun flare (tests/data/vfx_sim/vfx_shipment_sunflare.12.asset.json, 6 flare
+// emitters) read into flare modules, and the screen layout of its pieces.
+TEST(vfx_flare_modules_and_screen_layout) {
+    namespace fs = std::filesystem;
+    std::string path = sampleExportPath();
+    if (!path.empty()) path = (fs::path(path).parent_path() / "vfx_shipment_sunflare.12.asset.json").string();
+    bool ok = false;
+    const std::string text = path.empty() ? std::string() : readAll(path, ok);
+    CHECK(ok);
+    if (!ok) return;
+    VfxSimDef def;
+    CHECK(buildVfxSim(text, def));
+    CHECK(def.emitters.size() == 6);
+    if (def.emitters.size() != 6) return;
+    for (const VfxEmitterSim& e : def.emitters) {
+        CHECK(e.element == 3 && e.flare.present && e.occlusion.present);
+        CHECK(std::fabs(e.occlusion.scale - 1.5) < 1e-6 && std::fabs(e.occlusion.worldSize[0] - 1000) < 1e-6 && e.occlusion.offscreenRaycast);
+        CHECK(std::fabs(e.flare.depthRangeMax - 280) < 1e-6 && std::fabs(e.flare.depthValueMax - 1) < 1e-6);
+    }
+    const VfxEmitterSim &lens = def.emitters[0], &anamorphic = def.emitters[1], &rays = def.emitters[2];
+    CHECK(std::fabs(lens.flare.position - 1) < 1e-6 && std::fabs(lens.flare.scaleXMax - 1.5) < 1e-6 && std::fabs(lens.flare.direction[0] - 1) < 1e-6);
+    CHECK(std::fabs(anamorphic.flare.position - 0.9) < 1e-6 && anamorphic.flare.flags == 4u && std::fabs(anamorphic.flare.scaleYMin - 0.5) < 1e-6);
+    CHECK(rays.flare.angularRotCount == -1 && std::fabs(rays.flare.radialRotMin - 0.1) < 1e-6 && std::fabs(rays.flare.radialRotMax + 0.2) < 1e-6);
+    // The lens at the centre: radial 0, curve 0 at 0.5 = 0.449 -> scale x 1 + 0.5 x 0.449; size 70 = 70 % of the height.
+    {
+        const double size[2] = {70, 70}, src[2] = {0, 0};
+        const VfxFlareSprite s = vfxFlareSprite(lens, size, src, 16.0 / 9.0, 5000.0);
+        CHECK(s.radial == 0 && s.centre[0] == 0 && s.centre[1] == 0);
+        const double sc = 1 + 0.5 * double(lens.flare.curves[0].eval(0.5f));
+        CHECK(std::fabs(sc - 1.2245) < 2e-3 && std::fabs(s.half[1] - 0.7 * sc) < 1e-6 && std::fabs(s.half[0] - 0.7 * sc / (16.0 / 9.0)) < 1e-6);
+    }
+    // The anamorphic streak sits at 0.9 of the way from the centre to its source.
+    {
+        const double size[2] = {200, 18}, src[2] = {0.5, 0.25};
+        const VfxFlareSprite s = vfxFlareSprite(anamorphic, size, src, 16.0 / 9.0, 5000.0);
+        CHECK(std::fabs(s.centre[0] - 0.45) < 1e-6 && std::fabs(s.centre[1] - 0.225) < 1e-6 && s.radial > 0 && s.radial < 1);
+        CHECK(s.half[0] > s.half[1]);  // a wide streak
+    }
+    // The rays turn with the source's angle about the centre (angular rotation), plus the radial rotation (curve 2 = 0).
+    {
+        const double size[2] = {35, 35}, src[2] = {0, 0.5};
+        const VfxFlareSprite s = vfxFlareSprite(rays, size, src, 1.0, 5000.0);
+        CHECK(std::fabs(s.angle - (0.1 + std::atan2(0.5, 0.0))) < 1e-6);
+    }
+    // Near the camera the depth scale shrinks a piece (depth 0..280 maps to value 0..1 through curve 3).
+    {
+        const double size[2] = {70, 70}, src[2] = {0, 0};
+        const VfxFlareSprite nearS = vfxFlareSprite(lens, size, src, 1.0, 140.0), farS = vfxFlareSprite(lens, size, src, 1.0, 5000.0);
+        CHECK(nearS.half[1] <= farS.half[1]);
     }
 }

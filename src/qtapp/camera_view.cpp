@@ -1987,6 +1987,35 @@ int CameraView::particleTexture(const std::string& material, const ParticleMater
     // it varies, else its red; without one the colour image's own alpha). Unlit: the emissive image, opaque.
     const std::string key = "\x08" + material;
     if (const auto it = texIds_.find(key); it != texIds_.end()) return it->second;
+    if (pm.distortion) {
+        // The distortion image as data (research 139 section 2): stored sRGB, it is read linear, as the game's sampler does.
+        if (pm.distortionFile.empty()) return texIds_[key] = -1;
+        DecodedTexture d;
+        if (!decodedTexture(pm.distortionFile, kViewTextureSide, 1, d)) {
+            moreToLoad_ = true;
+            return -1;
+        }
+        if (!d.imageOk || d.image.width <= 0 || d.image.height <= 0) return texIds_[key] = -1;
+        if (app::ddsIsSrgb(pm.distortionFile)) {
+            uint8_t lin[256];
+            for (int i = 0; i < 256; ++i) {
+                const double c = i / 255.0;
+                lin[i] = uint8_t(std::lround(255.0 * (c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4))));
+            }
+            for (size_t k = 0; k < d.image.pixels.size(); ++k)
+                if (k % 4 != 3) d.image.pixels[k] = lin[d.image.pixels[k]];
+        }
+        // The strength mask: the world's distortion images (BC1) keep it in blue, which the decoded shader reads; the
+        // effect images (BC3) leave blue empty and keep it in alpha (research 139 section 2.2): moved into blue.
+        uint8_t blueMax = 0, alphaMin = 255, alphaMax = 0;
+        for (size_t k = 0; k + 3 < d.image.pixels.size(); k += 4) {
+            blueMax = std::max(blueMax, d.image.pixels[k + 2]);
+            alphaMin = std::min(alphaMin, d.image.pixels[k + 3]), alphaMax = std::max(alphaMax, d.image.pixels[k + 3]);
+        }
+        if (blueMax < 8 && alphaMax > alphaMin)
+            for (size_t k = 0; k + 3 < d.image.pixels.size(); k += 4) d.image.pixels[k + 2] = d.image.pixels[k + 3];
+        return texIds_[key] = renderer_.createTexture(d.image.pixels.data(), d.image.width, d.image.height);
+    }
     const std::string& main = pm.lit ? pm.colorFile : (pm.emissiveFile.empty() ? pm.colorFile : pm.emissiveFile);
     if (main.empty()) return texIds_[key] = -1;
     DecodedTexture a, m;
@@ -2047,7 +2076,21 @@ void CameraView::appendEffectParticles() {
     if (!fxClock_.isValid()) fxClock_.start();
     const double t = fxTimeOverride_ >= 0 ? fxTimeOverride_ : fxClock_.elapsed() / 1000.0;
     fxParticles_ = 0;
+    fxGridLit_ = 0, fxDistortion_ = 0, fxFlares_ = 0, fxDistAlphaMax_ = 0, fxDistAlphaSum_ = 0;
+    std::set<std::string> sunFlaresDrawn;  // sun flare effects already drawn this frame (one placement each)
+    // Flares (research 139 section 1) are placed on screen with the frame's own projection.
+    const double aspect = captureAspect_ > 0 ? captureAspect_ : double(std::max(1, width())) / double(std::max(1, height()));
+    const app::Mat4f fvp = app::viewProjection(ctx_->cam, aspect);
+    const auto toClip = [&](const Vec3& p, double out[4]) {
+        for (int k = 0; k < 4; ++k) out[k] = p.x * fvp.m[k] + p.y * fvp.m[4 + k] + p.z * fvp.m[8 + k] + fvp.m[12 + k];
+    };
     uint32_t seed = 1;
+    // Research 139 section 3: in Game Lighting on a stock map a lit sprite takes the stock light grid's light at its
+    // centre (averaged over directions: a particle has no normal), x the map's baked scale.
+    static const bool noParticleLight = qEnvironmentVariableIsSet("IW8R_NO_PARTICLE_LIGHT");  // A/B, as the renderer
+    const std::shared_ptr<const StockGpuGrid> grid =
+        !noParticleLight && ctx_->scene.gameLook && stockGrid_ && stockGridZone_ == gameStockMap_ ? stockGrid_ : nullptr;
+    const double gridScale = stockBakedScale_;
     struct Placed {
         Vec3 origin, angles;
         const std::string* fx;
@@ -2068,7 +2111,10 @@ void CameraView::appendEffectParticles() {
         float depth;
         int texture;
         bool lit;
+        bool distortion;
+        bool screen;
         float emissive[3];
+        float distScale[2];
         app::ParticleVertex v[6];
     };
     std::vector<Quad> quads;
@@ -2094,11 +2140,72 @@ void CameraView::appendEffectParticles() {
         for (const VfxParticle& p : sampleVfx(*def, std::fmod(t, loop), seed, &ax)) {
             const VfxEmitterSim& em = def->emitters[size_t(p.emitter)];
             if (em.fadeOutMaxDistance > 0 && dist > em.fadeOutMaxDistance) continue;
-            if (em.element != 0 && em.element != 8 && em.element != 10) continue;  // flares, models, lights, runners, decals
+            const bool flare = em.element == 3 && em.flare.present;
+            if (em.element != 0 && em.element != 8 && em.element != 10 && !flare) continue;  // models, lights, runners, decals
             const std::string& matName = size_t(p.material) < em.materials.size() ? em.materials[size_t(p.material)] : em.material;
             const ParticleMaterial* pm = materialOf(matName);
             if (pm && pm->skip) continue;
+            if (flare) {
+                // A flare piece (research 139 section 1.3): its source on screen, the piece along the line from there
+                // through the centre, sized in screen heights. Behind the camera or off the screen: not drawn.
+                // A sun flare's source is the sun (research 139 section 1.2, INFERRED: Shipment places its sun flare near
+                // the ground with angles 0 0 0): far along the sun's direction from the eye. One placement per sun flare
+                // effect draws (each would put its pieces on the same spot). Other flares start at their effect.
+                const bool sunFlare = pl.fx->find("sunflare") != std::string::npos || pl.fx->find("sun_flare") != std::string::npos;
+                if (sunFlare && p.emitter == 0 && !sunFlaresDrawn.insert(*pl.fx).second) break;
+                const Vec3 sunDir = gameLookOn() ? gameSunToward() : ctx_->scene.sunToward;
+                const Vec3 src = sunFlare ? eye + sunDir * 1.0e6 : pl.origin + Vec3{p.pos[0], p.pos[1], p.pos[2]};
+                double clip[4];
+                toClip(src, clip);
+                if (clip[3] <= 1e-6) continue;
+                const double ndc[2] = {clip[0] / clip[3], clip[1] / clip[3]};
+                if (std::fabs(ndc[0]) > 1.0 || std::fabs(ndc[1]) > 1.0) continue;
+                const VfxFlareSprite fs = vfxFlareSprite(em, p.size2, ndc, aspect, length(src - eye));
+                int ftex = pm ? particleTexture(matName, *pm) : -1;
+                if (ftex < 0) ftex = whiteTex_;
+                // The occlusion test's area: the query's world size x scale, as seen at the source (at least a pixel).
+                float area[3] = {0, 0, 0};
+                static const bool noOcclusion = qEnvironmentVariableIsSet("IW8R_NO_FLARE_OCCLUSION");  // A/B: always seen
+                if (em.occlusion.present && !noOcclusion) {
+                    const double half = 0.5 * em.occlusion.scale * std::max(em.occlusion.worldSize[0], em.occlusion.worldSize[1]);
+                    double c2[4];
+                    toClip(src + right * half, c2);
+                    const double dx = c2[3] > 1e-6 ? std::fabs(c2[0] / c2[3] - ndc[0]) : 0.0;
+                    const double px = 2.0 / std::max(1, height());
+                    area[0] = float(std::max(px / aspect, std::min(dx, 0.25))), area[1] = float(std::max(px, std::min(dx * aspect, 0.25)));
+                    area[2] = 1;
+                }
+                Quad qd;
+                qd.depth = -1e30f;  // over everything: last in the far-to-near order
+                qd.texture = ftex;
+                qd.lit = false, qd.distortion = false, qd.screen = true;
+                for (int k = 0; k < 3; ++k) qd.emissive[k] = pm ? pm->emissive[k] : 1.0f;
+                qd.distScale[0] = qd.distScale[1] = 0;
+                const double ca = std::cos(fs.angle), sa = std::sin(fs.angle);
+                // The occlusion test's depth: the source's, but no farther than just in front of the sky box (drawn 60,000
+                // units out, it writes depth): a sun at infinity is hidden by the world, not by the sky.
+                double occ[4];
+                const double srcDist = length(src - eye);
+                toClip(eye + (src - eye) * (std::min(srcDist, 50000.0) / std::max(srcDist, 1e-6)), occ);
+                const float srcAux[3] = {float(ndc[0]), float(ndc[1]), float(occ[3] > 1e-6 ? occ[2] / occ[3] : 1.0)};
+                const auto fc = [&](double sx, double sy, float u, float v) {
+                    // Rotated in screen-height units, then back to NDC x.
+                    const double hx = fs.half[0] * aspect * sx, hy = fs.half[1] * sy;
+                    app::ParticleVertex pv{float(fs.centre[0] + (hx * ca - hy * sa) / aspect), float(fs.centre[1] + hx * sa + hy * ca), 0.0f,
+                                           u, v, p.rgba[0], p.rgba[1], p.rgba[2], p.rgba[3]};
+                    std::copy(srcAux, srcAux + 3, pv.aux0), std::copy(area, area + 3, pv.aux1);
+                    return pv;
+                };
+                const app::ParticleVertex a = fc(-1, -1, 0, 1), b = fc(1, -1, 1, 1), cc = fc(1, 1, 1, 0), d = fc(-1, 1, 0, 0);
+                qd.v[0] = a, qd.v[1] = b, qd.v[2] = cc, qd.v[3] = a, qd.v[4] = cc, qd.v[5] = d;
+                quads.push_back(qd);
+                ++fxFlares_;
+                if (++fxParticles_ >= 20000) break;
+                continue;
+            }
+            const bool distortion = pm && pm->distortion;
             int tex = pm ? particleTexture(matName, *pm) : -1;
+            if (distortion && tex < 0) continue;  // its image is still loading: nothing to move the scene by yet
             const bool lit = pm ? pm->lit : true;
             int cols = pm ? std::max(1, pm->cols) : 1, rows = pm ? std::max(1, pm->rows) : 1;
             if (tex < 0) tex = whiteTex_, cols = rows = 1;  // not loaded (yet): the particle's colour on a plain quad
@@ -2148,11 +2255,35 @@ void CameraView::appendEffectParticles() {
             Quad qd;
             qd.depth = float(dot(c - eye, fwd));
             qd.texture = tex;
-            qd.lit = lit;
+            qd.lit = lit && !distortion;
+            qd.distortion = distortion;
+            qd.screen = false;
             for (int k = 0; k < 3; ++k) qd.emissive[k] = pm ? pm->emissive[k] : 1.0f;
+            qd.distScale[0] = distortion ? pm->distScale[0] : 0.0f, qd.distScale[1] = distortion ? pm->distScale[1] : 0.0f;
+            // aux0 / aux1: the centre and the grid's light of a sprite, the tangent frame of a distortion quad.
+            float aux0[3] = {float(c.x), float(c.y), float(c.z)}, aux1[3] = {-1, -1, -1};
+            if (distortion) {
+                const Vec3 T = length(ax0) > 1e-9 ? normalize(ax0) : right, B = length(ax1) > 1e-9 ? normalize(ax1) : up;
+                aux0[0] = float(T.x), aux0[1] = float(T.y), aux0[2] = float(T.z);
+                aux1[0] = float(B.x), aux1[1] = float(B.y), aux1[2] = float(B.z);
+                ++fxDistortion_;
+                fxDistAlphaMax_ = std::max(fxDistAlphaMax_, double(p.rgba[3]));
+                fxDistAlphaSum_ += p.rgba[3];
+            } else if (qd.lit && grid) {
+                const double at[3] = {c.x, c.y, c.z};
+                StockLgvSh sh;
+                if (sampleStockGpuGrid(*grid, at, sh)) {
+                    double rgb[3];
+                    stockLgvAverage(sh, rgb);
+                    for (int k = 0; k < 3; ++k) aux1[k] = float(rgb[k] * gridScale);
+                    ++fxGridLit_;
+                }
+            }
             const auto corner = [&](double sx, double sy, float u, float v) {
                 const Vec3 q = c + ax0 * sx + ax1 * sy;
-                return app::ParticleVertex{float(q.x), float(q.y), float(q.z), u, v, p.rgba[0], p.rgba[1], p.rgba[2], p.rgba[3]};
+                app::ParticleVertex pv{float(q.x), float(q.y), float(q.z), u, v, p.rgba[0], p.rgba[1], p.rgba[2], p.rgba[3]};
+                std::copy(aux0, aux0 + 3, pv.aux0), std::copy(aux1, aux1 + 3, pv.aux1);
+                return pv;
             };
             const app::ParticleVertex a = corner(-1, -1, u0, v1), b = corner(1, -1, u1, v1), cc = corner(1, 1, u1, v0), d = corner(-1, 1, u0, v0);
             qd.v[0] = a, qd.v[1] = b, qd.v[2] = cc, qd.v[3] = a, qd.v[4] = cc, qd.v[5] = d;
@@ -2165,10 +2296,13 @@ void CameraView::appendEffectParticles() {
     std::stable_sort(quads.begin(), quads.end(), [](const Quad& x, const Quad& y) { return x.depth > y.depth; });
     std::vector<app::ParticleBatch> batches;
     for (const Quad& q : quads) {
-        if (batches.empty() || batches.back().texture != q.texture || batches.back().lit != q.lit) {
+        if (batches.empty() || batches.back().texture != q.texture || batches.back().lit != q.lit || batches.back().distortion != q.distortion ||
+            batches.back().screen != q.screen) {
             batches.emplace_back();
-            batches.back().texture = q.texture, batches.back().lit = q.lit;
+            batches.back().texture = q.texture, batches.back().lit = q.lit, batches.back().distortion = q.distortion;
+            batches.back().screen = q.screen;
             std::copy(q.emissive, q.emissive + 3, batches.back().emissive);
+            std::copy(q.distScale, q.distScale + 2, batches.back().distScale);
         }
         batches.back().v.insert(batches.back().v.end(), q.v, q.v + 6);
     }

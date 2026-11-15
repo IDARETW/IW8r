@@ -76,6 +76,11 @@ struct ParticleVertex {
     float x, y, z;
     float u, v;
     float r, g, b, a;
+    // Lit and unlit sprites: aux0 = the particle's centre (its sun shadow is looked up there), aux1 = its light from the
+    // stock light grid (x < 0: none, the map-wide light is used). Distortion: aux0 / aux1 = the quad's unit tangent and
+    // bitangent in the world (research 139).
+    float aux0[3] = {0, 0, 0};
+    float aux1[3] = {-1, -1, -1};
 };
 // One sprite image's particles, already sorted far to near. lit: the colour image's alpha blends and the scene's light
 // scales it; else the emissive image adds (unlit effect sets: output alpha 0, research 138 section 6).
@@ -83,6 +88,13 @@ struct ParticleBatch {
     int texture = -1;
     bool lit = true;
     float emissive[3] = {1, 1, 1};  // an unlit material's emissive scale (constant 36) in Game Lighting
+    // A dist_10 distortion material (research 139 section 2): texture = its slot 157 image, the scene drawn so far is
+    // shown moved by up to distScale (constant 127.xy, inches) along the quad. Drawn after every other particle.
+    bool distortion = false;
+    float distScale[2] = {0, 0};
+    // A flare (research 139 section 1): vertex positions are NDC (x, y; z unused), drawn over the scene after the
+    // distortion; aux0 = the source (NDC x, y, depth), aux1 = the half extents of its occlusion test (NDC; z > 0: test).
+    bool screen = false;
     std::vector<ParticleVertex> v;  // 6 per quad
 };
 
@@ -1052,6 +1064,9 @@ public:
     void setGameAo(bool on) { aoOn_ = on; }
     // The effect preview's particles of this frame (drawn after the scene's blended batches; empty = none).
     void setParticles(std::vector<ParticleBatch> batches) { particles_ = std::move(batches); }
+    size_t distortionQuadsDrawn() const { return distQuads_; }
+    size_t flareQuadsDrawn() const { return flareQuads_; }
+    bool particleShadowUsed() const { return partShadowLast_; }
     size_t particleQuads() const {
         size_t n = 0;
         for (const auto& b : particles_) n += b.v.size() / 6;
@@ -1169,6 +1184,15 @@ private:
     ID3D11BlendState* blendAdd_ = nullptr;  // additive (ONE, ONE) for blend 2 batches
     // The particle pass (research 138).
     std::vector<ParticleBatch> particles_;
+    // The distortion pass's copy of the scene drawn so far (the HDR scene or the frame), and its states.
+    ID3D11Texture2D* distCopyTex_ = nullptr;
+    ID3D11ShaderResourceView* distCopySrv_ = nullptr;
+    ID3D11PixelShader* partDistPs_ = nullptr;
+    ID3D11BlendState* blendDist_ = nullptr;
+    ID3D11SamplerState* clampSampler_ = nullptr;
+    size_t distQuads_ = 0;  // distortion quads drawn in the last frame (tests, bench)
+    size_t flareQuads_ = 0;  // flare quads drawn in the last frame
+    bool partShadowLast_ = false;  // the last particle pass looked up the sun shadow
     ID3D11VertexShader* partVs_ = nullptr;
     ID3D11PixelShader* partPs_ = nullptr;
     ID3D11InputLayout* partLayout_ = nullptr;

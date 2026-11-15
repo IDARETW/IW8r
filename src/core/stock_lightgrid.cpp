@@ -565,6 +565,10 @@ bool packStockLgvAtlases(const std::vector<const StockLgvAtlas*>& in, StockLgvSt
     return true;
 }
 
+void stockLgvAverage(const StockLgvSh& s, double outRgb[3]) {
+    for (int c = 0; c < 3; ++c) outRgb[c] = std::max(0.0, 0.282095 * double(s.dc[c]));
+}
+
 void evalStockLgv(const StockLgvSh& s, const double n[3], double outRgb[3]) {
     const double x = n[0], y = n[1], z = n[2];
     for (int c = 0; c < 3; ++c) {

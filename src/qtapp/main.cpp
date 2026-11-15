@@ -455,6 +455,21 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                 break;
             }
     }
+    // IW8R_BENCH_CAM="sun x y z [yaw offset] [pitch offset] [fov]": from (x, y, z) toward the sun, turned by the offsets
+    // (degrees) so the sun sits off the centre and a flare's pieces spread along the line through it (research 139).
+    bool sunCam = false;
+    if (camParts.size() >= 4 && camParts[0] == "sun") {
+        sunCam = true;
+        if (iw8r::qt::CameraView* cv = w.cameraView()) {
+            const iw8r::Vec3 t = cv->gameSunTowardNow();
+            benchCam[0] = camParts[1].toDouble(), benchCam[1] = camParts[2].toDouble(), benchCam[2] = camParts[3].toDouble();
+            benchCam[3] = std::atan2(t.y, t.x) * 180.0 / 3.14159265358979 + (camParts.size() >= 5 ? camParts[4].toDouble() : 0.0);
+            benchCam[4] = std::asin(std::clamp(t.z, -1.0, 1.0)) * 180.0 / 3.14159265358979 + (camParts.size() >= 6 ? camParts[5].toDouble() : 0.0);
+            benchCam[5] = camParts.size() >= 7 ? camParts[6].toDouble() : 70;
+            fixedCam = true;
+            report << QString("bench_cam sun toward %1 %2 %3 yaw %4 pitch %5").arg(t.x).arg(t.y).arg(t.z).arg(benchCam[3]).arg(benchCam[4]);
+        }
+    }
     // IW8R_BENCH_CAM="mat <material part> N [distance] [yaw] [fov]": look down at the Nth stock world batch whose material
     // holds the part, from `distance` (default 400) units back along `yaw` (default 0) and half that above its centre.
     if (camParts.size() >= 3 && camParts[0] == "mat") {
@@ -505,6 +520,14 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         }
     }
     const auto camA = [&] {
+        if (sunCam) {
+            // Aimed again each time: the stock map's own sun is known only once its lighting has loaded.
+            if (iw8r::qt::CameraView* cv = w.cameraView()) {
+                const iw8r::Vec3 t = cv->gameSunTowardNow();
+                benchCam[3] = std::atan2(t.y, t.x) * 180.0 / 3.14159265358979 + (camParts.size() >= 5 ? camParts[4].toDouble() : 0.0);
+                benchCam[4] = std::asin(std::clamp(t.z, -1.0, 1.0)) * 180.0 / 3.14159265358979 + (camParts.size() >= 6 ? camParts[5].toDouble() : 0.0);
+            }
+        }
         if (fixedCam) {
             setCam(Vec3{benchCam[0], benchCam[1], benchCam[2]}, benchCam[3], benchCam[4]);
             ctx.cam.fov = benchCam[5];
@@ -822,6 +845,11 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             if (benchBox && !cam->gameLookUnbaked() && !(lmNow && lmNow->polys > 0)) continue;
             if ((cam->gameLightmap() || cam->gameLookUnbaked()) && !cam->gameBaking() && !cam->stockGpuGridLoading()) break;
         }
+        if (sunCam) {
+            camA();  // the stock sun is known now
+            const iw8r::Vec3 t = cam->gameSunTowardNow();
+            report << QString("bench_cam sun (stock) toward %1 %2 %3 yaw %4 pitch %5").arg(t.x).arg(t.y).arg(t.z).arg(benchCam[3]).arg(benchCam[4]);
+        }
         if (const auto grid = cam->stockGpuGrid())
             report << QString("game_grid probes=%1 tetrahedra=%2 (brushes on the stock map take the grid's light)").arg(grid->pos.size()).arg(grid->tets.size());
         const auto lm = cam->gameLightmap();
@@ -874,7 +902,11 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             report << QString("game_sky exposure=%1 mean_lum=%2 high_lum=%3").arg(sl[0]).arg(sl[1]).arg(sl[2]);
             report << QString("instances_culled %1").arg(cam->instancesCulled());
             report << QString("background_decodes %1 (%2)").arg(cam->backgroundDecodes()).arg(iw8r::qt::CameraView::backgroundTextureDecode() ? "on" : "off: decoded in place");
-            report << QString("effect_particles %1 (preview %2)").arg(cam->effectParticles()).arg(ctx.effectPreview ? "on" : "off");
+            report << QString("effect_particles %1 (preview %2) grid_lit %3 distortion %4 drawn %5 sun_shadow %6")
+                          .arg(cam->effectParticles()).arg(ctx.effectPreview ? "on" : "off").arg(cam->effectParticlesGridLit())
+                          .arg(cam->effectDistortionQuads()).arg(cam->effectDistortionDrawn()).arg(cam->effectSunShadowUsed() ? "yes" : "no");
+            report << QString("effect_flares %1 drawn %2").arg(cam->effectFlareQuads()).arg(cam->effectFlaresDrawn());
+            report << QString("effect_distortion_alpha max %1 mean %2").arg(cam->effectDistortionAlphaMax()).arg(cam->effectDistortionAlphaMean());
             report << QString("terrain_patch centre %1 %2 batches %3 camera %4 %5").arg(w.terrainLayerCentre().x, 0, 'f', 0)
                           .arg(w.terrainLayerCentre().y, 0, 'f', 0).arg(w.terrainLayerBatchCount()).arg(ctx.cam.pos.x, 0, 'f', 0).arg(ctx.cam.pos.y, 0, 'f', 0);
             if (const auto* cl = w.stockClutter(); cl && !cl->empty()) {

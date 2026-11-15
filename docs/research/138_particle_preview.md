@@ -457,7 +457,8 @@ Ported as the recipe says, with these choices and findings:
   Lit sprites take the map's ambient plus a share of the sun in Game Lighting; unlit ones their constant 36.
 - Size is taken as the full width (half extents = size / 2), tails trail behind the particle along the screen-space
   velocity, oriented sprites span the quaternion's y and z axes (INFERRED, section 12).
-- Not drawn: flares (element 3), models (7), runners (9), lights, decals, vector fields, distortion and `ecf/` sets.
+- Not drawn: models (7), runners (9), lights, decals and vector fields. Flares (element 3, `ecf/` sets), distortion and
+  the per-particle light of lit sprites: research 139.
 - Bench: `IW8R_BENCH_FX=<seconds>` and the camera `fx <effect name part> N [distance] [yaw] [height] [fov]`; the
   report line `effect_particles`. Shipment: the smoke stack draws as soft rising plumes; 754 particles around the
   knee-high mist, 370 in the distant fog view; frames 4.1-10.7 ms.

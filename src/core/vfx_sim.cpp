@@ -67,6 +67,17 @@ bool readRange(const Value* obj, double& lo, double& hi) {
     return true;
 }
 
+// A range's two ends as stored (min, max), not ordered: the flare's ranges are the ends of a lerp (research 139).
+bool readEnds(const Value* obj, double& a, double& b) {
+    if (!obj || obj->type != Value::Type::Object) return false;
+    const auto x = obj->get("min") ? obj->get("min")->number() : std::nullopt;
+    const auto y = obj->get("max") ? obj->get("max")->number() : std::nullopt;
+    if (!x && !y) return false;
+    a = x ? *x : *y;
+    b = y ? *y : a;
+    return true;
+}
+
 double midpoint(double lo, double hi) { return 0.5 * (lo + hi); }
 
 // Reads a vector stored as <field>.v.m128_f32 (an SSE value) or <field>.v (a float array). Returns false when absent.
@@ -303,6 +314,34 @@ VfxEmitterSim readEmitter(const Value& em, size_t index) {
         e.mirrorV = enumOr(m->get("m_mirrorVertical"), 0);
     }
     if (const Value* t = mod("initTail")) e.tailScaleWithVelocity = boolOr(t->get("m_scaleWithVelocity"), false);
+    if (const Value* f = mod("initFlare")) {
+        e.flare.present = true;
+        e.flare.position = numberOr(f->get("m_position"), 1);
+        if (readVec(f, "m_direction", v) && v.size() >= 3)
+            for (int c = 0; c < 3; ++c) e.flare.direction[c] = v[c];
+        e.flare.angularRotCount = static_cast<int>(numberOr(f->get("m_angularRotCount"), 0));
+        e.flare.flags = static_cast<uint32_t>(numberOr(f->get("m_flareFlags"), 0));
+        readEnds(f->get("m_depthScaleRange"), e.flare.depthRangeMin, e.flare.depthRangeMax);
+        readEnds(f->get("m_depthScaleValue"), e.flare.depthValueMin, e.flare.depthValueMax);
+        readEnds(f->get("m_radialRot"), e.flare.radialRotMin, e.flare.radialRotMax);
+        readEnds(f->get("m_radialScaleX"), e.flare.scaleXMin, e.flare.scaleXMax);
+        readEnds(f->get("m_radialScaleY"), e.flare.scaleYMin, e.flare.scaleYMax);
+        if (const Value* c = f->get("m_curves"); c && c->type == Value::Type::Array)
+            for (size_t k = 0; k < c->arr.size() && k < 4; ++k) e.flare.curves[k] = readCurve(c->arr[k]);
+    }
+    if (const Value* o = mod("initOcclusionQuery")) {
+        e.occlusion.present = true;
+        double lo = 1, hi = 1;
+        readRange(o->get("m_scale"), lo, hi);
+        e.occlusion.scale = hi;
+        e.occlusion.depthBias = numberOr(o->get("m_depthBias"), 0);
+        e.occlusion.offscreenRaycast = boolOr(o->get("m_offscreenRaycast"), false);
+        if (const Value* ws = o->get("m_worldSize")) {
+            const Value* arr = ws->get("v");
+            if (arr && arr->type == Value::Type::Array && arr->arr.size() >= 2)
+                for (int c = 0; c < 2; ++c) e.occlusion.worldSize[c] = numberOr(&arr->arr[size_t(c)], 0);
+        }
+    }
     if (const Value* o = mod("initOrientedSprite"))
         if (readVec(o, "m_orientationQuat", v) && v.size() >= 4)
             for (int c = 0; c < 4; ++c) e.orientQuat[c] = v[c];
@@ -690,6 +729,46 @@ AABB vfxBounds(const VfxSimDef& def, double loopSeconds, int steps, uint32_t see
         }
     }
     return box;
+}
+
+VfxFlareSprite vfxFlareSprite(const VfxEmitterSim& e, const double size[2], const double sourceNdc[2], double aspect, double depth) {
+    VfxFlareSprite out;
+    const VfxEmitterSim::Flare& f = e.flare;
+    aspect = aspect > 1e-6 ? aspect : 1.0;
+    // The source's distance from the centre in screen-height units, 1 at a corner.
+    const double sx = sourceNdc[0] * aspect, sy = sourceNdc[1];
+    const double corner = std::sqrt(aspect * aspect + 1.0);
+    out.radial = std::min(1.0, std::sqrt(sx * sx + sy * sy) / corner);
+    // Curves 0 / 1 / 2 run over the screen with the centre at 0.5 (their stock shapes are symmetric about it).
+    const double t = 0.5 + 0.5 * out.radial;
+    const auto lerp = [](double a, double b, double x) { return a + (b - a) * x; };
+    const auto curve = [&](int k, double x) { return f.curves[k].t.empty() ? 1.0 : double(f.curves[k].eval(float(x))); };
+    double depthScale = 1;
+    if (f.depthRangeMax > f.depthRangeMin) {
+        const double x = std::clamp((depth - f.depthRangeMin) / (f.depthRangeMax - f.depthRangeMin), 0.0, 1.0);
+        depthScale = lerp(f.depthValueMin, f.depthValueMax, curve(3, x));
+    }
+    const double scaleX = lerp(f.scaleXMin, f.scaleXMax, curve(0, t)), scaleY = lerp(f.scaleYMin, f.scaleYMax, curve(1, t));
+    // Along the line from the source through the centre.
+    out.centre[0] = sourceNdc[0] * f.position, out.centre[1] = sourceNdc[1] * f.position;
+    // Sizes are percent of the screen height (NDC height 2): half extent = size / 100 x scale.
+    out.half[1] = size[1] / 100.0 * scaleY * depthScale;
+    out.half[0] = size[0] / 100.0 * scaleX * depthScale / aspect;
+    // Pieces with an angular rotation count turn with the source's angle about the centre (rays point at it), plus the
+    // radial rotation.
+    out.angle = lerp(f.radialRotMin, f.radialRotMax, curve(2, t));
+    if (f.angularRotCount != 0 && (sx != 0 || sy != 0)) out.angle += std::atan2(sy, sx);
+    return out;
+}
+
+VfxDistortion vfxDistortion(const double m[3], double vertexAlpha, const double scale[2], const double tangent[3], const double bitangent[3]) {
+    VfxDistortion out;
+    const auto sat = [](double x) { return x < 0 ? 0.0 : x > 1 ? 1.0 : x; };
+    out.k = sat(m[2] * vertexAlpha - 0.25) * (4.0 / 3.0);
+    const double dx = scale[0] * out.k * (2 * m[0] - 1), dy = scale[1] * out.k * (2 * m[1] - 1);
+    for (int i = 0; i < 3; ++i) out.offset[i] = dx * tangent[i] + dy * bitangent[i];
+    out.alpha = sat(4 * m[2] * vertexAlpha);
+    return out;
 }
 
 }  // namespace iw8r
