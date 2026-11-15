@@ -8,6 +8,11 @@ State on the evening of 2026-11-14: everything below is built and checked withou
 seen in the game that day, what was reported from it and is not settled, and what has not been seen. Section 5 lists
 what is not built.
 
+Update, morning of 2026-11-15: the viewport's Game Lighting gained the night's rendering work, all proven offline
+(CHANGELOG 2026-11-15): props lit per vertex from the light grid (Warzone tiles too), self-visibility, lightmapped
+props, the game's GTAO, every layer kind of layered props (colour, normal, gloss, tint masks, clear coats), layer masks
+read as the game reads them, and static-model displacement. Installer and zip rebuilt 05:44 from commit 66c4684.
+
 ## 1. What to install
 
 | Piece | Where | Notes |

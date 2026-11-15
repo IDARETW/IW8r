@@ -38,6 +38,11 @@
   marked resolved, so the reference polled every frame forever: fixed (Hideout bench open 243 s -> 33 s). Last cause
   of the missing Verdansk terrain layers: the bench's camA / camB moves rebuild the terrain patch on its timer after
   settle() had counted its calm frames; settle() now waits for terrainLayersCurrent() and referencePending() too.
+  Committed 66c4684. Suites: core 183,869 / 1,417 tests, GUI 1,105, smoke ok. Benches: Hideout 9.8, Aniyah 11.7,
+  Speedball 6.2, Verdansk 18.7 ms (complete picture: lightmap, 120 probes, 82 light grid zones, near terrain layers).
+  Installer and zip rebuilt 05:44 (no ini). Parked: editor open on out/agent/mp_cinderrail_toon. Left by decision of
+  research 132/133: only G13 distortion (one unit of shift). Owner: Cinder Rail in game (TEST_CHECKLIST item 0) and
+  the editor look list at the top of TEST_CHECKLIST.
 - 2026-11-14 late evening (after the Cinder Rail fix): converter e648a414 (research 134 rewritten from the client
   PDB: DB_PatchMem's asset stack of two is pushed by nearly every loader; every asset type counts) is live, and the
   fixed Cinder Rail (same inputs as the 20:15 build) was installed at 20:40 with the owner's OK; not yet seen loading.
