@@ -758,6 +758,16 @@ int runFeatureShots(MainWindow& w, const QString& outDir) {
             w.showDock("Materials");
             settle(w, 1500);
             s.window("side_panel.png", "The side bar with the Materials panel open beside the camera", 4000);
+            // Another browser replaces it; Compile in front under the camera; the area folded away (Ctrl+J).
+            if (QAction* a = w.findChild<QAction*>("side_Models")) a->trigger();
+            s.window("side_models.png", "The Models browser in the side section (the Materials panel closed by itself)", 3000);
+            if (QAction* a = w.findChild<QAction*>("side_Models")) a->trigger();  // folds the side section away
+            if (QAction* a = w.findChild<QAction*>("side_Compile")) a->trigger();
+            s.window("bottom_compile.png", "The Compile tab in front in the area under the camera, the side section folded", 2000);
+            s.trigger("ToggleBottomPanel");
+            s.window("bottom_folded.png", "The area under the camera folded away (Ctrl+J): the camera has the whole column", 2000);
+            s.trigger("ToggleBottomPanel");
+            s.opened("preferences.png", "Edit > Preferences in sections", [&] { s.trigger("Preferences"); }, 1500);
             qApp->removeEventFilter(&keeper);
             QFile f(QDir(outDir).filePath("feature-shots.txt"));
             if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(s.report.join("\n").toUtf8() + "\n");

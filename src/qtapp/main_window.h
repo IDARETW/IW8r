@@ -99,7 +99,6 @@ public:
     QStringList stockSkyList() const;  // stock sky names (stock_sky.h) for the Sun & Sky dialog
     void showDock(const QString& name);
     bool discardConfirmed_ = false;  // the close in progress has already asked about unsaved changes
-    bool discardConfirmed_ = false;  // the close in progress has already asked about unsaved changes
     // Everything visible a click could select (Select All, Invert Selection): one ref per selection unit.
     std::set<SelRef> visibleSelectable() const;  // opens a panel and makes it the current tab of its area
 
