@@ -53,7 +53,9 @@
   moved to the decoded rules), SceneRenderer::drawParticles (own shader, premultiplied, after the deferred blended
   scene), CameraView::appendEffectParticles / particleTexture ("\x08" sprite keys; slot 68 = transmittance),
   material cache keeps constant 94 (constRules 8), bench IW8R_BENCH_FX + camera "fx <part> N ...". Cinder Rail:
-  installed zone == the 20:38 build (SHA-256), ACTS read-back clean; checklist item 0 says it is a confirmation. Owner: Cinder Rail in game (TEST_CHECKLIST item 0) and the editor look list at the top of
+  installed zone == the 20:38 build (SHA-256), ACTS read-back clean; checklist item 0 says it is a confirmation.
+  Committed c01358d; suites core 183,939 / 1,422, GUI 1,134, smoke ok; Hideout 9.8 ms unchanged. Installer and zip
+  rebuilt 07:19 (no ini). Parked again on out/agent/mp_cinderrail_toon with this build. Owner: Cinder Rail in game (TEST_CHECKLIST item 0) and the editor look list at the top of
   TEST_CHECKLIST.
 - 2026-11-14 late evening (after the Cinder Rail fix): converter e648a414 (research 134 rewritten from the client
   PDB: DB_PatchMem's asset stack of two is pushed by nearly every loader; every asset type counts) is live, and the
