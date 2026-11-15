@@ -129,6 +129,7 @@ public:
     std::array<size_t, 3> layerPassStats() const { return renderer_.layerPassStats(); }
     std::array<size_t, 3> baseMaterialStats() const { return renderer_.baseMaterialStats(); }
     bool gameAoDrawn() const { return renderer_.gameAoDrawn(); }
+    bool gameAoGtao() const { return renderer_.gameAoGtao(); }
     bool gameHdrDrawn() const { return renderer_.gameHdrDrawn(); }
     std::array<size_t, 2> ssrBatchStats() const { return renderer_.ssrBatchStats(); }
     size_t referenceDecalExtras() const { return refTexExtraFrom_ == ~size_t(0) ? 0 : refTexMaterials_.size() - refTexExtraFrom_; }

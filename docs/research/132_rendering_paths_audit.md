@@ -303,6 +303,14 @@ both have constant 45 = (2, -1), a shift of at most one unit along the normal; l
 - Visible: different contact darkening radius and strength in corners. Fix: port the GTAO slice march if the owner
   compares corners; otherwise leave.
 
+**Status 2026-11-15 (G14): done.** Research 135 decoded `cs_gtao`; the viewport runs its kernel as a pixel shader: a
+linear view depth max pyramid (mips 0-4; the editor's clip w is scaled, so depth and the half-field tangents are taken
+over the length of the projection's w row), 4 slices x 2 sides x 4 quadratic steps on mips 1-4, the 100-unit radius
+(clamped to 512 px at 1080p), falloff 50..200, the thickness decay, the cosine-weighted arc integral, the 8..16 px
+distance fade, normals from depth with the smaller-step rule, a 4 x 4 interleaved rotation / jitter and the existing
+4 x 4 blur in place of the game's temporal filter. Corners darken over a wider band than the old SSAO (Hideout room:
+corner 0.73 against 0.85 of white); same cost (Hideout 9.2 ms, Speedball 5.8 ms). `IW8R_AO_SSAO` = the old SSAO.
+
 ### G15 (low). Distance and budget cuts, scripted objects
 
 - Prop decals are not drawn beyond 4,000 units (render.cpp:5120-5131); props past a 4,000,000-triangle budget fall

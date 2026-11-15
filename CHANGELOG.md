@@ -5,6 +5,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Game Lighting's ambient occlusion is the game's GTAO** (research 135, decoded from the game's compute shader): the
+  same slices, steps, 100-unit radius, falloff and thickness rule, so corners and contact shadows darken as wide and
+  as deep as in game. Same frame cost. A/B: `IW8R_AO_SSAO=1` (the old stand-in).
 - **Lightmapped stock props use the map's lightmap in Game Lighting** (research 105 section 3.2): rugs, blankets,
   cinder-block corners and the periphery houses (236 placements on Hideout) take the baked light of the floor they lie
   on, as in game, instead of the probes' fallback. The model export (ACTS fork, updated again) carries their lightmap

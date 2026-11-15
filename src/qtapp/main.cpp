@@ -853,7 +853,7 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                 report << QString("layer_pass batches %1 draws %2 triangles %3").arg(lp[0]).arg(lp[1]).arg(lp[2]);
                 const auto bm = cam->baseMaterialStats();
                 report << QString("base_materials batches %1 constants %2 spec_alpha %3").arg(bm[0]).arg(bm[1]).arg(bm[2]);
-                report << QString("game_ao drawn %1 hdr %2").arg(cam->gameAoDrawn() ? 1 : 0).arg(cam->gameHdrDrawn() ? 1 : 0);
+                report << QString("game_ao drawn %1 hdr %2 gtao %3").arg(cam->gameAoDrawn() ? 1 : 0).arg(cam->gameHdrDrawn() ? 1 : 0).arg(cam->gameAoGtao() ? 1 : 0);
                 report << QString("stock_lights %1 in the map, %2 drawn, %3 shadow maps").arg(cam->stockLocalLightCount()).arg(cam->stockLocalLightsDrawn())
                               .arg(cam->stockLightShadowsDrawn());
                 report << "post_fx " + cam->postFxReport();

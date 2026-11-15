@@ -972,6 +972,8 @@ public:
     unsigned sunShadowMapSize() const { return shadowSize_; }
     bool gameAo() const { return aoOn_; }
     bool gameAoDrawn() const { return aoValid_; }
+    bool gameAoGtao() const { return aoGtaoDrawn_; }  // the last AO was GTAO (research 135), not the stand-in SSAO
+    bool aoGtaoDrawn_ = false;
     bool gameHdrDrawn() const { return hdrFrame_; }
     // View > Game Lighting: screen-space reflections on the stock materials that trace them (on by default).
     void setGameSsr(bool on) { ssrOn_ = on; }
@@ -1139,6 +1141,15 @@ private:
     ID3D11Texture2D* aoTex_[2] = {nullptr, nullptr};
     ID3D11RenderTargetView* aoRtv_[2] = {nullptr, nullptr};
     ID3D11ShaderResourceView* aoSrv_[2] = {nullptr, nullptr};
+    static constexpr int kAoZMips = 5;  // GTAO depth pyramid: mips 0-4 (research 135)
+    ID3D11Texture2D* aoZTex_ = nullptr;
+    ID3D11RenderTargetView* aoZRtv_[kAoZMips] = {};
+    ID3D11ShaderResourceView* aoZMipSrv_[kAoZMips] = {};
+    ID3D11ShaderResourceView* aoZSrv_ = nullptr;
+    ID3D11PixelShader* aoZPs_ = nullptr;
+    ID3D11PixelShader* aoZDownPs_ = nullptr;
+    ID3D11PixelShader* aoSsaoPs_ = nullptr;  // the stand-in SSAO (IW8R_AO_SSAO)
+    ID3D11SamplerState* aoPointSampler_ = nullptr;
     ID3D11VertexShader* aoVs_ = nullptr;
     ID3D11PixelShader* aoPs_ = nullptr;
     ID3D11PixelShader* aoBlurPs_ = nullptr;
