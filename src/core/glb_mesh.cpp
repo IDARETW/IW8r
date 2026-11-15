@@ -282,6 +282,13 @@ private:
                 for (size_t i = 0; i < n; ++i)
                     for (size_t c = 0; c < 4; ++c) m.color[i][c] = c < comps ? float(v[i * comps + c]) : 1.0f;
             }
+            if (const json::Value* tc1 = attrs->get("TEXCOORD_1")) {
+                size_t n1 = 0;
+                if (!readAccessor(int(tc1->num), 2, v, n1)) return false;
+                if (n1 != n) return fail("TEXCOORD_1 count differs from POSITION");
+                m.uv1.resize(n);
+                for (size_t i = 0; i < n; ++i) m.uv1[i] = {v[i * 2], v[i * 2 + 1]};
+            }
             if (const json::Value* sv = attrs->get("_SELFVIS")) {
                 // ACTS: the vertex's u32 as VEC4 UNSIGNED_BYTE, not normalised (research 105 section 4).
                 size_t ns = 0;

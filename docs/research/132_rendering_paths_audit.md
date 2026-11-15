@@ -248,6 +248,16 @@ surfaces on King (`tm2o/mout_container_wall_single` layer 1 flags 0x47: all door
 maps them with data the GLB export does not carry (a second UV set or vertex weights; UNVERIFIED). Modes 2/3
 (normal / gloss only) are not folded into the base shader yet.
 
+**Status 2026-11-15 (G9):** research 136 decoded the weights. Each layer is classified from the technique set name
+(core `parseModelLayerTokens`: standard / overlay / code, second UV set, slot-126 mask); props carry the second UV set
+(GLB TEXCOORD_1) and the vertex alpha as the weight (vc.w = 1 + a). A mesh's first two colour layers are folded into its
+own shading pass, in albedo space as the game's PS does: lerp (mode 0), multiply (1) and the soft-light overlay, with the
+reveal ramp, the alpha and the slot-126 mask (record rows 16-23, images at t36 and t44-t47); further layers are drawn as passes
+(lerp and overlay on LOD0 only). King's container walls keep painted metal on their alpha-0 panels and take the door
+layers on the frame; Aniyah Tac 11.5 ms, Hideout 9.4 ms (separate passes had cost 6.7 ms on Aniyah). Left by
+decision: code layers (not decoded), modes 2/3 and every layer's normal / cavity / gloss (they need the layer normal
+maps in the base pass), the per-layer tint masks (slot 59 + L). A/B: `IW8R_NO_LERP_LAYERS`, `IW8R_NO_LAYER_FOLD`.
+
 ### G10 (medium-low). The sky is an 8-bit 256-texel cube
 
 - Game: the sky PS samples the HDR hemi-octahedral BC6H image (research 33); the sun is whatever the image holds plus

@@ -1354,14 +1354,29 @@ bool CameraView::resolvePropLayers(size_t k) {
     if (base.empty() || base.find_first_of("\x01\x02\x05\x06") != std::string::npos) return true;
     const std::optional<StockLayeredMaterial> c = layerLookup_(base);
     if (!c || c->layers < 2) return true;
+    // Research 136: the layer kinds and UV sets from the technique set name, the slot-126 mask.
+    const auto facts = factsLookup_ ? factsLookup_(base) : std::nullopt;
+    static const bool noLerp = std::getenv("IW8R_NO_LERP_LAYERS") != nullptr;  // A/B: multiply layers only, as before
+    int maskId = -1;
+    if (facts && !facts->layerMaskImage.empty()) {
+        const std::string mk = "\x05" + facts->layerMaskImage;
+        const int id = textureFor(mk);
+        if (!texIds_.count(mk)) return false;  // still loading
+        maskId = id == checkerTex_ ? -1 : id;
+    }
     std::vector<app::PropLayer> out;
     for (int L = 1; L < c->layers && size_t(L) < c->layer.size(); ++L) {
         const StockLayerConstants& lc = c->layer[size_t(L)];
-        if (lc.colorMode >= 2) continue;  // modes 2 / 3: normal and gloss only (not drawn, as on the world)
-        // Only multiply layers (mode 1: grime, wear) are drawn. Colour (lerp) layers need a weight or UV the model export
-        // does not carry (UNVERIFIED: weight 1 makes a container wall all door and a sign's alphabet layer the whole
-        // letter atlas; King, 2026-11-14 bench), so they are left out until that is decoded (research 132 G9).
-        if (lc.colorMode != 1) continue;
+        const int kind = facts && size_t(L) < facts->layerKind.size() ? facts->layerKind[size_t(L)] : 0;
+        if (kind == 2) continue;  // a code layer (vehicle dirt / rubble; not decoded)
+        // Overlay layers (soft light) ignore the colour mode; standard layers: 0 lerp, 1 multiply, 2 / 3 normal and gloss
+        // only (not drawn: a blended pass cannot change the normal under the shaded pixel).
+        float drawKind = kind == 1 ? 2.0f : 0.0f;
+        if (kind == 0) {
+            if (lc.colorMode >= 2) continue;
+            if (lc.colorMode == 1) drawKind = 1.0f;
+            else if (noLerp) continue;
+        }
         const std::string ck = base + '\x01' + std::to_string(L), rk = base + '\x02' + std::to_string(L);
         const int cid = textureFor(ck), rid = textureFor(rk);
         if (!texIds_.count(ck) || !texIds_.count(rk)) return false;  // still loading
@@ -1369,9 +1384,11 @@ bool CameraView::resolvePropLayers(size_t k) {
         app::PropLayer pl;
         pl.texture = cid;
         pl.reveal = rid == checkerTex_ ? -1 : rid;
-        const float p[16] = {1.0f, float(lc.flags), lc.sharpness, lc.colorMode == 1 ? 1.0f : 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,
+        const float p[16] = {1.0f, float(lc.flags), lc.sharpness, drawKind, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,
                              lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
         std::copy(p, p + 16, pl.params);
+        pl.aux[0] = facts && size_t(L) < facts->layerUv1.size() && facts->layerUv1[size_t(L)] ? 1.0f : 0.0f;
+        if (maskId >= 0 && L <= 3) pl.mask = maskId, pl.aux[1] = float(L);  // channel L - 1, stored + 1
         out.push_back(pl);
     }
     renderer_.setReferenceInstLayers(k, std::move(out));

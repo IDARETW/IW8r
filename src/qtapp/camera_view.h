@@ -186,6 +186,11 @@ public:
         // The water's dual scrolling normal (research 133 section 5.3): constants 110 and 111 (weight, UV scale, scroll
         // per second u, v); zero = none.
         std::array<float, 8> dualNormal{};
+        // Model-layered materials (research 136): per layer L the kind (0 standard, 1 overlay, 2 code) and whether it
+        // samples the second UV set; the slot-126 mask image when the technique set uses it (hexB 3...).
+        std::vector<int> layerKind;
+        std::vector<char> layerUv1;
+        std::string layerMaskImage;
         // Research 133 section 6: the flag / foliage waves, constants 79, 80, 81, 82 (zero = none).
         std::array<float, 16> wave{};
     };

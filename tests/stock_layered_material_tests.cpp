@@ -120,3 +120,25 @@ TEST(stock_layered_material_blend) {
     out = stockLayerBlendColor(m, 0.5f / 255.0f, below, layer);
     CHECK(out == below);
 }
+
+// Research 136 section 2: the layer kinds and UV sets from technique set names (M2 of research 107, overlays, a UV1
+// layer of a `2` family, the slot-126 mask by hexB, code layers).
+TEST(model_layer_tokens_from_techset_names) {
+    // M2: tmo, 2 layers, layer 1 standard (3810015f, colour mode 2), UV0, no 126 mask (hexB 1...).
+    const ModelLayerTokens m2 = parseModelLayerTokens("tmo/lit_3_lit_rpl_ta1_800800_1002000000000010_0_2_1_0_0_13810015b_0_0_1_0_0_0_0_3810015f_2_1_2_0_0");
+    CHECK(m2.layers == 2 && !m2.mask126 && m2.kind.size() == 2 && m2.kind[1] == ModelLayerKind::Standard && !m2.uv1[1]);
+    // An overlay layer (410005b) and a standard UV1 layer (3818015f) on a tm2co set masked by slot 126 (hexB 3...).
+    const ModelLayerTokens o = parseModelLayerTokens(
+        "tm2co/lit_3_lit_rpl_ta1_800800_3002000000000010_0_3_1_0_0_13810015b_0_0_1_0_0_0_0_410005b_0_0_1_0_0_0_0_3818015f_0_0_2_0_0");
+    CHECK(o.layers == 3 && o.mask126);
+    if (o.kind.size() == 3) {
+        CHECK(o.kind[1] == ModelLayerKind::Overlay && !o.uv1[1]);
+        CHECK(o.kind[2] == ModelLayerKind::Standard && o.uv1[2]);
+    }
+    // The same UV1 bit in a family without a second UV set: UV0. A code layer (b = 1).
+    const ModelLayerTokens c = parseModelLayerTokens("tmo/lit_3_lit_rpl_ta1_800800_1002000000000010_0_3_1_0_0_13810015b_0_0_1_0_0_0_0_3818015f_0_0_2_0_0_0_1_180153_0_0_1_0_0");
+    CHECK(c.layers == 3 && !c.uv1[1] && c.kind[2] == ModelLayerKind::Code);
+    // Not a lit technique set.
+    CHECK(parseModelLayerTokens("tw/dist_10_distortion_rpl").layers == 0);
+    CHECK(parseModelLayerTokens("no_slash").layers == 0);
+}

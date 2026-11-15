@@ -33,6 +33,9 @@ struct ImportedMesh {
     // Lightmapped stock models (ACTS GLB attribute _LMAPUV, research 105 section 3.2): per vertex the lightmap u, v
     // (0..1) within the placement's lmapLookup rectangle. Empty when the primitive has none.
     std::vector<std::array<float, 2>> lmapUv;
+    // The second UV set (glTF TEXCOORD_1; stock `2` families' SECONDARY_TEXCOORDS, research 136), as stored. Empty
+    // when the primitive has none.
+    std::vector<std::array<double, 2>> uv1;
 };
 
 struct ImportedModel {

@@ -119,12 +119,16 @@ struct PropVertex {
     uint32_t selfVis = 0;
     // A lightmapped model's lightmap u, v (two unorm16, research 105 section 3.2) within its placement's rectangle.
     uint32_t lmapUv = 0;
+    // The second UV set (stock `2` families; research 136), as stored; 0 when the model has none.
+    float u1 = 0, v1 = 0;
 };
 // One extra layer of a model-layered prop material (research 132 G9): its colour and reveal textures (createTexture
 // ids; reveal -1 = white) and the world layer pass's constants (layerP, layerTint, layerUvT, layerUvO).
 struct PropLayer {
     int texture = -1, reveal = -1;
-    float params[16] = {};
+    float params[16] = {};  // layerP (on, flags, k, kind: 0 lerp, 1 multiply, 2 overlay), tint, UV transform
+    int mask = -1;          // slot 126 (research 136), -1: none
+    float aux[4] = {};      // row 8 of the layer buffer: the second UV set (1), the mask channel + 1
 };
 struct PropMeshData {
     std::vector<PropVertex> vertices;
@@ -308,8 +312,32 @@ public:
     // A prop mesh's flag / foliage waves (research 133 section 6): constants 79, 80, 81, 82.
     void setReferenceInstWave(size_t mesh, const float wave[16]);
     // A prop mesh's extra layers (model-layered materials, research 132 G9), drawn over it after the props.
+    // The first two are folded into the mesh's own pass (research 136); the rest are drawn as passes.
     void setReferenceInstLayers(size_t mesh, std::vector<PropLayer> layers) {
-        if (mesh < refTexInst_.size()) refTexInst_[mesh].layers = std::move(layers);
+        if (mesh >= refTexInst_.size()) return;
+        auto& g = refTexInst_[mesh];
+        std::fill(std::begin(g.fold), std::end(g.fold), 0.0f);
+        std::fill(std::begin(g.foldTex), std::end(g.foldTex), -1);
+        g.foldMask = -1;
+        static const bool noFold = std::getenv("IW8R_NO_LAYER_FOLD") != nullptr;  // A/B: every layer a pass
+        size_t f = 0;
+        std::vector<PropLayer> rest;
+        for (PropLayer& L : layers) {
+            if (noFold || f >= 2) {
+                rest.push_back(std::move(L));
+                continue;
+            }
+            float* r = &g.fold[16 * f];
+            r[0] = 1.0f, r[1] = L.params[1], r[2] = L.params[2], r[3] = L.params[3];
+            r[4] = L.params[4], r[5] = L.params[5], r[6] = L.params[6], r[7] = L.aux[1];
+            for (int k = 0; k < 4; ++k) r[8 + k] = L.params[8 + k];
+            r[12] = L.params[12], r[13] = L.params[13], r[14] = L.aux[0];
+            g.foldTex[2 * f] = L.texture, g.foldTex[2 * f + 1] = L.reveal;
+            if (L.mask >= 0) g.foldMask = L.mask;
+            ++f;
+        }
+        g.layers = std::move(rest);
+        instParamsDirty_ = true;
     }
     // The near-camera terrain layer patch's core (x, y, radius; radius 0 = none): the coarse terrain is not drawn there.
     void setTerrainCut(float x, float y, float radius) { terrainCut_[0] = x, terrainCut_[1] = y, terrainCut_[2] = radius; }
@@ -816,6 +844,11 @@ private:
         float params[16] = {};      // setReferenceInstParams
         float extra[16] = {};       // setReferenceInstExtra (RefLayer::extra)
         float wave[16] = {};        // setReferenceInstWave: constants 79-82 (research 133 section 6)
+        // Research 136: the first two colour layers folded into the mesh's own pass (rows 16-23 of its record) and their
+        // images (colour 1, alpha / reveal 1, colour 2, alpha / reveal 2; -1 none) and the slot-126 mask.
+        float fold[32] = {};
+        int foldTex[4] = {-1, -1, -1, -1};
+        int foldMask = -1;
         std::vector<PropLayer> layers;  // setReferenceInstLayers: layers 1.. of a model-layered material
         int emissive = -1, transmission = -1;
         ID3D11Buffer* visInst = nullptr;
@@ -989,6 +1022,7 @@ private:
     ID3D11Texture2D* envBrdfTex_ = nullptr;
     ID3D11Texture3D* gtsoTex_ = nullptr;
     ID3D11Texture3D* lgvTex_[2] = {nullptr, nullptr};  // setStockLgvAtlas
+    ID3D11Buffer* cbPropLayer_ = nullptr;  // the prop layer pass's b7 (256 bytes: PropLayer params, row 8 aux)
     ID3D11Buffer* lgvBoxBuf_ = nullptr;
     ID3D11ShaderResourceView* lgvSrv_[3] = {nullptr, nullptr, nullptr};  // VS t40 / t41 / t42
     ID3D11SamplerState* lgvSampler_ = nullptr;                          // VS s4

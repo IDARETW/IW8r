@@ -459,7 +459,8 @@ struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; 
               float4 edge : TEXCOORD6; };
 struct PSIn { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 w : TEXCOORD1; float3 n : TEXCOORD2; float3 t : TEXCOORD3; float2 lm : TEXCOORD4;
                float3 lgvBack : TEXCOORD5; float3 edge : TEXCOORD6; float4 vc : TEXCOORD7;  // vc: a prop's vertex colour (linear; research 133); w = 1 on props
-               float4 sv : TEXCOORD8; };  // a stock prop's self visibility (world bent normal x amount, cone; w < 0: none)
+               float4 sv : TEXCOORD8;  // a stock prop's self visibility (world bent normal x amount, cone; w < 0: none)
+               float2 uv1 : TEXCOORD9; };  // a prop's second UV set (research 136)
 Buffer<uint> tomeVis : register(t30);  // cull by tome: one bit per GfxWorld surface (wind.w = 1 while bound)
 PSIn vs_tex(VSIn i) {
     PSIn o;
@@ -474,6 +475,7 @@ PSIn vs_tex(VSIn i) {
     o.pos = mul(float4(p, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = p; o.n = i.n; o.t = i.t; o.lm = i.lm;
     o.lgvBack = float3(0, 0, 0);
     o.vc = float4(1, 1, 1, 0);
+    o.uv1 = float2(0, 0);
     o.sv = float4(0, 0, 0, -1);
     o.edge = i.edge.xyz;
     if (wind.w > 0.5 && i.edge.a < 0.5) {
@@ -535,7 +537,7 @@ bool lgvLight(uint box, float3 w, float3 n, out float3 e, out float3 back) {
     back = max(0.282095 * dc - band1 + band2, 0.0);  // E(-n): the second band is even
     return true;
 }
-struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float4 vcol : COLOR1; float4 sv : SELFVIS; float2 lmuv : LMAPUV; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
+struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float4 vcol : COLOR1; float4 sv : SELFVIS; float2 lmuv : LMAPUV; float2 uv1 : UVTWO; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
                   float4 l0 : INSTROW3; float4 l1 : INSTROW4; float4 l2 : INSTROW5; };
 PSIn vs_tex_inst(VSInInst i) {
     float4 p = float4(i.pos, 1.0);
@@ -555,7 +557,9 @@ PSIn vs_tex_inst(VSInInst i) {
     float3 nw = float3(dot(i.r0.xyz, i.n), dot(i.r1.xyz, i.n), dot(i.r2.xyz, i.n));
     PSIn o; o.pos = mul(float4(w, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = w; o.n = dot(nw, nw) > 1e-12 ? normalize(nw) : float3(0, 0, 0); o.t = float3(0, 0, 0); o.lm = float2(-1, -1); o.edge = float3(1, 0, 0);
     // The vertex colour of a VERTCOL model, stored sRGB: linear as the game's static-model VS (research 133 section 4).
-    o.vc = float4(i.vcol.rgb <= 0.04045 ? i.vcol.rgb / 12.92 : pow((i.vcol.rgb + 0.055) / 1.055, 2.4), 1.0);  // w: a prop
+    // w: 1 + the vertex alpha (a prop; the model layers' weight in the vertex-colour families, research 136).
+    o.vc = float4(i.vcol.rgb <= 0.04045 ? i.vcol.rgb / 12.92 : pow((i.vcol.rgb + 0.055) / 1.055, 2.4), 1.0 + i.vcol.a);
+    o.uv1 = i.uv1;
     // Self visibility (research 105 section 4): turned by the placement like the normal, its length kept.
     o.sv = float4(0, 0, 0, -1);
     if (i.sv.w > 0.004) {
@@ -610,7 +614,9 @@ float3 gamePost(float3 c) {
 cbuffer Layer : register(b7) { float4 layerP; float4 layerTint; float4 layerUvT; float4 layerUvO;
                                float4 matE; float4 matTr; float4 matW; float4 matX;  // matE/Tr/W: research 107 (RefLayer::extra)
                                float4 matRows8[4];  // rows 8-11: a prop's waves (PropWave, VS)
-                               float4 matDual0; float4 matDual1; };  // the water's constants 110 / 111 (research 133 section 5.3)
+                               float4 matDual0; float4 matDual1;  // the water's constants 110 / 111 (research 133 section 5.3)
+                               float4 matRows14[2];
+                               float4 foldL[8]; };  // rows 16-23: a prop mesh's two folded colour layers (research 136)
 Texture2D tr0 : register(t19);  // the transmission image (texture slot 68, sRGB) when matTr.w = 1
 // Wrap diffuse (research 107 section 2.2): w = constant 103 per channel.
 float wrapF(float x, float w) {
@@ -964,6 +970,52 @@ void gameLocalLight(GameLight l, float3 P, float3 N, float3 V, float3 diffuseCol
     }
 }
 Texture2D revealTex : register(t12);
+Texture2D layerMaskTex : register(t36);  // a prop layer's slot-126 mask (research 136)
+Texture2D foldC1 : register(t44);  // the folded layers' colour and alpha / reveal images (research 136)
+Texture2D foldR1 : register(t45);
+Texture2D foldC2 : register(t46);
+Texture2D foldR2 : register(t47);
+// A model layer folded into the prop's own pass (research 136 section 1.2-1.3): its weight from the vertex alpha
+// (vc.w = 1 + a), the reveal ramp, the alpha and the slot-126 mask, then lerp (0), multiply (1) or soft-light overlay
+// (2) of the linear albedo with the tinted layer colour.
+float3 foldLayer(float3 albedo, PSIn i, float4 P, float4 T, float4 UT, float4 UO, float4 c, float2 ar) {
+    const float w = saturate(i.vc.w - 1.0), k = P.z;
+    const uint fl = (uint)(P.y + 0.5);
+    float b = w;
+    if (fl & 16u) {
+        const float lo = saturate(1.0 - w - k * sqrt(w)), hi = saturate(1.0 - w + k * sqrt(1.0 - w));
+        b = saturate((ar.g - lo) / max(hi - lo, 1e-4));
+    }
+    if (fl & 8u) b *= ar.r;
+    if (T.w > 0.5) {
+        const float4 mk = layerMaskTex.Sample(samp0, i.uv);
+        const int ch = int(T.w + 0.5) - 1;
+        b *= ch == 0 ? mk.r : (ch == 1 ? mk.g : mk.b);
+    }
+    if (b < 1.0 / 255.0) return albedo;
+    const float3 cl = srgbToLinear3(c.rgb) * T.rgb;
+    if (P.w > 1.5) {
+        const float3 tt = 0.5 + b * (pow(saturate(cl), 1.0 / 2.2) - 0.5);
+        return albedo * albedo * (1.0 - 2.0 * tt) + 2.0 * tt * albedo;
+    }
+    if (P.w > 0.5) return albedo * lerp(float3(1, 1, 1), cl, b);
+    return lerp(albedo, cl, b);
+}
+float2 foldUv(PSIn i, float4 UT, float4 UO) {
+    const float2 lu = UO.z > 0.5 ? i.uv1 : i.uv;
+    return float2(UT.x * lu.x * UT.z + UT.y * lu.y * UT.w, -UT.y * lu.x * UT.z + UT.x * lu.y * UT.w) + UO.xy;
+}
+float3 foldPropLayers(float3 albedo, PSIn i) {
+    if (foldL[0].x > 0.5) {
+        const float2 u = foldUv(i, foldL[2], foldL[3]);
+        albedo = foldLayer(albedo, i, foldL[0], foldL[1], foldL[2], foldL[3], foldC1.Sample(samp0, u), foldR1.Sample(samp0, u).rg);
+    }
+    if (foldL[4].x > 0.5) {
+        const float2 u = foldUv(i, foldL[6], foldL[7]);
+        albedo = foldLayer(albedo, i, foldL[4], foldL[5], foldL[6], foldL[7], foldC2.Sample(samp0, u), foldR2.Sample(samp0, u).rg);
+    }
+    return albedo;
+}
 // vs_tex_inst: a prop lit from its light grid box carries that light in t (no tangent) and lm = (-2, -2).
 bool propLit(PSIn i) { return i.lm.x < -1.5; }
 float4 ps_tex(PSIn i) : SV_TARGET {
@@ -984,9 +1036,12 @@ float4 ps_tex(PSIn i) : SV_TARGET {
     if (tileFillHidden(i.col, i.w)) discard;
     float layerB = -1.0;
     float2 uvS = i.uv;
-    if (layerP.x > 0.5)
-        uvS = float2(layerUvT.x * i.uv.x * layerUvT.z + layerUvT.y * i.uv.y * layerUvT.w,
-                     -layerUvT.y * i.uv.x * layerUvT.z + layerUvT.x * i.uv.y * layerUvT.w) + layerUvO.xy;
+    if (layerP.x > 0.5) {
+        // A prop layer on the second UV set (research 136; matRows8[0].x, the prop layer buffer's row 8).
+        const float2 lu = layerP.x < 1.5 && matRows8[0].x > 0.5 ? i.uv1 : i.uv;
+        uvS = float2(layerUvT.x * lu.x * layerUvT.z + layerUvT.y * lu.y * layerUvT.w,
+                     -layerUvT.y * lu.x * layerUvT.z + layerUvT.x * lu.y * layerUvT.w) + layerUvO.xy;
+    }
     float4 t = tex0.Sample(samp0, uvS);
     if (layerP.x > 1.5) {
         // A stock decal volume (research 99): the mask at the box UV (clamped), the edge fade, the blend-map remap
@@ -999,8 +1054,9 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         t.rgb *= pow(max(layerTint.rgb, 0.0), 1.0 / 2.2);
     } else if (layerP.x > 0.5) {
         float2 ar = revealTex.Sample(samp0, uvS).rg;
-        // The tangent's length is 1 + the weight on the world; a model layer's weight is 1 (research 107 section 3.2).
-        float w = i.vc.w > 0.5 ? 1.0 : saturate(length(i.t) - 1.0), k = layerP.z;
+        // The tangent's length is 1 + the weight on the world; a model layer's weight is the vertex alpha in the
+        // vertex-colour families and 1 in the others, carried as vc.w = 1 + a (research 136; white: 1).
+        float w = i.vc.w > 0.5 ? saturate(i.vc.w - 1.0) : saturate(length(i.t) - 1.0), k = layerP.z;
         uint fl = (uint)(layerP.y + 0.5);
         float b = w;
         if (fl & 16u) {
@@ -1008,6 +1064,12 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             b = saturate((ar.g - lo) / max(hi - lo, 1e-4));
         }
         if (fl & 8u) b *= ar.r;
+        // hexB 3... sets: slot 126's channel L - 1 at the raw UV0 weights the layer (research 136 section 1.2).
+        if (matRows8[0].y > 0.5) {
+            const float4 mk = layerMaskTex.Sample(samp0, i.uv);
+            const int ch = int(matRows8[0].y + 0.5) - 1;
+            b *= ch == 0 ? mk.r : (ch == 1 ? mk.g : mk.b);
+        }
         layerB = b;
         t.rgb *= pow(max(layerTint.rgb, 0.0), 1.0 / 2.2);  // the tint is linear; t is still sRGB here
     }
@@ -1036,6 +1098,12 @@ float4 ps_tex(PSIn i) : SV_TARGET {
     if (layerB >= 0.0) outA = layerB;
     // Colour mode multiply (layerP.w = 1; puddles, edge wear): below x lerp(1, layer, b), drawn with a multiplying blend
     // over the shaded result (in display space: the factor's 1/2.2 power, as the post chain is close to a gamma there).
+    if (layerP.x > 0.5 && layerP.w > 1.5) {
+        // An overlay layer (research 136 section 1.3): soft light, t = 0.5 + b (s - 0.5) with s the tinted colour in sRGB;
+        // the albedo below is taken as 0.5, which makes the factor f = 2t + a (1 - 2t) = 1 + b (s - 0.5).
+        const float3 f = 1.0 + layerB * (saturate(t.rgb) - 0.5);
+        return float4(game0.x > 0.5 && gameAo.w > 0.5 ? f : pow(max(f, 0.0), 1.0 / 2.2), 1.0);
+    }
     if (layerP.x > 0.5 && layerP.w > 0.5) {
         const float3 mulLin = lerp(float3(1, 1, 1), srgbToLinear3(t.rgb), layerB);
         return float4(game0.x > 0.5 && gameAo.w > 0.5 ? mulLin : pow(mulLin, 1.0 / 2.2), 1.0);  // HDR: a linear multiply
@@ -1049,7 +1117,10 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         float aoV = gameAo.x > 0.5 ? lerp(1.0, aoMap.Load(int3(i.pos.xy, 0)), gameSunCol.w) : 1.0;  // x the AO strength
         if (gameAo.y > 0.5) return float4(aoV, aoV, aoV, 1.0);
         if (gameAo.z > 0.5) return float4(t.rgb, outA);  // debug: the albedo as sampled
-        float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? i.vc.rgb : i.col.rgb);  // i.col: selection and brush entity tints; vc: a prop's vertex colour
+        float3 albedo = srgbToLinear3(t.rgb);
+        // A prop's folded model layers (research 136), before its vertex colour (the game multiplies it after them).
+        if (stockRef && layerP.x < 0.5 && i.vc.w > 0.5 && foldL[0].x > 0.5) albedo = foldPropLayers(albedo, i);
+        albedo *= stockRef ? i.vc.rgb : i.col.rgb;  // i.col: selection and brush entity tints; vc: a prop's vertex colour
         if (!stockRef && i.col.a < 0.5) {  // sky box
             // t.a: an RGBM face's multiplier (research 132 G10; 1 on an 8-bit face), the range folded into the scale.
             const float3 sky = gameFogApply(albedo * t.a * gameSkyScale.x, i.w, true);
@@ -1856,6 +1927,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(rsShadow_);
     safeRelease(cbBatch_);
     safeRelease(cbLayer_);
+    safeRelease(cbPropLayer_);
     for (auto*& b : cbLayerAll_) safeRelease(b);
     cbLayerAll_.clear();
     for (auto*& b : cbInstAll_) safeRelease(b);
@@ -2181,8 +2253,8 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
             ID3DBlob* tivs = nullptr;
             if (compileTex("vs_tex_inst", "vs_5_0", tivs)) {
                 dev_->CreateVertexShader(tivs->GetBufferPointer(), tivs->GetBufferSize(), nullptr, &vsTexInst_);
-                // PropVertex (40 bytes): position, uv, colour, normal as signed bytes, the model's vertex colour, the self
-                // visibility as signed bytes, the lightmap uv as unorm16.
+                // PropVertex (48 bytes): position, uv, colour, normal as signed bytes, the model's vertex colour, the self
+                // visibility as signed bytes, the lightmap uv as unorm16, the second uv.
                 const D3D11_INPUT_ELEMENT_DESC tiil[] = {
                     {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
@@ -2191,6 +2263,7 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
                     {"COLOR", 1, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"SELFVIS", 0, DXGI_FORMAT_R8G8B8A8_SNORM, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"LMAPUV", 0, DXGI_FORMAT_R16G16_UNORM, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
+                    {"UVTWO", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"INSTROW", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D11_INPUT_PER_INSTANCE_DATA, 1},
@@ -2209,9 +2282,11 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
             {
                 D3D11_BUFFER_DESC lb = bd;
                 lb.ByteWidth = 64;
-                const float zero[16] = {};
+                const float zero[64] = {};
                 D3D11_SUBRESOURCE_DATA lz{zero, 0, 0};
                 dev_->CreateBuffer(&lb, &lz, &cbLayer_);
+                lb.ByteWidth = 256;  // the prop layer pass: params, rows 4-7 zero, row 8 aux (research 136)
+                dev_->CreateBuffer(&lb, &lz, &cbPropLayer_);
             }
             dev_->CreateBuffer(&bd, nullptr, &cbWind_);
             bd.ByteWidth = 16 + UINT(sizeof(PixelLight)) * kMaxPixelLights;
@@ -4486,7 +4561,7 @@ void SceneRenderer::drawReferenceTexInstances() {
     }
     // Main pass: each mesh's normal map (the flat one without) and its material constants at its offset in b7.
     const bool propNormals = !texPsOverride_ && flatNrmTex_ >= 0 && size_t(flatNrmTex_) < textures_.size();
-    constexpr size_t kInstPerCb = 256;
+    constexpr size_t kInstPerCb = 128;  // uploadInstParams: 512-byte records
     // The props' constants: on the shading pass and the depth pre-pass (raw-alpha meshes are not cut out).
     const bool instCb = (propNormals || (texPsOverride_ && texPsOverride_ == psPrepass_)) && uploadInstParams();
     if (cbBatch_) {
@@ -4511,7 +4586,7 @@ void SceneRenderer::drawReferenceTexInstances() {
     // layer's reveal step and alpha (or multiplied), its constants in b7. Its own states are put back afterwards.
     static const bool noPropLayers = perfOff("proplayers");  // benchmark switch: IW8R_PERF_OFF=proplayers
     const auto drawPropLayers = [&] {
-        if (texPsOverride_ || !cbLayer_ || noPropLayers) return;
+        if (texPsOverride_ || !cbLayer_ || !cbPropLayer_ || noPropLayers) return;
         bool layerStateSet = false;
         ID3D11DepthStencilState* prevDs = nullptr;
         UINT prevRef = 0;
@@ -4531,11 +4606,11 @@ void SceneRenderer::drawReferenceTexInstances() {
                 }
                 ID3D11ShaderResourceView* noN = nullptr;
                 ctx_->PSSetShaderResources(1, 1, &noN);
-                ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);
+                ctx_->PSSetConstantBuffers(7, 1, &cbPropLayer_);
             }
             const size_t mi = size_t(&g - refTexInst_.data());
             if (instCb && cbInstAll_[mi / kInstPerCb]) {  // the mesh's waves, so the layer stays on the moving surface
-                const UINT first = UINT((mi % kInstPerCb) * 16), num = 16;
+                const UINT first = UINT((mi % kInstPerCb) * 32), num = 32;
                 ctx1_->VSSetConstantBuffers1(8, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);
             }
             ID3D11Buffer* bufs[2] = {g.vb, g.inst};
@@ -4543,21 +4618,29 @@ void SceneRenderer::drawReferenceTexInstances() {
             ctx_->IASetIndexBuffer(g.ib, DXGI_FORMAT(g.ibFormat), 0);
             for (const PropLayer& L : g.layers) {
                 if (L.texture < 0 || size_t(L.texture) >= textures_.size()) continue;
+                // Lerp and overlay layers (research 136) on the nearest LOD only: each is a full shading pass, and past
+                // LOD0 a model's detail layers are a few pixels (Hideout: 4 ms for every LOD).
+                if (L.params[3] != 1.0f && g.lodNear > 0.0f) continue;
                 const int rv = L.reveal >= 0 && size_t(L.reveal) < textures_.size() ? L.reveal : whiteFullTex_;
                 if (rv < 0 || size_t(rv) >= textures_.size()) continue;
-                ctx_->UpdateSubresource(cbLayer_, 0, nullptr, L.params, 0, 0);
+                float all[64] = {};
+                std::memcpy(all, L.params, sizeof(L.params));
+                std::memcpy(all + 32, L.aux, sizeof(L.aux));  // row 8
+                ctx_->UpdateSubresource(cbPropLayer_, 0, nullptr, all, 0, 0);
                 const float bfz[4] = {0, 0, 0, 0};
                 ctx_->OMSetBlendState(L.params[3] > 0.5f && blendMul_ ? blendMul_ : blend_, bfz, 0xffffffff);
                 ctx_->PSSetShaderResources(0, 1, &textures_[size_t(L.texture)]);
                 ctx_->PSSetShaderResources(12, 1, &textures_[size_t(rv)]);
+                ID3D11ShaderResourceView* mk = L.mask >= 0 && size_t(L.mask) < textures_.size() ? textures_[size_t(L.mask)] : nullptr;
+                ctx_->PSSetShaderResources(36, 1, &mk);
                 drawInstIdx(g.vertices, g.instances);
             }
         }
         if (!layerStateSet) return;
-        const float zero16[16] = {};
-        ctx_->UpdateSubresource(cbLayer_, 0, nullptr, zero16, 0, 0);  // the plain layer buffer is zero again
         ID3D11ShaderResourceView* noR = nullptr;
         ctx_->PSSetShaderResources(12, 1, &noR);
+        ctx_->PSSetShaderResources(36, 1, &noR);
+        ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);  // the plain (zero) layer buffer again
         ctx_->OMSetDepthStencilState(prevDs, prevRef);
         ctx_->OMSetBlendState(prevBs, prevBf, prevBm);
         if (prevDs) prevDs->Release();
@@ -4617,11 +4700,19 @@ void SceneRenderer::drawReferenceTexInstances() {
             ID3D11ShaderResourceView* t = g.transmission >= 0 && size_t(g.transmission) < textures_.size() ? textures_[size_t(g.transmission)] : nullptr;
             ctx_->PSSetShaderResources(3, 1, &e);
             ctx_->PSSetShaderResources(19, 1, &t);
+            // Research 136: the folded layers' images (t44-t47) and the slot-126 mask (t36).
+            ID3D11ShaderResourceView* fv[4] = {};
+            for (int k = 0; k < 4; ++k)
+                fv[k] = g.foldTex[k] >= 0 && size_t(g.foldTex[k]) < textures_.size() ? textures_[size_t(g.foldTex[k])]
+                                                                                       : (k & 1) && whiteFullTex_ >= 0 ? textures_[size_t(whiteFullTex_)] : nullptr;
+            ctx_->PSSetShaderResources(44, 4, fv);
+            ID3D11ShaderResourceView* fm = g.foldMask >= 0 && size_t(g.foldMask) < textures_.size() ? textures_[size_t(g.foldMask)] : nullptr;
+            ctx_->PSSetShaderResources(36, 1, &fm);
         }
         if (instCb) {
             const size_t mi = size_t(&g - refTexInst_.data());
             if (cbInstAll_[mi / kInstPerCb]) {
-                const UINT first = UINT((mi % kInstPerCb) * 16), num = 16;
+                const UINT first = UINT((mi % kInstPerCb) * 32), num = 32;
                 ctx1_->PSSetConstantBuffers1(7, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);
                 ctx1_->VSSetConstantBuffers1(8, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);  // PropWave
             }
@@ -4659,7 +4750,7 @@ void SceneRenderer::drawReferenceTexInstances() {
 }
 
 bool SceneRenderer::uploadInstParams() {
-    constexpr size_t kInstPerCb = 256;
+    constexpr size_t kInstPerCb = 128;  // 512-byte records (rows 16-23: the folded layers, research 136)
     if (!uploadLayerParams() || !ctx1_) return false;  // ctx1_: constant buffer offsets
     if (instParamsDirty_ || cbInstAllMeshes_ != refTexInst_.size()) {
         instParamsDirty_ = false;
@@ -4668,22 +4759,23 @@ bool SceneRenderer::uploadInstParams() {
             cbInstAll_.assign((refTexInst_.size() + kInstPerCb - 1) / kInstPerCb, nullptr);
             cbInstAllMeshes_ = refTexInst_.size();
             D3D11_BUFFER_DESC bd{};
-            bd.ByteWidth = UINT(kInstPerCb * 256);
+            bd.ByteWidth = UINT(kInstPerCb * 512);
             bd.Usage = D3D11_USAGE_DEFAULT;
             bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
             for (auto*& b : cbInstAll_)
                 if (FAILED(dev_->CreateBuffer(&bd, nullptr, &b))) cbInstAllMeshes_ = 0;
         }
-        std::vector<float> all(kInstPerCb * 64, 0.0f);
+        std::vector<float> all(kInstPerCb * 128, 0.0f);
         for (size_t c = 0; c < cbInstAll_.size() && cbInstAllMeshes_; ++c) {
             std::fill(all.begin(), all.end(), 0.0f);
             for (size_t j = 0; j < kInstPerCb && c * kInstPerCb + j < refTexInst_.size(); ++j) {
                 const GpuTexInstanced& gi = refTexInst_[c * kInstPerCb + j];
-                std::memcpy(&all[j * 64], gi.params, sizeof(gi.params));
-                std::memcpy(&all[j * 64 + 16], gi.extra, sizeof(gi.extra));
-                std::memcpy(&all[j * 64 + 32], gi.wave, sizeof(gi.wave));  // PropWave (b8) in vs_tex_inst
-                maskExtraTerms(&all[j * 64 + 16]);
-                if (textureRawAlpha(gi.texture)) all[j * 64 + 1] = 2.0f;  // opaque: alpha is the specular code
+                std::memcpy(&all[j * 128], gi.params, sizeof(gi.params));
+                std::memcpy(&all[j * 128 + 16], gi.extra, sizeof(gi.extra));
+                std::memcpy(&all[j * 128 + 32], gi.wave, sizeof(gi.wave));  // PropWave (b8) in vs_tex_inst
+                std::memcpy(&all[j * 128 + 64], gi.fold, sizeof(gi.fold));  // rows 16-23
+                maskExtraTerms(&all[j * 128 + 16]);
+                if (textureRawAlpha(gi.texture)) all[j * 128 + 1] = 2.0f;  // opaque: alpha is the specular code
             }
             if (cbInstAll_[c]) ctx_->UpdateSubresource(cbInstAll_[c], 0, nullptr, all.data(), 0, 0);
         }
@@ -4715,10 +4807,10 @@ void SceneRenderer::drawReferenceTexInstancesShadow(const iw8r::Frustum* view) {
         }
         if (instCb) {
             const size_t mi = size_t(&g - refTexInst_.data());
-            if (cbInstAll_[mi / 256]) {
-                const UINT first = UINT((mi % 256) * 16), num = 16;
-                ctx1_->PSSetConstantBuffers1(7, 1, &cbInstAll_[mi / 256], &first, &num);
-                ctx1_->VSSetConstantBuffers1(8, 1, &cbInstAll_[mi / 256], &first, &num);  // PropWave
+            if (cbInstAll_[mi / 128]) {
+                const UINT first = UINT((mi % 128) * 32), num = 32;
+                ctx1_->PSSetConstantBuffers1(7, 1, &cbInstAll_[mi / 128], &first, &num);
+                ctx1_->VSSetConstantBuffers1(8, 1, &cbInstAll_[mi / 128], &first, &num);  // PropWave
             }
         }
         ID3D11Buffer* bufs[2] = {g.vb, g.inst};

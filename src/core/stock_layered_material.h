@@ -60,6 +60,18 @@ inline int stockLayerRevealSlot(int layer) { return layer >= 1 ? 27 + layer : -1
 inline int stockLayerTintMaskSlot(int layer) { return 59 + layer; }
 
 // Decodes psData (at least 16 * (1 + 3 * layerCount) bytes). Fails on a short buffer or a layer count outside 1..8.
+// Research 136 section 2: a model-layered technique set's layers from its name (`<family>/lit_3_lit_..._<hexB>_0_<N>_...`;
+// layer L >= 1 holds the fields 18 + 8 (L - 1) onward: a, b, hex, colour mode, normal mode, c, 0, 0).
+enum class ModelLayerKind { Standard, Overlay, Code };
+struct ModelLayerTokens {
+    int layers = 0;                       // N
+    bool mask126 = false;                 // hexB starts with 3: slot 126 (R, G, B = layers 1, 2, 3) weights the layers
+    std::vector<ModelLayerKind> kind;     // index L (0: the base, Standard)
+    std::vector<bool> uv1;                // the layer samples the second UV set (hex bit 0x80000; a `2` family only)
+};
+// Empty (layers 0) for a name that is not a lit technique set with layer fields.
+ModelLayerTokens parseModelLayerTokens(const std::string& techsetName);
+
 bool decodeStockLayeredMaterial(const std::vector<uint8_t>& psData, int layerCount, StockLayeredMaterial& out,
                                 std::string* err = nullptr);
 // The same from the hex text of an ACTS material export (constantBufferTable.values[0].psData.bytes).

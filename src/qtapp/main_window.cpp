@@ -426,6 +426,15 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         }
         if (const auto* c103 = cst(103)) f.wrap = {(*c103)[0], (*c103)[1], (*c103)[2], 1.0f};
         if (const auto* c63 = cst(63)) f.uvAnim = *c63;  // UV animation (research 133 section 1)
+        // Model-layered materials (research 136): layer kinds and UV sets from the technique set name, the mask.
+        if (e->modelLayers >= 2) {
+            const ModelLayerTokens tk = parseModelLayerTokens(e->techset.toStdString());
+            for (const ModelLayerKind k : tk.kind) f.layerKind.push_back(k == ModelLayerKind::Overlay ? 1 : k == ModelLayerKind::Code ? 2 : 0);
+            for (const bool u : tk.uv1) f.layerUv1.push_back(u ? 1 : 0);
+            if (tk.mask126)
+                for (const QString& t : e->textures)
+                    if (t.startsWith("126=")) f.layerMaskImage = t.mid(4).toStdString();
+        }
         if (const auto* c110 = cst(110))  // the water's two scrolling normal layers (research 133 section 5.3)
             if (const auto* c111 = cst(111)) {
                 std::copy(c110->begin(), c110->end(), f.dualNormal.begin());
@@ -7718,6 +7727,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                                 pv.color = byte(ms.color[v][0]) | (byte(ms.color[v][1]) << 8) | (byte(ms.color[v][2]) << 16) |
                                            (byte(ms.color[v][3]) << 24);
                             }
+                            if (ms.uv1.size() == nv) pv.u1 = float(ms.uv1[v][0]), pv.v1 = float(ms.uv1[v][1]);  // research 136
                             if (lmapUv) {
                                 const auto u16 = [](float c) { return uint32_t(std::clamp(c, 0.0f, 1.0f) * 65535.0f + 0.5f); };
                                 pv.lmapUv = u16(ms.lmapUv[v][0]) | (u16(ms.lmapUv[v][1]) << 16);

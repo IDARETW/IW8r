@@ -118,4 +118,36 @@ std::array<float, 3> stockLayerBlendColor(const StockLayerConstants& c, float bl
     return out;
 }
 
+
+ModelLayerTokens parseModelLayerTokens(const std::string& name) {
+    ModelLayerTokens t;
+    const size_t slash = name.find('/');
+    if (slash == std::string::npos) return t;
+    const std::string family = name.substr(0, slash);
+    std::vector<std::string> f;
+    for (size_t i = slash + 1, j; i <= name.size(); i = j + 1) {
+        j = name.find('_', i);
+        if (j == std::string::npos) j = name.size();
+        f.push_back(name.substr(i, j - i));
+    }
+    if (f.size() < 9 || f[0] != "lit" || f[2] != "lit") return t;
+    const int n = std::atoi(f[8].c_str());
+    if (n < 1 || n > 8) return t;
+    t.layers = n;
+    t.mask126 = !f[6].empty() && f[6][0] == '3';
+    // A `2` in the family (tm2o, tm2co, m2o, m2co): the model has a second UV set.
+    const bool secondUvFamily = family.find('2') != std::string::npos;
+    t.kind.assign(size_t(n), ModelLayerKind::Standard);
+    t.uv1.assign(size_t(n), false);
+    for (int L = 1; L < n; ++L) {
+        const size_t at = 18 + 8 * size_t(L - 1);
+        if (at + 2 >= f.size()) break;
+        const unsigned long long hex = std::strtoull(f[at + 2].c_str(), nullptr, 16);
+        if (f[at + 1] == "1") t.kind[size_t(L)] = ModelLayerKind::Code;
+        else if ((hex >> 24) == 4) t.kind[size_t(L)] = ModelLayerKind::Overlay;
+        t.uv1[size_t(L)] = secondUvFamily && (hex & 0x80000ull) != 0;
+    }
+    return t;
+}
+
 }  // namespace iw8r
