@@ -115,6 +115,12 @@ struct PropVertex {
     // section 4); white for the others.
     uint32_t color = 0xFFFFFFFFu;
 };
+// One extra layer of a model-layered prop material (research 132 G9): its colour and reveal textures (createTexture
+// ids; reveal -1 = white) and the world layer pass's constants (layerP, layerTint, layerUvT, layerUvO).
+struct PropLayer {
+    int texture = -1, reveal = -1;
+    float params[16] = {};
+};
 struct PropMeshData {
     std::vector<PropVertex> vertices;
     std::vector<uint32_t> indices;  // triangles
@@ -286,6 +292,10 @@ public:
     void setReferenceInstExtra(size_t mesh, const float extra[16], int emissiveTexture, int transmissionTexture);
     // A prop mesh's flag / foliage waves (research 133 section 6): constants 79, 80, 81, 82.
     void setReferenceInstWave(size_t mesh, const float wave[16]);
+    // A prop mesh's extra layers (model-layered materials, research 132 G9), drawn over it after the props.
+    void setReferenceInstLayers(size_t mesh, std::vector<PropLayer> layers) {
+        if (mesh < refTexInst_.size()) refTexInst_[mesh].layers = std::move(layers);
+    }
     // The near-camera terrain layer patch's core (x, y, radius; radius 0 = none): the coarse terrain is not drawn there.
     void setTerrainCut(float x, float y, float radius) { terrainCut_[0] = x, terrainCut_[1] = y, terrainCut_[2] = radius; }
     // The loaded streamed tiles' areas (x0, y0, x1, y1; at most 256): the terrain's hole filler (vertex alpha 253) is
@@ -781,6 +791,7 @@ private:
         float params[16] = {};      // setReferenceInstParams
         float extra[16] = {};       // setReferenceInstExtra (RefLayer::extra)
         float wave[16] = {};        // setReferenceInstWave: constants 79-82 (research 133 section 6)
+        std::vector<PropLayer> layers;  // setReferenceInstLayers: layers 1.. of a model-layered material
         int emissive = -1, transmission = -1;
         ID3D11Buffer* visInst = nullptr;
         unsigned visible = 0;

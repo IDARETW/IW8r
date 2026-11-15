@@ -1,6 +1,7 @@
 #include "material_cache.h"
 
 #include "material_blend.h"
+#include "stock_decal.h"
 
 #include <cstring>
 #include <QRegularExpression>
@@ -128,7 +129,7 @@ std::optional<MaterialCache::Entry> MaterialCache::lookup(const QString& materia
 
 std::vector<MaterialCache::LayerImages> MaterialCache::layerImages(const QString& material) const {
     const auto e = lookup(material);
-    if (!e || e->failed || e->layerCount < 2) return {};
+    if (!e || e->failed || std::max(e->layerCount, e->modelLayers) < 2) return {};
     return e->layers;
 }
 
@@ -149,6 +150,13 @@ std::vector<QString> MaterialCache::layerColorImages(const QString& material) co
 
 std::optional<StockLayeredMaterial> MaterialCache::layerConstants(const QString& material) const {
     const auto e = lookup(material);
+    if (e && !e->failed && e->layerCount < 2 && e->modelLayers >= 2 && !e->layerPsData.isEmpty()) {
+        // A model-layered material: its raw lit buffer, N layers on one UV set (research 107 section 3.3).
+        const std::vector<uint8_t> raw(e->layerPsData.begin(), e->layerPsData.end());
+        StockLayeredMaterial m;
+        if (!decodeStockLayeredMaterial(raw, e->modelLayers, m)) return std::nullopt;
+        return m;
+    }
     if (!e || e->failed || e->layerCount < 2 || e->psData.isEmpty()) return std::nullopt;
     const std::vector<uint8_t> bytes(e->psData.begin(), e->psData.end());
     StockLayeredMaterial m;
@@ -221,6 +229,8 @@ void MaterialCache::loadIndex() {
             e.layers.push_back(li);
         }
         e.psData = QByteArray::fromHex(o.value("psData").toString().toLatin1());
+        e.modelLayers = o.value("modelLayers").toInt(0);
+        e.layerPsData = QByteArray::fromHex(o.value("layerPsData").toString().toLatin1());
         e.tint = o.contains("tint") ? o.value("tint").toString().toInt(nullptr, 16) : -1;
         e.tintMasked = o.value("tintMasked").toBool();
         if (const QString tm = o.value("tintMask").toString(); !tm.isEmpty()) e.tintMaskDds = QDir(root_).filePath(tm);
@@ -243,6 +253,11 @@ void MaterialCache::loadIndex() {
         // Read from a zone that an installed edit replaced (its technique sets renamed iw8rf_<hash>; the cut-out masks
         // were lost): resolve again from the stock zone (stockZoneFile).
         if (!e.failed && e.techset.section('/', -1).startsWith("iw8rf_")) continue;
+        // Resolved before model-layered materials kept their layers (research 132 G9): those resolve again once.
+        if (!e.failed && !o.contains("modelLayers") && e.layerCount < 2) {
+            const StockTechsetTraits tr = parseStockTechsetName(e.techset.toStdString());
+            if (tr.valid && tr.layers >= 2 && (tr.family.rfind("m", 0) == 0 || tr.family.rfind("tm", 0) == 0)) continue;
+        }
         // Resolved before the wave constants 79-82 were kept (research 133 section 6): the vertex-colour model families
         // (tmco, tm2co, mco, ...: the vertex alpha is the wave weight) resolve again once.
         if (!e.failed && o.value("constRules").toInt() < 4) {
@@ -351,6 +366,8 @@ void MaterialCache::writeIndex() const {
             o.insert("layers", layers);
         }
         if (!e.psData.isEmpty()) o.insert("psData", QString::fromLatin1(e.psData.toHex()));
+        if (!e.failed) o.insert("modelLayers", e.modelLayers);  // also 0: the name was read (research 107 section 3)
+        if (!e.layerPsData.isEmpty()) o.insert("layerPsData", QString::fromLatin1(e.layerPsData.toHex()));
         if (!e.failed) o.insert("layerRules", 1);  // 1: layer images and psData of layered bodies (research 97)
         if (!e.failed) o.insert("tintRules", 2);   // 2: every body's psData, tint (psData row 2) and its mask image
         if (!e.tintMaskDds.isEmpty()) o.insert("tintMask", root.relativeFilePath(e.tintMaskDds));
@@ -583,7 +600,15 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
     // Layered world materials (tw4 / twc4, research 97): layer L's colour is slot L, its normal + gloss 9 + L, its
     // alpha + reveal 27 + L; the per-layer constants are the body's pixel constant buffer.
     work.layerCount = fields.value("layerCount").toInt(0);
-    const int layers = std::clamp(work.layerCount, 0, 8);
+    // Model-layered materials (research 107 section 3.3): layerCount 0, the count in the technique set name.
+    work.modelLayers = 0;
+    work.layerPsData.clear();
+    if (work.layerCount < 2) {
+        const StockTechsetTraits tr = parseStockTechsetName(work.techset.toStdString());
+        if (tr.valid && tr.layers >= 2 && (tr.family.rfind("m", 0) == 0 || tr.family.rfind("tm", 0) == 0))
+            work.modelLayers = std::min(tr.layers, 8);
+    }
+    const int layers = std::clamp(std::max(work.layerCount, work.modelLayers), 0, 8);
     work.layerColor.clear();
     work.layerNormal.clear();
     work.layerReveal.clear();
@@ -640,6 +665,7 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
         if (finite && (index == 18 || index == 36 || index == 63 || (index >= 79 && index <= 82) || index == 103 || index == 104))
             work.consts[index] = f;
     }
+    if (work.modelLayers >= 2) work.layerPsData = work.psData;  // the raw lit buffer, before the single-layer rows below
     // Single-layer materials: the rows in the order the decoders read (row 0 c72, 1 c0, 2 c9, 3 c54). The lit
     // technique puts transmission (18) and emissive (36) constants before 54, which then sits on row 4 to 6.
     if (std::clamp(work.layerCount, 0, 8) < 2 && !constBytes.empty()) {
@@ -787,6 +813,8 @@ void MaterialCache::finishBatch() {
             }
             e.consts = w.consts;
             e.layerCount = w.layerCount;
+            e.modelLayers = w.modelLayers;
+            e.layerPsData = w.layerPsData;
             e.psData = w.psData;
             e.tint = w.tint;
             e.tintMasked = w.tintMasked;

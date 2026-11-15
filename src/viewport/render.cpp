@@ -458,7 +458,7 @@ SamplerState samp0 : register(s0);
 struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4;
               float4 edge : TEXCOORD6; };
 struct PSIn { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 w : TEXCOORD1; float3 n : TEXCOORD2; float3 t : TEXCOORD3; float2 lm : TEXCOORD4;
-               float3 lgvBack : TEXCOORD5; float3 edge : TEXCOORD6; float3 vc : TEXCOORD7; };  // vc: a prop's vertex colour (linear; research 133)
+               float3 lgvBack : TEXCOORD5; float3 edge : TEXCOORD6; float4 vc : TEXCOORD7; };  // vc: a prop's vertex colour (linear; research 133); w = 1 on props
 Buffer<uint> tomeVis : register(t30);  // cull by tome: one bit per GfxWorld surface (wind.w = 1 while bound)
 PSIn vs_tex(VSIn i) {
     PSIn o;
@@ -472,7 +472,7 @@ PSIn vs_tex(VSIn i) {
     }
     o.pos = mul(float4(p, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = p; o.n = i.n; o.t = i.t; o.lm = i.lm;
     o.lgvBack = float3(0, 0, 0);
-    o.vc = float3(1, 1, 1);
+    o.vc = float4(1, 1, 1, 0);
     o.edge = i.edge.xyz;
     if (wind.w > 0.5 && i.edge.a < 0.5) {
         // A stock reference vertex: its surface + 1 (referenceSurfaceTag). A surface the tome hides goes off screen.
@@ -508,7 +508,7 @@ PSIn vs_tex_inst(VSInInst i) {
     float3 nw = float3(dot(i.r0.xyz, i.n), dot(i.r1.xyz, i.n), dot(i.r2.xyz, i.n));
     PSIn o; o.pos = mul(float4(w, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = w; o.n = dot(nw, nw) > 1e-12 ? normalize(nw) : float3(0, 0, 0); o.t = float3(0, 0, 0); o.lm = float2(-1, -1); o.edge = float3(1, 0, 0);
     // The vertex colour of a VERTCOL model, stored sRGB: linear as the game's static-model VS (research 133 section 4).
-    o.vc = i.vcol.rgb <= 0.04045 ? i.vcol.rgb / 12.92 : pow((i.vcol.rgb + 0.055) / 1.055, 2.4);
+    o.vc = float4(i.vcol.rgb <= 0.04045 ? i.vcol.rgb / 12.92 : pow((i.vcol.rgb + 0.055) / 1.055, 2.4), 1.0);  // w: a prop
     // The prop's light grid box (research 105 section 1.4, DC + first order), per vertex with the vertex normal as the
     // game's static-model shader does: E = 0.282095 DC + 4/9 0.488603 (s0 n.z - s2 n.y - s3 n.x), in lightmap units
     // (the pixel shader applies bakedLightScale). Props have no tangent and no lightmap UV: E rides in t, marked by
@@ -925,7 +925,8 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         t.rgb *= pow(max(layerTint.rgb, 0.0), 1.0 / 2.2);
     } else if (layerP.x > 0.5) {
         float2 ar = revealTex.Sample(samp0, uvS).rg;
-        float w = saturate(length(i.t) - 1.0), k = layerP.z;  // the tangent's length is 1 + the weight
+        // The tangent's length is 1 + the weight on the world; a model layer's weight is 1 (research 107 section 3.2).
+        float w = i.vc.w > 0.5 ? 1.0 : saturate(length(i.t) - 1.0), k = layerP.z;
         uint fl = (uint)(layerP.y + 0.5);
         float b = w;
         if (fl & 16u) {
@@ -974,7 +975,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         const float aoV = gameAo.x > 0.5 ? lerp(1.0, aoMap.Load(int3(i.pos.xy, 0)), gameSunCol.w) : 1.0;  // x the AO strength
         if (gameAo.y > 0.5) return float4(aoV, aoV, aoV, 1.0);
         if (gameAo.z > 0.5) return float4(t.rgb, outA);  // debug: the albedo as sampled
-        float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? i.vc : i.col.rgb);  // i.col: selection and brush entity tints; vc: a prop's vertex colour
+        float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? i.vc.rgb : i.col.rgb);  // i.col: selection and brush entity tints; vc: a prop's vertex colour
         if (!stockRef && i.col.a < 0.5) {  // sky box
             const float3 sky = gameFogApply(albedo * gameSkyScale.x, i.w, true);
             return float4(gameAo.w > 0.5 ? sky : gamePost(sky), 1.0);
@@ -4154,7 +4155,69 @@ void SceneRenderer::drawReferenceTexInstances() {
     bool decalStateSet = false;
     // Pass 0: the props; 1: their decal meshes; 2: see-through meshes (glass), blended by their alpha.
     bool glassStateSet = false;
-    for (int decalPass = 0; decalPass < 3; ++decalPass)
+    // The extra layers of model-layered materials (research 132 G9) over their meshes, between the props and their decal
+    // meshes (the world's order: layers, then decals), as the world's layer pass: test-only depth, blended by the
+    // layer's reveal step and alpha (or multiplied), its constants in b7. Its own states are put back afterwards.
+    static const bool noPropLayers = perfOff("proplayers");  // benchmark switch: IW8R_PERF_OFF=proplayers
+    const auto drawPropLayers = [&] {
+        if (texPsOverride_ || !cbLayer_ || noPropLayers) return;
+        bool layerStateSet = false;
+        ID3D11DepthStencilState* prevDs = nullptr;
+        UINT prevRef = 0;
+        ID3D11BlendState* prevBs = nullptr;
+        float prevBf[4] = {0, 0, 0, 0};
+        UINT prevBm = 0xffffffff;
+        for (const auto& g : refTexInst_) {
+            if (g.layers.empty() || !g.vb || !g.inst || g.drawClass != 0) continue;
+            if (!layerStateSet) {
+                layerStateSet = true;
+                ctx_->OMGetDepthStencilState(&prevDs, &prevRef);
+                ctx_->OMGetBlendState(&prevBs, prevBf, &prevBm);
+                ctx_->OMSetDepthStencilState(dsTest_, 0);
+                if (cbBatch_) {
+                    const float flags[8] = {0, 1.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};  // no normal map; blended
+                    writeBatchCb(flags);
+                }
+                ID3D11ShaderResourceView* noN = nullptr;
+                ctx_->PSSetShaderResources(1, 1, &noN);
+                ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);
+            }
+            const size_t mi = size_t(&g - refTexInst_.data());
+            if (instCb && cbInstAll_[mi / kInstPerCb]) {  // the mesh's waves, so the layer stays on the moving surface
+                const UINT first = UINT((mi % kInstPerCb) * 16), num = 16;
+                ctx1_->VSSetConstantBuffers1(8, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);
+            }
+            ID3D11Buffer* bufs[2] = {g.vb, g.inst};
+            ctx_->IASetVertexBuffers(0, 2, bufs, strides, offsets);
+            ctx_->IASetIndexBuffer(g.ib, DXGI_FORMAT(g.ibFormat), 0);
+            for (const PropLayer& L : g.layers) {
+                if (L.texture < 0 || size_t(L.texture) >= textures_.size()) continue;
+                const int rv = L.reveal >= 0 && size_t(L.reveal) < textures_.size() ? L.reveal : whiteFullTex_;
+                if (rv < 0 || size_t(rv) >= textures_.size()) continue;
+                ctx_->UpdateSubresource(cbLayer_, 0, nullptr, L.params, 0, 0);
+                const float bfz[4] = {0, 0, 0, 0};
+                ctx_->OMSetBlendState(L.params[3] > 0.5f && blendMul_ ? blendMul_ : blend_, bfz, 0xffffffff);
+                ctx_->PSSetShaderResources(0, 1, &textures_[size_t(L.texture)]);
+                ctx_->PSSetShaderResources(12, 1, &textures_[size_t(rv)]);
+                drawInstIdx(g.vertices, g.instances);
+            }
+        }
+        if (!layerStateSet) return;
+        const float zero16[16] = {};
+        ctx_->UpdateSubresource(cbLayer_, 0, nullptr, zero16, 0, 0);  // the plain layer buffer is zero again
+        ID3D11ShaderResourceView* noR = nullptr;
+        ctx_->PSSetShaderResources(12, 1, &noR);
+        ctx_->OMSetDepthStencilState(prevDs, prevRef);
+        ctx_->OMSetBlendState(prevBs, prevBf, prevBm);
+        if (prevDs) prevDs->Release();
+        if (prevBs) prevBs->Release();
+        if (cbBatch_) {  // the props' flags again for what follows
+            const float flags[8] = {propNormals ? 1.0f : 0.0f, soft ? -1.0f : 0.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};
+            writeBatchCb(flags);
+        }
+    };
+    for (int decalPass = 0; decalPass < 3; ++decalPass) {
+    if (decalPass == 1) drawPropLayers();
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
         const int passOf = g.translucent && g.decal == 0 ? 2 : g.decal > 0 ? 1 : 0;
@@ -4216,6 +4279,7 @@ void SceneRenderer::drawReferenceTexInstances() {
         ctx_->IASetIndexBuffer(g.ib, DXGI_FORMAT(g.ibFormat), 0);
         drawInstIdx(g.vertices, prepassBig ? g.big : culled ? g.visible : g.instances);
     }
+    }  // decalPass
     if (decalStateSet) {
         ctx_->RSSetState(savedRs);
         ctx_->OMSetDepthStencilState(savedDs, savedRef);

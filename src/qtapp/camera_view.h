@@ -598,6 +598,7 @@ private:
     FactsLookup factsLookup_;
     bool resolveReferenceDecal(size_t k, int textureId);  // true when settled
     bool resolveReferenceLayer(size_t k);  // true when settled (drawn or left out)
+    bool resolvePropLayers(size_t k);  // a prop mesh's extra layers (model-layered materials); false while loading
     std::vector<bool> refTexResolved_;
     bool refTexDirty_ = false;
     // Reference materials waiting for an image: asked again on events and twice a second (render()).

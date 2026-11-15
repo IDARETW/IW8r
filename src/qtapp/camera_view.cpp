@@ -421,6 +421,10 @@ void CameraView::render() {
                         pending = true;
                         continue;
                     }
+                    if (!resolvePropLayers(k)) {  // model-layered: its layer images (research 132 G9)
+                        pending = true;
+                        continue;
+                    }
                     texInstResolved_[k] = true;
                 } else {
                     pending = true;
@@ -1265,6 +1269,36 @@ bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool pr
 void CameraView::setBaseMaterialConstants(size_t k) {
     if (k >= refTexMaterials_.size()) return;
     if (const auto p = materialConstantsFor(refTexMaterials_[k])) renderer_.setReferenceBaseParams(k, p->data());
+}
+
+bool CameraView::resolvePropLayers(size_t k) {
+    if (!layerLookup_ || k >= texInstMaterials_.size()) return true;
+    const std::string& base = texInstMaterials_[k];
+    if (base.empty() || base.find_first_of("\x01\x02\x05\x06") != std::string::npos) return true;
+    const std::optional<StockLayeredMaterial> c = layerLookup_(base);
+    if (!c || c->layers < 2) return true;
+    std::vector<app::PropLayer> out;
+    for (int L = 1; L < c->layers && size_t(L) < c->layer.size(); ++L) {
+        const StockLayerConstants& lc = c->layer[size_t(L)];
+        if (lc.colorMode >= 2) continue;  // modes 2 / 3: normal and gloss only (not drawn, as on the world)
+        // Only multiply layers (mode 1: grime, wear) are drawn. Colour (lerp) layers need a weight or UV the model export
+        // does not carry (UNVERIFIED: weight 1 makes a container wall all door and a sign's alphabet layer the whole
+        // letter atlas; King, 2026-11-14 bench), so they are left out until that is decoded (research 132 G9).
+        if (lc.colorMode != 1) continue;
+        const std::string ck = base + '\x01' + std::to_string(L), rk = base + '\x02' + std::to_string(L);
+        const int cid = textureFor(ck), rid = textureFor(rk);
+        if (!texIds_.count(ck) || !texIds_.count(rk)) return false;  // still loading
+        if (cid < 0 || cid == checkerTex_) continue;  // no colour image
+        app::PropLayer pl;
+        pl.texture = cid;
+        pl.reveal = rid == checkerTex_ ? -1 : rid;
+        const float p[16] = {1.0f, float(lc.flags), lc.sharpness, lc.colorMode == 1 ? 1.0f : 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,
+                             lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
+        std::copy(p, p + 16, pl.params);
+        out.push_back(pl);
+    }
+    renderer_.setReferenceInstLayers(k, std::move(out));
+    return true;
 }
 
 bool CameraView::resolveReferenceLayer(size_t k) {

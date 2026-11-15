@@ -67,6 +67,11 @@ public:
         // the per-layer blend constants. Empty for single-layer materials, seeds and entries cached before 2026-11-12.
         int layerCount = 0;
         std::vector<LayerImages> layers;
+        // Model-layered materials (research 107 section 3: tm2o, tm2co, m2o, ...; layerCount 0 in the export, the
+        // technique set name's layer count N >= 2): N, and the raw lit buffer the layered decoder reads (psData above
+        // keeps the single-layer rows of the base). 0 / empty for the others.
+        int modelLayers = 0;
+        QByteArray layerPsData;
         // The lit technique's pixel constant buffer (constantBufferIndex[34], research 107 section 6; before constRules
         // 1 the first buffer with pixel data). Single-layer materials keep it in the canonical row order the decoders
         // read: row 0 constant 72, row 1 constant 0, row 2 constant 9, row 3 constant 54 (the lit technique puts 18 / 36
@@ -137,6 +142,8 @@ private:
         int sortKey = -1;
         QStringList textures;   // "<slot>=<image>" for every non-placeholder entry
         int layerCount = 0;     // body layerCount (0 when absent)
+        int modelLayers = 0;    // Entry::modelLayers
+        QByteArray layerPsData; // Entry::layerPsData
         // Per layer L (index L; layer 0 = color / normal): image names, empty when absent or a placeholder.
         QStringList layerColor, layerNormal, layerReveal;
         QByteArray psData;      // the body's first pixel constant buffer

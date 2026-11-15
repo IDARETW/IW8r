@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Layered stock props get their multiply layers** (research 132 G9, part): model-layered materials (`tm2o`,
+  `tm2co`, `m2o`; their layer count is in the technique set name) keep their layer images and constants, and
+  a layer pass after the props draws their multiply layers (grime, wear: King's concrete barriers). Colour
+  (lerp) layers stay out: with weight 1 they cover whole surfaces (a container wall becomes all door, a sign's
+  alphabet layer shows the whole letter atlas), so the game must weight them with data the model export does
+  not carry; that stays a research item.
 - **Stock flags, tarps, canopies and foliage wave** as in game (research 133 sections 5.2 and 6): the three-sine
   vertex waves of constants 79-82, weighted by the vertex colour alpha, with each placement's own speed, in Game
   Lighting. Proven offline on Hideout's fabric canopy (two clock values against a same-clock control: 6x the

@@ -219,6 +219,14 @@ The build writes it all (compile_iw8.cpp:1106-1134) and the converter draws it (
   normal / gloss is not possible in a forward renderer; fold the layer into the base shader (sample layer normal and
   gloss in `ps_tex` when a second layer row is bound).
 
+**Status 2026-11-14 (G9):** model-layered materials are detected from the technique set name (material cache
+`modelLayers`, the raw lit buffer `layerPsData`) and their **multiply** layers are drawn on props (a layer pass
+between the props and their decal meshes). Colour-lerp layers are left out: drawn with weight 1 they covered whole
+surfaces on King (`tm2o/mout_container_wall_single` layer 1 flags 0x47: all door texture; the
+`tm2co/sign_un_variation_01_combined` alphabet layer, flags 0xf: the whole letter atlas), so the game weights or
+maps them with data the GLB export does not carry (a second UV set or vertex weights; UNVERIFIED). Modes 2/3
+(normal / gloss only) are not folded into the base shader yet.
+
 ### G10 (medium-low). The sky is an 8-bit 256-texel cube
 
 - Game: the sky PS samples the HDR hemi-octahedral BC6H image (research 33); the sun is whatever the image holds plus
