@@ -24,6 +24,51 @@ listed in their reports under `out/ida_types/results/`. Backups: `out/ida_types/
 | `clientSession_t` | size 2456 -> 2432, members shifted as planned below; 7 unconfirmed names dropped | A009, see the plan below |
 | `gclient_s` | size 64592 -> 64496; `ps` is now `playerState_s` (21368); `playerGround` is a named 80-byte array until `BgGroundState` / `trace_t` are settled; dropped `mpviewer` and `footstepWeight` (no room, no access) | A008 delta runs: all 15 confirmed checkpoints land on their members (sess 21368, mlg 23800, flags 24016, buttons 24024, omnvarPmoveData 41176, playerBox 43580, playerGroundPersistent 43684, executionState 43696, autoUseDelayInfo 63532, lockedTargetOffset 63932, animOverrideVehicleType 63968, entityLoDs 63980, nearEntities 64240). Note: the clients array global is named `level_transientVisibility` in this database |
 
+| `GExecutionState` | `phase` unsigned int -> unsigned __int8 + `_pad11[3]` (no move) | `G_Execution_ClearPlayerState` 0x140E868E0: `mov [rax+0AAC0h], cl` (executionState = gclient+0xAAB0, +16); A010 |
+
+A010 size proofs inside the rebuilt `gclient_s` (distance from each child's start to the next member): `viewClampState`
+112, `FrameNotifyState` 80, `PlayerWeaponAnimArrays` 16736, `OmnvarPmoveData` 2404, `GExecutionState` 20,
+`EntityMarkState` 2876, `PlayerViewState` 3560, `AutoUseDelayInfo` 400, `WeaponOffsetPatternCache` 916 all match
+their types. `BgGroundState` is 80 in Replay (type 96): its member layout is still open (backlog).
+
+## Wave 2
+
+| Struct | Change | Evidence |
+|---|---|---|
+| `WeaponDef` | `stowTag` unsigned __int8[8] -> scr_string_t + `_pad1194[4]` (no move) | `Load_WeaponDef` 0x140D9B9AD `add rax, 1190h` (scr_string_t load), next pointer `add rax, 1198h` (A020) |
+
+| `dvar_t` | size 128 -> 112; +104 is `domainCallback` (void *, 8 bytes); the 24-byte `BbConstUsageFlags` member dropped (not in Replay) | `Dvar_Deregister_Internal` 0x1413E5B10: `imul rcx, rdx, 70h` (x3) and `lea r8d, [rdx+70h]` memset size; `Dvar_Init` 0x1413E6CB0 pool loop `+= 112` over 7012 entries, `memset(..., 0xBFBC0)` = 7012 * 112; `Dvar_RegisterCustomDomainCallback` 0x1413E90B0 writes `*(dvar+104) = domainCallback` (A014). Nothing embeds `dvar_t` by value |
+| `VariableValue` | `type` unsigned int -> unsigned __int8 + `_pad9[3]` (no move) | `VM_CallScriptFunction` 0x14132BB2F: `movzx esi, byte ptr [r14+8]`, `mov byte ptr [r14+8], 8` (A014) |
+
+Findings without edits: `WeaponDef` 5296, `ADSOverlay` 112, `SwaySettings` 256, `WeaponOffsetPatternScaleInfo` 16,
+`CarryAnimOverride` 24 match their loaders' stream sizes (A020); `WeaponCompleteDef` 624 and `AttachmentList` 16 match
+(A016); `WeaponDef` members from 0x764 on are 24 bytes below game-test because Replay drops six `iExplosionStepped*`
+ints, and the type already has that shift (A019); `usercmd_s` 264, `viewClamp` 24, `UsableHandleInfo` 8,
+`FootstepAnim` 516 confirmed (A011).
+
+### Open questions (need more Replay evidence)
+
+- `clientState_t` 408 -> 400? Strides of 400 in `CL_ParseMP_ParsePacketClients` 0x1415F1B80 (`+ 400 * (index % count)`,
+  first dword = clientIndex) and `CG_SnapshotMP_SetNextSnap` (`imul rcx, rax, 190h`); `G_ClientMP_Disconnect` clears
+  0x190 bytes at sess+0x284, but the type puts `cs` at sess+0x28C. Candidate explanation: Replay moved the last 8 bytes
+  (`serverDobjTurretWeapon` .. `lastStandSelfReviving`) out of `clientState_t` (A004 found `serverDobjHideWeapon` and
+  `serverDobjStowHeldWeapon` in the `playerState_s` net list). Not applied: `clientSession_t` +0x270..+0x444
+  (`noSpectate`, `cs`, `scores`, `psOffsetTime`) must be measured first; also `CgSnapshotMP.clients` is
+  `clientState_t[200]`.
+- `ScoreInfo` 26 -> 24? (A011: score readers step in 24-byte units; owner of the array unproven.)
+- `BgGroundState` 96 -> 80 (gclient slot is 80): member layout unknown.
+- `scrContext_t` size (type 981960, game-test 992528): no whole-struct alloc or clear in Replay. Direct data references
+  from `g_scrContext_Server` (0x14D591B00, untyped .bss) reach +1048448 (e.g. +982904/+982912, +966512, +917328 x9,
+  +827184 x9), so either the struct is bigger or another context/global follows it; the next named symbol
+  (`s_vec4ConstCopy_5B7340`, +153664) is an auto name inside the region. A013 confirmed the start up to +0xC70
+  (m_hunkUser 0, variable list sizes 8/12, m_jmpDepth 3168, m_lockJmpDepth 3172, m_precompFlag 3184) and m_vmPub at
+  +47528; layout diverges from game-test after +0xC70. Needs a deeper (Opus) pass.
+- `scrVarPub_t`: `m_classMap` is at +152 in Replay (scrContext+0x3560; `Scr_InitClassMap`, `Scr_SetClassMap`,
+  `Scr_InitVariables`), the type has it at +248; members 152..416 overlap it and need a joint relayout (A014).
+- `scrVmPub_t.inparamcount` (+40) is read and written as bytes at +40 and +42 (A014, around 0x1413277DE): unconfirmed.
+- `centity_t` stride 752 (type 760; `CG_GetActiveCentity`, `CG_SnapshotMP_SetNextSnap`), `nextState` at +392 (type
+  +400): the 8 bytes are in `cpose_t` (288 -> 280?) or between `pose` and `nextState`; A015 is localizing it.
+
 ### Agent edits re-checked
 
 | Agent | Edit | Check |
