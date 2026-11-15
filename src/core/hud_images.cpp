@@ -83,6 +83,10 @@ bool encodeHudImageDds(const std::string& picturePath, std::vector<uint8_t>& dds
     int w = 0, h = 0;
     std::vector<uint8_t> rgba;
     if (!decodeImageFile(picturePath, w, h, rgba, err)) return false;
+    return encodeHudRgbaDds(w, h, rgba, dds, err);
+}
+
+bool encodeHudRgbaDds(int w, int h, const std::vector<uint8_t>& rgba, std::vector<uint8_t>& dds, std::string* err) {
     if (w <= 0 || h <= 0 || rgba.size() != size_t(w) * size_t(h) * 4) {
         if (err) *err = "the picture is empty";
         return false;

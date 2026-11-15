@@ -339,6 +339,16 @@ Commands in the Tools menu:
   map's script: `icon = newhudelem(); icon.x = 20; icon.y = 120; icon setshader("hud_flag", 64, 64);`. Use names the
   game does not already have (a name such as `hud_icon_c4` is a stock icon). Up to 64 pictures; each is stored
   square, up to 1024 pixels a side.
+- **Your own font on the HUD.** Put the font file (TTF or OTF) in the same `<map name>.hud` folder and list what to
+  write in a file `fonts.txt` there, one line each:
+  `label | title | MyFont.ttf | 64 | #ffcc00 | Welcome to Cinder Rail` makes one picture of that line of text, and
+  `glyphs | digits | MyFont.ttf | 48 | #ffffff | 0123456789:` makes one picture per character. The build draws them in
+  your font and colour, and the map script gets three functions: `iw8r_font_label("title", x, y, height)` shows a
+  label, `iw8r_font_text("digits", "12:30", x, y, height)` writes any text made of a set's characters (spaces
+  leave a gap) and returns its pieces, and `iw8r_font_clear(pieces)` removes them. Script dock > Insert Behaviour >
+  Countdown in the map's own font shows the use. Everything stays in your map's own files: the font itself is not
+  shipped, only the pictures drawn with it, so no other map and no menu changes. Up to 192 font pictures a map.
+  Not seen in game yet.
 - **A hint on a use trigger.** Select a `trigger_use` brush and add the key `hint` with the text the player should
   see, for example `Press ^3[{+activate}]^7 to open the gate`. Nothing else is needed: the build carries the text and
   the map shows it while a player stands in the trigger.

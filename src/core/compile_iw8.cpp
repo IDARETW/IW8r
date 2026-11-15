@@ -3476,6 +3476,24 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             }
         }
         for (const std::string& w : hudWarnings) rep.warnings.push_back(w);
+        // The map's fonts as pictures (labels and glyphs drawn by the editor).
+        for (const auto& fi : opt.hudFontImages) {
+            if (std::find(rep.hudImages.begin(), rep.hudImages.end(), fi.name) != rep.hudImages.end()) {
+                rep.warnings.push_back("HUD font picture " + fi.name + " left out: a picture in the .hud folder has that name");
+                continue;
+            }
+            std::vector<uint8_t> dds;
+            std::string imageErr;
+            if (encodeHudRgbaDds(fi.width, fi.height, fi.rgba, dds, &imageErr)) {
+                customFiles.push_back({root / "extracted" / "images" / (fi.name + ".dds"), std::string(dds.begin(), dds.end())});
+                rep.hudImages.push_back(fi.name);
+            } else {
+                rep.warnings.push_back("HUD font picture " + fi.name + " not used: " + imageErr);
+            }
+        }
+        if (!opt.hudFontImages.empty())
+            rep.warnings.push_back(std::to_string(opt.hudFontImages.size()) +
+                                   " HUD font picture(s) from fonts.txt; the map script can call iw8r_font_text / iw8r_font_label");
         std::sort(rep.hudImages.begin(), rep.hudImages.end());  // searched below (the script check)
         if (!rep.hudImages.empty()) {
             std::string names;
@@ -3723,6 +3741,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                            " of the map's own sound(s) built into the map sound bank (sounds folder; in game NOT VERIFIED)");
         MapScriptExtras extras;
         extras.stockDoors = stockDoorPlaced;
+        extras.fontScript = opt.hudFontScript;
         if (worldspawn) {
             // Game mode settings the map carries (game_modes.h).
             if (const std::string* dv = worldspawn->value("iw8r_mode_dvars")) {

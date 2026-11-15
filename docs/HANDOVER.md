@@ -151,6 +151,8 @@ in the game would confirm it; nothing is known to be missing.
   mantle edges: mantling uses the game's own trace, as before.
 - The first-person look is all maps or none: the weapon and hands cannot take a look for one map only.
 - Streamed Warzone tiles cannot be edited (a client matter, see section 2).
+- Map fonts are pictures drawn in your font (since 2026-11-15, `<map name>.hud/fonts.txt`, kept in the map's own
+  files): the game's own text elements (`settext`) keep the game's fonts. Own menus (LUI) are not built.
 - A turned stock sun keeps the old sun in the baked bounce light.
 - Items the game must answer before more work makes sense (reverb zones, the UAV's minimap sweep, intro cameras) are
   listed with their state in `docs\ROADMAP.md`.

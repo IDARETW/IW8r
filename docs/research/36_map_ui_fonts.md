@@ -244,3 +244,26 @@ Verdict: this is the most practical HUD path. An editor snippet using `newhudele
 - Chyron zone: `convert.cpp:2082` (stock in `eng_code_post_gfx`) vs. the coverage table (`14_x64zt_verifyzone_coverage.md:155`) and the manifest (no `localize` in `code_post_gfx`).
 - ACTS support: `R/docs/research/04_iw8_asset_access.md:72` says the ACTS fastfile linker writes "only 8 pool types". The code read (`linker_mw19.cpp:47-80`) takes any pool by name through the schema profile, and only special-cases `rawfile`, `luafile`, `ttf` and `scriptfile`. The schema profile decides the rest. Not re-checked against the full profile.
 - The legacy validator (`R/docs/research/03_build_pipeline_interface.md:326`, `eng_` only LOCALIZE and IMAGE) agrees with `X/convert/iw3_iw8/convert.cpp:675-678`.
+
+## 11. Own fonts, built 2026-11-15 (owner: "only within the map files")
+
+- **What the game offers (VERIFIED from the Replay exe's strings):** HUD element fonts come from a fixed name table
+  (`bigfixed`, `smallfixed`, `objective`, `big`, `hudbig`, `hudsmall`, next to the alignment names), and the TTF assets
+  are stock paths (`fonts/main_regular.ttf`, `fonts/main_bold.ttf`, `fonts/body_regular.ttf`,
+  `fonts/fira_mono_regular.ttf`, `fonts/fira_mono_bold.ttf`, `fonts/dev.ttf`, a NotoSans list). A map cannot add a font
+  name. A TTF carried under a stock name would change every menu while the map is loaded: outside the map, not built.
+- **What is built:** the font travels as pictures. `<map name>.hud/fonts.txt` (core `hud_fonts`) lists labels (one
+  picture of a line of text, `hud_<name>`) and glyph sets (one picture per character, `hud_<set>_<key>`: a-z and 0-9
+  as themselves, A-Z as `u` + the letter, others `c` + the byte). The editor draws them with Qt's font engine
+  (qtapp `hud_font_render`, at build time, the font registered in the editor only), the build stores them like the
+  folder's pictures, and the converter carries them into the map zone with a 2D material each (the existing HUD image
+  route, 8.4). The map script gets `iw8r_font_init()` (called at the start of `main()`, before `user_main`;
+  precaches every picture by its literal name, so the converter lists them in the level material table),
+  `iw8r_font_text(set, text, x, y, height)`, `iw8r_font_clear(elems)` and `iw8r_font_label(name, x, y, height)`.
+  The TTF is not shipped.
+- **Proof:** `tools/hud_font_build_test.py` (in `run_offline_proofs.py`): 12 pictures drawn, gsc-tool compiles the
+  generated script (16,976 bytes gscbin), the level material table lists 13 HUD materials, every picture and material
+  read back from the built zones, ACTS --test 0 failures on all five zones. Tests `hud_fonts_*` (core) and the GUI
+  section "map HUD fonts".
+- **Not seen in game:** whether `setshader` of a map material draws (the same open look as 8.4), and how the pictures
+  look at the game's HUD scale. Own LUI menus stay out (section 4: a map-zone Lua file is not shown to be read).

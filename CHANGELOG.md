@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Your map's own font on the HUD**: put a TTF or OTF and a `fonts.txt` in the map's `.hud` folder, list labels
+  (a line of text) and glyph sets (single characters), and the build draws them in your font and colour into the
+  map's own HUD pictures. The map script gets `iw8r_font_label`, `iw8r_font_text` (any text from a glyph set, for
+  scores and timers) and `iw8r_font_clear`; Script dock > Insert Behaviour has a countdown that uses them. Everything
+  stays in the map's own files: the font itself is not shipped and no stock font or menu changes. Built and proven
+  offline (the converter compiles the helpers and carries every picture); not seen in game.
 - **Effects look like effects in the viewport** (View > Effect Preview; research 138): placed effects now draw with
   their own sprite images, animated atlas frames, size and colour curves over each particle's life, spawn shapes,
   spin, mirroring, wind forces, gravity and drag, turned the way the effect is placed. Smoke rises from Shipment's

@@ -30,6 +30,8 @@ std::vector<HudImage> listHudImages(const std::string& folder, std::vector<std::
 // form of the minimap image). The picture is scaled to a square of the next power of two of its longer side, 4 to
 // 1024; drawn with its own width and height by setshader it has its shape again.
 bool encodeHudImageDds(const std::string& picturePath, std::vector<uint8_t>& dds, std::string* err);
+// The same for a picture in memory (RGBA, w x h): the map's font pictures (hud_fonts.h).
+bool encodeHudRgbaDds(int w, int h, const std::vector<uint8_t>& rgba, std::vector<uint8_t>& dds, std::string* err);
 
 // The folder for a map file: "<dir>/<map base name>.hud". Empty for an empty path.
 std::string hudImageFolderFor(const std::string& mapPath);

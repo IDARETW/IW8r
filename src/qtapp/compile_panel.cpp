@@ -17,6 +17,7 @@
 #include "settings.h"
 #include "atmosphere_dialog.h"
 #include "hud_images.h"
+#include "hud_font_render.h"
 #include "map_strings.h"
 #include "editor_log.h"
 
@@ -771,6 +772,16 @@ bool CompilePanel::runExtraction() {
     if (const QString ls = loadscreenImageFile(); !ls.isEmpty() && QFileInfo::exists(ls)) opt.loadscreenImagePath = ls.toStdString();
     // 4.27: the pictures in "<map name>.hud" beside the map become the map's own HUD images.
     opt.hudImageDir = hudImageFolderFor(ctx_->doc.path());
+    // 4.27: "<map name>.hud/fonts.txt": text drawn in the map's own fonts into its HUD pictures, and the script helpers.
+    {
+        HudFontRender fonts = renderHudFonts(opt.hudImageDir);
+        for (const std::string& w : fonts.warnings) append("warning: " + qs(w));
+        if (!fonts.images.empty())
+            append(QString("HUD fonts: %1 picture(s) from fonts.txt (%2 label(s), %3 glyph set(s))")
+                       .arg(fonts.images.size()).arg(fonts.labels.size()).arg(fonts.sets.size()));
+        opt.hudFontImages = std::move(fonts.images);
+        opt.hudFontScript = std::move(fonts.script);
+    }
     // 4.27: "<map name>.str" beside the map holds the text for the map script.
     if (const std::string sf = mapStringsFileFor(ctx_->doc.path()); !sf.empty() && QFileInfo::exists(qs(sf))) opt.stringsFile = sf;
     MaterialLibrary library;

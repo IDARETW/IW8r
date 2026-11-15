@@ -603,6 +603,7 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
             if (safeEffectName(n) && n.find('/') == std::string::npos)
                 s += "    level.iw8r_keep[" + std::to_string(k++) + "] = \"" + n + "\";\n";
     }
+    if (!extras.fontScript.empty()) s += "    iw8r_font_init();\n";  // before the map's own script uses the fonts
     if (!extras.userScript.empty()) s += "    level thread user_main();\n";
     if (extras.hotUpdate) s += "    level thread iw8r_hot_update();\n    level thread iw8r_hot_channels();\n";
     const bool shadowRange = extras.sunShadowRange[0] > 0 && extras.sunShadowRange[1] > 0;
@@ -928,6 +929,7 @@ std::string mapScriptGsc(const std::optional<ExpFog>& fog, const std::vector<FxP
                  "            self setweaponammoclip(weapon, weaponclipsize(weapon));\n    }\n}\n";
     }
     if (!extras.userScript.empty()) s += "\n// ---- map script (worldspawn iw8r_script) ----\n" + extras.userScript + "\n";
+    if (!extras.fontScript.empty()) s += extras.fontScript;
     if (!prefabScripts.empty()) {
         s += "\n// Prefab bundles: what the entry function of a prefab script gets for one placement.\n"
              "iw8r_prefab_inst(pid, origin, angles)\n{\n    inst = spawnstruct();\n    inst.pid = pid;\n"

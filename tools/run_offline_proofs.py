@@ -46,6 +46,7 @@ proofs = [
     ('umbra_bake_build_test', []),  # the occlusion bake of an editor map, read back from the built zone
     ('hud_image_build_test', ['--exe', exe]),  # a map's own HUD image, built through the editor with this converter
     ('map_strings_build_test', ['--exe', exe]),  # a map's own text, read back from eng_<map>
+    ('hud_font_build_test', ['--exe', exe]),  # a map's own fonts drawn into its HUD pictures, script helpers compiled
     ('airspace_build_test', ['--exe', exe]),  # a built map's occlusion data reaches as far as a stock map's
     ('probe_capture_build_test', ['--exe', exe]),  # a built map's probes: coloured, at the stock probes' level
     ('physics_bounds_build_test', ['--exe', exe]),  # a built map's physics world is as large as a stock map's

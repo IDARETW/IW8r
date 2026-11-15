@@ -127,6 +127,15 @@ struct CompileOptions {
     // extracted/images/hud_<name>.dds, which the converter carries with a 2D material of that name. Empty or not a
     // folder: none.
     std::string hudImageDir;
+    // 4.27 HUD fonts (hud_fonts.h): the pictures the editor drew from "<map>.hud/fonts.txt" (labels and glyphs, RGBA),
+    // built like the folder's pictures, and the map script's helpers (iw8r_font_init / _text / _clear / _label).
+    struct HudRgbaImage {
+        std::string name;  // hud_...
+        int width = 0, height = 0;
+        std::vector<uint8_t> rgba;
+    };
+    std::vector<HudRgbaImage> hudFontImages;
+    std::string hudFontScript;
     // The map's own text (4.27, core map_strings.h): the file "<map name>.str". Its entries become localized strings
     // "<MAP ID>/<REFERENCE>" (extracted/localize/strings.tsv, which the converter registers in eng_<map>). Empty or
     // not a file: none.

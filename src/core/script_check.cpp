@@ -336,6 +336,27 @@ const std::vector<ScriptSnippet>& scriptSnippets() {
          "    if (isdefined(pic))\n"
          "        pic destroy();\n"
          "}\n"},
+        {"hud_font_countdown", "Countdown in the map's own font (from <map>.hud/fonts.txt)",
+         "// A countdown written in the map's own font. List the font in \"<map name>.hud/fonts.txt\" beside the map:\n"
+         "//     glyphs | digits | MyFont.ttf | 48 | #ffffff | 0123456789:\n"
+         "// (a label is one picture of a line of text: label | title | MyFont.ttf | 64 | #ffcc00 | Welcome). The build draws\n"
+         "// them into the map's own HUD pictures and adds iw8r_font_text / iw8r_font_label / iw8r_font_clear to the map\n"
+         "// script. In-game look NOT VERIFIED. In user_main():\n"
+         "//     level thread iw8r_font_countdown(\"digits\", 90, 20, 100, 40);\n"
+         "iw8r_font_countdown(set, seconds, x, y, height)\n"
+         "{\n"
+         "    for (s = seconds; s >= 0; s--)\n"
+         "    {\n"
+         "        r = s % 60;\n"
+         "        text = int(s / 60) + \":\";\n"
+         "        if (r < 10)\n"
+         "            text = text + \"0\";\n"
+         "        text = text + r;\n"
+         "        shown = iw8r_font_text(set, text, x, y, height);\n"
+         "        wait 1;\n"
+         "        iw8r_font_clear(shown);\n"
+         "    }\n"
+         "}\n"},
         {"trigger_message", "Trigger message (prints a line when a trigger is touched)",
          "// Trigger message: prints `text` to the player who touches `triggerName`. In user_main():\n"
          "//     level thread iw8r_trigger_message(\"hint1_trigger\", \"You found the secret room\");\n"

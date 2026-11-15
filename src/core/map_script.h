@@ -68,6 +68,8 @@ struct MapScriptExtras {
     ModeRules modeRules;
     std::vector<std::string> solidTargetnames;
     std::string userScript;
+    // The map's HUD fonts (hud_fonts.h hudFontScriptGsc): appended, with iw8r_font_init() at the start of main().
+    std::string fontScript;
     // Hot update (roadmap 7.4): a thread that applies the dvar iw8r_hot ("seq targetname x y z pitch yaw roll") to the
     // live entities with that targetname, so the editor (Live Link) moves script entities in the running game.
     bool hotUpdate = true;

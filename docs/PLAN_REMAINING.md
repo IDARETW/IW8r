@@ -24,7 +24,7 @@ the milestone's section) or a look in the game, which the owner said to ask for 
 | 1 Lighting | done offline; every part of Game Lighting has a saved GUI toggle (View > Game Lighting Options, its Stock Map Detail submenu since 2026-11-15) and a GUI test | nothing of the rendering audit (G13 distortion checked equivalent within half a unit on its only world user, 2026-11-15); the effect preview draws sprites, atlases and curves since 2026-11-15 (research 138) but no flares, heat haze or per-particle lighting; the in-game look |
 | 2 Umbra | 2.1, 2.2 done; 2.4 done as an opt-in bake, its first game failure fixed offline (research 129) | 2.3 decided against (a mistake there hides objects in the game); the bake's in-game look |
 | 3 Web viewer | 3.1-3.6 done (render stream, protocol, every command and form, editing tools, security, tests) | nothing offline |
-| 4 Remaining pieces | each row has its state below; built offline except the decided ones | streamed Warzone tiles cannot be edited (the client loads no unsigned tile, research 116); own fonts / menus deferred; name-only model references not needed (carried copies work for every model); in-game looks |
+| 4 Remaining pieces | each row has its state below; built offline except the decided ones | streamed Warzone tiles cannot be edited (the client loads no unsigned tile, research 116); own fonts built as pictures in the map's own zones (2026-11-15), own menus left out; name-only model references not needed (carried copies work for every model); in-game looks |
 | 5 Handover | done: installer and zip (no settings, no game files), HANDOVER, USER_GUIDE, FEATURES, TEST_CHECKLIST, the editor parked on a compiled map | the owner's in-game checks, Cinder Rail first (TEST_CHECKLIST item 0) |
 
 ## Working rules (all milestones)
@@ -442,8 +442,12 @@ can take it further (docs/TEST_CHECKLIST.md has the steps).
     is built too (section 11; buildMapEdgeAdjacency). Edges from placed models' collision hulls are built too (MountSolid::model). Not
     built: mantle edges (the trace path works).
   - fonts and LUI (4.27): HUD from the map script works with stock icons and, since 2026-11-14, with the map's own
-    pictures (`<map name>.hud`) and the map's own text (`<map name>.str`), both proven offline; game. Own fonts and menus are not built (deferred, as the plan
-    allowed: no map-zone writer for them, and nothing shows the game would use one).
+    pictures (`<map name>.hud`) and the map's own text (`<map name>.str`), both proven offline; game. Own fonts
+    (owner 2026-11-15: "only within the map files"): built as pictures drawn in the font (`<map name>.hud/fonts.txt`,
+    labels and glyph sets, script helpers iw8r_font_text / _label / _clear), carried only in the map's own zones;
+    proof `tools/hud_font_build_test.py`. A TTF under a stock name was not used: it would change every menu while the
+    map is loaded. Own menus (LUI) stay out: a map-zone Lua file is not shown to be read, and replacing stock menu code
+    would reach outside the map.
 - **Audio and effects**
   - the looping sound on an `fx_origin` (F.6), impacts (F.12): fixed offline; game.
   - the reverb zone (F.7), PA speakers and music states (6.22), ambient sound (6.7): built offline; reverb was not
