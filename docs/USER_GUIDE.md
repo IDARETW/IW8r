@@ -315,7 +315,12 @@ Commands in the Tools menu:
   lamps do, as in the stock maps.
 - **Volumetric boxes** (Primitives > Volumetric Box): fog inside a box, for a misty corner or a dusty room. `density`
   is how thick (0.0002 light, 0.001 default, 0.005 thick), `falloff` the soft border in units, `height_half` the
-  height where it is half as thick (a ground mist). The sun, the sky light and flagged lamps light it.
+  height where it is half as thick (a ground mist). The sun, the sky light and flagged lamps light it. **Masks**
+  break it into drifting patches: `mask "clouds_soft 800 800 50 0"` lays a cloud picture over the box from above,
+  800 units per repeat, moving 50 units a second along x. Up to four (`mask2` .. `mask4`) multiply; two cloud layers
+  at different sizes and speeds look like rolling mist. Pictures: the editor's `clouds_soft` and `clouds_hard`, or
+  your own grey pictures in `<map folder>/volume_masks` (white keeps the fog, black clears it). Game Lighting shows
+  them moving.
 - **Baked lightmaps**: tick **Bake lightmaps** on the Compile panel and the build bakes the world's lightmap: the
   light of the sky, the light bounced off surfaces, and where the sun reaches. The sun itself and the light entities
   are not baked; the game draws them live on top. **Bake Settings...** beside it sets the sky's colour and strength

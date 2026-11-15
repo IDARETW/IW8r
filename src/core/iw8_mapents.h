@@ -24,12 +24,23 @@ struct Iw8SpawnRecord {
     Vec3 angles;
 };
 
+// A stock map's own placed effect (MapEnts.clientSideEffects.oneshotEffects: the map's createfx one-shots and loops):
+// fire, smoke, steam, falling dust, lamp glows. Research 132 gap 3.
+struct Iw8PlacedEffect {
+    Vec3 origin, angles;
+    std::string effect;      // ParticleSystemDef name, e.g. vfx/iw8_mp/level/shipment/vfx_shipment_knee_high_mist
+    std::string sound;       // effectSound alias name ("" = none)
+    double radius = 0;       // cull radius (0 = the effect's own)
+    int delayMs = 0;         // start delay; negative = repeat every |delay| ms (the createfx loop rule)
+};
+
 struct Iw8MapEntsDump {
     std::string assetName;     // maps/mp/<map>.d3dbsp
     std::string profile;       // must be "replay-1.20"
     std::string entityString;  // raw bytes, numEntityChars long (NUL terminator included)
     uint64_t numEntityChars = 0;
     std::vector<Iw8SpawnRecord> spawns;
+    std::vector<Iw8PlacedEffect> effects;  // clientSideEffects.oneshotEffects, in record order
     std::map<std::string, uint64_t> sections;  // section name -> record count, for reporting
 };
 

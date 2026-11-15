@@ -135,6 +135,30 @@ bool loadActsMapEnts(const std::string& assetJson, const std::string& scriptStri
             if (auto c = toIndex(*n, std::numeric_limits<size_t>::max()); c && *c != out.spawns.size())
                 return fail("spawnsCount does not match decoded spawn records");
     }
+    // The map's placed effects (createfx): position, angles, the effect's name, its sound, cull radius and delay.
+    if (const json::Value* cse = fields->get("clientSideEffects")) {
+        const json::Value* list = cse->get("oneshotEffects");
+        const json::Value* values = list ? list->get("values") : nullptr;
+        if (values && values->type == json::Value::Type::Array) {
+            for (const auto& r : values->arr) {
+                Iw8PlacedEffect e;
+                vec3(r.get("origin"), e.origin);
+                vec3(r.get("angles"), e.angles);
+                if (auto n = scalar(r.get("radius")); n && std::isfinite(*n)) e.radius = *n;
+                if (auto n = scalar(r.get("delayMsec")); n && std::isfinite(*n) && std::fabs(*n) < 1e9) e.delayMs = int(*n);
+                if (const json::Value* fx = r.get("effect")) {
+                    const json::Value* def = fx->get("particleSystemDef");
+                    const json::Value* nm = def ? def->get("name") : nullptr;
+                    if (nm && nm->string()) e.effect = *nm->string();
+                }
+                if (const json::Value* snd = r.get("effectSound")) {
+                    const json::Value* nm = snd->get("name");
+                    if (nm && nm->string()) e.sound = *nm->string();
+                }
+                if (!e.effect.empty()) out.effects.push_back(std::move(e));
+            }
+        }
+    }
     auto count = [&](const char* section, const json::Value* v) {
         if (auto n = scalar(v))
             if (auto c = toIndex(*n, std::numeric_limits<uint64_t>::max())) out.sections[section] = *c;
