@@ -282,6 +282,23 @@ private:
                 for (size_t i = 0; i < n; ++i)
                     for (size_t c = 0; c < 4; ++c) m.color[i][c] = c < comps ? float(v[i * comps + c]) : 1.0f;
             }
+            if (const json::Value* sv = attrs->get("_SELFVIS")) {
+                // ACTS: the vertex's u32 as VEC4 UNSIGNED_BYTE, not normalised (research 105 section 4).
+                size_t ns = 0;
+                if (!readAccessor(int(sv->num), 4, v, ns)) return false;
+                if (ns != n) return fail("_SELFVIS count differs from POSITION");
+                m.selfVis.resize(n);
+                for (size_t i = 0; i < n; ++i) {
+                    const uint32_t word = uint32_t(v[i * 4]) | uint32_t(v[i * 4 + 1]) << 8 | uint32_t(v[i * 4 + 2]) << 16 |
+                                          uint32_t(v[i * 4 + 3]) << 24;
+                    const std::array<float, 4> d = decodeSelfVisibility(word);
+                    const double amount = std::sqrt(double(d[0]) * d[0] + double(d[1]) * d[1] + double(d[2]) * d[2]);
+                    const Vec3 dir = amount > 0 ? world.normal(Vec3{d[0] / amount, d[1] / amount, d[2] / amount}) : Vec3{0, 0, 0};
+                    m.selfVis[i] = {float(dir.x * amount), float(dir.y * amount), float(dir.z * amount), d[3]};
+                }
+            }
+            if (const json::Value* ex = prim.get("extras"))
+                if (const json::Value* sf = ex->get("sourceFlags")) m.sourceFlags = uint32_t(std::max(0.0, sf->num));
             if (const json::Value* ind = prim.get("indices")) {
                 size_t ni = 0;
                 std::vector<double> iv;
@@ -310,6 +327,19 @@ private:
 };
 
 }  // namespace
+
+std::array<float, 4> decodeSelfVisibility(uint32_t word) {
+    double x = double(word & 511u) / 511.0 * 2.0 - 1.0, y = double((word >> 9) & 511u) / 511.0 * 2.0 - 1.0;
+    double z = 1.0 - std::fabs(x) - std::fabs(y);
+    if (z < 0) {  // the lower hemisphere, folded
+        const double fx = (1.0 - std::fabs(y)) * (x < 0 ? -1.0 : 1.0), fy = (1.0 - std::fabs(x)) * (y < 0 ? -1.0 : 1.0);
+        x = fx, y = fy;
+    }
+    const double len = std::sqrt(x * x + y * y + z * z);
+    const double amount = double((word >> 18) & 127u) / 127.0;
+    const double k = len > 0 ? amount / len : 0.0;
+    return {float(x * k), float(y * k), float(z * k), float(double((word >> 25) & 127u) / 127.0)};
+}
 
 bool parseGlb(const std::string& bytes, ImportedModel& out, std::string* err, const GlbReadOptions& opt) {
     const auto fail = [err](const std::string& msg) {

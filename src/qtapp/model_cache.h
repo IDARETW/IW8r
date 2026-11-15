@@ -47,6 +47,9 @@ public:
         QStringList materials;           // LOD0 surface materials in surface order (xmodel materialHandles)
         bool failed = false;
         QString error;
+        // The GLB's per-vertex self visibility (_SELFVIS, ACTS fork 3667413c; research 105 section 4): 1 present,
+        // 0 checked and absent, -1 not known (cached before it was recorded: refreshGeometry fetches it again).
+        int selfVis = -1;
     };
 
     std::optional<Entry> lookup(const QString& name) const;  // on-disk index only (instant)
@@ -57,6 +60,11 @@ public:
     std::optional<XModelInfo> loadDetail(const QString& name) const;
     void refetch(const QString& name);
     void request(const QStringList& names);                  // async; de-duplicated; batched per zone
+    // Runs the geometry export again for cached models whose GLB predates the self visibility (Entry::selfVis -1),
+    // once per model and session, after any requested models. The old GLB stays in use until the new one is in, and
+    // stays when the export fails. modelReady / batchEnded follow as for request().
+    void refreshGeometry(const QStringList& names);
+    int refreshPending() const { return int(refreshPending_.size()); }
     // Zones tried for a model the catalogue does not list (owner playtest 2026-11-11: a stock map's props that are
     // missing from iw8_models.tsv were never drawn; they are in that map's own zone). Setting it also forgets earlier
     // "not listed" failures so those models are tried again.
@@ -128,6 +136,7 @@ private:
     QString glbPath(const QString& name) const;
 
     void startBatch();
+    void startRefreshBatch();
     void buildTableRound();
     void buildGeometryRound();
     void buildReferenceRound();
@@ -148,6 +157,9 @@ private:
     QStringList fallbackZones_;
     std::set<QString> queued_;  // requested and not yet resolved
     std::set<QString> refetched_;  // refetch() ran for these (never twice: a model whose detail cannot be read)
+    QStringList refreshPending_;       // refreshGeometry, not yet in a batch
+    std::set<QString> refreshed_;      // refreshGeometry took these (once per session)
+    bool refreshBatch_ = false;        // the running batch refreshes geometry (a failure keeps the old entry)
     bool running_ = false;
     std::vector<Work> works_;
     enum class Phase { Tables, Geometry, References, Done };

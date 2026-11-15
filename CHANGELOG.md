@@ -5,6 +5,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Stock props get the game's self-visibility occlusion in Game Lighting** (research 133 section 7): the game stores
+  per vertex how open a prop's surface is (dense grass, tyre insides, corners of crates) and darkens its ambient
+  light by it; the viewport now does the same. The model export (ACTS fork, updated) carries the value; models cached
+  before are fetched again in the background the first time a stock map draws them (a few minutes for a map; they
+  keep drawing meanwhile). A/B: `IW8R_NO_SELFVIS=1`.
 - **Shipment's harbour water in Game Lighting** (research 133 section 5.3): its two scrolling normal layers, faded
   with distance, their gloss summed (near-mirror) as the game's water shader does, so the water ripples and catches
   the sun. A/B: `IW8R_NO_DUAL_NORMAL=1`. The material cache reads such water materials again once.

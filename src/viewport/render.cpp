@@ -458,7 +458,8 @@ SamplerState samp0 : register(s0);
 struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4;
               float4 edge : TEXCOORD6; };
 struct PSIn { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 w : TEXCOORD1; float3 n : TEXCOORD2; float3 t : TEXCOORD3; float2 lm : TEXCOORD4;
-               float3 lgvBack : TEXCOORD5; float3 edge : TEXCOORD6; float4 vc : TEXCOORD7; };  // vc: a prop's vertex colour (linear; research 133); w = 1 on props
+               float3 lgvBack : TEXCOORD5; float3 edge : TEXCOORD6; float4 vc : TEXCOORD7;  // vc: a prop's vertex colour (linear; research 133); w = 1 on props
+               float4 sv : TEXCOORD8; };  // a stock prop's self visibility (world bent normal x amount, cone; w < 0: none)
 Buffer<uint> tomeVis : register(t30);  // cull by tome: one bit per GfxWorld surface (wind.w = 1 while bound)
 PSIn vs_tex(VSIn i) {
     PSIn o;
@@ -473,6 +474,7 @@ PSIn vs_tex(VSIn i) {
     o.pos = mul(float4(p, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = p; o.n = i.n; o.t = i.t; o.lm = i.lm;
     o.lgvBack = float3(0, 0, 0);
     o.vc = float4(1, 1, 1, 0);
+    o.sv = float4(0, 0, 0, -1);
     o.edge = i.edge.xyz;
     if (wind.w > 0.5 && i.edge.a < 0.5) {
         // A stock reference vertex: its surface + 1 (referenceSurfaceTag). A surface the tome hides goes off screen.
@@ -522,7 +524,7 @@ bool lgvLight(uint box, float3 w, float3 n, out float3 e, out float3 back) {
     back = max(0.282095 * dc - band1 + band2, 0.0);  // E(-n): the second band is even
     return true;
 }
-struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float4 vcol : COLOR1; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
+struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float4 vcol : COLOR1; float4 sv : SELFVIS; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
                   float4 l0 : INSTROW3; float4 l1 : INSTROW4; float4 l2 : INSTROW5; };
 PSIn vs_tex_inst(VSInInst i) {
     float4 p = float4(i.pos, 1.0);
@@ -543,6 +545,13 @@ PSIn vs_tex_inst(VSInInst i) {
     PSIn o; o.pos = mul(float4(w, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = w; o.n = dot(nw, nw) > 1e-12 ? normalize(nw) : float3(0, 0, 0); o.t = float3(0, 0, 0); o.lm = float2(-1, -1); o.edge = float3(1, 0, 0);
     // The vertex colour of a VERTCOL model, stored sRGB: linear as the game's static-model VS (research 133 section 4).
     o.vc = float4(i.vcol.rgb <= 0.04045 ? i.vcol.rgb / 12.92 : pow((i.vcol.rgb + 0.055) / 1.055, 2.4), 1.0);  // w: a prop
+    // Self visibility (research 105 section 4): turned by the placement like the normal, its length kept.
+    o.sv = float4(0, 0, 0, -1);
+    if (i.sv.w > 0.004) {
+        const float3 d = float3(dot(i.r0.xyz, i.sv.xyz), dot(i.r1.xyz, i.sv.xyz), dot(i.r2.xyz, i.sv.xyz));
+        const float l = length(d);
+        o.sv = float4(l > 1e-8 ? d * (length(i.sv.xyz) / l) : float3(0, 0, 0), saturate((i.sv.w * 127.0 - 1.0) / 126.0));
+    }
     // The prop's light grid box (research 105 section 1.4, DC + first order), per vertex with the vertex normal as the
     // game's static-model shader does: E = 0.282095 DC + 4/9 0.488603 (s0 n.z - s2 n.y - s3 n.x), in lightmap units
     // (the pixel shader applies bakedLightScale). Props have no tangent and no lightmap UV: E rides in t, marked by
@@ -1020,7 +1029,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // lightmap is bound (the stock world shader's formula, tangent-space direction).
         const bool stockRef = batchFlags2.z > 0.5;
         // Screen-space ambient occlusion: the indirect diffuse (multi-bounce, as the game) and the specular occlusion.
-        const float aoV = gameAo.x > 0.5 ? lerp(1.0, aoMap.Load(int3(i.pos.xy, 0)), gameSunCol.w) : 1.0;  // x the AO strength
+        float aoV = gameAo.x > 0.5 ? lerp(1.0, aoMap.Load(int3(i.pos.xy, 0)), gameSunCol.w) : 1.0;  // x the AO strength
         if (gameAo.y > 0.5) return float4(aoV, aoV, aoV, 1.0);
         if (gameAo.z > 0.5) return float4(t.rgb, outA);  // debug: the albedo as sampled
         float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? i.vc.rgb : i.col.rgb);  // i.col: selection and brush entity tints; vc: a prop's vertex colour
@@ -1116,6 +1125,15 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 T *= sc, B *= sc;
             }
             N = normalize(T * slope.x + B * slope.y + Nf);
+        }
+        // A stock prop's self visibility (research 95 "Static models", research 105 section 4): the occlusion is the
+        // smaller of |sv| x vis(c, w) and the screen AO; it feeds the multi-bounce ambient and the specular occlusion.
+        if (stockRef && i.sv.w >= 0.0) {
+            const float svLen = length(i.sv.xyz);
+            const float c = svLen > 1e-6 ? dot(i.sv.xyz / svLen, N) * 0.5 + 0.5 : 0.5, w = i.sv.w;
+            const float vis = saturate((1.04951 * c - 0.049585 * c * c - 0.007353) + w * (2.96123 * c * c - 2.96096 * c + 0.006773) +
+                                       w * w * (1.85757 * c - 2.85775 * c * c + 0.022416));
+            aoV = min(svLen * vis, aoV);
         }
         // Without a lightmap texel (props, models, new brushes): on a stock map the game lights them from its light grid;
         // here from the reflection probes' blurriest level (luminance-normalised) at the map's mean baked light
@@ -2048,13 +2066,15 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
             ID3DBlob* tivs = nullptr;
             if (compileTex("vs_tex_inst", "vs_5_0", tivs)) {
                 dev_->CreateVertexShader(tivs->GetBufferPointer(), tivs->GetBufferSize(), nullptr, &vsTexInst_);
-                // PropVertex (32 bytes): position, uv, colour, normal as signed bytes, the model's vertex colour.
+                // PropVertex (36 bytes): position, uv, colour, normal as signed bytes, the model's vertex colour, the self
+                // visibility as signed bytes.
                 const D3D11_INPUT_ELEMENT_DESC tiil[] = {
                     {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"NORMAL", 0, DXGI_FORMAT_R8G8B8A8_SNORM, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"COLOR", 1, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0},
+                    {"SELFVIS", 0, DXGI_FORMAT_R8G8B8A8_SNORM, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"INSTROW", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D11_INPUT_PER_INSTANCE_DATA, 1},

@@ -578,7 +578,8 @@ private:
     // 12 floats per light grid volume of the reference zone's main transient zone (app::InstancedTexMesh::light: DC rgb,
     // then the first-order slots 0, 2 and 3), null when not read; refPropVolLightZone_ is its zone.
     std::shared_ptr<const std::vector<float>> refPropVolLight_;
-    bool refPropLgvGpu_ = false;  // the main zone's atlas went to the camera: its props sample it per vertex (G7)
+    bool refPropLgvGpu_ = false;
+    QStringList selfVisRefresh_;  // stock models whose GLB predates the self visibility, for ModelCache::refreshGeometry  // the main zone's atlas went to the camera: its props sample it per vertex (G7)
     QString refPropVolLightZone_;
     // The same per streamed tile (Warzone), by transientZoneIndex (StockModelInstance::worldTransient).
     std::map<int, std::shared_ptr<const std::vector<float>>> refPropTileLight_;

@@ -321,6 +321,18 @@ editor gap only.
 - Editor: not available. The GLB export skips vertex +8 (research 105 5.5), so it needs the ACTS change described
   there; the PS part is one `min()` with the viewport's own AO.
 
+**Status 2026-11-14 (SELFVIS):** in the editor. ACTS fork 3667413c (pushed, deployed; old exe in
+`build\bin\Release\prev-20261114-selfvis`) writes the vertex +8 word as the GLB attribute `_SELFVIS` (VEC4
+UNSIGNED_BYTE, not normalised); checked on `military_shooting_targets_05_lod010v61`: 141 vertices, amount 0.65 / 0.95 /
+1.00, bent normal . normal 0.89 (= research 105's table). Core `decodeSelfVisibility` and `ImportedMesh::selfVis`
+(turned like the normals) with `sourceFlags`; the model cache records `selfvis` per entry and fetches again, in the
+background, the drawn models cached before (`ModelCache::refreshGeometry`: geometry step only, the old GLB stays until
+the new one is in; their LOD GLBs are fetched again). Prop vertices carry it as four signed bytes (surfaces flagged
+0x40), vs_tex_inst turns it by the placement, and the stock PS takes `min(|sv| vis(c, w), screen AO)` into the
+multi-bounce ambient and the specular occlusion. Hideout bench: 1,448 models fetched again in about 3 minutes (6 had
+no attribute); dense grass in shade loses most of its ambient, open surfaces barely change; 9.0 ms.
+`IW8R_NO_SELFVIS=1` = neither the fetch nor the term (A/B).
+
 ## 8. Implementation recipe, by visual impact
 
 1. **SELFVIS** (research 105 5.5 + section 7): every static model's ambient; grass loses up to 64 % (mean |SELFVIS|

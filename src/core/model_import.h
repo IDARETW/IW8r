@@ -25,6 +25,11 @@ struct ImportedMesh {
     // colour bytes here: RGB in sRGB (the game's vertex shader linearises it and multiplies the albedo of VERTCOL
     // materials), alpha the flag / foliage wave weight (research 133 sections 4 and 6).
     std::vector<std::array<float, 4>> color;
+    // Stock models (ACTS GLB attribute _SELFVIS, research 105 section 4): per vertex the self visibility, xyz = the
+    // bent normal (turned like the normals) times the visible amount (0..1), w = the cone value of the game's
+    // polynomial. Empty when the primitive has none.
+    std::vector<std::array<float, 4>> selfVis;
+    uint32_t sourceFlags = 0;  // glTF primitive extras.sourceFlags (the XSurface flags ACTS copies; 0x40 = self visibility)
 };
 
 struct ImportedModel {

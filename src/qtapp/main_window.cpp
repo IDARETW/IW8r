@@ -7622,6 +7622,17 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                 // Past the budget (known from an earlier rebuild): a box, without reading the model again.
             } else if (auto im = modelCacheStock_->loadModel(qs(in.model))) {
                 ++loadedModels;
+                // Cached before the GLB carried the self visibility (research 105 section 4): fetched again in the
+                // background; the model is drawn from its old GLB meanwhile.
+                static const bool noSelfVis = std::getenv("IW8R_NO_SELFVIS") != nullptr;
+                if (const auto e = modelCacheStock_->lookup(qs(in.model)); !noSelfVis && e && e->selfVis < 0) {
+                    if (selfVisRefresh_.isEmpty())
+                        QTimer::singleShot(0, this, [this] {
+                            modelCacheStock_->refreshGeometry(selfVisRefresh_);
+                            selfVisRefresh_.clear();
+                        });
+                    selfVisRefresh_ << qs(in.model);
+                }
                 auto fresh = std::make_shared<RefPropMesh>();
                 for (const auto& ms : im->meshes) fresh->tris += ms.idx.size() / 3;
                 // A placed model stops drawing past its last LOD distance x the placement's own scale in game (research
@@ -7675,6 +7686,9 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                         const std::string prefix = ms.material.substr(0, ms.material.find('/'));
                         const bool vertCol = ms.color.size() == nv && prefix.find('c') != std::string::npos &&
                                              (prefix.rfind("m", 0) == 0 || prefix.rfind("tm", 0) == 0);
+                        // The self visibility of a surface flagged for it (0x40; research 105 section 4).
+                        static const bool noSelfVis = std::getenv("IW8R_NO_SELFVIS") != nullptr;
+                        const bool selfVis = !noSelfVis && ms.selfVis.size() == nv && (ms.sourceFlags & 0x40u) != 0;
                         for (size_t v = 0; v < nv; ++v) {
                             const Vec3 p = zup(ms.pos[v]);
                             app::PropVertex& pv = pm->vertices[v];
@@ -7686,6 +7700,16 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                                 // Alpha: the weight of the flag / foliage waves (research 133 section 4).
                                 pv.color = byte(ms.color[v][0]) | (byte(ms.color[v][1]) << 8) | (byte(ms.color[v][2]) << 16) |
                                            (byte(ms.color[v][3]) << 24);
+                            }
+                            if (selfVis) {
+                                const auto& s = ms.selfVis[v];
+                                const Vec3 d = zup(Vec3{s[0], s[1], s[2]});
+                                const auto sb = [](double c) {
+                                    const double k = std::clamp(c, -1.0, 1.0) * 127.0;
+                                    return uint32_t(uint8_t(int8_t(k >= 0 ? int(k + 0.5) : int(k - 0.5))));
+                                };
+                                pv.selfVis = sb(d.x) | (sb(d.y) << 8) | (sb(d.z) << 16) |
+                                             (uint32_t(1 + int(std::clamp(double(s[3]), 0.0, 1.0) * 126.0 + 0.5)) << 24);
                             }
                             Vec3 sn = shadeN[v];
                             if (ownNormals) {
@@ -9484,7 +9508,7 @@ QString MainWindow::streamedTilesReport() const {
 }
 
 bool MainWindow::stockCacheIdle() const {
-    return (!worldCache_ || !worldCache_->busy()) && (!modelCacheStock_ || modelCacheStock_->lodsPending() == 0) && !refPropRebuildQueued_ && !refPropRelightQueued_;
+    return (!worldCache_ || !worldCache_->busy()) && (!modelCacheStock_ || (modelCacheStock_->lodsPending() == 0 && modelCacheStock_->refreshPending() == 0 && !modelCacheStock_->busy())) && !refPropRebuildQueued_ && !refPropRelightQueued_;
 }
 
 bool MainWindow::streamedTilesSettled() const {

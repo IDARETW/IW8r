@@ -202,3 +202,53 @@ TEST(glb_reads_file_and_names_it) {
     CHECK(m.name == "sample_model");
     CHECK(m.meshes.size() == 1);
 }
+
+// The ACTS fork's _SELFVIS attribute (research 105 section 4): the vertex's self-visibility word as four bytes. The
+// direction turns with the node like the normals; amount and cone come out as stored.
+TEST(glb_reads_self_visibility) {
+    // decode: x, y bits 255 -> +Z (about), amount 127 -> 1, cone 127 -> 1; x, y bits 0 -> the folded -Z, amount 64.
+    const uint32_t up = 255u | 255u << 9 | 127u << 18 | 127u << 25, down = 0u | 0u << 9 | 64u << 18 | 0u << 25;
+    const auto du = decodeSelfVisibility(up), dd = decodeSelfVisibility(down);
+    CHECK(near(du[2], 1.0, 1e-4) && near(du[3], 1.0, 1e-6));
+    CHECK(near(dd[0], 0, 1e-6) && near(dd[1], 0, 1e-6) && near(dd[2], -64.0 / 127.0, 1e-6) && near(dd[3], 0, 1e-6));
+
+    std::string bin;
+    const float pos[] = {0, 0, 0, 1, 0, 0, 1, 2, 0, 0, 2, 0};
+    for (float f : pos) putF(bin, f);
+    for (int i = 0; i < 4; ++i) putF(bin, 0), putF(bin, 0), putF(bin, 1);
+    const float uv[] = {0, 0, 1, 0, 1, 1, 0, 1};
+    for (float f : uv) putF(bin, f);
+    for (uint32_t v : {0u, 1u, 2u, 0u, 2u, 3u}) bin += char(v), bin += char(0);
+    for (uint32_t w : {up, down, up, down}) put32(bin, w);  // at 140
+    const std::string json =
+        std::string("{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[") + kActsNode + "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2,\"_SELFVIS\":4},\"indices\":3,"
+        "\"extras\":{\"sourceSurface\":0,\"sourceFlags\":64}}]}],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":4,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":4,\"type\":\"VEC3\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":4,\"type\":\"VEC2\"},"
+        "{\"bufferView\":3,\"componentType\":5123,\"count\":6,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":4,\"componentType\":5121,\"count\":4,\"type\":\"VEC4\"}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":48},{\"buffer\":0,\"byteOffset\":48,\"byteLength\":48},"
+        "{\"buffer\":0,\"byteOffset\":96,\"byteLength\":32},{\"buffer\":0,\"byteOffset\":128,\"byteLength\":12},"
+        "{\"buffer\":0,\"byteOffset\":140,\"byteLength\":16}],"
+        "\"buffers\":[{\"byteLength\":156}]}";
+    ImportedModel m;
+    std::string err;
+    CHECK(parseGlb(makeGlb(json, bin), m, &err));
+    CHECK(m.meshes.size() == 1);
+    if (m.meshes.size() != 1) return;
+    const ImportedMesh& mesh = m.meshes[0];
+    CHECK(mesh.sourceFlags == 64);
+    CHECK(mesh.selfVis.size() == 4);
+    if (mesh.selfVis.size() != 4) return;
+    // Raw +Z becomes +Y with the ACTS node (as the normal); the folded -Z becomes -Y at 64/127.
+    CHECK(near(mesh.selfVis[0][1], 1.0, 1e-4) && near(mesh.selfVis[0][3], 1.0, 1e-6));
+    CHECK(near(mesh.selfVis[1][1], -64.0 / 127.0, 1e-5) && near(mesh.selfVis[1][0], 0, 1e-5) && near(mesh.selfVis[1][2], 0, 1e-5));
+    // Without the attribute: empty.
+    ImportedModel plain;
+    CHECK(parseGlb(quadGlb(kActsNode, 5123), plain, nullptr));
+    CHECK(!plain.meshes.empty() && plain.meshes[0].selfVis.empty() && plain.meshes[0].sourceFlags == 0);
+}

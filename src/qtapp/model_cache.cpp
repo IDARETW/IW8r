@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <map>
 #include <tuple>
 #include <utility>
@@ -210,6 +211,66 @@ void ModelCache::setFallbackZones(const QStringList& zones) {
     if (dropped) writeIndex();
 }
 
+namespace {
+// Whether a cached GLB's JSON chunk names the _SELFVIS attribute (the ACTS fork's self visibility).
+int glbSelfVis(const QString& path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return 0;
+    const QByteArray head = f.read(20);
+    if (head.size() < 20 || !head.startsWith("glTF")) return 0;
+    uint32_t len = 0;
+    std::memcpy(&len, head.constData() + 12, 4);
+    if (len == 0 || len > (64u << 20)) return 0;
+    return f.read(qint64(len)).contains("\"_SELFVIS\"") ? 1 : 0;
+}
+}  // namespace
+
+void ModelCache::refreshGeometry(const QStringList& names) {
+    bool added = false;
+    for (const QString& n : names) {
+        const auto it = index_.find(n);
+        if (it == index_.end() || it->second.failed || it->second.selfVis >= 0 || queued_.count(n) || !refreshed_.insert(n).second) continue;
+        refreshPending_ << n;
+        added = true;
+    }
+    if (added && !running_) startRefreshBatch();
+}
+
+void ModelCache::startRefreshBatch() {
+    if (refreshPending_.isEmpty()) return;
+    running_ = true;
+    refreshBatch_ = true;
+    works_.clear();
+    queue_.clear();
+    phase_ = Phase::Geometry;  // the tables are known: only the surface buffers again
+    for (const QString& f : {tools_("acts"), tools_("replay"), tools_("oodle")})
+        if (!QFileInfo::exists(f)) {
+            problem_ = "Missing tool, model cache idle: " + f;
+            emit progress(problem_);
+            refreshPending_.clear();
+            running_ = refreshBatch_ = false;
+            emit batchEnded(0);
+            return;
+        }
+    QStringList names;
+    while (!refreshPending_.isEmpty() && names.size() < kBatchModels) names << refreshPending_.takeFirst();
+    for (const QString& n : names) {
+        const auto it = index_.find(n);
+        if (it == index_.end() || it->second.failed) continue;
+        Work w;
+        w.name = n;
+        w.found = true;
+        w.zone = it->second.zone;
+        w.lod0Surfs = it->second.lod0Surfs;
+        w.bounds = it->second.bounds;
+        w.materials = it->second.materials;
+        queued_.insert(n);
+        works_.push_back(w);
+    }
+    emit progress(QString("model cache: %1 model(s) fetched again for their self visibility").arg(works_.size()));
+    pump();
+}
+
 void ModelCache::request(const QStringList& names) {
     bool added = false;
     for (QString n : names) {
@@ -219,7 +280,7 @@ void ModelCache::request(const QStringList& names) {
         pending_.append(n);
         added = true;
     }
-    if (added && !running_) startBatch();
+    if (added && !running_) startBatch();  // (a refresh batch running: finishBatch starts these first)
 }
 
 bool ModelCache::busy() const { return running_ || !pending_.isEmpty(); }
@@ -278,6 +339,7 @@ void ModelCache::loadIndex() {
         for (int i = 0; i < 6 && i < b.size(); ++i) e.bounds[i] = b[i].toDouble();
         e.failed = o.value("failed").toBool();
         e.error = o.value("error").toString();
+        e.selfVis = o.contains("selfvis") ? o.value("selfvis").toInt() : -1;
         if (!e.failed) {
             const QString glb = o.value("glb").toString();
             e.glbPath = glb.isEmpty() ? QString() : QDir(root_).filePath(glb);
@@ -325,6 +387,7 @@ void ModelCache::writeIndex() const {
         if (!e.failed) o.insert("materials", QJsonArray::fromStringList(e.materials));
         o.insert("failed", e.failed);
         if (!e.error.isEmpty()) o.insert("error", e.error);
+        if (e.selfVis >= 0) o.insert("selfvis", e.selfVis);
         models.insert(name, o);
     }
     QJsonObject top;
@@ -753,15 +816,30 @@ void ModelCache::finishRun(const Run& run, const QString& dir, const ActsResult&
 
 void ModelCache::finishBatch() {
     QStringList done;
+    const bool refresh = refreshBatch_;
+    refreshBatch_ = false;
     for (const Work& w : works_) {
         Entry e;
         e.name = w.name;
         e.zone = w.zone;
         e.lod0Surfs = w.lod0Surfs;
-        if (w.found && !w.glb.isEmpty() && w.error.isEmpty()) {
+        const bool ok = w.found && !w.glb.isEmpty() && w.error.isEmpty();
+        if (refresh && !ok) {
+            // A refresh that could not be done: the model keeps the GLB it had, now checked (not asked again).
+            if (const auto it = index_.find(w.name); it != index_.end()) it->second.selfVis = glbSelfVis(it->second.glbPath);
+            done << w.name;
+            continue;
+        }
+        if (ok) {
             e.glbPath = w.glb;
             e.bounds = w.bounds;
             e.materials = w.materials;
+            e.selfVis = glbSelfVis(w.glb);
+            if (refresh)  // its LODs were exported before too: fetched again when next wanted
+                for (int lod = 1; lod <= 8; ++lod) {
+                    QFile::remove(lodGlbPath(w.name, lod));
+                    lodFailed_.erase(w.name + "#" + QString::number(lod));
+                }
         } else {
             e.failed = true;
             e.error = !w.error.isEmpty() ? w.error : w.found ? QStringLiteral("LOD0 GLB not exported")
@@ -786,6 +864,7 @@ void ModelCache::finishBatch() {
     emit batchEnded(int(done.size()));
     if (running_) return;  // a handler asked for more and that batch has started
     if (!pending_.isEmpty()) startBatch();
+    else if (!refreshPending_.isEmpty()) startRefreshBatch();
     else if (!running_) QDir(root_ + "/w").removeRecursively();
 }
 

@@ -3,6 +3,8 @@
 // xmodelsurfs sidecar (docs/research/23_model_preview_cache.md). Triangles only; read-only.
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <string>
 
 #include "model_import.h"
@@ -22,6 +24,11 @@ struct GlbReadOptions {
 // missing NORMAL becomes (0,0,1) and a missing TEXCOORD_0 becomes (0,0), both with a warning. A node whose
 // transform mirrors (negative determinant) reverses its triangles so they still face outward.
 bool readGlb(const std::string& path, ImportedModel& out, std::string* err = nullptr, const GlbReadOptions& opt = {});
+
+// The static-model self-visibility word (XModelSurfs vertex +8; Replay's static-model VS, research 105 section 4):
+// octahedral direction in bits 0-8 / 9-17 (folded when z < 0), amount in 18-24, cone in 25-31. Returns the unit
+// direction times the amount (xyz) and the cone (w).
+std::array<float, 4> decodeSelfVisibility(uint32_t word);
 
 // Same as readGlb for bytes already in memory (out.name is left as the caller set it).
 bool parseGlb(const std::string& bytes, ImportedModel& out, std::string* err = nullptr, const GlbReadOptions& opt = {});
