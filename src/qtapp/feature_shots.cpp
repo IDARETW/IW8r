@@ -3,6 +3,7 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
+#include <QTest>
 #include <QBuffer>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -768,6 +769,72 @@ int runFeatureShots(MainWindow& w, const QString& outDir) {
             s.window("bottom_folded.png", "The area under the camera folded away (Ctrl+J): the camera has the whole column", 2000);
             s.trigger("ToggleBottomPanel");
             s.opened("preferences.png", "Edit > Preferences in sections", [&] { s.trigger("Preferences"); }, 1500);
+            // The File menu with File > Stock Map open beside it (second review: the stock commands in one submenu).
+            {
+                QMenu* fileMenu = nullptr;
+                for (QAction* a : w.menuBar()->actions())
+                    if (a->menu() && a->text().remove('&') == "File") fileMenu = a->menu();
+                QMenu* stock = fileMenu ? fileMenu->findChild<QMenu*>("stockMapMenu") : nullptr;
+                if (fileMenu && stock) {
+                    fileMenu->popup(w.mapToGlobal(QPoint(8, 24)));
+                    settle(w, 400);
+                    stock->popup(fileMenu->mapToGlobal(QPoint(fileMenu->width(), 0)));
+                    settle(w, 400);
+                    const QImage a = fileMenu->grab().toImage(), b = stock->grab().toImage();
+                    QImage sheet(a.width() + b.width() + 8, std::max(a.height(), b.height()), QImage::Format_ARGB32);
+                    sheet.fill(QColor(30, 30, 30));
+                    QPainter p(&sheet);
+                    p.drawImage(0, 0, a);
+                    p.drawImage(a.width() + 8, 0, b);
+                    p.end();
+                    s.saved(sheet, "file_menu.png", "The File menu and its Stock Map submenu");
+                    stock->hide();
+                    fileMenu->hide();
+                } else {
+                    s.skip("file_menu.png", "The File menu and its Stock Map submenu", "no File > Stock Map submenu");
+                }
+            }
+            // Tools > Tool Paths: found / not found beside every path.
+            for (QAction* m : w.menuBar()->actions())
+                if (m->menu() && m->text().remove('&') == "Tools")
+                    for (QAction* a : m->menu()->actions())
+                        if (a->text().startsWith("Tool Paths"))
+                            s.opened("tool_paths.png", "Tools > Tool Paths with found / not found beside each path", [a] { a->trigger(); }, 1500);
+            // The gizmo's scale handle mid-drag: the outline of the scaled bounds before anything changes (Esc cancels).
+            if (CameraView* cv = w.cameraView(); cv && !w.context().doc.selection().empty()) {
+                EditorContext& ctx = w.context();
+                const auto mouse = [cv](QEvent::Type t, QPointF p, Qt::MouseButton b, Qt::MouseButtons held) {
+                    QMouseEvent e(t, p, cv->mapToGlobal(p), b, held, Qt::NoModifier);
+                    QApplication::sendEvent(cv, &e);
+                };
+                // The selected fan (s46_fan) in front of the camera, so its outline is in the picture.
+                look(w, ctx.doc.selectionBounds().center(), 45, -20, 220);
+                settle(w, 1500);
+                s.trigger("GizmoScale");
+                cv->renderNow();
+                const Vec3 c = ctx.doc.selectionBounds().center();
+                const double L = std::max(8.0, length(c - ctx.cam.pos) * 0.18);
+                std::optional<QPointF> grabAt;
+                for (double f : {1.0, 0.95, 0.9, 0.8, 0.7})
+                    if (const std::optional<QPointF> p = cv->widgetPointOf(c + Vec3{0, 0, L * f})) {
+                        mouse(QEvent::MouseMove, *p, Qt::NoButton, Qt::NoButton);
+                        if (cv->gizmoHoverAxis() == 2) {
+                            grabAt = p;
+                            break;
+                        }
+                    }
+                const std::optional<QPointF> further = cv->widgetPointOf(c + Vec3{0, 0, L * 1.8});
+                if (grabAt && further) {
+                    mouse(QEvent::MouseButtonPress, *grabAt, Qt::LeftButton, Qt::LeftButton);
+                    mouse(QEvent::MouseMove, *further, Qt::NoButton, Qt::LeftButton);
+                    s.window("scale_preview.png", "Dragging the gizmo's Z scale handle: the yellow outline is the selection's size after release", 1200);
+                    QTest::keyClick(cv, Qt::Key_Escape);
+                    mouse(QEvent::MouseButtonRelease, *further, Qt::LeftButton, Qt::NoButton);
+                } else {
+                    s.skip("scale_preview.png", "The gizmo's scale handle mid-drag", "the Z handle was not found on screen");
+                }
+                s.trigger("GizmoScale");
+            }
             qApp->removeEventFilter(&keeper);
             QFile f(QDir(outDir).filePath("feature-shots.txt"));
             if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(s.report.join("\n").toUtf8() + "\n");

@@ -1950,7 +1950,6 @@ void MainWindow::buildMenus() {
         proc->start();
         ctx_.setStatus("Rebuilding " + stockZone_ + " in " + work + " (Console shows progress)");
     });
-    recentMenu_ = file->addMenu("Recent");
     rebuildRecentMenu();
     file->addSeparator();
     addCommand(file, "Save", "&Save", QKeySequence("Ctrl+S"), [this] { save(); });

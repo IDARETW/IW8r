@@ -3569,6 +3569,16 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 "File > Stock Map holds the stock map commands (not the File menu itself)");
         r.check(exportMenu && exportMenu->actions().contains(w.action("ExportOverview")) && prefabs && prefabs->actions().contains(w.action("InsertPrefab")),
                 "File > Export and File > Prefabs hold their commands");
+        int recents = 0;
+        QAction* afterOpen = nullptr;
+        if (fileMenu) {
+            const QList<QAction*> fa = fileMenu->actions();
+            for (QAction* x : fa)
+                if (x->menu() && x->text().remove('&') == "Recent") ++recents;
+            if (const int i = int(fa.indexOf(w.action("Open"))); i >= 0 && i + 1 < fa.size()) afterOpen = fa[i + 1];
+        }
+        r.check(recents == 1 && afterOpen && afterOpen->menu() && afterOpen->text().remove('&') == "Recent",
+                QString("File has one Recent submenu, right under Open (%1 found)").arg(recents));
         if (editMenu) {
             const QList<QAction*> acts = editMenu->actions();
             const int i = int(acts.indexOf(w.action("SelectConnected")));

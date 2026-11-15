@@ -20,7 +20,7 @@ def patch(p, a, b, count=1):
     s = io.open(ROOT + p, encoding='utf-8', newline='').read()
     nl = '\r\n' if '\r\n' in s else '\n'
     a = a.replace('\n', nl); b = b.replace('\n', nl)
-    if b in s:  # applied already (b can contain a: never apply twice)
+    if b in s and (a not in s or a in b):  # applied already (and b is not just text found elsewhere)
         return
     assert s.count(a) == count, (p, s.count(a), a[:80])
     io.open(ROOT + p, 'w', encoding='utf-8', newline='').write(s.replace(a, b))

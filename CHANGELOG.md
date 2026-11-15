@@ -37,6 +37,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
   commands (Alt+Shift+number, rebindable). Tools > Hotkeys asks before giving a key that another command has. CSG
   Hollow / Subtract / Cylinder say what to select. An asset dropped onto open air in the camera lands 256 units in
   front of it.
+- **3D camera and dialogs** (second review): the gizmo highlights the handle under the mouse and changes the cursor;
+  moves snap onto the grid; rotation turns about the rings you see; dragging a scale handle draws the selection's new
+  size as a yellow outline before anything changes (Esc cancels); a key or button pressed during a drag no longer
+  leaves it half done; the Console gets one line per drag. Game mode presets ask before they are replaced or deleted;
+  Atmosphere's OK stays off while a vision override does not parse; Sun & Sky points out a misspelled sky; Find /
+  Replace says what is missing; Install / Restore buttons say what they do.
 - **Overlapping objects**: clicking the same spot again in the camera selects the next object behind, round robin;
   the status bar says which of how many. Shift+Alt+click steps from the current selection.
 - **Edit > Select All** (Ctrl+A); Select All and Invert Selection leave hidden and filtered objects alone.
