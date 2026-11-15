@@ -40,9 +40,14 @@
   settle() had counted its calm frames; settle() now waits for terrainLayersCurrent() and referencePending() too.
   Committed 66c4684. Suites: core 183,869 / 1,417 tests, GUI 1,105, smoke ok. Benches: Hideout 9.8, Aniyah 11.7,
   Speedball 6.2, Verdansk 18.7 ms (complete picture: lightmap, 120 probes, 82 light grid zones, near terrain layers).
-  Installer and zip rebuilt 05:44 (no ini). Parked: editor open on out/agent/mp_cinderrail_toon. Left by decision of
-  research 132/133: only G13 distortion (one unit of shift). Owner: Cinder Rail in game (TEST_CHECKLIST item 0) and
-  the editor look list at the top of TEST_CHECKLIST.
+  Then a4d87f3: View > Game Lighting Options > Stock Map Detail (saved toggles for GTAO, prop light grid, prop
+  lightmaps, self-visibility, detail layers, clear coats, model displacement, thin push; shader off mask in
+  gameTime.y; GUI test 1,134 checks). PLAN_REMAINING has a status-at-a-glance table.
+  Final benches on a4d87f3 (nothing pending at the shots): Speedball 6.7, Hideout 9.9, Aniyah 13.5, Verdansk ground
+  22.2, Verdansk raised 25.5 ms (all within budget; out/agent/fin_*). Installer and zip rebuilt 05:53 (no ini).
+  Parked: editor open on out/agent/mp_cinderrail_toon. Left by decision of research 132/133: only G13 distortion (one
+  unit of shift). Owner: Cinder Rail in game (TEST_CHECKLIST item 0) and the editor look list at the top of
+  TEST_CHECKLIST.
 - 2026-11-14 late evening (after the Cinder Rail fix): converter e648a414 (research 134 rewritten from the client
   PDB: DB_PatchMem's asset stack of two is pushed by nearly every loader; every asset type counts) is live, and the
   fixed Cinder Rail (same inputs as the 20:15 build) was installed at 20:40 with the owner's OK; not yet seen loading.
