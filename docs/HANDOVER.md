@@ -12,8 +12,14 @@ Update, morning of 2026-11-15: the viewport's Game Lighting gained the night's r
 (CHANGELOG 2026-11-15): props lit per vertex from the light grid (Warzone tiles too), self-visibility, lightmapped
 props, the game's GTAO, every layer kind of layered props (colour, normal, gloss, tint masks, clear coats), layer masks
 read as the game reads them, and static-model displacement. Each of these can be turned off for a comparison in View >
-Game Lighting Options > Stock Map Detail. Installer and zip rebuilt 10:17 from commit f694426 (effect preview and map fonts included). Frame times with
-everything on: Speedball 6.7, Hideout 9.9, Aniyah 13.5, Verdansk 22.2 ms (25.5 ms from above the town).
+Game Lighting Options > Stock Map Detail. Frame times with everything on: Speedball 6.7, Hideout 9.9, Aniyah 13.5,
+Verdansk 22.2 ms (25.5 ms from above the town).
+
+Update, midday of 2026-11-15: the editor's window was reorganised and a review of small quirks was worked through
+(CHANGELOG 2026-11-15; USER_GUIDE section 2). The browsers open from a side bar at the left edge into a side section;
+the Console, Compile and the other logs are tabs under the camera (Ctrl+J folds them); clicking the same spot again
+selects the next of several overlapping objects. Installer and zip rebuilt 12:01 from commit 0b5b465 (no settings
+file inside).
 
 ## 1. What to install
 
