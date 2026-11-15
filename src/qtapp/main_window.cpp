@@ -531,6 +531,33 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         fxSims_[fx] = out;  // also remembers "no export" (cleared when Effect Info exports one)
         return out;
     });
+    // Research 138 section 6: an effect material for the particle preview, from the material cache (asked for when
+    // missing). Distortion and flare sets are skipped; the 13th technique token ends in 23 on unlit sets (they add
+    // their emissive image) and in b on lit ones; constant 94 = (columns, rows, ...) of the atlas.
+    camera_->setParticleMaterials([this](const std::string& m) {
+        CameraView::ParticleMaterial pm;
+        const auto e = matCache_->lookup(qs(m));
+        if (!e) {
+            matCache_->request({qs(m)});
+            return pm;
+        }
+        pm.ready = true;
+        if (e->failed) return pm;
+        const QString ts = e->techset.section('/', -1);
+        pm.skip = ts.startsWith("dist_") || ts.contains("distortion") || qs(m).startsWith("ecf/");
+        const QStringList tok = ts.split('_');
+        if (tok.size() > 12) pm.lit = !tok[12].endsWith("23");
+        if (e->colorDds.isEmpty() && !e->emissiveDds.isEmpty()) pm.lit = false;
+        pm.colorFile = e->colorDds.toStdString();
+        pm.alphaFile = e->maskDds.toStdString();
+        pm.emissiveFile = e->emissiveDds.toStdString();
+        pm.densityFile = e->transmissionDds.toStdString();
+        if (const auto c = e->consts.find(94); c != e->consts.end() && c->second[0] >= 1 && c->second[1] >= 1)
+            pm.cols = int(std::lround(c->second[0])), pm.rows = int(std::lround(c->second[1]));
+        if (const auto c = e->consts.find(36); c != e->consts.end())
+            for (int k = 0; k < 3; ++k) pm.emissive[k] = std::max(0.0f, c->second[size_t(k)]);
+        return pm;
+    });
     camera_->setProbeFolder([this] {
         const QString d = compile_ ? compile_->buildRoot() + "/probe_capture" : QString();
         return QFileInfo(d).isDir() ? d : QString();
@@ -4715,7 +4742,7 @@ void MainWindow::loadDocument(const QString& path) {
             std::vector<CameraView::StockEffect> fx;
             QSet<QString> names;
             for (const auto& e : dump.effects) {
-                fx.push_back({e.origin, e.effect});
+                fx.push_back({e.origin, e.effect, e.angles});
                 names.insert(qs(e.effect));
             }
             camera_->setStockEffects(std::move(fx));

@@ -293,6 +293,11 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
     cam->setFixedRenderSize(1920, 1080);
     cam->setWindTime(0);
     cam->setEffectTime(0);
+    // IW8R_BENCH_FX=<seconds>: View > Effect Preview on, the placed effects shown at that time of their run.
+    if (const QString fxT = qEnvironmentVariable("IW8R_BENCH_FX"); !fxT.isEmpty()) {
+        ctx.effectPreview = true;
+        cam->setEffectTime(fxT.toDouble());
+    }
     const int frames = std::max(8, qEnvironmentVariableIsSet("IW8R_BENCH_FRAMES") ? qEnvironmentVariableIntValue("IW8R_BENCH_FRAMES") : 120);
     iw8r::app::Prof::on = qEnvironmentVariableIntValue("IW8R_BENCH_PROFILE") > 0;  // section timers in the report
     const QString only = qEnvironmentVariable("IW8R_BENCH_ONLY");  // "" = every scenario, else a comma list of names
@@ -424,6 +429,27 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                 fixedCam = true;
                 report << QString("bench_cam prop %1 %2 at %3 %4 %5").arg(QString::fromStdString(in.model)).arg(n).arg(in.origin.x)
                               .arg(in.origin.y).arg(in.origin.z);
+                break;
+            }
+    }
+    // IW8R_BENCH_CAM="fx <effect name part> N [distance] [yaw] [height] [fov]": look at the Nth placed stock effect whose
+    // name holds the part, from `distance` (default 400) units back along `yaw` (default 0), `height` (default 100) up.
+    if (camParts.size() >= 3 && camParts[0] == "fx") {
+        const std::string part = camParts[1].toStdString();
+        const int n = camParts[2].toInt();
+        const double dist = camParts.size() >= 4 ? camParts[3].toDouble() : 400.0, yaw = camParts.size() >= 5 ? camParts[4].toDouble() : 0.0;
+        const double up = camParts.size() >= 6 ? camParts[5].toDouble() : 100.0;
+        int seen = 0;
+        if (iw8r::qt::CameraView* cv = w.cameraView())
+            for (const auto& fx : cv->stockEffects()) {
+                if (fx.name.find(part) == std::string::npos || seen++ < n) continue;
+                const double r = yaw * 3.14159265358979 / 180.0;
+                benchCam[0] = fx.origin.x - std::cos(r) * dist, benchCam[1] = fx.origin.y - std::sin(r) * dist;
+                benchCam[2] = fx.origin.z + up, benchCam[3] = yaw, benchCam[4] = -std::atan2(up, dist) * 180.0 / 3.14159265358979;
+                benchCam[5] = camParts.size() >= 7 ? camParts[6].toDouble() : 70;
+                fixedCam = true;
+                report << QString("bench_cam fx %1 %2 at %3 %4 %5").arg(QString::fromStdString(fx.name)).arg(n).arg(fx.origin.x)
+                              .arg(fx.origin.y).arg(fx.origin.z);
                 break;
             }
     }
@@ -846,6 +872,7 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             report << QString("game_sky exposure=%1 mean_lum=%2 high_lum=%3").arg(sl[0]).arg(sl[1]).arg(sl[2]);
             report << QString("instances_culled %1").arg(cam->instancesCulled());
             report << QString("background_decodes %1 (%2)").arg(cam->backgroundDecodes()).arg(iw8r::qt::CameraView::backgroundTextureDecode() ? "on" : "off: decoded in place");
+            report << QString("effect_particles %1 (preview %2)").arg(cam->effectParticles()).arg(ctx.effectPreview ? "on" : "off");
             report << QString("terrain_patch centre %1 %2 batches %3 camera %4 %5").arg(w.terrainLayerCentre().x, 0, 'f', 0)
                           .arg(w.terrainLayerCentre().y, 0, 'f', 0).arg(w.terrainLayerBatchCount()).arg(ctx.cam.pos.x, 0, 'f', 0).arg(ctx.cam.pos.y, 0, 'f', 0);
             if (const auto* cl = w.stockClutter(); cl && !cl->empty()) {

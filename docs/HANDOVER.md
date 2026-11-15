@@ -136,8 +136,10 @@ in the game would confirm it; nothing is known to be missing.
   its strength caps at half a unit, so the game draws the scene behind it, untinted, moved by at most half a unit,
   which is what the viewport shows. Since the same day the vertex displacement of stock models and the "code" layers
   (clear coats, research 137) are drawn too.
-- Effect preview (View > Effect Preview): placed effects play as coloured camera-facing quads, not with their sprite
-  images, blend modes or heat-haze distortion. It shows where and how effects move, not their exact look.
+- Effect preview (View > Effect Preview): since 2026-11-15 placed effects draw with their sprite images, atlas
+  animation, size and colour curves, spawn shapes, forces and the game's lit / additive split (research 138). Left
+  out: lens flares, heat-haze distortion, model debris, child effects and the game's per-particle lighting (lit smoke
+  takes the map's ambient and sun instead).
 - Occlusion: thin slanted walls, terrain and models as occluders (other slanted and many-sided brushes hide by the
   box inside them). Removing stock world geometry opens the whole map's occlusion: everything is drawn, which
   costs frame time on that map and nothing else. A local update was decided against (a mistake there makes objects

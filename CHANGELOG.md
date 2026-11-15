@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Effects look like effects in the viewport** (View > Effect Preview; research 138): placed effects now draw with
+  their own sprite images, animated atlas frames, size and colour curves over each particle's life, spawn shapes,
+  spin, mirroring, wind forces, gravity and drag, turned the way the effect is placed. Smoke rises from Shipment's
+  stacks as soft grey plumes, fog sheets drift, sparks and glows add light. Lit smoke takes the map's light in Game
+  Lighting. Flares, heat haze, model debris and child effects are left out; the game's own per-particle lighting is
+  approximated by the map's ambient and sun.
 - **Clear-coated stock props in Game Lighting** (research 137): the game's "code layers" turned out to be a clear coat,
   a colourless second reflection with its own gloss (and on some its own fine normal map) over the finished surface.
   Hideout's corrugated siding and dumpster rubble now catch that faint sheen. The walfa cars carry a coat layer too,

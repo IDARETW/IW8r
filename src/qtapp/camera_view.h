@@ -243,12 +243,25 @@ public:
     struct StockEffect {
         Vec3 origin;
         std::string name;
+        Vec3 angles;  // pitch, yaw, roll of the placement (the effect's axes)
     };
+    // An effect material as the particle preview needs it (research 138 section 6): ready = the material cache has it.
+    struct ParticleMaterial {
+        bool ready = false;
+        bool skip = false;          // distortion and flare sets: not drawn
+        bool lit = true;            // lit sets (albedo, alpha blend); unlit sets add their emissive image
+        std::string colorFile, alphaFile, emissiveFile;
+        std::string densityFile;    // slot 68 (one channel, a transmittance): alpha x (1 - T) (lit sets without slot 27)
+        int cols = 1, rows = 1;     // the atlas (constant 94)
+        float emissive[3] = {1, 1, 1};  // constant 36 of an unlit set
+    };
+    void setParticleMaterials(std::function<ParticleMaterial(const std::string&)> fn) { particleMaterial_ = std::move(fn); }
     void setStockEffects(std::vector<StockEffect> fx) {
         stockEffects_ = std::move(fx);
         update();
     }
     size_t stockEffectCount() const { return stockEffects_.size(); }
+    const std::vector<StockEffect>& stockEffects() const { return stockEffects_; }  // bench cameras
     size_t effectParticles() const { return fxParticles_; }
     size_t effectParticlesDrawn() const { return fxParticles_; }  // tests
     void setEffectTime(double t) { fxTimeOverride_ = t; }        // tests: < 0 = live
@@ -883,6 +896,9 @@ private:
     EffectSource effectSource_;
     std::vector<StockEffect> stockEffects_;
     size_t fxParticles_ = 0;
+    std::function<ParticleMaterial(const std::string&)> particleMaterial_;
+    std::unordered_map<std::string, ParticleMaterial> particleMats_;  // ready ones, by material name
+    int particleTexture(const std::string& material, const ParticleMaterial& pm);  // -1 while loading
     double fxTimeOverride_ = -1;
     int whiteTex_ = -1;
     QElapsedTimer fxClock_;

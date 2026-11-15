@@ -520,6 +520,12 @@ Place an `fx_origin` entity and set `fx` to a stock Replay effect name (`vfx/...
 into the map script, which x64-zt compiles when the **gsc_tool** tool path is set (Tools > Tool Paths). Effects
 load from Replay's always-loaded common zones, so an effect that lives only in another map's zone will not play.
 
+**View > Effect Preview in Camera** plays your `fx_origin` effects and a stock map's own placed effects in the
+textured views: each particle with its sprite image and atlas animation, its size and colour over its life, its
+spawn shape, spin, forces and gravity, turned by the `angles`. Smoke and dust are lit by the map's light in Game
+Lighting; fire, sparks and glows add their light. Lens flares, heat haze, debris models and effects that spawn other
+effects are not shown. The first time an effect material is needed its images are fetched in the background.
+
 **Your own effects** are made in **Tools > Effect Editor**. Build the effect from elements: an image (or a soft
 default particle), blended or additive, looping or one-shot, size and colour from start to end, and so on. Save it
 with the map; the file goes in the map's `fx` folder. Then press **Place in Map**. It puts an `fx_origin` with that

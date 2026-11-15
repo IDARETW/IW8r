@@ -1736,6 +1736,27 @@ float4 ps_tex(PSIn i) : SV_TARGET {
 // Auto exposure metering (setGameMetering): the shown frame back to scene luminance, log-averaged with a centre weight.
 // Game Lighting ambient occlusion: normal-oriented hemisphere samples in world space from the pre-pass depth, then a
 // 4 x 4 depth-aware blur (the sample rotation repeats every 4 pixels, so the blur averages it out).
+// Effect particles (research 138): world-space quads, the sprite's texel x the particle colour. pMode.x = 1: linear
+// output into the HDR scene (Game Lighting), else display space; pMode.y = 1: unlit (additive, output alpha 0).
+const char* kParticleShader = R"(
+cbuffer Part : register(b0) { row_major float4x4 pVp; float4 pLight; float4 pMode; };
+Texture2D pTex : register(t0);
+SamplerState pSamp : register(s0);
+struct VI { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; };
+struct PI { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; };
+PI vs_part(VI i) { PI o; o.pos = mul(float4(i.pos, 1.0), pVp); o.uv = i.uv; o.col = i.col; return o; }
+float3 linOf(float3 c) { return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); }
+float4 ps_part(PI i) : SV_Target {
+    const float4 t = pTex.Sample(pSamp, i.uv);
+    const bool hdr = pMode.x > 0.5;
+    const float3 tex = hdr ? linOf(saturate(t.rgb)) : t.rgb;
+    const float3 col = hdr ? i.col.rgb : pow(max(i.col.rgb, 0.0), 1.0 / 2.2);
+    if (pMode.y > 0.5) return float4(tex * col * pLight.rgb, 0.0);  // unlit: adds (pLight = the emissive scale)
+    const float a = saturate(t.a * i.col.a);
+    return float4(tex * col * pLight.rgb * a, a);                  // lit: premultiplied
+}
+)";
+
 const char* kAoShader = R"(
 Texture2D<float> depthTex : register(t0);
 Texture2D<float> aoIn : register(t1);
@@ -2106,6 +2127,7 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(dsOff_);
     safeRelease(blend_);
     safeRelease(blendAdd_);
+    safeRelease(partVs_), safeRelease(partPs_), safeRelease(partLayout_), safeRelease(partVb_), safeRelease(partCb_), safeRelease(blendPremul_);
     safeRelease(blendMul_);
     safeRelease(vsTex_);
     safeRelease(psTex_);
@@ -2532,6 +2554,118 @@ void SceneRenderer::releaseTargets() {
     for (int k = 0; k < kAoZMips; ++k) safeRelease(aoZRtv_[k]), safeRelease(aoZMipSrv_[k]);
     safeRelease(aoZSrv_), safeRelease(aoZTex_);
     aoValid_ = false;
+}
+
+bool SceneRenderer::createParticleResources() {
+    if (partVs_ && partPs_ && partLayout_ && partCb_ && blendPremul_) return true;
+    if (partTried_ || !dev_) return false;
+    partTried_ = true;
+    ID3DBlob *vsb = nullptr, *psb = nullptr, *errb = nullptr;
+    const bool ok = SUCCEEDED(D3DCompile(kParticleShader, std::strlen(kParticleShader), "iw8r_part", nullptr, nullptr, "vs_part", "vs_5_0", 0, 0, &vsb, &errb)) &&
+                    SUCCEEDED(D3DCompile(kParticleShader, std::strlen(kParticleShader), "iw8r_part", nullptr, nullptr, "ps_part", "ps_5_0", 0, 0, &psb, &errb));
+    if (errb) OutputDebugStringA(static_cast<const char*>(errb->GetBufferPointer()));
+    safeRelease(errb);
+    if (ok) {
+        dev_->CreateVertexShader(vsb->GetBufferPointer(), vsb->GetBufferSize(), nullptr, &partVs_);
+        dev_->CreatePixelShader(psb->GetBufferPointer(), psb->GetBufferSize(), nullptr, &partPs_);
+        const D3D11_INPUT_ELEMENT_DESC il[] = {
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        };
+        dev_->CreateInputLayout(il, 3, vsb->GetBufferPointer(), vsb->GetBufferSize(), &partLayout_);
+    }
+    safeRelease(vsb), safeRelease(psb);
+    D3D11_BUFFER_DESC cbd{};
+    cbd.ByteWidth = 96;
+    cbd.Usage = D3D11_USAGE_DEFAULT;
+    cbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    dev_->CreateBuffer(&cbd, nullptr, &partCb_);
+    D3D11_BLEND_DESC bd{};
+    bd.RenderTarget[0].BlendEnable = TRUE;
+    bd.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+    bd.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    bd.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    bd.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+    bd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+    bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    dev_->CreateBlendState(&bd, &blendPremul_);
+    return partVs_ && partPs_ && partLayout_ && partCb_ && blendPremul_;
+}
+
+void SceneRenderer::drawParticles(const float viewProj[16]) {
+    if (particles_.empty() || !createParticleResources()) return;
+    size_t verts = 0;
+    for (const auto& b : particles_) verts += b.v.size();
+    if (verts == 0) return;
+    const size_t bytes = verts * sizeof(ParticleVertex);
+    if (!partVb_ || partVbBytes_ < bytes) {
+        safeRelease(partVb_);
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth = UINT(std::max<size_t>(bytes, 64 * 1024));
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(dev_->CreateBuffer(&bd, nullptr, &partVb_))) return;
+        partVbBytes_ = bd.ByteWidth;
+    }
+    D3D11_MAPPED_SUBRESOURCE ms{};
+    if (FAILED(ctx_->Map(partVb_, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms))) return;
+    size_t at = 0;
+    for (const auto& b : particles_) {
+        std::memcpy(static_cast<char*>(ms.pData) + at * sizeof(ParticleVertex), b.v.data(), b.v.size() * sizeof(ParticleVertex));
+        at += b.v.size();
+    }
+    ctx_->Unmap(partVb_, 0);
+    const bool hdr = hdrFrame_;
+    // A lit particle takes the scene's ambient and a share of the sun in Game Lighting (the game lights each particle
+    // from the scene; research 138 section 6), 1 elsewhere.
+    float lit[3] = {1, 1, 1};
+    if (game_.on) {
+        const float up = std::max(0.0f, game_.sunToward[2]);
+        for (int c = 0; c < 3; ++c) lit[c] = game_.sky[c] + game_.sunColor[c] * (0.15f + 0.2f * up);
+        if (!hdr) for (int c = 0; c < 3; ++c) lit[c] = std::min(1.5f, std::pow(std::max(lit[c], 0.0f), 1.0f / 2.2f));
+    }
+    ctx_->IASetInputLayout(partLayout_);
+    ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    const UINT stride = sizeof(ParticleVertex), offset = 0;
+    ctx_->IASetVertexBuffers(0, 1, &partVb_, &stride, &offset);
+    ctx_->VSSetShader(partVs_, nullptr, 0);
+    ctx_->PSSetShader(partPs_, nullptr, 0);
+    ctx_->VSSetConstantBuffers(0, 1, &partCb_);
+    ctx_->PSSetConstantBuffers(0, 1, &partCb_);
+    ctx_->PSSetSamplers(0, 1, &sampler_);
+    ctx_->RSSetState(rsTris_);
+    ctx_->OMSetDepthStencilState(dsTest_, 0);
+    const float bf[4] = {0, 0, 0, 0};
+    ctx_->OMSetBlendState(blendPremul_, bf, 0xffffffff);
+    UINT first = 0;
+    for (const auto& b : particles_) {
+        const UINT n = UINT(b.v.size());
+        const int tex = b.texture >= 0 && size_t(b.texture) < textures_.size() ? b.texture : whiteTex_;
+        if (n && tex >= 0 && size_t(tex) < textures_.size()) {
+            float cb[24] = {};
+            std::memcpy(cb, viewProj, 16 * sizeof(float));
+            for (int c = 0; c < 3; ++c) cb[16 + c] = b.lit ? lit[c] : (game_.on ? b.emissive[c] : 1.0f);
+            cb[19] = 1.0f;
+            cb[20] = hdr ? 1.0f : 0.0f, cb[21] = b.lit ? 0.0f : 1.0f;
+            ctx_->UpdateSubresource(partCb_, 0, nullptr, cb, 0, 0);
+            ctx_->PSSetShaderResources(0, 1, &textures_[size_t(tex)]);
+            ctx_->Draw(n, first);
+            stats_.drawCalls++;
+        }
+        first += n;
+    }
+    ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
+    ctx_->OMSetDepthStencilState(dsWrite_, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    ctx_->PSSetShaderResources(0, 1, &none);
+    ctx_->IASetInputLayout(layout_);
+    ctx_->VSSetShader(vs_, nullptr, 0);
+    ctx_->PSSetShader(ps_, nullptr, 0);
+    ctx_->VSSetConstantBuffers(0, 1, &cb_);  // the scene's buffer again for what follows
+    ctx_->PSSetConstantBuffers(0, 1, &cb_);
 }
 
 bool SceneRenderer::createAoResources() {
@@ -6011,6 +6145,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         drawReferenceTexInstances();
     }
     if (deferSceneBlended) drawSceneTex(firstBlendedScene, drawOrder_.size());  // the map's blended batches, last
+    if (!particles_.empty() && !in.clean) drawParticles(viewProj);                // the effect preview (research 138)
     if (hdrFrame_) {
         // The lit scene is done: kept for the next frame's reflections, the post chain into the frame, then the unlit
         // pieces and the editor's overlays.

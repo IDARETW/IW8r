@@ -71,6 +71,21 @@ struct GpuVertex {
 };
 
 // Textured triangles: rgba multiplies the texture (shading and selection tint).
+// An effect particle's corner (research 138): world position, atlas UV, linear colour x intensity (may exceed 1), alpha.
+struct ParticleVertex {
+    float x, y, z;
+    float u, v;
+    float r, g, b, a;
+};
+// One sprite image's particles, already sorted far to near. lit: the colour image's alpha blends and the scene's light
+// scales it; else the emissive image adds (unlit effect sets: output alpha 0, research 138 section 6).
+struct ParticleBatch {
+    int texture = -1;
+    bool lit = true;
+    float emissive[3] = {1, 1, 1};  // an unlit material's emissive scale (constant 36) in Game Lighting
+    std::vector<ParticleVertex> v;  // 6 per quad
+};
+
 struct GpuTexVertex {
     float x, y, z;
     float u, v;
@@ -1032,6 +1047,13 @@ private:
 public:
     // View > Game Lighting: screen-space ambient occlusion on the indirect light (on by default).
     void setGameAo(bool on) { aoOn_ = on; }
+    // The effect preview's particles of this frame (drawn after the scene's blended batches; empty = none).
+    void setParticles(std::vector<ParticleBatch> batches) { particles_ = std::move(batches); }
+    size_t particleQuads() const {
+        size_t n = 0;
+        for (const auto& b : particles_) n += b.v.size() / 6;
+        return n;
+    }
     // View > Game Lighting Options > Stock Map Detail: the game's GTAO (else the stand-in SSAO) and the shader parts
     // turned off (1 self-visibility, 2 detail layers, 4 clear coats, 8 model displacement, 16 thin push).
     void setGameAoGtao(bool on) { gtaoOn_ = on; }
@@ -1142,6 +1164,18 @@ private:
     ID3D11DepthStencilState* dsOff_ = nullptr;
     ID3D11BlendState* blend_ = nullptr;
     ID3D11BlendState* blendAdd_ = nullptr;  // additive (ONE, ONE) for blend 2 batches
+    // The particle pass (research 138).
+    std::vector<ParticleBatch> particles_;
+    ID3D11VertexShader* partVs_ = nullptr;
+    ID3D11PixelShader* partPs_ = nullptr;
+    ID3D11InputLayout* partLayout_ = nullptr;
+    ID3D11Buffer* partVb_ = nullptr;
+    size_t partVbBytes_ = 0;
+    ID3D11Buffer* partCb_ = nullptr;
+    ID3D11BlendState* blendPremul_ = nullptr;  // ONE, INV_SRC_ALPHA
+    bool partTried_ = false;
+    bool createParticleResources();
+    void drawParticles(const float viewProj[16]);
     ID3D11BlendState* blendMul_ = nullptr;  // dst x src colour: stock layers in colour mode multiply
     ID3D11VertexShader* vsTex_ = nullptr;
     ID3D11PixelShader* psTex_ = nullptr;

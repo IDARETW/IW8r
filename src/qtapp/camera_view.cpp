@@ -878,10 +878,10 @@ void CameraView::render() {
         for (auto& sb : skyBatches_) extraBatches_.push_back(sb.get());
     // 8.1: effect particles, re-made every frame (their own batch, after the kept geometry).
     if (ctx_->effectPreview && ctx_->texturedView && effectSource_ && !cleanCapture_) {
-        appendEffectParticles();
-        if (!fxBatch_.v.empty()) extraBatches_.push_back(&fxBatch_);
+        appendEffectParticles();  // their own pass (SceneRenderer::setParticles)
     } else {
         fxParticles_ = 0;
+        renderer_.setParticles({});
     }
     // The gizmo is a small stream of its own, sent again only when it changed.
     gizmoLines_.scratch.clear();
@@ -1883,8 +1883,60 @@ size_t CameraView::loadedNormalMaps() const {
     return n;
 }
 
+int CameraView::particleTexture(const std::string& material, const ParticleMaterial& pm) {
+    // "\x08<material>": the sprite as the effect draws it. Lit: the colour image with its opacity (slot 27's alpha when
+    // it varies, else its red; without one the colour image's own alpha). Unlit: the emissive image, opaque.
+    const std::string key = "\x08" + material;
+    if (const auto it = texIds_.find(key); it != texIds_.end()) return it->second;
+    const std::string& main = pm.lit ? pm.colorFile : (pm.emissiveFile.empty() ? pm.colorFile : pm.emissiveFile);
+    if (main.empty()) return texIds_[key] = -1;
+    DecodedTexture a, m;
+    if (!decodedTexture(main, kViewTextureSide, 1, a)) {
+        moreToLoad_ = true;
+        return -1;
+    }
+    const bool withMask = pm.lit && !pm.alphaFile.empty();
+    if (withMask && !decodedTexture(pm.alphaFile, kViewTextureSide, 1, m)) {
+        moreToLoad_ = true;
+        return -1;
+    }
+    DecodedTexture dn;
+    const bool withDensity = pm.lit && !withMask && !pm.densityFile.empty();
+    if (withDensity && !decodedTexture(pm.densityFile, kViewTextureSide, 1, dn)) {
+        moreToLoad_ = true;
+        return -1;
+    }
+    if (!a.imageOk || a.image.width <= 0 || a.image.height <= 0) return texIds_[key] = -1;
+    app::Rgba8Image& img = a.image;
+    if (withMask && m.imageOk && m.image.width > 0 && m.image.height > 0) {
+        int ch = 0;  // red, unless the alpha varies
+        for (size_t k = 3; k < m.image.pixels.size(); k += 4)
+            if (m.image.pixels[k] < 250) {
+                ch = 3;
+                break;
+            }
+        for (int y = 0; y < img.height; ++y)
+            for (int x = 0; x < img.width; ++x) {
+                const int mx = int(int64_t(x) * m.image.width / img.width), my = int(int64_t(y) * m.image.height / img.height);
+                img.pixels[(size_t(y) * size_t(img.width) + size_t(x)) * 4 + 3] = m.image.pixels[(size_t(my) * size_t(m.image.width) + size_t(mx)) * 4 + size_t(ch)];
+            }
+    } else if (withDensity && dn.imageOk && dn.image.width > 0 && dn.image.height > 0) {
+        for (int y = 0; y < img.height; ++y)
+            for (int x = 0; x < img.width; ++x) {
+                const int mx = int(int64_t(x) * dn.image.width / img.width), my = int(int64_t(y) * dn.image.height / img.height);
+                uint8_t& a = img.pixels[(size_t(y) * size_t(img.width) + size_t(x)) * 4 + 3];
+                // Slot 68 is a transmittance (255 at the cells' edges, near 0 in the smoke): alpha x (1 - T).
+                a = uint8_t((int(a) * (255 - int(dn.image.pixels[(size_t(my) * size_t(dn.image.width) + size_t(mx)) * 4])) + 127) / 255);
+            }
+    } else if (!pm.lit) {
+        for (size_t k = 3; k < img.pixels.size(); k += 4) img.pixels[k] = 255;
+    }
+    const int id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
+    return texIds_[key] = id;
+}
+
 void CameraView::appendEffectParticles() {
-    // Camera-facing quads per particle, in its colour, one blended batch over a white texture.
+    // Research 138: every placed effect's particles as world quads, sorted far to near, one batch per run of a sprite.
     if (whiteTex_ < 0) {
         const uint8_t px[4] = {255, 255, 255, 255};
         whiteTex_ = renderer_.createTexture(px, 1, 1);
@@ -1895,45 +1947,133 @@ void CameraView::appendEffectParticles() {
     const Vec3 up = normalize(cross(right, fwd));
     if (!fxClock_.isValid()) fxClock_.start();
     const double t = fxTimeOverride_ >= 0 ? fxTimeOverride_ : fxClock_.elapsed() / 1000.0;
-    app::SceneBatch& b = fxBatch_;
-    b.v.clear();
-    b.markAll();
-    b.texture = whiteTex_;
-    b.blend = 1;
     fxParticles_ = 0;
     uint32_t seed = 1;
+    struct Placed {
+        Vec3 origin, angles;
+        const std::string* fx;
+    };
     // The mapper's fx_origin entities, then the stock map's own placed effects.
-    std::vector<std::pair<Vec3, const std::string*>> placed;
+    std::vector<Placed> placed;
     for (const Entity& e : ctx_->doc.map().entities) {
         if (e.classname() != "fx_origin") continue;
         const std::string* fx = e.value("fx");
         const auto o = e.origin();
-        if (fx && o) placed.push_back({*o, fx});
+        Vec3 ang{0, 0, 0};
+        if (const std::string* a = e.value("angles")) std::sscanf(a->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z);
+        if (fx && o) placed.push_back({*o, ang, fx});
     }
-    for (const StockEffect& s : stockEffects_) placed.push_back({s.origin, &s.name});
+    for (const StockEffect& s : stockEffects_) placed.push_back({s.origin, s.angles, &s.name});
     const Vec3 eye = ctx_->cam.pos;
-    for (const auto& [origin, fx] : placed) {
-        const auto o = std::optional<Vec3>(origin);
+    struct Quad {
+        float depth;
+        int texture;
+        bool lit;
+        float emissive[3];
+        app::ParticleVertex v[6];
+    };
+    std::vector<Quad> quads;
+    const auto materialOf = [&](const std::string& name) -> const ParticleMaterial* {
+        if (name.empty() || !particleMaterial_) return nullptr;
+        if (const auto it = particleMats_.find(name); it != particleMats_.end()) return &it->second;
+        ParticleMaterial pm = particleMaterial_(name);
+        if (!pm.ready) {
+            moreToLoad_ = true;  // asked again next frame
+            return nullptr;
+        }
+        return &(particleMats_[name] = pm);
+    };
+    for (const auto& pl : placed) {
         ++seed;
         // Far effects are left out (the game culls them by distance too); the 20,000 particle budget goes to near ones.
-        if (length(origin - eye) > 12000) continue;
-        const auto def = effectSource_(*fx);
+        const double dist = length(pl.origin - eye);
+        if (dist > 12000) continue;
+        const auto def = effectSource_(*pl.fx);
         if (!def || def->emitters.empty()) continue;
-        const double loop = def->duration > 0 ? def->duration + 0.5 : 4.0;  // one-shots replay after a short pause
-        for (const VfxParticle& p : sampleVfx(*def, std::fmod(t, loop), seed)) {
-            const Vec3 c = *o + Vec3{p.pos[0], p.pos[1], p.pos[2]};
-            const double h = std::max(1.0, p.size * 0.5);
-            const uint32_t rgba = uint32_t(std::clamp(p.rgba[0], 0.f, 1.f) * 255) | (uint32_t(std::clamp(p.rgba[1], 0.f, 1.f) * 255) << 8) |
-                                  (uint32_t(std::clamp(p.rgba[2], 0.f, 1.f) * 255) << 16) | 0xff000000u;
-            auto v = [&](double sx, double sy, float u, float vv) {
-                const Vec3 q = c + right * (sx * h) + up * (sy * h);
-                return app::GpuTexVertex{float(q.x), float(q.y), float(q.z), u, vv, rgba};
+        const double loop = def->duration > 0 ? def->duration + 0.5 : 60.0;  // one-shots replay after a short pause
+        const VfxAxes ax = vfxAxesFromAngles(pl.angles.x, pl.angles.y, pl.angles.z);
+        for (const VfxParticle& p : sampleVfx(*def, std::fmod(t, loop), seed, &ax)) {
+            const VfxEmitterSim& em = def->emitters[size_t(p.emitter)];
+            if (em.fadeOutMaxDistance > 0 && dist > em.fadeOutMaxDistance) continue;
+            if (em.element != 0 && em.element != 8 && em.element != 10) continue;  // flares, models, lights, runners, decals
+            const std::string& matName = size_t(p.material) < em.materials.size() ? em.materials[size_t(p.material)] : em.material;
+            const ParticleMaterial* pm = materialOf(matName);
+            if (pm && pm->skip) continue;
+            int tex = pm ? particleTexture(matName, *pm) : -1;
+            const bool lit = pm ? pm->lit : true;
+            int cols = pm ? std::max(1, pm->cols) : 1, rows = pm ? std::max(1, pm->rows) : 1;
+            if (tex < 0) tex = whiteTex_, cols = rows = 1;  // not loaded (yet): the particle's colour on a plain quad
+            const Vec3 c = pl.origin + Vec3{p.pos[0], p.pos[1], p.pos[2]};
+            const double w = std::max(0.25, p.size2[0] * 0.5), h = std::max(0.25, p.size2[1] * 0.5);
+            Vec3 ax0, ax1;  // half extents
+            if (em.element == 10) {
+                // A tail: long along the velocity seen from the camera, behind the particle.
+                const Vec3 vel{p.vel[0], p.vel[1], p.vel[2]};
+                const double speed = length(vel);
+                Vec3 dir = speed > 1e-6 ? vel - fwd * dot(vel, fwd) : up;
+                dir = length(dir) > 1e-6 ? normalize(dir) : up;
+                const Vec3 side = normalize(cross(dir, fwd));
+                const double len = std::max(h, em.tailScaleWithVelocity ? speed * 0.033 * 0.5 : h);
+                ax0 = side * w, ax1 = dir * len;
+            } else if (em.element == 8) {
+                // An oriented sprite: the quaternion's y and z axes in the effect's frame (INFERRED facing).
+                const double* q = em.orientQuat;
+                const auto rot = [&](const double v[3], double o[3]) {
+                    const double qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+                    const double tx = 2 * (qy * v[2] - qz * v[1]), ty = 2 * (qz * v[0] - qx * v[2]), tz = 2 * (qx * v[1] - qy * v[0]);
+                    o[0] = v[0] + qw * tx + (qy * tz - qz * ty), o[1] = v[1] + qw * ty + (qz * tx - qx * tz), o[2] = v[2] + qw * tz + (qx * ty - qy * tx);
+                };
+                const double ly[3] = {0, 1, 0}, lz[3] = {0, 0, 1};
+                double ry[3], rz[3];
+                rot(ly, ry), rot(lz, rz);
+                const auto world = [&](const double l[3]) {
+                    return Vec3{ax.x[0] * l[0] + ax.y[0] * l[1] + ax.z[0] * l[2], ax.x[1] * l[0] + ax.y[1] * l[1] + ax.z[1] * l[2],
+                                ax.x[2] * l[0] + ax.y[2] * l[1] + ax.z[2] * l[2]};
+                };
+                const double ca = std::cos(p.angle), sa = std::sin(p.angle);
+                const Vec3 a0 = world(ry), a1 = world(rz);
+                ax0 = (a0 * ca + a1 * sa) * w, ax1 = (a1 * ca - a0 * sa) * h;
+            } else {
+                // A billboard, turned by the particle's angle.
+                const double ca = std::cos(p.angle), sa = std::sin(p.angle);
+                ax0 = (right * ca + up * sa) * w, ax1 = (up * ca - right * sa) * h;
+            }
+            // The atlas cell, mirrored as the particle says.
+            const int frames = cols * rows;
+            const int f = vfxAtlasFrame(em, p, frames);
+            const int col = f % cols, row = f / cols;
+            float u0 = float(col) / float(cols), u1 = float(col + 1) / float(cols);
+            float v0 = float(row) / float(rows), v1 = float(row + 1) / float(rows);
+            if (p.flipU) std::swap(u0, u1);
+            if (p.flipV) std::swap(v0, v1);
+            Quad qd;
+            qd.depth = float(dot(c - eye, fwd));
+            qd.texture = tex;
+            qd.lit = lit;
+            for (int k = 0; k < 3; ++k) qd.emissive[k] = pm ? pm->emissive[k] : 1.0f;
+            const auto corner = [&](double sx, double sy, float u, float v) {
+                const Vec3 q = c + ax0 * sx + ax1 * sy;
+                return app::ParticleVertex{float(q.x), float(q.y), float(q.z), u, v, p.rgba[0], p.rgba[1], p.rgba[2], p.rgba[3]};
             };
-            const app::GpuTexVertex a = v(-1, -1, 0, 1), bb = v(1, -1, 1, 1), cc = v(1, 1, 1, 0), d = v(-1, 1, 0, 0);
-            b.v.insert(b.v.end(), {a, bb, cc, a, cc, d});
+            const app::ParticleVertex a = corner(-1, -1, u0, v1), b = corner(1, -1, u1, v1), cc = corner(1, 1, u1, v0), d = corner(-1, 1, u0, v0);
+            qd.v[0] = a, qd.v[1] = b, qd.v[2] = cc, qd.v[3] = a, qd.v[4] = cc, qd.v[5] = d;
+            quads.push_back(qd);
             if (++fxParticles_ >= 20000) break;
         }
+        if (fxParticles_ >= 20000) break;
     }
+    // Far to near, then runs of one sprite and kind become one batch (the premultiplied blend keeps the order right).
+    std::stable_sort(quads.begin(), quads.end(), [](const Quad& x, const Quad& y) { return x.depth > y.depth; });
+    std::vector<app::ParticleBatch> batches;
+    for (const Quad& q : quads) {
+        if (batches.empty() || batches.back().texture != q.texture || batches.back().lit != q.lit) {
+            batches.emplace_back();
+            batches.back().texture = q.texture, batches.back().lit = q.lit;
+            std::copy(q.emissive, q.emissive + 3, batches.back().emissive);
+        }
+        batches.back().v.insert(batches.back().v.end(), q.v, q.v + 6);
+    }
+    renderer_.setParticles(std::move(batches));
 }
 
 void CameraView::scanProbes() {
