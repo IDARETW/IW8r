@@ -79,6 +79,25 @@ all 13 of A028's (terrain, `XModel` 688, `XSurface` 192, `XModelSurfs` 96, `StMe
 | `cg_t` | CORRECTION of the wave 2 ripple: members after `viewModelPoseLeftHand` restored to their earlier offsets (`firstPersonLegsPose` +8, everything after +16; pads absorb the 8 bytes each smaller `cpose_t` frees), size kept at 599712 | `cg_t::cg_t` 0x1416C1C29 `mov [rbx+92688h], r13` = `m_mlgSpectatorPtr` at +599688 (A036 measured `m_weaponHand` at +599608; A039 measured the `patternCacheList` construction at +534512; both land now). Lesson: letting parents move with a shrunk child was wrong here, so the same move in `CgPredictedEntity` and `MayhemObj` (wave 2) is suspect |
 | `cg_t` | size 620640 -> 599712 (0x926A0): cut the tail; dropped `m_compassFriendlyFlag` (+0x926A2), `m_compassCarrierValue` (+0x926C4), `m_compassSharedPtr` (+0x97858) and two pads, which are `CgGlobalsMP` members in Replay | A039: `CgGlobalsMP_ctor` writes its omnvar indexes at +599732 = cg_t + 0x14 (the game-test gap between `cg_t` and `m_omnvarIndexIsNightMap`); A037: `cg_t::cg_t` writes up to +599688; 599712 is 16-byte aligned. Nothing embeds `cg_t` by value. `CgGlobalsMP` is 747296 in the type but `CG_AllocLocalClientGlobals` steps 677040 (A076 in wave 8 has the dropped names) |
 
+## cg_t from Replay logic (owner request, during wave 5)
+
+| Struct | Change | Evidence |
+|---|---|---|
+| `cg_t` | rebuilt at 599712 from Replay's own accesses: 251 named members (82% of the bytes), real base types from the game-test type dump; members whose local type is wrong for Replay are named byte arrays of the Replay size | `docs/ida_types/CG_T.md`: exe scan of every `LocalClientGlobals[n]` / `this` access (2715 offsets), function-by-function alignment with game-test (282 shared functions, 58 anchors, final delta exactly -207888), layout between anchors with corrected local sizes. Independent checks all land (constructor stores, A036/A037/A039/A040 offsets, the four poses from `CG_ViewMP_InitRandomOffsets`). Backup before: `out/ida_types/backup/local_types_20261115_before_cg_t_scan.h` |
+| `LocalClientGlobals` (0x14F26F940) | typed `cg_t *LocalClientGlobals[1]` (one slot; the next global is 8 bytes later) | decompiles now read `LocalClientGlobals[localClientNum]->inKillCam`, `->compassMapMaterial`, ... |
+
+## Wave 5
+
+Pending for the apply pass:
+- `characterInfo_t` 13728 -> 13720: stride 0x3598 in `CgGlobalsSP::GetCharacterInfo` (`13720 * i + this + 662704`),
+  `CG_Heat_UpdateWorldmodel`, `CG_SnapshotMP_TransitionSnapshot` (also `memset(..., 0x3598)`); the anim tree pointer is
+  read at +0x7F0 (type +0x7F8), so the 8 extra bytes sit between +0x5E8 and +0x7F0 (A041, who filled `team` int +0x0C).
+- `GWeaponMap` 4112 -> 2424 (`GWeaponMap::AllocateMemory` 0x140FF7170 allocates 2424); `m_header` renamed `m_entries`
+  (A043). `GScrWeaponData` 62 looks like {u16 index; Weapon weapon (60)} (stride 62 in `GScr_Weapon_GetRefConst`).
+- `trace_t` 96 -> 72? (`BgMissile_TraceMissileImpact` 0x140CD24C0 clears and copies 72 bytes; A043, consistent with
+  A008's 80-byte `BgGroundState`).
+- `ai_scripted_t`: A046 filled 6 fields; `codeGoal` probably at +0x260 (type +0x258).
+
 ### Open questions (need more Replay evidence)
 
 - `clientState_t` 408 -> 400? Strides of 400 in `CL_ParseMP_ParsePacketClients` 0x1415F1B80 (`+ 400 * (index % count)`,
