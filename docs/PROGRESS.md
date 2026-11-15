@@ -7,10 +7,14 @@
   (14e801d; IW8R_NO_PROP_LGV_GPU). Shipment water's dual scrolling normals (4f0431e; IW8R_NO_DUAL_NORMAL; bench camera
   "mat <material> N"). SELFVIS (d512c41): ACTS fork 3667413c (pushed and deployed, old exe in
   `E:\mw124\atian-cod-tools\build\bin\Release\prev-20261114-selfvis`) exports `_SELFVIS`; the model cache fetches drawn
-  models cached before again in the background (`refreshGeometry`, index key `selfvis`); IW8R_NO_SELFVIS. Installer
-  rebuilt 23:42 (before SELFVIS; no ini). Left of research 132/133: G9 rest (lerp layers, modes 2/3), G13 distortion,
-  G14 GTAO, static-model displacement (+-1 unit), the LGV thin push, Warzone tile props per vertex, lightmapped tml
-  props. All suites green at d512c41 (core 183,433 / 1,414 tests, GUI 1,105).
+  models cached before again in the background (`refreshGeometry`, index key `selfvis`); IW8R_NO_SELFVIS.
+  2026-11-15 a2c68bf: Warzone tile props per vertex (core packStockLgvAtlases stacks main + tile atlases; Verdansk 82
+  zones). Verdansk regression from b649991 found and fixed: vehicle spawns drew 100k+-triangle LOD0 each (17 M
+  triangles, 452-672 ms, 21 GB committed); with more than eight spawns they draw the last LOD -> 15.5 ms, 9 GB.
+  Bench note: stockCacheIdle now waits for model fetches too, so a Verdansk bench runs about 10 minutes before the
+  shots; IW8R_BENCH_ITEMS lists scene triangles by item. Installer and zip rebuilt 01:25 (no ini). Left of research
+  132/133, each recorded as decided: G9 rest, G13 (decoded), G14, static-model displacement, the LGV thin push,
+  lightmapped tml props. All suites green at a2c68bf (core 183,845 / 1,415 tests, GUI 1,105).
 - 2026-11-14 late evening (after the Cinder Rail fix): converter e648a414 (research 134 rewritten from the client
   PDB: DB_PatchMem's asset stack of two is pushed by nearly every loader; every asset type counts) is live, and the
   fixed Cinder Rail (same inputs as the 20:15 build) was installed at 20:40 with the owner's OK; not yet seen loading.
