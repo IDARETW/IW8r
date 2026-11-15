@@ -2,6 +2,21 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-15 evening, threading (owner: "the viewport rendering being on one thread so its never frozen, and other
+  workloads on others") and narrow side panels (owner: menus "need way too much horizontal space"; one Haiku agent per
+  panel, 6eb38b5). Measured first: stall_watch.h (Tools > Report Freezes to the Console, or IW8R_STALL_WATCH=<ms>,
+  IW8R_STALL_REPORT=<file>; samples the GUI thread's stack, names functions from the PDB), IW8R_QUIT_AFTER=<s>, and
+  `stock:<zone .ff>` as the start-up argument. Fixed (5fcb38d, 3dfccdd): shader_cache.h (built-in shaders compiled on
+  worker threads into AppLocalData/shader_cache, prewarmed from main), asset browser catalogues, material / model
+  cache indexes and thumbnail packs read on worker threads (waitForCatalogs holds automated runs), prop models read
+  and converted on worker threads (MainWindow::startRefPropPrep; the pass with models pending leaves the screen as it
+  is; stockCacheIdle includes it), game bake gather memoized per material, material index written in the background,
+  findVfxExport lists the caches once, sky decoded on a worker. Results: start-up freeze 18.7 s -> 0.5 s; Hideout
+  session 57.4 s of freezes (longest 18.7 s) -> 5.4 s (longest 1.7 s); bench frames unchanged. Left (all in
+  CameraView::render, each under 1.7 s): the stock lightmap / tex-instance uploads, CameraGeometry::update while
+  textures stream in, projectPropDecals, the document load's SceneCache::sync. Rendering itself is still on the GUI
+  thread: a separate render thread only helps once input is handled there too (see the turn's reply to the owner).
+
 - 2026-11-15 after the restart: old File menu paths in messages rewritten (c762771); GUI checks for the second
   review's dialog and camera fixes; gizmo scale drag draws the scaled bounds as a yellow outline (6188e0d); a second,
   never-filled Recent menu removed (the regroup patch's applied-already guard matched text found elsewhere; guard fixed:
