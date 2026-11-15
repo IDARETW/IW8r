@@ -257,8 +257,8 @@ reveal ramp, the alpha and the slot-126 mask (record rows 16-23, images at t36 a
 layers on the frame; Aniyah Tac 11.5 ms, Hideout 9.4 ms (separate passes had cost 6.7 ms on Aniyah). Later the
 same night the fold took the layers' normal, cavity and gloss too (flags 1 / 2 / 4, normal mode lerp / add / none,
 overlays add and pull cavity and gloss toward the lower value; rows 24-25, normal maps at t48 / t49), so colour modes
-2 / 3 are drawn; Hideout 9.4 ms, Aniyah 11.8 ms. Left by decision: code layers (not decoded) and the per-layer tint
-masks (slot 59 + L). A/B: `IW8R_NO_LERP_LAYERS`, `IW8R_NO_LAYER_FOLD`.
+2 / 3 are drawn; Hideout 9.4 ms, Aniyah 11.8 ms. The per-layer tint masks (slot 59 + L, flags & 64) too
+(t50 / t51). Left by decision: the 14 code layers (vehicle dirt / rubble sets; their blend loop is not decoded). A/B: `IW8R_NO_LERP_LAYERS`, `IW8R_NO_LAYER_FOLD`.
 
 ### G10 (medium-low). The sky is an 8-bit 256-texel cube
 

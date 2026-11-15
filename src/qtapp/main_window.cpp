@@ -434,6 +434,10 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             if (tk.mask126)
                 for (const QString& t : e->textures)
                     if (t.startsWith("126=")) f.layerMaskImage = t.mid(4).toStdString();
+            f.layerTintMaskImage.assign(size_t(std::max(e->modelLayers, 1)), std::string());
+            for (int L = 1; L < e->modelLayers; ++L)
+                for (const QString& t : e->textures)
+                    if (t.startsWith(QString::number(59 + L) + "=")) f.layerTintMaskImage[size_t(L)] = t.section('=', 1).toStdString();
         }
         if (const auto* c110 = cst(110))  // the water's two scrolling normal layers (research 133 section 5.3)
             if (const auto* c111 = cst(111)) {

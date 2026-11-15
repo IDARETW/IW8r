@@ -130,6 +130,7 @@ struct PropLayer {
     int mask = -1;          // slot 126 (research 136), -1: none
     float aux[4] = {};      // row 8 of the layer buffer: the second UV set (1), the mask channel + 1
     int normal = -1;        // the layer's normal + gloss + cavity map (folded layers only)
+    int tintMask = -1;      // slot 59 + L (flags & 64; folded layers only), -1: none
     float nrm[4] = {};      // normal mode + 1 (0: none), normal strength, gloss scale, gloss bias
 };
 struct PropMeshData {
@@ -334,7 +335,7 @@ public:
             r[4] = L.params[4], r[5] = L.params[5], r[6] = L.params[6], r[7] = L.aux[1];
             for (int k = 0; k < 4; ++k) r[8 + k] = L.params[8 + k];
             r[12] = L.params[12], r[13] = L.params[13], r[14] = L.aux[0];
-            g.foldTex[2 * f] = L.texture, g.foldTex[2 * f + 1] = L.reveal, g.foldTex[4 + f] = L.normal;
+            g.foldTex[2 * f] = L.texture, g.foldTex[2 * f + 1] = L.reveal, g.foldTex[4 + f] = L.normal, g.foldTex[6 + f] = L.tintMask;
             for (int k = 0; k < 4; ++k) g.fold[32 + 4 * f + k] = L.nrm[k];
             if (L.mask >= 0) g.foldMask = L.mask;
             ++f;
@@ -850,7 +851,7 @@ private:
         // Research 136: the first two colour layers folded into the mesh's own pass (rows 16-23 of its record) and their
         // images (colour 1, alpha / reveal 1, colour 2, alpha / reveal 2; -1 none) and the slot-126 mask.
         float fold[40] = {};  // rows 16-23 colour, rows 24-25 normal (one per folded layer)
-        int foldTex[6] = {-1, -1, -1, -1, -1, -1};  // colour 1, alpha / reveal 1, colour 2, alpha / reveal 2, normal 1, normal 2
+        int foldTex[8] = {-1, -1, -1, -1, -1, -1, -1, -1};  // colour, alpha / reveal (1, 2), normal 1, 2, tint mask 1, 2
         int foldMask = -1;
         std::vector<PropLayer> layers;  // setReferenceInstLayers: layers 1.. of a model-layered material
         int emissive = -1, transmission = -1;

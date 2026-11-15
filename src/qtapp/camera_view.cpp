@@ -1390,6 +1390,12 @@ bool CameraView::resolvePropLayers(size_t k) {
         pl.texture = noColour ? -1 : cid;
         pl.reveal = rid == checkerTex_ ? -1 : rid;
         pl.normal = nid;
+        if ((lc.flags & 64u) && facts && size_t(L) < facts->layerTintMaskImage.size() && !facts->layerTintMaskImage[size_t(L)].empty()) {
+            const std::string tk = "\x05" + facts->layerTintMaskImage[size_t(L)];
+            const int tid = textureFor(tk);
+            if (!texIds_.count(tk)) return false;  // still loading
+            pl.tintMask = tid == checkerTex_ ? -1 : tid;
+        }
         pl.nrm[0] = nid >= 0 ? float(lc.normalMode + 1) : 0.0f;
         pl.nrm[1] = lc.normalStrength, pl.nrm[2] = lc.glossScale, pl.nrm[3] = lc.glossBias;
         const float p[16] = {1.0f, float(lc.flags), lc.sharpness, drawKind, lc.tint[0], lc.tint[1], lc.tint[2], 0.0f,

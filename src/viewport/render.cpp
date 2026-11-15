@@ -977,6 +977,8 @@ Texture2D foldC2 : register(t46);
 Texture2D foldR2 : register(t47);
 Texture2D foldN1 : register(t48);  // the folded layers' normal + gloss + cavity maps
 Texture2D foldN2 : register(t49);
+Texture2D foldT1 : register(t50);  // the folded layers' tint masks (slot 59 + L, flags & 64)
+Texture2D foldT2 : register(t51);
 // A model layer folded into the prop's own pass (research 136 section 1.2-1.3): its weight from the vertex alpha
 // (vc.w = 1 + a), the reveal ramp, the alpha and the slot-126 mask, then lerp (0), multiply (1) or soft-light overlay
 // (2) of the linear albedo with the tinted layer colour.
@@ -1023,14 +1025,20 @@ float2 foldUv(PSIn i, float4 UT, float4 UO) {
     const float2 lu = UO.z > 0.5 ? i.uv1 : i.uv;
     return float2(UT.x * lu.x * UT.z + UT.y * lu.y * UT.w, -UT.y * lu.x * UT.z + UT.x * lu.y * UT.w) + UO.xy;
 }
+// The tint through the tint mask when flags & 64 (research 136 section 1.2): lerp(1, tint, mask.r) at the layer UV.
+float4 foldTint(float4 P, float4 T, float mask) {
+    return (((uint)(P.y + 0.5)) & 64u) ? float4(lerp(float3(1, 1, 1), T.rgb, mask), T.w) : T;
+}
 float3 foldPropLayers(float3 albedo, PSIn i) {
     if (foldL[0].x > 0.5) {
         const float2 u = foldUv(i, foldL[2], foldL[3]);
-        albedo = foldLayer(albedo, i, foldL[0], foldL[1], foldL[2], foldL[3], foldC1.Sample(samp0, u), foldR1.Sample(samp0, u).rg);
+        const float4 T = foldTint(foldL[0], foldL[1], foldT1.Sample(samp0, u).r);
+        albedo = foldLayer(albedo, i, foldL[0], T, foldL[2], foldL[3], foldC1.Sample(samp0, u), foldR1.Sample(samp0, u).rg);
     }
     if (foldL[4].x > 0.5) {
         const float2 u = foldUv(i, foldL[6], foldL[7]);
-        albedo = foldLayer(albedo, i, foldL[4], foldL[5], foldL[6], foldL[7], foldC2.Sample(samp0, u), foldR2.Sample(samp0, u).rg);
+        const float4 T = foldTint(foldL[4], foldL[5], foldT2.Sample(samp0, u).r);
+        albedo = foldLayer(albedo, i, foldL[4], T, foldL[6], foldL[7], foldC2.Sample(samp0, u), foldR2.Sample(samp0, u).rg);
     }
     return albedo;
 }
@@ -4753,13 +4761,13 @@ void SceneRenderer::drawReferenceTexInstances() {
             ctx_->PSSetShaderResources(3, 1, &e);
             ctx_->PSSetShaderResources(19, 1, &t);
             // Research 136: the folded layers' images (t44-t47) and the slot-126 mask (t36).
-            ID3D11ShaderResourceView* fv[6] = {};
-            for (int k = 0; k < 6; ++k)
+            ID3D11ShaderResourceView* fv[8] = {};
+            for (int k = 0; k < 8; ++k)
                 fv[k] = g.foldTex[k] >= 0 && size_t(g.foldTex[k]) < textures_.size() ? textures_[size_t(g.foldTex[k])]
-                        : k < 4 && (k & 1) && whiteFullTex_ >= 0                   ? textures_[size_t(whiteFullTex_)]
-                        : k >= 4 && flatNrmTex_ >= 0                               ? textures_[size_t(flatNrmTex_)]
-                                                                                   : nullptr;
-            ctx_->PSSetShaderResources(44, 6, fv);
+                        : ((k < 4 && (k & 1)) || k >= 6) && whiteFullTex_ >= 0 ? textures_[size_t(whiteFullTex_)]
+                        : k >= 4 && k < 6 && flatNrmTex_ >= 0                  ? textures_[size_t(flatNrmTex_)]
+                                                                              : nullptr;
+            ctx_->PSSetShaderResources(44, 8, fv);
             ID3D11ShaderResourceView* fm = g.foldMask >= 0 && size_t(g.foldMask) < textures_.size() ? textures_[size_t(g.foldMask)] : nullptr;
             ctx_->PSSetShaderResources(36, 1, &fm);
         }

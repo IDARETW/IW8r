@@ -191,6 +191,7 @@ public:
         std::vector<int> layerKind;
         std::vector<char> layerUv1;
         std::string layerMaskImage;
+        std::vector<std::string> layerTintMaskImage;  // per layer L: slot 59 + L ("" none; used when flags & 64)
         // Research 133 section 6: the flag / foliage waves, constants 79, 80, 81, 82 (zero = none).
         std::array<float, 16> wave{};
     };
