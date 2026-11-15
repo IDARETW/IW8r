@@ -93,8 +93,10 @@ def main():
     ap.add_argument("--replay-size", type=int, required=True)
     ap.add_argument("--max-level", type=int, default=1)
     ap.add_argument("--max-len", type=int, default=600)
+    ap.add_argument("--exclude-regex", default=None, help="skip functions whose name matches (e.g. the other game mode)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
+    excl = re.compile(a.exclude_regex) if a.exclude_regex else None
     base = gt_fields(a.gt_type)
     fields = list(base["fields"])
     if a.gt_type_tail:
@@ -113,6 +115,8 @@ def main():
     common = 0
     for rs, seq in R.items():
         nm = rn.get(rs, "")
+        if excl and excl.search(nm):
+            continue
         cands = gt_by_name.get(nm) or gt_by_name.get(norm(nm)) or []
         if len(cands) != 1:
             continue

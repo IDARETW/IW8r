@@ -57,5 +57,23 @@ python tools/ida_types/align_by_function.py --replay out/ida_types/scan/cg_t --g
 python tools/ida_types/build_layout.py --align out/ida_types/scan/cg_t_byfunc.json --size 599712 --local-sizes out/ida_types/scan/local_sizes.json --verified playerState_s PlayerViewState cpose_t Weapon XCamData WeaponHand --out out/ida_types/scan/cg_t_layout
 ```
 
-The same pipeline works for any struct reached through a pointer table or `this` (next: `CgGlobalsMP` / `CgGlobalsSP`
-past +599712, `characterInfo_t`, `centity_t`).
+## CgGlobalsMP and CgGlobalsSP
+
+Sizes from the two allocators: `CG_MainMP_AllocateClientMemory` (0x14178FDF0) allocates `747296 * clientCount`, steps
+747296 between `CgGlobalsMP_ctor(obj, localClientNum, characterInfos, omnvarSlots, characterCount)` calls and sets every
+system's `ms_allocatedType = 2`; MP characters (`characterInfo_t`, 13720 each) are a separate allocation passed in by
+pointer. `CG_AllocLocalClientGlobals` (677040, `ms_allocatedType = 1`) is the SP allocator; SP embeds its one character
+(`CgGlobalsSP::GetCharacterInfo` = `this + 662704`).
+
+- `CgGlobalsMP` (747296): base `cg_t` + the game-test MP tail at a constant -207888. Both builds have a 147584-byte tail;
+  all 182 Replay tail accesses (exe scan to +747296) land inside game-test tail fields at that shift, 83 exactly on a
+  field start, none outside. 73 tail members with real base types.
+- `CgGlobalsSP` (677040, type was 952512): base `cg_t`, `pipViews` 62936 (game-test 129440; inner layout unknown),
+  `pipViewParams` 24, `m_skyOverride` 28, `m_characterInfo` 13720 at +662704, `m_clientCharacterInfo` +676424,
+  `m_charAnimState` 608 at +676428 (direct SP access), 4 pad bytes.
+- `cg_t` is a real base class of both (IDA base-class flag), and `this` is typed in the 11 class methods and
+  `CgGlobalsMP_ctor`. Decompiles: `&this->m_characterInfo[13720 * characterIndex]`,
+  `&this->predictedPlayerState.hudElems[0].type`, `this->localClientNum`.
+
+The same pipeline works for any struct reached through a pointer table or `this` (next: `characterInfo_t` 13720,
+`centity_t`).

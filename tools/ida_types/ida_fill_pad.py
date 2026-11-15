@@ -232,11 +232,12 @@ def narrow_member(name, member, ctext, apply=False):
     return True
 
 
-def relayout(name, fields, apply=False):
-    """COORDINATOR ONLY. Replace a struct's members with `fields` [(offset, name, ctype), ...] at the SAME size, ordinal
-    and pack. Gaps become _padXXX members. Refuses overlaps, fields past the end, or a size change."""
+def relayout(name, fields, apply=False, new_size=None):
+    """COORDINATOR ONLY. Replace a struct's members with `fields` [(offset, name, ctype), ...] keeping the ordinal and
+    pack; the size stays unless new_size is given. Gaps become _padXXX members. A field named `baseclass_0` at offset 0
+    is marked as the base class. Refuses overlaps or fields past the end."""
     til, t, u = _get(name)
-    size = t.get_size()
+    size = t.get_size() if new_size is None else new_size
     req = sorted((off, nm, _ctype(ct)) for off, nm, ct in fields)
     nu = ida_typeinf.udt_type_data_t()
     nu.taudt_bits, nu.pack, nu.sda = u.taudt_bits, u.pack, u.sda
@@ -250,6 +251,11 @@ def relayout(name, fields, apply=False):
             nu.push_back(_pad_member(cur, off - cur))
         m = ida_typeinf.udm_t()
         m.name, m.type, m.offset, m.size = nm, ft, off * 8, fs * 8
+        if nm == "baseclass_0" and off == 0:
+            try:
+                m.set_baseclass(True)
+            except Exception:
+                pass
         nu.push_back(m)
         cur = off + fs
     if cur > size:
