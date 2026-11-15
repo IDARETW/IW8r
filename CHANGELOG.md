@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Textured pictures in the Models and Prefabs tabs** (owner request): the list thumbnails and the Models side
+  picture are made by the 3D view in its Textured mode (the real textures, no lighting), once each, and kept in
+  `thumbs\models.textured.pack` and `thumbs\prefabs.textured.pack`; the browsers only read them, and a picture
+  that is missing is made in the background. `--thumb-pack models|prefabs` makes them all ahead of time;
+  `--thumb-test <asset> --out <dir>` makes one and reports what the view held. Preview in 3D now frames a single
+  model (it framed only prefabs).
 - **Fixed: a map with carried stock scriptable objects crashed the game when selected in the lobby** (owner report,
   Cinder Rail 20:15 package, `0xc0000005` at `0x140d97add`; research 134). The game's asset loaders push every asset
   they load onto a stack of two (`q_DB_PatchMem_PushAsset`, named from the client's PDB); the carried stock doors and

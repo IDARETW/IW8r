@@ -43,6 +43,9 @@
 #include "port_wizard_dialog.h"
 #include "vfx_info.h"
 #include "asset_preview_window.h"
+#include "textured_thumbs.h"
+#include <cstdio>
+#include "asset_audit.h"
 #include "hotkey_presets.h"
 #include "decal_tools.h"
 #include "stock_smodels.h"
@@ -288,6 +291,8 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     matCache_ = new MaterialCache([this](const QString& k) { return toolPath(k); }, this);
     connect(matCache_, &MaterialCache::materialReady, this, [this](const QString&) {
         camera_->materialImagesChanged();
+        if (assetPreview_) assetPreview_->materialsChanged();
+        if (thumbs3d_) thumbs3d_->materialsChanged();
         invalidateSceneSoon();  // a material's blend class is known now: brushes of it may hide faces (opaqueFor)
     });
     camera_->setToolPathSource([this](const QString& k) { return toolPath(k); });
@@ -665,12 +670,20 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         models_->setThumbnailSource([this, modelThumbs, modelFull, cached](const QString& name, bool* pending) -> QImage {
             const auto e = modelCacheStock_->lookup(name);
             if (!e) {
-                if (QImage full = modelFull->getAny(name); !full.isNull()) return full;
+                if (QImage pic = texturedThumbs() ? texturedThumbs()->picture(TexturedThumbs::Model, name) : QImage(); !pic.isNull())
+                    return pic;
                 modelCacheStock_->request({name});
                 *pending = true;
                 return {};
             }
             if (e->failed) return {};
+            // The textured picture (textured_thumbs.h): made once, then read from its pack.
+            if (TexturedThumbs* t = texturedThumbs()) {
+                if (QImage pic = t->picture(TexturedThumbs::Model, name); !pic.isNull()) return pic;
+                t->request(TexturedThumbs::Model, name);
+                *pending = true;
+                return {};
+            }
             return cached(*modelThumbs, name, e->glbPath, [&] {
                 const auto m = modelCacheStock_->loadModel(name);
                 return m ? renderModelPreview(*m, 96) : QImage();
@@ -1113,6 +1126,15 @@ void MainWindow::buildDocks() {
             });
             connect(modelCacheStock_, &ModelCache::modelReady, again, [again](const QString&) { again->start(); });
         }
+        // Textured pictures (textured_thumbs.h) instead of the grey drawings.
+        PrefabBrowser::setPictureSource([this](const QString& mapFile, bool* pending) -> QImage {
+            TexturedThumbs* t = texturedThumbs();
+            if (!t) return {};
+            if (QImage pic = t->picture(TexturedThumbs::Prefab, mapFile); !pic.isNull()) return pic;
+            t->request(TexturedThumbs::Prefab, mapFile);
+            *pending = true;
+            return {};
+        });
         dock_->addDockWidgetTabToArea(makeDock("Prefabs", prefabs_, true), bottomArea);
     }
     compile_ = new CompilePanel(&ctx_, [this](const QString& k) { return toolPath(k); });
@@ -5166,7 +5188,12 @@ bool MainWindow::applyWebServerSettings(QString* message) {
                 }
             } else if (kind == "models") {
                 if (auto e = modelCacheStock_->lookup(name); e && !e->failed) {
-                    if (const auto m = modelCacheStock_->loadModel(name)) img = renderModelPreview(*m, 96);
+                    if (TexturedThumbs* t = texturedThumbs()) {
+                        img = t->picture(TexturedThumbs::Model, name).scaled(96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                        if (img.isNull()) t->request(TexturedThumbs::Model, name);
+                    } else if (const auto m = modelCacheStock_->loadModel(name)) {
+                        img = renderModelPreview(*m, 96);
+                    }
                 } else if (!e) {
                     modelCacheStock_->request({name});
                 }
@@ -9649,7 +9676,19 @@ void MainWindow::previewModel(const QString& name) {
     size_t tris = 0;
     for (const auto& mesh : m->meshes) tris += mesh.idx.size() / 3;
     const auto& b = e->bounds;
-    models_->setPreview(renderModelPreview(*m, 256),
+    // The textured picture (textured_thumbs.h); made first in the queue when it is not stored yet.
+    QImage pic;
+    if (TexturedThumbs* t = texturedThumbs()) {
+        pic = t->picture(TexturedThumbs::Model, name);
+        if (pic.isNull()) {
+            t->request(TexturedThumbs::Model, name, true);
+            models_->setPreview({}, name + "\nmaking the textured preview...");
+            return;
+        }
+    } else {
+        pic = renderModelPreview(*m, 256);
+    }
+    models_->setPreview(pic,
                         QString("%1\n%2 triangles, %3 x %4 x %5 units (zone %6)")
                             .arg(name)
                             .arg(tris)
@@ -9688,7 +9727,48 @@ void MainWindow::previewImage(const QString& name) {
 // 3.18 LOD preview
 
 AssetPreviewWindow* MainWindow::openAssetPreview(const QString& asset, bool prefab) {
-    if (!assetPreview_) {
+    if (!assetPreview_) assetPreview_ = makeAssetPreviewWindow();
+    if (prefab) {
+        QString err;
+        if (!assetPreview_->showPrefab(asset, &err)) ctx_.setStatus("Preview: " + err);
+    } else {
+        assetPreview_->showModel(asset);
+    }
+    assetPreview_->show();
+    assetPreview_->raise();
+    assetPreview_->activateWindow();
+    return assetPreview_;
+}
+
+TexturedThumbs* MainWindow::texturedThumbs() {
+    if (thumbs3d_ || !dev_ || !camera_) return thumbs3d_;
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/thumbs";
+    thumbs3d_ = new TexturedThumbs(
+        dir, [this] { return makeAssetPreviewWindow(); },
+        [this](const QString& model) {
+            if (!modelCacheStock_) return false;
+            if (modelCacheStock_->lookup(model)) return false;  // cached (or failed: it draws as a marker)
+            modelCacheStock_->request({model});
+            return true;
+        },
+        this);
+    // A picture is ready: the browsers read it (debounced, a burst of pictures refreshes once).
+    auto* refresh = new QTimer(thumbs3d_);
+    refresh->setSingleShot(true);
+    refresh->setInterval(250);
+    connect(refresh, &QTimer::timeout, this, [this] {
+        if (models_) models_->refreshThumbnails();
+        if (prefabs_) prefabs_->refreshIncomplete();
+    });
+    connect(thumbs3d_, &TexturedThumbs::pictureReady, this, [this, refresh](int kind, const QString& name) {
+        refresh->start();
+        if (kind == TexturedThumbs::Model && name == previewedModel_) previewModel(name);
+    });
+    return thumbs3d_;
+}
+
+AssetPreviewWindow* MainWindow::makeAssetPreviewWindow() {
+    {
         AssetPreviewWindow::Sources src;
         src.model = [this](const std::string& m, int lod) -> std::shared_ptr<const ImportedModel> {
             const double s = ctx_.scene.modelScale > 0 ? 1.0 / ctx_.scene.modelScale : 1.0;
@@ -9726,18 +9806,112 @@ AssetPreviewWindow* MainWindow::openAssetPreview(const QString& asset, bool pref
             }
             return QImage(file);
         };
-        assetPreview_ = new AssetPreviewWindow(dev_, dc_, camera_, ctx_.scene, std::move(src), this);
+        return new AssetPreviewWindow(dev_, dc_, camera_, ctx_.scene, std::move(src), this);
     }
-    if (prefab) {
-        QString err;
-        if (!assetPreview_->showPrefab(asset, &err)) ctx_.setStatus("Preview: " + err);
+}
+
+int MainWindow::runThumbTest(const QString& asset, const QString& outDir) {
+    AssetPreviewWindow* w = makeAssetPreviewWindow();
+    if (!w) return 2;
+    w->setPictureStyle();
+    const bool prefab = asset.endsWith(".map", Qt::CaseInsensitive);
+    if (!prefab && modelCacheStock_ && !modelCacheStock_->lookup(asset)) {
+        modelCacheStock_->request({asset});
+        QElapsedTimer e;
+        e.start();
+        while (!modelCacheStock_->lookup(asset) && e.elapsed() < 120000) QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    }
+    if (prefab) w->showPrefab(asset);
+    else w->showModel(asset);
+    QImage img;
+    QElapsedTimer clock;
+    clock.start();
+    int frames = 0;
+    for (; clock.elapsed() < 60000; ++frames) {
+        img = w->picture(TexturedThumbs::kSide);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 40);
+        if (frames >= 3 && w->texturesWaiting() == 0) break;
+    }
+    const CameraView* v = w->view();
+    const EditorContext& c = w->context();
+    long coloured = 0, lit = 0;
+    for (int y = 0; y < img.height(); ++y)
+        for (int x = 0; x < img.width(); ++x) {
+            const QColor q = img.pixelColor(x, y);
+            coloured += std::max({q.red(), q.green(), q.blue()}) - std::min({q.red(), q.green(), q.blue()}) > 24;
+            lit += qGray(q.rgb()) > 50;
+        }
+    std::printf("thumb test %s: %d frames %lld ms, image %dx%d, lit %ld, coloured %ld, textures waiting %d\n", qPrintable(asset), frames,
+                clock.elapsed(), img.width(), img.height(), lit, coloured, w->texturesWaiting());
+    std::printf("  camera %.1f %.1f %.1f yaw %.1f pitch %.1f fov %.1f; entities %zu; scene items %zu; view %dx%d visible %d\n",
+                c.cam.pos.x, c.cam.pos.y, c.cam.pos.z, c.cam.yaw, c.cam.pitch, c.cam.fov, c.doc.map().entities.size(),
+                const_cast<EditorContext&>(c).scene.items().size(), v->width(), v->height(), int(v->isVisible()));
+    std::printf("  %s\n", qPrintable(w->infoText().left(400)));
+    QDir().mkpath(outDir);
+    img.save(QDir(outDir).filePath("thumb-test.png"));
+    delete w;
+    return img.isNull() ? 1 : 0;
+}
+
+int MainWindow::runTexturedThumbPack(const QString& kind, int limit) {
+    TexturedThumbs* t = texturedThumbs();
+    if (!t || (kind != "models" && kind != "prefabs")) {
+        std::fprintf(stderr, "thumb pack: kind must be models or prefabs (and the 3D view must be available)\n");
+        return 2;
+    }
+    QStringList names;
+    if (kind == "models") {
+        for (const QString& n : auditCatalogNames("models"))
+            if (t->picture(TexturedThumbs::Model, n).isNull()) names << n;
     } else {
-        assetPreview_->showModel(asset);
+        for (const QString& root : PrefabBrowser::searchRoots())
+            for (QDirIterator it(root, {"*.map"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
+                const QString f = it.next();
+                if (t->picture(TexturedThumbs::Prefab, f).isNull()) names << f;
+            }
     }
-    assetPreview_->show();
-    assetPreview_->raise();
-    assetPreview_->activateWindow();
-    return assetPreview_;
+    if (limit > 0 && names.size() > limit) names = names.mid(0, limit);
+    std::printf("thumb pack %s (textured): %lld to make\n", qPrintable(kind), qlonglong(names.size()));
+    std::fflush(stdout);
+    QElapsedTimer clock;
+    clock.start();
+    const int before = t->made();
+    // Models: the exports first (the model cache, in batches); a model is pictured once its export is in.
+    if (kind == "models" && modelCacheStock_) {
+        QStringList exportNames;
+        for (const QString& n : names)
+            if (!modelCacheStock_->lookup(n)) exportNames << n;
+        if (!exportNames.isEmpty()) modelCacheStock_->request(exportNames);
+    }
+    QSet<QString> asked;  // pictures requested (each name once)
+    for (const QString& n : names) {
+        if (kind == "models" && modelCacheStock_) {
+            const auto e = modelCacheStock_->lookup(n);
+            if (!e || e->failed) continue;
+        }
+        t->request(kind == "models" ? TexturedThumbs::Model : TexturedThumbs::Prefab, n);
+        asked.insert(n);
+    }
+    // Models are exported first (the model cache), then pictured one at a time.
+    qint64 lastReport = 0;
+    while (t->busy() || (modelCacheStock_ && modelCacheStock_->busy())) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        if (kind == "models" && modelCacheStock_ && asked.size() < names.size())  // exports that finished are pictured now
+            for (const QString& n : names)
+                if (!asked.contains(n))
+                    if (const auto e = modelCacheStock_->lookup(n); e && !e->failed) {
+                        t->request(TexturedThumbs::Model, n);
+                        asked.insert(n);
+                    }
+        if (clock.elapsed() - lastReport > 10000) {
+            lastReport = clock.elapsed();
+            std::printf("  made %d, %d queued (%.0f s)\n", t->made() - before, t->queued(), clock.elapsed() / 1000.0);
+            std::fflush(stdout);
+        }
+    }
+    std::printf("thumb pack %s: made %d pictures in %.0f s; pack %d\n", qPrintable(kind), t->made() - before, clock.elapsed() / 1000.0,
+                t->store(kind == "models" ? TexturedThumbs::Model : TexturedThumbs::Prefab).count());
+    return 0;
 }
 
 int MainWindow::stockLodFor(const Entity& e, const std::string& model) {

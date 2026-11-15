@@ -9,6 +9,7 @@
 #pragma once
 
 #include <QImage>
+#include <QStringList>
 #include <QWidget>
 #include <functional>
 #include <memory>
@@ -57,6 +58,15 @@ public:
     int materialCount() const;
     QString assetName() const { return name_; }
 
+    // Pictures for the asset browsers (TexturedThumbs): the Lit view without the floor; a square picture of the asset
+    // as shown, from its three-quarter view; the images and the models the view still waits for.
+    void setPictureStyle();
+    QImage picture(int side);
+    int texturesWaiting() const;
+    QStringList modelNames() const;
+    // A material's images arrived in the caches: the view asks for them again.
+    void materialsChanged();
+
 private:
     void rebuildDocument();
     void updateInfo();
@@ -77,6 +87,7 @@ private:
     bool prefab_ = false;
     std::string prefabText_, prefabPath_;
     AABB assetBox_;  // the asset without the floor
+    double frameScale_ = 1.05;  // frame(): the distance as a share of the one that fits the bounding sphere
 };
 
 }  // namespace iw8r::qt

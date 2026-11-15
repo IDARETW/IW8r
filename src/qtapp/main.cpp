@@ -1040,6 +1040,7 @@ int runStockPropsTest(iw8r::qt::MainWindow& w, const QString& zoneArg, const QSt
 int main(int argc, char** argv) {
     QString auditKind, webUser;
     QString thumbPackKind;
+    QString thumbTest;  // --thumb-test <model or prefab .map>: one textured picture (textured_thumbs.h), with diagnostics
     int auditLimit = 0, auditBatch = 100;
     bool auditReverse = false;
     bool coverCheck = false;
@@ -1077,6 +1078,7 @@ int main(int argc, char** argv) {
         else if (a == "--feature-shots") featureShots = true;
         else if (a == "--asset-audit" && i + 1 < argc) auditKind = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--thumb-pack" && i + 1 < argc) thumbPackKind = QString::fromLocal8Bit(argv[++i]);
+        else if (a == "--thumb-test" && i + 1 < argc) thumbTest = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--limit" && i + 1 < argc) auditLimit = std::atoi(argv[++i]);
         else if (a == "--batch" && i + 1 < argc) auditBatch = std::atoi(argv[++i]);
         else if (a == "--reverse") auditReverse = true;
@@ -1157,8 +1159,11 @@ int main(int argc, char** argv) {
             }
         return 0;
     }
-    if (!thumbPackKind.isEmpty()) {
-        // 4.13: full thumbnail packs (thumb_pack.h). A GUI application: models are rendered with QPainter.
+    // Models and prefabs: textured pictures made by the editor's own 3D view (textured_thumbs.h), after the window
+    // exists (below). Materials: their colour images (thumb_pack.h).
+    const bool texturedPack = thumbPackKind == "models" || thumbPackKind == "prefabs";
+    if (!thumbPackKind.isEmpty() && !texturedPack) {
+        // 4.13: full thumbnail packs (thumb_pack.h).
         QGuiApplication gui(argc, argv);
         QCoreApplication::setApplicationName("IW8 Radiant Suite");
         QCoreApplication::setOrganizationName("IW8 Radiant Suite");
@@ -1308,6 +1313,8 @@ int main(int argc, char** argv) {
     int rc = 0;
     {
         iw8r::qt::MainWindow w(device, context);
+        if (texturedPack) return w.runTexturedThumbPack(thumbPackKind, auditLimit);  // the window is never shown
+        if (!thumbTest.isEmpty()) return w.runThumbTest(thumbTest, outDir.isEmpty() ? QDir::tempPath() : outDir);
         if (smoke) {
             // Keep the smoke-test window off every monitor and never activate it.
             w.setAttribute(Qt::WA_ShowWithoutActivating);

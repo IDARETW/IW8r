@@ -282,10 +282,12 @@ PrefabBrowser::ModelMeshFn& modelMeshFn() {
     return fn;
 }
 bool g_thumbIncomplete = false;
+PrefabBrowser::PictureFn g_pictureSource;
 }  // namespace
 
 void PrefabBrowser::setModelMesh(ModelMeshFn fn) { modelMeshFn() = std::move(fn); }
 bool PrefabBrowser::lastThumbnailIncomplete() { return g_thumbIncomplete; }
+void PrefabBrowser::setPictureSource(PictureFn fn) { g_pictureSource = std::move(fn); }
 
 void PrefabBrowser::refreshIncomplete() {
     bool any = false;
@@ -592,7 +594,26 @@ void PrefabBrowser::loadVisibleThumbnails() {
 
 void PrefabBrowser::loadThumbnail(QListWidgetItem* it) {
     it->setData(kDrawn, true);
+    // The textured picture of a .map file (fitted into the tile), or none yet (pending: a placeholder until it is made).
+    const auto textured = [](const QString& mapFile, bool* pending) -> QImage {
+        if (!g_pictureSource) return {};
+        const QImage pic = g_pictureSource(mapFile, pending);
+        if (pic.isNull()) return {};
+        QImage base(kThumb, kThumb, QImage::Format_ARGB32_Premultiplied);
+        base.fill(QColor(32, 34, 38));
+        const QImage fit = pic.scaled(kThumb, kThumb, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        QPainter p(&base);
+        p.drawImage((kThumb - fit.width()) / 2, (kThumb - fit.height()) / 2, fit);
+        return base;
+    };
     if (!it->data(kIsBundle).toBool()) {
+        if (g_pictureSource) {
+            bool pending = false;
+            const QImage pic = textured(it->data(kPath).toString(), &pending);
+            it->setData(kIncomplete, pending);
+            it->setIcon(pic.isNull() ? placeholderIcon() : QIcon(QPixmap::fromImage(pic)));
+            return;
+        }
         const QImage thumb = thumbnail(it->data(kPath).toString(), kThumb);
         it->setData(kIncomplete, lastThumbnailIncomplete());
         if (!thumb.isNull()) it->setIcon(QIcon(QPixmap::fromImage(thumb)));
@@ -614,8 +635,12 @@ void PrefabBrowser::loadThumbnail(QListWidgetItem* it) {
     }
     if (base.isNull())
         if (const QString contents = it->data(kContents).toString(); !contents.isEmpty()) {
-            base = thumbnail(contents, kThumb, it->data(kModelRoots).toStringList());
-            incomplete = lastThumbnailIncomplete();
+            if (g_pictureSource) {
+                base = textured(contents, &incomplete);
+            } else {
+                base = thumbnail(contents, kThumb, it->data(kModelRoots).toStringList());
+                incomplete = lastThumbnailIncomplete();
+            }
         }
     if (base.isNull()) {
         base = QImage(kThumb, kThumb, QImage::Format_ARGB32_Premultiplied);

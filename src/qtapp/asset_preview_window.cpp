@@ -239,6 +239,7 @@ void AssetPreviewWindow::rebuildDocument() {
         const int lod = std::max(0, lod_->currentIndex());
         std::shared_ptr<const ImportedModel> m = sources_.model ? sources_.model(model, lod) : nullptr;
         const double scale = ctx_.scene.modelScale > 0 ? ctx_.scene.modelScale : 1.0;
+        if (m) assetBox_ = mapBounds(*m, scale);  // the framing (the model alone, without the floor)
         text = "iwmap 4\n{\n\"classname\" \"worldspawn\"\n";
         if (m && floor_->isChecked()) text += floorBrush(mapBounds(*m, scale));
         text += "}\n{\n\"classname\" \"misc_model\"\n\"model\" \"" + model + "\"\n\"origin\" \"0 0 0\"\n}\n";
@@ -324,6 +325,30 @@ void AssetPreviewWindow::applyMode(int mode) {
     ctx_.cameraMoved();
 }
 
+void AssetPreviewWindow::setPictureStyle() {
+    floor_->blockSignals(true);
+    floor_->setChecked(false);
+    floor_->blockSignals(false);
+    // The Textured view (owner 2026-11-14: textures only, no Lit or Game Lighting).
+    mode_->setCurrentIndex(2);
+    applyMode(2);
+    frameScale_ = 0.8;  // a picture: the asset fills the tile (the bounding sphere is loose around most shapes)
+}
+
+QImage AssetPreviewWindow::picture(int side) { return view_->renderImage(side, side, true, 1.0, 0, false); }
+
+int AssetPreviewWindow::texturesWaiting() const { return view_->texturesWaiting(); }
+
+void AssetPreviewWindow::materialsChanged() { view_->materialImagesChanged(); }
+
+QStringList AssetPreviewWindow::modelNames() const {
+    QStringList out;
+    for (const Entity& e : ctx_.doc.map().entities)
+        if (const std::string* m = e.value("model"); m && !m->empty() && (*m)[0] != '*') out << qs(*m);
+    out.removeDuplicates();
+    return out;
+}
+
 void AssetPreviewWindow::frame() {
     const AABB b = assetBounds();
     if (!b.valid()) {
@@ -333,7 +358,23 @@ void AssetPreviewWindow::frame() {
     const Vec3 c = b.center();
     const double radius = std::max(8.0, 0.5 * length(b.maxs - b.mins));
     const double halfFov = std::max(10.0, ctx_.cam.fov * 0.5) * 3.14159265358979 / 180.0;
-    view_->setOrbit(c, radius / std::sin(halfFov) * 1.05, 45, -22);
+    if (frameScale_ < 1.0) {
+        // A square picture: the nearest distance at which all eight corners of the box are inside the view (a sphere
+        // fit leaves long assets small or cuts their ends), with a small margin.
+        app::Camera probe = ctx_.cam;
+        probe.yaw = 45, probe.pitch = -22;
+        const Vec3 f = probe.forward(), r = probe.right(), u = probe.up();
+        const double t = std::tan(halfFov);
+        double d = 8.0;
+        for (int k = 0; k < 8; ++k) {
+            const Vec3 p = Vec3{k & 1 ? b.maxs.x : b.mins.x, k & 2 ? b.maxs.y : b.mins.y, k & 4 ? b.maxs.z : b.mins.z} - c;
+            const double depth = dot(p, f);  // along the view from the centre (negative: toward the camera, needs more room)
+            d = std::max({d, std::fabs(dot(p, r)) / t - depth, std::fabs(dot(p, u)) / t - depth});
+        }
+        view_->setOrbit(c, d * 1.08, 45, -22);
+        return;
+    }
+    view_->setOrbit(c, radius / std::sin(halfFov) * frameScale_, 45, -22);
 }
 
 }  // namespace iw8r::qt

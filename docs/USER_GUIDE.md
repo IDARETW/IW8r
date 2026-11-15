@@ -555,6 +555,12 @@ Normals), the floor, the collision hull the build gives the model, and its level
 triangles and materials (click one to see its colour image). The window stays open and shows the next asset you
 preview.
 
+**Textured pictures in the browsers.** The Models browser's thumbnails and its side picture, and the Prefabs dock's
+thumbnails, are pictures made by the same 3D view in its Textured mode (no lighting, no floor). Each picture is made once, in the
+background, and kept in `<AppLocalData>\thumbs\models.textured.pack` and `prefabs.textured.pack`; after that the
+browsers only read it. A prefab gets a new picture when its file changes. To make every picture ahead of time, run
+`IW8Radiant.exe --thumb-pack models` or `--thumb-pack prefabs` (`--limit N` for a part).
+
 ## 8. Compile, deploy, play
 
 1. **F7** builds: extraction (the editor's compiler), x64-zt `buildextraction` (zones), ACTS validation. Shift+F7 runs

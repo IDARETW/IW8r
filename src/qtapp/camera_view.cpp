@@ -2020,6 +2020,14 @@ QImage CameraView::renderImage(int w, int h, bool clean, double aspect, int sett
     return img.convertToFormat(QImage::Format_RGB888);  // opaque: the clear colour's alpha is not meaningful
 }
 
+int CameraView::texturesWaiting() const {
+    int n = moreToLoad_ || refMoreToLoad_ ? 1 : 0;
+    if (imageLookup_)
+        for (const std::string& m : requested_)
+            if (!texIds_.count(m) && !imageLookup_(m)) ++n;
+    return n;
+}
+
 QImage CameraView::grabFrame() {
     std::vector<uint8_t> px;
     int w = 0, h = 0;

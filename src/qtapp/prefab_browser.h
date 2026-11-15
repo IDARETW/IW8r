@@ -76,6 +76,11 @@ public:
     using ModelMeshFn = std::function<std::shared_ptr<const iw8r::ImportedModel>(const std::string& model)>;
     static void setModelMesh(ModelMeshFn fn);
     static bool lastThumbnailIncomplete();  // the last thumbnail() call fell back to a box for at least one model
+    // Textured pictures (owner request 2026-11-14; TexturedThumbs): the stored picture of a prefab .map file, or a null
+    // image with *pending set while it is being made (the row shows a placeholder and is asked again by
+    // refreshIncomplete()). When set, the grey drawing of thumbnail() is not used for the list.
+    using PictureFn = std::function<QImage(const QString& mapFile, bool* pending)>;
+    static void setPictureSource(PictureFn fn);
     void refreshIncomplete();               // redraw the thumbnails that had a box in place of a mesh
 
     // A three-quarter view of a map's brushes and models, fitted into `size` pixels; a null image when nothing can be

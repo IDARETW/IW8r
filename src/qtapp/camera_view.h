@@ -70,6 +70,9 @@ public:
     // Renders now and returns the number of non-background pixels (smoke test).
     size_t renderAndCount();
     QImage grabFrame();  // last rendered frame (D3D readback)
+    // Images this view still waits for: textures held back by the per-frame load budget, and materials whose images
+    // the caches are still fetching. A picture taken while this is above 0 shows flat colours where textures belong.
+    int texturesWaiting() const;
     // Benchmark and tests (--viewport-bench): one frame now without a readback; a fixed frame size instead of the
     // widget's (0 x 0 = the widget's again); wait for the GPU; the renderer's counters of the last frame.
     void renderNow() { render(); }

@@ -709,6 +709,20 @@ private:
     class SurfacePanel* surface_ = nullptr;  // the Surface dock; the web form "surface" works through it
     class PrefabBrowser* prefabs_ = nullptr;
     class AssetPreviewWindow* assetPreview_ = nullptr;
+    // Textured pictures of models and prefabs for the browsers (textured_thumbs.h), made once and kept in packs.
+    class TexturedThumbs* thumbs3d_ = nullptr;
+    class TexturedThumbs* texturedThumbs();
+    // The hooks of an asset preview window (the window and the picture maker share them).
+    class AssetPreviewWindow* makeAssetPreviewWindow();
+public:
+    // --thumb-pack models|prefabs: every catalogued stock model (or every prefab of the search folders) gets its
+    // textured picture in the pack ahead of time. Returns the process exit code.
+    int runTexturedThumbPack(const QString& kind, int limit);
+    // --thumb-test: makes one picture (a model name or a prefab .map file) into <out>/thumb-test.png and prints what
+    // the picture view held (bounds, camera, scene items, textures waiting).
+    int runThumbTest(const QString& asset, const QString& outDir);
+    class TexturedThumbs* thumbs3dForTests() { return texturedThumbs(); }
+private:
 public:
     // Opens the asset preview window (a textured, navigable 3D view) on a model or a prefab .map file.
     class AssetPreviewWindow* openAssetPreview(const QString& modelOrPrefab, bool prefab);

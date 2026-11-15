@@ -2,6 +2,7 @@
 #include "stock_lightgrid.h"
 #include "custom_shader.h"
 #include "asset_preview_window.h"
+#include "textured_thumbs.h"
 #include "bake_options.h"
 #include "dxbc_splice.h"
 #include "shader_editor.h"
@@ -1683,9 +1684,26 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
     {
         w.previewModel("accessory_money_pile_large");
         AssetBrowser* models = w.modelsBrowser();
+        // Owner request 2026-11-14: a textured picture, made once by the 3D view (textured_thumbs.h) and kept in a pack.
+        QElapsedTimer waitPic;
+        waitPic.start();
+        while (models && !models->previewHasImage() && !models->previewCaption().contains("not available") && waitPic.elapsed() < 90000)
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
         const QString cap = models ? models->previewCaption() : QString();
-        r.check(models && (models->previewHasImage() || cap.contains("exporting")),
-                "previewing a stock model shows its render (or that it is exporting): " + cap.section('\n', 1, 1));
+        r.check(models && (models->previewHasImage() || cap.contains("not available")),
+                QString("previewing a stock model shows its textured picture (%1 ms): ").arg(waitPic.elapsed()) + cap.section('\n', 1, 1));
+        if (models && models->previewHasImage()) {
+            TexturedThumbs* tt = w.thumbs3dForTests();
+            const QImage pic = tt ? tt->picture(TexturedThumbs::Model, "accessory_money_pile_large") : QImage();
+            int coloured = 0;
+            for (int y = 0; y < pic.height(); y += 2)
+                for (int x = 0; x < pic.width(); x += 2) {
+                    const QColor c = pic.pixelColor(x, y);
+                    coloured += std::max({c.red(), c.green(), c.blue()}) - std::min({c.red(), c.green(), c.blue()}) > 24;
+                }
+            r.check(!pic.isNull() && pic.width() == TexturedThumbs::kSide && coloured > 200,
+                    QString("the picture is stored in the textured pack and is textured, not grey (%1 coloured samples)").arg(coloured));
+        }
         const QImage img = renderModelPreview([] {
             ImportedModel m;
             ImportedMesh mesh;
@@ -3084,6 +3102,19 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                         .arg(pb->count()).arg(ms).arg(pb->thumbnailsLoaded()));
         }
         r.check(!PrefabBrowser::thumbnail(dir + "/props/crate_stack.map").isNull(), "a top-down thumbnail is drawn from its brushes");
+        // The Prefabs tab's textured picture (textured_thumbs.h): made once by the 3D view, kept in the prefab pack.
+        if (TexturedThumbs* tt = w.thumbs3dForTests()) {
+            const QString crate = dir + "/props/crate_stack.map";
+            tt->request(TexturedThumbs::Prefab, crate, true);
+            QElapsedTimer wait;
+            wait.start();
+            while (tt->picture(TexturedThumbs::Prefab, crate).isNull() && wait.elapsed() < 90000)
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+            const QImage pic = tt->picture(TexturedThumbs::Prefab, crate);
+            r.check(!pic.isNull() && pic.width() == TexturedThumbs::kSide,
+                    QString("a prefab's textured picture is made and stored in the prefab pack (%1 ms)").arg(wait.elapsed()));
+            if (!pic.isNull()) pic.save(QDir(outDir).filePath("prefab_textured.png"));
+        }
         {
             // Owner playtest 2026-11-11: pictures were cut off, names missing, prefabs could not be dragged.
             PrefabBrowser::thumbnail(dir + "/props/crate_stack.map", 256).save(QDir(outDir).filePath("prefab_thumb.png"));
