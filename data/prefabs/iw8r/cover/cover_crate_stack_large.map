@@ -16,6 +16,6 @@ iwmap 4
 {
 "classname" "misc_model"
 "model" "tm/ch_crate48x64"
-"origin" "0 0 64"
+"origin" "0 0 48.7"
 "angles" "0 0 0"
 }

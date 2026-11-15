@@ -1,5 +1,6 @@
 // Play preview: box traces against brushes and player movement (walk, wall, step, jump, crouch, noclip).
 #include <cmath>
+#include <cstdio>
 
 #include "collision_world.h"
 #include "document.h"
@@ -493,4 +494,38 @@ TEST(play_ladder_climb_descend_pushoff) {
     CHECK(placePlayer(w2, s2, {40, 0, 40}, p));
     run(w2, s2, in, p, 1.5);
     CHECK(!s2.onLadder && s2.origin.z < 1);
+}
+
+// Map-agent report 2026-11-14: a 192-unit ramp rising 128 took about 7 s in Play Preview (flat: about 1.5 s). A walkable
+// ramp is climbed at the walk speed along the slope.
+TEST(player_climbs_a_ramp_at_walk_speed) {
+    // Floor, then a ramp from x 0 (z 0) to x 192 (z 128), then a top platform; the ramp as a wedge brush.
+    std::string t = "iwmap 4\n{\n\"classname\" \"worldspawn\"\n";
+    t += box(-512, -256, -16, 0, 256, 0);
+    t += box(192, -256, 0, 512, 256, 128);
+    const std::string s = " floor 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0\n";
+    // The box helper's face order and winding, its top face tilted from z 0 at x 0 to z 128 at x 192.
+    t += "{\n ( 192 256 -16 ) ( 0 256 -16 ) ( 0 -256 -16 )" + s +       // bottom
+         " ( 0 -256 0 ) ( 0 256 0 ) ( 192 256 128 )" + s +              // the slope
+         " ( 0 -256 0 ) ( 192 -256 128 ) ( 192 -256 -16 )" + s +        // y = -256
+         " ( 192 256 128 ) ( 0 256 0 ) ( 0 256 -16 )" + s +             // y = 256
+         " ( 192 -256 128 ) ( 192 256 128 ) ( 192 256 -16 )" + s +      // x = 192
+         " ( 0 256 0 ) ( 0 -256 0 ) ( 0 -256 -16 )" + s + "}\n}\n";     // x = 0
+    Id next = 1;
+    const auto map = parseMap(t, next).map;
+    CHECK(map.has_value());
+    if (!map) return;
+    CollisionWorld w;
+    w.build(*map);
+    MoveParams p;
+    PlayerState st;
+    CHECK(placePlayer(w, st, {-64, 0, 40}, p));
+    st.yaw = 0;
+    MoveInput in;
+    in.forward = 1;
+    double t2 = 0;
+    for (; t2 < 6.0 && st.origin.x < 230; t2 += in.dt) playerMove(w, st, in, p);
+    // The ramp's length along the slope is 231 units; at about 186 u/s that is about 1.3 s, plus 64 + 38 flat units.
+    std::printf("  ramp: x %.1f z %.1f after %.2f s (ground %d, n.z %.3f)\n", st.origin.x, st.origin.z, t2, int(st.onGround), st.groundNormal.z);
+    CHECK(st.origin.x >= 230 && std::fabs(st.origin.z - 128) < 2.0 && t2 < 2.6);
 }

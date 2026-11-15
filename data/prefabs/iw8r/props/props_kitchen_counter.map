@@ -8,42 +8,56 @@ iwmap 4
 // entity 1
 {
 "classname" "misc_model"
-"model" "equipment_propane_burner_stove_01_white"
-"origin" "-5 0 0"
+"model" "tm/me_kitchen_cabinet_long_01"
+"origin" "0 0 0"
 "angles" "0 0 0"
 }
 // entity 2
 {
 "classname" "misc_model"
-"model" "kitchen_01_pot_copper_01"
-"origin" "-5 0 60"
+"model" "tm/kitchen_countertop_01_64"
+"origin" "0 0 38.87"
 "angles" "0 0 0"
 }
 // entity 3
 {
 "classname" "misc_model"
-"model" "kitchen_01_pan_01"
-"origin" "-35 0 60"
+"model" "equipment_propane_burner_stove_01_white"
+"origin" "0 -18 39.6"
 "angles" "0 0 0"
 }
 // entity 4
 {
 "classname" "misc_model"
-"model" "kitchen_knife_block_01"
-"origin" "35 0 40"
+"model" "kitchen_01_pot_copper_01"
+"origin" "0 -18 53.2"
 "angles" "0 0 0"
 }
 // entity 5
 {
 "classname" "misc_model"
-"model" "kitchen_plastic_syrup_bottle_01"
-"origin" "15 -20 40"
+"model" "kitchen_01_pan_01"
+"origin" "-6 14 39.6"
 "angles" "0 0 0"
 }
 // entity 6
 {
 "classname" "misc_model"
+"model" "kitchen_knife_block_01"
+"origin" "10 0 39.6"
+"angles" "0 0 0"
+}
+// entity 7
+{
+"classname" "misc_model"
+"model" "kitchen_plastic_syrup_bottle_01"
+"origin" "10 26 39.6"
+"angles" "0 0 0"
+}
+// entity 8
+{
+"classname" "misc_model"
 "model" "me_kitchen_coffee_set_01"
-"origin" "-25 20 40"
+"origin" "-8 27 39.6"
 "angles" "0 0 0"
 }

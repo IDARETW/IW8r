@@ -4,46 +4,86 @@ iwmap 4
 // entity 0
 {
 "classname" "worldspawn"
+{
+ ( -32 25 0 ) ( -64 25 0 ) ( -64 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -64 -25 16 ) ( -64 25 16 ) ( -32 25 16 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -64 -25 16 ) ( -32 -25 16 ) ( -32 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 25 16 ) ( -64 25 16 ) ( -64 25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 -25 16 ) ( -32 25 16 ) ( -32 25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -64 25 16 ) ( -64 -25 16 ) ( -64 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+{
+ ( 0 25 0 ) ( -32 25 0 ) ( -32 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 -25 32 ) ( -32 25 32 ) ( 0 25 32 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 -25 32 ) ( 0 -25 32 ) ( 0 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 0 25 32 ) ( -32 25 32 ) ( -32 25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 0 -25 32 ) ( 0 25 32 ) ( 0 25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -32 25 32 ) ( -32 -25 32 ) ( -32 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+{
+ ( 32 25 0 ) ( 0 25 0 ) ( 0 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 0 -25 48 ) ( 0 25 48 ) ( 32 25 48 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 0 -25 48 ) ( 32 -25 48 ) ( 32 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 32 25 48 ) ( 0 25 48 ) ( 0 25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 32 -25 48 ) ( 32 25 48 ) ( 32 25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 0 25 48 ) ( 0 -25 48 ) ( 0 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+{
+ ( 64 25 0 ) ( 32 25 0 ) ( 32 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 32 -25 64 ) ( 32 25 64 ) ( 64 25 64 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 32 -25 64 ) ( 64 -25 64 ) ( 64 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 64 25 64 ) ( 32 25 64 ) ( 32 25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 64 -25 64 ) ( 64 25 64 ) ( 64 25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 32 25 64 ) ( 32 -25 64 ) ( 32 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
+{
+ ( 96 25 0 ) ( 64 25 0 ) ( 64 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 64 -25 80 ) ( 64 25 80 ) ( 96 25 80 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 64 -25 80 ) ( 96 -25 80 ) ( 96 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 96 25 80 ) ( 64 25 80 ) ( 64 25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 96 -25 80 ) ( 96 25 80 ) ( 96 25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 64 25 80 ) ( 64 -25 80 ) ( 64 -25 0 ) mo/concrete_cinder_block_base_tan 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+}
 }
 // entity 1
 {
 "classname" "misc_model"
 "model" "tm/ee_stairs_modular_2step"
-"origin" "-160 0 0"
-"angles" "0 0 0"
+"origin" "-64 0 0"
+"angles" "0 -90 0"
 }
 // entity 2
 {
 "classname" "misc_model"
 "model" "tm/ee_stairs_modular_2step"
-"origin" "-96 0 32"
-"angles" "0 0 0"
+"origin" "-32 0 16"
+"angles" "0 -90 0"
 }
 // entity 3
 {
 "classname" "misc_model"
 "model" "tm/ee_stairs_modular_2step"
-"origin" "-32 0 64"
-"angles" "0 0 0"
+"origin" "0 0 32"
+"angles" "0 -90 0"
 }
 // entity 4
 {
 "classname" "misc_model"
 "model" "tm/ee_stairs_modular_2step"
-"origin" "32 0 96"
-"angles" "0 0 0"
+"origin" "32 0 48"
+"angles" "0 -90 0"
 }
 // entity 5
 {
 "classname" "misc_model"
 "model" "tm/ee_stairs_modular_2step"
-"origin" "96 0 128"
-"angles" "0 0 0"
+"origin" "64 0 64"
+"angles" "0 -90 0"
 }
 // entity 6
 {
 "classname" "misc_model"
 "model" "tm/ee_stairs_modular_2step"
-"origin" "160 0 160"
-"angles" "0 0 0"
+"origin" "96 0 80"
+"angles" "0 -90 0"
 }

@@ -164,3 +164,9 @@ TEST(entity_defs_value_types_and_colours_are_valid) {
     CHECK(badTypes == 0);
     CHECK(badColours == 0);
 }
+
+// Map-agent report 2026-11-14: a placed prefab is expanded by the build, so Check Map does not call it dropped.
+TEST(entity_defs_validate_does_not_drop_misc_prefab) {
+    const Entity e = makeEntity({{"classname", "misc_prefab"}, {"model", "prefabs/stock_door_wood_single/door.map"}, {"origin", "0 0 0"}});
+    CHECK(!hasMsg(defs().validate(e), "not built"));
+}

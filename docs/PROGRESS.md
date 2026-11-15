@@ -2,6 +2,18 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-14 late evening (after the Cinder Rail fix): converter e648a414 (research 134 rewritten from the client
+  PDB: DB_PatchMem's asset stack of two is pushed by nearly every loader; every asset type counts) is live, and the
+  fixed Cinder Rail (same inputs as the 20:15 build) was installed at 20:40 with the owner's OK; not yet seen loading.
+  Shipment foliage masks: stock reads use <game>\iw8r_stock when an installed edit replaced a zone (stockZoneFile),
+  entries read from an edited zone resolve again. Textured pictures for the Models / Prefabs tabs (textured_thumbs:
+  thumbs\models.textured.pack 6,501, prefabs.textured.pack 6,157, made with --thumb-pack; the editor tops them up
+  while idle). Game Lighting: own one-sided back faces hidden (G11), stock flag / tarp / canopy / foliage waves
+  (research 133 s5.2/6; IW8R_CAPTURE_TIME bench switch), layered stock props' multiply layers (G9 part: colour-lerp
+  layers left out, research 132 status note), HDR stock sky (G10, RGBM faces), own lamps through the game's light
+  path with spot shadow maps (G8). Left of research 132/133: G7 (per-pixel light grid), G9 rest (lerp layers need
+  a weight source; modes 2/3), G13 distortion, G14 GTAO, SELFVIS (needs an ACTS GLB attribute), the Shipment water
+  (dual normals), static-model displacement. All suites green at c33ab6a (core 183,369, GUI 1,105).
 - 2026-11-14 evening: owner report, Cinder Rail (20:15 package, the map agent's door-clips build with carried stock
   doors and cars) crashed the game in the lobby (0x140D97ADD). Research 134: Replay's preload mark stack holds 2;
   scriptable > xmodel > physicsasset nested 3. Converter 51312871 (worktree + live, old exe out/zt_backup/

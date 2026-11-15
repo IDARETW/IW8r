@@ -8,21 +8,28 @@ iwmap 4
 // entity 1
 {
 "classname" "misc_model"
-"model" "p7_desk_metal_military_03_tablet"
-"origin" "1 0 0"
+"model" "tm/un_office_desk_01_short"
+"origin" "-30 16 0"
 "angles" "0 0 0"
 }
 // entity 2
 {
 "classname" "misc_model"
 "model" "desktop_fan_fn_01"
-"origin" "-29 0 40"
+"origin" "-15 0 36"
 "angles" "0 0 0"
 }
 // entity 3
 {
 "classname" "misc_model"
 "model" "accessory_table_vintage_ashtray"
-"origin" "11 0 40"
+"origin" "12 4 36"
+"angles" "0 0 0"
+}
+// entity 4
+{
+"classname" "misc_model"
+"model" "p7_desk_metal_military_03_tablet"
+"origin" "2 -8 36"
 "angles" "0 0 0"
 }

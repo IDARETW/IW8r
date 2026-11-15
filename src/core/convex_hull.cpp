@@ -141,7 +141,9 @@ bool quickHullFaces(const std::vector<Vec3>& pts, double eps, std::vector<RawFac
             stack.pop_back();
             for (int k = 0; k < 3; ++k) {
                 const int a = F(cur).v[k], b = F(cur).v[(k + 1) % 3];
-                const int nb = owner.at(std::pair<int, int>{b, a});
+                const auto twin = owner.find(std::pair<int, int>{b, a});
+                if (twin == owner.end()) return false;  // rounding broke the surface: the caller retries or falls back
+                const int nb = twin->second;
                 if (!vis.count(nb) && dot(F(nb).n, ap) - F(nb).d > eps) {
                     vis.insert(nb);
                     stack.push_back(nb);
@@ -154,7 +156,9 @@ bool quickHullFaces(const std::vector<Vec3>& pts, double eps, std::vector<RawFac
         for (int cur : vis)
             for (int k = 0; k < 3; ++k) {
                 const int a = F(cur).v[k], b = F(cur).v[(k + 1) % 3];
-                if (!vis.count(owner.at(std::pair<int, int>{b, a}))) horizon.push_back({a, b});
+                const auto twin = owner.find(std::pair<int, int>{b, a});
+                if (twin == owner.end()) return false;
+                if (!vis.count(twin->second)) horizon.push_back({a, b});
             }
 
         // Remove the visible faces; their conflict points are reassigned below.
@@ -332,7 +336,19 @@ std::vector<Plane> convexHullPlanes(const std::vector<Vec3>& points, double merg
     const double diag = length(box.maxs - box.mins);
     if (!std::isfinite(diag) || !(diag > 0)) return {};
     std::vector<RawFace> raw;
-    if (!quickHullFaces(points, 1e-7 * diag, raw)) return {};
+    if (!quickHullFaces(points, 1e-7 * diag, raw)) {
+        // Nearly coplanar or duplicated points (a corrugated sheet) can defeat the first attempt: weld the points to a
+        // grid of 1e-5 of the size and try again with a looser tolerance.
+        const double cell = 1e-5 * diag;
+        std::set<std::array<long long, 3>> seen;
+        std::vector<Vec3> welded;
+        for (const Vec3& p : points) {
+            const std::array<long long, 3> k{std::llround(p.x / cell), std::llround(p.y / cell), std::llround(p.z / cell)};
+            if (seen.insert(k).second) welded.push_back(Vec3{double(k[0]) * cell, double(k[1]) * cell, double(k[2]) * cell});
+        }
+        raw.clear();
+        if (welded.size() < 4 || !quickHullFaces(welded, 1e-5 * diag, raw)) return {};
+    }
 
     // Merge faces whose normals are within the angle: greedy clusters of area-weighted normal sums.
     const double cosT = std::cos(std::max(0.0, mergeAngleDeg) * kHullPi / 180.0);
@@ -467,6 +483,14 @@ std::vector<std::vector<Plane>> convexPieces(const ImportedModel& m, int maxPiec
     std::vector<std::vector<Plane>> out;
     for (const Piece& pc : pieces) {
         std::vector<Plane> planes = convexHullPlanes(pc.pts);
+        if (planes.empty() && pc.box.valid()) {
+            // No hull (flat, or the points defeat the hull): the piece collides as its box, a little thickened when flat.
+            AABB b = pc.box;
+            for (int a = 0; a < 3; ++a)
+                if (b.maxs[a] - b.mins[a] < 0.5) b.mins[a] -= 0.25, b.maxs[a] += 0.25;
+            planes = {Plane{Vec3{1, 0, 0}, b.maxs.x}, Plane{Vec3{-1, 0, 0}, -b.mins.x}, Plane{Vec3{0, 1, 0}, b.maxs.y},
+                      Plane{Vec3{0, -1, 0}, -b.mins.y}, Plane{Vec3{0, 0, 1}, b.maxs.z}, Plane{Vec3{0, 0, -1}, -b.mins.z}};
+        }
         if (planes.empty()) continue;
         if (maxPlanesPerPiece >= 4) planes = simplifyHull(planes, maxPlanesPerPiece);
         out.push_back(std::move(planes));

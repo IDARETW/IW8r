@@ -490,8 +490,12 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
     }
 
     if (s.onGround) {
+        // Along the ground plane at the same speed (Quake 3 PM_WalkMove: "don't decrease velocity when going up or down a
+        // slope"). The vertical part was clamped to 0 here, so a ramp was climbed by step-sliding into it: about 4x
+        // slower than flat ground (map-agent report 2026-11-14, a 192 x 128 ramp in 7 s).
+        const double speed0 = length(s.velocity);
         s.velocity = clipVelocity(s.velocity, s.groundNormal, kOverbounce);
-        s.velocity.z = std::min(s.velocity.z, 0.0);
+        if (const double l = length(s.velocity); l > 1e-9) s.velocity = s.velocity * (speed0 / l);
         stepSlideMove(c, dt, false, true);
     } else {
         stepSlideMove(c, dt, true, false);

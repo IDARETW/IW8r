@@ -16,13 +16,13 @@ iwmap 4
 {
 "classname" "misc_model"
 "model" "container_paint_can_01"
-"origin" "-20 0 40"
+"origin" "-20 0 1.5"
 "angles" "0 0 0"
 }
 // entity 3
 {
 "classname" "misc_model"
 "model" "tm/container_water_jug_01_blue"
-"origin" "20 0 40"
+"origin" "-40 20 1.5"
 "angles" "0 0 0"
 }

@@ -880,6 +880,10 @@ bool CompilePanel::runExtraction() {
                               " \"blend\": true,\n \"twoSided\": true\n}\n");
                 def.close();
                 if (std::find(roots.begin(), roots.end(), dir.toStdString()) == roots.end()) roots.push_back(dir.toStdString());
+            } else {
+                // The map defines iw8r_glass itself: an earlier build's built-in copy would define it twice (map-agent
+                // report 2026-11-14) when the built-in folder is read for water.
+                QFile::remove(buildRoot() + "/builtin_materials/iw8r_glass.iw8mat.json");
             }
         }
         std::string lerr;

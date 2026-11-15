@@ -1,23 +1,23 @@
 path	category	title	size	materials	models
 doors/door_single_wood_bare.map	doors	Single wood door in plaster wall, no frame	256x64x128	tm2co/plaster_beige_01;trigger;twc/wood_varnished_01	
-doors/door_single_wood_frame.map	doors	Single wood door with stock wood frame	256x88x128	tm2co/plaster_beige_01;trigger;twc/wood_varnished_01	tm/building_door_wood_worn_out_frame_02
-doors/door_single_metal_frame.map	doors	Single metal door with stock metal frame	256x88x128	tmco/metal_painted_base_01a;trigger	tm/door_frame_metal_panel_01_single_mp_gray
-doors/door_single_plaster_frame.map	doors	Single wood door in plaster wall with plaster frame	256x88x128	tm2co/plaster_beige_01;trigger;twc/wood_varnished_01	tm/building_doorframe_woodplaster_01
-doors/door_double_metal_frame.map	doors	Double metal doors with stock double frame	384x88x128	mo/concrete_cinder_block_base_tan;tmco/metal_painted_base_01a;trigger	tm/construction_doors_metal_frame_double_b_02_mp
-doors/door_double_wood_frame.map	doors	Double wood doors with stock wood frame	384x88x128	tm2co/plaster_beige_01;trigger;twc/wood_varnished_01	tm/building_door_wood_worn_out_frame_02_double
-doors/door_sliding_garage_frame.map	doors	Sliding garage door (slide up) with industrial frame	384x88x140	mo/concrete_cinder_block_base_tan;tmco/metal_painted_base_01a;trigger	tm/door_frame_double_industrial_metal_mp_01
-doors/door_static_ornate_double.map	doors	Static ornate double doors (stock leaves, closed)	384x32x128	tm2co/plaster_beige_01	door_wood_ornate_01_blue_double_l;door_wood_ornate_01_blue_double_r
-doors/door_static_metal_leaf.map	doors	Static metal door (stock leaf) in plaster frame	256x32x128	tm2co/plaster_beige_01	door_metal_panel_01_mp_tan;tm/building_doorframe_woodplaster_01
-doors/door_static_wood_leaf.map	doors	Static wood door (stock leaf) in concrete wall	256x32x128	mo/concrete_cinder_block_base_tan	door_wooden_panel_mp_01
-doors/door_automatic_sliding.map	doors	Automatic sliding double doors (stock frame and leaves)	384x32x128	tmco/metal_painted_base_01a	tm/door_automatic_sliding_frame;tm/door_automatic_sliding_left;tm/door_automatic_sliding_right
-doors/door_garage_static.map	doors	Static garage door (stock sliding door) in 256 opening	384x32x128	mo/concrete_cinder_block_base_tan	building_metal_sliding_door_01
-windows/window_single_brick.map	windows	Single brick window with stock frame	256x16x160	tm2co/un_wall_set_brick_01;tmo/ee_light_fixture_lamp_short_glass	tm/building_wall_window_brick_01
-windows/window_double_wood.map	windows	Double wood-frame window	288x16x160	tm2co/plaster_beige_01;tmo/ee_light_fixture_lamp_short_glass	tm/me_window_double_wood_frame_01
-windows/window_shutters_wood.map	windows	Wood window with left and right shutters	256x32x160	tmo/ee_light_fixture_lamp_short_glass;twc/wood_boards_weathered_04	tm/ee_window_wood_painted_worn_frame;tm/me_window_double_wood_shutter_left_01;tm/me_window_double_wood_shutter_right_01
-windows/window_bars_plaster.map	windows	Barred window in plaster wall	256x32x144	tm2co/plaster_beige_01;tmo/ee_light_fixture_lamp_short_glass	tm/ee_window_bars_02
-windows/window_metal_frame_concrete.map	windows	Metal-frame window in concrete wall	256x16x176	mo/concrete_cinder_block_base_tan;tmo/ee_light_fixture_lamp_short_glass	tm/ee_window_frame_metal_white_medium_clean_c
-windows/window_broken_brick.map	windows	Broken brick window, no glass	256x16x160	tm2co/un_wall_set_brick_01	tm/building_wall_window_brick_broken_02
-windows/window_sill_wood.map	windows	Wood window with stock sill	256x32x160	tmo/ee_light_fixture_lamp_short_glass;twc/wood_boards_weathered_04	tm/ee_window_sill_small_02;tm/ee_window_wood_painted_worn_frame
+doors/door_single_wood_frame.map	doors	Single wood door with stock wood frame	256x64x129	tm2co/plaster_beige_01;trigger;twc/wood_varnished_01	tm/building_door_wood_worn_out_frame_02
+doors/door_single_metal_frame.map	doors	Single metal door with stock metal frame	256x64x128	tmco/metal_painted_base_01a;trigger	tm/door_frame_metal_panel_01_single_mp_gray
+doors/door_single_plaster_frame.map	doors	Single wood door in plaster wall with plaster frame	256x98x132	tm2co/plaster_beige_01;trigger;twc/wood_varnished_01	tm/building_doorframe_woodplaster_01
+doors/door_double_metal_frame.map	doors	Double metal doors with stock double frame	384x64x128	mo/concrete_cinder_block_base_tan;tmco/metal_painted_base_01a;trigger	tm/construction_doors_metal_frame_double_b_02_mp
+doors/door_double_wood_frame.map	doors	Double wood doors with stock wood frame	384x64x129	tm2co/plaster_beige_01;trigger;twc/wood_varnished_01	tm/building_door_wood_worn_out_frame_02_double
+doors/door_sliding_garage_frame.map	doors	Sliding garage door (slide up) with industrial frame	384x112x140	mo/concrete_cinder_block_base_tan;tmco/metal_painted_base_01a;trigger	tm/door_frame_double_industrial_metal_mp_01
+doors/door_static_ornate_double.map	doors	Static ornate double doors (stock leaves, closed)	384x16x128	tm2co/plaster_beige_01	door_wood_ornate_01_blue_double_l;door_wood_ornate_01_blue_double_r
+doors/door_static_metal_leaf.map	doors	Static metal door (stock leaf) in plaster frame	256x84x132	tm2co/plaster_beige_01	door_metal_panel_01_mp_tan;tm/building_doorframe_woodplaster_01
+doors/door_static_wood_leaf.map	doors	Static wood door (stock leaf) in concrete wall	256x16x128	mo/concrete_cinder_block_base_tan	door_wooden_panel_mp_01
+doors/door_automatic_sliding.map	doors	Automatic sliding double doors (stock frame and leaves)	384x216x128	tmco/metal_painted_base_01a	tm/door_automatic_sliding_frame;tm/door_automatic_sliding_left;tm/door_automatic_sliding_right
+doors/door_garage_static.map	doors	Static garage door (stock sliding door) in 256 opening	384x98x128	mo/concrete_cinder_block_base_tan	building_metal_sliding_door_01
+windows/window_single_brick.map	windows	Single brick window with stock frame	256x16x166	tm2co/un_wall_set_brick_01;tmo/ee_light_fixture_lamp_short_glass	tm/building_wall_window_brick_01
+windows/window_double_wood.map	windows	Double wood-frame window	288x16x154	tm2co/plaster_beige_01;tmo/ee_light_fixture_lamp_short_glass	tm/me_window_double_wood_frame_01
+windows/window_shutters_wood.map	windows	Wood window with left and right shutters	256x74x153	tmo/ee_light_fixture_lamp_short_glass;twc/wood_boards_weathered_04	tm/ee_window_wood_painted_worn_frame;tm/me_window_double_wood_shutter_left_01;tm/me_window_double_wood_shutter_right_01
+windows/window_bars_plaster.map	windows	Barred window in plaster wall	256x16x151	tm2co/plaster_beige_01;tmo/ee_light_fixture_lamp_short_glass	tm/ee_window_bars_02
+windows/window_metal_frame_concrete.map	windows	Metal-frame window in concrete wall	256x34x152	mo/concrete_cinder_block_base_tan;tmo/ee_light_fixture_lamp_short_glass	tm/ee_window_frame_metal_white_medium_clean_c
+windows/window_broken_brick.map	windows	Broken brick window, no glass	256x17x160	tm2co/un_wall_set_brick_01	tm/building_wall_window_brick_broken_02
+windows/window_sill_wood.map	windows	Wood window with stock sill	256x74x153	tmo/ee_light_fixture_lamp_short_glass;twc/wood_boards_weathered_04	tm/ee_window_sill_small_02;tm/ee_window_wood_painted_worn_frame
 walls/wall_plain_128_concrete.map	walls	Plain 128 wide wall, concrete	128x16x128	mo/concrete_cinder_block_base_tan	
 walls/wall_plain_128_plaster.map	walls	Plain 128 wide wall, plaster	128x16x128	tm2co/plaster_beige_01	
 walls/wall_plain_128_wood.map	walls	Plain 128 wide wall, wood	128x16x128	twc/wood_boards_weathered_04	
@@ -32,90 +32,90 @@ walls/half_wall_cover_128_concrete.map	walls	Half-height concrete cover wall, 12
 walls/low_wall_128_metal.map	walls	Low metal wall, 128 wide, 40 high	128x16x40	tmco/metal_painted_base_01a	
 walls/corner_wall_128_brick.map	walls	L-shaped brick corner wall, 128 per leg	128x128x128	tm2co/un_wall_set_brick_01	
 walls/thick_wall_256_concrete.map	walls	Thick 32-unit concrete wall, 256 wide	256x32x128	mo/concrete_cinder_block_base_tan	
-stairs/stairs_straight_4.map	stairs	Straight 4-step stair (2 modular modules)	128x64x64		tm/ee_stairs_modular_2step
-stairs/stairs_straight_8.map	stairs	Straight 8-step stair (4 modular modules)	256x64x128		tm/ee_stairs_modular_2step
-stairs/stairs_straight_12.map	stairs	Straight 12-step stair (6 modular modules)	384x64x192		tm/ee_stairs_modular_2step
-stairs/stairs_L_shaped_8.map	stairs	L-shaped stair: 4 steps, landing, 4 steps turned 90 degrees	224x224x96	mo/concrete_cinder_block_base_tan	tm/ee_stairs_modular_2step
-stairs/stairs_concrete_exterior.map	stairs	Exterior concrete stair (stock)	128x128x96		tm/building_exterior_concrete_stairs_01
-stairs/stairs_concrete_half.map	stairs	Half exterior concrete stair (stock)	128x128x64		tm/building_exterior_concrete_stairs_01_half
-stairs/stairs_wood_96.map	stairs	Wood stair, 96 wide (stock)	96x128x96		tm/mout_stairs_wood_96
-stairs/stairs_with_railing.map	stairs	Straight 4-step stair with industrial handrails both sides	128x160x128		tm/ee_stairs_modular_2step;tm/stairs_industrial_handrail_bars_01a
-stairs/stairs_catwalk_set.map	stairs	Catwalk stair set: bottom, middle, top (stock)	320x64x128		tm/mout_catwalk_stairs_bottom;tm/mout_catwalk_stairs_middle;tm/mout_catwalk_stairs_top
-stairs/stairs_wood_railed.map	stairs	Railed wood stair, bottom and middle sections	160x64x128		tm/mout_stairs_wood_rail_bottom;tm/mout_stairs_wood_rail_middle
-stairs/stairs_concrete_steps_64x56.map	stairs	Concrete steps 64x56 (stock)	64x64x56		tm/ee_stairs_concretesteps_64x56
+stairs/stairs_straight_4.map	stairs	Straight 4-step stair (2 modular modules)	64x50x32		tm/ee_stairs_modular_2step
+stairs/stairs_straight_8.map	stairs	Straight 8-step stair (4 modular modules)	128x50x64		tm/ee_stairs_modular_2step
+stairs/stairs_straight_12.map	stairs	Straight 12-step stair (6 modular modules)	192x50x96		tm/ee_stairs_modular_2step
+stairs/stairs_L_shaped_8.map	stairs	L-shaped stair: 4 steps, landing, 4 steps turned 90 degrees	160x192x64	mo/concrete_cinder_block_base_tan	tm/ee_stairs_modular_2step
+stairs/stairs_concrete_exterior.map	stairs	Exterior concrete stair (stock)	49x90x32		tm/building_exterior_concrete_stairs_01
+stairs/stairs_concrete_half.map	stairs	Half exterior concrete stair (stock)	25x90x16		tm/building_exterior_concrete_stairs_01_half
+stairs/stairs_wood_96.map	stairs	Wood stair, 96 wide (stock)	63x121x80		tm/mout_stairs_wood_96
+stairs/stairs_with_railing.map	stairs	Straight 4-step stair with industrial handrails both sides	64x52x65		tm/ee_stairs_modular_2step;tm/stairs_industrial_handrail_bars_01a
+stairs/stairs_catwalk_set.map	stairs	Catwalk stair set: bottom, middle, top (stock)	321x93x118		tm/mout_catwalk_stairs_bottom;tm/mout_catwalk_stairs_middle;tm/mout_catwalk_stairs_top
+stairs/stairs_wood_railed.map	stairs	Railed wood stair, bottom and middle sections	100x51x81		tm/mout_stairs_wood_rail_bottom;tm/mout_stairs_wood_rail_middle
+stairs/stairs_concrete_steps_64x56.map	stairs	Concrete steps 64x56 (stock)	64x56x40		tm/ee_stairs_concretesteps_64x56
 ramps/ramp_brush_concrete_128.map	ramps	Concrete wedge ramp, 128 long, 64 rise	128x128x64	mo/concrete_cinder_block_base_tan	
 ramps/ramp_brush_metal_256.map	ramps	Metal wedge ramp, 256 long, 96 rise	256x128x96	tmco/metal_painted_base_01a	
 ramps/ramp_brush_steep_wood.map	ramps	Steep wood wedge, 96 long, 96 rise	96x96x96	twc/wood_varnished_01	
 ramps/ramp_loading_stock.map	ramps	Stock truck loading ramp (model)	256x128x64		automotive_truck_loading_ramp_short
-railings_fences/rail_metal_row_128.map	railings_fences	Metal industrial railing, 2 x 128	256x32x128		tm/barrier_industrial_railing_128
-railings_fences/rail_metal_row_64.map	railings_fences	Metal industrial railing, 4 x 64	256x32x128		tm/barrier_industrial_railing_64
-railings_fences/rail_metal_corner.map	railings_fences	Metal railing outside corner	64x64x128		tm/barrier_industrial_railing_32_corner_out
-railings_fences/rail_wood_handrail_row.map	railings_fences	Wood handrail, 2 x 128	256x32x128		tm/barrier_handrail_wooden_01
-railings_fences/rail_concrete_balcony_row.map	railings_fences	Ribbed concrete balcony railing, 2 x 128	256x32x128		tm/balcony_ribbed_concrete_railing_01
-railings_fences/fence_chain_row_160.map	railings_fences	Chain-link fence, 2 x 160	320x32x128		tm/barrier_chain_link_fence_160_01
-railings_fences/fence_chain_row_96.map	railings_fences	Rusty chain-link fence, 3 x 96	288x32x128		tm/barrier_chain_link_fence_96_01_rusty
-railings_fences/fence_chain_row_64.map	railings_fences	Rusty chain-link fence, 4 x 64	256x32x128		tm/barrier_chain_link_fence_64_01_rusty
-railings_fences/fence_chain_row_32.map	railings_fences	Rusty chain-link fence, 4 x 32	128x32x128		tm/barrier_chain_link_fence_32_01_rusty
-railings_fences/fence_chain_gate.map	railings_fences	Chain-link gate with frame	64x64x128		tm/barrier_chain_link_fence_door_01_rusty;tm/barrier_chain_link_fence_door_frame_128_01_rusty
-railings_fences/fence_chain_disco_row.map	railings_fences	Chain-link fence (disco), 2 x 128	256x32x128		tm/cp_disco_chainlink_fence
-railings_fences/fence_wood_01_row.map	railings_fences	Wood fence 01, 3 x 96	288x32x128		tm/barrier_wooden_fence_01_mp
-railings_fences/fence_wood_02_row.map	railings_fences	Wood fence 02, 3 x 96	288x32x128		tm/barrier_wooden_fence_02_mp
-railings_fences/fence_wood_03_row.map	railings_fences	Wood fence 03, 3 x 96	288x32x128		tm/barrier_wooden_fence_03_mp
-railings_fences/fence_slats_row.map	railings_fences	Wood slat fence, 2 x 128	256x32x128		tm/barrier_wooden_slats_01_woodslats_kit_single_128_slat_01
-railings_fences/fence_chain_gate_frame_row.map	railings_fences	Chain-link gate frames, 2 x 128	256x32x128		tm/barrier_chain_link_fence_door_frame_128_01_rusty
-cover/cover_sandbag_long_line.map	cover	Sandbag line, 3 long pieces	288x32x128		sandbag_wall_pieces_arrey_mp_long_01_brown
-cover/cover_sandbag_mixed.map	cover	Sandbag line, long and short rows	192x128x128		sandbag_wall_pieces_arrey_mp_long_01_brown;sandbag_wall_pieces_arrey_mp_short_01_brown
-cover/cover_sandbag_corner.map	cover	Sandbag L-corner	112x112x128		sandbag_wall_pieces_arrey_mp_long_01_brown;sandbag_wall_pieces_arrey_mp_short_01_brown
-cover/cover_block_concrete_line.map	cover	Concrete block barrier line, 3 x 128	384x32x128		tm/barrier_concrete_block_01
-cover/cover_block_traffic_line.map	cover	Traffic block barrier line, 3 x 128	384x32x128		tm/barrier_traffic_concrete_block_01
-cover/cover_bollard_row.map	cover	Plastic bollard row, 4 x 64	256x32x128		tm/barrier_plastic_bollard_large
-cover/cover_crate_stack_large.map	cover	Two large crates stacked	64x64x192		tm/ch_crate48x64
-cover/cover_crate_mixed.map	cover	Mixed crates: wood tall, plastic large, small red	224x64x128		crate_plastic_sml_01_red;tm/cp_crate_wood_01_tall;tm/crate_plastic_lrg_01_dirt
-cover/cover_barrel_group.map	cover	Group of three barrels: plastic, wood, biohazard	112x104x128		tm/com_barrel_biohazard_rust;tm/container_barrel_plastic_01_closed;tm/decor_barrel_wood_01
-cover/cover_car_with_blocks.map	cover	Parked car with traffic blocks either side	444x120x140		tm/barrier_traffic_concrete_block_01;tm/ee_periph_city_ukraine_car_01
-cover/cover_military_crate_stack.map	cover	Two stackable military crates, side by side	128x64x128		military_crate_large_stackable_01
+railings_fences/rail_metal_row_128.map	railings_fences	Metal industrial railing, 2 x 128	134x128x57		tm/barrier_industrial_railing_128
+railings_fences/rail_metal_row_64.map	railings_fences	Metal industrial railing, 4 x 64	198x64x57		tm/barrier_industrial_railing_64
+railings_fences/rail_metal_corner.map	railings_fences	Metal railing outside corner	35x35x57		tm/barrier_industrial_railing_32_corner_out
+railings_fences/rail_wood_handrail_row.map	railings_fences	Wood handrail, 2 x 128	193x4x34		tm/barrier_handrail_wooden_01
+railings_fences/rail_concrete_balcony_row.map	railings_fences	Ribbed concrete balcony railing, 2 x 128	256x5x12		tm/balcony_ribbed_concrete_railing_01
+railings_fences/fence_chain_row_160.map	railings_fences	Chain-link fence, 2 x 160	162x166x124		tm/barrier_chain_link_fence_160_01
+railings_fences/fence_chain_row_96.map	railings_fences	Rusty chain-link fence, 3 x 96	289x6x134		tm/barrier_chain_link_fence_96_01_rusty
+railings_fences/fence_chain_row_64.map	railings_fences	Rusty chain-link fence, 4 x 64	257x3x134		tm/barrier_chain_link_fence_64_01_rusty
+railings_fences/fence_chain_row_32.map	railings_fences	Rusty chain-link fence, 4 x 32	129x2x134		tm/barrier_chain_link_fence_32_01_rusty
+railings_fences/fence_chain_gate.map	railings_fences	Chain-link gate with frame	129x8x134		tm/barrier_chain_link_fence_door_01_rusty;tm/barrier_chain_link_fence_door_frame_128_01_rusty
+railings_fences/fence_chain_disco_row.map	railings_fences	Chain-link fence (disco), 2 x 128	133x168x118		tm/cp_disco_chainlink_fence
+railings_fences/fence_wood_01_row.map	railings_fences	Wood fence 01, 3 x 96	309x12x100		tm/barrier_wooden_fence_01_mp
+railings_fences/fence_wood_02_row.map	railings_fences	Wood fence 02, 3 x 96	277x12x100		tm/barrier_wooden_fence_02_mp
+railings_fences/fence_wood_03_row.map	railings_fences	Wood fence 03, 3 x 96	245x12x100		tm/barrier_wooden_fence_03_mp
+railings_fences/fence_slats_row.map	railings_fences	Wood slat fence, 2 x 128	257x3x9		tm/barrier_wooden_slats_01_woodslats_kit_single_128_slat_01
+railings_fences/fence_chain_gate_frame_row.map	railings_fences	Chain-link gate frames, 2 x 128	257x4x134		tm/barrier_chain_link_fence_door_frame_128_01_rusty
+cover/cover_sandbag_long_line.map	cover	Sandbag line, 3 long pieces	210x110x26		sandbag_wall_pieces_arrey_mp_long_01_brown
+cover/cover_sandbag_mixed.map	cover	Sandbag line, long and short rows	114x181x26		sandbag_wall_pieces_arrey_mp_long_01_brown;sandbag_wall_pieces_arrey_mp_short_01_brown
+cover/cover_sandbag_corner.map	cover	Sandbag L-corner	84x115x26		sandbag_wall_pieces_arrey_mp_long_01_brown;sandbag_wall_pieces_arrey_mp_short_01_brown
+cover/cover_block_concrete_line.map	cover	Concrete block barrier line, 3 x 128	328x105x43		tm/barrier_concrete_block_01
+cover/cover_block_traffic_line.map	cover	Traffic block barrier line, 3 x 128	283x128x48		tm/barrier_traffic_concrete_block_01
+cover/cover_bollard_row.map	cover	Plastic bollard row, 4 x 64	200x8x64		tm/barrier_plastic_bollard_large
+cover/cover_crate_stack_large.map	cover	Two large crates stacked	65x67x97		tm/ch_crate48x64
+cover/cover_crate_mixed.map	cover	Mixed crates: wood tall, plastic large, small red	193x31x62		crate_plastic_sml_01_red;tm/cp_crate_wood_01_tall;tm/crate_plastic_lrg_01_dirt
+cover/cover_barrel_group.map	cover	Group of three barrels: plastic, wood, biohazard	76x70x46		tm/com_barrel_biohazard_rust;tm/container_barrel_plastic_01_closed;tm/decor_barrel_wood_01
+cover/cover_car_with_blocks.map	cover	Parked car with traffic blocks either side	407x128x78		tm/barrier_traffic_concrete_block_01;tm/ee_periph_city_ukraine_car_01
+cover/cover_military_crate_stack.map	cover	Two stackable military crates, side by side	89x47x21		military_crate_large_stackable_01
 floors/floor_concrete_256.map	floors	Concrete floor slab, 256 x 256	256x256x16	tmco/concrete_tile_ribbed_01	
 floors/floor_concrete_512.map	floors	Concrete floor slab, 512 x 512	512x512x16	tmco/concrete_tile_ribbed_01	
 floors/floor_wood_256.map	floors	Wood floor slab, 256 x 256	256x256x16	twc/wood_varnished_01	
 floors/platform_raised_256_metal.map	floors	Raised metal platform, 256 square, four legs	256x256x128	tmco/metal_painted_base_01a;tmco/metal_painted_diamond_plate_02a	
 floors/platform_raised_256_wood.map	floors	Raised wood platform, 256 square, four legs	256x256x128	twc/wood_varnished_01	
-floors/catwalk_256_rail.map	floors	Metal catwalk, 256 x 128, with railings both long sides	256x144x256	tmco/metal_painted_base_01a;tmco/metal_painted_diamond_plate_02a	tm/barrier_industrial_railing_128
+floors/catwalk_256_rail.map	floors	Metal catwalk, 256 x 128, with railings both long sides	256x128x176	tmco/metal_painted_base_01a;tmco/metal_painted_diamond_plate_02a	tm/barrier_industrial_railing_128
 pillars_beams/pillar_square_32_concrete.map	pillars_beams	Square concrete pillar, 32 x 32 x 128	32x32x128	mo/concrete_cinder_block_base_tan	
 pillars_beams/pillar_square_48_concrete.map	pillars_beams	Square concrete pillar, 48 x 48 x 128	48x48x128	mo/concrete_cinder_block_base_tan	
 pillars_beams/pillar_octagon_concrete.map	pillars_beams	Octagonal concrete pillar (convex hull), 128 high	40x40x128	mo/concrete_cinder_block_base_tan	
-pillars_beams/pillar_model_40.map	pillars_beams	Stock 40 x 40 support pillar	40x40x128		tm/building_support_pillar_40x40_01
+pillars_beams/pillar_model_40.map	pillars_beams	Stock 40 x 40 support pillar	41x41x128		tm/building_support_pillar_40x40_01
 pillars_beams/pillar_model_24_quad.map	pillars_beams	Four stock 24 x 24 pillars in a square	144x144x128		tm/building_support_pillar_24x24_01_tan
 pillars_beams/pillar_model_16_row.map	pillars_beams	Row of three stock 16 x 16 pillars at 96 spacing	208x16x128		tm/building_support_pillar_16x16_01
 pillars_beams/beam_wood_brush_256.map	pillars_beams	Wood beam 256 long on two posts	256x16x128	twc/wood_varnished_01	
-pillars_beams/beam_wood_model_pair.map	pillars_beams	Two stock wood beams, side by side on top	64x160x128		tm/building_support_wood_beam_03
-ladders/ladder_steel_128.map	ladders	Steel ladder, 128 high, climbable brush	48x20x128	ladder	tm/com_steel_ladder
-ladders/ladder_wood_construction_128.map	ladders	Construction wood ladder, 128 high	48x20x128	ladder	tm/construction_ladder_wood_01
-ladders/ladder_old_wood_72.map	ladders	Old wood ladder, 72 high	48x20x72	ladder	tm/ladder_old_wood_01_72
-ladders/ladder_old_wood_144.map	ladders	Old wood ladder, 144 high	48x20x144	ladder	tm/ladder_old_wood_01_144
-ladders/ladder_old_wood_160.map	ladders	Old wood ladder, 160 high	48x20x160	ladder	tm/ladder_old_wood_01_160
-ladders/ladder_radio_tower_128.map	ladders	Radio tower ladder section, 128 high	48x20x128	ladder	tm/ee_buildings_industrial_radiotower_ladder_128_02
-roofs/roof_flat_256_concrete_lip.map	roofs	Flat roof 256, with roof lips on the front and back edges	256x256x48	tmco/metal_bare_roof_01	tm/building_roof_lip_concrete_01_128
+pillars_beams/beam_wood_model_pair.map	pillars_beams	Two stock wood beams, side by side on top	300x106x137		tm/building_support_wood_beam_03
+ladders/ladder_steel_128.map	ladders	Steel ladder, 128 high, climbable brush	24x31x328	ladder	tm/com_steel_ladder
+ladders/ladder_wood_construction_128.map	ladders	Construction wood ladder, 128 high	24x23x193	ladder	tm/construction_ladder_wood_01
+ladders/ladder_old_wood_72.map	ladders	Old wood ladder, 72 high	24x23x76	ladder	tm/ladder_old_wood_01_72
+ladders/ladder_old_wood_144.map	ladders	Old wood ladder, 144 high	24x23x148	ladder	tm/ladder_old_wood_01_144
+ladders/ladder_old_wood_160.map	ladders	Old wood ladder, 160 high	24x23x160	ladder	tm/ladder_old_wood_01_160
+ladders/ladder_radio_tower_128.map	ladders	Radio tower ladder section, 128 high	24x25x128	ladder	tm/ee_buildings_industrial_radiotower_ladder_128_02
+roofs/roof_flat_256_concrete_lip.map	roofs	Flat roof 256, with roof lips on the front and back edges	256x376x24	tmco/metal_bare_roof_01	tm/building_roof_lip_concrete_01_128
 roofs/roof_flat_512_metal.map	roofs	Flat metal roof 512 square, no lips	512x512x16	tmco/metal_bare_roof_01	
 roofs/roof_slant_256.map	roofs	Slanted metal roof, 256 square, rising 64 toward +y	256x256x64	tmco/metal_bare_roof_01	
 roofs/roof_slant_128.map	roofs	Slanted metal roof, 128 square, rising 32 toward +y	128x128x32	tmco/metal_bare_roof_01	
 roofs/roof_overhang_256.map	roofs	Flat roof 320 square overhanging a 256 wall box	320x320x16	tmco/metal_bare_roof_01	
 roofs/roof_parapet_256.map	roofs	Flat roof 256 with a 32-unit concrete parapet	256x256x48	mo/concrete_cinder_block_base_tan;tmco/metal_bare_roof_01	
-lamps/lamp_cage_wall.map	lamps	Caged security lamp on a wall, warm light	48x48x128		tm/lighting_fixtures_security_lamp_withcage_01
-lamps/lamp_security_pole.map	lamps	Security lamp, warm light	48x48x128		tm/lighting_fixtures_security_lamp_01
-lamps/lamp_tall_floor.map	lamps	Tall floor lamp, warm light	48x48x176		tm/ee_light_fixture_lamp_tall_01
-lamps/lamp_short_table.map	lamps	Short table lamp, cool light	48x48x80		tm/ee_light_fixture_lamp_short_02
-lamps/lamp_floodlight_pole.map	lamps	Floodlight on a pole, bright white	64x64x192		tm/com_floodlight_em
-lamps/lamp_ceiling_bulb.map	lamps	Ceiling bulb, warm white	32x32x40		tm/light_ceiling_bulb_01
-lamps/lamp_wall_picture.map	lamps	Wall lamp over a picture, warm amber	48x48x128		tm/lighting_wall_lamp_picture_01
-lamps/lamp_emergency_red.map	lamps	Caged lamp with red emergency light	48x48x128		tm/lighting_fixtures_security_lamp_withcage_01
-props/props_office_desk_set.map	props	Office desk set: teacher desk, fan, radio, ashtray, coffee set	122x84x168		accessory_table_vintage_ashtray;desktop_fan_fn_01;furniture_teachers_desk_01;lag_portable_radio;me_kitchen_coffee_set_01
-props/props_office_metal_desk.map	props	Metal military desk with fan and ashtray	122x64x168		accessory_table_vintage_ashtray;desktop_fan_fn_01;p7_desk_metal_military_03_tablet
-props/props_kitchen_counter.map	props	Kitchen counter set: stove, pots, knives, syrup, coffee	134x104x188		equipment_propane_burner_stove_01_white;kitchen_01_pan_01;kitchen_01_pot_copper_01;kitchen_knife_block_01;kitchen_plastic_syrup_bottle_01;me_kitchen_coffee_set_01
-props/props_warehouse_shelf.map	props	Warehouse metal shelf with red crate and paint can	104x64x208		container_paint_can_01;crate_plastic_sml_01_red;tm/decor_misc_props_01_shelf_metal
-props/props_warehouse_pallets.map	props	Pallet stack with crate, jug and paint can	204x64x168		container_paint_can_01;crate_plastic_sml_01_red;tm/com_pallet_stack;tm/container_water_jug_01_blue
-props/props_storage_wood_shelf.map	props	Wood storage shelf with paint can and jug	104x64x168		container_paint_can_01;storage_shelf_beam_wood_plank;tm/container_water_jug_01_blue
-gameplay/gameplay_tdm_spawn_pair.map	gameplay	TDM spawn pair facing each other on a 512 floor	512x512x32	tmco/concrete_tile_ribbed_01	
-gameplay/gameplay_team_spawn_pair.map	gameplay	Allies and axis start spawns facing each other	512x512x32	tmco/concrete_tile_ribbed_01	
-gameplay/gameplay_dm_spawn_quad.map	gameplay	Four DM spawns at the corners of a 512 floor, facing centre	512x512x32	tmco/concrete_tile_ribbed_01	
-gameplay/gameplay_sd_spawn_pair.map	gameplay	Search-and-destroy attacker and defender spawns facing each other	512x512x32	tmco/concrete_tile_ribbed_01	
+lamps/lamp_cage_wall.map	lamps	Caged security lamp on a wall, warm light	10x20x16		tm/lighting_fixtures_security_lamp_withcage_01
+lamps/lamp_security_pole.map	lamps	Security lamp, warm light	9x20x16		tm/lighting_fixtures_security_lamp_01
+lamps/lamp_tall_floor.map	lamps	Tall floor lamp, warm light	18x18x65		tm/ee_light_fixture_lamp_tall_01
+lamps/lamp_short_table.map	lamps	Short table lamp, cool light	16x16x27		tm/ee_light_fixture_lamp_short_02
+lamps/lamp_floodlight_pole.map	lamps	Floodlight on a pole, bright white	10x12x14		tm/com_floodlight_em
+lamps/lamp_ceiling_bulb.map	lamps	Ceiling bulb, warm white	4x4x18		tm/light_ceiling_bulb_01
+lamps/lamp_wall_picture.map	lamps	Wall lamp over a picture, warm amber	8x73x5		tm/lighting_wall_lamp_picture_01
+lamps/lamp_emergency_red.map	lamps	Caged lamp with red emergency light	10x20x16		tm/lighting_fixtures_security_lamp_withcage_01
+props/props_office_desk_set.map	props	Office desk set: teacher desk, fan, radio, ashtray, coffee set	32x73x54		accessory_table_vintage_ashtray;desktop_fan_fn_01;furniture_teachers_desk_01;lag_portable_radio;me_kitchen_coffee_set_01
+props/props_office_metal_desk.map	props	Metal military desk with fan and ashtray	60x32x54		accessory_table_vintage_ashtray;desktop_fan_fn_01;p7_desk_metal_military_03_tablet
+props/props_kitchen_counter.map	props	Kitchen counter set: stove, pots, knives, syrup, coffee	33x94x63		equipment_propane_burner_stove_01_white;kitchen_01_pan_01;kitchen_01_pot_copper_01;kitchen_knife_block_01;kitchen_plastic_syrup_bottle_01;me_kitchen_coffee_set_01
+props/props_warehouse_shelf.map	props	Warehouse metal shelf with red crate and paint can	22x46x32		container_paint_can_01;crate_plastic_sml_01_red;tm/decor_misc_props_01_shelf_metal
+props/props_warehouse_pallets.map	props	Pallet stack with crate, jug and paint can	153x61x47		container_paint_can_01;crate_plastic_sml_01_red;tm/com_pallet_stack;tm/container_water_jug_01_blue
+props/props_storage_wood_shelf.map	props	Wood storage shelf with paint can and jug	63x127x27		container_paint_can_01;storage_shelf_beam_wood_plank;tm/container_water_jug_01_blue
+gameplay/gameplay_tdm_spawn_pair.map	gameplay	TDM spawn pair facing each other on a 512 floor	512x512x16	tmco/concrete_tile_ribbed_01	
+gameplay/gameplay_team_spawn_pair.map	gameplay	Allies and axis start spawns facing each other	512x512x16	tmco/concrete_tile_ribbed_01	
+gameplay/gameplay_dm_spawn_quad.map	gameplay	Four DM spawns at the corners of a 512 floor, facing centre	512x512x16	tmco/concrete_tile_ribbed_01	
+gameplay/gameplay_sd_spawn_pair.map	gameplay	Search-and-destroy attacker and defender spawns facing each other	512x512x16	tmco/concrete_tile_ribbed_01	
 gameplay/gameplay_minimap_corner_pair.map	gameplay	Two minimap corner markers at opposite corners of a 512 floor	512x512x16	tmco/concrete_tile_ribbed_01	

@@ -16,7 +16,7 @@ iwmap 4
 {
 "classname" "misc_model"
 "model" "crate_plastic_sml_01_red"
-"origin" "-10 0 40"
+"origin" "-10 0 33"
 "angles" "0 0 0"
 }
 // entity 3

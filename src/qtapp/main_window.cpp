@@ -2406,13 +2406,20 @@ void MainWindow::buildMenus() {
     addCommand(view, "StockReference", "Stock Map Reference...", QKeySequence(), [this] {
         const QDir zoneDir(QFileInfo(toolPath("replay")).absolutePath() + "/zone");
         QStringList zones;
-        for (const QString& f : zoneDir.entryList({"mp_*.ff"}, QDir::Files, QDir::Name)) zones << QFileInfo(f).completeBaseName();
+        // Playable maps only: a map zone has its techsets_<zone> pair; weapon, character and streamed-tile zones do not
+        // (map-agent report 2026-11-14: the list was mostly attachment and character fastfiles).
+        for (const QString& f : zoneDir.entryList({"mp_*.ff"}, QDir::Files, QDir::Name)) {
+            const QString z = QFileInfo(f).completeBaseName();
+            if (QFileInfo::exists(zoneDir.filePath("techsets_" + z + ".ff")) && !z.startsWith("mp_frontend")) zones << z;  // (menus)
+        }
         if (zones.isEmpty()) {
-            ctx_.setStatus("No mp_*.ff zones in " + zoneDir.absolutePath() + " (set the Replay exe in Compile settings)");
+            ctx_.setStatus("No stock map zones in " + zoneDir.absolutePath() + " (set the Replay exe in Compile settings)");
             return;
         }
         bool ok = false;
-        const int cur = std::max(0, int(zones.indexOf(referenceZone_.isEmpty() ? QString("mp_shipment") : referenceZone_)));
+        // The open stock map first, then the current reference, then Shipment.
+        const QString want = !stockZone_.isEmpty() ? stockZone_ : !referenceZone_.isEmpty() ? referenceZone_ : QString("mp_shipment");
+        const int cur = std::max(0, int(zones.indexOf(want)));
         const QString zone = QInputDialog::getItem(this, "Stock Map Reference",
                                                    "Zone (first use exports gfx_map through ACTS, about 10 s and a few hundred MB on C:):",
                                                    zones, cur, false, &ok);
@@ -5504,6 +5511,9 @@ QString MainWindow::prefetchStockAssets(int timeoutMs) {
             if (const Primitive* p = it.prim()) {
                 auto add = [&](const std::string& m) {
                     if (m.empty() || isIw8ToolMaterial(m) || (customMaterials_ && customMaterials_->find(m))) return;
+                    // The build's own materials (water, the glass pane) are no stock materials (map-agent report
+                    // 2026-11-14: prefetch counted iw8r_glass as missing).
+                    if (qs(m).compare("water", Qt::CaseInsensitive) == 0 || qs(m).compare("iw8r_glass", Qt::CaseInsensitive) == 0) return;
                     if (!materials.contains(qs(m))) materials << qs(m);
                 };
                 if (p->kind == PrimKind::Patch) add(p->patchMaterial);
@@ -6732,7 +6742,7 @@ QString toolbarLabel(const QString& id, const QString& fallback) {
     static const QHash<QString, QString> labels = {
         {"NewMap", "New"},          {"Open", "Open"},       {"Save", "Save"},         {"Undo", "Undo"},
         {"Redo", "Redo"},           {"GizmoMode", "Move"},  {"GizmoScale", "Scale"},  {"ToggleTexturedView", "Textured"},
-        {"ToggleLitPreview", "Lit"}, {"CompileMap", "Build"}, {"BuildDeployLoad", "Play"}, {"PlayPreview", "Preview"},
+        {"ToggleLitPreview", "Lit"}, {"CompileMap", "Build"}, {"BuildDeployLoad", "Play Game"}, {"PlayPreview", "Walk"},
         {"WebServer", "Web"}};
     if (labels.contains(id)) return labels.value(id);
     QString t = fallback;

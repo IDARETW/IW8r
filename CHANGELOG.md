@@ -5,6 +5,22 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Fixes from the map agent's editor issue list** (out/agent/mp_cinderrail/EDITOR_ISSUES.md):
+  - a build no longer crashes on a stock model whose collision hull defeats the hull code (the corrugated metal
+    awning): the hull gives up cleanly, retries with welded points, and a piece without a hull collides as its box;
+  - Check Map no longer calls placed prefabs (misc_prefab) dropped: the build expands them;
+  - a light grid that cannot be written removes the previous build's grid files, so they are not used by mistake;
+  - the prefetch no longer counts the built-in glass as a missing stock material, and a map that defines
+    iw8r_glass itself no longer gets a "defined twice" warning;
+  - Play Preview climbs ramps at walking speed (the ground move kept no vertical speed: a ramp took 4x as long);
+  - Play Preview hides the spawn markers (a selected start spawn filled the view);
+  - the toolbar says "Play Game" and "Walk" (Play started a build and the game; Preview was the walk);
+  - View > Stock Map Reference lists the playable maps only (24 of 9,238 zones) and starts at the open stock map;
+  - the bundled prefab library: the furniture prefabs had items floating at guessed heights and two used a stand-in
+    for the desk / counter; the stair prefabs placed their modules sideways with gaps; the catwalk's railings
+    crossed the walkway. All fixed, sizes in index.tsv measured from the models (tools/prefab_bounds_audit.py).
+  Not reproduced: an editor exit after a camera-path frame export (a key press in a line edit reached a deleted
+  object; the report does not say which).
 - **Own lamps in Game Lighting take the game's light path** (research 132 G8), as the build gives them: bulb and
   window falloff, the spot cone, the 150-degree rule, and a shadow map for spots with `iw8r_shadows 1` (the only
   shadowed own lamps in game too). Brushes added to a stock map get the stock map's lamps the same way.

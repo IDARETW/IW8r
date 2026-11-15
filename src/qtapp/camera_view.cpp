@@ -617,7 +617,7 @@ void CameraView::render() {
     mix(0xF00Du);
     for (const auto& f : ctx_->doc.faceSelection()) mix((f.entity * 31 + f.item) * 131 + f.face);
     mix(uint64_t(ctx_->scene.cameraMode) | (uint64_t(ctx_->scene.litPreview) << 8) | (uint64_t(ctx_->scene.litShadows) << 9) |
-        (uint64_t(ctx_->texturedView) << 10) | (uint64_t(ctx_->showSpawns) << 11) | (uint64_t(bool(imageLookup_)) << 12) |
+        (uint64_t(ctx_->texturedView) << 10) | (uint64_t(ctx_->showSpawns && !ctx_->playing) << 11) | (uint64_t(bool(imageLookup_)) << 12) |
         (uint64_t(ctx_->scene.captureMode) << 13) | (uint64_t(gameLookOn()) << 14));
     mix(ctx_->scene.pointfile.size());
     mix(ctx_->scene.collisionPreview.size());
@@ -834,7 +834,10 @@ void CameraView::render() {
         // arriving, a changed material image, a capture) makes everything again.
         if (!texFn_) texFn_ = [this](const std::string& m) { return textureFor(m); };
         static const bool noInPlace = app::perfOff("inplace");  // benchmark switch: everything again on every change
-        geo_.update(ctx_->scene, ctx_->doc, ctx_->showSpawns, ctx_->texturedView && imageLookup_ ? &texFn_ : nullptr, geomDirty_ || noInPlace);
+        // Play Preview walks without the spawn markers (the game has none; a selected start spawn filled the view:
+        // map-agent report 2026-11-14).
+        geo_.update(ctx_->scene, ctx_->doc, ctx_->showSpawns && !ctx_->playing, ctx_->texturedView && imageLookup_ ? &texFn_ : nullptr,
+                    geomDirty_ || noInPlace);
         updateSkyBox();  // probe captures reflect the sky too
         geomKey_ = key;
         geomDirty_ = moreToLoad_;  // textures still arriving: build again next frame
@@ -2055,9 +2058,9 @@ QString CameraView::geometrySelfCheck() {
     geo_.flatten(t1, l1, o1, x1);
     const size_t shadowOnly = ctx_->scene.shadowOnlyVertices, casters = ctx_->scene.shadowCasterVertices;
     if (ctx_->texturedView && imageLookup_)
-        app::buildCameraGeometry(ctx_->scene, ctx_->doc, ctx_->showSpawns, t2, l2, o2, [this](const std::string& m) { return textureFor(m); }, x2);
+        app::buildCameraGeometry(ctx_->scene, ctx_->doc, ctx_->showSpawns && !ctx_->playing, t2, l2, o2, [this](const std::string& m) { return textureFor(m); }, x2);
     else
-        app::buildCameraGeometry(ctx_->scene, ctx_->doc, ctx_->showSpawns, t2, l2, o2);
+        app::buildCameraGeometry(ctx_->scene, ctx_->doc, ctx_->showSpawns && !ctx_->playing, t2, l2, o2);
     const auto same = [](const std::vector<app::GpuVertex>& a, const std::vector<app::GpuVertex>& b) {
         return a.size() == b.size() && (a.empty() || std::memcmp(a.data(), b.data(), a.size() * sizeof(app::GpuVertex)) == 0);
     };

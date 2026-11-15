@@ -171,7 +171,10 @@ std::vector<std::string> EntityDefs::validate(const Entity& e) const {
             out.push_back("class '" + cls + "' has no entity definition, so the build does not accept it");
         return out;
     }
-    if (!def->buildAccepted) out.push_back("class '" + cls + "' is not built: the converter drops it (buildAccepted is false)");
+    // misc_prefab never reaches the converter: the build expands it into its contents first (map-agent report
+    // 2026-11-14: Check Map called placed prefab bundles dropped although the build log expanded them).
+    if (!def->buildAccepted && cls != "misc_prefab")
+        out.push_back("class '" + cls + "' is not built: the converter drops it (buildAccepted is false)");
 
     for (const KeyDef& k : def->keys) {
         if (!k.required) continue;

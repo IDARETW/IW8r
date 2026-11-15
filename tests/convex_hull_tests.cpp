@@ -145,3 +145,29 @@ TEST(hull_brushes_apply_placement) {
 
     CHECK(hullBrushes(pieces, Vec3{}, Vec3{}, 0.0, "clip").empty());
 }
+
+// Map-agent report 2026-11-11 / 14: a corrugated metal awning (nearly coplanar points, many duplicates) crashed the build
+// in quickHullFaces (a directed edge lost its twin). Such sheets give planes without throwing, and every piece of a
+// model gets collision (a hull, else its box).
+TEST(convex_hull_corrugated_sheet_does_not_throw) {
+    ImportedModel m;
+    ImportedMesh mesh;
+    for (int y = 0; y <= 40; ++y)
+        for (int x = 0; x <= 160; ++x) {
+            // 128 x 32 units, ripples of 0.002 units: nearly flat; every point twice (the GLB's split vertices).
+            const Vec3 p{x * 0.8, y * 0.8, 0.002 * std::sin(x * 0.7) + 1e-9 * (x % 3)};
+            mesh.pos.push_back(p);
+            mesh.pos.push_back(p);
+        }
+    for (size_t i = 0; i + 2 < mesh.pos.size(); i += 3) mesh.idx.insert(mesh.idx.end(), {uint32_t(i), uint32_t(i + 1), uint32_t(i + 2)});
+    m.meshes.push_back(mesh);
+    bool threw = false;
+    std::vector<std::vector<Plane>> pieces;
+    try {
+        pieces = convexPieces(m, 4, 24);
+    } catch (...) {
+        threw = true;
+    }
+    CHECK(!threw && !pieces.empty());
+    for (const auto& pc : pieces) CHECK(pc.size() >= 4);
+}

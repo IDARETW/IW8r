@@ -4238,7 +4238,14 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                            (lg.samplesAt ? std::string("baked from the map (open air and bounce light)") : std::string("(flat ambient)")) +
                            " for viewmodel and model lighting");
         } else {
-            warn.push_back("light grid not written (" + gerr + "): models and the viewmodel get no grid light");
+            // A previous build's grid files must not stay behind: the converter would take them for this map's grid
+            // (map-agent report 2026-11-14: a failed grid looked like a usable result).
+            const fs::path ex = root / "extracted";
+            std::error_code rmEc;
+            for (const char* part : {"row_starts", "row_data", "entries", "colors"}) fs::remove(ex / lightGridPartPath(id, part), rmEc);
+            fs::remove(mapDir / (id + ".d3dbsp.lightgrid.json"), rmEc);
+            warn.push_back("light grid not written (" + gerr + "): models and the viewmodel get no grid light (the previous "
+                           "build's grid files were removed)");
         }
     }
     if (!localLights.empty()) {
