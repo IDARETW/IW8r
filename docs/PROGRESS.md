@@ -20,6 +20,7 @@
     refreshStockWorldPreview / applyStockSunPreview (main_window_stock_edit.cpp); removal / loot helper brushes drawn as
     volumes; bench IW8R_BENCH_STOCK_EDIT. Not covered: the flat (untextured) reference and picking still show removed
     geometry; Game Lighting keeps the stock lightmap's baked shadow of removed geometry until the rebuild re-bakes it.
+  - Suites: core 184,034, GUI 1,207, smoke ok (with the render thread check). Installer and zip 15:35 from 5ec0ddc (no ini).
 - 2026-11-15 evening, threading (owner: "the viewport rendering being on one thread so its never frozen, and other
   workloads on others") and narrow side panels (owner: menus "need way too much horizontal space"; one Haiku agent per
   panel, 6eb38b5). Measured first: stall_watch.h (Tools > Report Freezes to the Console, or IW8R_STALL_WATCH=<ms>,
