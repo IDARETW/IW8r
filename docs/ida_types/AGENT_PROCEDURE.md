@@ -5,6 +5,9 @@ Replay game exe (`game_dx12_ship_replay.exe`, MW2019 Replay 1.20). Your brief gi
 Your structs, byte ranges, hints and notes are in `E:\IW8-Radiant\docs\ida_types\agents.json` under that id. Read this
 whole file before you start, then read your entry.
 
+**There is no time or token budget for this job.** Do not set one yourself and do not stop early: finish Step 2 and
+Step 3 for every struct in your entry before you report. Stop early only when a tool error stops you, and say so.
+
 ## 1. What counts as evidence
 
 1. **Replay code is the only authority for offsets and sizes.** A field is CONFIRMED only when you have seen a Replay

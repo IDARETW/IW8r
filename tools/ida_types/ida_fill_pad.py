@@ -22,7 +22,7 @@ import ida_typeinf
 _PAD = re.compile(r"^(_pad|pad|gap)[0-9A-Fa-f_]*$", re.I)
 
 
-def _get(name):
+def _get(name, allow_union=False):
     til = ida_typeinf.get_idati()
     t = ida_typeinf.tinfo_t()
     if not t.get_named_type(til, name) or not t.is_udt():
@@ -30,8 +30,8 @@ def _get(name):
     u = ida_typeinf.udt_type_data_t()
     if not t.get_udt_details(u):
         raise ValueError("cannot read members of %r" % name)
-    if u.is_union:
-        raise ValueError("%r is a union; edit unions by hand" % name)
+    if u.is_union and not allow_union:
+        raise ValueError("%r is a union; fill_pad does not edit unions (report changes as proposals)" % name)
     return til, t, u
 
 
@@ -58,7 +58,7 @@ def _pad_member(off, size):
 
 
 def show(name, lo=0, hi=None):
-    til, t, u = _get(name)
+    til, t, u = _get(name, allow_union=True)
     hi = t.get_size() if hi is None else hi
     print("%s size %d (0x%X), ordinal %d" % (name, t.get_size(), t.get_size(), t.get_ordinal()))
     for i in range(len(u)):
@@ -69,7 +69,7 @@ def show(name, lo=0, hi=None):
 
 
 def decl(name):
-    til, t, u = _get(name)
+    til, t, u = _get(name, allow_union=True)
     print(t._print(name, ida_typeinf.PRTYPE_DEF | ida_typeinf.PRTYPE_MULTI | ida_typeinf.PRTYPE_TYPE))
 
 
@@ -146,6 +146,41 @@ def fill_pad(name, fields, lo=0, hi=None, apply=False):
     if err != ida_typeinf.TERR_OK:
         raise ValueError("IDA could not save %s (error %s)" % (name, err))
     print("APPLIED: %d field(s) added to %s; size %d unchanged." % (len(req), name, size))
+    return True
+
+
+def resize_tail_pad(name, new_size, apply=False):
+    """COORDINATOR ONLY (agents must not call this). Change a struct's total size by resizing its LAST member, which
+    must be a pad. No other member moves. Refuses when the last member is not a pad or would vanish."""
+    til, t, u = _get(name)
+    old = t.get_size()
+    last = u[len(u) - 1]
+    lo = last.offset // 8
+    if not _PAD.match(last.name or ""):
+        raise ValueError("last member of %s is %s, not a pad" % (name, last.name))
+    if new_size <= lo:
+        raise ValueError("new size %d would remove the tail pad that starts at 0x%X" % (new_size, lo))
+    nu = ida_typeinf.udt_type_data_t()
+    nu.taudt_bits, nu.pack, nu.sda = u.taudt_bits, u.pack, u.sda
+    nu.is_union = False
+    for i in range(len(u) - 1):
+        nu.push_back(u[i])
+    nu.push_back(_pad_member(lo, new_size - lo))
+    nt = ida_typeinf.tinfo_t()
+    if not nt.create_udt(nu, ida_typeinf.BTF_STRUCT):
+        raise ValueError("IDA refused the rebuilt struct")
+    chk = ida_typeinf.udt_type_data_t()
+    nt.get_udt_details(chk)
+    if nt.get_size() != new_size or any(chk[i].offset != u[i].offset for i in range(len(u) - 1)):
+        raise ValueError("rebuilt layout differs; nothing changed")
+    print("%s: size %d -> %d (tail pad at 0x%X now %d bytes)" % (name, old, new_size, lo, new_size - lo))
+    if not apply:
+        print("DRY RUN OK")
+        return False
+    err = nt.set_numbered_type(til, t.get_ordinal(), ida_typeinf.NTF_REPLACE, name)
+    if err != ida_typeinf.TERR_OK:
+        raise ValueError("IDA could not save %s (error %s)" % (name, err))
+    print("APPLIED")
     return True
 
 

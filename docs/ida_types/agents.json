@@ -53,7 +53,7 @@
       "CG_PlayersMP_ResetCharacterEntity",
       "ClActiveClientMP::AllocSnapshotMemory"
      ],
-     "note": "net-field tables: the arrays of {offset, bits} that MSG_ReadDeltaPlayerstate / MSG_WriteDeltaEntityState / MSG_WriteDeltaEntityFields walk give every networked field's Replay offset; match them to game-test field names by order"
+     "note": "net-field lists: the static table s_netFieldListsTable (0x142498CA0) holds every list with each field's offset and width (A004 read playerState_s from it: key 27, 564 entries); the s_msgNetFieldListType* globals are only run-time copies (0xFF in the file). Also read the MSG_ReadDelta*/MSG_WriteDelta* code"
     },
     {
      "name": "entityShared_t",
@@ -340,7 +340,7 @@
      "size_evidence_candidates": [
       "CL_ParseMP_ParseSnapshot"
      ],
-     "note": "net-field tables: the arrays of {offset, bits} that MSG_ReadDeltaPlayerstate / MSG_WriteDeltaEntityState / MSG_WriteDeltaEntityFields walk give every networked field's Replay offset; match them to game-test field names by order. gclient_s holds ps as a raw 21412-byte array (the game-test size); the Replay type is 21372."
+     "note": "net-field lists: the static table s_netFieldListsTable (0x142498CA0) holds every list with each field's offset and width (A004 read playerState_s from it: key 27, 564 entries); the s_msgNetFieldListType* globals are only run-time copies (0xFF in the file). Also read the MSG_ReadDelta*/MSG_WriteDelta* code. gclient_s holds ps as a raw 21412-byte array (the game-test size); the Replay type is 21372."
     }
    ]
   },
@@ -373,7 +373,7 @@
      "size_evidence_candidates": [
       "CL_ParseMP_ParseSnapshot"
      ],
-     "note": "net-field tables: the arrays of {offset, bits} that MSG_ReadDeltaPlayerstate / MSG_WriteDeltaEntityState / MSG_WriteDeltaEntityFields walk give every networked field's Replay offset; match them to game-test field names by order. gclient_s holds ps as a raw 21412-byte array (the game-test size); the Replay type is 21372."
+     "note": "net-field lists: the static table s_netFieldListsTable (0x142498CA0) holds every list with each field's offset and width (A004 read playerState_s from it: key 27, 564 entries); the s_msgNetFieldListType* globals are only run-time copies (0xFF in the file). Also read the MSG_ReadDelta*/MSG_WriteDelta* code. gclient_s holds ps as a raw 21412-byte array (the game-test size); the Replay type is 21372."
     }
    ]
   },
@@ -828,7 +828,7 @@
       "CG_SnapshotMP_SetNextSnap",
       "ClActiveClientMP::AllocSnapshotMemory"
      ],
-     "note": "net-field tables: the arrays of {offset, bits} that MSG_ReadDeltaPlayerstate / MSG_WriteDeltaEntityState / MSG_WriteDeltaEntityFields walk give every networked field's Replay offset; match them to game-test field names by order"
+     "note": "net-field lists: the static table s_netFieldListsTable (0x142498CA0) holds every list with each field's offset and width (A004 read playerState_s from it: key 27, 564 entries); the s_msgNetFieldListType* globals are only run-time copies (0xFF in the file). Also read the MSG_ReadDelta*/MSG_WriteDelta* code"
     },
     {
      "name": "ScoreInfo",
@@ -6332,7 +6332,7 @@
      "size_evidence_candidates": [
       "MSG_WriteDeltaHudElems"
      ],
-     "note": "net-field tables: the arrays of {offset, bits} that MSG_ReadDeltaPlayerstate / MSG_WriteDeltaEntityState / MSG_WriteDeltaEntityFields walk give every networked field's Replay offset; match them to game-test field names by order"
+     "note": "net-field lists: the static table s_netFieldListsTable (0x142498CA0) holds every list with each field's offset and width (A004 read playerState_s from it: key 27, 564 entries); the s_msgNetFieldListType* globals are only run-time copies (0xFF in the file). Also read the MSG_ReadDelta*/MSG_WriteDelta* code"
     }
    ]
   },
