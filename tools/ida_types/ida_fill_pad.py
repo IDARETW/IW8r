@@ -161,7 +161,18 @@ def backup_all(path):
                 continue
             nm = t.get_type_name() or ""
             s = t._print(nm, ida_typeinf.PRTYPE_DEF | ida_typeinf.PRTYPE_MULTI | ida_typeinf.PRTYPE_TYPE)
-            if s:
-                f.write("/* ordinal %d */\n%s;\n\n" % (o, s))
-                n += 1
+            if not s:
+                continue
+            pack = 0
+            if t.is_udt():
+                u = ida_typeinf.udt_type_data_t()
+                if t.get_udt_details(u):
+                    pack = u.pack
+            size = t.get_size()
+            f.write("/* ordinal %d, size %s */\n" % (o, size if size != ida_typeinf.BADSIZE else "?"))
+            if pack:
+                f.write("#pragma pack(push, %d)\n%s;\n#pragma pack(pop)\n\n" % (1 << (pack - 1) if pack > 1 else 1, s))
+            else:
+                f.write("%s;\n\n" % s)
+            n += 1
     print("wrote %d types to %s" % (n, path))
