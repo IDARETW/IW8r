@@ -40,6 +40,9 @@ their types. `BgGroundState` is 80 in Replay (type 96): its member layout is sti
 | `dvar_t` | size 128 -> 112; +104 is `domainCallback` (void *, 8 bytes); the 24-byte `BbConstUsageFlags` member dropped (not in Replay) | `Dvar_Deregister_Internal` 0x1413E5B10: `imul rcx, rdx, 70h` (x3) and `lea r8d, [rdx+70h]` memset size; `Dvar_Init` 0x1413E6CB0 pool loop `+= 112` over 7012 entries, `memset(..., 0xBFBC0)` = 7012 * 112; `Dvar_RegisterCustomDomainCallback` 0x1413E90B0 writes `*(dvar+104) = domainCallback` (A014). Nothing embeds `dvar_t` by value |
 | `VariableValue` | `type` unsigned int -> unsigned __int8 + `_pad9[3]` (no move) | `VM_CallScriptFunction` 0x14132BB2F: `movzx esi, byte ptr [r14+8]`, `mov byte ptr [r14+8], 8` (A014) |
 
+| `cpose_t` | size 288 -> 280: members up to `physicsId` (+0x18) unchanged; `actualOrigin` (12 bytes at +0x1C) dropped, leaving 4 unknown bytes at +0x1C; everything from `origin` on 8 lower (origin +0x20, angles +0x40) | A015: `centity_t` stride 752 (`CG_GetActiveCentity`, `CG_SnapshotMP_SetNextSnap`); `prevState` at +0x118 (16-byte copies in `CG_SnapshotMP_SetNextSnap`, 112-byte block in `CG_PlayerCorpseMP_MoveDetachedPlayerCorpse`); origin +0x20 / angles +0x40 through both a centity pose (`CG_Pose_DoControllers` via `CG_Entity_GetParentAxis`) and `cg_t.viewModelPose` (a 280-byte block in `CG_UpdateViewModelPreviousPositionForHand`). After the change `centity_t` is 752 with prevState 280, nextState 392, flags 640, previousEventSequence 664, all as A015 measured |
+| parents of `cpose_t` | moved with it (not checked): `cg_t` 620656 -> 620640, `CgPredictedEntity` 904 -> 896, `MayhemObj` (16 + 1 poses) 5184 -> 5048 | game-test-copied parents, so later members are expected 8 lower per pose; the wave 4 `cg_t` agents have a note |
+
 Findings without edits: `WeaponDef` 5296, `ADSOverlay` 112, `SwaySettings` 256, `WeaponOffsetPatternScaleInfo` 16,
 `CarryAnimOverride` 24 match their loaders' stream sizes (A020); `WeaponCompleteDef` 624 and `AttachmentList` 16 match
 (A016); `WeaponDef` members from 0x764 on are 24 bytes below game-test because Replay drops six `iExplosionStepped*`
@@ -66,8 +69,8 @@ ints, and the type already has that shift (A019); `usercmd_s` 264, `viewClamp` 2
 - `scrVarPub_t`: `m_classMap` is at +152 in Replay (scrContext+0x3560; `Scr_InitClassMap`, `Scr_SetClassMap`,
   `Scr_InitVariables`), the type has it at +248; members 152..416 overlap it and need a joint relayout (A014).
 - `scrVmPub_t.inparamcount` (+40) is read and written as bytes at +40 and +42 (A014, around 0x1413277DE): unconfirmed.
-- `centity_t` stride 752 (type 760; `CG_GetActiveCentity`, `CG_SnapshotMP_SetNextSnap`), `nextState` at +392 (type
-  +400): the 8 bytes are in `cpose_t` (288 -> 280?) or between `pose` and `nextState`; A015 is localizing it.
+- `cpose_t`: what replaced `actualOrigin` in the 4 bytes at +0x1C (A015 found no access). `CEntActorInfo.roll` is a float
+  in the type but compared as a byte (A015).
 
 ### Agent edits re-checked
 

@@ -5268,7 +5268,7 @@
       "cg_t::ResetCgCharacterInfo",
       "CG_Weapon_ChangeViewmodelDobj"
      ],
-     "note": "Likely size error: game-test CgGlobalsMP inherits cg_t and has m_omnvarIndexIsNightMap at cg_t size + 0x14. Replay CgGlobalsMP has it at +0x926B4, which implies a Replay cg_t of about 0x926A0 (599712), not 620656. Confirm from Replay code (cg_t::cg_t, the cgameGlob array stride) before proposing."
+     "note": "Likely size error: game-test CgGlobalsMP inherits cg_t and has m_omnvarIndexIsNightMap at cg_t size + 0x14. Replay CgGlobalsMP has it at +0x926B4, which implies a Replay cg_t of about 0x926A0 (599712), not 620656. Confirm from Replay code (cg_t::cg_t, the cgameGlob array stride) before proposing. Also: in wave 2 the coordinator shrank cpose_t 288 -> 280 (confirmed through centity_t), so cg_t members after viewModelPoseLeftHand (0x19110) moved 8 lower and those after firstPersonLegsPose (now 0x19248) 16 lower; cg_t is now 620640. The byte ranges in this file are in the OLD offsets: for offsets above 0x19370 subtract 16 (use show() to see the live layout)."
     }
    ]
   },
@@ -5298,7 +5298,7 @@
       "cg_t::ResetCgCharacterInfo",
       "CG_Weapon_ChangeViewmodelDobj"
      ],
-     "note": "Likely size error: game-test CgGlobalsMP inherits cg_t and has m_omnvarIndexIsNightMap at cg_t size + 0x14. Replay CgGlobalsMP has it at +0x926B4, which implies a Replay cg_t of about 0x926A0 (599712), not 620656. Confirm from Replay code (cg_t::cg_t, the cgameGlob array stride) before proposing."
+     "note": "Likely size error: game-test CgGlobalsMP inherits cg_t and has m_omnvarIndexIsNightMap at cg_t size + 0x14. Replay CgGlobalsMP has it at +0x926B4, which implies a Replay cg_t of about 0x926A0 (599712), not 620656. Confirm from Replay code (cg_t::cg_t, the cgameGlob array stride) before proposing. Also: in wave 2 the coordinator shrank cpose_t 288 -> 280 (confirmed through centity_t), so cg_t members after viewModelPoseLeftHand (0x19110) moved 8 lower and those after firstPersonLegsPose (now 0x19248) 16 lower; cg_t is now 620640. The byte ranges in this file are in the OLD offsets: for offsets above 0x19370 subtract 16 (use show() to see the live layout)."
     }
    ]
   },
@@ -5328,7 +5328,7 @@
       "cg_t::ResetCgCharacterInfo",
       "CG_Weapon_ChangeViewmodelDobj"
      ],
-     "note": "Likely size error: game-test CgGlobalsMP inherits cg_t and has m_omnvarIndexIsNightMap at cg_t size + 0x14. Replay CgGlobalsMP has it at +0x926B4, which implies a Replay cg_t of about 0x926A0 (599712), not 620656. Confirm from Replay code (cg_t::cg_t, the cgameGlob array stride) before proposing."
+     "note": "Likely size error: game-test CgGlobalsMP inherits cg_t and has m_omnvarIndexIsNightMap at cg_t size + 0x14. Replay CgGlobalsMP has it at +0x926B4, which implies a Replay cg_t of about 0x926A0 (599712), not 620656. Confirm from Replay code (cg_t::cg_t, the cgameGlob array stride) before proposing. Also: in wave 2 the coordinator shrank cpose_t 288 -> 280 (confirmed through centity_t), so cg_t members after viewModelPoseLeftHand (0x19110) moved 8 lower and those after firstPersonLegsPose (now 0x19248) 16 lower; cg_t is now 620640. The byte ranges in this file are in the OLD offsets: for offsets above 0x19370 subtract 16 (use show() to see the live layout)."
     }
    ]
   },
@@ -5358,7 +5358,7 @@
       "cg_t::ResetCgCharacterInfo",
       "CG_Weapon_ChangeViewmodelDobj"
      ],
-     "note": "Likely size error: game-test CgGlobalsMP inherits cg_t and has m_omnvarIndexIsNightMap at cg_t size + 0x14. Replay CgGlobalsMP has it at +0x926B4, which implies a Replay cg_t of about 0x926A0 (599712), not 620656. Confirm from Replay code (cg_t::cg_t, the cgameGlob array stride) before proposing."
+     "note": "Likely size error: game-test CgGlobalsMP inherits cg_t and has m_omnvarIndexIsNightMap at cg_t size + 0x14. Replay CgGlobalsMP has it at +0x926B4, which implies a Replay cg_t of about 0x926A0 (599712), not 620656. Confirm from Replay code (cg_t::cg_t, the cgameGlob array stride) before proposing. Also: in wave 2 the coordinator shrank cpose_t 288 -> 280 (confirmed through centity_t), so cg_t members after viewModelPoseLeftHand (0x19110) moved 8 lower and those after firstPersonLegsPose (now 0x19248) 16 lower; cg_t is now 620640. The byte ranges in this file are in the OLD offsets: for offsets above 0x19370 subtract 16 (use show() to see the live layout)."
     }
    ]
   },
