@@ -19,12 +19,18 @@
 #include "atmosphere.h"
 #include "foliage_sway.h"
 #include "sky_image.h"
+#include "gpu_lock.h"
 
 #include <QBasicTimer>
+#include <QTimer>
 #include <QElapsedTimer>
 #include <QImage>
 #include <QPoint>
 #include <QWidget>
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <functional>
 #include <limits>
 #include <array>
@@ -77,10 +83,15 @@ public:
     int texturesWaiting() const;
     // Benchmark and tests (--viewport-bench): one frame now without a readback; a fixed frame size instead of the
     // widget's (0 x 0 = the widget's again); wait for the GPU; the renderer's counters of the last frame.
-    void renderNow() { render(); }
+    void renderNow();  // prepared and drawn on this thread (tests, the benchmark)
+    // The render thread (smoke test): frames it drew; a fake right button + W for its fly camera; whether it is used.
+    int renderThreadFrames() const { return rtFrames_.load(); }
+    void setFakeFlyInputForTest(bool on) { fakeFly_ = on; }
+    void prepareFrameForTest() { render(); }  // as a paint event does (the smoke window is off screen: none come)
+    static bool renderThreadOn() { return renderThreadEnabled(); }
     void setFixedRenderSize(int w, int h) { fixedW_ = w, fixedH_ = h; }
-    void finishGpu() { renderer_.finishGpu(); }
-    const app::SceneRenderer::FrameStats& frameStats() const { return renderer_.lastStats(); }
+    void finishGpu() { renderer_->finishGpu(); }
+    app::SceneRenderer::FrameStats frameStats() const { return renderer_->lastStats(); }
     bool texturesPending() const { return moreToLoad_ || refMoreToLoad_ || skyDecoding_; }
     // The stock reference still has materials whose images or layers are not resolved (exports, decodes, layer images).
     bool referencePending() const { return refTexPending_ || texInstPending_; }
@@ -120,8 +131,8 @@ public:
     void setMaterialLayers(LayerLookup lookup) { layerLookup_ = std::move(lookup); }
     // Stock decal volumes projected on the props (decalVolume batches): added beside the textured reference, replacing
     // an earlier set.
-    std::array<size_t, 5> referenceDecalStats() const { return renderer_.referenceDecalStats(); }
-    size_t instancesCulled() const { return renderer_.instancesCulled(); }
+    std::array<size_t, 5> referenceDecalStats() const { return renderer_->referenceDecalStats(); }
+    size_t instancesCulled() const { return renderer_->instancesCulled(); }
     // File-keyed textures ("\x06<path>": the super terrain's albedo): {asked, loaded, failed}.
     std::array<size_t, 3> fileTextureStats() const {
         std::array<size_t, 3> s{};
@@ -129,16 +140,16 @@ public:
             if (!k.empty() && k[0] == '\x06') ++s[0], s[id >= 0 && id != checkerTex_ ? 1 : 2]++;
         return s;
     }
-    std::array<size_t, 3> referenceTriangleSplit() const { return renderer_.referenceTriangleSplit(); }
-    std::array<size_t, 3> layerPassStats() const { return renderer_.layerPassStats(); }
-    std::array<size_t, 3> baseMaterialStats() const { return renderer_.baseMaterialStats(); }
-    bool gameAoDrawn() const { return renderer_.gameAoDrawn(); }
-    bool gameAoGtao() const { return renderer_.gameAoGtao(); }
-    bool gameHdrDrawn() const { return renderer_.gameHdrDrawn(); }
-    std::array<size_t, 2> ssrBatchStats() const { return renderer_.ssrBatchStats(); }
+    std::array<size_t, 3> referenceTriangleSplit() const { return renderer_->referenceTriangleSplit(); }
+    std::array<size_t, 3> layerPassStats() const { return renderer_->layerPassStats(); }
+    std::array<size_t, 3> baseMaterialStats() const { return renderer_->baseMaterialStats(); }
+    bool gameAoDrawn() const { return renderer_->gameAoDrawn(); }
+    bool gameAoGtao() const { return renderer_->gameAoGtao(); }
+    bool gameHdrDrawn() const { return renderer_->gameHdrDrawn(); }
+    std::array<size_t, 2> ssrBatchStats() const { return renderer_->ssrBatchStats(); }
     size_t referenceDecalExtras() const { return refTexExtraFrom_ == ~size_t(0) ? 0 : refTexMaterials_.size() - refTexExtraFrom_; }
     void setTerrainCut(double x, double y, double radius) {
-        renderer_.setTerrainCut(float(x), float(y), float(radius));
+        renderer_->setTerrainCut(float(x), float(y), float(radius));
         update();
     }
     void setReferenceDecalExtras(std::vector<app::ReferenceTexBatch> batches) {
@@ -158,7 +169,7 @@ public:
     };
     // The areas (x0, y0, x1, y1) of the streamed world tiles drawn now: the terrain's hole filler is dropped there.
     void setStreamedTileBoxes(std::vector<std::array<float, 4>> boxes) {
-        renderer_.setStreamedTileBoxes(boxes);
+        renderer_->setStreamedTileBoxes(boxes);
         update();
     }
     void setReferenceExtraGroups(std::vector<ExtraGroup> groups) {
@@ -229,7 +240,7 @@ public:
     // Tests: the shader state the renderer holds for a material's colour texture (nullopt: none or not loaded).
     std::optional<MaterialState> materialStateForTest(const std::string& material) const {
         const auto it = texIds_.find(material);
-        const MaterialState* s = it == texIds_.end() ? nullptr : renderer_.textureMaterial(it->second);
+        const MaterialState* s = it == texIds_.end() ? nullptr : renderer_->textureMaterial(it->second);
         return s ? std::optional<MaterialState>(*s) : std::nullopt;
     }
     // Tests: the texture ids of a material's normal and specular maps once they are loaded (-1 = none, -2 = not yet).
@@ -275,18 +286,18 @@ public:
     size_t effectDistortionQuads() const { return fxDistortion_; }  // distortion quads handed to the renderer
     double effectDistortionAlphaMax() const { return fxDistAlphaMax_; }
     double effectDistortionAlphaMean() const { return fxDistortion_ ? fxDistAlphaSum_ / double(fxDistortion_) : 0.0; }
-    size_t effectDistortionDrawn() const { return renderer_.distortionQuadsDrawn(); }
-    bool effectSunShadowUsed() const { return renderer_.particleShadowUsed(); }
+    size_t effectDistortionDrawn() const { return renderer_->distortionQuadsDrawn(); }
+    bool effectSunShadowUsed() const { return renderer_->particleShadowUsed(); }
     size_t effectFlareQuads() const { return fxFlares_; }                // flare pieces handed to the renderer
     Vec3 gameSunTowardNow() const { return gameLookOn() ? gameSunToward() : ctx_->scene.sunToward; }  // bench cameras
-    size_t effectFlaresDrawn() const { return renderer_.flareQuadsDrawn(); }
+    size_t effectFlaresDrawn() const { return renderer_->flareQuadsDrawn(); }
     void setEffectTime(double t) { fxTimeOverride_ = t; }        // tests: < 0 = live
     size_t fxGridLit_ = 0, fxDistortion_ = 0, fxFlares_ = 0;
     double fxDistAlphaMax_ = 0, fxDistAlphaSum_ = 0;  // the distortion particles' vertex alphas (bench)
     QString activeProbe() const { return activeProbe_; }  // tests
     size_t loadedNormalMaps() const;
     void materialImagesChanged();  // re-resolve materials that had no answer yet
-    size_t loadedTextures() const { return renderer_.textureCount(); }
+    size_t loadedTextures() const { return renderer_->textureCount(); }
     size_t texturedTriangles() const;
 
     // Translate gizmo (iw3xo-style): three axis handles at the selection centre; drag one to move the selection
@@ -375,7 +386,7 @@ public slots:
     // The stock map's atmosphere (its vision text; core gameFogFromVision).
     // The sky preview: conversion exposure and the HDR source mean / 99.5th percentile luminance (diagnosis).
     std::array<float, 3> skyLuminance() const { return {skyExposure_, skyMeanLum_, skyHighLum_}; }
-    std::array<size_t, 4> referenceLayerStats() const { return renderer_.referenceLayerStats(); }
+    std::array<size_t, 4> referenceLayerStats() const { return renderer_->referenceLayerStats(); }
     // Game Lighting's exposure now, its target, and whether the frame is metered (benchmark report).
     std::array<double, 3> gameExposureState() const { return {gameExposure_, gameExposureTarget_, gameMetering_ ? 1.0 : 0.0}; }
     // The stock map's grading CLUT (its vision's): baked into the colour LUT.
@@ -410,21 +421,21 @@ public slots:
         pendingShadows_ = std::move(shadows);
         update();
     }
-    size_t stockLightShadowsDrawn() const { return renderer_.stockLightShadowsDrawn(); }
+    size_t stockLightShadowsDrawn() const { return renderer_->stockLightShadowsDrawn(); }
     // View > Game Lighting options (MainWindow keeps them in the settings).
-    void setSunShadowMapSize(unsigned size) { renderer_.setSunShadowMapSize(size); update(); }
-    unsigned sunShadowMapSize() const { return renderer_.sunShadowMapSize(); }
-    void setGameAoEnabled(bool on) { renderer_.setGameAo(on); update(); }
-    void setGameAoGtao(bool on) { renderer_.setGameAoGtao(on); update(); }
-    void setStockDetailOff(uint32_t bits) { renderer_.setStockDetailOff(bits); update(); }
-    uint32_t stockDetailOff() const { return renderer_.stockDetailOff(); }
-    void setGameSsrEnabled(bool on) { renderer_.setGameSsr(on); update(); }
-    void setStockLightsEnabled(bool on) { renderer_.setStockLightsEnabled(on); update(); }
-    void setLightShadowsEnabled(bool on) { renderer_.setLightShadowsEnabled(on); update(); }
-    void setGameDebugView(int v) { renderer_.setGameDebugView(v); update(); }
-    void setGameAoStrength(double s) { renderer_.setGameAoStrength(float(s)); update(); }
-    void setPostFxEnabled(bool on) { renderer_.setPostFxEnabled(on); update(); }
-    void setFilmGrainEnabled(bool on) { renderer_.setFilmGrainEnabled(on); update(); }
+    void setSunShadowMapSize(unsigned size) { renderer_->setSunShadowMapSize(size); update(); }
+    unsigned sunShadowMapSize() const { return renderer_->sunShadowMapSize(); }
+    void setGameAoEnabled(bool on) { renderer_->setGameAo(on); update(); }
+    void setGameAoGtao(bool on) { renderer_->setGameAoGtao(on); update(); }
+    void setStockDetailOff(uint32_t bits) { renderer_->setStockDetailOff(bits); update(); }
+    uint32_t stockDetailOff() const { return renderer_->stockDetailOff(); }
+    void setGameSsrEnabled(bool on) { renderer_->setGameSsr(on); update(); }
+    void setStockLightsEnabled(bool on) { renderer_->setStockLightsEnabled(on); update(); }
+    void setLightShadowsEnabled(bool on) { renderer_->setLightShadowsEnabled(on); update(); }
+    void setGameDebugView(int v) { renderer_->setGameDebugView(v); update(); }
+    void setGameAoStrength(double s) { renderer_->setGameAoStrength(float(s)); update(); }
+    void setPostFxEnabled(bool on) { renderer_->setPostFxEnabled(on); update(); }
+    void setFilmGrainEnabled(bool on) { renderer_->setFilmGrainEnabled(on); update(); }
     // Texture files are read and decoded by worker threads while the view is on screen (decodedTexture). Runs that
     // draw a fixed number of frames (tests, the bench, the start-up check, feature pictures) turn that off for the
     // whole process: every file is then decoded where it is asked for, as before.
@@ -433,20 +444,20 @@ public slots:
     // Files a worker decoded and the view then used (the status line and tests).
     int backgroundDecodes() const { return backgroundDecodes_; }
     bool backgroundDecodeSelfTest(const QString& imageFile, QString* note = nullptr);  // --gui-test
-    void setWhiteBalanceEnabled(bool on) { renderer_.setWhiteBalanceEnabled(on); update(); }
-    bool whiteBalanceDrawn() const { return renderer_.whiteBalanceDrawn(); }
+    void setWhiteBalanceEnabled(bool on) { renderer_->setWhiteBalanceEnabled(on); update(); }
+    bool whiteBalanceDrawn() const { return renderer_->whiteBalanceDrawn(); }
     const GamePostFx& stockPostFx() const { return stockPostFx_; }
-    void setVolumetricFogEnabled(bool on) { renderer_.setVolumetricFogEnabled(on); update(); }
+    void setVolumetricFogEnabled(bool on) { renderer_->setVolumetricFogEnabled(on); update(); }
     // Bench: the stock vision's veil and vignette intensity, the renderer's veil and whether it was drawn.
     QString postFxReport() const {
         return QString("veil %1 vignette %2 renderer_veil %3 drawn %4")
-            .arg(stockPostFx_.veil).arg(stockPostFx_.vignetteIntensity).arg(renderer_.gameVeil()).arg(renderer_.veilDrawn() ? 1 : 0);
+            .arg(stockPostFx_.veil).arg(stockPostFx_.vignetteIntensity).arg(renderer_->gameVeil()).arg(renderer_->veilDrawn() ? 1 : 0);
     }
     // A fixed exposure (EV, the game's units) instead of the map's own (auto or its vision's); NaN = the map's.
     void setGameExposureOverride(double ev) { gameExposureOverride_ = ev; gameExposureSnap_ = true; update(); }
     double gameExposureOverride() const { return gameExposureOverride_; }
-    size_t stockLocalLightCount() const { return renderer_.stockLocalLightCount(); }
-    size_t stockLocalLightsDrawn() const { return renderer_.stockLocalLightsDrawn(); }
+    size_t stockLocalLightCount() const { return renderer_->stockLocalLightCount(); }
+    size_t stockLocalLightsDrawn() const { return renderer_->stockLocalLightsDrawn(); }
     // The stock map's own sun (its ComWorld sun light: intensity, linear colour, direction toward the sun).
     void setGameStockSun(double intensity, const Vec3& color, const Vec3& toward) {
         stockSunKnown_ = intensity > 0;
@@ -460,16 +471,16 @@ public slots:
         stockLmDirty_ = true;
         update();
     }
-    bool hasStockLightmap() const { return renderer_.hasStockLightmap(); }
-    bool hasEnvBrdfLut() const { return renderer_.hasEnvBrdfLut(); }
-    bool hasGtsoLut() const { return renderer_.hasGtsoLut(); }
+    bool hasStockLightmap() const { return renderer_->hasStockLightmap(); }
+    bool hasEnvBrdfLut() const { return renderer_->hasEnvBrdfLut(); }
+    bool hasGtsoLut() const { return renderer_->hasGtsoLut(); }
     // The stock reference's reflection probes (null clears), sent to the renderer on the next frame.
     void setStockProbes(std::shared_ptr<const StockProbeSet> set) {
         pendingProbes_ = std::move(set);
         probesDirty_ = true;
         update();
     }
-    size_t stockProbeCount() const { return renderer_.stockProbeCount(); }
+    size_t stockProbeCount() const { return renderer_->stockProbeCount(); }
     double gameExposure() const { return gameExposure_; }
     // Stock map reference geometry (View > Stock Map Reference), uploaded on the next frame. Empty clears it.
     void setReference(std::vector<app::GpuVertex> tris) {
@@ -478,11 +489,11 @@ public slots:
         update();
     }
     // 3.20: frustum culling of the stock reference's spatial chunks (on by default).
-    void setReferenceCulling(bool on) { renderer_.setReferenceCulling(on); update(); }
-    bool referenceCulling() const { return renderer_.referenceCulling(); }
-    size_t referenceChunks() const { return renderer_.referenceChunks(); }
-    size_t lastCulledReferenceChunks() const { return renderer_.lastCulledReferenceChunks(); }
-    size_t lastCulledSceneChunks() const { return renderer_.lastCulledSceneChunks(); }
+    void setReferenceCulling(bool on) { renderer_->setReferenceCulling(on); update(); }
+    bool referenceCulling() const { return renderer_->referenceCulling(); }
+    size_t referenceChunks() const { return renderer_->referenceChunks(); }
+    size_t lastCulledReferenceChunks() const { return renderer_->lastCulledReferenceChunks(); }
+    size_t lastCulledSceneChunks() const { return renderer_->lastCulledSceneChunks(); }
     // 3.20 texture memory budget (MB, setting view/textureBudgetMB): past it, new textures load at 128 px.
     void setTextureBudgetMB(int mb) { textureBudget_ = size_t(std::max(1, mb)) * 1024 * 1024; }
     // The video card's dedicated memory (MB, 0 when unknown) and the default budget from it: 40 % of it, 1 to 4 GB
@@ -499,7 +510,7 @@ public slots:
     }
     static int systemMemoryMB();
     size_t textureBudgetBytes() const { return textureBudget_; }
-    size_t textureBytes() const { return renderer_.textureBytes(); }
+    size_t textureBytes() const { return renderer_->textureBytes(); }
     int textureSideNow() const;
     int texturesReducedByBudget() const { return budgetReduced_; }
     // 3.20: reference props as instanced meshes, uploaded on the next frame.
@@ -510,7 +521,7 @@ public slots:
     }
     // Instanced prop draws: the plain shaded meshes plus the textured ones (one per model material).
     size_t referenceInstances() const {
-        return (instDirty_ ? 0 : renderer_.referenceInstances()) + (texInstDirty_ ? 0 : renderer_.referenceTexInstances());
+        return (instDirty_ ? 0 : renderer_->referenceInstances()) + (texInstDirty_ ? 0 : renderer_->referenceTexInstances());
     }
     // Reference props with their textures: one mesh per model material (`materials` names each mesh's material).
     void setReferenceTexInstances(std::vector<app::InstancedTexMesh> meshes, std::vector<std::string> materials) {
@@ -523,21 +534,21 @@ public slots:
     // The map shader's filter for the stock reference (core custom_shader iw8rFilter): the lookup gives the shader
     // whose filter applies, or null. Checked when the files are polled; the reference then draws through it.
     void setReferenceFilterLookup(std::function<std::shared_ptr<const CustomShader>()> lookup) { filterLookup_ = std::move(lookup); }
-    bool referenceFilterOn() const { return renderer_.referenceFilterShader(); }
-    bool pixelShaderAccepted(const std::vector<uint8_t>& program) { return renderer_.pixelShaderAccepted(program); }
+    bool referenceFilterOn() const { return renderer_->referenceFilterShader(); }
+    bool pixelShaderAccepted(const std::vector<uint8_t>& program) { return renderer_->pixelShaderAccepted(program); }
     // Cull by tome (View > Umbra Visibility): SceneRenderer::setReferenceTomeVisibility. Empty = off.
     void setTomeVisibility(std::vector<uint32_t> surfaceBits, std::vector<uint32_t> modelBits, std::vector<uint32_t> lightBits = {},
                            std::vector<uint32_t> probeBits = {}, std::vector<uint32_t> decalBits = {}) {
-        renderer_.setReferenceTomeVisibility(std::move(surfaceBits), std::move(modelBits));
-        renderer_.setReferenceTomeClasses(std::move(lightBits), std::move(probeBits), std::move(decalBits));
+        renderer_->setReferenceTomeVisibility(std::move(surfaceBits), std::move(modelBits));
+        renderer_->setReferenceTomeClasses(std::move(lightBits), std::move(probeBits), std::move(decalBits));
         update();
     }
-    size_t tomeCulledLights() const { return renderer_.tomeCulledLights(); }
-    size_t tomeCulledProbes() const { return renderer_.tomeCulledProbes(); }
-    size_t tomeCulledDecals() const { return renderer_.tomeCulledDecals(); }
-    bool tomeCull() const { return renderer_.referenceTomeCull(); }
-    size_t tomeCulledProps() const { return renderer_.tomeCulledProps(); }
-    std::string gpuMemoryReport() const { return renderer_.gpuMemoryReport(); }
+    size_t tomeCulledLights() const { return renderer_->tomeCulledLights(); }
+    size_t tomeCulledProbes() const { return renderer_->tomeCulledProbes(); }
+    size_t tomeCulledDecals() const { return renderer_->tomeCulledDecals(); }
+    bool tomeCull() const { return renderer_->referenceTomeCull(); }
+    size_t tomeCulledProps() const { return renderer_->tomeCulledProps(); }
+    std::string gpuMemoryReport() const { return renderer_->gpuMemoryReport(); }
     // Bench diagnosis: the stock reference's world batches and prop meshes still unresolved, with up to four names each
     // (control characters as \xNN).
     std::string referencePendingReport() const {
@@ -578,7 +589,7 @@ public slots:
         pendingLgv_ = atlas ? std::move(atlas) : std::make_shared<const app::LgvAtlasUpload>();
         update();
     }
-    bool hasStockLgvAtlas() const { return renderer_.hasStockLgvAtlas(); }
+    bool hasStockLgvAtlas() const { return renderer_->hasStockLgvAtlas(); }
     // New per-placement light for every textured prop mesh (same order and counts as setReferenceTexInstances gave).
     void setReferenceTexInstanceLight(std::vector<std::vector<float>> light) {
         if (texInstDirty_) {
@@ -594,7 +605,7 @@ public slots:
         for (bool b : texInstResolved_) n += b ? 1 : 0;
         return n;
     }
-    size_t referenceTriangles() const { return refDirty_ ? pendingRef_.size() / 3 : renderer_.referenceVertexCount() / 3; }
+    size_t referenceTriangles() const { return refDirty_ ? pendingRef_.size() / 3 : renderer_->referenceVertexCount() / 3; }
     // The bounds of the Nth main stock reference batch whose material name holds `part` (bench cameras); none: invalid.
     iw8r::AABB referenceMaterialBounds(const std::string& part, int n, std::string* material = nullptr) const {
         int seen = 0;
@@ -665,7 +676,46 @@ private:
     EditorContext* ctx_;
     ID3D11Device* dev_;
     ID3D11DeviceContext* dc_;
-    app::SceneRenderer renderer_;
+    Guarded<app::SceneRenderer> renderer_;  // every call takes the GPU lock (gpu_lock.h)
+    // The render thread (camera_view_render_thread.cpp): it draws and presents the frames render() prepares, and moves
+    // the fly camera while the GUI thread is busy.
+    struct PreparedFrame {
+        bool valid = false, drawn = true;
+        app::FrameInput in;  // viewProj is made from the camera when the frame is drawn
+        Camera cam;
+        double aspect = 1;
+        bool geometryChanged = false;  // a preparation not drawn yet changed the geometry
+    };
+    PreparedFrame prepared_;  // under gpuMutex()
+    std::thread renderThread_;
+    std::mutex frameMx_;
+    std::condition_variable frameCv_;
+    bool frameWanted_ = false, renderQuit_ = false;  // under frameMx_
+    std::timed_mutex swapMx_;                        // Present (render thread) vs swap chain changes (GUI thread)
+    std::atomic<long long> guiBeatMs_{0};            // GetTickCount64 of the GUI thread's last heartbeat (beat_)
+    QTimer* beat_ = nullptr;                         // 20 ms on the GUI thread: answering; takes the flown camera over
+    std::atomic<bool> rtMovedHint_{false};           // the render thread moved the camera (the next beat asks a frame)
+    bool syncDraw_ = false;                          // renderNow: drawn and presented on the calling thread
+    // The fly camera on the render thread: ctx_->looking at the last frame, the cursor's lock point in screen pixels
+    // (set when the right button went down), screen pixels to the view's, the camera speed, the top-level window.
+    std::atomic<bool> lookActive_{false};
+    std::atomic<int> lookLockX_{0}, lookLockY_{0};
+    std::atomic<double> lookPixelScale_{1.0}, flySpeed_{600.0};
+    std::atomic<void*> rootHwnd_{nullptr};
+    Camera rtCam_;          // the render thread's camera while it moves it (under gpuMutex())
+    bool rtMoved_ = false;  // moved since the GUI thread last took it (under gpuMutex())
+    std::atomic<unsigned long> dropMouseBefore_{0};  // mouse moves queued while the render thread moved the camera
+    long long rtLastTick_ = 0;                       // render thread only
+    std::atomic<int> rtFrames_{0};                   // frames the render thread drew
+    std::atomic<bool> fakeFly_{false};               // smoke test: the right button and W held (no real input)
+    static bool renderThreadEnabled();
+    void startRenderThread();
+    void stopRenderThread();
+    void renderLoop();
+    bool flyTakeover();
+    bool drawPrepared(const Camera& cam);  // draws prepared_ and copies it to the back buffer; true: one more frame
+    void presentFrame(bool fromGui);
+    void lockSwap();  // GUI thread: swapMx_, answering window messages sent to it meanwhile
     size_t textureBudget_ = size_t(1024) * 1024 * 1024;
     int budgetReduced_ = 0;
     bool rendererOk_ = false;
@@ -938,7 +988,7 @@ private:
 
 public:
     // What the last frame gave the renderer for Game Lighting (the GUI test reads it).
-    const app::SceneRenderer::GameLook& gameLookForTest() const { return renderer_.gameLook(); }
+    app::SceneRenderer::GameLook gameLookForTest() const { return renderer_->gameLook(); }
 
 private:
     void maybeBakeGameLook();

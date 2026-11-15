@@ -34,6 +34,7 @@
 #include <thread>
 #include <windows.h>
 #include <d3d11.h>
+#include <d3d11_4.h>
 
 #include <QApplication>
 #include <QThread>
@@ -1412,6 +1413,15 @@ int main(int argc, char** argv) {
     if (FAILED(hr))
         hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 1, D3D11_SDK_VERSION,
                                &device, nullptr, &context);
+    // The camera views draw from their render threads too (camera_view_render_thread.cpp): the immediate context is
+    // made thread-safe call by call (Present runs outside the editor's GPU lock).
+    if (context) {
+        ID3D11Multithread* mt = nullptr;
+        if (SUCCEEDED(context->QueryInterface(__uuidof(ID3D11Multithread), reinterpret_cast<void**>(&mt))) && mt) {
+            mt->SetMultithreadProtected(TRUE);
+            mt->Release();
+        }
+    }
 
     // IW8 canonical key table: --keys, else <repo>/data/generated beside the exe tree.
     if (keysPath.isEmpty()) {
@@ -1625,7 +1635,30 @@ int main(int argc, char** argv) {
                                      .arg(openMs).arg(firstMs).arg(steadyMs, 0, 'f', 1).arg(editMs, 0, 'f', 1)
                                      .arg(w.context().scene.items().size()).arg(gridMs, 0, 'f', 1).arg(workingMb, 0, 'f', 1).arg(peakMb, 0, 'f', 1).toUtf8());
                 }
-                const bool ok = w.cameraView()->hasSwapChain() && pixels > 1000;
+                // The viewport render thread (camera_view_render_thread.cpp).
+                QString renderThreadLine;
+                bool renderThreadOk = true;
+                if (iw8r::qt::CameraView* cam = w.cameraView(); cam->hasSwapChain() && iw8r::qt::CameraView::renderThreadOn()) {
+                    const int f0 = cam->renderThreadFrames();
+                    cam->prepareFrameForTest();  // prepared here, drawn by the render thread while this thread sleeps
+                    Sleep(400);
+                    const int f1 = cam->renderThreadFrames();
+                    const iw8r::Vec3 before = w.context().cam.pos;
+                    w.context().looking = true;
+                    cam->setFakeFlyInputForTest(true);
+                    cam->prepareFrameForTest();
+                    Sleep(1500);  // this thread does not answer: the render thread flies the camera (W held)
+                    const int f2 = cam->renderThreadFrames();
+                    cam->setFakeFlyInputForTest(false);
+                    w.context().looking = false;
+                    cam->prepareFrameForTest();  // takes the render thread's camera over
+                    QApplication::processEvents();
+                    const double moved = iw8r::length(w.context().cam.pos - before);
+                    w.context().cam.pos = before;
+                    renderThreadLine = QString(" render_thread_frames=%1 takeover_frames=%2 takeover_moved=%3").arg(f1 - f0).arg(f2 - f1).arg(moved, 0, 'f', 0);
+                    renderThreadOk = f1 > f0 && f2 - f1 >= 10 && moved > 50;
+                }
+                const bool ok = w.cameraView()->hasSwapChain() && pixels > 1000 && renderThreadOk;
                 // IW8R_SMOKE_SETTLE_MS=<ms>: keep the event loop and the camera running so streamed textures (a few
                 // decodes per frame, ACTS exports in the background) appear in the screenshot.
                 // IW8R_SMOKE_NORMALMAPS=0: the textured shot without normal maps (A/B for 3.2); not saved to settings.
@@ -1659,7 +1692,7 @@ int main(int argc, char** argv) {
                 shot.save(QDir(outDir).filePath("screenshot.png"));
                 QFile f(QDir(outDir).filePath("smoke-test.txt"));
                 if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-                    f.write(QString("%1 swapchain=%2 drawn_pixels=%3 entities=%4 textures=%6 normal_maps=%7 title=%5\n")
+                    f.write(QString("%1 swapchain=%2 drawn_pixels=%3 entities=%4 textures=%6 normal_maps=%7%8 title=%5\n")
                                 .arg(ok ? "ok" : "FAIL")
                                 .arg(w.cameraView()->hasSwapChain() ? "yes" : "no")
                                 .arg(pixels)
@@ -1667,6 +1700,7 @@ int main(int argc, char** argv) {
                                 .arg(w.windowTitle())
                                 .arg(w.cameraView()->loadedTextures())
                                 .arg(w.cameraView()->loadedNormalMaps())
+                                .arg(renderThreadLine)
                                 .toUtf8());
                 app.exit(ok ? 0 : 2);
             });

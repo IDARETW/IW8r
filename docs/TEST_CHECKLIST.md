@@ -9,6 +9,19 @@ Mark each line OK / wrong (with a screenshot) and send it back.
 
 ## In the editor
 
+- [ ] New on 2026-11-15 evening (editor only; checked offline by the smoke test and the stall watch):
+  - Start-up: the window answers at once (it froze up to 19 s before); the Materials and Models panels show plain
+    swatches for a second or two, then their thumbnails.
+  - Open a stock map (Hideout): the window keeps answering while it loads; the props appear when ready (no long freeze).
+  - Fly with the right mouse button + W A S D while the map loads or a heavy dialog opens: the view keeps moving. If
+    anything about the camera feels wrong (a jump when the editor catches up, the mouse turning twice), start the
+    editor with IW8R_RENDER_THREAD=0 to compare and tell me which.
+  - Tools > Report Freezes to the Console: on; any freeze over 250 ms is listed in the Console (source "stall") with
+    where the time went. Send me those lines if you see any.
+  - The side panels (Materials, Models, Prefabs, Effects, Sounds, Images, IW8 Spawns, Undo History) fit a narrow
+    column: options wrap, previews sit under the lists, no sideways scrolling.
+  - Shipment / Hideout, View > Effect Preview on, Game Lighting on: the sun flare on Shipment (hidden behind walls),
+    the tandoor heat haze on Hideout, lit smoke (darker in shade). The flare layout is inferred (research 139).
 - [ ] New on 2026-11-14 night / 11-15 (editor only, all proven offline; for your own look, View > Game Lighting on):
   - The first time each stock map opens, its models are fetched again in the background for a few minutes (the
     status bar says so); they keep drawing meanwhile. After that:

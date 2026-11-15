@@ -86,7 +86,7 @@ CameraView::CameraView(EditorContext* ctx, ID3D11Device* dev, ID3D11DeviceContex
     setMouseTracking(true);
     setMinimumSize(64, 64);
     std::string err;
-    rendererOk_ = dev_ && renderer_.init(dev_, dc_, &err);
+    rendererOk_ = dev_ && renderer_->init(dev_, dc_, &err);
     // A scriptable without a model key draws its stock definition's first model (read-only catalogue lookup).
     if (!ctx_->scene.scriptableModelFor)
         ctx_->scene.scriptableModelFor = [](const std::string& definition) -> std::string {
@@ -98,6 +98,7 @@ CameraView::CameraView(EditorContext* ctx, ID3D11Device* dev, ID3D11DeviceContex
 }
 
 CameraView::~CameraView() {
+    stopRenderThread();
     if (swap_) swap_->Release();
 }
 
@@ -107,6 +108,11 @@ void CameraView::ensureSwapChain() {
     const int w = std::max(1, int(width() * dpr)), h = std::max(1, int(height() * dpr));
     HWND hwnd = reinterpret_cast<HWND>(winId());
     if (!IsWindow(hwnd)) return;  // e.g. the offscreen platform used by --gui-test
+    rootHwnd_ = GetAncestor(hwnd, GA_ROOT);
+    if (swap_ && swapHwnd_ == hwnd && w == swapW_ && h == swapH_) return;
+    std::lock_guard<std::recursive_timed_mutex> gpuLock(gpuMutex());
+    lockSwap();
+    std::lock_guard<std::timed_mutex> swapLock(swapMx_, std::adopt_lock);
     if (swap_ && swapHwnd_ != hwnd) {
         dc_->OMSetRenderTargets(0, nullptr, nullptr);
         swap_->Release();
@@ -147,6 +153,15 @@ void CameraView::ensureSwapChain() {
 
 void CameraView::render() {
     if (!rendererOk_) return;
+    std::unique_lock<std::recursive_timed_mutex> gpuLock(gpuMutex());
+    // The render thread moved the fly camera while this thread was busy: carry on from there, and drop the mouse moves
+    // that queued meanwhile (it has turned the view by them already).
+    if (rtMoved_) {
+        ctx_->cam.pos = rtCam_.pos, ctx_->cam.yaw = rtCam_.yaw, ctx_->cam.pitch = rtCam_.pitch;
+        rtMoved_ = false;
+        dropMouseBefore_ = GetTickCount();
+        ctx_->cameraMoved();
+    }
     IW8R_PROF("r.total");
     {
         IW8R_PROF("r.sync");
@@ -155,10 +170,10 @@ void CameraView::render() {
     const qreal dpr = devicePixelRatioF();
     const int w = captureW_ > 0 ? captureW_ : fixedW_ > 0 ? fixedW_ : std::max(1, int(width() * dpr));
     const int h = captureH_ > 0 ? captureH_ : fixedH_ > 0 ? fixedH_ : std::max(1, int(height() * dpr));
-    renderer_.resize(w, h);
+    renderer_->resize(w, h);
     if (texInstDirty_) {
         IW8R_PROF("r.up_texinst");
-        renderer_.setReferenceTexInstances(pendingTexInst_);
+        renderer_->setReferenceTexInstances(pendingTexInst_);
         pendingTexInst_.clear();
         pendingTexInst_.shrink_to_fit();
         texInstResolved_.assign(texInstMaterials_.size(), false);
@@ -167,7 +182,7 @@ void CameraView::render() {
     }
     if (pendingLgv_) {
         const app::LgvAtlasUpload& a = *pendingLgv_;
-        const bool ok = renderer_.setStockLgvAtlas(a.width, a.depth, a.tex0.empty() ? nullptr : a.tex0.data(),
+        const bool ok = renderer_->setStockLgvAtlas(a.width, a.depth, a.tex0.empty() ? nullptr : a.tex0.data(),
                                                    a.tex1.empty() ? nullptr : a.tex1.data(), a.boxes.empty() ? nullptr : a.boxes.data(),
                                                    a.boxes.size() / 20);
         if (!ok && a.width > 0) emit ctx_->statusMessage("Stock prop light grid: the atlas could not be uploaded (props use their box centre)");
@@ -176,36 +191,36 @@ void CameraView::render() {
     if (texLightDirty_) {
         IW8R_PROF("r.up_texlight");
         for (size_t i = 0; i < pendingTexLight_.size(); ++i)
-            if (!pendingTexLight_[i].empty()) renderer_.setReferenceTexInstanceLight(i, pendingTexLight_[i]);
+            if (!pendingTexLight_[i].empty()) renderer_->setReferenceTexInstanceLight(i, pendingTexLight_[i]);
         pendingTexLight_.clear();
         pendingTexLight_.shrink_to_fit();
         texLightDirty_ = false;
     }
     if (probesDirty_) {
         IW8R_PROF("r.up_probes");
-        renderer_.setStockProbes(pendingProbes_.get());
+        renderer_->setStockProbes(pendingProbes_.get());
         pendingProbes_.reset();
         probesDirty_ = false;
     }
     if (stockLmDirty_) {
         IW8R_PROF("r.up_lightmap");
         const auto& l = pendingStockLm_;
-        if (l && l->width > 0) renderer_.setStockLightmap(l->width, l->height, l->a.data(), l->b.data(), l->d.data(), l->rects);
-        else renderer_.setStockLightmap(0, 0, nullptr, nullptr, nullptr);
+        if (l && l->width > 0) renderer_->setStockLightmap(l->width, l->height, l->a.data(), l->b.data(), l->d.data(), l->rects);
+        else renderer_->setStockLightmap(0, 0, nullptr, nullptr, nullptr);
         stockMeanLight_ = l ? l->meanIrradiance : std::array<float, 3>{0, 0, 0};
         pendingStockLm_.reset();
         stockLmDirty_ = false;
     }
     if (instDirty_) {
         IW8R_PROF("r.up_inst");
-        renderer_.setReferenceInstances(pendingInst_);
+        renderer_->setReferenceInstances(pendingInst_);
         pendingInst_.clear();
         pendingInst_.shrink_to_fit();
         instDirty_ = false;
     }
     if (refDirty_) {
         IW8R_PROF("r.up_ref");
-        renderer_.setReference(pendingRef_);
+        renderer_->setReference(pendingRef_);
         pendingRef_.clear();
         pendingRef_.shrink_to_fit();
     }
@@ -249,7 +264,7 @@ void CameraView::render() {
             refTexVolume_.push_back(dv);
             batches.push_back(std::move(b.tris));
         }
-        renderer_.setReferenceTextured(batches, &refTexLayer_);
+        renderer_->setReferenceTextured(batches, &refTexLayer_);
         refTexExtraFrom_ = ~size_t(0);
         extraMeta_.clear();  // the renderer dropped the extras with the old reference
         decalExtrasDirty_ = decalExtrasDirty_ || !pendingExtraGroups_.empty();
@@ -322,7 +337,7 @@ void CameraView::render() {
             in.push_back(std::move(gi));
             meta.push_back({g.key, g.version, n});
         }
-        renderer_.setReferenceExtras(in);
+        renderer_->setReferenceExtras(in);
         refTexExtraFrom_ = from;
         extraMeta_ = std::move(meta);
         refTexPending_ = refPollDue_ = true;
@@ -370,32 +385,32 @@ void CameraView::render() {
                         // under the world's own decals (sort key 1).
                         const float p[16] = {1.0f, float(dv.flags), dv.k, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f,
                                              1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, dv.terrainBase ? 1.0f : 0.0f, 1.0f};  // [15] = 1: a terrain layer (no probe reflection)
-                        renderer_.setReferenceTexture(k, cid);
-                        renderer_.setReferenceDecal(k, 1, mid == checkerTex_ ? -1 : mid, p);
+                        renderer_->setReferenceTexture(k, cid);
+                        renderer_->setReferenceDecal(k, 1, mid == checkerTex_ ? -1 : mid, p);
                         continue;
                     }
                     const float p[16] = {2.0f, dv.a, dv.b, 0.0f, dv.tint[0], dv.tint[1], dv.tint[2], 0.0f,
                                          1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-                    renderer_.setReferenceTexture(k, cid);
-                    renderer_.setReferenceDecal(k, 1000 + dv.order, mid == checkerTex_ ? -1 : mid, p);
-                    renderer_.setReferenceDecalCollection(k, dv.collection);
+                    renderer_->setReferenceTexture(k, cid);
+                    renderer_->setReferenceDecal(k, 1000 + dv.order, mid == checkerTex_ ? -1 : mid, p);
+                    renderer_->setReferenceDecalCollection(k, dv.collection);
                     continue;
                 }
                 const int id = textureFor(refTexMaterials_[k]);
                 if (texIds_.count(refTexMaterials_[k])) {
                     // A stock image this install does not hold (catalogued only in a zone without its payload): plain grey on
                     // the read-only stock reference rather than the missing-material checker (mp_m_fork, mp_m_speed).
-                    if (id >= 0) renderer_.setReferenceTexture(k, id == checkerTex_ ? -1 : id);
+                    if (id >= 0) renderer_->setReferenceTexture(k, id == checkerTex_ ? -1 : id);
                     // Its normal map next (normalFor waits for the colour image and the per-frame budget).
                     const int nid = id >= 0 && id != checkerTex_ ? normalFor(refTexMaterials_[k]) : -1;
                     if (id >= 0 && id != checkerTex_ && !nrmIds_.count(refTexMaterials_[k])) {
                         pending = true;
                         continue;
                     }
-                    if (nid >= 0) renderer_.setReferenceNormal(k, nid);
-                    if (ctx_ && ctx_->scene.drawClassFor) renderer_.setReferenceDrawClass(k, ctx_->scene.drawClassFor(refTexMaterials_[k]));
+                    if (nid >= 0) renderer_->setReferenceNormal(k, nid);
+                    if (ctx_ && ctx_->scene.drawClassFor) renderer_->setReferenceDrawClass(k, ctx_->scene.drawClassFor(refTexMaterials_[k]));
                     if (factsLookup_)
-                        if (const auto f = factsLookup_(refTexMaterials_[k])) renderer_.setReferenceNoCast(k, f->noCastShadow);
+                        if (const auto f = factsLookup_(refTexMaterials_[k])) renderer_->setReferenceNoCast(k, f->noCastShadow);
                     setBaseMaterialConstants(k);
                     if (!applyMaterialExtras(refTexMaterials_[k], k, false)) {
                         pending = true;
@@ -424,20 +439,20 @@ void CameraView::render() {
                 }
                 const int id = textureFor(texInstMaterials_[k]);
                 if (texIds_.count(texInstMaterials_[k])) {
-                    if (id >= 0) renderer_.setReferenceInstTexture(k, id == checkerTex_ ? -1 : id);  // as the world: grey, not the checker
+                    if (id >= 0) renderer_->setReferenceInstTexture(k, id == checkerTex_ ? -1 : id);  // as the world: grey, not the checker
                     // Its normal map (Game Lighting: gloss, cavity, relief) and the material's constants.
                     const int nid = id >= 0 && id != checkerTex_ ? normalFor(texInstMaterials_[k]) : -1;
                     if (id >= 0 && id != checkerTex_ && !nrmIds_.count(texInstMaterials_[k])) {
                         pending = true;
                         continue;
                     }
-                    if (nid >= 0) renderer_.setReferenceInstNormal(k, nid);
-                    if (const auto p = materialConstantsFor(texInstMaterials_[k])) renderer_.setReferenceInstParams(k, p->data());
+                    if (nid >= 0) renderer_->setReferenceInstNormal(k, nid);
+                    if (const auto p = materialConstantsFor(texInstMaterials_[k])) renderer_->setReferenceInstParams(k, p->data());
                     if (factsLookup_)
                         if (const auto f = factsLookup_(texInstMaterials_[k]))
-                            renderer_.setReferenceInstDecal(k, f->propDecalSortKey), renderer_.setReferenceInstNoCast(k, f->noCastShadow || f->translucent),
-                                renderer_.setReferenceInstTranslucent(k, f->translucent);
-                    if (ctx_ && ctx_->scene.drawClassFor) renderer_.setReferenceInstDrawClass(k, ctx_->scene.drawClassFor(texInstMaterials_[k]));
+                            renderer_->setReferenceInstDecal(k, f->propDecalSortKey), renderer_->setReferenceInstNoCast(k, f->noCastShadow || f->translucent),
+                                renderer_->setReferenceInstTranslucent(k, f->translucent);
+                    if (ctx_ && ctx_->scene.drawClassFor) renderer_->setReferenceInstDrawClass(k, ctx_->scene.drawClassFor(texInstMaterials_[k]));
                     if (!applyMaterialExtras(texInstMaterials_[k], k, true)) {
                         pending = true;
                         continue;
@@ -468,7 +483,7 @@ void CameraView::render() {
             });
         }
     }
-    renderer_.setReferenceVisible(ctx_->scene.cameraMode != app::CameraMode::Wireframe);
+    renderer_->setReferenceVisible(ctx_->scene.cameraMode != app::CameraMode::Wireframe);
     {
         IW8R_PROF("r.atmo");
         // The worldspawn settings (fog, film grade, LUT path, wind) are parsed when the document changes, not every
@@ -558,7 +573,7 @@ void CameraView::render() {
                         ownMaskScroll_ = ownMaskScroll_ || m.scroll[0] != 0 || m.scroll[1] != 0;
                         pictures.push_back(std::move(grey));
                     }
-                renderer_.setVolumeMasks(pictures, pictures.empty() ? 0 : version);
+                renderer_->setVolumeMasks(pictures, pictures.empty() ? 0 : version);
             }
             if (const Entity* ws = ctx_->doc.worldspawn()) {
                 atmo_ = readAtmosphere(*ws);
@@ -604,13 +619,13 @@ void CameraView::render() {
         // (Left out with iw8r_haze, as in the build: the game's own fog replaces it.)
         const ExpFog* fog = ctx_->fogPreview && atmo_.fog && !atmo_.haze ? &*atmo_.fog : nullptr;
         const float col[3] = {fog ? float(fog->color.x) : 0.f, fog ? float(fog->color.y) : 0.f, fog ? float(fog->color.z) : 0.f};
-        renderer_.setFog(eye, fog ? float(fog->start) : 0.f, fog ? float(fog->halfway) : 0.f, col);
-        renderer_.setPixelAngle(float(2.0 * std::tan(ctx_->cam.fov * 3.14159265358979 / 360.0) / std::max(1, fixedW_ > 0 ? fixedW_ : width())));
+        renderer_->setFog(eye, fog ? float(fog->start) : 0.f, fog ? float(fog->halfway) : 0.f, col);
+        renderer_->setPixelAngle(float(2.0 * std::tan(ctx_->cam.fov * 3.14159265358979 / 360.0) / std::max(1, fixedW_ > 0 ? fixedW_ : width())));
         // Colour grade preview (3.15): iw8r_film and the iw8r_lut .cube of the open map (Compile > Atmosphere).
         const FilmGrade* film = ctx_->gradePreview && atmo_.film ? &*atmo_.film : nullptr;
         const float lt[3] = {film ? float(film->lightTint.x) : 1.f, film ? float(film->lightTint.y) : 1.f, film ? float(film->lightTint.z) : 1.f};
         const float dt[3] = {film ? float(film->darkTint.x) : 1.f, film ? float(film->darkTint.y) : 1.f, film ? float(film->darkTint.z) : 1.f};
-        renderer_.setGrade(film && !film->isIdentity(), film ? float(film->contrast) : 1.f, film ? float(film->brightness) : 0.f,
+        renderer_->setGrade(film && !film->isIdentity(), film ? float(film->contrast) : 1.f, film ? float(film->brightness) : 0.f,
                            film ? float(film->desaturation) : 0.f, film && film->invert, lt, dt);
         {
             IW8R_PROF("r.probe");
@@ -624,8 +639,8 @@ void CameraView::render() {
             std::string text, err;
             int size = 0;
             std::vector<uint8_t> rgba;
-            if (lutOn && readFile(lutPath_, text) && parseCubeLut(text, size, rgba, &err)) renderer_.setGradeLut(size, rgba.data());
-            else renderer_.setGradeLut(0, nullptr);
+            if (lutOn && readFile(lutPath_, text) && parseCubeLut(text, size, rgba, &err)) renderer_->setGradeLut(size, rgba.data());
+            else renderer_->setGradeLut(0, nullptr);
         }
     }
     // Geometry is rebuilt only when something it depends on changed (9.4): the scene, the selection, the shading and
@@ -661,7 +676,7 @@ void CameraView::render() {
                 pl.push_back(pixelLightOf(L, game));
             }
         mix(ctx_->scene.pixelLights ? 11 : 5);
-        renderer_.setPixelLights(pl);
+        renderer_->setPixelLights(pl);
         // An own map in Game Lighting: its lamps through the game's light path (research 132 G8), as built.
         {
             const bool ownGame = game && !gameStockLook() && ctx_->texturedView;
@@ -709,26 +724,26 @@ void CameraView::render() {
                         shadows.push_back(sh);
                     }
                 // (A stock map hands its own lamps over separately: they are never cleared from here.)
-                if (ownGame || (ownLampsOn_ && !gameStockLook())) renderer_.setStockLocalLights(std::move(lamps), std::move(shadows));
+                if (ownGame || (ownLampsOn_ && !gameStockLook())) renderer_->setStockLocalLights(std::move(lamps), std::move(shadows));
                 ownLampsOn_ = ownGame;
             }
         }
-        renderer_.setLightGain(float(ctx_->scene.lightGain));
+        renderer_->setLightGain(float(ctx_->scene.lightGain));
         // Lit preview: encoded light (headroom to 2x) with exposure, and a sun shadow map over the map's bounds.
         // Game Lighting takes over from the lit preview: vertex colours carry no encoded light then (camera_geometry.cpp).
         const bool enc = ctx_->scene.litEncoded() && !ctx_->scene.captureMode && !game;
-        renderer_.setLitDecode(enc ? 2.0f : 1.0f, float(ctx_->scene.exposure));
+        renderer_->setLitDecode(enc ? 2.0f : 1.0f, float(ctx_->scene.exposure));
         ctx_->scene.gpuShadows = (enc || game) && ctx_->scene.litShadows;
         mix(ctx_->scene.gpuShadows ? 0x5d0u : 0x5d1u);
         if (!ctx_->scene.gpuShadows) {  // (with shadows on, the matrix is set after the geometry update below)
             const float id[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-            renderer_.setSunShadow(false, id, 0);
+            renderer_->setSunShadow(false, id, 0);
         }
         // Wind preview (5.23): the worldspawn iw8r_wind key (or the default breeze) drives the foliage sway.
         const WindSettings& ws = wind_;  // parsed when the document changes (above)
         const double t = windTimeOverride_ >= 0 ? windTimeOverride_ : windClock_.isValid() ? windClock_.elapsed() / 1000.0 : 0.0;
         const double yaw = ws.dirYawDeg * 3.14159265358979 / 180.0;
-        renderer_.setWind(float(std::cos(yaw)), float(std::sin(yaw)),
+        renderer_->setWind(float(std::cos(yaw)), float(std::sin(yaw)),
                           ctx_->windPreview ? float(kSwayAmplitude * std::clamp(ws.strength, 0.0, kSwayMaxStrength)) : 0.0f,
                           float(2.0 * 3.14159265358979 * std::clamp(ws.gustFreq, 0.0, kSwayMaxGustHz) * t));
         // (Scrolling masks of volumetric boxes move while Game Lighting shows them.)
@@ -752,8 +767,8 @@ void CameraView::render() {
             std::string err;
             const std::string src = fs ? customShaderFilterViewportSource(app::SceneRenderer::texShaderSource(), "float4 ps_tex(PSIn i) : SV_TARGET {", *fs)
                                        : std::string();
-            if (!renderer_.setReferenceFilterShader(src, &err)) {
-                renderer_.setReferenceFilterShader({}, nullptr);
+            if (!renderer_->setReferenceFilterShader(src, &err)) {
+                renderer_->setReferenceFilterShader({}, nullptr);
                 if (ctx_ && fs) emit ctx_->statusMessage(QString::fromStdString("Shader filter " + fs->name + ": " + err));
             }
         }
@@ -892,7 +907,7 @@ void CameraView::render() {
         appendEffectParticles();  // their own pass (SceneRenderer::setParticles)
     } else {
         fxParticles_ = 0;
-        renderer_.setParticles({});
+        renderer_->setParticles({});
     }
     // The gizmo is a small stream of its own, sent again only when it changed.
     gizmoLines_.scratch.clear();
@@ -915,7 +930,7 @@ void CameraView::render() {
             // Depth bias: 2 units plus one and a half shadow-map texels (2048 over the box), so a big stock scene's ground
             // (about 9 units a texel) does not shadow itself into an even half shade.
             const double texel = 2.0 * R / 2048.0;
-            renderer_.setSunShadow(true, m, float((2.0 + 1.5 * texel) / (4.0 * R)));
+            renderer_->setSunShadow(true, m, float((2.0 + 1.5 * texel) / (4.0 * R)));
             // The near cascade: a box of kNearRadius around the view ahead of the camera, moved in steps of an eighth of
             // it (so it is not drawn again on every small move), when the scene is much bigger than that box.
             constexpr double kNearRadius = 1400.0;
@@ -931,17 +946,15 @@ void CameraView::render() {
                 float mn[16];
                 app::sunShadowMatrixAround(t, cc, kNearRadius, depthR, mn);
                 const double texelN = 2.0 * kNearRadius / 2048.0;
-                renderer_.setSunShadowNear(true, mn, float((1.0 + 1.5 * texelN) / (4.0 * depthR)));
+                renderer_->setSunShadowNear(true, mn, float((1.0 + 1.5 * texelN) / (4.0 * depthR)));
             } else {
-                renderer_.setSunShadowNear(false, m, 0);
+                renderer_->setSunShadowNear(false, m, 0);
             }
         }
     }
-    const app::Mat4f vp = app::viewProjection(ctx_->cam, captureAspect_ > 0 ? captureAspect_ : double(w) / double(h));
+    // The frame input; the view is made from the camera when the frame is drawn (drawPrepared).
     {
-        IW8R_PROF("r.draw");
         app::FrameInput in;
-        in.viewProj = vp.m;
         in.clear = kClear;
         in.shadowOnly = &geo_.shadowOnly;
         in.casters = &geo_.casters;
@@ -958,13 +971,13 @@ void CameraView::render() {
         in.casterVersion = geo_.casterVersion();
         in.clean = cleanCapture_;  // game surfaces only: no markers, tool faces, volumes or lines
         in.capture = cleanCapture_ || ctx_->scene.captureMode;  // no editor-only reference markers in a capture
-        in.geometryChanged = rebuild;
-        // The game's clock for animated materials (research 133 section 1); a capture shows time 0.
+        prepared_.in = in;
+        prepared_.cam = ctx_->cam;
+        prepared_.aspect = captureAspect_ > 0 ? captureAspect_ : double(w) / double(h);
+        prepared_.geometryChanged = prepared_.geometryChanged || rebuild;  // until a draw has taken it
+        prepared_.valid = true;
+        prepared_.drawn = false;
         if (!maskClock_.isValid()) maskClock_.start();
-        // IW8R_CAPTURE_TIME (bench switch): the clock of a capture, in seconds, to compare animated materials offline.
-        static const double captureTime = qEnvironmentVariableIsSet("IW8R_CAPTURE_TIME") ? qEnvironmentVariable("IW8R_CAPTURE_TIME").toDouble() : 0.0;
-        renderer_.setGameTime(in.capture ? captureTime : maskClock_.elapsed() / 1000.0);
-        renderer_.drawFrame(in);
         // While a material with UV animation is drawn, the view keeps redrawing (30 a second, the editor's window active).
         if (uvAnimSeen_ && !in.capture && !uvAnimTick_ && window() && window()->isActiveWindow()) {
             uvAnimTick_ = true;
@@ -973,30 +986,33 @@ void CameraView::render() {
                 update();
             });
         }
-        // A custom surface shader reads the depth of the frame before (iw8rSceneDepth). After a frame from a new view
-        // one more shows the settled picture: at once for a capture, as the next frame on screen.
-        if (renderer_.sceneDepthStale()) {
-            if (in.capture || captureW_ > 0) {
-                in.geometryChanged = false;
-                renderer_.drawFrame(in);
-            } else {
-                QMetaObject::invokeMethod(this, [this] { update(); }, Qt::QueuedConnection);
-            }
-        }
     }
+    lookActive_ = ctx_->looking && !ctx_->playing && !orbit_;
+    flySpeed_ = ctx_->cam.speed;
+    lookPixelScale_ = 1.0 / std::max(0.5, devicePixelRatioF());
     if (moreToLoad_ || refMoreToLoad_)
         QMetaObject::invokeMethod(this, [this] { update(); }, Qt::QueuedConnection);  // finish loading next frame
     ensureSwapChain();
-    if (!swap_) return;
-    ID3D11Texture2D* back = nullptr;
-    if (SUCCEEDED(swap_->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back)))) {
-        D3D11_TEXTURE2D_DESC bd{};
-        back->GetDesc(&bd);
-        if (int(bd.Width) == renderer_.width() && int(bd.Height) == renderer_.height()) dc_->CopyResource(back, renderer_.colorTexture());
-        back->Release();
+    // Drawn here: captures, renderNow, a profiled benchmark, a view without a window, or IW8R_RENDER_THREAD=0.
+    if (syncDraw_ || captureW_ > 0 || !swap_ || app::Prof::on || !renderThreadEnabled()) {
+        bool stale = false;
+        {
+            IW8R_PROF("r.draw");
+            stale = drawPrepared(ctx_->cam);
+        }
+        if (stale) QMetaObject::invokeMethod(this, [this] { update(); }, Qt::QueuedConnection);
+        if (!swap_) return;
+        IW8R_PROF("r.present");
+        presentFrame(true);
+        return;
     }
-    IW8R_PROF("r.present");
-    swap_->Present(1, 0);
+    // Drawn and presented by the render thread.
+    startRenderThread();
+    {
+        std::lock_guard l(frameMx_);
+        frameWanted_ = true;
+    }
+    frameCv_.notify_one();
 }
 
 // ------------------------------------------------------------------ translate gizmo
@@ -1423,7 +1439,7 @@ bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool pr
     const bool uvAnim = f && (f->uvAnim[0] != 0 || f->uvAnim[1] != 0 || f->uvAnim[2] != 0);
     const bool waves = f && propMesh && (f->wave[7] != 0 || f->wave[11] != 0 || f->wave[15] != 0);  // c80..c82 amplitudes
     if (waves) {
-        renderer_.setReferenceInstWave(index, f->wave.data());
+        renderer_->setReferenceInstWave(index, f->wave.data());
         uvAnimSeen_ = true;  // the view keeps redrawing while it moves
     }
     // Static-model displacement (research 133 section 3): the height image and constant 45, moved along the normal in
@@ -1433,11 +1449,11 @@ bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool pr
         const std::string key = "\x07" + f->dispImage;
         const int id = textureFor(key);
         if (!texIds_.count(key)) return false;  // still loading
-        if (id >= 0 && id != checkerTex_) renderer_.setReferenceInstDisp(index, id, f->disp[0], f->disp[1]);
+        if (id >= 0 && id != checkerTex_) renderer_->setReferenceInstDisp(index, id, f->disp[0], f->disp[1]);
     }
     static const bool noDual = std::getenv("IW8R_NO_DUAL_NORMAL") != nullptr;  // A/B: one normal layer as before
     if (f && !propMesh && !noDual && (f->dualNormal[0] > 0 || f->dualNormal[4] > 0)) {
-        renderer_.setReferenceBaseDualNormal(index, f->dualNormal.data());
+        renderer_->setReferenceBaseDualNormal(index, f->dualNormal.data());
         uvAnimSeen_ = true;  // the layers scroll
     }
     if (!f || (f->emissiveScale[3] <= 0 && f->transTint[3] <= 0 && f->wrap[3] <= 0 && !f->unlit && !uvAnim)) return true;
@@ -1455,14 +1471,14 @@ bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool pr
                    f->transTint[0], f->transTint[1], f->transTint[2], ids[1] >= 0 ? 1.0f : 0.0f,
                    f->wrap[0], f->wrap[1], f->wrap[2], f->wrap[3] > 0 ? 1.0f : 0.0f, f->unlit ? 1.0f : 0.0f,
                    f->uvAnim[0], f->uvAnim[1], f->uvAnim[2]};
-    if (propMesh) renderer_.setReferenceInstExtra(index, x, ids[0], ids[1]);
-    else renderer_.setReferenceBaseExtra(index, x, ids[0], ids[1]);
+    if (propMesh) renderer_->setReferenceInstExtra(index, x, ids[0], ids[1]);
+    else renderer_->setReferenceBaseExtra(index, x, ids[0], ids[1]);
     return true;
 }
 
 void CameraView::setBaseMaterialConstants(size_t k) {
     if (k >= refTexMaterials_.size()) return;
-    if (const auto p = materialConstantsFor(refTexMaterials_[k])) renderer_.setReferenceBaseParams(k, p->data());
+    if (const auto p = materialConstantsFor(refTexMaterials_[k])) renderer_->setReferenceBaseParams(k, p->data());
 }
 
 bool CameraView::resolvePropLayers(size_t k) {
@@ -1528,7 +1544,7 @@ bool CameraView::resolvePropLayers(size_t k) {
         if (maskId >= 0 && L <= 3) pl.mask = maskId, pl.aux[1] = float(L);  // channel L - 1, stored + 1
         out.push_back(pl);
     }
-    renderer_.setReferenceInstLayers(k, std::move(out));
+    renderer_->setReferenceInstLayers(k, std::move(out));
     return true;
 }
 
@@ -1551,21 +1567,21 @@ bool CameraView::resolveReferenceLayer(size_t k) {
     if (cid < 0 || cid == checkerTex_) return true;  // no colour image: left out rather than drawn as the checker
     const int nid = normalFor(ck);
     if (!nrmIds_.count(ck)) return false;  // waits for the per-frame budget
-    if (nid >= 0) renderer_.setReferenceNormal(k, nid);
+    if (nid >= 0) renderer_->setReferenceNormal(k, nid);
     // A decal material's layers draw with the decal, in its sort order (research 98).
     if (factsLookup_)
         if (const auto f = factsLookup_(base); f && f->decalSortKey > 0) {
             const float p[16] = {1.0f, float(lc.flags), lc.sharpness, lc.colorMode == 1 ? 1.0f : 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], f->ssr ? 1.0f : 0.0f,
                                  lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
-            renderer_.setReferenceTexture(k, cid);
-            renderer_.setReferenceDecal(k, f->decalSortKey, rid == checkerTex_ ? -1 : rid, p);
+            renderer_->setReferenceTexture(k, cid);
+            renderer_->setReferenceDecal(k, f->decalSortKey, rid == checkerTex_ ? -1 : rid, p);
             return true;
         }
     const bool layerSsr = factsLookup_ && [&] { const auto f = factsLookup_(base); return f && f->ssr; }();
     const float p[16] = {1.0f, float(lc.flags), lc.sharpness, lc.colorMode == 1 ? 1.0f : 0.0f, lc.tint[0], lc.tint[1], lc.tint[2], layerSsr ? 1.0f : 0.0f,
                          lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
-    renderer_.setReferenceTexture(k, cid);
-    renderer_.setReferenceLayer(k, rid == checkerTex_ ? -1 : rid, p);
+    renderer_->setReferenceTexture(k, cid);
+    renderer_->setReferenceLayer(k, rid == checkerTex_ ? -1 : rid, p);
     return true;
 }
 
@@ -1584,7 +1600,7 @@ bool CameraView::resolveReferenceDecal(size_t k, int textureId) {
     const float p[16] = {1.0f, float(lc.flags), lc.sharpness, 0.0f, 1.0f, 1.0f, 1.0f, f->ssr ? 1.0f : 0.0f,
                          1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f};  // layer 0: its tint is in the image already
     (void)textureId;
-    renderer_.setReferenceDecal(k, f->decalSortKey, rid == checkerTex_ ? -1 : rid, p);
+    renderer_->setReferenceDecal(k, f->decalSortKey, rid == checkerTex_ ? -1 : rid, p);
     return true;
 }
 
@@ -1623,6 +1639,7 @@ void CameraView::materialImagesChanged() {
 }
 
 size_t CameraView::texturedTriangles() const {
+    std::lock_guard<std::recursive_timed_mutex> gpuLock(gpuMutex());
     size_t n = 0;
     for (const app::SceneBatch* b : geo_.batches()) n += b->v.size() / 3;
     if (ctx_->scene.skyActive)
@@ -1667,7 +1684,7 @@ int CameraView::systemMemoryMB() {
     return GlobalMemoryStatusEx(&ms) ? int(ms.ullTotalPhys / (1024 * 1024)) : 0;
 }
 
-int CameraView::textureSideNow() const { return renderer_.textureBytes() > textureBudget_ ? 128 : kViewTextureSide; }
+int CameraView::textureSideNow() const { return renderer_->textureBytes() > textureBudget_ ? 128 : kViewTextureSide; }
 
 namespace {
 std::atomic<bool> g_backgroundDecode{true};
@@ -1775,7 +1792,7 @@ int CameraView::textureFor(const std::string& material) {
                     q[2] = on ? 230 : 40;
                     q[3] = 255;
                 }
-            checkerTex_ = renderer_.createTexture(px.data(), 64, 64);
+            checkerTex_ = renderer_->createTexture(px.data(), 64, 64);
         }
         return texIds_[material] = checkerTex_;
     }
@@ -1822,7 +1839,7 @@ int CameraView::textureFor(const std::string& material) {
         app::DdsBlockLevels& blocks = dec.blocks;
         if (dec.blocksOk) {
             // BC1 / BC2 / BC3 / BC7 UNORM + 1 = the _SRGB format.
-            id = renderer_.createTextureBlocks(blocks.dxgiFormat + (srgbData ? 1 : 0), blocks.width, blocks.height, blocks.levels);
+            id = renderer_->createTextureBlocks(blocks.dxgiFormat + (srgbData ? 1 : 0), blocks.width, blocks.height, blocks.levels);
             if (id >= 0) {
                 texSizes_[material] = {fullW, fullH};
                 if (textureSideNow() < kViewTextureSide) ++budgetReduced_;
@@ -1941,7 +1958,7 @@ int CameraView::textureFor(const std::string& material) {
         const int side = textureSideNow();
         if (side < kViewTextureSide) ++budgetReduced_;
         if (std::max(img.width, img.height) > side) img = app::downscale(img, side);
-        id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
+        id = renderer_->createTexture(img.pixels.data(), img.width, img.height);
     }
     g_frameLoadMs += QDateTime::currentMSecsSinceEpoch() - loadStart;
     if (shareable && id >= 0) texByPath_[pathKey] = id;
@@ -1952,10 +1969,10 @@ int CameraView::textureFor(const std::string& material) {
 void CameraView::applyMaterialState(const std::string& material, int texture) {
     if (!stateLookup_ || texture < 0) return;
     if (const auto s = stateLookup_(material)) {
-        renderer_.setTextureMaterial(texture, *s);
+        renderer_->setTextureMaterial(texture, *s);
         stateMaterials_.insert(material);
     } else if (stateMaterials_.erase(material)) {
-        renderer_.setTextureMaterial(texture, MaterialState{});  // no longer an own material: the plain state
+        renderer_->setTextureMaterial(texture, MaterialState{});  // no longer an own material: the plain state
     }
 }
 
@@ -2014,7 +2031,7 @@ int CameraView::particleTexture(const std::string& material, const ParticleMater
         }
         if (blueMax < 8 && alphaMax > alphaMin)
             for (size_t k = 0; k + 3 < d.image.pixels.size(); k += 4) d.image.pixels[k + 2] = d.image.pixels[k + 3];
-        return texIds_[key] = renderer_.createTexture(d.image.pixels.data(), d.image.width, d.image.height);
+        return texIds_[key] = renderer_->createTexture(d.image.pixels.data(), d.image.width, d.image.height);
     }
     const std::string& main = pm.lit ? pm.colorFile : (pm.emissiveFile.empty() ? pm.colorFile : pm.emissiveFile);
     if (main.empty()) return texIds_[key] = -1;
@@ -2059,7 +2076,7 @@ int CameraView::particleTexture(const std::string& material, const ParticleMater
     } else if (!pm.lit) {
         for (size_t k = 3; k < img.pixels.size(); k += 4) img.pixels[k] = 255;
     }
-    const int id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
+    const int id = renderer_->createTexture(img.pixels.data(), img.width, img.height);
     return texIds_[key] = id;
 }
 
@@ -2067,7 +2084,7 @@ void CameraView::appendEffectParticles() {
     // Research 138: every placed effect's particles as world quads, sorted far to near, one batch per run of a sprite.
     if (whiteTex_ < 0) {
         const uint8_t px[4] = {255, 255, 255, 255};
-        whiteTex_ = renderer_.createTexture(px, 1, 1);
+        whiteTex_ = renderer_->createTexture(px, 1, 1);
     }
     const double yaw = ctx_->cam.yaw * 3.14159265358979 / 180.0, pitch = ctx_->cam.pitch * 3.14159265358979 / 180.0;
     const Vec3 fwd{std::cos(pitch) * std::cos(yaw), std::cos(pitch) * std::sin(yaw), std::sin(pitch)};
@@ -2306,7 +2323,7 @@ void CameraView::appendEffectParticles() {
         }
         batches.back().v.insert(batches.back().v.end(), q.v, q.v + 6);
     }
-    renderer_.setParticles(std::move(batches));
+    renderer_->setParticles(std::move(batches));
 }
 
 void CameraView::scanProbes() {
@@ -2363,9 +2380,9 @@ void CameraView::updateReflectionProbe() {
         side = 64;
     }
     if (side > 0)
-        renderer_.setReflectionProbe(reinterpret_cast<const uint8_t*>(bytes.data()), side);
+        renderer_->setReflectionProbe(reinterpret_cast<const uint8_t*>(bytes.data()), side);
     else
-        renderer_.setReflectionProbe(nullptr, 0);
+        renderer_->setReflectionProbe(nullptr, 0);
 }
 
 int CameraView::customShaderFor(const std::string& material) {
@@ -2376,7 +2393,7 @@ int CameraView::customShaderFor(const std::string& material) {
     if (const auto it = customShaderIds_.find(key); it != customShaderIds_.end()) return it->second;
     std::string err;
     const std::string src = customShaderViewportSource(app::SceneRenderer::texShaderSource(), "float4 ps_tex(PSIn i) : SV_TARGET {", *shader);
-    const int id = src.empty() ? -1 : renderer_.createCustomShader(src, &err);
+    const int id = src.empty() ? -1 : renderer_->createCustomShader(src, &err);
     customShaderIds_[key] = id;
     if (id < 0) {
         customShaderError_ = shader->name + ": " + (err.empty() ? std::string("cannot be built into the viewport shader") : err);
@@ -2405,10 +2422,10 @@ int CameraView::emissiveFor(const std::string& material) {
         moreToLoad_ = true;
         return -1;
     }
-    if (dec.blocksOk) id = renderer_.createTextureBlocks(dec.blocks.dxgiFormat, dec.blocks.width, dec.blocks.height, dec.blocks.levels);
-    if (id < 0 && dec.imageOk) id = renderer_.createTexture(dec.image.pixels.data(), dec.image.width, dec.image.height);
+    if (dec.blocksOk) id = renderer_->createTextureBlocks(dec.blocks.dxgiFormat, dec.blocks.width, dec.blocks.height, dec.blocks.levels);
+    if (id < 0 && dec.imageOk) id = renderer_->createTexture(dec.image.pixels.data(), dec.image.width, dec.image.height);
     if (id < 0 && dec.blocksOk && app::loadDdsPreview(path.toStdString(), textureSideNow(), img) && img.width > 0 && img.height > 0)
-        id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
+        id = renderer_->createTexture(img.pixels.data(), img.width, img.height);
     return emiIds_[material] = id;
 }
 
@@ -2450,7 +2467,7 @@ int CameraView::specFor(const std::string& material) {
     int w = 0, h = 0, id = -1;
     std::vector<uint8_t> px;
     std::string err;
-    if (decodeImageFile(path.toStdString(), w, h, px, &err)) id = renderer_.createTexture(px.data(), w, h);
+    if (decodeImageFile(path.toStdString(), w, h, px, &err)) id = renderer_->createTexture(px.data(), w, h);
     return specIds_[material] = id;
 }
 
@@ -2493,7 +2510,7 @@ int CameraView::normalFor(const std::string& material) {
                 replayNormalPack(4.08 * px[k] / 255.0 - 2.08, 4.06451607 * px[k + 1] / 255.0 - 2.06451607, g, a);
                 px[k] = 0, px[k + 1] = g, px[k + 2] = 255, px[k + 3] = a;
             }
-            id = renderer_.createTexture(px.data(), w, h);
+            id = renderer_->createTexture(px.data(), w, h);
         }
         if (id >= 0) nrmByPath_[path.toStdString()] = id;
         return nrmIds_[material] = id;
@@ -2509,16 +2526,17 @@ int CameraView::normalFor(const std::string& material) {
         moreToLoad_ = true;
         return -1;
     }
-    if (dec.blocksOk) id = renderer_.createTextureBlocks(dec.blocks.dxgiFormat, dec.blocks.width, dec.blocks.height, dec.blocks.levels);
-    if (id < 0 && dec.imageOk) id = renderer_.createTexture(dec.image.pixels.data(), dec.image.width, dec.image.height);
+    if (dec.blocksOk) id = renderer_->createTextureBlocks(dec.blocks.dxgiFormat, dec.blocks.width, dec.blocks.height, dec.blocks.levels);
+    if (id < 0 && dec.imageOk) id = renderer_->createTexture(dec.image.pixels.data(), dec.image.width, dec.image.height);
     if (id < 0 && dec.blocksOk && app::loadDdsPreview(path.toStdString(), textureSideNow(), img) && img.width > 0 && img.height > 0)
-        id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
+        id = renderer_->createTexture(img.pixels.data(), img.width, img.height);
     g_frameLoadMs += QDateTime::currentMSecsSinceEpoch() - loadStart;
     if (id >= 0) nrmByPath_[path.toStdString()] = id;
     return nrmIds_[material] = id;
 }
 
 QString CameraView::geometrySelfCheck() {
+    std::lock_guard<std::recursive_timed_mutex> gpuLock(gpuMutex());
     std::vector<app::GpuVertex> t1, l1, o1, t2, l2, o2;
     std::vector<app::TexturedBatch> x1, x2;
     geo_.flatten(t1, l1, o1, x1);
@@ -2559,8 +2577,8 @@ QString CameraView::geometrySelfCheck() {
 }
 
 size_t CameraView::renderAndCount() {
-    render();
-    return renderer_.countNonClearPixels(kClear);
+    renderNow();  // drawn here, not by the render thread: the pixels are counted at once
+    return renderer_->countNonClearPixels(kClear);
 }
 
 void CameraView::skyDecoded(const QString& key, const SkyFaces& r) {
@@ -2571,8 +2589,8 @@ void CameraView::skyDecoded(const QString& key, const SkyFaces& r) {
         skyRgbmRange_ = r.info.rgbm ? r.options.rgbmRange : 1.0f;
         skyMeanLum_ = r.info.meanLuminance, skyHighLum_ = r.info.highLuminance;
         for (size_t f = 0; f < r.faces.size(); ++f) {
-            skyTex_.push_back(renderer_.createTexture(r.faces[f].data(), r.size, r.size));
-            if (r.info.rgbm) renderer_.setTextureRawAlpha(skyTex_.back(), true);
+            skyTex_.push_back(renderer_->createTexture(r.faces[f].data(), r.size, r.size));
+            if (r.info.rgbm) renderer_->setTextureRawAlpha(skyTex_.back(), true);
             // Diagnosis: IW8R_DUMP_SKY=<folder> writes the six preview faces as PNG.
             if (const QString dump = qEnvironmentVariable("IW8R_DUMP_SKY"); !dump.isEmpty())
                 QImage(r.faces[f].data(), r.size, r.size, QImage::Format_RGBA8888).save(QDir(dump).filePath(QString("sky_face%1.png").arg(f)));
@@ -2584,6 +2602,7 @@ void CameraView::skyDecoded(const QString& key, const SkyFaces& r) {
 
 QImage CameraView::renderImage(int w, int h, bool clean, double aspect, int settleMs, bool keepGeometry) {
     if (!rendererOk_ || w < 1 || h < 1 || w > 16384 || h > 16384) return {};
+    std::lock_guard<std::recursive_timed_mutex> gpuLock(gpuMutex());
     captureW_ = w, captureH_ = h, captureAspect_ = aspect, cleanCapture_ = clean;
     const bool remake = clean || !keepGeometry;
     if (remake) geomDirty_ = true;
@@ -2602,7 +2621,7 @@ QImage CameraView::renderImage(int w, int h, bool clean, double aspect, int sett
     }
     std::vector<uint8_t> px;
     int rw = 0, rh = 0;
-    const bool ok = renderer_.readback(px, rw, rh);
+    const bool ok = renderer_->readback(px, rw, rh);
     captureW_ = captureH_ = 0, captureAspect_ = 0, cleanCapture_ = false;
     if (remake) geomDirty_ = true;
     update();
@@ -2620,9 +2639,11 @@ int CameraView::texturesWaiting() const {
 }
 
 QImage CameraView::grabFrame() {
+    std::lock_guard<std::recursive_timed_mutex> gpuLock(gpuMutex());
+    if (prepared_.valid && !prepared_.drawn) drawPrepared(prepared_.cam);
     std::vector<uint8_t> px;
     int w = 0, h = 0;
-    if (!renderer_.readback(px, w, h)) return {};
+    if (!renderer_->readback(px, w, h)) return {};
     return QImage(px.data(), w, h, w * 4, QImage::Format_RGBA8888).copy();
 }
 
@@ -2699,8 +2720,8 @@ std::vector<uint8_t> CameraView::captureCube(const Vec3& pos, int size) {
         c.fov = fovH;
         ctx_->cam = c;
         cams[size_t(f)] = c;
-        render();
-        if (!renderer_.readback(frames[size_t(f)], fw, fh) || fw <= 0 || fh <= 0) {
+        renderNow();  // read back at once
+        if (!renderer_->readback(frames[size_t(f)], fw, fh) || fw <= 0 || fh <= 0) {
             ctx_->cam = saved;
             for (const SelRef& r : savedSel) ctx_->doc.select(r, true);
             update();
@@ -2807,6 +2828,7 @@ void CameraView::mousePressEvent(QMouseEvent* e) {
         lookTravel_ = 0;
         lmbDown_ = false;  // the view turns: a left release now would select whatever is under the cursor then
         lockPos_ = e->position().toPoint();
+        if (POINT cp{}; GetCursorPos(&cp)) lookLockX_ = int(cp.x), lookLockY_ = int(cp.y);
         setCursor(Qt::BlankCursor);
     } else if (e->button() == Qt::LeftButton) {
         if (ctx_->looking) return;  // a left click while right-drag looking is not a select
@@ -2913,6 +2935,7 @@ void CameraView::mouseMoveEvent(QMouseEvent* e) {
         if (e->buttons() == Qt::NoButton) updateGizmoHover(e->position(), e->modifiers());
         return;
     }
+    if (const unsigned long drop = dropMouseBefore_.load(); drop && e->timestamp() <= drop) return;  // applied already
     const QPoint p = e->position().toPoint();
     const QPoint d = p - lockPos_;
     if (d.isNull()) return;
@@ -3271,7 +3294,7 @@ void CameraView::prepareGameLook() {
     if (game) {
         if (!gameLutReady_) {
             const std::vector<uint8_t> lut = buildGameTonemapLut(64, !gameStockMap_.empty() && stockGrade_ ? stockGrade_.get() : nullptr);
-            renderer_.setGameTonemapLut(64, lut.data());
+            renderer_->setGameTonemapLut(64, lut.data());
             gameLutReady_ = true;
         }
         // The stock world shader's environment BRDF table, read from the install once (ACTS, a few seconds, cached).
@@ -3294,7 +3317,7 @@ void CameraView::prepareGameLook() {
             })).detach();
         }
         if (pendingEnvBrdf_) {
-            renderer_.setEnvBrdfLut(pendingEnvBrdfW_, pendingEnvBrdfH_, pendingEnvBrdf_->data());
+            renderer_->setEnvBrdfLut(pendingEnvBrdfW_, pendingEnvBrdfH_, pendingEnvBrdf_->data());
             pendingEnvBrdf_.reset();
         }
         // Its specular occlusion table (gtso_lut), the same way.
@@ -3316,12 +3339,12 @@ void CameraView::prepareGameLook() {
             })).detach();
         }
         if (pendingGtso_) {
-            renderer_.setGtsoLut(pendingGtso_->width, pendingGtso_->height, pendingGtso_->depth, pendingGtso_->r.data());
+            renderer_->setGtsoLut(pendingGtso_->width, pendingGtso_->height, pendingGtso_->depth, pendingGtso_->r.data());
             pendingGtso_.reset();
         }
         if (pendingLights_) {
-            renderer_.setStockLocalLights(*pendingLights_, pendingShadows_ ? *pendingShadows_ : std::vector<StockLightShadow>{});
-            renderer_.setIesStrip(pendingIes_ ? int(pendingIes_->size()) : 0, pendingIes_ && !pendingIes_->empty() ? pendingIes_->data() : nullptr);
+            renderer_->setStockLocalLights(*pendingLights_, pendingShadows_ ? *pendingShadows_ : std::vector<StockLightShadow>{});
+            renderer_->setIesStrip(pendingIes_ ? int(pendingIes_->size()) : 0, pendingIes_ && !pendingIes_->empty() ? pendingIes_->data() : nullptr);
             pendingLights_.reset();
             pendingIes_.reset();
             pendingShadows_.reset();
@@ -3474,9 +3497,9 @@ void CameraView::prepareGameLook() {
             gameMetering_ = exposure.autoExposure;
             if (gameMetering_) {
                 const std::vector<float> inv = gameTonemapInverseGrey(256);
-                renderer_.setGameMetering(inv.data());
+                renderer_->setGameMetering(inv.data());
             } else {
-                renderer_.setGameMetering(nullptr);
+                renderer_->setGameMetering(nullptr);
             }
             gameExposure_ = 0;
             gameExposureSnap_ = true;
@@ -3484,7 +3507,7 @@ void CameraView::prepareGameLook() {
         // Auto exposure: the metered log-average of the frames before (one or two frames late, as the game's own),
         // adapted over time at the vision's speed; until a measurement arrives, the exposure of a mid-grey scene.
         double avg = 0;
-        if (renderer_.takeMeteredLuminance(avg)) {
+        if (renderer_->takeMeteredLuminance(avg)) {
             gameExposureTarget_ = gameExposureFor(exposure, avg);
             if (gameExposureSnap_) gameExposure_ = gameExposureTarget_, gameExposureSnap_ = false;  // a map just opened
         }
@@ -3500,7 +3523,7 @@ void CameraView::prepareGameLook() {
             QTimer::singleShot(250, this, [this] { update(); });  // keep metering slowly while the view is still
         g.lutScale = float(gameExposure_ * std::exp2(kGameBaseExposureEv));
     }
-    renderer_.setGameLook(g);
+    renderer_->setGameLook(g);
 }
 
 void CameraView::maybeBakeGameLook() {
@@ -3510,7 +3533,7 @@ void CameraView::maybeBakeGameLook() {
     if (gameLookUnbaked()) {
         if (gameLm_) {
             gameLm_.reset();
-            renderer_.setGameLightmap(0, 0, nullptr, nullptr, nullptr);
+            renderer_->setGameLightmap(0, 0, nullptr, nullptr, nullptr);
             geomDirty_ = true;
             update();
         }
@@ -3768,7 +3791,7 @@ void CameraView::gameBakeDone(std::shared_ptr<const app::GameLightmap> lm) {
     if (!lm->error.empty()) {
         emit ctx_->statusMessage(QString("Game lighting: %1").arg(QString::fromStdString(lm->error)));
     } else {
-        renderer_.setGameLightmap(lm->width, lm->height, lm->a.data(), lm->b.data(), lm->d.data());
+        renderer_->setGameLightmap(lm->width, lm->height, lm->a.data(), lm->b.data(), lm->d.data());
         emit ctx_->statusMessage(QString("Game lighting: baked %1 x %2 lightmap, %3 faces, %4 units per texel, %5 s")
                                      .arg(lm->width).arg(lm->height).arg(lm->polys).arg(lm->texelSize).arg(lm->seconds, 0, 'f', 1));
     }

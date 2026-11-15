@@ -5,6 +5,15 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **The camera view draws on its own thread.** The GUI thread prepares each frame (scene, uploads, geometry) and the
+  view's render thread draws and presents it, so the window no longer waits on the GPU or the display. While the GUI
+  thread is busy (no frame for 120 ms) and the right mouse button is held over the view, the render thread flies the
+  camera itself from W A S D Q E, Shift and the mouse and keeps drawing; the GUI thread carries on from where it got
+  to. Captures, Copy View, the benchmark and the tests still draw in place. `IW8R_RENDER_THREAD=0` draws every frame on
+  the GUI thread as before. The smoke test checks both (a 1.5 s freeze: 82 frames drawn, the camera flown 825 units).
+- **Textures streaming in no longer rebuild the whole camera geometry every frame**: only the items whose material's
+  texture arrived are made again (a stock map's first minute was 0.3-0.5 s a frame); Hideout's full load in the
+  benchmark went from 134 s this morning to 33 s.
 - **Opening a stock map no longer freezes the window** (Hideout session measured with the stall watch: 57 s of freezes,
   the longest 18.7 s, down to 5.4 s, the longest 1.7 s; the map's full load also finished in 69 s instead of 134 s):
   prop models are read and converted on worker threads (the props on screen stay until the new set is ready); the
