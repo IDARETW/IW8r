@@ -308,6 +308,34 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
                 if (ok) skins[m] = std::move(v);
             }
     }
+    // Lightmapped placements (model flag 2): GfxWorld.lmapLookup (GfxModelLightmapInst, 20 bytes: u16 lmapIndex, two
+    // pad bytes, vec2 offset, scaleWidth, scaleHeight), values or hex bytes; optional.
+    struct LmapInst {
+        int page = -1;
+        std::array<float, 4> rect{0, 0, 0, 0};
+    };
+    std::vector<LmapInst> lmap;
+    if (const json::View ll = fields.get("lmapLookup"); ll.valid()) {
+        const json::View lb = ll.get("bytes");
+        const json::View lv = ll.get("values");
+        std::vector<uint8_t> raw;
+        if (stringOf(lb, scratch, hex)) {
+            if (unhex(hex, raw) && raw.size() % 20 == 0)
+                for (size_t o = 0; o + 20 <= raw.size(); o += 20)
+                    lmap.push_back({int(u16At(raw, o)), {f32At(raw, o + 4), f32At(raw, o + 8), f32At(raw, o + 12), f32At(raw, o + 16)}});
+        } else if (lv.type() == Value::Type::Array) {
+            forEachRecord(lv, [&](const Value& r) {
+                LmapInst li;
+                li.page = int(num(r.get("lmapIndex")));
+                const Value* o = r.get("offset");
+                const Value* ov = o ? o->get("v") : nullptr;
+                for (int k = 0; k < 2; ++k) li.rect[size_t(k)] = float(ov && size_t(k) < ov->arr.size() ? num(&ov->arr[size_t(k)]) : 0.0);
+                li.rect[2] = float(num(r.get("scaleWidth")));
+                li.rect[3] = float(num(r.get("scaleHeight")));
+                lmap.push_back(li);
+            });
+        }
+    }
     text.close();  // everything needed is decoded
 
     const size_t collectionCount = coll.size() / kCollectionBytes;
@@ -354,6 +382,8 @@ bool readStockModelInstances(const std::string& exportPathOrDir, std::vector<Sto
             out.push_back(std::move(s));
         }
     }
+    for (StockModelInstance& s : out)
+        if ((s.modelFlags & 2u) && s.lightingIndex < lmap.size()) s.lmapPage = lmap[s.lightingIndex].page, s.lmapRect = lmap[s.lightingIndex].rect;
     return true;
 }
 

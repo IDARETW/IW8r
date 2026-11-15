@@ -220,21 +220,23 @@ TEST(glb_reads_self_visibility) {
     for (float f : uv) putF(bin, f);
     for (uint32_t v : {0u, 1u, 2u, 0u, 2u, 3u}) bin += char(v), bin += char(0);
     for (uint32_t w : {up, down, up, down}) put32(bin, w);  // at 140
+    for (uint32_t k = 0; k < 4; ++k) put32(bin, (16384u * k) | ((65535u - 16384u * k) << 16));  // _LMAPUV at 156
     const std::string json =
         std::string("{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[") + kActsNode + "],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2,\"_SELFVIS\":4},\"indices\":3,"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2,\"_SELFVIS\":4,\"_LMAPUV\":5},\"indices\":3,"
         "\"extras\":{\"sourceSurface\":0,\"sourceFlags\":64}}]}],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":4,\"type\":\"VEC3\"},"
         "{\"bufferView\":1,\"componentType\":5126,\"count\":4,\"type\":\"VEC3\"},"
         "{\"bufferView\":2,\"componentType\":5126,\"count\":4,\"type\":\"VEC2\"},"
         "{\"bufferView\":3,\"componentType\":5123,\"count\":6,\"type\":\"SCALAR\"},"
-        "{\"bufferView\":4,\"componentType\":5121,\"count\":4,\"type\":\"VEC4\"}],"
+        "{\"bufferView\":4,\"componentType\":5121,\"count\":4,\"type\":\"VEC4\"},"
+        "{\"bufferView\":5,\"componentType\":5123,\"count\":4,\"type\":\"VEC2\",\"normalized\":true}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":48},{\"buffer\":0,\"byteOffset\":48,\"byteLength\":48},"
         "{\"buffer\":0,\"byteOffset\":96,\"byteLength\":32},{\"buffer\":0,\"byteOffset\":128,\"byteLength\":12},"
-        "{\"buffer\":0,\"byteOffset\":140,\"byteLength\":16}],"
-        "\"buffers\":[{\"byteLength\":156}]}";
+        "{\"buffer\":0,\"byteOffset\":140,\"byteLength\":16},{\"buffer\":0,\"byteOffset\":156,\"byteLength\":16}],"
+        "\"buffers\":[{\"byteLength\":172}]}";
     ImportedModel m;
     std::string err;
     CHECK(parseGlb(makeGlb(json, bin), m, &err));
@@ -247,6 +249,8 @@ TEST(glb_reads_self_visibility) {
     // Raw +Z becomes +Y with the ACTS node (as the normal); the folded -Z becomes -Y at 64/127.
     CHECK(near(mesh.selfVis[0][1], 1.0, 1e-4) && near(mesh.selfVis[0][3], 1.0, 1e-6));
     CHECK(near(mesh.selfVis[1][1], -64.0 / 127.0, 1e-5) && near(mesh.selfVis[1][0], 0, 1e-5) && near(mesh.selfVis[1][2], 0, 1e-5));
+    CHECK(mesh.lmapUv.size() == 4);
+    if (mesh.lmapUv.size() == 4) CHECK(near(mesh.lmapUv[1][0], 16384.0 / 65535.0, 1e-6) && near(mesh.lmapUv[1][1], 49151.0 / 65535.0, 1e-6));
     // Without the attribute: empty.
     ImportedModel plain;
     CHECK(parseGlb(quadGlb(kActsNode, 5123), plain, nullptr));

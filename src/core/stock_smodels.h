@@ -45,6 +45,10 @@ struct StockModelInstance {
     uint32_t lightingIndex = 0xFFFFFFFF;
     uint16_t worldTransient = 0;
     uint32_t modelFlags = 0;                             // smodels.models[collection.smodelIndex].flags
+    // modelFlags & 2 (LIGHTMAP): GfxWorld.lmapLookup[lightingIndex] (research 105 section 3.2): the world lightmap page
+    // and the rectangle (offset u, v, scale u, v) the model's per-vertex lightmap coordinates map into. -1: none.
+    int lmapPage = -1;
+    std::array<float, 4> lmapRect{0, 0, 0, 0};
     // The scale on the distance where the game stops drawing this placement (research 119): the placement's own
     // lodScale when its collection holds this one instance and is not clutter, else 1 (the game's rule). 1 when the
     // export has no instanceFlags.

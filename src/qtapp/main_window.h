@@ -603,6 +603,8 @@ private:
         uint32_t lightingIndex = 0xFFFFFFFF;
         uint16_t transient = 0;
         bool probe = false, first = false;
+        int lmapPage = -1;                       // a lightmapped placement's page and rectangle (StockModelInstance)
+        std::array<float, 4> lmapRect{0, 0, 0, 0};
     };
     std::vector<std::vector<PropLightKey>> refPropLightKeys_;
     bool propLightFor(const PropLightKey& k, float out[12]) const;

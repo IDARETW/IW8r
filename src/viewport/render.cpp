@@ -504,7 +504,18 @@ bool lgvLight(uint box, float3 w, float3 n, out float3 e, out float3 back) {
     e = float3(0, 0, 0), back = float3(0, 0, 0);
     if (box * 5u + 4u >= count) return false;
     const float4 p = float4(w, 1.0);
-    const float3 c = saturate(float3(dot(lgvBoxes[box * 5u], p), dot(lgvBoxes[box * 5u + 1u], p), dot(lgvBoxes[box * 5u + 2u], p)));
+    float3 c = float3(dot(lgvBoxes[box * 5u], p), dot(lgvBoxes[box * 5u + 1u], p), dot(lgvBoxes[box * 5u + 2u], p));
+    // The thin push (research 105 section 1.4): flag 4, axis flags & 3, toward the camera's side of the box.
+    const uint flags = uint(max(lgvBoxes[box * 5u + 3u].w, 0.0) + 0.5);
+    const uint axis = flags & 3u;
+    if ((flags & 4u) != 0u && axis < 3u) {
+        const float d = dot(lgvBoxes[box * 5u + axis], float4(eyeStart.xyz, 1.0));
+        const float push = d > 1.0 ? 4.0 * saturate(4.0 * (d - 1.0)) : (d < 0.0 ? -4.0 * saturate(-4.0 * d) : 0.0);
+        if (axis == 0u) c.x += push;
+        else if (axis == 1u) c.y += push;
+        else c.z += push;
+    }
+    c = saturate(c);
     const float3 uvw = c * lgvBoxes[box * 5u + 3u].xyz + lgvBoxes[box * 5u + 4u].xyz;
     const float3 dc = lgvDc.SampleLevel(lgvSamp, uvw, 0);
     float q[24];
@@ -524,7 +535,7 @@ bool lgvLight(uint box, float3 w, float3 n, out float3 e, out float3 back) {
     back = max(0.282095 * dc - band1 + band2, 0.0);  // E(-n): the second band is even
     return true;
 }
-struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float4 vcol : COLOR1; float4 sv : SELFVIS; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
+struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float4 vcol : COLOR1; float4 sv : SELFVIS; float2 lmuv : LMAPUV; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
                   float4 l0 : INSTROW3; float4 l1 : INSTROW4; float4 l2 : INSTROW5; };
 PSIn vs_tex_inst(VSInInst i) {
     float4 p = float4(i.pos, 1.0);
@@ -556,7 +567,13 @@ PSIn vs_tex_inst(VSInInst i) {
     // game's static-model shader does: E = 0.282095 DC + 4/9 0.488603 (s0 n.z - s2 n.y - s3 n.x), in lightmap units
     // (the pixel shader applies bakedLightScale). Props have no tangent and no lightmap UV: E rides in t, marked by
     // lm = (-2, -2) (propLight()). DC r < 0: none (the probes' fallback).
-    if (i.l0.x < -2.5) {
+    if (i.l0.x < -3.5) {
+        // A lightmapped prop (research 105 section 3.2): the world lightmap's encoding, page + u (the PS splits it),
+        // of offset + the model's lightmap uv x scale; the stock lightmap branch of the PS lights it. (0, 0): a GLB
+        // without lightmap coordinates yet (fetched again): the probes' fallback meanwhile.
+        if (any(i.lmuv != 0.0)) o.lm = float2(i.l0.y + min(i.l0.z + i.lmuv.x * i.l1.x, 0.99999), i.l0.w + i.lmuv.y * i.l1.y);
+        o.lgvBack = float3(0, 0, 0);
+    } else if (i.l0.x < -2.5) {
         // Per vertex from the box in the atlas (research 105 section 1.4); without the atlas, the box centre's DC and
         // slots 0 / 2 kept in the record.
         float3 e, back;
@@ -2066,8 +2083,8 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
             ID3DBlob* tivs = nullptr;
             if (compileTex("vs_tex_inst", "vs_5_0", tivs)) {
                 dev_->CreateVertexShader(tivs->GetBufferPointer(), tivs->GetBufferSize(), nullptr, &vsTexInst_);
-                // PropVertex (36 bytes): position, uv, colour, normal as signed bytes, the model's vertex colour, the self
-                // visibility as signed bytes.
+                // PropVertex (40 bytes): position, uv, colour, normal as signed bytes, the model's vertex colour, the self
+                // visibility as signed bytes, the lightmap uv as unorm16.
                 const D3D11_INPUT_ELEMENT_DESC tiil[] = {
                     {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
@@ -2075,6 +2092,7 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
                     {"NORMAL", 0, DXGI_FORMAT_R8G8B8A8_SNORM, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"COLOR", 1, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"SELFVIS", 0, DXGI_FORMAT_R8G8B8A8_SNORM, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+                    {"LMAPUV", 0, DXGI_FORMAT_R16G16_UNORM, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"INSTROW", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D11_INPUT_PER_INSTANCE_DATA, 1},
@@ -4309,7 +4327,8 @@ void SceneRenderer::drawReferenceTexInstances() {
     // The props' constants: on the shading pass and the depth pre-pass (raw-alpha meshes are not cut out).
     const bool instCb = (propNormals || (texPsOverride_ && texPsOverride_ == psPrepass_)) && uploadInstParams();
     if (cbBatch_) {
-        const float flags[8] = {propNormals ? 1.0f : 0.0f, soft ? -1.0f : 0.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};
+        const float flags[8] = {propNormals ? 1.0f : 0.0f, soft ? -1.0f : 0.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f,
+                                stockLmSrv_[0] && game_.skyIsStock ? 1.0f : 0.0f};
         writeBatchCb(flags);
         ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
         ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
@@ -4381,7 +4400,8 @@ void SceneRenderer::drawReferenceTexInstances() {
         if (prevDs) prevDs->Release();
         if (prevBs) prevBs->Release();
         if (cbBatch_) {  // the props' flags again for what follows
-            const float flags[8] = {propNormals ? 1.0f : 0.0f, soft ? -1.0f : 0.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};
+            const float flags[8] = {propNormals ? 1.0f : 0.0f, soft ? -1.0f : 0.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f,
+                                stockLmSrv_[0] && game_.skyIsStock ? 1.0f : 0.0f};
             writeBatchCb(flags);
         }
     };

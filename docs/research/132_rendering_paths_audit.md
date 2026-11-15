@@ -203,9 +203,15 @@ pixels by more than 8 and Speedball's 2 % (gradients across multi-probe boxes); 
 loaded tile's (Verdansk widths 64 / 32 / 16 / 8, depths up to 16; 82 grids cached, 1,216 slices in all) are stacked
 into one (core `packStockLgvAtlases`: the widest width, depths in turn, a narrower atlas at the corner of its slices,
 texture 1's tiles re-laid, each box's packing turned to the stack; test: the stack samples as its sources), rebuilt
-off the UI thread when tiles arrive; a prop names `firstBox[its transient zone] + lightingIndex`. Left: the thin push
-(flag 4; its switch `cb7[185].x` is not decoded) and the lightmapped `tml/` props (their per-vertex lightmap
-coordinates are in no ACTS export).
+off the UI thread when tiles arrive; a prop names `firstBox[its transient zone] + lightingIndex`. 2026-11-15 later: the thin push
+(flag 4; run as with `cb7[185].x` = 0, INFERRED for MP: the box flags ride in the spare w of the box's uvScale row,
+`IW8R_NO_LGV_THINPUSH`), and the 236 lightmapped `tml/` props of Hideout: ACTS fork 834568b9 exports XSurface.lmapCoords
+(+80) as `_LMAPUV` (checked on `furniture_rug_01_flat_04_lod010v41`: 1,733 vertices, u 0.025-0.645, v 0.025-0.713, as
+research 105 section 3.2), core reads GfxWorld.lmapLookup into `StockModelInstance::lmapPage / lmapRect`, a prop of
+flag 2 gets the record `-4, page, offset, scale`, its vertices carry the lightmap uv (two unorm16), vs_tex_inst writes
+the world's encoding (page + u) and the stock lightmap branch lights it; the model cache fetches again the drawn
+lightmapped models cached before (`lmapuv`). Proven with a one-off tinted build (the rugs take the path) and an A/B
+(`IW8R_NO_PROP_LIGHTMAP`): indoor rugs take the floor's light instead of the brighter probe fallback.
 
 ### G8 (medium). Own-map local lights are simplified
 
@@ -287,8 +293,8 @@ x the vertex colour (alpha `saturate(4 m.z vertexAlpha)`; the technique replaces
 clip-to-UV scale. On the only stock world user, Shipment's `twc/dub_water_wall_waves_dist`, constant 127 is (1, 1):
 the scene moves by at most one unit, which no comparison shot can show, so the batch stays hidden. The effect
 materials (`elcq/vfx_dist_*`, c127 2 to 30) belong to placed effects, whose quads the viewport does not distort.
-`lmapCoords` for lightmapped `tml` props (G7 rest) need an ACTS reader of the XSurface stream (the xmodelsurfs payload
-holds only the shared vertex buffer; checked 2026-11-15 on `furniture_rug_01_flat_04_lod010v41`).
+Static-model displacement (research 133 section 3): its two stock users (`tmo/stone_wall_01`, `mo/skl_sand_dune_01_blend`)
+both have constant 45 = (2, -1), a shift of at most one unit along the normal; left undrawn by decision.
 
 ### G14 (low). SSAO stands in for GTAO
 

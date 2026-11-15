@@ -30,6 +30,9 @@ struct ImportedMesh {
     // polynomial. Empty when the primitive has none.
     std::vector<std::array<float, 4>> selfVis;
     uint32_t sourceFlags = 0;  // glTF primitive extras.sourceFlags (the XSurface flags ACTS copies; 0x40 = self visibility)
+    // Lightmapped stock models (ACTS GLB attribute _LMAPUV, research 105 section 3.2): per vertex the lightmap u, v
+    // (0..1) within the placement's lmapLookup rectangle. Empty when the primitive has none.
+    std::vector<std::array<float, 2>> lmapUv;
 };
 
 struct ImportedModel {

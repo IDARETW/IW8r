@@ -225,7 +225,11 @@ TEST(stock_smodels_lighting_values_form) {
             s += R"(,"modelStaticIndirection":{"stride":8,"count":2,"values":[)"
                  R"({"lightingInstanceIndirection":11,"splinedModelInstanceIndex":0,"worldTransient":2},)"
                  R"({"lightingInstanceIndirection":0,"splinedModelInstanceIndex":0,"worldTransient":0}]})";
-        return s + "}}}}";
+        s += "}";  // smodels
+        if (withIndirection)  // the lightmapped placement's rectangle (research 105 section 3.2)
+            s += R"(,"lmapLookup":{"stride":20,"count":1,"values":[{"lmapIndex":3,"offset":{"$union_views":true,"v":[0.25,0.5]},)"
+                 R"("scaleWidth":0.125,"scaleHeight":0.0625}]})";
+        return s + "}}}";
     };
     const fs::path dir = fs::path(iw8r::test::tmpDir()) / "stock_smodels_values";
     const fs::path with = dir / "with.json", without = dir / "without.json";
@@ -241,6 +245,10 @@ TEST(stock_smodels_lighting_values_form) {
         CHECK(v[0].lightingIndex == 11 && v[0].worldTransient == 2);
         CHECK(v[1].model == "tm/lm" && v[1].index == 1 && v[1].modelFlags == 2);
         CHECK(v[1].lightingIndex == 0 && v[1].worldTransient == 0);
+        // tm/lm is lightmapped (flag 2): lmapLookup[0]; tm/p (probe-lit) has none.
+        CHECK(v[1].lmapPage == 3 && v[1].lmapRect[0] == 0.25f && v[1].lmapRect[1] == 0.5f && v[1].lmapRect[2] == 0.125f &&
+              v[1].lmapRect[3] == 0.0625f);
+        CHECK(v[0].lmapPage == -1);
         CHECK(nearVec(v[0].origin, Vec3{1, 0, 0}) && nearVec(v[1].origin, Vec3{0, 2, 0}));
     }
 

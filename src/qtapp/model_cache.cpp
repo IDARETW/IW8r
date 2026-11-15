@@ -212,8 +212,8 @@ void ModelCache::setFallbackZones(const QStringList& zones) {
 }
 
 namespace {
-// Whether a cached GLB's JSON chunk names the _SELFVIS attribute (the ACTS fork's self visibility).
-int glbSelfVis(const QString& path) {
+// Whether a cached GLB's JSON chunk names an attribute (the ACTS fork's "_SELFVIS", "_LMAPUV").
+int glbHas(const QString& path, const char* attribute) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return 0;
     const QByteArray head = f.read(20);
@@ -221,7 +221,15 @@ int glbSelfVis(const QString& path) {
     uint32_t len = 0;
     std::memcpy(&len, head.constData() + 12, 4);
     if (len == 0 || len > (64u << 20)) return 0;
-    return f.read(qint64(len)).contains("\"_SELFVIS\"") ? 1 : 0;
+    return f.read(qint64(len)).contains(QByteArray("\"") + attribute + "\"") ? 1 : 0;
+}
+int glbSelfVis(const QString& path) { return glbHas(path, "_SELFVIS"); }
+int glbLmapUv(const QString& path) { return glbHas(path, "_LMAPUV"); }
+// A lightmapped static model (research 105 section 3.1): one of its surfaces has a tml / tmlc material.
+bool lightmappedModel(const QStringList& materials) {
+    for (const QString& m : materials)
+        if (m.section('/', 0, 0).startsWith("tml")) return true;
+    return false;
 }
 }  // namespace
 
@@ -229,7 +237,9 @@ void ModelCache::refreshGeometry(const QStringList& names) {
     bool added = false;
     for (const QString& n : names) {
         const auto it = index_.find(n);
-        if (it == index_.end() || it->second.failed || it->second.selfVis >= 0 || queued_.count(n) || !refreshed_.insert(n).second) continue;
+        if (it == index_.end() || it->second.failed || queued_.count(n)) continue;
+        const bool lmapUnknown = it->second.lmapUv < 0 && lightmappedModel(it->second.materials);
+        if ((it->second.selfVis >= 0 && !lmapUnknown) || !refreshed_.insert(n).second) continue;
         refreshPending_ << n;
         added = true;
     }
@@ -340,6 +350,7 @@ void ModelCache::loadIndex() {
         e.failed = o.value("failed").toBool();
         e.error = o.value("error").toString();
         e.selfVis = o.contains("selfvis") ? o.value("selfvis").toInt() : -1;
+        e.lmapUv = o.contains("lmapuv") ? o.value("lmapuv").toInt() : -1;
         if (!e.failed) {
             const QString glb = o.value("glb").toString();
             e.glbPath = glb.isEmpty() ? QString() : QDir(root_).filePath(glb);
@@ -388,6 +399,7 @@ void ModelCache::writeIndex() const {
         o.insert("failed", e.failed);
         if (!e.error.isEmpty()) o.insert("error", e.error);
         if (e.selfVis >= 0) o.insert("selfvis", e.selfVis);
+        if (e.lmapUv >= 0) o.insert("lmapuv", e.lmapUv);
         models.insert(name, o);
     }
     QJsonObject top;
@@ -826,7 +838,8 @@ void ModelCache::finishBatch() {
         const bool ok = w.found && !w.glb.isEmpty() && w.error.isEmpty();
         if (refresh && !ok) {
             // A refresh that could not be done: the model keeps the GLB it had, now checked (not asked again).
-            if (const auto it = index_.find(w.name); it != index_.end()) it->second.selfVis = glbSelfVis(it->second.glbPath);
+            if (const auto it = index_.find(w.name); it != index_.end())
+                it->second.selfVis = glbSelfVis(it->second.glbPath), it->second.lmapUv = glbLmapUv(it->second.glbPath);
             done << w.name;
             continue;
         }
@@ -835,6 +848,7 @@ void ModelCache::finishBatch() {
             e.bounds = w.bounds;
             e.materials = w.materials;
             e.selfVis = glbSelfVis(w.glb);
+            e.lmapUv = glbLmapUv(w.glb);
             if (refresh)  // its LODs were exported before too: fetched again when next wanted
                 for (int lod = 1; lod <= 8; ++lod) {
                     QFile::remove(lodGlbPath(w.name, lod));

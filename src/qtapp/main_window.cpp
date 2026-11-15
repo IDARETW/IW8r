@@ -7489,6 +7489,14 @@ bool MainWindow::propLightFor(const PropLightKey& k, float out[12]) const {
     static const float none[12] = {-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::memcpy(out, none, sizeof(none));
     static const bool noPropLgv = std::getenv("IW8R_NO_PROP_LGV") != nullptr;  // A/B: the probes' light as before
+    static const bool noPropLm = std::getenv("IW8R_NO_PROP_LIGHTMAP") != nullptr;
+    if (!noPropLm && k.lmapPage >= 0 && camera_ && camera_->hasStockLightmap()) {
+        // A lightmapped prop (research 105 section 3.2): -4, its lightmap page, offset u, v, scale u, v.
+        out[0] = -4.0f;
+        out[1] = float(k.lmapPage);
+        out[2] = k.lmapRect[0], out[3] = k.lmapRect[1], out[4] = k.lmapRect[2], out[5] = k.lmapRect[3];
+        return true;
+    }
     if (noPropLgv || !k.probe) return false;
     const std::vector<float>* grid = nullptr;  // the prop's transient zone's grid: the main zone's, or its tile's
     if (k.transient == 0) {
@@ -7632,7 +7640,8 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                 // Cached before the GLB carried the self visibility (research 105 section 4): fetched again in the
                 // background; the model is drawn from its old GLB meanwhile.
                 static const bool noSelfVis = std::getenv("IW8R_NO_SELFVIS") != nullptr;
-                if (const auto e = modelCacheStock_->lookup(qs(in.model)); !noSelfVis && e && e->selfVis < 0) {
+                if (const auto e = modelCacheStock_->lookup(qs(in.model));
+                    !noSelfVis && e && (e->selfVis < 0 || (e->lmapUv < 0 && (in.modelFlags & 2u)))) {
                     if (selfVisRefresh_.isEmpty())
                         QTimer::singleShot(0, this, [this] {
                             modelCacheStock_->refreshGeometry(selfVisRefresh_);
@@ -7695,6 +7704,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                                              (prefix.rfind("m", 0) == 0 || prefix.rfind("tm", 0) == 0);
                         // The self visibility of a surface flagged for it (0x40; research 105 section 4).
                         static const bool noSelfVis = std::getenv("IW8R_NO_SELFVIS") != nullptr;
+                        const bool lmapUv = ms.lmapUv.size() == nv;  // a lightmapped model's lightmap coordinates
                         const bool selfVis = !noSelfVis && ms.selfVis.size() == nv && (ms.sourceFlags & 0x40u) != 0;
                         for (size_t v = 0; v < nv; ++v) {
                             const Vec3 p = zup(ms.pos[v]);
@@ -7707,6 +7717,10 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                                 // Alpha: the weight of the flag / foliage waves (research 133 section 4).
                                 pv.color = byte(ms.color[v][0]) | (byte(ms.color[v][1]) << 8) | (byte(ms.color[v][2]) << 16) |
                                            (byte(ms.color[v][3]) << 24);
+                            }
+                            if (lmapUv) {
+                                const auto u16 = [](float c) { return uint32_t(std::clamp(c, 0.0f, 1.0f) * 65535.0f + 0.5f); };
+                                pv.lmapUv = u16(ms.lmapUv[v][0]) | (u16(ms.lmapUv[v][1]) << 16);
                             }
                             if (selfVis) {
                                 const auto& s = ms.selfVis[v];
@@ -7861,6 +7875,8 @@ void MainWindow::rebuildReferencePropsUnguarded() {
         key.lightingIndex = in.lightingIndex;
         key.transient = in.worldTransient;
         key.probe = (in.modelFlags & 1u) != 0;
+        key.lmapPage = in.lmapPage;
+        key.lmapRect = in.lmapRect;
         float lit[12];
         if (propLightFor(key, lit) && !it->second.tex.empty()) ++refPropLit_;
         if (!it->second.tex.empty()) ++refPropLitOf_;
@@ -9115,6 +9131,9 @@ void MainWindow::restackPropLgv() {
                 for (int r = 0; r < 3; ++r)
                     for (int k = 0; k < 4; ++k) b[4 * r + k] = st.atlas.xform[v].row[r][k];
                 for (int k = 0; k < 3; ++k) b[12 + k] = st.atlas.pack[v].uvScale[k], b[16 + k] = st.atlas.pack[v].uvBias[k];
+                // The box flags (thin push, research 105 section 1.4) in the spare w of the uvScale row.
+                static const bool noThinPush = std::getenv("IW8R_NO_LGV_THINPUSH") != nullptr;
+                b[15] = noThinPush ? 0.0f : float(st.atlas.xform[v].flags & 7u);
             }
             up->tex0 = std::move(st.atlas.tex0), up->tex1 = std::move(st.atlas.tex1);
             for (size_t i = 0; i < parts.size(); ++i)

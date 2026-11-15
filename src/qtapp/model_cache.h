@@ -50,6 +50,9 @@ public:
         // The GLB's per-vertex self visibility (_SELFVIS, ACTS fork 3667413c; research 105 section 4): 1 present,
         // 0 checked and absent, -1 not known (cached before it was recorded: refreshGeometry fetches it again).
         int selfVis = -1;
+        // The GLB's lightmap coordinates (_LMAPUV, ACTS fork 834568b9) of a lightmapped model: 1 present, 0 checked and
+        // absent, -1 not known.
+        int lmapUv = -1;
     };
 
     std::optional<Entry> lookup(const QString& name) const;  // on-disk index only (instant)
@@ -60,7 +63,8 @@ public:
     std::optional<XModelInfo> loadDetail(const QString& name) const;
     void refetch(const QString& name);
     void request(const QStringList& names);                  // async; de-duplicated; batched per zone
-    // Runs the geometry export again for cached models whose GLB predates the self visibility (Entry::selfVis -1),
+    // Runs the geometry export again for cached models whose GLB predates the self visibility (Entry::selfVis -1) or,
+    // for a lightmapped model (a tml / tmlc material), its lightmap coordinates (Entry::lmapUv -1),
     // once per model and session, after any requested models. The old GLB stays in use until the new one is in, and
     // stays when the export fails. modelReady / batchEnded follow as for request().
     void refreshGeometry(const QStringList& names);

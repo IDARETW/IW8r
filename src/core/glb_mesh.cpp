@@ -297,6 +297,14 @@ private:
                     m.selfVis[i] = {float(dir.x * amount), float(dir.y * amount), float(dir.z * amount), d[3]};
                 }
             }
+            if (const json::Value* lu = attrs->get("_LMAPUV")) {
+                // ACTS: PackedLmapCoords as VEC2 UNSIGNED_SHORT, normalised (research 105 section 3.2).
+                size_t nl = 0;
+                if (!readAccessor(int(lu->num), 2, v, nl)) return false;
+                if (nl != n) return fail("_LMAPUV count differs from POSITION");
+                m.lmapUv.resize(n);
+                for (size_t i = 0; i < n; ++i) m.lmapUv[i] = {float(v[i * 2]), float(v[i * 2 + 1])};
+            }
             if (const json::Value* ex = prim.get("extras"))
                 if (const json::Value* sf = ex->get("sourceFlags")) m.sourceFlags = uint32_t(std::max(0.0, sf->num));
             if (const json::Value* ind = prim.get("indices")) {

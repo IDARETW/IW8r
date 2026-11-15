@@ -117,6 +117,8 @@ struct PropVertex {
     // The static-model self visibility (research 105 section 4) as signed bytes: xyz the bent normal times the visible
     // amount, w = 1 + 126 x the cone value (0 = none).
     uint32_t selfVis = 0;
+    // A lightmapped model's lightmap u, v (two unorm16, research 105 section 3.2) within its placement's rectangle.
+    uint32_t lmapUv = 0;
 };
 // One extra layer of a model-layered prop material (research 132 G9): its colour and reveal textures (createTexture
 // ids; reveal -1 = white) and the world layer pass's constants (layerP, layerTint, layerUvT, layerUvO).

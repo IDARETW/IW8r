@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Lightmapped stock props use the map's lightmap in Game Lighting** (research 105 section 3.2): rugs, blankets,
+  cinder-block corners and the periphery houses (236 placements on Hideout) take the baked light of the floor they lie
+  on, as in game, instead of the probes' fallback. The model export (ACTS fork, updated again) carries their lightmap
+  coordinates; models cached before are fetched again in the background. A/B: `IW8R_NO_PROP_LIGHTMAP=1`.
+- **Thin walls and signs take the light of the side the camera is on** (the light grid's "thin push", research 105
+  section 1.4). A/B: `IW8R_NO_LGV_THINPUSH=1`.
 - **Verdansk is fast again** (a regression from 2026-11-14): Warzone vehicle spawns drew their full vehicle models
   (100,000 to 140,000 triangles each, not instanced), about 17 million triangles and 3.5 GB of scene geometry on
   Verdansk; the frame took 450 ms or more and the editor committed over 20 GB. On a map with more than eight vehicle
