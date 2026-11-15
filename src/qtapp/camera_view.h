@@ -759,6 +759,7 @@ private:
     std::vector<std::string> ownMaskImages_;
     bool ownMaskScroll_ = false;
     QElapsedTimer maskClock_;
+    float skyRgbmRange_ = 1.0f;  // the sky faces are RGBM with this range (research 132 G10); 1 = 8-bit faces
     // A stock material with UV animation was set up for drawing (research 133): the view redraws while it is active.
     bool uvAnimSeen_ = false, uvAnimTick_ = false;
     double stockSkyIntensity_ = 0;

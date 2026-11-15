@@ -28,6 +28,11 @@ struct SkyConvertOptions {
     // the sky's frame with it before the lookup (sky VS a6bc8f6e: o1 = cb7[153..155] x direction). Mp_m_speedball:
     // 0 -111 0. Only hemi-octahedral sources (a converter cube passes through unchanged).
     float rotation[3] = {0, 0, 0};
+    // HDR sources: RGBM faces for the editor's Game Lighting (research 132 G10): the colour times the exposure divided
+    // by a multiplier M (stored in alpha as M / rgbmRange, rounded up to 1/255), sRGB-encoded; decode
+    // srgbToLinear(rgb) * alpha * rgbmRange. Nothing clips below rgbmRange. Not for the converter (its cube is 8-bit).
+    bool rgbm = false;
+    float rgbmRange = 16.0f;
 };
 
 // An own map's sky brightness: a number from 0.1 to 16, 1 when absent. `bad` is set when the text is not one.
@@ -42,6 +47,7 @@ struct SkyConvertInfo {
     int faceSize = 0;
     float exposure = 1.0f;
     float meanLuminance = 0.0f, highLuminance = 0.0f;  // source linear luminance: mean and 99.5th percentile
+    bool rgbm = false;  // the faces are RGBM (SkyConvertOptions::rgbm on an HDR source)
 };
 
 // True when `dds` is a DDS the converter loads as a complete cube map (legacy header, caps2 cube with six faces,

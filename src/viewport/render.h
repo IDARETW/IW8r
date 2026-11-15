@@ -478,6 +478,10 @@ public:
     // specular code, never a cut-out: batches drawing it are opaque (the shaders get "raw spec", no alpha test).
     int createTextureBlocks(int dxgiFormat, int width, int height, const std::vector<std::string>& levels);
     bool textureRawAlpha(int id) const { return id >= 0 && size_t(id) < texRawAlpha_.size() && texRawAlpha_[size_t(id)]; }
+    // A texture whose alpha is data (an RGBM sky face): never cut out by it.
+    void setTextureRawAlpha(int id, bool on) {
+        if (id >= 0 && size_t(id) < texRawAlpha_.size()) texRawAlpha_[size_t(id)] = on ? 1 : 0;
+    }
     size_t referenceTexturedBatches() const { return refTexIds_.size(); }
     // 3.20: the stock reference is cut into spatial chunks (core draw_chunks.h) and only the chunks in the view
     // frustum are drawn. Off draws everything (for comparison).

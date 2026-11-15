@@ -977,7 +977,8 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         if (gameAo.z > 0.5) return float4(t.rgb, outA);  // debug: the albedo as sampled
         float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? i.vc.rgb : i.col.rgb);  // i.col: selection and brush entity tints; vc: a prop's vertex colour
         if (!stockRef && i.col.a < 0.5) {  // sky box
-            const float3 sky = gameFogApply(albedo * gameSkyScale.x, i.w, true);
+            // t.a: an RGBM face's multiplier (research 132 G10; 1 on an 8-bit face), the range folded into the scale.
+            const float3 sky = gameFogApply(albedo * t.a * gameSkyScale.x, i.w, true);
             return float4(gameAo.w > 0.5 ? sky : gamePost(sky), 1.0);
         }
         if (!stockRef && (batchMat.x > 0.5 || batchMat.z > 0.5)) {

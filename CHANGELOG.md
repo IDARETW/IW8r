@@ -5,6 +5,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Stock skies keep their HDR range in Game Lighting** (research 132 G10): the sky faces are RGBM (a colour
+  and a multiplier, up to 16 times the old white point) at 512 texels, so the bright sky around the sun is no longer
+  clipped flat. Other views and own maps (whose build writes an 8-bit sky) are unchanged.
 - **Layered stock props get their multiply layers** (research 132 G9, part): model-layered materials (`tm2o`,
   `tm2co`, `m2o`; their layer count is in the technique set name) keep their layer images and constants, and
   a layer pass after the props draws their multiply layers (grime, wear: King's concrete barriers). Colour

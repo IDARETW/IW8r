@@ -342,6 +342,7 @@ bool skyCubemapFromDds(const std::string& dds, std::string& cube, const SkyConve
         exposure *= std::clamp(opt.brightness, 0.1f, 16.0f);
     }
     inf.exposure = exposure;
+    inf.rgbm = img.hdr && opt.rgbm;
 
     const int size = std::clamp(opt.faceSize, 4, 2048);
     inf.faceSize = size;
@@ -392,14 +393,27 @@ bool skyCubemapFromDds(const std::string& dds, std::string& cube, const SkyConve
                     for (int c = 0; c < 3; ++c) rgb[c] += (ring[c] - rgb[c]) * k;
                 }
                 uint8_t bytes[3];
-                for (int c = 0; c < 3; ++c) {
-                    const float s = img.hdr ? linearToSrgb(std::clamp(rgb[c] * exposure, 0.0f, 1.0f)) : std::clamp(rgb[c], 0.0f, 1.0f);
-                    bytes[c] = uint8_t(std::lround(s * 255.0f));
+                uint8_t alpha = 0xFF;
+                if (img.hdr && opt.rgbm) {
+                    // RGBM: the brightest channel sets the multiplier; the rest is the colour at that scale.
+                    const float range = std::max(opt.rgbmRange, 1.0f);
+                    float v[3];
+                    for (int c = 0; c < 3; ++c) v[c] = std::max(rgb[c] * exposure, 0.0f);
+                    const float mx = std::max({v[0], v[1], v[2]});
+                    const int m8 = std::clamp(int(std::ceil(mx / range * 255.0f)), 1, 255);
+                    const float m = float(m8) / 255.0f * range;
+                    for (int c = 0; c < 3; ++c) bytes[c] = uint8_t(std::lround(linearToSrgb(std::clamp(v[c] / m, 0.0f, 1.0f)) * 255.0f));
+                    alpha = uint8_t(m8);
+                } else {
+                    for (int c = 0; c < 3; ++c) {
+                        const float s = img.hdr ? linearToSrgb(std::clamp(rgb[c] * exposure, 0.0f, 1.0f)) : std::clamp(rgb[c], 0.0f, 1.0f);
+                        bytes[c] = uint8_t(std::lround(s * 255.0f));
+                    }
                 }
                 cube.push_back(char(bytes[2]));  // B
                 cube.push_back(char(bytes[1]));  // G
                 cube.push_back(char(bytes[0]));  // R
-                cube.push_back(char(0xFF));
+                cube.push_back(char(alpha));
             }
     return true;
 }

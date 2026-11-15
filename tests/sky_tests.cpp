@@ -252,3 +252,32 @@ TEST(sky_compile_writes_cube_and_world_sky) {
         CHECK(warned);
     }
 }
+
+// Research 132 G10: RGBM faces keep an HDR sky's range: srgbToLinear(rgb) * alpha * range gives back the linear value,
+// above 1 too (exposure 8: the sky's 0.4 becomes 3.2, which the 8-bit faces clip to 1).
+TEST(sky_cube_rgbm_keeps_hdr) {
+    std::string cube, err;
+    SkyConvertOptions so;
+    so.faceSize = 8;
+    so.exposure = 8.0f;
+    so.rgbm = true;
+    SkyConvertInfo info;
+    CHECK(skyCubemapFromDds(syntheticHdrSky(), cube, so, &info, &err));
+    CHECK(info.hdr && info.rgbm);
+    const auto toLin = [](int b) {
+        const float s = float(b) / 255.0f;
+        return s <= 0.04045f ? s / 12.92f : std::pow((s + 0.055f) / 1.055f, 2.4f);
+    };
+    int c[3];
+    cubeTexel(cube, 4, 4, 4, c);  // the zenith, blue
+    const size_t off = 128 + (size_t(4) * 8 * 8 + 4 * 8 + 4) * 4;
+    const float m = float(uint8_t(cube[off + 3])) / 255.0f * so.rgbmRange;
+    const float blue = toLin(c[2]) * m;
+    CHECK(std::fabs(blue - 3.2f) < 0.1f && c[0] == 0);
+    // Without RGBM the same texel clips at 1 (sRGB 255).
+    std::string clipped;
+    so.rgbm = false;
+    CHECK(skyCubemapFromDds(syntheticHdrSky(), clipped, so, &info, &err) && !info.rgbm);
+    cubeTexel(clipped, 4, 4, 4, c);
+    CHECK(c[2] == 255);
+}

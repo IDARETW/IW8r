@@ -717,19 +717,24 @@ void CameraView::render() {
         float skyBrightness = 1.0f;
         if (!gameStockLook())
             if (const Entity* ws = ctx_->doc.worldspawn()) skyBrightness = parseSkyBrightness(ws->value(kSkyBrightnessKey));
-        const QString skyKey = sky.isEmpty() ? QString() : sky + QString("|%1 %2 %3|%4").arg(skyRot[0]).arg(skyRot[1]).arg(skyRot[2]).arg(skyBrightness);
+        // A stock sky in Game Lighting keeps its HDR range (RGBM faces, research 132 G10); the other views keep 8 bits.
+        const bool skyHdr = gameStockLook() && gameLookOn();
+        const QString skyKey = sky.isEmpty() ? QString()
+                                             : sky + QString("|%1 %2 %3|%4|%5").arg(skyRot[0]).arg(skyRot[1]).arg(skyRot[2]).arg(skyBrightness).arg(skyHdr);
         if (skyKey != skyPath_) {
             skyPath_ = skyKey;
             skyTex_.clear();
             std::string bytes, cube, err;
             SkyConvertOptions so;
-            so.faceSize = 256;
+            so.faceSize = skyHdr ? 512 : 256;
+            so.rgbm = skyHdr;
             // The map's sky rotation (worldspawn skyrotation; stock maps: from their entity string).
             for (int k = 0; k < 3; ++k) so.rotation[k] = skyRot[k];
             so.brightness = skyBrightness;
             SkyConvertInfo skyInfo;
             if (!sky.isEmpty() && readFile(sky.toStdString(), bytes) && skyCubemapFromDds(bytes, cube, so, &skyInfo, &err)) {
                 skyExposure_ = skyInfo.hdr ? skyInfo.exposure : 0.0f;
+                skyRgbmRange_ = skyInfo.rgbm ? so.rgbmRange : 1.0f;
                 skyMeanLum_ = skyInfo.meanLuminance, skyHighLum_ = skyInfo.highLuminance;
                 // Legacy DDS: 128-byte header, six faces of B8G8R8A8, one mip each.
                 const int fs = int(std::lround(std::sqrt((cube.size() - 128) / 24.0)));
@@ -741,9 +746,10 @@ void CameraView::render() {
                             rgba[k] = src[k + 2];
                             rgba[k + 1] = src[k + 1];
                             rgba[k + 2] = src[k];
-                            rgba[k + 3] = 255;
+                            rgba[k + 3] = skyInfo.rgbm ? src[k + 3] : 255;  // RGBM: the multiplier
                         }
                         skyTex_.push_back(renderer_.createTexture(rgba.data(), fs, fs));
+                        if (skyInfo.rgbm) renderer_.setTextureRawAlpha(skyTex_.back(), true);
                         // Diagnosis: IW8R_DUMP_SKY=<folder> writes the six preview faces as PNG.
                         if (const QString dump = qEnvironmentVariable("IW8R_DUMP_SKY"); !dump.isEmpty())
                             QImage(rgba.data(), fs, fs, QImage::Format_RGBA8888).save(QDir(dump).filePath(QString("sky_face%1.png").arg(f)));
@@ -2829,7 +2835,8 @@ void CameraView::prepareGameLook() {
         // The sky preview is an 8-bit copy of the HDR stock sky times its conversion exposure: undo it, so the sky has
         // its own radiance in the game's light units (and the post chain exposes it like the rest).
         if (stock) g.bakedScale = float(stockBakedScale_);
-        if (stock && skyExposure_ > 0) g.skyScale = float((stockSkyIntensity_ > 0 ? stockSkyIntensity_ : 1.0) / skyExposure_);
+        if (stock && skyExposure_ > 0)
+            g.skyScale = float((stockSkyIntensity_ > 0 ? stockSkyIntensity_ : 1.0) / skyExposure_ * skyRgbmRange_);  // RGBM: x range
         if (stock && stockMeanLight_[0] + stockMeanLight_[1] + stockMeanLight_[2] > 0) {
             for (int k = 0; k < 3; ++k) g.sky[k] = float(stockMeanLight_[size_t(k)] * stockBakedScale_);
             g.skyIsStock = true;
