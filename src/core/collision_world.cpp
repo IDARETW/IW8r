@@ -46,11 +46,66 @@ void CollisionWorld::addSolid(std::vector<Plane> planes, uint32_t contents, bool
     solids_.push_back(std::move(s));
 }
 
-void CollisionWorld::build(const MapFile& map, int patchSubdiv) {
+void CollisionWorld::build(const MapFile& map, int patchSubdiv) { build(map, patchSubdiv, {}); }
+
+void CollisionWorld::build(const MapFile& map, int patchSubdiv, const std::vector<Id>& skip) {
     solids_.clear();
+    movers_.clear();
     bounds_ = AABB{};
     for (const auto& e : map.entities) {
         if (!blocksPlayerClass(e.classname())) continue;  // triggers and other brush entities do not block
+        if (std::find(skip.begin(), skip.end(), e.id) != skip.end()) continue;
+        addBrushesOf(e, patchSubdiv);
+    }
+}
+
+int CollisionWorld::addMover(const Entity& e) {
+    const size_t first = solids_.size();
+    addBrushesOf(e, 4);
+    if (solids_.size() == first) return -1;
+    Mover m;
+    for (size_t i = first; i < solids_.size(); ++i) {
+        m.solids.push_back(i);
+        m.planes.push_back(solids_[i].planes);
+        m.bounds.push_back(solids_[i].bounds);
+        m.all.add(solids_[i].bounds);
+    }
+    movers_.push_back(std::move(m));
+    return int(movers_.size()) - 1;
+}
+
+AABB CollisionWorld::moverBounds(int group) const {
+    return group >= 0 && size_t(group) < movers_.size() ? movers_[size_t(group)].all : AABB{};
+}
+
+void CollisionWorld::setMoverPose(int group, const double R[3][3], const Vec3& pivot, const Vec3& move) {
+    if (group < 0 || size_t(group) >= movers_.size()) return;
+    const Mover& m = movers_[size_t(group)];
+    const auto rot = [&](const Vec3& v) {
+        return Vec3{R[0][0] * v.x + R[0][1] * v.y + R[0][2] * v.z, R[1][0] * v.x + R[1][1] * v.y + R[1][2] * v.z,
+                    R[2][0] * v.x + R[2][1] * v.y + R[2][2] * v.z};
+    };
+    for (size_t k = 0; k < m.solids.size(); ++k) {
+        Solid& s = solids_[m.solids[k]];
+        for (size_t p = 0; p < s.planes.size() && p < m.planes[k].size(); ++p) {
+            const Plane& base = m.planes[k][p];
+            const Vec3 n = rot(base.n);
+            const Vec3 onPlane = pivot + rot(base.n * base.d - pivot) + move;
+            s.planes[p] = {n, dot(n, onPlane)};
+        }
+        AABB b;
+        const AABB& rb = m.bounds[k];
+        for (int c = 0; c < 8; ++c) {
+            const Vec3 corner{c & 1 ? rb.maxs.x : rb.mins.x, c & 2 ? rb.maxs.y : rb.mins.y, c & 4 ? rb.maxs.z : rb.mins.z};
+            b.add(pivot + rot(corner - pivot) + move);
+        }
+        s.bounds = b;
+        bounds_.add(b);
+    }
+}
+
+void CollisionWorld::addBrushesOf(const Entity& e, int patchSubdiv) {
+    {
         for (const auto& it : e.items) {
             const Primitive* p = it.prim();
             if (!p) continue;

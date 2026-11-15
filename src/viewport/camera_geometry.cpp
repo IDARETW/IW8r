@@ -1033,6 +1033,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
             d.mOverlay.push_back(gv(a, 0xff30d0ffu));
             d.mOverlay.push_back(gv(b, 0xff30d0ffu));
         }
+        appendHelperLines(scene, doc, d.mLines, d.mOverlay);  // damage cylinders, door use areas, teleporter lines (scene.cpp)
         // World axes at the origin (X red, Y green, Z blue).
         d.mLines.push_back(gv({0, 0, 0}, 0xff3030ffu));
         d.mLines.push_back(gv({64, 0, 0}, 0xff3030ffu));

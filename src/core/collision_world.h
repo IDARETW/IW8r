@@ -32,6 +32,16 @@ public:
     // Rebuilds from the map: worldspawn / func_group / script_brushmodel brushes that block players, and patch
     // triangles as thin convex facets. `patchSubdiv` matches the renderer (segments per sub-patch).
     void build(const MapFile& map, int patchSubdiv = 4);
+    // The same, leaving out the brushes of the entities in `skip` (movers added with addMover instead).
+    void build(const MapFile& map, int patchSubdiv, const std::vector<Id>& skip);
+
+    // A moving brush entity (a door, a lift, a spinning brush model): its blocking brushes become a group whose
+    // solids follow setMoverPose. Returns the group (-1 when the entity has no blocking brush).
+    int addMover(const Entity& e);
+    // Places a group: every point p of its solids goes to pivot + R (p - pivot) + move (R row-major, a rotation).
+    void setMoverPose(int group, const double R[3][3], const Vec3& pivot, const Vec3& move);
+    // The bounds of a group as built (its rest pose).
+    AABB moverBounds(int group) const;
     const std::vector<Solid>& solids() const { return solids_; }
     AABB bounds() const { return bounds_; }
 
@@ -60,6 +70,14 @@ private:
     Trace traceShape(const Vec3& start, const Vec3& end, const Vec3& mins, const Vec3& maxs, double capsuleRadius) const;
     std::vector<Solid> solids_;
     AABB bounds_;
+    struct Mover {
+        std::vector<size_t> solids;
+        std::vector<std::vector<Plane>> planes;  // rest pose
+        std::vector<AABB> bounds;                // rest pose
+        AABB all;
+    };
+    std::vector<Mover> movers_;
+    void addBrushesOf(const Entity& e, int patchSubdiv);
 };
 
 }  // namespace iw8r

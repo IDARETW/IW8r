@@ -218,3 +218,42 @@ The build side is broad and mostly consistent: every `iw8r_*` key the inspector 
 compile_iw8_tests.cpp covers teleport, jump, damage, lift, spin, bob, door + hinge and brush visuals; qt_gui_test.cpp
 covers the hinged-door swing, lift and bob in the Behaviour Preview (5173-5364). Not covered: brush-model spin pivot,
 prefab-rotated behaviour keys, trigger_radius drawing, trigger_damage semantics, effect orientation, iw8r_anim.
+
+## Fixes (viewport side)
+
+Scene builder only (`src/viewport/scene.cpp/.h`, one call in `camera_geometry.cpp`). Tests:
+`tests/viewport_scene_behaviour_tests.cpp` (compiles scene.cpp into iw8r_tests, as texture_decode_tests does, and checks
+the scene's items, bounds, colours, line counts and Behaviour Preview poses) and
+`tests/viewport_camera_geometry_helpers_tests.cpp` (the kept camera geometry draws the same helper lines).
+
+- **G3.** `trigger_radius` is a cylinder item (`buildPointEntity`, `addCylinder`, `triggerRadiusShape`): radius / height
+  (defaults 64 / 72, none when not positive, as `readTriggerVolumes`) from the origin up, 16 sides, `volume` (wire
+  outline in the trigger colour, filled only when selected, never a shadow caster or in a capture), picked by its
+  bounds; the 2D views draw its rings. The `fx_origin iw8r_damage` cylinder (radius 48 default, 16 below the origin to
+  the radius above it) and a door's own use area (bounds grown 40 units to the four sides, when no trigger with a
+  targetname targets the door: compile_iw8.cpp 3813-3841) are `SceneCache::helperLines`, drawn by `appendHelperLines`
+  (damage always, depth-tested; use area on top while the door is selected). Tests `scene_trigger_radius_cylinder`,
+  `scene_fx_damage_cylinder`, `scene_door_use_area_and_teleport_line`, `camera_geometry_draws_behaviour_helpers`.
+- **G6.** `BrushPose` holds pitch / yaw / roll (`anglesToMatrix`); `iw8r_spin` on a brush model turns about the centre of
+  its brushes' bounds on its own axis (the build side moves spinners to that pivot); the axis word is read
+  case-insensitively and an unknown word does not spin (`spinAxisOf`, as the build). Models: `iw8r_lift` is previewed
+  (`liftHeight`, shared with brush models) and only misc_model / script_model move (`movesInPreview`, the build's
+  `isMoverModel`). Tests `scene_behaviour_brush_spin_axes_about_centre`, `scene_behaviour_model_lift_and_spin`.
+- **G10a.** Vehicle spawn structs (`isVehicleStruct`: `script_struct_mp_*` with a `vehicletype`) are drawn as their
+  `model` through `modelSource` like other models, else as the definition's box (-48 -48 0 .. 48 48 64; the defs give
+  all five vehicles this placeholder size, the real vehicle sizes are not in the tree); not a collision object. Test
+  `scene_vehicle_struct_model_or_box`.
+- **G10b not done.** Whether the build leaves a scriptable out depends on the scriptable catalogue (verified flag,
+  zones, always-loaded), the Real stock scripted objects preference and the Warzone-map test (compile_iw8.cpp
+  2261-2312); the scene only has `scriptableModelFor` (definition -> model), so it cannot tell. Needs that decision
+  moved into a core function and the catalogue / preference handed to the scene.
+- **G12.** A script_brushmodel with `iw8r_brush_visual 0` is a `volume` (outline in its class colour, no textured faces,
+  no shadow; still solid in Collision mode). `PrimGeom::look` (classname and that key) rebuilds the brushes when the key
+  changes. Test `scene_brush_visual_off_is_an_outline`.
+- **G13.** A misc_model / script_model with targetname `exploder` (the S&D template's destroyed crate, unchanged) is drawn
+  as a 16-unit marker instead of its model unless `SceneCache::showExploderPieces` (no menu wired). Test
+  `scene_exploder_piece_hidden_by_default`.
+- **G15 (preview parts).** Hinge / rotate doors without a time move in 0.6 s in the preview (build: compile_iw8.cpp
+  3870; slide keeps 1 s). A teleporter trigger with a targetname gets a violet line to its destination's centre, on top
+  while the trigger or the destination is selected. Tests `scene_behaviour_hinged_door_default_time`,
+  `scene_door_use_area_and_teleport_line`.

@@ -76,7 +76,21 @@
   tools/physics_bounds_build_test.py). OPEN, next: mount edges (research 125 by an Opus agent, read-only IDA): the
   converter writes ladder edges only (edgeListUsedQueryTypes 4); mounting queries bucket 0 of the edge list and has
   no trace fallback; mantle falls back to Mantle_TraceLedgeFace while bit 2 is clear.
-  ADDED 2026-11-14 20:40 (newest; read first).
+  ADDED 2026-11-14 22:00 (newest; read first).
+  - All 29 offline proofs pass on the live converter 11eef2fc (out/pf_run.log of that run).
+  - Play preview collision as the built map: core play_world (prefab contents, placed models' hull pieces),
+    CameraView::buildPlayWorld. Stock maps' placed effects are parsed (Iw8MapEntsDump::effects); NOT YET DRAWN: the
+    viewport's effect preview still shows own fx_origin only (wire after the materials helper is done with
+    camera_view.cpp).
+  - Owner interrupted once and the first three helpers ended without changing anything; relaunched (Opus only):
+    scripted objects build side (map_script, prefab, script_check, scripted parts of compile_iw8), scripted objects
+    viewport side (scene.cpp, gamemode_templates), materials and translucency (render.cpp, camera_view, main_window
+    feeding parts; research 132 G1 G2 G4 G5 G11 G12), and a read-only research helper (research 133: scrolling
+    materials, detail maps, parallax, smodel vertex colour, water). They append "## Fixes" sections to 131 / 132.
+  - Queue after them: research 132 G3 (draw stock placed effects), G6 own decal volumes, G7 prop lighting, G8 own
+    lights through the stock light path, G9 layers, G10 HDR sky, G13 distortion; play preview behaviours (doors usable
+    while walking); research 133's recipes.
+  ADDED 2026-11-14 20:40.
   - OWNER, evening (their own game runs): Cinder Rail Toon without the occlusion bake "seemed to be fine", and
     "rebuilding with occlusion bake also seems to give a working map". New report: "the minimap doesn't seem aligned
     with the player correctly". New scope: "fill in any and all gaps that remain, including scripted object

@@ -29,6 +29,9 @@ struct PrimGeom {
     uint64_t rev = 0;
     uint64_t stamp = 0;  // unique for every build of an item's geometry (SceneCache::sync): what the camera's cache compares
     uint64_t seen = 0;   // the sync that last listed this item (items not listed are dropped from the cache)
+    // Brushes and patches: the owner's keys that change how they are drawn (classname, iw8r_brush_visual), which do
+    // not move the item's rev; the item is built again when they change.
+    uint64_t look = 0;
     Kind kind = Brush;
     std::vector<Winding> polys;  // brush faces, tessellated patch triangles, entity box faces
     // The faces as their meshes (core face_edges), parallel to polys, for brushes (empty for other items). A textured
@@ -241,9 +244,26 @@ public:
     // The first model of a stock scriptable definition ("" = unknown or none): a `scriptable` entity without a model
     // key is drawn with it, as a misc_model with that model key would be (scriptable_model.h). Null = boxes.
     std::function<std::string(const std::string& definition)> scriptableModelFor;
-    // View > Behaviour Preview: seconds since it was switched on (-1 = off). Models with iw8r_spin / iw8r_bob are drawn
-    // where the map script would have them at that time (owner request 2026-11-11). Call invalidate() each tick.
+    // View > Behaviour Preview: seconds since it was switched on (-1 = off). Models with iw8r_spin / iw8r_bob /
+    // iw8r_lift and script_brushmodels with those keys or iw8r_door are drawn where the map script would have them at
+    // that time (owner request 2026-11-11). Call invalidate() each tick.
     double behaviourTime = -1;
+    // The destroyed state of an exploder (a model with targetname "exploder", as the S&D template's destroyed crate):
+    // hidden in game until the exploder fires, so drawn as a small marker unless this is set. Call invalidate() after
+    // changing it.
+    bool showExploderPieces = false;
+
+    // Helpers of the map script's behaviour that are not an item of their own (research 131 gaps 3 and 15): the
+    // damage cylinder of an fx_origin with iw8r_damage (always, depth-tested), the use area the build gives a door that
+    // no trigger opens and the line from a teleporter to its destination (on top, while one of the two entities is
+    // selected). Rebuilt on sync; appendHelperLines draws them.
+    struct HelperLine {
+        Vec3 a, b;
+        uint32_t rgba = 0xffffffffu;
+        Id owner = kNoId, other = kNoId;  // shown while either is selected (unless always)
+        bool always = false;
+    };
+    const std::vector<HelperLine>& helperLines() const { return helperLines_; }
 
 private:
     void updateFaceEdges();
@@ -251,6 +271,7 @@ private:
     std::vector<const PrimGeom*> list_;
     std::vector<const PrimGeom*> prevList_;  // the list of the sync before (order hint), only inside sync()
     std::vector<std::pair<Vec3, Vec3>> connections_;
+    std::vector<HelperLine> helperLines_;
     uint64_t docRevision_ = 0;
     uint64_t generation_ = 0;
     uint64_t stampCounter_ = 0;
@@ -260,6 +281,10 @@ private:
     mutable uint64_t shadowRevision_ = ~0ull;
     const Document* doc_ = nullptr;
 };
+
+// SceneCache::helperLines as camera lines: the `always` ones into `lines` (depth-tested), the others into `overlay`
+// while their owner or other entity is selected. Nothing in probe capture mode.
+void appendHelperLines(const SceneCache& scene, const Document& doc, std::vector<GpuVertex>& lines, std::vector<GpuVertex>& overlay);
 
 // Stock map reference geometry (3.9) as flat-shaded light-grey triangles. Meshes whose material names a sky are
 // skipped when `skipSky`. Returns the number of triangles written.

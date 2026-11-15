@@ -17,6 +17,7 @@
 #include "compile_iw8.h"
 #include "prefab.h"
 #include "scriptable_model.h"
+#include "stock_vehicles.h"
 #include "tex_projection.h"
 
 #include <algorithm>
@@ -55,6 +56,11 @@ void hsv(double h, double s, double v, double& r, double& g, double& b) {
 }
 
 bool startsWith(const std::string& s, const char* p) { return s.rfind(p, 0) == 0; }
+
+std::string lowerOf(std::string s) {
+    for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
 
 // Tool volumes (triggers, clips, hint, skip) are see-through in Radiant: the camera draws them as wire boxes so the
 // geometry behind stays visible. Matched on the last path component.
@@ -97,6 +103,45 @@ void addOctahedron(PrimGeom& g, const Vec3& c, double rx, double ry, double rz) 
     }
     g.bounds.add(c - Vec3{rx, ry, rz});
     g.bounds.add(c + Vec3{rx, ry, rz});
+}
+
+constexpr int kCylinderSides = 16;
+
+// The corners of a ring of kCylinderSides about (c.x, c.y) at height z, counter-clockwise seen from above.
+std::vector<Vec3> ringPoints(const Vec3& c, double radius, double z) {
+    std::vector<Vec3> out;
+    for (int k = 0; k < kCylinderSides; ++k) {
+        const double a = 2.0 * 3.14159265358979 * k / kCylinderSides;
+        out.push_back({c.x + radius * std::cos(a), c.y + radius * std::sin(a), z});
+    }
+    return out;
+}
+
+// Upright cylinder from `base` up `height` (trigger_radius): bottom and top rings and kCylinderSides side quads.
+void addCylinder(PrimGeom& g, const Vec3& base, double radius, double height) {
+    const std::vector<Vec3> lo = ringPoints(base, radius, base.z), hi = ringPoints(base, radius, base.z + height);
+    g.polys.push_back(Winding(lo.rbegin(), lo.rend()));
+    g.faceNormals.push_back({0, 0, -1});
+    g.polys.push_back(Winding(hi.begin(), hi.end()));
+    g.faceNormals.push_back({0, 0, 1});
+    for (int k = 0; k < kCylinderSides; ++k) {
+        const int n = (k + 1) % kCylinderSides;
+        g.polys.push_back({lo[size_t(k)], lo[size_t(n)], hi[size_t(n)], hi[size_t(k)]});
+        const Vec3 mid = (lo[size_t(k)] + lo[size_t(n)]) * 0.5 - base;
+        g.faceNormals.push_back(normalize(Vec3{mid.x, mid.y, 0}));
+    }
+    g.bounds.add(base - Vec3{radius, radius, 0});
+    g.bounds.add(base + Vec3{radius, radius, height});
+}
+
+// The cylinder the map script tests for a trigger_radius: `radius` (64) and `height` (72) from the origin up; none
+// when either is not positive (map_script.cpp readTriggerVolumes, the trigger_radius branch).
+bool triggerRadiusShape(const Entity& e, double& radius, double& height) {
+    const std::string* r = e.value("radius");
+    const std::string* h = e.value("height");
+    radius = r ? std::atof(r->c_str()) : 64;
+    height = h ? std::atof(h->c_str()) : 72;
+    return radius > 0 && height > 0;
 }
 
 std::optional<double> rayTriangle(const Ray& r, const Vec3& a, const Vec3& b, const Vec3& c) {
@@ -165,6 +210,11 @@ PrimGeom buildPrim(const Entity& e, const EntityItem& it, const Primitive& p) {
             }
             g.collides = !bf.nonColliding && !trigger && (!g.volume || clipVolume);
         }
+        // A script_brushmodel with iw8r_brush_visual 0 gets no generated model, and the game does not draw a brush
+        // model's own surfaces (compile_iw8.cpp compileIw8ExtractionBrushVisuals): drawn as a volume outline, not as
+        // faces. It keeps its collision (the brush model is still solid in game).
+        if (g.brushEntity && lowerOf(e.classname()) == "script_brushmodel")
+            if (const std::string* bv = e.value("iw8r_brush_visual"); bv && *bv == "0") g.volume = true;
     } else {
         g.kind = PrimGeom::Patch;
         g.contentsColor = g.brushEntity ? 0xffd060c0u : 0xffc0c040u;
@@ -225,9 +275,43 @@ PrimGeom buildPrim(const Entity& e, const EntityItem& it, const Primitive& p) {
     return g;
 }
 
+// The axis of iw8r_spin "<seconds per turn> [yaw|pitch|roll]" as the build reads it (compile_iw8.cpp, the spinner
+// loop: the axis is lower-cased, a zero time or any other word is skipped with a warning): 0 yaw, 1 pitch, 2 roll, -1
+// not spun. `seconds` gets the time of one turn (positive).
+int spinAxisOf(const std::string& value, double& seconds) {
+    seconds = 0;
+    char axis[16] = "yaw";
+    if (std::sscanf(value.c_str(), "%lf %15s", &seconds, axis) < 1 || seconds == 0) return -1;
+    seconds = std::fabs(seconds);
+    const std::string ax = lowerOf(axis);
+    return ax == "yaw" ? 0 : ax == "pitch" ? 1 : ax == "roll" ? 2 : -1;
+}
+
+// Where a loop of rest, move, hold, move back is at `t`: 0 at rest, 1 at the far end (eased).
+double behaviourCycle(double t, double rest, double move, double hold) {
+    const auto ease = [](double f) { return 0.5 - 0.5 * std::cos(3.14159265358979 * std::clamp(f, 0.0, 1.0)); };
+    const double period = rest + move + hold + move;
+    const double x = std::fmod(t, period);
+    if (x < rest) return 0.0;
+    if (x < rest + move) return ease((x - rest) / move);
+    if (x < rest + move + hold) return 1.0;
+    return 1.0 - ease((x - rest - move - hold) / move);
+}
+
+// iw8r_lift "<dz> [time] [wait]" `t` seconds in: the height above the rest place. The generated iw8r_lift_N thread
+// (map_script.cpp) waits `wait`, moves up in `time`, waits `wait` at the top and comes down in `time`; the build
+// clamps time to 0.05 and wait to 0 (compile_iw8.cpp, the lift loop). 0 when the key is not a lift.
+double liftHeight(const std::string& value, double t) {
+    double dz = 0, time = 2, wait = 2;
+    if (std::sscanf(value.c_str(), "%lf %lf %lf", &dz, &time, &wait) < 1 || dz == 0) return 0;
+    return dz * behaviourCycle(t, std::max(0.0, wait), std::max(0.05, time), std::max(0.0, wait));
+}
+
 // A custom model drawn as its mesh, with the same axis change and scale the compiler writes (model_import.cpp).
 // The entity as the map script would have it `t` seconds in: iw8r_spin "<seconds> [yaw|pitch|roll]" turns it,
-// iw8r_bob "<height> [seconds]" lifts it and lets it down (map_script.cpp iw8r_spin_model / iw8r_bob_model).
+// iw8r_bob "<height> [seconds]" lifts it and lets it down, iw8r_lift "<dz> [time] [wait]" moves it up and back
+// (map_script.cpp iw8r_spin_model / iw8r_bob_model / iw8r_lift_N; the build makes them for misc_model and
+// script_model, compile_iw8.cpp isMoverModel).
 Entity behaviourPose(const Entity& e, double t) {
     Entity out = e;
     const auto setKey = [&](const char* key, const std::string& value) {
@@ -242,56 +326,63 @@ Entity behaviourPose(const Entity& e, double t) {
     };
     if (const std::string* sp = e.value("iw8r_spin")) {
         double seconds = 0;
-        char axis[16] = "yaw";
-        if (std::sscanf(sp->c_str(), "%lf %15s", &seconds, axis) >= 1 && seconds != 0) {
+        if (const int axis = spinAxisOf(*sp, seconds); axis >= 0) {
             double a[3] = {0, 0, 0};
             if (const std::string* av = e.value("angles")) std::sscanf(av->c_str(), "%lf %lf %lf", &a[0], &a[1], &a[2]);
-            const std::string ax = axis;
-            const int idx = ax == "pitch" ? 0 : ax == "roll" ? 2 : 1;
-            a[idx] = std::fmod(a[idx] + 360.0 * t / std::fabs(seconds), 360.0);
+            // rotateyaw / rotatepitch / rotateroll add to angles[1] / [0] / [2].
+            const int idx = axis == 1 ? 0 : axis == 2 ? 2 : 1;
+            a[idx] = std::fmod(a[idx] + 360.0 * t / seconds, 360.0);
             setKey("angles", formatNumber(a[0]) + " " + formatNumber(a[1]) + " " + formatNumber(a[2]));
         }
     }
+    double dz = 0;
     if (const std::string* bo = e.value("iw8r_bob")) {
         double height = 0, seconds = 2;
-        if (std::sscanf(bo->c_str(), "%lf %lf", &height, &seconds) >= 1 && seconds > 0) {
-            if (auto o = e.origin()) {
-                const double z = o->z + height * (0.5 - 0.5 * std::cos(2.0 * 3.14159265358979 * t / seconds));
-                setKey("origin", formatNumber(o->x) + " " + formatNumber(o->y) + " " + formatNumber(z));
-            }
-        }
+        if (std::sscanf(bo->c_str(), "%lf %lf", &height, &seconds) >= 1 && seconds > 0)
+            dz += height * (0.5 - 0.5 * std::cos(2.0 * 3.14159265358979 * t / seconds));
     }
+    if (const std::string* lv = e.value("iw8r_lift")) dz += liftHeight(*lv, t);
+    if (dz != 0)
+        if (auto o = e.origin()) setKey("origin", formatNumber(o->x) + " " + formatNumber(o->y) + " " + formatNumber(o->z + dz));
     return out;
+}
+
+// True when the Behaviour Preview moves this model: a misc_model or script_model with a key the build turns into a
+// mover thread (compile_iw8.cpp isMoverModel; other classes are skipped there with a warning).
+bool movesInPreview(const Entity& e, const std::string& cls) {
+    if (cls != "misc_model" && cls != "script_model") return false;
+    return e.value("iw8r_spin") || e.value("iw8r_bob") || e.value("iw8r_lift");
+}
+
+// The bounds of an entity's brushes (invalid without brushes), as doorHingeOf and the build measure a brush model.
+AABB brushModelBounds(const Entity& e) {
+    AABB box;
+    for (const auto& it : e.items)
+        if (const Primitive* p = it.prim(); p && p->kind == PrimKind::Brush) box.add(brushBounds(brushFromPrimitive(*p)));
+    return box;
 }
 
 // Behaviour Preview for brush models (script_brushmodel): where the map script would have the brushes `t` seconds in.
 // iw8r_lift "<dz> [time] [wait]" goes up and down, iw8r_bob bobs, iw8r_door "slide x y z [time] [hold]" or
-// "rotate <yaw> [time] [hold]" opens, holds and closes in a loop, iw8r_spin turns about the vertical axis. Turning is
-// about the entity's origin key (the map origin without one), as the game turns a brush model.
+// "rotate|hinge <yaw> [time] [hold]" opens, holds and closes in a loop (a hinged door turns about its hinge,
+// doorHingeOf), iw8r_spin turns about its yaw, pitch or roll axis through the centre of the brushes' bounds (the build
+// spins a brush model about that centre, research 131 G1).
 struct BrushPose {
     bool any = false;
     Vec3 delta{0, 0, 0};
-    double yawDeg = 0;
+    Vec3 angles{0, 0, 0};  // pitch, yaw, roll in degrees about the pivot (anglesToMatrix)
     Vec3 pivot{0, 0, 0};
 };
 
 BrushPose brushBehaviourPose(const Entity& e, double t) {
     BrushPose p;
     if (const auto o = e.origin()) p.pivot = *o;
-    const auto ease = [](double f) { return 0.5 - 0.5 * std::cos(3.14159265358979 * std::clamp(f, 0.0, 1.0)); };
-    // 0 closed, 1 open: rest `rest`, move `move`, hold `hold`, move back `move`.
-    const auto cycle = [&](double rest, double move, double hold) {
-        const double period = rest + move + hold + move;
-        const double x = std::fmod(t, period);
-        if (x < rest) return 0.0;
-        if (x < rest + move) return ease((x - rest) / move);
-        if (x < rest + move + hold) return 1.0;
-        return 1.0 - ease((x - rest - move - hold) / move);
-    };
+    bool hinged = false;
+    const auto cycle = [&](double rest, double move, double hold) { return behaviourCycle(t, rest, move, hold); };
     if (const std::string* v = e.value("iw8r_lift")) {
-        double dz = 0, time = 2, wait = 2;
-        if (std::sscanf(v->c_str(), "%lf %lf %lf", &dz, &time, &wait) >= 1 && dz != 0) {
-            p.delta.z += dz * cycle(std::max(0.0, wait), std::max(0.05, time), std::max(0.0, wait));
+        double dz = 0;
+        if (std::sscanf(v->c_str(), "%lf", &dz) == 1 && dz != 0) {
+            p.delta.z += liftHeight(*v, t);
             p.any = true;
         }
     }
@@ -308,20 +399,29 @@ BrushPose brushBehaviourPose(const Entity& e, double t) {
             const double k = cycle(1.0, std::max(0.05, time), std::max(0.0, hold));
             p.delta = p.delta + Vec3{a, b, c} * k;
             p.any = true;
-        } else if (std::sscanf(v->c_str(), "rotate %lf %lf %lf", &a, &time, &hold) >= 1 ||
-                   std::sscanf(v->c_str(), "hinge %lf %lf", &a, &time) >= 1) {
-            // Hinged: about the hinge at one end of the door (core doorHingeOf), opening to the +normal side.
-            const DoorHinge hg = doorHingeOf(e);
-            if (hg.ok) p.pivot = hg.pos;
-            p.yawDeg += std::fabs(a) * hg.swing * cycle(1.0, std::max(0.05, time), std::max(0.0, hold));
-            p.any = true;
+        } else {
+            // A hinged door moves in 0.6 s when no time is given (compile_iw8.cpp, the door loop: moveTime = 0.6
+            // for "rotate" / "hinge" without a time; a sliding door keeps the Door default of 1 s).
+            time = 0.6;
+            if (std::sscanf(v->c_str(), "rotate %lf %lf %lf", &a, &time, &hold) >= 1 ||
+                std::sscanf(v->c_str(), "hinge %lf %lf", &a, &time) >= 1) {
+                // Hinged: about the hinge at one end of the door (core doorHingeOf), opening to the +normal side.
+                const DoorHinge hg = doorHingeOf(e);
+                if (hg.ok) p.pivot = hg.pos;
+                hinged = true;
+                p.angles.y += std::fabs(a) * hg.swing * cycle(1.0, std::max(0.05, time), std::max(0.0, hold));
+                p.any = true;
+            }
         }
     }
     if (const std::string* v = e.value("iw8r_spin")) {
         double seconds = 0;
-        char axis[16] = "yaw";
-        if (std::sscanf(v->c_str(), "%lf %15s", &seconds, axis) >= 1 && seconds != 0 && std::string(axis) == "yaw") {
-            p.yawDeg += std::fmod(360.0 * t / std::fabs(seconds), 360.0);
+        if (const int axis = spinAxisOf(*v, seconds); axis >= 0) {
+            // About the centre of the brushes (a hinged door keeps its hinge: the build links that door to a pivot).
+            if (!hinged)
+                if (const AABB box = brushModelBounds(e); box.valid()) p.pivot = box.center();
+            const double turn = std::fmod(360.0 * t / seconds, 360.0);
+            (axis == 1 ? p.angles.x : axis == 2 ? p.angles.z : p.angles.y) += turn;
             p.any = true;
         }
     }
@@ -329,8 +429,8 @@ BrushPose brushBehaviourPose(const Entity& e, double t) {
 }
 
 void applyBrushPose(PrimGeom& g, const BrushPose& pose) {
-    const double a = pose.yawDeg * 3.14159265358979 / 180.0, cs = std::cos(a), sn = std::sin(a);
-    const auto turn = [&](const Vec3& v) { return Vec3{v.x * cs - v.y * sn, v.x * sn + v.y * cs, v.z}; };
+    const Mat3 r = anglesToMatrix(pose.angles);
+    const auto turn = [&](const Vec3& v) { return r * v; };
     const auto move = [&](const Vec3& v) { return pose.pivot + turn(v - pose.pivot) + pose.delta; };
     AABB b;
     for (auto& poly : g.polys)
@@ -425,6 +525,25 @@ PrimGeom buildModelGeom(const Entity& e, const ImportedModel& m, double scale) {
 
 // Classes the build places as models (compile_iw8: misc_model, script_model, dynamic_prop).
 bool isModelClass(const std::string& cls) { return cls == "misc_model" || cls == "script_model" || cls == "dynamic_prop"; }
+
+// A Warzone vehicle spawn (script_struct_mp_atv ...): a stock-map struct with a `vehicletype`, which the build carries
+// the vehicle and its `model` for (core stock_vehicles vehicleCarryList). Drawn as that model.
+bool isVehicleStruct(const Entity& e) {
+    const std::string* type = e.value("vehicletype");
+    return type && !type->empty() && isWarzoneStructClass(e.classname());
+}
+
+// The vehicle spawn's box until its model is drawn: the entity definition's size (iw8_entity_defs.json gives all
+// five vehicle structs -48 -48 0 .. 48 48 64), standing on the origin.
+constexpr double kVehicleHalf = 48, kVehicleHeight = 64;
+
+// The destroyed state of an exploder: a model with targetname "exploder" (the S&D template's destroyed crate, as
+// stock mp_shipment places it; research 40). Stock scripts hide it until the exploder fires (not seen in a built map).
+bool isExploderPiece(const Entity& e, const std::string& cls) {
+    if (cls != "script_model" && cls != "misc_model") return false;
+    const std::string* tn = e.value("targetname");
+    return tn && *tn == "exploder";
+}
 
 // An entity made of a prefab's key list (instantiatePrefab), carrying the id of the placement that draws it.
 Entity entityFromKeys(const std::vector<std::pair<std::string, std::string>>& kvs, Id id) {
@@ -630,8 +749,15 @@ PrimGeom buildPointEntity(const Entity& e) {
                              cls == "mp_global_intermission";
     // Shapes tell entity kinds apart in the camera (Radiant style): spawns are player boxes, lights and probes
     // octahedrons (lights in their _color), effects tall diamonds, path nodes flat diamonds, other points small cubes.
+    double radius = 0, height = 0;
     if (playerSized) {
         addBox(g, o + Vec3{-16, -16, 0}, o + Vec3{16, 16, 72});
+    } else if (lowerOf(cls) == "trigger_radius" && triggerRadiusShape(e, radius, height)) {
+        // The cylinder the build tests (research 131 G3): a trigger volume, drawn as a wire outline in the trigger
+        // colour, picked by its bounds, never in the shadow pass or a capture (PrimGeom::volume).
+        addCylinder(g, o, radius, height);
+        g.volume = true;
+        g.prefab = true;  // drawn by its polys (the 2D views draw its rings, not a filled box)
     } else if (startsWith(cls, "node_")) {
         addOctahedron(g, o + Vec3{0, 0, 4}, 12, 12, 4);
     } else if (startsWith(cls, "light")) {
@@ -653,6 +779,9 @@ PrimGeom buildPointEntity(const Entity& e) {
         g.color = packRGBA(0.45, 0.95, 0.55);
     } else if (cls == "script_origin" || cls == "script_struct") {
         addBox(g, o - Vec3{4, 4, 4}, o + Vec3{4, 4, 4});
+    } else if (isVehicleStruct(e)) {
+        // A vehicle spawn whose model is not drawn (no model key, or not resolved yet): its size, not a small cube.
+        addBox(g, o + Vec3{-kVehicleHalf, -kVehicleHalf, 0}, o + Vec3{kVehicleHalf, kVehicleHalf, kVehicleHeight});
     } else {
         addBox(g, o - Vec3{8, 8, 8}, o + Vec3{8, 8, 8});
     }
@@ -865,8 +994,72 @@ void SceneCache::sync(const Document& doc) {
         return c->ref.entity == entity && c->ref.item == item ? c : nullptr;
     };
     connections_.clear();
+    helperLines_.clear();
     std::unordered_map<std::string, Vec3> named;  // targetname -> centre
+    std::unordered_map<std::string, Id> namedId;  // targetname -> entity
     std::vector<std::pair<Vec3, std::string>> targets;
+    struct PendingTeleport {
+        Vec3 from;
+        std::string dest;
+        Id owner;
+    };
+    std::vector<PendingTeleport> teleports;
+    // A door's trigger as the build finds it (compile_iw8.cpp, the door loop): the targetname of the last trigger_*
+    // whose target is the door's name and that has a targetname key. None (or an empty name): the build gives the door
+    // its own use area.
+    std::unordered_map<std::string, std::string> doorTrigger;
+    for (const auto& t : doc.map().entities)
+        if (lowerOf(t.classname()).rfind("trigger_", 0) == 0)
+            if (const std::string* tt = t.value("target"))
+                if (const std::string* ttn = t.value("targetname")) doorTrigger[*tt] = *ttn;
+    const auto addSeg = [&](const Vec3& a, const Vec3& b, uint32_t rgba, Id owner, Id other, bool always) {
+        helperLines_.push_back({a, b, rgba, owner, other, always});
+    };
+    const auto addBoxEdges = [&](const AABB& bx, uint32_t rgba, Id owner) {
+        const Vec3 a = bx.mins, b = bx.maxs;
+        const Vec3 c[8] = {{a.x, a.y, a.z}, {b.x, a.y, a.z}, {b.x, b.y, a.z}, {a.x, b.y, a.z},
+                           {a.x, a.y, b.z}, {b.x, a.y, b.z}, {b.x, b.y, b.z}, {a.x, b.y, b.z}};
+        for (int k = 0; k < 4; ++k) {
+            addSeg(c[k], c[(k + 1) % 4], rgba, owner, kNoId, false);
+            addSeg(c[4 + k], c[4 + (k + 1) % 4], rgba, owner, kNoId, false);
+            addSeg(c[k], c[4 + k], rgba, owner, kNoId, false);
+        }
+    };
+    // What the map script does with an entity that has no item of its own (research 131 gaps 3 and 15).
+    const auto addHelpers = [&](const Entity& e, const std::string& lcls, const AABB& drawn) {
+        if (lcls == "fx_origin") {
+            // fx_origin iw8r_damage "<amount> [radius] [interval]": a damage cylinder of `radius` (48) from 16 below the
+            // origin to `radius` above it (map_script.cpp readTriggerVolumes, the fx_origin branch).
+            const std::string* dv = e.value("iw8r_damage");
+            const auto o = e.origin();
+            double amount = 0, radius = 48, interval = 1;
+            if (dv && o && std::sscanf(dv->c_str(), "%lf %lf %lf", &amount, &radius, &interval) >= 1 && amount > 0 && radius > 0) {
+                const std::vector<Vec3> lo = ringPoints(*o, radius, o->z - 16), hi = ringPoints(*o, radius, o->z + radius);
+                const uint32_t red = packRGBA(0.9, 0.15, 0.15);
+                for (int k = 0; k < kCylinderSides; ++k) {
+                    const size_t a = size_t(k), b = size_t((k + 1) % kCylinderSides);
+                    addSeg(lo[a], lo[b], red, e.id, kNoId, true);
+                    addSeg(hi[a], hi[b], red, e.id, kNoId, true);
+                    if (k % (kCylinderSides / 4) == 0) addSeg(lo[a], hi[a], red, e.id, kNoId, true);
+                }
+            }
+        }
+        if (const std::string* dk = e.value("iw8r_door"); dk && !dk->empty()) {
+            // A door that no named trigger targets is used in its own area: its brushes' bounds grown by 40 units to
+            // the four sides (compile_iw8.cpp, the door loop, lines 3822-3841 as of research 131). Shown while the
+            // door is selected.
+            const std::string* tn = e.value("targetname");
+            const auto trig = tn ? doorTrigger.find(*tn) : doorTrigger.end();
+            if (tn && !tn->empty() && (trig == doorTrigger.end() || trig->second.empty()))
+                if (const AABB box = brushModelBounds(e); box.valid())
+                    addBoxEdges(AABB{{box.mins.x - 40, box.mins.y - 40, box.mins.z}, {box.maxs.x + 40, box.maxs.y + 40, box.maxs.z}},
+                                colorForClass("trigger_use"), e.id);
+        }
+        if (lcls.rfind("trigger_", 0) == 0)
+            if (const std::string* dest = e.value("iw8r_teleport"); dest && !dest->empty())
+                if (const std::string* tn = e.value("targetname"); tn && !tn->empty())  // the build skips a nameless one
+                    teleports.push_back({drawn.center(), *dest, e.id});
+    };
     auto classHidden = [&](const std::string& cls) {
         for (const auto& prefix : hiddenClassPrefixes)
             if (cls.rfind(prefix, 0) == 0) return true;
@@ -879,6 +1072,12 @@ void SceneCache::sync(const Document& doc) {
         AABB entBounds;
         BrushPose brushPose;
         if (behaviourTime >= 0 && cls == "script_brushmodel") brushPose = brushBehaviourPose(e, behaviourTime);
+        // The owner's keys that buildPrim reads (a key change does not move the brushes' revs).
+        uint64_t look = 0;
+        if (!e.isWorldspawn()) {
+            look = fnv1a(cls);
+            if (const std::string* bv = e.value("iw8r_brush_visual")) look = look * 31 + fnv1a("v" + *bv) + 1;
+        }
         for (const auto& it : e.items) {
             const Primitive* p = it.prim();
             if (!p || p->kind == PrimKind::Unknown) continue;
@@ -894,9 +1093,11 @@ void SceneCache::sync(const Document& doc) {
                 pg = &cache_.insert_or_assign(it.id, buildPrim(e, it, *p)).first->second;
                 applyBrushPose(*pg, brushPose);
                 pg->rev = ~uint64_t(0);
+                pg->look = look;
                 pg->stamp = ++stampCounter_;
-            } else if (!pg || pg->rev != it.rev || pg->ref.entity != e.id) {
+            } else if (!pg || pg->rev != it.rev || pg->ref.entity != e.id || pg->look != look) {
                 pg = &cache_.insert_or_assign(it.id, buildPrim(e, it, *p)).first->second;
+                pg->look = look;
                 pg->stamp = ++stampCounter_;
             }
             pg->seen = visit_;
@@ -919,10 +1120,13 @@ void SceneCache::sync(const Document& doc) {
             if (!prefab && cls == "scriptable" && scriptableModelFor)
                 if (const std::string m = scriptableModelName(e, scriptableModelFor); !m.empty()) asModel = withModelKey(e, m);
             const Entity& me = asModel ? *asModel : e;
+            const bool vehicle = isVehicleStruct(e);
+            // The destroyed state of an exploder is hidden in game until it fires: a marker, not its model.
+            const bool hiddenPiece = !showExploderPieces && isExploderPiece(e, cls);
             std::shared_ptr<const ImportedModel> model;
-            if (!prefab && modelSource && (isModelClass(cls) || asModel)) model = modelSource(me);
+            if (!prefab && !hiddenPiece && modelSource && (isModelClass(cls) || asModel || vehicle)) model = modelSource(me);
             const std::string label = prefab ? "misc_prefab:" + inst->model : model ? "model:" + model->name : cls;
-            if (behaviourTime >= 0 && model && (e.value("iw8r_spin") || e.value("iw8r_bob"))) {
+            if (behaviourTime >= 0 && model && movesInPreview(e, cls)) {
                 // Rebuilt every tick while the preview runs; the label differs, so the resting pose comes back after it.
                 pg = &cache_.insert_or_assign(e.id, buildModelGeom(behaviourPose(me, behaviourTime), *model, modelScale)).first->second;
                 pg->label += "@behaviour";
@@ -931,6 +1135,7 @@ void SceneCache::sync(const Document& doc) {
                 pg = &cache_.insert_or_assign(e.id, prefab ? buildPrefab(e, *inst, prefab, *this)
                                                     : model ? buildModelGeom(me, *model, modelScale)
                                                             : buildPointEntity(e)).first->second;
+                if (vehicle) pg->collides = false;  // a struct: the Warzone scripts spawn the vehicle, the build places no solid
                 pg->stamp = ++stampCounter_;
             }
             pg->seen = visit_;
@@ -938,12 +1143,20 @@ void SceneCache::sync(const Document& doc) {
             list_.push_back(pg);
         }
         if (entBounds.valid()) {
-            if (const std::string* tn = e.value("targetname")) named[*tn] = entBounds.center();
+            if (const std::string* tn = e.value("targetname")) {
+                named[*tn] = entBounds.center();
+                namedId[*tn] = e.id;
+            }
             if (const std::string* t = e.value("target")) targets.push_back({entBounds.center(), *t});
+            addHelpers(e, lowerOf(cls), entBounds);
         }
     }
     for (const auto& [from, name] : targets)
         if (auto it = named.find(name); it != named.end()) connections_.push_back({from, it->second});
+    // A teleporter's line to its destination (the entity with that targetname, as the generated thread's getent).
+    for (const PendingTeleport& tp : teleports)
+        if (auto it = named.find(tp.dest); it != named.end())
+            helperLines_.push_back({tp.from, it->second, packRGBA(0.75, 0.4, 1.0), tp.owner, namedId[tp.dest], false});
     if (faceEdgesWanted) faceEdges = faceEdgesWanted();
     updateFaceEdges();
     IW8R_PROF("s.lights_erase");
@@ -1135,6 +1348,18 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
 void buildCameraGeometry(const SceneCache& scene, const Document& doc, bool showSpawns, std::vector<GpuVertex>& tris,
                          std::vector<GpuVertex>& lines, std::vector<GpuVertex>& overlay) {
     buildCameraGeometryImpl(scene, doc, showSpawns, tris, lines, overlay, nullptr, nullptr);
+}
+
+void appendHelperLines(const SceneCache& scene, const Document& doc, std::vector<GpuVertex>& lines, std::vector<GpuVertex>& overlay) {
+    if (scene.captureMode || scene.helperLines().empty()) return;
+    std::unordered_set<Id> selected;
+    for (const SelRef& r : doc.selection()) selected.insert(r.entity);
+    for (const SceneCache::HelperLine& h : scene.helperLines()) {
+        if (!h.always && !selected.count(h.owner) && !(h.other != kNoId && selected.count(h.other))) continue;
+        auto& dst = h.always ? lines : overlay;
+        dst.push_back(gv(h.a, h.rgba));
+        dst.push_back(gv(h.b, h.rgba));
+    }
 }
 
 void buildCameraGeometry(const SceneCache& scene, const Document& doc, bool showSpawns, std::vector<GpuVertex>& tris,
@@ -1538,6 +1763,7 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
         overlay.push_back(gv(a, 0xff30d0ffu));
         overlay.push_back(gv(b, 0xff30d0ffu));
     }
+    appendHelperLines(scene, doc, lines, overlay);  // damage cylinders, door use areas, teleporter lines
     // World axes at the origin (X red, Y green, Z blue).
     lines.push_back(gv({0, 0, 0}, 0xff3030ffu));
     lines.push_back(gv({64, 0, 0}, 0xff3030ffu));
