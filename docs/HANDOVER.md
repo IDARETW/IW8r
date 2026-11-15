@@ -96,12 +96,18 @@ None of this needs the game running:
 - The web page was driven in a real browser against a running editor for every feature listed above.
 
 The state of each item, the research behind it and every proof are in `docs\ROADMAP.md`, `docs\research\`
-(more than 120 notes, the latest numbered 129) and `CHANGELOG.md`.
+(more than 130 notes, the latest numbered 138) and `CHANGELOG.md`.
 
 ## 4. Only the game can settle these
 
 **Seen in game on 2026-11-14** (the owner's runs): an installed stock edit loads (the toon zone of Shipment); the toon
 lines from the scene depth on Cinder Rail Toon and on Shipment's stock geometry; the haze; the bright sky.
+
+**The Cinder Rail lobby crash (2026-11-14 evening)** is fixed in the converter (research 134: the game's asset stack
+holds two levels, so the zone writer now lists any asset that would load three deep before its user, and refuses a
+zone that still would). The package installed at 20:40 is byte for byte that build (checked 2026-11-15), its build log
+shows the writer reordering all 12 zones without an error, and ACTS reads the installed zone back cleanly. Loading it
+in the game would confirm it; nothing is known to be missing.
 
 **Reported from those runs and not settled:**
 - Shipment with the toon zone: "objects appear in and out". No cause found. Ruled out offline: missing pipeline

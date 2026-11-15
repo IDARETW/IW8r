@@ -77,6 +77,11 @@ Each point was run by me in a browser against a running editor; this list is for
 
 0. **Cinder Rail lobby crash (converter e648a414, research 134).** The fixed package (same inputs as the 20:15 build)
    was installed at 20:40. Select Cinder Rail in the lobby: it should load, with its two doors and two cars.
+   Offline proof (2026-11-15): the installed `mods\mw120r\maps\mp_cinderrail\mp_cinderrail.ff` is byte for byte the
+   20:38 build (SHA-256 451CCAD3D4E1E2F9...); that build's log shows the zone writer listing the nested assets before
+   their users in all 12 zones it wrote, with no error, and the writer refuses any zone still nested three deep; ACTS
+   reads the installed zone back cleanly (1,419 entities, 119 models, 211 materials, both doors, three script models).
+   A look in the game is a confirmation, not a missing step.
 
 Everything else in this file was proven without the game. If you look at nothing else, look at these, in this order.
 Each one names the longer section below that has the steps.
