@@ -840,7 +840,7 @@ void CameraView::render() {
     }
     ctx_->scene.skyActive = ctx_->texturedView && skyTex_.size() == 6;
     mix(uint64_t(skyTex_.size()) << 20);
-    const bool rebuild = key != geomKey_ || geomDirty_;
+    const bool rebuild = key != geomKey_ || geomDirty_ || texRecheck_;
     if (rebuild) {
         IW8R_PROF("r.build");
         ctx_->scene.normalFor = nullptr;
@@ -866,10 +866,13 @@ void CameraView::render() {
         // Play Preview walks without the spawn markers (the game has none; a selected start spawn filled the view:
         // map-agent report 2026-11-14).
         geo_.update(ctx_->scene, ctx_->doc, ctx_->showSpawns && !ctx_->playing, ctx_->texturedView && imageLookup_ ? &texFn_ : nullptr,
-                    geomDirty_ || noInPlace);
+                    geomDirty_ || noInPlace, texRecheck_);
         updateSkyBox();  // probe captures reflect the sky too
         geomKey_ = key;
-        geomDirty_ = moreToLoad_;  // textures still arriving: build again next frame
+        // Textures still arriving: the next frame asks the materials again and makes again only the items whose
+        // texture came (a full build per frame held the GUI thread 0.3-0.5 s a frame on a stock map).
+        geomDirty_ = false;
+        texRecheck_ = moreToLoad_;
         ++geometryUpdates_;
     }
     {

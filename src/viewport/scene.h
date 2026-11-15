@@ -358,7 +358,10 @@ public:
     ~CameraGeometry();
     // Brings the streams up to date. textureFor: null = no textured batches. force: make everything again (textures
     // still arriving, a material image changed, a capture). Returns true when any stream changed.
-    bool update(const SceneCache& scene, const Document& doc, bool showSpawns, const TextureFn* textureFor, bool force);
+    // recheckTextures: textures may have arrived since the last update; the materials are asked again and only the
+    // items that use a changed one are made again (force makes everything again).
+    bool update(const SceneCache& scene, const Document& doc, bool showSpawns, const TextureFn* textureFor, bool force,
+                bool recheckTextures = false);
 
     // Flat triangles in draw order: shadowOnly is drawn in the sun shadow pass only; casters and faceSel in both
     // passes; noCast (markers, tool faces, volumes) on screen only.

@@ -950,6 +950,7 @@ private:
     int checkerTex_ = -1;
     int loadsThisFrame_ = 0;
     bool moreToLoad_ = false;
+    bool texRecheck_ = false;  // textures were still arriving at the last geometry update: ask the materials again
 };
 
 }  // namespace iw8r::qt

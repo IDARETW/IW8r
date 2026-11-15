@@ -52,6 +52,7 @@ constexpr uint32_t kEdgeWire = 0xffb4b4b4u;
 
 // What the view needs to know about a material, asked once per full build (the callbacks load textures).
 struct MatInfo {
+    uint32_t id = 0;  // the material's number in this build (ItemRec::mats)
     int draw = 0, tex = -1, nrm = -1, blend = 0;
     bool sway = false, tool = false, sky = false;
     double side = 0;
@@ -74,10 +75,12 @@ struct ItemOut {
     };
     std::vector<Tex> tex;
     size_t texUsed = 0;
+    std::vector<uint32_t> mats;  // the materials (MatInfo::id) the item's faces use
     bool linesHidden = false;  // f[kLines] is the place kept for a selected item's outlines (zero-length lines)
     void clear() {
         for (auto& s : f) s.clear();
         sel.clear();
+        mats.clear();
         linesHidden = false;
         for (size_t k = 0; k < texUsed; ++k) tex[k].v.clear();
         texUsed = 0;
@@ -114,6 +117,7 @@ struct ItemRec {
     bool linesHidden = false;
     Slice s[kFlatStreams];
     uint32_t texFirst = 0, texCount = 0;
+    std::vector<uint32_t> mats;  // ItemOut::mats of the item as made (a changed material's texture makes it again)
 };
 struct SelEntry {
     uint32_t item = 0, off = 0, cnt = 0;
@@ -151,6 +155,7 @@ struct CameraGeometry::Impl {
     std::vector<ItemOut> genPool;
     std::vector<GpuVertex> mSun, mFace, mOverlay, mLines;
     uint64_t globalKey = 0, serial = 0;
+    uint32_t nextMatId = 0;
     bool built = false, staleMaterial = false, incremental = false;
     // The exact box of each run of kRunItems items: the scene box is their union, so a moved item costs its run
     // and the union of the runs, not a pass over every item.
@@ -169,7 +174,11 @@ struct CameraGeometry::Impl {
     // (patch_covers.h). Found again at every update; the hash is part of the global key.
     PatchCovers covers;
 
-    MatInfo& mat(const std::string& m) { return mats[m]; }
+    MatInfo& mat(const std::string& m) {
+        auto [it, fresh] = mats.try_emplace(m);
+        if (fresh) it->second.id = nextMatId++;
+        return it->second;
+    }
     void genItem(const PrimGeom* g, bool sel, ItemOut& out);
     SceneBatch* batchFor(const ItemOut::Tex& t, bool& created);
 };
@@ -191,6 +200,7 @@ SceneBatch* CameraGeometry::Impl::batchFor(const ItemOut::Tex& t, bool& created)
     b->normalTexture = t.nrm;
     b->blend = t.blend;
     b->sway = t.sway;
+    b->material = t.material ? *t.material : std::string();
     // Same texture id = same material, so the batch's emissive map is the material's.
     if (scene->emissiveFor && !scene->captureMode && t.material) b->emissiveTexture = scene->emissiveFor(*t.material);
     if (scene->specFor && !scene->captureMode && t.material) b->specTexture = scene->specFor(*t.material);
@@ -239,6 +249,7 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
                 mi = &mat(m);
                 lastMat = &m;
                 lastInfo = mi;
+                if (std::find(out.mats.begin(), out.mats.end(), mi->id) == out.mats.end()) out.mats.push_back(mi->id);
             }
         }
         if (sc.skyActive && texturesOn && hasMat && !sel) {
@@ -434,7 +445,8 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
     }
 }
 
-bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool showSpawns, const TextureFn* textureFor, bool force) {
+bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool showSpawns, const TextureFn* textureFor, bool force,
+                            bool recheckTextures) {
     Impl& d = *d_;
     ++d.serial;
     d.scene = &scene;
@@ -482,6 +494,42 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
     bool full = force || !d.built || key != d.globalKey;
     d.swayDirty.clear();
 
+    // Textures still arriving: every known material's texture and normal map are asked again; only the items that use
+    // a changed one are made again below, and the batches' own maps are updated in place.
+    std::vector<uint8_t> matChanged;
+    if (!full && recheckTextures) {
+        IW8R_PROF("g.recheck");
+        for (auto& [name, mi] : d.mats) {
+            bool ch = false;
+            if (mi.hasTex && textureFor) {
+                const int t = (*textureFor)(name);
+                if (t != mi.tex) mi.tex = t, ch = true;
+                mi.texAsked = d.serial;
+            }
+            if (mi.hasNrm && scene.normalFor && !scene.captureMode) {
+                const int nn = scene.normalFor(name);
+                if (nn != mi.nrm) mi.nrm = nn, ch = true;
+            }
+            if (ch) {
+                if (matChanged.size() < d.nextMatId) matChanged.resize(d.nextMatId, 0);
+                matChanged[mi.id] = 1;
+            }
+        }
+        if (!scene.captureMode)
+            for (auto& [k, b] : d.byKey) {
+                if (b->material.empty()) continue;
+                if (scene.emissiveFor) b->emissiveTexture = scene.emissiveFor(b->material);
+                if (scene.specFor) b->specTexture = scene.specFor(b->material);
+                if (scene.shaderFor) b->shader = scene.shaderFor(b->material);
+            }
+    }
+    const auto usesChanged = [&matChanged](const ItemRec& r) {
+        if (matChanged.empty()) return false;
+        for (const uint32_t id : r.mats)
+            if (id < matChanged.size() && matChanged[id]) return true;
+        return false;
+    };
+
     if (!full) {
         IW8R_PROF("g.items");
         d.incremental = true;
@@ -493,7 +541,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
             const PrimGeom* g = items[i];
             ItemRec& r = d.recs[i];
             const bool sel = anySel && doc.isSelected(g->ref);
-            if (r.stamp == g->stamp && r.sel == sel) continue;
+            if (r.stamp == g->stamp && r.sel == sel && !usesChanged(r)) continue;
             d.genItem(g, sel, d.out);
             if (d.staleMaterial) break;
             ItemOut& out = d.out;
@@ -579,6 +627,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
             if (stampChanged) moved = true;
             r.stamp = g->stamp;
             r.sel = sel;
+            r.mats = out.mats;
             changed = true;
             ++inPlace_;
             ++generated_;
@@ -605,7 +654,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                 d.plan[i].sel = sel;
                 if (auto it = d.where.find(g); it != d.where.end()) {
                     const ItemRec& r = d.recs[it->second];
-                    if (r.stamp == g->stamp && r.sel == sel && int64_t(it->second) > lastOld && !d.oldUsed[it->second]) {
+                    if (r.stamp == g->stamp && r.sel == sel && !usesChanged(r) && int64_t(it->second) > lastOld && !d.oldUsed[it->second]) {
                         d.plan[i].old = int32_t(it->second);
                         lastOld = it->second;
                         d.oldUsed[it->second] = 1;
@@ -662,6 +711,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                     if (d.plan[i].old >= 0) {
                         const ItemRec& o = d.recs[size_t(d.plan[i].old)];
                         nr.linesHidden = o.linesHidden;
+                        nr.mats = o.mats;
                         for (int s = 0; s < kFlatStreams; ++s) {
                             if (!aff[s]) {
                                 nr.s[s] = o.s[s];
@@ -699,6 +749,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                     } else {
                         const ItemOut& out = d.genPool[size_t(d.plan[i].gen)];
                         nr.linesHidden = out.linesHidden;
+                        nr.mats = out.mats;
                         for (int s = 0; s < kFlatStreams; ++s) {
                             if (out.f[s].empty()) continue;
                             auto& sc2 = fs[s]->scratch;
@@ -770,6 +821,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
         d.incremental = false;
         d.staleMaterial = false;
         d.mats.clear();
+        d.nextMatId = 0;
         for (auto& [k, b] : d.byKey) b->seen = false;
         // Batches are made again (their texture ids and emissive maps are asked again); the objects of keys that
         // come back are reused so the renderer keeps their buffers.
@@ -792,6 +844,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
             r.stamp = g->stamp;
             r.sel = sel;
             r.linesHidden = out.linesHidden;
+            r.mats = out.mats;
             for (int s = 0; s < kFlatStreams; ++s) {
                 if (out.f[s].empty()) continue;
                 r.s[s] = {uint32_t(fs[s]->v.size()), uint32_t(out.f[s].size())};
@@ -818,6 +871,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                     nb->blend = t.blend;
                     nb->sway = t.sway;
                     nb->baseZ = 0;
+                    nb->material = t.material ? *t.material : std::string();
                     nb->emissiveTexture = scene.emissiveFor && !scene.captureMode && t.material ? scene.emissiveFor(*t.material) : -1;
                     nb->specTexture = scene.specFor && !scene.captureMode && t.material ? scene.specFor(*t.material) : -1;
                     nb->shader = scene.shaderFor && t.material ? scene.shaderFor(*t.material) : -1;

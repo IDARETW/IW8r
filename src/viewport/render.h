@@ -237,6 +237,7 @@ struct SceneBatch : GeoStream<GpuTexVertex> {
     int key = 0;
     int texture = -1, normalTexture = -1, emissiveTexture = -1, specTexture = -1;
     int shader = -1;  // SceneRenderer::createCustomShader id of the material's custom shader (Game Lighting), -1 none
+    std::string material;  // the material it draws (its emissive / spec maps are asked again by name)
     int blend = 0;
     bool sway = false;
     float baseZ = 0;

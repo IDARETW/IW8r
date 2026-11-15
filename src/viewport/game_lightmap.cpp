@@ -34,6 +34,7 @@ uint64_t GameLightmap::vertexKey(const Vec3& pos, const Vec3& normal, const Vec3
 }
 
 bool GameLightmap::uvFor(const Vec3& pos, const Vec3& normal, const Vec3& centroid, float out[2]) const {
+    if (uv.empty()) return false;  // nothing baked (a stock map without own brushes): no key to make
     const auto it = uv.find(vertexKey(pos, normal, centroid));
     if (it == uv.end()) return false;
     out[0] = it->second[0], out[1] = it->second[1];
