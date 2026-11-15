@@ -5,6 +5,13 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Opening a stock map no longer freezes the window** (Hideout session measured with the stall watch: 57 s of freezes,
+  the longest 18.7 s, down to 5.4 s, the longest 1.7 s; the map's full load also finished in 69 s instead of 134 s):
+  prop models are read and converted on worker threads (the props on screen stay until the new set is ready); the
+  Game Lighting bake asks each material's draw class once per pass instead of once per polygon; the material cache
+  index is written in the background and reads its image folder once instead of checking each file; effect exports
+  are listed once per map instead of walking the cache folders for every effect; the sky is decoded on a worker thread.
+  The pictures are unchanged (bench frames compared before and after).
 - **The window no longer freezes while the editor starts** (18.7 s before, about 0.5 s now, measured with the stall
   watch): the viewport's shaders compile on worker threads into a disk cache (Cache Manager: "Compiled viewport
   shaders"; a 3D preview window gets them at once too); the asset browsers read their catalogues on worker threads and

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <string>
+#include <unordered_map>
 
 #include "compile_iw8.h"
 #include "scene.h"
@@ -133,6 +135,27 @@ GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(co
                              const std::function<Vec3(const std::string&)>& albedoFor) {
     GameBakeInput in;
     uint64_t key = 1469598103934665603ull;
+    // Per material, asked once per gather: the draw class (cache lookups and technique-set parsing) was asked for every
+    // polygon, seconds on the GUI thread on a stock map each time more textures arrived (stall watch, 2026-11-15).
+    struct MatInfo {
+        int draw = 0;
+        bool tool = false, sky = false, albedoKnown = false;
+        Vec3 albedo;
+    };
+    std::unordered_map<std::string, MatInfo> infos;
+    const std::string* lastName = nullptr;
+    MatInfo* last = nullptr;
+    const auto infoOf = [&](const std::string& m) -> MatInfo& {
+        if (last && (lastName == &m || *lastName == m)) return *last;  // runs of one material
+        auto [it, fresh] = infos.try_emplace(m);
+        if (fresh) {
+            it->second.draw = !m.empty() && drawClassFor ? drawClassFor(m) : 0;
+            it->second.tool = isIw8ToolMaterial(m);
+            it->second.sky = isSkyMaterial(m);
+        }
+        lastName = &it->first, last = &it->second;
+        return it->second;
+    };
     for (const PrimGeom* g : scene.items()) {
         key = mixKey(key, int64_t(g->stamp));
         if (g->volume || (g->kind == PrimGeom::PointEntity && !g->prefab && !g->mesh)) continue;  // editor markers
@@ -140,11 +163,11 @@ GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(co
             const Winding& w = g->polys[i];
             if (w.size() < 3 || g->markerPoly(i)) continue;
             const std::string* mat = i < g->polyMaterial.size() ? &g->polyMaterial[i] : nullptr;
-            int draw = 0;
-            if (mat && !mat->empty() && drawClassFor) draw = drawClassFor(*mat);
+            MatInfo* info = mat ? &infoOf(*mat) : nullptr;
+            const int draw = info ? info->draw : 0;
             if (draw == 2) continue;
-            const bool tool = mat && isIw8ToolMaterial(*mat);
-            const bool sky = mat && isSkyMaterial(*mat);
+            const bool tool = info && info->tool;
+            const bool sky = info && info->sky;
             const bool model = g->meshPoly(i) || g->kind == PrimGeom::PointEntity;
             // The game lightmaps brush faces and patches it draws; models, shadow-only meshes and the sky cast shadows.
             if (!model && !tool && !sky && draw == 0 && mat && !mat->empty()) {
@@ -154,7 +177,10 @@ GameBakeInput gatherGameBake(const SceneCache& scene, const std::function<int(co
                 Vec3 c;
                 for (const Vec3& v : w) c += v;
                 p.centroid = c * (1.0 / double(w.size()));
-                if (albedoFor) p.albedo = albedoFor(*mat);
+                if (albedoFor) {
+                    if (!info->albedoKnown) info->albedo = albedoFor(*mat), info->albedoKnown = true;
+                    p.albedo = info->albedo;
+                }
                 if (i < g->polyLmDensity.size()) p.density = g->polyLmDensity[i];
                 in.polys.push_back(std::move(p));
             } else if (!tool || sky) {

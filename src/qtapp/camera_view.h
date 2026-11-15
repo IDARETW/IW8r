@@ -18,6 +18,7 @@
 #include "vfx_sim.h"
 #include "atmosphere.h"
 #include "foliage_sway.h"
+#include "sky_image.h"
 
 #include <QBasicTimer>
 #include <QElapsedTimer>
@@ -80,7 +81,7 @@ public:
     void setFixedRenderSize(int w, int h) { fixedW_ = w, fixedH_ = h; }
     void finishGpu() { renderer_.finishGpu(); }
     const app::SceneRenderer::FrameStats& frameStats() const { return renderer_.lastStats(); }
-    bool texturesPending() const { return moreToLoad_ || refMoreToLoad_; }
+    bool texturesPending() const { return moreToLoad_ || refMoreToLoad_ || skyDecoding_; }
     // The stock reference still has materials whose images or layers are not resolved (exports, decodes, layer images).
     bool referencePending() const { return refTexPending_ || texInstPending_; }
     // Tests: the kept geometry against a fresh buildCameraGeometry of the same scene. "" when they agree, else what
@@ -783,6 +784,16 @@ private:
     QString skyAutoKey_;     // sky path | sun yaw of skyAutoYaw_
     float skyAutoYaw_ = 0;   // core autoSkyRotationYaw for a map without skyrotation
     QString skyPath_;
+    // The sky faces decoded on a worker thread (render: the sky key changed), uploaded by skyDecoded().
+    struct SkyFaces {
+        bool ok = false;
+        int size = 0;
+        std::vector<std::vector<uint8_t>> faces;  // six RGBA faces
+        SkyConvertInfo info;
+        SkyConvertOptions options;
+    };
+    void skyDecoded(const QString& key, const SkyFaces& r);
+    bool skyDecoding_ = false;
     float skyExposure_ = 0, skyMeanLum_ = 0, skyHighLum_ = 0;  // the 8-bit sky preview = HDR sky x this (sky_image.h auto exposure); 0 = LDR source
     std::vector<int> skyTex_;  // six face textures (D3D order)
     void updateSkyBox();

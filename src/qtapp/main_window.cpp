@@ -5226,6 +5226,7 @@ void MainWindow::loadDocument(const QString& path) {
             camera_->setStockEffects(std::move(fx));
             const QString zone = qs(dump.assetName).section('/', -1).section('.', 0, 0);
             QStringList missing;
+            forgetVfxFiles();  // listed again once for this map's effects
             for (const QString& n : names)
                 if (findVfxExport(n).isEmpty() && !vfxExporting_.contains(n)) missing << n;
             if (!missing.isEmpty() && !zone.isEmpty()) {
@@ -5238,6 +5239,7 @@ void MainWindow::loadDocument(const QString& path) {
                 req.outDir = ownCache + "/" + zone;
                 QDir().mkpath(req.outDir);
                 ActsRunner::shared()->submit([this](const QString& k) { return toolPath(k); }, req, this, [this, missing](const ActsResult&) {
+                    forgetVfxFiles();  // new export files
                     for (const QString& n : missing) {
                         vfxExporting_.remove(n);
                         fxSims_.erase(n.toStdString());
@@ -7057,12 +7059,28 @@ QString MainWindow::findVfxExport(const QString& name) const {
     stem.replace('\\', '/');
     const QString leaf = stem.section('/', -1);
     const QString base = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    const QString roots[2] = {base + "/x64zt_output/_stock_cache", base + "/vfx_cache"};
+    // Both trees are listed once (a walk per effect held the GUI thread for 3.7 s when Hideout opened), by the file
+    // name's first part; forgetVfxFiles() lists them again (an export finished, a stock map's effects are checked).
+    if (!vfxFilesListed_) {
+        for (int r = 0; r < 2; ++r) {
+            vfxFiles_[r].clear();
+            QDirIterator it(roots[r], {"*.asset.json"}, QDir::Files, QDirIterator::Subdirectories);
+            while (it.hasNext()) {
+                const QString f = it.next();
+                vfxFiles_[r][it.fileName().section('.', 0, 0)] << f;
+            }
+        }
+        vfxFilesListed_ = true;
+    }
     QString found;
-    for (const QString& r : {base + "/x64zt_output/_stock_cache", base + "/vfx_cache"}) {
-        const bool own = r.endsWith("vfx_cache");
-        QDirIterator it(r, {own ? leaf + ".*.asset.json" : leaf + ".vfx.*.asset.json"}, QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            const QString f = it.next();
+    for (int r = 0; r < 2; ++r) {
+        const bool own = r == 1;
+        // The same files the wildcards <leaf>.vfx.*.asset.json (stock cache) / <leaf>.*.asset.json (own) named.
+        const QString prefix = leaf + (own ? "." : ".vfx.");
+        for (const QString& f : vfxFiles_[r].value(leaf.section('.', 0, 0))) {
+            const QString file = f.section('/', -1);
+            if (!file.startsWith(prefix, Qt::CaseInsensitive) || file.size() < prefix.size() + 11) continue;
             if (QDir::fromNativeSeparators(f).contains("/" + stem + (own ? "." : ".vfx."))) return f;
             if (found.isEmpty()) found = f;
         }
@@ -7116,6 +7134,7 @@ QString MainWindow::showEffectInfo(const QString& name, bool show) {
             QDir().mkpath(req.outDir);
             ActsRunner::shared()->submit([this](const QString& k) { return toolPath(k); }, req, this, [this, name](const ActsResult& r) {
                 vfxExporting_.remove(name);
+                forgetVfxFiles();                   // new export files
                 fxSims_.erase(name.toStdString());  // the camera preview picks the new export up
                 if (findChild<QDialog*>("effectInfoDialog")) showEffectInfo(name);  // refresh the open window
                 if (!r.started || (r.exitCode != 0 && r.exitCode != 127)) ctx_.setStatus("Effect export failed for " + name + " (ACTS)");
@@ -8093,6 +8112,7 @@ void MainWindow::rebuildReferenceProps() {
         rebuildReferencePropsUnguarded();
     } catch (const std::bad_alloc&) {
         refPropBuilt_.clear();
+        refPropPrepared_.clear();
         refPropBuiltTris_ = 0;
         refPropLightKeys_.clear();
         ctx_.setStatus("Not enough memory to rebuild the stock map's props: they stay as they are (close other programs, or "
@@ -8197,6 +8217,221 @@ void MainWindow::relightReferenceProps() {
     camera_->setReferenceTexInstanceLight(std::move(light));
 }
 
+// Worker thread (startRefPropPrep): one stock model's meshes from its cached files: LOD0 (textured parts, and the
+// untextured ones shaded by facing), the cached further LODs with the game's distances, the box. Files only.
+MainWindow::RefPropPrepared MainWindow::buildRefPropMesh(const RefPropJob& job) {
+    RefPropPrepared out;
+    const auto im = ModelCache::loadGlb(job.glb, job.materials, job.name, nullptr);
+    if (!im) return out;
+    const std::optional<XModelInfo> modelDetail = ModelCache::readDetail(job.detail);
+    const Vec3 light = normalize(Vec3{0.35, 0.55, 0.75});
+    // A further LOD: its own material list from the detail file, else LOD0's when the surface counts match.
+    const auto loadLod = [&](int lod) -> std::optional<ImportedModel> {
+        QStringList mats;
+        if (modelDetail && lod < int(modelDetail->lods.size()))
+            for (const std::string& m : modelDetail->lods[size_t(lod)].materials) mats << QString::fromStdString(m);
+        auto m = ModelCache::loadGlb(job.lodGlbs[size_t(lod - 1)], mats, job.name, nullptr);
+        if (m && mats.isEmpty() && job.materials.size() == qsizetype(m->meshes.size()))
+            for (size_t i = 0; i < m->meshes.size(); ++i) m->meshes[i].material = job.materials[qsizetype(i)].toStdString();
+        return m;
+    };
+    auto fresh = std::make_shared<RefPropMesh>();
+    for (const auto& ms : im->meshes) fresh->tris += ms.idx.size() / 3;
+    // A placed model stops drawing past its last LOD distance x the placement's own scale in game (research
+    // 119; the scale goes with each placement below).
+    if (const auto& detail = modelDetail; detail && !detail->lods.empty())
+        fresh->lodOut = std::max(0.0, detail->lods.back().distance);
+    // Textured triangles of an imported mesh set (LOD0 also fills `plain` with its untextured surfaces).
+    // surfBase: the LOD's first surface in the model (XModelLod::surfIndex), -1 when its meshes do not match its
+    // surfaces one to one (then no material skin applies).
+    const auto toTex = [&](const ImportedModel& src,
+                           std::vector<std::pair<std::string, std::shared_ptr<const app::PropMeshData>>>& outTex,
+                           std::vector<app::GpuVertex>* plainOut, std::vector<int>& outSurf, int surfBase) {
+        std::vector<app::GpuVertex> ignored;
+        std::vector<app::GpuVertex>& plain = plainOut ? *plainOut : ignored;
+        const auto zup = [](const Vec3& p) { return Vec3{p.x, -p.z, p.y}; };  // glTF Y-up -> Z-up
+        for (const auto& ms : src.meshes) {
+            const bool textured = !ms.material.empty() && ms.uv.size() == ms.pos.size();
+            if (!textured) {
+                for (size_t i = 0; i + 2 < ms.idx.size(); i += 3) {
+                    const Vec3 a = zup(ms.pos[ms.idx[i]]), b = zup(ms.pos[ms.idx[i + 1]]), c = zup(ms.pos[ms.idx[i + 2]]);
+                    const double k = 0.55 + 0.45 * std::fabs(dot(normalize(cross(b - a, c - a)), light));
+                    const uint32_t g = uint32_t(std::clamp(k * 175.0, 0.0, 255.0));
+                    const uint32_t col = 0xff000000u | (uint32_t(g * 0.92) << 16) | (g << 8) | uint32_t(g * 0.85);
+                    for (const Vec3* v : {&a, &b, &c}) plain.push_back({float(v->x), float(v->y), float(v->z), col});
+                }
+                continue;
+            }
+            // Indexed as stored (28 bytes a vertex). The model's own vertex normals (tree cards bend theirs
+            // outward from the crown): Game Lighting shades with them (vs_tex_inst turns them by the
+            // instance); none (zero) = the pixel shader derives one. The plain view's facing shade is per
+            // vertex, from that normal or, without one, from the faces around the vertex.
+            const size_t nv = ms.pos.size();
+            const bool ownNormals = ms.normal.size() == nv;
+            std::vector<Vec3> shadeN(nv, Vec3{0, 0, 0});
+            auto pm = std::make_shared<app::PropMeshData>();
+            pm->indices.reserve(ms.idx.size());
+            for (size_t i = 0; i + 2 < ms.idx.size(); i += 3) {
+                const uint32_t ia = ms.idx[i], ib = ms.idx[i + 1], ic = ms.idx[i + 2];
+                if (ia >= nv || ib >= nv || ic >= nv) continue;
+                pm->indices.push_back(ia), pm->indices.push_back(ib), pm->indices.push_back(ic);
+                if (!ownNormals) {
+                    const Vec3 a = zup(ms.pos[ia]), b = zup(ms.pos[ib]), c = zup(ms.pos[ic]);
+                    const Vec3 fn = cross(b - a, c - a);
+                    shadeN[ia] = shadeN[ia] + fn, shadeN[ib] = shadeN[ib] + fn, shadeN[ic] = shadeN[ic] + fn;
+                }
+            }
+            if (pm->indices.empty()) continue;
+            pm->vertices.resize(nv);
+            // A VERTCOL material (the `c` in the prefix: tmco, tm2co, tmlc, mco, m2co) multiplies its
+            // albedo by the vertex colour (research 133 section 4).
+            const std::string prefix = ms.material.substr(0, ms.material.find('/'));
+            const bool vertCol = ms.color.size() == nv && prefix.find('c') != std::string::npos &&
+                                 (prefix.rfind("m", 0) == 0 || prefix.rfind("tm", 0) == 0);
+            // The self visibility of a surface flagged for it (0x40; research 105 section 4).
+            static const bool noSelfVis = std::getenv("IW8R_NO_SELFVIS") != nullptr;
+            const bool lmapUv = ms.lmapUv.size() == nv;  // a lightmapped model's lightmap coordinates
+            const bool selfVis = !noSelfVis && ms.selfVis.size() == nv && (ms.sourceFlags & 0x40u) != 0;
+            for (size_t v = 0; v < nv; ++v) {
+                const Vec3 p = zup(ms.pos[v]);
+                app::PropVertex& pv = pm->vertices[v];
+                pv.x = float(p.x), pv.y = float(p.y), pv.z = float(p.z);
+                pv.u = float(ms.uv[v][0]), pv.v = float(ms.uv[v][1]);
+                pv.normal = 0;
+                if (vertCol) {
+                    const auto byte = [](float c) { return uint32_t(std::clamp(c, 0.0f, 1.0f) * 255.0f + 0.5f); };
+                    // Alpha: the weight of the flag / foliage waves (research 133 section 4).
+                    pv.color = byte(ms.color[v][0]) | (byte(ms.color[v][1]) << 8) | (byte(ms.color[v][2]) << 16) |
+                               (byte(ms.color[v][3]) << 24);
+                }
+                if (ms.uv1.size() == nv) pv.u1 = float(ms.uv1[v][0]), pv.v1 = float(ms.uv1[v][1]);  // research 136
+                if (lmapUv) {
+                    const auto u16 = [](float c) { return uint32_t(std::clamp(c, 0.0f, 1.0f) * 65535.0f + 0.5f); };
+                    pv.lmapUv = u16(ms.lmapUv[v][0]) | (u16(ms.lmapUv[v][1]) << 16);
+                }
+                if (selfVis) {
+                    const auto& s = ms.selfVis[v];
+                    const Vec3 d = zup(Vec3{s[0], s[1], s[2]});
+                    const auto sb = [](double c) {
+                        const double k = std::clamp(c, -1.0, 1.0) * 127.0;
+                        return uint32_t(uint8_t(int8_t(k >= 0 ? int(k + 0.5) : int(k - 0.5))));
+                    };
+                    pv.selfVis = sb(d.x) | (sb(d.y) << 8) | (sb(d.z) << 16) |
+                                 (uint32_t(1 + int(std::clamp(double(s[3]), 0.0, 1.0) * 126.0 + 0.5)) << 24);
+                }
+                Vec3 sn = shadeN[v];
+                if (ownNormals) {
+                    const Vec3 nn = zup(ms.normal[v]);
+                    if (length(nn) > 1e-6) {
+                        const Vec3 un = normalize(nn);
+                        pv.normal = app::packPropNormal(float(un.x), float(un.y), float(un.z));
+                        sn = un;
+                    }
+                }
+                const double k = length(sn) > 1e-12 ? 0.55 + 0.45 * std::fabs(dot(normalize(sn), light)) : 0.775;
+                const uint32_t g = uint32_t(std::clamp(k * 255.0, 0.0, 255.0));
+                pv.rgba = 0xff000000u | (g << 16) | (g << 8) | g;
+            }
+            outTex.push_back({ms.material, std::move(pm)});
+            outSurf.push_back(surfBase >= 0 ? surfBase + int(&ms - src.meshes.data()) : -1);
+        }
+    };
+    const auto surfBaseOf = [&](size_t level, const ImportedModel& src) {
+        if (!modelDetail || level >= modelDetail->lods.size()) return -1;
+        const XModelLod& l = modelDetail->lods[level];
+        if (l.surfCount != int(src.meshes.size())) return -1;
+        // The meshes come in the LOD's surface order: their materials must be the LOD's, one for one.
+        if (l.materials.size() == src.meshes.size())
+            for (size_t k = 0; k < src.meshes.size(); ++k) {
+                std::string a = l.materials[k], b = src.meshes[k].material;
+                if (!a.empty() && a[0] == ',') a.erase(0, 1);
+                if (!b.empty() && b[0] == ',') b.erase(0, 1);
+                if (!a.empty() && !b.empty() && a != b) return -1;
+            }
+        return l.surfIndex;
+    };
+    toTex(*im, fresh->tex, &fresh->plain, fresh->texSurf, surfBaseOf(0, *im));
+    // Untextured parts are drawn with every placement (no distance cull): the model then stays whole.
+    if (!fresh->plain.empty()) fresh->lodOut = 0;
+    // Plan 1.13: the cached further LODs, with the game's distances (LOD i up to lods[i].distance); a LOD
+    // not cached yet is asked for and its range stays with the LOD before it.
+    if (const auto& detail = modelDetail; detail && detail->lods.size() > 1 && !fresh->tex.empty()) {
+        const bool noLods = !job.lods;
+        const auto& L = detail->lods;
+        for (size_t li = 1; li < L.size() && !noLods; ++li) {
+            if (li > job.lodGlbs.size() || !QFileInfo::exists(job.lodGlbs[li - 1])) {
+                out.missingLods.push_back(int(li));  // asked for when the mesh is used (unless the cache gave up on it)
+                continue;
+            }
+            auto lm = loadLod(int(li));
+            if (!lm) continue;
+            RefPropMesh::Lod lod;
+            lod.level = int(li);
+            lod.nearD = L[li - 1].distance;
+            toTex(*lm, lod.tex, nullptr, lod.texSurf, surfBaseOf(li, *lm));
+            if (!lod.tex.empty() && lod.nearD > 0) fresh->lods.push_back(std::move(lod));
+        }
+        // Each level runs to the next one's start; the last to the foliage LOD-out (others: no limit).
+        for (size_t k = 0; k < fresh->lods.size(); ++k)
+            fresh->lods[k].farD = k + 1 < fresh->lods.size() ? fresh->lods[k + 1].nearD : fresh->lodOut;
+        fresh->lod0Far = fresh->lods.empty() ? fresh->lodOut : fresh->lods[0].nearD;
+    }
+    // The model's box (every textured part of LOD0): the distance of its LOD and cull is measured to it.
+    for (const auto& part : fresh->tex)
+        for (const app::PropVertex& v : part.second->vertices) {
+            const float p[3] = {v.x, v.y, v.z};
+            for (int c = 0; c < 3; ++c)
+                fresh->box[c] = std::min(fresh->box[c], p[c]), fresh->box[c + 3] = std::max(fresh->box[c + 3], p[c]);
+        }
+    fresh->hasBox = !fresh->tex.empty();
+    out.mesh = fresh;
+    return out;
+}
+
+void MainWindow::startRefPropPrep(std::vector<RefPropJob> jobs) {
+    refPropPrepBusy_ = true;
+    struct Shared {
+        std::vector<RefPropJob> jobs;
+        std::atomic<size_t> next{0}, tris{0};
+        std::atomic<int> running{0};
+        std::mutex m;
+        std::vector<std::pair<std::string, RefPropPrepared>> out;
+    };
+    auto sh = std::make_shared<Shared>();
+    sh->jobs = std::move(jobs);
+    sh->tris = refPropBuiltTris_;  // the kept meshes count toward the budget
+    const unsigned hw = std::max(3u, std::thread::hardware_concurrency());
+    const int n = int(std::min<size_t>(sh->jobs.size(), std::clamp(hw - 2, 1u, 8u)));
+    sh->running = n;
+    QPointer<MainWindow> self(this);
+    for (int w = 0; w < n; ++w)
+        std::thread(guardedWorker(__FILE__, __LINE__, [sh, self] {
+            for (size_t k = sh->next++; k < sh->jobs.size(); k = sh->next++) {
+                RefPropPrepared r;
+                if (sh->tris.load() > kPropTriangleBudget) {
+                    r.overBudget = true;  // drawn as a box anyway: not read
+                } else {
+                    try {
+                        r = buildRefPropMesh(sh->jobs[k]);
+                    } catch (const std::bad_alloc&) {
+                        r = RefPropPrepared{};  // no memory for this one: its box
+                    }
+                    if (r.mesh) sh->tris += r.mesh->tris;
+                }
+                std::lock_guard lock(sh->m);
+                sh->out.emplace_back(sh->jobs[k].model, std::move(r));
+            }
+            if (--sh->running == 0)
+                QMetaObject::invokeMethod(qApp, [sh, self] {
+                    if (!self) return;
+                    for (auto& [model, r] : sh->out) self->refPropPrepared_[model] = std::move(r);
+                    self->refPropPrepBusy_ = false;
+                    self->refPropPrepQueued_.clear();
+                    self->rebuildReferenceProps();  // takes the prepared meshes (and queues any model cached since)
+                }, Qt::QueuedConnection);
+        })).detach();
+}
+
 void MainWindow::rebuildReferencePropsUnguarded() {
     if (!refProps_ || !refBaseTris_ || referenceZone_.isEmpty()) return;
     // Bench diagnosis (IW8R_BENCH_PROFILE): the memory a rebuild holds, logged at its end.
@@ -8275,8 +8510,8 @@ void MainWindow::rebuildReferencePropsUnguarded() {
     // Distinct models' LOD0 triangles drawn as meshes (the rest as boxes): 4 M while props were 168 bytes a triangle;
     // indexed it could be more, but each placement drawn as a mesh costs about 300 bytes (instance data): Verdansk at 8 M
     // and 16 M ran a 16 GB machine out of memory. Kept at 4 M until the instance data is lighter.
-    constexpr size_t kPropTriangleBudget = 4'000'000;
-    const Vec3 light = normalize(Vec3{0.35, 0.55, 0.75});
+    std::vector<RefPropJob> prepJobs;  // models to read and convert on worker threads (startRefPropPrep)
+    bool propsPending = false;           // a model of this pass is not converted yet
     const auto mesh = [&](const StockModelInstance& in) -> bool {
         // One mesh set per model and material skin (placements of one model can use different skins).
         const std::string meshKey = in.surfaceMaterials ? in.model + '\x1f' + std::to_string(reinterpret_cast<uintptr_t>(in.surfaceMaterials.get()))
@@ -8293,176 +8528,49 @@ void MainWindow::rebuildReferencePropsUnguarded() {
             } else if (const auto known = refPropTrisKnown_.find(in.model);
                        known != refPropTrisKnown_.end() && meshTris + known->second > kPropTriangleBudget) {
                 // Past the budget (known from an earlier rebuild): a box, without reading the model again.
-            } else if (auto im = modelCacheStock_->loadModel(qs(in.model))) {
-                ++loadedModels;
-                // Cached before the GLB carried the self visibility (research 105 section 4): fetched again in the
-                // background; the model is drawn from its old GLB meanwhile.
-                static const bool noSelfVis = std::getenv("IW8R_NO_SELFVIS") != nullptr;
-                if (const auto e = modelCacheStock_->lookup(qs(in.model));
-                    !noSelfVis && e && (e->selfVis < 0 || (e->lmapUv < 0 && (in.modelFlags & 2u)))) {
-                    if (selfVisRefresh_.isEmpty())
-                        QTimer::singleShot(0, this, [this] {
-                            modelCacheStock_->refreshGeometry(selfVisRefresh_);
-                            selfVisRefresh_.clear();
-                        });
-                    selfVisRefresh_ << qs(in.model);
-                }
-                auto fresh = std::make_shared<RefPropMesh>();
-                for (const auto& ms : im->meshes) fresh->tris += ms.idx.size() / 3;
-                // A placed model stops drawing past its last LOD distance x the placement's own scale in game (research
-                // 119; the scale goes with each placement below).
-                if (const auto detail = modelCacheStock_->loadDetail(qs(in.model)); detail && !detail->lods.empty())
-                    fresh->lodOut = std::max(0.0, detail->lods.back().distance);
-                // Textured triangles of an imported mesh set (LOD0 also fills `plain` with its untextured surfaces).
-                // surfBase: the LOD's first surface in the model (XModelLod::surfIndex), -1 when its meshes do not match its
-                // surfaces one to one (then no material skin applies).
-                const auto toTex = [&](const ImportedModel& src,
-                                       std::vector<std::pair<std::string, std::shared_ptr<const app::PropMeshData>>>& outTex,
-                                       std::vector<app::GpuVertex>* plainOut, std::vector<int>& outSurf, int surfBase) {
-                    std::vector<app::GpuVertex> ignored;
-                    std::vector<app::GpuVertex>& plain = plainOut ? *plainOut : ignored;
-                    const auto zup = [](const Vec3& p) { return Vec3{p.x, -p.z, p.y}; };  // glTF Y-up -> Z-up
-                    for (const auto& ms : src.meshes) {
-                        const bool textured = !ms.material.empty() && ms.uv.size() == ms.pos.size();
-                        if (!textured) {
-                            for (size_t i = 0; i + 2 < ms.idx.size(); i += 3) {
-                                const Vec3 a = zup(ms.pos[ms.idx[i]]), b = zup(ms.pos[ms.idx[i + 1]]), c = zup(ms.pos[ms.idx[i + 2]]);
-                                const double k = 0.55 + 0.45 * std::fabs(dot(normalize(cross(b - a, c - a)), light));
-                                const uint32_t g = uint32_t(std::clamp(k * 175.0, 0.0, 255.0));
-                                const uint32_t col = 0xff000000u | (uint32_t(g * 0.92) << 16) | (g << 8) | uint32_t(g * 0.85);
-                                for (const Vec3* v : {&a, &b, &c}) plain.push_back({float(v->x), float(v->y), float(v->z), col});
-                            }
-                            continue;
-                        }
-                        // Indexed as stored (28 bytes a vertex). The model's own vertex normals (tree cards bend theirs
-                        // outward from the crown): Game Lighting shades with them (vs_tex_inst turns them by the
-                        // instance); none (zero) = the pixel shader derives one. The plain view's facing shade is per
-                        // vertex, from that normal or, without one, from the faces around the vertex.
-                        const size_t nv = ms.pos.size();
-                        const bool ownNormals = ms.normal.size() == nv;
-                        std::vector<Vec3> shadeN(nv, Vec3{0, 0, 0});
-                        auto pm = std::make_shared<app::PropMeshData>();
-                        pm->indices.reserve(ms.idx.size());
-                        for (size_t i = 0; i + 2 < ms.idx.size(); i += 3) {
-                            const uint32_t ia = ms.idx[i], ib = ms.idx[i + 1], ic = ms.idx[i + 2];
-                            if (ia >= nv || ib >= nv || ic >= nv) continue;
-                            pm->indices.push_back(ia), pm->indices.push_back(ib), pm->indices.push_back(ic);
-                            if (!ownNormals) {
-                                const Vec3 a = zup(ms.pos[ia]), b = zup(ms.pos[ib]), c = zup(ms.pos[ic]);
-                                const Vec3 fn = cross(b - a, c - a);
-                                shadeN[ia] = shadeN[ia] + fn, shadeN[ib] = shadeN[ib] + fn, shadeN[ic] = shadeN[ic] + fn;
-                            }
-                        }
-                        if (pm->indices.empty()) continue;
-                        pm->vertices.resize(nv);
-                        // A VERTCOL material (the `c` in the prefix: tmco, tm2co, tmlc, mco, m2co) multiplies its
-                        // albedo by the vertex colour (research 133 section 4).
-                        const std::string prefix = ms.material.substr(0, ms.material.find('/'));
-                        const bool vertCol = ms.color.size() == nv && prefix.find('c') != std::string::npos &&
-                                             (prefix.rfind("m", 0) == 0 || prefix.rfind("tm", 0) == 0);
-                        // The self visibility of a surface flagged for it (0x40; research 105 section 4).
-                        static const bool noSelfVis = std::getenv("IW8R_NO_SELFVIS") != nullptr;
-                        const bool lmapUv = ms.lmapUv.size() == nv;  // a lightmapped model's lightmap coordinates
-                        const bool selfVis = !noSelfVis && ms.selfVis.size() == nv && (ms.sourceFlags & 0x40u) != 0;
-                        for (size_t v = 0; v < nv; ++v) {
-                            const Vec3 p = zup(ms.pos[v]);
-                            app::PropVertex& pv = pm->vertices[v];
-                            pv.x = float(p.x), pv.y = float(p.y), pv.z = float(p.z);
-                            pv.u = float(ms.uv[v][0]), pv.v = float(ms.uv[v][1]);
-                            pv.normal = 0;
-                            if (vertCol) {
-                                const auto byte = [](float c) { return uint32_t(std::clamp(c, 0.0f, 1.0f) * 255.0f + 0.5f); };
-                                // Alpha: the weight of the flag / foliage waves (research 133 section 4).
-                                pv.color = byte(ms.color[v][0]) | (byte(ms.color[v][1]) << 8) | (byte(ms.color[v][2]) << 16) |
-                                           (byte(ms.color[v][3]) << 24);
-                            }
-                            if (ms.uv1.size() == nv) pv.u1 = float(ms.uv1[v][0]), pv.v1 = float(ms.uv1[v][1]);  // research 136
-                            if (lmapUv) {
-                                const auto u16 = [](float c) { return uint32_t(std::clamp(c, 0.0f, 1.0f) * 65535.0f + 0.5f); };
-                                pv.lmapUv = u16(ms.lmapUv[v][0]) | (u16(ms.lmapUv[v][1]) << 16);
-                            }
-                            if (selfVis) {
-                                const auto& s = ms.selfVis[v];
-                                const Vec3 d = zup(Vec3{s[0], s[1], s[2]});
-                                const auto sb = [](double c) {
-                                    const double k = std::clamp(c, -1.0, 1.0) * 127.0;
-                                    return uint32_t(uint8_t(int8_t(k >= 0 ? int(k + 0.5) : int(k - 0.5))));
-                                };
-                                pv.selfVis = sb(d.x) | (sb(d.y) << 8) | (sb(d.z) << 16) |
-                                             (uint32_t(1 + int(std::clamp(double(s[3]), 0.0, 1.0) * 126.0 + 0.5)) << 24);
-                            }
-                            Vec3 sn = shadeN[v];
-                            if (ownNormals) {
-                                const Vec3 nn = zup(ms.normal[v]);
-                                if (length(nn) > 1e-6) {
-                                    const Vec3 un = normalize(nn);
-                                    pv.normal = app::packPropNormal(float(un.x), float(un.y), float(un.z));
-                                    sn = un;
-                                }
-                            }
-                            const double k = length(sn) > 1e-12 ? 0.55 + 0.45 * std::fabs(dot(normalize(sn), light)) : 0.775;
-                            const uint32_t g = uint32_t(std::clamp(k * 255.0, 0.0, 255.0));
-                            pv.rgba = 0xff000000u | (g << 16) | (g << 8) | g;
-                        }
-                        outTex.push_back({ms.material, std::move(pm)});
-                        outSurf.push_back(surfBase >= 0 ? surfBase + int(&ms - src.meshes.data()) : -1);
+            } else if (const auto prep = refPropPrepared_.find(in.model); prep != refPropPrepared_.end()) {
+                // Read and converted on a worker thread (startRefPropPrep).
+                if (prep->second.overBudget) {
+                    refPropTrisKnown_[in.model] = kPropTriangleBudget + 1;  // the budget was used up: a box from now on
+                } else if (prep->second.mesh) {
+                    ++loadedModels;
+                    // Cached before the GLB carried the self visibility (research 105 section 4): fetched again in the
+                    // background; the model is drawn from its old GLB meanwhile.
+                    static const bool noSelfVis = std::getenv("IW8R_NO_SELFVIS") != nullptr;
+                    if (const auto e = modelCacheStock_->lookup(qs(in.model));
+                        !noSelfVis && e && (e->selfVis < 0 || (e->lmapUv < 0 && (in.modelFlags & 2u)))) {
+                        if (selfVisRefresh_.isEmpty())
+                            QTimer::singleShot(0, this, [this] {
+                                modelCacheStock_->refreshGeometry(selfVisRefresh_);
+                                selfVisRefresh_.clear();
+                            });
+                        selfVisRefresh_ << qs(in.model);
                     }
-                };
-                const auto modelDetail = modelCacheStock_->loadDetail(qs(in.model));
-                const auto surfBaseOf = [&](size_t level, const ImportedModel& src) {
-                    if (!modelDetail || level >= modelDetail->lods.size()) return -1;
-                    const XModelLod& l = modelDetail->lods[level];
-                    if (l.surfCount != int(src.meshes.size())) return -1;
-                    // The meshes come in the LOD's surface order: their materials must be the LOD's, one for one.
-                    if (l.materials.size() == src.meshes.size())
-                        for (size_t k = 0; k < src.meshes.size(); ++k) {
-                            std::string a = l.materials[k], b = src.meshes[k].material;
-                            if (!a.empty() && a[0] == ',') a.erase(0, 1);
-                            if (!b.empty() && b[0] == ',') b.erase(0, 1);
-                            if (!a.empty() && !b.empty() && a != b) return -1;
-                        }
-                    return l.surfIndex;
-                };
-                toTex(*im, fresh->tex, &fresh->plain, fresh->texSurf, surfBaseOf(0, *im));
-                // Untextured parts are drawn with every placement (no distance cull): the model then stays whole.
-                if (!fresh->plain.empty()) fresh->lodOut = 0;
-                // Plan 1.13: the cached further LODs, with the game's distances (LOD i up to lods[i].distance); a LOD
-                // not cached yet is asked for and its range stays with the LOD before it.
-                if (const auto detail = modelCacheStock_->loadDetail(qs(in.model)); detail && detail->lods.size() > 1 && !fresh->tex.empty()) {
-                    const bool noLods = std::getenv("IW8R_NO_PROP_LODS") != nullptr || !propLodsEnabled_;
-                    const auto& L = detail->lods;
-                    for (size_t li = 1; li < L.size() && !noLods; ++li) {
-                        if (!modelCacheStock_->hasLod(qs(in.model), int(li))) {
-                            if (!modelCacheStock_->lodFailed(qs(in.model), int(li))) wantLods_.append({qs(in.model), int(li)});
-                            continue;
-                        }
-                        auto lm = modelCacheStock_->loadModelLod(qs(in.model), int(li));
-                        if (!lm) continue;
-                        RefPropMesh::Lod lod;
-                        lod.level = int(li);
-                        lod.nearD = L[li - 1].distance;
-                        toTex(*lm, lod.tex, nullptr, lod.texSurf, surfBaseOf(li, *lm));
-                        if (!lod.tex.empty() && lod.nearD > 0) fresh->lods.push_back(std::move(lod));
+                    // Plan 1.13: further LODs not cached yet are asked for (unless the cache gave up on them).
+                    for (const int li : prep->second.missingLods)
+                        if (!modelCacheStock_->lodFailed(qs(in.model), li)) wantLods_.append({qs(in.model), li});
+                    built = prep->second.mesh;
+                    refPropTrisKnown_[in.model] = built->tris;
+                    if (refPropBuiltTris_ + built->tris <= kPropTriangleBudget) {  // kept copies stay within the draw budget
+                        refPropBuiltTris_ += built->tris;
+                        refPropBuilt_[in.model] = built;
                     }
-                    // Each level runs to the next one's start; the last to the foliage LOD-out (others: no limit).
-                    for (size_t k = 0; k < fresh->lods.size(); ++k)
-                        fresh->lods[k].farD = k + 1 < fresh->lods.size() ? fresh->lods[k + 1].nearD : fresh->lodOut;
-                    fresh->lod0Far = fresh->lods.empty() ? fresh->lodOut : fresh->lods[0].nearD;
                 }
-                // The model's box (every textured part of LOD0): the distance of its LOD and cull is measured to it.
-                for (const auto& part : fresh->tex)
-                    for (const app::PropVertex& v : part.second->vertices) {
-                        const float p[3] = {v.x, v.y, v.z};
-                        for (int c = 0; c < 3; ++c)
-                            fresh->box[c] = std::min(fresh->box[c], p[c]), fresh->box[c + 3] = std::max(fresh->box[c + 3], p[c]);
-                    }
-                fresh->hasBox = !fresh->tex.empty();
-                built = fresh;
-                refPropTrisKnown_[in.model] = fresh->tris;
-                if (refPropBuiltTris_ + fresh->tris <= kPropTriangleBudget) {  // kept copies stay within the draw budget
-                    refPropBuiltTris_ += fresh->tris;
-                    refPropBuilt_[in.model] = fresh;
+            } else if (const auto e = modelCacheStock_->lookup(qs(in.model)); e && !e->failed) {
+                // Not converted yet: read and converted on worker threads; this pass leaves the screen as it is.
+                propsPending = true;
+                if (!refPropPrepBusy_ && refPropPrepQueued_.insert(in.model).second) {
+                    RefPropJob job;
+                    job.model = in.model;
+                    job.name = qs(in.model);
+                    job.glb = e->glbPath;
+                    job.materials = e->materials;
+                    job.detail = modelCacheStock_->detailPath(job.name);
+                    for (int li = 1; li <= 8; ++li) job.lodGlbs.push_back(modelCacheStock_->lodGlbPath(job.name, li));
+                    job.lods = std::getenv("IW8R_NO_PROP_LODS") == nullptr && propLodsEnabled_;
+                    prepJobs.push_back(std::move(job));
                 }
+                return true;
             }
             if (built && built->tris > 0 && meshTris + built->tris <= kPropTriangleBudget) {
                 meshTris += built->tris;
@@ -8599,6 +8707,13 @@ void MainWindow::rebuildReferencePropsUnguarded() {
             marker(failMesh, in);
         }
     }
+    if (propsPending) {
+        // Models still read and converted on worker threads: the props on screen stay as they are; the rebuild runs
+        // again when the workers are done (startRefPropPrep).
+        if (!prepJobs.empty()) startRefPropPrep(std::move(prepJobs));
+        return;
+    }
+    refPropPrepared_.clear();  // taken: kept in refPropBuilt_ within its budget, the others given back
     // Plan 1.13: the props' further LODs not cached yet, in batches (lodReady rebuilds the props).
     if (!wantLods_.isEmpty() && modelCacheStock_) modelCacheStock_->requestLods(wantLods_);
     refPropPlaceholders_ = (waitMesh.rows.size() + failMesh.rows.size()) / 12;
@@ -10251,7 +10366,7 @@ QString MainWindow::streamedTilesReport() const {
 
 bool MainWindow::stockCacheIdle() const {
     return (!worldCache_ || !worldCache_->busy()) && (!modelCacheStock_ || (modelCacheStock_->lodsPending() == 0 && modelCacheStock_->refreshPending() == 0 && !modelCacheStock_->busy())) && !refPropRebuildQueued_ && !refPropRelightQueued_ &&
-           stockLoadsInFlight_ == 0;
+           stockLoadsInFlight_ == 0 && !refPropPrepBusy_;
 }
 
 bool MainWindow::streamedTilesSettled() const {

@@ -7,6 +7,7 @@
 // x64-zt reads (src/core/sky_image.h).
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -65,6 +66,8 @@ private:
     std::set<QString> queued_;
     QStringList pending_;
     std::map<QString, QString> errors_;
+    mutable QHash<QString, QString> found_;    // cachedDds: names whose file was found
+    mutable QHash<QString, qint64> missedAt_;  // cachedDds: when a missing file was last checked
     QString current_;
     QStringList currentZones_;  // candidate zones left for current_
     QString runDir_;

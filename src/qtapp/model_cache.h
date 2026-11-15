@@ -63,6 +63,11 @@ public:
     // was kept; refetch() drops the entry and caches the model again.
     QString detailPath(const QString& name) const;
     std::optional<XModelInfo> loadDetail(const QString& name) const;
+    // File-only readers (no cache state: safe on worker threads, MainWindow::startRefPropPrep). loadGlb reads a cached
+    // GLB and names its meshes after `materials` (one per surface); readDetail reads a detail file (detailPath).
+    static std::optional<ImportedModel> loadGlb(const QString& path, const QStringList& materials, const QString& name,
+                                                QString* err);
+    static std::optional<XModelInfo> readDetail(const QString& path);
     void refetch(const QString& name);
     void request(const QStringList& names);                  // async; de-duplicated; batched per zone
     // Runs the geometry export again for cached models whose GLB predates the self visibility (Entry::selfVis -1) or,
@@ -114,8 +119,6 @@ signals:
 
 private:
     void saveDetail(const QString& name, const QString& exportPath) const;
-    std::optional<ImportedModel> loadGlb(const QString& path, const QStringList& materials, const QString& name,
-                                         QString* err) const;
     std::set<QString> lodPending_, lodFailed_;  // "<name>#<lod>"
     struct Run {
         bool geometry = false;  // false: xmodel tables, true: xmodelsurfs buffers

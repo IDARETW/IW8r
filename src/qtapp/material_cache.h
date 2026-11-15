@@ -166,7 +166,12 @@ private:
 
     QStringList mapZones_;  // addMapZone, newest first
     void loadCatalog();
-    void writeIndex() const;
+    void writeIndex() const;  // in the background (writeIndexFile on a worker thread)
+    static void writeIndexFile(const QString& root, const std::map<QString, Entry>& index);
+    mutable std::mutex writeMutex_;
+    mutable std::shared_ptr<const std::map<QString, Entry>> writeNext_;  // the newest copy not written yet
+    mutable bool writing_ = false;
+    mutable std::future<void> writeJob_;  // declared last of the writer's members: destroyed (waited for) first
     QString replayZoneDir() const;
     QStringList candidates(const QStringList& zones, bool bodies) const;
     QList<QFileInfo> xpaks() const;
@@ -195,6 +200,7 @@ private:
     std::map<QString, Entry>& seeds() const;
     mutable std::future<IndexFiles> indexLoad_;
     mutable std::once_flag indexOnce_;
+    bool purgeNotListed_ = false;  // addMapZone ran before the index was taken
     mutable std::map<QString, Entry> indexData_;
     mutable std::map<QString, Entry> seedsData_;
     std::map<QString, QStringList> catalog_;  // material -> zones, from data/asset_catalog/iw8_materials.tsv

@@ -13,6 +13,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
+#include <QSet>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
@@ -116,6 +117,9 @@ std::map<QString, MaterialCache::Entry>& MaterialCache::index() const {
         IndexFiles f = indexLoad_.get();  // waits when the worker is not done yet
         indexData_ = std::move(f.index);
         seedsData_ = std::move(f.seeds);
+        if (purgeNotListed_)  // addMapZone before the index was there
+            for (auto it = indexData_.begin(); it != indexData_.end();)
+                it = it->second.failed && it->second.error.contains("not listed") ? indexData_.erase(it) : std::next(it);
     });
     return indexData_;
 }
@@ -209,6 +213,12 @@ void MaterialCache::request(const QStringList& materials) {
 void MaterialCache::addMapZone(const QString& zone) {
     if (zone.isEmpty() || mapZones_.contains(zone)) return;
     mapZones_.prepend(zone);
+    // Materials that failed as "not listed" are tried again (the map's zone may hold them). While the index is still
+    // read on its worker thread this is done when it is taken (index()), not waited for here.
+    if (!indexReady()) {
+        purgeNotListed_ = true;
+        return;
+    }
     for (auto it = index().begin(); it != index().end();)
         it = it->second.failed && it->second.error.contains("not listed") ? index().erase(it) : std::next(it);
 }
@@ -225,6 +235,14 @@ std::map<QString, MaterialCache::Entry> MaterialCache::readIndex(const QString& 
     QFile f(root + "/index.json");
     if (!f.open(QIODevice::ReadOnly)) return out;
     const QJsonObject mats = QJsonDocument::fromJson(f.readAll()).object().value("materials").toObject();
+    // The image folder is listed once: a file check per entry (thousands of them) was most of this read.
+    QSet<QString> images;
+    const QString imagesDir = QDir::cleanPath(root + "/images").toLower() + "/";
+    for (QDirIterator it(root + "/images", QDir::Files); it.hasNext();) images.insert(QDir::cleanPath(it.next()).toLower());
+    const auto exists = [&](const QString& file) {
+        const QString c = QDir::cleanPath(file).toLower();
+        return c.startsWith(imagesDir) ? images.contains(c) : QFileInfo::exists(file);
+    };
     for (auto it = mats.begin(); it != mats.end(); ++it) {
         const QJsonObject o = it.value().toObject();
         Entry e;
@@ -255,7 +273,7 @@ std::map<QString, MaterialCache::Entry> MaterialCache::readIndex(const QString& 
             LayerImages li{cached(l.value("color").toString()), cached(l.value("normal").toString()),
                            cached(l.value("reveal").toString())};
             for (const QString& f : {li.colorDds, li.normalDds, li.revealDds})
-                if (!f.isEmpty() && !QFileInfo::exists(f)) layerImageGone = true;
+                if (!f.isEmpty() && !exists(f)) layerImageGone = true;
             e.layers.push_back(li);
         }
         e.psData = QByteArray::fromHex(o.value("psData").toString().toLatin1());
@@ -271,7 +289,7 @@ std::map<QString, MaterialCache::Entry> MaterialCache::readIndex(const QString& 
         // Resolved before every body's constants and tint were kept (decals, painted materials): resolve again once.
         if (!e.failed && o.value("tintRules").toInt() < 2) continue;  // 2: tint from psData row 2, the slot-59 mask
         // Images removed by the Cache Manager's size cap (4.13) or by hand: resolve again.
-        if (!e.failed && !e.colorDds.isEmpty() && !QFileInfo::exists(e.colorDds)) continue;
+        if (!e.failed && !e.colorDds.isEmpty() && !exists(e.colorDds)) continue;
         // Resolved before cut-out masks were recorded: resolve again once (images already cached are reused).
         if (!e.failed && !o.contains("mask")) continue;
         // Resolved before slot-27 opacity masks and the body flags were kept (research 66): resolve again once.
@@ -385,10 +403,35 @@ void MaterialCache::loadCatalog() {
     }
 }
 
+// A copy of the index is taken here; it is turned into JSON and written on a worker thread (13 MB: about 1.2 s on the
+// GUI thread after every export batch of a stock map). One writer at a time; a newer copy replaces one not written yet.
+// The destructor waits for the writer (writeJob_), so the last batch is on disk when the editor closes.
 void MaterialCache::writeIndex() const {
+    auto copy = std::make_shared<const std::map<QString, Entry>>(index());
+    std::lock_guard lock(writeMutex_);
+    writeNext_ = std::move(copy);
+    if (writing_) return;  // the running writer takes it next
+    writing_ = true;
+    writeJob_ = std::async(std::launch::async, [this, root = root_] {
+        for (;;) {
+            std::shared_ptr<const std::map<QString, Entry>> next;
+            {
+                std::lock_guard l(writeMutex_);
+                next = std::move(writeNext_);
+                if (!next) {
+                    writing_ = false;
+                    return;
+                }
+            }
+            writeIndexFile(root, *next);
+        }
+    });
+}
+
+void MaterialCache::writeIndexFile(const QString& rootPath, const std::map<QString, Entry>& index) {
     QJsonObject mats;
-    const QDir root(root_);
-    for (const auto& [name, e] : index()) {
+    const QDir root(rootPath);
+    for (const auto& [name, e] : index) {
         QJsonObject o;
         o.insert("zone", e.zone);
         o.insert("techset", e.techset);
@@ -431,7 +474,7 @@ void MaterialCache::writeIndex() const {
     QJsonObject top;
     top.insert("format", kIndexFormat);
     top.insert("materials", mats);
-    QSaveFile f(root_ + "/index.json");
+    QSaveFile f(rootPath + "/index.json");
     if (f.open(QIODevice::WriteOnly)) {
         f.write(QJsonDocument(top).toJson(QJsonDocument::Indented));
         f.commit();

@@ -1,6 +1,7 @@
 #include "stock_sky.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -72,8 +73,18 @@ StockSkyCache::~StockSkyCache() {
 QString StockSkyCache::cachedDds(const QString& sky) const {
     const QString name = keyOf(sky);
     if (name.isEmpty()) return {};
+    // Asked every frame: a file found is remembered, a missing one checked again at most twice a second.
+    if (const auto it = found_.find(name); it != found_.end()) return *it;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (const auto it = missedAt_.find(name); it != missedAt_.end() && now - *it < 500) return {};
     const QString file = fileOf(name);
-    return QFileInfo::exists(file) ? file : QString();
+    if (QFileInfo::exists(file)) {
+        found_.insert(name, file);
+        missedAt_.remove(name);
+        return file;
+    }
+    missedAt_.insert(name, now);
+    return {};
 }
 
 QString StockSkyCache::lastError(const QString& sky) const {

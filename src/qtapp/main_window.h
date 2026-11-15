@@ -597,6 +597,27 @@ private:
     uint32_t stockDetailOff_ = 0;  // the shader parts turned off (CameraView::setStockDetailOff)
     bool propLodsEnabled_ = true;  // View > Game Lighting Options > Prop Levels of Detail (game/propLods)  // rebuildReferenceProps: prop LODs not cached yet (asked for at its end)
     std::map<std::string, std::shared_ptr<const RefPropMesh>> refPropBuilt_;
+    // Props read and converted on worker threads (startRefPropPrep): a rebuild pass that finds a cached model not
+    // converted yet queues it and leaves the screen as it is; the pass after the workers takes refPropPrepared_.
+    struct RefPropJob {
+        std::string model;
+        QString name, glb, detail;      // the GLB and detail files (resolved on the GUI thread from the cache index)
+        QStringList materials;          // LOD0's, one per surface
+        std::vector<QString> lodGlbs;   // LOD 1, 2, ...: the files, which may not exist
+        bool lods = true;               // propLodsEnabled_ and not IW8R_NO_PROP_LODS
+    };
+    struct RefPropPrepared {
+        std::shared_ptr<const RefPropMesh> mesh;  // null: unreadable (drawn as its box)
+        std::vector<int> missingLods;             // LOD levels not cached (asked for when the mesh is used)
+        bool overBudget = false;                  // not converted: the triangle budget was used up (a box)
+    };
+    static RefPropPrepared buildRefPropMesh(const RefPropJob& job);  // worker thread: files only
+    void startRefPropPrep(std::vector<RefPropJob> jobs);
+    std::map<std::string, RefPropPrepared> refPropPrepared_;
+    std::set<std::string> refPropPrepQueued_;  // models the running workers have
+    bool refPropPrepBusy_ = false;
+    // Distinct models' LOD0 triangles drawn as meshes (the rest as boxes); see rebuildReferencePropsUnguarded.
+    static constexpr size_t kPropTriangleBudget = 4'000'000;
     // 12 floats per light grid volume of the reference zone's main transient zone (app::InstancedTexMesh::light: DC rgb,
     // then the first-order slots 0, 2 and 3), null when not read; refPropVolLightZone_ is its zone.
     std::shared_ptr<const std::vector<float>> refPropVolLight_;
@@ -699,6 +720,11 @@ private:
     std::map<std::string, std::shared_ptr<const struct VfxSimDef>> fxSims_;  // camera effect preview (8.1)
 public:
     QString findVfxExport(const QString& name) const;
+    // The effect export files of the converter's stock cache [0] and of vfx_cache [1], by the file name's first part:
+    // listed once by findVfxExport, again after forgetVfxFiles().
+    mutable QHash<QString, QStringList> vfxFiles_[2];
+    mutable bool vfxFilesListed_ = false;
+    void forgetVfxFiles() { vfxFilesListed_ = false; }
 private:
 
 public:

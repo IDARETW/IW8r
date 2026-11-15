@@ -171,8 +171,10 @@ void ModelCache::saveDetail(const QString& name, const QString& exportPath) cons
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
 
-std::optional<XModelInfo> ModelCache::loadDetail(const QString& name) const {
-    QFile f(detailPath(name));
+std::optional<XModelInfo> ModelCache::loadDetail(const QString& name) const { return readDetail(detailPath(name)); }
+
+std::optional<XModelInfo> ModelCache::readDetail(const QString& path) {
+    QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return std::nullopt;
     const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
     if (o.isEmpty()) return std::nullopt;
@@ -326,7 +328,7 @@ std::optional<ImportedModel> ModelCache::loadModel(const QString& name, QString*
 }
 
 std::optional<ImportedModel> ModelCache::loadGlb(const QString& path, const QStringList& materials, const QString& name,
-                                                 QString* err) const {
+                                                 QString* err) {
     GlbReadOptions opt;
     opt.scale = 1.0 / kMetresPerInch;  // glTF metres (after the node scale) to inches, Y-up
     ImportedModel m;
