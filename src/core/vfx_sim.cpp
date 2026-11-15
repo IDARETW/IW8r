@@ -692,4 +692,14 @@ AABB vfxBounds(const VfxSimDef& def, double loopSeconds, int steps, uint32_t see
     return box;
 }
 
+VfxDistortion vfxDistortion(const double m[3], double vertexAlpha, const double scale[2], const double tangent[3], const double bitangent[3]) {
+    VfxDistortion out;
+    const auto sat = [](double x) { return x < 0 ? 0.0 : x > 1 ? 1.0 : x; };
+    out.k = sat(m[2] * vertexAlpha - 0.25) * (4.0 / 3.0);
+    const double dx = scale[0] * out.k * (2 * m[0] - 1), dy = scale[1] * out.k * (2 * m[1] - 1);
+    for (int i = 0; i < 3; ++i) out.offset[i] = dx * tangent[i] + dy * bitangent[i];
+    out.alpha = sat(4 * m[2] * vertexAlpha);
+    return out;
+}
+
 }  // namespace iw8r

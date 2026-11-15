@@ -84,6 +84,9 @@ bool packStockLgvAtlases(const std::vector<const StockLgvAtlas*>& in, StockLgvSt
 
 // E(n) of research 105 §1.4 (band weights 1, 4/9, 1/16), clamped >= 0, before bakedLightScale. n: unit world normal.
 void evalStockLgv(const StockLgvSh& s, const double n[3], double outRgb[3]);
+// The probe's light averaged over every direction (the L1 and L2 terms average to zero): 0.282095 x dc, at least 0.
+// A lit particle has no surface normal; the effect preview lights each one with this (research 139 section 3).
+void stockLgvAverage(const StockLgvSh& s, double outRgb[3]);
 
 // ---- The tetrahedral light grid (research 105 section 2.1) ----------------------------------------------------------
 // gpuLightGrid.gpuLightGrid of the gfx_map_trzone export: probes on an adaptive lattice, joined into tetrahedra. The

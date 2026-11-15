@@ -153,6 +153,18 @@ std::vector<VfxParticle> sampleVfx(const VfxSimDef& def, double t, uint32_t seed
 // (loops -1) or `loops` times then holding the last frame. 0 without an atlas or when frameCount < 2.
 int vfxAtlasFrame(const VfxEmitterSim& e, const VfxParticle& p, int frameCount);
 
+// Research 132 G13 (the world distortion pixel shader, VERIFIED) applied to an effect quad (research 139 section 2):
+// the distortion image texel m (slot 157, each channel 0..1) and the vertex alpha a give
+//   k = saturate(m.z a - 0.25) x 4/3,  D = scale.x k (2 m.x - 1) T + scale.y k (2 m.y - 1) B
+// (T, B the quad's unit tangent and bitangent in the world, scale = material constant 127.xy in inches): the pixel
+// shows the scene at its point + D, with alpha saturate(4 m.z a).
+struct VfxDistortion {
+    double offset[3] = {0, 0, 0};  // D, inches
+    double k = 0;
+    double alpha = 0;
+};
+VfxDistortion vfxDistortion(const double m[3], double vertexAlpha, const double scale[2], const double tangent[3], const double bitangent[3]);
+
 // 8.9: the space the effect's particles cover (each particle's centre +- half its size), sampled at `steps` times over
 // its run (one-shot: its duration; looping: `loopSeconds`). Invalid box when nothing is alive at any sample.
 AABB vfxBounds(const VfxSimDef& def, double loopSeconds = 4.0, int steps = 48, uint32_t seed = 1);
