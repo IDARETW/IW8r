@@ -18,6 +18,12 @@ listed in their reports under `out/ida_types/results/`. Backups: `out/ida_types/
 
 | `playerState_s` | size 21372 -> 21368: dropped the last member `viewLinkEntsFollowRemoteEyes` (bool +0x5378, placed from game-test, no Replay access) and its 3-byte pad; nothing else moved | `MSG_ReadDeltaPlayerstate` 0x1412D3D90: `memset_0(dest, 0, 0x5378u)` and `memcpy_0(v7, v8, 0x5378u)` (A005); `gclient_s.sess` starts at +0x5378 (A008, A009). Game-test puts the bool at 0x53A0; the Replay shift there is -44 overall, so it probably sits at +0x5374 (inside `_pad5298`), UNCONFIRMED. Nothing embeds `playerState_s` by value (`gclient_s.ps` is a byte array) |
 
+| `EntityLoDs` | size 256 -> 260 (tail pad 252 -> 256) | `MSG_ReadDeltaEntityLoD` 0x1412D1D00 (lodIndex +0, 64 dwords from +4); ring stride `+ 260 * idx` in `SV_ReadDeltaCachedEntityLoD` 0x141384C00 |
+| `CgSnapshotMP` | dropped the 4-byte pad after `entitiesLoD` (size stays 763992) | the pad existed only because the old `EntityLoDs` was 256 |
+| `SnapshotInfo`, `ClSnapshot` | grew with `EntityLoDs` (+8 and +4): NOT checked in Replay | left for their agents (A052 owns `ClSnapshot`; `SnapshotInfo` is unassigned) |
+| `clientSession_t` | size 2456 -> 2432, members shifted as planned below; 7 unconfirmed names dropped | A009, see the plan below |
+| `gclient_s` | size 64592 -> 64496; `ps` is now `playerState_s` (21368); `playerGround` is a named 80-byte array until `BgGroundState` / `trace_t` are settled; dropped `mpviewer` and `footstepWeight` (no room, no access) | A008 delta runs: all 15 confirmed checkpoints land on their members (sess 21368, mlg 23800, flags 24016, buttons 24024, omnvarPmoveData 41176, playerBox 43580, playerGroundPersistent 43684, executionState 43696, autoUseDelayInfo 63532, lockedTargetOffset 63932, animOverrideVehicleType 63968, entityLoDs 63980, nearEntities 64240). Note: the clients array global is named `level_transientVisibility` in this database |
+
 ### Agent edits re-checked
 
 | Agent | Edit | Check |
@@ -40,6 +46,16 @@ listed in their reports under `out/ida_types/results/`. Backups: `out/ida_types/
 lands at +21368 (-48); `clientSession_t` is 2432 in Replay if `mlgSpectatorClientInfo` (216, confirmed by A009)
 follows it directly, which puts `flags` at 24016 as Replay reads it (-24); A008 places a further -20 in the
 playerBox/pad area and -4 in the tail.
+
+`EntityLoDs` = 260 has a second proof: `SV_ReadDeltaCachedEntityLoD` 0x141384C00 indexes its ring as
+`s_snapTransientVisibilityRing + 260 * idx`.
+
+`clientSession_t` plan (A009, raw instructions in its report): members up to +0x490 unchanged; from
+`weaponHudIconOverrides` (+0x4B0) to `eFlags` (+0x968) at -0x14 (`G_Client_SetEntUnusable` `or [r8+583Ch], edx`,
+`PlayerCmd_GetMLGSpectatorTeam` `[rax+5A3Ch]`, `PlayerCmd_GetMLGSelectedCamera` `[rax+5A38h]`, eFlags `[rsi+5CCCh]`);
+from `isPrivatePartyHost` (+0x97C) on at -0x18 (stores at sess+0x964/0x968/0x970/0x978); size 0x980. Dropped as
+unconfirmed: `sightedByPlayers`, `lastDeathTime` (the 20 bytes are most likely there), `hudData`, `savedSpawnCount`,
+`savedServerTime`, `savedFootstepCount`, `persistentDataArchived` (one 4-byte member of these is missing).
 
 `EntityLoDs` is embedded in five structs, so the resize waits for the wave 1 agents to finish:
 `SnapshotInfo.newEntitiesLoD` (+340, followed by a 4-byte pad: fits 260) and `CgSnapshotMP.entitiesLoD` (+763732,

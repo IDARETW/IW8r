@@ -561,7 +561,7 @@
       "G_LoadMainState",
       "ClientScr_SetSessionTeam"
      ],
-     "note": "ps is unsigned __int8[21412] (the game-test playerState_s size). Do not retype it; propose 'playerState_s ps' plus a pad once playerState_s's Replay size is verified."
+     "note": "Rebuilt by the coordinator in wave 1 (64496 bytes, ps = playerState_s 21368)."
     }
    ]
   },
@@ -828,7 +828,7 @@
       "CG_SnapshotMP_SetNextSnap",
       "ClActiveClientMP::AllocSnapshotMemory"
      ],
-     "note": "net-field lists: the static table s_netFieldListsTable (0x142498CA0) holds every list with each field's offset and width (A004 read playerState_s from it: key 27, 564 entries); the s_msgNetFieldListType* globals are only run-time copies (0xFF in the file). Also read the MSG_ReadDelta*/MSG_WriteDelta* code"
+     "note": "net-field lists: the static table s_netFieldListsTable (0x142498CA0) holds every list with each field's offset and width (A004 read playerState_s from it: key 27, 564 entries); the s_msgNetFieldListType* globals are only run-time copies (0xFF in the file). Also read the MSG_ReadDelta*/MSG_WriteDelta* code. Also, A008 (wave 1): G_ClientMP_Disconnect clears 0x190 (400) bytes at gclient+22012 = sess+0x284; the type is 408. Check whether that is the whole clientState_t."
     },
     {
      "name": "ScoreInfo",
@@ -5641,7 +5641,8 @@
       "Mantle_Move",
       "PM_BeginWeaponChange",
       "PM_Weapon_FinishWeaponChange"
-     ]
+     ],
+     "note": "pml_t embeds trace_t (see the trace_t note)."
     },
     {
      "name": "MantleResults",
@@ -5696,7 +5697,8 @@
      ],
      "size_evidence_candidates": [
       "CG_Particle_CreateFxPhysicsObjects"
-     ]
+     ],
+     "note": "A008 (wave 1): gclient_s.playerGround (BgGroundState) is 80 bytes in Replay, 16 less than the type; if BgGroundState holds a trace_t, trace_t is 72 in Replay (type 96, game-test 88). Check."
     },
     {
      "name": "BgWeaponMap",
@@ -6525,7 +6527,8 @@
       "CG_SnapshotMP_ReadNextSnapshot",
       "CG_SnapshotMP_ResetEntity_Internal",
       "CG_PlayersMP_UpdatePlayerEventPriorities"
-     ]
+     ],
+     "note": "Coordinator (wave 1) grew EntityLoDs to 260 and dropped the 4-byte pad after entitiesLoD; size unchanged at 763992."
     },
     {
      "name": "agentState_s",
@@ -6699,7 +6702,8 @@
      ],
      "size_evidence_candidates": [
       "ClActiveClientMP::AllocSnapshotMemory"
-     ]
+     ],
+     "note": "Coordinator (wave 1) grew EntityLoDs 256 -> 260 (confirmed); ClSnapshot.entitiesLoD grew with it, so ClSnapshot is now 4 bytes bigger: check its Replay size."
     },
     {
      "name": "game_hudelem_t",

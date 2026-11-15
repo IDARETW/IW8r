@@ -328,6 +328,72 @@ def embedded_in(child):
                       (nx.name, nx.offset // 8) if nx else "(last)")
 
 
+def remap(name, new_size, keep, extra=(), apply=False):
+    """COORDINATOR ONLY. Rebuild a struct at new_size (same ordinal and pack) from measured Replay deltas.
+    keep:  [(old_lo, old_hi, delta), ...]  every non-pad member wholly inside [old_lo, old_hi) of the CURRENT layout is
+           kept at old_offset + delta;
+    extra: [(new_offset, name, ctype), ...] members placed explicitly (retypes, replacements).
+    Everything else becomes _padXXX (unconfirmed members are dropped, so list them in the log). Refuses overlaps."""
+    til, t, u = _get(name)
+    if any(u[i].is_bitfield() for i in range(len(u))):
+        raise ValueError("%s has bitfields" % name)
+    items = []
+    for i in range(len(u)):
+        m = u[i]
+        if _PAD.match(m.name or ""):
+            continue
+        mo, ms = m.offset // 8, m.size // 8
+        for lo, hi, d in keep:
+            if lo <= mo and mo + ms <= hi:
+                items.append((mo + d, ms, m.name, m.type))
+                break
+    for off, nm, ct in extra:
+        ft = _ctype(ct)
+        items.append((off, ft.get_size(), nm, ft))
+    items.sort(key=lambda x: x[0])
+    names = [x[2] for x in items]
+    if len(names) != len(set(names)):
+        raise ValueError("duplicate member names: %s" % sorted({n for n in names if names.count(n) > 1}))
+    kept = set(names)
+    gone = [u[i].name for i in range(len(u)) if not _PAD.match(u[i].name or "") and u[i].name not in kept]
+    nu = ida_typeinf.udt_type_data_t()
+    nu.taudt_bits, nu.pack, nu.sda = u.taudt_bits, u.pack, u.sda
+    nu.is_union = False
+    cur = 0
+    for off, ms, nm, ty in items:
+        if off < cur:
+            raise ValueError("%s at 0x%X overlaps the previous member (ends 0x%X)" % (nm, off, cur))
+        if off > cur:
+            nu.push_back(_pad_member(cur, off - cur))
+        m = ida_typeinf.udm_t()
+        m.name, m.type, m.offset, m.size = nm, ty, off * 8, ms * 8
+        nu.push_back(m)
+        cur = off + ms
+    if cur > new_size:
+        raise ValueError("members end at 0x%X, past the new size 0x%X" % (cur, new_size))
+    if cur < new_size:
+        nu.push_back(_pad_member(cur, new_size - cur))
+    nt = ida_typeinf.tinfo_t()
+    if not nt.create_udt(nu, ida_typeinf.BTF_STRUCT) or nt.get_size() != new_size:
+        raise ValueError("rebuilt size differs; nothing changed")
+    chk = ida_typeinf.udt_type_data_t()
+    nt.get_udt_details(chk)
+    want = [(x[2], x[0]) for x in items]
+    got = [(chk[i].name, chk[i].offset // 8) for i in range(len(chk)) if not _PAD.match(chk[i].name or "")]
+    if want != got:
+        raise ValueError("rebuilt offsets differ; nothing changed")
+    print("%s: size %d -> %d; %d members kept/placed; dropped (unconfirmed): %s" % (name, t.get_size(), new_size,
+          len(items), gone))
+    if not apply:
+        print("DRY RUN OK")
+        return False
+    err = nt.set_numbered_type(til, t.get_ordinal(), ida_typeinf.NTF_REPLACE, name)
+    if err != ida_typeinf.TERR_OK:
+        raise ValueError("IDA could not save %s (error %s)" % (name, err))
+    print("APPLIED")
+    return True
+
+
 def backup_all(path):
     import os
     os.makedirs(os.path.dirname(path), exist_ok=True)
