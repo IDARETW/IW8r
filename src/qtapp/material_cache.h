@@ -54,6 +54,8 @@ public:
         // technique's material constants by index: 18 transmission tint, 36 emissive scale, 103 wrap diffuse, 104 the
         // wrap normal blend (rgba floats). Missing = not in the material.
         QString transmissionDds;
+        // Research 139: a distortion set's (dist_10) image, texture slot 157; its strength is constant 127.
+        QString distortionDds;
         std::map<int, std::array<float, 4>> consts;
         // Material body fields (research 66); -1 / empty for entries cached before they were kept.
         qint64 surfaceFlags = -1;  // bit 0x80 = nodraw (shadow-only, e.g. foliage *_shadowcaster meshes)
@@ -136,6 +138,7 @@ private:
         QString mask;           // opacity / cut-out image name (slot 27 of alpha-tested and blended sets), if any
         QString emissive;       // slot 18 image name, if any
         QString transmission;   // slot 68 image name, if any (research 107)
+        QString distortion;     // slot 157 image name, if any (research 139)
         std::map<int, std::array<float, 4>> consts;  // Entry::consts
         qint64 surfaceFlags = -1;
         QString materialType;

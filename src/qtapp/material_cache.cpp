@@ -211,6 +211,8 @@ void MaterialCache::loadIndex() {
         e.emissiveDds = emissive.isEmpty() ? QString() : QDir(root_).filePath(emissive);
         const QString transmission = o.value("transmission").toString();
         e.transmissionDds = transmission.isEmpty() ? QString() : QDir(root_).filePath(transmission);
+        const QString distortion = o.value("distortion").toString();
+        e.distortionDds = distortion.isEmpty() ? QString() : QDir(root_).filePath(distortion);
         const QJsonObject cs = o.value("consts").toObject();
         for (auto it = cs.begin(); it != cs.end(); ++it) {
             const QJsonArray a = it.value().toArray();
@@ -277,6 +279,8 @@ void MaterialCache::loadIndex() {
             for (const ModelLayerKind k : tk.kind) code = code || k == ModelLayerKind::Code;
             if (code) continue;
         }
+        // Resolved before a distortion set's slot 157 image and constant 127 were kept (research 139): resolve again once.
+        if (!e.failed && o.value("constRules").toInt() < 9 && e.techset.contains("dist_10")) continue;
         // Resolved before constant 94 (the atlas of effect materials, research 138) was kept: effect sets resolve again once.
         if (!e.failed && o.value("constRules").toInt() < 8 && e.techset.contains("_effect_")) continue;
         // Resolved before constant 45 was kept (static-model displacement, research 133 section 3): model materials with
@@ -366,8 +370,9 @@ void MaterialCache::writeIndex() const {
         if (!e.failed) o.insert("maskRules", 4);  // 3: slot-27 opacity masks + body flags (research 66); 4: + emissive
         if (!e.failed && !e.emissiveDds.isEmpty()) o.insert("emissive", root.relativeFilePath(e.emissiveDds));
         if (!e.failed && !e.transmissionDds.isEmpty()) o.insert("transmission", root.relativeFilePath(e.transmissionDds));
+        if (!e.failed && !e.distortionDds.isEmpty()) o.insert("distortion", root.relativeFilePath(e.distortionDds));
         if (!e.failed) {
-            o.insert("constRules", 8);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68; 2: bits order; 3: + 63; 4: + 79-82; 5: + 110 / 111; 6: code-layer rows; 7: + 45; 8: + 94
+            o.insert("constRules", 9);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68; 2: bits order; 3: + 63; 4: + 79-82; 5: + 110 / 111; 6: code-layer rows; 7: + 45; 8: + 94; 9: + 127, slot 157
             QJsonObject cs;
             for (const auto& [k, f] : e.consts) cs.insert(QString::number(k), QJsonArray{f[0], f[1], f[2], f[3]});
             if (!cs.isEmpty()) o.insert("consts", cs);
@@ -536,7 +541,7 @@ void MaterialCache::buildImageRound() {
         imagesListed_ = true;
         for (const Work& w : works_) {
             if (!w.found) continue;
-            QStringList names{w.color, w.normal, w.mask, w.emissive, w.transmission};
+            QStringList names{w.color, w.normal, w.mask, w.emissive, w.transmission, w.distortion};
             if (w.tintMasked && w.tint >= 0) names << w.tintMask;  // only a tinted material needs its mask
             names << w.layerColor << w.layerNormal << w.layerReveal;  // layered materials (research 97)
             for (const QString& name : names) {
@@ -682,7 +687,7 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
         }
         constBytes[index] = bytes;
         if (finite && (index == 18 || index == 36 || index == 45 || index == 63 || (index >= 79 && index <= 82) || index == 94 ||
-                       index == 103 || index == 104 || index == 110 || index == 111))
+                       index == 103 || index == 104 || index == 110 || index == 111 || index == 127))
             work.consts[index] = f;
     }
     if (work.modelLayers >= 2) work.layerPsData = work.psData;  // the raw lit buffer, before the single-layer rows below
@@ -751,6 +756,7 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
         if (slot == 27 && opacitySlot) work.mask = name;              // opacity slot (wins over a name match)
         if (slot == 18 && work.emissive.isEmpty()) work.emissive = name;  // emissive slot
         if (slot == 68 && work.transmission.isEmpty()) work.transmission = name;  // transmission slot (research 107)
+        if (slot == 157 && work.distortion.isEmpty()) work.distortion = name;  // distortion slot (research 139)
         if (slot == 59 && work.tintMask.isEmpty()) work.tintMask = name;  // tint mask (research 95)
         // Cut-out mask: Replay alpha-tested materials carry a signed-distance-field image (`<x>_sdf~hash`); the colour
         // image's alpha is specular (`_c&_s` packing), not opacity.
@@ -847,6 +853,10 @@ void MaterialCache::finishBatch() {
             if (!w.transmission.isEmpty() && images_.count(w.transmission)) {
                 const Image& im = images_.at(w.transmission);
                 if (im.done) e.transmissionDds = im.file;  // optional, as the emissive map
+            }
+            if (!w.distortion.isEmpty() && images_.count(w.distortion)) {
+                const Image& im = images_.at(w.distortion);
+                if (im.done) e.distortionDds = im.file;  // optional, as the emissive map
             }
             e.consts = w.consts;
             e.layerCount = w.layerCount;

@@ -548,9 +548,11 @@ load from Replay's always-loaded common zones, so an effect that lives only in a
 
 **View > Effect Preview in Camera** plays your `fx_origin` effects and a stock map's own placed effects in the
 textured views: each particle with its sprite image and atlas animation, its size and colour over its life, its
-spawn shape, spin, forces and gravity, turned by the `angles`. Smoke and dust are lit by the map's light in Game
-Lighting; fire, sparks and glows add their light. Lens flares, heat haze, debris models and effects that spawn other
-effects are not shown. The first time an effect material is needed its images are fetched in the background.
+spawn shape, spin, forces and gravity, turned by the `angles`. In Game Lighting smoke and dust are lit particle by
+particle: the stock map's light grid where each one is, and the sun unless the scene shades it. Fire, sparks and glows
+add their light. Sun flares appear on the screen at the sun (hidden while something stands in front of it), and heat
+haze moves what is behind it. Debris models and effects that spawn other effects are not shown. The first time an
+effect material is needed its images are fetched in the background.
 
 **Your own effects** are made in **Tools > Effect Editor**. Build the effect from elements: an image (or a soft
 default particle), blended or additive, looping or one-shot, size and colour from start to end, and so on. Save it

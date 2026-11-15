@@ -5,6 +5,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Effect preview: flares, heat haze and particle light** (research 139): sun flares (the stock `ecf/` flare sets) are
+  drawn on the screen at the sun, their pieces along the line through the centre, hidden while the world stands in front
+  of the sun; distortion effects (heat haze, `dist_10` sets) move the scene behind them as the game's distortion shader
+  does; lit smoke and dust in Game Lighting take the stock light grid at each particle and the sun shadowed at its
+  centre instead of one light for the whole map. A/B switches: `IW8R_NO_PARTICLE_LIGHT`, `IW8R_NO_DISTORTION`,
+  `IW8R_NO_FLARE_OCCLUSION`. The flare layout and the sun as a sun flare's source are inferred from the data (IDA was not
+  available); research 139 says what to check.
+
 - **Side bar and bottom area**: the panels that were tabbed along the bottom of the window are icons in a narrow bar
   at the left edge. The browsers (Materials, Models, Prefabs, Effects, Sounds, Images, IW8 Spawns, Undo History) open
   in a side section next to the views, one at a time, at the width you last gave it; a second click closes it. The

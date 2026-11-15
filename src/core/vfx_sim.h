@@ -109,6 +109,29 @@ struct VfxEmitterSim {
     int mirrorH = 0, mirrorV = 0;  // 0 none, 1 always, 2 random
     bool tailScaleWithVelocity = false;
     double orientQuat[4] = {0, 0, 0, 1};  // oriented sprite, effect axes (x, y, z, w)
+    // A flare (element 3, research 139 section 1): INIT_FLARE. position: where along the line from the source through the
+    // screen's centre the piece sits (1 at the source, 0 at the centre, -1 mirrored); the radial scales are lerped by
+    // curves 0 / 1, the radial rotation by curve 2 and the depth scale by curve 3 (INFERRED, section 1.3).
+    struct Flare {
+        bool present = false;
+        double position = 1;
+        double direction[3] = {0, 0, 0};
+        int angularRotCount = 0;
+        uint32_t flags = 0;
+        double depthRangeMin = 0, depthRangeMax = 0, depthValueMin = 1, depthValueMax = 1;
+        double radialRotMin = 0, radialRotMax = 0;
+        double scaleXMin = 1, scaleXMax = 1, scaleYMin = 1, scaleYMax = 1;
+        VfxCurve curves[4];
+    } flare;
+    // INIT_OCCLUSION_QUERY: the source's visibility test (a 3x3 screen mask around the source, Replay's
+    // cs_flare_occlusion; world size of the tested area, its scale).
+    struct Occlusion {
+        bool present = false;
+        double scale = 1;
+        double worldSize[2] = {0, 0};
+        double depthBias = 0;
+        bool offscreenRaycast = false;
+    } occlusion;
 };
 
 struct VfxSimDef {
@@ -164,6 +187,17 @@ struct VfxDistortion {
     double alpha = 0;
 };
 VfxDistortion vfxDistortion(const double m[3], double vertexAlpha, const double scale[2], const double tangent[3], const double bitangent[3]);
+
+// The screen quad of one flare piece (research 139 section 1.3, INFERRED from the stock flares' data and the converter's
+// notes). sourceNdc = the effect's origin on screen (x right, y up, -1..1), aspect = width / height, depth = its distance
+// from the camera (inches), size = the particle's attribute size (percent of the screen height).
+struct VfxFlareSprite {
+    double centre[2] = {0, 0};  // NDC
+    double half[2] = {0, 0};    // half width, half height, NDC
+    double angle = 0;           // radians, counter-clockwise
+    double radial = 0;          // the source's distance from the centre, 0..1 (1 = a screen corner)
+};
+VfxFlareSprite vfxFlareSprite(const VfxEmitterSim& e, const double size[2], const double sourceNdc[2], double aspect, double depth);
 
 // 8.9: the space the effect's particles cover (each particle's centre +- half its size), sampled at `steps` times over
 // its run (one-shot: its duration; looping: `loopSeconds`). Invalid box when nothing is alive at any sample.

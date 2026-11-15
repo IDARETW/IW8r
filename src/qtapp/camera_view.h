@@ -249,7 +249,12 @@ public:
     // An effect material as the particle preview needs it (research 138 section 6): ready = the material cache has it.
     struct ParticleMaterial {
         bool ready = false;
-        bool skip = false;          // distortion and flare sets: not drawn
+        bool skip = false;          // not drawn (a distortion set without its image or strength)
+        // A distortion set (research 139 section 2): its slot 157 image and constant 127.xy (inches).
+        bool distortion = false;
+        std::string distortionFile;
+        float distScale[2] = {0, 0};
+        bool flare = false;  // an ecf/ flare set (research 139 section 1): additive, on screen
         bool lit = true;            // lit sets (albedo, alpha blend); unlit sets add their emissive image
         std::string colorFile, alphaFile, emissiveFile;
         std::string densityFile;    // slot 68 (one channel, a transmittance): alpha x (1 - T) (lit sets without slot 27)
@@ -265,7 +270,18 @@ public:
     const std::vector<StockEffect>& stockEffects() const { return stockEffects_; }  // bench cameras
     size_t effectParticles() const { return fxParticles_; }
     size_t effectParticlesDrawn() const { return fxParticles_; }  // tests
+    size_t effectParticlesGridLit() const { return fxGridLit_; }    // lit particles that took the light grid (tests, bench)
+    size_t effectDistortionQuads() const { return fxDistortion_; }  // distortion quads handed to the renderer
+    double effectDistortionAlphaMax() const { return fxDistAlphaMax_; }
+    double effectDistortionAlphaMean() const { return fxDistortion_ ? fxDistAlphaSum_ / double(fxDistortion_) : 0.0; }
+    size_t effectDistortionDrawn() const { return renderer_.distortionQuadsDrawn(); }
+    bool effectSunShadowUsed() const { return renderer_.particleShadowUsed(); }
+    size_t effectFlareQuads() const { return fxFlares_; }                // flare pieces handed to the renderer
+    Vec3 gameSunTowardNow() const { return gameLookOn() ? gameSunToward() : ctx_->scene.sunToward; }  // bench cameras
+    size_t effectFlaresDrawn() const { return renderer_.flareQuadsDrawn(); }
     void setEffectTime(double t) { fxTimeOverride_ = t; }        // tests: < 0 = live
+    size_t fxGridLit_ = 0, fxDistortion_ = 0, fxFlares_ = 0;
+    double fxDistAlphaMax_ = 0, fxDistAlphaSum_ = 0;  // the distortion particles' vertex alphas (bench)
     QString activeProbe() const { return activeProbe_; }  // tests
     size_t loadedNormalMaps() const;
     void materialImagesChanged();  // re-resolve materials that had no answer yet
