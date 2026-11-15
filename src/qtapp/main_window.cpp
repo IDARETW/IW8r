@@ -426,6 +426,11 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         }
         if (const auto* c103 = cst(103)) f.wrap = {(*c103)[0], (*c103)[1], (*c103)[2], 1.0f};
         if (const auto* c63 = cst(63)) f.uvAnim = *c63;  // UV animation (research 133 section 1)
+        if (const auto* c110 = cst(110))  // the water's two scrolling normal layers (research 133 section 5.3)
+            if (const auto* c111 = cst(111)) {
+                std::copy(c110->begin(), c110->end(), f.dualNormal.begin());
+                std::copy(c111->begin(), c111->end(), f.dualNormal.begin() + 4);
+            }
         for (int k = 0; k < 4; ++k)  // the flag / foliage waves (research 133 section 6)
             if (const auto* c = cst(79 + k)) std::copy(c->begin(), c->end(), f.wave.begin() + 4 * k);
         f.unlit = parseTechset(e->techset.section('/', -1).toStdString()).family == TechsetFamily::UnlitEffect;

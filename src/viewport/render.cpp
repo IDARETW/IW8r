@@ -582,7 +582,9 @@ float3 gamePost(float3 c) {
 // reveal sharpness k, multiply), layerTint = tint RGB, layerUvT = (cos, sin, scale u, scale v), layerUvO = (offset u, v). The
 // vertex blend weight is in the tangent x (the stock reference has no tangents). t12: the alpha (red) + reveal (green) map.
 cbuffer Layer : register(b7) { float4 layerP; float4 layerTint; float4 layerUvT; float4 layerUvO;
-                               float4 matE; float4 matTr; float4 matW; float4 matX; };  // matE/Tr/W: research 107 (RefLayer::extra)
+                               float4 matE; float4 matTr; float4 matW; float4 matX;  // matE/Tr/W: research 107 (RefLayer::extra)
+                               float4 matRows8[4];  // rows 8-11: a prop's waves (PropWave, VS)
+                               float4 matDual0; float4 matDual1; };  // the water's constants 110 / 111 (research 133 section 5.3)
 Texture2D tr0 : register(t19);  // the transmission image (texture slot 68, sRGB) when matTr.w = 1
 // Wrap diffuse (research 107 section 2.2): w = constant 103 per channel.
 float wrapF(float x, float w) {
@@ -1064,7 +1066,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // A stock base batch with its material constants (layerP.x = 0, layerUvO.y = 1; research 95): gloss from the
         // normal map's red channel, cavity from its blue, the normal scaled by the material's strength.
         const bool baseMat = layerP.x < 0.5 && layerUvO.y > 0.5;
-        float nmGloss = -1.0, nmCavity = 1.0;
+        float nmGloss = -1.0, nmCavity = 1.0, dualGloss = -1.0;
         if (batchFlags.x > 0.5 && dot(i.n, i.n) > 0.5) {
             float4 nm = nrm0.Sample(samp0, uvS);
             if (baseMat) {
@@ -1075,7 +1077,29 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             float2 oct = float2(sd.x + sd.y, sd.x - sd.y) * 0.5;
             // The stock decode (research 95, W:425-428): the octahedral direction normalised, its z replaced by
             // 1 - 0.6 |xy|^2 (the normal map's relief is a little flatter than the plain decode).
-            const float2 nxy = normalize(float3(oct, max(1.0 - abs(oct.x) - abs(oct.y), 0.0))).xy;
+            float2 nxy = normalize(float3(oct, max(1.0 - abs(oct.x) - abs(oct.y), 0.0))).xy;
+            if (stockRef && baseMat && (matDual0.x > 0.0 || matDual1.x > 0.0)) {
+                // The water's two scrolling layers (research 133 section 5.3, PS_9786960c:138-187): uv x scale + time x
+                // scroll each, decoded alike, faded as the mip nears the last, summed by weight; gloss and cavity summed.
+                uint nw, nh, levels;
+                nrm0.GetDimensions(0, nw, nh, levels);
+                float2 sum = 0;
+                nmGloss = 0, nmCavity = 0;
+                [unroll] for (int k = 0; k < 2; ++k) {
+                    const float4 c = k == 0 ? matDual0 : matDual1;
+                    const float2 uvK = uvS * c.y + gameTime.x * c.zw;
+                    float4 nk = nrm0.Sample(samp0, uvK);
+                    const float fade = saturate((float(levels) - 1.0 - nrm0.CalculateLevelOfDetail(samp0, uvK)) * 0.5);
+                    nmGloss += nk.r * c.x, nmCavity += nk.b * c.x;
+                    nk.ga = (nk.ga - 0.5) * layerUvO.x + 0.5;
+                    const float2 sk = nk.ga * 2.0 - 1.0;
+                    const float2 ok = float2(sk.x + sk.y, sk.x - sk.y) * 0.5;
+                    sum += normalize(float3(ok, max(1.0 - abs(ok.x) - abs(ok.y), 0.0))).xy * fade * c.x;
+                }
+                nxy = sum;
+                // Each layer's gloss remapped, then summed by weight and saturated (the water is near-mirror).
+                dualGloss = saturate(nmGloss * layerTint.z + layerTint.w * (matDual0.x + matDual1.x));
+            }
             const float3 nT = normalize(float3(nxy, 1.0 - 0.6 * dot(nxy, nxy)));
             float2 slope = nT.xy / max(nT.z, 0.02);
             float3 Tt = i.t - Nf * dot(i.t, Nf);
@@ -1168,6 +1192,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                     diffAlbedo = albedo * max(1.0 - metal, 0.0);
                 }
                 if (nmGloss >= 0.0) glossM = saturate(nmGloss * layerTint.z + layerTint.w);
+                if (dualGloss >= 0.0) glossM = dualGloss;
             }
             const float gp = 1.0 - sqrt(1.0 - glossM);
             float a2 = 2.0 / (2.0 + exp2(20.0 * gp));
@@ -3429,6 +3454,12 @@ void SceneRenderer::setReferenceBaseExtra(size_t batch, const float extra[16], i
     layerParamsDirty_ = true;
 }
 
+void SceneRenderer::setReferenceBaseDualNormal(size_t batch, const float dual[8]) {
+    if (batch >= refLayers_.size() || refLayers_[batch].layer > 0 || refLayers_[batch].decal) return;
+    std::memcpy(refLayers_[batch].dual, dual, sizeof(refLayers_[batch].dual));
+    layerParamsDirty_ = true;
+}
+
 void SceneRenderer::setReferenceInstWave(size_t mesh, const float wave[16]) {
     if (mesh >= refTexInst_.size()) return;
     std::memcpy(refTexInst_[mesh].wave, wave, sizeof(refTexInst_[mesh].wave));
@@ -3481,6 +3512,7 @@ bool SceneRenderer::uploadLayerParams() {
                 std::memcpy(&all[j * 64], refLayers_[k].params, sizeof(refLayers_[0].params));
                 std::memcpy(&all[j * 64 + 16], refLayers_[k].extra, sizeof(refLayers_[0].extra));
                 maskExtraTerms(&all[j * 64 + 16]);
+                std::memcpy(&all[j * 64 + 48], refLayers_[k].dual, sizeof(refLayers_[0].dual));  // rows 12-13
                 // A base batch drawing a raw-alpha texture: opaque, its alpha the specular code.
                 if (refLayers_[k].layer == 0 && !refLayers_[k].decal && k < refTexIds_.size() && textureRawAlpha(refTexIds_[k]))
                     all[j * 64 + 1] = 2.0f;

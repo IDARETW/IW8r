@@ -235,8 +235,12 @@ void CameraView::render() {
         }
         refTexLayer_.clear();
         refTexVolume_.clear();
+        refTexBounds_.clear();
         for (auto& b : pendingRefTex_) {
             refTexMaterials_.push_back(b.material);
+            AABB bb;
+            for (const auto& v : b.tris) bb.add(Vec3{v.x, v.y, v.z});
+            refTexBounds_.push_back(bb);
             refTexLayer_.push_back(b.layer);
             RefDecalVolume dv;
             dv.on = b.decalVolume, dv.mask = b.decalMask, dv.a = b.decalA, dv.b = b.decalB, dv.order = b.decalOrder;
@@ -1313,6 +1317,11 @@ bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool pr
     if (waves) {
         renderer_.setReferenceInstWave(index, f->wave.data());
         uvAnimSeen_ = true;  // the view keeps redrawing while it moves
+    }
+    static const bool noDual = std::getenv("IW8R_NO_DUAL_NORMAL") != nullptr;  // A/B: one normal layer as before
+    if (f && !propMesh && !noDual && (f->dualNormal[0] > 0 || f->dualNormal[4] > 0)) {
+        renderer_.setReferenceBaseDualNormal(index, f->dualNormal.data());
+        uvAnimSeen_ = true;  // the layers scroll
     }
     if (!f || (f->emissiveScale[3] <= 0 && f->transTint[3] <= 0 && f->wrap[3] <= 0 && !f->unlit && !uvAnim)) return true;
     if (uvAnim) uvAnimSeen_ = true;

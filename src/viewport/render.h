@@ -297,6 +297,8 @@ public:
     void setReferenceBaseParams(size_t batch, const float params[16]);
     // Research 107 terms of a base batch / a prop mesh (RefLayer::extra layout) and their images (-1 = none).
     void setReferenceBaseExtra(size_t batch, const float extra[16], int emissiveTexture, int transmissionTexture);
+    // A base batch's dual scrolling normal (research 133 section 5.3): constants 110 and 111; rows 12-13 of its record.
+    void setReferenceBaseDualNormal(size_t batch, const float dual[8]);
     void setReferenceInstExtra(size_t mesh, const float extra[16], int emissiveTexture, int transmissionTexture);
     // A prop mesh's flag / foliage waves (research 133 section 6): constants 79, 80, 81, 82.
     void setReferenceInstWave(size_t mesh, const float wave[16]);
@@ -890,6 +892,7 @@ private:
         // Research 107 (base batches): emissive scale (c36) + on, transmission tint (c18) + on, wrap (c103) + on; in
         // the same 256-byte slot of b7 after params. Their images (texture ids, -1 = none): t3 and t19.
         float extra[16] = {};
+        float dual[8] = {};  // setReferenceBaseDualNormal: rows 12-13 (matDual0 / matDual1)
         int emissive = -1, transmission = -1;
     };
     std::vector<RefLayer> refLayers_;

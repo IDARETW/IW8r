@@ -290,6 +290,15 @@ weights 1 and gloss remap from cb3[3].y, the sum is saturated: the water is near
 3. Albedo x linearised vertex RGB (section 4). Vertex waves optional (sub-unit).
 4. No refraction, transparency or depth fade is needed for stock MP water on these maps.
 
+**Status 2026-11-14:** recipe items 1-3 are in the editor. The material cache keeps constants 110 / 111
+(constRules 5), the facts carry them (`dualNormal`), a world batch's record holds them in rows 12-13 of its 256-byte
+slot (`matDual0` / `matDual1`), and the Game Lighting PS decodes the two scrolling layers with the mip fade, sums the
+gloss (each remapped, then saturated) and the cavity. The SSR and UV-animation paths were already there. The gloss
+sum's byte units (`/ 256`, `c0 + 1`) are mapped onto the material's own gloss remap (INFERRED equivalent). Bench
+(Shipment, camera `3000 -600 400 10 -14 80`): the water shows finer ripples and a stronger sun glint;
+`IW8R_NO_DUAL_NORMAL=1` = one layer (A/B); 2.47 against 2.34 ms. The vertex waves on the water (0.3 units) are not
+drawn (world batches have no wave path; sub-unit).
+
 ## 6. Flag / foliage vertex animation (found on the way)
 
 Constants 79-82 (vertex rows) drive the three-sine wave of section 5.2 on 46 lit techsets (163 materials with

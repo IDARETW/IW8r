@@ -5,6 +5,10 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Shipment's harbour water in Game Lighting** (research 133 section 5.3): its two scrolling normal layers, faded
+  with distance, their gloss summed (near-mirror) as the game's water shader does, so the water ripples and catches
+  the sun. A/B: `IW8R_NO_DUAL_NORMAL=1`. The material cache reads such water materials again once.
+- Bench camera `mat <material part> N [distance] [yaw]` (`IW8R_BENCH_CAM`): frames a stock material's world batch.
 - **Stock props are lit per vertex from their light grid box in Game Lighting** (research 132 G7): the box's probes
   are sampled at each vertex, as the game's static-model shader does, with all eight SH terms (before: one sample at
   the box centre per placement, first order only), so a large prop (a container, a wall or a building made as a model)

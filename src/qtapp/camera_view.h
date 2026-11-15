@@ -182,6 +182,9 @@ public:
         bool translucent = false;
         // Research 133 section 1: constant 63, UV animation (u / s, v / s, radians / s about the texture centre).
         std::array<float, 4> uvAnim{0, 0, 0, 0};
+        // The water's dual scrolling normal (research 133 section 5.3): constants 110 and 111 (weight, UV scale, scroll
+        // per second u, v); zero = none.
+        std::array<float, 8> dualNormal{};
         // Research 133 section 6: the flag / foliage waves, constants 79, 80, 81, 82 (zero = none).
         std::array<float, 16> wave{};
     };
@@ -505,6 +508,16 @@ public slots:
         return n;
     }
     size_t referenceTriangles() const { return refDirty_ ? pendingRef_.size() / 3 : renderer_.referenceVertexCount() / 3; }
+    // The bounds of the Nth main stock reference batch whose material name holds `part` (bench cameras); none: invalid.
+    iw8r::AABB referenceMaterialBounds(const std::string& part, int n, std::string* material = nullptr) const {
+        int seen = 0;
+        for (size_t k = 0; k < refTexMaterials_.size() && k < refTexBounds_.size(); ++k)
+            if (refTexMaterials_[k].find(part) != std::string::npos && seen++ == n) {
+                if (material) *material = refTexMaterials_[k];
+                return refTexBounds_[k];
+            }
+        return iw8r::AABB{};
+    }
     // Textured stock reference (3.19): batches per stock material; textures load over the next frames.
     void setReferenceTextured(std::vector<app::ReferenceTexBatch> batches) {
         pendingRefTex_ = std::move(batches);
@@ -582,6 +595,7 @@ private:
     std::vector<app::ReferenceTexBatch> pendingRefTex_;
     bool refMoreToLoad_ = false;  // the reference loop stopped at the per-frame load budget
     std::vector<std::string> refTexMaterials_;
+    std::vector<iw8r::AABB> refTexBounds_;  // per main reference batch (referenceMaterialBounds)
     std::vector<int> refTexLayer_;  // parallel: 0 base, L >= 1 a layer batch of refTexMaterials_[k]
     struct RefDecalVolume {
         bool on = false;

@@ -405,6 +405,25 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
                 break;
             }
     }
+    // IW8R_BENCH_CAM="mat <material part> N [distance] [yaw] [fov]": look down at the Nth stock world batch whose material
+    // holds the part, from `distance` (default 400) units back along `yaw` (default 0) and half that above its centre.
+    if (camParts.size() >= 3 && camParts[0] == "mat") {
+        std::string material;
+        const iw8r::AABB bb = cam->referenceMaterialBounds(camParts[1].toStdString(), camParts[2].toInt(), &material);
+        if (bb.valid()) {
+            const double dist = camParts.size() >= 4 ? camParts[3].toDouble() : 400.0, yaw = camParts.size() >= 5 ? camParts[4].toDouble() : 0.0;
+            const iw8r::Vec3 c = bb.center();
+            const double r = yaw * 3.14159265358979 / 180.0;
+            benchCam[0] = c.x - std::cos(r) * dist, benchCam[1] = c.y - std::sin(r) * dist, benchCam[2] = c.z + dist * 0.5;
+            benchCam[3] = yaw, benchCam[4] = -26.5;  // looking at the centre
+            benchCam[5] = camParts.size() >= 6 ? camParts[5].toDouble() : 70;
+            fixedCam = true;
+            report << QString("bench_cam mat %1 at %2 %3 %4 size %5 %6 %7").arg(QString::fromStdString(material)).arg(c.x).arg(c.y).arg(c.z)
+                          .arg(bb.maxs.x - bb.mins.x).arg(bb.maxs.y - bb.mins.y).arg(bb.maxs.z - bb.mins.z);
+        } else {
+            report << "bench_cam mat: no batch with " + camParts[1];
+        }
+    }
     // IW8R_BENCH_NEAR=<radius>: the scene items near the bench camera (kind, label, bounds), to name what a shot shows.
     if (fixedCam && qEnvironmentVariableIsSet("IW8R_BENCH_NEAR")) {
         const double r = qEnvironmentVariable("IW8R_BENCH_NEAR").toDouble();
