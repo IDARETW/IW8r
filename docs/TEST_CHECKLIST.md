@@ -16,6 +16,8 @@ Mark each line OK / wrong (with a screenshot) and send it back.
     the floor's light; wall-floor corners and contact shadows are wider and softer (the game's GTAO).
   - King: containers show painted metal on the corrugated panels and their doors on the frame; worn concrete blocks
     show chipped edges (layer normals).
+  - Hideout: the brown corrugated siding and the rubble in the open dumpsters have a faint clear-coat sheen; the
+    parked walfa cars' lower panels carry less dirt than before (their dirt mask is now read as the game reads it).
   - Shipment: the harbour water ripples and catches the sun.
   - Verdansk: opens and moves at about 22 ms a frame again (vehicle spawns draw a low-detail model).
   - A door frame you place (the wooden door bundle) lets you walk through in Play Preview.

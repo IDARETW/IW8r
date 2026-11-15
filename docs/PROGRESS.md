@@ -22,6 +22,12 @@
   Benches: Hideout 9.4, Speedball 5.8, Aniyah 11.8, Verdansk 22.4 ms. Installer and zip 03:33 (no ini). Left by
   decision: G13 distortion, static-model displacement, the 14 code layers. Owner: Cinder Rail in game (item 0) and the
   editor look list at the top of TEST_CHECKLIST.
+  2026-11-15 morning: code layers = clear coats (research 137 by a helper agent; port in render.cpp coat block, record
+  rows 26-29, t52 / t53, canonical rows for code-layer sets in material_cache constRules 6; IW8R_NO_COAT). The coat
+  weight is alpha x mask with w = 1 (not foldWeight). The walfa's slot-126 mask has G = 0, so its coat is off; seen on
+  Hideout's corrugated siding and dumpster rubble. Slot-126 masks are stored sRGB (all cached ones): now read linear
+  through a "\x07<image>" key (texture_decode ddsIsSrgb; IW8R_RAW_LAYER_MASKS). Debug path for a shader weight: on/off
+  colours per factor with IW8R_NO_HDR, then read the mask image itself (BC1 decode in Python).
 - 2026-11-14 late evening (after the Cinder Rail fix): converter e648a414 (research 134 rewritten from the client
   PDB: DB_PatchMem's asset stack of two is pushed by nearly every loader; every asset type counts) is live, and the
   fixed Cinder Rail (same inputs as the 20:15 build) was installed at 20:40 with the owner's OK; not yet seen loading.

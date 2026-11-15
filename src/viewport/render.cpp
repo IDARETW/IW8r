@@ -616,7 +616,8 @@ cbuffer Layer : register(b7) { float4 layerP; float4 layerTint; float4 layerUvT;
                                float4 matRows8[4];  // rows 8-11: a prop's waves (PropWave, VS)
                                float4 matDual0; float4 matDual1;  // the water's constants 110 / 111 (research 133 section 5.3)
                                float4 matRows14[2];
-                               float4 foldL[10]; };  // rows 16-25: a prop mesh's two folded layers (research 136)
+                               float4 foldL[10];  // rows 16-25: a prop mesh's two folded layers (research 136)
+                               float4 coatL[4]; };  // rows 26-29: its clear coat (research 137)
 Texture2D tr0 : register(t19);  // the transmission image (texture slot 68, sRGB) when matTr.w = 1
 // Wrap diffuse (research 107 section 2.2): w = constant 103 per channel.
 float wrapF(float x, float w) {
@@ -979,6 +980,8 @@ Texture2D foldN1 : register(t48);  // the folded layers' normal + gloss + cavity
 Texture2D foldN2 : register(t49);
 Texture2D foldT1 : register(t50);  // the folded layers' tint masks (slot 59 + L, flags & 64)
 Texture2D foldT2 : register(t51);
+Texture2D coatMap : register(t52);    // the clear coat's normal + gloss + cavity map (research 137)
+Texture2D coatAlpha : register(t53);  // its alpha (R)
 // A model layer folded into the prop's own pass (research 136 section 1.2-1.3): its weight from the vertex alpha
 // (vc.w = 1 + a), the reveal ramp, the alpha and the slot-126 mask, then lerp (0), multiply (1) or soft-light overlay
 // (2) of the linear albedo with the tinted layer colour.
@@ -1444,6 +1447,57 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             if (gameSkyScale.z > 0.5 && gameSkyScale.z < 1.5) return ssrMat ? float4(ssrDbg, ssrWDbg, ssrADbg, 1.0) : float4(0, 0, 0, 1);
             if (ssrTest) return float4(ssrTestColor, 1.0);
             c = diffAlbedo * indirect * kd * (1.0 - fmax) * aoMB + Fenv * S;
+            // A prop's clear coat (research 137 section 1.2): a second environment lobe over the finished ambient part,
+            // c x (1 - b Ec)^2 + b Ec x its reflection; the sun and lamps below ignore it.
+            if (i.vc.w > 0.5 && coatL[0].x > 0.5 && layerP.x < 0.5) {
+                const float2 cu = foldUv(i, coatL[1], coatL[2]);
+                // Its weight: no vertex-colour family (w = 1), the alpha map when flags & 8, the slot-126 mask channel.
+                const uint flC = (uint)(coatL[0].y + 0.5);
+                float bC = (flC & 8u) ? coatAlpha.Sample(samp0, cu).r : 1.0;
+                if (coatL[0].z > 0.5) {
+                    const float4 mkC = layerMaskTex.Sample(samp0, i.uv);
+                    const int chC = int(coatL[0].z + 0.5) - 1;
+                    bC *= chC == 0 ? mkC.r : (chC == 1 ? mkC.g : mkC.b);
+                }
+                if (bC >= 1.0 / 255.0) {
+                    float3 NC = Nf;
+                    float gpC = 0.193774, cavC = 1.0;
+                    if (coatL[2].w > 0.5) {
+                        float4 m = coatMap.Sample(samp0, cu);
+                        gpC = 1.0 - sqrt(1.0 - saturate(m.r * coatL[3].y + coatL[3].z));
+                        cavC = m.b;
+                        m.ga = (m.ga - 0.5) * coatL[3].x + 0.5;
+                        const float2 sdC = m.ga * 2.0 - 1.0;
+                        const float2 oC = float2(sdC.x + sdC.y, sdC.x - sdC.y) * 0.5;
+                        const float2 xyC = normalize(float3(oC, max(1.0 - abs(oC.x) - abs(oC.y), 0.0))).xy;
+                        const float3 nTC = normalize(float3(xyC, 1.0 - 0.6 * dot(xyC, xyC)));
+                        const float2 slC = nTC.xy / max(nTC.z, 0.02);
+                        const float3 dp1 = ddx(i.w), dp2 = ddy(i.w);
+                        const float2 du1 = ddx(cu), du2 = ddy(cu);
+                        const float3 p2 = cross(dp2, Nf), p1 = cross(Nf, dp1);
+                        float3 TC = p2 * du1.x + p1 * du2.x, BC = p2 * du1.y + p1 * du2.y;
+                        const float scC = rsqrt(max(max(dot(TC, TC), dot(BC, BC)), 1e-20));
+                        NC = normalize(TC * scC * slC.x + BC * scC * slC.y + Nf);
+                    }
+                    const float2 abC = gameEnvBrdf(saturate(dot(NC, Vs)), gpC);
+                    const float Ec = 0.035614 * abC.x + abC.y;
+                    const float3 RC = reflect(-Vs, NC);
+                    const float3 LrC = (indirect - stockDirN) + stockB * saturate(dot(RC, stockDw));
+                    const float a2C = 2.0 / (2.0 + exp2(20.0 * gpC));
+                    const float soC = gameSun.w > 0.5
+                        ? gtsoLut.SampleLevel(lutSamp, float3(max(sqrt(saturate(1.0 - aoV)), sqrt(saturate(1.0 - cavC))), a2C, saturate(dot(Nf, RC))), 0).r
+                        : min(aoV, cavC);
+                    float3 SC = lerp(0.18 * LrC, LrC, soC);
+                    const float fbC = saturate(2.0 - 10.0 * gpC);
+                    if (fbC < 1.0 && probeCount.x > 0.5) {
+                        float3 PC = stockProbeLight(i.w, RC, gpC) * dot(LrC, float3(0.2126, 0.7152, 0.0722));
+                        PC = lerp(PC, LrC, fbC);
+                        SC = lerp(0.18 * lerp(PC, LrC, 0.85), PC, soC);
+                    }
+                    const float tC = 1.0 - bC * Ec;
+                    c = c * tC * tC + bC * Ec * SC;
+                }
+            }
             float3 Ls = gameSun.xyz;
             float nl = dot(N, Ls);
             if (matW.w > 0.5) {
@@ -2195,7 +2249,7 @@ int SceneRenderer::createTextureBlocks(int dxgiFormat, int width, int height, co
     td.SampleDesc.Count = 1;
     td.Usage = D3D11_USAGE_IMMUTABLE;
     td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    const UINT blockBytes = dxgiFormat == DXGI_FORMAT_BC1_UNORM ? 8 : 16;
+    const UINT blockBytes = dxgiFormat == DXGI_FORMAT_BC1_UNORM || dxgiFormat == DXGI_FORMAT_BC1_UNORM_SRGB ? 8 : 16;
     std::vector<D3D11_SUBRESOURCE_DATA> init(levels.size());
     UINT w = UINT(width), h = UINT(height);
     size_t bytes = 0;
@@ -4768,6 +4822,11 @@ void SceneRenderer::drawReferenceTexInstances() {
                         : k >= 4 && k < 6 && flatNrmTex_ >= 0                  ? textures_[size_t(flatNrmTex_)]
                                                                               : nullptr;
             ctx_->PSSetShaderResources(44, 8, fv);
+            ID3D11ShaderResourceView* cv[2] = {g.coatTex[0] >= 0 && size_t(g.coatTex[0]) < textures_.size() ? textures_[size_t(g.coatTex[0])]
+                                                : flatNrmTex_ >= 0 ? textures_[size_t(flatNrmTex_)] : nullptr,
+                                               g.coatTex[1] >= 0 && size_t(g.coatTex[1]) < textures_.size() ? textures_[size_t(g.coatTex[1])]
+                                                : whiteFullTex_ >= 0 ? textures_[size_t(whiteFullTex_)] : nullptr};
+            ctx_->PSSetShaderResources(52, 2, cv);
             ID3D11ShaderResourceView* fm = g.foldMask >= 0 && size_t(g.foldMask) < textures_.size() ? textures_[size_t(g.foldMask)] : nullptr;
             ctx_->PSSetShaderResources(36, 1, &fm);
         }
@@ -4836,6 +4895,7 @@ bool SceneRenderer::uploadInstParams() {
                 std::memcpy(&all[j * 128 + 16], gi.extra, sizeof(gi.extra));
                 std::memcpy(&all[j * 128 + 32], gi.wave, sizeof(gi.wave));  // PropWave (b8) in vs_tex_inst
                 std::memcpy(&all[j * 128 + 64], gi.fold, sizeof(gi.fold));  // rows 16-25
+                std::memcpy(&all[j * 128 + 104], gi.coat, sizeof(gi.coat));  // rows 26-29 (research 137)
                 maskExtraTerms(&all[j * 128 + 16]);
                 if (textureRawAlpha(gi.texture)) all[j * 128 + 1] = 2.0f;  // opaque: alpha is the specular code
             }

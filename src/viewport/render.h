@@ -322,10 +322,23 @@ public:
         std::fill(std::begin(g.fold), std::end(g.fold), 0.0f);
         std::fill(std::begin(g.foldTex), std::end(g.foldTex), -1);
         g.foldMask = -1;
+        std::fill(std::begin(g.coat), std::end(g.coat), 0.0f);
+        g.coatTex[0] = g.coatTex[1] = -1;
+        static const bool noCoat = std::getenv("IW8R_NO_COAT") != nullptr;
         static const bool noFold = std::getenv("IW8R_NO_LAYER_FOLD") != nullptr;  // A/B: every layer a pass
         size_t f = 0;
         std::vector<PropLayer> rest;
         for (PropLayer& L : layers) {
+            if (L.params[3] > 3.5f) {  // the clear coat: its own block (research 137)
+                if (noCoat || g.coat[0] > 0.5f) continue;
+                const bool map = L.normal >= 0;
+                const float c[16] = {1.0f, L.params[1], L.aux[1], map ? 1.0f : 0.0f, L.params[8], L.params[9], L.params[10], L.params[11],
+                                     L.params[12], L.params[13], L.aux[0], map ? 1.0f : 0.0f, L.nrm[1], L.nrm[2], L.nrm[3], 0.0f};
+                std::copy(c, c + 16, g.coat);
+                g.coatTex[0] = L.normal, g.coatTex[1] = L.reveal;
+                if (L.mask >= 0) g.foldMask = L.mask;
+                continue;
+            }
             if (noFold || f >= 2) {
                 if (L.params[3] < 2.5f) rest.push_back(std::move(L));  // kind 3 (normal / gloss only): not as a pass
                 continue;
@@ -853,6 +866,10 @@ private:
         float fold[40] = {};  // rows 16-23 colour, rows 24-25 normal (one per folded layer)
         int foldTex[8] = {-1, -1, -1, -1, -1, -1, -1, -1};  // colour, alpha / reveal (1, 2), normal 1, 2, tint mask 1, 2
         int foldMask = -1;
+        // Research 137: the clear coat (rows 26-29: (on, flags, mask channel + 1, map), UV transform, (offset, second
+        // UV, map), (normal strength, gloss scale, gloss bias, 0)) and its map / alpha images.
+        float coat[16] = {};
+        int coatTex[2] = {-1, -1};
         std::vector<PropLayer> layers;  // setReferenceInstLayers: layers 1.. of a model-layered material
         int emissive = -1, transmission = -1;
         ID3D11Buffer* visInst = nullptr;

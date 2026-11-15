@@ -258,7 +258,9 @@ layers on the frame; Aniyah Tac 11.5 ms, Hideout 9.4 ms (separate passes had cos
 same night the fold took the layers' normal, cavity and gloss too (flags 1 / 2 / 4, normal mode lerp / add / none,
 overlays add and pull cavity and gloss toward the lower value; rows 24-25, normal maps at t48 / t49), so colour modes
 2 / 3 are drawn; Hideout 9.4 ms, Aniyah 11.8 ms. The per-layer tint masks (slot 59 + L, flags & 64) too
-(t50 / t51). Left by decision: the 14 code layers (vehicle dirt / rubble sets; their blend loop is not decoded). A/B: `IW8R_NO_LERP_LAYERS`, `IW8R_NO_LAYER_FOLD`.
+(t50 / t51). ~~Left by decision: the 14 code layers~~ The code layers are clear coats (research 137), drawn since
+2026-11-15 as a second ambient-specular lobe (record rows 26-29, t52 / t53; A/B `IW8R_NO_COAT`); the slot-126 masks are
+read linear as the game's sRGB sampler returns them (A/B `IW8R_RAW_LAYER_MASKS`). A/B: `IW8R_NO_LERP_LAYERS`, `IW8R_NO_LAYER_FOLD`.
 
 ### G10 (medium-low). The sky is an 8-bit 256-texel cube
 

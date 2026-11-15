@@ -190,6 +190,7 @@ public:
         // samples the second UV set; the slot-126 mask image when the technique set uses it (hexB 3...).
         std::vector<int> layerKind;
         std::vector<char> layerUv1;
+        std::vector<uint32_t> layerHex;  // the layer token's hex (research 137: 0x10 map, 0x20 emissive)
         std::string layerMaskImage;
         std::vector<std::string> layerTintMaskImage;  // per layer L: slot 59 + L ("" none; used when flags & 64)
         // Research 133 section 6: the flag / foliage waves, constants 79, 80, 81, 82 (zero = none).

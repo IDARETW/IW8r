@@ -1297,7 +1297,7 @@ void CameraView::tickPlay(double dt) {
 
 std::optional<std::array<float, 16>> CameraView::materialConstantsFor(const std::string& m) const {
     // The stock material's layer-0 constants (spec / gloss remap, normal strength) for the Game Lighting shader.
-    if (m.empty() || !factsLookup_ || m.find_first_of("\x01\x02\x05\x06") != std::string::npos) return std::nullopt;
+    if (m.empty() || !factsLookup_ || m.find_first_of("\x01\x02\x05\x06\x07") != std::string::npos) return std::nullopt;
     const auto f = factsLookup_(m);
     if (f && f->ssr && f->constants.layer.empty())  // no constants, but it traces SSR (layerP.z)
         return std::array<float, 16>{0.0f, 0.0f, 1.0f, 0.0f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -1310,7 +1310,7 @@ std::optional<std::array<float, 16>> CameraView::materialConstantsFor(const std:
 }
 
 bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool propMesh) {
-    if (m.empty() || !factsLookup_ || m.find_first_of("\x01\x02\x05\x06") != std::string::npos) return true;
+    if (m.empty() || !factsLookup_ || m.find_first_of("\x01\x02\x05\x06\x07") != std::string::npos) return true;
     const auto f = factsLookup_(m);
     const bool uvAnim = f && (f->uvAnim[0] != 0 || f->uvAnim[1] != 0 || f->uvAnim[2] != 0);
     const bool waves = f && propMesh && (f->wave[7] != 0 || f->wave[11] != 0 || f->wave[15] != 0);  // c80..c82 amplitudes
@@ -1351,7 +1351,7 @@ void CameraView::setBaseMaterialConstants(size_t k) {
 bool CameraView::resolvePropLayers(size_t k) {
     if (!layerLookup_ || k >= texInstMaterials_.size()) return true;
     const std::string& base = texInstMaterials_[k];
-    if (base.empty() || base.find_first_of("\x01\x02\x05\x06") != std::string::npos) return true;
+    if (base.empty() || base.find_first_of("\x01\x02\x05\x06\x07") != std::string::npos) return true;
     const std::optional<StockLayeredMaterial> c = layerLookup_(base);
     if (!c || c->layers < 2) return true;
     // Research 136: the layer kinds and UV sets from the technique set name, the slot-126 mask.
@@ -1359,7 +1359,7 @@ bool CameraView::resolvePropLayers(size_t k) {
     static const bool noLerp = std::getenv("IW8R_NO_LERP_LAYERS") != nullptr;  // A/B: multiply layers only, as before
     int maskId = -1;
     if (facts && !facts->layerMaskImage.empty()) {
-        const std::string mk = "\x05" + facts->layerMaskImage;
+        const std::string mk = "\x07" + facts->layerMaskImage;  // stored sRGB: read linear, as the game's sampler does
         const int id = textureFor(mk);
         if (!texIds_.count(mk)) return false;  // still loading
         maskId = id == checkerTex_ ? -1 : id;
@@ -1368,11 +1368,13 @@ bool CameraView::resolvePropLayers(size_t k) {
     for (int L = 1; L < c->layers && size_t(L) < c->layer.size(); ++L) {
         const StockLayerConstants& lc = c->layer[size_t(L)];
         const int kind = facts && size_t(L) < facts->layerKind.size() ? facts->layerKind[size_t(L)] : 0;
-        if (kind == 2) continue;  // a code layer (vehicle dirt / rubble; not decoded)
+        const uint32_t hex = facts && size_t(L) < facts->layerHex.size() ? facts->layerHex[size_t(L)] : 0u;
+        // A code layer is a clear coat (research 137): its own block, no colour; the emissive kind is left out.
+        if (kind == 2 && (hex & 0x20u)) continue;
         // Overlay layers (soft light) ignore the colour mode; standard layers: 0 lerp, 1 multiply, 2 / 3 normal and gloss
         // only (not drawn: a blended pass cannot change the normal under the shaded pixel).
         // kind 3: modes 2 / 3, normal / cavity / gloss only (folded into the mesh's pass; never a pass of its own).
-        float drawKind = kind == 1 ? 2.0f : 0.0f;
+        float drawKind = kind == 1 ? 2.0f : kind == 2 ? 4.0f : 0.0f;
         if (kind == 0) {
             if (lc.colorMode >= 2) drawKind = 3.0f;
             else if (lc.colorMode == 1) drawKind = 1.0f;
@@ -1382,16 +1384,20 @@ bool CameraView::resolvePropLayers(size_t k) {
         const int cid = textureFor(ck), rid = textureFor(rk);
         if (!texIds_.count(ck) || !texIds_.count(rk)) return false;  // still loading
         const bool noColour = cid < 0 || cid == checkerTex_;
-        if (noColour && drawKind != 3.0f) continue;  // no colour image
-        // The layer's normal + gloss + cavity map (research 136): only a folded layer reads it.
-        const int nid = normalFor(ck);
-        if (!nrmIds_.count(ck)) return false;  // still loading
+        if (noColour && drawKind < 2.5f) continue;  // no colour image
+        // The layer's normal + gloss + cavity map (research 136): only a folded layer reads it. A coat has one only with
+        // hex bit 0x10 (research 137); without it the coat takes the vertex normal and a fixed gloss.
+        int nid = -1;
+        if (drawKind != 4.0f || (hex & 0x10u)) {
+            nid = normalFor(ck);
+            if (!nrmIds_.count(ck)) return false;  // still loading
+        }
         app::PropLayer pl;
         pl.texture = noColour ? -1 : cid;
         pl.reveal = rid == checkerTex_ ? -1 : rid;
         pl.normal = nid;
         if ((lc.flags & 64u) && facts && size_t(L) < facts->layerTintMaskImage.size() && !facts->layerTintMaskImage[size_t(L)].empty()) {
-            const std::string tk = "\x05" + facts->layerTintMaskImage[size_t(L)];
+            const std::string tk = "\x07" + facts->layerTintMaskImage[size_t(L)];
             const int tid = textureFor(tk);
             if (!texIds_.count(tk)) return false;  // still loading
             pl.tintMask = tid == checkerTex_ ? -1 : tid;
@@ -1659,9 +1665,14 @@ int CameraView::textureFor(const std::string& material) {
     // Layer, decal and decal volume images ("\x01" / "\x02" / "\x05" keys) are plain files, never tinted or masked
     // per material: one texture per file (mp_aniyah_tac decoded the same layer images once per material, 37,000
     // textures, and ran out of video memory).
-    const bool shareable = material.find_first_of("\x01\x02\x05\x06") != std::string::npos;
+    const bool shareable = material.find_first_of("\x01\x02\x05\x06\x07") != std::string::npos;
+    // A data mask ("\x07") stored in an sRGB format: the game's sampler linearises it, so the upload does too. Shared
+    // under its own path key (the same file as a colour image stays as stored).
+    static const bool rawMasks = qEnvironmentVariableIsSet("IW8R_RAW_LAYER_MASKS");  // A/B: the stored bytes, as before
+    const bool srgbData = !rawMasks && material[0] == '\x07' && path->endsWith(".dds", Qt::CaseInsensitive) && app::ddsIsSrgb(path->toStdString());
+    const std::string pathKey = (srgbData ? "srgb:" : "") + path->toStdString();
     if (shareable)
-        if (const auto it = texByPath_.find(path->toStdString()); it != texByPath_.end()) return texIds_[material] = it->second;
+        if (const auto it = texByPath_.find(pathKey); it != texByPath_.end()) return texIds_[material] = it->second;
     if (!textureLoadAllowed(loadsThisFrame_)) {
         moreToLoad_ = true;  // keep frames short: the rest loads in the next frames
         return -1;
@@ -1675,7 +1686,7 @@ int CameraView::textureFor(const std::string& material) {
     const bool isDds = path->endsWith(".dds", Qt::CaseInsensitive);
     const bool compressed = isDds && colourImageKeptCompressed(material);
     if (compressed)
-        if (const auto it = texByPathBc_.find(path->toStdString()); it != texByPathBc_.end()) {
+        if (const auto it = texByPathBc_.find(pathKey); it != texByPathBc_.end()) {
             --loadsThisFrame_;
             return texIds_[material] = it->second;
         }
@@ -1693,13 +1704,14 @@ int CameraView::textureFor(const std::string& material) {
         // Nothing per material changes it, so materials that use the same file share one texture.
         app::DdsBlockLevels& blocks = dec.blocks;
         if (dec.blocksOk) {
-            id = renderer_.createTextureBlocks(blocks.dxgiFormat, blocks.width, blocks.height, blocks.levels);
+            // BC1 / BC2 / BC3 / BC7 UNORM + 1 = the _SRGB format.
+            id = renderer_.createTextureBlocks(blocks.dxgiFormat + (srgbData ? 1 : 0), blocks.width, blocks.height, blocks.levels);
             if (id >= 0) {
                 texSizes_[material] = {fullW, fullH};
                 if (textureSideNow() < kViewTextureSide) ++budgetReduced_;
                 g_frameLoadMs += QDateTime::currentMSecsSinceEpoch() - loadStart;
-                if (shareable) texByPath_[path->toStdString()] = id;
-                texByPathBc_[path->toStdString()] = id;
+                if (shareable) texByPath_[pathKey] = id;
+                texByPathBc_[pathKey] = id;
                 return texIds_[material] = id;
             }
         }
@@ -1749,6 +1761,18 @@ int CameraView::textureFor(const std::string& material) {
                     }
                     img.pixels[(size_t(y) * size_t(img.width) + size_t(x)) * 4 + 3] = a;
                 }
+            if (srgbData) {  // a data mask stored sRGB: the linear values the game's sampler returns
+                static const auto lin = [] {
+                    std::array<uint8_t, 256> t{};
+                    for (int v = 0; v < 256; ++v) {
+                        const double s = v / 255.0, l = s <= 0.04045 ? s / 12.92 : std::pow((s + 0.055) / 1.055, 2.4);
+                        t[size_t(v)] = uint8_t(std::lround(l * 255.0));
+                    }
+                    return t;
+                }();
+                for (size_t k = 0; k + 3 < img.pixels.size(); k += 4)
+                    for (int c = 0; c < 3; ++c) img.pixels[k + size_t(c)] = lin[img.pixels[k + size_t(c)]];
+            }
         }
     } else {
         // Custom materials (doc 21): PNG / TGA / JPG / BMP through the same decoder the compiler uses.
@@ -1803,7 +1827,7 @@ int CameraView::textureFor(const std::string& material) {
         id = renderer_.createTexture(img.pixels.data(), img.width, img.height);
     }
     g_frameLoadMs += QDateTime::currentMSecsSinceEpoch() - loadStart;
-    if (shareable && id >= 0) texByPath_[path->toStdString()] = id;
+    if (shareable && id >= 0) texByPath_[pathKey] = id;
     if (id >= 0 && !shareable) applyMaterialState(material, id);
     return texIds_[material] = id;
 }

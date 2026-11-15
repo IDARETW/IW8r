@@ -5,6 +5,15 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Clear-coated stock props in Game Lighting** (research 137): the game's "code layers" turned out to be a clear coat,
+  a colourless second reflection with its own gloss (and on some its own fine normal map) over the finished surface.
+  Hideout's corrugated siding and dumpster rubble now catch that faint sheen. The walfa cars carry a coat layer too,
+  but their mask switches it off everywhere, so they stay as they were (as in game by the decoded rule).
+  A/B: `IW8R_NO_COAT=1`.
+- **Layer masks are read the way the game reads them**: the masks that place dirt, paint and coats on props are stored
+  as sRGB images, so the game's GPU converts them to linear before the shader uses them; the viewport used the stored
+  values, which made dirt and other masked layers too strong (a mid-grey mask counted 0.5 instead of 0.21). Vehicles'
+  lower panels look cleaner now. A/B: `IW8R_RAW_LAYER_MASKS=1`.
 - **Layered stock props show all their colour layers in Game Lighting** (research 136): dirt, paint, door and detail
   layers blend by the game's rule (the vertex alpha, the reveal and alpha maps, the layer mask, the second UV set), in
   the prop's own shading pass, so containers, signs and walls look as in game without the cost of extra passes. Their

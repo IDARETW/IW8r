@@ -270,6 +270,13 @@ void MaterialCache::loadIndex() {
         // Resolved before the water's dual normal constants 110 / 111 were kept (research 133 section 5.3): world water
         // materials resolve again once.
         if (!e.failed && o.value("constRules").toInt() < 5 && e.material.startsWith("tw") && e.material.toLower().contains("water")) continue;
+        // Resolved before code layers (clear coats, research 137) got canonical layer rows: those resolve again once.
+        if (!e.failed && o.value("constRules").toInt() < 6 && o.value("modelLayers").toInt() >= 2) {
+            const ModelLayerTokens tk = parseModelLayerTokens(e.techset.toStdString());
+            bool code = false;
+            for (const ModelLayerKind k : tk.kind) code = code || k == ModelLayerKind::Code;
+            if (code) continue;
+        }
         // Layered materials (tw4 / twc4) resolved before their layer images and constants were kept (research 97), or
         // whose layer images were removed: resolve again once (images already cached are reused).
         if (!e.failed && (o.value("layerRules").toInt() < 1 || layerImageGone) &&
@@ -351,7 +358,7 @@ void MaterialCache::writeIndex() const {
         if (!e.failed && !e.emissiveDds.isEmpty()) o.insert("emissive", root.relativeFilePath(e.emissiveDds));
         if (!e.failed && !e.transmissionDds.isEmpty()) o.insert("transmission", root.relativeFilePath(e.transmissionDds));
         if (!e.failed) {
-            o.insert("constRules", 5);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68; 2: bits order; 3: + 63; 4: + 79-82; 5: + 110 / 111
+            o.insert("constRules", 6);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68; 2: bits order; 3: + 63; 4: + 79-82; 5: + 110 / 111; 6: code-layer rows
             QJsonObject cs;
             for (const auto& [k, f] : e.consts) cs.insert(QString::number(k), QJsonArray{f[0], f[1], f[2], f[3]});
             if (!cs.isEmpty()) o.insert("consts", cs);
@@ -670,6 +677,23 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
             work.consts[index] = f;
     }
     if (work.modelLayers >= 2) work.layerPsData = work.psData;  // the raw lit buffer, before the single-layer rows below
+    // Research 137: in technique sets with a code layer (a clear coat) the layer constants do not sit on rows 1 + 3 L
+    // .. 3 + 3 L: rebuild them from the constant table (row 1 + 3 L <- L, 2 + 3 L <- 9 + L, 3 + 3 L <- 54 + L).
+    if (work.modelLayers >= 2 && !constBytes.empty()) {
+        const ModelLayerTokens tk = parseModelLayerTokens(work.techset.toStdString());
+        bool code = false;
+        for (const ModelLayerKind k : tk.kind) code = code || k == ModelLayerKind::Code;
+        if (code) {
+            QByteArray canon = work.layerPsData;
+            while (canon.size() < 16 * (1 + 3 * work.modelLayers)) canon.append(char(0));
+            for (int L = 0; L < work.modelLayers; ++L) {
+                const int src[3] = {L, 9 + L, 54 + L};
+                for (int r = 0; r < 3; ++r)
+                    if (const auto it = constBytes.find(src[r]); it != constBytes.end()) canon.replace(16 * (1 + 3 * L + r), 16, it->second);
+            }
+            work.layerPsData = canon;
+        }
+    }
     // Single-layer materials: the rows in the order the decoders read (row 0 c72, 1 c0, 2 c9, 3 c54). The lit
     // technique puts transmission (18) and emissive (36) constants before 54, which then sits on row 4 to 6.
     if (std::clamp(work.layerCount, 0, 8) < 2 && !constBytes.empty()) {

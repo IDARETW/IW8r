@@ -92,6 +92,18 @@ TEST(dds_legacy_dxt1_matches_dx10_bc1) {
     CHECK(a.pixels == b.pixels);
 }
 
+TEST(dds_srgb_formats_detected) {
+    // Slot-126 layer masks are BC1_UNORM_SRGB (72) or R8G8B8A8_UNORM_SRGB (29): the game reads them linear.
+    const std::string payload(8, '\0');
+    CHECK(ddsHeaderIsSrgb(makeDds(4, 4, "DX10", 72, payload)));
+    CHECK(ddsHeaderIsSrgb(makeDds(4, 4, "DX10", 29, payload)));
+    CHECK(ddsHeaderIsSrgb(makeDds(4, 4, "DX10", 99, payload)));
+    CHECK(!ddsHeaderIsSrgb(makeDds(4, 4, "DX10", 71, payload)));  // BC1_UNORM
+    CHECK(!ddsHeaderIsSrgb(makeDds(4, 4, "DX10", 80, payload)));  // BC4_UNORM (tint masks)
+    CHECK(!ddsHeaderIsSrgb(makeDds(4, 4, "DXT1", 0, payload)));   // legacy header: no format to tell
+    CHECK(!ddsHeaderIsSrgb(std::string(100, '\0')));
+}
+
 TEST(dds_rgba8_roundtrip) {
     std::string payload(4 * 4 * 4, '\0');
     for (size_t i = 0; i < payload.size(); ++i) payload[i] = static_cast<char>((i * 37 + 11) & 0xFF);

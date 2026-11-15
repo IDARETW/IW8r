@@ -68,6 +68,7 @@ struct ModelLayerTokens {
     bool mask126 = false;                 // hexB starts with 3: slot 126 (R, G, B = layers 1, 2, 3) weights the layers
     std::vector<ModelLayerKind> kind;     // index L (0: the base, Standard)
     std::vector<bool> uv1;                // the layer samples the second UV set (hex bit 0x80000; a `2` family only)
+    std::vector<uint32_t> hex;            // the layer token's hex (code layers, research 137: 0x10 map, 0x08 alpha, 0x20 emissive)
 };
 // Empty (layers 0) for a name that is not a lit technique set with layer fields.
 ModelLayerTokens parseModelLayerTokens(const std::string& techsetName);

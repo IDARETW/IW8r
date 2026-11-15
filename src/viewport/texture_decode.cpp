@@ -369,6 +369,23 @@ bool loadDdsPreview(const std::string& path, int maxSide, Rgba8Image& out, int* 
     return true;
 }
 
+bool ddsHeaderIsSrgb(const std::string& f) {
+    if (f.size() < 148 || f.compare(0, 4, "DDS ") != 0 || std::memcmp(f.data() + 84, "DX10", 4) != 0) return false;
+    switch (readU32(f, 128)) {
+        case 29: case 72: case 75: case 78: case 91: case 93: case 99: return true;
+        default: return false;
+    }
+}
+
+bool ddsIsSrgb(const std::string& path) {
+    const std::filesystem::path file(std::u8string(reinterpret_cast<const char8_t*>(path.data()), path.size()));
+    std::ifstream in(file, std::ios::binary);
+    if (!in) return false;
+    std::string header(148, '\0');
+    in.read(header.data(), 148);
+    return in.gcount() == 148 && ddsHeaderIsSrgb(header);
+}
+
 bool loadDdsBlocks(const std::string& path, int maxSide, DdsBlockLevels& out, int* fullWidth, int* fullHeight, std::string* err) {
     out = DdsBlockLevels{};
     const std::filesystem::path file(std::u8string(reinterpret_cast<const char8_t*>(path.data()), path.size()));

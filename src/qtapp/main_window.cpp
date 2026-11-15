@@ -340,8 +340,9 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
                 const QString f = qs(m.substr(1));
                 return !f.isEmpty() && QFileInfo::exists(f) ? f : QString();
             }
-            // A stock decal volume image ("\x05<image>": colour or mask, research 99): any catalogued image.
-            if (!m.empty() && m[0] == '\x05') {
+            // A stock decal volume image ("\x05<image>": colour or mask, research 99): any catalogued image. "\x07<image>":
+            // a data mask (a model layer's slot 126 / tint mask), the same file, read through its own sRGB format.
+            if (!m.empty() && (m[0] == '\x05' || m[0] == '\x07')) {
                 const QString image = qs(m.substr(1));
                 const QString f = imageCache_->cachedDds(image);
                 if (!f.isEmpty()) return f;
@@ -385,7 +386,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             return std::nullopt;
         },
         [this](const std::string& m) {
-            if (!m.empty() && (m[0] == '\x05' || m[0] == '\x06')) return;  // requested by the lookup / a file
+            if (!m.empty() && (m[0] == '\x05' || m[0] == '\x06' || m[0] == '\x07')) return;  // requested by the lookup / a file
             matCache_->request({qs(m.substr(0, m.find_first_of("\x01\x02")))});
         });
     camera_->setMaterialFacts([this](const std::string& m) -> std::optional<CameraView::StockMaterialFacts> {
@@ -431,6 +432,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             const ModelLayerTokens tk = parseModelLayerTokens(e->techset.toStdString());
             for (const ModelLayerKind k : tk.kind) f.layerKind.push_back(k == ModelLayerKind::Overlay ? 1 : k == ModelLayerKind::Code ? 2 : 0);
             for (const bool u : tk.uv1) f.layerUv1.push_back(u ? 1 : 0);
+            f.layerHex = tk.hex;
             if (tk.mask126)
                 for (const QString& t : e->textures)
                     if (t.startsWith("126=")) f.layerMaskImage = t.mid(4).toStdString();

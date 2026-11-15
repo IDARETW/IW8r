@@ -139,6 +139,7 @@ ModelLayerTokens parseModelLayerTokens(const std::string& name) {
     const bool secondUvFamily = family.find('2') != std::string::npos;
     t.kind.assign(size_t(n), ModelLayerKind::Standard);
     t.uv1.assign(size_t(n), false);
+    t.hex.assign(size_t(n), 0u);
     for (int L = 1; L < n; ++L) {
         const size_t at = 18 + 8 * size_t(L - 1);
         if (at + 2 >= f.size()) break;
@@ -146,6 +147,7 @@ ModelLayerTokens parseModelLayerTokens(const std::string& name) {
         if (f[at + 1] == "1") t.kind[size_t(L)] = ModelLayerKind::Code;
         else if ((hex >> 24) == 4) t.kind[size_t(L)] = ModelLayerKind::Overlay;
         t.uv1[size_t(L)] = secondUvFamily && (hex & 0x80000ull) != 0;
+        t.hex[size_t(L)] = uint32_t(hex);
     }
     return t;
 }

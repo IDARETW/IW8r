@@ -138,6 +138,7 @@ TEST(model_layer_tokens_from_techset_names) {
     // The same UV1 bit in a family without a second UV set: UV0. A code layer (b = 1).
     const ModelLayerTokens c = parseModelLayerTokens("tmo/lit_3_lit_rpl_ta1_800800_1002000000000010_0_3_1_0_0_13810015b_0_0_1_0_0_0_0_3818015f_0_0_2_0_0_0_1_180153_0_0_1_0_0");
     CHECK(c.layers == 3 && !c.uv1[1] && c.kind[2] == ModelLayerKind::Code);
+    CHECK(c.hex.size() == 3 && c.hex[2] == 0x180153u && (c.hex[2] & 0x10u) && c.hex[1] == 0x3818015fu);  // research 137: 0x10 map
     // Not a lit technique set.
     CHECK(parseModelLayerTokens("tw/dist_10_distortion_rpl").layers == 0);
     CHECK(parseModelLayerTokens("no_slash").layers == 0);

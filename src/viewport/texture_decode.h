@@ -52,4 +52,10 @@ bool loadDdsBlocks(const std::string& path, int maxSide, DdsBlockLevels& out, in
 bool loadDdsPreview(const std::string& path, int maxSide, Rgba8Image& out, int* fullWidth = nullptr,
                     int* fullHeight = nullptr, std::string* err = nullptr);
 
+// True when the DDS at `path` (UTF-8) has a DX10 header with an _SRGB format (29, 72, 75, 78, 91, 93, 99): the game
+// samples it through that format, so its shaders see linear values.
+bool ddsIsSrgb(const std::string& path);
+// The same test on header bytes in memory (at least 148 bytes; false otherwise).
+bool ddsHeaderIsSrgb(const std::string& headerBytes);
+
 }  // namespace iw8r::app
