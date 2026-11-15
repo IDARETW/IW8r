@@ -16,6 +16,8 @@ listed in their reports under `out/ida_types/results/`. Backups: `out/ida_types/
 
 | `Weapon` | relayout at size 60: `stickerIndices` +0x08 -> +0x02, `weaponClientLoadout` +0x10 -> +0x0A, new `weaponOthers` +0x0C, new `weaponAttachments[13]` +0x0E (the game-test layout) | A003 raw reads in `MSG_WriteWeapon` 0x1412BAA90 and `BG_GetWeaponNameComplete` 0x1411574A0 (`+sticker%u` from weapon+2, loadout = word 5, others = word 6); re-checked `movzx edx, word ptr [r13+0Ch]` in `MSG_WriteWeapon`. Size unchanged, so the 39 structs that embed `Weapon` keep their layout |
 
+| `playerState_s` | size 21372 -> 21368: dropped the last member `viewLinkEntsFollowRemoteEyes` (bool +0x5378, placed from game-test, no Replay access) and its 3-byte pad; nothing else moved | `MSG_ReadDeltaPlayerstate` 0x1412D3D90: `memset_0(dest, 0, 0x5378u)` and `memcpy_0(v7, v8, 0x5378u)` (A005); `gclient_s.sess` starts at +0x5378 (A008, A009). Game-test puts the bool at 0x53A0; the Replay shift there is -44 overall, so it probably sits at +0x5374 (inside `_pad5298`), UNCONFIRMED. Nothing embeds `playerState_s` by value (`gclient_s.ps` is a byte array) |
+
 ### Agent edits re-checked
 
 | Agent | Edit | Check |

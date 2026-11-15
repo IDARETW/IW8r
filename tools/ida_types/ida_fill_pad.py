@@ -273,6 +273,61 @@ def relayout(name, fields, apply=False):
     return True
 
 
+def truncate(name, new_size, drop=(), apply=False):
+    """COORDINATOR ONLY. Shrink a struct to new_size by dropping the members that start at or after new_size (each must
+    be a pad or be named in `drop`) and cutting a pad that crosses new_size. No other member moves."""
+    til, t, u = _get(name)
+    old = t.get_size()
+    nu = ida_typeinf.udt_type_data_t()
+    nu.taudt_bits, nu.pack, nu.sda = u.taudt_bits, u.pack, u.sda
+    nu.is_union = False
+    dropped = []
+    for i in range(len(u)):
+        m = u[i]
+        mo, ms = m.offset // 8, m.size // 8
+        if mo + ms <= new_size:
+            nu.push_back(m)
+        elif mo >= new_size:
+            if not (_PAD.match(m.name or "") or m.name in drop):
+                raise ValueError("member %s at 0x%X is past the new end and not in drop" % (m.name, mo))
+            dropped.append(m.name)
+        elif _PAD.match(m.name or ""):
+            nu.push_back(_pad_member(mo, new_size - mo))
+        else:
+            raise ValueError("member %s at 0x%X crosses the new end 0x%X" % (m.name, mo, new_size))
+    nt = ida_typeinf.tinfo_t()
+    if not nt.create_udt(nu, ida_typeinf.BTF_STRUCT) or nt.get_size() != new_size:
+        raise ValueError("rebuilt size differs; nothing changed")
+    print("%s: size %d -> %d, dropped %s" % (name, old, new_size, dropped))
+    if not apply:
+        print("DRY RUN OK")
+        return False
+    err = nt.set_numbered_type(til, t.get_ordinal(), ida_typeinf.NTF_REPLACE, name)
+    if err != ida_typeinf.TERR_OK:
+        raise ValueError("IDA could not save %s (error %s)" % (name, err))
+    print("APPLIED")
+    return True
+
+
+def embedded_in(child):
+    """List (parent, member, offset, size, next member) for every struct that holds `child` by value."""
+    til = ida_typeinf.get_idati()
+    for o in range(1, ida_typeinf.get_ordinal_limit(til)):
+        t = ida_typeinf.tinfo_t()
+        if not t.get_numbered_type(til, o) or not t.is_udt():
+            continue
+        u = ida_typeinf.udt_type_data_t()
+        if not t.get_udt_details(u):
+            continue
+        for i in range(len(u)):
+            mt = u[i].type
+            base = mt.get_array_element() if mt.is_array() else mt
+            if not base.is_ptr() and base.get_type_name() == child:
+                nx = u[i + 1] if i + 1 < len(u) else None
+                print(t.get_type_name(), u[i].name, u[i].offset // 8, u[i].size // 8,
+                      (nx.name, nx.offset // 8) if nx else "(last)")
+
+
 def backup_all(path):
     import os
     os.makedirs(os.path.dirname(path), exist_ok=True)
