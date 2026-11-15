@@ -6,10 +6,16 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 ## 2026-11-14
 
 - **Fixed: a map with carried stock scriptable objects crashed the game when selected in the lobby** (owner report,
-  Cinder Rail 20:15 package, `0xc0000005` at `0x140d97add`; research 134). Replay keeps the preload marks of nested
-  assets in a stack of two; a stock door written with its model and the model's physics asset inline nested three
-  deep. The converter now lists such a model before the scriptable that uses it (as stock zones do) and refuses a zone
-  that would still nest three deep. Rebuild and redeploy the map; the installed 20:15 package still crashes.
+  Cinder Rail 20:15 package, `0xc0000005` at `0x140d97add`; research 134). The game's asset loaders push every asset
+  they load onto a stack of two (`q_DB_PatchMem_PushAsset`, named from the client's PDB); the carried stock doors and
+  cars were written with their models, materials, technique sets and shaders inline, three and four deep. The
+  converter now lists every such middle asset before its user (as stock zones do) and refuses a zone that would still
+  nest three deep. The fixed Cinder Rail package (same inputs as the 20:15 build) is installed.
+- **Fixed: Shipment's foliage cards drawn as flat planes** (owner report, `tm/cw_foliage_ctl_tree_beech_vista_card`).
+  The material cache read Shipment's materials from the installed toon edit, whose technique sets are renamed, so 33
+  materials lost their cut-out masks. Every stock read now uses the stock file kept beside the game when an installed
+  edit replaced a zone; entries read from an edited zone resolve again; a technique set name without a blend token
+  still takes its opacity texture (slot 27) as the mask.
 - **Stock UV animation** (research 133 section 1): scrolling and turning stock materials (Hideout's DVD sign and fan
   blade, Shipment's clouds and water) move in the 3D view by the game's clock (constant 63).
 - **Stock vertex-colour props** (research 133 section 4): props of the vertex-colour material types take their tint

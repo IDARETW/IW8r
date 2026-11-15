@@ -16,4 +16,8 @@ TEST(material_blend_from_stock_techsets) {
     CHECK(materialBlendFromTechset(",null") == MaterialBlend::Opaque);
     CHECK(materialBlendFromTechset("badger_alt") == MaterialBlend::Opaque);  // no table token after the word
     CHECK(std::string(materialBlendName(MaterialBlend::Additive)) == "additive");
+    // A renamed set (an installed stock edit's iw8rf_<hash>) gives no blend: the cache then takes slot 27 as the mask.
+    CHECK(!materialBlendKnown("tmo/iw8rf_e4dd71cccd61a1abc624d4ba"));
+    CHECK(materialBlendKnown("#tmco/lit_3_lit_alt_ta1_808814_1002000201000011_0_1_1_0_0_138f0035b_0_0_1_0_0"));
+    CHECK(materialBlendKnown("tmo/lit_3_lit_rpl_ta1_800800_1002000000000010_0_1_1_0_0_13810015b_0_0_1_0_0"));
 }

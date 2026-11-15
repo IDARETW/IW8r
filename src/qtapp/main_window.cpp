@@ -8052,8 +8052,7 @@ std::shared_ptr<StockDecalData> appendStockDecalVolumes(const StockWorld& world,
             if (!m.empty()) names << QString::fromStdString(m);
         for (const auto& m : set.masks)
             if (!m.empty()) names << QString::fromStdString(m);
-        const QString zoneFolder = QFileInfo(tools.replay).absolutePath() + "/zone/";
-        for (const QString& ff : {zoneFolder + "techsets_" + zone + ".ff", zoneFolder + zone + ".ff"}) {
+        for (const QString& ff : {stockZoneFile(tools.replay, "techsets_" + zone), stockZoneFile(tools.replay, zone)}) {
             if (!QFileInfo::exists(ff)) continue;
             QProcess p;
             p.start(tools.acts, {"--noUpdater", "fastfile", "-r", "mw19replay", "-g", tools.replay, "--oodle", tools.oodle, "-a",
@@ -8337,8 +8336,8 @@ void appendStockSuperTerrain(const QString& zone, const QString& zoneDir, const 
     if (qEnvironmentVariableIsSet("IW8R_NO_SUPER_TERRAIN")) return;
     const QString dir = zoneDir + "/terrain";
     if (QFileInfo::exists(dir + "/none")) return;  // looked once: no super terrain in this map
-    const QString zoneFolder = QFileInfo(tools.replay).absolutePath() + "/zone/";
-    const QString ff = zoneFolder + zone + ".ff";
+    const QString zoneFolder = QFileInfo(tools.replay).absolutePath() + "/zone/";  // the XPaks
+    const QString ff = stockZoneFile(tools.replay, zone);
     const auto run = [&](const QStringList& extra, const QString& types, const QString& names) {
         if (!QFileInfo::exists(tools.acts) || !QFileInfo::exists(ff)) return;
         QStringList args{"--noUpdater", "fastfile", "-r", "mw19replay", "-g", tools.replay, "--oodle", tools.oodle};
@@ -8651,7 +8650,7 @@ std::shared_ptr<const StockWorld> displaceStockWorld(const StockWorld& world, co
     std::set<QString> wanted;
     for (const auto& m : data.meshes) wanted.insert(QString::fromStdString(m.material).remove(QChar(',')));
     if (findFiles("/assets/material/", {"*.json"}).isEmpty())
-        for (const QString& z : {zoneFolder + "techsets_" + zone + ".ff", zoneFolder + zone + ".ff"})
+        for (const QString& z : {stockZoneFile(tools.replay, "techsets_" + zone), stockZoneFile(tools.replay, zone)})
             acts({}, "material", QStringList(wanted.begin(), wanted.end()), z);
     struct MatDisp {
         std::map<int, std::array<float, 3>> constants;  // L -> scale, bias, w
@@ -8696,11 +8695,11 @@ std::shared_ptr<const StockWorld> displaceStockWorld(const StockWorld& world, co
         QStringList xp;
         for (const QFileInfo& f : QDir(zoneFolder).entryInfoList({"*.xpak"}, QDir::Files))
             if (f.size() >= 64 * 1024) xp << "--xpak" << f.absoluteFilePath();
-        acts(xp, "image", missing, zoneFolder + zone + ".ff");
+        acts(xp, "image", missing, stockZoneFile(tools.replay, zone));
         missing.clear();
         for (const QString& img : images)
             if (imageFile(img).isEmpty()) missing << img;
-        if (!missing.isEmpty()) acts(xp, "image", missing, zoneFolder + "techsets_" + zone + ".ff");
+        if (!missing.isEmpty()) acts(xp, "image", missing, stockZoneFile(tools.replay, "techsets_" + zone));
     }
     std::map<QString, std::shared_ptr<StockHeightMap>> heights;
     for (const QString& img : images) {
@@ -8734,7 +8733,7 @@ std::shared_ptr<const StockWorld> displaceStockWorld(const StockWorld& world, co
 void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn) {
     const QString skyMaterial = skyMaterialIn.isEmpty() ? "tw/sky_" + zone : skyMaterialIn;
     const QString acts = toolPath("acts"), replay = toolPath("replay"), oodle = toolPath("oodle");
-    const QString ff = QFileInfo(replay).absolutePath() + "/zone/" + zone + ".ff";
+    const QString ff = stockZoneFile(replay, zone);
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/world_cache/" + zone + "/com_map";
     QPointer<MainWindow> self(this);
     std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, acts, replay, oodle, ff, dir, skyMaterial] {

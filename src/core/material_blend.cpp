@@ -4,6 +4,29 @@
 
 namespace iw8r {
 
+namespace {
+// The blend token of a technique set name ("" when it has none).
+std::string blendToken(const std::string& techset) {
+    const size_t slash = techset.rfind('/');
+    const std::string leaf = slash == std::string::npos ? techset : techset.substr(slash + 1);
+    std::vector<std::string> tok;
+    size_t start = 0;
+    while (start <= leaf.size()) {
+        const size_t us = leaf.find('_', start);
+        tok.push_back(leaf.substr(start, us == std::string::npos ? std::string::npos : us - start));
+        if (us == std::string::npos) break;
+        start = us + 1;
+    }
+    for (size_t i = 0; i + 1 < tok.size(); ++i) {
+        const std::string& t = tok[i];
+        if (tok[i + 1].size() >= 2 && tok[i + 1][0] == 't' && (t == "rpl" || t == "alt" || t == "bad" || t == "bar")) return t;
+    }
+    return {};
+}
+}  // namespace
+
+bool materialBlendKnown(const std::string& techset) { return !blendToken(techset).empty(); }
+
 MaterialBlend materialBlendFromTechset(const std::string& techset) {
     // Leaf name after the prefix folder ("tmo/lit_3_lit_rpl_ta1_..."), split on '_'.
     const size_t slash = techset.rfind('/');

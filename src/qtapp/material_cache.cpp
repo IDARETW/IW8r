@@ -240,6 +240,9 @@ void MaterialCache::loadIndex() {
         if (!e.failed && o.value("constRules").toInt() < 2) continue;  // 2: non-finite words in memory byte order
         // Resolved before constant 63 was kept (research 133, UV animation): those technique sets resolve again once.
         if (!e.failed && o.value("constRules").toInt() < 3 && techsetAnimatesUv(e.techset)) continue;
+        // Read from a zone that an installed edit replaced (its technique sets renamed iw8rf_<hash>; the cut-out masks
+        // were lost): resolve again from the stock zone (stockZoneFile).
+        if (!e.failed && e.techset.section('/', -1).startsWith("iw8rf_")) continue;
         // Layered materials (tw4 / twc4) resolved before their layer images and constants were kept (research 97), or
         // whose layer images were removed: resolve again once (images already cached are reused).
         if (!e.failed && (o.value("layerRules").toInt() < 1 || layerImageGone) &&
@@ -565,7 +568,9 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
     // Research 66: slot 27 is the opacity source of every alpha-tested (alt) set and of blended (bad / bar) sets: a
     // one-channel image (_sdf, _opacity, _a, _m, ...) or a colour image whose alpha is the opacity.
     const MaterialBlend blend = materialBlendFromTechset(work.techset.toStdString());
-    const bool opacitySlot = blend != MaterialBlend::Opaque;
+    // A name without a blend token (a renamed or hashed set) still has its opacity in slot 27: no stock opaque set
+    // binds that slot.
+    const bool opacitySlot = blend != MaterialBlend::Opaque || !materialBlendKnown(work.techset.toStdString());
     // Layered world materials (tw4 / twc4, research 97): layer L's colour is slot L, its normal + gloss 9 + L, its
     // alpha + reveal 27 + L; the per-layer constants are the body's pixel constant buffer.
     work.layerCount = fields.value("layerCount").toInt(0);

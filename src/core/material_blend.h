@@ -14,5 +14,7 @@ enum class MaterialBlend { Opaque, AlphaTest, Blend, Additive };
 // Opaque when the name has no recognised blend token (custom materials, empty, ",null").
 MaterialBlend materialBlendFromTechset(const std::string& techset);
 const char* materialBlendName(MaterialBlend b);  // "opaque", "alpha test", "blend", "additive"
+// True when the name carries one of the blend tokens (rpl, alt, bad, bar before a t.. table token).
+bool materialBlendKnown(const std::string& techset);
 
 }  // namespace iw8r

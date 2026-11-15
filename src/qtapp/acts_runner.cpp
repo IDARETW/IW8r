@@ -33,9 +33,7 @@ constexpr int kLogCap = 64 * 1024;
 constexpr int kTrimAfterMs = 2 * 60 * 1000;
 constexpr int kQuitAfterMs = 10 * 60 * 1000;
 
-QString zoneFileOf(const QString& replay, const QString& zone) {
-    return QFileInfo(replay).absolutePath() + "/zone/" + zone + ".ff";
-}
+QString zoneFileOf(const QString& replay, const QString& zone) { return stockZoneFile(replay, zone); }
 
 QStringList populatedXpaks(const QString& replay) {
     QStringList out;
@@ -542,6 +540,12 @@ void ActsRunner::shutdown() {
         w->proc->waitForFinished(2000);
     }
     workers_.clear();
+}
+
+QString stockZoneFile(const QString& replay, const QString& zone) {
+    const QString game = QFileInfo(replay).absolutePath();
+    const QString kept = game + "/iw8r_stock/" + zone + ".ff";
+    return QFileInfo::exists(kept) ? kept : game + "/zone/" + zone + ".ff";
 }
 
 }  // namespace iw8r::qt

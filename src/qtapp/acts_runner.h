@@ -32,6 +32,12 @@ class QTimer;
 
 namespace iw8r::qt {
 
+// The stock file of a zone: <game>/zone/<zone>.ff, or, where an installed edit (Install Edited Stock Map) took that
+// file's place, the stock file kept in <game>/iw8r_stock. The editor reads stock data from stock zones: an edited
+// zone's technique sets are renamed (iw8rf_<hash>) and its materials lost their cut-out masks (owner report
+// 2026-11-14, Shipment's beech vista cards drawn as flat planes).
+QString stockZoneFile(const QString& replay, const QString& zone);
+
 struct ActsRequest {
     QString zone;           // zone name: the fastfile is <Replay folder>/zone/<zone>.ff
     QString types;          // -a, e.g. "material", "image", "xmodel", "xmodelsurfs", "gfx_map,gfx_map_trzone"
