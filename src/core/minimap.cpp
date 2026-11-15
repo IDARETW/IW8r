@@ -175,6 +175,16 @@ double mapNorthYaw(const MapFile& map) {
 }
 
 int minimapQuarterForBuild(const MapFile& map, std::string* warning) {
+    for (const Entity& e : map.entities) {
+        if (!e.isWorldspawn()) continue;
+        if (const std::string* v = e.value("iw8r_compass_rotation"); v && !v->empty()) {
+            char* end = nullptr;
+            const long r = std::strtol(v->c_str(), &end, 10);
+            while (end && (*end == ' ' || *end == '\t')) ++end;
+            if (end != v->c_str() && end && *end == 0 && (r == 0 || r == 90 || r == 180 || r == 270)) return 0;
+        }
+        break;
+    }
     bool exact = true;
     const double yaw = mapNorthYaw(map);
     const int quarter = minimapNorthQuarter(yaw, &exact);

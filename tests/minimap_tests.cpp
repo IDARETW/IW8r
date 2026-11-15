@@ -366,6 +366,11 @@ TEST(minimap_follows_the_maps_north) {
     CHECK(minimapNorthQuarter(45, &exact) >= 0 && !exact);
     ParseResult odd = mapWith("\"northyaw\" \"30\"\n");
     CHECK(odd.map.has_value() && minimapQuarterForBuild(*odd.map, &warning) == 1 && warning.find("not a quarter turn") != std::string::npos);
+    // A manual compass rotation: the converter turns by it and not by the north, so the picture keeps the old frame.
+    ParseResult manual = mapWith("\"iw8r_compass_rotation\" \"90\"\n");
+    CHECK(manual.map.has_value() && minimapQuarterForBuild(*manual.map) == 0);
+    ParseResult manualBad = mapWith("\"iw8r_compass_rotation\" \"45\"\n");
+    CHECK(manualBad.map.has_value() && minimapQuarterForBuild(*manualBad.map) == 1);
     // A world point's pixel.
     AABB rect;
     rect.add({-256, -256, 0});

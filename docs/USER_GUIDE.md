@@ -325,7 +325,8 @@ Commands in the Tools menu:
 - **Compile > Time of Day**: a preset sets the sky. With **Compile > Aim the Sun When the Sky Changes** on, the sun is
   also aimed at the sun painted in that sky, in the same undo step.
 - **Minimap**: drawn by the build from the map's brushes, with the map's north at the top, so the player arrow sits
-  where the player stands (until 2026-11-14 it was a quarter turn off on built maps: rebuild).
+  where the player stands (until 2026-11-14 it was a quarter turn off on built maps: rebuild). Leave Map Info >
+  Compass rotation empty: it is a manual turn that replaces the automatic one, for maps that already set it.
 - **Compass**: the compass north is the top of the XY view (+Y). Builds write worldspawn `northyaw 90` unless the map
   sets its own, so the game's north matches the editor's.
 - **Your own pictures on the HUD.** Compile > HUD Images Folder opens the folder `<map name>.hud` beside your map.

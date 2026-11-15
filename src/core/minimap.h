@@ -45,7 +45,9 @@ int minimapNorthQuarter(double northYawDegrees, bool* exact = nullptr);
 // The northyaw a build writes for a map: worldspawn northyaw, or 90 (north = +Y, the top of the editor's XY view).
 double mapNorthYaw(const MapFile& map);
 // The quarter a build draws the map's minimap with. A northyaw that is no quarter turn is left unturned by the
-// converter, so the picture is drawn in the game's own frame (quarter 1) and *warning says so.
+// converter, so the picture is drawn in the game's own frame (quarter 1) and *warning says so. A map with a manual
+// compass rotation (worldspawn iw8r_compass_rotation 0, 90, 180 or 270: the converter turns the picture by that value
+// and not by its north) keeps quarter 0, the frame such a rotation was always chosen for.
 int minimapQuarterForBuild(const MapFile& map, std::string* warning = nullptr);
 // The pixel (column, row; fractions) a world point has in a picture of `size` pixels over `rect` drawn with `quarter`.
 void minimapPixel(const AABB& rect, int size, int quarter, double x, double y, double& column, double& row);
