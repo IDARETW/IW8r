@@ -40,7 +40,8 @@ def _ctype(text):
     til = ida_typeinf.get_idati()
     decl = text.strip()
     if not decl.endswith(";"):
-        decl += " __iw8r_tmp;"
+        arr = re.match(r"^(.*?)\s*((?:\[\s*\d+\s*\])+)$", decl)
+        decl = ("%s __iw8r_tmp%s;" % (arr.group(1), arr.group(2))) if arr else (decl + " __iw8r_tmp;")
     if ida_typeinf.parse_decl(t, til, decl, ida_typeinf.PT_SIL) is None:
         raise ValueError("cannot parse C type %r" % text)
     return t
@@ -176,6 +177,94 @@ def resize_tail_pad(name, new_size, apply=False):
     print("%s: size %d -> %d (tail pad at 0x%X now %d bytes)" % (name, old, new_size, lo, new_size - lo))
     if not apply:
         print("DRY RUN OK")
+        return False
+    err = nt.set_numbered_type(til, t.get_ordinal(), ida_typeinf.NTF_REPLACE, name)
+    if err != ida_typeinf.TERR_OK:
+        raise ValueError("IDA could not save %s (error %s)" % (name, err))
+    print("APPLIED")
+    return True
+
+
+def narrow_member(name, member, ctext, apply=False):
+    """COORDINATOR ONLY. Give a member a NARROWER type and fill the freed bytes with a pad. No other member moves and
+    the struct size stays the same."""
+    til, t, u = _get(name)
+    size = t.get_size()
+    nt_m = _ctype(ctext)
+    ns = nt_m.get_size()
+    idx = next((i for i in range(len(u)) if u[i].name == member), None)
+    if idx is None:
+        raise ValueError("no member %r in %s" % (member, name))
+    m = u[idx]
+    mo, ms = m.offset // 8, m.size // 8
+    if m.is_bitfield() or not (0 < ns < ms):
+        raise ValueError("new type is %d bytes; member %s is %d bytes (must be narrower)" % (ns, member, ms))
+    nu = ida_typeinf.udt_type_data_t()
+    nu.taudt_bits, nu.pack, nu.sda = u.taudt_bits, u.pack, u.sda
+    nu.is_union = False
+    for i in range(len(u)):
+        if i != idx:
+            nu.push_back(u[i])
+            continue
+        nm = ida_typeinf.udm_t()
+        nm.name, nm.type, nm.offset, nm.size = member, nt_m, mo * 8, ns * 8
+        nu.push_back(nm)
+        nu.push_back(_pad_member(mo + ns, ms - ns))
+    nt = ida_typeinf.tinfo_t()
+    if not nt.create_udt(nu, ida_typeinf.BTF_STRUCT):
+        raise ValueError("IDA refused the rebuilt struct")
+    chk = ida_typeinf.udt_type_data_t()
+    nt.get_udt_details(chk)
+    if nt.get_size() != size:
+        raise ValueError("rebuilt size differs; nothing changed")
+    old = {(u[i].name, u[i].offset) for i in range(len(u))}
+    new = {(chk[i].name, chk[i].offset) for i in range(len(chk))}
+    if not old - {(member, m.offset)} <= new:
+        raise ValueError("rebuilt offsets differ; nothing changed")
+    print("%s.%s: %s (%d) -> %s (%d) + _pad%X (%d)" % (name, member, m.type.dstr(), ms, ctext, ns, mo + ns, ms - ns))
+    if not apply:
+        print("DRY RUN OK")
+        return False
+    err = nt.set_numbered_type(til, t.get_ordinal(), ida_typeinf.NTF_REPLACE, name)
+    if err != ida_typeinf.TERR_OK:
+        raise ValueError("IDA could not save %s (error %s)" % (name, err))
+    print("APPLIED")
+    return True
+
+
+def relayout(name, fields, apply=False):
+    """COORDINATOR ONLY. Replace a struct's members with `fields` [(offset, name, ctype), ...] at the SAME size, ordinal
+    and pack. Gaps become _padXXX members. Refuses overlaps, fields past the end, or a size change."""
+    til, t, u = _get(name)
+    size = t.get_size()
+    req = sorted((off, nm, _ctype(ct)) for off, nm, ct in fields)
+    nu = ida_typeinf.udt_type_data_t()
+    nu.taudt_bits, nu.pack, nu.sda = u.taudt_bits, u.pack, u.sda
+    nu.is_union = False
+    cur = 0
+    for off, nm, ft in req:
+        fs = ft.get_size()
+        if off < cur:
+            raise ValueError("%s at 0x%X overlaps the previous field (ends 0x%X)" % (nm, off, cur))
+        if off > cur:
+            nu.push_back(_pad_member(cur, off - cur))
+        m = ida_typeinf.udm_t()
+        m.name, m.type, m.offset, m.size = nm, ft, off * 8, fs * 8
+        nu.push_back(m)
+        cur = off + fs
+    if cur > size:
+        raise ValueError("fields end at 0x%X, past the size 0x%X" % (cur, size))
+    if cur < size:
+        nu.push_back(_pad_member(cur, size - cur))
+    nt = ida_typeinf.tinfo_t()
+    if not nt.create_udt(nu, ida_typeinf.BTF_STRUCT) or nt.get_size() != size:
+        raise ValueError("rebuilt struct has the wrong size; nothing changed")
+    chk = ida_typeinf.udt_type_data_t()
+    nt.get_udt_details(chk)
+    for i in range(len(chk)):
+        print("  +0x%04X %5d  %-32s %s" % (chk[i].offset // 8, chk[i].size // 8, chk[i].name, chk[i].type.dstr()))
+    if not apply:
+        print("DRY RUN OK: %s keeps size %d" % (name, size))
         return False
     err = nt.set_numbered_type(til, t.get_ordinal(), ida_typeinf.NTF_REPLACE, name)
     if err != ida_typeinf.TERR_OK:
