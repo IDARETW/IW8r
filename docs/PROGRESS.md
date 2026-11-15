@@ -12,10 +12,13 @@
   restored at start-up, Hotkeys conflict question), drop onto open air = 256 units ahead, menu_paths_docs.py (user
   docs use the new File submenu paths). Two Opus helpers (3D camera quirks in camera_view.*; dialog quirks in
   main_window_game_modes / atmosphere_dialog / sun_sky_dialog / find_dialog / compile_panel Map Info /
-  main_window_stock_edit wording) were asked to wrap up at parking time; whatever they did not finish is listed in the
-  commit message. Still to do after the restart: run menu_paths_docs.py over src/qtapp/*.cpp messages (and the GUI
-  tests that check those messages), the dialog helper's LUT start-folder wiring if it reported one, full suite,
-  installer.
+  main_window_stock_edit wording) finished; all in bd53160 (core 183,988, GUI 1,190, smoke ok), installer and zip
+  12:30 (no ini). Lesson: after a helper changes a header, a build can link stale objects (heap corruption 0xC0000374
+  in CameraView::setToolPathSource at start-up); touch the changed headers and rebuild. Left after the restart: run
+  menu_paths_docs.py over src/qtapp/*.cpp status messages that still say "File > Relight Stock Map" etc. (and the GUI
+  tests that check those messages); GUI checks for the camera and dialog fixes (none written yet; the dialog helper
+  named its widgets: atmoOk, skyNameWarning, findReplaceInfo, gameModeDelete, mapInfoGameTypesWarning ...;
+  IW8R_GAME_MODES_DIR moves the preset folder for a test); live scale preview (needs a scale drag in Document).
 
 - 2026-11-15 midday, UI work (owner: "making the UI more streamlined, taking care of any and all edge cases ... the
   bottom set of editor tabs in a small side-bar in a side section"; then "run a series of haiku agents to find any

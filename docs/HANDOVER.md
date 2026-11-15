@@ -18,8 +18,9 @@ Verdansk 22.2 ms (25.5 ms from above the town).
 Update, midday of 2026-11-15: the editor's window was reorganised and a review of small quirks was worked through
 (CHANGELOG 2026-11-15; USER_GUIDE section 2). The browsers open from a side bar at the left edge into a side section;
 the Console, Compile and the other logs are tabs under the camera (Ctrl+J folds them); clicking the same spot again
-selects the next of several overlapping objects. Installer and zip rebuilt 12:01 from commit 0b5b465 (no settings
-file inside).
+selects the next of several overlapping objects. A second review regrouped the menus (File > Stock Map, Export,
+Prefabs) and fixed small quirks of the camera, dialogs and file handling. Installer and zip rebuilt 12:30 from commit
+bd53160 (no settings file inside).
 
 ## 1. What to install
 
