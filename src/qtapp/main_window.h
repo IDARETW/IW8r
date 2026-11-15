@@ -468,6 +468,28 @@ private:
     MacroRecorder macro_;
     std::string lastSunSent_;
     std::shared_ptr<const StockWorld> stockWorld_;  // the loaded stock map reference (11.8 region export)
+    // Stock map edits shown in the viewport as they are made (main_window_stock_edit.cpp): the world batches as loaded
+    // (null when too big to keep: read again for an edit), the edits the camera shows, the stock sun as loaded.
+public:  // (also the GUI test)
+    struct StockWorldEdits {
+        std::map<std::string, std::string> remap;  // iw8r_stock_retexture pairs the rebuild takes
+        std::vector<std::array<double, 6>> boxes;  // iw8r_remove_world boxes that take triangles out of the drawing
+        QString signature;                         // "" = none
+    };
+    StockWorldEdits stockWorldEdits() const;
+    static void applyStockWorldEdits(std::vector<app::ReferenceTexBatch>& batches, const StockWorldEdits& e, size_t* removed,
+                                     size_t* swapped);
+private:
+    void refreshStockWorldPreview();
+    void applyStockSunPreview();
+    std::shared_ptr<const std::vector<app::ReferenceTexBatch>> stockRefBatches_;
+    QString stockWorldEditSig_;
+    int stockPreviewGen_ = 0;
+    bool stockPreviewQueued_ = false, stockPreviewHooked_ = false;
+    bool stockSunBaseKnown_ = false, stockSunApplied_ = false;
+    double stockSunBaseIntensity_ = 0;
+    Vec3 stockSunBaseColor_, stockSunBaseToward_;
+    QString stockSunSig_;
     std::map<std::string, std::vector<Vec3>> tagCache_;  // stock model -> tags (model space), scene.tagsFor  // worldspawn sun keys last seen by the hot sun channel
     bool macroRecording_ = false;
     QAction* addCommand(QMenu* menu, const QString& command, const QString& text, const QKeySequence& def,

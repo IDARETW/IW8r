@@ -333,6 +333,52 @@ void runLootPointChecks(std::function<void(const QString&)> section, std::functi
         for (int i = 0; i < 12 && ctx.doc.modified(); ++i) ctx.doc.undo();
         check(ctx.doc.text() == stockText, "Undo takes the removal box out again");
     }
+
+    // Stock edits shown in the viewport without a rebuild (owner 2026-11-15): the retexture pairs the rebuild takes and
+    // the removal boxes, applied to the world batches (main_window_stock_edit.cpp).
+    section("stock world edits in the viewport (no rebuild)");
+    {
+        AABB rbox;
+        rbox.add(Vec3{-32, -32, 0});
+        rbox.add(Vec3{32, 32, 64});
+        const auto rprim = makeBrushPrimitive(makeBox(rbox, " caulk 128 128 0 0 0 0"), "\n");
+        if (!rprim) return;
+        ctx.doc.addEntity({{"classname", "iw8r_remove_world"}}, {*rprim}, "Remove world");
+        Id worldId = kNoId;
+        for (const auto& e : ctx.doc.map().entities)
+            if (e.isWorldspawn()) worldId = e.id;
+        // A pair the catalogue can carry (tw/brick_stone_wall_rough_pale: mp_hideout) and one it cannot (not listed).
+        ctx.doc.setKeyValue(worldId, "iw8r_stock_retexture", "tw/old_floor=tw/brick_stone_wall_rough_pale; tw/a=tw/not_a_material_xyz");
+        const auto edits = w.stockWorldEdits();
+        check(edits.remap.size() == 1 && edits.remap.count("tw/old_floor") && edits.remap.at("tw/old_floor") == "tw/brick_stone_wall_rough_pale",
+              "the preview takes the retexture pairs the rebuild takes (the uncatalogued one is left out)");
+        check(edits.boxes.size() == 1 && edits.boxes[0][0] == -32 && edits.boxes[0][5] == 64, "and the removal box");
+        // Batches: a triangle inside the box goes, one crossing it stays; the retextured surface takes the new material,
+        // a decal volume of the same name does not.
+        const auto tri = [](std::vector<app::GpuTexVertex>& v, Vec3 a, Vec3 b, Vec3 c) {
+            for (const Vec3& p : {a, b, c}) {
+                app::GpuTexVertex x{};
+                x.x = float(p.x), x.y = float(p.y), x.z = float(p.z);
+                v.push_back(x);
+            }
+        };
+        std::vector<app::ReferenceTexBatch> batches(2);
+        batches[0].material = "tw/old_floor";
+        tri(batches[0].tris, {-10, -10, 1}, {10, -10, 1}, {0, 10, 1});   // inside
+        tri(batches[0].tris, {-10, -10, 1}, {100, -10, 1}, {0, 10, 1});  // crosses the box
+        batches[1].material = "tw/old_floor";
+        batches[1].decalVolume = true;
+        tri(batches[1].tris, {-5, -5, 2}, {5, -5, 2}, {0, 5, 2});  // a decal on the removed floor
+        size_t removed = 0, swapped = 0;
+        MainWindow::applyStockWorldEdits(batches, edits, &removed, &swapped);
+        check(removed == 2 && batches[0].tris.size() == 3 && batches[1].tris.empty(),
+              QString("the triangles inside the box go, decals on them too, the crossing one stays (%1 removed)").arg(removed));
+        check(swapped == 1 && batches[0].material == "tw/brick_stone_wall_rough_pale" && batches[1].material == "tw/old_floor",
+              "the world surface is retextured, the decal volume keeps its material");
+        for (int i = 0; i < 12 && ctx.doc.modified(); ++i) ctx.doc.undo();
+        check(ctx.doc.text() == stockText, "Undo takes the preview edits out again");
+        check(w.stockWorldEdits().signature.isEmpty(), "no edit: the world is shown as stock");
+    }
 }
 
 }  // namespace iw8r::qt

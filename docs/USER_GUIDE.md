@@ -451,6 +451,10 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
 
 ### Editing a stock map
 
+Every edit below shows in the viewport as you make it; File > Stock Map > Rebuild Stock Zone is only needed to put it in
+the game. The world edits (retexture, removed geometry, another map's sky, the sun) are applied to the viewport's copy
+of the stock world a moment after the change (on a big Warzone map the world is read again, a few seconds).
+
 1. File > Open IW8 Stock Map opens a stock map: its entities are the document, its world and props are shown as a
    reference.
 2. File > Stock Map > Edit Compiled Spawns turns the spawn points into entities you can move, add and delete.
@@ -501,15 +505,21 @@ with the decal producer (the one this project uses has it since 2026-11-11). Not
     game.
 
 **Retexture a stock map**: set worldspawn `iw8r_stock_retexture` to `from=to` pairs (stock material names, `;` between
-pairs); File > Stock Map > Rebuild Stock Zone swaps them on the world surfaces. Replace like with like (a terrain blend with a blend):
+pairs); the viewport swaps them at once (only the pairs the rebuild can carry), File > Stock Map > Rebuild Stock Zone swaps them on the world surfaces. Replace like with like (a terrain blend with a blend):
 the surfaces keep their vertex data. Material Info in the Materials browser shows a material's name.
 
 **Sky of a stock map**: File > Stock Map > Relight Stock Map Sky picks another stock map whose sky this map uses (worldspawn
-`iw8r_sky_from`); File > Stock Map > Rebuild Stock Zone carries that sky in. The map's baked lighting stays as it was.
+`iw8r_sky_from`); the viewport shows that sky at once (fetched once from the other map), File > Stock Map > Rebuild Stock Zone carries that sky in. The map's baked lighting stays as it was.
 
 **Sun of a stock map**: File > Stock Map > Relight Stock Map Sun picks a new colour and intensity for the stock sun (worldspawn
-`iw8r_sun_color`, linear, and `iw8r_sun_intensity`); File > Stock Map > Rebuild Stock Zone writes them. The sun keeps its direction,
+`iw8r_sun_color`, linear, and `iw8r_sun_intensity`); View > Game Lighting shows the new sun at once, File > Stock Map > Rebuild Stock Zone writes them. The sun keeps its direction,
 because the stock map's baked sun shadows hold it. The rebuild report in the Console shows the old values.
+
+**Remove stock world geometry**: draw a brush around the walls or floor to take out and make it an `iw8r_remove_world`
+entity. The viewport leaves out every world triangle whose three corners are inside (and the decals on them) at once;
+File > Stock Map > Rebuild Stock Zone takes them out of the drawing and the collision. Keys: `render` `0` keeps the
+triangles (only the collision goes), `collision` `0` keeps the collision. Props are not world geometry: hide them with
+Hide Stock Props In Selection.
 
 ### Stock scripted objects (scriptables)
 

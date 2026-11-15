@@ -215,6 +215,12 @@ PrimGeom buildPrim(const Entity& e, const EntityItem& it, const Primitive& p) {
         // faces. It keeps its collision (the brush model is still solid in game).
         if (g.brushEntity && lowerOf(e.classname()) == "script_brushmodel")
             if (const std::string* bv = e.value("iw8r_brush_visual"); bv && *bv == "0") g.volume = true;
+        // Stock map helper volumes, never built as geometry: outlines, so the edit they make stays in view (the world
+        // an iw8r_remove_world box takes out is left out of the viewport behind it; loot clusters and zones).
+        if (g.brushEntity) {
+            const std::string cls = lowerOf(e.classname());
+            if (cls == "iw8r_remove_world" || cls == "iw8r_loot_cluster" || cls == "iw8r_loot_zone") g.volume = true, g.collides = false;
+        }
     } else {
         g.kind = PrimGeom::Patch;
         g.contentsColor = g.brushEntity ? 0xffd060c0u : 0xffc0c040u;

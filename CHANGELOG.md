@@ -5,6 +5,15 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Stock map edits show in the viewport as you make them**, without Rebuild Stock Zone: retexturing
+  (`iw8r_stock_retexture`, only the pairs the rebuild can carry), removed world geometry (`iw8r_remove_world` boxes: the
+  triangles inside and the decals on them), another map's sky (`iw8r_sky_from`) and the sun in Game Lighting
+  (`iw8r_sun_color`, `iw8r_sun_intensity`, `iw8r_sun_direction`). The entity edits (spawns, loot, vehicles, placed
+  objects, added models and brushes, hidden props, the map shader) were live already. The rebuild is still what puts
+  the edits in the game.
+- **Fixed: walking a stock map crashed the editor** (Play Preview on Hideout): the collision of one of its models sent
+  the convex split into endless recursion (a stack overflow). Crash reports of such a crash were empty; they now keep
+  the stack.
 - **The camera view draws on its own thread.** The GUI thread prepares each frame (scene, uploads, geometry) and the
   view's render thread draws and presents it, so the window no longer waits on the GPU or the display. While the GUI
   thread is busy (no frame for 120 ms) and the right mouse button is held over the view, the render thread flies the

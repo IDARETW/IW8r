@@ -942,6 +942,18 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
                         if (f.isEmpty()) skyCache->request(qs(*v));
                         return f;
                     }
+                // A stock map with another map's sky (File > Stock Map > Relight Stock Map Sky, iw8r_sky_from): shown
+                // before the rebuild carries it in.
+                if (const std::string* v = e.value("iw8r_sky_from"); v && !v->empty() && stockWorld_) {
+                    const QString id = qs(*v).trimmed().toLower();
+                    static const QRegularExpression valid("^mp_[a-z0-9_]{1,37}$");
+                    if (valid.match(id).hasMatch() && id != referenceZone_) {
+                        const QString mat = "tw/sky_" + id;
+                        const QString f = skyCache->cachedDds(mat);
+                        if (f.isEmpty()) skyCache->request(mat);
+                        return f;
+                    }
+                }
                 break;
             }
             // A stock map's document names no sky: its world's own sky material (tw/sky_<map>) does.
@@ -9810,7 +9822,12 @@ void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn)
             if (grade) self->camera_->setGameStockGrading(grade);
             if (!visionText.empty()) self->camera_->setGameStockVision(visionText);
             if (skyIntensity > 0) self->camera_->setGameStockSkyIntensity(skyIntensity);
-            if (intensity > 0) self->camera_->setGameStockSun(intensity, color, toward);
+            if (intensity > 0) {
+                // The map's own sun, kept for the iw8r_sun_* edits shown over it (applyStockSunPreview).
+                self->stockSunBaseKnown_ = true, self->stockSunApplied_ = false;
+                self->stockSunBaseIntensity_ = intensity, self->stockSunBaseColor_ = color, self->stockSunBaseToward_ = toward;
+                self->applyStockSunPreview();
+            }
         }, Qt::QueuedConnection);
     })).detach();
 }
@@ -10050,6 +10067,15 @@ void MainWindow::loadStockReference(const QString& zone) {
             else ctx_.setStatus("Stock lightmap of " + z + ": " + worldCache_->lightmapErrorOf(z));
         });
     }
+    if (!stockPreviewHooked_) {
+        stockPreviewHooked_ = true;
+        connect(&ctx_, &EditorContext::documentChanged, this, [this] {
+            if (referenceZone_.isEmpty() || stockPreviewQueued_) return;
+            stockPreviewQueued_ = true;
+            QTimer::singleShot(250, this, [this] { refreshStockWorldPreview(); });
+        });
+    }
+    if (zone != referenceZone_) stockSunBaseKnown_ = false, stockRefBatches_.reset();
     referenceZone_ = zone;
     // Props the model catalogue does not list are looked for in the map's own zone.
     if (modelCacheStock_) modelCacheStock_->setFallbackZones({zone});
@@ -10121,11 +10147,15 @@ void MainWindow::loadStockReference(const QString& zone) {
     if (skyCache_) skyCache_->addMapZone(zone);  // its own sky (sky_mp_speed_midday) may be in no traced zone
     if (imageCache_) imageCache_->addMapZone(zone);  // decal volume images likewise
     // Parsing takes a few seconds (hundreds of MB of JSON): off the UI thread, then hand the triangles to the camera.
+    // The document's stock world edits (retexture, removed geometry) are applied there too (refreshStockWorldPreview).
     QPointer<MainWindow> self(this);
     WorldCache* cache = worldCache_;
+    StockWorldEdits worldEdits = stockWorldEdits();
+    stockWorldEditSig_ = worldEdits.signature;
+    ++stockPreviewGen_;  // an edit preview under way is for the old batches
     const QString zoneDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/world_cache/" + zone;
     const StockDecalTools tools{toolPath("acts"), toolPath("replay"), toolPath("oodle")};
-    std::thread(guardedWorker(__FILE__, __LINE__, [self, cache, zone, zoneDir, tools] {
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, cache, zone, zoneDir, tools, worldEdits = std::move(worldEdits)] {
         QString err;
         const bool autoStream = Settings::instance().value("stock/autoStream", true).toBool();
         std::optional<StockWorld> loaded = cache->load(zone, &err, !autoStream);
@@ -10183,14 +10213,24 @@ void MainWindow::loadStockReference(const QString& zone) {
                                      .arg(zmax, 0, 'f', 0).toUtf8());
                 }
         }
+        // Kept as loaded for the stock edits' preview (up to 4 M vertices, about 240 MB), then the edits applied.
+        std::shared_ptr<const std::vector<app::ReferenceTexBatch>> keptBatches;
+        {
+            size_t verts = 0;
+            for (const auto& b : *texBatches) verts += b.tris.size();
+            if (verts <= 4'000'000) keptBatches = std::make_shared<const std::vector<app::ReferenceTexBatch>>(*texBatches);
+            if (!worldEdits.signature.isEmpty()) MainWindow::applyStockWorldEdits(*texBatches, worldEdits, nullptr, nullptr);
+        }
         // Props (11.3, core stock_smodels): the static model placements of the same export.
         auto props = std::make_shared<std::vector<StockModelInstance>>();
         std::string perr;
         if (n) readStockModelInstances(zoneDir.toStdString(), *props, &perr);
         if (terrainLayers && !streamZones->empty()) terrainLayers->fineCutout = true;  // the tiles fill the cut-outs
-        QMetaObject::invokeMethod(qApp, [self, zone, tris, n, err, props, plans, world, texBatches, decals, clutter, terrainLayers, streamZones] {
+        QMetaObject::invokeMethod(qApp, [self, zone, tris, n, err, props, plans, world, texBatches, decals, clutter, terrainLayers, streamZones,
+                                         keptBatches] {
             if (!self || self->referenceZone_ != zone) return;
             self->stockWorld_ = world;
+            self->stockRefBatches_ = keptBatches;
             self->stockDecals_ = decals;
             self->refClutter_ = clutter;
             self->terrainLayers_ = terrainLayers;

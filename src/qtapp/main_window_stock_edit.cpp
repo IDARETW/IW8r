@@ -2,6 +2,7 @@
 // docs/research/88_stock_map_editing.md). Kept out of main_window.cpp, which is at the compiler's section limit.
 #include "main_window.h"
 #include "compile_panel.h"
+#include "camera_view.h"
 #include "render.h"
 #include "custom_shader.h"
 #include <map>
@@ -9,6 +10,9 @@
 #include <QTextStream>
 
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <thread>
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -22,6 +26,8 @@
 #include <QStandardPaths>
 
 #include "editor_log.h"
+#include "worker_guard.h"
+#include <QPointer>
 #include "compile_iw8.h"
 #include "spawnlist.h"
 #include "scriptable_catalog.h"
@@ -38,6 +44,27 @@ namespace iw8r::qt {
 
 namespace {
 QString qs(const std::string& s) { return QString::fromStdString(s); }
+// The stock zone the material catalogue lists for a material ("" unknown): the retexture's carry check.
+std::string catalogueZoneOf(const std::string& material) {
+    static const std::map<std::string, std::string> catalogue = [] {
+        std::map<std::string, std::string> c;
+        QDir d(QCoreApplication::applicationDirPath());
+        for (int up = 0; up < 4 && !QFileInfo::exists(d.filePath("data/asset_catalog/iw8_materials.tsv")); ++up) d.cdUp();
+        QFile f(d.filePath("data/asset_catalog/iw8_materials.tsv"));
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&f);
+            while (!in.atEnd()) {
+                const QString line = in.readLine();
+                const int tab = line.indexOf('\t');
+                if (tab <= 0 || line.startsWith('#')) continue;
+                c.emplace(line.left(tab).toStdString(), line.mid(tab + 1).section(',', 0, 0).trimmed().toStdString());
+            }
+        }
+        return c;
+    }();
+    const auto it = catalogue.find(material);
+    return it == catalogue.end() ? std::string() : it->second;
+}
 // A question whose button says what it does ("Install", "Restore") next to Cancel, the default: these write to the
 // game folder, so Enter alone must not start them.
 bool confirmGameFolderAction(QWidget* parent, const QString& title, const QString& text, const QString& action) {
@@ -267,29 +294,8 @@ bool MainWindow::prepareStockEdit(const QString& work, QString* program, QString
         StockEditCarry skyCarry;
         if (stockSkyEdit(ctx_.doc.map(), stockZone_.toStdString(), skyCarry, replaceMaterials, &skyNotes)) carry.push_back(skyCarry);
         // Retexturing (worldspawn iw8r_stock_retexture): the catalogue says which stock zone holds each new material.
-        static std::map<std::string, std::string> catalogue;
-        if (catalogue.empty()) {
-            QDir d(QCoreApplication::applicationDirPath());
-            for (int up = 0; up < 4 && !QFileInfo::exists(d.filePath("data/asset_catalog/iw8_materials.tsv")); ++up) d.cdUp();
-            QFile f(d.filePath("data/asset_catalog/iw8_materials.tsv"));
-            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                QTextStream in(&f);
-                while (!in.atEnd()) {
-                    const QString line = in.readLine();
-                    const int tab = line.indexOf('\t');
-                    if (tab <= 0 || line.startsWith('#')) continue;
-                    catalogue.emplace(line.left(tab).toStdString(), line.mid(tab + 1).section(',', 0, 0).trimmed().toStdString());
-                }
-            }
-        }
         std::vector<std::string> entries;
-        stockRetextureEdits(
-            ctx_.doc.map(),
-            [](const std::string& m) {
-                const auto it = catalogue.find(m);
-                return it == catalogue.end() ? std::string() : it->second;
-            },
-            carry, entries, &skyNotes);
+        stockRetextureEdits(ctx_.doc.map(), catalogueZoneOf, carry, entries, &skyNotes);
         if (!entries.empty()) {
             std::string list = replaceMaterials.empty() ? std::string("[") : replaceMaterials.substr(0, replaceMaterials.size() - 1) + ",";
             for (size_t i = 0; i < entries.size(); ++i) list += (i ? "," : "") + entries[i];
@@ -899,6 +905,135 @@ int MainWindow::showAllStockProps() {
     rebuildReferenceProps();
     ctx_.documentEdited(QString("%1 hidden stock prop(s) are shown again").arg(hidden.size()));
     return int(hidden.size());
+}
+
+// ------------------------------------------------------------------ stock edits in the viewport
+
+MainWindow::StockWorldEdits MainWindow::stockWorldEdits() const {
+    StockWorldEdits e;
+    // The retexture pairs the rebuild takes (same parse and catalogue check: a pair it leaves out is not shown).
+    std::vector<StockEditCarry> carry;
+    std::vector<std::string> entries;
+    stockRetextureEdits(ctx_.doc.map(), catalogueZoneOf, carry, entries, nullptr);
+    for (const std::string& j : entries) {
+        const size_t f = j.find("\"from\":\""), t = j.find("\",\"to\":\"");
+        if (f == std::string::npos || t == std::string::npos) continue;
+        const std::string from = j.substr(f + 8, t - (f + 8));
+        const size_t te = j.find('"', t + 8);
+        if (te == std::string::npos) continue;
+        e.remap[from] = j.substr(t + 8, te - (t + 8));
+    }
+    for (const WorldRemovalBox& b : documentWorldRemovals(ctx_.doc.map()))
+        if (b.render) e.boxes.push_back({b.mins.x, b.mins.y, b.mins.z, b.maxs.x, b.maxs.y, b.maxs.z});
+    for (const auto& [from, to] : e.remap) e.signature += qs(from) + "=" + qs(to) + ";";
+    for (const auto& b : e.boxes)
+        for (const double v : b) e.signature += QString::number(v, 'f', 2) + " ";
+    return e;
+}
+
+void MainWindow::applyStockWorldEdits(std::vector<app::ReferenceTexBatch>& batches, const StockWorldEdits& e, size_t* removed,
+                                      size_t* swapped) {
+    size_t gone = 0, renamed = 0;
+    const auto inside = [&](const app::GpuTexVertex& v, const std::array<double, 6>& b) {
+        constexpr double eps = 1e-3;
+        return v.x >= b[0] - eps && v.y >= b[1] - eps && v.z >= b[2] - eps && v.x <= b[3] + eps && v.y <= b[4] + eps && v.z <= b[5] + eps;
+    };
+    for (app::ReferenceTexBatch& b : batches) {
+        // A world surface's material (its layers carry the same name); decal volumes and terrain layers are not
+        // world surfaces.
+        if (!b.decalVolume && !b.terrainLayer)
+            if (const auto it = e.remap.find(b.material); it != e.remap.end()) b.material = it->second, ++renamed;
+        if (e.boxes.empty() || b.tris.size() < 3) continue;
+        // World triangles with all three vertices inside a box (as the rebuild's remove_world_surfaces), and the decals
+        // projected on them.
+        size_t w = 0;
+        for (size_t t = 0; t + 2 < b.tris.size(); t += 3) {
+            bool out = false;
+            for (const auto& box : e.boxes)
+                if (inside(b.tris[t], box) && inside(b.tris[t + 1], box) && inside(b.tris[t + 2], box)) {
+                    out = true;
+                    break;
+                }
+            if (out) {
+                ++gone;
+                continue;
+            }
+            if (w != t) b.tris[w] = b.tris[t], b.tris[w + 1] = b.tris[t + 1], b.tris[w + 2] = b.tris[t + 2];
+            w += 3;
+        }
+        b.tris.resize(w);
+    }
+    if (removed) *removed = gone;
+    if (swapped) *swapped = renamed;
+}
+
+void MainWindow::refreshStockWorldPreview() {
+    stockPreviewQueued_ = false;
+    applyStockSunPreview();
+    if (camera_) camera_->update();  // the sky source (iw8r_sky_from) is asked every frame
+    if (referenceZone_.isEmpty() || !stockWorld_) return;
+    StockWorldEdits edits = stockWorldEdits();
+    if (edits.signature == stockWorldEditSig_) return;
+    stockWorldEditSig_ = edits.signature;
+    if (!stockRefBatches_) {
+        // The world was too big to keep a copy of: read again, with the edits.
+        ctx_.setStatus("Stock map edits: reading " + referenceZone_ + " again to show them...");
+        loadStockReference(referenceZone_);
+        return;
+    }
+    const int gen = ++stockPreviewGen_;
+    QPointer<MainWindow> self(this);
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, src = stockRefBatches_, edits = std::move(edits), gen] {
+        auto out = std::make_shared<std::vector<app::ReferenceTexBatch>>(*src);
+        size_t removed = 0, swapped = 0;
+        applyStockWorldEdits(*out, edits, &removed, &swapped);
+        QMetaObject::invokeMethod(qApp, [self, out, gen, removed, swapped] {
+            if (!self || gen != self->stockPreviewGen_) return;  // a newer edit replaces this one
+            self->camera_->setReferenceTextured(std::move(*out));
+            QStringList parts;
+            if (swapped) parts << QString("%1 surface batches retextured").arg(swapped);
+            if (removed) parts << QString("%1 world triangles removed").arg(removed);
+            self->ctx_.setTransientStatus(parts.isEmpty() ? QString("Stock map edits: the world is shown as stock")
+                                                          : "Stock map edits shown in the viewport (" + parts.join(", ") + "; the rebuild writes them)");
+        }, Qt::QueuedConnection);
+    })).detach();
+}
+
+void MainWindow::applyStockSunPreview() {
+    if (!stockSunBaseKnown_ || !camera_) return;
+    double intensity = stockSunBaseIntensity_;
+    Vec3 color = stockSunBaseColor_, toward = stockSunBaseToward_;
+    QString sig;
+    for (const Entity& e : ctx_.doc.map().entities) {
+        if (!e.isWorldspawn()) continue;
+        // The values the rebuild writes (core stockSunJson: the same ranges; a bad value is left out there too).
+        if (const std::string* c = e.value("iw8r_sun_color"); c && !c->empty()) {
+            double v[3] = {0, 0, 0};
+            char tail = 0;
+            if (std::sscanf(c->c_str(), "%lf %lf %lf %c", &v[0], &v[1], &v[2], &tail) == 3 && v[0] >= 0 && v[1] >= 0 && v[2] >= 0 &&
+                v[0] <= 16 && v[1] <= 16 && v[2] <= 16)
+                color = Vec3{v[0], v[1], v[2]}, sig += "c" + qs(*c);
+        }
+        if (const std::string* i = e.value("iw8r_sun_intensity"); i && !i->empty()) {
+            char* endp = nullptr;
+            const double v = std::strtod(i->c_str(), &endp);
+            if (endp && *endp == 0 && v >= 0 && v <= 1000000) intensity = v, sig += "i" + qs(*i);
+        }
+        if (const std::string* d = e.value("iw8r_sun_direction"); d && !d->empty()) {
+            double pitch = 0, yaw = 0;
+            if (parseStockSunDirection(*d, pitch, yaw)) {
+                constexpr double kDeg = 3.14159265358979323846 / 180.0;
+                const double p = pitch * kDeg, y = yaw * kDeg;
+                toward = normalize(Vec3{std::cos(p) * std::cos(y), std::cos(p) * std::sin(y), -std::sin(p)});
+                sig += "d" + qs(*d);
+            }
+        }
+        break;
+    }
+    if (sig == stockSunSig_ && stockSunApplied_) return;
+    stockSunSig_ = sig;
+    stockSunApplied_ = true;
+    if (intensity > 0) camera_->setGameStockSun(intensity, color, toward);
 }
 
 }  // namespace iw8r::qt

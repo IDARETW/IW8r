@@ -50,6 +50,7 @@
 #include <QTimer>
 
 #include "brush_tools.h"
+#include "brush_ops.h"
 #include "custom_shader.h"
 #include "shader_cache.h"
 #include "devmap_cover.h"
@@ -291,6 +292,38 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         report << QString("stock zone %1 opened, reference %2 triangles after %3 ms, stock lightmap %4, probes %5")
                       .arg(mapFile.mid(6)).arg(cam->referenceTriangles()).arg(wt.elapsed()).arg(cam->hasStockLightmap() ? "yes" : "no")
                       .arg(cam->stockProbeCount());
+    }
+    // IW8R_BENCH_STOCK_EDIT="key=value|...|remove=x0 y0 z0 x1 y1 z1": stock map edits (worldspawn keys, a world
+    // removal box) put in the document before the frames; the viewport shows them without a rebuild.
+    if (const QString se = qEnvironmentVariable("IW8R_BENCH_STOCK_EDIT"); stockZone && !se.isEmpty()) {
+        iw8r::Id worldId = iw8r::kNoId;
+        for (const auto& e : ctx.doc.map().entities)
+            if (e.isWorldspawn()) worldId = e.id;
+        bool sky = false;
+        for (const QString& part : se.split('|', Qt::SkipEmptyParts)) {
+            const QString key = part.section('=', 0, 0).trimmed(), value = part.section('=', 1).trimmed();
+            if (key == "remove") {
+                const QStringList n = value.split(' ', Qt::SkipEmptyParts);
+                if (n.size() != 6) continue;
+                iw8r::AABB b;
+                b.add(iw8r::Vec3{n[0].toDouble(), n[1].toDouble(), n[2].toDouble()});
+                b.add(iw8r::Vec3{n[3].toDouble(), n[4].toDouble(), n[5].toDouble()});
+                if (const auto prim = iw8r::makeBrushPrimitive(iw8r::makeBox(b, " caulk 128 128 0 0 0 0"), "\n"))
+                    ctx.doc.addEntity({{"classname", "iw8r_remove_world"}}, {*prim}, "Remove world");
+            } else if (worldId != iw8r::kNoId) {
+                ctx.doc.setKeyValue(worldId, key.toStdString(), value.toStdString());
+                sky = sky || key == "iw8r_sky_from";
+            }
+        }
+        ctx.documentEdited();
+        QElapsedTimer et;
+        et.start();
+        while (et.elapsed() < 90000) {
+            QApplication::processEvents(QEventLoop::AllEvents, 50);
+            cam->renderNow();
+            if (et.elapsed() > (sky ? 30000 : 3000) && !cam->texturesPending()) break;
+        }
+        report << "stock_edit " + se + QString(" (shown after %1 ms)").arg(et.elapsed());
     }
     const double openMs = t.nsecsElapsed() / 1e6;
     cam->setFixedRenderSize(1920, 1080);
