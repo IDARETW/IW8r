@@ -72,6 +72,7 @@ struct StockTechsetTraits {
     bool displacement = false;   // hexB last digit 8: displacement (tessellation techniques + displaced VS)
     bool wrapDiffuse = false;    // hexB & 0x0008000000000000: one extra psData row, RGB wrap (stockWrapDiffuse)
     bool transmission = false;   // hexB bit 0 (last digit odd): texture slot 68 x constant 18 lets light through (research 107)
+    bool uvAnim = false;         // hexC & 0x800000000: the technique binds constant 63, UV animation (research 133 section 1)
     int layers = 0;              // the first layer-count token
 };
 StockTechsetTraits parseStockTechsetName(const std::string& techsetName);

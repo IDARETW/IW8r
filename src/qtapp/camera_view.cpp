@@ -863,7 +863,18 @@ void CameraView::render() {
         in.clean = cleanCapture_;  // game surfaces only: no markers, tool faces, volumes or lines
         in.capture = cleanCapture_ || ctx_->scene.captureMode;  // no editor-only reference markers in a capture
         in.geometryChanged = rebuild;
+        // The game's clock for animated materials (research 133 section 1); a capture shows time 0.
+        if (!maskClock_.isValid()) maskClock_.start();
+        renderer_.setGameTime(in.capture ? 0.0 : maskClock_.elapsed() / 1000.0);
         renderer_.drawFrame(in);
+        // While a material with UV animation is drawn, the view keeps redrawing (30 a second, the editor's window active).
+        if (uvAnimSeen_ && !in.capture && !uvAnimTick_ && window() && window()->isActiveWindow()) {
+            uvAnimTick_ = true;
+            QTimer::singleShot(33, this, [this] {
+                uvAnimTick_ = false;
+                update();
+            });
+        }
         // A custom surface shader reads the depth of the frame before (iw8rSceneDepth). After a frame from a new view
         // one more shows the settled picture: at once for a capture, as the next frame on screen.
         if (renderer_.sceneDepthStale()) {
@@ -1223,7 +1234,9 @@ std::optional<std::array<float, 16>> CameraView::materialConstantsFor(const std:
 bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool propMesh) {
     if (m.empty() || !factsLookup_ || m.find_first_of("\x01\x02\x05\x06") != std::string::npos) return true;
     const auto f = factsLookup_(m);
-    if (!f || (f->emissiveScale[3] <= 0 && f->transTint[3] <= 0 && f->wrap[3] <= 0 && !f->unlit)) return true;
+    const bool uvAnim = f && (f->uvAnim[0] != 0 || f->uvAnim[1] != 0 || f->uvAnim[2] != 0);
+    if (!f || (f->emissiveScale[3] <= 0 && f->transTint[3] <= 0 && f->wrap[3] <= 0 && !f->unlit && !uvAnim)) return true;
+    if (uvAnim) uvAnimSeen_ = true;
     int ids[2] = {-1, -1};
     const std::string files[2] = {f->emissiveScale[3] > 0 ? f->emissiveFile : std::string(), f->transTint[3] > 0 ? f->transmissionFile : std::string()};
     for (int k = 0; k < 2; ++k) {
@@ -1235,7 +1248,8 @@ bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool pr
     }
     float x[16] = {f->emissiveScale[0], f->emissiveScale[1], f->emissiveScale[2], ids[0] >= 0 ? 1.0f : 0.0f,
                    f->transTint[0], f->transTint[1], f->transTint[2], ids[1] >= 0 ? 1.0f : 0.0f,
-                   f->wrap[0], f->wrap[1], f->wrap[2], f->wrap[3] > 0 ? 1.0f : 0.0f, f->unlit ? 1.0f : 0.0f, 0, 0, 0};
+                   f->wrap[0], f->wrap[1], f->wrap[2], f->wrap[3] > 0 ? 1.0f : 0.0f, f->unlit ? 1.0f : 0.0f,
+                   f->uvAnim[0], f->uvAnim[1], f->uvAnim[2]};
     if (propMesh) renderer_.setReferenceInstExtra(index, x, ids[0], ids[1]);
     else renderer_.setReferenceBaseExtra(index, x, ids[0], ids[1]);
     return true;

@@ -63,7 +63,12 @@ TEST(stock_decal_techset_names) {
     CHECK(t.valid && t.family == "twc" && t.blended && t.polygonOffset && !t.ssr && !t.displacement);
     CHECK(!t.wrapDiffuse && t.layers == 1);
     t = parseStockTechsetName("tw/lit_3_lit_bad_tca_802002_1002000000000010_0_1_1_0_0_13810015b_0_0_3_0_0");
-    CHECK(t.valid && t.blended && !t.polygonOffset);
+    CHECK(t.valid && t.blended && !t.polygonOffset && !t.uvAnim);
+    // UV animation (research 133 section 1): hexC bit 0x800000000 (the fan blade, the Shipment water).
+    t = parseStockTechsetName("mo/lit_3_lit_bad_tca_802_1002000000000010_0_1_1_0_0_938100158_0_0_3_0_0");
+    CHECK(t.valid && t.uvAnim);
+    t = parseStockTechsetName("twc/lit_3_lit_rpl_ta1_801010_1002000000010012_0_1_1_0_0_193810015b_0_0_3_0_0");
+    CHECK(t.valid && t.uvAnim && t.ssr);
     t = parseStockTechsetName("twc/lit_3_lit_bad_tca_812002_100a000000000010_0_1_1_0_0_13810015b_0_0_3_0_0");
     CHECK(t.valid && t.wrapDiffuse && !t.ssr);
     t = parseStockTechsetName("tw/lit_3_lit_bad_ta1_815002_1002000000000012_0_1_1_0_0_113810015b_0_0_1_0_0");

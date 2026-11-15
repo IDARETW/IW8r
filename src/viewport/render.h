@@ -111,6 +111,9 @@ struct PropVertex {
     float u, v;
     uint32_t rgba;
     uint32_t normal;  // signed bytes x, y, z (w 0); zero = none (the pixel shader derives one)
+    // The model's own vertex colour (sRGB bytes) of a VERTCOL material: x the albedo in Game Lighting (research 133
+    // section 4); white for the others.
+    uint32_t color = 0xFFFFFFFFu;
 };
 struct PropMeshData {
     std::vector<PropVertex> vertices;
@@ -592,6 +595,8 @@ public:
     void setGameDebugView(int v) { gameDebugView_ = v; }
     // The AO strength (research 107 section 4.3: the vision's r_ssaoStrength, 1 on MP maps): ao = lerp(1, ao, s).
     void setGameAoStrength(float s) { gameAoStrength_ = s; }
+    // Seconds on the game's clock for animated materials (research 133 section 1: UV animation by constant 63).
+    void setGameTime(double seconds) { gameTime_ = seconds; }
     // The map's bloom veil and vignette (research 109) in Game Lighting.
     void setPostFxEnabled(bool on) { postFxEnabled_ = on; }
     void setFilmGrainEnabled(bool on) { filmGrainEnabled_ = on; }
@@ -949,6 +954,7 @@ private:
     bool stockLightsEnabled_ = true, lightShadowsEnabled_ = true;
     int gameDebugView_ = 0;
     float gameAoStrength_ = 1.0f;
+    double gameTime_ = 0.0;
     size_t stockLightsDrawn_ = 0;
     // Local light shadow maps: kLightSlots slices of kLightSlotSize^2 depth (t24), one light each; their matrices and
     // lookup constants (t23). A slot is drawn once (static casters), again when the casters change.

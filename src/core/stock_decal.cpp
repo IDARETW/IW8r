@@ -84,6 +84,8 @@ StockTechsetTraits parseStockTechsetName(const std::string& name) {
     t.wrapDiffuse = (b & 0x0008000000000000ull) != 0;
     t.transmission = (b & 0x1) != 0;
     t.layers = std::atoi(tok[8].c_str());
+    uint64_t c = 0;
+    t.uvAnim = tok.size() > 12 && parseHex64(tok[12], c) && (c & 0x800000000ull) != 0;
     t.valid = true;
     return t;
 }

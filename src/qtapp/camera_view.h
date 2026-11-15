@@ -177,6 +177,8 @@ public:
         bool unlit = false;
         // Research 132 G1: a blended model material that is no decal (glass and other see-through surfaces).
         bool translucent = false;
+        // Research 133 section 1: constant 63, UV animation (u / s, v / s, radians / s about the texture centre).
+        std::array<float, 4> uvAnim{0, 0, 0, 0};
     };
     using FactsLookup = std::function<std::optional<StockMaterialFacts>(const std::string& material)>;
     void setMaterialFacts(FactsLookup lookup) { factsLookup_ = std::move(lookup); }
@@ -751,6 +753,8 @@ private:
     std::vector<std::string> ownMaskImages_;
     bool ownMaskScroll_ = false;
     QElapsedTimer maskClock_;
+    // A stock material with UV animation was set up for drawing (research 133): the view redraws while it is active.
+    bool uvAnimSeen_ = false, uvAnimTick_ = false;
     double stockSkyIntensity_ = 0;
     double stockBakedScale_ = 1.0;
     std::shared_ptr<const GameGradingClut> stockGrade_;

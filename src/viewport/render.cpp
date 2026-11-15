@@ -318,7 +318,7 @@ struct PixelLight { float4 posRadius; float4 colorOuter; float4 dirInner; };
 cbuffer Lights : register(b2) { float4 lightCount; PixelLight lights[64]; };
 // View > Game Lighting: game0 = (on, LUT input scale, lightmap bound, 0), sun toward, sun colour, unbaked light.
 cbuffer Game : register(b4) { float4 game0; float4 gameSun; float4 gameSunCol; float4 gameSky; float4 gameFog[6]; float4 gameSkyScale; float4 gameTerrainCut; float4 gameAo;
-                              float4 fogK[8]; };  // fogK = the game's cb7[131..138] (core game_fog, research 111)
+                              float4 fogK[8]; float4 gameTime; };  // gameTime.x: seconds (fmod 43200, research 133)  // fogK = the game's cb7[131..138] (core game_fog, research 111)
 // The stock map's analytic fog, the game's own (research 111: cs_post_opaque_processes PO:39-214 with the exe's
 // constants cb7[131..138] in fogK, filled by core gameFogConstants; a 1:1 port of core gameFogEvaluate). The fog
 // spline image is zero on the stock maps (their visions name no spline) and is left out. gameFog[0].w = on.
@@ -458,7 +458,7 @@ SamplerState samp0 : register(s0);
 struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4;
               float4 edge : TEXCOORD6; };
 struct PSIn { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 w : TEXCOORD1; float3 n : TEXCOORD2; float3 t : TEXCOORD3; float2 lm : TEXCOORD4;
-               float3 lgvBack : TEXCOORD5; float3 edge : TEXCOORD6; };
+               float3 lgvBack : TEXCOORD5; float3 edge : TEXCOORD6; float3 vc : TEXCOORD7; };  // vc: a prop's vertex colour (linear; research 133)
 Buffer<uint> tomeVis : register(t30);  // cull by tome: one bit per GfxWorld surface (wind.w = 1 while bound)
 PSIn vs_tex(VSIn i) {
     PSIn o;
@@ -472,6 +472,7 @@ PSIn vs_tex(VSIn i) {
     }
     o.pos = mul(float4(p, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = p; o.n = i.n; o.t = i.t; o.lm = i.lm;
     o.lgvBack = float3(0, 0, 0);
+    o.vc = float3(1, 1, 1);
     o.edge = i.edge.xyz;
     if (wind.w > 0.5 && i.edge.a < 0.5) {
         // A stock reference vertex: its surface + 1 (referenceSurfaceTag). A surface the tome hides goes off screen.
@@ -484,7 +485,7 @@ PSIn vs_tex(VSIn i) {
     return o;
 }
 // Textured instanced reference props: the model's vertices placed by three transform rows per instance.
-struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
+struct VSInInst { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float4 vcol : COLOR1; float4 r0 : INSTROW0; float4 r1 : INSTROW1; float4 r2 : INSTROW2;
                   float4 l0 : INSTROW3; float4 l1 : INSTROW4; float4 l2 : INSTROW5; };
 PSIn vs_tex_inst(VSInInst i) {
     float4 p = float4(i.pos, 1.0);
@@ -492,6 +493,8 @@ PSIn vs_tex_inst(VSInInst i) {
     // The model's vertex normal turned by the instance (uniform scale; zero = none: the pixel shader derives one).
     float3 nw = float3(dot(i.r0.xyz, i.n), dot(i.r1.xyz, i.n), dot(i.r2.xyz, i.n));
     PSIn o; o.pos = mul(float4(w, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = w; o.n = dot(nw, nw) > 1e-12 ? normalize(nw) : float3(0, 0, 0); o.t = float3(0, 0, 0); o.lm = float2(-1, -1); o.edge = float3(1, 0, 0);
+    // The vertex colour of a VERTCOL model, stored sRGB: linear as the game's static-model VS (research 133 section 4).
+    o.vc = i.vcol.rgb <= 0.04045 ? i.vcol.rgb / 12.92 : pow((i.vcol.rgb + 0.055) / 1.055, 2.4);
     // The prop's light grid box (research 105 section 1.4, DC + first order), per vertex with the vertex normal as the
     // game's static-model shader does: E = 0.282095 DC + 4/9 0.488603 (s0 n.z - s2 n.y - s3 n.x), in lightmap units
     // (the pixel shader applies bakedLightScale). Props have no tangent and no lightmap UV: E rides in t, marked by
@@ -875,6 +878,14 @@ Texture2D revealTex : register(t12);
 // vs_tex_inst: a prop lit from its light grid box carries that light in t (no tangent) and lm = (-2, -2).
 bool propLit(PSIn i) { return i.lm.x < -1.5; }
 float4 ps_tex(PSIn i) : SV_TARGET {
+    // UV animation (research 133 section 1, constant 63 in matX.yzw): turn about the texture centre, then scroll; every
+    // texture of the material reads the animated UV. Stock reference batches only (the plain layer buffer is zero).
+    if (batchFlags2.z > 0.5 && any(matX.yzw != 0)) {
+        float sa, ca;
+        sincos(gameTime.x * matX.w, sa, ca);
+        const float2 d = i.uv - 0.5;
+        i.uv = float2(ca * d.x - sa * d.y, sa * d.x + ca * d.y) + 0.5 + gameTime.x * matX.yz;
+    }
     const float3 propLgv = propLit(i) ? i.t : float3(0, 0, 0);
     if (propLit(i)) i.t = float3(0, 0, 0);  // no vertex tangent: the normal map frame from the screen derivatives
     // The coarse super terrain (vertex alpha 254) inside the near-camera layer patch: the patch draws the ground there.
@@ -946,7 +957,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         const float aoV = gameAo.x > 0.5 ? lerp(1.0, aoMap.Load(int3(i.pos.xy, 0)), gameSunCol.w) : 1.0;  // x the AO strength
         if (gameAo.y > 0.5) return float4(aoV, aoV, aoV, 1.0);
         if (gameAo.z > 0.5) return float4(t.rgb, outA);  // debug: the albedo as sampled
-        float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? float3(1, 1, 1) : i.col.rgb);  // i.col: selection and brush entity tints
+        float3 albedo = srgbToLinear3(t.rgb) * (stockRef ? i.vc : i.col.rgb);  // i.col: selection and brush entity tints; vc: a prop's vertex colour
         if (!stockRef && i.col.a < 0.5) {  // sky box
             const float3 sky = gameFogApply(albedo * gameSkyScale.x, i.w, true);
             return float4(gameAo.w > 0.5 ? sky : gamePost(sky), 1.0);
@@ -1925,12 +1936,13 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
             ID3DBlob* tivs = nullptr;
             if (compileTex("vs_tex_inst", "vs_5_0", tivs)) {
                 dev_->CreateVertexShader(tivs->GetBufferPointer(), tivs->GetBufferSize(), nullptr, &vsTexInst_);
-                // PropVertex (28 bytes): position, uv, colour, normal as signed bytes.
+                // PropVertex (32 bytes): position, uv, colour, normal as signed bytes, the model's vertex colour.
                 const D3D11_INPUT_ELEMENT_DESC tiil[] = {
                     {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"NORMAL", 0, DXGI_FORMAT_R8G8B8A8_SNORM, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
+                    {"COLOR", 1, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0},
                     {"INSTROW", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1},
                     {"INSTROW", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D11_INPUT_PER_INSTANCE_DATA, 1},
@@ -1956,7 +1968,7 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
             dev_->CreateBuffer(&bd, nullptr, &cbWind_);
             bd.ByteWidth = 16 + UINT(sizeof(PixelLight)) * kMaxPixelLights;
             dev_->CreateBuffer(&bd, nullptr, &cbLights_);
-            bd.ByteWidth = 336;  // game0, sun toward, sun colour, unbaked light, fog[6], sky scale, terrain cut, ao, fogK[8]
+            bd.ByteWidth = 352;  // game0, sun toward, sun colour, unbaked light, fog[6], sky scale, terrain cut, ao, fogK[8], time
             dev_->CreateBuffer(&bd, nullptr, &cbGame_);
         }
         safeRelease(tvs);
@@ -2964,7 +2976,7 @@ void SceneRenderer::setStockProbes(const StockProbeSet* set) {
 void SceneRenderer::writeGameCb() {
     if (!cbGame_) return;
     const bool on = game_.on && gameLutSrv_ != nullptr;
-    float g[84] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
+    float g[88] = {on ? 1.0f : 0.0f, game_.lutScale, on && gameLmSrv_[0] ? 1.0f : 0.0f, envBrdfSrv_ ? 1.0f : 0.0f,
                    game_.sunToward[0], game_.sunToward[1], game_.sunToward[2], on && gtsoSrv_ ? 1.0f : 0.0f,
                    game_.sunColor[0], game_.sunColor[1], game_.sunColor[2], 0,
                    game_.sky[0], game_.sky[1], game_.sky[2], game_.skyIsStock ? 1.0f : (game_.skyIsUnbaked ? 2.0f : 0.0f)};
@@ -2987,6 +2999,7 @@ void SceneRenderer::writeGameCb() {
     g[11] = std::clamp(gameAoStrength_, 0.0f, 2.0f);  // gameSunCol.w: the AO strength
     g[51] = hdrFrame_ ? 1.0f : 0.0f;  // the lit scene goes to the HDR target: no post chain in the shaders
     std::memcpy(&g[52], game_.fogK, sizeof(game_.fogK));
+    g[84] = float(std::fmod(gameTime_, 43200.0));  // the game's clock wraps (research 133 section 0)
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
     ID3D11ShaderResourceView* gl[3] = {gameLutSrv_, envBrdfSrv_, probeArrSrv_};

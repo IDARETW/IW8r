@@ -29,6 +29,19 @@
 namespace iw8r::qt {
 namespace {
 
+// Research 133 section 1: a technique set whose hex field carries bit 0x800000000 binds constant 63 (UV animation).
+// Read from any long hex token, so the unlit effect sets (unlit_6_effect_...) count too.
+bool techsetAnimatesUv(const QString& techset) {
+    const QStringList tok = techset.section('/', -1).split('_');
+    for (const QString& t : tok) {
+        if (t.size() < 9 || t.size() > 12) continue;
+        bool ok = false;
+        const qulonglong v = t.toULongLong(&ok, 16);
+        if (ok && (v & 0x800000000ull)) return true;
+    }
+    return false;
+}
+
 constexpr const char* kIndexFormat = "iw8r-material-cache-1";
 // Zone XPaks with a payload are far larger than the 32 KiB headers that most zones carry.
 constexpr qint64 kXpakMinBytes = 64 * 1024;
@@ -225,6 +238,8 @@ void MaterialCache::loadIndex() {
         if (!e.failed && o.value("maskRules").toInt() < 4) continue;  // 4: + emissive (slot 18)
         // Resolved before the lit buffer and the constants by index were kept (research 107): resolve again once.
         if (!e.failed && o.value("constRules").toInt() < 2) continue;  // 2: non-finite words in memory byte order
+        // Resolved before constant 63 was kept (research 133, UV animation): those technique sets resolve again once.
+        if (!e.failed && o.value("constRules").toInt() < 3 && techsetAnimatesUv(e.techset)) continue;
         // Layered materials (tw4 / twc4) resolved before their layer images and constants were kept (research 97), or
         // whose layer images were removed: resolve again once (images already cached are reused).
         if (!e.failed && (o.value("layerRules").toInt() < 1 || layerImageGone) &&
@@ -306,7 +321,7 @@ void MaterialCache::writeIndex() const {
         if (!e.failed && !e.emissiveDds.isEmpty()) o.insert("emissive", root.relativeFilePath(e.emissiveDds));
         if (!e.failed && !e.transmissionDds.isEmpty()) o.insert("transmission", root.relativeFilePath(e.transmissionDds));
         if (!e.failed) {
-            o.insert("constRules", 2);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68; 2: bits order
+            o.insert("constRules", 3);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68; 2: bits order; 3: + 63
             QJsonObject cs;
             for (const auto& [k, f] : e.consts) cs.insert(QString::number(k), QJsonArray{f[0], f[1], f[2], f[3]});
             if (!cs.isEmpty()) o.insert("consts", cs);
@@ -608,7 +623,7 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
             std::memcpy(bytes.data() + 4 * k, &u, 4);
         }
         constBytes[index] = bytes;
-        if (finite && (index == 18 || index == 36 || index == 103 || index == 104)) work.consts[index] = f;
+        if (finite && (index == 18 || index == 36 || index == 63 || index == 103 || index == 104)) work.consts[index] = f;
     }
     // Single-layer materials: the rows in the order the decoders read (row 0 c72, 1 c0, 2 c9, 3 c54). The lit
     // technique puts transmission (18) and emissive (36) constants before 54, which then sits on row 4 to 6.

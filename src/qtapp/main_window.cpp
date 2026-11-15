@@ -420,6 +420,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             f.transTint = c18 ? std::array<float, 4>{(*c18)[0], (*c18)[1], (*c18)[2], 1.0f} : std::array<float, 4>{1, 1, 1, 1};
         }
         if (const auto* c103 = cst(103)) f.wrap = {(*c103)[0], (*c103)[1], (*c103)[2], 1.0f};
+        if (const auto* c63 = cst(63)) f.uvAnim = *c63;  // UV animation (research 133 section 1)
         f.unlit = parseTechset(e->techset.section('/', -1).toStdString()).family == TechsetFamily::UnlitEffect;
         // Blended model materials past the decal sort keys (glass 25, 30): see-through (research 132 G1).
         f.translucent = !e->techset.startsWith("tw") && (ts.contains("_bad_") || ts.contains("_bar_")) && f.propDecalSortKey == 0;
@@ -7614,12 +7615,21 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                         }
                         if (pm->indices.empty()) continue;
                         pm->vertices.resize(nv);
+                        // A VERTCOL material (the `c` in the prefix: tmco, tm2co, tmlc, mco, m2co) multiplies its
+                        // albedo by the vertex colour (research 133 section 4).
+                        const std::string prefix = ms.material.substr(0, ms.material.find('/'));
+                        const bool vertCol = ms.color.size() == nv && prefix.find('c') != std::string::npos &&
+                                             (prefix.rfind("m", 0) == 0 || prefix.rfind("tm", 0) == 0);
                         for (size_t v = 0; v < nv; ++v) {
                             const Vec3 p = zup(ms.pos[v]);
                             app::PropVertex& pv = pm->vertices[v];
                             pv.x = float(p.x), pv.y = float(p.y), pv.z = float(p.z);
                             pv.u = float(ms.uv[v][0]), pv.v = float(ms.uv[v][1]);
                             pv.normal = 0;
+                            if (vertCol) {
+                                const auto byte = [](float c) { return uint32_t(std::clamp(c, 0.0f, 1.0f) * 255.0f + 0.5f); };
+                                pv.color = byte(ms.color[v][0]) | (byte(ms.color[v][1]) << 8) | (byte(ms.color[v][2]) << 16) | 0xff000000u;
+                            }
                             Vec3 sn = shadeN[v];
                             if (ownNormals) {
                                 const Vec3 nn = zup(ms.normal[v]);
