@@ -2,6 +2,11 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-15 after the restart: old File menu paths in messages rewritten (c762771); GUI checks for the second
+  review's dialog and camera fixes; gizmo scale drag draws the scaled bounds as a yellow outline (6188e0d); a second,
+  never-filled Recent menu removed (the regroup patch's applied-already guard matched text found elsewhere; guard fixed:
+  skip only when b is present and a is gone or inside b) (d395176). Window feature shots now also cover the File menu,
+  Tool Paths and the scale preview. Suites: core 183,988, GUI 1,201, smoke ok. Installer and zip 13:18 (no ini).
 - 2026-11-15 afternoon, parked for the owner's PC restart. Second quirk review: four Haiku audits (menus / shortcuts,
   3D camera, feature dialogs, first start / file flow). Mine, done: tools/patches/file_flow2.py (New Map resets stock
   state via resetForNewDocument, failed open keeps the map, Recent normalised + numbered + Clear, untitled save name,
