@@ -145,6 +145,10 @@ P += normalize(N) * h                                // r4 = normalised r7 (the 
 No amplitude stream, no tessellation. The editor already holds the model's normals and UVs; it needs slot 95's image
 and constant 45.
 
+Status 2026-11-15: drawn in `vs_tex_inst` (per-mesh record row 30 = on, scale, bias; the height image at VS t43 through
+a `"\x07"` data key; the material cache keeps constant 45, constRules 7). The UV is taken as the raw UV0 (INFERRED).
+A/B: `IW8R_NO_SMODEL_DISP`.
+
 ### Pixel parallax of the residual (VERIFIED, PS_216e2c87:100-170)
 
 Inputs: `E = DISPLACEMENT_EYE_BIAS.xyz` (eye vector), `bias = DISPLACEMENT_EYE_BIAS.w`, `scale = DISPLACEMENT_SCALE.y`

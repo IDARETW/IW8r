@@ -277,6 +277,13 @@ void MaterialCache::loadIndex() {
             for (const ModelLayerKind k : tk.kind) code = code || k == ModelLayerKind::Code;
             if (code) continue;
         }
+        // Resolved before constant 45 was kept (static-model displacement, research 133 section 3): model materials with
+        // a slot-95 height image resolve again once.
+        if (!e.failed && o.value("constRules").toInt() < 7 && !e.techset.startsWith("tw")) {
+            bool height = false;
+            for (const QString& t : e.textures) height = height || t.startsWith("95=");
+            if (height) continue;
+        }
         // Layered materials (tw4 / twc4) resolved before their layer images and constants were kept (research 97), or
         // whose layer images were removed: resolve again once (images already cached are reused).
         if (!e.failed && (o.value("layerRules").toInt() < 1 || layerImageGone) &&
@@ -358,7 +365,7 @@ void MaterialCache::writeIndex() const {
         if (!e.failed && !e.emissiveDds.isEmpty()) o.insert("emissive", root.relativeFilePath(e.emissiveDds));
         if (!e.failed && !e.transmissionDds.isEmpty()) o.insert("transmission", root.relativeFilePath(e.transmissionDds));
         if (!e.failed) {
-            o.insert("constRules", 6);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68; 2: bits order; 3: + 63; 4: + 79-82; 5: + 110 / 111; 6: code-layer rows
+            o.insert("constRules", 7);  // 1: the lit buffer, canonical rows, constants 18 / 36 / 103 / 104, slot 68; 2: bits order; 3: + 63; 4: + 79-82; 5: + 110 / 111; 6: code-layer rows; 7: + 45
             QJsonObject cs;
             for (const auto& [k, f] : e.consts) cs.insert(QString::number(k), QJsonArray{f[0], f[1], f[2], f[3]});
             if (!cs.isEmpty()) o.insert("consts", cs);
@@ -672,8 +679,8 @@ bool MaterialCache::loadBody(Work& work, const QString& zone, const QString& jso
             std::memcpy(bytes.data() + 4 * k, &u, 4);
         }
         constBytes[index] = bytes;
-        if (finite && (index == 18 || index == 36 || index == 63 || (index >= 79 && index <= 82) || index == 103 || index == 104 ||
-                       index == 110 || index == 111))
+        if (finite && (index == 18 || index == 36 || index == 45 || index == 63 || (index >= 79 && index <= 82) || index == 103 ||
+                       index == 104 || index == 110 || index == 111))
             work.consts[index] = f;
     }
     if (work.modelLayers >= 2) work.layerPsData = work.psData;  // the raw lit buffer, before the single-layer rows below

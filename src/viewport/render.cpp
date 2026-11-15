@@ -491,7 +491,9 @@ PSIn vs_tex(VSIn i) {
 // Textured instanced reference props: the model's vertices placed by three transform rows per instance.
 // A prop mesh's flag / foliage waves (research 133 section 6): constants 79-82 at rows 8..11 of its per-mesh record
 // (the same range as cbuffer Layer, bound to b8 for the vertex shader; unbound = zero = no waves).
-cbuffer PropWave : register(b8) { float4 pwRows[8]; float4 wave79; float4 wave80; float4 wave81; float4 wave82; };
+cbuffer PropWave : register(b8) { float4 pwRows[8]; float4 wave79; float4 wave80; float4 wave81; float4 wave82; float4 pwRows12[18];
+                                   float4 dispC; };  // row 30: static-model displacement (on, scale, bias, 0)
+Texture2D<float4> dispTex : register(t43);  // its height image (slot 95, research 133 section 3)
 // The stock props' light grid atlas (research 105 section 1.4; SceneRenderer::setStockLgvAtlas): texture 0 the DC
 // (R11G11B10F), texture 1 six tiles of normalised SH bytes (2 x 3), five float4 per box (rows, uvScale, uvBias).
 Texture3D<float3> lgvDc : register(t40);
@@ -552,6 +554,10 @@ PSIn vs_tex_inst(VSInInst i) {
                         sin(phase * wave82.z + dot(q, wave82.xy)) * wave82.w;
         p.xyz += h * i.vcol.a * i.n;
     }
+    // Static-model displacement (research 133 section 3, VS_36fc68f3:231-235): along the vertex normal by the height
+    // image's red channel x constant 45 (scale, bias; (2, -1) on stone_wall_01: +-1 unit).
+    if (dispC.x > 0.5 && dot(i.n, i.n) > 1e-12)
+        p.xyz += normalize(i.n) * (dispTex.SampleLevel(samp0, i.uv, 0).r * dispC.y + dispC.z);
     float3 w = float3(dot(i.r0, p), dot(i.r1, p), dot(i.r2, p));
     // The model's vertex normal turned by the instance (uniform scale; zero = none: the pixel shader derives one).
     float3 nw = float3(dot(i.r0.xyz, i.n), dot(i.r1.xyz, i.n), dot(i.r2.xyz, i.n));
@@ -4663,6 +4669,7 @@ void SceneRenderer::drawReferenceTexInstances() {
     ctx_->VSSetShader(vsTexInst_, nullptr, 0);
     ctx_->PSSetShader(texPsOverride_ ? texPsOverride_ : (filterPs_ ? filterPs_ : psTex_), nullptr, 0);
     ctx_->PSSetSamplers(0, 1, &sampler_);
+    ctx_->VSSetSamplers(0, 1, &sampler_);  // the props' displacement height images (vs_tex_inst)
     static const bool hardCut = std::getenv("IW8R_HARD_CUTOUT") != nullptr;
     const bool soft = !texPsOverride_ && !hardCut && blend_;
     ID3D11BlendState* prevBlend = nullptr;
@@ -4726,6 +4733,8 @@ void SceneRenderer::drawReferenceTexInstances() {
             if (instCb && cbInstAll_[mi / kInstPerCb]) {  // the mesh's waves, so the layer stays on the moving surface
                 const UINT first = UINT((mi % kInstPerCb) * 32), num = 32;
                 ctx1_->VSSetConstantBuffers1(8, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);
+                ID3D11ShaderResourceView* dsp = g.disp[0] > 0.5f && g.dispTex >= 0 && size_t(g.dispTex) < textures_.size() ? textures_[size_t(g.dispTex)] : nullptr;
+                ctx_->VSSetShaderResources(43, 1, &dsp);  // the static-model displacement's height image
             }
             ID3D11Buffer* bufs[2] = {g.vb, g.inst};
             ctx_->IASetVertexBuffers(0, 2, bufs, strides, offsets);
@@ -4836,6 +4845,8 @@ void SceneRenderer::drawReferenceTexInstances() {
                 const UINT first = UINT((mi % kInstPerCb) * 32), num = 32;
                 ctx1_->PSSetConstantBuffers1(7, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);
                 ctx1_->VSSetConstantBuffers1(8, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);  // PropWave
+                ID3D11ShaderResourceView* dsp = g.disp[0] > 0.5f && g.dispTex >= 0 && size_t(g.dispTex) < textures_.size() ? textures_[size_t(g.dispTex)] : nullptr;
+                ctx_->VSSetShaderResources(43, 1, &dsp);  // the static-model displacement's height image
             }
         }
         ID3D11Buffer* bufs[2] = {g.vb, culled ? g.visInst : g.inst};  // the pre-pass: the visible buffer's large prefix
@@ -4896,6 +4907,7 @@ bool SceneRenderer::uploadInstParams() {
                 std::memcpy(&all[j * 128 + 32], gi.wave, sizeof(gi.wave));  // PropWave (b8) in vs_tex_inst
                 std::memcpy(&all[j * 128 + 64], gi.fold, sizeof(gi.fold));  // rows 16-25
                 std::memcpy(&all[j * 128 + 104], gi.coat, sizeof(gi.coat));  // rows 26-29 (research 137)
+                std::memcpy(&all[j * 128 + 120], gi.disp, sizeof(gi.disp));  // row 30 (static-model displacement, VS)
                 maskExtraTerms(&all[j * 128 + 16]);
                 if (textureRawAlpha(gi.texture)) all[j * 128 + 1] = 2.0f;  // opaque: alpha is the specular code
             }
@@ -4911,6 +4923,7 @@ void SceneRenderer::drawReferenceTexInstancesShadow(const iw8r::Frustum* view) {
     ctx_->VSSetShader(vsTexInst_, nullptr, 0);
     ctx_->PSSetShader(psShadowClip_, nullptr, 0);  // none: solid
     if (psShadowClip_ && sampler_) ctx_->PSSetSamplers(0, 1, &sampler_);
+    if (sampler_) ctx_->VSSetSamplers(0, 1, &sampler_);  // the props' displacement height images
     if (cbBatch_) {
         const float zero[8] = {0, 0, 0, 0, 0, 0, 0, 0};
         writeBatchCb(zero);
@@ -4933,6 +4946,8 @@ void SceneRenderer::drawReferenceTexInstancesShadow(const iw8r::Frustum* view) {
                 const UINT first = UINT((mi % 128) * 32), num = 32;
                 ctx1_->PSSetConstantBuffers1(7, 1, &cbInstAll_[mi / 128], &first, &num);
                 ctx1_->VSSetConstantBuffers1(8, 1, &cbInstAll_[mi / 128], &first, &num);  // PropWave
+                ID3D11ShaderResourceView* dsp = g.disp[0] > 0.5f && g.dispTex >= 0 && size_t(g.dispTex) < textures_.size() ? textures_[size_t(g.dispTex)] : nullptr;
+                ctx_->VSSetShaderResources(43, 1, &dsp);  // the static-model displacement's height image
             }
         }
         ID3D11Buffer* bufs[2] = {g.vb, g.inst};

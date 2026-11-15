@@ -27,7 +27,17 @@
   weight is alpha x mask with w = 1 (not foldWeight). The walfa's slot-126 mask has G = 0, so its coat is off; seen on
   Hideout's corrugated siding and dumpster rubble. Slot-126 masks are stored sRGB (all cached ones): now read linear
   through a "\x07<image>" key (texture_decode ddsIsSrgb; IW8R_RAW_LAYER_MASKS). Debug path for a shader weight: on/off
-  colours per factor with IW8R_NO_HDR, then read the mask image itself (BC1 decode in Python).
+  colours per factor with IW8R_NO_HDR, then read the mask image itself (BC1 decode in Python). Committed 246a3bc.
+  Then static-model displacement (research 133 s3: record row 30, VS t43, constant 45 kept, constRules 7;
+  IW8R_NO_SMODEL_DISP; seen on Hideout's periphery house stone base). Bench fix: a Verdansk run with a warm model cache
+  took its shots before the lightmap / probes / light grid reads (worker threads) were in ("stock lightmap no, probes 0,
+  zones 0"); stockCacheIdle now also waits for stockLoadsInFlight_. The next run lost the near terrain layers (the
+  bench camera rebuilds the terrain patch, and texturesPending only counts budget-postponed loads): the settle loops
+  now also wait for CameraView::referencePending() and terrainLayersBusy(); bench lines reference_pending /
+  tiles_pending list what is still unresolved. That showed tool materials (tw/caulk_shadow, tmo/nodraw) were never
+  marked resolved, so the reference polled every frame forever: fixed (Hideout bench open 243 s -> 33 s). Last cause
+  of the missing Verdansk terrain layers: the bench's camA / camB moves rebuild the terrain patch on its timer after
+  settle() had counted its calm frames; settle() now waits for terrainLayersCurrent() and referencePending() too.
 - 2026-11-14 late evening (after the Cinder Rail fix): converter e648a414 (research 134 rewritten from the client
   PDB: DB_PatchMem's asset stack of two is pushed by nearly every loader; every asset type counts) is live, and the
   fixed Cinder Rail (same inputs as the 20:15 build) was installed at 20:40 with the owner's OK; not yet seen loading.

@@ -263,21 +263,25 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         }
         // The world cache's lightmap / probes / light grid job (a decompression; minutes on a zone cached before the
         // light grid existed), then the prop rebuild it starts.
-        if (!w.stockCacheIdle()) {
-            while (wt.elapsed() < 600000 && !w.stockCacheIdle()) {
-                cam->renderNow();
-                QApplication::processEvents(QEventLoop::AllEvents, 50);
-            }
+        while (wt.elapsed() < 600000 && !w.stockCacheIdle()) {
+            cam->renderNow();
+            QApplication::processEvents(QEventLoop::AllEvents, 50);
+        }
+        // Then what that work set going: textures, the reference's unresolved images and layers, the terrain patch.
+        {
             QElapsedTimer settle;
             settle.start();
-            while (settle.elapsed() < 3000 || cam->texturesPending()) {
+            while (settle.elapsed() < 3000 || cam->texturesPending() || cam->referencePending() || w.terrainLayersBusy() || !w.stockCacheIdle()) {
                 cam->renderNow();
                 QApplication::processEvents(QEventLoop::AllEvents, 50);
-                if (wt.elapsed() > 660000) break;
+                if (wt.elapsed() > 660000 || settle.elapsed() > 180000) break;
             }
         }
         report << benchMemoryNow("caches_idle");
         report << "scene_streams " + QString::fromStdString(cam->sceneStreamReport());
+        report << QString("reference_pending %1 %2 terrain_busy %3 caches_idle %4: %5")
+                      .arg(cam->referencePending() ? 1 : 0).arg(cam->texturesPending() ? 1 : 0).arg(w.terrainLayersBusy() ? 1 : 0)
+                      .arg(w.stockCacheIdle() ? 1 : 0).arg(QString::fromStdString(cam->referencePendingReport()));
         const auto pl = w.propLightStats();
         report << QString("prop_light %1 of %2 textured placements lit from their light grid box (per vertex from the atlas: %3, zones %4)")
                       .arg(pl[0]).arg(pl[1]).arg(cam->hasStockLgvAtlas() ? "yes" : "no").arg(w.propLgvZones());
@@ -491,11 +495,17 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         while (st.elapsed() < 600000) {
             cam->renderNow();
             QApplication::processEvents(QEventLoop::AllEvents, 50);
-            if (!w.streamedTilesSettled() || cam->texturesPending()) calm.restart();
+            // The tiles, then what they set going: their light grids and lightmaps, the terrain patch at the bench
+            // camera, the images and layers of what they added.
+            if (!w.streamedTilesSettled() || cam->texturesPending() || cam->referencePending() || w.terrainLayersBusy() || !w.stockCacheIdle())
+                calm.restart();
             else if (calm.elapsed() > 3000) break;
         }
         report << QString("streamed_tiles drawn %1 of %2 after %3 ms").arg(w.streamedTilesDrawn()).arg(w.streamedTilesKnown()).arg(st.elapsed());
         report << benchMemoryNow("tiles_settled");
+        report << QString("tiles_pending %1 %2 terrain_busy %3 caches_idle %4 tiles_settled %5: %6")
+                      .arg(cam->referencePending() ? 1 : 0).arg(cam->texturesPending() ? 1 : 0).arg(w.terrainLayersBusy() ? 1 : 0)
+                      .arg(w.stockCacheIdle() ? 1 : 0).arg(w.streamedTilesSettled() ? 1 : 0).arg(QString::fromStdString(cam->referencePendingReport()));
         report << "streamed_tiles " + w.streamedTilesReport();
     }
     const auto trigger = [&](const char* name) {
@@ -524,10 +534,13 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         QElapsedTimer st;
         st.start();
         int calm = 0;
-        while (calm < 4 && st.elapsed() < 30000) {
+        // Textures, the reference's unresolved images and layers, and a Warzone map's terrain patch for this camera
+        // (rebuilt on its timer after a camera move).
+        const auto busy = [&] { return cam->texturesPending() || cam->referencePending() || !w.terrainLayersCurrent(); };
+        while (calm < 4 && st.elapsed() < (stockZone ? 120000 : 30000)) {
             frame(nullptr);
             QApplication::processEvents(QEventLoop::AllEvents, 5);
-            calm = cam->texturesPending() ? 0 : calm + 1;
+            calm = busy() ? 0 : calm + 1;
         }
     };
     const auto edited = [&](BenchSeries& s, QElapsedTimer& op) {

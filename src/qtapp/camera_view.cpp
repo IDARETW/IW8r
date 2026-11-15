@@ -343,6 +343,11 @@ void CameraView::render() {
             bool pending = false;
             for (size_t k = 0; k < refTexMaterials_.size(); ++k) {
                 if (refTexResolved_[k]) continue;
+                // Tool materials keep their flat colour: nothing to load (they kept the poll going on every frame).
+                if (isIw8ToolMaterial(refTexMaterials_[k])) {
+                    refTexResolved_[k] = true;
+                    continue;
+                }
                 if (k < refTexLayer_.size() && refTexLayer_[k] > 0) {
                     if (resolveReferenceLayer(k)) refTexResolved_[k] = true;
                     else pending = true;
@@ -413,6 +418,10 @@ void CameraView::render() {
             bool pending = false;
             for (size_t k = 0; k < texInstMaterials_.size(); ++k) {
                 if (texInstResolved_[k]) continue;
+                if (isIw8ToolMaterial(texInstMaterials_[k])) {  // a flat colour: nothing to load
+                    texInstResolved_[k] = true;
+                    continue;
+                }
                 const int id = textureFor(texInstMaterials_[k]);
                 if (texIds_.count(texInstMaterials_[k])) {
                     if (id >= 0) renderer_.setReferenceInstTexture(k, id == checkerTex_ ? -1 : id);  // as the world: grey, not the checker
@@ -1317,6 +1326,15 @@ bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool pr
     if (waves) {
         renderer_.setReferenceInstWave(index, f->wave.data());
         uvAnimSeen_ = true;  // the view keeps redrawing while it moves
+    }
+    // Static-model displacement (research 133 section 3): the height image and constant 45, moved along the normal in
+    // the props' vertex shader.
+    static const bool noDisp = std::getenv("IW8R_NO_SMODEL_DISP") != nullptr;  // A/B: undisplaced, as before
+    if (f && propMesh && !noDisp && !f->dispImage.empty()) {
+        const std::string key = "\x07" + f->dispImage;
+        const int id = textureFor(key);
+        if (!texIds_.count(key)) return false;  // still loading
+        if (id >= 0 && id != checkerTex_) renderer_.setReferenceInstDisp(index, id, f->disp[0], f->disp[1]);
     }
     static const bool noDual = std::getenv("IW8R_NO_DUAL_NORMAL") != nullptr;  // A/B: one normal layer as before
     if (f && !propMesh && !noDual && (f->dualNormal[0] > 0 || f->dualNormal[4] > 0)) {

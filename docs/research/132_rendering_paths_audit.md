@@ -308,7 +308,9 @@ clip-to-UV scale. On the only stock world user, Shipment's `twc/dub_water_wall_w
 the scene moves by at most one unit, which no comparison shot can show, so the batch stays hidden. The effect
 materials (`elcq/vfx_dist_*`, c127 2 to 30) belong to placed effects, whose quads the viewport does not distort.
 Static-model displacement (research 133 section 3): its two stock users (`tmo/stone_wall_01`, `mo/skl_sand_dune_01_blend`)
-both have constant 45 = (2, -1), a shift of at most one unit along the normal; left undrawn by decision.
+both have constant 45 = (2, -1), a shift of at most one unit along the normal; ~~left undrawn by decision~~ drawn since
+2026-11-15 (record row 30, the height image at VS t43, constant 45 kept: constRules 7; also Verdansk's
+`tmo/snow_slush_02`; A/B `IW8R_NO_SMODEL_DISP`).
 
 ### G14 (low). SSAO stands in for GTAO
 

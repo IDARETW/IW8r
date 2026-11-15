@@ -14,6 +14,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
   as sRGB images, so the game's GPU converts them to linear before the shader uses them; the viewport used the stored
   values, which made dirt and other masked layers too strong (a mid-grey mask counted 0.5 instead of 0.21). Vehicles'
   lower panels look cleaner now. A/B: `IW8R_RAW_LAYER_MASKS=1`.
+- **Stone walls and dunes with a height image are displaced like in game** (research 133 section 3): the few stock
+  models whose material moves the surface along its normal (Hideout's stone walls, sand dunes, Verdansk's snow slush)
+  get the same small relief, up to a unit in and out. A/B: `IW8R_NO_SMODEL_DISP=1`.
+- **Stock maps stop re-checking their tool surfaces on every frame**: surfaces with a tool material (caulk, nodraw)
+  have nothing to load but were never marked done, so the viewport kept looking for their images on every frame for as
+  long as a stock map was open.
+- Bench: the viewport bench now waits for the stock lighting reads (lightmap, probes, light grids), the terrain patch
+  and every unresolved image before it measures; a Verdansk run with a warm cache had measured without them.
 - **Layered stock props show all their colour layers in Game Lighting** (research 136): dirt, paint, door and detail
   layers blend by the game's rule (the vertex alpha, the reveal and alpha maps, the layer mask, the second UV set), in
   the prop's own shading pass, so containers, signs and walls look as in game without the cost of extra passes. Their

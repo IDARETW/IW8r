@@ -529,6 +529,9 @@ public:
     size_t streamedTilesKnown() const { return streamZones_.size(); }
     // Nothing being exported or built for the streamed tiles (benchmark: wait before measuring).
     bool streamedTilesSettled() const;
+    bool terrainLayersBusy() const { return terrainLayerBusy_; }  // the near-camera terrain patch is being built
+    // The near-camera terrain patch is built for where the camera is now (true on maps without one).
+    bool terrainLayersCurrent() const;
     QString streamedTilesReport() const;  // benchmark: wanted / built / empty / not exported around the camera
     // No world cache job (export, lightmap / probes / light grid, tiles), prop LOD fetch or queued prop rebuild (benchmark).
     bool stockCacheIdle() const;
@@ -783,6 +786,8 @@ public:
     // One lightmap atlas build at a time (each needs a few hundred MB on Verdansk; streamed tiles finish in bursts):
     // a request while one runs is remembered and run once when it ends.
     bool refLmLoading_ = false, refLmAgain_ = false;
+    // Stock lighting reads on worker threads (lightmap, probes, light grids, the atlas restack); stockCacheIdle waits.
+    int stockLoadsInFlight_ = 0;
     // The reference zone's static-model light grid (world cache lightgrid.iw8rlg, research 105): each box's light at
     // its centre into refPropVolLight_, read off the UI thread; the props are rebuilt with it.
     void loadStockLightGrid(const QString& zone);

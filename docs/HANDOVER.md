@@ -118,9 +118,10 @@ lines from the scene depth on Cinder Rail Toon and on Shipment's stock geometry;
 
 ## 5. Not built, or built in part
 
-- Game Lighting, left by decision (each with its reason in `docsesearchZ_rendering_paths_audit.md`): the screen
-  distortion of two stock materials (decoded; at most one unit of shift on the world one), the one-unit vertex
-  displacement of two stock models, and the 14 "code" layers of vehicle dirt / rubble materials (not decoded).
+- Game Lighting, left by decision (its reason in `docs/research/132_rendering_paths_audit.md`, G13): the screen
+  distortion of two stock materials (decoded; at most one unit of shift on the world one). Since 2026-11-15 the other
+  former leftovers are drawn: the vertex displacement of stock models with a height image, and the "code" layers,
+  which turned out to be clear coats (research 137).
 - Occlusion: thin slanted walls, terrain and models as occluders (other slanted and many-sided brushes hide by the
   box inside them). Removing stock world geometry opens the whole map's occlusion: everything is drawn, which
   costs frame time on that map and nothing else. A local update was decided against (a mistake there makes objects

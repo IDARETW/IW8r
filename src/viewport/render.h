@@ -314,6 +314,15 @@ public:
     void setReferenceInstExtra(size_t mesh, const float extra[16], int emissiveTexture, int transmissionTexture);
     // A prop mesh's flag / foliage waves (research 133 section 6): constants 79, 80, 81, 82.
     void setReferenceInstWave(size_t mesh, const float wave[16]);
+    // A prop mesh's static-model displacement (research 133 section 3): its height image (slot 95) and constant 45,
+    // P += normalize(N) (h.r scale + bias) in the vertex shader (record row 30, VS t43).
+    void setReferenceInstDisp(size_t mesh, int texture, float scale, float bias) {
+        if (mesh >= refTexInst_.size()) return;
+        auto& g = refTexInst_[mesh];
+        g.disp[0] = 1.0f, g.disp[1] = scale, g.disp[2] = bias, g.disp[3] = 0.0f;
+        g.dispTex = texture;
+        instParamsDirty_ = true;
+    }
     // A prop mesh's extra layers (model-layered materials, research 132 G9), drawn over it after the props.
     // The first two are folded into the mesh's own pass (research 136); the rest are drawn as passes.
     void setReferenceInstLayers(size_t mesh, std::vector<PropLayer> layers) {
@@ -870,6 +879,9 @@ private:
         // UV, map), (normal strength, gloss scale, gloss bias, 0)) and its map / alpha images.
         float coat[16] = {};
         int coatTex[2] = {-1, -1};
+        // Static-model displacement (row 30: on, scale, bias, 0) and its height image (VS t43).
+        float disp[4] = {};
+        int dispTex = -1;
         std::vector<PropLayer> layers;  // setReferenceInstLayers: layers 1.. of a model-layered material
         int emissive = -1, transmission = -1;
         ID3D11Buffer* visInst = nullptr;

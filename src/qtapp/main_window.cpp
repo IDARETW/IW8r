@@ -448,6 +448,11 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             }
         for (int k = 0; k < 4; ++k)  // the flag / foliage waves (research 133 section 6)
             if (const auto* c = cst(79 + k)) std::copy(c->begin(), c->end(), f.wave.begin() + 4 * k);
+        // Static-model displacement (research 133 section 3): a model material's slot-95 height image with constant 45.
+        if (!e->techset.startsWith("tw"))
+            if (const auto* c = cst(45); c && ((*c)[0] != 0.0f || (*c)[1] != 0.0f))
+                for (const QString& t : e->textures)
+                    if (t.startsWith("95=")) f.dispImage = t.mid(3).toStdString(), f.disp = {(*c)[0], (*c)[1]};
         f.unlit = parseTechset(e->techset.section('/', -1).toStdString()).family == TechsetFamily::UnlitEffect;
         // Blended model materials past the decal sort keys (glass 25, 30): see-through (research 132 G1).
         f.translucent = !e->techset.startsWith("tw") && (ts.contains("_bad_") || ts.contains("_bar_")) && f.propDecalSortKey == 0;
@@ -8106,6 +8111,7 @@ void MainWindow::loadStockLightmap(const QString& zone) {
         return;
     }
     refLmLoading_ = true;
+    ++stockLoadsInFlight_;
     QPointer<MainWindow> self(this);
     std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, paths] {
         std::vector<StockLightmap> lms;
@@ -8127,6 +8133,7 @@ void MainWindow::loadStockLightmap(const QString& zone) {
         lms.shrink_to_fit();
         QMetaObject::invokeMethod(qApp, [self, zone, layers, err] {
             if (!self) return;
+            --self->stockLoadsInFlight_;
             self->refLmLoading_ = false;
             if (self->refLmAgain_) {
                 self->refLmAgain_ = false;
@@ -8414,6 +8421,13 @@ void MainWindow::pushDecalExtras() {
             }
     }
     camera_->setReferenceExtraGroups(std::move(groups));
+}
+
+bool MainWindow::terrainLayersCurrent() const {
+    if (!terrainLayers_ || referenceZone_.isEmpty() || terrainLayers_->zone != referenceZone_) return true;
+    if (terrainLayerBusy_) return false;
+    const Vec3 c = followCameraPos();
+    return std::hypot(c.x - terrainLayerCentre_.x, c.y - terrainLayerCentre_.y) < std::min(2000.0, terrainLayerRadius() / 3.0);
 }
 
 void MainWindow::updateTerrainLayers() {
@@ -9045,6 +9059,7 @@ void MainWindow::loadStockProbes(const QString& zone) {
     QPointer<MainWindow> self(this);
     const std::string path = file->toStdString();
     const QStringList tiles = worldCache_->tileProbeFiles(zone);
+    ++stockLoadsInFlight_;
     std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, path, tiles] {
         auto set = std::make_shared<StockProbeSet>();
         auto index = std::make_shared<StockProbeImageIndex>();
@@ -9059,7 +9074,9 @@ void MainWindow::loadStockProbes(const QString& zone) {
             ok = readStockProbeCache(path, *set, &err, false);
         }
         QMetaObject::invokeMethod(qApp, [self, zone, set, index, ok, err] {
-            if (!self || self->referenceZone_ != zone) return;
+            if (!self) return;
+            --self->stockLoadsInFlight_;
+            if (self->referenceZone_ != zone) return;
             if (!ok) {
                 self->ctx_.setStatus("Stock reflection probes of " + zone + " not read: " + QString::fromStdString(err));
             } else if (set->streamed) {
@@ -9084,11 +9101,14 @@ void MainWindow::updateProbeSubset(bool force) {
     const std::shared_ptr<const StockProbeSet> full = refProbesFull_;
     const std::shared_ptr<const StockProbeImageIndex> index = refProbesIndex_;
     const QString zone = referenceZone_;
+    ++stockLoadsInFlight_;
     std::thread(guardedWorker(__FILE__, __LINE__, [self, full, index, c, zone] {
         auto subset = std::make_shared<StockProbeSet>(index ? buildStockProbeSubset(*full, *index, ProbeVec3{float(c.x), float(c.y), float(c.z)})
                                                             : buildStockProbeSubset(*full, ProbeVec3{float(c.x), float(c.y), float(c.z)}));
         QMetaObject::invokeMethod(qApp, [self, subset, full, zone] {
-            if (!self || self->referenceZone_ != zone || self->refProbesFull_ != full) return;
+            if (!self) return;
+            --self->stockLoadsInFlight_;
+            if (self->referenceZone_ != zone || self->refProbesFull_ != full) return;
             self->camera_->setStockProbes(subset);
         }, Qt::QueuedConnection);
     })).detach();
@@ -9132,6 +9152,7 @@ void MainWindow::restackPropLgv() {
     const uint64_t gen = ++refPropLgvGen_;
     const QString zone = referenceZone_;
     QPointer<MainWindow> self(this);
+    ++stockLoadsInFlight_;
     std::thread(guardedWorker(__FILE__, __LINE__, [self, parts, gen, zone] {
         std::vector<const StockLgvAtlas*> in;
         for (const auto& p : parts) in.push_back(p.second.get());
@@ -9156,7 +9177,9 @@ void MainWindow::restackPropLgv() {
                 if (st.firstBox[i] != 0xFFFFFFFFu) bases[parts[i].first] = st.firstBox[i];
         }
         QMetaObject::invokeMethod(qApp, [self, up, bases, gen, zone] {
-            if (!self || self->refPropLgvGen_ != gen || self->referenceZone_ != zone) return;
+            if (!self) return;
+            --self->stockLoadsInFlight_;
+            if (self->refPropLgvGen_ != gen || self->referenceZone_ != zone) return;
             self->refPropLgvBase_ = bases;
             self->refPropLgvGpu_ = up != nullptr;
             self->camera_->setStockLgvAtlas(up);
@@ -9172,6 +9195,7 @@ void MainWindow::loadStockTileLightGrids(const QString& zone) {
         if (refPropTileLightAsked_.insert(k).second) todo.push_back({k, path});
     if (todo.empty()) return;
     QPointer<MainWindow> self(this);
+    ++stockLoadsInFlight_;
     std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, todo] {
         std::vector<std::pair<int, std::shared_ptr<std::vector<float>>>> got;
         std::vector<std::pair<int, std::shared_ptr<const StockLgvAtlas>>> atlases;
@@ -9182,7 +9206,9 @@ void MainWindow::loadStockTileLightGrids(const QString& zone) {
             if (atlas) atlases.push_back({k, atlas});
         }
         QMetaObject::invokeMethod(qApp, [self, zone, got, atlases] {
-            if (!self || self->referenceZone_ != zone || got.empty()) return;
+            if (!self) return;
+            --self->stockLoadsInFlight_;
+            if (self->referenceZone_ != zone || got.empty()) return;
             for (const auto& [k, vol] : got) self->refPropTileLight_[k] = vol;
             for (const auto& [k, a] : atlases) self->refPropAtlas_[k] = a;
             // Tiles finish one after another: one prop rebuild for the ones that arrive close together.
@@ -9204,13 +9230,16 @@ void MainWindow::loadStockLightGrid(const QString& zone) {
     if (!file) return;
     QPointer<MainWindow> self(this);
     const QString path = *file;
+    ++stockLoadsInFlight_;
     std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, path] {
         std::string err;
         std::shared_ptr<const StockLgvAtlas> atlas;
         const std::shared_ptr<std::vector<float>> vol = sampleLightGridFile(path, &err, &atlas);
         const bool ok = vol != nullptr;
         QMetaObject::invokeMethod(qApp, [self, zone, vol, atlas, ok, err] {
-            if (!self || self->referenceZone_ != zone) return;
+            if (!self) return;
+            --self->stockLoadsInFlight_;
+            if (self->referenceZone_ != zone) return;
             if (!ok) {
                 self->ctx_.setStatus("Stock prop light grid of " + zone + " not read: " + QString::fromStdString(err));
                 return;
@@ -9583,7 +9612,8 @@ QString MainWindow::streamedTilesReport() const {
 }
 
 bool MainWindow::stockCacheIdle() const {
-    return (!worldCache_ || !worldCache_->busy()) && (!modelCacheStock_ || (modelCacheStock_->lodsPending() == 0 && modelCacheStock_->refreshPending() == 0 && !modelCacheStock_->busy())) && !refPropRebuildQueued_ && !refPropRelightQueued_;
+    return (!worldCache_ || !worldCache_->busy()) && (!modelCacheStock_ || (modelCacheStock_->lodsPending() == 0 && modelCacheStock_->refreshPending() == 0 && !modelCacheStock_->busy())) && !refPropRebuildQueued_ && !refPropRelightQueued_ &&
+           stockLoadsInFlight_ == 0;
 }
 
 bool MainWindow::streamedTilesSettled() const {

@@ -80,6 +80,8 @@ public:
     void finishGpu() { renderer_.finishGpu(); }
     const app::SceneRenderer::FrameStats& frameStats() const { return renderer_.lastStats(); }
     bool texturesPending() const { return moreToLoad_ || refMoreToLoad_; }
+    // The stock reference still has materials whose images or layers are not resolved (exports, decodes, layer images).
+    bool referencePending() const { return refTexPending_ || texInstPending_; }
     // Tests: the kept geometry against a fresh buildCameraGeometry of the same scene. "" when they agree, else what
     // differs. Call after a frame.
     QString geometrySelfCheck();
@@ -192,6 +194,10 @@ public:
         std::vector<char> layerUv1;
         std::vector<uint32_t> layerHex;  // the layer token's hex (research 137: 0x10 map, 0x20 emissive)
         std::string layerMaskImage;
+        // Static-model displacement (research 133 section 3): the slot-95 height image and constant 45 (scale, bias);
+        // "" / zeros: none.
+        std::string dispImage;
+        std::array<float, 2> disp{0.0f, 0.0f};
         std::vector<std::string> layerTintMaskImage;  // per layer L: slot 59 + L ("" none; used when flags & 64)
         // Research 133 section 6: the flag / foliage waves, constants 79, 80, 81, 82 (zero = none).
         std::array<float, 16> wave{};
@@ -493,6 +499,30 @@ public slots:
     bool tomeCull() const { return renderer_.referenceTomeCull(); }
     size_t tomeCulledProps() const { return renderer_.tomeCulledProps(); }
     std::string gpuMemoryReport() const { return renderer_.gpuMemoryReport(); }
+    // Bench diagnosis: the stock reference's world batches and prop meshes still unresolved, with up to four names each
+    // (control characters as \xNN).
+    std::string referencePendingReport() const {
+        const auto list = [](const std::vector<std::string>& names, const std::vector<bool>& done) {
+            size_t n = 0;
+            std::string shown;
+            for (size_t k = 0; k < names.size() && k < done.size(); ++k) {
+                if (done[k]) continue;
+                if (n++ >= 4) continue;
+                shown += " ";
+                for (const char ch : names[k]) {
+                    if (static_cast<unsigned char>(ch) < 32) {
+                        char b[8];
+                        std::snprintf(b, sizeof(b), "\\x%02x", static_cast<unsigned char>(ch));
+                        shown += b;
+                    } else {
+                        shown += ch;
+                    }
+                }
+            }
+            return std::to_string(n) + shown;
+        };
+        return "world " + list(refTexMaterials_, refTexResolved_) + " props " + list(texInstMaterials_, texInstResolved_);
+    }
     // Bench diagnosis: the kept scene streams' vertex counts (flat, lines, textured batches).
     std::string sceneStreamReport() const {
         size_t batchV = 0;
