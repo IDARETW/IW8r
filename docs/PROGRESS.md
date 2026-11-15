@@ -2,6 +2,22 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-15 midday, UI work (owner: "making the UI more streamlined, taking care of any and all edge cases ... the
+  bottom set of editor tabs in a small side-bar in a side section"; then "run a series of haiku agents to find any
+  little quirks", e.g. round-robin selection of overlapping objects). Side bar = a QToolBar in LeftToolBarArea plus an
+  ADS dock area left of the camera (`sideArea_`, one panel at a time, width in `ui/sidePanelWidth`; kDockLayoutVersion
+  14). ADS auto-hide was tried first and rejected: the camera is a native D3D window and covers the overlay. Then the
+  owner: "something under the viewport in the middle ... for the console/compilation logs": `bottomArea_` (ADS area
+  below camArea, kDockLayoutVersion 15) holds Console, Compile, Replay Log, Build Budget, Script, Live Link as tabs,
+  open by default on Console, height `ui/bottomPanelHeight`; their side bar icons (second group) front a tab or fold
+  the area (setBottomArea / syncSideActions); View > Bottom Panel = Ctrl+J; showDock fronts a bottom tab. Click
+  cycling in camera_view.cpp release handler (pickAll deduped by selectionUnit; Shift+Alt steps from the selection).
+  Four Haiku audits (selection, panels, 2D / navigation, files / build flow) found the quirks; two Opus helpers fixed
+  panels (panels, layers, outliner, link graph, asset / prefab browsers) and 2D / navigation (grid_view, editor_context,
+  find_dialog, command_palette); main_window / camera_view / compile_panel fixes are mine (tools/patches/menu_fixes.py,
+  file_flow_fixes.py, nudge_grid_status.py, prefs_sections.py, camera_click_cycle.py, side_bar_docked.py). Window
+  feature shots: `IW8R_FEATURE_SHOTS_ONLY=window <exe> --feature-shots --out out/ui_shots`.
+
 - 2026-11-14 night: door frames keep their opening (89dc57e: notched model parts are cut, budget merge by least
   growth; test on the stock frame of the wooden door bundle). G7: stock props lit per vertex from the light grid atlas
   (14e801d; IW8R_NO_PROP_LGV_GPU). Shipment water's dual scrolling normals (4f0431e; IW8R_NO_DUAL_NORMAL; bench camera

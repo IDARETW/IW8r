@@ -1329,7 +1329,8 @@ std::vector<SelRef> SceneCache::pickAll(const Ray& ray) const {
         }
         if (t) hits.push_back({*t, g->ref});
     }
-    std::sort(hits.begin(), hits.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    // Equal distances keep the list order, so the first of them is the one pick() returns.
+    std::stable_sort(hits.begin(), hits.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
     std::vector<SelRef> out;
     for (const auto& h : hits) out.push_back(h.second);
     return out;

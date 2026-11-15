@@ -14,13 +14,18 @@
 #include <array>
 #include <map>
 #include "settings.h"
+#include <QClipboard>
+#include <QDesktopServices>
 #include <QDir>
 #include <QCoreApplication>
+#include <QGuiApplication>
+#include <QUrl>
 
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QImage>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPainter>
@@ -218,12 +223,19 @@ PrefabBrowser::PrefabBrowser(RootsFn roots, InsertFn insert, QWidget* parent)
     connect(thumbTimer_, &QTimer::timeout, this, [this] { loadVisibleThumbnails(); });
     connect(list_->verticalScrollBar(), &QScrollBar::valueChanged, this, [this] { thumbTimer_->start(); });
     lay->addWidget(list_, 1);
+    // How many are listed, or why the list is empty (no prefab folders, or nothing matches the filter).
+    count_ = new QLabel(this);
+    count_->setObjectName("prefabCount");
+    count_->setStyleSheet("color: gray");
+    lay->addWidget(count_);
     connect(filter_, &QLineEdit::textChanged, this, &PrefabBrowser::setFilter);
     connect(rescan, &QPushButton::clicked, this, &PrefabBrowser::refresh);
-    connect(list_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
+    // Double-click or Enter (activated covers both, so a double-click stamps once).
+    connect(list_, &QListWidget::itemActivated, this, [this](QListWidgetItem* it) {
         QString err;
         if (!stamp(list_->row(it), &err) && !err.isEmpty()) QMessageBox::warning(this, "Insert Prefab", err);
     });
+    focusListOnDown(filter_, list_);
     list_->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(list_, &QListWidget::customContextMenuRequested, this, [this](const QPoint& at) {
         QListWidgetItem* it = list_->itemAt(at);
@@ -237,6 +249,14 @@ PrefabBrowser::PrefabBrowser(RootsFn roots, InsertFn insert, QWidget* parent)
         const QString file = previewFileAt(row);
         QAction* pv = menu.addAction("Preview in 3D...", this, [this, file] { emit previewRequested(file); });
         pv->setEnabled(!file.isEmpty());
+        menu.addSeparator();
+        const QString name = titleAt(row);
+        menu.addAction("Copy Name", this, [name] { QGuiApplication::clipboard()->setText(name); });
+        // A bundle opens its own folder; a .map prefab the folder it is in.
+        const QFileInfo path(fileAt(row));
+        const QString folder = path.isDir() ? path.absoluteFilePath() : path.absolutePath();
+        QAction* show = menu.addAction("Show in Folder", this, [folder] { QDesktopServices::openUrl(QUrl::fromLocalFile(folder)); });
+        show->setEnabled(path.exists());
         menu.exec(list_->viewport()->mapToGlobal(at));
     });
 }
@@ -722,12 +742,21 @@ void PrefabBrowser::setFilter(const QString& text) {
     if (thumbTimer_) thumbTimer_->start();
     // Every word of the filter must be found (a bundle: in its title, tags, category, id or description).
     const QStringList words = text.split(' ', Qt::SkipEmptyParts);
+    int shown = 0, bundles = 0;
     for (int i = 0; i < list_->count(); ++i) {
         const QString hay = list_->item(i)->data(kSearch).toString();
         bool match = true;
         for (const QString& word : words) match = match && hay.contains(word, Qt::CaseInsensitive);
         list_->item(i)->setHidden(!match);
+        shown += match;
+        bundles += list_->item(i)->data(kIsBundle).toBool();
     }
+    // The count line: everything listed, part of it, or why nothing is.
+    const int total = list_->count();
+    if (total == 0) count_->setText("No prefabs in the map's prefabs folder or the prefab folders (Edit > Preferences)");
+    else if (shown == total) count_->setText(QString("%1 prefabs (%2 bundles)").arg(total).arg(bundles));
+    else if (shown == 0) count_->setText(QString("No prefabs match \"%1\" (of %2)").arg(text.simplified()).arg(total));
+    else count_->setText(QString("%1 of %2 shown").arg(shown).arg(total));
 }
 
 int PrefabBrowser::visibleCount() const {

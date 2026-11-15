@@ -1,6 +1,9 @@
 #pragma once
-// Outliner dock (roadmap 2.29): the map's entities grouped by class, with search, click-to-select, double-click to
-// frame, and map statistics (brushes, patches, entities, materials and models used).
+// Outliner dock (roadmap 2.29): the map's entities grouped by class, with search, click-to-select, double-click (or
+// Enter) to frame, a right-click menu (Frame, Copy Name), and map statistics (brushes, patches, entities, materials and
+// models used).
+#include <QSet>
+#include <QString>
 #include <QWidget>
 
 class QLineEdit;
@@ -36,6 +39,8 @@ private:
     bool dirty_ = true;
     quint64 signature_ = 0;  // entity ids + item revisions at the last rebuild: selection-only changes skip it
     quint64 docSignature() const;
+    QSet<QString> expanded_;  // classes the mapper opened (kept across rebuilds of the unfiltered tree)
+    QString builtNeedle_;     // the filter the tree was last built with
 };
 
 }  // namespace iw8r::qt

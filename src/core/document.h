@@ -75,6 +75,7 @@ public:
 
     const MapFile& map() const { return map_; }
     uint64_t revision() const { return revision_; }  // bumps on every change (render caches)
+    uint64_t loadSerial() const { return loadSerial_; }  // bumps on every load (another map, even at the same path)
 
     // ---- lookup ----
     Entity* findEntity(Id id);
@@ -196,6 +197,7 @@ private:
     uint64_t itemRev_ = 1;
     void bump(EntityItem& it) { it.rev = ++itemRev_; }
     uint64_t revision_ = 1;
+    uint64_t loadSerial_ = 0;
     double grid_ = 8;
     std::set<SelRef> sel_;
     std::set<FaceRef> faceSel_;

@@ -19,6 +19,7 @@ class QStringListModel;
 class QLineEdit;
 class QListWidget;
 class QTableWidget;
+class QToolButton;
 class QVBoxLayout;
 class QAction;
 
@@ -37,9 +38,17 @@ public:
     QStringList missingKeys() const;  // required keys the warning line lists
     // Writes _color as 0..1 floats on the inspected entity (one undo step).
     void setLightColor(double r, double g, double b);
+    // Removes the keys of the selected rows (the Delete key; classname stays), one undo step. False when none went.
+    bool removeSelectedKeys();
+    // Why the table and the Add row refuse `value` for `key` on the shown entity: "" when it fits the key's documented
+    // type (or the key has no definition). Refused values are not written; the status bar gives the reason.
+    QString refusalFor(const QString& key, const QString& value) const;
 
 public slots:
     void refresh();
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     void commitCell(int row, int column);
@@ -62,7 +71,7 @@ private:
     QLineEdit* newKey_;
     QLineEdit* newValue_;
     QLabel* surfaces_;
-    Id shownEntity_ = kNoId;
+    Id shownEntity_ = kNoId;  // the entity the rows belong to: edits in the table and the Add row go to it
     bool filling_ = false;
 };
 
@@ -101,6 +110,8 @@ private:
     QLabel* info_;
     QDoubleSpinBox* fields_[5] = {};
     QDoubleSpinBox* lmFields_[2] = {};  // lightmap scale x / y
+    QToolButton* nudge_[5][2] = {};     // the -/+ (or /2, x2) buttons beside each field, enabled with it
+    QToolButton* ops_[7] = {};          // Fit, Natural, Left, Right, Top, Bottom, Center: enabled with a face or brush selected
     bool filling_ = false;
 };
 
@@ -114,6 +125,8 @@ private:
     EditorContext* ctx_;
     QListWidget* list_;
     bool filling_ = false;
+    std::vector<std::string> shownNames_;  // the step names and undo position the list shows
+    size_t shownPos_ = size_t(-1);
 };
 
 class SpawnsPanel : public QWidget {
@@ -126,7 +139,8 @@ private:
     EditorContext* ctx_;
     QLabel* info_;
     QTableWidget* table_;
-    size_t shown_ = size_t(-1);
+    quint64 shown_ = 0;     // signature of the spawn records the table shows (0 = not filled yet)
+    bool filling_ = false;  // the table is being rebuilt: current-cell changes do not move the camera
 };
 
 // Rebindable shortcuts. Bindings persist in IW8Radiant.ini next to the executable.

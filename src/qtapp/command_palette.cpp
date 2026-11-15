@@ -6,6 +6,8 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
+#include <QPalette>
+#include <QSet>
 #include <QSettings>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -19,16 +21,18 @@ QString clean(QString t) {
     return t.replace("&&", "&").trimmed();
 }
 
-void collect(QMenu* menu, const QString& prefix, QList<PaletteEntry>& out) {
+// Disabled commands stay in the list (greyed, not runnable): a search then shows the command exists, rather than
+// suggesting it does not. A disabled submenu disables everything under it.
+void collect(QMenu* menu, const QString& prefix, bool enabled, QList<PaletteEntry>& out) {
     for (QAction* a : menu->actions()) {
         if (a->isSeparator()) continue;
         const QString text = clean(a->text());
         if (QMenu* sub = a->menu()) {
-            collect(sub, prefix + text + " > ", out);
+            collect(sub, prefix + text + " > ", enabled && a->isEnabled(), out);
             continue;
         }
-        if (text.isEmpty() || !a->isEnabled()) continue;
-        out.push_back({prefix + text, a->shortcut().toString(QKeySequence::NativeText), a});
+        if (text.isEmpty()) continue;
+        out.push_back({prefix + text, a->shortcut().toString(QKeySequence::NativeText), a, enabled && a->isEnabled()});
     }
 }
 
@@ -49,11 +53,22 @@ QString initials(const QString& text) {
 
 }  // namespace
 
-QList<PaletteEntry> paletteEntries(QMenuBar* bar) {
+QList<PaletteEntry> paletteEntries(QMenuBar* bar, const QWidget* commands) {
     QList<PaletteEntry> out;
-    if (!bar) return out;
-    for (QAction* top : bar->actions())
-        if (QMenu* m = top->menu()) collect(m, clean(top->text()) + " > ", out);
+    if (bar)
+        for (QAction* top : bar->actions())
+            if (QMenu* m = top->menu()) collect(m, clean(top->text()) + " > ", top->isEnabled(), out);
+    if (commands) {
+        // Commands registered without a menu (shortcut-only, e.g. Entity Inspector on N) are only actions of the window.
+        QSet<const QAction*> listed;
+        for (const PaletteEntry& e : out) listed.insert(e.action);
+        for (QAction* a : commands->actions()) {
+            if (a->isSeparator() || a->menu() || listed.contains(a)) continue;
+            const QString text = clean(a->text());
+            if (text.isEmpty()) continue;
+            out.push_back({"Other > " + text, a->shortcut().toString(QKeySequence::NativeText), a, a->isEnabled()});
+        }
+    }
     return out;
 }
 
@@ -78,7 +93,7 @@ int paletteScore(const QString& query, const QString& text) {
     return score - int(text.size()) / 8;  // shorter wins ties
 }
 
-CommandPalette::CommandPalette(QMenuBar* bar, QWidget* parent) : QDialog(parent, Qt::Popup), entries_(paletteEntries(bar)) {
+CommandPalette::CommandPalette(QMenuBar* bar, QWidget* parent) : QDialog(parent, Qt::Popup), entries_(paletteEntries(bar, parent)) {
     setObjectName("commandPalette");
     setMinimumWidth(560);
     auto* lay = new QVBoxLayout(this);
@@ -125,12 +140,23 @@ void CommandPalette::refill() {
         if (s >= 0) hits.push_back({s, i});
     }
     std::stable_sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) { return a.score > b.score; });
+    int firstEnabled = -1;
     for (const Hit& h : hits) {
         const PaletteEntry& e = entries_[h.index];
-        auto* item = new QListWidgetItem(e.shortcut.isEmpty() ? e.path : e.path + "    [" + e.shortcut + "]", list_);
+        QString text = e.shortcut.isEmpty() ? e.path : e.path + "    [" + e.shortcut + "]";
+        if (!e.enabled) text += "    (unavailable)";
+        auto* item = new QListWidgetItem(text, list_);
         item->setData(Qt::UserRole, h.index);
+        // Greyed but still selectable, so Up / Down move through it; runFirst does not run it.
+        if (!e.enabled) {
+            item->setForeground(list_->palette().color(QPalette::Disabled, QPalette::Text));
+            item->setToolTip("This command is not available right now");
+        } else if (firstEnabled < 0) {
+            firstEnabled = list_->count() - 1;
+        }
     }
-    if (list_->count()) list_->setCurrentRow(0);
+    // Enter runs the best match that can run.
+    if (list_->count()) list_->setCurrentRow(firstEnabled >= 0 ? firstEnabled : 0);
 }
 
 int CommandPalette::visibleCount() const { return list_->count(); }
@@ -143,10 +169,13 @@ QString CommandPalette::firstPath() const {
 bool CommandPalette::runFirst() {
     QListWidgetItem* it = list_->currentItem() ? list_->currentItem() : list_->item(0);
     if (!it) return false;
-    QAction* a = entries_[it->data(Qt::UserRole).toInt()].action;
+    const PaletteEntry& e = entries_[it->data(Qt::UserRole).toInt()];
+    // A greyed (unavailable) command is listed only; the palette stays open.
+    if (!e.action || !e.enabled || !e.action->isEnabled()) return false;
+    QAction* a = e.action;
     close();
-    if (a) a->trigger();
-    return a != nullptr;
+    a->trigger();
+    return true;
 }
 
 }  // namespace iw8r::qt

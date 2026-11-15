@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "brush_ops.h"
 #include "brush_ops2.h"
 #include "decal_tools.h"
 #include "editor_log.h"
@@ -15,6 +16,8 @@ void EditorContext::setStatus(const QString& s) {
     if (!s.isEmpty()) EditorLog::instance().add(LogLevel::Info, "status", s);
     emit statusMessage(s);
 }
+
+void EditorContext::setTransientStatus(const QString& s) { emit statusMessage(s); }
 
 void EditorContext::refreshRegion() {
     std::set<Id> out = region ? itemsOutside(doc.map(), *region) : std::set<Id>{};
@@ -131,12 +134,63 @@ std::optional<Plane> EditorContext::clipPlane() const {
     return pl;
 }
 
+namespace {
+
+// Bounds of the selected brush faces (camera Ctrl+Shift+click), which Document::selectionBounds leaves out.
+AABB faceSelectionBounds(const Document& doc) {
+    AABB b;
+    const EntityItem* windingsOf = nullptr;
+    std::vector<Winding> windings;
+    // The set is ordered by (entity, item, face): each brush's windings are built once.
+    for (const FaceRef& f : doc.faceSelection()) {
+        const EntityItem* it = doc.findItem(f.entity, f.item);
+        const Primitive* p = it ? it->prim() : nullptr;
+        if (!p || p->kind != PrimKind::Brush) continue;
+        if (it != windingsOf) {
+            windings = faceWindingsOf(*p);
+            windingsOf = it;
+        }
+        if (f.face < windings.size())
+            for (const Vec3& v : windings[f.face]) b.add(v);
+    }
+    return b;
+}
+
+}  // namespace
+
 void EditorContext::frameSelection() {
-    const AABB b = doc.selectionBounds();
-    if (!b.valid()) return;
+    AABB b = doc.selectionBounds();
+    if (!b.valid()) b = faceSelectionBounds(doc);
+    if (!b.valid()) {
+        setStatus("Nothing selected to frame");
+        return;
+    }
     app::frameBounds(cam, b, 2.0);
-    gridCenterH = b.center()[axisH()];
-    gridCenterV = b.center()[axisV()];
+    fitGridTo(b);
+    emit cameraChanged();
+}
+
+void EditorContext::fitGridTo(const AABB& b, int viewW, int viewH) {
+    if (!b.valid()) return;
+    const int H = axisH(), V = axisV();
+    gridCenterH = b.center()[H];
+    gridCenterV = b.center()[V];
+    if (viewW <= 0 || viewH <= 0) viewW = gridViewWidth, viewH = gridViewHeight;
+    if (viewW <= 0 || viewH <= 0) return;
+    const double extent = std::max({64.0, b.maxs[H] - b.mins[H], b.maxs[V] - b.mins[V]});
+    gridScale = clampGridScale(0.85 * std::min(viewW, viewH) / extent);
+}
+
+void EditorContext::setGridAxis(int axis) {
+    axis = std::clamp(axis, 0, 2);
+    // The world point in the centre of the view now; the depth axis has no view value, so it takes the camera's.
+    Vec3 c;
+    c[axisH()] = gridCenterH;
+    c[axisV()] = gridCenterV;
+    c[axisD()] = cam.pos[axisD()];
+    gridAxis = axis;
+    gridCenterH = c[axisH()];
+    gridCenterV = c[axisV()];
     emit cameraChanged();
 }
 

@@ -540,9 +540,11 @@ Only if you want the extra speed on a map with rooms. Compile > Occlusion bake o
 - [ ] If anything disappears, turn Occlusion bake off and build again: the map is then as before. Tell me where it
       happened.
 
+## In game (optional, 2026-11-15): your own font on the HUD
+
+- [ ] A map with `<map name>.hud/fonts.txt` (a label and a glyph set) and a script calling `iw8r_font_label` /
+      `iw8r_font_text` shows the text in your font on the HUD. Built and proven offline only.
+
 ## What is not expected to work yet
 
 Decal volumes, volumetrics, custom music states, LUI menus (research 36) (docs/ROADMAP.md lists every item).
-
-- [ ] Optional (2026-11-15): a map with `<map name>.hud/fonts.txt` (a label and a glyph set) and a script calling
-      `iw8r_font_label` / `iw8r_font_text` shows the text in your font on the HUD. Built and proven offline only.

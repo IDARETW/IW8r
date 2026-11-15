@@ -2756,27 +2756,60 @@ void CameraView::mouseReleaseEvent(QMouseEvent* e) {
     if ((e->modifiers() & Qt::ShiftModifier) && (e->modifiers() & Qt::ControlModifier)) {
         // Radiant face selection: Ctrl+Shift+LMB toggles one brush face.
         if (auto face = ctx_->scene.pickFace(ray)) {
+            const size_t before = ctx_->doc.faceSelection().size();
             ctx_->doc.toggleFace(*face);
+            const size_t after = ctx_->doc.faceSelection().size();
             const EntityItem* it = ctx_->doc.findItem(face->entity, face->item);
             const Primitive* p = it ? it->prim() : nullptr;
-            ctx_->documentEdited(QString("%1 face(s) selected%2")
-                                     .arg(ctx_->doc.faceSelection().size())
+            ctx_->documentEdited(QString("Face %1; %2 face(s) selected%3")
+                                     .arg(after >= before ? "selected" : "deselected")
+                                     .arg(after)
                                      .arg(p && face->face < p->faces.size() ? " - " + QString::fromStdString(p->faces[face->face].material()) : QString()));
+        } else {
+            ctx_->setStatus("No brush face under the cursor (Ctrl+Shift+click picks faces of brushes only)");
         }
         return;
     }
-    if ((e->modifiers() & Qt::ShiftModifier) && (e->modifiers() & Qt::AltModifier)) {
-        // Radiant select cycle: the next thing behind the current selection along this ray.
-        const auto hits = ctx_->scene.pickAll(ray);
-        if (!hits.empty()) {
-            size_t next = 0;
+    const Qt::KeyboardModifiers mods = e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier);
+    const bool cycleKey = mods == (Qt::ShiftModifier | Qt::AltModifier);
+    if (mods == Qt::NoModifier || cycleKey) {
+        // Overlapping objects (owner 2026-11-15): a click on the same spot again (within 4 px, the same objects under
+        // the cursor) selects the next one behind, round robin; Shift+Alt+click always steps to the one after the
+        // selection. A brush of an entity selects the whole entity, so an entity is one stop however many of its
+        // brushes the ray crosses.
+        std::vector<SelRef> hits;
+        for (const SelRef& h : ctx_->scene.pickAll(ray)) {
+            const std::vector<SelRef> unit = ctx_->doc.selectionUnit(h);
+            const bool seen = std::any_of(hits.begin(), hits.end(), [&](const SelRef& o) {
+                return std::find(unit.begin(), unit.end(), o) != unit.end();
+            });
+            if (!seen) hits.push_back(h);
+        }
+        if (hits.empty()) {
+            cycleHits_.clear();
+            if (mods == Qt::NoModifier) ctx_->doc.deselectAll();
+            ctx_->documentEdited();
+            return;
+        }
+        const bool again = (p - cyclePos_).manhattanLength() <= 4 && hits == cycleHits_;
+        size_t index = 0;
+        if (again) {
+            index = (cycleIndex_ + 1) % hits.size();
+        } else if (cycleKey) {
             for (size_t i = 0; i < hits.size(); ++i)
-                if (ctx_->doc.isSelected(hits[i])) next = (i + 1) % hits.size();
-            ctx_->doc.select(hits[next], false);
-            ctx_->documentEdited(QString("Select cycle: %1 of %2 under the cursor").arg(next + 1).arg(hits.size()));
+                if (ctx_->doc.isSelected(hits[i])) index = (i + 1) % hits.size();
         }
+        cyclePos_ = p, cycleHits_ = hits, cycleIndex_ = index;
+        ctx_->doc.select(hits[index], false);
+        if (hits.size() > 1)
+            ctx_->documentEdited(QString("Selected %1 of %2 overlapping objects under the cursor (click the same spot again for the next)")
+                                     .arg(index + 1)
+                                     .arg(hits.size()));
+        else
+            ctx_->documentEdited();
         return;
     }
+    cycleHits_.clear();
     if (auto hit = ctx_->scene.pick(ray)) {
         if (e->modifiers() & Qt::ShiftModifier) ctx_->doc.toggle(*hit);
         else ctx_->doc.select(*hit, false);
@@ -2801,10 +2834,37 @@ bool CameraView::event(QEvent* e) {
         e->accept();
         return true;
     }
+    // Escape during a gizmo or ring drag cancels the drag here, before the window's Escape (deselect) shortcut runs.
+    if (e->type() == QEvent::ShortcutOverride && (gizmoDragAxis_ >= 0 || ringDragAxis_ >= 0))
+        if (static_cast<QKeyEvent*>(e)->key() == Qt::Key_Escape) {
+            e->accept();
+            return true;
+        }
     return QWidget::event(e);
 }
 
+void CameraView::cancelViewDrag() {
+    if (ringDragAxis_ >= 0) {
+        ringDragAxis_ = -1;
+        ringDeltaDeg_ = 0;
+        ctx_->setStatus("Rotation cancelled");
+        update();
+    }
+    if (gizmoDragAxis_ >= 0) {
+        const bool scaling = gizmoScale_;
+        gizmoDragAxis_ = -1;
+        scaleFactor_ = 1.0;
+        if (!scaling) ctx_->doc.endDrag(false);  // the translate drag moved a snapshot: put it back
+        ctx_->documentEdited(scaling ? QStringLiteral("Scale cancelled") : QStringLiteral("Move cancelled"));
+    }
+    lmbDown_ = false;
+}
+
 void CameraView::keyPressEvent(QKeyEvent* e) {
+    if (e->key() == Qt::Key_Escape && (gizmoDragAxis_ >= 0 || ringDragAxis_ >= 0)) {
+        cancelViewDrag();
+        return;
+    }
     if (orbit_) {
         if (e->key() == Qt::Key_F) emit orbitFrameRequested();
         else if (e->key() == Qt::Key_R) setOrbit(orbitHomeTarget_, orbitHomeDist_, orbitHomeYaw_, orbitHomePitch_);
@@ -2837,6 +2897,8 @@ void CameraView::keyReleaseEvent(QKeyEvent* e) {
 }
 
 void CameraView::focusOutEvent(QFocusEvent* e) {
+    // A drag whose release may never arrive (a dialog opened, the window lost focus): back to where it started.
+    if (gizmoDragAxis_ >= 0 || ringDragAxis_ >= 0) cancelViewDrag();
     ctx_->heldKeys.clear();
     if (ctx_->playing) stopPlay();
     ctx_->looking = false;

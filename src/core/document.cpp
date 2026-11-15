@@ -35,6 +35,7 @@ bool Document::loadFromText(const std::string& text, const std::string& virtualP
     undoPos_ = savedPos_ = 0;
     savedPosLost_ = false;
     drag_.reset();
+    ++loadSerial_;
     touch();
     return true;
 }

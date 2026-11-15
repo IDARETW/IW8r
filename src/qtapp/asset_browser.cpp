@@ -5,12 +5,16 @@
 #include <QInputDialog>
 
 #include <QComboBox>
+#include <QDesktopServices>
 #include <QDrag>
+#include <QKeyEvent>
 #include <QMimeData>
 #include <QGuiApplication>
 #include <QClipboard>
 #include <QMenu>
 #include <QColor>
+#include <QPointer>
+#include <QUrl>
 
 #include <QCheckBox>
 #include <QCoreApplication>
@@ -129,7 +133,50 @@ protected:
     }
 };
 
+// The map's content as the "In this map" filter sees it (entity ids, item ids and revisions, the file): selection
+// clicks also signal documentChanged but leave it unchanged.
+quint64 contentSignature(const Document& doc) {
+    quint64 h = 1469598103934665603ull;
+    auto mix = [&h](quint64 v) { h = (h ^ v) * 1099511628211ull; };
+    for (unsigned char c : doc.path()) mix(c);
+    for (const Entity& e : doc.map().entities) {
+        mix(e.id);
+        for (const auto& item : e.items) mix(item.rev * 31 + item.id);
+    }
+    return h;
+}
+
+// focusListOnDown: Down in the search box hands the keyboard to the list.
+class DownIntoList : public QObject {
+public:
+    DownIntoList(QAbstractItemView* list, QObject* parent) : QObject(parent), list_(list) {}
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* e) override {
+        if (e->type() == QEvent::KeyPress && list_) {
+            const auto* ke = static_cast<QKeyEvent*>(e);
+            if (ke->key() == Qt::Key_Down && (ke->modifiers() & ~Qt::KeypadModifier) == Qt::NoModifier) {
+                list_->setFocus(Qt::TabFocusReason);
+                if (!list_->currentIndex().isValid()) {
+                    // Home in the list picks its first shown row the way the list itself does (hidden rows skipped).
+                    QKeyEvent home(QEvent::KeyPress, Qt::Key_Home, Qt::NoModifier);
+                    QCoreApplication::sendEvent(list_, &home);
+                }
+                return true;
+            }
+        }
+        return QObject::eventFilter(watched, e);
+    }
+
+private:
+    QPointer<QAbstractItemView> list_;
+};
+
 }  // namespace
+
+void focusListOnDown(QLineEdit* search, QAbstractItemView* list) {
+    if (search && list) search->installEventFilter(new DownIntoList(list, search));
+}
 
 AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWidget(parent), ctx_(ctx), kind_(kind) {
     auto* lay = new QVBoxLayout(this);
@@ -295,15 +342,19 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
         else if (kind_ == Kind::Sounds) emit soundChosen(name, idx.data(Qt::UserRole + 2).toBool());
         else emit modelChosen(name);
     };
-    connect(view_, &QListView::doubleClicked, this, choose);
-    if (kind_ != Kind::Images) {
+    // Double-click or Enter (activated covers both, so a double-click places once).
+    connect(view_, &QListView::activated, this, choose);
+    focusListOnDown(search_, view_);
+    {
+        // Images are previewed only: their menu has no Apply / Place, Info or usage entries.
         view_->setContextMenuPolicy(Qt::CustomContextMenu);
         connect(view_, &QListView::customContextMenuRequested, this, [this, choose](const QPoint& at) {
             const QModelIndex idx = view_->indexAt(at);
             if (!idx.isValid()) return;
             const QString name = idx.data(Qt::DisplayRole).toString();
             QMenu menu(this);
-            menu.addAction(kind_ == Kind::Materials ? "Apply to Selection" : "Place", this, [choose, idx] { choose(idx); });
+            if (kind_ != Kind::Images)
+                menu.addAction(kind_ == Kind::Materials ? "Apply to Selection" : "Place", this, [choose, idx] { choose(idx); });
             if (kind_ == Kind::Models) menu.addAction("Preview in 3D...", this, [this, name] { emit previewRequested(name); });
             if (kind_ == Kind::Materials || kind_ == Kind::Models || kind_ == Kind::Effects)
                 menu.addAction(kind_ == Kind::Materials ? "Material Info..." : kind_ == Kind::Models ? "Model Info..." : "Effect Info...", this,
@@ -324,6 +375,10 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
                     menu.addAction("Replace Everywhere With...", this, [this, name] { emit replaceRequested(name); });
             }
             menu.addAction("Copy Name", this, [name] { QGuiApplication::clipboard()->setText(name); });
+            // The only file a row knows: a material's colour image (exported stock assets, or a custom material's).
+            if (const QString file = imageFiles_.value(name); !file.isEmpty() && QFileInfo::exists(file))
+                menu.addAction("Show Image in Folder", this,
+                               [file] { QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(file).absolutePath())); });
             menu.exec(view_->viewport()->mapToGlobal(at));
         });
     }
@@ -335,7 +390,9 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
         });
     connect(use, &QPushButton::clicked, this, [this, choose] { choose(view_->currentIndex()); });
     connect(ctx_, &EditorContext::documentChanged, this, [this, filter] {
-        if (filter->useOnly) refreshUsedFilter();
+        // Collected again only when the map's content changed: selection clicks signal a change too, and walking every
+        // face of a large map and refiltering 46k rows for a click is wasted work.
+        if (filter->useOnly && contentSignature(ctx_->doc) != usedSignature_) refreshUsedFilter();
     });
     // Thumbnails for the visible rows, decoded lazily after scrolling or filtering settles.
     auto* thumbs = new QTimer(this);
@@ -485,7 +542,7 @@ void AssetBrowser::load() {
             }
         }
     }
-    info_->setText(QString("%1 stock %2 (Replay 1.20, %3)%4")
+    catalogInfo_ = (QString("%1 stock %2 (Replay 1.20, %3)%4")
                        .arg(rows.size())
                        .arg(kind_ == Kind::Materials ? "materials" : kind_ == Kind::Effects ? "effects" : kind_ == Kind::Images ? "images"
                             : kind_ == Kind::Sounds ? "sound aliases (blue = loop)" : "models")
@@ -495,6 +552,7 @@ void AssetBrowser::load() {
                                 ? QString("; %1 weapon/attachment models of the streaming zone not listed").arg(hiddenStreamOnly_)
                                 : QString())
                        + (hiddenMissing_ ? QString("; %1 not buildable hidden").arg(hiddenMissing_) : QString()));
+    updateInfo();
 }
 
 void AssetBrowser::setCustomMaterials(const QList<QPair<QString, QString>>& materials) {
@@ -510,6 +568,7 @@ void AssetBrowser::setCustomMaterials(const QList<QPair<QString, QString>>& mate
         imageFiles_.insert(materials[i].first, materials[i].second);
         icons_.remove(materials[i].first);
     }
+    updateInfo();
 }
 
 QIcon AssetBrowser::thumbnail(const QString& name) {
@@ -561,6 +620,7 @@ int AssetBrowser::thumbnailsLoaded() const { return int(realThumbs_.size()); }
 
 void AssetBrowser::refreshUsedFilter() {
     auto* filter = static_cast<NameFilter*>(proxy_);
+    usedSignature_ = contentSignature(ctx_->doc);
     filter->only.clear();
     for (const auto& e : ctx_->doc.map().entities) {
         if (kind_ == Kind::Models) {
@@ -574,6 +634,24 @@ void AssetBrowser::refreshUsedFilter() {
             }
     }
     filter->refresh();
+    updateInfo();
+}
+
+void AssetBrowser::updateInfo() {
+    const int shown = proxy_->rowCount(), total = model_->rowCount();
+    if (shown == total) {
+        info_->setText(catalogInfo_);
+        return;
+    }
+    // What narrows the list, so an empty list says why it is empty.
+    QStringList by;
+    if (!filterText_.isEmpty()) by << "\"" + filterText_ + "\"";
+    if (listMode_ && listMode_->currentIndex() != 0) by << listMode_->currentText();
+    if (kit_ && kit_->currentIndex() > 0) by << "kit " + kit_->currentText();
+    if (usedOnly_->isChecked()) by << "in this map";
+    const QString why = by.isEmpty() ? QString() : " (" + by.join(", ") + ")";
+    info_->setText(shown == 0 ? QString("No matches for %1 among %2").arg(by.isEmpty() ? QString("the filters") : by.join(", ")).arg(total)
+                              : QString("%1 of %2 shown%3").arg(shown).arg(total).arg(why));
 }
 
 int AssetBrowser::usageCount(const QString& qname) const {
@@ -639,7 +717,11 @@ void AssetBrowser::showTag(const QString& tag) {
     applyListMode();
 }
 
-void AssetBrowser::setFilter(const QString& text) { proxy_->setFilterFixedString(text); }
+void AssetBrowser::setFilter(const QString& text) {
+    filterText_ = text;
+    proxy_->setFilterFixedString(text);
+    updateInfo();
+}
 
 QString AssetBrowser::settingsKey(const char* what) const {
     const char* k = kind_ == Kind::Materials ? "materials" : kind_ == Kind::Models ? "models" : kind_ == Kind::Effects ? "effects"
@@ -689,6 +771,7 @@ void AssetBrowser::setKit(const QString& kit) {
         kit_->blockSignals(false);
     }
     filter->refresh();
+    updateInfo();
 }
 
 void AssetBrowser::setListMode(ListMode m) { listMode_->setCurrentIndex(int(m)); applyListMode(); }
@@ -707,6 +790,7 @@ void AssetBrowser::applyListMode() {
     }
     filter->list.insert(names.begin(), names.end());
     filter->refresh();
+    updateInfo();
 }
 int AssetBrowser::assetCount() const { return model_->rowCount(); }
 int AssetBrowser::visibleCount() const { return proxy_->rowCount(); }

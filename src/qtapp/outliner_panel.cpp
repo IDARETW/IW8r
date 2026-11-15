@@ -1,14 +1,19 @@
 #include "outliner_panel.h"
 
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
+#include <QScrollBar>
 #include <QTimer>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <map>
 #include <set>
 
+#include "asset_browser.h"  // focusListOnDown
 #include "editor_context.h"
 #include "map_queries.h"
 
@@ -17,6 +22,9 @@ namespace iw8r::qt {
 namespace {
 
 QString qs(const std::string& s) { return QString::fromStdString(s); }
+
+// Class rows keep their class name here (their text also has the count); entity rows keep their id in Qt::UserRole.
+constexpr int kClassRole = Qt::UserRole + 1;
 
 // Row label of one entity: the most telling key after the class.
 QString labelOf(const Entity& e) {
@@ -72,8 +80,22 @@ OutlinerPanel::OutlinerPanel(EditorContext* ctx, QWidget* parent) : QWidget(pare
         ctx_->documentEdited(QString("%1 selected from the Outliner").arg(tree_->selectedItems().size()));
         syncing_ = false;
     });
-    connect(tree_, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* it) {
+    // Double-click or Enter frames the entity (activated covers both; the row is already the selection).
+    connect(tree_, &QTreeWidget::itemActivated, this, [this](QTreeWidgetItem* it) {
         if (it->data(0, Qt::UserRole).toULongLong()) ctx_->frameSelection();
+    });
+    focusListOnDown(filter_, tree_);
+    tree_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(tree_, &QTreeWidget::customContextMenuRequested, this, [this](const QPoint& at) {
+        QTreeWidgetItem* it = tree_->itemAt(at);
+        if (!it) return;
+        const bool entity = it->data(0, Qt::UserRole).toULongLong() != 0;
+        // A class row copies its class; an entity row its label (targetname, model, ...), as the row shows it.
+        const QString name = entity ? it->text(0) : it->data(0, kClassRole).toString();
+        QMenu menu(this);
+        if (entity) menu.addAction("Frame in Views", this, [this] { ctx_->frameSelection(); });
+        menu.addAction("Copy Name", this, [name] { QGuiApplication::clipboard()->setText(name); });
+        menu.exec(tree_->viewport()->mapToGlobal(at));
     });
     // Rebuilt lazily: many edits in a row (drags) cost one rebuild when the dock is next shown or idle.
     connect(ctx_, &EditorContext::documentChanged, this, [this] {
@@ -112,6 +134,20 @@ void OutlinerPanel::rebuild() {
     dirty_ = false;
     signature_ = docSignature();
     const QString needle = filter_->text().trimmed().toLower();
+    // An edit rebuilds the tree: the open classes, the scroll position and the current row are put back afterwards.
+    // A filtered tree is opened whole, so its open classes are not remembered (clearing the filter restores the
+    // mapper's own).
+    if (builtNeedle_.isEmpty()) {
+        expanded_.clear();
+        for (int g = 0; g < tree_->topLevelItemCount(); ++g)
+            if (tree_->topLevelItem(g)->isExpanded()) expanded_.insert(tree_->topLevelItem(g)->data(0, kClassRole).toString());
+    }
+    // A new filter shows other rows: those start at the top.
+    const int scroll = needle == builtNeedle_ ? tree_->verticalScrollBar()->value() : 0;
+    const QTreeWidgetItem* was = tree_->currentItem();
+    const bool hadCurrent = was != nullptr;
+    const quint64 currentId = was ? was->data(0, Qt::UserRole).toULongLong() : 0;     // an entity row
+    const QString currentClass = was ? was->data(0, kClassRole).toString() : QString();  // or a class row
     syncing_ = true;
     tree_->clear();
     std::map<QString, QTreeWidgetItem*> groups;
@@ -139,6 +175,7 @@ void OutlinerPanel::rebuild() {
         if (!g) {
             g = new QTreeWidgetItem(tree_, {cls, QString()});
             g->setFlags(g->flags() & ~Qt::ItemIsSelectable);
+            g->setData(0, kClassRole, cls);
         }
         auto* row = new QTreeWidgetItem(g, {label, nb ? QString::number(nb) : QString()});
         row->setData(0, Qt::UserRole, qulonglong(e.id));
@@ -147,6 +184,22 @@ void OutlinerPanel::rebuild() {
     for (auto& [cls, g] : groups) g->setText(0, QString("%1  (%2)").arg(cls).arg(g->childCount()));
     tree_->sortItems(0, Qt::AscendingOrder);
     if (!needle.isEmpty()) tree_->expandAll();
+    else
+        for (auto& [cls, g] : groups) g->setExpanded(expanded_.contains(cls));
+    builtNeedle_ = needle;
+    {
+        // The current row back (without touching the selection), then the scroll position once the rows are laid out.
+        QTreeWidgetItem* cur = nullptr;
+        for (int g = 0; g < tree_->topLevelItemCount() && hadCurrent && !cur; ++g) {
+            QTreeWidgetItem* grp = tree_->topLevelItem(g);
+            if (!currentId && grp->data(0, kClassRole).toString() == currentClass) cur = grp;
+            for (int i = 0; i < grp->childCount() && currentId && !cur; ++i)
+                if (grp->child(i)->data(0, Qt::UserRole).toULongLong() == currentId) cur = grp->child(i);
+        }
+        if (cur) tree_->selectionModel()->setCurrentIndex(tree_->indexFromItem(cur), QItemSelectionModel::NoUpdate);
+        tree_->doItemsLayout();
+        tree_->verticalScrollBar()->setValue(scroll);
+    }
     syncing_ = false;
     syncSelectionFromDoc();
     const auto mats = materialUsage(ctx_->doc.map());

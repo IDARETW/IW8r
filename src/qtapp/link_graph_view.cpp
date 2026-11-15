@@ -1,8 +1,12 @@
 #include "link_graph_view.h"
 
+#include <QApplication>
+#include <QHelpEvent>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QToolTip>
 #include <QWheelEvent>
 
 #include <algorithm>
@@ -12,11 +16,13 @@ namespace iw8r::qt {
 
 namespace {
 constexpr double kBoxW = 170, kBoxH = 38;
+constexpr double kFooter = 24;  // the hint line at the bottom
 }
 
 LinkGraphView::LinkGraphView(EditorContext* ctx, QWidget* parent) : QWidget(parent), ctx_(ctx) {
     setMinimumSize(200, 120);
     setMouseTracking(false);
+    setFocusPolicy(Qt::StrongFocus);  // F (fit) after a click or Tab into the view
     connect(ctx_, &EditorContext::documentChanged, this, [this] {
         if (isVisible()) rebuild();
         update();
@@ -33,7 +39,11 @@ void LinkGraphView::rebuild() {
     nodeIndex_.clear();
     for (size_t i = 0; i < layout_.nodes.size(); ++i) nodeIndex_[layout_.nodes[i].entity] = i;
     issues_.clear();
-    for (const LinkIssue& is : checkLinks(map, graph_)) issues_.insert(is.entity);
+    issueText_.clear();
+    for (const LinkIssue& is : checkLinks(map, graph_)) {
+        issues_.insert(is.entity);
+        issueText_[is.entity] << QString(is.error ? "error: " : "warning: ") + QString::fromStdString(is.message);
+    }
     label_.clear();
     for (const auto& n : layout_.nodes)
         if (const Entity* e = ctx_->doc.findEntity(n.entity)) {
@@ -125,13 +135,73 @@ void LinkGraphView::paintEvent(QPaintEvent*) {
     p.setPen(QColor(140, 145, 155));
     p.setFont(font());
     p.drawText(QRectF(8, height() - 22, width() - 16, 18), Qt::AlignLeft | Qt::AlignVCenter,
-               QString("%1 entities, %2 links%3   (orange target, blue script_linkto; wheel zooms, right-drag pans)")
+               QString("%1 entities, %2 links%3   (orange target, blue script_linkto; wheel zooms, right-drag pans, F fits)")
                    .arg(layout_.nodes.size()).arg(graph_.edges.size())
                    .arg(issues_.empty() ? QString() : QString(", %1 with problems (red)").arg(issues_.size())));
 }
 
+void LinkGraphView::fitView() {
+    rebuild();
+    if (layout_.nodes.empty()) return;
+    double lo[2] = {1e300, 1e300}, hi[2] = {-1e300, -1e300};
+    for (const auto& n : layout_.nodes) {
+        lo[0] = std::min(lo[0], n.x - kBoxW / 2), hi[0] = std::max(hi[0], n.x + kBoxW / 2);
+        lo[1] = std::min(lo[1], n.y - kBoxH / 2), hi[1] = std::max(hi[1], n.y + kBoxH / 2);
+    }
+    // The whole graph inside the view above the hint line; a small graph stays at its natural size (zoom 1).
+    const double availW = std::max(40.0, width() - 24.0), availH = std::max(40.0, height() - 24.0 - kFooter);
+    zoom_ = std::clamp(std::min(availW / (hi[0] - lo[0]), availH / (hi[1] - lo[1])), 0.2, 1.0);
+    const QPointF centre(width() / 2.0, (height() - kFooter) / 2.0);
+    pan_ = centre - QPointF((lo[0] + hi[0]) / 2 * zoom_, (lo[1] + hi[1]) / 2 * zoom_);
+    update();
+}
+
+bool LinkGraphView::event(QEvent* e) {
+    if (e->type() == QEvent::ShortcutOverride) {
+        // F fits the graph while the view has the focus, before any shortcut bound to F.
+        const auto* ke = static_cast<QKeyEvent*>(e);
+        if (ke->key() == Qt::Key_F && ke->modifiers() == Qt::NoModifier) {
+            e->accept();
+            return true;
+        }
+    }
+    if (e->type() == QEvent::ToolTip) {
+        // The node's full names (the box elides them), its links and its problems.
+        const auto* he = static_cast<QHelpEvent*>(e);
+        const Id hit = nodeAt(he->pos());
+        const Entity* ent = hit != kNoId ? ctx_->doc.findEntity(hit) : nullptr;
+        if (!ent) {
+            QToolTip::hideText();
+            e->ignore();
+            return true;
+        }
+        QStringList lines{"<b>" + QString::fromStdString(ent->classname()).toHtmlEscaped() + "</b>"};
+        for (const char* k : {"targetname", "script_linkname", "target", "target2", "target3", "target4", "target5", "target6", "target7",
+                              "target8", "script_linkto"})
+            if (const std::string* v = ent->value(k); v && !v->empty())
+                lines << QString("%1: %2").arg(QString(k), QString::fromStdString(*v).toHtmlEscaped());
+        if (const auto it = issueText_.find(hit); it != issueText_.end())
+            for (const QString& m : it->second) lines << "<span style='color:#e05040'>" + m.toHtmlEscaped() + "</span>";
+        const QPointF c = nodeCenter(hit);
+        const QRect box(int(c.x() - kBoxW * zoom_ / 2), int(c.y() - kBoxH * zoom_ / 2), int(kBoxW * zoom_), int(kBoxH * zoom_));
+        QToolTip::showText(he->globalPos(), lines.join("<br>"), this, box);  // hidden again when the mouse leaves the box
+        return true;
+    }
+    return QWidget::event(e);
+}
+
+void LinkGraphView::keyPressEvent(QKeyEvent* e) {
+    if (e->key() == Qt::Key_F && e->modifiers() == Qt::NoModifier) {
+        fitView();
+        return;
+    }
+    QWidget::keyPressEvent(e);
+}
+
 void LinkGraphView::mousePressEvent(QMouseEvent* e) {
     lastMouse_ = e->pos();
+    pressAt_ = e->pos();
+    clickInEmpty_ = false;
     if (e->button() == Qt::RightButton || e->button() == Qt::MiddleButton) {
         panning_ = true;
         return;
@@ -141,6 +211,7 @@ void LinkGraphView::mousePressEvent(QMouseEvent* e) {
     if (hit == kNoId) {
         if (!(e->modifiers() & Qt::ControlModifier)) {
             panning_ = true;  // left-drag on empty space pans as well
+            clickInEmpty_ = true;  // a click there without a drag clears the selection, as in the Outliner
         }
         return;
     }
@@ -158,7 +229,15 @@ void LinkGraphView::mouseMoveEvent(QMouseEvent* e) {
     update();
 }
 
-void LinkGraphView::mouseReleaseEvent(QMouseEvent*) { panning_ = false; }
+void LinkGraphView::mouseReleaseEvent(QMouseEvent* e) {
+    panning_ = false;
+    const bool click = clickInEmpty_ && (e->pos() - pressAt_).manhattanLength() < QApplication::startDragDistance();
+    clickInEmpty_ = false;
+    if (!click || ctx_->doc.selection().empty()) return;
+    ctx_->doc.deselectAll();
+    ctx_->documentEdited();
+    update();
+}
 
 void LinkGraphView::mouseDoubleClickEvent(QMouseEvent* e) {
     const Id hit = nodeAt(e->position());

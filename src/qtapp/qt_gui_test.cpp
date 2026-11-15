@@ -50,6 +50,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QStatusBar>
 #include <QTemporaryDir>
 #include <QFile>
 #include <QImage>
@@ -57,6 +58,11 @@
 #include <QMouseEvent>
 #include <QTableWidget>
 #include <QTest>
+#include <QTreeWidget>
+#include <QMessageBox>
+#include "DockAreaWidget.h"
+#include "DockWidget.h"
+#include "DockManager.h"
 #include <cmath>
 
 #include "asset_browser.h"
@@ -130,6 +136,16 @@
 namespace iw8r::qt {
 
 namespace {
+
+// Camera Path > Clear... asks before removing keys (2026-11-15): the test answers Yes.
+void clearCameraPathAnsweringYes(QAction* a) {
+    if (!a) return;
+    QTimer::singleShot(0, [] {
+        if (auto* mb = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()); mb && mb->windowTitle() == "Clear Camera Path")
+            if (QAbstractButton* yes = mb->button(QMessageBox::Yes)) yes->click();
+    });
+    a->trigger();
+}
 
 struct Report {
     QString text;
@@ -552,6 +568,14 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         r.check(spansOnce && ctx.doc.undoPosition() == pos + 2, "Surface > Fit makes every face's texture span it once (one undo step)");
         for (int undoGuard = 0; undoGuard < 64 && ctx.doc.undoPosition() > pos; ++undoGuard) QTest::keyClick(&w, Qt::Key_Z, Qt::ControlModifier);
         r.check(ctx.doc.text() == before, "Ctrl+Z restores the text");
+        // Dock fixes (2026-11-15): with nothing selected Fit / Natural / Justify are off instead of doing nothing.
+        ctx.doc.deselectAll();
+        ctx.documentEdited();
+        r.check(fit && !fit->isEnabled(), "Surface > Fit is disabled with nothing selected");
+        selectPillar();
+        r.check(fit && fit->isEnabled(), "Surface > Fit is enabled again with a brush selected");
+        ctx.doc.deselectAll();
+        ctx.documentEdited();
     }
 
     r.section("textured camera view");
@@ -628,6 +652,17 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         r.check(lp && lp->layerNames().contains("000_Global/Floors") && lp->layerNames().contains("000_Global"),
                 "the Layers dock lists declared and used layers: " + (lp ? lp->layerNames().join(", ") : QString()));
         if (lp) {
+            // Dock fixes (2026-11-15): Select / Move Selection Here act on the picked row, so they are off without one
+            // (with none they acted on the unlayered primitives).
+            if (auto* lt = lp->findChild<QTableWidget*>("layersTable")) {
+                QPushButton* ls = lp->findChild<QPushButton*>("layersSelect");
+                QPushButton* lm = lp->findChild<QPushButton*>("layersMove");
+                lt->setCurrentCell(-1, -1);
+                r.check(ls && lm && !ls->isEnabled() && !lm->isEnabled(), "Layers: Select and Move Selection Here are off without a picked row");
+                lt->setCurrentCell(0, 0);
+                r.check(ls && lm && ls->isEnabled() && lm->isEnabled(), "Layers: they are on with a picked row");
+                lt->setCurrentCell(-1, -1);
+            }
             ctx.scene.sync(ctx.doc);
             const size_t visible = ctx.scene.items().size();
             lp->setLayerVisible("000_Global/Floors", false);
@@ -1069,6 +1104,31 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         ctx.doc.setKeyValue(spawnId, "angles", "0 90 0");
         ctx.documentEdited();
 
+        // Dock fixes (2026-11-15): a value that does not fit its key type is refused in the table (the cell goes back),
+        // and Delete on a key row removes that key.
+        {
+            r.check(!ins->refusalFor("angles", "north east").isEmpty() && ins->refusalFor("angles", "0 45 0").isEmpty(),
+                    "the inspector refuses angles \"north east\" and takes \"0 45 0\": " + ins->refusalFor("angles", "north east"));
+            const int ar = ins->rowForKey("angles");
+            const size_t hist = ctx.doc.history().size();
+            if (ar >= 0) ins->table()->item(ar, 1)->setText("north east");
+            const Entity* se = ctx.doc.findEntity(spawnId);
+            const std::string* av = se ? se->value("angles") : nullptr;
+            r.check(ar >= 0 && av && *av == "0 90 0" && ctx.doc.history().size() == hist && ins->table()->item(ar, 1)->text() == "0 90 0",
+                    "\"north east\" typed in the angles cell is not written and the cell shows \"0 90 0\" again");
+            ctx.doc.setKeyValue(spawnId, "iw8r_test_key", "1");
+            ctx.documentEdited();
+            const int kr = ins->rowForKey("iw8r_test_key");
+            if (kr >= 0) {
+                ins->table()->clearSelection();
+                ins->table()->setCurrentCell(kr, 0);
+                ins->table()->setFocus();
+                QTest::keyClick(ins->table(), Qt::Key_Delete);
+            }
+            se = ctx.doc.findEntity(spawnId);
+            r.check(kr >= 0 && se && !se->value("iw8r_test_key") && se->value("angles"), "Delete on a key row removes that key only");
+        }
+
         // Light group: colour writes _color (0..1 floats), radius and fov keys write their keys.
         const Id lightId = ctx.doc.addEntity({{"classname", "light"}, {"origin", "0 0 128"}}, {}, "Create Entity");
         ctx.doc.select({lightId, kNoId}, false);
@@ -1132,6 +1192,189 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         r.check(!ctx.clipMode && slanted && brushes > 0, "Enter clips with the tilted plane: the result has a sloped face");
         for (int undoGuard = 0; undoGuard < 64 && ctx.doc.undoPosition() > pos; ++undoGuard) QTest::keyClick(&w, Qt::Key_Z, Qt::ControlModifier);
         r.check(ctx.doc.text() == before, "Ctrl+Z restores the pillar after the 3-point clip");
+    }
+
+    r.section("2D view usability: drag threshold, cancelled drags, framing, axis switch, zoom, cursors, palette");
+    {
+        const std::string before = ctx.doc.text();
+        const size_t pos = ctx.doc.undoPosition();
+        const auto cam0 = ctx.cam;
+        const int axis0 = ctx.gridAxis;
+        const double ch0 = ctx.gridCenterH, cv0 = ctx.gridCenterV, scale0 = ctx.gridScale;
+        const bool snap0 = ctx.snap;
+        QTest::keyClick(&w, Qt::Key_5);  // grid 16
+        const SelRef pil = selectPillar();
+        const AABB pb = ctx.doc.selectionBounds();
+        // A known view: XY, centred on the pillar, 1 px per unit (the drags below are tens of px).
+        const auto showPillar = [&] {
+            ctx.gridAxis = 0, ctx.gridCenterH = pb.center().x, ctx.gridCenterV = pb.center().y, ctx.gridScale = 1.0;
+            ctx.cameraMoved();
+        };
+        showPillar();
+        const QPointF centre = grid->worldToWidget(pb.center().x, pb.center().y);
+        const QPointF right64 = grid->worldToWidget(pb.center().x + 64, pb.center().y);
+        grid->setFocus();
+        auto lastLog = [] {
+            const QList<LogEntry> all = EditorLog::instance().entries();
+            return all.isEmpty() ? QString() : all.back().text;
+        };
+        // Snap off, so a 1 px wobble would move the brush if a press moved at once.
+        ctx.snap = false;
+        sendMouse(grid, QEvent::MouseButtonPress, centre, Qt::LeftButton, Qt::LeftButton);
+        sendMouse(grid, QEvent::MouseMove, centre + QPointF(1, 0), Qt::NoButton, Qt::LeftButton);
+        sendMouse(grid, QEvent::MouseButtonRelease, centre + QPointF(1, 0), Qt::LeftButton, Qt::NoButton);
+        ctx.snap = true;
+        r.check(ctx.doc.text() == before && ctx.doc.undoPosition() == pos, "a click with a 1 px wobble on the selection moves nothing (3 px drag threshold)");
+        for (int undoGuard = 0; undoGuard < 8 && ctx.doc.undoPosition() > pos; ++undoGuard) QTest::keyClick(&w, Qt::Key_Z, Qt::ControlModifier);
+        sendMouse(grid, QEvent::MouseButtonPress, centre, Qt::LeftButton, Qt::LeftButton);
+        sendMouse(grid, QEvent::MouseMove, right64, Qt::NoButton, Qt::LeftButton);
+        const bool previewed = ctx.doc.text() != before && grid->dragActive();
+        QTest::keyClick(grid, Qt::Key_Escape);
+        r.check(previewed && !grid->dragActive() && ctx.doc.text() == before && ctx.doc.isSelected(pil) && ctx.doc.undoPosition() == pos,
+                "Escape during a 2D move drag puts the brush back and keeps it selected (no Deselect, no undo step)");
+        sendMouse(grid, QEvent::MouseButtonRelease, right64, Qt::LeftButton, Qt::NoButton);
+        r.check(ctx.doc.text() == before && ctx.doc.undoPosition() == pos, "the release after Escape changes nothing");
+        sendMouse(grid, QEvent::MouseButtonPress, centre, Qt::LeftButton, Qt::LeftButton);
+        sendMouse(grid, QEvent::MouseMove, right64, Qt::NoButton, Qt::LeftButton);
+        sendMouse(grid, QEvent::MouseMove, right64 + QPointF(10, 0), Qt::NoButton, Qt::NoButton);
+        r.check(!grid->dragActive() && ctx.doc.text() == before && ctx.doc.undoPosition() == pos,
+                "a move without the button down ends the lost drag and puts the brush back");
+        const int log0 = EditorLog::instance().count();
+        sendMouse(grid, QEvent::MouseButtonPress, centre, Qt::LeftButton, Qt::LeftButton);
+        for (int i = 1; i <= 6; ++i) sendMouse(grid, QEvent::MouseMove, grid->worldToWidget(pb.center().x + 16.0 * i, pb.center().y), Qt::NoButton, Qt::LeftButton);
+        sendMouse(grid, QEvent::MouseButtonRelease, grid->worldToWidget(pb.center().x + 96, pb.center().y), Qt::LeftButton, Qt::NoButton);
+        const int logged = EditorLog::instance().count() - log0;
+        r.check(ctx.doc.undoPosition() == pos + 1 && logged <= 2, QString("a 6-step move drag logs only its result (%1 Console line(s))").arg(logged));
+        for (int undoGuard = 0; undoGuard < 8 && ctx.doc.undoPosition() > pos; ++undoGuard) QTest::keyClick(&w, Qt::Key_Z, Qt::ControlModifier);
+        // Create: a box under one grid unit across on a dragged axis is refused with a message.
+        QTest::keyClick(&w, Qt::Key_Escape);
+        sendMouse(grid, QEvent::MouseButtonPress, grid->worldToWidget(320, 320), Qt::LeftButton, Qt::LeftButton);
+        sendMouse(grid, QEvent::MouseMove, grid->worldToWidget(324, 384), Qt::NoButton, Qt::LeftButton);
+        sendMouse(grid, QEvent::MouseButtonRelease, grid->worldToWidget(324, 384), Qt::LeftButton, Qt::NoButton);
+        r.check(ctx.doc.text() == before && lastLog().contains("No brush created"), "a create drag thinner than the grid makes no brush and says so: " + lastLog());
+
+        // Center On Selection fits the 2D zoom too; faces alone frame their face; nothing selected says so.
+        selectPillar();
+        ctx.gridScale = 0.01;
+        ctx.frameSelection();
+        const double fit = EditorContext::clampGridScale(0.85 * std::min(grid->width(), grid->height()) /
+                                                         std::max(64.0, std::max(pb.maxs.x - pb.mins.x, pb.maxs.y - pb.mins.y)));
+        r.check(std::fabs(ctx.gridScale - fit) < 1e-9 && std::fabs(ctx.gridCenterH - pb.center().x) < 1e-6 && std::fabs(ctx.gridCenterV - pb.center().y) < 1e-6,
+                QString("Center On Selection centres and zooms the 2D view on the selection (scale %1, want %2)").arg(ctx.gridScale).arg(fit));
+        ctx.doc.selectFace({pil.entity, pil.item, 0}, false);
+        ctx.gridCenterH = pb.maxs.x + 1000;
+        ctx.frameSelection();
+        r.check(ctx.doc.selection().empty() && ctx.gridCenterH >= pb.mins.x - 1e-6 && ctx.gridCenterH <= pb.maxs.x + 1e-6 &&
+                    ctx.gridCenterV >= pb.mins.y - 1e-6 && ctx.gridCenterV <= pb.maxs.y + 1e-6,
+                "Center On Selection frames a face-only selection");
+        ctx.doc.deselectAll();
+        ctx.documentEdited();
+        const Vec3 camAt = ctx.cam.pos;
+        ctx.frameSelection();
+        r.check(lastLog() == "Nothing selected to frame" && length(ctx.cam.pos - camAt) < 1e-9, "Center On Selection with nothing selected says so");
+
+        // Next View keeps the world point in the centre; the old depth axis takes the camera position.
+        ctx.gridAxis = 0;
+        ctx.gridCenterH = 100, ctx.gridCenterV = 200;
+        ctx.cam.pos = Vec3{10, 20, 50};
+        ctx.nextGridAxis();
+        const bool xz = ctx.gridAxis == 1 && ctx.gridCenterH == 100 && ctx.gridCenterV == 50;
+        ctx.nextGridAxis();
+        const bool yz = ctx.gridAxis == 2 && ctx.gridCenterH == 20 && ctx.gridCenterV == 50;
+        ctx.nextGridAxis();
+        const bool xy = ctx.gridAxis == 0 && ctx.gridCenterH == 10 && ctx.gridCenterV == 20;
+        r.check(xz && yz && xy, "nextGridAxis keeps the centre point: XY -> XZ -> YZ -> XY");
+
+        // Zoom commands share the wheel step and limits; Fit All is the open-map fit; the label's line spacing.
+        ctx.gridScale = 1.0;
+        grid->zoomIn();
+        const double zin = ctx.gridScale;
+        grid->zoomOut();
+        const double zback = ctx.gridScale;
+        ctx.gridScale = EditorContext::kGridScaleMax;
+        grid->zoomIn();
+        const double zmax = ctx.gridScale;
+        ctx.gridScale = EditorContext::kGridScaleMin;
+        grid->zoomOut();
+        r.check(std::fabs(zin - 1.25) < 1e-12 && std::fabs(zback - 1.0) < 1e-12 && zmax == EditorContext::kGridScaleMax &&
+                    ctx.gridScale == EditorContext::kGridScaleMin,
+                "Zoom In / Out step like the wheel and stop at its limits");
+        AABB all;
+        ctx.scene.sync(ctx.doc);
+        for (const auto* g : ctx.scene.items())
+            if (g->bounds.valid()) all.add(g->bounds);
+        grid->fitAll();
+        const double fitAll = EditorContext::clampGridScale(0.85 * std::min(grid->width(), grid->height()) /
+                                                            std::max(64.0, std::max(all.maxs.x - all.mins.x, all.maxs.y - all.mins.y)));
+        r.check(std::fabs(ctx.gridScale - fitAll) < 1e-9 && std::fabs(ctx.gridCenterH - all.center().x) < 1e-6, "Fit All fits the whole map in the 2D view");
+        ctx.gridScale = 1.0;
+        const double step1 = grid->drawnGridStep();
+        ctx.gridScale = 0.05;
+        const double step2 = grid->drawnGridStep();
+        r.check(step1 == 16 && step2 == 128, QString("drawn grid step: 16 at 1 px/unit, 128 at 0.05 (got %1, %2)").arg(step1).arg(step2));
+
+        // Position readout: the view's own two axes, cleared when the cursor leaves.
+        ctx.cam = cam0;
+        showPillar();
+        QString shown = "unset";
+        int left = 0;
+        const auto c1 = QObject::connect(grid, &GridView::positionText, grid, [&](const QString& t) { shown = t; });
+        const auto c2 = QObject::connect(grid, &GridView::mouseLeft, grid, [&] { ++left; });
+        sendMouse(grid, QEvent::MouseMove, grid->worldToWidget(32, 48), Qt::NoButton, Qt::NoButton);
+        const QString inside = shown;
+        QEvent leave(QEvent::Leave);
+        QApplication::sendEvent(grid, &leave);
+        QObject::disconnect(c1);
+        QObject::disconnect(c2);
+        r.check(inside.startsWith("x ") && inside.contains("   y ") && shown.isEmpty() && left == 1,
+                "the 2D position readout names the view's axes (" + inside + ") and clears when the cursor leaves");
+
+        // Hover cursors follow what a press would do.
+        selectPillar();
+        sendMouse(grid, QEvent::MouseMove, grid->worldToWidget(pb.center().x, pb.center().y), Qt::NoButton, Qt::NoButton);
+        const Qt::CursorShape overSel = grid->cursor().shape();
+        sendMouse(grid, QEvent::MouseMove, grid->worldToWidget(pb.maxs.x + 64, pb.center().y), Qt::NoButton, Qt::NoButton);
+        const Qt::CursorShape side = grid->cursor().shape();
+        sendMouse(grid, QEvent::MouseMove, grid->worldToWidget(pb.maxs.x + 64, pb.maxs.y + 64), Qt::NoButton, Qt::NoButton);
+        const Qt::CursorShape corner = grid->cursor().shape();
+        QTest::keyClick(&w, Qt::Key_Escape);
+        sendMouse(grid, QEvent::MouseMove, grid->worldToWidget(pb.center().x, pb.center().y), Qt::NoButton, Qt::NoButton);
+        const Qt::CursorShape none = grid->cursor().shape();
+        r.check(overSel == Qt::SizeAllCursor && side == Qt::SizeHorCursor && corner == Qt::SizeBDiagCursor && none == Qt::ArrowCursor,
+                QString("2D hover cursors: move over the selection, resize beside it, normal with nothing selected (%1 %2 %3 %4)")
+                    .arg(int(overSel)).arg(int(side)).arg(int(corner)).arg(int(none)));
+
+        // Command palette: disabled commands are listed but do not run; menu-less window commands are listed.
+        QMenu* tmp = w.menuBar()->addMenu("ZzPaletteTest");
+        QAction* off = tmp->addAction("Zz Disabled Command");
+        off->setEnabled(false);
+        auto* menuless = new QAction("Zz Menuless Command", &w);
+        w.addAction(menuless);
+        int fired = 0;
+        QObject::connect(off, &QAction::triggered, &w, [&] { ++fired; });
+        QObject::connect(menuless, &QAction::triggered, &w, [&] { fired += 10; });
+        {
+            iw8r::qt::CommandPalette pal(w.menuBar(), &w);
+            pal.setQuery("zz disabled command");
+            const QString disabledPath = pal.firstPath();
+            const bool refused = !pal.runFirst();
+            pal.setQuery("zz menuless");
+            const QString menulessPath = pal.firstPath();
+            const bool ran = pal.runFirst();
+            r.check(disabledPath.contains("Zz Disabled Command") && refused && menulessPath == "Other > Zz Menuless Command" && ran && fired == 10,
+                    "the palette lists a disabled command without running it, and lists and runs a menu-less command: " + disabledPath + " | " + menulessPath);
+        }
+        w.menuBar()->removeAction(tmp->menuAction());
+        delete tmp;
+        w.removeAction(menuless);
+        delete menuless;
+
+        for (int undoGuard = 0; undoGuard < 16 && ctx.doc.undoPosition() > pos; ++undoGuard) QTest::keyClick(&w, Qt::Key_Z, Qt::ControlModifier);
+        ctx.snap = snap0;
+        ctx.gridAxis = axis0, ctx.gridCenterH = ch0, ctx.gridCenterV = cv0, ctx.gridScale = scale0;
+        ctx.cam = cam0;
+        ctx.cameraMoved();
+        r.check(ctx.doc.text() == before, "the 2D usability checks leave the map as it was");
     }
 
     r.section("edge mode: drag a top edge into a wedge, undo, rejected move");
@@ -3093,6 +3336,15 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         for (int i = 0; i < pb->count(); ++i)
             if (pb->fileAt(i).endsWith("crate_stack.map")) row = i;
         r.check(row >= 0, QString("the Prefabs dock lists the prefab folder's maps (%1 listed)").arg(pb->count()));
+        if (QLabel* pc = pb->findChild<QLabel*>("prefabCount")) {
+            // Dock fixes (2026-11-15): a count under the list, and an empty result says why.
+            const QString all = pc->text();
+            pb->setFilter("zzzz_no_such_prefab");
+            const QString none = pc->text();
+            pb->setFilter("");
+            r.check(all.contains(QString("%1 prefabs").arg(pb->count())) && none.startsWith("No prefabs match"),
+                    "the Prefabs dock counts its prefabs (" + all + ") and says when the filter matches none (" + none + ")");
+        }
         {
             QElapsedTimer t;
             t.start();
@@ -3202,6 +3454,138 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         w.action("ToggleLitPreview")->trigger();
         r.check(!ctx.scene.litPreview, "Ctrl+L again turns it off");
         if (was) w.action("ToggleLitPreview")->trigger();
+    }
+
+    r.section("click cycling through overlapping objects (owner 2026-11-15)");
+    if (CameraView* cv = w.cameraView()) {
+        // Two boxes one behind the other, the camera looking through both: clicks on the same spot select the front
+        // box, the one behind, then the front one again; a click elsewhere starts over at the front.
+        const size_t up = ctx.doc.undoPosition();
+        const auto savedCam = ctx.cam;
+        AABB a, b;
+        a.add(Vec3{20000, -16, -16});
+        a.add(Vec3{20032, 16, 16});
+        b.add(Vec3{20100, -16, -16});
+        b.add(Vec3{20132, 16, 16});
+        createBoxBrush(ctx, a);
+        const SelRef ra = *ctx.doc.selection().begin();
+        createBoxBrush(ctx, b);
+        const SelRef rb = *ctx.doc.selection().begin();
+        ctx.doc.deselectAll();
+        ctx.documentEdited();
+        ctx.cam.pos = Vec3{19800, 0, 0};
+        ctx.cam.yaw = 0;
+        ctx.cam.pitch = 0;
+        ctx.cameraMoved();
+        cv->renderNow();
+        const std::optional<QPointF> at = cv->widgetPointOf(Vec3{20016, 0, 0});
+        const auto click = [&](QPointF p) {
+            sendMouse(cv, QEvent::MouseButtonPress, p, Qt::LeftButton, Qt::LeftButton);
+            sendMouse(cv, QEvent::MouseButtonRelease, p, Qt::LeftButton, Qt::NoButton);
+            const auto& s = ctx.doc.selection();
+            return s.size() == 1 ? *s.begin() : SelRef{};
+        };
+        if (at) {
+            const SelRef s1 = click(*at), s2 = click(*at), s3 = click(*at);
+            r.check(s1 == ra && s2 == rb && s3 == ra, "repeated clicks on one spot cycle front box, back box, front box");
+            r.check(w.statusBar()->currentMessage().contains("of 2 overlapping"), "the status says how many objects are under the cursor: " + w.statusBar()->currentMessage());
+            click(*at + QPointF(0, 40));  // somewhere else (nothing there): deselects and forgets the cycle
+            r.check(click(*at) == ra, "a click elsewhere in between starts the cycle over at the front box");
+        } else {
+            r.check(false, "the boxes are in front of the camera");
+        }
+        while (ctx.doc.undoPosition() > up && ctx.doc.undo()) {}
+        ctx.doc.deselectAll();
+        ctx.cam = savedCam;
+        ctx.documentEdited();
+        ctx.cameraMoved();
+    }
+
+    r.section("editing quirks (2026-11-15 review): nudges in a row, Select All, a missing map, the selection size");
+    {
+        const size_t up = ctx.doc.undoPosition();
+        AABB a;
+        a.add(Vec3{21000, -16, -16});
+        a.add(Vec3{21032, 16, 16});
+        createBoxBrush(ctx, a);
+        ctx.documentEdited();  // createBoxBrush only edits the document
+        const double g = ctx.doc.grid();
+        const AABB before = ctx.doc.selectionBounds();
+        QStringList labels;
+        for (QLabel* l : w.statusBar()->findChildren<QLabel*>()) labels << l->text();
+        r.check(std::any_of(labels.begin(), labels.end(), [](const QString& t) { return t.startsWith("1 selected  32 x 32 x 32"); }),
+                "the status bar shows the size of the selection (1 selected  32 x 32 x 32): " + labels.join(" | "));
+        const size_t afterCreate = ctx.doc.undoPosition();
+        for (int i = 0; i < 5; ++i) w.action("SelectNudgeRight")->trigger();
+        const AABB moved = ctx.doc.selectionBounds();
+        r.check(std::abs((moved.mins[ctx.axisH()] - before.mins[ctx.axisH()]) - 5 * g) < 1e-6, "five nudges move the box five grid steps");
+        r.check(ctx.doc.undoPosition() == afterCreate + 1, QString("five nudges in a row are one undo step (%1)").arg(ctx.doc.undoPosition() - afterCreate));
+        ctx.doc.undo();
+        ctx.documentEdited();
+        r.check(std::abs(ctx.doc.selectionBounds().mins[ctx.axisH()] - before.mins[ctx.axisH()]) < 1e-6, "one Ctrl+Z puts the box back where it was");
+        ctx.doc.deselectAll();
+        ctx.documentEdited();
+        // Select All takes what is visible: a hidden brush is left out.
+        createBoxBrush(ctx, a);
+        const SelRef hiddenBox = *ctx.doc.selection().begin();
+        ctx.scene.hidden.insert(hiddenBox.item);
+        ctx.doc.deselectAll();
+        w.action("SelectAll")->trigger();
+        r.check(!ctx.doc.selection().empty() && !ctx.doc.isSelected(hiddenBox), "Select All selects what is visible and leaves the hidden brush out");
+        ctx.scene.hidden.erase(hiddenBox.item);
+        ctx.doc.deselectAll();
+        while (ctx.doc.undoPosition() > up && ctx.doc.undo()) {}
+        ctx.documentEdited();
+        // Opening a map that is gone: a message (closed here), the current map stays (Recent is not stored in tests).
+        const QString gone = QDir::tempPath() + "/iw8r_gui_gone_map.map";
+        QFile::remove(gone);
+        QStringList recent = Settings::instance().recentFiles();
+        recent.prepend(gone);
+        Settings::instance().setValue("recentFiles", recent);
+        QTimer::singleShot(300, [] {
+            if (QWidget* m = QApplication::activeModalWidget()) m->close();
+        });
+        const std::string pathBefore = ctx.doc.path();
+        w.openPath(gone);
+        r.check(ctx.doc.path() == pathBefore,
+                "opening a map that no longer exists says so and keeps the current map");
+    }
+
+    r.section("bottom area under the camera (owner 2026-11-15: console and compile logs under the viewport)");
+    {
+        ads::CDockManager* dm = w.findChild<ads::CDockManager*>();
+        ads::CDockWidget* console = dm ? dm->findDockWidget("Console") : nullptr;
+        ads::CDockWidget* compile = dm ? dm->findDockWidget("Compile") : nullptr;
+        ads::CDockWidget* materials = dm ? dm->findDockWidget("Materials") : nullptr;
+        ads::CDockWidget* camera = dm ? dm->findDockWidget("Camera") : nullptr;
+        QAction* sideCompile = w.findChild<QAction*>("side_Compile");
+        QAction* toggle = w.action("ToggleBottomPanel");
+        if (console && compile && materials && camera && sideCompile && toggle) {
+            if (console->isClosed()) toggle->trigger();
+            r.check(!console->isClosed() && console->dockAreaWidget() == compile->dockAreaWidget() &&
+                        console->dockAreaWidget() != materials->dockAreaWidget() && console->dockAreaWidget() != camera->dockAreaWidget(),
+                    "Console and Compile are tabs of one area, apart from the side section and the camera");
+            if (console->dockAreaWidget() && camera->dockAreaWidget()) {
+                const QRect cg(camera->dockAreaWidget()->mapTo(&w, QPoint()), camera->dockAreaWidget()->size());
+                const QRect bg(console->dockAreaWidget()->mapTo(&w, QPoint()), console->dockAreaWidget()->size());
+                r.check(bg.top() >= cg.bottom() - 2 && bg.left() >= cg.left() - 8 && bg.right() <= cg.right() + 8,
+                        QString("the area is under the camera, in its column (camera %1,%2 %3x%4; area %5,%6 %7x%8)")
+                            .arg(cg.x()).arg(cg.y()).arg(cg.width()).arg(cg.height()).arg(bg.x()).arg(bg.y()).arg(bg.width()).arg(bg.height()));
+            }
+            sideCompile->trigger();
+            r.check(!compile->isClosed() && compile->dockAreaWidget() && compile->dockAreaWidget()->currentDockWidget() == compile && sideCompile->isChecked(),
+                    "the side bar's Compile icon brings the Compile tab to the front, and its icon is checked");
+            sideCompile->trigger();
+            r.check(console->isClosed() && compile->isClosed() && !sideCompile->isChecked(), "the same icon again folds the whole area away");
+            toggle->trigger();
+            r.check(!console->isClosed() && !compile->isClosed() && compile->dockAreaWidget()->currentDockWidget() == compile,
+                    "View > Bottom Panel (Ctrl+J) unfolds it at the tab that was in front");
+            w.showDock("Console");
+            r.check(console->dockAreaWidget() && console->dockAreaWidget()->currentDockWidget() == console, "showDock brings a bottom tab to the front");
+        } else {
+            r.check(false, QString("the Console / Compile / Materials / Camera docks, the side bar's Compile icon and ToggleBottomPanel exist (%1%2%3%4%5%6)")
+                               .arg(console ? 1 : 0).arg(compile ? 1 : 0).arg(materials ? 1 : 0).arg(camera ? 1 : 0).arg(sideCompile ? 1 : 0).arg(toggle ? 1 : 0));
+        }
     }
 
     r.section("map HUD fonts (4.27: <map>.hud/fonts.txt drawn into the map's own HUD pictures)");
@@ -4114,6 +4498,17 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             ol->setFilter("zzzz_no_such_entity");
             r.check(ol->entityCount() == 0, "the Outliner filter hides what does not match");
             ol->setFilter("");
+            // Dock fixes (2026-11-15): a class the mapper opened stays open when the tree is rebuilt after an edit.
+            if (auto* tree = ol->findChild<QTreeWidget*>("outlinerTree"); tree && tree->topLevelItemCount() > 0) {
+                const QString first = tree->topLevelItem(0)->text(0);
+                tree->topLevelItem(0)->setExpanded(true);
+                ol->setFilter("");  // rebuilds
+                bool open = false;
+                for (int g = 0; g < tree->topLevelItemCount(); ++g)
+                    if (tree->topLevelItem(g)->text(0) == first) open = tree->topLevelItem(g)->isExpanded();
+                r.check(open, "the Outliner keeps an opened class open across a rebuild: " + first);
+                for (int g = 0; g < tree->topLevelItemCount(); ++g) tree->topLevelItem(g)->setExpanded(false);
+            }
             ctx.doc.deselectAll();
             const int picked = ol->selectMatching(" ") > 0 ? 1 : ol->selectMatching("");
             r.check(picked > 0 && !ctx.doc.selection().empty(), "selecting Outliner rows selects the entities");
@@ -4176,7 +4571,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             w.stepCameraPath(d / 2);
             r.check(w.cameraPath().keys.size() == 2 && d > 0 && std::fabs(ctx.cam.pos.x - 300) < 30,
                     QString("the camera path plays between its keys (x %1 at the middle)").arg(ctx.cam.pos.x));
-            w.action("CameraPathClear")->trigger();
+            clearCameraPathAnsweringYes(w.action("CameraPathClear"));
             ctx.cam = saved;
         }
         {
@@ -6364,7 +6759,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 "Compile > Set Loadscreen From Camera writes a 2048 x 1024 shot beside the map: " + QFileInfo(ls).fileName());
         err.clear();
         // Two keys 600 units apart (timed by distance at the path speed, 300 units/s by default): 2 s, 9 frames at 4 fps.
-        if (QAction* a = w.action("CameraPathClear")) a->trigger();
+        clearCameraPathAnsweringYes(w.action("CameraPathClear"));
         const iw8r::Vec3 camStart = ctx.cam.pos;
         if (QAction* a = w.action("CameraPathAddKey")) a->trigger();
         ctx.cam.pos = ctx.cam.pos + iw8r::Vec3{600, 0, 0};
@@ -6375,7 +6770,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         const int n = w.exportCameraPathFrames(frames, 4, 320, 180, &err);
         r.check(n >= 2 && QFileInfo::exists(frames + "/frame_00000.png") && QImage(frames + "/frame_00001.png").size() == QSize(320, 180),
                 QString("Camera Path > Export Frames writes a PNG sequence (%1 frame(s))").arg(n) + (err.isEmpty() ? QString() : " " + err));
-        if (QAction* a = w.action("CameraPathClear")) a->trigger();
+        clearCameraPathAnsweringYes(w.action("CameraPathClear"));
         // Turntable of a selected brush: 8 views around it, the selection restored afterwards.
         ctx.doc.deselectAll();
         for (const auto* g : ctx.scene.items())
@@ -6621,6 +7016,14 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             QTest::mouseClick(lv, Qt::LeftButton, Qt::NoModifier, c.toPoint());
             r.check(ctx.doc.isSelected(iw8r::SelRef{mid, iw8r::kNoId}), "clicking a node selects its entity");
             lv->grab().save(QDir(outDir).filePath("links_view.png"));
+            // Dock fixes (2026-11-15): F fits the graph into the view; a click on empty space clears the selection.
+            lv->fitView();
+            bool inside = true;
+            for (const auto& e : ctx.doc.map().entities)
+                if (const QPointF p = lv->nodeCenter(e.id); p.x() > -1e8) inside = inside && lv->rect().contains(p.toPoint());
+            r.check(inside && lv->zoom() <= 1.0, QString("Links: Fit puts every node inside the view (zoom %1)").arg(lv->zoom()));
+            QTest::mouseClick(lv, Qt::LeftButton, Qt::NoModifier, QPoint(4, 4));
+            r.check(ctx.doc.selection().empty(), "Links: a click on empty space clears the selection");
         }
     }
 

@@ -5,6 +5,36 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Side bar and bottom area**: the panels that were tabbed along the bottom of the window are icons in a narrow bar
+  at the left edge. The browsers (Materials, Models, Prefabs, Effects, Sounds, Images, IW8 Spawns, Undo History) open
+  in a side section next to the views, one at a time, at the width you last gave it; a second click closes it. The
+  logs and other wide panels (Console, Compile, Replay Log, Build Budget, Script, Live Link) are tabs in an area under
+  the camera; their icons bring a tab to the front or fold the area away, as does Ctrl+J.
+- **2D views**: View > Zoom In (2D) / Zoom Out (2D) (Delete / Insert, as in stock Radiant) and Fit 2D View to Map
+  (Home); Next 2D View keeps the same spot in the middle; Center Camera On Selection also frames the 2D view (and
+  selected faces); the corner label says how far apart the drawn lines are; the position readout shows the view's two
+  axes and clears when the mouse leaves; drags start after 3 px, Esc cancels them, a box thinner than one grid step
+  says so instead of creating nothing; the cursor shows what a drag will do; the command palette greys out commands
+  that are unavailable; Find / Replace frames the matches.
+- **Panels**: the inspector refuses values of the wrong type (and says what the key expects), writes to the entity it
+  shows even when the selection moved, removes selected keys with Delete or Backspace (never the entity); lists open
+  their item with Enter and are reached from their search box with Down; empty results say why; images, prefabs and
+  the outliner have context menus (Copy Name, Show in Folder, Frame); the outliner keeps its open classes; the link
+  graph fits with F and shows tooltips; Surface buttons are off with nothing to act on; Layers buttons are off without a
+  picked layer; hidden layers reset for another map; the spawns list follows edits and arrow keys.
+- **Preferences** in sections (Editing, Assets, Build, Play in game), with tooltips on the folder fields.
+- **Overlapping objects**: clicking the same spot again in the camera selects the next object behind, round robin;
+  the status bar says which of how many. Shift+Alt+click steps from the current selection.
+- **Edit > Select All** (Ctrl+A); Select All and Invert Selection leave hidden and filtered objects alone.
+- **Smaller fixes from a review of the editor**: holding Alt+arrow is one undo step; Esc during a gizmo drag puts the
+  selection back; the status bar shows the selection's size; grid size and snap are kept between sessions; leaving
+  Play mode no longer re-enables commands that were disabled on purpose; a hotkey preset resets the keys it does not
+  list; Clear camera path asks first; opening a map that was moved or deleted says so and drops it from Recent;
+  Save on a recovered autosave asks where to save; Save As adds `.map`; a read-only map offers Save As; closing
+  during a build asks first; Restart in Safe Mode and Reset All Settings ask once; a failed deploy shows a message;
+  a second F7 during a build says one is running; a build checks every tool it needs before it starts and says when
+  unsaved edits are included; an empty tool path uses the default.
+
 - **Your map's own font on the HUD**: put a TTF or OTF and a `fonts.txt` in the map's `.hud` folder, list labels
   (a line of text) and glyph sets (single characters), and the build draws them in your font and colour into the
   map's own HUD pictures. The map script gets `iw8r_font_label`, `iw8r_font_text` (any text from a glyph set, for

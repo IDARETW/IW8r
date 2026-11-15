@@ -44,13 +44,23 @@ LayersPanel::LayersPanel(EditorContext* ctx, QWidget* parent) : QWidget(parent),
 
     auto current = [this]() -> QString {
         const int r = table_->currentRow();
-        return r >= 0 ? table_->item(r, 0)->text() : QString();
+        return r >= 0 && table_->item(r, 0) ? table_->item(r, 0)->text() : QString();
     };
+    // Select and Move act on the picked row only: with none, "" would mean the unlayered primitives.
+    sel->setObjectName("layersSelect");
+    move->setObjectName("layersMove");
+    sel->setToolTip("Select every primitive of the picked layer");
+    move->setToolTip("Move the selected primitives to the picked layer (one undo step)");
+    selectButton_ = sel;
+    moveButton_ = move;
+    connect(table_, &QTableWidget::currentCellChanged, this, [this] { updateButtons(); });
     connect(sel, &QPushButton::clicked, this, [this, current] {
+        if (current().isEmpty()) return;
         const size_t n = selectLayer(current());
         ctx_->documentEdited(QString("%1 primitive(s) selected in %2").arg(n).arg(current()));
     });
     connect(move, &QPushButton::clicked, this, [this, current] {
+        if (current().isEmpty()) return;
         if (!moveSelectionToLayer(current())) ctx_->setStatus("Select primitives first");
     });
     connect(add, &QPushButton::clicked, this, [this] {
@@ -87,7 +97,18 @@ std::vector<LayersPanel::Row> LayersPanel::rows() const {
     return out;
 }
 
+void LayersPanel::updateButtons() {
+    const bool picked = table_->currentRow() >= 0;
+    selectButton_->setEnabled(picked);
+    moveButton_->setEnabled(picked);
+}
+
 void LayersPanel::refresh() {
+    {
+        // Another map: its layers start visible (Document::loadSerial bumps on every load, also at the same path).
+        if (ctx_->doc.loadSerial() != shownLoad_) hiddenLayers_.clear();
+        shownLoad_ = ctx_->doc.loadSerial();
+    }
     std::map<std::string, size_t> counts;
     for (const auto& d : declaredLayers(ctx_->doc.map().header)) counts[d.name];
     size_t none = 0;
@@ -115,6 +136,7 @@ void LayersPanel::refresh() {
     for (const auto& [name, n] : counts) put(qs(name), n);
     filling_ = false;
     info_->setText(QString("%1 declared layer(s); hidden layers are not drawn or pickable").arg(declaredLayers(ctx_->doc.map().header).size()));
+    updateButtons();
     applyVisibility();
 }
 

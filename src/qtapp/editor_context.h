@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QSet>
 #include <QString>
+#include <algorithm>
 #include <map>
 #include <optional>
 #include <vector>
@@ -39,6 +40,11 @@ public:
     // View > Effect Preview in Camera (8.1): fx_origin entities play their effect's particles in the textured camera.
     bool effectPreview = false;
     double gridCenterH = 0, gridCenterV = 0, gridScale = 0.5;  // pixels per unit
+    // 2D zoom limits (pixels per unit), shared by the wheel, the zoom commands and every fit.
+    static constexpr double kGridScaleMin = 0.002, kGridScaleMax = 64.0;
+    static double clampGridScale(double s) { return std::clamp(s, kGridScaleMin, kGridScaleMax); }
+    // Size of the main 2D view in pixels, kept up to date by that view, for fits made without the view at hand.
+    int gridViewWidth = 0, gridViewHeight = 0;
     bool snap = true;
     bool showSpawns = true;
     // View > Entity Display (2.17): labels in the 2D views, facing arrows, model origin crosses.
@@ -116,9 +122,22 @@ public:
     void documentEdited(const QString& status = {});
     void cameraMoved();
     void setStatus(const QString& s);  // also written to the Console log (EditorLog, source "status")
+    // A status bar message that is not written to the Console log: drag progress, sent on every mouse move, would
+    // flood the log (it keeps the last 5000 lines) and push real messages out.
+    void setTransientStatus(const QString& s);
     // Applies held camera keys (stock Radiant bindings; W/A/S/D/Q/E while looking).
     void tickCamera(double dt, bool shiftHeld);
+    // Center Camera On Selection (End): the camera and the main 2D view (centre and zoom) frame the selection, or
+    // the selected faces when only faces are selected; says so when nothing is selected.
     void frameSelection();
+    // Centres the 2D view on `b` and zooms so `b` fills about 85 % of the view's smaller side, at least 64 units
+    // across (the open-map fit). viewW / viewH 0 = the main 2D view's size; when that is unknown only the centre moves.
+    void fitGridTo(const AABB& b, int viewW = 0, int viewH = 0);
+    // Changes the main 2D view's axis (0 XY, 1 XZ, 2 YZ) keeping the same world point in the centre: the two axes
+    // both views share keep their value, the axis that was the depth takes the 3D camera's position. Repaints the
+    // views (cameraChanged). nextGridAxis is Ctrl+Tab (XY -> XZ -> YZ).
+    void setGridAxis(int axis);
+    void nextGridAxis() { setGridAxis((gridAxis + 1) % 3); }
 
     // The clip plane from the two clip points and the 2D view's depth axis (nullopt until both points exist).
     std::optional<Plane> clipPlane() const;

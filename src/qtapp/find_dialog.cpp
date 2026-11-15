@@ -81,13 +81,16 @@ FindReplaceDialog::FindReplaceDialog(EditorContext* ctx, QWidget* parent) : QDia
     usage_->verticalHeader()->hide();
     lay->addWidget(usage_, 1);
 
-    connect(select, &QPushButton::clicked, this, [this] { selectMatches(); });
+    // The buttons also frame what they selected (the matches are often off screen); selectMatches() alone does not.
+    connect(select, &QPushButton::clicked, this, [this] {
+        if (selectMatches()) ctx_->frameSelection();
+    });
     connect(replaceBtn, &QPushButton::clicked, this, [this] { replaceAll(); });
     connect(close, &QPushButton::clicked, this, &QDialog::close);
     connect(usage_, &QTableWidget::cellClicked, this, [this](int row, int) { find_->setText(usage_->item(row, 0)->text()); });
     connect(usage_, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
         find_->setText(usage_->item(row, 0)->text());
-        selectMatches();
+        if (selectMatches()) ctx_->frameSelection();
     });
     connect(ctx_, &EditorContext::documentChanged, this, [this] {
         if (isVisible()) refreshUsage();
@@ -153,14 +156,17 @@ KeyReplaceDialog::KeyReplaceDialog(EditorContext* ctx, QWidget* parent) : QDialo
     usage_->setSelectionBehavior(QAbstractItemView::SelectRows);
     usage_->verticalHeader()->hide();
     lay->addWidget(usage_, 1);
-    connect(select, &QPushButton::clicked, this, [this] { selectMatches(); });
+    // As in Find / Replace Materials, the buttons frame what they selected.
+    connect(select, &QPushButton::clicked, this, [this] {
+        if (selectMatches()) ctx_->frameSelection();
+    });
     connect(replaceBtn, &QPushButton::clicked, this, [this] { replaceAll(); });
     connect(close, &QPushButton::clicked, this, &QDialog::close);
     connect(key_, &QLineEdit::editingFinished, this, &KeyReplaceDialog::refreshUsage);
     connect(usage_, &QTableWidget::cellClicked, this, [this](int row, int) { find_->setText(usage_->item(row, 0)->text()); });
     connect(usage_, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
         find_->setText(usage_->item(row, 0)->text());
-        selectMatches();
+        if (selectMatches()) ctx_->frameSelection();
     });
     connect(ctx_, &EditorContext::documentChanged, this, [this] {
         if (isVisible()) refreshUsage();

@@ -120,10 +120,12 @@
 #include <QMimeData>
 #include <QStatusBar>
 #include <QRegularExpression>
+#include <QSplitter>
 #include <QToolBar>
 #include <QHeaderView>
 #include <QTableWidget>
 #include <QVBoxLayout>
+#include <QGroupBox>
 #include <algorithm>
 #include <cmath>
 
@@ -262,7 +264,7 @@ bool stockDecalBatch(const StockDecalData& d, const StockDecalBatch& b, int orde
 
 namespace {
 QString qs(const std::string& s) { return QString::fromStdString(s); }
-constexpr int kDockLayoutVersion = 12;  // 12: Script, Outliner  // 11: Sounds  // 10: Images  // 9: Effects  // 8: Prefabs  // 7: Console  // 6: Live Link  // 3: Surface and Compile docks; 4: Replay Log; 5: Layers
+constexpr int kDockLayoutVersion = 15;  // 15: logs in the bottom area under the camera  // 14: the bottom strip became the side bar and side section  // 12: Script, Outliner  // 11: Sounds  // 10: Images  // 9: Effects  // 8: Prefabs  // 7: Console  // 6: Live Link  // 3: Surface and Compile docks; 4: Replay Log; 5: Layers
 
 // ACTS layout: <out>/mw19replay/<zone>/assets/map_ents/maps/mp/<map>.d3dbsp.0.asset.json
 QString findMapEntsJson(const QString& dir) {
@@ -962,9 +964,8 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         updateStatus();
         updateTitle();
     });
-    connect(grid_, &GridView::mouseWorld, this, [this](double x, double y, double z) {
-        posLabel_->setText(QString("%1 %2 %3").arg(qs(formatNumber(x)), qs(formatNumber(y)), qs(formatNumber(z))));
-    });
+    // The view's own two axes (the third is not under the mouse); cleared when the mouse leaves the view.
+    connect(grid_, &GridView::positionText, posLabel_, &QLabel::setText);
     clock_.start();
     connect(&tick_, &QTimer::timeout, this, [this] {
         const double dt = std::clamp(clock_.restart() / 1000.0, 0.0, 0.1);
@@ -991,10 +992,163 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     if (!state.isEmpty() && !dock_->restoreState(state, kDockLayoutVersion)) ctx_.setStatus("Dock layout reset (new panels)");
     // ADS un-parents the widgets of non-current tabs by design; only a dock with no area at all is lost.
     for (ads::CDockWidget* d : dock_->dockWidgetsMap())
-        if (!d->dockAreaWidget() && !d->isClosed()) dock_->addDockWidgetTabToArea(d, dock_->findDockWidget("Undo History")->dockAreaWidget());
+        if (!d->dockAreaWidget() && !d->isClosed()) {
+            if (bottomArea_ && isBottomPanel(d)) dock_->addDockWidgetTabToArea(d, bottomArea_);  // back under the camera
+            else if (sideArea_) dock_->addDockWidgetTabToArea(d, sideArea_);  // back in the side section
+            else dock_->addDockWidget(ads::LeftDockWidgetArea, d);
+        }
+}
+
+bool MainWindow::isBottomPanel(const ads::CDockWidget* d) const {
+    return std::find(bottomPanels_.begin(), bottomPanels_.end(), d) != bottomPanels_.end();
+}
+
+bool MainWindow::bottomAreaOpen() const {
+    for (ads::CDockWidget* d : bottomPanels_)
+        if (!d->isClosed()) return true;
+    return false;
+}
+
+void MainWindow::setBottomArea(bool open, ads::CDockWidget* current) {
+    if (!open) {
+        // Fold: every tab closes (the area goes with them); the height is remembered for the next time.
+        if (bottomArea_ && bottomArea_->isVisible() && bottomArea_->height() >= 100)
+            Settings::instance().setValue("ui/bottomPanelHeight", bottomArea_->height());
+        if (bottomArea_ && bottomArea_->currentDockWidget() && !bottomArea_->currentDockWidget()->isClosed())
+            bottomFront_ = bottomArea_->currentDockWidget();  // in front again when the area unfolds
+        for (ads::CDockWidget* d : bottomPanels_)
+            if (!d->isClosed()) d->toggleView(false);
+        syncSideActions();
+        return;
+    }
+    // Unfold: all its tabs come back (closed ones too), `current` (else the one on top before) in front.
+    ads::CDockWidget* front = current ? current : bottomFront_ ? bottomFront_.data() : (bottomArea_ ? bottomArea_->currentDockWidget() : nullptr);
+    for (ads::CDockWidget* d : bottomPanels_)
+        if (d->isClosed()) d->toggleView(true);
+    if (!front && !bottomPanels_.empty()) front = bottomPanels_.front();
+    if (front) {
+        front->setAsCurrentTab();
+        front->raise();
+    }
+    heightenBottomArea();
+    syncSideActions();
+}
+
+void MainWindow::heightenBottomArea() {
+    // Shown again, the area can come back flat (its splitter share went to the camera): the remembered height.
+    QTimer::singleShot(0, this, [this] {
+        auto* sp = bottomArea_ ? qobject_cast<QSplitter*>(bottomArea_->parentWidget()) : nullptr;
+        if (!sp || !bottomArea_->isVisible()) return;
+        const int i = sp->indexOf(bottomArea_);
+        QList<int> sz = sp->sizes();
+        const int want = std::clamp(Settings::instance().value("ui/bottomPanelHeight", 220).toInt(), 120, 700);
+        if (i < 0 || i >= sz.size() || sz[i] >= want - 8) return;
+        int big = -1;
+        for (int j = 0; j < sz.size(); ++j)
+            if (j != i && (big < 0 || sz[j] > sz[big])) big = j;
+        if (big < 0 || sz[big] - (want - sz[i]) < 200) return;
+        sz[big] -= want - sz[i];
+        sz[i] = want;
+        sp->setSizes(sz);
+    });
+}
+
+void MainWindow::syncSideActions() {
+    // A side section icon is checked while its panel is open; a bottom area icon while its tab is the one on top.
+    for (const auto& [panel, action] : sideActions_) {
+        const QSignalBlocker block(action);
+        if (isBottomPanel(panel))
+            action->setChecked(!panel->isClosed() && panel->dockAreaWidget() && panel->dockAreaWidget()->currentDockWidget() == panel);
+        else
+            action->setChecked(!panel->isClosed());
+    }
+}
+
+void MainWindow::toggleSidePanel(ads::CDockWidget* d) {
+    if (isBottomPanel(d)) {
+        // The icon of the tab on top folds the bottom area away; any other unfolds it at that tab.
+        const bool onTop = !d->isClosed() && d->dockAreaWidget() && d->dockAreaWidget()->currentDockWidget() == d;
+        setBottomArea(!onTop, d);
+        return;
+    }
+    // The open panel's icon folds the section away; any other icon shows its panel there (the other one closes).
+    const bool showing = !d->isClosed() && d->dockAreaWidget() && d->dockAreaWidget()->currentDockWidget() == d;
+    if (showing) {
+        // Remember the width the mapper gave the section (the next panel opens at it).
+        if (sideArea_ && sideArea_->width() >= 240) Settings::instance().setValue("ui/sidePanelWidth", sideArea_->width());
+        d->toggleView(false);
+    } else {
+        d->toggleView(true);
+        d->setAsCurrentTab();
+        d->raise();
+    }
+    sidePanelToggled(d, !showing);
+}
+
+void MainWindow::widenSideSection() {
+    // A section shown again can come back narrow (its splitter share was given away while it was hidden): at least
+    // the remembered width, taken from the widest neighbour.
+    QTimer::singleShot(0, this, [this] {
+        auto* sp = sideArea_ ? qobject_cast<QSplitter*>(sideArea_->parentWidget()) : nullptr;
+        if (!sp || !sideArea_->isVisible()) return;
+        const int i = sp->indexOf(sideArea_);
+        QList<int> sz = sp->sizes();
+        const int want = std::clamp(Settings::instance().value("ui/sidePanelWidth", 420).toInt(), 300, 900);
+        if (i < 0 || i >= sz.size() || sz[i] >= want - 8) return;
+        int big = -1;
+        for (int j = 0; j < sz.size(); ++j)
+            if (j != i && (big < 0 || sz[j] > sz[big])) big = j;
+        if (big < 0 || sz[big] - (want - sz[i]) < 300) return;
+        sz[big] -= want - sz[i];
+        sz[i] = want;
+        sp->setSizes(sz);
+    });
+}
+
+void MainWindow::sidePanelToggled(ads::CDockWidget* d, bool open) {
+    // One panel at a time in the side section, however it was opened (side bar, View menu, showDock, a command).
+    if (open && sideArea_ && d->dockAreaWidget() == sideArea_)
+        for (ads::CDockWidget* o : sidePanels_)
+            if (o != d && !o->isClosed() && o->dockAreaWidget() == sideArea_) o->toggleView(false);
+    syncSideActions();
+    if (open && sideArea_ && d->dockAreaWidget() == sideArea_) widenSideSection();
+    if (open && bottomArea_ && d->dockAreaWidget() == bottomArea_) heightenBottomArea();
+}
+
+std::set<SelRef> MainWindow::visibleSelectable() const {
+    // What a click could select: brushes and patches of worldspawn one by one, every other entity once (its first
+    // primitive, which selects the whole entity, or the point entity itself); hidden, filtered, layer-hidden,
+    // outside-region and mode-hidden things left out, as the scene leaves them out of drawing and picking.
+    const SceneCache& sc = ctx_.scene;
+    const auto hiddenId = [&](Id id) {
+        return sc.hidden.count(id) || sc.hiddenByLayer.count(id) || sc.hiddenByRegion.count(id) || sc.hiddenByMode.count(id);
+    };
+    std::set<SelRef> out;
+    for (const Entity& e : ctx_.doc.map().entities) {
+        if (!e.isWorldspawn()) {
+            if (hiddenId(e.id)) continue;
+            const std::string cls = e.classname();
+            bool filtered = false;
+            for (const std::string& p : sc.hiddenClassPrefixes) filtered = filtered || cls.rfind(p, 0) == 0;
+            if (filtered) continue;
+        }
+        bool any = false;
+        for (const auto& it : e.items) {
+            if (!it.isPrimitive() || hiddenId(it.id)) continue;
+            out.insert({e.id, it.id});
+            any = true;
+            if (!e.isWorldspawn()) break;  // one primitive selects the whole entity
+        }
+        if (!any && !e.isWorldspawn()) out.insert({e.id, kNoId});
+    }
+    return out;
 }
 
 void MainWindow::showDock(const QString& name) {
+    if (ads::CDockWidget* d = dock_->findDockWidget(name); d && isBottomPanel(d) && d->dockAreaWidget() == bottomArea_) {
+        setBottomArea(true, d);  // the whole bottom area, this tab in front
+        return;
+    }
     if (ads::CDockWidget* d = dock_->findDockWidget(name)) {
         d->toggleView(true);
         d->setAsCurrentTab();
@@ -1005,6 +1159,30 @@ void MainWindow::showDock(const QString& name) {
 MainWindow::~MainWindow() = default;
 
 // ------------------------------------------------------------------ layout
+
+// A side bar icon: the panel's glyph from Windows' icon font (Segoe MDL2 Assets, Windows 10 and later), in the
+// window text colour; the panel's first letters where the font is missing.
+QIcon sidePanelIcon(char16_t glyph, const QString& title) {
+    static const bool mdl2 = QFontDatabase::families().contains("Segoe MDL2 Assets");
+    QIcon icon;
+    for (const int side : {32, 64}) {
+        QPixmap pm(side, side);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::TextAntialiasing, true);
+        QFont f(mdl2 ? "Segoe MDL2 Assets" : "Segoe UI");
+        f.setPixelSize(mdl2 ? side * 5 / 8 : side * 3 / 8);
+        f.setBold(!mdl2);
+        p.setFont(f);
+        p.setPen(QApplication::palette().color(QPalette::WindowText));
+        QString letters;
+        for (const QString& w : title.split(' ', Qt::SkipEmptyParts)) letters += w.left(1);
+        p.drawText(pm.rect(), Qt::AlignCenter, mdl2 ? QString(QChar(glyph)) : letters.left(2));
+        p.end();
+        icon.addPixmap(pm);
+    }
+    return icon;
+}
 
 void MainWindow::buildDocks() {
     ads::CDockManager::setConfigFlag(ads::CDockManager::OpaqueSplitterResize, true);
@@ -1131,13 +1309,13 @@ void MainWindow::buildDocks() {
     linkView_ = new LinkGraphView(&ctx_);
     dock_->addDockWidgetTabToArea(makeDock("Links", linkView_, true), entArea);
     entArea->setCurrentDockWidget(entDock);
-    auto* bottomArea = dock_->addDockWidget(ads::BottomDockWidgetArea, histDock, camArea);
-    dock_->addDockWidgetTabToArea(spawnDock, bottomArea);
-    dock_->addDockWidgetTabToArea(makeDock("Materials", materials_, true), bottomArea);
-    dock_->addDockWidgetTabToArea(makeDock("Models", models_, true), bottomArea);
-    dock_->addDockWidgetTabToArea(makeDock("Effects", effects_, true), bottomArea);
-    dock_->addDockWidgetTabToArea(makeDock("Images", images_, true), bottomArea);
-    dock_->addDockWidgetTabToArea(makeDock("Sounds", sounds_, true), bottomArea);
+    // The panels of the side bar, placed in its order at the end (sidePanelOrder).
+    std::vector<ads::CDockWidget*> sidePanels{histDock, spawnDock};
+    sidePanels.push_back(makeDock("Materials", materials_, true));
+    sidePanels.push_back(makeDock("Models", models_, true));
+    sidePanels.push_back(makeDock("Effects", effects_, true));
+    sidePanels.push_back(makeDock("Images", images_, true));
+    sidePanels.push_back(makeDock("Sounds", sounds_, true));
     {
         // Prefabs: <map dir>/prefabs and the prefab folders (Preferences); double-click stamps one.
         prefabs_ = new PrefabBrowser(
@@ -1194,15 +1372,15 @@ void MainWindow::buildDocks() {
             *pending = true;
             return {};
         });
-        dock_->addDockWidgetTabToArea(makeDock("Prefabs", prefabs_, true), bottomArea);
+        sidePanels.push_back(makeDock("Prefabs", prefabs_, true));
     }
     compile_ = new CompilePanel(&ctx_, [this](const QString& k) { return toolPath(k); });
     compileDock_ = makeDock("Compile", compile_, true);
-    dock_->addDockWidgetTabToArea(compileDock_, bottomArea);
+    sidePanels.push_back(compileDock_);
     {
         // 1.16: the last build against its limits.
         auto* budget = budget_ = new BudgetPanel([this] { return compile_->buildRoot() + "/last_build_report.json"; });
-        dock_->addDockWidgetTabToArea(makeDock("Build Budget", budget, true), bottomArea);
+        sidePanels.push_back(makeDock("Build Budget", budget, true));
         connect(compile_, &CompilePanel::finished, budget, [budget](bool) { budget->refresh(); });
         connect(&ctx_, &EditorContext::documentChanged, budget, [budget, this] {
             static std::string lastPath;
@@ -1214,16 +1392,16 @@ void MainWindow::buildDocks() {
     }
     replayLog_ = new ReplayLogPanel([this] { return QFileInfo(toolPath("replay")).absolutePath(); },
                                     [this] { return compile_ ? compile_->mapId() : QString(); });
-    dock_->addDockWidgetTabToArea(makeDock("Replay Log", replayLog_, true), bottomArea);
+    sidePanels.push_back(makeDock("Replay Log", replayLog_, true));
     logPanel_ = new LogPanel();
-    dock_->addDockWidgetTabToArea(makeDock("Console", logPanel_, true), bottomArea);
+    sidePanels.push_back(makeDock("Console", logPanel_, true));
     scriptPanel_ = new ScriptPanel(&ctx_);
     // 7.13: double-clicked log lines (Compile and Replay Log) jump to the script line or select what they name.
     compile_->scriptLineJump = [this](const QString& line) { return jumpToScriptLine(line); };
     replayLog_->lineActivated = [this](const QString& line) {
         if (!jumpToScriptLine(line)) compile_->selectFromLogLine(line);
     };
-    dock_->addDockWidgetTabToArea(makeDock("Script", scriptPanel_, true), bottomArea);
+    sidePanels.push_back(makeDock("Script", scriptPanel_, true));
     {
         // Hot update (7.4): after an edit, send the selected script entities' placements to the running game.
         connect(&ctx_, &EditorContext::documentChanged, this, [this] {
@@ -1306,11 +1484,81 @@ void MainWindow::buildDocks() {
                     ctx_.cameraMoved();
                     ctx_.setStatus("Editor camera moved to the in-game camera");
                 });
-        dock_->addDockWidgetTabToArea(makeDock("Live Link", live, true), bottomArea);
+        sidePanels.push_back(makeDock("Live Link", live, true));
     }
-    bottomArea->setCurrentDockWidget(histDock);
-    dock_->setSplitterSizes(camArea, {960, 640});
-    dock_->setSplitterSizes(bottomArea, {700, 220});
+    {
+        // The side bar, in working order: assets, the map, building, script and game.
+        static const std::pair<const char*, char16_t> order[] = {
+            {"Materials", 0xE790}, {"Models", 0xF158}, {"Prefabs", 0xE74C}, {"Effects", 0xE945}, {"Sounds", 0xE767},
+            {"Images", 0xEB9F}, {"IW8 Spawns", 0xE707}, {"Undo History", 0xE81C}, {"Compile", 0xE90F}, {"Build Budget", 0xE9D2},
+            {"Console", 0xE756}, {"Replay Log", 0xE9F9}, {"Script", 0xE943}, {"Live Link", 0xE71B}};
+        // Docked beside the camera, not sliding over it: the camera is a native D3D window that an overlay ends up behind.
+        for (const auto& [name, glyph] : order)
+            for (ads::CDockWidget* d : sidePanels)
+                if (d->objectName() == name) d->setIcon(sidePanelIcon(glyph, d->windowTitle())), sidePanels_.push_back(d);
+        for (ads::CDockWidget* d : sidePanels)  // any panel the order does not name yet: at the end
+            if (std::find(sidePanels_.begin(), sidePanels_.end(), d) == sidePanels_.end())
+                d->setIcon(sidePanelIcon(0xE8A5, d->windowTitle())), sidePanels_.push_back(d);
+        // Logs and the other wide panels: tabs in the area under the camera (the middle column only).
+        static const char* const bottomNames[] = {"Console", "Compile", "Replay Log", "Build Budget", "Script", "Live Link"};
+        for (const char* n : bottomNames)
+            for (ads::CDockWidget* d : sidePanels_)
+                if (d->objectName() == n) bottomPanels_.push_back(d);
+        std::vector<ads::CDockWidget*> sideOnly;
+        for (ads::CDockWidget* d : sidePanels_)
+            if (!isBottomPanel(d)) sideOnly.push_back(d);
+        sideArea_ = dock_->addDockWidget(ads::LeftDockWidgetArea, sideOnly.front(), camArea);
+        for (size_t i = 1; i < sideOnly.size(); ++i) dock_->addDockWidgetTabToArea(sideOnly[i], sideArea_);
+        connect(sideArea_, &QObject::destroyed, this, [this] { sideArea_ = nullptr; });
+        if (!bottomPanels_.empty()) {
+            bottomArea_ = dock_->addDockWidget(ads::BottomDockWidgetArea, bottomPanels_.front(), camArea);
+            for (size_t i = 1; i < bottomPanels_.size(); ++i) dock_->addDockWidgetTabToArea(bottomPanels_[i], bottomArea_);
+            connect(bottomArea_, &QObject::destroyed, this, [this] { bottomArea_ = nullptr; });
+            connect(bottomArea_, &ads::CDockAreaWidget::currentChanged, this, [this](int) { syncSideActions(); });
+            // camArea and the bottom area now share a vertical splitter; the side section, that column and the 2D
+            // view column share the horizontal one.
+            const int h = std::clamp(Settings::instance().value("ui/bottomPanelHeight", 220).toInt(), 120, 700);
+            dock_->setSplitterSizes(bottomArea_, {std::max(300, 960 - h), h});
+        }
+        dock_->setSplitterSizes(sideArea_, {420, 980, 560});
+        // The bar: one icon per panel, in groups; the open panel's icon is checked.
+        sideBar_ = new QToolBar("Side Bar", this);
+        sideBar_->setObjectName("sideBar");
+        sideBar_->setMovable(false);
+        sideBar_->setFloatable(false);
+        sideBar_->setOrientation(Qt::Vertical);
+        sideBar_->setIconSize(QSize(24, 24));
+        sideBar_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        sideBar_->setContextMenuPolicy(Qt::PreventContextMenu);
+        addToolBar(Qt::LeftToolBarArea, sideBar_);
+        // The side section's panels first, then (a group of their own) the bottom area's.
+        std::vector<ads::CDockWidget*> barOrder;
+        for (ads::CDockWidget* d : sidePanels_)
+            if (!isBottomPanel(d)) barOrder.push_back(d);
+        barOrder.insert(barOrder.end(), bottomPanels_.begin(), bottomPanels_.end());
+        for (ads::CDockWidget* d : barOrder) {
+            const QString name = d->objectName();
+            const bool bottom = isBottomPanel(d);
+            if (name == "IW8 Spawns" || (bottom && d == bottomPanels_.front())) sideBar_->addSeparator();
+            QAction* a = sideBar_->addAction(d->icon(), d->windowTitle());
+            a->setObjectName("side_" + QString(name).replace(' ', '_'));
+            a->setCheckable(true);
+            a->setToolTip(d->windowTitle() + (bottom ? " (in the area under the camera; click again to fold it away)"
+                                                     : " (click again to fold the side section away)"));
+            connect(a, &QAction::triggered, this, [this, d](bool) { toggleSidePanel(d); });
+            sideActions_[d] = a;
+            connect(d, &ads::CDockWidget::viewToggled, this, [this, d](bool open) { sidePanelToggled(d, open); });
+        }
+        // The side section starts folded away: the camera has the room until a panel is asked for.
+        for (ads::CDockWidget* d : sidePanels_)
+            if (!isBottomPanel(d)) d->toggleView(false);
+        // The bottom area opens on the Console.
+        if (bottomArea_)
+            for (ads::CDockWidget* d : sidePanels_)
+                if (d->objectName() == "Console") d->setAsCurrentTab();
+        syncSideActions();
+    }
+    dock_->setSplitterSizes(entArea, {560, 360});
     dock_->setSplitterSizes(entArea, {560, 360});
     entDock->toggleViewAction()->setObjectName("toggleEntity");
     QTimer::singleShot(0, this, [this] { rebuildMainToolbar(); });  // after every menu command exists
@@ -1330,19 +1578,18 @@ void MainWindow::buildDocks() {
         hk->setObjectName("hotkeyPresetsMenu");
         for (const HotkeyPreset& p : presets) {
             hk->addAction(qs(p.name), this, [this, p] {
-                // The preset's keys over the defaults; commands it does not list return to their default key.
-                const HotkeyPreset* def = nullptr;
-                (void)def;
+                // The preset's keys over the defaults; commands it does not list return to their default key (a
+                // mix of two presets' layouts is what applying one after another used to leave).
                 size_t n = 0;
                 for (auto it = actions_.begin(); it != actions_.end(); ++it) {
                     const auto k = p.keys.find(it.key().toStdString());
-                    if (k == p.keys.end()) continue;
-                    const QKeySequence seq(qs(k->second));
+                    const QKeySequence seq = k != p.keys.end() ? QKeySequence(qs(k->second)) : it.value()->property("defaultShortcut").value<QKeySequence>();
+                    if (it.value()->shortcut() == seq && !Settings::instance().hasShortcut(it.key())) continue;
                     Settings::instance().setShortcut(it.key(), seq);
                     it.value()->setShortcut(seq);
                     ++n;
                 }
-                ctx_.setStatus(QString("Hotkey preset %1: %2 command(s) rebound (Edit > Keyboard Shortcuts to adjust)").arg(qs(p.name)).arg(n));
+                ctx_.setStatus(QString("Hotkey preset %1: %2 command(s) set (Tools > Hotkeys to adjust)").arg(qs(p.name)).arg(n));
             });
         }
     });
@@ -1354,6 +1601,7 @@ QAction* MainWindow::addCommand(QMenu* menu, const QString& command, const QStri
     auto* a = new QAction(text, this);
     a->setObjectName(command);
     a->setShortcut(Settings::instance().hasShortcut(command) ? Settings::instance().shortcut(command) : def);
+    a->setProperty("defaultShortcut", def);  // hotkey presets return unlisted commands to it
     a->setShortcutContext(Qt::ApplicationShortcut);
     connect(a, &QAction::triggered, this, fn);
     if (menu) menu->addAction(a);
@@ -1617,7 +1865,7 @@ void MainWindow::buildMenus() {
     });
     // The stock map with the document's entities, spawns, added models and hidden props, through the converter's
     // editzone (a few seconds; research 88). The Replay install is only read; the result is not installed.
-    addCommand(file, "RebuildStockZoneFast", "Rebuild Stock Zone...", QKeySequence(), [this] { rebuildStockZoneFast(); });
+    addCommand(file, "RebuildStockZoneFast", "Rebuild Stock Zone (fast)...", QKeySequence(), [this] { rebuildStockZoneFast(); });
     addCommand(file, "InstallStockMap", "Install Edited Stock Map Into Game...", QKeySequence(), [this] { installEditedStockMap(); });
     addCommand(file, "RestoreStockMap", "Restore Stock Map In Game...", QKeySequence(), [this] { restoreStockMap(); });
     {
@@ -1630,7 +1878,7 @@ void MainWindow::buildMenus() {
     }
     addCommand(file, "HideStockProps", "Hide Stock Props In Selection", QKeySequence(), [this] { hideStockPropsInSelection(); });
     addCommand(file, "ShowStockProps", "Show All Stock Props", QKeySequence(), [this] { showAllStockProps(); });
-    addCommand(file, "RebuildStockZone", "Rebuild Stock Zone (dump script, slow)...", QKeySequence(), [this] {
+    addCommand(file, "RebuildStockZone", "Rebuild Stock Zone (full dump, slow)...", QKeySequence(), [this] {
         // Runs in the background; the Console dock shows its log. The Replay install is only read.
         const QString work = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/stock_rebuild/" + stockZone_ + "-" +
                              QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss");
@@ -1787,9 +2035,24 @@ void MainWindow::buildMenus() {
         ctx_.doc.deselectAll();
         ctx_.documentEdited();
     });
+    addCommand(edit, "SelectAll", "Select &All", QKeySequence(Qt::CTRL | Qt::Key_A), [this] {
+        const std::set<SelRef> all = visibleSelectable();
+        ctx_.doc.deselectAll();
+        for (const SelRef& r : all) ctx_.doc.select(r, true);
+        ctx_.documentEdited(QString("Selected %1 visible object(s) (hidden and filtered ones are left out)").arg(all.size()));
+    });
     addCommand(edit, "InvertSelection", "&Invert Selection", QKeySequence(Qt::Key_I), [this] {
-        ctx_.doc.invertSelection();
-        ctx_.documentEdited();
+        // Only what is visible: a hidden or filtered object selected by Invert would be moved or deleted unseen.
+        std::set<SelRef> now;
+        for (const SelRef& r : ctx_.doc.selection()) now.insert(r);
+        ctx_.doc.deselectAll();
+        size_t n = 0;
+        for (const SelRef& r : visibleSelectable()) {
+            const std::vector<SelRef> unit = ctx_.doc.selectionUnit(r);
+            const bool wasSelected = std::any_of(unit.begin(), unit.end(), [&](const SelRef& u) { return now.count(u) != 0; });
+            if (!wasSelected) ctx_.doc.select(r, true), ++n;
+        }
+        ctx_.documentEdited(QString("Inverted the selection: %1 visible object(s) selected").arg(n));
     });
     addCommand(edit, "SelectAllOfType", "Select All Of Type (class or material)", QKeySequence("Shift+A"), [this] {
         // Radiant: a selected point entity selects its class; otherwise the first selected material.
@@ -1977,7 +2240,7 @@ void MainWindow::buildMenus() {
         };
         (*refill)();
     }
-    addCommand(nullptr, "ViewEntityInfo", "Entity Inspector", QKeySequence(Qt::Key_N), [this] {
+    addCommand(view, "ViewEntityInfo", "Entity Inspector", QKeySequence(Qt::Key_N), [this] {
         if (auto* d = dock_->findDockWidget("Entity")) d->toggleView(d->isClosed());
     });
     view->addSeparator();
@@ -1992,7 +2255,7 @@ void MainWindow::buildMenus() {
         for (int i = 0; i < 3; ++i) {
             QAction* a = addCommand(heat, modes[i].first, modes[i].second, QKeySequence(), [this, i] {
                 ctx_.heatMap = i;
-                if (i != 0 && ctx_.gridAxis != 0) ctx_.gridAxis = 0;  // drawn in the XY top view
+                if (i != 0 && ctx_.gridAxis != 0) ctx_.setGridAxis(0);  // drawn in the XY top view
                 ctx_.cameraMoved();
             });
             a->setCheckable(true);
@@ -2000,10 +2263,22 @@ void MainWindow::buildMenus() {
             group->addAction(a);
         }
     }
-    addCommand(view, "NextView", "Next 2D View (XY / XZ / YZ)", QKeySequence("Ctrl+Tab"), [this] {
-        ctx_.gridAxis = (ctx_.gridAxis + 1) % 3;
-        ctx_.cameraMoved();
+    addCommand(view, "ToggleBottomPanel", "Bottom Panel (Console, Compile, Logs)", QKeySequence("Ctrl+J"), [this] {
+        setBottomArea(!bottomAreaOpen());
     });
+    addCommand(view, "NextView", "Next 2D View (XY / XZ / YZ)", QKeySequence("Ctrl+Tab"), [this] {
+        ctx_.nextGridAxis();  // the same world point stays in the middle
+    });
+    {
+        // The 2D view with the keyboard focus (a four-view layout has three), else the main one.
+        const auto focusedGrid = [this] {
+            GridView* g = qobject_cast<GridView*>(QApplication::focusWidget());
+            return g ? g : grid_;
+        };
+        addCommand(view, "ZoomIn2D", "Zoom In (2D)", QKeySequence(Qt::Key_Delete), [focusedGrid] { focusedGrid()->zoomIn(); });
+        addCommand(view, "ZoomOut2D", "Zoom Out (2D)", QKeySequence(Qt::Key_Insert), [focusedGrid] { focusedGrid()->zoomOut(); });
+        addCommand(view, "FitAll2D", "Fit 2D View to Map", QKeySequence(Qt::Key_Home), [focusedGrid] { focusedGrid()->fitAll(); });
+    }
     addCommand(view, "CenterCameraOnSelection", "Center Camera On Selection", QKeySequence(Qt::Key_End), [this] { ctx_.frameSelection(); });
     addCommand(view, "HideSelected", "Hide Selected", QKeySequence(Qt::Key_H), [this] {
         for (const auto& r : ctx_.doc.selection()) ctx_.scene.hidden.insert(r.item != kNoId ? r.item : r.entity);
@@ -2129,11 +2404,25 @@ void MainWindow::buildMenus() {
         else camera_->startPlay();
     });
     // While playing, the camera owns the keyboard: editor shortcuts would otherwise eat W/A/S/D, C, N, Space.
-    connect(&ctx_, &EditorContext::playModeChanged, this, [this](bool playing) {
-        for (QAction* a : actions_)
-            if (a->objectName() != "PlayPreview") a->setEnabled(!playing);
-        if (QAction* p = action("PlayPreview")) p->setEnabled(!playing);  // Esc / P are handled by the camera itself
-    });
+    {
+        // Play mode disables every command; leaving it enables again only those it disabled, so commands disabled on
+        // purpose (Clip Selected outside clip mode, trigger kinds the build does not support) stay disabled.
+        auto disabledByPlay = std::make_shared<std::vector<QPointer<QAction>>>();
+        connect(&ctx_, &EditorContext::playModeChanged, this, [this, disabledByPlay](bool playing) {
+            if (playing) {
+                disabledByPlay->clear();
+                for (QAction* a : actions_)
+                    if (a->isEnabled()) {
+                        a->setEnabled(false);  // PlayPreview too: Esc / P are handled by the camera itself
+                        disabledByPlay->push_back(a);
+                    }
+            } else {
+                for (const QPointer<QAction>& a : *disabledByPlay)
+                    if (a) a->setEnabled(true);
+                disabledByPlay->clear();
+            }
+        });
+    }
     addCommand(view, "GizmoMode", "Gizmo: Move / Rotate", QKeySequence(Qt::Key_R), [this] {
         camera_->toggleGizmoMode();
         ctx_.setStatus(camera_->gizmoRotateMode() ? "Gizmo: rotate (drag a ring, 15 degree steps)" : "Gizmo: move");
@@ -2621,7 +2910,12 @@ void MainWindow::buildMenus() {
             Settings::instance().setValue("camera/pathSpeed", v);
             retimeByDistance(camPath_, v);
         });
-        addCommand(cp, "CameraPathClear", "Clear", QKeySequence(), [this] {
+        addCommand(cp, "CameraPathClear", "Clear...", QKeySequence(), [this] {
+            // Not on the undo history: ask first when there is something to lose.
+            if (!camPath_.keys.empty() &&
+                QMessageBox::question(this, "Clear Camera Path", QString("Remove all %1 key(s) of the camera path? This cannot be undone.").arg(camPath_.keys.size()),
+                                      QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
+                return;
             camPathTimer_.stop();
             camPath_ = CameraPath{};
             ctx_.setStatus("Camera path cleared");
@@ -2850,24 +3144,31 @@ void MainWindow::buildMenus() {
         const double size = g.size;
         addCommand(grid, g.cmd, "Grid " + qs(formatNumber(size)), QKeySequence(g.key), [this, size] {
             ctx_.doc.setGrid(size);
+            Settings::instance().setValue("grid/size", ctx_.doc.grid());
             ctx_.documentEdited();
         });
     }
     grid->addSeparator();
     addCommand(grid, "GridDown", "Grid Smaller", QKeySequence(Qt::Key_BracketLeft), [this] {
         ctx_.doc.gridDown();
+        Settings::instance().setValue("grid/size", ctx_.doc.grid());
         ctx_.documentEdited();
     });
     addCommand(grid, "GridUp", "Grid Larger", QKeySequence(Qt::Key_BracketRight), [this] {
         ctx_.doc.gridUp();
+        Settings::instance().setValue("grid/size", ctx_.doc.grid());
         ctx_.documentEdited();
     });
+    // The grid size and snap of the last session (the document keeps its grid across File > Open).
+    ctx_.doc.setGrid(Settings::instance().value("grid/size", 8.0).toDouble());
+    ctx_.snap = Settings::instance().value("grid/snap", true).toBool();
     QAction* snap = addCommand(grid, "ToggleSnapToGrid", "Snap To Grid", QKeySequence("Ctrl+Alt+G"), [this] {
         ctx_.snap = !ctx_.snap;
+        Settings::instance().setValue("grid/snap", ctx_.snap);
         ctx_.documentEdited(ctx_.snap ? "Snap on" : "Snap off");
     });
     snap->setCheckable(true);
-    snap->setChecked(true);
+    snap->setChecked(ctx_.snap);
     grid->addSeparator();
     addCommand(grid, "SelectNudgeLeft", "Nudge Left", QKeySequence("Alt+Left"), [this] { runNudge(-1, 0); });
     addCommand(grid, "SelectNudgeRight", "Nudge Right", QKeySequence("Alt+Right"), [this] { runNudge(1, 0); });
@@ -3928,7 +4229,11 @@ void MainWindow::buildMenus() {
             return;
         }
         QString err;
-        if (!compile_->deploy(gameRoot, &err)) return ctx_.setStatus("Deploy failed: " + err);
+        if (!compile_->deploy(gameRoot, &err)) {
+            // The build itself succeeded (its toast said so): a failed copy into the game must not pass unseen.
+            QMessageBox::warning(this, "Deploy", "The map was built, but it could not be copied into the game:\n\n" + err);
+            return ctx_.setStatus("Deploy failed: " + err);
+        }
     });
     addCommand(compile, "LaunchReplay", "Launch Replay", QKeySequence(), [this] {
         // Starts the game exe in the game folder with no arguments (F5 is the one that also starts the map).
@@ -4484,7 +4789,10 @@ void MainWindow::buildMenus() {
         if (!confirmDiscard()) return;
         QStringList args{"--safe-mode"};
         if (!ctx_.doc.path().empty()) args << qs(ctx_.doc.path());
-        if (QProcess::startDetached(QCoreApplication::applicationFilePath(), args)) close();
+        // Asked once; the new editor starts only when this one has really closed (a running build can still stop it).
+        discardConfirmed_ = true;
+        if (close()) QProcess::startDetached(QCoreApplication::applicationFilePath(), args);
+        else discardConfirmed_ = false;
     });
     addCommand(help, "ResetSettings", "Reset All Settings...", QKeySequence(), [this] {
         const QString ini = QDir(QCoreApplication::applicationDirPath()).filePath("IW8Radiant.ini");
@@ -4493,13 +4801,18 @@ void MainWindow::buildMenus() {
                                   "layout, preferences and the web server login are reset).") != QMessageBox::Yes)
             return;
         if (!confirmDiscard()) return;
-        QFile::remove(ini + ".bak");
-        Settings::instance().setVolatile(true);  // nothing more is written on the way out
-        QFile::rename(ini, ini + ".bak");
         QStringList args;
         if (!ctx_.doc.path().empty()) args << qs(ctx_.doc.path());
+        Settings::instance().setVolatile(true);  // nothing more is written on the way out
+        discardConfirmed_ = true;
+        if (!close()) {  // a running build kept the window: nothing is reset
+            discardConfirmed_ = false;
+            Settings::instance().setVolatile(false);
+            return;
+        }
+        QFile::remove(ini + ".bak");
+        QFile::rename(ini, ini + ".bak");
         QProcess::startDetached(QCoreApplication::applicationFilePath(), args);
-        close();
     });
     help->addSeparator();
     addCommand(help, "TestChecklist", "Test Checklist (record in-game results)...", QKeySequence(), [this] {
@@ -4676,11 +4989,11 @@ void MainWindow::buildMenus() {
     QAction* about = help->addAction("About / Target Build");
     connect(about, &QAction::triggered, this, [this] {
         QMessageBox::about(this, "IW8 Radiant Suite",
-                           QString("<b>IW8 Radiant Suite 0.1.0</b> (milestone 1: edit &rarr; save &rarr; reopen)<br><br>"
+                           QString("<b>IW8 Radiant Suite 0.1.0</b><br><br>"
                                    "Target build: Call of Duty: Modern Warfare (2019), Replay 1.20.4.7623265<br>"
                                    "game_dx12_ship_replay.exe MD5 1c238fe327f2ecc3b0db924c5b425439<br>"
                                    "IW8 key table: %1 canonical ids<br>Qt %2 &middot; Qt Advanced Docking System 4.4.1<br><br>"
-                                   "<i>In-game loading of edited data is not verified by this build.</i>")
+                                   "<i>docs\\TEST_CHECKLIST.md lists what has been seen in game and what has not.</i>")
                                .arg(KeyTable::global().size())
                                .arg(qVersion()));
     });
@@ -4690,7 +5003,23 @@ void MainWindow::runNudge(int dh, int dv) {
     Vec3 d;
     d[ctx_.axisH()] = dh * ctx_.doc.grid();
     d[ctx_.axisV()] = dv * ctx_.doc.grid();
-    if (ctx_.doc.translateSelection(d, "Nudge")) ctx_.documentEdited("Nudged " + qs(formatNumber(ctx_.doc.grid())));
+    // Nudges in a row (a held Alt+arrow repeats) are one undo step: when nothing at all changed since the last nudge
+    // (same document revision) and it was moments ago, it is undone and redone as one move by the total.
+    const bool chain = nudgeRevision_ == ctx_.doc.revision() && nudgeClock_.isValid() && nudgeClock_.elapsed() < 1500 &&
+                       ctx_.doc.canUndo() && !ctx_.doc.canRedo() && !ctx_.doc.history().empty() &&
+                       ctx_.doc.history().back().name == "Nudge";
+    Vec3 total = d;
+    if (chain && ctx_.doc.undo()) total = nudgeTotal_ + d;
+    if (ctx_.doc.translateSelection(total, "Nudge")) {
+        nudgeTotal_ = total;
+        nudgeRevision_ = ctx_.doc.revision();
+        nudgeClock_.start();
+        ctx_.documentEdited(QString("Nudged %1 (%2, %3, %4 in all)")
+                                .arg(qs(formatNumber(ctx_.doc.grid())), qs(formatNumber(total.x)), qs(formatNumber(total.y)), qs(formatNumber(total.z))));
+        nudgeRevision_ = ctx_.doc.revision();
+    } else {
+        nudgeRevision_ = 0;
+    }
 }
 
 // ------------------------------------------------------------------ file
@@ -4705,6 +5034,17 @@ bool MainWindow::confirmDiscard() {
 }
 
 void MainWindow::openPath(const QString& path) {
+    // A map that is gone (moved, deleted, a Recent entry from another machine): say so before asking to save, and drop
+    // it from Recent.
+    if (!path.isEmpty() && !path.startsWith("stock:") && !QFileInfo::exists(path)) {
+        QStringList recent = Settings::instance().recentFiles();
+        if (recent.removeAll(path) > 0) {
+            Settings::instance().setValue("recentFiles", recent);
+            rebuildRecentMenu();
+        }
+        QMessageBox::warning(this, "Open", path + "\n\nThis file no longer exists (moved or deleted). It was removed from File > Recent.");
+        return;
+    }
     if (!confirmDiscard()) return;
     loadDocument(path);
 }
@@ -4827,12 +5167,14 @@ QString MainWindow::toolPath(const QString& key) const {
         {"replay", "E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe"},
         {"oodle", "E:/IW8/Builds/1.20-replay/oo2core_7_win64.dll"},
         {"zonetool", "E:/mw124/x64-zt/build/bin/x64/Release/zonetool.exe"},
-        {"gsc_tool", "C:/Users/user/Downloads/iw8 level maker/gsc-tool.exe"},
+        {"gsc_tool", QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) + "/iw8 level maker/gsc-tool.exe"},
     };
     // IW8R_TOOL_<KEY> (IW8R_TOOL_ZONETOOL, ...): another tool for this run, e.g. a converter build under test.
     const QByteArray fromEnv = qgetenv(("IW8R_TOOL_" + key.toUpper()).toLatin1().constData());
     if (!fromEnv.isEmpty()) return QString::fromLocal8Bit(fromEnv);
-    return Settings::instance().value("tools/" + key, defaults.value(key)).toString();
+    // A path left empty in Tools > Tool Paths means the default, not "no tool".
+    const QString set = Settings::instance().value("tools/" + key, defaults.value(key)).toString();
+    return set.trimmed().isEmpty() ? defaults.value(key) : set;
 }
 
 void MainWindow::toolPathsDialog() {
@@ -6146,7 +6488,7 @@ size_t MainWindow::pasteFromClipboard(QString* err) {
 void MainWindow::fourViewLayout() {
     // 3.22: camera and the main 2D view (set to XY top) side by side, with Front (XZ) and Side (YZ) views under them.
     // The extra views keep their own pan and zoom (GridView::setFixedAxis); closing them leaves the usual layout.
-    ctx_.gridAxis = 0;
+    ctx_.setGridAxis(0);
     ads::CDockWidget* camDock = dock_->findDockWidget("Camera");
     ads::CDockWidget* gridDock = dock_->findDockWidget("Grid");
     if (!camDock || !gridDock) return;
@@ -6156,9 +6498,7 @@ void MainWindow::fourViewLayout() {
             auto* g = new GridView(&ctx_);
             g->setFixedAxis(axis);
             g->setAcceptDrops(true);
-            connect(g, &GridView::mouseWorld, this, [this](double x, double y, double z) {
-                posLabel_->setText(QString("%1 %2 %3").arg(qs(formatNumber(x)), qs(formatNumber(y)), qs(formatNumber(z))));
-            });
+            connect(g, &GridView::positionText, posLabel_, &QLabel::setText);
             d = new ads::CDockWidget(dock_, title);
             d->setObjectName(title);
             d->setWidget(g);
@@ -7430,9 +7770,21 @@ bool MainWindow::prepareStockRebuild(const QString& work, QStringList* args, QSt
 }
 bool MainWindow::save() {
     if (ctx_.doc.path().empty()) return saveAsDialog(false);
+    // A map recovered from the autosave history: Save asks where it goes (writing it back over the autosave copy would
+    // leave the original map without the recovered work).
+    if (QFileInfo(qs(ctx_.doc.path())).absolutePath().startsWith(QFileInfo(autosaveDir()).absoluteFilePath(), Qt::CaseInsensitive)) {
+        ctx_.setStatus("A recovered autosave: choose where to save the map");
+        return saveAsDialog(false);
+    }
     std::string err;
     if (!ctx_.doc.save(&err)) {
-        QMessageBox::critical(this, "Save", qs(err));
+        // A read-only file or one open in another program comes back as error 5 / 32: say which, and offer Save As.
+        QString msg = qs(err);
+        if (msg.contains("(error 5)") || msg.contains("(error 32)"))
+            msg += "\n\nThe file is read-only or open in another program. Save the map somewhere else with Save As, or close "
+                   "the other program and save again.";
+        if (QMessageBox::critical(this, "Save", msg, QMessageBox::Save | QMessageBox::Cancel, QMessageBox::Cancel) == QMessageBox::Save)
+            return saveAsDialog(false);
         return false;
     }
     ctx_.documentEdited("Saved " + qs(ctx_.doc.path()));
@@ -7452,9 +7804,12 @@ bool MainWindow::saveTo(const QString& path, QString* err) {
 
 bool MainWindow::saveAsDialog(bool copyOnly) {
     const QString start = ctx_.doc.path().empty() ? Settings::instance().value("lastDir").toString() : qs(ctx_.doc.path());
-    const QString path = QFileDialog::getSaveFileName(this, copyOnly ? "Save a Copy" : "Save As", start,
-                                                      "Map source (*.map);;IW8 entity string (*.ents);;All files (*)");
+    QString filter;
+    QString path = QFileDialog::getSaveFileName(this, copyOnly ? "Save a Copy" : "Save As", start,
+                                                "Map source (*.map);;IW8 entity string (*.ents);;All files (*)", &filter);
     if (path.isEmpty()) return false;
+    // A name typed without an extension: the chosen type's (.map unless .ents was picked); Open and the build rely on it.
+    if (QFileInfo(path).suffix().isEmpty()) path += filter.contains("*.ents") ? ".ents" : ".map";
     std::string err;
     if (copyOnly) {
         if (!ctx_.doc.saveCopy(path.toStdString(), &err)) {
@@ -7492,18 +7847,38 @@ void MainWindow::updateTitle() {
 
 void MainWindow::updateStatus() {
     gridLabel_->setText(QString("Grid %1%2").arg(qs(formatNumber(ctx_.doc.grid())), ctx_.snap ? "" : " (snap off)"));
-    selLabel_->setText(ctx_.doc.faceSelection().empty() ? QString("%1 selected").arg(ctx_.doc.selection().size())
-                                                        : QString("%1 faces selected").arg(ctx_.doc.faceSelection().size()));
+    if (!ctx_.doc.faceSelection().empty()) {
+        selLabel_->setText(QString("%1 faces selected").arg(ctx_.doc.faceSelection().size()));
+    } else if (ctx_.doc.selection().empty()) {
+        selLabel_->setText("0 selected");
+    } else {
+        // The size of what is selected, as Radiant shows it (width x depth x height in units).
+        const AABB b = ctx_.doc.selectionBounds();
+        const QString size = b.valid() ? QString("  %1 x %2 x %3").arg(qs(formatNumber(b.maxs.x - b.mins.x)), qs(formatNumber(b.maxs.y - b.mins.y)),
+                                                                        qs(formatNumber(b.maxs.z - b.mins.z)))
+                                       : QString();
+        selLabel_->setText(QString("%1 selected%2").arg(ctx_.doc.selection().size()).arg(size));
+    }
     entLabel_->setText(QString("%1 entities").arg(ctx_.doc.map().entities.size()));
 }
 
 void MainWindow::closeEvent(QCloseEvent* e) {
-    if (!confirmDiscard()) {
+    // A running build would be stopped with the window: ask first.
+    if (compile_ && compile_->busy() &&
+        QMessageBox::question(this, "IW8 Radiant Suite", "A build is running. Stop it and close the editor?",
+                              QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) {
         e->ignore();
         return;
     }
+    if (!discardConfirmed_ && !confirmDiscard()) {
+        e->ignore();
+        return;
+    }
+    discardConfirmed_ = false;
     Settings::instance().setValue("window/geometry", saveGeometry());
     Settings::instance().setValue("window/docks", dock_->saveState(kDockLayoutVersion));
+    if (bottomArea_ && bottomArea_->isVisible() && bottomArea_->height() >= 100)
+        Settings::instance().setValue("ui/bottomPanelHeight", bottomArea_->height());
     Settings::instance().setValue("camera/speed", ctx_.cam.speed);
     Settings::instance().setValue("camera/fov", ctx_.cam.fov);
     e->accept();
@@ -9772,7 +10147,17 @@ void MainWindow::showPreferences() {
     QDialog dlg(this);
     dlg.setWindowTitle("Preferences");
     dlg.setObjectName("preferencesDialog");
-    auto* form = new QFormLayout(&dlg);
+    // Sections: Editing, Assets, Build, Play in game (F5).
+    auto* outer = new QVBoxLayout(&dlg);
+    const auto section = [&](const QString& title) {
+        auto* box = new QGroupBox(title, &dlg);
+        outer->addWidget(box);
+        return new QFormLayout(box);
+    };
+    QFormLayout* editing = section("Editing");
+    QFormLayout* assets = section("Assets");
+    QFormLayout* build = section("Build");
+    QFormLayout* playForm = section("Play in game (F5)");
     auto num = [&](double lo, double hi, double v, int dec) {
         auto* s = new QDoubleSpinBox(&dlg);
         s->setRange(lo, hi);
@@ -9791,24 +10176,32 @@ void MainWindow::showPreferences() {
     texLock->setChecked(cur.textureLock);
     auto* fog = new QCheckBox(&dlg);
     fog->setChecked(cur.fogPreview);
-    auto list = [&](const QStringList& l) {
+    auto list = [&](const QStringList& l, const QString& tip) {
         auto* e = new QLineEdit(l.join(';'), &dlg);
         e->setPlaceholderText("folders separated by ;");
+        e->setToolTip(tip + "\nSeveral folders: separate them with ; (for example D:/art/materials;E:/shared/materials).");
+        e->setMinimumWidth(360);
         return e;
     };
-    auto* mats = list(cur.materialRoots);
-    auto* models = list(cur.modelRoots);
-    auto* prefabs = list(cur.prefabRoots);
-    form->addRow("Camera speed (units/s)", speed);
-    form->addRow("Camera field of view", fov);
-    form->addRow("Autosave every (minutes)", autosave);
-    form->addRow("Toast notifications", toasts);
-    form->addRow("Texture lock", texLock);
-    form->addRow("Fog preview", fog);
-    form->addRow("Custom model scale (OBJ units -> map)", scale);
-    form->addRow("Extra material folders", mats);
-    form->addRow("Extra model folders", models);
-    form->addRow("Prefab folders", prefabs);
+    auto* mats = list(cur.materialRoots, "Folders with your own materials (images and .material files), shown in the Materials panel "
+                                         "next to the map's own and the stock ones.");
+    auto* models = list(cur.modelRoots, "Folders with your own models (OBJ, glTF), shown in the Models panel.");
+    auto* prefabs = list(cur.prefabRoots, "Folders with prefabs (.map files), shown in the Prefabs panel next to <map folder>/prefabs. "
+                                          "Double-click a prefab there to place it.");
+    speed->setToolTip("How fast the camera flies with W A S D (the mouse wheel changes it while flying)");
+    autosave->setToolTip("A copy of the map is saved this often into the autosave folder (File > Autosave History); 0 = off");
+    texLock->setToolTip("Textures stay fixed to brushes when they are moved or rotated");
+    scale->setToolTip("OBJ / glTF files are often in metres or centimetres: this scales them to map units");
+    editing->addRow("Camera speed (units/s)", speed);
+    editing->addRow("Camera field of view", fov);
+    editing->addRow("Autosave every (minutes)", autosave);
+    editing->addRow("Toast notifications", toasts);
+    editing->addRow("Texture lock", texLock);
+    editing->addRow("Fog preview", fog);
+    assets->addRow("Custom model scale (OBJ units -> map)", scale);
+    assets->addRow("Extra material folders", mats);
+    assets->addRow("Extra model folders", models);
+    assets->addRow("Prefab folders", prefabs);
     // Play in game (F5): what the one-key start does (docs: User Guide, "F5 from a closed game").
     const DevmapRunner::PlayOptions play = DevmapRunner::playOptions();
     auto* playMode = new QComboBox(&dlg);
@@ -9845,7 +10238,7 @@ void MainWindow::showPreferences() {
                                 "the game's real door. Built exactly like the stock map's own data, but not seen in game yet: if a map with such "
                                 "an object does not load, turn this off and build again. "
                                 "Off: such objects are left out and the door prefab builds its scripted stand-in.");
-    form->addRow("Build", realScriptables);
+    build->addRow("Scripted objects", realScriptables);
     // 14.1 (research 90): the collision layout of maps that do not set worldspawn iw8r_collision themselves.
     auto* collisionLayout = new QComboBox(&dlg);
     collisionLayout->setObjectName("prefsCollisionLayout");
@@ -9858,22 +10251,22 @@ void MainWindow::showPreferences() {
                                 "Warzone-size maps (32 x 32 tiles of 8192 units; a client loads the tiles near the player, a host the combined "
                                 "package). The editor cuts the tiles by itself. A map can set its own with worldspawn iw8r_collision "
                                 "(auto, one, tiles). Tiles are built like the stock maps' own but not seen in game yet.");
-    form->addRow("Build: collision", collisionLayout);
-    form->addRow("F5: game mode", playMode);
-    form->addRow("F5: bots", playBots);
-    form->addRow("F5", playCover);
-    form->addRow("", playHost);
-    form->addRow("F5: host command", playHostCmd);
-    form->addRow("", playRequest);
+    build->addRow("Collision", collisionLayout);
+    playForm->addRow("Game mode", playMode);
+    playForm->addRow("Bots", playBots);
+    playForm->addRow("", playCover);
+    playForm->addRow("", playHost);
+    playForm->addRow("Host command", playHostCmd);
+    playForm->addRow("", playRequest);
     auto* note = new QLabel("Tool paths (game, ACTS, x64-zt, Oodle): Help > First-Run Setup or Tools > Tool Paths. "
                             "Keys: Help > Keyboard Shortcuts.", &dlg);
     note->setWordWrap(true);
     note->setStyleSheet("color: gray");
-    form->addRow(note);
+    outer->addWidget(note);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-    form->addRow(buttons);
+    outer->addWidget(buttons);
     if (dlg.exec() != QDialog::Accepted) return;
     Preferences p;
     p.cameraSpeed = speed->value();

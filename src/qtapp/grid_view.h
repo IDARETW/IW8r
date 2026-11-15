@@ -3,7 +3,8 @@
 // LMB drag outside a selected brush resizes the faces facing the drag; Shift+LMB selects; in clipper
 // mode (X) LMB places clip points (a third one tilts the plane); E mode drags edge midpoints of selected brushes;
 // the terrain brush (LMB raises, Shift+LMB lowers selected patches) works in the XY top view; RMB click opens the
-// context menu; RMB/MMB drag pans; wheel zooms.
+// context menu; RMB/MMB drag pans; wheel zooms. A press becomes a move, create or resize drag only once the mouse has
+// moved 3 px (a click changes nothing); Escape or losing focus during a drag puts it back.
 #pragma once
 
 #include <QWidget>
@@ -26,9 +27,22 @@ public:
     // main 2D view) follows the context (Ctrl+Tab). Its event handlers swap its state into the context and back.
     void setFixedAxis(int axis);
     int fixedAxis() const { return fixedAxis_; }
+    // 2D zoom commands (View menu): one wheel step in or out about the view centre, and the whole map fitted in the
+    // view (the open-map fit). They share the wheel's limits (EditorContext::clampGridScale).
+    void zoomIn();
+    void zoomOut();
+    void fitAll();
+    // Spacing of the minor grid lines as drawn: the grid size, doubled while the lines would be under 6 px apart.
+    double drawnGridStep() const;
+    bool dragActive() const { return drag_ != Drag::None; }  // a button is down on this view (also used by --gui-test)
 
 signals:
+    // Cursor position in world units, snapped; the view's depth axis is not known here and is 0.
     void mouseWorld(double x, double y, double z);
+    // The cursor position as text for the status bar, the view's two axes only ("x 128  y -64"); empty when the
+    // cursor leaves the view.
+    void positionText(const QString& text);
+    void mouseLeft();
     // An asset dragged from a browser was dropped at world (h, v) of this view (4.24).
     void assetDropped(const QString& kind, const QString& name, bool loop, double h, double v);
 
@@ -38,13 +52,17 @@ protected:
     void dropEvent(QDropEvent*) override;
 
 protected:
+    bool event(QEvent*) override;
     void paintEvent(QPaintEvent*) override;
+    void resizeEvent(QResizeEvent*) override;
     void mousePressEvent(QMouseEvent*) override;
     void mouseMoveEvent(QMouseEvent*) override;
     void mouseReleaseEvent(QMouseEvent*) override;
     void wheelEvent(QWheelEvent*) override;
     void keyPressEvent(QKeyEvent*) override;
     void keyReleaseEvent(QKeyEvent*) override;
+    void leaveEvent(QEvent*) override;
+    void focusOutEvent(QFocusEvent*) override;
 
 private:
     // A camera move repaints only around the old and the new camera marker; any other camera notification (also used
@@ -53,6 +71,7 @@ private:
     QRect cameraMarkerRect() const;
     QRect lastCameraMarker_;
     double lastCam_[5] = {0, 0, 0, 0, 0};
+    double lastView_[4] = {-1, 0, 0, 0};  // axis, centre h / v, scale at the last camera notification
 
     int fixedAxis_ = -1;
     // Heat map cache (View > Heat Map): rebuilt when the mode, the document or (light overlap) the camera height changes.
@@ -100,6 +119,32 @@ private:
     void showContextMenu(const QPoint& globalPos, double wh, double wv);
     std::vector<ConvexBrush> resizePreview() const;
     AABB createBox() const;
+
+    // Hit tests shared by the press and the hover cursor.
+    std::optional<EdgeHandle> edgeHandleAt(const QPointF& pos) const;        // edge mode handle within 6 px
+    std::vector<VertexHandle> vertexHandlesAt(const QPointF& pos) const;     // vertex mode handles within 5 px
+    bool overSelection(double wh, double wv);                                // inside the selection box (+4 px): move
+    std::vector<size_t> facingFaces(const ConvexBrush& b, const Vec3& centre, double wh, double wv) const;
+    std::vector<ResizeTarget> resizeTargetsAt(double wh, double wv);         // Radiant face drag from (wh, wv)
+    void updateHoverCursor(const QPointF& pos, Qt::KeyboardModifiers mods);
+    // The selection's bounds and brushes, rebuilt when the document revision changes (selecting bumps it too):
+    // the hover test runs on every mouse move, and bounds and brush planes are parsed from the map text.
+    struct SelectionCache {
+        uint64_t revision = 0;
+        AABB bounds;
+        std::vector<ResizeTarget> brushes;  // faces left empty
+        std::vector<Vec3> centres;          // centre of each brush's bounds
+    } selCache_;
+    const SelectionCache& selectionCache();
+
+    // Drags: the mouse button that holds the current one, starting a pending press, putting a drag back.
+    Qt::MouseButtons dragButtons() const { return drag_ == Drag::Pan ? Qt::MouseButtons(Qt::RightButton | Qt::MiddleButton) : Qt::MouseButtons(Qt::LeftButton); }
+    bool editDragActive() const { return drag_ != Drag::None && drag_ != Drag::Pan; }
+    void startPendingDrag();
+    void cancelDrag(const QString& status);
+    static constexpr int kDragThreshold = 3;  // px the mouse must move before a press becomes a move / create / resize
+    bool dragLive_ = true;                    // false while a move / create / resize press waits for that movement
+    bool terrainChanged_ = false;             // the current terrain stroke changed a patch (it is one undo step)
 
     EditorContext* ctx_;
     Drag drag_ = Drag::None;

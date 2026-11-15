@@ -69,6 +69,7 @@ public:
     bool hasSwapChain() const { return swap_ != nullptr; }
     // Renders now and returns the number of non-background pixels (smoke test).
     size_t renderAndCount();
+    std::optional<QPointF> widgetPointOf(const Vec3& p) const { return projectToWidget(p); }  // tests: where a world point is drawn
     QImage grabFrame();  // last rendered frame (D3D readback)
     // Images this view still waits for: textures held back by the per-frame load budget, and materials whose images
     // the caches are still fetching. A picture taken while this is above 0 shows flat colours where textures belong.
@@ -722,6 +723,12 @@ private:
     int swapW_ = 0, swapH_ = 0;
     void* swapHwnd_ = nullptr;  // recreate the swap chain when docking re-parents the native window
     QPoint pressPos_, lockPos_;
+    // Click cycling (owner 2026-11-15): the spot, the objects under it (one per selection unit, nearest first) and
+    // which of them the last click selected.
+    QPoint cyclePos_{-10000, -10000};
+    std::vector<SelRef> cycleHits_;
+    size_t cycleIndex_ = 0;
+    void cancelViewDrag();  // a gizmo / ring drag back to where it started
     bool lmbDown_ = false;
     CollisionWorld world_;
     size_t playWorldModels_ = 0;  // placed models that collide in the play preview

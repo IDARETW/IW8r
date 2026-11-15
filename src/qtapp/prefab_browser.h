@@ -1,7 +1,8 @@
 // IW8 Radiant Suite - Prefabs dock (roadmap 4.4): the prefab bundles (docs/PREFAB_BUNDLES.md: folders named
 // <name>.iw8prefab, listed first with their title, description and tags) and every plain .map prefab under the open
-// map's `prefabs` folder and the prefab folders (Preferences), each with a picture. Double-click stamps one
-// (misc_prefab, one undo step) through the caller's insert function; a drag carries its path to the views.
+// map's `prefabs` folder and the prefab folders (Preferences), each with a picture. Double-click or Enter stamps one
+// (misc_prefab, one undo step) through the caller's insert function; a drag carries its path to the views. A line under
+// the list counts what is shown; right-click has Place, Preview, Copy Name and Show in Folder.
 #pragma once
 
 #include <QImage>
@@ -14,6 +15,7 @@
 
 #include "prefab_bundle.h"
 
+class QLabel;
 class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
@@ -99,6 +101,7 @@ private:
     InsertFn insert_;
     QLineEdit* filter_ = nullptr;
     QListWidget* list_ = nullptr;
+    QLabel* count_ = nullptr;  // "N prefabs", "N of M shown" or why the list is empty
     bool scanned_ = false;
     class QTimer* thumbTimer_ = nullptr;  // draws thumbnails of the visible rows a few at a time (5,000+ prefabs)
     void loadVisibleThumbnails();

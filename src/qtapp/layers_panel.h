@@ -11,6 +11,7 @@
 
 class QTableWidget;
 class QLabel;
+class QPushButton;
 
 namespace iw8r::qt {
 
@@ -37,10 +38,14 @@ public slots:
 
 private:
     void applyVisibility();
+    void updateButtons();  // Select / Move Selection Here need a picked row
     EditorContext* ctx_;
     QTableWidget* table_;
     QLabel* info_;
-    std::set<std::string> hiddenLayers_;
+    QPushButton* selectButton_ = nullptr;
+    QPushButton* moveButton_ = nullptr;
+    std::set<std::string> hiddenLayers_;  // per map: cleared when another map is opened
+    uint64_t shownLoad_ = 0;  // Document::loadSerial at the last refresh
     bool filling_ = false;
 };
 

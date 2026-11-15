@@ -28,9 +28,25 @@ models, sky, stock world geometry) is cached under `%LOCALAPPDATA%\IW8 Radiant S
 - **Camera** (3D, D3D11) and **Grid** views (XY / XZ / YZ: Ctrl+Tab cycles). Docks can be dragged, tabbed and floated;
   View > Reset Panel Layout restores them. Every dock can be shown or hidden from the **View** menu.
 - **Entity** inspector (keys with help text from the entity definitions; lights have a colour/radius/cone group),
-  **Surface** inspector (fit, natural, justify, shift/scale/rotate), **Layers**, **Materials** and **Models** browsers,
-  **Compile**, **Replay Log**, **Live Link** and **Console** (every status line, compile line and warning, with
-  filters). Warnings and errors also pop up as short notifications (View > Toggle Toasts).
+  **Surface** inspector (fit, natural, justify, shift/scale/rotate) and **Layers** stay on the right.
+- **Side bar** (the narrow strip of icons at the left edge). The first group, **Materials**, **Models**, **Prefabs**,
+  **Effects**, **Sounds**, **Images**, **IW8 Spawns** and **Undo History**, opens in the side section next to the
+  views: click an icon to open that panel, click it again to close it. One panel is open at a time, and the section
+  keeps the width you drag it to.
+- **Bottom area** under the camera: **Console** (every status line, compile line and warning, with filters),
+  **Compile**, **Replay Log**, **Build Budget**, **Script** and **Live Link** as tabs. Their icons are the second group
+  of the side bar: an icon brings its tab to the front, and the icon of the tab already in front folds the area away.
+  **Ctrl+J** (View > Bottom Panel) folds and unfolds it; it keeps the height you drag it to. Building (F7) brings
+  Compile to the front by itself. Warnings and errors also pop up as short notifications (View > Toggle Toasts).
+
+Selecting: a click selects what is under the cursor. When several objects overlap there, **click the same spot again**
+to select the next one behind it (the status bar says "2 of 3 overlapping objects"); a click somewhere else starts
+over at the front. Shift+Alt+click always steps to the object behind the selected one, even after the mouse moved.
+**Ctrl+A** (Edit > Select All) and
+**I** (Invert Selection) take only what is visible: hidden, filtered, layer-hidden and out-of-region objects are left
+alone. The status bar shows how many objects are selected and the size of the selection. **Esc** during a gizmo drag
+puts the selection back where it was. **Alt+arrows** nudge the selection one grid step; holding the keys is one undo
+step, not one per repeat. The grid size and Snap To Grid are kept for the next session.
 
 Camera: hold right mouse to look, W A S D to fly, mouse wheel for speed. **View > Camera Mode** switches Textured, Flat,
 Wireframe, Fullbright and Normals. **Ctrl+L** turns on the lit preview (sun, light entities and sun shadows; the yellow

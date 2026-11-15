@@ -753,6 +753,16 @@ int runFeatureShots(MainWindow& w, const QString& outDir) {
         selectNamed(w, "s46_fan");
         centerGrid(w, 1150, 1200, 0.22);
         s.window("overview.png", "The editor with the showcase map: textured camera, top 2D view, Entity inspector with the selected fan's keys", 9000);
+        // IW8R_FEATURE_SHOTS_ONLY=window: the window and one side bar panel open, then stop (layout work).
+        if (qEnvironmentVariable("IW8R_FEATURE_SHOTS_ONLY") == "window") {
+            w.showDock("Materials");
+            settle(w, 1500);
+            s.window("side_panel.png", "The side bar with the Materials panel open beside the camera", 4000);
+            qApp->removeEventFilter(&keeper);
+            QFile f(QDir(outDir).filePath("feature-shots.txt"));
+            if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(s.report.join("\n").toUtf8() + "\n");
+            return s.failed == 0 ? 0 : 2;
+        }
         if (QToolBar* tb = w.findChild<QToolBar*>("mainToolbar")) {
             QRect used;
             for (QAction* a : tb->actions())

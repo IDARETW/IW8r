@@ -20,16 +20,19 @@
 #include <QApplication>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QKeyEvent>
 #include <QKeySequenceEdit>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
 #include <QTableWidget>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <map>
 #include <optional>
 #include <set>
@@ -310,8 +313,15 @@ EntityInspector::EntityInspector(EditorContext* ctx, QWidget* parent) : QWidget(
     auto addKey = [this] {
         const QString k = newKey_->text().trimmed();
         if (k.isEmpty()) return;
-        const Id e = ctx_->doc.inspectedEntity();
-        if (ctx_->doc.setKeyValue(e, k.toStdString(), newValue_->text().toStdString())) {
+        // The key goes on the entity the table shows, and only when the value fits the key's documented type: the
+        // fields keep the text so the mapper can correct it.
+        if (const QString why = refusalFor(k, newValue_->text()); !why.isEmpty()) {
+            ctx_->setStatus("Not added: " + why);
+            newValue_->setFocus();
+            newValue_->selectAll();
+            return;
+        }
+        if (ctx_->doc.setKeyValue(shownEntity_, k.toStdString(), newValue_->text().toStdString())) {
             newKey_->clear();
             newValue_->clear();
             ctx_->documentEdited("Set \"" + k + "\"");
@@ -319,7 +329,13 @@ EntityInspector::EntityInspector(EditorContext* ctx, QWidget* parent) : QWidget(
     };
     connect(add, &QPushButton::clicked, this, addKey);
     connect(newValue_, &QLineEdit::returnPressed, this, addKey);
+    // Enter in the key name goes on to its value, as Tab does.
+    connect(newKey_, &QLineEdit::returnPressed, this, [this] {
+        newValue_->setFocus();
+        newValue_->selectAll();
+    });
     connect(table_, &QTableWidget::cellChanged, this, &EntityInspector::commitCell);
+    table_->installEventFilter(this);  // Delete removes the keys of the selected rows
     connect(ctx_, &EditorContext::documentChanged, this, &EntityInspector::refresh);
     refresh();
 }
@@ -336,14 +352,74 @@ int EntityInspector::rowForKey(const QString& key) const {
     return -1;
 }
 
+QString EntityInspector::refusalFor(const QString& key, const QString& value) const {
+    // Empty values are left alone, as refresh() does not tint them: a required key that is empty is listed as missing.
+    if (value.trimmed().isEmpty()) return {};
+    const Entity* e = ctx_->doc.findEntity(shownEntity_);
+    const ClassDef* def = e ? entityDefs().find(e->classname()) : nullptr;
+    const KeyDef* kd = def ? def->key(key.toStdString()) : nullptr;
+    const QString problem = kd ? valueProblem(kd->type, value.toStdString()) : QString();
+    return problem.isEmpty() ? QString() : QString("%1 is a %2 key and expects %3, not \"%4\"").arg(key, qs(kd->type), problem, value);
+}
+
 void EntityInspector::commitCell(int row, int column) {
     if (filling_ || column != 1) return;
     const QTableWidgetItem* k = table_->item(row, 0);
-    const QTableWidgetItem* v = table_->item(row, 1);
+    QTableWidgetItem* v = table_->item(row, 1);
     if (!k || !v) return;
-    const Id e = ctx_->doc.inspectedEntity();
+    // The entity the rows belong to: refresh() is skipped while a cell editor is open, so the inspected entity may
+    // already be another one (a shortcut or the web API changed the selection meanwhile).
+    const Id e = shownEntity_;
     const QString key = k->text();
-    if (ctx_->doc.setKeyValue(e, key.toStdString(), v->text().toStdString())) ctx_->documentEdited("Set \"" + key + "\"");
+    if (const QString why = refusalFor(key, v->text()); !why.isEmpty()) {
+        // Refused: the cell goes back to the stored value and the status bar says what the key expects.
+        const Entity* ent = ctx_->doc.findEntity(e);
+        const std::string* stored = ent ? ent->value(key.toStdString()) : nullptr;
+        filling_ = true;
+        v->setText(stored ? qs(*stored) : QString());
+        filling_ = false;
+        ctx_->setStatus("Not set: " + why);
+    } else if (ctx_->doc.setKeyValue(e, key.toStdString(), v->text().toStdString())) {
+        ctx_->documentEdited("Set \"" + key + "\"");
+    }
+    // The selection moved on while the editor was open: show the inspected entity once the editor has closed.
+    if (e != ctx_->doc.inspectedEntity()) QTimer::singleShot(0, this, [this] { refresh(); });
+}
+
+bool EntityInspector::removeSelectedKeys() {
+    std::set<int> rows;
+    for (const QModelIndex& i : table_->selectionModel()->selectedIndexes()) rows.insert(i.row());
+    if (rows.empty() && table_->currentRow() >= 0) rows.insert(table_->currentRow());
+    QStringList keys;
+    for (int r : rows)
+        if (const QTableWidgetItem* k = table_->item(r, 0); k && k->text() != "classname") keys << k->text();
+    if (keys.isEmpty()) return false;
+    // The same removal as the row's x button, all the keys in one undo step.
+    const Id e = shownEntity_;
+    ctx_->doc.beginGroup(keys.size() == 1 ? "Removed \"" + keys.front().toStdString() + "\"" : "Remove Keys");
+    bool any = false;
+    for (const QString& k : keys) any |= ctx_->doc.removeKey(e, k.toStdString());
+    ctx_->doc.endGroup();
+    if (any) ctx_->documentEdited(keys.size() == 1 ? "Removed \"" + keys.front() + "\"" : QString("Removed %1 keys").arg(keys.size()));
+    return any;
+}
+
+bool EntityInspector::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == table_ && (event->type() == QEvent::ShortcutOverride || event->type() == QEvent::KeyPress)) {
+        auto* ke = static_cast<QKeyEvent*>(event);
+        // Not while a cell editor has the focus (Delete edits its text then), the same test as refresh().
+        QWidget* fw = QApplication::focusWidget();
+        const bool editing = fw && fw != table_ && table_->isAncestorOf(fw);
+        // Delete, and Backspace (the default Delete Selection key), remove the selected keys here, never the entity.
+        if ((ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) && (ke->modifiers() & ~Qt::KeypadModifier) == Qt::NoModifier &&
+            !editing) {
+            // Taken before the shortcuts: Delete bound to Delete Selection must not remove the entity from here.
+            if (event->type() == QEvent::ShortcutOverride) event->accept();
+            else removeSelectedKeys();
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void EntityInspector::setLightColor(double r, double g, double b) {
@@ -414,6 +490,7 @@ void EntityInspector::refresh() {
     filling_ = true;
     table_->setRowCount(0);
     if (!e) {
+        shownEntity_ = kNoId;
         header_->setText("<i>No entity</i>");
         classInfo_->clear();
         showMissing({}, eid);
@@ -546,6 +623,11 @@ SurfacePanel::SurfacePanel(EditorContext* ctx, QWidget* parent) : QWidget(parent
         plus->setText(scale ? QString::fromUtf8("\xC3\x97" "2") : "+");
         grid->addWidget(minus, i, 2);
         grid->addWidget(plus, i, 3);
+        nudge_[i][0] = minus;
+        nudge_[i][1] = plus;
+        const QString what = names[i];
+        minus->setToolTip(scale ? "Halve the " + what.toLower() : i < 4 ? what + " minus one grid step" : "Rotate by -15 degrees");
+        plus->setToolTip(scale ? "Double the " + what.toLower() : i < 4 ? what + " plus one grid step" : "Rotate by 15 degrees");
         connect(minus, &QToolButton::clicked, this, [this, i, scale] { nudge(i, scale ? 0.5 : -(i < 4 ? ctx_->doc.grid() : 15.0), scale); });
         connect(plus, &QToolButton::clicked, this, [this, i, scale] { nudge(i, scale ? 2.0 : (i < 4 ? ctx_->doc.grid() : 15.0), scale); });
         connect(spin, &QDoubleSpinBox::valueChanged, this, [this, i](double v) {
@@ -579,15 +661,28 @@ SurfacePanel::SurfacePanel(EditorContext* ctx, QWidget* parent) : QWidget(parent
     lay->addLayout(grid);
     {
         auto* row = new QHBoxLayout();
-        const std::pair<const char*, Op> ops[] = {{"Fit", Op::Fit},          {"Natural", Op::Natural},     {"Left", Op::JustifyLeft},
-                                                  {"Right", Op::JustifyRight}, {"Top", Op::JustifyTop}, {"Bottom", Op::JustifyBottom},
-                                                  {"Center", Op::JustifyCenter}};
-        for (const auto& [label, op] : ops) {
+        struct OpButton {
+            const char* label;
+            Op op;
+            const char* tip;
+        };
+        const OpButton ops[] = {
+            {"Fit", Op::Fit, "Fit: the texture spans each face exactly once (rotation kept)"},
+            {"Natural", Op::Natural, "Natural: texture size 64 x 64, offsets and rotation kept"},
+            {"Left", Op::JustifyLeft, "Justify left: the texture's left edge on the face's left edge"},
+            {"Right", Op::JustifyRight, "Justify right: the texture's right edge on the face's right edge"},
+            {"Top", Op::JustifyTop, "Justify top: the texture's top edge on the face's top edge"},
+            {"Bottom", Op::JustifyBottom, "Justify bottom: the texture's bottom edge on the face's bottom edge"},
+            {"Center", Op::JustifyCenter, "Centre: the texture centred on each face"}};
+        int n = 0;
+        for (const OpButton& o : ops) {
             auto* b = new QToolButton(this);
-            b->setText(label);
-            b->setObjectName(QString("surfaceOp%1").arg(label));
-            connect(b, &QToolButton::clicked, this, [this, op = op] { applyOp(op); });
+            b->setText(o.label);
+            b->setObjectName(QString("surfaceOp%1").arg(o.label));
+            b->setToolTip(QString(o.tip) + ". Applies to the selected faces, else every face of the selected brushes (one undo step).");
+            connect(b, &QToolButton::clicked, this, [this, op = o.op] { applyOp(op); });
             row->addWidget(b);
+            ops_[n++] = b;
         }
         row->addStretch(1);
         lay->addLayout(row);
@@ -782,6 +877,21 @@ void SurfacePanel::refresh() {
         }
         filling_ = false;
     }
+    {
+        // Fit / Natural / Justify need a face or a brush to work on (applyOp skips patches); off like the fields.
+        bool target = !ctx_->doc.faceSelection().empty();
+        for (const auto& r : ctx_->doc.selection()) {
+            const EntityItem* it = target || !r.item ? nullptr : ctx_->doc.findItem(r.entity, r.item);
+            target = target || (it && it->prim() && it->prim()->kind == PrimKind::Brush);
+        }
+        for (QToolButton* b : ops_) b->setEnabled(target);
+    }
+    // The nudge buttons follow their field.
+    const auto enableField = [this](int i, bool on) {
+        fields_[i]->setEnabled(on);
+        nudge_[i][0]->setEnabled(on);
+        nudge_[i][1]->setEnabled(on);
+    };
     if (!ctx_->doc.faceSelection().empty()) {
         const FaceRef& fr = *ctx_->doc.faceSelection().begin();
         const EntityItem* it = ctx_->doc.findItem(fr.entity, fr.item);
@@ -789,7 +899,7 @@ void SurfacePanel::refresh() {
         const auto vals = p ? p->textureFields(fr.face) : std::nullopt;
         filling_ = true;
         for (int i = 0; i < 5; ++i) {
-            fields_[i]->setEnabled(vals.has_value());
+            enableField(i, vals.has_value());
             if (vals) fields_[i]->setValue((*vals)[size_t(i)]);
         }
         filling_ = false;
@@ -809,7 +919,7 @@ void SurfacePanel::refresh() {
     filling_ = true;
     const auto vals = first ? first->textureFields(0) : std::nullopt;
     for (int i = 0; i < 5; ++i) {
-        fields_[i]->setEnabled(vals.has_value());
+        enableField(i, vals.has_value());
         if (vals) fields_[i]->setValue((*vals)[size_t(i)]);
     }
     filling_ = false;
@@ -838,11 +948,21 @@ HistoryPanel::HistoryPanel(EditorContext* ctx, QWidget* parent) : QWidget(parent
 }
 
 void HistoryPanel::refresh() {
+    const auto& h = ctx_->doc.history();
+    const size_t pos = ctx_->doc.undoPosition();
+    {
+        // documentChanged also comes for selection clicks: the list is rebuilt only when what it shows (the step names
+        // and the undo position) changed, so a long history does not cost a rebuild per click.
+        bool same = pos == shownPos_ && h.size() == shownNames_.size();
+        for (size_t i = 0; same && i < h.size(); ++i) same = h[i].name == shownNames_[i];
+        if (same) return;
+        shownNames_.clear();
+        for (const Transaction& t : h) shownNames_.push_back(t.name);
+        shownPos_ = pos;
+    }
     filling_ = true;
     list_->clear();
     list_->addItem("(opened document)");
-    const auto& h = ctx_->doc.history();
-    const size_t pos = ctx_->doc.undoPosition();
     for (size_t i = 0; i < h.size(); ++i) {
         auto* item = new QListWidgetItem(qs(h[i].name));
         if (i >= pos) item->setForeground(QColor(120, 120, 120));
@@ -867,26 +987,58 @@ SpawnsPanel::SpawnsPanel(EditorContext* ctx, QWidget* parent) : QWidget(parent),
     table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     lay->addWidget(table_, 1);
-    connect(table_, &QTableWidget::cellClicked, this, [this](int row, int) {
-        if (row < 0 || size_t(row) >= ctx_->scene.spawns.size()) return;
+    auto frame = [this](int row) {
+        if (filling_ || row < 0 || size_t(row) >= ctx_->scene.spawns.size()) return;
         const auto& s = ctx_->scene.spawns[size_t(row)];
         ctx_->cam.pos = s.origin + Vec3{0, 0, 60} - ctx_->cam.forward() * 160.0;
         ctx_->gridCenterH = s.origin[ctx_->axisH()];
         ctx_->gridCenterV = s.origin[ctx_->axisV()];
         ctx_->cameraMoved();
+    };
+    // A click, the arrow keys (the current row) and Enter (the current row again) all go to the spawn.
+    connect(table_, &QTableWidget::cellClicked, this, [frame](int row, int) { frame(row); });
+    connect(table_, &QTableWidget::currentCellChanged, this, [frame](int row, int, int oldRow, int) {
+        if (row != oldRow) frame(row);
     });
+    connect(table_, &QTableWidget::cellActivated, this, [frame](int row, int) { frame(row); });
     connect(ctx_, &EditorContext::documentChanged, this, &SpawnsPanel::refresh);
     refresh();
 }
 
+namespace {
+// What the spawns table shows (index, name, origin, yaw): another map with as many spawns still rebuilds the table.
+quint64 spawnsSignature(const std::vector<Iw8SpawnRecord>& sp) {
+    quint64 h = 1469598103934665603ull;
+    auto mix = [&h](quint64 v) { h = (h ^ v) * 1099511628211ull; };
+    auto mixDouble = [&mix](double d) {
+        quint64 bits = 0;
+        std::memcpy(&bits, &d, sizeof bits);
+        mix(bits);
+    };
+    mix(sp.size());
+    for (const auto& s : sp) {
+        mix(s.index);
+        for (unsigned char c : s.name) mix(c);
+        mixDouble(s.origin.x);
+        mixDouble(s.origin.y);
+        mixDouble(s.origin.z);
+        mixDouble(s.angles.y);
+    }
+    return h;
+}
+}  // namespace
+
 void SpawnsPanel::refresh() {
     const auto& sp = ctx_->scene.spawns;
-    if (sp.size() == shown_) return;
-    shown_ = sp.size();
+    const quint64 sig = spawnsSignature(sp);
+    if (sig == shown_) return;
+    shown_ = sig;
+    filling_ = true;  // rebuilding the rows moves the current cell: the camera stays where it is
     if (sp.empty()) {
         info_->setText("Open an IW8 MapEnts dump (ACTS map_ents .asset.json, Replay 1.20) to list its compiled spawnList. "
                        "IW8 keeps spawn points in MapEnts::spawnList, not in the entity string.");
         table_->setRowCount(0);
+        filling_ = false;
         return;
     }
     info_->setText(QString("%1 compiled spawnList records (read-only; write-back is milestone 2)").arg(sp.size()));
@@ -899,6 +1051,7 @@ void SpawnsPanel::refresh() {
                                                            formatFloat32(float(s.origin.z)))));
         table_->setItem(int(i), 3, new QTableWidgetItem(qs(formatFloat32(float(s.angles.y)))));
     }
+    filling_ = false;
 }
 
 // ------------------------------------------------------------------ hotkeys

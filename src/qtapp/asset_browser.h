@@ -1,4 +1,6 @@
-// IW8 Radiant Suite (Qt shell) - stock IW8 asset browser (materials and models).
+// IW8 Radiant Suite (Qt shell) - stock IW8 asset browser (materials, models, effects, images, sounds). Double-click or
+// Enter applies / places the asset; right-click has Favourites, Tags, Copy Name (and Show Image in Folder for materials
+// with an exported colour image).
 // Names come from data/asset_catalog/iw8_{materials,models}.tsv (tools/build_asset_catalog.py, built from x64-zt
 // verifyzone traces of the Replay 1.20 stock zones). Thumbnails come from ACTS exports indexed in
 // data/stock_assets/<zone>/index.json (tools/acts_asset_index.py) and are decoded on demand.
@@ -12,6 +14,7 @@
 
 #include "editor_context.h"
 
+class QAbstractItemView;
 class QLineEdit;
 class QListView;
 class QCheckBox;
@@ -25,6 +28,10 @@ namespace iw8r::qt {
 // Drag and drop from the browsers into the views (4.24): the mime type and its text, "<kind>\t<name>\t<loop 0|1>" with
 // kind materials / models / effects / sounds.
 inline const char* kAssetMimeType = "application/x-iw8r-asset";
+
+// Down in a dock's search box moves the keyboard focus into its list, onto the first row when no row is current
+// (asset, prefab and outliner docks).
+void focusListOnDown(QLineEdit* search, QAbstractItemView* list);
 
 class AssetBrowser : public QWidget {
     Q_OBJECT
@@ -102,7 +109,12 @@ public:
 private:
     void load();
     void refreshUsedFilter();
+    // The line above the list: the catalogue summary when everything is listed, else "N of M shown" or "No matches".
+    void updateInfo();
     QIcon thumbnail(const QString& name);
+    QString filterText_;     // the search text the list is filtered by
+    QString catalogInfo_;    // the summary load() wrote
+    quint64 usedSignature_ = 0;  // the map content "In this map" was collected from (selection changes skip it)
 
     EditorContext* ctx_;
     Kind kind_;

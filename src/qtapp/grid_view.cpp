@@ -11,11 +11,13 @@
 #include <QDragEnterEvent>
 #include <QMimeData>
 #include <QAction>
+#include <QFocusEvent>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QResizeEvent>
 #include <QWheelEvent>
 #include <algorithm>
 #include <cmath>
@@ -38,6 +40,16 @@ bool isCameraKey(int k) {
             return false;
     }
 }
+
+// Minor grid line spacing as drawn: the grid size, doubled while the lines would be under 6 px apart.
+double minorGridStep(double grid, double scale) {
+    double minor = grid;
+    if (!(grid > 0) || !(scale > 0)) return minor;
+    while (minor * scale < 6.0) minor *= 2.0;
+    return minor;
+}
+
+constexpr double kWheelStep = 1.25;  // zoom factor of one wheel notch and of one Zoom In / Zoom Out
 }  // namespace
 
 GridView::GridView(EditorContext* ctx, QWidget* parent) : QWidget(parent), ctx_(ctx) {
@@ -57,16 +69,62 @@ QRect GridView::cameraMarkerRect() const {
 }
 
 void GridView::cameraChangedRepaint() {
+    const AxisScope axisScope(this);
     const double now[5] = {ctx_->cam.pos.x, ctx_->cam.pos.y, ctx_->cam.pos.z, ctx_->cam.yaw, ctx_->cam.pitch};
     bool moved = false;
     for (int k = 0; k < 5; ++k) moved |= now[k] != lastCam_[k];
+    // Center On Selection and Next View move this view's pan, zoom or axis along with the camera: then the whole
+    // view is new, not just the marker.
+    const double view[4] = {double(ctx_->gridAxis), ctx_->gridCenterH, ctx_->gridCenterV, ctx_->gridScale};
+    bool viewChanged = false;
+    for (int k = 0; k < 4; ++k) viewChanged |= view[k] != lastView_[k];
     const QRect marker = cameraMarkerRect();
     // Only the marker moved: the rest of the view is as it was. The light-overlap heat map follows the camera height,
     // so it repaints whole.
-    if (moved && !lastCameraMarker_.isNull() && !(ctx_->heatMap == 1 && now[2] != lastCam_[2])) update(QRegion(lastCameraMarker_) + QRegion(marker));
+    if (moved && !viewChanged && !lastCameraMarker_.isNull() && !(ctx_->heatMap == 1 && now[2] != lastCam_[2]))
+        update(QRegion(lastCameraMarker_) + QRegion(marker));
     else update();
     for (int k = 0; k < 5; ++k) lastCam_[k] = now[k];
+    for (int k = 0; k < 4; ++k) lastView_[k] = view[k];
     lastCameraMarker_ = marker;
+}
+
+void GridView::resizeEvent(QResizeEvent* e) {
+    // The main view's size, for fits made from the context (Center Camera On Selection).
+    if (fixedAxis_ < 0) ctx_->gridViewWidth = width(), ctx_->gridViewHeight = height();
+    QWidget::resizeEvent(e);
+}
+
+double GridView::drawnGridStep() const {
+    // Outside a handler a fixed-axis view's zoom is its own, not the context's.
+    const double scale = fixedAxis_ >= 0 && scopeDepth_ == 0 ? ownScale_ : ctx_->gridScale;
+    return minorGridStep(ctx_->doc.grid(), scale);
+}
+
+void GridView::zoomIn() {
+    const AxisScope axisScope(this);
+    ctx_->gridScale = EditorContext::clampGridScale(ctx_->gridScale * kWheelStep);
+    update();
+}
+
+void GridView::zoomOut() {
+    const AxisScope axisScope(this);
+    ctx_->gridScale = EditorContext::clampGridScale(ctx_->gridScale / kWheelStep);
+    update();
+}
+
+void GridView::fitAll() {
+    const AxisScope axisScope(this);
+    ctx_->scene.sync(ctx_->doc);
+    AABB b;
+    for (const app::PrimGeom* g : ctx_->scene.items())
+        if (g->bounds.valid()) b.add(g->bounds);
+    if (!b.valid()) {
+        ctx_->setStatus("Nothing in the map to fit");
+        return;
+    }
+    ctx_->fitGridTo(b, width(), height());
+    update();
 }
 
 QPointF GridView::worldToWidget(double h, double v) const {
@@ -140,8 +198,7 @@ void GridView::paintEvent(QPaintEvent*) {
     const int H = ctx_->axisH(), V = ctx_->axisV();
     const double scale = ctx_->gridScale;
     const double h0 = widgetToWorldH(0), h1 = widgetToWorldH(width()), v0 = widgetToWorldV(height()), v1 = widgetToWorldV(0);
-    double minor = ctx_->doc.grid();
-    while (minor * scale < 6.0) minor *= 2.0;
+    const double minor = minorGridStep(ctx_->doc.grid(), scale);
     const double major = std::max(64.0, minor * 8.0);
     auto lines = [&](double step, const QColor& c) {
         if (step * scale < 3.0) return;
@@ -332,13 +389,14 @@ void GridView::paintEvent(QPaintEvent*) {
         p.setBrush(Qt::NoBrush);
         p.drawRect(QRectF(worldToWidget(ctx_->region->mins[H], ctx_->region->maxs[V]), worldToWidget(ctx_->region->maxs[H], ctx_->region->mins[V])));
     }
-    // Tool previews: new brush rectangle, resized brushes, clipper points and line.
-    if (drag_ == Drag::Create) {
+    // Tool previews: new brush rectangle, resized brushes, clipper points and line (a press still within the drag
+    // threshold shows none: it may be a click).
+    if (drag_ == Drag::Create && dragLive_) {
         const AABB b = createBox();
         p.setPen(QPen(QColor(255, 220, 80), 1.5, Qt::DashLine));
         p.setBrush(QColor(255, 220, 80, 40));
         p.drawRect(QRectF(worldToWidget(b.mins[H], b.maxs[V]), worldToWidget(b.maxs[H], b.mins[V])));
-    } else if (drag_ == Drag::Resize) {
+    } else if (drag_ == Drag::Resize && dragLive_) {
         p.setPen(QPen(QColor(255, 220, 80), 1.5));
         p.setBrush(Qt::NoBrush);
         for (const auto& b : resizePreview())
@@ -421,8 +479,12 @@ void GridView::paintEvent(QPaintEvent*) {
     p.drawEllipse(c, 4, 4);
     if (len > 1e-6) p.drawLine(c, c + QPointF(f[H] / len * 24, -f[V] / len * 24));
     p.setPen(QColor(200, 200, 200));
-    p.drawText(QPointF(40, height() - 6),
-               QString("%1   grid %2%3").arg(kAxisNames[ctx_->gridAxis]).arg(QString::fromStdString(formatNumber(ctx_->doc.grid()))).arg(ctx_->snap ? "" : " (snap off)"));
+    QString label = QString("%1   grid %2").arg(kAxisNames[ctx_->gridAxis], QString::fromStdString(formatNumber(ctx_->doc.grid())));
+    // Zoomed out, the lines drawn are a multiple of the grid (they would crowd otherwise): say so, or the label reads
+    // as the spacing of the lines on screen.
+    if (minor != ctx_->doc.grid()) label += QString(" (lines every %1)").arg(QString::fromStdString(formatNumber(minor)));
+    if (!ctx_->snap) label += " (snap off)";
+    p.drawText(QPointF(40, height() - 6), label);
 }
 
 double GridView::snapped(double v) const { return ctx_->snap ? snapToGrid(v, ctx_->doc.grid()) : v; }
@@ -440,26 +502,28 @@ void GridView::terrainStamp(double h, double v) {
     const Vec3 center{h, v, 0};
     const double strength = ctx_->terrainStrength;
     using Mode = EditorContext::TerrainBrushMode;
+    bool changed = false;
     switch (ctx_->terrainBrushMode) {
         case Mode::Raise: {
             const double amount = terrainSign_ * g;  // one grid unit per step
-            editSelectedPatches(*ctx_, [&](const PatchGrid& pg) { return std::optional<PatchGrid>(raiseLower(pg, center, radius, amount)); }, "Terrain Brush");
+            changed = editSelectedPatches(*ctx_, [&](const PatchGrid& pg) { return std::optional<PatchGrid>(raiseLower(pg, center, radius, amount)); }, "Terrain Brush");
             break;
         }
         case Mode::Smooth:
-            editSelectedPatches(*ctx_, [&](const PatchGrid& pg) { return std::optional<PatchGrid>(smoothAround(pg, center, radius, strength)); }, "Terrain Brush");
+            changed = editSelectedPatches(*ctx_, [&](const PatchGrid& pg) { return std::optional<PatchGrid>(smoothAround(pg, center, radius, strength)); }, "Terrain Brush");
             break;
         case Mode::Flatten:
-            editSelectedPatches(*ctx_, [&](const PatchGrid& pg) { return std::optional<PatchGrid>(flattenAround(pg, center, radius, terrainFlatZ_, strength)); }, "Terrain Brush");
+            changed = editSelectedPatches(*ctx_, [&](const PatchGrid& pg) { return std::optional<PatchGrid>(flattenAround(pg, center, radius, terrainFlatZ_, strength)); }, "Terrain Brush");
             break;
         case Mode::Noise: {
             // Each step gets its own seed, so a stroke adds varied bumps instead of repeating one pattern.
             const uint32_t seed = terrainSeed_++;
             const double amplitude = strength * g;  // up to half a grid unit per step at the default strength
-            editSelectedPatches(*ctx_, [&](const PatchGrid& pg) { return std::optional<PatchGrid>(noiseAround(pg, center, radius, amplitude, seed)); }, "Terrain Brush");
+            changed = editSelectedPatches(*ctx_, [&](const PatchGrid& pg) { return std::optional<PatchGrid>(noiseAround(pg, center, radius, amplitude, seed)); }, "Terrain Brush");
             break;
         }
     }
+    terrainChanged_ |= changed;
     stampH_ = h;
     stampV_ = v;
 }
@@ -521,9 +585,179 @@ std::vector<ConvexBrush> GridView::resizePreview() const {
     return out;
 }
 
+const GridView::SelectionCache& GridView::selectionCache() {
+    if (selCache_.revision == ctx_->doc.revision()) return selCache_;
+    selCache_ = SelectionCache{};
+    selCache_.revision = ctx_->doc.revision();
+    selCache_.bounds = ctx_->doc.selectionBounds();
+    for (const auto& r : ctx_->doc.selection()) {
+        const EntityItem* it = r.item ? ctx_->doc.findItem(r.entity, r.item) : nullptr;
+        const Primitive* p = it ? it->prim() : nullptr;
+        if (!p || p->kind != PrimKind::Brush) continue;
+        ResizeTarget t{r.entity, r.item, brushFromPrimitive(*p), {}, p};
+        selCache_.centres.push_back(brushBounds(t.original).center());
+        selCache_.brushes.push_back(std::move(t));
+    }
+    return selCache_;
+}
+
+std::optional<GridView::EdgeHandle> GridView::edgeHandleAt(const QPointF& pos) const {
+    // Edge handles within 6 px; of those, the one nearest the viewer (top view: highest; front and side: lowest).
+    const int H = ctx_->axisH(), V = ctx_->axisV(), D = ctx_->axisD();
+    std::optional<EdgeHandle> best;
+    for (const EdgeHandle& h : selectionEdgeHandles()) {
+        const QPointF hp = worldToWidget(h.mid[H], h.mid[V]);
+        if (std::fabs(hp.x() - pos.x()) > 6 || std::fabs(hp.y() - pos.y()) > 6) continue;
+        if (!best || (D == 2 ? h.mid[D] > best->mid[D] : h.mid[D] < best->mid[D])) best = h;
+    }
+    return best;
+}
+
+std::vector<VertexHandle> GridView::vertexHandlesAt(const QPointF& pos) const {
+    // Every handle within 5 px of the point, at any depth (Radiant picks overlapping vertices together).
+    const int H = ctx_->axisH(), V = ctx_->axisV();
+    std::vector<VertexHandle> out;
+    for (const VertexHandle& h : selectionVertexHandles(*ctx_)) {
+        const QPointF hp = worldToWidget(h.pos[H], h.pos[V]);
+        if (std::fabs(hp.x() - pos.x()) <= 5 && std::fabs(hp.y() - pos.y()) <= 5) out.push_back(h);
+    }
+    return out;
+}
+
+bool GridView::overSelection(double wh, double wv) {
+    const int H = ctx_->axisH(), V = ctx_->axisV();
+    const AABB& b = selectionCache().bounds;
+    const double tol = 4.0 / ctx_->gridScale;
+    return b.valid() && wh >= b.mins[H] - tol && wh <= b.maxs[H] + tol && wv >= b.mins[V] - tol && wv <= b.maxs[V] + tol;
+}
+
+std::vector<size_t> GridView::facingFaces(const ConvexBrush& b, const Vec3& centre, double wh, double wv) const {
+    const int H = ctx_->axisH(), V = ctx_->axisV(), D = ctx_->axisD();
+    Vec3 click = centre;
+    click[H] = wh;
+    click[V] = wv;
+    std::vector<size_t> faces;
+    for (size_t f = 0; f < b.size(); ++f) {
+        const Plane& pl = b[f].plane;
+        if (std::fabs(pl.n[D]) > 1e-6) continue;  // faces seen edge-on in this view only
+        if (dot(pl.n, click) - pl.d > 0) faces.push_back(f);
+    }
+    return faces;
+}
+
+std::vector<GridView::ResizeTarget> GridView::resizeTargetsAt(double wh, double wv) {
+    // Outside the selection: the faces of selected brushes that face the point (Radiant face drag).
+    const SelectionCache& c = selectionCache();
+    std::vector<ResizeTarget> out;
+    for (size_t i = 0; i < c.brushes.size(); ++i) {
+        std::vector<size_t> faces = facingFaces(c.brushes[i].original, c.centres[i], wh, wv);
+        if (faces.empty()) continue;
+        ResizeTarget t = c.brushes[i];
+        t.faces = std::move(faces);
+        out.push_back(std::move(t));
+    }
+    return out;
+}
+
+void GridView::updateHoverCursor(const QPointF& pos, Qt::KeyboardModifiers mods) {
+    // What a left press here would do (the same tests and order as mousePressEvent): move the selection (SizeAll), drag
+    // a vertex or edge handle (SizeAll), resize faces (an arrow along the faces' direction); anything else (create,
+    // select with Shift, clipper, measure, terrain) keeps the normal cursor.
+    Qt::CursorShape shape = Qt::ArrowCursor;
+    const bool otherTool = ctx_->measureMode || ctx_->clipMode || (ctx_->terrainBrush && selectedPatchCount(*ctx_) > 0);
+    if (!otherTool && !(mods & Qt::ShiftModifier) && !ctx_->doc.selection().empty()) {
+        const double wh = widgetToWorldH(pos.x()), wv = widgetToWorldV(pos.y());
+        if ((ctx_->edgeMode && edgeHandleAt(pos)) || (ctx_->vertexMode && !vertexHandlesAt(pos).empty()) || overSelection(wh, wv)) {
+            shape = Qt::SizeAllCursor;
+        } else {
+            // The faces move along their normals: their sum, on screen (y down), picks the arrow.
+            const int H = ctx_->axisH(), V = ctx_->axisV();
+            const SelectionCache& c = selectionCache();
+            double dx = 0, dy = 0;
+            bool any = false;
+            for (size_t i = 0; i < c.brushes.size(); ++i)
+                for (size_t f : facingFaces(c.brushes[i].original, c.centres[i], wh, wv)) {
+                    dx += c.brushes[i].original[f].plane.n[H];
+                    dy -= c.brushes[i].original[f].plane.n[V];
+                    any = true;
+                }
+            const double ax = std::fabs(dx), ay = std::fabs(dy);
+            if (!any) shape = Qt::ArrowCursor;
+            else if (ax < 1e-9 && ay < 1e-9) shape = Qt::SizeAllCursor;  // opposite faces of several brushes
+            else if (ax > 2 * ay) shape = Qt::SizeHorCursor;
+            else if (ay > 2 * ax) shape = Qt::SizeVerCursor;
+            else shape = dx * dy > 0 ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor;
+        }
+    }
+    if (cursor().shape() != shape) setCursor(shape);
+}
+
+void GridView::startPendingDrag() {
+    dragLive_ = true;
+    if (drag_ == Drag::Move) ctx_->doc.beginDrag();
+}
+
+void GridView::cancelDrag(const QString& status) {
+    const Drag was = drag_;
+    drag_ = Drag::None;
+    dragLive_ = true;
+    resize_.clear();
+    edgeDrag_.reset();
+    vertexDrag_.clear();
+    if (was == Drag::None) return;
+    if (was == Drag::Pan) {
+        update();
+        return;
+    }
+    if (was == Drag::Move && ctx_->doc.dragging()) ctx_->doc.endDrag(false);  // the previewed move goes back
+    if (was == Drag::Terrain) {
+        ctx_->doc.endGroup();
+        // The stroke so far is one undo step: take it back.
+        if (terrainChanged_) ctx_->doc.undo();
+        terrainChanged_ = false;
+    }
+    if (was == Drag::Measure) ctx_->measureValid = false;
+    ctx_->documentEdited(status);
+}
+
+bool GridView::event(QEvent* e) {
+    // Escape is the window's Deselect shortcut (an application shortcut, so it would win): during a drag it reaches
+    // keyPressEvent instead and cancels the drag.
+    if (e->type() == QEvent::ShortcutOverride && editDragActive() && static_cast<QKeyEvent*>(e)->key() == Qt::Key_Escape) {
+        e->accept();
+        return true;
+    }
+    return QWidget::event(e);
+}
+
+void GridView::focusOutEvent(QFocusEvent* e) {
+    // Focus taken mid-drag (a dialog, another window): the release may never come here, so the drag goes back now.
+    if (drag_ != Drag::None) {
+        const AxisScope axisScope(this);
+        cancelDrag(drag_ == Drag::Pan ? QString() : QStringLiteral("Drag cancelled: the 2D view lost focus"));
+    }
+    QWidget::focusOutEvent(e);
+}
+
+void GridView::leaveEvent(QEvent* e) {
+    // The cursor left: the position readout and the terrain brush outline no longer apply.
+    hover_ = QPointF(-1e6, -1e6);
+    emit mouseLeft();
+    emit positionText(QString());
+    if (ctx_->terrainBrush) update();
+    QWidget::leaveEvent(e);
+}
+
 void GridView::mousePressEvent(QMouseEvent* e) {
     const AxisScope axisScope(this);
     setFocus(Qt::MouseFocusReason);
+    if (drag_ != Drag::None) {
+        // A second button during a drag is ignored: the drag ends on its own button's release.
+        if (!(e->button() & dragButtons()) && (e->buttons() & dragButtons())) return;
+        // The drag's own button came down again (or is up): its release was lost, so that drag goes back first.
+        cancelDrag(QString());
+    }
+    dragLive_ = true;
     const QPointF pos = e->position();
     lastPos_ = pressPos_ = pos;
     const double wh = widgetToWorldH(pos.x()), wv = widgetToWorldV(pos.y());
@@ -580,23 +814,17 @@ void GridView::mousePressEvent(QMouseEvent* e) {
             ctx_->setStatus("Terrain brush works in the XY top view (Ctrl+Tab)");
             return;
         }
-        // One undo step for the whole stroke; it ends on release (or Esc).
+        // One undo step for the whole stroke; it ends on release (Esc takes it back).
         terrainSign_ = (e->modifiers() & Qt::ShiftModifier) ? -1.0 : 1.0;
         terrainFlatZ_ = nearestPatchControlZ(*ctx_, wh, wv);  // Flatten target: the point nearest the stroke start
         ctx_->doc.beginGroup("Terrain Brush");
+        terrainChanged_ = false;
         drag_ = Drag::Terrain;
         terrainStamp(wh, wv);
         return;
     }
     if (ctx_->edgeMode && !(e->modifiers() & Qt::ShiftModifier)) {
-        // Edge handles within 6 px; of those, the one nearest the viewer (top view: highest; front and side: lowest).
-        std::optional<EdgeHandle> best;
-        for (const EdgeHandle& h : selectionEdgeHandles()) {
-            const QPointF hp = worldToWidget(h.mid[H], h.mid[V]);
-            if (std::fabs(hp.x() - pos.x()) > 6 || std::fabs(hp.y() - pos.y()) > 6) continue;
-            if (!best || (D == 2 ? h.mid[D] > best->mid[D] : h.mid[D] < best->mid[D])) best = h;
-        }
-        if (best) {
+        if (auto best = edgeHandleAt(pos)) {
             edgeDrag_ = best;
             drag_ = Drag::Edge;
             ctx_->setStatus("Edge mode: drag the midpoint handle; the brush must stay convex");
@@ -604,12 +832,7 @@ void GridView::mousePressEvent(QMouseEvent* e) {
         }
     }
     if (ctx_->vertexMode && !(e->modifiers() & Qt::ShiftModifier)) {
-        // Every handle within 5 px of the click, at any depth (Radiant picks overlapping vertices together).
-        vertexDrag_.clear();
-        for (const VertexHandle& h : selectionVertexHandles(*ctx_)) {
-            const QPointF hp = worldToWidget(h.pos[H], h.pos[V]);
-            if (std::fabs(hp.x() - pos.x()) <= 5 && std::fabs(hp.y() - pos.y()) <= 5) vertexDrag_.push_back(h);
-        }
+        vertexDrag_ = vertexHandlesAt(pos);
         if (!vertexDrag_.empty()) {
             drag_ = Drag::Vertex;
             ctx_->setStatus(QString("Vertex mode: dragging %1 vertex handle(s)").arg(vertexDrag_.size()));
@@ -629,36 +852,22 @@ void GridView::mousePressEvent(QMouseEvent* e) {
         }
         return;
     }
+    // Create, move and resize wait until the mouse has moved kDragThreshold px (startPendingDrag): a click on the
+    // selection must not nudge it, and a click in empty space must not leave a sliver brush.
     if (ctx_->doc.selection().empty()) {
         drag_ = Drag::Create;
+        dragLive_ = false;
         return;
     }
-    const AABB b = ctx_->doc.selectionBounds();
-    const double tol = 4.0 / ctx_->gridScale;
-    if (b.valid() && wh >= b.mins[H] - tol && wh <= b.maxs[H] + tol && wv >= b.mins[V] - tol && wv <= b.maxs[V] + tol) {
-        drag_ = Drag::Move;
-        ctx_->doc.beginDrag();
+    if (overSelection(wh, wv)) {
+        drag_ = Drag::Move;  // beginDrag once the drag goes live
+        dragLive_ = false;
         return;
     }
     // Outside the selection: resize the faces of selected brushes that face the click (Radiant face drag).
-    resize_.clear();
-    for (const auto& r : ctx_->doc.selection()) {
-        const EntityItem* it = r.item ? ctx_->doc.findItem(r.entity, r.item) : nullptr;
-        const Primitive* p = it ? it->prim() : nullptr;
-        if (!p || p->kind != PrimKind::Brush) continue;
-        ResizeTarget t{r.entity, r.item, brushFromPrimitive(*p), {}, p};
-        const AABB bb = brushBounds(t.original);
-        Vec3 click = bb.center();
-        click[H] = wh;
-        click[V] = wv;
-        for (size_t f = 0; f < t.original.size(); ++f) {
-            const Plane& pl = t.original[f].plane;
-            if (std::fabs(pl.n[D]) > 1e-6) continue;  // faces seen edge-on in this view only
-            if (dot(pl.n, click) - pl.d > 0) t.faces.push_back(f);
-        }
-        if (!t.faces.empty()) resize_.push_back(std::move(t));
-    }
+    resize_ = resizeTargetsAt(wh, wv);
     drag_ = resize_.empty() ? Drag::None : Drag::Resize;
+    dragLive_ = resize_.empty();
 }
 
 void GridView::mouseMoveEvent(QMouseEvent* e) {
@@ -670,15 +879,30 @@ void GridView::mouseMoveEvent(QMouseEvent* e) {
     w[H] = snapped(wh);
     w[V] = snapped(wv);
     emit mouseWorld(w.x, w.y, w.z);
+    emit positionText(QString("%1 %2   %3 %4")
+                          .arg(QChar("xyz"[H])).arg(QString::fromStdString(formatNumber(w[H])))
+                          .arg(QChar("xyz"[V])).arg(QString::fromStdString(formatNumber(w[V]))));
     hover_ = pos;
+    // A drag whose button is no longer down lost its release (another window took the mouse): put it back.
+    if (drag_ != Drag::None && !(e->buttons() & dragButtons()))
+        cancelDrag(drag_ == Drag::Pan ? QString() : QStringLiteral("Drag cancelled: the mouse button was released outside the view"));
+    if (drag_ == Drag::None) {
+        updateHoverCursor(pos, e->modifiers());
+        return;
+    }
+    if (!dragLive_) {
+        if ((pos - pressPos_).manhattanLength() < kDragThreshold) return;
+        startPendingDrag();
+    }
     dragNowH_ = wh;
     dragNowV_ = wv;
+    // Progress messages below are transient (setTransientStatus): one per mouse move would flood the Console log.
     switch (drag_) {
         case Drag::Measure: {
             ctx_->measureB[H] = snapped(wh);
             ctx_->measureB[V] = snapped(wv);
             const Vec3 d = ctx_->measureB - ctx_->measureA;
-            ctx_->setStatus(QString("Measure %1 units (%2 %3, %4 %5)")
+            ctx_->setTransientStatus(QString("Measure %1 units (%2 %3, %4 %5)")
                                 .arg(QString::fromStdString(formatNumber(length(d))))
                                 .arg(QChar("XYZ"[H])).arg(QString::fromStdString(formatNumber(d[H])))
                                 .arg(QChar("XYZ"[V])).arg(QString::fromStdString(formatNumber(d[V]))));
@@ -698,12 +922,13 @@ void GridView::mouseMoveEvent(QMouseEvent* e) {
             d[H] = snapped(wh - dragStartH_);
             d[V] = snapped(wv - dragStartV_);
             ctx_->doc.updateDrag(d);
-            ctx_->documentEdited(QString("Move %1 %2").arg(QString::fromStdString(formatNumber(d[H])), QString::fromStdString(formatNumber(d[V]))));
+            ctx_->documentEdited();
+            ctx_->setTransientStatus(QString("Move %1 %2").arg(QString::fromStdString(formatNumber(d[H])), QString::fromStdString(formatNumber(d[V]))));
             break;
         }
         case Drag::Create: {
             const AABB b = createBox();
-            ctx_->setStatus(QString("New brush %1 x %2 x %3")
+            ctx_->setTransientStatus(QString("New brush %1 x %2 x %3")
                                 .arg(QString::fromStdString(formatNumber(b.maxs.x - b.mins.x)),
                                      QString::fromStdString(formatNumber(b.maxs.y - b.mins.y)),
                                      QString::fromStdString(formatNumber(b.maxs.z - b.mins.z))));
@@ -715,16 +940,16 @@ void GridView::mouseMoveEvent(QMouseEvent* e) {
             break;
         case Drag::Vertex: {
             const Vec3 d = vertexDelta();
-            ctx_->setStatus(QString("Move vertices %1 %2").arg(QString::fromStdString(formatNumber(d[H])), QString::fromStdString(formatNumber(d[V]))));
+            ctx_->setTransientStatus(QString("Move vertices %1 %2").arg(QString::fromStdString(formatNumber(d[H])), QString::fromStdString(formatNumber(d[V]))));
             update();
             break;
         }
         case Drag::Edge: {
             const Vec3 d = vertexDelta();
             if (edgeDrag_ && moveBrushEdge(edgeDrag_->brush, edgeDrag_->edge, d))
-                ctx_->setStatus(QString("Move edge %1 %2").arg(QString::fromStdString(formatNumber(d[H])), QString::fromStdString(formatNumber(d[V]))));
+                ctx_->setTransientStatus(QString("Move edge %1 %2").arg(QString::fromStdString(formatNumber(d[H])), QString::fromStdString(formatNumber(d[V]))));
             else
-                ctx_->setStatus("That edge move would make the brush non-convex or flip a face");
+                ctx_->setTransientStatus("That edge move would make the brush non-convex or flip a face");
             update();
             break;
         }
@@ -739,8 +964,15 @@ void GridView::mouseMoveEvent(QMouseEvent* e) {
 
 void GridView::mouseReleaseEvent(QMouseEvent* e) {
     const AxisScope axisScope(this);
-    const Drag was = drag_;
+    // Only the drag's own button ends it (a second button pressed during the drag was ignored).
+    if (drag_ != Drag::None && !(e->button() & dragButtons())) return;
+    // A press that never moved past the threshold is a click: nothing moves, no brush, no resize. (A release far from
+    // the press without a move event in between still counts as a drag.)
+    if (!dragLive_ && (e->position() - pressPos_).manhattanLength() >= kDragThreshold) startPendingDrag();
+    const Drag was = dragLive_ ? drag_ : Drag::None;
     drag_ = Drag::None;
+    dragLive_ = true;
+    if (was == Drag::None) resize_.clear();
     if (was != Drag::Pan && was != Drag::None) {
         // The drag ends where the button is released, even without a final move event.
         dragNowH_ = widgetToWorldH(e->position().x());
@@ -762,8 +994,18 @@ void GridView::mouseReleaseEvent(QMouseEvent* e) {
         ctx_->documentEdited(committed ? QStringLiteral("Moved (undoable)") : QString());
     } else if (was == Drag::Create) {
         const AABB b = createBox();
-        if (createBoxBrush(*ctx_, b)) ctx_->documentEdited("Created brush with " + QString::fromStdString(ctx_->currentMaterial));
-        else update();
+        const int H = ctx_->axisH(), V = ctx_->axisV();
+        // At least one grid unit across on both dragged axes; with snap off (sizes are free) at least one unit.
+        const double least = ctx_->snap ? ctx_->doc.grid() : 1.0;
+        if (b.maxs[H] - b.mins[H] < least - 1e-6 || b.maxs[V] - b.mins[V] < least - 1e-6) {
+            ctx_->setStatus(QString("No brush created: drag at least %1 unit%2 on both axes")
+                                .arg(QString::fromStdString(formatNumber(least)), least == 1.0 ? "" : "s"));
+            update();
+        } else if (createBoxBrush(*ctx_, b)) {
+            ctx_->documentEdited("Created brush with " + QString::fromStdString(ctx_->currentMaterial));
+        } else {
+            update();
+        }
     } else if (was == Drag::Vertex) {
         size_t rejected = 0, lockedSkipped = 0;
         const bool moved = moveVertexHandles(*ctx_, vertexDrag_, vertexDelta(), &rejected, &lockedSkipped);
@@ -804,6 +1046,7 @@ void GridView::mouseReleaseEvent(QMouseEvent* e) {
         }
     } else if (was == Drag::Terrain) {
         ctx_->doc.endGroup();
+        terrainChanged_ = false;
         ctx_->documentEdited("Terrain brush stroke (undoable)");
     }
 }
@@ -877,7 +1120,7 @@ void GridView::wheelEvent(QWheelEvent* e) {
     const QPointF pos = e->position();
     const double wh = widgetToWorldH(pos.x()), wv = widgetToWorldV(pos.y());
     const double before = ctx_->gridScale;
-    ctx_->gridScale = std::clamp(ctx_->gridScale * std::pow(1.25, e->angleDelta().y() / 120.0), 0.002, 64.0);
+    ctx_->gridScale = EditorContext::clampGridScale(ctx_->gridScale * std::pow(kWheelStep, e->angleDelta().y() / 120.0));
     ctx_->gridCenterH = wh - (wh - ctx_->gridCenterH) * before / ctx_->gridScale;
     ctx_->gridCenterV = wv - (wv - ctx_->gridCenterV) * before / ctx_->gridScale;
     update();
@@ -894,13 +1137,9 @@ void GridView::keyPressEvent(QKeyEvent* e) {
         if (QAction* a = window()->findChild<QAction*>("ToggleEdgeMode")) a->trigger();
         return;
     }
-    if (e->key() == Qt::Key_Escape && drag_ != Drag::None) {
-        if (drag_ == Drag::Move) ctx_->doc.endDrag(false);
-        if (drag_ == Drag::Terrain) ctx_->doc.endGroup();  // the steps so far stay as one undo step
-        drag_ = Drag::None;
-        resize_.clear();
-        edgeDrag_.reset();
-        ctx_->documentEdited(QStringLiteral("Cancelled"));
+    if (e->key() == Qt::Key_Escape && editDragActive()) {
+        // Reached through the ShortcutOverride in event(): the drag goes back (a terrain stroke is undone).
+        cancelDrag(QStringLiteral("Drag cancelled"));
         return;
     }
     QWidget::keyPressEvent(e);

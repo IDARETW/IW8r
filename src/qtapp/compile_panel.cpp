@@ -488,7 +488,30 @@ LogLevel CompilePanel::lineLevel(const QString& line) {
 }
 
 void CompilePanel::run(const std::vector<Stage>& stages) {
-    if (running_) return;
+    if (running_) {
+        // F7 again during a build: say so instead of doing nothing.
+        ctx_->setStatus("A build is already running (Compile panel: Cancel stops it)");
+        return;
+    }
+    // Every tool the queued stages need, before the first (a missing validator used to show up after minutes of zones).
+    {
+        QStringList need;
+        const auto has = [&](Stage s) { return std::find(stages.begin(), stages.end(), s) != stages.end(); };
+        if (has(Stage::Zones)) need << "zonetool" << "replay";
+        if (has(Stage::Validate)) need << "acts" << "replay" << "oodle";
+        need.removeDuplicates();
+        QStringList missing;
+        for (const QString& k : need)
+            if (!QFileInfo::exists(toolPath_(k))) missing << QString("%1 (%2)").arg(k, toolPath_(k).isEmpty() ? QString("not set") : toolPath_(k));
+        if (!missing.isEmpty()) {
+            log_->clear();
+            append("error: the build needs these tools, not found: " + missing.join(", ") + ". Set them in Tools > Tool Paths.", true);
+            status_->setText("<span style='color:#e66'>Not started:</span> missing tools (Tools &gt; Tool Paths)");
+            ctx_->setStatus("Build not started: " + QString::number(missing.size()) + " tool(s) missing (Tools > Tool Paths)");
+            emit finished(false);
+            return;
+        }
+    }
     if (beforeExtraction_ && std::find(stages.begin(), stages.end(), Stage::Extraction) != stages.end()) beforeExtraction_();
     queue_.assign(stages.begin(), stages.end());
     running_ = true;
@@ -501,7 +524,10 @@ void CompilePanel::run(const std::vector<Stage>& stages) {
     totalClock_.start();
     pendingKey_.clear();
     reusedZones_ = false;
-    append(QString("== %1  map %2  ->  %3").arg(QDateTime::currentDateTime().toString(Qt::ISODate), mapId(), buildRoot()), true);
+    append(QString("== %1  map %2  ->  %3%4")
+               .arg(QDateTime::currentDateTime().toString(Qt::ISODate), mapId(), buildRoot(),
+                    ctx_->doc.modified() ? QStringLiteral("  (unsaved edits included: the build uses the map as it is in the editor)") : QString()),
+           true);
     // 9.12 Map Doctor: findings with an automatic fix are reported before every build (applied only by the mapper).
     if (const auto fixes = diagnoseMap(ctx_->doc.map()); !fixes.empty()) {
         append(QString("warning: map doctor: %1 finding(s) with an automatic fix (Tools > Check Map > Fix All), e.g. %2")

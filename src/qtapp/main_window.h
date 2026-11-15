@@ -4,6 +4,7 @@
 #include "command_script.h"
 
 #include <QFileInfo>
+#include <QPointer>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QElapsedTimer>
@@ -36,6 +37,7 @@ struct ID3D11DeviceContext;
 namespace ads {
 class CDockManager;
 class CDockWidget;
+class CDockAreaWidget;
 }  // namespace ads
 
 #include "stock_lightgrid.h"
@@ -95,7 +97,11 @@ public:
     int lastShortcutRows() const { return lastShortcutRows_; }  // rows of the last Help > Keyboard Shortcuts sheet
     // Stock sky names for the Sun & Sky dialog (filled once the sky route lands; free text is always allowed).
     QStringList stockSkyList() const;  // stock sky names (stock_sky.h) for the Sun & Sky dialog
-    void showDock(const QString& name);  // opens a panel and makes it the current tab of its area
+    void showDock(const QString& name);
+    bool discardConfirmed_ = false;  // the close in progress has already asked about unsaved changes
+    bool discardConfirmed_ = false;  // the close in progress has already asked about unsaved changes
+    // Everything visible a click could select (Select All, Invert Selection): one ref per selection unit.
+    std::set<SelRef> visibleSelectable() const;  // opens a panel and makes it the current tab of its area
 
     void openPath(const QString& path);  // asks to save unsaved changes first
     bool saveTo(const QString& path, QString* err = nullptr);  // Save As without a dialog
@@ -465,6 +471,10 @@ private:
     void buildMenus();
     void buildDocks();
     void runNudge(int dh, int dv);
+    // Nudges in a row are one undo step (runNudge).
+    uint64_t nudgeRevision_ = 0;
+    Vec3 nudgeTotal_;
+    QElapsedTimer nudgeClock_;
     bool confirmDiscard();
     void loadDocument(const QString& path);
     bool save();
@@ -714,6 +724,24 @@ public:
 private:
     CompilePanel* compile_ = nullptr;
     ads::CDockWidget* compileDock_ = nullptr;
+    // The side bar (owner 2026-11-15): the panels of the old bottom strip, one at a time in the side section left of
+    // the camera, chosen from the icon bar on the window's left edge.
+    class QToolBar* sideBar_ = nullptr;
+    ads::CDockAreaWidget* sideArea_ = nullptr;  // cleared when ADS removes it (the area's destroyed signal)
+    std::vector<ads::CDockWidget*> sidePanels_;
+    std::map<ads::CDockWidget*, QAction*> sideActions_;
+    void toggleSidePanel(ads::CDockWidget* d);
+    void sidePanelToggled(ads::CDockWidget* d, bool open);
+    void widenSideSection();
+    // The area under the camera (Console, Compile, Replay Log, Build Budget, Script, Live Link), owner 2026-11-15.
+    ads::CDockAreaWidget* bottomArea_ = nullptr;
+    std::vector<ads::CDockWidget*> bottomPanels_;
+    QPointer<ads::CDockWidget> bottomFront_;  // the tab in front when the area was folded
+    bool isBottomPanel(const ads::CDockWidget* d) const;
+    bool bottomAreaOpen() const;
+    void setBottomArea(bool open, ads::CDockWidget* current = nullptr);
+    void heightenBottomArea();
+    void syncSideActions();
     QByteArray defaultDockState_;
     bool pendingDeploy_ = false;  // Compile and Deploy: deploy when the running compile succeeds
     bool pendingLoad_ = false;  // F5: load the map in game after the deploy
