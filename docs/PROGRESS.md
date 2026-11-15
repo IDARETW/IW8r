@@ -2,6 +2,13 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-14 evening: owner report, Cinder Rail (20:15 package, the map agent's door-clips build with carried stock
+  doors and cars) crashed the game in the lobby (0x140D97ADD). Research 134: Replay's preload mark stack holds 2;
+  scriptable > xmodel > physicsasset nested 3. Converter 51312871 (worktree + live, old exe out/zt_backup/
+  zonetool_11eef2fc.exe) lists the middle asset first; the same inputs rebuilt in C:\zsw-iw8r\crx read back clean
+  with ACTS (268 assets, 3 scriptables, 0 issues). Owner: rebuild + redeploy (TEST_CHECKLIST item 0). Also landed:
+  asset preview window, play preview behaviours, stock unlit / glass / placed effects, own decals (fa31881), stock
+  UV animation and vertex-colour props (433e7f2).
 - 2026-11-14: handover round. docs/HANDOVER.md rewritten for the current state; TEST_CHECKLIST starts its In game
   part with "the short list" (six items, most important first). tools/package_release.ps1 copies data\shaders (was
   missing from every package so far) and throws when a run-time file is missing; packaged exe smoke test ok.

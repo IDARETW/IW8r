@@ -63,6 +63,10 @@ Each point was run by me in a browser against a running editor; this list is for
 
 ## In game: the short list (2026-11-14), what only the game can settle, most important first
 
+0. **Cinder Rail lobby crash (fixed in the converter 51312871, research 134).** The package installed at 20:15 crashes
+   the game when the map is selected. Rebuild the map in the editor (F7; the new converter rebuilds the zones) and
+   deploy (F6), then select it in the lobby: it should load, with its two doors and two cars.
+
 Everything else in this file was proven without the game. If you look at nothing else, look at these, in this order.
 Each one names the longer section below that has the steps.
 

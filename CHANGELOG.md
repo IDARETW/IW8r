@@ -5,6 +5,15 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Fixed: a map with carried stock scriptable objects crashed the game when selected in the lobby** (owner report,
+  Cinder Rail 20:15 package, `0xc0000005` at `0x140d97add`; research 134). Replay keeps the preload marks of nested
+  assets in a stack of two; a stock door written with its model and the model's physics asset inline nested three
+  deep. The converter now lists such a model before the scriptable that uses it (as stock zones do) and refuses a zone
+  that would still nest three deep. Rebuild and redeploy the map; the installed 20:15 package still crashes.
+- **Stock UV animation** (research 133 section 1): scrolling and turning stock materials (Hideout's DVD sign and fan
+  blade, Shipment's clouds and water) move in the 3D view by the game's clock (constant 63).
+- **Stock vertex-colour props** (research 133 section 4): props of the vertex-colour material types take their tint
+  from the model's vertex colours in Game Lighting.
 - **Game Lighting draws more of what the game draws** (research 132):
   - stock `unlit_` materials (sign faces, glows, light cards) show their colour as is instead of being lit (G2);
   - stock see-through prop materials (glass, visors; blended, not decals) are drawn see-through after the other
