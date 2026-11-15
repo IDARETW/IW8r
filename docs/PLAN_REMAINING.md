@@ -13,6 +13,20 @@ Lighting = viewport and build side (proven offline; the in-game look stays with 
 On approval this plan is copied to `docs/PLAN_REMAINING.md`, and docs/PROGRESS.md points to it, so later sessions
 follow the same milestones.
 
+## Status at a glance (2026-11-15)
+Every milestone is built and proven offline. What is left of each is either a recorded decision (with its reason in
+the milestone's section) or a look in the game, which the owner said to ask for only when it is truly needed
+(docs/TEST_CHECKLIST.md lists those looks; HANDOVER.md section 4 the six that matter).
+
+| Milestone | State | Left |
+|---|---|---|
+| 0 Land the work in progress | done (a7bb3ae) | nothing |
+| 1 Lighting | done offline; every part of Game Lighting has a saved GUI toggle (View > Game Lighting Options, its Stock Map Detail submenu since 2026-11-15) and a GUI test | the screen distortion of two materials (G13, a one-unit shift, decided); the in-game look |
+| 2 Umbra | 2.1, 2.2 done; 2.4 done as an opt-in bake, its first game failure fixed offline (research 129) | 2.3 decided against (a mistake there hides objects in the game); the bake's in-game look |
+| 3 Web viewer | 3.1-3.6 done (render stream, protocol, every command and form, editing tools, security, tests) | nothing offline |
+| 4 Remaining pieces | each row has its state below; built offline except the decided ones | streamed Warzone tiles cannot be edited (the client loads no unsigned tile, research 116); own fonts / menus deferred; name-only model references not needed (carried copies work for every model); in-game looks |
+| 5 Handover | done: installer and zip (no settings, no game files), HANDOVER, USER_GUIDE, FEATURES, TEST_CHECKLIST, the editor parked on a compiled map | the owner's in-game checks, Cinder Rail first (TEST_CHECKLIST item 0) |
+
 ## Working rules (all milestones)
 - **Research first.** Any reverse engineering gets a note `docs/research/NNN_*.md` (labelled VERIFIED / INFERRED) and a
   line in the README index.

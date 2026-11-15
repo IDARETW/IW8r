@@ -318,7 +318,7 @@ struct PixelLight { float4 posRadius; float4 colorOuter; float4 dirInner; };
 cbuffer Lights : register(b2) { float4 lightCount; PixelLight lights[64]; };
 // View > Game Lighting: game0 = (on, LUT input scale, lightmap bound, 0), sun toward, sun colour, unbaked light.
 cbuffer Game : register(b4) { float4 game0; float4 gameSun; float4 gameSunCol; float4 gameSky; float4 gameFog[6]; float4 gameSkyScale; float4 gameTerrainCut; float4 gameAo;
-                              float4 fogK[8]; float4 gameTime; };  // gameTime.x: seconds (fmod 43200, research 133)  // fogK = the game's cb7[131..138] (core game_fog, research 111)
+                              float4 fogK[8]; float4 gameTime; };  // gameTime.x: seconds (fmod 43200, research 133); .y: stock detail off bits  // fogK = the game's cb7[131..138] (core game_fog, research 111)
 // The stock map's analytic fog, the game's own (research 111: cs_post_opaque_processes PO:39-214 with the exe's
 // constants cb7[131..138] in fogK, filled by core gameFogConstants; a 1:1 port of core gameFogEvaluate). The fog
 // spline image is zero on the stock maps (their visions name no spline) and is left out. gameFog[0].w = on.
@@ -502,6 +502,9 @@ Buffer<float4> lgvBoxes : register(t42);
 SamplerState lgvSamp : register(s4);
 // E(n) and E(-n) of a box at world point w (the static-model VS: saturate(M (w, 1)), trilinear, slot j channel c =
 // q[3 j + c] x DC_c x sqrt3 | sqrt5; band weights 1, 4/9, 1/16). False when the box is not in the bound buffer.
+// View > Game Lighting Options > Stock Map Detail, the parts turned off: 1 self-visibility, 2 detail layers, 4 clear
+// coats, 8 model displacement, 16 the thin-wall light push.
+uint stockDetailOff() { return (uint)(gameTime.y + 0.5); }
 bool lgvLight(uint box, float3 w, float3 n, out float3 e, out float3 back) {
     uint count = 0;
     lgvBoxes.GetDimensions(count);
@@ -512,7 +515,7 @@ bool lgvLight(uint box, float3 w, float3 n, out float3 e, out float3 back) {
     // The thin push (research 105 section 1.4): flag 4, axis flags & 3, toward the camera's side of the box.
     const uint flags = uint(max(lgvBoxes[box * 5u + 3u].w, 0.0) + 0.5);
     const uint axis = flags & 3u;
-    if ((flags & 4u) != 0u && axis < 3u) {
+    if ((flags & 4u) != 0u && axis < 3u && (stockDetailOff() & 16u) == 0u) {
         const float d = dot(lgvBoxes[box * 5u + axis], float4(eyeStart.xyz, 1.0));
         const float push = d > 1.0 ? 4.0 * saturate(4.0 * (d - 1.0)) : (d < 0.0 ? -4.0 * saturate(-4.0 * d) : 0.0);
         if (axis == 0u) c.x += push;
@@ -556,7 +559,7 @@ PSIn vs_tex_inst(VSInInst i) {
     }
     // Static-model displacement (research 133 section 3, VS_36fc68f3:231-235): along the vertex normal by the height
     // image's red channel x constant 45 (scale, bias; (2, -1) on stone_wall_01: +-1 unit).
-    if (dispC.x > 0.5 && dot(i.n, i.n) > 1e-12)
+    if (dispC.x > 0.5 && dot(i.n, i.n) > 1e-12 && (stockDetailOff() & 8u) == 0u)
         p.xyz += normalize(i.n) * (dispTex.SampleLevel(samp0, i.uv, 0).r * dispC.y + dispC.z);
     float3 w = float3(dot(i.r0, p), dot(i.r1, p), dot(i.r2, p));
     // The model's vertex normal turned by the instance (uniform scale; zero = none: the pixel shader derives one).
@@ -568,7 +571,7 @@ PSIn vs_tex_inst(VSInInst i) {
     o.uv1 = i.uv1;
     // Self visibility (research 105 section 4): turned by the placement like the normal, its length kept.
     o.sv = float4(0, 0, 0, -1);
-    if (i.sv.w > 0.004) {
+    if (i.sv.w > 0.004 && (stockDetailOff() & 1u) == 0u) {
         const float3 d = float3(dot(i.r0.xyz, i.sv.xyz), dot(i.r1.xyz, i.sv.xyz), dot(i.r2.xyz, i.sv.xyz));
         const float l = length(d);
         o.sv = float4(l > 1e-8 ? d * (length(i.sv.xyz) / l) : float3(0, 0, 0), saturate((i.sv.w * 127.0 - 1.0) / 126.0));
@@ -1154,7 +1157,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         if (gameAo.z > 0.5) return float4(t.rgb, outA);  // debug: the albedo as sampled
         float3 albedo = srgbToLinear3(t.rgb);
         // A prop's folded model layers (research 136), before its vertex colour (the game multiplies it after them).
-        if (stockRef && layerP.x < 0.5 && i.vc.w > 0.5 && foldL[0].x > 0.5) albedo = foldPropLayers(albedo, i);
+        if (stockRef && layerP.x < 0.5 && i.vc.w > 0.5 && foldL[0].x > 0.5 && (stockDetailOff() & 2u) == 0u) albedo = foldPropLayers(albedo, i);
         albedo *= stockRef ? i.vc.rgb : i.col.rgb;  // i.col: selection and brush entity tints; vc: a prop's vertex colour
         if (!stockRef && i.col.a < 0.5) {  // sky box
             // t.a: an RGBM face's multiplier (research 132 G10; 1 on an 8-bit face), the range folded into the scale.
@@ -1233,7 +1236,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 dualGloss = saturate(nmGloss * layerTint.z + layerTint.w * (matDual0.x + matDual1.x));
             }
             // A prop's folded layers (research 136 sections 1.2-1.3): normal (lerp / add), cavity and gloss by their weight.
-            if (stockRef && baseMat && i.vc.w > 0.5 && (foldL[0].x > 0.5 || foldL[4].x > 0.5)) {
+            if (stockRef && baseMat && i.vc.w > 0.5 && (foldL[0].x > 0.5 || foldL[4].x > 0.5) && (stockDetailOff() & 2u) == 0u) {
                 float g = saturate(max(nmGloss, 0.0) * layerTint.z + layerTint.w);
                 bool glossTouched = false;
                 [unroll] for (int fi = 0; fi < 2; ++fi) {
@@ -1455,7 +1458,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             c = diffAlbedo * indirect * kd * (1.0 - fmax) * aoMB + Fenv * S;
             // A prop's clear coat (research 137 section 1.2): a second environment lobe over the finished ambient part,
             // c x (1 - b Ec)^2 + b Ec x its reflection; the sun and lamps below ignore it.
-            if (i.vc.w > 0.5 && coatL[0].x > 0.5 && layerP.x < 0.5) {
+            if (i.vc.w > 0.5 && coatL[0].x > 0.5 && layerP.x < 0.5 && (stockDetailOff() & 4u) == 0u) {
                 const float2 cu = foldUv(i, coatL[1], coatL[2]);
                 // Its weight: no vertex-colour family (w = 1), the alpha map when flags & 8, the slot-126 mask channel.
                 const uint flC = (uint)(coatL[0].y + 0.5);
@@ -2889,7 +2892,7 @@ void SceneRenderer::drawAo(const float* viewProj) {
     ID3D11ShaderResourceView* in0[2] = {depthSrv_, nullptr};
     ctx_->PSSetShaderResources(0, 2, in0);
     static const bool oldSsao = std::getenv("IW8R_AO_SSAO") != nullptr;  // A/B: the stand-in SSAO
-    const bool gtao = !oldSsao && aoZTex_ && aoZPs_ && aoZDownPs_ && aoPointSampler_ && aoZRtv_[kAoZMips - 1];
+    const bool gtao = gtaoOn_ && !oldSsao && aoZTex_ && aoZPs_ && aoZDownPs_ && aoPointSampler_ && aoZRtv_[kAoZMips - 1];
     aoGtaoDrawn_ = gtao;
     if (gtao) {
         // The depth pyramid (research 135): mip 0 from the scene depth, mips 1-4 by 2 x 2 max.
@@ -3532,6 +3535,7 @@ void SceneRenderer::writeGameCb() {
     g[51] = hdrFrame_ ? 1.0f : 0.0f;  // the lit scene goes to the HDR target: no post chain in the shaders
     std::memcpy(&g[52], game_.fogK, sizeof(game_.fogK));
     g[84] = float(std::fmod(gameTime_, 43200.0));  // the game's clock wraps (research 133 section 0)
+    g[85] = float(stockDetailOff_);                  // Stock Map Detail parts turned off (stockDetailOff() in the shaders)
     ctx_->UpdateSubresource(cbGame_, 0, nullptr, g, 0, 0);
     ctx_->PSSetConstantBuffers(4, 1, &cbGame_);
     ctx_->VSSetConstantBuffers(4, 1, &cbGame_);  // the clock of the prop waves (vs_tex_inst)
@@ -4775,7 +4779,7 @@ void SceneRenderer::drawReferenceTexInstances() {
         }
     };
     for (int decalPass = 0; decalPass < 3; ++decalPass) {
-    if (decalPass == 1) drawPropLayers();
+    if (decalPass == 1 && (stockDetailOff_ & 2u) == 0u) drawPropLayers();
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
         const int passOf = g.translucent && g.decal == 0 ? 2 : g.decal > 0 ? 1 : 0;

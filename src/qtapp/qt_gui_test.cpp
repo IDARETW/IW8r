@@ -3213,7 +3213,16 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                                                                {"GamePostFx", "game/postFx"},
                                                                {"GameFilmGrain", "game/filmGrain"},
                                                                {"GameWhiteBalance", "game/whiteBalance"},
-                                                               {"GamePropLods", "game/propLods"}};
+                                                               {"GamePropLods", "game/propLods"},
+                                                               // Stock Map Detail (2026-11-15)
+                                                               {"GameGtao", "game/gtao"},
+                                                               {"GamePropLightGrid", "game/propLightGrid"},
+                                                               {"GamePropLightmaps", "game/propLightmaps"},
+                                                               {"GameSelfVisibility", "game/selfVisibility"},
+                                                               {"GamePropLayers", "game/propLayers"},
+                                                               {"GameClearCoats", "game/clearCoats"},
+                                                               {"GameModelDisplacement", "game/modelDisplacement"},
+                                                               {"GameThinPush", "game/thinPush"}};
         for (const auto& [id, key] : toggles) {
             QAction* a = w.action(id);
             r.check(a && a->isCheckable(), QString("%1 is a checkable Game Lighting option").arg(id));
@@ -3234,6 +3243,19 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             v->trigger();
         } else {
             r.check(false, "Volumetric Fog is in View > Game Lighting Options");
+        }
+        if (CameraView* cv = w.cameraView()) {
+            // Stock Map Detail: a shader part off sets its bit for the shaders, on clears it again.
+            const std::pair<const char*, uint32_t> bits[] = {{"GameSelfVisibility", 1u}, {"GamePropLayers", 2u}, {"GameClearCoats", 4u},
+                                                             {"GameModelDisplacement", 8u}, {"GameThinPush", 16u}};
+            for (const auto& [id, b] : bits) {
+                QAction* a = w.action(id);
+                if (!a || !a->isChecked()) continue;
+                a->trigger();
+                const bool off = (cv->stockDetailOff() & b) != 0;
+                a->trigger();
+                r.check(off && (cv->stockDetailOff() & b) == 0, QString("%1 off sets shader bit %2, on clears it").arg(id).arg(b));
+            }
         }
         for (const char* id : {"GameAoStrength", "GameExposureOverride", "GameRebake", "GameSunShadowDetail"})
             r.check(w.action(id) != nullptr, QString("%1 is in View > Game Lighting Options").arg(id));

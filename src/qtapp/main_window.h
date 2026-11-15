@@ -578,6 +578,9 @@ private:
         float box[6] = {1e30f, 1e30f, 1e30f, -1e30f, -1e30f, -1e30f};
     };
     QList<QPair<QString, int>> wantLods_;
+    // View > Game Lighting Options > Stock Map Detail: props lit from the light grid / their lightmap (game/...).
+    bool propLightGridOn_ = true, propLightmapsOn_ = true;
+    uint32_t stockDetailOff_ = 0;  // the shader parts turned off (CameraView::setStockDetailOff)
     bool propLodsEnabled_ = true;  // View > Game Lighting Options > Prop Levels of Detail (game/propLods)  // rebuildReferenceProps: prop LODs not cached yet (asked for at its end)
     std::map<std::string, std::shared_ptr<const RefPropMesh>> refPropBuilt_;
     // 12 floats per light grid volume of the reference zone's main transient zone (app::InstancedTexMesh::light: DC rgb,

@@ -20,6 +20,10 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 - **Stock maps stop re-checking their tool surfaces on every frame**: surfaces with a tool material (caulk, nodraw)
   have nothing to load but were never marked done, so the viewport kept looking for their images on every frame for as
   long as a stock map was open.
+- **View > Game Lighting Options > Stock Map Detail**: the stock-map look added over the last two days can be turned
+  off part by part for a comparison, and each choice is remembered: the game's ambient occlusion, props lit from the
+  light grid, lightmapped props, self-visibility, detail layers, clear coats, model displacement, the thin-wall light
+  push. All on by default.
 - Bench: the viewport bench now waits for the stock lighting reads (lightmap, probes, light grids), the terrain patch
   and every unresolved image before it measures; a Verdansk run with a warm cache had measured without them.
 - **Layered stock props show all their colour layers in Game Lighting** (research 136): dirt, paint, door and detail

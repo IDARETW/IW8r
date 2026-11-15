@@ -379,6 +379,9 @@ public slots:
     void setSunShadowMapSize(unsigned size) { renderer_.setSunShadowMapSize(size); update(); }
     unsigned sunShadowMapSize() const { return renderer_.sunShadowMapSize(); }
     void setGameAoEnabled(bool on) { renderer_.setGameAo(on); update(); }
+    void setGameAoGtao(bool on) { renderer_.setGameAoGtao(on); update(); }
+    void setStockDetailOff(uint32_t bits) { renderer_.setStockDetailOff(bits); update(); }
+    uint32_t stockDetailOff() const { return renderer_.stockDetailOff(); }
     void setGameSsrEnabled(bool on) { renderer_.setGameSsr(on); update(); }
     void setStockLightsEnabled(bool on) { renderer_.setStockLightsEnabled(on); update(); }
     void setLightShadowsEnabled(bool on) { renderer_.setLightShadowsEnabled(on); update(); }

@@ -2374,6 +2374,50 @@ void MainWindow::buildMenus() {
             refPropBuiltTris_ = 0;
             if (refProps_) QTimer::singleShot(0, this, [this] { rebuildReferenceProps(); });
         });
+        {
+            // The stock maps' rendering parts decoded from the game (research 105, 133, 135, 136, 137), each saved and
+            // on by default; off shows the viewport as it was before that part, for a comparison.
+            QMenu* sd = gm->addMenu("Stock Map Detail");
+            sd->setObjectName("stockDetailMenu");
+            const auto detail = [&](const char* id, const QString& text, const QString& key, std::function<void(bool)> apply) {
+                QAction* a = addCommand(sd, id, text, QKeySequence(), [this, id, key, apply] {
+                    QAction* self = action(id);
+                    const bool on = self && self->isChecked();
+                    Settings::instance().setValue(key, on);
+                    apply(on);
+                    ctx_.cameraMoved();
+                });
+                a->setCheckable(true);
+                const bool on = st.value(key, true).toBool();
+                a->setChecked(on);
+                apply(on);
+            };
+            const auto bit = [this](uint32_t b) {
+                return [this, b](bool on) {
+                    stockDetailOff_ = on ? (stockDetailOff_ & ~b) : (stockDetailOff_ | b);
+                    camera_->setStockDetailOff(stockDetailOff_);
+                };
+            };
+            const auto relight = [this] {
+                if (refProps_) QTimer::singleShot(0, this, [this] { relightReferenceProps(); });
+            };
+            detail("GameGtao", "Game's Ambient Occlusion (GTAO; off: simple SSAO)", "game/gtao", [this](bool on) { camera_->setGameAoGtao(on); });
+            detail("GamePropLightGrid", "Props Lit from the Light Grid", "game/propLightGrid", [this, relight](bool on) {
+                if (propLightGridOn_ == on) return;
+                propLightGridOn_ = on;
+                relight();
+            });
+            detail("GamePropLightmaps", "Lightmapped Props", "game/propLightmaps", [this, relight](bool on) {
+                if (propLightmapsOn_ == on) return;
+                propLightmapsOn_ = on;
+                relight();
+            });
+            detail("GameSelfVisibility", "Prop Self-Visibility", "game/selfVisibility", bit(1u));
+            detail("GamePropLayers", "Prop Detail Layers (dirt, paint, wear)", "game/propLayers", bit(2u));
+            detail("GameClearCoats", "Clear Coats", "game/clearCoats", bit(4u));
+            detail("GameModelDisplacement", "Model Displacement", "game/modelDisplacement", bit(8u));
+            detail("GameThinPush", "Thin-Wall Light Push", "game/thinPush", bit(16u));
+        }
         addCommand(gm, "GameAoStrength", "Ambient Occlusion Strength...", QKeySequence(), [this] {
             bool ok = false;
             const double v = QInputDialog::getDouble(this, "Ambient Occlusion Strength",
@@ -7510,14 +7554,14 @@ bool MainWindow::propLightFor(const PropLightKey& k, float out[12]) const {
     std::memcpy(out, none, sizeof(none));
     static const bool noPropLgv = std::getenv("IW8R_NO_PROP_LGV") != nullptr;  // A/B: the probes' light as before
     static const bool noPropLm = std::getenv("IW8R_NO_PROP_LIGHTMAP") != nullptr;
-    if (!noPropLm && k.lmapPage >= 0 && camera_ && camera_->hasStockLightmap()) {
+    if (!noPropLm && propLightmapsOn_ && k.lmapPage >= 0 && camera_ && camera_->hasStockLightmap()) {
         // A lightmapped prop (research 105 section 3.2): -4, its lightmap page, offset u, v, scale u, v.
         out[0] = -4.0f;
         out[1] = float(k.lmapPage);
         out[2] = k.lmapRect[0], out[3] = k.lmapRect[1], out[4] = k.lmapRect[2], out[5] = k.lmapRect[3];
         return true;
     }
-    if (noPropLgv || !k.probe) return false;
+    if (noPropLgv || !propLightGridOn_ || !k.probe) return false;
     const std::vector<float>* grid = nullptr;  // the prop's transient zone's grid: the main zone's, or its tile's
     if (k.transient == 0) {
         grid = refPropVolLight_.get();

@@ -399,6 +399,14 @@ the map's auto exposure, for comparing screenshots), **Re-bake Lighting Now**, a
 albedo, or where reflections are traced) are there too. **Sun Shadow Detail** sets the size of the sun's shadow maps: Low, Normal or High (High draws thin
 shadows such as cables sharply and uses 128 MB of video memory).
 
+**View > Game Lighting Options > Stock Map Detail** holds the parts of a stock map's look that were read from the game,
+all on by default and remembered: the game's ambient occlusion (off: a simpler one), props lit from the map's light grid,
+lightmapped props (rugs, blankets, the houses at the map's edge take the floor's baked light), prop self-visibility
+(dense grass and the inside of tyres and crates darker), prop detail layers (dirt, paint and wear on containers, cars,
+walls), clear coats (the faint sheen on corrugated siding and rubble), model displacement (the small relief of stone
+walls and dunes) and the thin-wall light push (thin walls and signs take the light of your side). Turn one off to see
+what it adds; the game itself always draws them.
+
 ### Decals
 
 A decal is a picture projected onto the surfaces inside a box: a stain, a painted marking, a scorch mark.

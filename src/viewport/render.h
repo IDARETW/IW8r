@@ -1032,6 +1032,11 @@ private:
 public:
     // View > Game Lighting: screen-space ambient occlusion on the indirect light (on by default).
     void setGameAo(bool on) { aoOn_ = on; }
+    // View > Game Lighting Options > Stock Map Detail: the game's GTAO (else the stand-in SSAO) and the shader parts
+    // turned off (1 self-visibility, 2 detail layers, 4 clear coats, 8 model displacement, 16 thin push).
+    void setGameAoGtao(bool on) { gtaoOn_ = on; }
+    void setStockDetailOff(uint32_t bits) { stockDetailOff_ = bits; }
+    uint32_t stockDetailOff() const { return stockDetailOff_; }
     // The side of the sun shadow maps in texels (the lit preview and Game Lighting): 1024, 2048 (the default) or 4096.
     // Other values go to the nearest of the three. The maps are made again at the next frame that draws shadows.
     void setSunShadowMapSize(unsigned size);
@@ -1040,6 +1045,8 @@ public:
     bool gameAoDrawn() const { return aoValid_; }
     bool gameAoGtao() const { return aoGtaoDrawn_; }  // the last AO was GTAO (research 135), not the stand-in SSAO
     bool aoGtaoDrawn_ = false;
+    bool gtaoOn_ = true;
+    uint32_t stockDetailOff_ = 0;
     bool gameHdrDrawn() const { return hdrFrame_; }
     // View > Game Lighting: screen-space reflections on the stock materials that trace them (on by default).
     void setGameSsr(bool on) { ssrOn_ = on; }
