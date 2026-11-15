@@ -106,6 +106,11 @@ all 13 of A028's (terrain, `XModel` 688, `XSurface` 192, `XModelSurfs` 96, `StMe
 - `GfxSunShadow` +19924..+20028: Replay has the cloud-shadow block at +19924 and lightDir at +19980 (type +20276 /
   +20332), conflicting with the typed `overlaySetup` (A026); needs a relayout. `GfxSunShadowPartition.farDist` is
   copied as an int. `GfxBackEndData` is probably 11801472 (`R_InitBackEndData` allocates 2 x 11801472; A058 has a note).
+- `cg_t` front: Replay constructs `xCam` at +0x74B8 (`cg_t::cg_t`, `CG_View_UpdateXCamIfActive`, `CG_Camera_Active_Get`;
+  A040) and A036 saw the same (+29880 vs live +29616): a +264 shift starts between +0x6420 and +0x74B8 and must be
+  given back before the confirmed tail (+599608 / +599688). Also open there: `refdef` (2752 at +26840) vs Replay's
+  `g_activeRefDef` at +26624, `clientNum` +25632 written as localClientNum, `ViewMotionSpring` at +0x67D8 overlapping
+  AdvancedSwayState writes, `SetViewModelTransform` reading viewModelAxis+16 (A036, A040).
 - `CgPredictedEntity` (now 896) and `MayhemObj` (now 5048) moved with `cpose_t` in wave 2 without a Replay check; the
   same move proved wrong for `cg_t`. Check their members after `pose` / `prePostPose` and restore if needed.
 - `DB_AssetEntryTable` (9314760) is too small: `DB_LinkXAssetEntry` writes a per-type head array at +9463304 (A035,
