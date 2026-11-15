@@ -44,9 +44,12 @@
 #include <QTextStream>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <memory>
 #include <set>
+#include <thread>
 
 #include "brush_tools.h"
+#include "worker_guard.h"
 #include "texture_decode.h"
 
 namespace iw8r::qt {
@@ -247,29 +250,16 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
                           "#tag: assets you tagged (right-click > Tags...).");
     options->addWidget(listMode_);
     if (kind == Kind::Materials || kind == Kind::Models) {
-        // Kits: stock families from tools/build_asset_kits.py (excluded_* kits are left out of the list).
-        QFile kf(repoData().filePath("asset_catalog/iw8_kits.tsv"));
-        const QString want = kind == Kind::Models ? "model" : "material";
-        if (kf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QTextStream in(&kf);
-            while (!in.atEnd()) {
-                const QStringList c = in.readLine().split('\t');
-                if (c.size() < 3 || c[0].startsWith('#') || c[0] == "kit" || c[1] != want || c[0].startsWith("excluded")) continue;
-                kitNames_[c[0]] << c[2];
-            }
-        }
-        if (!kitNames_.isEmpty()) {
-            kit_ = new QComboBox(this);
-            kit_->setObjectName("assetKit");
-            QStringList names = kitNames_.keys();
-            names.sort();
-            kit_->addItem("All kits");
-            for (const QString& k : names) kit_->addItem(QString(k).replace('_', ' '), k);
-            kit_->setToolTip("Stock families (containers, foliage, furniture, ...) from data/asset_catalog/iw8_kits.tsv");
-            kit_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-            kit_->setMinimumContentsLength(12);  // long kit names are elided, not widening the panel
-            options->addWidget(kit_);
-        }
+        // Kits: stock families from tools/build_asset_kits.py (excluded_* kits are left out of the list), read with the
+        // catalogue on the worker thread; the box is shown once applyCatalog() has filled it.
+        kit_ = new QComboBox(this);
+        kit_->setObjectName("assetKit");
+        kit_->addItem("All kits");
+        kit_->setToolTip("Stock families (containers, foliage, furniture, ...) from data/asset_catalog/iw8_kits.tsv");
+        kit_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        kit_->setMinimumContentsLength(12);  // long kit names are elided, not widening the panel
+        kit_->setVisible(false);
+        options->addWidget(kit_);
     }
     // The availability catalog (data/asset_catalog/iw8_<kind>_status.tsv, tools: --asset-audit): assets that cannot be
     // exported from Replay are hidden unless this is unticked; materials without a colour image are tinted.
@@ -515,21 +505,36 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
     thumbs->start();
 }
 
-void AssetBrowser::load() {
-    hiddenStreamOnly_ = 0;
-    hiddenMissing_ = 0;
+// The catalogue as the worker thread read it: plain values, made into list rows on the GUI thread (applyCatalog).
+struct AssetBrowser::Catalog {
+    struct Row {
+        QString name, tip;
+        int tone = 0;  // 0 normal, 1 builds grey (no colour image), 2 not available in a build, 3 a looping sound
+        bool loop = false;
+    };
+    std::vector<Row> rows;
+    int hiddenStreamOnly = 0, hiddenMissing = 0;
+    QString fileName;
+    QHash<QString, QStringList> kits;
+    QHash<QString, QString> imageFiles;
+};
+
+// Worker thread: reads files only (no widget, no QCoreApplication call: `dataDir` comes from the GUI thread).
+std::shared_ptr<AssetBrowser::Catalog> AssetBrowser::readCatalog(Kind kind, bool buildableOnly, const QString& dataDir, bool wantKits) {
+    auto c = std::make_shared<Catalog>();
+    const QDir data(dataDir);
     // Availability catalog: name -> (status, reason).
     QHash<QString, QPair<QString, QString>> status;
-    if (kind_ == Kind::Materials || kind_ == Kind::Models || kind_ == Kind::Effects || kind_ == Kind::Images) {
+    if (kind == Kind::Materials || kind == Kind::Models || kind == Kind::Effects || kind == Kind::Images) {
         // Every status file of the kind (an audit can run as two halves: iw8_<kind>_status.tsv and ..._status_b.tsv).
-        const QDir cat(repoData().filePath("asset_catalog"));
-        const QString pattern = kind_ == Kind::Materials ? "iw8_materials_status*.tsv"
-                                : kind_ == Kind::Effects ? "iw8_effects_status*.tsv"
-                                : kind_ == Kind::Images  ? "iw8_images_status*.tsv"
-                                                         : "iw8_models_status*.tsv";
+        const QDir cat(data.filePath("asset_catalog"));
+        const QString pattern = kind == Kind::Materials ? "iw8_materials_status*.tsv"
+                                : kind == Kind::Effects ? "iw8_effects_status*.tsv"
+                                : kind == Kind::Images  ? "iw8_images_status*.tsv"
+                                                        : "iw8_models_status*.tsv";
         for (const QString& fn : cat.entryList({pattern}, QDir::Files)) {
-        QFile sf(cat.filePath(fn));
-        if (sf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QFile sf(cat.filePath(fn));
+            if (!sf.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
             QTextStream in(&sf);
             while (!in.atEnd()) {
                 const QString l = in.readLine();
@@ -538,16 +543,14 @@ void AssetBrowser::load() {
                 if (f.size() >= 2 && f[1] != "ok") status.insert(f[0], {f[1], f.value(2)});
             }
         }
-        }
     }
-    const QDir data = repoData();
-    const QString file = data.filePath(kind_ == Kind::Materials ? "asset_catalog/iw8_materials.tsv"
-                                       : kind_ == Kind::Effects ? "asset_catalog/iw8_common_vfx.tsv"
-                                       : kind_ == Kind::Images  ? "asset_catalog/iw8_images.tsv"
-                                       : kind_ == Kind::Sounds  ? "asset_catalog/iw8_common_sounds.tsv"
-                                                                : "asset_catalog/iw8_models.tsv");
+    const QString file = data.filePath(kind == Kind::Materials ? "asset_catalog/iw8_materials.tsv"
+                                       : kind == Kind::Effects ? "asset_catalog/iw8_common_vfx.tsv"
+                                       : kind == Kind::Images  ? "asset_catalog/iw8_images.tsv"
+                                       : kind == Kind::Sounds  ? "asset_catalog/iw8_common_sounds.tsv"
+                                                               : "asset_catalog/iw8_models.tsv");
+    c->fileName = QFileInfo(file).fileName();
     QFile f(file);
-    QList<QStandardItem*> rows;
     if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QTextStream in(&f);
         in.readLine();  // header (names themselves may start with '#')
@@ -555,55 +558,47 @@ void AssetBrowser::load() {
             const QString line = in.readLine();
             const int tab = line.indexOf('\t');
             if (tab <= 0) continue;
-            auto* item = new QStandardItem(line.left(tab));
-            item->setEditable(false);
-            if (kind_ == Kind::Sounds) {
+            Catalog::Row row;
+            row.name = line.left(tab);
+            if (kind == Kind::Sounds) {
                 // alias<TAB>loop<TAB>distMax<TAB>zones
-                const QStringList f = line.split('\t');
-                if (line.startsWith('#') || f.size() < 4) {
-                    delete item;
-                    continue;
-                }
-                const bool loop = f[1] == "1";
-                item->setData(loop, Qt::UserRole + 2);
-                item->setToolTip(QString("%1\n%2, audible to %3 units\nzones: %4").arg(f[0], loop ? "loop" : "one-shot", f[2], f[3]));
-                if (loop) item->setForeground(QColor(120, 200, 255));
-                rows.append(item);
+                const QStringList s = line.split('\t');
+                if (line.startsWith('#') || s.size() < 4) continue;
+                row.loop = s[1] == "1";
+                row.tip = QString("%1\n%2, audible to %3 units\nzones: %4").arg(s[0], row.loop ? "loop" : "one-shot", s[2], s[3]);
+                row.tone = row.loop ? 3 : 0;
+                c->rows.push_back(std::move(row));
                 continue;
             }
-            if (kind_ == Kind::Models) {
+            if (kind == Kind::Models) {
                 // Weapons, attachments and cosmetics that only the streaming zone lists (8.9k of 15.6k) are not map
                 // props and ACTS cannot export them from there: left out so every listed model can be placed and built.
                 bool streamOnly = true;
                 for (const QString& z : line.mid(tab + 1).split(',', Qt::SkipEmptyParts))
                     streamOnly &= z.trimmed() == "global_stream_mp" || z.trimmed() == "techsets_global_stream_mp";
                 if (streamOnly) {
-                    ++hiddenStreamOnly_;
-                    delete item;
+                    ++c->hiddenStreamOnly;
                     continue;
                 }
             }
-            if (const auto st = status.constFind(line.left(tab)); st != status.constEnd()) {
-                if (st->first == "missing" && buildableOnly_ && buildableOnly_->isChecked()) {
-                    ++hiddenMissing_;
-                    delete item;
+            if (const auto st = status.constFind(row.name); st != status.constEnd()) {
+                if (st->first == "missing" && buildableOnly) {
+                    ++c->hiddenMissing;
                     continue;
                 }
-                item->setForeground(st->first == "grey" ? QColor(200, 160, 90) : QColor(130, 130, 130));
-                item->setToolTip(line.left(tab) + "\nzones: " + line.mid(tab + 1).left(300) +
-                                 (st->first == "grey" ? "\nBUILDS GREY: no colour image in Replay (" : "\nNOT AVAILABLE in a build (") +
-                                 st->second.left(200) + ")");
-                rows.append(item);
+                row.tone = st->first == "grey" ? 1 : 2;
+                row.tip = row.name + "\nzones: " + line.mid(tab + 1).left(300) +
+                          (st->first == "grey" ? "\nBUILDS GREY: no colour image in Replay (" : "\nNOT AVAILABLE in a build (") +
+                          st->second.left(200) + ")";
+                c->rows.push_back(std::move(row));
                 continue;
             }
-            item->setToolTip(line.left(tab) + "\nzones: " + line.mid(tab + 1).left(300));
-            rows.append(item);
+            row.tip = row.name + "\nzones: " + line.mid(tab + 1).left(300);
+            c->rows.push_back(std::move(row));
         }
     }
-    model_->clear();
-    for (auto* r : rows) model_->appendRow(r);
     // Colour images from ACTS exports (data/stock_assets/<zone>/index.json).
-    if (kind_ == Kind::Materials) {
+    if (kind == Kind::Materials) {
         const QDir assets(data.filePath("stock_assets"));
         for (const QString& zone : assets.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
             QFile idx(assets.filePath(zone + "/index.json"));
@@ -612,40 +607,104 @@ void AssetBrowser::load() {
             for (const auto& v : mats) {
                 const QJsonObject m = v.toObject();
                 const QString img = m.value("color_image_file").toString();
-                if (!img.isEmpty()) imageFiles_.insert(m.value("name").toString(), assets.filePath(zone + "/" + img));
+                if (!img.isEmpty()) c->imageFiles.insert(m.value("name").toString(), assets.filePath(zone + "/" + img));
             }
         }
     }
+    if (wantKits) {
+        QFile kf(data.filePath("asset_catalog/iw8_kits.tsv"));
+        const QString want = kind == Kind::Models ? "model" : "material";
+        if (kf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&kf);
+            while (!in.atEnd()) {
+                const QStringList k = in.readLine().split('\t');
+                if (k.size() < 3 || k[0].startsWith('#') || k[0] == "kit" || k[1] != want || k[0].startsWith("excluded")) continue;
+                c->kits[k[0]] << k[2];
+            }
+        }
+    }
+    return c;
+}
+
+void AssetBrowser::load() {
+    const int gen = ++loadGen_;
+    const bool buildable = buildableOnly_ && buildableOnly_->isChecked();
+    const QString dataDir = repoData().absolutePath();
+    const bool wantKits = kit_ && kitNames_.isEmpty();
+    const Kind kind = kind_;
+    if (model_->rowCount() == 0) info_->setText("Reading the catalogue...");
+    QPointer<AssetBrowser> self(this);
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, gen, kind, buildable, dataDir, wantKits] {
+        std::shared_ptr<const Catalog> cat = readCatalog(kind, buildable, dataDir, wantKits);
+        QMetaObject::invokeMethod(qApp, [self, gen, cat] {
+            if (self && gen == self->loadGen_) self->applyCatalog(*cat);  // a newer load() replaces this one
+        }, Qt::QueuedConnection);
+    })).detach();
+}
+
+QStandardItem* AssetBrowser::customItem(const QString& name, const QString& image) const {
+    auto* item = new QStandardItem(name);
+    item->setEditable(false);
+    item->setData(true, Qt::UserRole + 1);
+    item->setToolTip(name + "\ncustom material: " + image);
+    return item;
+}
+
+void AssetBrowser::applyCatalog(const Catalog& c) {
+    loadedGen_ = loadGen_;
+    hiddenStreamOnly_ = c.hiddenStreamOnly;
+    hiddenMissing_ = c.hiddenMissing;
+    QList<QStandardItem*> items;
+    items.reserve(qsizetype(customMaterials_.size()) + qsizetype(c.rows.size()));
+    for (const auto& [name, image] : customMaterials_) items.append(customItem(name, image));  // the custom ones first
+    for (const Catalog::Row& r : c.rows) {
+        auto* item = new QStandardItem(r.name);
+        item->setEditable(false);
+        item->setToolTip(r.tip);
+        if (kind_ == Kind::Sounds) item->setData(r.loop, Qt::UserRole + 2);
+        if (r.tone == 1) item->setForeground(QColor(200, 160, 90));
+        else if (r.tone == 2) item->setForeground(QColor(130, 130, 130));
+        else if (r.tone == 3) item->setForeground(QColor(120, 200, 255));
+        items.append(item);
+    }
+    model_->clear();
+    model_->invisibleRootItem()->appendRows(items);  // one insert (a row at a time made the proxy filter each)
+    for (auto it = c.imageFiles.constBegin(); it != c.imageFiles.constEnd(); ++it) imageFiles_.insert(it.key(), it.value());
+    if (kit_ && kitNames_.isEmpty() && !c.kits.isEmpty()) {
+        kitNames_ = c.kits;
+        QStringList names = kitNames_.keys();
+        names.sort();
+        const QSignalBlocker block(kit_);
+        for (const QString& k : names) kit_->addItem(QString(k).replace('_', ' '), k);
+        kit_->setVisible(true);
+    }
     if (kind_ == Kind::Effects) {
         // Narrow column: the summary drops the source file name (the search tooltip says what the list is), so it stays on one line.
-        catalogInfo_ = QString("%1 stock effects (Replay 1.20)").arg(rows.size())
+        catalogInfo_ = QString("%1 stock effects (Replay 1.20)").arg(c.rows.size())
                        + (hiddenMissing_ ? QString("; %1 not buildable hidden").arg(hiddenMissing_) : QString());
-        updateInfo();
-        return;
+    } else {
+        catalogInfo_ = (QString("%1 stock %2 (Replay 1.20, %3)%4")
+                           .arg(c.rows.size())
+                           .arg(kind_ == Kind::Materials ? "materials" : kind_ == Kind::Images ? "images"
+                                : kind_ == Kind::Sounds ? "sound aliases (blue = loop)" : "models")
+                           .arg(c.fileName)
+                           .arg(kind_ == Kind::Materials ? QString(", %1 with thumbnails").arg(imageFiles_.size())
+                                : kind_ == Kind::Models && hiddenStreamOnly_
+                                    ? QString("; %1 weapon/attachment models of the streaming zone not listed").arg(hiddenStreamOnly_)
+                                    : QString())
+                           + (hiddenMissing_ ? QString("; %1 not buildable hidden").arg(hiddenMissing_) : QString()));
     }
-    catalogInfo_ = (QString("%1 stock %2 (Replay 1.20, %3)%4")
-                       .arg(rows.size())
-                       .arg(kind_ == Kind::Materials ? "materials" : kind_ == Kind::Effects ? "effects" : kind_ == Kind::Images ? "images"
-                            : kind_ == Kind::Sounds ? "sound aliases (blue = loop)" : "models")
-                       .arg(QFileInfo(file).fileName())
-                       .arg(kind_ == Kind::Materials ? QString(", %1 with thumbnails").arg(imageFiles_.size())
-                            : kind_ == Kind::Models && hiddenStreamOnly_
-                                ? QString("; %1 weapon/attachment models of the streaming zone not listed").arg(hiddenStreamOnly_)
-                                : QString())
-                       + (hiddenMissing_ ? QString("; %1 not buildable hidden").arg(hiddenMissing_) : QString()));
     updateInfo();
+    emit catalogReady();
 }
 
 void AssetBrowser::setCustomMaterials(const QList<QPair<QString, QString>>& materials) {
+    customMaterials_ = materials;  // kept for a catalogue (re)load that lands later
     // Drop the previous custom rows (flagged with UserRole + 1), then insert the new ones at the top.
     for (int r = model_->rowCount() - 1; r >= 0; --r)
         if (model_->item(r)->data(Qt::UserRole + 1).toBool()) model_->removeRow(r);
     for (int i = materials.size() - 1; i >= 0; --i) {
-        auto* item = new QStandardItem(materials[i].first);
-        item->setEditable(false);
-        item->setData(true, Qt::UserRole + 1);
-        item->setToolTip(materials[i].first + "\ncustom material: " + materials[i].second);
-        model_->insertRow(0, item);
+        model_->insertRow(0, customItem(materials[i].first, materials[i].second));
         imageFiles_.insert(materials[i].first, materials[i].second);
         icons_.remove(materials[i].first);
     }

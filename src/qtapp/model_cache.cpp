@@ -1,5 +1,10 @@
 #include "model_cache.h"
 
+#include <future>
+#include <chrono>
+#include <QMetaObject>
+#include <QPointer>
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
@@ -108,7 +113,21 @@ ModelCache::ModelCache(ToolPathFn tools, QObject* parent) : QObject(parent), too
                                  QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/model_cache");
     QDir().mkpath(root_ + "/glb");
     QDir(root_ + "/w").removeRecursively();  // scratch left behind by a crash
-    loadIndex();
+    // The index is read on a worker thread; index() waits for it on first use.
+    indexLoad_ = std::async(std::launch::async, [root = root_, self = QPointer<ModelCache>(this)] {
+        auto index = readIndex(root);
+        QMetaObject::invokeMethod(qApp, [self] { if (self) emit self->indexLoaded(); }, Qt::QueuedConnection);
+        return index;
+    });
+}
+
+bool ModelCache::indexReady() const {
+    return !indexLoad_.valid() || indexLoad_.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+}
+
+std::map<QString, ModelCache::Entry>& ModelCache::index() const {
+    std::call_once(indexOnce_, [this] { indexData_ = indexLoad_.get(); });  // waits when the worker is not done yet
+    return indexData_;
 }
 
 ModelCache::~ModelCache() {
@@ -119,7 +138,7 @@ ModelCache::~ModelCache() {
 }
 
 std::optional<ModelCache::Entry> ModelCache::lookup(const QString& name) const {
-    if (auto it = index_.find(name); it != index_.end()) return it->second;
+    if (auto it = index().find(name); it != index().end()) return it->second;
     return std::nullopt;
 }
 
@@ -187,7 +206,7 @@ std::optional<XModelInfo> ModelCache::loadDetail(const QString& name) const {
 
 void ModelCache::refetch(const QString& name) {
     if (running_ || queued_.count(name) || !refetched_.insert(name).second) return;  // once per model and session
-    index_.erase(name);
+    index().erase(name);
     writeIndex();
     request({name});
 }
@@ -200,9 +219,9 @@ void ModelCache::setFallbackZones(const QStringList& zones) {
         return;
     }
     bool dropped = false;
-    for (auto it = index_.begin(); it != index_.end();) {
+    for (auto it = index().begin(); it != index().end();) {
         if (it->second.failed && it->second.error == "not listed in iw8_models.tsv") {
-            it = index_.erase(it);
+            it = index().erase(it);
             dropped = true;
         } else {
             ++it;
@@ -236,8 +255,8 @@ bool lightmappedModel(const QStringList& materials) {
 void ModelCache::refreshGeometry(const QStringList& names) {
     bool added = false;
     for (const QString& n : names) {
-        const auto it = index_.find(n);
-        if (it == index_.end() || it->second.failed || queued_.count(n)) continue;
+        const auto it = index().find(n);
+        if (it == index().end() || it->second.failed || queued_.count(n)) continue;
         const bool lmapUnknown = it->second.lmapUv < 0 && lightmappedModel(it->second.materials);
         if ((it->second.selfVis >= 0 && !lmapUnknown) || !refreshed_.insert(n).second) continue;
         refreshPending_ << n;
@@ -265,8 +284,8 @@ void ModelCache::startRefreshBatch() {
     QStringList names;
     while (!refreshPending_.isEmpty() && names.size() < kBatchModels) names << refreshPending_.takeFirst();
     for (const QString& n : names) {
-        const auto it = index_.find(n);
-        if (it == index_.end() || it->second.failed) continue;
+        const auto it = index().find(n);
+        if (it == index().end() || it->second.failed) continue;
         Work w;
         w.name = n;
         w.found = true;
@@ -335,9 +354,10 @@ std::optional<ImportedModel> ModelCache::loadGlb(const QString& path, const QStr
 // ---------------------------------------------------------------------------------------------------------------
 // Index and catalog
 
-void ModelCache::loadIndex() {
-    QFile f(root_ + "/index.json");
-    if (!f.open(QIODevice::ReadOnly)) return;
+std::map<QString, ModelCache::Entry> ModelCache::readIndex(const QString& root) {
+    std::map<QString, Entry> out;
+    QFile f(root + "/index.json");
+    if (!f.open(QIODevice::ReadOnly)) return out;
     const QJsonObject models = QJsonDocument::fromJson(f.readAll()).object().value("models").toObject();
     for (auto it = models.begin(); it != models.end(); ++it) {
         const QJsonObject o = it.value().toObject();
@@ -353,7 +373,7 @@ void ModelCache::loadIndex() {
         e.lmapUv = o.contains("lmapuv") ? o.value("lmapuv").toInt() : -1;
         if (!e.failed) {
             const QString glb = o.value("glb").toString();
-            e.glbPath = glb.isEmpty() ? QString() : QDir(root_).filePath(glb);
+            e.glbPath = glb.isEmpty() ? QString() : QDir(root).filePath(glb);
             if (e.glbPath.isEmpty() || !QFileInfo::exists(e.glbPath)) continue;  // removed by hand: resolve again
             if (!o.contains("materials")) continue;  // cached before material names were recorded: resolve again
             for (const QJsonValue v : o.value("materials").toArray()) e.materials << v.toString();
@@ -364,8 +384,9 @@ void ModelCache::loadIndex() {
         // file is still there), and LOD0 buffers named as a reference, which are now looked for in other zones.
         if (e.failed && (e.error == "cannot copy the GLB into the cache" || e.error.contains("contains a comma, which ACTS cannot request")))
             continue;
-        index_[e.name] = e;
+        out[e.name] = e;
     }
+    return out;
 }
 
 void ModelCache::loadCatalog() {
@@ -387,7 +408,7 @@ void ModelCache::loadCatalog() {
 void ModelCache::writeIndex() const {
     QJsonObject models;
     const QDir root(root_);
-    for (const auto& [name, e] : index_) {
+    for (const auto& [name, e] : index()) {
         QJsonObject o;
         o.insert("zone", e.zone);
         o.insert("lod0", e.lod0Surfs);
@@ -838,7 +859,7 @@ void ModelCache::finishBatch() {
         const bool ok = w.found && !w.glb.isEmpty() && w.error.isEmpty();
         if (refresh && !ok) {
             // A refresh that could not be done: the model keeps the GLB it had, now checked (not asked again).
-            if (const auto it = index_.find(w.name); it != index_.end())
+            if (const auto it = index().find(w.name); it != index().end())
                 it->second.selfVis = glbSelfVis(it->second.glbPath), it->second.lmapUv = glbLmapUv(it->second.glbPath);
             done << w.name;
             continue;
@@ -859,14 +880,14 @@ void ModelCache::finishBatch() {
             e.error = !w.error.isEmpty() ? w.error : w.found ? QStringLiteral("LOD0 GLB not exported")
                                                              : QStringLiteral("model table not found in any candidate zone");
         }
-        index_[w.name] = e;
+        index()[w.name] = e;
         done << w.name;
     }
     if (forgetNotListed_) {
         // Fallback zones were set while this batch ran: models that failed only because no catalogue lists them
         // are asked again, now with those zones.
         forgetNotListed_ = false;
-        std::erase_if(index_, [](const auto& kv) { return kv.second.failed && kv.second.error == "not listed in iw8_models.tsv"; });
+        std::erase_if(index(), [](const auto& kv) { return kv.second.failed && kv.second.error == "not listed in iw8_models.tsv"; });
     }
     writeIndex();
     works_.clear();

@@ -279,6 +279,23 @@ QString findMapEntsJson(const QString& dir) {
 }
 }  // namespace
 
+bool MainWindow::waitForCatalogs(int timeoutMs) {
+    const auto ready = [this] {
+        for (AssetBrowser* b : {materials_, models_, effects_, images_, sounds_})
+            if (b && !b->catalogLoaded()) return false;
+        // The material and model cache indexes too (also read on worker threads).
+        return (!matCache_ || matCache_->indexReady()) && (!modelCacheStock_ || modelCacheStock_->indexReady());
+    };
+    QElapsedTimer t;
+    t.start();
+    while (!ready() && t.elapsed() < timeoutMs) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        QThread::msleep(5);
+    }
+    QCoreApplication::processEvents();  // the indexLoaded handlers (thumbnail refresh)
+    return ready();
+}
+
 MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* parent) : QMainWindow(parent), dev_(dev), dc_(dc) {
     setAcceptDrops(true);
     ctx_.doc.loadFromText("iwmap 4\r\n\"000_Global\" flags active\r\n\"The Map\" flags \r\n// entity 0\r\n{\r\n\"classname\" \"worldspawn\"\r\n}\r\n", "", nullptr);
@@ -706,6 +723,10 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             return img;
         };
         materials_->setThumbnailSource([this, decodeFile, matThumbs, matFull, cached](const QString& m, bool* pending) -> QImage {
+            if (!matCache_->indexReady()) {  // still read on its worker thread: a placeholder, asked again on indexLoaded
+                *pending = true;
+                return {};
+            }
             if (auto e = matCache_->lookup(m)) {
                 if (e->failed) return {};
                 if (!e->colorDds.isEmpty() && !QFileInfo::exists(e->colorDds))
@@ -718,8 +739,10 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             return {};
         });
         connect(matCache_, &MaterialCache::materialReady, materials_, [this] { materials_->refreshThumbnails(); });
+        connect(matCache_, &MaterialCache::indexLoaded, materials_, [this] { materials_->refreshThumbnails(); });
         // Availability marks: what the caches tried and could not resolve is greyed with the reason.
         materials_->setStatusSource([this](const QString& m) -> QString {
+            if (!matCache_->indexReady()) return {};  // not known yet
             const auto e = matCache_->lookup(m);
             if (!e) return {};
             if (e->failed) return e->error.isEmpty() ? QString("the material was not found in any zone") : e->error;
@@ -727,10 +750,16 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             return {};
         });
         models_->setStatusSource([this](const QString& name) -> QString {
+            if (!modelCacheStock_->indexReady()) return {};  // not known yet
             const auto e = modelCacheStock_->lookup(name);
             return e && e->failed ? (e->error.isEmpty() ? QString("ACTS could not export the model") : e->error) : QString();
         });
+        connect(modelCacheStock_, &ModelCache::indexLoaded, models_, [this] { models_->refreshThumbnails(); });
         models_->setThumbnailSource([this, modelThumbs, modelFull, cached](const QString& name, bool* pending) -> QImage {
+            if (!modelCacheStock_->indexReady()) {  // still read on its worker thread: a placeholder, asked again on indexLoaded
+                *pending = true;
+                return {};
+            }
             const auto e = modelCacheStock_->lookup(name);
             if (!e) {
                 if (QImage pic = texturedThumbs() ? texturedThumbs()->picture(TexturedThumbs::Model, name) : QImage(); !pic.isNull())

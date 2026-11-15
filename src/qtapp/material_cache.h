@@ -21,6 +21,8 @@
 #include <array>
 #include <deque>
 #include <functional>
+#include <future>
+#include <mutex>
 #include <map>
 #include <optional>
 #include <set>
@@ -110,6 +112,8 @@ public:
     static bool mapLocalName(const QString& material);
     QString indexKey(const QString& material) const;
     bool busy() const;
+    // The index file has been read (on the worker thread): lookup() answers at once. Before, lookup() waits for it.
+    bool indexReady() const;
     QString cacheRoot() const;
     QString runRoot() const;  // ACTS run folders (short: long packed image names)
     // "<path> (WxH)" for a cached DDS, "none" for an empty path (Material Info).
@@ -117,6 +121,7 @@ public:
 
 signals:
     void materialReady(const QString& material);  // lookup() now returns an entry (possibly failed)
+    void indexLoaded();  // the index read on the worker thread is ready (indexReady())
     void progress(const QString& message);
 
 private:
@@ -160,8 +165,6 @@ private:
     };
 
     QStringList mapZones_;  // addMapZone, newest first
-    void loadIndex();
-    void loadSeeds();
     void loadCatalog();
     void writeIndex() const;
     QString replayZoneDir() const;
@@ -180,8 +183,20 @@ private:
 
     ToolPathFn tools_;
     QString root_;
-    std::map<QString, Entry> index_;   // from root_/index.json
-    std::map<QString, Entry> seeds_;   // from data/stock_assets (never written back)
+    // From root_/index.json and data/stock_assets (the seeds are never written back), read on a worker thread from
+    // the constructor (13 MB of JSON and a file check per cached image held the start-up for about 2 s): index() and
+    // seeds() wait for them on first use.
+    struct IndexFiles {
+        std::map<QString, Entry> index, seeds;
+    };
+    static std::map<QString, Entry> readIndex(const QString& root);
+    static std::map<QString, Entry> readSeeds(const QString& dataDir, const std::map<QString, Entry>& index);
+    std::map<QString, Entry>& index() const;
+    std::map<QString, Entry>& seeds() const;
+    mutable std::future<IndexFiles> indexLoad_;
+    mutable std::once_flag indexOnce_;
+    mutable std::map<QString, Entry> indexData_;
+    mutable std::map<QString, Entry> seedsData_;
     std::map<QString, QStringList> catalog_;  // material -> zones, from data/asset_catalog/iw8_materials.tsv
     // Colour images by name stem ("<stem>_c" before the '&'), from iw8_images.tsv: the fallback for a material whose
     // body is in no candidate zone (model materials referenced from another zone's xmodel).

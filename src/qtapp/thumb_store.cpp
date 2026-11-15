@@ -6,6 +6,8 @@
 #include <QFileInfo>
 #include <QSaveFile>
 
+#include <cstring>
+
 namespace iw8r::qt {
 
 namespace {
@@ -18,7 +20,38 @@ qint64 headerBytes(int nameLen) { return 2 + nameLen + 8 + 4; }
 
 ThumbStore::ThumbStore(const QString& packPath) : path_(packPath) {
     QDir().mkpath(QFileInfo(packPath).absolutePath());
-    load();
+    // The record index is read on a worker thread (opening and mapping the 74 MB material pack held the start-up for
+    // about half a second); the first use waits for it (ready()).
+    pending_ = std::async(std::launch::async, [p = packPath] { return scan(p); });
+}
+
+void ThumbStore::ready() const {
+    std::call_once(once_, [this] {
+        Scan s = pending_.get();
+        index_ = std::move(s.index);
+        fileBytes_ = s.fileBytes;
+        garbage_ = s.garbage;
+    });
+}
+
+bool ThumbStore::contains(const QString& name) const {
+    ready();
+    return index_.contains(name);
+}
+
+int ThumbStore::count() const {
+    ready();
+    return int(index_.size());
+}
+
+qint64 ThumbStore::fileBytes() const {
+    ready();
+    return fileBytes_;
+}
+
+qint64 ThumbStore::garbageBytes() const {
+    ready();
+    return garbage_;
 }
 
 quint64 ThumbStore::signatureOf(const QString& file) {
@@ -27,41 +60,53 @@ quint64 ThumbStore::signatureOf(const QString& file) {
     return (quint64(fi.size()) << 20) ^ quint64(fi.lastModified().toMSecsSinceEpoch());
 }
 
-void ThumbStore::load() {
-    index_.clear();
-    fileBytes_ = garbage_ = 0;
-    QFile f(path_);
-    if (!f.open(QIODevice::ReadOnly)) return;
-    if (f.read(8) != QByteArray(kMagic, 8)) return;
-    qint64 pos = 8;
+ThumbStore::Scan ThumbStore::scan(const QString& path) {
+    Scan out;
+    QHash<QString, Rec>& index_ = out.index;
+    qint64& garbage_ = out.garbage;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return out;
     const qint64 size = f.size();
-    QDataStream in(&f);
-    in.setByteOrder(QDataStream::LittleEndian);
+    if (size < 8) return out;
+    // The record headers are read from a mapped view of the file (a seek and three reads per record took about a
+    // second on the GUI thread at start-up for the 74 MB material pack).
+    const uchar* base = f.map(0, size);
+    if (!base) return out;
+    if (std::memcmp(base, kMagic, 8) != 0) {
+        f.unmap(const_cast<uchar*>(base));
+        return out;
+    }
+    const auto le = [&](qint64 at, int bytes) {
+        quint64 v = 0;
+        for (int i = bytes - 1; i >= 0; --i) v = (v << 8) | base[at + i];
+        return v;
+    };
+    qint64 pos = 8;
+    index_.reserve(int(size / 4096));
     while (pos < size) {
-        quint16 nameLen = 0;
-        quint64 sig = 0;
-        quint32 len = 0;
         if (size - pos < 2) break;
-        in >> nameLen;
-        if (nameLen == 0 || nameLen > kMaxName || size - pos < headerBytes(nameLen)) break;
-        const QByteArray name = f.read(nameLen);
-        in >> sig >> len;
-        if (in.status() != QDataStream::Ok || len > kMaxJpeg || size - pos - headerBytes(nameLen) < qint64(len)) break;
+        const int nameLen = int(le(pos, 2));
+        if (nameLen == 0 || nameLen > int(kMaxName) || size - pos < headerBytes(nameLen)) break;
+        const quint64 sig = le(pos + 2 + nameLen, 8);
+        const quint32 len = quint32(le(pos + 2 + nameLen + 8, 4));
+        if (len > kMaxJpeg || size - pos - headerBytes(nameLen) < qint64(len)) break;
         Rec r;
         r.signature = sig;
         r.offset = pos + headerBytes(nameLen);
         r.length = len;
         r.recordBytes = headerBytes(nameLen) + len;
-        const QString key = QString::fromUtf8(name);
+        const QString key = QString::fromUtf8(reinterpret_cast<const char*>(base + pos + 2), nameLen);
         if (auto it = index_.find(key); it != index_.end()) garbage_ += it->recordBytes;
         index_.insert(key, r);
         pos += r.recordBytes;
-        if (!f.seek(pos)) break;
     }
-    fileBytes_ = pos;  // anything after is a torn record
+    f.unmap(const_cast<uchar*>(base));
+    out.fileBytes = pos;  // anything after is a torn record
+    return out;
 }
 
 QImage ThumbStore::get(const QString& name, quint64 signature) {
+    ready();
     const auto it = index_.constFind(name);
     if (it == index_.constEnd() || it->signature != signature || signature == 0) return {};
     QFile f(path_);
@@ -72,6 +117,7 @@ QImage ThumbStore::get(const QString& name, quint64 signature) {
 }
 
 QImage ThumbStore::getAny(const QString& name) {
+    ready();
     const auto it = index_.constFind(name);
     if (it == index_.constEnd()) return {};
     QFile f(path_);
@@ -104,6 +150,7 @@ bool ThumbStore::appendRecord(QFile& f, const QString& name, quint64 signature, 
 
 void ThumbStore::put(const QString& name, quint64 signature, const QImage& image) {
     if (image.isNull() || signature == 0) return;
+    ready();
     QByteArray jpeg;
     {
         QBuffer b(&jpeg);

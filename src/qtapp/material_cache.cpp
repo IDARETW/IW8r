@@ -1,5 +1,10 @@
 #include "material_cache.h"
 
+#include <future>
+#include <chrono>
+#include <QMetaObject>
+#include <QPointer>
+
 #include "material_blend.h"
 #include "stock_decal.h"
 
@@ -92,8 +97,32 @@ MaterialCache::MaterialCache(ToolPathFn tools, QObject* parent) : QObject(parent
                                  QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/material_cache");
     QDir().mkpath(root_ + "/images");
     QDir(runRoot()).removeRecursively();  // scratch left behind by a crash
-    loadIndex();
-    loadSeeds();
+    // The index and the seeds are read on a worker thread; index() / seeds() wait for them on first use.
+    indexLoad_ = std::async(std::launch::async, [root = root_, data = repoDataDir(), self = QPointer<MaterialCache>(this)] {
+        IndexFiles f;
+        f.index = readIndex(root);
+        f.seeds = readSeeds(data, f.index);
+        QMetaObject::invokeMethod(qApp, [self] { if (self) emit self->indexLoaded(); }, Qt::QueuedConnection);
+        return f;
+    });
+}
+
+bool MaterialCache::indexReady() const {
+    return !indexLoad_.valid() || indexLoad_.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+}
+
+std::map<QString, MaterialCache::Entry>& MaterialCache::index() const {
+    std::call_once(indexOnce_, [this] {  // once, whichever thread asks first
+        IndexFiles f = indexLoad_.get();  // waits when the worker is not done yet
+        indexData_ = std::move(f.index);
+        seedsData_ = std::move(f.seeds);
+    });
+    return indexData_;
+}
+
+std::map<QString, MaterialCache::Entry>& MaterialCache::seeds() const {
+    index();
+    return seedsData_;
 }
 
 MaterialCache::~MaterialCache() {
@@ -122,8 +151,8 @@ QString MaterialCache::runRoot() const {
 std::optional<MaterialCache::Entry> MaterialCache::lookup(const QString& material) const {
     const bool local = mapLocalName(material);
     if (local && mapZones_.isEmpty()) return std::nullopt;  // which map's blend: unknown without a stock map
-    if (auto it = index_.find(indexKey(material)); it != index_.end()) return it->second;
-    if (auto it = local ? seeds_.end() : seeds_.find(material); it != seeds_.end()) return it->second;
+    if (auto it = index().find(indexKey(material)); it != index().end()) return it->second;
+    if (auto it = local ? seeds().end() : seeds().find(material); it != seeds().end()) return it->second;
     return std::nullopt;
 }
 
@@ -180,8 +209,8 @@ void MaterialCache::request(const QStringList& materials) {
 void MaterialCache::addMapZone(const QString& zone) {
     if (zone.isEmpty() || mapZones_.contains(zone)) return;
     mapZones_.prepend(zone);
-    for (auto it = index_.begin(); it != index_.end();)
-        it = it->second.failed && it->second.error.contains("not listed") ? index_.erase(it) : std::next(it);
+    for (auto it = index().begin(); it != index().end();)
+        it = it->second.failed && it->second.error.contains("not listed") ? index().erase(it) : std::next(it);
 }
 
 bool MaterialCache::busy() const { return running_ || !pending_.isEmpty(); }
@@ -191,9 +220,10 @@ QString MaterialCache::cacheRoot() const { return root_; }
 // ---------------------------------------------------------------------------------------------------------------
 // Index, seeds and catalog
 
-void MaterialCache::loadIndex() {
-    QFile f(root_ + "/index.json");
-    if (!f.open(QIODevice::ReadOnly)) return;
+std::map<QString, MaterialCache::Entry> MaterialCache::readIndex(const QString& root) {
+    std::map<QString, Entry> out;
+    QFile f(root + "/index.json");
+    if (!f.open(QIODevice::ReadOnly)) return out;
     const QJsonObject mats = QJsonDocument::fromJson(f.readAll()).object().value("materials").toObject();
     for (auto it = mats.begin(); it != mats.end(); ++it) {
         const QJsonObject o = it.value().toObject();
@@ -203,14 +233,14 @@ void MaterialCache::loadIndex() {
         e.techset = o.value("techset").toString();
         const QString color = o.value("color").toString();
         const QString normal = o.value("normal").toString();
-        e.colorDds = color.isEmpty() ? QString() : QDir(root_).filePath(color);
-        e.normalDds = normal.isEmpty() ? QString() : QDir(root_).filePath(normal);
+        e.colorDds = color.isEmpty() ? QString() : QDir(root).filePath(color);
+        e.normalDds = normal.isEmpty() ? QString() : QDir(root).filePath(normal);
         const QString mask = o.value("mask").toString();
-        e.maskDds = mask.isEmpty() ? QString() : QDir(root_).filePath(mask);
+        e.maskDds = mask.isEmpty() ? QString() : QDir(root).filePath(mask);
         const QString emissive = o.value("emissive").toString();
-        e.emissiveDds = emissive.isEmpty() ? QString() : QDir(root_).filePath(emissive);
+        e.emissiveDds = emissive.isEmpty() ? QString() : QDir(root).filePath(emissive);
         const QString transmission = o.value("transmission").toString();
-        e.transmissionDds = transmission.isEmpty() ? QString() : QDir(root_).filePath(transmission);
+        e.transmissionDds = transmission.isEmpty() ? QString() : QDir(root).filePath(transmission);
         const QJsonObject cs = o.value("consts").toObject();
         for (auto it = cs.begin(); it != cs.end(); ++it) {
             const QJsonArray a = it.value().toArray();
@@ -218,7 +248,7 @@ void MaterialCache::loadIndex() {
         }
         for (const QJsonValue& t : o.value("textures").toArray()) e.textures << t.toString();
         e.layerCount = o.value("layerCount").toInt(0);
-        const auto cached = [&](const QString& rel) { return rel.isEmpty() ? QString() : QDir(root_).filePath(rel); };
+        const auto cached = [&](const QString& rel) { return rel.isEmpty() ? QString() : QDir(root).filePath(rel); };
         bool layerImageGone = false;
         for (const QJsonValue& v : o.value("layers").toArray()) {
             const QJsonObject l = v.toObject();
@@ -233,7 +263,7 @@ void MaterialCache::loadIndex() {
         e.layerPsData = QByteArray::fromHex(o.value("layerPsData").toString().toLatin1());
         e.tint = o.contains("tint") ? o.value("tint").toString().toInt(nullptr, 16) : -1;
         e.tintMasked = o.value("tintMasked").toBool();
-        if (const QString tm = o.value("tintMask").toString(); !tm.isEmpty()) e.tintMaskDds = QDir(root_).filePath(tm);
+        if (const QString tm = o.value("tintMask").toString(); !tm.isEmpty()) e.tintMaskDds = QDir(root).filePath(tm);
         e.surfaceFlags = o.contains("surfaceFlags") ? qint64(o.value("surfaceFlags").toDouble()) : -1;
         e.materialType = o.value("materialType").toString();
         e.sortKey = o.value("sortKey").toInt(-1);
@@ -301,14 +331,15 @@ void MaterialCache::loadIndex() {
         if (e.colorDds.isEmpty() && e.error.contains("not exported") && o.value("maskRules").toInt() < 2) continue;
         // A map-local name cached before it was keyed per map: whichever map the catalog named first. Dropped.
         if (mapLocalName(e.material) && !it.key().contains('|')) continue;
-        index_[it.key()] = e;
+        out[it.key()] = e;
     }
+    return out;
 }
 
 // data/stock_assets/<zone>/index.json (tools/acts_asset_index.py) already holds the colour of 371 materials.
-void MaterialCache::loadSeeds() {
-    const QString data = repoDataDir();
-    if (data.isEmpty()) return;
+std::map<QString, MaterialCache::Entry> MaterialCache::readSeeds(const QString& data, const std::map<QString, Entry>& index) {
+    std::map<QString, Entry> out;
+    if (data.isEmpty()) return out;
     const QDir stock(QDir(data).filePath("stock_assets"));
     for (const QString& zone : stock.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         const QJsonObject root = QJsonDocument::fromJson(readAll(stock.filePath(zone + "/index.json")).toUtf8()).object();
@@ -319,7 +350,7 @@ void MaterialCache::loadSeeds() {
         for (const QJsonValue& v : root.value("materials").toArray()) {
             const QJsonObject m = v.toObject();
             const QString name = m.value("name").toString();
-            if (name.isEmpty() || index_.count(name)) continue;
+            if (name.isEmpty() || index.count(name)) continue;
             Entry e;
             e.material = name;
             e.zone = zone;
@@ -332,9 +363,10 @@ void MaterialCache::loadSeeds() {
                 const QString path = stock.filePath(zone + "/" + imageFile.value(slot9));
                 if (QFileInfo::exists(path)) e.normalDds = path;
             }
-            seeds_[name] = e;
+            out[name] = e;
         }
     }
+    return out;
 }
 
 void MaterialCache::loadCatalog() {
@@ -356,7 +388,7 @@ void MaterialCache::loadCatalog() {
 void MaterialCache::writeIndex() const {
     QJsonObject mats;
     const QDir root(root_);
-    for (const auto& [name, e] : index_) {
+    for (const auto& [name, e] : index()) {
         QJsonObject o;
         o.insert("zone", e.zone);
         o.insert("techset", e.techset);
@@ -877,7 +909,7 @@ void MaterialCache::finishBatch() {
             e.failed = true;
             e.error = w.error.isEmpty() ? QStringLiteral("material body not found in any candidate zone") : w.error;
         }
-        index_[w.key.isEmpty() ? w.material : w.key] = e;
+        index()[w.key.isEmpty() ? w.material : w.key] = e;
         done << w.material;
         queued_.erase(w.key);
     }

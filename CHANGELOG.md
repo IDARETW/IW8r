@@ -5,6 +5,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **The window no longer freezes while the editor starts** (18.7 s before, about 0.5 s now, measured with the stall
+  watch): the viewport's shaders compile on worker threads into a disk cache (Cache Manager: "Compiled viewport
+  shaders"; a 3D preview window gets them at once too); the asset browsers read their catalogues on worker threads and
+  fill the list in one insert; the material and model cache indexes and the thumbnail packs are read on worker threads
+  (the browsers show placeholders until they land).
 - **Side panels fit a narrow column**: the asset browsers put the search and Apply / Place on one row and their options
   in a row that wraps; the model and image preview sits under the list; material tiles fill the width (3 across at
   about 400 px); long names are elided with the full name as the tooltip; Prefabs tiles shrink with the panel; IW8

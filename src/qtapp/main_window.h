@@ -248,6 +248,9 @@ public:
     size_t replaceEverywhere(bool material, const QString& from, const QString& to);
     QStringList unusedCustomAssets();
     AssetBrowser* materialsBrowser() const { return materials_; }  // tests
+    // Automated runs (GUI test, feature shots, bench, smoke): waits, running the event loop, until every asset browser
+    // has its catalogue (read on worker threads). False on the time-out.
+    bool waitForCatalogs(int timeoutMs = 120000);
     // 2.21: Patch > Patch Inspector (modal; true when edits were applied).
     bool showPatchInspector();
     // 9.14: autosave history (timestamped copies, rotation, low-disk guard) and its browser (File > Autosave History).

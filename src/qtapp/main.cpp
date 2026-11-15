@@ -50,6 +50,7 @@
 
 #include "brush_tools.h"
 #include "custom_shader.h"
+#include "shader_cache.h"
 #include "devmap_cover.h"
 #include "devmap_launch.h"
 #include "cache_manager.h"
@@ -1365,6 +1366,11 @@ int main(int argc, char** argv) {
         iw8r::qt::applyTheme(iw8r::qt::Settings::instance().value("ui/theme", "Dark").toString(),
                              QColor(iw8r::qt::Settings::instance().value("ui/accent").toString()));
 
+    // The renderer's shaders: compiled on worker threads from here (shader_cache.h), read back from the disk cache when
+    // their source is unchanged, so the camera view does not wait on D3DCompile (it took about 10 s on the GUI thread).
+    iw8r::app::setShaderCacheDir((QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/shader_cache").toStdWString());
+    iw8r::app::SceneRenderer::prewarmShaders();
+
     // One D3D11 device for every viewport.
     ID3D11Device* device = nullptr;
     ID3D11DeviceContext* context = nullptr;
@@ -1396,6 +1402,8 @@ int main(int argc, char** argv) {
         iw8r::qt::StallWatch::instance().start(sw.toInt() > 1 ? sw.toInt() : 250);
     {
         iw8r::qt::MainWindow w(device, context);
+        // The asset browsers read their catalogues on worker threads: automated runs start from full lists.
+        if (guiTest || smoke || texturedPack || !thumbTest.isEmpty()) w.waitForCatalogs();
         if (texturedPack) return w.runTexturedThumbPack(thumbPackKind, auditLimit);  // the window is never shown
         if (!thumbTest.isEmpty()) return w.runThumbTest(thumbTest, outDir.isEmpty() ? QDir::tempPath() : outDir);
         if (smoke) {

@@ -279,6 +279,8 @@ class SceneRenderer {
 public:
     ~SceneRenderer();
     bool init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::string* err);
+    // Compiles every built-in shader on worker threads (shader_cache.h), so init() finds them ready: call once, early.
+    static void prewarmShaders();
     void resize(int w, int h);
     // Draws one frame from the camera's kept streams; only the vertex ranges that changed are uploaded.
     void drawFrame(const FrameInput& in);

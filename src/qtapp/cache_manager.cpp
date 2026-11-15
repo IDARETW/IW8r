@@ -70,6 +70,7 @@ QList<CacheFolder> cacheFolders() {
         f("image_browser", "Images browser previews", true, true),
         f("vfx_cache", "Effect exports (Effect Info, previews)", true, false),
         f("stock_cache", "Stock asset scratch", true, false),
+        f("shader_cache", "Compiled viewport shaders", false, true),
         f("crashes", "Crash reports", false, false),
     };
 }

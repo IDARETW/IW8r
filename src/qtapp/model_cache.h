@@ -20,6 +20,8 @@
 #include <array>
 #include <deque>
 #include <functional>
+#include <future>
+#include <mutex>
 #include <map>
 #include <optional>
 #include <set>
@@ -74,6 +76,8 @@ public:
     // "not listed" failures so those models are tried again.
     void setFallbackZones(const QStringList& zones);
     bool busy() const;
+    // The index file has been read (on the worker thread): lookup() answers at once. Before, lookup() waits for it.
+    bool indexReady() const;
     QString cacheRoot() const;
     // Models of one batch. A longer request is worked off in batches of this size, one after the other, by the cache
     // itself: every batch writes the index and reports its models, so a long fetch shows progress and survives a quit.
@@ -101,6 +105,7 @@ public:
 
 signals:
     void modelReady(const QString& name);  // lookup() now returns an entry (possibly failed)
+    void indexLoaded();  // the index read on the worker thread is ready (indexReady())
     // A batch has ended, with `resolved` models answered (0: nothing could be done, see problem()). Sent for every
     // batch, also one that delivered nothing, so a caller that waits for models is never left waiting.
     void batchEnded(int resolved);
@@ -132,7 +137,6 @@ private:
         int refAttempt = 0;
     };
 
-    void loadIndex();
     void loadCatalog();
     void writeIndex() const;
     QString replayZoneDir() const;
@@ -153,7 +157,13 @@ private:
 
     ToolPathFn tools_;
     QString root_;
-    std::map<QString, Entry> index_;          // from root_/index.json
+    // From root_/index.json, read on a worker thread from the constructor (4 MB of JSON and a file check per GLB held
+    // the start-up for about 1 s): index() waits for it on first use.
+    static std::map<QString, Entry> readIndex(const QString& root);
+    std::map<QString, Entry>& index() const;
+    mutable std::future<std::map<QString, Entry>> indexLoad_;
+    mutable std::once_flag indexOnce_;
+    mutable std::map<QString, Entry> indexData_;
     std::map<QString, QStringList> catalog_;  // model -> zones, from data/asset_catalog/iw8_models.tsv
     bool catalogLoaded_ = false;
 

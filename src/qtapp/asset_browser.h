@@ -5,6 +5,8 @@
 // verifyzone traces of the Replay 1.20 stock zones). Thumbnails come from ACTS exports indexed in
 // data/stock_assets/<zone>/index.json (tools/acts_asset_index.py) and are decoded on demand.
 #pragma once
+
+#include <memory>
 #include <functional>
 #include <QSet>
 
@@ -20,6 +22,7 @@ class QListView;
 class QCheckBox;
 class QComboBox;
 class QLabel;
+class QStandardItem;
 class QStandardItemModel;
 class QSortFilterProxyModel;
 
@@ -102,12 +105,21 @@ signals:
     void imageHighlighted(const QString& name);  // Images browser: the current row changed (preview)
     void modelHighlighted(const QString& name);  // the current model row changed (preview)
     void previewRequested(const QString& name);  // Models: open the 3D preview window
+    void catalogReady();  // the catalogue read on the worker thread is in the list
 
 public:
     void reloadCatalog() { load(); }  // after an availability audit (4.12)
+    // The catalogue is read on a worker thread (seconds of files at start-up): true once the list holds the latest read.
+    bool catalogLoaded() const { return loadedGen_ == loadGen_; }
 
 private:
-    void load();
+    void load();  // starts reading the catalogue on a worker thread; applyCatalog() fills the list
+    struct Catalog;
+    static std::shared_ptr<Catalog> readCatalog(Kind kind, bool buildableOnly, const QString& dataDir, bool wantKits);
+    void applyCatalog(const Catalog& c);
+    QStandardItem* customItem(const QString& name, const QString& image) const;
+    int loadGen_ = 0, loadedGen_ = -1;  // the latest load() started and the one in the list
+    QList<QPair<QString, QString>> customMaterials_;  // the last setCustomMaterials list
     void refreshUsedFilter();
     // The line above the list: the catalogue summary when everything is listed, else "N of M shown" or "No matches".
     void updateInfo();
