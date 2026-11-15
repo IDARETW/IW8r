@@ -3736,6 +3736,34 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             sendMouse(cv, QEvent::MouseMove, *away, Qt::NoButton, Qt::NoButton);
             r.check(cv->gizmoHoverAxis() < 0, "moving away from the handles clears the highlight");
         }
+        // Scale mode: dragging a handle draws the outline of the scaled bounds before anything changes; Esc cancels.
+        if (QAction* scaleMode = w.action("GizmoScale")) {
+            scaleMode->trigger();
+            cv->renderNow();
+            std::optional<QPointF> grabAt;
+            for (double f : {1.0, 0.95, 0.9, 0.8, 0.7})
+                if (const std::optional<QPointF> p = cv->widgetPointOf(c + Vec3{0, L * f, 0})) {
+                    sendMouse(cv, QEvent::MouseMove, *p, Qt::NoButton, Qt::NoButton);
+                    if (cv->gizmoHoverAxis() == 1) {
+                        grabAt = p;
+                        break;
+                    }
+                }
+            const std::string beforeScale = ctx.doc.text();
+            int edges = 0;
+            if (grabAt) {
+                const std::optional<QPointF> further = cv->widgetPointOf(c + Vec3{0, L * 1.6, 0});
+                sendMouse(cv, QEvent::MouseButtonPress, *grabAt, Qt::LeftButton, Qt::LeftButton);
+                if (further) sendMouse(cv, QEvent::MouseMove, *further, Qt::NoButton, Qt::LeftButton);
+                cv->renderNow();
+                edges = cv->scalePreviewEdges();
+                QTest::keyClick(cv, Qt::Key_Escape);
+                if (further) sendMouse(cv, QEvent::MouseButtonRelease, *further, Qt::LeftButton, Qt::NoButton);
+            }
+            r.check(grabAt && edges == 12 && ctx.doc.text() == beforeScale,
+                    QString("a scale drag draws the scaled bounds (%1 edges) and Esc leaves the box as it was").arg(edges));
+            scaleMode->trigger();
+        }
         QTest::keyClick(cv, Qt::Key_W);
         r.check(w.statusBar()->currentMessage().contains("Hold the right mouse button"),
                 "W without the right mouse button says to hold it: " + w.statusBar()->currentMessage());

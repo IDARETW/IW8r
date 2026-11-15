@@ -300,6 +300,7 @@ public:
     std::optional<QPointF> gizmoRingPoint(int axis, double degrees) const;
     // The handle or ring under the cursor while no button is held (drawn highlighted, move / rotate cursor); -1 none.
     int gizmoHoverAxis() const { return hoverAxis_; }
+    int scalePreviewEdges() const { return scalePreviewEdges_; }  // > 0 while a scale drag shows its outline
 
     // Play preview: walk the map as the player with collision (P enters, Esc leaves). Collision is built from the
     // document when play starts (and rebuilt when the document changes). tickPlay is driven by the main tick.
@@ -764,6 +765,8 @@ private:
     bool gizmoScale_ = false;
     double lookTravel_ = 0;  // mouse travel while the right button is down: a still click opens the context menu
     double scaleFactor_ = 1.0;  // current factor while dragging a scale handle
+    AABB scaleStartBounds_;      // the selection's bounds when the scale drag began (the preview outline)
+    int scalePreviewEdges_ = 0;  // edges of the preview outline drawn in the last frame (tests)
     int ringDragAxis_ = -1;
     double ringStartAngle_ = 0, ringDeltaDeg_ = 0;
     Vec3 ringPivot_;

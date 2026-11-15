@@ -1166,6 +1166,7 @@ std::optional<double> CameraView::ringAngleForMouse(const QPointF& p, int axis) 
 }
 
 void CameraView::addGizmoLines() {
+    scalePreviewEdges_ = 0;
     if (!gizmoActive()) return;
     const Vec3 c = gizmoRotate_ ? ringCentre() : gizmoPivot();
     const double L = gizmoLength();
@@ -1204,6 +1205,18 @@ void CameraView::addGizmoLines() {
             gizmoLines_.scratch.push_back(app::GpuVertex{float(q.x), float(q.y), float(q.z), col});
         };
         if (gizmoScale_) {
+            if (gizmoDragAxis_ == a && scaleStartBounds_.valid()) {
+                // Preview: the selection's bounds as they will be after release, scaled about the pivot on this axis.
+                AABB b = scaleStartBounds_;
+                const double p0 = gizmoStartPivot_[a];
+                const double lo = p0 + (b.mins[a] - p0) * scaleFactor_, hi = p0 + (b.maxs[a] - p0) * scaleFactor_;
+                b.mins[a] = std::min(lo, hi), b.maxs[a] = std::max(lo, hi);
+                Vec3 k[8];
+                for (int i = 0; i < 8; ++i) k[i] = Vec3{(i & 1) ? b.maxs.x : b.mins.x, (i & 2) ? b.maxs.y : b.mins.y, (i & 4) ? b.maxs.z : b.mins.z};
+                const int boxEdges[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+                for (const auto& ed : boxEdges) line(k[ed[0]], k[ed[1]]);
+                scalePreviewEdges_ = 12;
+            }
             const double len = L * (gizmoDragAxis_ == a ? scaleFactor_ : 1.0);
             const Vec3 tip = c + d * len;
             line(c, tip);
@@ -2650,6 +2663,7 @@ void CameraView::mousePressEvent(QMouseEvent* e) {
             lmbDown_ = false;  // not a click-select
             if (gizmoScale_) {
                 scaleFactor_ = 1.0;
+                scaleStartBounds_ = ctx_->doc.selectionBounds();  // drawn scaled while the handle moves
             } else {
                 // A move along a world axis lands the selection on the grid (Snap To Grid's reference: the
                 // primitives' bounds minimum, else the lowest point entity origin), so an off-grid object snaps on.
