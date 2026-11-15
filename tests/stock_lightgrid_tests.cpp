@@ -569,3 +569,43 @@ TEST(stock_lgv_speedball_real) {
     checkRef(a, 0, kRef0);
     checkRef(a, 994, kRef994);
 }
+
+// Warzone tiles (research 132 G7): atlases of different widths stacked into one sample exactly as their sources.
+TEST(stock_lgv_pack_atlases_samples_like_the_sources) {
+    StockLgvAtlas a;
+    std::string err;
+    CHECK(parseStockLgvBlock(syntheticBlock(), a, &err));  // W 4, D 2, two volumes
+    // A W 2, D 1 atlas: one 2 x 2 x 1 box, every texel distinct.
+    StockLgvAtlas b;
+    b.width = 2, b.depth = 1;
+    for (uint32_t k = 0; k < 4; ++k) b.tex0.push_back(encRgb(1.0 + k, 2.0 + 0.5 * k, 3.0 - 0.5 * k));
+    for (uint32_t k = 0; k < 24; ++k) b.tex1.push_back(0x01010101u * (10u * k + 3u) ^ (k << 8));
+    StockLgvAtlas::Pack pk;
+    pk.uvScale[0] = pk.uvScale[1] = 0.5f, pk.uvScale[2] = 0.0f;
+    pk.uvBias[0] = pk.uvBias[1] = 0.25f, pk.uvBias[2] = 0.5f;
+    b.pack.push_back(pk);
+    b.xform.push_back(StockLgvAtlas::Xform{});
+    StockLgvStack st;
+    CHECK(packStockLgvAtlases({&a, nullptr, &b}, st));
+    CHECK(st.atlas.width == 4 && st.atlas.depth == 3 && st.atlas.pack.size() == 3 && st.atlas.xform.size() == 3);
+    CHECK(st.firstBox.size() == 3 && st.firstBox[0] == 0 && st.firstBox[1] == 0xFFFFFFFFu && st.firstBox[2] == 2);
+    const double coords[][3] = {{0, 0, 0}, {1, 1, 1}, {0.25, 0.6, 0.3}, {0.5, 0.5, 0.5}, {0.9, 0.1, 0.75}};
+    const auto same = [&](const StockLgvAtlas& src, size_t v, size_t packed) {
+        for (const auto& c : coords) {
+            const StockLgvSh x = sampleStockLgv(src, v, c), y = sampleStockLgv(st.atlas, packed, c);
+            for (int ch = 0; ch < 3; ++ch) {
+                CHECK(near(x.dc[ch], y.dc[ch], 1e-4));
+                for (int j = 0; j < 8; ++j) CHECK(near(x.sh[j][ch], y.sh[j][ch], 1e-3));
+            }
+        }
+    };
+    same(a, 0, 0);
+    same(a, 1, 1);
+    same(b, 0, 2);
+    // Past the depth budget: left out.
+    StockLgvStack small;
+    CHECK(packStockLgvAtlases({&a, &b}, small, 2));
+    CHECK(small.atlas.depth == 2 && small.firstBox[1] == 0xFFFFFFFFu);
+    StockLgvStack none;
+    CHECK(!packStockLgvAtlases({nullptr}, none));
+}

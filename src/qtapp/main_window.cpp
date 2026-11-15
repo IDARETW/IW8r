@@ -575,6 +575,11 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
                 }
             } else {
                 modelCacheStock_->requestLod(qn, want);
+                // A vehicle spawn among many: its box until the low LOD is in (LOD0 is 100k+ triangles each).
+                if (!lodPreview_ && manyVehicleSpawn(e)) {
+                    vehicleLodWanted_.insert(*m);
+                    return nullptr;
+                }
             }
         }
         if (auto it = modelCache_.find(*m); it != modelCache_.end()) return it->second;
@@ -717,8 +722,8 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     });
     connect(modelCacheStock_, &ModelCache::progress, this, [this](const QString& m) { ctx_.setStatus(m); });
     connect(modelCacheStock_, &ModelCache::lodReady, this, [this](const QString& name, int lod) {
-        // The scene draws LOD0 except in the LOD preview.
-        if (lodPreview_) invalidateSceneSoon();
+        // The scene draws LOD0 except in the LOD preview and for Warzone vehicle spawns (their last LOD).
+        if (lodPreview_ || vehicleLodWanted_.erase(name.toStdString())) invalidateSceneSoon();
         // A stock prop's LOD (plan 1.13): its kept mesh is rebuilt with it (not when the LOD could not be had: Verdansk
         // asks for thousands that fail, and each dropped a kept mesh); the props once, when every LOD fetch is done.
         if (modelCacheStock_->hasLod(name, lod)) {
@@ -2444,6 +2449,7 @@ void MainWindow::buildMenus() {
         refProbesIndex_.reset();
         refPropVolLight_.reset();
         refPropLgvGpu_ = false;
+        refPropAtlas_.clear(), refPropLgvBase_.clear(), ++refPropLgvGen_;
         camera_->setStockLgvAtlas(nullptr);
         refPropVolLightZone_.clear();
         refPropTileLight_.clear();
@@ -7492,10 +7498,11 @@ bool MainWindow::propLightFor(const PropLightKey& k, float out[12]) const {
     }
     if (!grid || size_t(k.lightingIndex) >= grid->size() / 12) return false;
     const float* c = &(*grid)[size_t(k.lightingIndex) * 12];
-    if (k.transient == 0 && refPropLgvGpu_) {
-        // Per vertex from the atlas (research 132 G7): -3, the box, then the centre's DC and slots 0 / 2 (the fallback).
+    const auto base = refPropLgvBase_.find(int(k.transient));
+    if (refPropLgvGpu_ && base != refPropLgvBase_.end()) {
+        // Per vertex from the stack (research 132 G7): -3, the box, then the centre's DC and slots 0 / 2 (the fallback).
         out[0] = -3.0f;
-        out[1] = float(k.lightingIndex);
+        out[1] = float(base->second + uint32_t(k.lightingIndex));
         std::memcpy(out + 2, c, 9 * sizeof(float));
         out[11] = 0.0f;
         return true;
@@ -9057,10 +9064,10 @@ void MainWindow::updateProbeSubset(bool force) {
 
 namespace {
 // A light grid cache file (lightgrid.iw8rlg) to 12 floats per volume: each box at its centre (research 105 section
-// 5.3: exact for 1x1x1 boxes, the mean for big ones), DC rgb then the first-order slots 0, 2 and 3. gpu: also the atlas
-// for the camera (per-vertex sampling, research 132 G7).
+// 5.3: exact for 1x1x1 boxes, the mean for big ones), DC rgb then the first-order slots 0, 2 and 3. atlasOut: also the
+// parsed atlas (per-vertex sampling through the stack, research 132 G7).
 std::shared_ptr<std::vector<float>> sampleLightGridFile(const QString& path, std::string* err,
-                                                        std::shared_ptr<app::LgvAtlasUpload>* gpu = nullptr) {
+                                                        std::shared_ptr<const StockLgvAtlas>* atlasOut = nullptr) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) {
         *err = "cannot read " + path.toStdString();
@@ -9081,22 +9088,47 @@ std::shared_ptr<std::vector<float>> sampleLightGridFile(const QString& path, std
             o[9 + c] = sh.sh[3][c];
         }
     }
-    if (gpu && atlas.xform.size() == atlas.pack.size()) {
-        auto up = std::make_shared<app::LgvAtlasUpload>();
-        up->width = atlas.width, up->depth = atlas.depth;
-        up->tex0 = std::move(atlas.tex0), up->tex1 = std::move(atlas.tex1);
-        up->boxes.resize(atlas.pack.size() * 20, 0.0f);
-        for (size_t v = 0; v < atlas.pack.size(); ++v) {
-            float* b = &up->boxes[v * 20];
-            for (int r = 0; r < 3; ++r)
-                for (int k = 0; k < 4; ++k) b[4 * r + k] = atlas.xform[v].row[r][k];
-            for (int k = 0; k < 3; ++k) b[12 + k] = atlas.pack[v].uvScale[k], b[16 + k] = atlas.pack[v].uvBias[k];
-        }
-        *gpu = std::move(up);
-    }
+    static const bool noGpu = std::getenv("IW8R_NO_PROP_LGV_GPU") != nullptr;  // A/B: one sample per placement
+    if (atlasOut && !noGpu && atlas.xform.size() == atlas.pack.size()) *atlasOut = std::make_shared<const StockLgvAtlas>(std::move(atlas));
     return vol;
 }
 }  // namespace
+
+void MainWindow::restackPropLgv() {
+    // Every parsed atlas (main zone first), stacked off the UI thread; the newest request wins.
+    std::vector<std::pair<int, std::shared_ptr<const StockLgvAtlas>>> parts(refPropAtlas_.begin(), refPropAtlas_.end());
+    const uint64_t gen = ++refPropLgvGen_;
+    const QString zone = referenceZone_;
+    QPointer<MainWindow> self(this);
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, parts, gen, zone] {
+        std::vector<const StockLgvAtlas*> in;
+        for (const auto& p : parts) in.push_back(p.second.get());
+        StockLgvStack st;
+        std::shared_ptr<app::LgvAtlasUpload> up;
+        std::map<int, uint32_t> bases;
+        if (packStockLgvAtlases(in, st)) {
+            up = std::make_shared<app::LgvAtlasUpload>();
+            up->width = st.atlas.width, up->depth = st.atlas.depth;
+            up->boxes.resize(st.atlas.pack.size() * 20, 0.0f);
+            for (size_t v = 0; v < st.atlas.pack.size(); ++v) {
+                float* b = &up->boxes[v * 20];
+                for (int r = 0; r < 3; ++r)
+                    for (int k = 0; k < 4; ++k) b[4 * r + k] = st.atlas.xform[v].row[r][k];
+                for (int k = 0; k < 3; ++k) b[12 + k] = st.atlas.pack[v].uvScale[k], b[16 + k] = st.atlas.pack[v].uvBias[k];
+            }
+            up->tex0 = std::move(st.atlas.tex0), up->tex1 = std::move(st.atlas.tex1);
+            for (size_t i = 0; i < parts.size(); ++i)
+                if (st.firstBox[i] != 0xFFFFFFFFu) bases[parts[i].first] = st.firstBox[i];
+        }
+        QMetaObject::invokeMethod(qApp, [self, up, bases, gen, zone] {
+            if (!self || self->refPropLgvGen_ != gen || self->referenceZone_ != zone) return;
+            self->refPropLgvBase_ = bases;
+            self->refPropLgvGpu_ = up != nullptr;
+            self->camera_->setStockLgvAtlas(up);
+            self->relightReferenceProps();
+        }, Qt::QueuedConnection);
+    })).detach();
+}
 
 void MainWindow::loadStockTileLightGrids(const QString& zone) {
     if (!worldCache_) return;
@@ -9107,20 +9139,25 @@ void MainWindow::loadStockTileLightGrids(const QString& zone) {
     QPointer<MainWindow> self(this);
     std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, todo] {
         std::vector<std::pair<int, std::shared_ptr<std::vector<float>>>> got;
+        std::vector<std::pair<int, std::shared_ptr<const StockLgvAtlas>>> atlases;
         for (const auto& [k, path] : todo) {
             std::string err;
-            if (auto vol = sampleLightGridFile(path, &err)) got.push_back({k, vol});
+            std::shared_ptr<const StockLgvAtlas> atlas;
+            if (auto vol = sampleLightGridFile(path, &err, &atlas)) got.push_back({k, vol});
+            if (atlas) atlases.push_back({k, atlas});
         }
-        QMetaObject::invokeMethod(qApp, [self, zone, got] {
+        QMetaObject::invokeMethod(qApp, [self, zone, got, atlases] {
             if (!self || self->referenceZone_ != zone || got.empty()) return;
             for (const auto& [k, vol] : got) self->refPropTileLight_[k] = vol;
+            for (const auto& [k, a] : atlases) self->refPropAtlas_[k] = a;
             // Tiles finish one after another: one prop rebuild for the ones that arrive close together.
             if (!self->refPropRelightQueued_) {
                 self->refPropRelightQueued_ = true;
                 QTimer::singleShot(1500, self, [self] {
                     if (!self) return;
                     self->refPropRelightQueued_ = false;
-                    self->relightReferenceProps();
+                    if (self->refPropAtlas_.empty()) self->relightReferenceProps();
+                    else self->restackPropLgv();  // relights when the stack is in
                 });
             }
         }, Qt::QueuedConnection);
@@ -9134,21 +9171,23 @@ void MainWindow::loadStockLightGrid(const QString& zone) {
     const QString path = *file;
     std::thread(guardedWorker(__FILE__, __LINE__, [self, zone, path] {
         std::string err;
-        std::shared_ptr<app::LgvAtlasUpload> gpu;
-        static const bool noGpu = std::getenv("IW8R_NO_PROP_LGV_GPU") != nullptr;  // A/B: one sample per placement
-        const std::shared_ptr<std::vector<float>> vol = sampleLightGridFile(path, &err, noGpu ? nullptr : &gpu);
+        std::shared_ptr<const StockLgvAtlas> atlas;
+        const std::shared_ptr<std::vector<float>> vol = sampleLightGridFile(path, &err, &atlas);
         const bool ok = vol != nullptr;
-        QMetaObject::invokeMethod(qApp, [self, zone, vol, gpu, ok, err] {
+        QMetaObject::invokeMethod(qApp, [self, zone, vol, atlas, ok, err] {
             if (!self || self->referenceZone_ != zone) return;
             if (!ok) {
                 self->ctx_.setStatus("Stock prop light grid of " + zone + " not read: " + QString::fromStdString(err));
                 return;
             }
-            self->refPropLgvGpu_ = gpu != nullptr;
-            self->camera_->setStockLgvAtlas(gpu);
             self->refPropVolLight_ = vol;
             self->refPropVolLightZone_ = zone;
-            self->relightReferenceProps();
+            if (atlas) {
+                self->refPropAtlas_[0] = atlas;
+                self->restackPropLgv();  // relights when the stack is in
+            } else {
+                self->relightReferenceProps();
+            }
         }, Qt::QueuedConnection);
     })).detach();
 }
@@ -9383,6 +9422,7 @@ void MainWindow::loadStockReference(const QString& zone) {
             if (self->refPropVolLightZone_ != zone) {
                 self->refPropVolLight_.reset();
                 self->refPropLgvGpu_ = false;
+                self->refPropAtlas_.clear(), self->refPropLgvBase_.clear(), ++self->refPropLgvGen_;
                 self->camera_->setStockLgvAtlas(nullptr);
                 self->refPropTileLight_.clear();
                 self->refPropTileLightAsked_.clear();
@@ -10056,8 +10096,31 @@ int MainWindow::runTexturedThumbPack(const QString& kind, int limit) {
     return 0;
 }
 
+bool MainWindow::manyVehicleSpawn(const Entity& e) {
+    const std::string* type = e.value("vehicletype");
+    if (!type || type->empty()) return false;
+    if (vehicleCountRev_ != ctx_.doc.revision()) {
+        vehicleCountRev_ = ctx_.doc.revision();
+        vehicleCount_ = 0;
+        for (const auto& x : ctx_.doc.map().entities)
+            if (const std::string* t = x.value("vehicletype"); t && !t->empty()) ++vehicleCount_;
+    }
+    return vehicleCount_ > 8;
+}
+
 int MainWindow::stockLodFor(const Entity& e, const std::string& model) {
     const bool collision = ctx_.scene.cameraMode == iw8r::app::CameraMode::Collision;
+    // Warzone vehicle spawns by the hundred (Verdansk): each vehicle's last LOD, not its 100k-triangle LOD0.
+    const bool vehicles = !lodPreview_ && !collision && modelCacheStock_ && manyVehicleSpawn(e);
+    if (vehicles) {
+        auto it = lodDetail_.find(model);
+        if (it == lodDetail_.end()) {
+            std::optional<XModelInfo> d;
+            if (const auto ent = modelCacheStock_->lookup(qs(model)); ent && !ent->failed) d = modelCacheStock_->loadDetail(qs(model));
+            it = lodDetail_.emplace(model, std::move(d)).first;
+        }
+        return it->second && it->second->lods.size() >= 2 ? int(it->second->lods.size()) - 1 : 0;
+    }
     if ((!lodPreview_ && !collision) || !modelCacheStock_) return 0;
     auto it = lodDetail_.find(model);
     if (it == lodDetail_.end()) {

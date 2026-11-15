@@ -38,6 +38,7 @@ class CDockManager;
 class CDockWidget;
 }  // namespace ads
 
+#include "stock_lightgrid.h"
 #include "stock_loot.h"
 #include "stock_placed.h"
 #include "stock_smodels.h"
@@ -533,6 +534,7 @@ public:
     bool stockCacheIdle() const;
     // Textured stock prop placements lit from their light grid box, and all textured placements, in the last rebuild.
     std::array<size_t, 2> propLightStats() const { return {refPropLit_, refPropLitOf_}; }
+    size_t propLgvZones() const { return refPropLgvBase_.size(); }  // transient zones in the camera's light grid stack
     // The stock reference's prop placements (null before a stock map is shown): the bench's "prop" camera.
     std::shared_ptr<const std::vector<StockModelInstance>> referencePropPlacements() const { return refProps_; }
 private:
@@ -578,8 +580,14 @@ private:
     // 12 floats per light grid volume of the reference zone's main transient zone (app::InstancedTexMesh::light: DC rgb,
     // then the first-order slots 0, 2 and 3), null when not read; refPropVolLightZone_ is its zone.
     std::shared_ptr<const std::vector<float>> refPropVolLight_;
-    bool refPropLgvGpu_ = false;
-    QStringList selfVisRefresh_;  // stock models whose GLB predates the self visibility, for ModelCache::refreshGeometry  // the main zone's atlas went to the camera: its props sample it per vertex (G7)
+    bool refPropLgvGpu_ = false;  // a light grid stack went to the camera: props with a base sample it per vertex (G7)
+    // The parsed light grid atlases (research 105): the main zone's (transient 0) and each loaded Warzone tile's, stacked
+    // into one for the camera by restackPropLgv; refPropLgvBase_ = the stack's first box of each transient zone.
+    std::map<int, std::shared_ptr<const StockLgvAtlas>> refPropAtlas_;
+    std::map<int, uint32_t> refPropLgvBase_;
+    uint64_t refPropLgvGen_ = 0;
+    void restackPropLgv();
+    QStringList selfVisRefresh_;  // stock models whose GLB predates the self visibility, for ModelCache::refreshGeometry
     QString refPropVolLightZone_;
     // The same per streamed tile (Warzone), by transientZoneIndex (StockModelInstance::worldTransient).
     std::map<int, std::shared_ptr<const std::vector<float>>> refPropTileLight_;
@@ -798,6 +806,11 @@ private:
     // 3.18 LOD preview: the LOD a stock model placement draws (0 = normal; -1 past the last LOD; the collision LOD in
     // the Collision Only camera mode). Details are read once per model.
     int stockLodFor(const Entity& e, const std::string& model);
+    // A Warzone vehicle spawn on a document with many of them (stockLodFor gives it its vehicle's last LOD).
+    bool manyVehicleSpawn(const Entity& e);
+    uint64_t vehicleCountRev_ = ~0ull;
+    size_t vehicleCount_ = 0;
+    std::set<std::string> vehicleLodWanted_;  // vehicle models whose last LOD is being fetched (scene redrawn when in)
     void refreshLodPreview();
     bool lodPreview_ = false;
     // Models and LODs arrive by the thousand on Warzone maps: one scene invalidation for a burst (each was a full

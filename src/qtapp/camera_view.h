@@ -485,6 +485,16 @@ public slots:
     bool tomeCull() const { return renderer_.referenceTomeCull(); }
     size_t tomeCulledProps() const { return renderer_.tomeCulledProps(); }
     std::string gpuMemoryReport() const { return renderer_.gpuMemoryReport(); }
+    // Bench diagnosis: the kept scene streams' vertex counts (flat, lines, textured batches).
+    std::string sceneStreamReport() const {
+        size_t batchV = 0;
+        for (const auto* b : geo_.batches()) batchV += b ? b->v.size() : 0;
+        return "shadowOnly " + std::to_string(geo_.shadowOnly.v.size()) + " casters " + std::to_string(geo_.casters.v.size()) +
+               " faceSel " + std::to_string(geo_.faceSel.v.size()) + " noCast " + std::to_string(geo_.noCast.v.size()) + " lines " +
+               std::to_string(geo_.lines.v.size()) + " linesMisc " + std::to_string(geo_.linesMisc.v.size()) + " overlayMisc " +
+               std::to_string(geo_.overlayMisc.v.size()) + " batches " + std::to_string(geo_.batches().size()) + " batchVerts " +
+               std::to_string(batchV);
+    }
     // The stock props' light grid atlas (research 105; null clears it): uploaded on the next frame. Props whose light
     // record starts with -3 sample their box per vertex.
     void setStockLgvAtlas(std::shared_ptr<const app::LgvAtlasUpload> atlas) {

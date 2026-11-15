@@ -199,9 +199,13 @@ RGBA8 (`SceneRenderer::setStockLgvAtlas`, vs_tex_inst `lgvLight`: DC, all eight 
 instance record is `-3, box, centre DC, slots 0 / 2` (the fallback when no atlas is bound). Proven active by a one-off
 tinted build on Hideout (every probe-lit prop); against the old centre sample, Hideout's frame changes 0.4 % of
 pixels by more than 8 and Speedball's 2 % (gradients across multi-probe boxes); Hideout 8.9 ms, Speedball 5.6 ms.
-`IW8R_NO_PROP_LGV_GPU` = the centre sample (A/B). Left: the thin push (flag 4; its switch `cb7[185].x` is not
-decoded), Warzone tile props (their own atlases; still the centre sample) and the lightmapped `tml/` props (their
-second UV set is not in the GLB export).
+`IW8R_NO_PROP_LGV_GPU` = the centre sample (A/B). 2026-11-15: Warzone tile props too: the main zone's atlas and every
+loaded tile's (Verdansk widths 64 / 32 / 16 / 8, depths up to 16; 82 grids cached, 1,216 slices in all) are stacked
+into one (core `packStockLgvAtlases`: the widest width, depths in turn, a narrower atlas at the corner of its slices,
+texture 1's tiles re-laid, each box's packing turned to the stack; test: the stack samples as its sources), rebuilt
+off the UI thread when tiles arrive; a prop names `firstBox[its transient zone] + lightingIndex`. Left: the thin push
+(flag 4; its switch `cb7[185].x` is not decoded) and the lightmapped `tml/` props (their per-vertex lightmap
+coordinates are in no ACTS export).
 
 ### G8 (medium). Own-map local lights are simplified
 
@@ -273,6 +277,18 @@ already bound (render.cpp:308-309).
 - Viewport: `MaterialDraw::Hidden` for the distortion family (techset_info.cpp:68-69).
 - Fix: a post pass that offsets `hdrScene` lookups by the material's normal map where distortion surfaces cover the
   screen. Low priority (few materials).
+
+**Status 2026-11-15 (G13): decoded, left hidden by decision.** The world distortion PS (`bd3434da17d1d564`,
+techsets_mp_rust, `twc/dist_10_distortion_*`; VERIFIED from its disassembly) samples the distortion image (slot 157)
+`m`, takes `k = saturate(m.z x vertexAlpha - 0.25) x 4/3`, displaces the pixel's point by the world vector
+`D = c127.x k (2 m.x - 1) T + c127.y k (2 m.y - 1) B` (T the vertex tangent, B = N x T), projects `P + D` with the
+view-projection rows (homogeneous add, then clamped to the viewport, `cb7[156]`), and writes the resolved scene there
+x the vertex colour (alpha `saturate(4 m.z vertexAlpha)`; the technique replaces). INFERRED: `cb2[4].xy` is the
+clip-to-UV scale. On the only stock world user, Shipment's `twc/dub_water_wall_waves_dist`, constant 127 is (1, 1):
+the scene moves by at most one unit, which no comparison shot can show, so the batch stays hidden. The effect
+materials (`elcq/vfx_dist_*`, c127 2 to 30) belong to placed effects, whose quads the viewport does not distort.
+`lmapCoords` for lightmapped `tml` props (G7 rest) need an ACTS reader of the XSurface stream (the xmodelsurfs payload
+holds only the shared vertex buffer; checked 2026-11-15 on `furniture_rug_01_flat_04_lod010v41`).
 
 ### G14 (low). SSAO stands in for GTAO
 

@@ -517,6 +517,54 @@ StockLgvSh sampleStockLgv(const StockLgvAtlas& a, size_t volume, const double co
     return s;
 }
 
+bool packStockLgvAtlases(const std::vector<const StockLgvAtlas*>& in, StockLgvStack& out, int maxDepth) {
+    out = StockLgvStack{};
+    out.firstBox.assign(in.size(), 0xFFFFFFFFu);
+    const auto valid = [](const StockLgvAtlas* a) {
+        if (!a || a->width <= 0 || a->depth <= 0 || a->pack.empty() || a->xform.size() != a->pack.size()) return false;
+        const size_t w = size_t(a->width), d = size_t(a->depth);
+        return a->tex0.size() == w * w * d && a->tex1.size() == 6 * w * w * d;
+    };
+    size_t W = 0, Dt = 0;
+    std::vector<size_t> zAt(in.size(), 0);
+    std::vector<char> take(in.size(), 0);
+    for (size_t i = 0; i < in.size(); ++i) {
+        if (!valid(in[i]) || Dt + size_t(in[i]->depth) > size_t(std::max(1, maxDepth))) continue;
+        take[i] = 1, zAt[i] = Dt;
+        Dt += size_t(in[i]->depth);
+        W = std::max(W, size_t(in[i]->width));
+    }
+    if (Dt == 0) return false;
+    StockLgvAtlas& o = out.atlas;
+    o.width = int(W), o.depth = int(Dt);
+    o.tex0.assign(W * W * Dt, 0u);
+    o.tex1.assign(6 * W * W * Dt, 0u);
+    for (size_t i = 0; i < in.size(); ++i) {
+        if (!take[i]) continue;
+        const StockLgvAtlas& a = *in[i];
+        const size_t w = size_t(a.width), d = size_t(a.depth), Z = zAt[i];
+        for (size_t z = 0; z < d; ++z)
+            for (size_t y = 0; y < w; ++y)
+                for (size_t x = 0; x < w; ++x) {
+                    o.tex0[x + W * (y + W * (Z + z))] = a.tex0[x + w * (y + w * z)];
+                    for (size_t t = 0; t < 6; ++t)
+                        o.tex1[(x + W * (t & 1)) + 2 * W * (y + W * (t >> 1)) + 2 * W * 3 * W * (Z + z)] =
+                            a.tex1[(x + w * (t & 1)) + 2 * w * (y + w * (t >> 1)) + 2 * w * 3 * w * z];
+                }
+        out.firstBox[i] = uint32_t(o.pack.size());
+        const float sx = float(double(w) / double(W)), sz = float(double(d) / double(Dt));
+        for (size_t v = 0; v < a.pack.size(); ++v) {
+            StockLgvAtlas::Pack p = a.pack[v];
+            for (int k = 0; k < 2; ++k) p.uvScale[k] *= sx, p.uvBias[k] *= sx;
+            p.uvScale[2] *= sz;
+            p.uvBias[2] = float((double(a.pack[v].uvBias[2]) * double(d) + double(Z)) / double(Dt));
+            o.pack.push_back(p);
+            o.xform.push_back(a.xform[v]);
+        }
+    }
+    return true;
+}
+
 void evalStockLgv(const StockLgvSh& s, const double n[3], double outRgb[3]) {
     const double x = n[0], y = n[1], z = n[2];
     for (int c = 0; c < 3; ++c) {

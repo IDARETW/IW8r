@@ -71,6 +71,17 @@ bool parseStockLgvBlock(const std::string& block, StockLgvAtlas& out, std::strin
 struct StockLgvSh { float dc[3] = {0, 0, 0}; float sh[8][3] = {}; };
 StockLgvSh sampleStockLgv(const StockLgvAtlas& a, size_t volume, const double coord[3]);
 
+// Several atlases (the main zone's and Warzone tiles') stacked into one for the GPU: the width of the widest, the
+// depths one after another (in order, while the sum stays within maxDepth), a narrower atlas at the corner of its
+// slices with texture 1's six tiles re-laid at the stack's width. Every volume keeps its transform; its packing is
+// turned to the stack, so sampleStockLgv(stack, firstBox[i] + v, c) equals sampleStockLgv(*in[i], v, c).
+// firstBox[i] = UINT32_MAX for a null or malformed atlas and for one past maxDepth. False when none fits.
+struct StockLgvStack {
+    StockLgvAtlas atlas;
+    std::vector<uint32_t> firstBox;  // per input
+};
+bool packStockLgvAtlases(const std::vector<const StockLgvAtlas*>& in, StockLgvStack& out, int maxDepth = 2048);
+
 // E(n) of research 105 §1.4 (band weights 1, 4/9, 1/16), clamped >= 0, before bakedLightScale. n: unit world normal.
 void evalStockLgv(const StockLgvSh& s, const double n[3], double outRgb[3]);
 

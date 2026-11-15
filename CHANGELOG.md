@@ -3,6 +3,19 @@
 Newest first. "Not seen in game" means built and checked offline (converter read-back, the game's own loaders through
 ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md) lists the in-game checks.
 
+## 2026-11-15
+
+- **Verdansk is fast again** (a regression from 2026-11-14): Warzone vehicle spawns drew their full vehicle models
+  (100,000 to 140,000 triangles each, not instanced), about 17 million triangles and 3.5 GB of scene geometry on
+  Verdansk; the frame took 450 ms or more and the editor committed over 20 GB. On a map with more than eight vehicle
+  spawns each one now draws its vehicle's lowest detail level (a box until that is fetched); a map with a few placed
+  vehicles keeps the full model. Bench diagnostics `IW8R_BENCH_ITEMS=1` (scene triangles by item label) and the scene
+  stream sizes in the bench's memory log.
+- **Warzone tile props are lit per vertex too** (research 132 G7): the light grids of the main zone and of every
+  loaded Warzone tile (widths 64 to 8) are stacked into one GPU atlas (core `packStockLgvAtlases`, proven to sample
+  exactly as its sources), so props in streamed tiles shade across their length like the main zone's. The bench
+  report gives the number of stacked zones.
+
 ## 2026-11-14
 
 - **Stock props get the game's self-visibility occlusion in Game Lighting** (research 133 section 7): the game stores

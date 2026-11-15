@@ -195,7 +195,24 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         gpuTick->setInterval(10000);
         QObject::connect(gpuTick, &QTimer::timeout, &w, [&w] {
             if (auto* cam = w.findChild<iw8r::qt::CameraView*>())
-                iw8r::qt::EditorLog::instance().add(iw8r::qt::LogLevel::Info, "bench", "gpu memory MB: " + QString::fromStdString(cam->gpuMemoryReport()));
+                iw8r::qt::EditorLog::instance().add(iw8r::qt::LogLevel::Info, "bench", "gpu memory MB: " + QString::fromStdString(cam->gpuMemoryReport()) +
+                                                                                     "; scene vertices: " + QString::fromStdString(cam->sceneStreamReport()));
+            // IW8R_BENCH_ITEMS: the scene items' triangles by label (classname or first material), the largest first.
+            if (qEnvironmentVariableIsSet("IW8R_BENCH_ITEMS")) {
+                std::map<std::string, std::pair<size_t, size_t>> byLabel;  // items, triangles
+                for (const auto* g : w.context().scene.items()) {
+                    size_t tris = 0;
+                    for (const auto& pw : g->polys) tris += pw.size() >= 3 ? pw.size() - 2 : 0;
+                    auto& e = byLabel[g->label + (g->mesh ? " (mesh)" : "")];
+                    ++e.first, e.second += tris;
+                }
+                std::vector<std::pair<size_t, std::string>> top;
+                for (const auto& [l, e] : byLabel) top.push_back({e.second, l + " items " + std::to_string(e.first)});
+                std::sort(top.rbegin(), top.rend());
+                QString line = "scene items:";
+                for (size_t i = 0; i < top.size() && i < 12; ++i) line += QString(" | %1 tris %2").arg(QString::fromStdString(top[i].second)).arg(top[i].first);
+                iw8r::qt::EditorLog::instance().add(iw8r::qt::LogLevel::Info, "bench", line);
+            }
         });
         gpuTick->start();
         QObject::connect(&iw8r::qt::EditorLog::instance(), &iw8r::qt::EditorLog::added, &w, [t0, path](const iw8r::qt::LogEntry& e) {
@@ -260,9 +277,10 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             }
         }
         report << benchMemoryNow("caches_idle");
+        report << "scene_streams " + QString::fromStdString(cam->sceneStreamReport());
         const auto pl = w.propLightStats();
-        report << QString("prop_light %1 of %2 textured placements lit from their light grid box (per vertex from the atlas: %3)")
-                      .arg(pl[0]).arg(pl[1]).arg(cam->hasStockLgvAtlas() ? "yes" : "no");
+        report << QString("prop_light %1 of %2 textured placements lit from their light grid box (per vertex from the atlas: %3, zones %4)")
+                      .arg(pl[0]).arg(pl[1]).arg(cam->hasStockLgvAtlas() ? "yes" : "no").arg(w.propLgvZones());
         report << QString("stock zone %1 opened, reference %2 triangles after %3 ms, stock lightmap %4, probes %5")
                       .arg(mapFile.mid(6)).arg(cam->referenceTriangles()).arg(wt.elapsed()).arg(cam->hasStockLightmap() ? "yes" : "no")
                       .arg(cam->stockProbeCount());
