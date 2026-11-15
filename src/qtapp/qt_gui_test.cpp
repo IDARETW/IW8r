@@ -6617,6 +6617,65 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         if (game && game->isChecked()) game->trigger();
     }
 
+    r.section("own lamps in Game Lighting take the game's light path (research 132 G8)");
+    if (CameraView* cv = w.cameraView()) {
+        // A spot lamp above a floor with a slab between: the lamp lights the floor; with iw8r_shadows 1 the slab's
+        // shadow darkens it (the build shadows only such spots), without it the light passes the slab, as in game.
+        const QString src = QDir(QCoreApplication::applicationDirPath() + "/../../tests/data/gl_mat").absolutePath();
+        const QString dir = QDir(outDir).filePath("gl_lamp");
+        QDir(dir).removeRecursively();
+        QDir().mkpath(dir + "/materials");
+        for (const QFileInfo& f : QDir(src + "/materials").entryInfoList(QDir::Files)) QFile::copy(f.absoluteFilePath(), dir + "/materials/" + f.fileName());
+        const auto box = [](double x0, double y0, double z0, double x1, double y1, double z1) {
+            const QString f = " custom__twosided 64 64 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0\n";
+            const auto p = [](double x, double y, double z) { return QString("( %1 %2 %3 )").arg(x).arg(y).arg(z); };
+            return "{\n " + p(x1, y1, z0) + " " + p(x0, y1, z0) + " " + p(x0, y0, z0) + f + " " + p(x0, y0, z1) + " " + p(x0, y1, z1) +
+                   " " + p(x1, y1, z1) + f + " " + p(x0, y0, z1) + " " + p(x1, y0, z1) + " " + p(x1, y0, z0) + f + " " + p(x1, y1, z1) +
+                   " " + p(x0, y1, z1) + " " + p(x0, y1, z0) + f + " " + p(x1, y0, z1) + " " + p(x1, y1, z1) + " " + p(x1, y1, z0) + f +
+                   " " + p(x0, y1, z1) + " " + p(x0, y0, z1) + " " + p(x0, y0, z0) + f + "}\n";
+        };
+        const auto mapWith = [&](const QString& name, const QString& lamp) {
+            const QString text = "iwmap 4\n{\n\"classname\" \"worldspawn\"\n\"suncolor\" \"0 0 0\"\n\"sunlight\" \"0\"\n" +
+                                 box(-512, -512, -16, 512, 512, 0) + box(-48, -48, 96, 48, 48, 112) + "}\n" + lamp;
+            QFile f(dir + "/" + name);
+            if (f.open(QIODevice::WriteOnly)) f.write(text.toUtf8());
+            return dir + "/" + name;
+        };
+        const QString lampText = "{\n\"classname\" \"light_spot\"\n\"origin\" \"0 0 240\"\n\"angles\" \"90 0 0\"\n\"radius\" \"700\"\n"
+                                 "\"fov_outer\" \"120\"\n\"fov_inner\" \"90\"\n\"intensity\" \"4\"\n";
+        const QString noLamp = mapWith("lamp_none.map", ""), open = mapWith("lamp_open.map", lampText + "}\n"),
+                      shadowed = mapWith("lamp_shadow.map", lampText + "\"iw8r_shadows\" \"1\"\n}\n");
+        QAction* game = w.action("ToggleGameLighting");
+        const auto shot = [&](const QString& map) {
+            w.openPath(map);
+            if (!ctx.texturedView && w.action("CameraModeTextured")) w.action("CameraModeTextured")->trigger();
+            if (game && !game->isChecked()) game->trigger();
+            ctx.cam.pos = iw8r::Vec3{0, -320, 48};  // low, looking at the floor under the slab
+            ctx.cam.yaw = 90;
+            ctx.cam.pitch = -8;
+            ctx.cameraMoved();
+            cv->renderImage(320, 180, true, 0, 1500);
+            return cv->renderImage(320, 180, true, 0, 300);
+        };
+        const QImage a = shot(noLamp), b = shot(open), c = shot(shadowed);
+        const auto mean = [](const QImage& x) {
+            double s = 0;
+            for (int yy = 0; yy < x.height(); ++yy)
+                for (int xx = 0; xx < x.width(); ++xx) s += qGray(x.pixel(xx, yy));
+            return x.isNull() ? 0.0 : s / (x.width() * x.height());
+        };
+        const double none = mean(a), lit = mean(b);
+        int darkened = 0;  // pixels the slab's shadow darkens (the shadow is a small part of the picture)
+        for (int yy = 0; yy < b.height() && !c.isNull(); ++yy)
+            for (int xx = 0; xx < b.width(); ++xx) darkened += qGray(b.pixel(xx, yy)) - qGray(c.pixel(xx, yy)) >= 10;
+        b.save(QDir(outDir).filePath("lamp_open.png"));
+        c.save(QDir(outDir).filePath("lamp_shadow.png"));
+        r.check(game && game->isChecked() && lit > none + 3.0 && darkened > 300,
+                QString("an own spot lamp lights the floor (mean %1 -> %2) and with iw8r_shadows 1 the slab shadows it (%3 pixels darker)")
+                    .arg(none, 0, 'f', 1).arg(lit, 0, 'f', 1).arg(darkened));
+        if (game && game->isChecked()) game->trigger();
+    }
+
     r.section("asset preview window (navigable textured 3D view of a model or prefab)");
     {
         QDir d(QCoreApplication::applicationDirPath());

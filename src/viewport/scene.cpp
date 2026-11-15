@@ -1232,6 +1232,12 @@ void SceneCache::sync(const Document& doc) {
         if (const std::string* r = e.value("radius")) L.radius = std::max(1.0, std::atof(r->c_str()));
         if (const std::string* v = e.value("iw8r_volumetric")) L.volumetric = *v == "1" || *v == "true";
         bool spot = cls == "light_spot" || e.value("fov_outer");
+        if (const std::string* v = e.value("iw8r_bulb_radius")) L.bulbRadius = std::max(0.0, std::atof(v->c_str()));
+        if (const std::string* v = e.value("iw8r_falloff")) L.falloff = std::max(0.0, std::atof(v->c_str()));
+        const bool shadowKey = [&] {
+            const std::string* v = e.value("iw8r_shadows");
+            return v && (*v == "1" || *v == "true");
+        }();
         Vec3 dir{0, 0, -1};
         if (const std::string* t = e.value("target"))
             for (const auto& t2 : doc.map().entities)
@@ -1240,6 +1246,9 @@ void SceneCache::sync(const Document& doc) {
                         dir = normalize(*to - *o);
                         spot = true;
                     }
+        // The build turns a spot of 150 degrees or more into an omni light (compile_iw8.cpp localPrimaryLights).
+        if (spot && e.value("fov_outer") && std::atof(e.value("fov_outer")->c_str()) >= 150.0) spot = false;
+        L.shadows = spot && shadowKey;
         if (spot) {
             Vec3 ang;
             if (!e.value("target") && parse3(e.value("angles"), ang)) {

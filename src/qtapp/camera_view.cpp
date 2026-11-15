@@ -641,6 +641,57 @@ void CameraView::render() {
             }
         mix(ctx_->scene.pixelLights ? 11 : 5);
         renderer_.setPixelLights(pl);
+        // An own map in Game Lighting: its lamps through the game's light path (research 132 G8), as built.
+        {
+            const bool ownGame = game && !gameStockLook() && ctx_->texturedView;
+            uint64_t key = 0;
+            if (ownGame) {
+                key = 1469598103934665603ull;
+                const auto h = [&](double v) { key = (key ^ std::hash<double>{}(v)) * 1099511628211ull; };
+                for (const auto& L : ctx_->scene.lights) {
+                    for (double v : {L.pos.x, L.pos.y, L.pos.z, L.color.x, L.color.y, L.color.z, L.dir.x, L.dir.y, L.dir.z, L.radius, L.cosOuter,
+                                     L.cosInner, L.bulbRadius, L.falloff})
+                        h(v);
+                    h(L.shadows ? 1.0 : 0.0);
+                }
+            }
+            if (key != ownLampsKey_) {
+                ownLampsKey_ = key;
+                std::vector<StockGameLight> lamps;
+                std::vector<StockLightShadow> shadows;
+                if (ownGame)
+                    for (size_t k = 0; k < ctx_->scene.lights.size() && lamps.size() < 254; ++k) {
+                        const auto& L = ctx_->scene.lights[k];
+                        const app::SceneRenderer::PixelLight p = pixelLightOf(L, true);  // the calibrated colour
+                        StockPrimaryLight sp;
+                        sp.index = int(k) + 2;
+                        sp.type = L.cosOuter > -1.5 ? 2 : 3;
+                        sp.intensity = 1.0f;
+                        for (int c = 0; c < 3; ++c) sp.color[c] = p.color[c];
+                        const Vec3 back = sp.type == 2 ? Vec3{-L.dir.x, -L.dir.y, -L.dir.z} : Vec3{0, 0, 1};  // toward the lamp
+                        sp.dir[0] = float(back.x), sp.dir[1] = float(back.y), sp.dir[2] = float(back.z);
+                        sp.origin[0] = float(L.pos.x), sp.origin[1] = float(L.pos.y), sp.origin[2] = float(L.pos.z);
+                        sp.radius = float(L.radius);
+                        sp.bulbRadius = float(L.bulbRadius);
+                        sp.cosHalfFovOuter = sp.type == 2 ? float(L.cosOuter) : 0.0f;
+                        sp.cosHalfFovInner = sp.type == 2 ? float(L.cosInner) : 0.0f;
+                        sp.distanceFalloff = L.falloff > 0 ? float(L.falloff) : 1.0f;
+                        sp.canUseShadowMap = L.shadows;
+                        sp.isVolumetric = L.volumetric;
+                        StockGameLight g;
+                        if (!packStockLight(sp, nullptr, g)) continue;
+                        lamps.push_back(g);
+                        StockLightShadow sh;
+                        if (L.shadows) sh = stockLightShadowCamera(sp, g);
+                        sh.primaryIndex = sp.index;
+                        sh.cast = L.shadows;
+                        shadows.push_back(sh);
+                    }
+                // (A stock map hands its own lamps over separately: they are never cleared from here.)
+                if (ownGame || (ownLampsOn_ && !gameStockLook())) renderer_.setStockLocalLights(std::move(lamps), std::move(shadows));
+                ownLampsOn_ = ownGame;
+            }
+        }
         renderer_.setLightGain(float(ctx_->scene.lightGain));
         // Lit preview: encoded light (headroom to 2x) with exposure, and a sun shadow map over the map's bounds.
         // Game Lighting takes over from the lit preview: vertex colours carry no encoded light then (camera_geometry.cpp).

@@ -1315,6 +1315,25 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // specular as the iw3 style's (F0 .04, gloss .3).
         float3 V = normalize(eyeStart.xyz - i.w);
         int count = int(lightCount.x);
+        if (localInfo.x > 0.5) {
+            // The game's light path (research 132 G8): the map's lamps as the build writes them (bulb, window, cone,
+            // shadow maps of spots with iw8r_shadows), tile-binned; a stock map's lamps on brushes added to it.
+            const uint2 tile = uint2(i.pos.xy) / uint(localInfo.z);
+            const uint base = (tile.y * uint(localInfo.y) + tile.x) * 8u;
+            float3 dSum = 0, sSum = 0;
+            const float gpOwn = 1.0 - sqrt(1.0 - 0.3);  // the build's gloss 0.3
+            [loop] for (uint wd = 0; wd < 8u; ++wd) {
+                uint bits = lightTiles[base + wd];
+                [loop] while (bits != 0u) {
+                    const uint b = firstbitlow(bits);
+                    bits &= bits - 1u;
+                    gameLocalLight(gameLights[wd * 32u + b], i.w, N, V, albedo, float3(0.04, 0.04, 0.04), gpOwn, 1.0,
+                                   float4(0, 0, 0, 0), float4(0, 0, 0, 0), dSum, sSum);
+                }
+            }
+            c += dSum + sSum;
+            count = 0;  // the simplified loop below would count them twice
+        }
         for (int k = 0; k < count; ++k) {
             float3 dl = lights[k].posRadius.xyz - i.w;
             float dist = length(dl);

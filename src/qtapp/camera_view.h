@@ -760,6 +760,9 @@ private:
     bool ownMaskScroll_ = false;
     QElapsedTimer maskClock_;
     float skyRgbmRange_ = 1.0f;  // the sky faces are RGBM with this range (research 132 G10); 1 = 8-bit faces
+    // An own map's lamps in the renderer's local-light path (research 132 G8): the lamps' key and whether they are set.
+    uint64_t ownLampsKey_ = 0;
+    bool ownLampsOn_ = false;
     // A stock material with UV animation was set up for drawing (research 133): the view redraws while it is active.
     bool uvAnimSeen_ = false, uvAnimTick_ = false;
     double stockSkyIntensity_ = 0;

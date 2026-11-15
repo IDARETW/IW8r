@@ -135,6 +135,10 @@ public:
         Vec3 pos, color{1, 1, 1}, dir;  // dir: spot axis (unit), zero for omni
         double radius = 400, cosOuter = -2, cosInner = -2;
         bool volumetric = false;  // iw8r_volumetric: the lamp lights the volumetric air
+        // The build's light keys (compile_iw8.cpp kLightKeys; research 132 G8): bulb radius (0 = the game's 1), distance
+        // falloff (0 = 1), a shadow map (spots only).
+        double bulbRadius = 0, falloff = 0;
+        bool shadows = false;
     };
     bool litPreview = false;
     bool litShadows = true;

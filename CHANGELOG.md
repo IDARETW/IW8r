@@ -5,6 +5,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Own lamps in Game Lighting take the game's light path** (research 132 G8), as the build gives them: bulb and
+  window falloff, the spot cone, the 150-degree rule, and a shadow map for spots with `iw8r_shadows 1` (the only
+  shadowed own lamps in game too). Brushes added to a stock map get the stock map's lamps the same way.
 - **Stock skies keep their HDR range in Game Lighting** (research 132 G10): the sky faces are RGBM (a colour
   and a multiplier, up to 16 times the old white point) at 512 texels, so the bright sky around the sun is no longer
   clipped flat. Other views and own maps (whose build writes an 8-bit sky) are unchanged.
