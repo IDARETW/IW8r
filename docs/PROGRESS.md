@@ -15,6 +15,13 @@
   shots; IW8R_BENCH_ITEMS lists scene triangles by item. Installer and zip rebuilt 01:25 (no ini). Left of research
   132/133, each recorded as decided: G9 rest, G13 (decoded), G14, static-model displacement, the LGV thin push,
   lightmapped tml props. All suites green at a2c68bf (core 183,845 / 1,415 tests, GUI 1,105).
+  2026-11-15 early: lightmapped tml props (ACTS fork 834568b9 `_LMAPUV`, lmapLookup, record -4; dc479fe), LGV thin
+  push, GTAO (research 135 by a helper agent; c5c3aeb; note: bind the depth SRV only after the depth target is off),
+  model layers (research 136 by a helper agent): token parser, UV1, vertex alpha weight, colour / normal / gloss /
+  tint-mask fold into the prop's own pass (8d9ce45, 0db9110, ab818b5; separate passes had cost 6.7 ms on Aniyah).
+  Benches: Hideout 9.4, Speedball 5.8, Aniyah 11.8, Verdansk 22.4 ms. Installer and zip 03:33 (no ini). Left by
+  decision: G13 distortion, static-model displacement, the 14 code layers. Owner: Cinder Rail in game (item 0) and the
+  editor look list at the top of TEST_CHECKLIST.
 - 2026-11-14 late evening (after the Cinder Rail fix): converter e648a414 (research 134 rewritten from the client
   PDB: DB_PatchMem's asset stack of two is pushed by nearly every loader; every asset type counts) is live, and the
   fixed Cinder Rail (same inputs as the 20:15 build) was installed at 20:40 with the owner's OK; not yet seen loading.

@@ -9,6 +9,16 @@ Mark each line OK / wrong (with a screenshot) and send it back.
 
 ## In the editor
 
+- [ ] New on 2026-11-14 night / 11-15 (editor only, all proven offline; for your own look, View > Game Lighting on):
+  - The first time each stock map opens, its models are fetched again in the background for a few minutes (the
+    status bar says so); they keep drawing meanwhile. After that:
+  - Hideout: dense grass and bushes in shade are darker than before (the game's self-visibility); rugs indoors take
+    the floor's light; wall-floor corners and contact shadows are wider and softer (the game's GTAO).
+  - King: containers show painted metal on the corrugated panels and their doors on the frame; worn concrete blocks
+    show chipped edges (layer normals).
+  - Shipment: the harbour water ripples and catches the sun.
+  - Verdansk: opens and moves at about 22 ms a frame again (vehicle spawns draw a low-detail model).
+  - A door frame you place (the wooden door bundle) lets you walk through in Play Preview.
 - [ ] New on 2026-11-14 (editor only, nothing here needs the game; all are covered by tests, these are for your own look):
   - Brush > Paint Mesh on Faces: Ctrl+Shift+click a floor face, run the command, keep 32. A mesh lies on the face, the
     face under it is caulk now (not drawn while the mesh covers it), and Vertex Paint Mode starts. Ctrl+Z takes the
