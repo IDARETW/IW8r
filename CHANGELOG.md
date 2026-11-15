@@ -5,6 +5,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-14
 
+- **Play preview collides like the built map.** Walking the map in the editor (play preview) now meets the contents
+  of prefabs and placed models (one convex brush per piece of the model's hull, or a box, as the build gives them),
+  not only the map's own brushes; models the build keeps live (spinning, animated, `iw8r_no_collision 1`) are passed
+  through as in game (core `play_world`, research 131 gap 9).
+
 - **Fixed: the minimap was a quarter turn off in game** (owner's run of Cinder Rail Toon). The minimap picture was
   always drawn for a map whose north is +X, but since 2026-11-11 the build writes north = +Y (the top of the XY
   view), so the converter no longer turned it and the game showed it turned against the player. The picture is now

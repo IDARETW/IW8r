@@ -42,6 +42,14 @@ public:
     // Upright capsule (the Replay player shape, walk simulator profile): radius r, total height h, feet at the point.
     Trace traceCapsule(const Vec3& start, const Vec3& end, double r, double h) const;
 
+    // Adds one convex solid (outward planes, inside dot(n, x) <= d) that blocks the player, as a placed model's hull
+    // piece does in the built map (core play_world). False when the planes enclose nothing.
+    bool addConvex(std::vector<Plane> planes, uint32_t contents = 1) {
+        const size_t before = solids_.size();
+        addSolid(std::move(planes), contents, false);
+        return solids_.size() > before;
+    }
+
     // Contents mask the player collides with (solid | player clip).
     static constexpr uint32_t kPlayerMask = 0x1u | 0x10000u;
 

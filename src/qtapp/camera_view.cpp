@@ -1,6 +1,8 @@
 #include "material_tints.h"
 #include "worker_guard.h"
 #include "camera_view.h"
+#include "play_world.h"
+#include "prefab_browser.h"
 #include "bake_options.h"
 #include <atomic>
 #include <QCoreApplication>
@@ -1058,10 +1060,23 @@ void CameraView::addGizmoLines() {
 
 // ------------------------------------------------------------------ play preview
 
+// The play preview's collision as the built map has it (core play_world): the map's brushes, the contents of its
+// prefabs and its placed models' hulls.
+void CameraView::buildPlayWorld() {
+    iw8r::PlayWorldOptions o;
+    o.mapPath = ctx_->doc.path();
+    for (const QString& r : PrefabBrowser::searchRoots()) o.prefabRoots.push_back(r.toStdString());
+    o.modelOf = ctx_->scene.modelSource;
+    o.modelScale = ctx_->scene.modelScale;
+    iw8r::PlayWorldStats st;
+    iw8r::buildPlayWorld(ctx_->doc.map(), o, world_, &st);
+    playWorldModels_ = st.models;
+}
+
 void CameraView::startPlay() {
     if (ctx_->playing) return;
     playMode_ = nullptr;
-    world_.build(ctx_->doc.map());
+    buildPlayWorld();
     worldRevision_ = ctx_->doc.revision();
     // Spawn: a selected spawn entity (its origin and yaw), else below the camera.
     Vec3 from = ctx_->cam.pos;
@@ -1119,7 +1134,7 @@ void CameraView::stopPlay() {
 void CameraView::tickPlay(double dt) {
     if (!ctx_->playing) return;
     if (worldRevision_ != ctx_->doc.revision()) {  // edits while playing (undo, live changes)
-        world_.build(ctx_->doc.map());
+        buildPlayWorld();
         worldRevision_ = ctx_->doc.revision();
     }
     auto down = [&](int k) { return ctx_->heldKeys.contains(k); };

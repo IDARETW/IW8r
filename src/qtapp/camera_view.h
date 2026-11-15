@@ -588,6 +588,8 @@ private:
     QPoint pressPos_, lockPos_;
     bool lmbDown_ = false;
     CollisionWorld world_;
+    size_t playWorldModels_ = 0;  // placed models that collide in the play preview
+    void buildPlayWorld();
     PlayerState player_;
     MoveParams params_;
     uint64_t worldRevision_ = 0;
