@@ -1,0 +1,155 @@
+{"agent": "A118", "structs": [
+ {"name": "NetLoopback", "size": 98496,
+  "size_evidence": "NetStatic::NetStatic@0x140342f70: lea rbx, loopback (0x14D4D0030); edi=2 loop calls NetLoopback_InitRing then add rbx,8040h (stride 32832); third ring is unk_14D4E00B0 = loopback+65664 (channel 2, also NetLoopback_SendTo@0x1412bcda0 offset 65664 for channel 2); next global stru_14D4E80F0 = loopback+98496 exactly; NetLoopback_InitRing@0x1412bd1c0 writes header at 0, memset 0x8000 at +12, event QWORD at +32824 so each ring is 32832 bytes",
+  "members": [
+   [0, "m_clientBuffers", null, "NetLoopback_SendTo@0x1412bcda0: channel 0 ring at loopback+0 (32832*channel)"],
+   [32832, "m_clientBuffers", null, "NetLoopback_SendTo: channel 1 ring at loopback+32832; NetStatic::NetStatic@0x140342f70 loop stride 8040h"],
+   [65664, "m_serverBuffer", null, "NetLoopback_SendTo: channel 2 at loopback+65664 (0x10080); NetStatic::NetStatic@0x140343027 lea rcx, unk_14D4E00B0"]
+  ],
+  "changed_members": [
+   ["m_clientBuffers", "element type NetBuffer<32768,0> (34344 bytes, PacketStream) -> ring of 32832 bytes; array count 2 kept", "NetStatic::NetStatic@0x140342f70 ring stride 8040h; NetLoopback_InitRing@0x1412bd1c0 fields at 0..32832"],
+   ["m_serverBuffer", "offset 68688 -> 65664, size 34344 -> 32832", "NetLoopback_SendTo@0x1412bcda0 channel 2 base 65664"],
+   ["struct size", "103032 -> 98496", "three rings x 32832, next global at +98496"]
+  ],
+  "unconfirmed": ["ring header and data fields inside a 32832-byte ring: only the ring offsets listed above are confirmed; the coordinator should use a ring type, not NetBuffer_32768_0"],
+  "notes": "Replay's loopback is three 32832-byte ring buffers, not three PacketStream NetBuffer<32768,0> objects. NetBuffer_32768_0 is no longer used by this struct in Replay."},
+
+ {"name": "NetBuffer_65536_0", "size": null,
+  "size_evidence": "not proven: no Replay function found that uses NetBuffer<65536,0>; name search for NetBuffer/PacketStream found only PacketStream::Create (voice, SD_VoiceAllocate) and PacketStream::ReadableAt (not checked in full)",
+  "members": [],
+  "changed_members": [],
+  "unconfirmed": ["m_stream: no Replay access found"],
+  "notes": "Left alone. Its only known user (NetLoopback) does not use it in Replay."},
+
+ {"name": "NetBuffer_32768_0", "size": null,
+  "size_evidence": "not proven: as NetBuffer_65536_0; no Replay access, and NetLoopback no longer embeds it in Replay",
+  "members": [],
+  "changed_members": [],
+  "unconfirmed": ["m_stream: no Replay access found"],
+  "notes": "Left alone. Replay's NetLoopback rings are 32832 bytes, so the 34344-byte size here is not what the loopback uses."},
+
+ {"name": "NetBuffer_262144_1", "size": null,
+  "size_evidence": "not proven: no Replay function found that uses NetBuffer<262144,1>",
+  "members": [],
+  "changed_members": [],
+  "unconfirmed": ["m_stream: no Replay access found"],
+  "notes": "Left alone."},
+
+ {"name": "MaterialPipelineState", "size": 16,
+  "size_evidence": "Material_ReleaseTechniquePipelineStates@0x14194c7f0: loop add rbx,10h over technique+40 array, pso at [base+rbx+8], hash at [base+rbx]; R_DX12_BuildTechniquePSOs@0x140ecb4d0: v38 += 16 per entry, key at +0, reservedCtx at +8",
+  "members": [
+   [0, "hash", "unsigned __int64", "R_DX12_BuildTechniquePSOs@0x140ecb4d0: *(v38+v39) key; Material_ReleaseTechniquePipelineStates: [rdi+rbx]"],
+   [8, "pso", "ID3D12PipelineState *", "Material_ReleaseTechniquePipelineStates@0x14194c7f0: mov rcx,[rdi+rbx+8]; R_PSOBlobCache_Release(pso, hash)"]
+  ],
+  "changed_members": [],
+  "unconfirmed": [],
+  "notes": "IDA is already right (16 bytes, hash then pso). The game-test layout (104 bytes, packet, metaData, shaders) is not this Replay type. No change."},
+
+ {"name": "MPSCQueue_RB_BackendDataCopier__Cmd_16384", "size": 655376,
+  "size_evidence": "RB_BackendDataCopier_EnqueueBufferCopy@0x140eb4640: imul rdx,rax,0A0010h (queue stride 655376 = 0xA0010) and RB_BackendDataCopier::UpdateSingleQueue@0x140eb4ea0: imul rdi,rdx,0A0010h. Items: lea rax,[rax+rax*4] then *8 (40 bytes per item, 16384 items, &0x3FFF); items start at queue+16 (movups [rcx+rax*8+10h]), counters at queue+0A0010h (alloc), +0A0014h (write), +0A0018h (read) (items end at queue+16+655360 = queue+655376)",
+  "members": [
+   [0, "m_items", "RB_BackendDataCopier__Cmd[16384] (element 40 bytes in Replay)", "items at struct+40*i (queue base = rcx+16 from the producer and consumer code)"],
+   [655360, "m_allocPtr", "int", "EnqueueBufferCopy@0x140eb4640: lock xadd [rcx+0A0010h] = struct+655360 (rcx = struct-16)"],
+   [655364, "m_writePtr", "int", "EnqueueBufferCopy: lock cmpxchg [rcx+0A0014h]; UpdateSingleQueue: mov ecx,[rdi+0A0014h]"],
+   [655368, "m_readPtr", "int", "UpdateSingleQueue@0x140eb4ea0: mov eax,[rdi+0A0018h] (read index used for item lea r13,[rdi+rax*8])"]
+  ],
+  "changed_members": [
+   ["m_items", "element 48 bytes x 16384 (786432) -> element 40 bytes x 16384 (655360)", "EnqueueBufferCopy: 40-byte item stride (lea rax,[rax+rax*4]; *8)"],
+   ["struct size", "786448 -> 655376", "queue stride 0xA0010 in both producer and consumer"]
+  ],
+  "unconfirmed": ["m_consumerThreadId at struct+655372: no access seen; implied by the 655376 size"],
+  "notes": "Producer and consumer agree on counters and items once the queue base is taken as rcx+16 (the 16-byte offset in the two decompilations is the same base seen differently). The element type RB_BackendDataCopier::Cmd is 40 bytes in Replay (game-test 48): its owner should check the item layout (+0 DWORD 1, +16 DWORD copyFlags/op, +24 QWORD copySource, +32 copyOffset/copySize)."},
+
+ {"name": "ID3D12PipelineState", "size": null,
+  "size_evidence": "not proven: R_SetPipelineState@0x141989850 only passes the pso pointer on (vtable call at +200 of the device context); Replay reads no member of the object",
+  "members": [],
+  "changed_members": [],
+  "unconfirmed": ["m_Packet: no Replay access found (game-test-only wrapper)"],
+  "notes": "This is a D3D12 COM object owned by the driver. Left alone; the 40-byte IDA layout and the game-test 48 are both unverified."},
+
+ {"name": "ID3D12Pageable", "size": null,
+  "size_evidence": "not proven: only the vtable pointer at +0 is used by Replay (through vtables)",
+  "members": [],
+  "changed_members": [],
+  "unconfirmed": ["lpVtbl: only vtable access seen"],
+  "notes": "Left alone. Game-test base ID3D12DeviceChild is not in this build's layout."},
+
+ {"name": "FriendListGlobal", "size": 28264,
+  "size_evidence": "Online_Friends::GetFriends@0x141b371b0: return this+64+28264*c; Online_Friends::GetNumFriends@0x141b37200: *(this+96+28264*c) (slot+32); Online_Friends::GetSortedFriendByIndex@0x141b372e0: this+4*(i+7066*c)+5704 (7066*4 = 28264); Online_Friends_GetFriendEntryByIndex@0x141b372a0: 8*(i+3533*c) (3533*8 = 28264). The residual actualIndex->end of -19808 equals 48072 - 28264",
+  "members": [
+   [32, "count", "unsigned int", "Online_Friends::GetNumFriends@0x141b37200: slot+32 (this+96 with slot base this+64)"],
+   [5640, "sortedFriends", "int[]", "Online_Friends::GetSortedFriendByIndex@0x141b372e0: this+4*i+5704 relative to slot base this+64 gives slot+5640; array length not proven"]
+  ],
+  "changed_members": [
+   ["struct size", "48072 -> 28264", "per-controller stride 28264 in four Online_Friends accessors"],
+   ["sortedFriends", "offset 33640 (int[1200]) -> 5640 (int array, shorter)", "Online_Friends::GetSortedFriendByIndex@0x141b372e0"],
+   ["friends/friendPlatformIds/status/clientProgramID/lastTimeInvited/userIdResolveState", "array counts and offsets do not fit 1200 entries in 28264 bytes", "slot size; the arrays before sortedFriends at 5640 are not yet placed"]
+  ],
+  "unconfirmed": ["friends, currentFriend, storedFriend, owningPlatformId: no direct Replay access found in the accessors read; array lengths unknown"],
+  "notes": "The per-controller slot is 28264 bytes and starts 64 bytes into the Online_Friends object (this+64). Array lengths inside the slot need the Online_Friends::FriendsDetails / refresh functions (not read). The 1200-entry arrays of the old layout cannot all fit."},
+
+ {"name": "EntityTagInfo", "size": 128,
+  "size_evidence": "G_AllocTagInfoMem@0x141281250: ntl::nxheap::allocate(g_tagInfoHeap, 128, 16)",
+  "members": [],
+  "changed_members": [],
+  "unconfirmed": ["parent, next, name, flags, index, axis, extraDataUnion: no member-level Replay access read; the IDA tail (_pad50[32] then extraDataUnion[16] at +112) disagrees with game-test (axis 48 then extraDataUnion 48 at +80)"],
+  "notes": "Size 128 is proven by the allocation. Member offsets are not confirmed; the extraDataUnion position is in doubt."},
+
+ {"name": "EdgeQueryCache", "size": null,
+  "size_evidence": "not proven: lower bound 508 from Edge_InitQueryState@0x1413ebe80 (writes +496, +500, +504 floats; +400 OWORD) and Edge_SetupQueryBounds@0x1413ee040 (writes query+112..+400, +416..+448, six function pointers at +448..+496). Callers Mantle_FindMantleEdge@0x141105190 and PM_ContextMount_FindMountEdge_Initial@0x140cae650 use local buffers (frame locals 2568 and 1928 bytes), which do not give the struct size",
+  "members": [],
+  "changed_members": [
+   ["mountQueryShape / mantleQueryShape offsets", "IDA shape at +48 (288 bytes) and +368 disagree with Replay: the query object holds a 256-byte bounds copy at +112 (query+112..+368) and a function table at +448..+496", "Edge_SetupQueryBounds@0x1413ee040"]
+  ],
+  "unconfirmed": ["all members: the Replay query object does not match the IDA member sizes or offsets"],
+  "notes": "The type name may refer to a cache object, while Replay code uses the query object directly. The coordinator should not resize it from this evidence."},
+
+ {"name": "Edge", "size": null,
+  "size_evidence": "not proven: Replay code that reads the segment records (Edge_GetSegmentLengthSq@0x1413ec4e0, Edge_GetPointAtParam@0x1413ec810) reads two 16-byte vectors from MapEdgeList_LookupSegment, not a 24-byte Edge",
+  "members": [],
+  "changed_members": [],
+  "unconfirmed": ["point[2] at 0 (game-test) vs 8 (IDA _pad0[8]): no Replay access found to decide"],
+  "notes": "Left alone. The IDA leading _pad0[8] has no evidence either way."},
+
+ {"name": "DiskReadContext", "size": 56,
+  "size_evidence": "DiskFS::StartRead@0x140f63110: context pool at DiskFS+13808h, loop of 256 entries with add rbx,38h (stride 56), 'Out of read contexts (256)'. Replay's DiskFile::StartRead@0x140f62d20 has `this` = DiskFile (state at +256, hFile at +264, OVERLAPPED at +272), not this struct, so its accesses do not map onto DiskReadContext",
+  "members": [
+   [0, "m_overlapped", "OVERLAPPED", "DiskFS::StartRead@0x140f63110: [rbx]=0, [rbx+8]=0, [rbx+10h]=r15d (offset), [rbx+14h]=eax (offset high), [rbx+18h]=0 (hEvent); lpOverlapped = rbx"],
+   [32, "m_callback", "void *", "DiskFS::StartRead: mov [rbx+20h], rbp (callback); call rbp at 0x140f63273"],
+   [40, "m_callbackContext", "void *", "DiskFS::StartRead: mov [rbx+28h], r14; call rbp with rcx=r14"],
+   [48, "m_inUse", "bool", "DiskFS::StartRead: cmp/mov byte [rbx+30h]"]
+  ],
+  "changed_members": [
+   ["struct size", "64 -> 56", "pool stride 38h"],
+   ["m_lastStartReadTime", "game-test offset 32 has no Replay counterpart; Replay +32 is the callback pointer", "DiskFS::StartRead@0x140f63110"],
+   ["m_callback / m_callbackContext / m_inUse", "offsets 40/48/56 -> 32/40/48", "DiskFS::StartRead"]
+  ],
+  "unconfirmed": [],
+  "notes": "The packet's replay_functions entry (DiskFile::StartRead) is the wrong function: that function takes the DiskFile and its anchors (GT 0..48 -> Replay 256..296) do not describe the read context. The DiskFile struct itself (A115's range) has state at +256, hFile at +264 and OVERLAPPED at +272, which disagrees with the IDA DiskFile layout (lastReadEndOffset +256, lastStartReadTime +264, handle +272): flag it to the DiskFile owner."},
+
+ {"name": "DObjBoneParentMap", "size": 8712,
+  "size_evidence": "DObjBuildBoneParentMapInternal@0x14149afb0 zeroes outParentMap[1025..1088] (bytes 8200..8712) and writes the parents WORDs from outParentMap+8; no access at 8712 or 8720 found. Lower bound 8712 is proven; upper bound not proven (game-test 8712, IDA 8728)",
+  "members": [
+   [0, "obj", "DObj *", "DObjBuildBoneParentMap@0x14149afa0: *outParentMap = obj"],
+   [8, "parents", "unsigned __int16[4096]", "DObjBuildBoneParentMapInternal: v4 = outParentMap+1 (byte 8), WORD writes indexed by bone"],
+   [8200, "duplicateBits", "bitarray<4096>", "DObjBuildBoneParentMapInternal: DWORD index 2050 (byte 8200) |= 0x80000000 >> bit"]
+  ],
+  "changed_members": [
+   ["extraPtr", "IDA +8720 (8 bytes) has no Replay access; game-test has no such member: remove (or leave as pad) unless found", "DObjBuildBoneParentMapInternal zeroing ends at 8712"],
+   ["struct size", "8728 -> 8712 (proposal; lower bound proven, upper bound not)", "zeroing range"]
+  ],
+  "unconfirmed": ["size above 8712: no allocation seen; check the DObjProceduralBones_Create allocation (2484 bytes, not read) before applying"],
+  "notes": "Members at 0, 8 and 8200 match both layouts."},
+
+ {"name": "DDLMember", "size": 64,
+  "size_evidence": "DDL_Lookup_FindNodeByHashChained@0x142053a80: node = *(hashTable+16) + (index << 6), i.e. 64-byte node stride; game-test 48 is not this build",
+  "members": [
+   [24, "bitSize", "int", "DDL_GetEnum@0x1420519e0: *(member+24) bit width, divided by arraySize"],
+   [28, "limitSize", "int", "DDL_GetEnum@0x1420519e0: *(member+28)"],
+   [36, "type", "int", "DDL_GetType@0x142051dd0: *(member+36), member = state->+16"],
+   [52, "arraySize", "int", "DDL_GetEnum@0x1420519e0: *(member+52)"]
+  ],
+  "changed_members": [],
+  "unconfirmed": ["name, index, serializedByte, offset, externalIndex, rangeLimit, isArray, enumIndex: not checked"],
+  "notes": "IDA already matches (64 bytes; bitSize at 24, type at 36, arraySize at 52). The accessors take the DDL state object (index at +4, member pointer at +16), not DDLMember. DDL_GetDef@0x142051870 walks a different node type (WORD id at +8, next pointer at +72, so at least 80 bytes); it is not DDLMember and should be checked by the owner of that struct."}
+]}

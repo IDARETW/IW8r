@@ -20,7 +20,11 @@ If a struct in your entry has no `packets\S.json` (only `S.json.done`), the coor
 Wave 1 changed these local types, so they are now right for Replay and can be used as fixed sizes: `TaskItem` 96,
 `GenericTask` 88, `FlightDynamics` 1264, `HelicopterDynamics` 2368, `BgVehiclePhysics` 688, `BgVehiclePhysicsGround`
 3112, `BgVehiclePhysicsGround__Wheel` 148, `CgSnapshotMP` 405680, `CgVehicleSystem` 1135880, `CgVehicleSystemMP`
-1141000, `CgVehicleEventSystem` 14040, `PartyHostDetails` 48, `OnlineMatchmakerOmniscient` 1071120.
+1141000, `CgVehicleEventSystem` 14040, `PartyHostDetails` 48, `OnlineMatchmakerOmniscient` 1071120. Wave 2 added:
+`DWWrappers` 1136 (16-byte wrapper slots: `DWClans`, `DWMail`, `DWFriends`, ... 16, `DWLobbyService` / `DWEventLog`
+32), `Vehicle` 2192, `sd_decoder` 33152, `NetChannel` 24, `NetLoopback` 98496, `BG_SpawnGroup_Loot_Set` 3712,
+`ParticleManager__Particle_SoundData` 56, `FriendListGlobal` 28264, `CachedContentIOStreamDCache` 232,
+`BgAntiLagEntityHistoryExtended` 68, `actor_prone_info_t` 24, `MemoryFile` 176, `NetTelemetry` 27448.
 
 ## Your starting evidence: the packet
 

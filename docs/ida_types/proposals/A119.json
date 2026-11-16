@@ -1,0 +1,124 @@
+{"agent": "A119", "structs": [
+{"name": "CrosslaunchHSM", "size": null,
+ "size_evidence": "not proven: Replay touches only base-class offsets (HandleHSMCallback_WaitForControllerToBeActive reads this+24; HSM_IsInState reads this+16 and this+132). No allocation or stride for the derived class found; CrosslaunchHSM objects sit at g_dwLogonHSMs + 8496*i (dwLogonHSMs_DetermineStartOrWaitAll, dwGetLogOnStatus), so the parent layout would give the size",
+ "members": [],
+ "changed_members": [],
+ "unconfirmed": ["m_didWeComErrorDuringUpdate 136", "m_pendingCrosslaunchController 140", "m_pendingCrosslaunchXuid 144", "m_hasBeenInitialized 152", "m_targetMenu 153: no Replay access found"],
+ "notes": "Base CrosslaunchHSM_base: HSM_IsInState reads the state count at Replay +132 and states from +16; the current base layout names +120 as m_HSMStateStackSize, so the base disagrees with Replay code. Base owner should check. Embedded object placeholder m_embeddedObject192 has no evidence."},
+
+{"name": "ComputeShaderProgram", "size": 24,
+ "size_evidence": "Load_ComputeShader (0x140E0A3B0): Load_Stream(..., varComputeShaderProgram = varComputeShader+16, 0x18u); IDA size 24 already matches, game-test 32 is an older layout",
+ "members": [
+   [8, "loadDef", "GfxComputeShaderLoadDef", "Load_ComputeShader: s_computeShaderLoadDefRecordPtr = varComputeShaderProgram + 8, then Load_GfxComputeShaderLoadDef(1)"],
+   [0, "cs", "ID3D12PipelineState *", "Load_ComputeShader: 24-byte program stream starts at the program pointer; cs is the first 8 bytes (position only, no field access)"]
+ ],
+ "changed_members": [["derivedCS", "absent in Replay: the 24-byte stream is cs(8) + loadDef(16)", "Load_ComputeShader@0x140E0A3B0"]],
+ "unconfirmed": [],
+ "notes": "Current IDA layout (cs at 0, loadDef at 8, size 24) already agrees with Replay; the packet's size 32 proposal is wrong. Load_FixupComputeShaderProgram is empty."},
+
+{"name": "ComputeData", "size": null,
+ "size_evidence": "not proven. R_InitComputeCmdBufState (0x1418BE0C0) reads cmdBufferSet+6464 (a bool) and uses cmdBufferSet + 9928*bufferIndex for per-context data; R_ComputeCmd_Finish (0x1418BD4A0) uses v2 = *cmdRef with v2+6467 (cleared), v2+6480 (list pointer), v2+6492 (count), v2+6496 (offset). If ComputeData starts at 6464 the gt offsets 0, 3, 16, 28, 32 map to 6464, 6467, 6480, 6492, 6496, but this base is not confirmed",
+ "members": [],
+ "changed_members": [["contextData", "Replay per-context stride 9928 (cmdBufferSet + 9928*bufferIndex) vs game-test ComputeContextData 9192 (array of 2); the context start offset is not confirmed", "R_InitComputeCmdBufState@0x1418BE0C0"]],
+ "unconfirmed": ["asyncEnabled 6464 (bool), cmdPending 6467 (bool): offsets from Finish/InitComputeCmdBufState, base assumed", "cmdList 6480 (pointer), used 6492, headsOffset 6496: from R_ComputeCmd_Finish, mapping to gt cmdListData (ComputeCmdList) not confirmed"],
+ "notes": "Do not resize from the builder value 19864: it was computed from a 9912 context stride, which Replay does not show. Owner should decide whether cmdBufferSet is ComputeData itself or a parent with ComputeData at +6464."},
+
+{"name": "ComputeContextData", "size": null,
+ "size_evidence": "not proven. No Replay access typed as ComputeContextData was found. The context pointer passed to R_InitComputeCmdBufState (computeCtx, also the global computeCtx used by R_ComputeCmd_Finish) has a POINTER descState at +4256 (not an inline 9064-byte descriptor state at +72 as in game-test), with the same tail as CmdBufState shifted by +1776",
+ "members": [],
+ "changed_members": [["descState", "game-test inline GfxDescriptorState 9064 bytes at +72; Replay compute context stores a pointer at +4256 (R_InitComputeCmdBufState writes it, R_RebindDescriptorState reads ctx+4256)", "R_InitComputeCmdBufState@0x1418BE0C0; R_RebindDescriptorState@0x141879DE0"]],
+ "unconfirmed": [],
+ "notes": "The compute context Replay uses looks like the CmdBufState family, so ComputeContextData as the game-test type may not describe it. Do not resize the 9192 type from builder value 9912."},
+
+{"name": "CmdBufState", "size": null,
+ "size_evidence": "not proven, lower bound 4328: R_InitComputeCmdBufState writes computeCtx+4320 (8 bytes) and computeCtx+4280..4328 (cmdBufferSet, bufferIndex, pointers) are all written; builder 4280 was too small. Tail offsets are game-test +1776 (4192 = 2416+1776 count, 4256 = 2480+1776 descState, 4264 = 2488+1776 commandSignatureType, 4272 = 2496+1776 constantBufferAllocations, 4232 = 2456+1776, 4248 = 2472+1776, 4252 = 2476+1776)",
+ "members": [
+   [3152, "device", "GfxDevice *", "R_FlushResourceTransitions@0x141988320 and R_HW_FlushResourceTransitions@0x141988EB0: *(cmdBufState+3152) is the device, its vtable called at +208; R_InitComputeCmdBufState writes it too"],
+   [4192, "resourceTransitionCount", "unsigned int", "R_FlushResourceTransitions: reads and zeroes +4192; R_HW_FlushResourceTransitions reads it; R_InitComputeCmdBufState zeroes it"],
+   [4248, "resourceTransitionLabelCount", "unsigned int", "R_InitComputeCmdBufState: dword write 0 at +4248"],
+   [4252, "resourceTransitionDispatchOrDraw", "bool", "R_InitComputeCmdBufState: byte write 0 at +4252"],
+   [4256, "descState", "GfxDescriptorState *", "R_RebindDescriptorState@0x141879DE0: v1 = *(int**)(ctx+4256); R_InitComputeCmdBufState: R_InitDescriptorState and R_CheckReserveDescriptorHeaps on +4256"],
+   [4264, "commandSignatureType", "unsigned int", "R_InitComputeCmdBufState: dword write 0 at +4264"]
+ ],
+ "changed_members": [
+   ["resourceTransitions", "1024 bytes (32 barriers) at Replay +3168; count at +4192 follows directly, so the array is 1024 bytes (inferred from R_FlushResourceTransitions passing cmdBufState+3168 as the barrier array)", "R_FlushResourceTransitions@0x141988320"],
+   ["constants region", "Replay device is at +3152 (game-test 1360, shift +1792) while the transitions are at +3168 (game-test 1392, shift +1776): 16 bytes move from the constants region into the gap before device, and 16 bytes of the stage/wave members are missing between device and transitions. Member names for that span are not confirmed", "R_FlushResourceTransitions, R_InitComputeCmdBufState"],
+   ["extra tail members", "Replay-only members after the game-test end: +4280 pointer (cmdBufferSet), +4288 dword (bufferIndex), +4296 pointer, +4304 dword, +4312 pointer, +4320 pointer", "R_InitComputeCmdBufState@0x1418BE0C0"]
+ ],
+ "unconfirmed": ["resourceTransitionLabels 4200 (32 bytes), resourceTransitionLabelValues 4232 (16 bytes), constantBufferAllocations 4272 (pointer type from game-test), commandSignatureType type: offsets from game-test +1776 only, not confirmed by a Replay access"],
+ "notes": "Functions show the CmdBufState-shaped object is the 'computeCtx' global (R_ComputeCmd_Finish passes &computeCtx; the global is typed __int64 in IDA). Owner should decide whether to resize; I did not find the allocation, so size stays null. The current IDA layout (16 + 2488 pad) is wrong for Replay."},
+
+{"name": "ChallengeXPCache", "size": null,
+ "size_evidence": "not proven. Only evidence found: OnlineChallengesManager::FlushXPCache (0x140F345C0) and ResetXPCache (0x140F3A2B0) use a 968-byte entry stride across 64 entries (m_progressionState[1] + 968*i) with a 24-byte item array, which does not match ChallengeXPCache (1240 bytes, 32 x 32-byte weapon entries)",
+ "members": [],
+ "changed_members": [],
+ "unconfirmed": ["xp_amount / battlepass_xp_amount -8 residual (secure_uint64_t size 24 in game-test): not verified; Replay code does not access these fields through ChallengeXPCache"],
+ "notes": "I could not locate a Replay accessor typed ChallengeXPCache. The 968-byte entry is probably another struct (owners of OnlineChallengesManager / OnlineProgression, A099/A124) and may be the real container. Do not change this struct from the builder value 1224."},
+
+{"name": "Camo", "size": 168,
+ "size_evidence": "Load_Camo (0x140E411C0): Load_Stream(loadFlags, varCamo, 0xA8u); Postload_Camo (0x140E41D80): g_streamPosGlob_pos += 168. Preload_Camo also loads 0xA8 bytes. Replay Camo is 168 bytes (IDA size already 168)",
+ "members": [
+   [0, "name", "char *", "Load_Camo: Load_TempString into varCamo+0 (varXString = varCamo)"],
+   [8, "internalName", "scr_string_t", "Load_Camo: Load_scr_string_t into varCamo+8 (4-byte scr_string_t)"],
+   [16, "textureDefs", "MaterialTextureDef *", "Load_Camo: if *(varCamo+16) != 0 then Load_MaterialTextureDefArray(0, *(varCamo+24))"],
+   [24, "textureDefCount", "unsigned int", "Load_Camo: *(varCamo+24) is the array count passed to Load_MaterialTextureDefArray"]
+ ],
+ "changed_members": [
+   ["vehVfxTailLight", "absent in Replay: the 168-byte stream ends at blendMapChannels/padding; game-test had a FxCombinedDef pointer at +168", "Load_Camo@0x140E411C0, Postload_Camo@0x140E41D80"],
+   ["vehVfxDoorSmoke", "absent in Replay: game-test FxCombinedDef pointer at +176", "Load_Camo@0x140E411C0"]
+ ],
+ "unconfirmed": ["colorTint 28 (12 bytes), albedoMapScaleBias 40, normalMapScaleBias 52, uvScaleOffset 64 (48), uvRotate 112 (48), blendMapChannels 160: inside the 168-byte stream but not accessed in these functions"],
+ "notes": "Size proven at 168 by the stream size. The vehicle FX pointers from game-test do not exist in Replay. internalName is a 4-byte scr_string_t, the IDA 8-byte char array at +8 is padded."},
+
+{"name": "CEntVehicleInfo", "size": null,
+ "size_evidence": "not proven. No Replay function typed CEntVehicleInfo was found. The game-test layout has overlapping unions (time/suspRayDist at 16, terrainMode/gunTrackMode at 24, tag_turretLeft/tag_turretRight at 24), so the builder 124 value depends on a union choice",
+ "members": [],
+ "changed_members": [],
+ "unconfirmed": ["all members: no Replay access checked"],
+ "notes": "Not checked further. Union overlaps (which member Replay uses at +16 and +24) must be decided by the owner; union edits are proposals only."},
+
+{"name": "CEntTurretInfo", "size": null,
+ "size_evidence": "not proven. The only Replay code touching the turret entity, CG_Entity_AdjustVehicleTurretAngles (0x1416A6440), reads an entity at +64 and writes +152 (vec3) and +176 (bool); that object is not shaped like CEntTurretInfo (game-test angles at 0, barrelPitch 16, deployed 44, playerViewArms 72)",
+ "members": [],
+ "changed_members": [],
+ "unconfirmed": ["all members: no Replay access for CEntTurretInfo found"],
+ "notes": "The turret info type used by Replay may be a different struct (possibly the centity or a turret-entity structure in another owner's range). Do not change the size from the builder value 72."},
+
+{"name": "BestHostData", "size": null,
+ "size_evidence": "not proven. PartyMigrate_SelectBestHostCandidate (0x1411A3B10), FilterByPing (0x1411A3CB0) and LogResults (0x1411A3FF0) access party members with a 488-byte stride and a NomineeInfo at member+184 (hostScore at +24 confirmed by FilterByPing), but do not access BestHostData itself",
+ "members": [],
+ "changed_members": [],
+ "unconfirmed": ["nominee 0, info 4 (NomineeInfo), lastHeardFrom 36, lastSentTo 40: no direct access found. The -4 residual between info and lastHeardFrom could be NomineeInfo being 28 bytes in Replay, but NomineeInfo's own accesses (upload 0, hostScore 24) do not show that"],
+ "notes": "Builder size 40 is not supported. NomineeInfo is owned by another agent (A093); if it is 28 bytes in Replay, the BestHostData size would be 40."},
+
+{"name": "AnalyticsBuffer", "size": null,
+ "size_evidence": "not proven, not checked further. No Replay function typed AnalyticsBuffer was found. The builder 16808 counts pooledStorageWriteFileInfo as 16784, but its IDA and game-test size is 16760 (A116 owns that struct)",
+ "members": [],
+ "changed_members": [],
+ "unconfirmed": ["m_data 0, m_writeOffset 8, m_flushState 12, m_uploadFileWriteInfo 16, m_nextStreamUploadAttemptTime 16776, m_uploadFailureCount 16780: no Replay access found"],
+ "notes": "Game-test size 16784 (16 + 16760 + 8) is consistent with the current pooledStorageWriteFileInfo size; the builder error comes from its inflated child size."},
+
+{"name": "ActiveClanData", "size": 19648,
+ "size_evidence": "ActiveClanData::ActiveClanData (0x140F3EC90) loops 250 OnlineClanMember at this+0 and 100 at this+14000 with a 56-byte stride, then stores a zero QWORD at this+19608. ClanDataNotification_HappyHour (0x140F3EC40) reads/writes QWORD +19620 and pointer +19640, so the last member ends at 19648. Tail offsets equal game-test shifted by -22400 (chatId 42008 -> 19608, happyHour 42020 -> 19620, clan 42040 -> 19640, end 42048 -> 19648). No allocation found, so this is inferred from the tail and the constructor",
+ "members": [
+   [0, "members", "OnlineClanMember[250]", "ActiveClanData::ActiveClanData: loop of 250 OnlineClanMember at this+0, stride 56"],
+   [14000, "clanInvites", "OnlineClanMember[100]", "ActiveClanData::ActiveClanData: loop of 100 at this+14000"],
+   [19608, "chatId", "OnlineChatId", "ActiveClanData::ActiveClanData: QWORD zero at this+19608"],
+   [19620, "happyHour", "OnlineClanHappyHour", "ClanDataNotification_HappyHour: *(this+19620) = *happyHourValue (QWORD)"],
+   [19640, "clan", "OnlineClan *", "ClanDataNotification_HappyHour: *(this+19640) passed to OnlineClan_GetMemberRole and read at +8 for the clan id"]
+ ],
+ "changed_members": [
+   ["members", "stride 56 in Replay (game-test 120): array total 14000 (game-test 30000)", "ActiveClanData::ActiveClanData@0x140F3EC90"],
+   ["clanInvites", "array total 5600 at Replay +14000 (game-test 12000 at 30000)", "ActiveClanData::ActiveClanData@0x140F3EC90"],
+   ["numClanMembers / numClanInvites", "Replay offsets 19600 / 19604 inferred from the tail shift (game-test 42000 / 42004); not directly accessed", "tail shift"]
+ ],
+ "unconfirmed": ["needToJoinChat 19616, pendingHappyHour 19628, happyHourCurrentlyRunning 19636: from the tail shift only"],
+ "notes": "The by-value child OnlineClanMember is 56 bytes in Replay (constructor stride). Its owner must check that size; the ActiveClanData size depends on it (250*56 + 100*56 + 0x20...). Size 19648 would change if OnlineClanMember changes."},
+
+{"name": "ASM_Context", "size": null,
+ "size_evidence": "not proven. No Replay access typed ASM_Context found. ASM_ChooseAnim_WeaponSwitch (0x140E5DB50) reads an actor/player object (+500 weapon class, +1116 weapon id) through a vtable, not an ASM_Context. The asm_* functions are a JIT, not the animation context",
+ "members": [],
+ "changed_members": [],
+ "unconfirmed": ["_pad0 / flagByte17 / ptr24 / sub136 / sub192 placeholders: no evidence"],
+ "notes": "Not checked further. Current IDA size 200 with placeholders has no evidence; game-test has no fields (size 1), so the coordinator should not treat either as proof."}
+]}

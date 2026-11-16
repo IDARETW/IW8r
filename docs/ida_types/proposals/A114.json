@@ -1,0 +1,234 @@
+{"agent": "A114", "structs": [
+{"name": "UserSignedInToLiveFence", "size": null,
+ "size_evidence": "not proven. Base FenceObject is 80 bytes (game-test; FenceObjects_Init writes FenceObject members at 8/24/32 in an 80-byte-stride static table). Derived size not found: no constructor, vtable or allocation for this class in Replay. IDA 128 unproven.",
+ "members": [
+  [8, "m_controllerIndex", "int", "UserSignedInToLiveFence::UpdateIsPassingInternal@0x140F19BD0: Live_IsUserSignedInToLive(*(this+8)) (CONFIRMED)"],
+  [13, "m_isPassing", "bool", "UserSignedInToLiveFence::UpdateIsPassingInternal@0x140F19BD0: *(this+13) = result (CONFIRMED)"],
+  [14, "m_failed", "bool", "UserSignedInToLiveFence::UpdateIsPassingInternal@0x140F19BD0: *(this+14)=1 when offline or >30s since logon start (CONFIRMED)"]
+ ],
+ "changed_members": [
+  ["m_state", "rename to m_controllerIndex, type unsigned int -> int (same width)", "UpdateIsPassingInternal reads it as the controller index"],
+  ["m_subObject64", "remove: offset 64 is inside the 80-byte FenceObject base", "FenceObject base (game-test) covers 0-80; no Replay access at 64 for this class"],
+  ["_pad48", "fold into the base or after 80; no evidence for members past 80", "no Replay access past 15 in UpdateIsPassingInternal"]
+ ],
+ "unconfirmed": ["baseclass_0 FenceObject (80 bytes) should be the first member: FenceObject ctor/size confirmed only by the static-table stride 0x50 (FenceObjects_Init), not by this class"],
+ "notes": "Base is FenceObject (80). Derived own members, if any, start at 80; the IDA 128 has no evidence."},
+{"name": "DemonwareFence", "size": null,
+ "size_evidence": "not proven (same as UserSignedInToLiveFence: base FenceObject 80 bytes; no derived ctor or allocation found).",
+ "members": [
+  [8, "m_controllerIndex", "int", "DemonwareFence::UpdateIsPassingInternal@0x140F19B20: Live_IsDemonwareReady(*(a1+8)) (CONFIRMED)"],
+  [13, "m_isPassing", "bool", "DemonwareFence::UpdateIsPassingInternal@0x140F19B20: *(a1+13) = result (CONFIRMED)"],
+  [14, "m_failed", "bool", "DemonwareFence::UpdateIsPassingInternal@0x140F19B20: *(a1+14)=1 when offline or Live_IsDemonwareFailed (CONFIRMED)"]
+ ],
+ "changed_members": [
+  ["m_value", "rename to m_controllerIndex, unsigned int -> int", "read as the controller index at +8"],
+  ["m_flagA", "rename to m_isPassing (bool at 13)", "written at +13 with the passing result"],
+  ["m_flagB", "rename to m_failed (bool at 14)", "written at +14 with the failure flag"],
+  ["m_sub64", "remove: offset 64 is inside the 80-byte FenceObject base", "no Replay access; base covers 0-80"]
+ ],
+ "unconfirmed": ["m_sub64 (unsigned __int64 at 64) has no Replay evidence and falls inside the base"],
+ "notes": "The IDA names m_value/m_flagA/m_flagB are placeholders; Replay agrees with the FenceObject names."},
+{"name": "StreamLoader", "size": null,
+ "size_evidence": "not proven. Replay accesses reach offset 84 (m_cancelled, 1 byte): lower bound 85. Game-test 96, IDA 704 unproven. The job array is a separate allocation (job stride 656 in StreamLoader::Start) so the IDA tail (m_jobStorage 512, m_pendingQueue, m_lock) is not inline evidence.",
+ "members": [
+  [0, "m_reader", "StreamReader *", "StreamLoader::Stop@0x1413ADB10: StreamReader::CancelJobs(*(this)) (CONFIRMED)"],
+  [8, "m_decompressor", "StreamDecompressor *", "StreamLoader::Stop@0x1413ADB10: StreamDecompressor::IsRunning(*(this+8)) (CONFIRMED)"],
+  [16, "m_jobs", null, "StreamLoader::Start@0x1413ADA10: loop bound *(this+16) (job count, 8 bytes); job base *(this+24) with stride 656 (CONFIRMED). Layout is {count, ptr} not gsl {ptr, size}"],
+  [32, "m_workCallback", "stdext::inplace_function<bool __cdecl(StreamLoadCmd &),32,16>", "StreamLoader::Start@0x1413ADA10: this+32 call slot, this+40 manager (v4 = this+40), this+48 storage (CONFIRMED, 48 bytes)"],
+  [80, "m_runningJobCount", "int", "StreamLoader::Start: _InterlockedIncrement(this+80); StreamLoader::Stop: *(int*)(this+80) > 0 (CONFIRMED)"],
+  [84, "m_cancelled", "bool", "StreamLoader::Stop@0x1413ADB10: *(this+84) = 1 (CONFIRMED); Start reads it"]
+ ],
+ "changed_members": [
+  ["m_jobs", "16 bytes at 16 is a {count, data} pair, not {ptr, size}; the data pointer is at 24", "StreamLoader::Start: count at 16, data at 24"],
+  ["m_jobStorage", "no Replay evidence; IDA 512 bytes at 128 left as padding", "not in any Replay access list"],
+  ["m_pendingQueue", "no Replay evidence; IDA 32 bytes at 640 left as padding", "not in any Replay access list"],
+  ["m_lock", "no Replay evidence; IDA 32 bytes at 672 left as padding", "not in any Replay access list"]
+ ],
+ "unconfirmed": ["size (lower bound 85 only)", "m_jobStorage / m_pendingQueue / m_lock (IDA only)"],
+ "notes": "Start, Stop, Issue, Update and Decompress all agree on offsets 0, 8, 16, 24, 32, 80, 84. The packet builder 96 is not proven."},
+{"name": "sd_decoder", "size": 33152,
+ "size_evidence": "SD_DecoderAllocate@0x141B5A4E0: the decoder pool is indexed as &v5[4144 * v8] with v5 a __int64 * (4144 * 8 = 33152 bytes per slot; the slot's state field is CAS-locked at +0). Trailing pad check: game-test/IDA pad of 123 bytes after done (4357..4480) matches exactly a 33152 slot.",
+ "members": [
+  [0, "state", "unsigned int", "SD_DecoderAllocate: InterlockedCompareExchange on slot+0 (0 -> 1), then *(slot)=2 (CONFIRMED)"],
+  [8, "instance", "sd_decoder_instance", "packet function list: SD_DecoderQueryAvailableDataOpus reads +8 (not decompiled by A114)"],
+  [16, "source", "sd_source *", "SD_DecoderAllocate: *(slot+16) = sourceHandle (CONFIRMED)"],
+  [24, "lastBuffer", "void *", "SD_DecoderAllocate: *(slot+24) = 0 (CONFIRMED)"],
+  [32, "framesDecoded", "unsigned __int64", "SD_DecoderAllocate: *(slot+32) = 0 (CONFIRMED)"],
+  [40, "eos", "bool", "SD_DecoderAllocate: WORD at +40 = 0 covers eos (+40) and error (+41) (CONFIRMED)"],
+  [41, "error", "bool", "SD_DecoderAllocate: same WORD store (CONFIRMED)"],
+  [44, "starvingVoiceIndex", "int", "SD_DecoderAllocate: *(slot+44) = -1 (CONFIRMED)"],
+  [48, "format", "unsigned int", "SD_DecoderAllocate: *(slot+48) = format (CONFIRMED)"],
+  [128, "output", "sd_decoder_output", "pitchFraction at 33024 implies output = 33024 - 128 = 32896 bytes (see changed_members)"],
+  [33024, "pitchFraction", "float", "SD_DecoderAllocate: *(DWORD*)(slot+33024) = 0 (CONFIRMED by store)"],
+  [33028, "done", "bool", "SD_DecoderAllocate: *(BYTE*)(slot+33028) = 0 (CONFIRMED by store)"]
+ ],
+ "changed_members": [
+  ["output", "4224 -> 32896 bytes (output at 128, pitchFraction moves to 33024)", "SD_DecoderAllocate stores at 33024/33028 with the same pattern as game-test pitch at 4352 / done at 4356"],
+  ["pitchFraction", "offset 4352 -> 33024", "SD_DecoderAllocate @0x141B5A4E0"],
+  ["done", "offset 4356 -> 33028", "SD_DecoderAllocate @0x141B5A4E0"],
+  ["sd_decoder size", "4480 -> 33152", "SD_DecoderAllocate pool stride, see size_evidence"]
+ ],
+ "unconfirmed": [
+  "32896 (8 bytes zeroed), 32904 (int zeroed), 32908 (bool set to 1): inside the enlarged output region, names unknown (SD_DecoderAllocate)",
+  "decoderParams char[64] at 64 (IDA only): no game-test name and no Replay access found",
+  "bytes 52..127 (IDA pad): no evidence"
+ ],
+ "notes": "game-test size 4480 is wrong for Replay. Replay's decoder slot is 33152 bytes with a 32 KB-class output buffer, so the struct is far larger than game-test."},
+{"name": "NetInit", "size": null,
+ "size_evidence": "not proven. Replay accesses reach offset 376 (m_routerListener, 8 bytes); lower bound 384 if the 8-byte pointer is at 376. Game-test 384, IDA 2944 (too big) unproven. Builder 376 said 'anchors to the end' only.",
+ "members": [
+  [0, "m_thread", "NetThread *", "NetInit::Reset@0x1412BC7F0: a1->m_thread = a2 and m_thread read (CONFIRMED)"],
+  [8, "m_loopback", "NetLoopback *", "NetInit::Reset@0x1412BC7F0: a1->m_loopback = a3 (CONFIRMED)"],
+  [16, "m_relay", "NetRelay", "NetInit::Reset@0x1412BC7F0: NetRelay::Reset((NetRelay*)a1->_pad10) (CONFIRMED, offset 16); size 304 (relayOverride at 320, packet offsets)"],
+  [320, "m_relayOverride", "NetRelayOverride", "NetInit::OnlineTransition (packet offset list: 320, not decompiled by A114)"],
+  [336, "m_localAddr", "bdReference<bdCommonAddr>", "NetInit::Reset@0x1412BC7F0: a1->m_localAddr.m_ptr at 336 (CONFIRMED)"],
+  [344, "m_localAddrUpdateTimer", "Timer", "NetInit::Reset / IsLocalAddressUpdating: Sys_InvalidateHandle(&m_localAddrUpdateTimer) and Timer::IsExpired (offset 344 from packet list; follows localAddr at 336)"],
+  [348, "m_offlinePending", "bool", "NetInit::Reset@0x1412BC7F0: a1->m_offlinePending = 0 (CONFIRMED); NetInit::OfflineTransition writes it (packet 348)"],
+  [349, "m_onlineAttempted", "bool", "NetInit::Reset@0x1412BC7F0: a1->m_onlineAttempted = 0 (CONFIRMED)"],
+  [350, "m_localAddrResolved", "bool", "NetInit::Reset@0x1412BC7F0: a1->m_localAddrResolved = false (CONFIRMED)"],
+  [360, "m_config", "NetConfig *", "NetInit::IsLocalAddressUpdating@0x1412BC6D0: a1->m_config (CONFIRMED, offset 360 from packet list)"],
+  [368, "m_listener", "NetEventListener *", "NetInit::OnlineTransition (packet offset list: 368)"]
+ ],
+ "changed_members": [
+  ["m_relay", "312 -> 304 (relayOverride at 320 instead of 328)", "NetRelay::Reset(a1+16) and relayOverride at 320"],
+  ["unkAfterFlags", "IDA name at 352 (8 bytes): Replay has an 8-byte gap between the flags (ends 351) and m_config (360); keep, rename once a use is found", "layout gap from flags at 348..350 to config at 360"],
+  ["_pad10 (IDA 16..63) and _pad178 (IDA 376..2687), unkAt2688, _padA88", "remove: Replay offsets end at 376 (routerListener) and the IDA sizes are not Replay", "packet max access 376"]
+ ],
+ "unconfirmed": ["m_routerListener at 376 (bdSocketRouterListener *, game-test name): no Replay access found by A114"],
+ "notes": "Flags at 348..350 and the pointers at 336/360/368 agree with the game-test names shifted by -8 before the 8-byte gap."},
+{"name": "StreamUpdateMultiView", "size": null,
+ "size_evidence": "not proven. Replay accesses reach offset 548 (viewCount int at 544). Game-test 1104 (16 entries per array). Replay arrays hold 8 entries each: the blocks in Stream_ViewPos_AppendPredicted (0, 128, 256, 384, 416, 448, 480, 512) are 8 entries apart. Lower bound 548.",
+ "members": [
+  [0, "viewPos", "float4[8]", "Stream_ViewPos_AppendPredicted@0x1413CA8E0: store view+16*count (CONFIRMED)"],
+  [128, "viewDir", "float4[8]", "Stream_ViewPos_AppendPredicted: store view+16*(count+8) (CONFIRMED)"],
+  [256, "viewVelocityDir", "float4[8]", "Stream_ViewPos_AppendPredicted: store view+16*(count+16), normalised direction via sqrt (CONFIRMED)"],
+  [544, "viewCount", "int", "Stream_ViewPos_AppendPredicted: count = *(view+544), incremented (CONFIRMED); Stream_ViewPos_GetDynamicMultiView: *(view+544) = 0 (CONFIRMED); game-test 1088 anchor"]
+ ],
+ "changed_members": [
+  ["viewPos / viewDir / viewVelocityDir", "float4[16] -> float4[8] each (128 bytes)", "AppendPredicted writes 8-entry blocks at 0, 128, 256"],
+  ["viewZoomFactors, velocityZoomFactors, viewCosFovLimit, viewDistanceScaleSq, localClientIndex", "float[16] / LocalClientNum_t[16] -> 8 entries each (32 bytes)", "AppendPredicted 4-byte stores at 384, 416, 448, 480, 512 spaced 32 bytes"],
+  ["viewCount", "1088 -> 544", "AppendPredicted @0x1413CA8E0 and GetDynamicMultiView @0x1413CABA0"],
+  ["_pad444", "remove: Replay size ends at 548", "packet max access 548"]
+ ],
+ "unconfirmed": [
+  "384 int-typed array (AppendPredicted stores v10): probably viewZoomFactors, by game-test order (not proven)",
+  "416 float array (4.0 * CL_StreamViews_ClampedVectorScale): probably velocityZoomFactors",
+  "448 int array: probably viewCosFovLimit",
+  "480 array (constant 1.0f): probably viewDistanceScaleSq",
+  "512 int array (stored as localClientIndex): probably localClientIndex"
+ ],
+ "notes": "Game-test order matches Replay order. The 5 4-byte arrays are 8 entries each. Total Replay 548 (544 + 4)."},
+{"name": "ScriptableEventDisablePhysicsSubShapeDef", "size": 32,
+ "size_evidence": "Load_ScriptableEventDisablePhysicsSubShapeDef@0x140DBA850: Load_Stream(isEmbedded, varScriptableEventDisablePhysicsSubShapeDef, 0x20) (32 bytes, CONFIRMED). Game-test 32. IDA 32 is right; builder 40 is wrong.",
+ "members": [
+  [0, "base", "ScriptableEventBaseDef *", "Load_ScriptableEventDisablePhysicsSubShapeDef: *v1 = g_streamPosGlob_pos; Load_Stream(0, pos, 0x10) (CONFIRMED)"],
+  [8, "mutableShapeName", "char *", "Load_ScriptableEventDisablePhysicsSubShapeDef: Load_TempString at varXString = struct + 8 (CONFIRMED)"],
+  [16, "mutableShapeHash", "unsigned __int64", "ScriptableCl_RunStateEventDisablePhysicsSubShape@0x1412FAE40: *(eventDef+16) passed to Physics_DecodeSubShapeKey (CONFIRMED); ScriptableCl_StopStateEventDisablePhysicsSubShape@0x1412FDA40 same (CONFIRMED)"]
+ ],
+ "changed_members": [],
+ "unconfirmed": ["allowMissingShape (bool at 24): no Replay access found by A114"],
+ "notes": "No change to the layout. The packet's base -> mutableShapeName residual of -8 is a builder error: Replay agrees with game-test offsets 0, 8, 16."},
+{"name": "PlayerStatsFence", "size": null,
+ "size_evidence": "not proven (base FenceObject 80; no derived ctor/allocation found).",
+ "members": [
+  [8, "m_controllerIndex", "int", "PlayerStatsFence::UpdateIsPassingInternal@0x140F19DD0: LiveStorage_DoWeHaveStatsForSource(*(this+8)) (CONFIRMED)"],
+  [13, "m_isPassing", "bool", "PlayerStatsFence::UpdateIsPassingInternal@0x140F19DD0: *(this+13) = result (CONFIRMED)"]
+ ],
+ "changed_members": [
+  ["fenceValue", "rename to m_controllerIndex, unsigned int -> int", "read as the stats source/controller at +8"],
+  ["_padE (14..111)", "no member at 14 in Replay evidence; left as pad. Bytes 80+ are derived only if the class has own members", "no access at 14 in this function"]
+ ],
+ "unconfirmed": ["bool at 14 (m_failed) is in the game-test base but not written by this function"],
+ "notes": "IDA 112 is wrong for the base; derived size unproven."},
+{"name": "NetworkingFence", "size": null,
+ "size_evidence": "not proven (base FenceObject 80; no derived ctor/allocation found). IDA 120 unproven.",
+ "members": [
+  [13, "m_isPassing", "bool", "NetworkingFence::UpdateIsPassingInternal@0x140F19B70: *(this+13) = NET_IsStarted && !dwNetIsModeTwo (CONFIRMED)"],
+  [14, "m_failed", "bool", "NetworkingFence::UpdateIsPassingInternal@0x140F19B70: *(this+14) = dwNetIsStartFailed || dwNetIsModeTwo (CONFIRMED)"]
+ ],
+ "changed_members": [
+  ["m_wasPassing", "rename to m_failed (offset 14 is written with the failure result, not a previous passing value)", "UpdateIsPassingInternal@0x140F19B70"],
+  ["_pad0 (0..12)", "no evidence for offset 0..12 in this class; base FenceObject covers 0..80 (game-test m_controllerIndex at 8 has no Replay access here)", "UpdateIsPassingInternal reads only +13/+14"],
+  ["m_conditions (104, char[8]) and m_pending (112, char[8])", "no Replay evidence; these lie past the base (80) so may be real derived members", "not accessed in UpdateIsPassingInternal"]
+ ],
+ "unconfirmed": ["m_conditions, m_pending: no Replay access found"],
+ "notes": "Only offsets 13 and 14 are confirmed."},
+{"name": "ID3D12Resource", "size": null,
+ "size_evidence": "not proven. The struct is an external COM interface; Replay only passes it as a pointer and reads the vtable (R_DX12_GetResourceSize: *(resource) + 80 vtable call; not a member). The +16 access in R_DispatchIndirect is argsBuffer[2] where argsBuffer is a _QWORD * argument, not an ID3D12Resource. Keep IDA 8 (vptr only).",
+ "members": [
+  [0, "lpVtbl", "struct ID3D12ResourceVtbl *", "R_DX12_GetResourceSize@0x1418DBD70: *(resource) vtable call at +80 (CONFIRMED vtable at 0)"]
+ ],
+ "changed_members": [],
+ "unconfirmed": ["size 16 (game-test, from ID3D12Pageable base): no evidence; +16 access is on a different struct (argsBuffer)"],
+ "notes": "Recommend keeping 8. The coordinator should not apply the 16 from the packet."},
+{"name": "ABFence", "size": null,
+ "size_evidence": "not proven (base FenceObject 80; ABFence derived size unknown). IDA 112 unproven.",
+ "members": [
+  [8, "m_mode", "int", "ABFence::UpdateIsPassingInternal@0x140F19EE0: *(this+8) is the AB test index for Online_AB_Testing (CONFIRMED)"],
+  [13, "m_isPassing", "bool", "ABFence::UpdateIsPassingInternal@0x140F19EE0: *(this+13) = AB flag at +64 or +65 (CONFIRMED)"]
+ ],
+ "changed_members": [
+  ["m_embedded64", "char[40] at 64 is inside the FenceObject base: remove or move past 80", "base covers 0..80; no Replay access at 64 by this class"],
+  ["m_embedded104", "char[8] at 104: no Replay evidence; past the base", "not accessed in UpdateIsPassingInternal"]
+ ],
+ "unconfirmed": ["m_embedded104 (8 bytes at 104)"],
+ "notes": "Offsets 8 and 13 confirmed."},
+{"name": "ConeTargetInfo", "size": null,
+ "size_evidence": "not proven. ConeTargetInfo::ConeTargetInfo@0x140CEED90: *this = vtable; memset(this+1, 0, 0x33C) so the object is at least 8 + 828 = 836 bytes. Game-test 840, IDA 848 unproven.",
+ "members": [
+  [0, "__vftable", "void *", "ConeTargetInfo::ConeTargetInfo@0x140CEED90: *this = &ConeTargetInfo_vftable (CONFIRMED)"],
+  [8, "m_hitResults", "ConeTargetHitResults", "ConeTargetInfo::ConeTargetInfo@0x140CEED90: memset(this+8, 0, 828) covers the whole member (CONFIRMED, size 828 from game-test)"]
+ ],
+ "changed_members": [
+  ["m_extra", "remove or verify: unsigned __int64 at 840 has no Replay evidence; the constructor clears only to 836", "ConeTargetInfo::ConeTargetInfo"]
+ ],
+ "unconfirmed": ["m_extra at 840 (8 bytes)", "whether the Replay size is 836 or 840 (4-byte gap, unresolved)"],
+ "notes": "Constructor memset gives 836 as the lower bound."},
+{"name": "NetEndpoint", "size": 400,
+ "size_evidence": "NetEndpoint::RemoveReference@0x1410D5DA0: writes the 208-byte telemetry block at 192..400 (13 OWORD stores from +192 to +384 plus 16). The end is 400. Game-test 400 matches. Nothing shows a larger size.",
+ "members": [
+  [0, "m_address", "NetAddress", "NetEndpoint::GetAddress@0x1410D5970 returns this; RemoveReference calls NetAddress::Clear(this) (CONFIRMED, offset 0, 16 bytes game-test)"],
+  [16, "m_connections", "NetConnection *[2][3][3]", "NetEndpoint::GetConnectionSlot@0x1410D59C0: this + 16 + 8*(3*(v5+slot)+netId) (CONFIRMED, 144 bytes)"],
+  [160, "m_session", "NetSession *", "NetEndpoint::GetSession@0x1410D5A70: *(this+160) (CONFIRMED); RemoveReference reads and clears +160"],
+  [168, "m_referenceCount", "int", "NetEndpoint::RemoveReference@0x1410D5DA0: _InterlockedExchangeAdd(this+168, -1) (CONFIRMED)"],
+  [176, "m_lastRecv", "int", "NetEndpoint::RemoveReference@0x1410D5DA0: *(this+176) = 0 (CONFIRMED)"],
+  [184, "m_graveyarded", "bool", "NetEndpoint::RemoveReference@0x1410D5DA0: *(BYTE*)(this+184) = 0 (CONFIRMED)"],
+  [192, "m_telemetry", "bdDTLSAssociationTelemetry", "NetEndpoint::RemoveReference@0x1410D5DA0: 208-byte copy into this+192 (CONFIRMED)"]
+ ],
+ "changed_members": [
+  ["m_address", "IDA 8 bytes at 8 -> 16 bytes at 0; _pad0 (8 bytes) removed", "GetAddress returns this; RemoveReference clears this as an address"],
+  ["m_connections", "unsigned __int8[144] -> NetConnection *[2][3][3] (same width)", "GetConnectionSlot indexing"],
+  ["_padB9", "7-byte pad at 185: no Replay evidence, keep as pad", "RemoveReference does not touch 185"]
+ ],
+ "unconfirmed": ["m_connectionCount (172, int): packet function list (GetConnectionCount); not decompiled by A114", "m_lastSent (180, int): no Replay evidence found by A114"],
+ "notes": "Size 400 is agreed by the telemetry copy end. Game-test layout is correct except m_address at 0."},
+{"name": "BG_SpawnGroup_Loot_Table", "size": null,
+ "size_evidence": "not proven. Replay accesses reach offset 165328 (cacheFixedForZone, bool[1000]), so the lower bound is 165329. IDA 166488 is unverified; game-test 190496 (the Replay layout is different).",
+ "members": [
+  [0, "table", "StringTable *", "packet function list: BG_SpawnGroup_Loot_ParseTable reads +0 (not decompiled by A114)"],
+  [408, "itemTypeIndexCache", "unsigned __int8", "BG_SpawnGroup_Loot_FindOrAddTypeIndex: +408 (packet list; not decompiled by A114)"],
+  [409, "itemTypeIndexKiosk", "unsigned __int8", "BG_SpawnGroup_Loot_FindOrAddTypeIndex: +409 (packet list)"],
+  [410, "itemTypeIndexTablet", "unsigned __int8", "BG_SpawnGroup_Loot_FindOrAddTypeIndex: +410 (packet list)"],
+  [411, "itemTypeIndexDropkit", "unsigned __int8", "BG_SpawnGroup_Loot_FindOrAddTypeIndex: +411 (packet list)"],
+  [412, "itemTypeIndexWeapon", "unsigned __int8", "BG_SpawnGroup_Loot_FindOrAddTypeIndex: +412 (packet list)"],
+  [463, "itemTypeCount", "unsigned __int8", "BG_SpawnGroup_Loot_PickSingleItem@0x140D34240: *(a1+463) (CONFIRMED by decompile); FindOrAddTypeIndex reads 463 (packet)"],
+  [464, "itemDefs", "BG_SpawnGroup_Loot_ItemDef[200]", "packet function list: ParseTable reads 464 (not decompiled by A114)"],
+  [51664, "itemDefCount", "unsigned __int8", "BG_SpawnGroup_Loot_ParseItemDef / ParseTable read 51664 (packet list)"],
+  [51680, "sets", "BG_SpawnGroup_Loot_Set[30]", "BG_SpawnGroup_Loot_PickSingleItem@0x140D34240: 3712 * SetIndex + a1 + 51680 (CONFIRMED by decompile)"],
+  [163040, "setCount", "unsigned __int8", "BG_SpawnGroup_Loot_ParseTable: 163040 (packet list)"],
+  [163041, "setForZoneDefault", "unsigned __int8", "BG_SpawnGroup_Loot_PickSingleItem: *(a1+163041) (CONFIRMED by decompile)"],
+  [163042, "cacheSetForZoneDefault", "unsigned __int8", "BG_SpawnGroup_Loot_ParseTable: 163042 (packet list; anchor 187050 to 163042)"],
+  [165328, "cacheFixedForZone", "bool[1000]", "BG_SpawnGroup_Loot_ParseTable: 165328 (packet list)"]
+ ],
+ "changed_members": [
+  ["sets element", "BG_SpawnGroup_Loot_Set 4512 -> 3712 bytes (30 sets = 111360 bytes at 51680)", "PickSingleItem: 3712 * SetIndex + a1 + 51680 (CONFIRMED)"],
+  ["itemTypeIndexAttraction", "removed (no index byte at 413)", "Replay index bytes end at 412; itemTypeCount is at 463"],
+  ["itemTypesDisabled", "bool[50] moves 414 -> 413 (inferred: 413..463 = 50 bytes)", "layout inference from itemTypeCount at 463 (not a direct access)"],
+  ["itemDefs", "472 -> 464", "packet list (464); layout shift from the -8 removal earlier"],
+  ["scriptableDefMap", "not at 51680 in Replay (51680 is the sets base). The IDA slot at 51672 is unverified", "PickSingleItem uses 51680 as the set array"],
+  ["setForZone (1000) and cacheSetForZone (1000)", "Replay gap 163043..165328 is 2285 bytes; the two arrays are not confirmed at game-test offsets", "IDA pad _pad27CE3 holds them"],
+  ["rarities, ammoMaximums, weaponMapCopied, cacheSets, cacheSetCount", "not in the Replay tail (IDA ends at 166488)", "no evidence"]
+ ],
+ "unconfirmed": ["itemTypesDisabled at 413 (inference)", "table/itemTypes/itemDefs names via the packet list only"],
+ "notes": "Large struct. Replay-confirmed: the 51680 sets array with 3712 stride, the 463 type count, and the 163040..163042 tail. The rest is inferred."}
+]}

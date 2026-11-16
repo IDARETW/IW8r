@@ -33,5 +33,15 @@
     ]
    ]
   }
- ]
+ ],
+ "drop_size": {
+  "Ragdoll": "size inferred from a front shift (A113), not measured",
+  "NetRelay": "inferred from anchors (A113)",
+  "NetTelemetry": "inferred from a shift (A113)",
+  "BgAntiLag": "inferred from member offsets (A113)",
+  "ShakeState": "unconfirmed (A113)",
+  "NetBacklog": "marked PROPOSAL (A115)",
+  "DObjBoneParentMap": "lower bound only (A118)",
+  "ActiveClanData": "inferred from the constructor loop and tail alignment (A119)"
+ }
 }

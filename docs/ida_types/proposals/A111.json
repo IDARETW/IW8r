@@ -1,0 +1,40 @@
+{"agent": "A111", "structs": [
+  {"name": "OnlineQuests",
+   "size": null,
+   "size_evidence": "NOT PROVEN. Lower bound: highest Replay access is byte 49790 (OnlineQuests::Init and OnSignedOut write a WORD at +49788). Upper bound: the static instance OnlineQuests::s_instance (0x144487AF0) is followed by the next global symbol 0xC298 (49816) bytes later. Builder value 49808 fits both bounds. Current IDA size 124000 is wrong.",
+   "members": [
+     [64, "m_rewards", null, "OnlineQuests_HandleCompletion: *(_DWORD *)(a1 + 4*(cnt + 4*c) + 64) = reward id; slot stride 16 bytes per client (c=0 slot is 64..80). CONFIRMED offset and width; per-client count is UNCONFIRMED beyond c=0 (see changed_members)"],
+     [80, "m_totalRewards", "int", "OnlineQuests_HandleCompletion: counter *(_DWORD *)(a1 + 4*c + 80) read as index and incremented (++). CONFIRMED offset 80 and width 4 for c=0; name from game-test ordering"],
+     [88, "m_quests", null, "OnlineQuests::GetActiveQuest / OnlineQuests_AddProgression / OnlineQuests_GetClientEntryValue / OnlineQuests::CheckandActivate: element = a1 + 88 + 24*(k + 640*c). Element fields: id uint64 at +0 (AddProgression QWORD store), progress int at +8 (GetClientEntryValue returns *(a1+24*(k+640c+4)) = +8 from base 88), type int at +12 (GetActiveQuest compares DWORD at +100 = 88+12 with questId), active byte at +16 (GetActiveQuest reads byte +104 = 88+16). Element = game-test QuestProgression (24 bytes). CONFIRMED base 88 and stride 24; count per client 640 (cap 0x280 in AddProgression and HandleCompletion), see changed_members"],
+     [15448, "m_totalQuests", "unsigned int", "OnlineQuests::Init: *(_DWORD *)(this + 4*c + 15448) = 0; OnlineQuests::GetActiveQuest reads it as the count v8. CONFIRMED offset 15448 and width 4 for c=0. Slot c=1 (15452) is also used as m_activatingQuestMode[0], see changed_members"],
+     [15452, "m_activatingQuestMode", "int", "OnlineQuests_StartQuest: *(_DWORD *)(a1 + 4*c + 15452) = startMode; OnlineQuests::OnDeactivateAchievementComplete passes 1u as that mode. CONFIRMED offset 15452 and width 4 for c=0"],
+     [15456, "m_activatingQuest", "unsigned __int64", "OnlineQuests_StartQuest: *(_QWORD *)(a1 + 8*c + 15456) = a3 (quest id); OnlineQuests::OnActivateAchievementComplete reads the same slot as QWORD index 1932 of s_instance (1932*8 = 15456). CONFIRMED offset 15456 and width 8 for c=0"],
+     [15464, "m_activatingQuestType", "int", "OnlineQuests_StartQuest: *(_DWORD *)(a1 + 4*c + 15464) = a4 (activation type, compared with the element type field); OnlineQuests::OnActivateAchievementComplete reads DWORD index 3866 of s_instance (3866*4 = 15464). CONFIRMED offset 15464 and width 4 for c=0"],
+     [15472, "m_deactivatingQuest", "unsigned __int64", "OnlineQuests_EndQuest: *(_QWORD *)(a1 + 8*c + 15472) = a3; OnlineQuests::OnDeactivateAchievementComplete reads QWORD index 1934 of s_instance (1934*8 = 15472). CONFIRMED offset 15472 and width 8 for c=0"],
+     [15480, "m_questsCached", "bool", "OnlineQuests::CacheQuests: *(_BYTE *)(this + 15480) = 1 at end; OnlineQuests::CheckandActivate: if (*(_BYTE *)(a1 + 15480) == 0) CacheQuests(a1). CONFIRMED offset 15480, width 1"],
+     [15484, "m_questCache", "QuestCache[128]", "OnlineQuests::CacheQuests: *(_BYTE *)(268*(q-1) + this + 15484) = 1; OnlineQuests::CheckandActivate loops 128 entries with stride 268 from 15484 (v5 = a1 + 15492, +67 dwords). Per entry: cached byte +0, type dword +4 (15488), numStages dword +8 (15492), stages +12 (15496), 32 stages of {id dword +0, count dword +4}. Game-test QuestCache is 268 bytes with the same field offsets. CONFIRMED offset 15484, stride 268, count 128 (ends 49788 exactly)"],
+     [49788, "m_needToCheckAndActivate", "bool", "OnlineQuests_MarkControllerDirty: *(_BYTE *)(controllerIndex + questState + 49788) = 1; OnlineQuests::CheckandActivate: *(_BYTE *)(a2 + a1 + 49788) = 0. Byte per controller at 49788+c, width 1. CONFIRMED offset 49788 for c=0 and 1 (stride 1)"]
+   ],
+   "changed_members": [
+     ["m_rewards", "int[8][4] (128 B) -> 16 B per client group (c-major, int[4] per client) in code; c>=1 slots overlap m_totalRewards (80)", "HandleCompletion: 64 + 4*(cnt + 4c)"],
+     ["m_totalRewards", "int[8] (32 B) at 192 -> 4-byte slots at 80+4c; c>=1 slots overlap m_rewards group 1", "HandleCompletion: *(a1 + 4c + 80)"],
+     ["m_quests", "QuestProgression[2][1000] (48000 B) at 224 -> [640] per client, client stride 15360 B, base 88 (game-test 224 is anchor 224->88)", "AddProgression / GetActiveQuest / HandleCompletion: 88 + 24*(k + 640c); cap 0x280"],
+     ["m_totalQuests", "unsigned[2] at 48224 -> 15448 (IDA shows 4 bytes there, correct offset)", "Init / OnSignedOut / GetActiveQuest: 15448 + 4c"],
+     ["m_activatingQuestMode", "int[8] (32 B) at 48232 -> 4-byte slots at 15452 + 4c", "OnlineQuests_StartQuest: 15452 + 4c"],
+     ["m_activatingQuest", "uint64[8] (64 B) at 48264 -> 8-byte slots at 15456 + 8c", "OnlineQuests_StartQuest: 15456 + 8c"],
+     ["m_activatingQuestType", "int[8] (32 B) at 48328 -> 4-byte slots at 15464 + 4c", "OnlineQuests_StartQuest: 15464 + 4c"],
+     ["m_deactivatingQuest", "uint64[8] (64 B) at 48360 -> 8-byte slots at 15472 + 8c", "OnlineQuests_EndQuest: 15472 + 8c"],
+     ["m_questsCached", "bool at 48424 -> 15480 (same width)", "CacheQuests: *(this + 15480)"],
+     ["m_questCache", "QuestCache[128] at 48428 -> 15484 (same stride 268, same count, same size 34304)", "CacheQuests / CheckandActivate"],
+     ["m_needToCheckAndActivate", "bool[8] at 82732 -> 49788 (stride 1 per controller)", "MarkControllerDirty / CheckandActivate"],
+     ["m_hasBattlepassData", "bool[8] at 82740 -> UNCONFIRMED offset, see unconfirmed", "ControllerFrame reads byte 49789 + c, which conflicts with the 1-byte stride of needToCheck at 49788 + c"],
+     ["m_questCacheEx, m_questCacheEnd, _pad1E3C8, _pad1E428 (IDA pointers at 123840 and 123936)", "REMOVE: no such members in Replay code; IDA pointers are stale placement from the old layout", "no Replay access at offsets above 49790"]
+   ],
+   "unconfirmed": [
+     "m_hasBattlepassData: bool[8] game-test name; Replay offset unknown. ControllerFrame reads byte 49789 + c and needToCheck is at 49788 + c with stride 1, so the two per-controller arrays cannot both be plain bool[8] at stride 1. Candidate 49796 (after needToCheck[8]) is only an open guess from order.",
+     "Per-client slot overlap: the code writes m_totalQuests[c] (15448 + 4c), m_activatingQuestMode[c] (15452 + 4c), m_activatingQuest[c] (15456 + 8c), m_activatingQuestType[c] (15464 + 4c), m_deactivatingQuest[c] (15472 + 8c), m_rewards[c] (64 + 16c), m_totalRewards[c] (80 + 4c), and quest elements (88 + 15360c). For c >= 1 these overlap each other (e.g. m_totalQuests[1] and m_activatingQuestMode[0] are both at 15452). Only c = 0 gives non-overlapping offsets. Either Replay only ever uses client slot 0 for this struct, or CL_Mgr_GetClientFromController returns values this layout does not expect. The coordinator should check that function's range before choosing array sizes.",
+     "baseclass_0 (OnlineSystem, 64 B at 0): no Replay access read that identifies it; keep as base, not checked.",
+     "Total size: see size_evidence (49790 to 49816 bounds, builder 49808)."
+   ],
+   "notes": "Replay layout differs from game-test: quests are 640 per client instead of 1000, the rewards block is 16 B per client, and the quest cache and the flag arrays sit at 15480 to 49796. The per-client slot overlap above is the main problem and needs the coordinator to decide. Confirmed members listed cover all 11 fields with Replay evidence. Size is not proven exactly; IDA's 124000 is wrong. Packet's score_now [6, 71] matches the mismatched current layout."}
+]}

@@ -63,6 +63,7 @@ class World:
         self.memo_align = {}
         self.alloc = json.load(open(S + "alloc_sizes.json")) if os.path.exists(S + "alloc_sizes.json") else {}
         self.props = {}
+        self.drop_size = set()
         pdir = "out/ida_types/proposals"
         for fn in sorted(os.listdir(pdir)) if os.path.isdir(pdir) else []:
             if fn.endswith(".json"):
@@ -70,6 +71,8 @@ class World:
                     d = json.load(open(os.path.join(pdir, fn)))
                 except Exception:
                     continue
+                for nm in d.get("drop_size", {}):
+                    self.drop_size.add(nm)
                 for x in d.get("structs", []):
                     if isinstance(x, dict) and x.get("name"):
                         x["_agent"] = d.get("agent", fn[:-5])
@@ -375,7 +378,7 @@ class World:
         gsz = t["size"]
         proof = None
         target = None
-        if prop and isinstance(prop.get("size"), int) and prop["size"] > 0:
+        if prop and isinstance(prop.get("size"), int) and prop["size"] > 0 and ida_name not in self.drop_size:
             target, proof = prop["size"], "agent proposal %s" % prop.get("_agent", "")
         elif agent and it["size"] > 0 and (it["size"] != gsz or g in MANUAL_VERIFIED):
             target, proof = it["size"], "agent-verified"
@@ -638,6 +641,15 @@ def compare(w, g):
     # offset moves of existing members (width-only differences are ignored)
     moved = [[m[1], m[0], wn[m[1]][0], wn[m[1]][4]] for m in mem if m[1] in wn and wn[m[1]][0] != m[0]]
     info["moved"] = moved
+    # a move of a field placed only from the game-test prior proves nothing: such structs keep their layout
+    unproven_moves = [x for x in moved if x[3] in ("prior", None)]
+    if unproven_moves and len(unproven_moves) == len(moved) and r["size"] == it["size"]:
+        moved = []
+    if unproven_moves and len(unproven_moves) == len(moved) and r["size"] != it["size"] and r["size_proof"] in (
+            None, ) or (unproven_moves and r["size_proof"] and r["size_proof"].startswith("sizeof votes") and
+                        not r["anchored"]):
+        info["why"] = ["only game-test-prior members would move"]
+        return "report", [], info
     size_change = r["size"] != it["size"]
     if (r["agent"] and not r.get("prop")) or (not moved and not size_change):
         f = fills(GOOD + (() if r["agent"] else ("open", "prior")))

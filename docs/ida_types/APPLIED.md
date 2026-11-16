@@ -124,6 +124,23 @@ Applied by the coordinator through the builder (proposal members as anchors, pro
 
 Not applied: `bot_data_t` (A101: size unproven, only 4 members), `MatchMakerOmniLobbyData` (wave 3, A124).
 
+### Report pass, wave 2 (A111-A120), plan `apply_plan5.json`, backup `local_types_20261115_before_report_wave2.h`
+
+39 rebuilds, 48 fills, 3 parents kept (`ParticleManager`, `Online_Friends`, `RB_BackendDataCopier`). Sizes the
+agents measured (stride / allocation / memset / loader stream / next global), all re-scored by the builder:
+`DWWrappers` 17656 -> 1136 (`DWServicesAccess_AddControllerSlot` imul 470h) with its wrapper slots 16 / 32
+(`DWWrappers::init` slot gaps), `Vehicle` 2304 -> 2192 (`G_Vehicle_Create` pool stride + memset 0x890), `sd_decoder`
+4480 -> 33152 (`SD_DecoderAllocate` slot stride), `NetChannel` 168 -> 24 (`NetStatic::NetStatic` step 24),
+`NetLoopback` 103032 -> 98496 (three 32832-byte rings, next global), `BG_SpawnGroup_Loot_Set` 4512 -> 3712
+(`FindOrAddSet` stride, `ParseSet` memset 0xE80), `ParticleManager__Particle_SoundData` 64 -> 56,
+`FriendListGlobal` 48072 -> 28264, `MPSCQueue_RB_BackendDataCopier__Cmd_16384` 786448 -> 655376 (imul 0A0010h),
+`CachedContentIOStreamDCache` 1792 -> 232, `BgAntiLagEntityHistoryExtended` 544 -> 68, `actor_prone_info_t` 32 -> 24,
+`NetTelemetry` 39576 -> 27448, `DObjBoneParentMap` 8728 -> 8712, `ActiveClanData` 156872 -> 19648 (anchors to the
+end), `StreamLoader` 704 -> 96, `Umbra__DepthBuffer` 200 -> 72, `MatchmakingData` 601 -> 352; members fixed in
+`Ragdoll`, `RefString` (`str` at +8), `MemoryFile`, `NetEndpoint`, `Camo`, `PlayerWeaponCommonState`.
+Sizes the agents only inferred were not used as proof (`COORD.json` `drop_size`), and rebuilds that would only move
+game-test-prior fields are refused (`workerTrace_t`, `Edge`, `EntityTagInfo`, `playlistInfo` stay as they were).
+
 ## Wave 5
 
 Pending for the apply pass:
