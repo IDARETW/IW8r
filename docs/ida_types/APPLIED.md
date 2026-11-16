@@ -141,6 +141,24 @@ end), `StreamLoader` 704 -> 96, `Umbra__DepthBuffer` 200 -> 72, `MatchmakingData
 Sizes the agents only inferred were not used as proof (`COORD.json` `drop_size`), and rebuilds that would only move
 game-test-prior fields are refused (`workerTrace_t`, `Edge`, `EntityTagInfo`, `playlistInfo` stay as they were).
 
+### Report pass, wave 3 (A121-A130), plan `apply_plan6.json`, backup `local_types_20261115_before_report_wave3.h`
+
+37 rebuilds, 50 fills, `GVehicles` kept around `BgVehiclePhysicsManager`. Measured sizes: `ClStatic` 137036 -> 175776
+(`CL_Main_ShutdownOnceForAllClients` memset 0x2ACE8 from +440; Replay accesses reach +175769), `ClSnapshot` 94860 ->
+119000 (`AllocSnapshotMemory` 119000 * count), `ClActiveClientSP` 56040 -> 55984 (memset 0xDAB0), `GfxCmdBufState`
+82880 -> 10368 (`R_InitCmdBufState` memset 0x2880), `GfxMeshData` 12672 -> 1584 (`R_ToggleSmpFrameInternal` stride),
+`CgAntiLag` 209728 -> 144376, `CgBallisticsSP` 2288416 -> 286056, `CgCompassSystemMP` 64280 -> 64184,
+`CgDynamicMedia` 136 -> 24 (hunk allocations in `CG_Main*_AllocateClientMemory` / `CG_ClientSlots_AllocateMemory`),
+`GAntiLagMP` 4403320 -> 4354128, `GBullet` 7680 -> 5064, `GMissileSP` 136 -> 24, `GUtilsMP` / `GUtilsSP` 128 -> 16
+(`G_Main*_AllocateGameMemory` hunk sizes), `BgVehiclePhysicsManager` 1056776 -> 1044480 (`GPhysicsVehicleManager::Init`
+memset), `RB_BackendDataCopier` 2360040 -> 1966824 (its three queues are 655376), `HavokPhysicsFreeListMemorySystem`
+19584 -> 30816 (46 thread datas; accesses reach +30812), 14 more 16-byte Demonware wrappers, `bfx__VRT` 128 -> 80,
+`AITaskBucket_Spread` 96 -> 88; members fixed in `OnlineClan`, `bfx__Area`, `CgBallistics`, `ClStatic`.
+Not used as proof: `HavokPhysicsShapeViewer` 72 (ambiguous sized free), `bfx__Navigator` 760 (that is the
+implementation class), `ClConnection` 322584 (game-test `ClConnection` is 16 bytes; the stride belongs to another
+object). Conflicts left for later: `DWServicesAccess` list head, `Online_Friends` favorites (A124), `GfxBackEndData`
+-448 bytes between game-test 4064 and 31368 (A123), `GfxCmdBufInput` -72 before `codeBuffers` (A123).
+
 ## Wave 5
 
 Pending for the apply pass:

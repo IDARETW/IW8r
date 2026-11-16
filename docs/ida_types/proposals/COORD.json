@@ -42,6 +42,9 @@
   "ShakeState": "unconfirmed (A113)",
   "NetBacklog": "marked PROPOSAL (A115)",
   "DObjBoneParentMap": "lower bound only (A118)",
-  "ActiveClanData": "inferred from the constructor loop and tail alignment (A119)"
+  "ActiveClanData": "inferred from the constructor loop and tail alignment (A119)",
+  "HavokPhysicsShapeViewer": "sized free in the deleting destructor is ambiguous; A125 asks for review",
+  "bfx__Navigator": "base class of bfx__NavigatorImpl (760); the 760 is the implementation's size",
+  "ClConnection": "game-test ClConnection is 16 bytes; the 322584 stride is the per-connection object of ClConnectionMP_AllocateConnections (object = slot - 269700), not proven to be this type; no typed Replay access"
  }
 }

@@ -1,0 +1,62 @@
+{"agent": "A129", "structs": [
+  {"name": "BgVehiclePhysicsManager",
+   "size": 1044480,
+   "size_evidence": "GPhysicsVehicleManager::Init@0x140E9C6B0 (called by GVehicles::PhysicsInit@0x140E9EC20 on &this->m_vehiclePhysicsManager): memset(this, 0, 0x67800) and memset(this+423936, 0, 0x97800), total 1044480 contiguous bytes from the manager base; the next raw object is the 8-byte vtable subobject at GVehicles+0xFF008 (MP alloc G_MainMP_AllocateGameMemory@0x14121CA90 `mov [rsi+0FF008h], rax`), which is manager+1044480 because the manager starts at GVehicles+8",
+   "members": [
+     [0, "m_vehiclePhysicsObjects", "BgVehiclePhysicsObjectBuffer[128]", "BgVehiclePhysicsManager elements: GVehicles::PhysicsOnWorldAction@0x140E9EF50 starts the loop at this+8 (= manager+0) and steps `v6 += 3312` for 128 entries (`--v4` from 128); GVehicles::PhysicsAfterWorldStep@0x140E9D460 uses the same stride; memset of 0x67800 = 423936 = 128 x 3312 in GPhysicsVehicleManager::Init"]
+   ],
+   "changed_members": [
+     ["m_vehiclePhysicsObjects", "IDA +8 size 423936 (element 3312 implied) -> Replay +0; the IDA type's element size is right (128 x 3312 = 423936) but the offset is 8 too far; the IDA pad of 6144 after it is an artifact of the GT stride 3360", "PhysicsOnWorldAction@0x140E9EF50 loop; GPhysicsVehicleManager::Init@0x140E9C6B0 memset 0x67800"],
+     ["m_lagTime", "GT float at +0 (size 4): no Replay access found; manager has no free 4 bytes at +0 (element 0 starts there) and none at the end (the vtable write at manager+1044480 follows it); removed in Replay or moved elsewhere", "PhysicsOnWorldAction@0x140E9EF50 (element 0 at this+8); MP alloc @0x14121CA90 (vtable at +0xFF008)"],
+     ["m_vehiclePhysicsComponents", "GT +430088 (98304) -> Replay +423936 (98304): the Init memset tail 0x97800 = 98304 + 423936 + 98304 = 620544 fixes the sizes of the four arrays; the order of the two component arrays against the pmove arrays is by GT order, not confirmed", "GPhysicsVehicleManager::Init@0x140E9C6B0 memset(this+423936, 0, 0x97800)"],
+     ["m_vehiclePhysicsObjectsPmove", "GT +528392 (430080) -> Replay +522240 (423936) by the same arithmetic; not read directly", "GPhysicsVehicleManager::Init@0x140E9C6B0 (sizes only)"],
+     ["m_vehiclePhysicsComponentsPmove", "GT +958472 (98304) -> Replay +946176 (98304) by the same arithmetic; not read directly", "GPhysicsVehicleManager::Init@0x140E9C6B0 (sizes only)"]
+   ],
+   "unconfirmed": [
+     "m_lagTime: no Replay access found; the 4-byte float is absent or moved (the sum 423936+98304+423936+98304 = 1044480 leaves no room for it)",
+     "BgVehiclePhysicsComponentBuffer element size 384 (98304 / 256): not read in Replay; from the GT size only",
+     "pmove arrays (Pmove objects at +522240, pmove components at +946176): offsets from the Init memset arithmetic, not from a Replay access that names them",
+     "BgVehiclePhysicsObjectBuffer element field layout (flag at +8, body id +32, mode +24, entity +48, playerControlled +76, keyframe byte +640): belongs to the element struct, not this agent's range"
+   ],
+   "notes": "Replay manager = objects[128] x 3312 at +0, then component arrays and pmove arrays; total 1044480. IDA currently 1056776 with the array at +8 and a 6144-byte pad. Element base is GVehicles+8, so the GT lagTime at +0 cannot be there. Size is measured from the Init memsets, not from a whole-struct allocation."
+  },
+  {"name": "GVehicles",
+   "size": null,
+   "size_evidence": "lower bound only: highest raw access is the float at GVehicles+1059364 (0x102A24): PhysicsOnWorldAction@0x140E9EF50 `movss dword ptr [r13+102A24h], xmm6`, and PhysicsAfterWorldStep@0x140E9D460 `movss xmm1, [r14+102A24h]`, so size >= 1059368. No allocation size of the whole GVehicles block found (MP alloc G_MainMP_AllocateGameMemory@0x14121C630 passes its size in edx before the call at 0x14121CAF3; the value was not read here)",
+   "members": [
+     [8, "m_vehiclePhysicsManager", "BgVehiclePhysicsManager", "GVehicles::PhysicsInit@0x140E9EC20 passes &this->m_vehiclePhysicsManager to GPhysicsVehicleManager::Init; PhysicsOnWorldAction@0x140E9EF50 uses this+8 as element 0; the element is the manager start, so the manager is at +8 (the -4 residual in the packet is not between the base and the manager)"],
+     [1059364, "m_lastPhysicsStepTime", "float", "GVehicles::PhysicsOnWorldAction@0x140E9EF50: raw `movss dword ptr [r13+102A24h], xmm6` at the end of the function (deltaTime is stored); GVehicles::PhysicsAfterWorldStep@0x140E9D460: raw `movss xmm1, dword ptr [r14+102A24h]`"]
+   ],
+   "changed_members": [
+     ["m_vehicleEventSystem", "GT +1056784 size 528 -> Replay position not placed; the MP and SP allocators write a vtable at raw +1058840 (0x102218, G_MainMP_AllocateGameMemory@0x14121CA90 `mov [rsi+102218h], rax`; same in G_MainSP_AllocateGameMemory@0x14182B080 `mov [rdi+102218h], rax`), so an object of at least 8 bytes starts at +1058840; the 528-byte size is not checked", "MP/SP allocators (raw offsets)"],
+     ["m_suspendManager", "GT +1057312 size 27652 -> Replay GVehicleSuspendManager at raw +1044496 (0xFF210): GVehicleSuspendManager_Init@0x140EA0410 is called with `lea rcx, [rsi+0FF210h]` (MP alloc 0x14121CAA0; SP alloc 0x14182B401 uses [rdi+0FF210h]); the object is 256 records of 32 bytes at +28 (Init writes WORD 2047 at +28+32k), an index of 2048 WORDs at +0x2000 (`this + 0x2000`, GVehicleSuspendManager::Reset@0x140EA0580), and a count dword at +0x3000 = 12288 (SuspendVehicle@0x140EA07F0 `this+12288`); so size >= 12292 (not 27652)", "GVehicleSuspendManager_Init@0x140EA0410; GVehicleSuspendManager::Reset@0x140EA0580; GVehicleSuspendManager::SuspendVehicle@0x140EA07F0"],
+     ["m_scriptableDamageInfo", "GT +1084976 size 2052 -> Replay list base raw +1058848 (0x102220) and count dword raw +1059360 (0x102A20): PhysicsAfterWorldStep@0x140E9D460 `lea rbx, [r14+102220h]` then reads `mov eax, [r14+102A20h]` as the entry count and zeroes it at the end (`mov [r14+102A20h], ebp`); the entries are 8 bytes (serverInstanceFlatId dword + partName word); the packet's 1057312 / 1057316 accesses are IDA-typed offsets, not raw; the list is 512 bytes if it ends at the count", "GVehicles::PhysicsAfterWorldStep@0x140E9D460 (raw disasm scan)"]
+   ],
+   "unconfirmed": [
+     "Raw layout tail (GVehicles offsets, from the MP/SP allocators and the two functions above): +1044488 8-byte vtable subobject (name not known; GT m_vehicleCollisionSystem is 8 bytes); +1044496 GVehicleSuspendManager (12292+); +1056788 .. +1058840 2052 bytes with no raw access found (GT m_scriptableDamageInfo size 2052 fits, but the raw list is at +1058848); +1058840 vtable subobject (8+ bytes; GT m_vehicleEventSystem 528 fits only if it runs to +1059368 and the float at +1059364 is its last member, which is not verified)",
+     "m_vehicleCollisionSystem: 8-byte subobject at +1044488; no name evidence in Replay",
+     "GVehicles total size: no allocation size and nothing read past +1059368"
+   ],
+   "notes": "Packet residuals are wrong in two places: the -4 is not between BGVehicles and the manager (the manager is at +8, with element 0 at +8), and the packet's 1057312 accesses are IDA-typed offsets (raw is 1058848 / 1059360). Use the raw offsets above. The structure differs from GT: the manager shrinks from 1056776 to 1044480, the suspend manager is 12292 bytes and not 27652, and the tail is smaller. Builder size 1074736 is not used. A layout is proposed, not applied: a coordinator check should confirm the tail names with a Replay allocator size."},
+  {"name": "GVehiclesSP",
+   "size": null,
+   "size_evidence": "not measured. Replay derived class with no own accesses: GVehiclesSP::FinishVehicleDamage@0x14185F150 only forwards to G_Vehicle_FinishDamage; GVehiclesSP::UpdateSpaceshipAnimscriptedMove@0x141860A00 reads only Vehicle fields (vehicleState->ent, phys.origin/angles). The SP allocator G_MainSP_AllocateGameMemory@0x14182B080 uses the same GVehicles offsets (manager +8, GVehicleSuspendManager +0xFF210, subobject +0x102218, count +0x102A20; GVehicles__PhysicsInit@0x14182B43D with rdi = this).",
+   "members": [],
+   "changed_members": [
+     ["baseclass_0", "IDA layout is one _pad0 of 1087032 bytes; GT base is GVehicles. Replay SP uses the GVehicles layout at offset 0, so GVehicles should be baseclass_0 with no own members; size follows GVehicles (not proven)", "G_MainSP_AllocateGameMemory@0x14182B080 (vtable at +0 and PhysicsInit with this = rdi)"]
+   ],
+   "unconfirmed": [],
+   "notes": "No SP-only members found in the functions read. Keep GVehiclesSP size equal to GVehicles size once GVehicles is proven. Builder size 1074736 is not used."},
+  {"name": "CgVehicleSystemSP",
+   "size": null,
+   "size_evidence": "not proven. CgVehicleSystemSP_ctor@0x1417D88A0 and CgVehicleSystemSP::Init@0x1417D8A10 touch only offsets inside the base CgVehicleSystem (1135880, solved in wave 1): vftable at +0, dword at +77324, BGVehicles_ctor at +1121808, memset(+77328, 0, 0xFF000) (1044480 bytes, ends at +1121808), CgVehicleEventSystem::Init at +1121808, and the Init slot array (max raw access 75276). Nothing in the SP ctor or Init writes beyond +1135880, so the IDA extra 16400 bytes (1152280 - 1135880) have no Replay evidence.",
+   "members": [],
+   "changed_members": [
+     ["vehicleSlots_stateByte", "IDA placeholder at +1 (1 byte) and _pad2 are wrong. The Init writes a state byte at a1[589 + 588k] = -2 for k = 0..127 (last at 75265), with memsets of a1+12 (0x241 bytes) and a1+590 (0x123BE bytes). That is a slot array of 128 entries with stride 588 inside the base class, so it belongs to CgVehicleSystem, not to the SP struct. The SP layout should be baseclass_0 CgVehicleSystem only, with no SP-owned members", "CgVehicleSystemSP::Init@0x1417D8A10 (a1[589] = -2 ... a1[75265] = -2; memset(a1+12,0,0x241); memset(a1+590,0,0x123BE))"]
+   ],
+   "unconfirmed": [
+     "Whether the base CgVehicleSystem slot array at +589 (stride 588) matches the solved CgVehicleSystem layout: check against the wave-1 CgVehicleSystem members (not re-read here)",
+     "Any SP-owned members after +1135880: none found in the ctor or Init; the IDA 16400 extra bytes are unexplained"
+   ],
+   "notes": "The packet's replay_max_access_end 75266 is inside the base class, not SP-owned. Base CgVehicleSystem is 1135880 (solved). Size of CgVehicleSystemSP is only the base size if there is no SP-owned extra member; the allocator for the SP vehicle system was not read."}
+]}

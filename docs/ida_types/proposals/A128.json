@@ -1,0 +1,112 @@
+{"agent": "A128", "structs": [
+  {"name": "CgDynamicMedia", "size": 24,
+   "size_evidence": "CgDynamicMediaMP_ctor@0x1417874e0: pcharNode::pcharNode(this, this+24, 512) then FXRegisteredDef ctor loop over this+24; CG_MainMP_AllocateDynamicMedia@0x14169c0d0: Mem_HunkUser_AllocInternal(4120) = 24 + 512*8 (so the base ends at 24, the derived array starts there)",
+   "members": [
+     [0, "__vftable", "void *", "pcharNode::pcharNode@0x14169c1b0 stores pcharNode_vftable at +0; CgDynamicMedia::~CgDynamicMedia@0x14169c1d0 writes it back"],
+     [8, "m_fxsPtr", "FXRegisteredDef *", "pcharNode::pcharNode: *(this+8)=slotTable; CgDynamicMedia::ClearMediaCache@0x14169c210: *(this+8) passed to memset; CgDynamicMedia::IsValidFx@0x14169c280: this->m_fxsPtr[fxIndex]"],
+     [16, "m_fxCount", "unsigned int", "pcharNode::pcharNode: *(DWORD*)(this+16)=slotCount; ClearMediaCache: memset length 8*(this+16); IsValidFx: fxIndex < this->m_fxCount"]
+   ],
+   "changed_members": [
+     ["m_fxDefsArray (+64, 64 bytes), m_unknown128 (+128, 8 bytes)", "not CgDynamicMedia members: the FXRegisteredDef[512] array (8-byte entries) is inline in CgDynamicMediaMP at +24 (CgDynamicMediaMP_ctor), so these go to the derived class", "CgDynamicMediaMP_ctor@0x1417874e0 loop from this+3 qwords"],
+     ["size", "136 -> 24 (derived CgDynamicMediaMP is 24 + 512*8 = 4120, CG_MainMP_AllocateDynamicMedia)", "CG_MainMP_AllocateDynamicMedia@0x14169c0d0"]
+   ],
+   "unconfirmed": ["base class identity: the ctor and dtor use pcharNode vftable, so the Replay base may be pcharNode rather than a named CgDynamicMedia"],
+   "notes": "Derived CgDynamicMediaMP owns the 512-entry FXRegisteredDef array at +24 (FXRegisteredDef stride 8 from the 4120 allocation; that struct belongs to another agent). Base layout is confirmed; game-test 24 bytes matches."},
+
+  {"name": "CgAntiLag", "size": 144376,
+   "size_evidence": "CgAntiLagSP::CgAntiLagSP@0x1417c2af0: per-client history begins at this+144376 (InitHistoryTable at this+144376, stride 67920), CgAntiLag_ctor@0x141673080 writes up to +144376 (qword at +144368); MP counterpart CgAntiLagMP_ctor uses this+18047 qwords = 144376",
+   "members": [
+     [0, "baseclass_0", "BgAntiLag", "CgAntiLagSP::CgAntiLagSP: BgAntiLag base ctor via CgAntiLag_ctor; *(this+8)=this+37848 is BgAntiLag m_rewindScene pointing at the embedded scene. Base ends at 37848 (game-test BgAntiLag 46040 minus the 8192-byte m_refCountDebugStack array, which Replay does not have)"],
+     [37848, "m_rewindSceneInst", "BgAntiLagRewindScene", "CgAntiLagSP::CgAntiLagSP@0x1417c2af0: `*(this+8) = this+37848`; game-test m_rewindSceneInst 46040 maps to 37848 (shift -8192); size 106512 ends at 144360"],
+     [144360, "m_disableForMigration", "bool", "CgAntiLag_ctor@0x141673080: `mov byte ptr [this+144360], 0`; CgAntiLag::ResetClientHistory@0x141674080 tests `*(BYTE*)(v3+144360)`"],
+     [144368, "m_currFrame", "BgAntiLagFrameHistory *", "CgAntiLag_ctor@0x141673080: qword 0 at +144368"]
+   ],
+   "changed_members": [
+     ["m_rewindSceneInst (game-test 46040) .. m_currFrame (152560)", "every game-test tail offset is 8192 larger than Replay: game-test 152552 -> Replay 144360", "BgAntiLag m_refCountDebugStack (game-test 0x666C, 8192 bytes) is missing from Replay; anchored by CgAntiLagSP::CgAntiLagSP and CgAntiLag_ctor"],
+     ["size", "209728 -> 144376", "CgAntiLagSP::CgAntiLagSP and CgAntiLag_AllocateInstances (4219576 = 144376 + 60*67920)"],
+     ["unknown26208 (int), unknown26212 (int), unknownScene209664 (char[32]), _pad6668", "these are inside BgAntiLag (base) or past the end, not CgAntiLag members; the current IDA layout is wrong", "CgAntiLagSP::CgAntiLagSP and RestoreAntiLagScene@0x1416740a0"]
+   ],
+   "unconfirmed": ["m_localClientNum (game-test 152556 -> Replay 144364 by the -8192 shift, no Replay access found)"],
+   "notes": "Packet anchor 152556 -> 26212 is wrong: Replay 26212 is BgAntiLag m_sceneAntiLagContext (RestoreAntiLagScene passes this+26212 to RestoreAntiLagSceneInternal). For the BgAntiLag agent: Replay offsets inside the base are 26200 = antiLagHistorySize (60, set in CgAntiLagSP ctor), 26204 = nextAntiLagHistory (reset to 0 in ResetClientHistory), 26208 = sceneAntiLagRefCount (qword 0 in SP ctor; BgAntiLag_ReleaseSceneRefcount), 26212 = sceneAntiLagContext, 26216 = sceneAntiLagTime (int, SP ctor zero), 24600 = 60-entry per-client pointer table. The 8192-byte gap is between 26220 and 34412 (game-test m_refCountDebugStack). The CgAntiLag ctor's ints at 144344/144348 lie inside the rewind scene."},
+
+  {"name": "CgAntiLagSP", "size": 4219576,
+   "size_evidence": "CgAntiLag_AllocateInstances@0x1417c2c30: Mem_HunkUser_AllocInternal(4219576 * instanceCount) and the constructor loop advances `v5 += 4219576`; per-client block memset 0x10950 = 67920 in CgAntiLagSP::CgAntiLagSP",
+   "members": [
+     [0, "baseclass_0", "CgAntiLag", "CgAntiLagSP::CgAntiLagSP@0x1417c2af0: CgAntiLag_ctor(this) first; history starts at this+144376"],
+     [144376, "m_antiLagHistoryFrames", "CgAntiLagFrameHistorySP[60]", "CgAntiLagSP::CgAntiLagSP: for i<60, block = this+144376+67920*i, memset 0x10950; InitHistoryTable at block; 60 = `*(this+26200)`; game-test m_antiLagHistoryFrames 152568 -> 144376 (shift -8192); 60*67920 = 4075200 matches game-test size"]
+   ],
+   "changed_members": [
+     ["m_antiLagHistoryFrames", "152568 -> 144376 (inherits the -8192 base shrink)", "CgAntiLagSP::CgAntiLagSP"],
+     ["size", "4227768 -> 4219576", "CgAntiLag_AllocateInstances: 4219576 stride; IDA pad _pad233F8 (4083392) = 4075200 + 8192 stale bytes"]
+   ],
+   "unconfirmed": [],
+   "notes": "CgAntiLagFrameHistorySP is 67920 bytes (struct belongs to another agent). Per-client block: +0 300 pointer pairs (4800 bytes), +4804 int 600, +31920 300 records of 120 bytes. CgAntiLagMP (MP path) is a different derived class: 2419576 = 144376 + 60*37920 (CgAntiLag_AllocInstances)."},
+
+  {"name": "CgBallistics", "size": 286056,
+   "size_evidence": "CG_MainMP_AllocateClientMemory@0x14178fdf0 and CG_MainSP_AllocateClientMemory@0x1417caa60: Mem_HunkUser_AllocInternal(286056 * clientCount), each element built as CgBallisticsSP (no SP-only members beyond CgBallistics; same stride)",
+   "members": [
+     [0, "baseclass_0", "BgBallistics<CgBallisticInstance>", "CgBallisticsSP::CgBallisticsSP@0x14178f8c0 and the allocator loop: vftable at +0, 600 CgBallisticInstance (stride 440) from +8, three qwords zeroed at 264008, 264016, 264024; base ends at 264032"],
+     [264040, "m_ballisticInstancesCurrentFrame", "CgBallisticInstance[50]", "CgBallistics::FireBallistics@0x140d3d620: `440*index + this + 264040`, index < 50 (MAX_BALLISTIC_COUNT_PER_CLIENT_FRAME); memset 0x1B8 = 440 in ctor"],
+     [286040, "m_ballisticInstanceEntryIndexNext", "int", "CgBallistics::FireBallistics: _InterlockedExchangeAdd(this+286040, 1); CgBallisticsSP ctor zero"],
+     [286044, "m_workerCountLocal", "int", "CgBallistics::AddWorker@0x140d3ca80 and StartWorkers@0x140d3e070: _InterlockedIncrement(this+286044) for isLocal instances (limit 50)"],
+     [286048, "m_workerCountRemote", "int", "CgBallistics::AddWorker and StartWorkers: _InterlockedIncrement(this+286048) for non-local instances"]
+   ],
+   "changed_members": [
+     ["m_ballisticInstancesCurrentFrame .. m_workerCountRemote", "game-test and Replay agree (264040, 286040, 286044, 286048); the IDA layout has them right but its size and pad chunks are wrong for the base", "anchors on FireBallistics and StartWorkers"]
+   ],
+   "unconfirmed": ["m_localClientNum (game-test 264032, int): no Replay access found; the packet anchor 264032 -> 286048 is wrong (286048 is m_workerCountRemote)"],
+   "notes": "Base BgBallistics<CgBallisticInstance> (264032 bytes, another agent's struct) owns the count at 264028, which StartWorkers@0x140d3e070 uses as its loop bound over the array at this+8; that dword is the upper half of the third qword zeroed at 264024. CgBallisticInstance stride 440 (struct belongs to another agent). Packet builder/anchor for 264028 is correct for the base only."},
+
+  {"name": "CgBallisticsSP", "size": 286056,
+   "size_evidence": "CG_MainMP_AllocateClientMemory and CG_MainSP_AllocateClientMemory: per-client Mem_HunkUser_AllocInternal(286056 * clientCount), CgBallisticsSP vftable stored at each block start",
+   "members": [
+     [0, "baseclass_0", "CgBallistics", "CgBallisticsSP::CgBallisticsSP@0x14178f8c0 and allocator loop: builds the BgBallistics base, then CgBallisticsSP vftable; no SP-only members"]
+   ],
+   "changed_members": [
+     ["size", "2288416 -> 286056", "allocator stride 286056 per client; the current IDA members (m_subObject64, m_ptrs264008, m_tail286040, m_subObjects2112064) are wrong: the object is one CgBallistics"]
+   ],
+   "unconfirmed": [],
+   "notes": "Replay CgBallisticsSP has no members of its own. The IDA layout and the packet's 8 x 286052 size are not Replay layouts."},
+
+  {"name": "CgCompassSystemMP", "size": 64184,
+   "size_evidence": "CG_ClientSlots_AllocateMemory@0x140efc760 (MP branch, isCompassCPRaidSecurityScreen): Mem_HunkUser_AllocInternal(64184 * slotCount), element loop `v11 += 64184` calling CgCompassSystemMP_ctor@0x14177a4e0; BR class (the other branch) uses 64160",
+   "members": [
+     [1560, "m_compassActors", "CompassActorMP[256]", "CgCompassSystemMP::DrawPlayerMP@0x1417724f0: `136*clientNum + this + 1580` (actor field at +20), stride 136 (34816 = 256*136)"],
+     [44912, "m_compassPortableRadarList", "CompassPortableRadar[4]", "CgCompassSystemMP::UpdatePortableRadar@0x141779c10: `this+11228*4` scan over 4 entries of 16 bytes (+12 byte flag); CgCompassSystemBR_ctor@0x1417692c0 resets dword 2047 at 44912, 44928, 44944, 44960"],
+     [44976, "m_compassPortableRadarPingsList", "CompassPortableRadarPing[10]", "CgCompassSystemMP::TriggerPortableRadarPing@0x141778eb0: 44976 + 316*i (stride 316, 10 entries): pos at +0..+8, time at +12, kind +16, entity +20, flags +24, memset 288 from +28"],
+     [64081, "m_isUsingCustomCodCasterFriendlyColor", "bool", "CgCompassSystemMP::DrawPlayerMP@0x1417724f0: `this+64081` tested in the team-marker branch"],
+     [64082, "m_isUsingCustomCodCasterEnemyColor", "bool", "CgCompassSystemMP::DrawPlayerMP@0x1417724f0: `this+64082` tested in the other branch"]
+   ],
+   "changed_members": [
+     ["m_compassPortableRadarPingsList end (48136) .. m_isUsingCustomCodCasterFriendlyColor (64081)", "Replay has 15828 bytes more than game-test here (shift -15952 before, -124 after); the extra block is not identified", "packet residual [m_compassPortableRadarList, m_isUsingCustomCodCasterFriendlyColor, +15828]; IDA pad _padAFB0 (18988 = 3160 + 15828) at 44976"],
+     ["m_uiTravelLineMaterial .. m_locSelSizeMulDefault (game-test 64088..64280)", "Replay tail is game-test minus 124 (64081 <-> 64205 confirmed by DrawPlayerMP): tail items sit at 63964 and up", "DrawPlayerMP anchors; CgCompassSystemBR_ctor writes byte 0 at 64089 (m_isBigMapMinimap, game-test 64213) and dword at 64100 (game-test 64224)"],
+     ["size", "64280 -> 64184", "CG_ClientSlots_AllocateMemory stride 64184; the 64160 in CG_MainMP_AllocateClientMemory is CgCompassSystemBR, a different class"]
+   ],
+   "unconfirmed": ["m_compassScramblers (game-test 36376, 15872 bytes): no Replay access; BR ctor resets 15 records of 28 bytes at 36296 (game-test decoy list 52252 would shift -15956, not -15952)", "MP-only tail 64160..64184: qword zero at 64160 and floats 1.0 at 64168 and 64172 (CgCompassSystemMP_ctor), 8 bytes at 64176 unknown"],
+   "notes": "CgCompassSystemBR (64160) is the battle-royale compass that uses the base class and most of the same tail. CgCompassSystemMP_ctor = CgCompassSystemBR_ctor plus a 24-byte MP tail. The packet's builder size 64160 is the BR size, not MP."},
+
+  {"name": "CgClientSideEffectsSystem", "size": 14520,
+   "size_evidence": "CG_MainMP_AllocateClientMemory and CG_MainSP_AllocateClientMemory: Mem_HunkUser_AllocInternal(14520 * clientCount), each element constructed then CgClientSideEffectsSystem::AllocateMemory@0x141683710 (object stride 14520)",
+   "members": [
+     [0, "__vftable", "void *", "CG_MainMP_AllocateClientMemory: vftable store at object start (CgClientSideEffectsSystemMP_vftable)"],
+     [16, "m_spatialFX", "ActiveSet", "CgClientSideEffectsSystem::AllocateMemory: ActiveSet::Init(a1+16); StartEffects reads +16"],
+     [72, "m_spatialSound", "ActiveSet", "AllocateMemory: ActiveSet::Init(a1+72) (72-16 = 56 = ActiveSet size)"],
+     [128, "m_activeSounds", "ClientSideActiveSound[1024]", "CgClientSideEffectsSystem::ActiveSounds_Update: +128 and +132 (array base); StartEffects +128"],
+     [8320, "m_activeSoundCount", "unsigned int", "CgClientSideEffectsSystem::ActiveSounds_Update and StartEffects: +8320"],
+     [8324, "m_pending", "ClientSidePendingEffect[512]", "CgClientSideEffectsSystem::Pending_Add: +8324 and +8332 (entry field)"],
+     [14468, "m_pendingCount", "unsigned int", "CgClientSideEffectsSystem::Pending_Add: +14468"],
+     [14472, "m_activeOneshotFXHandles", "unsigned int *", "AllocateMemory: a1+14472 = Mem_HunkUser_AllocInternal(4*count)"],
+     [14480, "m_activeExploderFXHandles", "unsigned int *", "AllocateMemory: a1+14480 = Mem_HunkUser_AllocInternal(4*count)"],
+     [14488, "m_intervalSoundTimers", "unsigned int *", "AllocateMemory: a1+14488; ActiveSounds_Update +14488"],
+     [14496, "m_reactiveEntTimers", "unsigned int *", "AllocateMemory: a1+14496"],
+     [14504, "m_spatialSoundGlobalBits", "unsigned int *", "AllocateMemory: a1+14504 (count >> 5 + 1 dwords); StartEffects and ActiveSounds_Update read +14504"],
+     [14512, "m_spatialSoundGlobalBitSize", "unsigned int", "AllocateMemory: `*(DWORD*)(a1+14512) = ((count >> 5) + 1)`"]
+   ],
+   "changed_members": [
+     ["m_roots (14516, ClientSideRoot[1024]), m_rootsParsed (80052), m_rootLookAt (80056)", "not in the Replay object: the object ends at 14520 (allocation stride); game-test 80064 is not the Replay size", "replay_max_access_end 14516; allocation stride 14520"],
+     ["m_rootsEntry813 (66560), _pad regions, m_embeddedObj0..5 (115776..116160)", "no Replay access; outside the 14520-byte object, so the IDA members beyond 14520 are wrong", "allocation stride 14520"],
+     ["size", "116160 -> 14520", "CG_MainMP_AllocateClientMemory / CG_MainSP_AllocateClientMemory stride"]
+   ],
+   "unconfirmed": ["m_localClientNum (game-test +8, enum): no Replay access. The packet anchor 8 -> 8320 is wrong: Replay 8320 is m_activeSoundCount, so IDA's 8320 int is correct"],
+   "notes": "Game-test offsets 16 through 14512 agree with Replay for every confirmed member; the packet residual [__vftable -> m_localClientNum +8312] comes from the IDA layout, not from Replay. Packet residual rows should not be applied as shifts."}
+]}

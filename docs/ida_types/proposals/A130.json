@@ -1,0 +1,175 @@
+{"agent": "A130", "structs": [
+{"name": "ClStatic", "size": 175776, "size_evidence": "ClStatic::? CL_Main_ShutdownOnceForAllClients@0x1415c54c0: memset_0(&cls._pad20[408], 0, 0x2ACE8) -> 440 + 175336 = 175776 (whole-struct clear to the end); consistent with cls_noDeltaUseCount global at cls+0x2AE78 and hardcore flag at cls+0x2AE98 (SetActiveHardcoreMode@0x1415c5b10: mov [rcx+2AE98h], dl)",
+ "members": [
+  [288, "frametime", "int", "CL_Main_RunOncePerClientFrame@0x1415c5190: *(int*)&cls._pad20[256] = frameMsec (288)"],
+  [292, "frametime_base", "float", "CL_Main_RunOncePerClientFrame: *(float*)&cls._pad20[260] = timeScale"],
+  [296, "frametime_rawSeconds", "float", "CL_Main_RunOncePerClientFrame: *(float*)&cls._pad20[264] = timeOffset"],
+  [300, "realtime", "int", "CL_Main_RunOncePerClientFrame: *(int*)&cls._pad20[268] += frameMsec"],
+  [304, "inputUpdatedPrevFrame", "bool", "CL_Main_RunOncePerClientFrame: cls._pad20[272] (IN_UpdateInputFrame gate)"],
+  [312, "consoleFont", "GfxFont *", "CL_Main_InitRenderer@0x1415c35c0: *(QWORD*)&cls._pad20[280] = R_RegisterFont(fira_mono_regular, 18)"],
+  [320, "smallDevFont", "GfxFont *", "CL_Main_InitRenderer: *(QWORD*)&cls._pad20[288] = R_RegisterFont(fira_mono_bold, 14)"],
+  [328, "bigDevFont", "GfxFont *", "CL_Main_InitRenderer: *(QWORD*)&cls._pad20[296] = R_RegisterFont(fira_mono_bold, 26); g_console_field_width = _pad20[328]-48"],
+  [336, "whiteMaterial", "Material *", "CL_Main_InitRenderer: *(QWORD*)&cls._pad20[304] = Material_FindHandle(white)"],
+  [344, "consoleMaterial", "Material *", "CL_Main_InitRenderer: *(QWORD*)&cls._pad20[312] = Material_FindHandle(console)"],
+  [352, "vidConfig", "vidConfig_t", "CL_Main_InitRenderer: R_BeginRegistration((__int64)&cls._pad20[320]) = offset 352; CL_GetScreenDimensions: width [328]=360 (displayWidth), height [332]=364 (displayHeight), scale [344]=376 (vidConfig+0x18)"],
+  [416, "skelMemPoolSize", "unsigned int", "CL_Main_AllocateSkelMemory@0x1415c2950: *(int*)&cls._pad20[384] = size (416); CL_Main_FreeSkelMemory@0x1415c3200 clears it"],
+  [424, "skelMemPool0", "void *", "CL_Main_AllocateSkelMemory: *(QWORD*)&cls._pad20[392] = Mem_HunkUser_AllocInternal(hunkUser, size, 16); CL_Main_FreeSkelMemory clears 424"],
+  [432, "skelMemPool1", "void *", "CL_Main_AllocateSkelMemory: *(QWORD*)&cls._pad20[400] = second Mem_HunkUser_AllocInternal; FreeSkelMemory clears 432"],
+  [448, "maxClients", "int", "CL_ParseMP_ParseGamestate@0x1415f0c90: cls._pad20[416] (=448) compared with clientNum and with the client count byte"],
+  [452, "maxAgents", "int", "CL_ParseMP_ParseGamestate: cls._pad20[420] (=452) compared with the agent count byte"],
+  [456, "spawnGroupLootActive", "bool", "CL_ParseMP_ParseGamestate: cls._pad20[424] = (Bit != 0)"],
+  [460, "spawnGroupLootSeed", "unsigned int", "CL_ParseMP_ParseGamestate: *(int*)&cls._pad20[428] = 0 or MSG_ReadLong"],
+  [464, "spawnGroupLootTableChecksum", "unsigned int", "CL_ParseMP_ParseGamestate: *(int*)&cls._pad20[432] = MSG_ReadLong"],
+  [468, "spawnGroupLootTable", "char[64]", "CL_ParseMP_ParseGamestate: MSG_ReadString(msg, &cls._pad20[436], 64)"],
+  [532, "spawnGroupLootTableZones", "char[64]", "CL_ParseMP_ParseGamestate: MSG_ReadString(msg, &cls._pad20[500], 64)"],
+  [596, "spawnGroupLootTableFilter", "char[1024]", "CL_ParseMP_ParseGamestate: MSG_ReadString(msg, &cls._pad20[564], 1024)"],
+  [1620, "m_scriptableNetChecksum", "unsigned int", "CL_ParseMP_ParseGamestate: cls.m_scriptableNetChecksum = MSG_ReadLong (already placed; offset agrees)"],
+  [1624, "m_localClientsActive", "ClLocalClientActive", "ClStatic::ClearGameActiveClientInfo@0x1415c5a00: *(QWORD*)&m_localClientsActive.activeCount = 0 (1624); firstActiveIndex = -1 (1632)"],
+  [1640, "m_activeGameMapName", "char[36]", "ClStatic::SetGameMapName@0x1415c5b20: lea rdi,[rcx+668h] (1640), Core_strcopy size 0x24"],
+  [1676, "m_activeGameTypeName", "char[36]", "ClStatic::SetActiveGameType@0x1415c5a80: Core_strcopy(rcx+68Ch = 1676, 0x24, gameTypeName)"],
+  [1712, "m_activeGameTypeQuick", "GameTypeQuick_t", "ClStatic::SetActiveGameType: mov [rsi+6B0h], al (1 byte at 1712); ClStatic::GetActiveGameTypeQuick@0x1415c5a70 reads one unsigned __int8 at +1712"],
+  [1716, "m_serverFrameDuration", "int", "CL_ParseMP_ParseGamestate: *(int*)cls._pad6B4 = MSG_ReadByte (offset 1716; name from game-test +0x7D0 = 2000 - 284)"],
+  [1776, "mapCenter", "vec3_t", "CL_ParseMP_ParseGamestate: sscanf(CL_GetConfigString(0x16), '%f %f %f', &cls._pad6B4[60..68]) = 1776..1788; zeroed at 1776 and 1784"],
+  [175736, "noDeltaUseCount", "unsigned int", "IDB global cls_noDeltaUseCount = cls + 0x2AE78 (175736), read by CL_ParseMP_ParsePacketEntities@0x1415f1f20"],
+  [175744, "nextNoDeltaEntity", "__int64", "IDB global cls_nextNoDeltaEntity = cls + 0x2AE80"],
+  [175752, "noDeltaEntities", "entityState_t *", "IDB global cls_noDeltaEntities = cls + 0x2AE88, read by CL_ParseMP_ParsePacketEntities"],
+  [175760, "maxNoDeltaEntities", "int", "IDB global cls_maxNoDeltaEntities = cls + 0x2AE90"],
+  [175768, "m_activeGameHardcoreSetting", "bool", "ClStatic::SetActiveHardcoreMode@0x1415c5b10: mov [rcx+2AE98h], dl (175768)"]
+ ],
+ "changed_members": [
+  ["m_activeGameTypeQuick", "width 4 -> 1 (GameTypeQuick_t)", "ClStatic::SetActiveGameType@0x1415c5a80: mov [rsi+6B0h], al; GetActiveGameTypeQuick: unsigned __int8 at +1712"],
+  ["noDeltaSnapshot..noDeltaUseCount block", "shift +38456 from game-test (noDeltaUseCount 137280 -> 175736)", "IDB globals cls_noDeltaUseCount..m_activeGameHardcoreSetting at cls+0x2AE78..0x2AE98; the ClSnapshot inside grew 94856 -> 119000 (see ClSnapshot), so the rest of the growth is between 1796 and 56736 (not located)"],
+  ["front gap", "Replay is 284 bytes shorter than game-test before m_localClientsActive; 264 of it is the game-test debug member (ClDebugInfo at 400) missing from Replay ClStatic, 20 is skelMemoryStart+debugRenderPos (712..732) missing", "skel block: ClStatic::? CL_Main_AllocateSkelMemory puts the pool pointers at 424/432 and maxClients at 448 (game-test 732), so 400..448 has no ClDebugInfo; cls_debug is not a member in Replay (not directly proven: no Replay access to 400..664 found in this pass)"]
+ ],
+ "unconfirmed": [
+  "400 skelValid, 404 skelTimeStamp, 408 skelPrevFrameTimeStamp, 412 skelMemPos: names by a -264 shift from game-test (664..676); no Replay access seen",
+  "440 skelMemCurrent (pointer copied from pool[v7] in CL_Main_AllocateSkelMemory); name skelMemoryStart is a guess",
+  "288..304 names: confirmed by offset in CL_Main_RunOncePerClientFrame, the 7 bytes at 305..312 are padding",
+  "1716 name m_serverFrameDuration: the write is a 4-byte store of a byte read",
+  "ClStatic::noDeltaSnapshot (ClSnapshot): position not found; if it sits right before cls_noDeltaUseCount it starts at 56736, which needs 14596 bytes of growth between 1796 and 56736",
+  "members between 1796 and 56736 (localServers, matchData, codcasterClientMatchData, serverId) are unplaced",
+  "ClStatic members 32..288 (servername, frametime block) are pads in this pass; 32..312 has the same size as game-test (consoleFont at 312 is confirmed)"
+ ],
+ "notes": "Replay ClStatic is the global cls (IDB 0x14eeb0b20). Offsets 312..1776 and 1624..1716 are confirmed by Replay code; the gap of 284 bytes sits between vidConfig and maxClients. Size 175776 is measured from the whole-struct memset."
+},
+{"name": "ClSnapshot", "size": 119000, "size_evidence": "ClActiveClientMP::AllocSnapshotMemory@0x1415def80: *(QWORD*)(this+153856) = Mem_HunkUser_AllocInternal(hunkUser, 119000 * snapshotCount, 8) (snapshot pool stride 119000); CL_ParseMP_ParsePacketEntities@0x1415f1f20 clears the last member 118744..119000 (32 QWORDs = 256 bytes), so 119000 is the end",
+ "members": [
+  [118632, "state", "unsigned __int8", "CL_ParseMP_CheckForSnapshotValidity@0x1415f0380: *(char*)(snapshot+118632) compared with 0 and 2 (discarded full frame)"],
+  [118636, "flags", "unsigned __int8", "CL_ParseMP_CheckForSnapshotValidity: bit 8 tested (blind delta); CL_ParseMP_ParsePacketEntities: bit 8 = no-delta, bit 0x10 = send baseline"],
+  [118644, "messageNum", "int", "CL_ParseMP_CheckForSnapshotValidity: *(int*)(snapshot+118644) == snapshotNum"],
+  [118660, "serverCommandNum", "int", "CL_ParseMP_ParseCommandDelta@0x1415f0c20: *(int*)(newSnapshot+118660) = command number (game-test serverCommandNum is 94592; name is a candidate)"],
+  [118668, "numEntities", "unsigned int", "CL_ParseMP_ParsePacketEntities: *(int*)(newSnapshot+118668) = 0, ++ per entity; CL_ParseMP_DeltaEntity ++"],
+  [118676, "numAgents", "unsigned int", "CL_ParseMP_ParsePacketAgents@0x1415f1740: ++*(int*)(newSnapshot+118676)"],
+  [118680, "parseEntitiesIndex", "__int64", "CL_ParseMP_ParsePacketEntities: *(QWORD*)(newSnapshot+118680) = cls_noDeltaUseCount or client+153632"],
+  [118688, "parseClientsIndex", "__int64", "CL_ParseMP_CheckForSnapshotValidity: snapshot+118688 compared with client+153640"],
+  [118696, "parseAgentsIndex", "__int64", "CL_ParseMP_ParsePacketAgents: *(QWORD*)(newSnapshot+118696) = client+153648"],
+  [118704, "parseOmnvarsIdx", "__int64", "CL_ParseMP_CheckForSnapshotValidity: snapshot+118704 compared with client+153656"],
+  [118712, "parseUmbraGateStatesIndex", "__int64", "CL_ParseMP_CheckForSnapshotValidity: snapshot+118712 compared with client+153920 (name from game-test order)"],
+  [118744, "entitiesLoD", "EntityLoDs", "CL_ParseMP_ParsePacketEntities: bit set/clear at snapshot+4*(entityNum>>5)+118744 (64 DWORDs = 2048 bits); initialised to -1 over 118744..118999; ends at 119000"]
+ ],
+ "changed_members": [
+  ["entitiesLoD", "256 bytes (game-test) and IDA 260 -> Replay 256 at the end of the struct", "CL_ParseMP_ParsePacketEntities initialises exactly 256 bytes from 118744"],
+  ["parseEntitiesIndex..parseUmbraGateStatesIndex", "Replay lacks numWeaponMapEntries (+pad) between numAgents and parseEntitiesIndex; the IDA pad _pad17134 and the numWeaponMapEntries member are not in Replay at those offsets", "numAgents 118676 then parseEntitiesIndex 118680 (game-test 94512..94520 gap)"],
+  ["size", "94856 (game-test) / 94860 (IDA) -> 119000", "AllocSnapshotMemory stride 119000; bitmap end 119000"]
+ ],
+ "unconfirmed": [
+  "118720 scriptableChangeStartSequence, 118728 scriptableChangeEndSequence, 118736 scriptableInstanceChecksum, 118740 scriptablePartsChecksum: by position before entitiesLoD (layout inferred, no direct access seen)",
+  "ps (playerState_s) and scores, streamSync, mlgSpectatorClientInfo (0..118632): Replay offsets are not checked here; the 24168 extra bytes before state are not placed (A051 territory)",
+  "118648..118656 deltaNum, ping, realtime, svCmdTargetError, 118664 cmdNum: by game-test spacing only",
+  "118672 numClients: by spacing only"
+ ],
+ "notes": "Size is measured from the snapshot-pool stride. The entity bit array is EntityLoDs (256 bytes), so IDA's 260 for EntityLoDs looks wrong (another agent's struct). Replay also has serverCommandNum at 118660, which is not game-test's position."
+},
+{"name": "ClActiveClientMP", "size": 175576, "size_evidence": "ClActiveClientMP::AllocateClients@0x1415df2f0: each client slot is 175576 bytes (v13 += 175576; ClientMP[i] = object) AND ClActiveClientMP::ClearClient@0x1415df5f0: memset_0(v1, 0, 0x2ADD8) = 175576 (whole-object clear)",
+ "members": [
+  [34584, "timeoutcount", "int", "CL_MainMP_CheckTimeout@0x1415e58a0: *(int*)(ClientMP[v1]+34584) = 0 and ++ (game-test 34592 minus 8: base class ClActiveClient is 34584 bytes in Replay)"],
+  [153632, "parseEntitiesIndex", "__int64", "CL_ParseMP_DeltaEntity@0x1415f0590: *(QWORD*)(client+153632) used as % index and ++; CL_ParseMP_ParsePacketEntities"],
+  [153640, "parseClientsIndex", "__int64", "CL_ParseMP_CheckForSnapshotValidity: *(QWORD*)(client+153640) compared with snapshot+118688"],
+  [153648, "parseAgentsIndex", "__int64", "CL_ParseMP_ParsePacketAgents@0x1415f1740: *(QWORD*)(client+153648) (++ per agent)"],
+  [153656, "parseOmnvarsIdx", "__int64", "CL_ParseMP_CheckForSnapshotValidity: *(QWORD*)(client+153656) compared with snapshot+118704"],
+  [153836, "parseSnapshotCount", "int", "ClActiveClientMP::AllocSnapshotMemory: *(int*)(this+153836) = snapshotCount"],
+  [153840, "parseEntitiesCount", "unsigned int", "CL_ParseMP_DeltaEntity: modulus by *(client+153840); AllocSnapshotMemory: = 600*snapshotCount"],
+  [153844, "parseClientsCount", "unsigned int", "AllocSnapshotMemory: = clientsPerSnap*snapshotCount (client block 400 bytes per slot)"],
+  [153848, "parseAgentsCount", "unsigned int", "CL_ParseMP_ParsePacketAgents: modulus by *(client+153848); AllocSnapshotMemory: = agentsPerSnap*snapshotCount"],
+  [153852, "parseOmnvarsCount", "unsigned int", "AllocSnapshotMemory: *(int*)(this+153852) = snapshotCount; multiplies the omnvar block size"],
+  [153856, "snapshots", "ClSnapshot *", "AllocSnapshotMemory: *(QWORD*)(this+153856) = Mem_HunkUser_AllocInternal(119000*snapshotCount, 8)"],
+  [153864, "parseEntities", "entityState_t * (248-byte slots)", "CL_ParseMP_DeltaEntity: *(QWORD*)(client+153864) + 248*(index % count); AllocSnapshotMemory: 148800 = 600*248 per snapshot"],
+  [153872, "parseClients", "clientState_t * (400-byte slots)", "AllocSnapshotMemory: *(QWORD*)(this+153872) = alloc 400*clientsPerSnap*n"],
+  [153880, "parseAgents", "agentState_s * (252-byte slots)", "CL_ParseMP_ParsePacketAgents: *(QWORD*)(client+153880) + 252*(index % count)"],
+  [153888, "parseOmnvars", "OmnvarData *", "AllocSnapshotMemory: *(QWORD*)(this+153888) = alloc 8*count*BG_Omnvar_PerSnapCount()"],
+  [154040, "burstState", "NetBurst *", "ClActiveClientMP::AllocateClients: *(QWORD*)(obj+154040) = burst window object; ClearClient calls its vfunc 1 before the memset"]
+ ],
+ "changed_members": [
+  ["whole layout", "IDA baseclass ClActiveClient 34592 and snap at 34600 -> Replay timeoutcount 34584, snap at 34592 (119000 bytes), header 153592..153632", "CL_MainMP_CheckTimeout +34584; the 40-byte header ends at parseEntitiesIndex 153632"],
+  ["cgamePredictedData", "172 (game-test ClPredictResultMP) -> 152 bytes at 153684", "parseSnapshotCount sits at 153836 (= 153684 + 152), so the predicted-data block is 152 bytes in Replay (ClPredictResultMP size may be 152, not 172: another agent's struct)"],
+  ["size", "153024 (IDA/game-test) -> 175576", "AllocateClients stride and ClearClient memset agree"],
+  ["IDA _pad8724", "IDA pad from 34596 for 118428 bytes is replaced by the placed members above", "all placed members are from Replay code"]
+ ],
+ "unconfirmed": [
+  "snap ClSnapshot at 34592 (size 119000): position is derived from the header end at 153632 and the timeoutcount offset 34584; not seen in a Replay access",
+  "153592..153628 header names (oldSnapServerTime, oldServerTime, serverTime, oldFrameServerTime, serverTimeDelta, desiredServerTimeDelta, lastSnapInterval, newSnapshots, serverId, mapcrc): offsets only from game-test spacing",
+  "153664 parseWeaponMapEntriesIdx, 153672 cgameKickAngles (12): game-test spacing only",
+  "153896 (alloc 24804 bytes), 153904 (alloc 21368 bytes), 153912 (int count, written from snapshotCount), 153920 (qword zeroed), 153928 (alloc 48*n), 153936/153940 (int extra count, 0), 153944 (alloc 128*extra*n): names not confirmed",
+  "cgamePredictedData, cgameKickAngles and the other game-test cg names between 153672 and 153836: unplaced"
+ ],
+ "notes": "Entity slots are 248 bytes and agent slots 252 bytes (measured from the allocation and the indexing), so the entityState_t and agentState_s element types should match those strides. The client slot object is ClActiveClientMP (175576), and ClActiveClient base size looks like 34584 (A-agent for ClActiveClient to confirm)."
+},
+{"name": "ClActiveClientSP", "size": 55984, "size_evidence": "ClActiveClientSP_InitClientSlot@0x141609750: memset_0(v1, 0, 0xDAB0) = 55984 (whole-object clear); also ClActiveClientSP_SetStateBlock@0x14160fd60: memcpy 0x5378 (21368) at +34616, so the object ends at 34616 + 21368 = 55984",
+ "members": [
+  [34616, "ps", null, "ClActiveClientSP_SetStateBlock: memcpy_0(ClientMP[n]+34616, stateBlock, 0x5378); ClActiveClientSP_GetEmbeddedStateBlock@0x1416099e0 returns activeClient+34616 (21368-byte block; IDA/game-test playerState_s is 21412 or 21372, so the type is not settled)"]
+ ],
+ "changed_members": [
+  ["ps", "21412 (game-test) / 21368 (builder) -> 21368 bytes at 34616; type not set", "memcpy size 0x5378"],
+  ["size", "56040 (IDA/game-test) -> 55984", "InitClientSlot memset 0xDAB0 and the state block end"],
+  ["base", "game-test base 34592 -> 34584 (same -8 shift as ClActiveClientMP)", "ClActiveClientMP timeoutcount at 34584; SP state block at 34616"]
+ ],
+ "unconfirmed": [
+  "34584..34616 cgame fields (cgameUserCmdGunPitch, Yaw, XOfs, YOfs, ZOfs, springCamBlend, cmdNumberAcknowledge, settleTimeRemainingMs): game-test names with the -8 shift only",
+  "ClActiveClientSP::UpdateCommandTime@0x141609a80 writes *(QWORD*)(this+34272): inside the ClActiveClient base, not an SP member (base agent to confirm)",
+  "ClActiveClientSP_InitClientSlot writes int at +39008 (inside the state block): not placed"
+ ],
+ "notes": "The state block (34616, 21368 bytes) is the SP player state copy. Whether it is the playerState_s type depends on the playerState_s agent (A004/A005 report 21372 for Replay)."
+},
+{"name": "ClConnection", "size": 322584, "size_evidence": "ClConnectionMP_AllocateConnections@0x1415e0580: the connection array uses stride 322584 (v9 += 322584) and object = v9 - 269700; allocation 322584 * connectionCount",
+ "members": [
+  [36, "m_reliableFlag", "bool", "ClConnectionMP_AllocateConnections: *(BYTE*)(obj+36) = -1 (agrees with IDA m_reliableFlag at 36)"],
+  [132136, "m_reliableCommandCount", "int", "ClConnectionMP_AllocateConnections: *(int*)(obj+132136) = 0 (agrees with IDA m_reliableCommandCount at 132136)"],
+  [132144, "serverClientNum", "int", "CL_ParseMP_ParseGamestate@0x1415f0c90: *(int*)(conn+132144) = clientNum from the gamestate (bounds-checked against maxClients); game-test name m_localClientNum (offset 8) is not this field"],
+  [132148, "lastPacketTime", "int", "CL_MainMP_CheckTimeout: *(int*)(conn+132148) vs cls.realtime (packet timeout); CL_MainMP_CheckTimeout 'lastPacketTime' name from game-test order is a guess"],
+  [132152, "netConnection", "NetConnection", "ClConnectionMP_ResetConnection@0x1415e06c0: NetConnection::Close(conn+132152, 0); NetConnection size not checked"],
+  [132188, "connectPacketCount", "int", "CL_ParseMP_ParseGamestate: *(int*)(conn+132188) = 0; CL_GetClientState: outClientState->connectPacketCount = *(conn+132188)"],
+  [132192, "connectMessage", "char[1024]", "CL_GetClientState@0x1415f9d40: Core_strcopy(messageString, 1024, conn+132192)"],
+  [132448, "gamestateSyncValue", "int", "CL_ParseMP_ParseGamestate: *(int*)(conn+132448) = MSG_ReadLong (passed to FS_Restart and DynEntCL_IsImmediateDynEntityListSync); name is a candidate"],
+  [132456, "challengeId", "unsigned __int64", "CL_ParseMP_ParseGamestate: sscanf(CL_GetConfigString(0x18), '%llx') stored at *(QWORD*)(conn+132456); name is a candidate"],
+  [132472, "gamestateServerValue", "int", "CL_ParseMP_ParseGamestate: *(int*)(conn+132472) = MSG_ReadLong at the start of the gamestate; name is a candidate"],
+  [322568, "entries", "void *", "ClConnectionMP_AllocateConnections: *(QWORD*)(obj+322568) = entry array (16 bytes * entriesPerConnection); ClConnectionMP_ResetConnection reads it"],
+  [322576, "entriesPerConnection", "int", "ClConnectionMP_AllocateConnections: *(int*)(obj+322576) = entriesPerConnection; ClConnectionMP_ResetConnection reads it"]
+ ],
+ "changed_members": [
+  ["size", "1057152 (IDA) / 16 (game-test) -> 322584", "AllocateConnections stride"],
+  ["m_commandBufferA, m_commandBufferB", "IDA members at 1057088 and 1057120 lie outside the 322584-byte object", "remove or move (no Replay access found; they cannot be in this struct)"],
+  ["_pad100 / reliable command block", "IDA's m_reliableCommandsHeader (128) and m_reliableCommandsA (192) and the 131880-byte pad are not verified; the reliable block is a ClConnectionData region reached by DumpReliableCommands(this, reliableCmdState)", "DumpReliableCommands@0x1415abff0 uses reliableAcknowledge and reliableSequence (IDA offsets 32 and 24 may belong to ClConnectionData, not checked)"]
+ ],
+ "unconfirmed": [
+  "132140 m_reliableOverflow (IDA): not seen in this pass",
+  "NetConnection at 132152: size unknown; the next confirmed member is 132188, which would make NetConnection 36 bytes if it were the only member between",
+  "the rest of the 131 KB region from 256 to 132136 (reliable command buffer): not placed"
+ ],
+ "notes": "The connection object is 322584 bytes and the reliable buffer region is inside the first 132136 bytes. The game-test ClConnection (16 bytes) is only a 3-field partial and should not be used for names."
+},
+{"name": "ClientPlayerWeaponInfo", "size": null, "size_evidence": "not proven: no Replay allocation or stride found in this pass (CG_RegisterWeapon, CG_UpdateViewWeaponAnim and CG_Weapon_ChangeViewmodelDobj read its fields but do not give the size)",
+ "members": [
+  [16, "weapon", "Weapon", "CG_RegisterWeapon@0x141734a20: memcmp(cachedState+16, viewmodelWeapon, 0x3C) and copy of 60 bytes to +16..+76 (agrees with game-test offset 16)"],
+  [196, "skydiveViewmodelState", "unsigned int", "CG_RegisterWeapon: *(int*)(cachedState+196) compared with CG_Skydive_GetPressType result"],
+  [201, "isAlternate", "bool", "CG_RegisterWeapon: *(char*)(cachedState+201) compared with the computed dual-hand flag"],
+  [208, "meleeComboSeqIdx", "int", "CG_RegisterWeapon: *(int*)(cachedState+208) compared with playerState[1076]"],
+  [232, "carryObjectIndex", "unsigned int", "CG_RegisterWeapon: *(int*)(cachedState+232) compared with playerState[250]"]
+ ],
+ "changed_members": [],
+ "unconfirmed": [
+  "animsTwoHanded, animsTwoHandedAltMode, animsRightHanded, animsLeftHanded, animsTurret (WeaponXAnim, 40456 in game-test and IDA; builder shows 40440 with no anchor): not checked",
+  "handModel, gogglesModel, turretWeapon, accessoryWeapon, hideReticle, isWeaponHidden, isWeaponDefault, gogglesAreHidden, isAccessoryHidden, isAccessoryDefault, turretFireTime, turretFireEnt: not seen in the functions read"
+ ],
+ "notes": "Offsets 16..232 agree with the current IDA layout and the game-test names, so there is no shift up to 232. The size is open, and the animation arrays need CG_CreateWeaponViewModelXAnimDefs (not read)."
+}
+]}

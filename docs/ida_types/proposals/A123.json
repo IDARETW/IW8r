@@ -1,0 +1,239 @@
+{"agent": "A123", "structs": [
+{"name": "GfxCmdBufState", "size": 10368,
+ "size_evidence": "R_InitCmdBufState@0x14198AF30: mov r8d, 2880h (0x2880 = 10368) then call memset_0(drawState, 0, size) on the whole struct",
+ "members": [
+  [3152, "taskCmdBuf", "void *", "R_InitCmdBufState: mov rdi,[rcx+0C50h] and mov [r14+0C50h],rdi; R_CmdBuf_BindZeroVertexBuffers32: [cmdBufState+3152]"],
+  [4328, "depthRangeType", null, "R_InitCmdBufState@0x14198AF30: mov dword ptr [r14+10E8h], 0FFFFFFFFh (gt 2544 -> 4328)"],
+  [4332, "depthRangeNear", "float", "R_InitCmdBufState: mov qword ptr [r14+10ECh], 3F800000h (low dword)"],
+  [4336, "depthRangeFar", "float", "R_InitCmdBufState: same qword store, high dword = 0"],
+  [4340, "depthBoundsMin", "float", "R_InitCmdBufState: mov [r14+10F4h], ebx (0)"],
+  [4344, "depthBoundsMax", "float", "R_InitCmdBufState: mov dword ptr [r14+10F8h], 3F800000h"],
+  [4364, "scissor", null, "R_InitCmdBufState: mov qword ptr [r14+110Ch], -1 (scissor block, gt 2580 -> 4364)"],
+  [4404, "pipelineStateDirty", "bool", "R_InitCmdBufState: mov byte ptr [r14+1134h],1; R_SetPipelineState@0x141989850: cmp byte ptr [rcx+1134h],0 (gt 2808 -> 4404, not 4400)"],
+  [4416, "technique", "MaterialTechnique *", "R_SetPipelineState: mov r9,[rcx+1140h]; movzx edi, byte ptr [r9+83h]; mov r14,[r9+88h]"],
+  [4424, "refStateBits", "GfxStateBits", "R_InitCmdBufState: mov qword ptr [r14+1148h],1000000040h (otherBits); [r14+1150h] = 80000000h (blendBits)"],
+  [4440, "deviceState", "GfxDeviceState", "R_InitCmdBufState: call R_InitializeDefaultDeviceStates(drawState) which writes 4440..4460 (replay_functions of packet)"],
+  [4496, "vertDeclType", "MaterialVertexDeclType", "R_SetPipelineState: movzx eax, word ptr [rbp+1190h] (2-byte enum; IDA _pad1190 is 4 bytes)"],
+  [4500, "primType", "unsigned int", "R_InitCmdBufState: mov dword ptr [r14+1194h], 4"],
+  [4504, "indexType", "unsigned int", "R_InitCmdBufState: mov dword ptr [r14+1198h], 39h"],
+  [4520, "dynamicIndexBuffer", "GfxIndexBufferState *", "R_InitCmdBufState: mov [r14+11A8h], rax (s_dynBufCmdStateValueA)"],
+  [4528, "dynamicVertexBuffer", "GfxVertexBufferState *", "R_InitCmdBufState: mov [r14+11B0h], rax (s_cmdBufStateBlock)"],
+  [4536, "dynamicBufferOverflow", "bool", "R_InitCmdBufState: mov [r14+11B8h], bl"],
+  [8296, "perPrimConstantBoundSize", "int", "R_InitCmdBufState: mov qword ptr [r14+2068h], rbx (8 bytes 8296..8304)"],
+  [8304, "stableConstantBoundSize", "int", "R_InitCmdBufState: mov [r14+2070h], ebx"],
+  [10240, "resourcesDirty", "unsigned __int64[3]", "R_InitCmdBufState loop i<3: mov [r14+rax*8+2800h], rbx (gt 8640 -> 10240)"],
+  [10264, "resourcesClear", "unsigned __int64[3]", "R_InitCmdBufState loop i<3: mov [r14+rax*8+2818h], rbx (gt 8664 -> 10264)"],
+  [10344, "customPixelShaderViewIndex", "unsigned int", "R_InitCmdBufState: mov [r14+2868h], rbx"],
+  [10352, "customPixelShaderRWTextureIndex", "unsigned int", "R_InitCmdBufState: mov [r14+2870h], ebx"]
+ ],
+ "changed_members": [
+  ["pipelineStateDirty", "offset 4400 -> 4404 (bool; 4400..4404 is 4 unknown bytes)", "R_SetPipelineState cmp byte [rcx+1134h]; R_InitCmdBufState mov byte [r14+1134h],1"],
+  ["_pad1190 (4 bytes)", "becomes vertDeclType, 2-byte enum at 4496", "R_SetPipelineState movzx eax, word ptr [rbp+1190h]"],
+  ["resourcesDirty / resourcesClear", "offsets 10232 -> 10240 and 10256 -> 10264 (+8 shift from 8288)", "R_InitCmdBufState loop stores at 2800h and 2818h"],
+  ["gap 8288..8296", "8 bytes present in Replay, absent in IDA: stableConstantState ends 8288 and perPrimConstantBoundSize starts 8296", "R_InitCmdBufState qword store at 2068h (8296); IDA stableConstantState/gt 6416 +280 = 8288"],
+  ["ComputeCmdBufState base", "Replay base end is not 4328 as gt suggests; base class size is a separate proposal (see GfxCmdBufState/ComputeCmdBufState owners)", "depthRangeType at 4328 measured; base extent unverified here"]
+ ],
+ "unconfirmed": [
+  "techType 4392 and passIndex 4396: gt offsets +1592 but unverified",
+  "shaderResourceViews (1920) and constantBufferInfo: Replay positions inferred as 8312 and 8320 from gt +1600 shift, not read",
+  "debugSelfPointer / debugIsLocal: no Replay access found; absent in release (tail after 10356 unexplained up to 10368)",
+  "viewport 4348 (16 bytes): no direct Replay access read"
+ ],
+ "notes": "Size 10368 is the memset in R_InitCmdBufState (whole-object clear). Replay accesses end at 10356, consistent. Layout shift from game-test is +1592 for most members and +1600 from perPrimConstantBoundSize on. IDA's current layout is wrong for pipelineStateDirty, vertDeclType and the 10240+ block."},
+
+{"name": "GfxBackEndData", "size": 11801472,
+ "size_evidence": "R_GetBackEndData@0x140EB5820: return s_rBackEndDataArray + 11801472*backendIndex (0xB40000); R_BackEndData_IndexFromPointer divides by 11801472; R_InitBackEndData@0x140EB5870: PMem_Alloc(23602944 = 2*11801472) and memset(0x1682700) over the whole array",
+ "members": [
+  [33328, "reflectionProbeRelightingData", "GfxReflectionProbeRelightingBackEndData", "R_InitBackEndData: *(int*)(backend+33328) = -1 (first dword); anchor gt 31496 -> 33328 (1 function)"]
+ ],
+ "changed_members": [
+  ["reflectionProbeRelightingData", "offset 33320 -> 33328 (IDA has 8 bytes unknown before it)", "R_InitBackEndData writes -1 at 33328 for each of the two backends (11834800 = 11801472 + 33328)"],
+  ["mesh", "GfxMeshData[4] stride 4064 total -> 6336 total (element stride 1584)", "R_ToggleSmpFrameInternal: R_ResetMesh called on base, base+630h, base+0C60h, base+1290h; R_ResetMesh reads lightGridBuffers at +1576 (see GfxMeshData proposal)"],
+  ["globalPersistentBufferTable..", "gt 31368 -> 33192 (shift +1824) is still an anchor; mesh growth +2272 means about -448 must come from gt 4064..31368 (not yet located)", "anchors_gt_to_replay: 31368->33192, 31400->33224 (15 functions)"]
+ ],
+ "unconfirmed": [
+  "unresolved residual spotShadowCount -> smpFrame (16 bytes) not located",
+  "sunShadow, spotShadows and drawOutput/drawListIter stride: only anchors, not re-read here",
+  "transientDrawCache: Replay start probably 1593928 (after transientDrawContext) but not proven"
+ ],
+ "notes": "Size is measured from the per-backend stride. IDA size 11144708 is the packedEntityCount access, not the struct end. The mesh change conflicts with the anchor shift at 31368 and needs the coordinator to check the -448 gap."},
+
+{"name": "GfxShaderTextureRWView", "size": null,
+ "size_evidence": "not measured: contiguous field stores in R_AssignNullShaderTextureRWView and R_ReleaseShaderTextureRWView cover 0..32 (lower bound 32)",
+ "members": [
+  [0, "m_view", "void *", "R_AssignNullShaderTextureRWView: *(_QWORD*)view = 0"],
+  [8, "m_resource", "void *", "R_AssignNullShaderTextureRWView: *(_QWORD*)(view+8) = 0"],
+  [16, "m_descriptorIndex", "unsigned int", "R_ReleaseShaderTextureRWView: R_ReleaseDescriptor(r_globalDescriptorPoolC, *(view+16)); set to 4 in the null view"]
+ ],
+ "changed_members": [
+  ["m_format", "IDA name at 16 looks wrong: Replay uses the value as a descriptor index (rename proposal, UNCONFIRMED name)", "R_ReleaseShaderTextureRWView"]
+ ],
+ "unconfirmed": ["m_firstMip (20, value 3), m_mipCount (24, value -1), m_arraySlice (28, value 0): names from IDA, values from R_AssignNull"],
+ "notes": "gt size 24 is contradicted by Replay accesses at 28..32. IDA size 32 looks right."},
+
+{"name": "GfxSunShadowProjectionSetup", "size": null,
+ "size_evidence": "not measured: R_SetupSunShadowMapProjection reads cascadeParams+124+4i, last byte 140; agrees with game-test 140",
+ "members": [
+  [0, "sunAxis", "tmat33_t_vec3_t", "R_SetSunShadowMapViewParms reads viewParams[0..8] (9 floats = 36 bytes)"],
+  [44, "shadowOrgPixelCenter", "vec2_t[4]", "R_SetupSunShadowMapProjection: (v11-8) and (v11-7) with v11 = base+76+8i gives base+44+8i and +48+8i"],
+  [76, "snappedShadowOrg", "vec2_t[4]", "R_SetupSunShadowMapProjection: v5 = cascadeParams+19 (float index 19 = 76); R_SetSunShadowMapViewParms viewParams[2c+19], [2c+20]"],
+  [108, "sampleSize", "float[4]", "R_SetupSunShadowMapProjection: (char*)v6 + v12 + 104 = base+108+4i; R_SetSunShadowMapViewParms viewParams[cascade+27]"],
+  [124, "farthestShadowedViewDepth", "float[4]", "R_SetupSunShadowMapProjection: (char*)v6 + v12 + 120 = base+124+4i (int read)"]
+ ],
+ "changed_members": [],
+ "unconfirmed": ["shadowOrg (36, vec2_t): no read found in the two functions checked"],
+ "notes": "IDA layout agrees with the decompiled offsets. The packet's 8 wrong hits came from the anchor table, not from this function. No change proposed."},
+
+{"name": "GfxMultiLightGridFXLightingBuffers", "size": null,
+ "size_evidence": "not measured: last member lightGridDataLimit at 5480 with two int stores (5480, 5484) in R_InitWorldMultiLightGridFXLightingBuffers; lower bound 5488",
+ "members": [
+  [0, "lightGridsActiveBuffer", "GfxWrappedBuffer[12] (64-byte elements)", "R_InitWorld...: buffers at world+0 (v5-768), +768, +1536, element stride 64, 2 x 6 loop"],
+  [768, "lightGridLightingElemsPrefixSumBuffer", "GfxWrappedBuffer[12]", "R_InitWorld...: R_CreateGfxWrappedBufferWithHandle(v5,...,\"meshLightingElems\")"],
+  [1536, "lightGridsDataOffsetBuffer", "GfxWrappedBuffer[12]", "R_InitWorld...: (v5+768), \"meshLightingOffsetBuffer\""],
+  [2304, "lightGridsActive", "unsigned *[2][6]", "R_InitWorld...: handles at 8*(300+k)-96 = 2304 (qword array, 96 bytes)"],
+  [2400, "lightGridLightingElemsPrefixSum", "GfxMeshDataPerLightGridEntry *[2][6]", "R_InitWorld...: handles at 8*(300+k) = 2400"],
+  [2496, "lightGridsDataOffset", "unsigned *[2][6]", "R_InitWorld...: handles at 8*(300+k)+96 = 2496"],
+  [2592, "lightGridLightingElemsPrefixSumBufferLastEntry", "int[2][6][20]", "R_ResetMesh@0x14194E810: lightGridBuffers base loop starts at 2592 (v7=2592)"],
+  [5472, "lightGridDataCount", "long[2]", "R_ResetMesh: *(int*)(lightGridBuffers + v6 + 5472) = 0 for two entries"],
+  [5480, "lightGridDataLimit", "unsigned[2]", "R_InitWorld...: *v16 = gridCount, v16 = world+5480 (and +5484)"]
+ ],
+ "changed_members": [
+  ["GfxWrappedBuffer element", "gt 384-byte arrays of 32-byte elements -> 768-byte arrays of 64-byte elements (stride 64 in the loop)", "R_InitWorld... v5 += 64"],
+  ["lightGridsActive..lightGridLightingCount", "gt 1152..4320 shift +1152 (Replay 2304..5472)", "anchors gt 1152->0 (bogus), 4328->5480; R_ResetMesh offsets 2592, 4512 (2592+1920)"]
+ ],
+ "unconfirmed": ["lightGridLightingElemsPrefixSumBufferLastEntryIndex (3552) and lightGridLightingCount (4512): offsets from +960 steps, not read"],
+ "notes": "Size lower bound 5488; the packet builder value 5488 is consistent but is not measured."},
+
+{"name": "RB_BackendDataCopier", "size": null,
+ "size_evidence": "not measured: Replay end of copyDest array 1966824 (1966296 + 3*176); no allocation found in this pass",
+ "members": [
+  [0, "m_copyBudget", "unsigned int", "gt; anchors gt 0 -> 0 (packet)"],
+  [4, "m_commandsBudget", "unsigned int", "gt; anchors gt 4 -> 4 (packet)"],
+  [8, "m_currQueue", "unsigned int", "RB_BackendDataCopier_InitState@0x140EB4950: mov dword [copier+8],0"],
+  [16, "m_commands", "MPSCQueue_RB_BackendDataCopier__Cmd_16384[3] (stride 655376)", "RB_BackendDataCopier_InitState and ResetSlotCounters: element stride 655376 (result += 655376 per queue; 655376*(slot+1) counters)"],
+  [1966144, "m_numCommitWatFrames", "unsigned int[3]", "RB_BackendDataCopier_InitState: v1 = copier+1966144, 3 dword clears at v1-4"],
+  [1966156, "m_maxCommitWaitFrames", "unsigned int", "RB_BackendDataCopier_InitState: mov dword [copier+1966156],20"],
+  [1966160, "m_tempFences", "unsigned int[32]", "packet anchor gt 2359376 -> 1966160 (2 functions: AllocAndInsertTempFence, CheckTempFence)"],
+  [1966288, "m_tempFencesUsed", "bitarray_32", "RB_BackendDataCopier_InitState: mov dword [copier+1966288],0"],
+  [1966296, "m_copyDestResources", "RB_BackendDataCopier__CopyDestResources[3] (stride 176)", "RB_BackendDataCopier_InitState: v2 += 176 per entry; packet replay_functions UpdateSingleQueue/RemoveInPlaceCopyBuffer use 1966296"]
+ ],
+ "changed_members": [
+  ["m_commands", "stride 786448 -> 655376 per queue (total 2359344 -> 1966128; -131072 per queue)", "RB_BackendDataCopier_InitState loop stride 655376"],
+  ["tail (m_numCommitWatFrames .. m_copyDestResources)", "all shifted -393216 (IDA 2359360 -> 1966144 etc.); the _pad1E0040 (393216) is removed", "anchors gt 2359376 -> 1966160; InitState"]
+ ],
+ "unconfirmed": ["m_copyBudget/m_commandsBudget content (gt names only)"],
+ "notes": "Whole-object size not measured. Total Replay size most likely 1966824 (builder value) but needs an allocation or memset check."},
+
+{"name": "RB_BackendDataCopier__CmdMemCopy", "size": null,
+ "size_evidence": "skipped: packet is done-only (solved by the coordinator)",
+ "members": [], "changed_members": [], "unconfirmed": [], "notes": "No work done (done-only packet)."},
+
+{"name": "GfxCmdBufInput", "size": null,
+ "size_evidence": "not measured: last member data (8 bytes) at 7864 gives lower bound 7872",
+ "members": [
+  [7096, "codeBuffers", "GfxWrappedBuffer *[52]", "R_LGV_SetCodeBuffers@0x... anchors gt 7384->7312, 7392->7320, 7400->7328, 7408->7336, 7416->7344 (5 accesses): codeBuffers start = 7312-216 = 7096"],
+  [7864, "data", "GfxBackEndData *", "anchor gt 7936 -> 7864 (R_LGV_SetCodeBuffers reads 7864)"]
+ ],
+ "changed_members": [
+  ["codeBuffers and everything after", "gt 7168 -> 7096 (-72); codeRWBuffers 7912 -> 7840, cmdBufWorker 7920 -> 7848, resolution 7922 -> 7850, voxelTreeZoneIndex 7932 -> 7860, data 7936 -> 7864", "R_LGV_SetCodeBuffers anchors (5 + data)"],
+  ["consts..codeBuffers", "a -72 shrink happens before codeBuffers; codeImages probably at 6072 (gt 6144), see GfxCmdBufSourceState RB_RTT reads", "unresolved -72 residual (consts -> codeBuffers)"]
+ ],
+ "unconfirmed": ["where the -72 sits: sceneConstants (GfxCodeSceneConsts, A069/A070 range) or consts/codeImages; not located", "bitfields at 7848 (cmdBufWorker, balanceOpaqueLists, decalVolumes) keep gt layout"],
+ "notes": "Size probably 7872 (data is the last member), not measured. IDA codeRWBuffers/cmdBufWorker/resolution/voxelTreeZoneIndex/data offsets are all wrong by -72 to -80."},
+
+{"name": "GfxMeshData", "size": 1584,
+ "size_evidence": "R_ToggleSmpFrameInternal@0x141968820: R_ResetMesh is called on mesh, mesh+630h, mesh+0C60h, mesh+1290h (stride 1584); R_ResetMesh stores the lightGridBuffers pointer at +1576, so the last member ends at 1584",
+ "members": [
+  [0, "indexCount", "unsigned int", "R_ResetMesh: mov dword [mesh],0"],
+  [220, "perQuadDataCount", "unsigned int", "R_ResetMesh: zero at +220 (gt 100 -> 220; anchor)"],
+  [228, "perEmitterDataCount", "unsigned int", "R_ResetMesh: zero at +228 (gt 108 -> 228)"],
+  [236, "perFlareDataCount", "unsigned int", "R_ResetMesh: zero at +236 (gt 116 -> 236)"],
+  [244, "packedAtlasDataCount", "unsigned int", "R_ResetMesh: zero at +244 (gt 124 -> 244)"],
+  [252, "perGlassVertexDataCount", "unsigned int", "R_ResetMesh: zero at +252 (gt 132 -> 252)"],
+  [640, "lightingCount", "unsigned int[2][6]", "R_ResetMesh: zero at +640,644,648,656,668; anchor gt 360 -> 640"],
+  [688, "lightingLimit", "unsigned int[2][6]", "anchor gt 408 -> 688 (1 function)"],
+  [1408, "lightmapPacker", "Pow2TexturePacker<6,512>[2]", "anchor gt 840 -> 1408; R_ResetMesh writes around 1432..1576 (2 entries of 84 bytes)"],
+  [1576, "lightGridBuffers", "GfxMultiLightGridFXLightingBuffers *", "R_ResetMesh: mov [mesh+1576], buffers; anchor gt 1008 -> 1576"]
+ ],
+ "changed_members": [
+  ["whole struct", "size 12672 -> 1584 (IDA 12672 is wrong; gt 1016 is wrong too)", "R_ToggleSmpFrameInternal stride; R_ResetMesh"],
+  ["unknown1576 (504 bytes) and _pad3F8 (560)", "replaced: lightGridBuffers pointer at 1576 (8 bytes); 1408..1576 is lightmapPacker", "R_ResetMesh"],
+  ["gt vertSize 96 and vb 24..96", "Replay counts start at 220 (gt 100 + 120): vb and vertSize are larger in Replay (vb ends about 216), not measured", "anchors gt 100 -> 220, gt 108 -> 228"]
+ ],
+ "unconfirmed": ["vb / GfxVertexBufferState span 24..216 and vertSize at 216: implied by the +120 shift, not read", "totalIndexCount (4), ib (8), indices (16): gt names kept, not read"],
+ "notes": "Mesh stride 1584 also gives GfxBackEndData mesh[4] = 6336 (builder value). The packet residual (+352) was not the stride."},
+
+{"name": "GfxCmdBufSourceState", "size": null,
+ "size_evidence": "not measured: lower bound 8416 (replay max access, RB_RTT_UpdateInputCodeImages); builder 11616 assumes input -80",
+ "members": [
+  [1792, "input", "GfxCmdBufInput", "RB_RTT_UpdateInputCodeImages accesses 8352..8408 inside input (codeImages region) if input starts at 1792; placement unverified"]
+ ],
+ "changed_members": [
+  ["input", "GfxCmdBufInput size 7952 -> about 7872 (see GfxCmdBufInput); all later members shift -80 (viewParms 9744 -> 9664, ...)", "GfxCmdBufInput proposal"]
+ ],
+ "unconfirmed": ["input start 1792: the packet anchor (gt 1792 -> 8408) reads as a codeImages access, not the struct start"],
+ "notes": "Only the input size is determined here; the other members of this struct are not verified."},
+
+{"name": "GfxWorldTransientDrawCache", "size": null,
+ "size_evidence": "not measured: no Replay access (replay_max_access_end 0)",
+ "members": [],
+ "changed_members": [],
+ "unconfirmed": ["builder 344064 (drawVerts 307200 = 1536*200 stride) is a guess; gt 233472 kept"],
+ "notes": "No Replay evidence found. Not changed."},
+
+{"name": "GfxVoxelTree", "size": 112,
+ "size_evidence": "Load_GfxVoxelTreeArray@0x140D92C20: Load_Stream(1, elem, 0x70) = 112 bytes per element and loop step i += 112; Load_Stream(..., 112*count) for the whole array",
+ "members": [
+  [24, "voxelTopDownViewNodeCount", "int", "Load_GfxVoxelTreeArray / Postload: 12LL * *(int*)(tree+24) = top-down node stream size"],
+  [28, "voxelInternalNodeCount", "int", "Load: 16LL * *(int*)(tree+28) (internal node stream)"],
+  [32, "voxelLeafNodeCount", "int", "Load: 2LL * *(int*)(tree+32) (leaf stream)"],
+  [36, "lightListArraySize", "int", "Load_raw_uint16Array(0, *(int*)(tree+36))"],
+  [40, "voxelTreeHeader", "GfxVoxelTreeHeader *", "Load: header stream 0x40 bytes; pointer at +40"],
+  [48, "voxelTopDownViewNodeArray", "GfxVoxelTopDownViewNode *", "Load: pointer at +48, stream 12*count"],
+  [56, "voxelInternalNodeArray", "GfxVoxelInternalNode *", "Load: pointer at +56, stream 16*internalCount"],
+  [64, "voxelLeafNodeArray", "GfxVoxelLeafNode *", "Load: pointer at +64, stream 2*leafCount"],
+  [72, "lightListArray", "unsigned short *", "Load_raw_uint16Array at +72"],
+  [80, "voxelInternalNodeDynamicLightListCPU", "unsigned int *", "Load: AllocLoad_uint at +80, 2*internalCount dwords"]
+ ],
+ "changed_members": [
+  ["gt 88..120 (voxelInternalNodeDynamicLightList, voxelTreeHeaderCPU, voxelTopDownViewNodeArrayCPU, voxelInternalNodeArrayCPU)", "Replay has 24 bytes at 88..112 that the loader never fills (runtime state); the gt CPU pointers are not in Replay's stream layout", "Load_GfxVoxelTreeArray: element ends after +80 pointer; size 0x70"],
+  ["runtimeState (IDA, 24 bytes at 88)", "keep as the runtime block (Replay size 112 confirms the end)", "size 112"]
+ ],
+ "unconfirmed": ["zoneBound (0, Bounds 24): not read by the loader"],
+ "notes": "IDA size 112 is right; gt 120 is wrong for Replay."},
+
+{"name": "GfxVertexBufferState", "size": null,
+ "size_evidence": "not measured: no Replay access found; builder 112 is a prior only",
+ "members": [], "changed_members": [], "unconfirmed": ["wrappedBuffer 56 vs 96 depends on GfxWrappedRWBuffer Replay size (Replay GfxWrappedBuffer elements are 64 bytes in GfxMultiLight loader)"],
+ "notes": "Not changed. R_CmdBuf_BindZeroVertexBuffers32 touches only cmdBufState+3152, not this struct."},
+
+{"name": "GfxSurfaceBounds", "size": null,
+ "size_evidence": "not measured: no Replay access (replay_max_access_end 0)",
+ "members": [], "changed_members": [], "unconfirmed": ["serializedExtra (24, 32 bytes, IDA placeholder) has no Replay evidence"],
+ "notes": "Not checked further; gt 24 kept as the candidate size."},
+
+{"name": "GfxGlassVertex", "size": null,
+ "size_evidence": "not measured. R_GlassMeshVertIter_Next@0x141936EA0 returns vertexIter->_pad1C as 8 bytes at +28, which looks like an iterator link, not vertex data",
+ "members": [], "changed_members": [], "unconfirmed": ["IDA _pad1C (28, 4 bytes): the +28 access is probably a type mismatch in the iterator signature, so it is not evidence for size 32"],
+ "notes": "Keep gt 28; IDA 32 is not supported by Replay code I could see. Coordinator should decide after reading the iterator type."},
+
+{"name": "GfxDrawCallOutput", "size": null,
+ "size_evidence": "not measured: no Replay access found; stride 9136 gt/IDA; GfxBackEndData drawOutput[89] = 813104 is consistent with 9136",
+ "members": [], "changed_members": [], "unconfirmed": ["builder 9816 is a prior only"],
+ "notes": "Not changed."},
+
+{"name": "GfxComputeBufferState", "size": null,
+ "size_evidence": "not measured: no Replay access found; builder 104 is a prior only",
+ "members": [], "changed_members": [], "unconfirmed": ["wrappedBuffer 56 vs 96 (same issue as GfxVertexBufferState)"],
+ "notes": "Not changed."},
+
+{"name": "GfxCmdBuf", "size": null,
+ "size_evidence": "not measured: no Replay access found; builder 9800 is a prior only",
+ "members": [], "changed_members": [], "unconfirmed": ["descState 24..9088 (gt 9064) vs builder 9744: not checked"],
+ "notes": "Not changed. Used by GfxDrawCallOutput.cmdBuf and GfxAsync2DFrameData.cmdBuf (both 9120 in IDA)."},
+
+{"name": "GfxAsync2DFrameData", "size": null,
+ "size_evidence": "not measured: no Replay access found; builder 24128 is a prior only",
+ "members": [], "changed_members": [], "unconfirmed": ["vertices (gt 72 bytes, builder 112) and the rest: no evidence"],
+ "notes": "Not changed."}
+]}
