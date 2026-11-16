@@ -22,6 +22,7 @@ game's lighting, builds them into the game's own zone files and starts them in t
 ## Contents
 
 - [Features](#features)
+- [Project status](#project-status)
 - [Requirements](#requirements)
 - [Getting started](#getting-started)
 - [Building from source](#building-from-source)
@@ -148,6 +149,23 @@ game's lighting, builds them into the game's own zone files and starts them in t
 - Autosave with history, backups, crash reports and a safe mode.
 - A web interface for using the editor from a browser.
 
+## Project status
+
+IW8 Radiant is early in development. Most features are built and checked with the editor's own tools, and many have
+been tested in the game, but some are not complete yet:
+
+- **Not working correctly:** bullet impacts may look the same on every surface; the game's lobby may offer only Team
+  Deathmatch for a custom map (other modes start with F5 or Live Link); spot lights wider than 150 degrees are built
+  as omni lights.
+- **Not yet confirmed in the game:** baked lightmaps, reflection probes, volumetric fog, the occlusion bake, damage
+  triggers, hinged and moving doors, weapon mounting, reverb zones and looping sounds on effects.
+- **Not available yet:** new game types, infiltration sequences, water volumes, navigation blockers, custom fonts and
+  menus, a spline editor, vertex painting on brushes, and the circle, Gulag and plane on small Warzone maps. Stock
+  models are copied into a map rather than referenced from the game.
+
+The complete list is on the [Known Limitations](https://github.com/IDARETW/IW8r/wiki/Known-Limitations) page of the
+wiki. Please report problems on the [issue tracker](https://github.com/IDARETW/IW8r/issues).
+
 ## Requirements
 
 - Windows 10 or 11, 64-bit, with a Direct3D 11 graphics card.
@@ -184,6 +202,7 @@ To build an installer, install Inno Setup 6 and run `tools\build_installer.ps1`.
 
 ## Documentation
 
+- [Wiki](https://github.com/IDARETW/IW8r/wiki)
 - [User guide](docs/USER_GUIDE.md)
 - [Tutorial](docs/TUTORIAL.md)
 - [Entity keys reference](docs/KEYS_REFERENCE.md)
