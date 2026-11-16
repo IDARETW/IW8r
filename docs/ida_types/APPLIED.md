@@ -159,6 +159,23 @@ implementation class), `ClConnection` 322584 (game-test `ClConnection` is 16 byt
 object). Conflicts left for later: `DWServicesAccess` list head, `Online_Friends` favorites (A124), `GfxBackEndData`
 -448 bytes between game-test 4064 and 31368 (A123), `GfxCmdBufInput` -72 before `codeBuffers` (A123).
 
+### Report pass, wave 4 (A131-A135), plan `apply_plan7.json`, backup `local_types_20261115_before_report_wave4.h`
+
+11 rebuilds: `FxGlassCrackWork` 174592 -> 21824 (`Glass_DestroyPiece` stack frame), `ParticleState` 432 -> 512
+(`InitParticleData` allocates `count << 9`; `ParticleData` is embedded at +416), `SvServerInitSettings` 224 -> 220
+(whole-object copies), `SvGameModeApplication` 192 -> 24 (`SvGameModeAppSP_ctor` writes its first own member at +24),
+`LUITraceRunner` 37832 -> 37824 (per-client stride 4728 qwords), `SndAliasGroupTracking` 192 -> 176,
+`CgClientSideEffectsSystem` 116160 -> 14520, `CgAntiLagSP` 4227768 -> 4219576, `bdUpgradeAnonUnoAccRequest` 45576 ->
+12736, members fixed in `DLogEvent_ScreenView` (`screens` 24 x 72 at +24) and `SndMusicState`. Confirmed as already
+right: `snd_rv_params` 80, `SndMusicAsset` 120, `SndMusicState` 336, `SndAssetBankEntry` 44,
+`ParticleModuleInitRunner` 112. Second retype pass: 28 more members (`DWWrappers` slots, `NetChannel[48]`, ...).
+
+Final state and the 135 structs still unproven: `ALL_STRUCTS.md`, `ALL_STRUCTS_REPORT.txt`. Open conflicts the
+agents found and nobody resolved yet: `bot_data_t` size (A101), `DWServicesAccess` list head (A124), `Online_Friends`
+favorites vs `FriendListGlobal` 28264 (A124), `GfxBackEndData` -448 (A123), `GfxCmdBufInput` -72 (A123),
+`ParticleManager` extent (A112), `HavokPhysicsShapeViewer` (A125), `ClConnection` (A130), `refdef_t` radiantLive
+arrays absent in Replay (A113, everything from `scissorViewport` on is -66576), the derived fence classes (A114).
+
 ## Wave 5
 
 Pending for the apply pass:

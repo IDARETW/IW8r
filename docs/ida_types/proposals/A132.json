@@ -1,0 +1,119 @@
+{"agent": "A132", "structs": [
+{"name": "FxGlassCrackWork", "size": 21824,
+ "size_evidence": "Glass_DestroyPiece@0x141806480 (frame 0x5900, mov eax,5900h): crackState is a stack local at [rbp-70h] (lea rcx,[rbp+...] disp8 90h), and the next local outMatrix starts at [rbp+54D0h] (lea rdx,[rbp+54D0h]); 0x54D0 + 0x70 = 0x5540 = 21824, so the object ends exactly where the next local begins. Game-test size 21824; replay_max_access_end 21824. Glass_DestroySimplePiece@0x141806F50 has the same object at [rbp-80h] inside a larger frame (consistent, not used as proof).",
+ "members": [
+  [20248, "pieceIndex", null, "Glass_CrackPiece@0x141804B10: *(crackState+20248) = pieceIndex (4 bytes)"],
+  [20256, "piecePlace", null, "Glass_CrackPiece@0x141804B10: *(crackState+20256) = glassSystem+40 + 32*pieceIndex (pointer)"],
+  [20264, "pieceState", null, "Glass_CrackPiece@0x141804B10: *(crackState+20264) = glassSystem+48 + 32*pieceIndex (pointer)"],
+  [20272, "def", null, "Glass_CrackPiece@0x141804B10: *(crackState+20272) = s_fxGlassDefTable + 120*byte[pieceState+18] (pointer)"],
+  [20280, "glassSys", null, "Glass_CrackPiece@0x141804B10: *(crackState+20280) = glassSystem (pointer)"],
+  [20288, "breakOrgLoop", null, "Glass_ProcessCrack@0x14180A140: v5 = *(glassState+20288) (loop pointer, 8 bytes)"],
+  [20296, "breakOrgIndex", null, "Glass_CrackPiece@0x141804B10: *(crackState+20296) = v16 (4 bytes)"],
+  [20300, "crackLengthMin", null, "Glass_CrackPiece@0x141804B10: *(float*)(crackState+20300) = impactForce*0.75; Glass_ProcessCrack walk uses +20300"],
+  [20304, "crackLengthMax", null, "Glass_CrackPiece@0x141804B10: *(float*)(crackState+20304) = impactForce"],
+  [20324, "impactDir", null, "Glass_CrackPiece@0x141804B10: *(float*)(crackState+20324/20328/20332) = impactDir[0..2] (vec3, 12 bytes)"],
+  [20336, "axis", null, "Glass_CrackPiece@0x141804B10: 36 bytes copied from impactInfo (OWORD at +20336, +20352, DWORD at +20368); dot product reads +20360..+20368"],
+  [20372, "angleSign", null, "Glass_CrackPiece@0x141804B10: *(float*)(crackState+20372) = +1.0 or -1.0"],
+  [19472, "loopCount", null, "Glass_CrackPiece@0x141804B10: *(crackState+19472) = 0; Glass_ProcessCrack@0x14180A140 increments/decrements +19472 (4 bytes)"],
+  [19480, "loops", null, "Glass_ProcessCrack@0x14180A140: *(glassState + 24*i + 19480) loop heads; stride 24, 32 entries = 768 bytes"],
+  [20392, "branchStack", null, "Glass_DoCrackWalk@0x141807290: *(glassState + 40*level + 20392) = edge pointer, +20400 = edge index int, floats at +20404..+20428; stride 40 x 32 = 1280"],
+  [21672, "branchStackLevel", null, "Glass_CrackPiece@0x141804B10: *(crackState+21672) = 0; Glass_DoCrackWalk writes +21672 = level+1 (4 bytes)"],
+  [21676, "maxPieceArea", null, "Glass_ConsiderBreakingPiece@0x141804A70: compare v5 <= *(float*)(glassState+21676) (4 bytes float)"],
+  [21680, "maxEdgePieceArea", null, "Glass_ConsiderBreakingPiece@0x141804A70: compare v5 <= *(float*)(glassState+21680) (4 bytes float)"],
+  [21684, "pieceStack", null, "Glass_ConsiderBreakingPiece@0x141804A70: *(WORD*)(glassState + 2*pieceStackLevel + 21684) = pieceIndex (unsigned short[32])"],
+  [21748, "pieceStackLevel", null, "Glass_ConsiderBreakingPiece@0x141804A70: result = *(glassState+21748); ++ when pushing to pieceStack (4 bytes)"],
+  [21752, "fringePieces", null, "Glass_ConsiderBreakingPiece@0x141804A70: *(WORD*)(glassState + 2*fringePieceCount + 21752) = pieceIndex (unsigned short[32])"],
+  [21816, "fringePieceCount", null, "Glass_ConsiderBreakingPiece@0x141804A70: ++*(glassState+21816) when pushing a fringe piece (4 bytes)"],
+  [21820, "fringeAreaX2", null, "Glass_ConsiderBreakingPiece@0x141804A70: *(float*)(glassState+21820) += piece area (4 bytes float)"]
+ ],
+ "changed_members": [
+  ["crackFlags (IDA name, offset 3060)", "is a 4-byte key count, not flags: rename to crackKeyCount (unsigned int); the member is inside the game-test base FxGlassCrackShardWork", "Glass_CrackPiece@0x141804B10: *(crackState+3060)=0 then ++ with key store *(crackState+4*v16)=crackKey; Glass_DoCrackWalk@0x141807290 compares v6 > *(glassState+3060). CONFIRMED offset/width 4, name PROPOSAL"],
+  ["_pad0 [0,3060) (IDA 3060-byte pad)", "crackKeys: unsigned int[255] at [0,1020) and crackPos: float2[255] at [1020,3060) (255*4 = 1020, 255*8 = 2040, 1020+2040 = 3060)", "Glass_CrackPiece@0x141804B10: *(crackState+4*v16)=crackKey; *(float*)(crackState+8*v16+1020) = (short)key*0.03125, +1024 = (short)(key>>16)*0.03125; Glass_DoCrackWalk@0x141807290 same layout. Array length 255 is derived from the 3060 pad, not measured"],
+  ["_padBF8 [3064,19448)", "edges: FxGlassCrackEdge[512] stride 32 at 3064 (16384 = 512*32); count is edgeCount (4 bytes at 19448)", "Glass_DoCrackWalk@0x141807290: new edge = glassState + 32*(*(glassState+19448))++ + 3064. Element stride 32 CONFIRMED; the 512 length is from the pad size only (UNCONFIRMED)"],
+  ["workObj24480 .. workObj173376 and all pads from 21824 on", "remove: nothing in Replay reaches past 21824 (replay_max_access_end 21824); these are not members of this struct", "size evidence above; packet replay_max_access_end 21824"]
+ ],
+ "unconfirmed": [
+  "impactPos (20312, vec3): no Replay write seen in Glass_CrackPiece; left as IDA type",
+  "playerOrigin (20376, vec3): no Replay access seen in the functions read",
+  "originalRadius (20308): no Replay access seen",
+  "edgeCount (19448), edgePool (19456), edgeLimit (19464): offsets and widths match IDA (Glass_CrackPiece writes 0, 0, def int); their game-test names belong to the base FxGlassCrackShardWork range, not this agent"
+ ],
+ "notes": "Size 174592 -> 21824 is a proposal: the IDA layout is wrong past 21824 and the crackState object is a stack local, so the coordinator should truncate the struct rather than fill anything beyond 21824. All derived-member offsets in the IDA layout 20248..21820 match Replay; only the 3060 name and the trailing garbage change. Glass_DoCrackWalk also uses 20392 as a 40-byte stride for the branch array (IDA already has branchStack there, size 1280)."
+},
+
+{"name": "ParticleState", "size": 512,
+ "size_evidence": "ParticleEmitter::InitParticleData@0x141BAA850: block alloc ParticleSystemAllocAndClear(count << 9) (512 per state), and the state loop steps v9 += 512 with v11 = base + v9. So sizeof(ParticleState) = 512 in Replay (game-test 416, IDA 432 both disagree). The embedded ParticleData is at state+416 (see changed_members), and 416 + 96 = 512.",
+ "members": [
+  [56, "m_pEmitterOwner", "ParticleEmitter *", "ParticleState::Init@0x141BC3840: *(this+56) = owner (8 bytes)"],
+  [64, "m_pParticleData", "ParticleData *", "ParticleState::Init@0x141BC3840: *(this+64) = emitterDef, which InitParticleData passes as v11+416 (the embedded ParticleData)"],
+  [72, "m_pStateDef", "ParticleStateDef *", "ParticleState::Init@0x141BC3840: *(this+72) = moduleDefs (8 bytes, pointer)"],
+  [80, "m_pModuleDataList", "ParticleState::ModuleData *[3]", "ParticleState::Init@0x141BC3840: loop v7<3 writes *(this+80+8*v7) = ParticleManager alloc (3 pointers, 24 bytes)"],
+  [288, "m_particleCountMax", "unsigned int", "ParticleState::Init@0x141BC3840: *(this+288) = capacity (4 bytes)"],
+  [312, "m_trailDataList", "Particle_TrailData *", "ParticleState::Init@0x141BC3840: *(this+312) = 0 (8 bytes)"],
+  [320, "m_tailDataList", "Particle_TailData *", "ParticleState::Init@0x141BC3840: *(this+320) = 0 (8 bytes)"],
+  [328, "m_vectorFieldList", "unsigned char *", "ParticleState::Init@0x141BC3840: *(this+328) = 0 (8 bytes)"],
+  [336, "m_timeInStateList", "float *", "ParticleState::Init@0x141BC3840: *(this+336) = 0 (8 bytes)"],
+  [344, "m_numVectorFields", "unsigned int", "ParticleState::Init@0x141BC3840: *(this+344) = 0 (4 bytes)"],
+  [356, "m_systemBeamChild", null, "ParticleState::Init@0x141BC3840: *(this+356) = 0 (4 bytes)"],
+  [376, "m_stateIndex", "unsigned int", "ParticleState::Init@0x141BC3840: *(this+376) = particleCount argument (the state index, int, 4 bytes)"],
+  [380, "m_isRunning", "bool", "ParticleState::Init@0x141BC3840: *(this+380) = 1 on success, 0 on failure (1 byte)"],
+  [384, "m_maxActiveParticleSimParticles", "unsigned int", "ParticleState::Init@0x141BC3840: *(this+384) = 0 (4 bytes)"],
+  [392, "m_pParticleSimUpdateParticleData", "ParticleData *", "ParticleState::Init@0x141BC3840: *(this+392) = 0 (8 bytes pointer)"],
+  [400, "m_pendingPhysicsFXPipelineCreation", "bool", "ParticleState::Init@0x141BC3840: *(this+400) = 0 (1 byte)"]
+ ],
+ "changed_members": [
+  ["size 432 -> 512", "the state is 512 bytes in Replay", "InitParticleData@0x141BAA850: count << 9 alloc and += 512 step; CONFIRMED by two uses"],
+  ["m_pParticleData (+64) and the 416..512 range", "ParticleData is embedded BY VALUE at +416 (96 bytes) in Replay; game-test kept it as a pointer only (m_pParticleData at +64 now points at the embedded copy). The IDA members m_field424 and _pad1AC (424..432) are inside this embedded struct and must be replaced by it", "InitParticleData@0x141BAA850: ParticleData at v11+416 (BuildParticleOffsetTable(v11+416), *(v11+416) = AllocateBlock, *(v11+424) = 0, *(v11+432) = capacity, *(v11+436) = stride, *(v11+438)=0, *(v11+496)=flags, *(v11+500)=0)"],
+  ["m_pad / _pad17D..._pad1AC (401..416)", "padding up to 416 is still unknown (Replay accesses stop at 401)", "replay_max_access_end 401"]
+ ],
+ "unconfirmed": [
+  "m_moduleGraphLengthData (0, 48 bytes), m_beamTextureOffsetV (48), m_beamSpiralGraphOffset (52): ParticleState::UpdateInternal@0x141BC54D0 accesses them (anchor pairs only, not read line by line)",
+  "m_pModuleInit* and other pointers at 104..200, m_physicsWorldId 208, m_physicsFXPipeline* 216..232, m_spawnShapeTypeModule 272, m_elementTypeModule 280, m_particleSimModelDataList 296..304, m_numPhysicsFXParticles 256, m_pipelinePendingDeletion 260: anchors from UpdateInternal / Update_GeoTrails only, not confirmed line by line",
+  "m_atlasData (360, 16 bytes): written by ParticleState::InitAtlasData (not read here)"
+ ],
+ "notes": "The IDA layout is wrong in one important way: the ParticleData is by value at 416 in Replay, so the IDA pointer member m_pParticleSimUpdateParticleData at 392 is the only ParticleData pointer that matches. This is a size change and a retype of the tail: a PROPOSAL for the coordinator. The 64/72 names come from game-test and match the Init writes; only the 416 embed is new."
+},
+
+{"name": "ParticleData", "size": 96,
+ "size_evidence": "ParticleEmitter::InitParticleData@0x141BAA850 embeds ParticleData at state+416 in a state stride of 512 (see ParticleState): 512 - 416 = 96 if ParticleData is the trailing member of the state (assumption, not checked against the state tail). Its own accesses end at 92 (8-byte store at +84, replay_max_access_end 92). Game-test 112 minus the 16-byte m_pEmitter/m_pEmitterPadding pair removed in Replay gives 96 too.",
+ "members": [
+  [0, "m_pParticleData", "unsigned char *", "InitParticleData@0x141BAA850: *(v11+416) = Particle_AllocateBlock (8 bytes)"],
+  [8, "m_particleCountRunning", "unsigned int", "InitParticleData@0x141BAA850: *(v11+424) = 0 (8-byte store covers +8 and +12)"],
+  [12, "m_particleCountDelayed", "unsigned int", "InitParticleData@0x141BAA850: same 8-byte store at +424 covers this field"],
+  [16, "m_particleCountMax", "unsigned int", "InitParticleData@0x141BAA850: *(v11+432) = capacity (4 bytes). Note: ParticleData::Init@0x141BC37E0 writes elementType at +16 (same width, other caller)"],
+  [20, "m_particleSize", "unsigned short", "InitParticleData@0x141BAA850: *(WORD*)(v11+436) = ParticleData_ComputeStrideForMask (2 bytes)"],
+  [22, "m_localClientNum", "unsigned char", "InitParticleData@0x141BAA850: *(BYTE*)(v11+438) = 0 (1 byte)"],
+  [24, "m_particleDataOffsets", "short[28]", "ParticleData::BuildParticleOffsetTable@0x141BA23C0: v1 = this+24, 28 WORD stores (56 bytes, ends at +80)"],
+  [80, "m_dataFlags", "unsigned int", "InitParticleData@0x141BAA850: *(v11+496) = *(moduleDef+144) (4 bytes at ParticleData+80). Note: ParticleData::Init@0x141BC37E0 writes poolSize here"],
+  [84, "m_pad", "unsigned int[2]", "InitParticleData@0x141BAA850: *(QWORD*)(v11+500) = 0 (8 bytes)"]
+ ],
+ "changed_members": [
+  ["m_pEmitter (IDA +24, 8 bytes) and m_pEmitterPadding (IDA +32, 8 bytes)", "removed in Replay: the offset table starts at +24", "BuildParticleOffsetTable@0x141BA23C0 writes the table at this+24 for 28 shorts (56 bytes); ParticleData::DestroyParticleOffsetTable (packet replay_functions: 8-byte accesses at +24..+80) clears the same table. CONFIRMED"],
+  ["m_particleDataOffsets", "moves from +40 to +24 (game-test +40 is Replay +24: residual -16)", "BuildParticleOffsetTable@0x141BA23C0 (this+24)"],
+  ["m_dataFlags", "moves from +96 to +80", "InitParticleData@0x141BAA850 (+496 = state+416+80)"],
+  ["m_pad", "moves from +100 to +84", "InitParticleData@0x141BAA850 (+500 = state+416+84)"],
+  ["_pad17 (+23)", "stays 1 byte pad", "no access"],
+  ["size 112 -> 96", "Replay ParticleData is 96 (see size_evidence)", "stride-derived, see above"]
+ ],
+ "unconfirmed": [
+  "m_particleCountMax / elementType conflict: the two writers disagree on the name at +16 (InitParticleData writes capacity, ParticleData::Init writes elementType); keep the offset, name left for the coordinator",
+  "the ParticleData tail after +92 (4 bytes to 96) is padding by alignment, not measured"
+ ],
+ "notes": "The -16 residual from the packet is the removal of the m_pEmitter and m_pEmitterPadding pair. The ParticleData members from +80 on are offsets confirmed by two writers; the offset table is the strongest evidence (28 WORD stores from +24)."
+},
+
+{"name": "ParticleModuleInitRunner", "size": 112,
+ "size_evidence": "Preload_ParticleModuleInitRunner@0x140DB3EF0: Load_Stream(varParticleModuleInitRunner, 0x70u) reads 112 bytes into the struct. Game-test 112; IDA 112. Mark_ParticleModuleInitRunner@0x140D9DF90 uses the same struct at +80.",
+ "members": [
+  [80, "m_linkedAssetList", "ParticleLinkedAssetListDef", "Preload_ParticleModuleInitRunner@0x140DB3EF0 and Mark_ParticleModuleInitRunner@0x140D9DF90: varParticleLinkedAssetListDef = varParticleModuleInitRunner + 80 (16 bytes ParticleLinkedAssetListDef at 80)"]
+ ],
+ "changed_members": [
+  ["builder prior layout (not a change to IDA)", "the builder moved m_linkedAssetList to +72 and the flags to +88; Replay puts it at +80. The IDA layout already has +80, so keep the current IDA offsets", "Preload_ParticleModuleInitRunner@0x140DB3EF0 (+80)"]
+ ],
+ "unconfirmed": [
+  "base ParticleModule: IDA has unnamed base (8 bytes, m_type +0, m_flags +4) plus pad_8 (8 bytes) before m_scaleModifier at +16; the game-test base is 16 bytes. Total size and the +80 link are consistent with the IDA layout; the 8-byte gap is not checked (the Replay ParticleModule struct is outside this entry)",
+  "m_scaleModifier (16, ParticleModifier 32), m_velocityModifier (48), m_useOrientationOptions (96), m_useScaleOptions (97), m_useVelocityOptions (98), m_attachToParent (99), m_stopChildOnDeath (100), m_killChildOnDeath (101), m_legacyOrientationVelocity (102), m_legacyOrientationRotation (103), m_pad (104): only the whole-struct stream copy is evidence; no member access in Replay (replay_max_access_end 0)"
+ ],
+ "notes": "Replay loads the whole struct as one 112-byte block, so the size is proven but individual flag offsets are not. No Replay function access to this struct was found in the packet. Nothing to change in IDA except possibly the base-class size, which is outside this entry."
+}
+]}

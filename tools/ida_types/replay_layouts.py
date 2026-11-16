@@ -68,8 +68,9 @@ class World:
         for fn in sorted(os.listdir(pdir)) if os.path.isdir(pdir) else []:
             if fn.endswith(".json"):
                 try:
-                    d = json.load(open(os.path.join(pdir, fn)))
-                except Exception:
+                    d = json.load(open(os.path.join(pdir, fn), encoding="utf-8"))
+                except Exception as ex:
+                    print("PROPOSAL NOT READ: %s (%s)" % (fn, ex), file=sys.stderr)
                     continue
                 for nm in d.get("drop_size", {}):
                     self.drop_size.add(nm)

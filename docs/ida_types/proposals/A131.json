@@ -1,0 +1,98 @@
+{"agent": "A131", "structs": [
+  {"name": "snd_rv_params",
+   "size": 80,
+   "size_evidence": "SND_ResetRvParamsTable@0x141B72FC0: the whole struct is copied as five 16-byte chunks (params+0..79: frameRate..fadeTimeStamp, lateTime..., returnGain..., dampLpf..., lateSize..rearLevel) into each table entry; the next chunk is the delay params. IDA 80 = game-test 80 = Replay access end 80.",
+   "members": [
+     [0, "frameRate", "float", "SND_RvParamsDefault@0x141B93DB0: params->frameRate = 48000.0; SND_RvParamsValidate@0x141B939F0: -2048.0 / *(float *)params"],
+     [4, "fade", "bool", "SND_RvParamsValidate: *(_BYTE *)(params + 4) test; SND_RvParamsDefault: params->fade = false"],
+     [8, "fadeTimeStamp", "int", "SND_RvParamsValidate: result = *(unsigned int *)(params + 8) stored to reverbState+540"],
+     [12, "earlyTime", "float", "SND_RvParamsValidate: clamp [0,1] at +12; SND_UpdateRvState: reverbState[20].m128_i32[3] = *(params+12)"],
+     [16, "lateTime", "float", "SND_RvParamsValidate: clamp [0,1] at +16; SND_UpdateRvState: 8-byte copy from +16"],
+     [20, "earlyGain", "float", "SND_RvParamsValidate: clamp [0,4] at +20"],
+     [24, "lateGain", "float", "SND_RvParamsValidate: clamp [0,4] at +24; SND_UpdateRvState: v4 = *(params+24)"],
+     [28, "lateGainProx", "float", "SND_RvParamsValidate: clamp [0,4] at +28; SND_UpdateRvState: reverbState[21].f32[3] = v4 * *(params+28)"],
+     [32, "returnGain", "float", "SND_RvParamsValidate: clamp [0,4] at +32; SND_UpdateRvState: 16-byte copy from +32"],
+     [36, "earlyLpf", "float", "SND_RvParamsValidate: clamp [0,1] at +36"],
+     [40, "lateLpf", "float", "SND_RvParamsValidate: clamp [0,1] at +40"],
+     [44, "inputLpf", "float", "SND_RvParamsValidate: clamp [0,1] at +44"],
+     [48, "dampLpf", "float", "SND_RvParamsValidate: clamp [0,1] at +48; SND_UpdateRvState: 8-byte copy from +48"],
+     [52, "wallReflect", "float", "SND_RvParamsValidate: clamp [0,1] at +52"],
+     [56, "dryGain", "float", "SND_RvParamsValidate: clamp [0,1] at +56; SND_UpdateRvState: reverbState[23].i32[2] = *(params+56)"],
+     [60, "earlySize", "float", "SND_RvParamsValidate: clamp [0.1,16] at +60; SND_UpdateRvState: reverbState[23].i32[3] = *(params+60)"],
+     [64, "lateSize", "float", "SND_RvParamsValidate: clamp [0.1,16] at +64; SND_UpdateRvState: reverbState[24].i32[0] = *(params+64)"],
+     [68, "diffusion", "float", "SND_RvParamsValidate: clamp [0,1] at +68; SND_UpdateRvState: reverbState[24].i32[1] = *(params+68)"],
+     [72, "delayMatrix", "unsigned int", "SND_UpdateRvState: v5 = *(params+72) passed to SND_RvDelayInit; reverbState[24].i32[2] = v5"],
+     [76, "rearLevel", "float", "SND_RvParamsValidate: clamp [0,1] at +76; SND_UpdateRvState: reverbState[24].i32[3] = *(params+76)"]
+   ],
+   "changed_members": [],
+   "unconfirmed": ["builder layout (lateSize and delayMatrix null, diffusion at 64) is refuted: the Replay code reads 64 as a clamp [0.1,16] size and 68 as a clamp [0,1] value"],
+   "notes": "Current IDA layout (the fade bool and 3 pad bytes at 4..7, then fadeTimeStamp at 8) already matches every Replay access read here. No change needed; the packet's residuals are an artifact of the builder anchors. The score 26/40 is not explained by the offsets."},
+
+  {"name": "SndAliasGroupTracking",
+   "size": null,
+   "size_evidence": "not measured. Replay accesses reach byte 172 (end 173); game-test 176 is consistent but I found no allocation or stride. It is a local in the callers.",
+   "members": [
+     [0, "secondaryGroupId", "unsigned int", "SND_InitAliasGroupTracking@0x141B76530: a1->secondaryGroupId = new id (raw +0); SND_PlaySoundAliasCore@0x141B7AC10: voice.secondaryGroupId = *(_DWORD *)a4"],
+     [4, "voiceIndices", "int[20]", "SND_FinalizeAliasGroupTracking@0x141B73C30: list read from aliasGroup+4; SND_PlaySoundAliasCore: *(a4 + 4*numVoices + 4) = outVoiceIndex"],
+     [84, "voicePlaybackIds", "unsigned int[20]", "SND_PlaySoundAliasCore: *(a4 + 4*numVoices + 84) = started (raw 84, a4 is __int64)"],
+     [164, "numVoices", "unsigned int", "SND_FinalizeAliasGroupTracking: count = *(aliasGroup+164); SND_PlaySoundAliasCore: *(a4+164) >= 0x14 cap; SND_InitAliasGroupTracking: 8-byte zero at raw 164..171"],
+     [172, "hasSetPlayerBreathDialogueAlias", "bool", "SND_PlaySoundAliasCore: *(a4+172) == 0 test then set to 1; SND_InitAliasGroupTracking: byte at raw 172 cleared"]
+   ],
+   "changed_members": [
+     ["voiceIndices", "IDA offset 32 -> 4 (80 bytes, 28-byte pad removed)", "SND_FinalizeAliasGroupTracking, SND_PlaySoundAliasCore (raw a4+4)"],
+     ["voicePlaybackIds", "IDA offset 112 -> 84", "SND_PlaySoundAliasCore (raw a4+84)"],
+     ["numVoices", "missing from IDA, at 164", "SND_FinalizeAliasGroupTracking, SND_PlaySoundAliasCore (raw 164)"],
+     ["size", "IDA 192 -> Replay >= 173 (game-test 176)", "the IDA members 32 and 112 are at the wrong offsets, so the size is also wrong"]
+   ],
+   "unconfirmed": ["secondaryRecursionDepth at 168 (UNCONFIRMED name: only inside the 8-byte zero in SND_InitAliasGroupTracking, which covers 164..171)"],
+   "notes": "The IDA typed access voicePlaybackIds[13] in SND_InitAliasGroupTracking looks like offset 136. Its raw displacement is 164 (IDA 112 + 52), so the decompiler label is misleading. Raw access in Finalize and PlaySoundAliasCore (untyped __int64) confirms voiceIndices at 4 and voicePlaybackIds at 84. This is a proposal: it moves members and changes the size, so the coordinator applies it."},
+
+  {"name": "SndMusicAsset",
+   "size": 120,
+   "size_evidence": "SND_MusicStartNextLoop@0x141B8B5B0: element pointer = *(musicState+312) + 120LL * index (loops array stride). Also SND_EndMusicState@0x141B8AB40 and SND_StartMusicState@0x141B8B910 pass intro = SndMusicState+68 and exit = SndMusicState+188, so the element distance is 120. Game-test 124 is wrong (its sampleRate at 120 has no Replay access and no room in 120).",
+   "members": [
+     [64, "aliasId", "unsigned int", "SND_MusicAssetStart@0x141B8B1F0: SND_FindRowAlias(*(unsigned int *)(musicAsset + 64)); error message prints it"],
+     [80, "bpm", "int", "SND_MusicAssetStart: 2880000.0 / *(int *)(musicAsset + 80)"],
+     [96, "startDelayBeats", "int", "SND_MusicAssetStart: channelMask = *(int *)(musicAsset + 96), then += startOffsetMs / ms-per-beat"],
+     [100, "startFadeBeats", "int", "SND_MusicAssetStart: *(int *)(musicAsset + 100) passed to SND_ApplyToEmitterChain (name per game-test order)"],
+     [112, "startOffsetFrames", "int", "SND_MusicAssetStart: *(int *)(musicAsset + 112) passed to SND_ApplyToEmitterChain (name per game-test order, UNCONFIRMED which argument)"],
+     [116, "meter", "int", "SND_MusicAssetStart: *(int *)(musicAsset + 116) passed to SND_ApplyToEmitterChain (name per game-test order, UNCONFIRMED which argument)"]
+   ],
+   "changed_members": [
+     ["sampleRate", "game-test 120 not present in Replay (struct is 120 bytes)", "size evidence above"]
+   ],
+   "unconfirmed": ["alias (0..63)", "inactive, completeLoop, removeAfterPlay, firstRandom, startSync, stopSync, completeOnStop (68..74)", "loopStartOffset 76, assetType 84, loopNumber 88, sampleCount 92, stopDelayBeats 104, stopFadeBeats 108: used by SND_StartMusicState and SND_EndMusicState, but those decompiles are typed from the IDA layout, so they are not counted as raw evidence"],
+   "notes": "The IDA layout (120 bytes, aliasId at 64) is correct. The builder's prior-only placement is not needed. Only the raw uses in SND_MusicAssetStart count as evidence for the offsets; the rest is typed."},
+
+  {"name": "SndMusicState",
+   "size": 336,
+   "size_evidence": "SND_FindMusicState@0x1413941F0: element address = (bank table pointer) + 336LL * index, with stateId compared at +64. Game-test 352 is wrong; IDA 336 matches. Replay accesses reach byte 332 (dword at 328 cleared).",
+   "members": [
+     [64, "id", "unsigned int", "SND_FindMusicState: *(unsigned int *)(elem + 64) == stateId"],
+     [68, "intro", "SndMusicAsset", "SND_StartMusicState@0x141B8B910: SndMusic_AllocAssetInstance(musicState, musicState + 68); SND_MusicAssetStart(musicState + 68); intro.aliasId = musicState[33] (raw 132) test"],
+     [188, "exit", "SndMusicAsset", "SND_EndMusicState@0x141B8AB40: SND_MusicAssetStart(musicState + 47 dwords = +188); SndMusic_AllocAssetInstance(musicState, musicState + 188); exit.aliasId = musicState[63] (raw 252)"],
+     [308, "loopCount", "unsigned int", "SND_MusicStartNextLoop@0x141B8B5B0: count = *(musicState + 308); SND_StartMusicState: *(musicState + 308) != 0"],
+     [312, "loops", "SndMusicAsset *", "SND_MusicStartNextLoop: *(musicState + 312) + 120 * index"],
+     [325, "isSequential", "bool", "SND_MusicStartNextLoop: if (*(musicState + 325) != 0 || count < 2) take next index in order, else random pick"]
+   ],
+   "changed_members": [
+     ["isSequential", "IDA 333 -> 325", "SND_MusicStartNextLoop raw musicState+325"],
+     ["interruptPriority", "IDA dword at 324 cannot exist: the byte at 325 is the isSequential flag", "SND_MusicStartNextLoop"],
+     ["persistPriority", "IDA dword at 328 may be a different member: raw dword 328..331 is cleared on reset", "SND_ResetMusicStatesReferencing@0x141B8A7B0 and SND_EndMusicState: *(musicState + 328) = 0"]
+   ],
+   "unconfirmed": ["name at 0 (char[64])", "dword at 328 (cleared on reset; name UNCONFIRMED: order, interruptPriority or persistPriority)", "order at 320, isRandom, skipPreviousExit, wallClockSync (positions after 325 unknown; IDA 332/334/335 unverified)", "SNDL_ResetMusicState (0x141E670F0) uses a stride of 176 on a list of this type; it looks like a different element type, so not used"],
+   "notes": "Size 336 is measured and matches IDA. Only the members named above are confirmed; the isSequential position is the one clear conflict with the current IDA layout. The loops stride 120 confirms the intro and exit types."},
+
+  {"name": "SndAssetBankEntry",
+   "size": 44,
+   "size_evidence": "SND_TocCheck@0x141B879A0: entry address = bank entries base (+0x100) + imul rdi, rax, 2Ch (stride 44) over count at bank+0x108; qsort is called with SizeOfElements = mov r8d, 2Ch. Game-test 44 agrees; the builder's 52 is refuted.",
+   "members": [
+     [4, "size", "unsigned int", "SND_AssetBankValidateEntry@0x141B85A40: *(unsigned int *)(entry + 4) >= bankSize; SD_VoiceAllocateRam@0x141B605D0: ramHeader[1]"],
+     [8, "seekTableSize", "unsigned int", "SND_AssetBankValidateEntry: *(entry + 8); SD_VoiceAllocateRam: ramHeader[2]"],
+     [16, "hybridPcmSize", "unsigned int", "SND_AssetBankValidateEntry: *(entry + 16); SD_VoiceAllocateRam: ramHeader[4]"],
+     [20, "offset", "unsigned __int64", "SND_AssetBankValidateEntry: *(_QWORD *)(entry + 20) < bankSize"]
+   ],
+   "changed_members": [],
+   "unconfirmed": ["id at 0 (no Replay access)", "frameCount at 12 (no Replay access)", "frameRate at 28, width 4: SND_AssetBankEntryGetLength reads an unsigned int at +28 but Replay names it Length, game-test names it frameRate (names conflict; offset confirmed)", "channelCount at 32, width 1: SND_AssetBankEntryGetFlags reads a byte at +32 and SD_VoiceAllocateStream stores it as stream flags (Replay name Flags vs game-test channelCount; offset confirmed)", "looping, format, EnvelopeTime1/2, EnvelopeLoudness0..3, BlocksizeKB (33..43): no Replay access seen"],
+   "notes": "IDA layout (44 bytes) is correct for the offsets Replay reads. The packet's builder 52 is refuted by the TOC stride. Replay max access end is 33, so the struct is at least 33 bytes; 44 is measured."}
+]}

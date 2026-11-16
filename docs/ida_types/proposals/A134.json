@@ -1,0 +1,16 @@
+{"agent": "A134", "structs": [
+  {"name": "DLogEvent_ScreenView", "size": null,
+   "size_evidence": "Lower bound only: Replay max access end 1784 (survey.match_id at 1776 + 8, DLogEvent_ScreenView::AddSurveyData@0x140E48D60 writes qword at +1776; WriteEvent@0x140E48DC0 reads survey.match_id). Upper bound: the next global s_telemetryStoreEvents starts at s_telemetryScreenViewEvents + 0x700 = 1792 bytes (InitGlobal@0x140341130 constructs s_telemetryScreenViewEvents). The ctor DLogEvent_ScreenView::DLogEvent_ScreenView@0x14106E9D0 is called only from DLogEvent_ScreenView_InitGlobal (static object, no allocation stride). No Replay allocation site measured the exact size, so size stays null; the game-test and current IDA size 1784 is consistent with both bounds.",
+   "members": [
+     [0, "baseclass_0", "DLogEvent_Base", "ctor@0x14106E9D0 calls DLogEvent_Base::DLogEvent_Base(a1); base is 24 bytes (vftable, controllerIndex, userId)"],
+     [24, "screens", "DLogEvent_ScreenView__ScreenView[24]", "AddScreenView@0x140E48CE0: count at +1752 < 0x18 (24); name copied to a1 + 72*n + 24 with Core_strcopy size 64; id stored at a1 + 72*n + 88; flags byte at a1 + 72*n + 92. Stride 72, 24 entries = 1728 bytes. WriteEvent@0x140E48DC0 loop: v11 = &a1->_pad18[64], v11 += 72, duration_ms = *(DWORD*)(v11) (element+64), is_intermission = v11[4] (element+68)"],
+     [1752, "m_screenViewCount", "unsigned __int8", "AddScreenView@0x140E48CE0: ++*(_BYTE*)(a1+1752); ResetData@0x140E48DA0: a1->m_screenViewCount = 0; ReadyToSend@0x140E48D90: return a1->m_screenViewCount != 0; WriteEvent loop bound"],
+     [1760, "survey", "DLogEvent_ScreenView__SurveryResult", "AddSurveyData@0x140E48D60 writes +1760 (surveyId), +1764 (surveyValue), +1768 (flag byte), +1776 (qword); ResetData zeroes +1760, +1764, qword at +1768, +1776; WriteEvent reads survey.button_order, button_selection, is_quitter, match_id at those offsets"]
+   ],
+   "changed_members": [
+     ["screens", "IDA: unsigned __int8[1048] at 704 after _pad18[680] -> game-test and Replay: DLogEvent_ScreenView__ScreenView[24] (1728 bytes) at 24; the 680-byte _pad18 at 24 is removed as part of the same move", "AddScreenView@0x140E48CE0 and WriteEvent@0x140E48DC0 (stride 72, 24 entries)"],
+     ["screen element", "game-test name duration_ms at element+64; Replay AddScreenView calls it screenId at the same offset (naming only, the size and offset agree)", "AddScreenView@0x140E48CE0 (screenId store), WriteEvent@0x140E48DC0 (duration_ms read)"]
+   ],
+   "unconfirmed": ["screen element name at +0 is char[64]: confirmed by Core_strcopy size 64 in AddScreenView, not by a field name", "pad bytes 1753-1759 and 1768-1775 (inside survey) stay padding: no Replay access"],
+   "notes": "Only the screens array is wrong: the current IDA puts it at 704 with a 1048-byte pad, Replay puts 24 entries of 72 bytes at 24. Count and survey offsets are correct as they are. The element type DLogEvent_ScreenView__ScreenView (72 bytes: char name[64], unsigned int duration_ms, bool is_intermission, 3 pad) already exists in IDA and matches the Replay writes. Coordinator should apply the move (a proposal, not a fill_pad edit): it changes the layout of 704..1752 and the pad at 24."}
+]}

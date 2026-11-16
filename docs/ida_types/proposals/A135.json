@@ -1,0 +1,28 @@
+{"agent": "A135", "structs": [
+  {"name": "LUITraceRunner",
+   "size": 37824,
+   "size_evidence": "LUITraceRunner::Initialize@0x141B14CB0 returns LUITraceRunner_InitializeQueues(&qword_1519A5AF0 + 4728 * clientIndex); the global is _QWORD-typed, so the byte stride is 4728 * 8 = 37824. LUITraceRunner_UpdateClient@0x141B14230 uses the same stride and passes that pointer to StartRequests. replay_max_access_end is also 37824. Game-test/IDA 37832 has an 8-byte tail pad (_pad93C0) that Replay never uses.",
+   "members": [
+     [1, "m_initialized", "bool", "LUITraceRunner_InitializeQueues@0x141B147B0: mov byte [runner+1],1 at end; LUITraceRunner_FlushClientRequests@0x141B151A0: mov byte [runner+1],0 at end; LUITraceRunner_UpdateClient@0x141B14230: cmp byte [v2+1],0 gates UpdateRequests + StartRequests"],
+     [4, "m_numActiveRequests", "int", "LUITraceRunner::StartRequests@0x141B153C0: cmp dword [this+4],8 (per-call cap) and ++dword [this+4]; LUITraceRunner_InitializeQueues: mov dword [runner+4],0. Meaning in Replay: requests started in the current StartRequests pass, not a live count."],
+     [8, "m_physicsPredictiveResourcePool", "LUIPool_LUITraceQueryResource_8_0", "LUITraceRunner_InitializeQueues@0x141B147B0: index words at runner+264 (8 entries), free head runner+280, item i at runner+8+32*i; StartRequests: this+8 pool item base, this+264, this+280; game-test 16 -> Replay 8 (anchors GT 16->R 8, GT 272->R 264)"],
+     [288, "m_physicsDetailResourcePool", "LUIPool_LUITraceQueryResource_8_0", "LUITraceRunner_InitializeQueues: items at runner+288+32*i, index at runner+544, head at runner+560; StartRequests: this+288, this+560 (anchors GT 296->R 288, GT 552->R 544, GT 568->R 560)"],
+     [568, "m_requestPool", "LUIPool_LUITraceRequest_200_1", "LUITraceRunner_InitializeQueues: memset(runner+568, 0, 0x6A40) = 200 * 136 item bytes, index words from runner+27768 (200 entries), count at runner+28168; LUITraceRunner_FlushClientRequests: index = (ptr - (runner+568)) / 136; pool size 27608 = 27200 + 400 + 8, same as game-test"],
+     [28176, "m_activeRequests", "ntl__fixed_list_LUITraceRequest___200_0", "LUITraceRunner::StartRequests@0x141B153C0: access to this+32976 and this+32984 (the last 24 bytes of this list, 28176 + 4800); LUITraceRunner_InitializeQueues: same offsets. Shift -8 from game-test 28184 (anchors GT 32984->R 32976 / 32984)"],
+     [33000, "m_requestQueue", "ntl__fixed_list_LUITraceRequest___200_0", "LUITraceRunner::StartRequests: this+37800, this+37808, this+37816 (last 24 bytes, 33000 + 4800); LUITraceRunner_InitializeQueues: runner+37800/37808/37816. Shift -8 from game-test 33008 (anchors GT 37808->R 37800, GT 37816->R 37808/37816)"]
+   ],
+   "changed_members": [
+     ["m_localClientNum", "width 4 -> 1 (inferred): byte +1 is m_initialized, so the member at +0 can be at most 1 byte in Replay; a 4-byte enum at +0 would overlap it", "LUITraceRunner_InitializeQueues@0x141B147B0 writes byte +1; no Replay access to +0 was found in the functions read"],
+     ["m_initialized", "offset 4 -> 1 (width 1 unchanged)", "see member +1 above"],
+     ["m_numActiveRequests", "offset 8 -> 4 (int unchanged)", "see member +4 above"],
+     ["m_physicsPredictiveResourcePool", "offset 16 -> 8 (size 280 unchanged)", "anchors GT 16->R 8; InitializeQueues runner+8"],
+     ["m_physicsDetailResourcePool .. m_requestQueue", "all offsets shift -8 from game-test (296->288, 576->568, 28184->28176, 33008->33000)", "anchors and list tails above; the total residual is -8 and it sits before m_physicsPredictiveResourcePool"],
+     ["tail pad (_pad93C0, 8 bytes at 37824)", "removed: total size 37832 -> 37824", "stride evidence above"]
+   ],
+   "unconfirmed": [
+     "m_localClientNum width 1 at +0: inferred from the +1 flag, not read directly",
+     "pad bytes +2..+3 and +5..+7: no Replay access found",
+     "list sentinel layout inside m_activeRequests and m_requestQueue (head at block end +4800): consistent with all accesses seen, but the ntl fixed_list internals were not decompiled"
+   ],
+   "notes": "Pool sizes and the -8 shift are confirmed by InitializeQueues and FlushClientRequests (request item 136 bytes, 200 items, pool 27608). The residual is fully before m_physicsPredictiveResourcePool. The size 37824 is a proposal for the coordinator (it changes the total size); it is proven by the qword-typed stride. Child struct LUITraceRequest (136-byte item) was not checked; it belongs to another struct entry."}
+]}

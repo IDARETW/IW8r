@@ -37,23 +37,40 @@ and sizes. Tools that were built from this database (x64-zt headers, the plugin,
    * everything else goes to the report.
 8. `check_apply.py`: diff of two `dump_udts()` dumps + the Replay access score.
 
-## Result (two rounds applied, backup `out/ida_types/backup/local_types_20261115_before_all_structs.h`)
+## Result
 
-| | before | after |
+Automated pass (two rounds, backup `out/ida_types/backup/local_types_20261115_before_all_structs.h`), then a report
+pass: 35 read-only Haiku agents (A101-A135, `REPORT_AGENT_PROCEDURE.md`) checked the structs the builder could not
+prove and wrote proposals (`docs/ida_types/proposals`, reports in `docs/ida_types/results`). The coordinator fed the
+proposals back into the builder (proposal members = anchors, measured sizes = proofs; inferred sizes are listed in
+`COORD.json` `drop_size` and not used) and applied them through the same score and dry-run checks, four waves, each
+with a backup (`local_types_20261115_before_report_wave1..4.h`). Two retype passes gave 97 byte-array members their
+struct type back once that type had the same size.
+
+| | start | end |
 |---|---|---|
-| Replay accesses on the right member / on a wrong member | 19,530 / 5,449 | 22,517 / 5,260 |
-| structs with no padding left | 2,394 | 2,833 |
-| structs that were only padding | 415 | 31 |
-| padding share of all struct bytes | 35.7% | 20.9% |
+| Replay accesses on the right member / on a wrong member | 19,530 / 5,449 | 23,863 / 4,151 |
+| structs with no padding left | 2,394 | 2,874 |
+| structs that were only padding | 415 | 27 |
+| padding share of all struct bytes | 35.7% | 15.5% |
+| bytes in named members | 95.6 M | 122.4 M |
+| builder verdict over the 4,410 structs with a game-test counterpart | | 4,239 agree with Replay or have nothing left to place, 135 unproven |
 
-* 836 structs got names in their pads (2,340 fields; 911 of them game-test-only fields, marked by the comment).
-* 47 structs rebuilt from Replay evidence, e.g. `Shake` 1008 (cg_t already used 1008), `GfxViewInfo` 23728, `BgMissile`
-  24, `BgPlayer_Asm` 32 (allocation), `NetConnection` 32, `PartyMember` 488 (133 sizeof votes), `DLogContext` 352,
-  `BgVehiclePhysicsZodiac` 1912, `Online_Invitation` 80, `TransientCostCalc` 33816, the Havok constraint atom sets.
-  Several of these replaced sizes that earlier local tools had invented (`m_unk...`, `m_arrayAt...` members).
-* `ALL_STRUCTS_REPORT.txt`: the 275 structs whose Replay layout differs from IDA but is not proven yet (size not proven,
-  moves not better supported, accesses past the computed size). They still got their safe fills.
-* 397 local types have no game-test counterpart (Windows SDK / CRT / anonymous types from IDA's own libraries).
+* Fills: 820 structs got names in their pads (about 2,500 fields); the roughly 1,000 fields without Replay evidence
+  carry the member comment "game-test layout; no Replay access checks this field yet".
+* Rebuilds: 147 structs rebuilt and 112 struct sizes changed, every size change from a planned rebuild with a proof (allocation, stride, memset,
+  loader stream size, next global, anchors to the end, derived-class start); no member moved outside a rebuild or a
+  kept parent (`check_apply.py`). Examples: `cg_t`-family types, the vehicle physics family (`BgVehiclePhysics` 688,
+  `BgVehiclePhysicsGround` 3112, `FlightDynamics` 1264, `HelicopterDynamics` 2368), `CgSnapshotMP` 405680,
+  `ClStatic` 175776, `ClSnapshot` 119000, `GfxCmdBufState` 10368, `GfxViewInfo` 23728, `DWWrappers` 1136,
+  `Vehicle` 2192, `PartyMember` 488, `TaskItem` 96, and many sizes earlier tools had invented (`m_unk...` members).
+* Parents that hold a resized struct by value but have no proof of their own kept their offsets (the bytes stay
+  padding): `PartyData`, `BgVehiclePhysicsManager` (later proven), `TaskManager`, `ParticleManager`, `Online_Friends`,
+  `RB_BackendDataCopier` (later proven), `GVehicles`.
+* `ALL_STRUCTS_REPORT.txt`: the 135 structs still unproven, each with the reason; their agent reports say what is
+  known (lower bounds, confirmed members, conflicts). Open conflicts are listed at the end of `APPLIED.md`.
+* 397 local types have no game-test counterpart (Windows SDK / CRT / COM / anonymous types from IDA's libraries,
+  HLSL helper types, and a few `Replay_*` types an earlier tool made up).
 
 Rerun (a few minutes in total):
 
