@@ -8,7 +8,7 @@ A relayout is demoted to fills when any Replay access through a pointer to the s
 
   python tools/ida_types/make_apply_plan.py out/ida_types/scan/apply_plan
 """
-import collections, json, re, sys
+import collections, json, os, re, sys
 
 S = "out/ida_types/scan/"
 PAD = re.compile(r"^(_pad|pad|gap)[0-9A-Fa-f_]*$", re.I)
@@ -27,12 +27,19 @@ def main():
             base = re.sub(r"\[\d+\]", "", ty).strip()
             if base in ida and "*" not in ty:
                 emb[base].append(pn)
+    ignore_mx = set()
+    pdir = "out/ida_types/proposals"
+    for fn in os.listdir(pdir) if os.path.isdir(pdir) else []:
+        if fn.endswith(".json"):
+            for x in json.load(open(os.path.join(pdir, fn))).get("structs", []):
+                if isinstance(x, dict) and x.get("ignore_max_access"):
+                    ignore_mx.add(x["name"])
     relay = set()
     demoted = []
     for n in lay["order"]:
         v = st[n]
         if v["action"] == "relayout":
-            if v["size"] != v["ida_size"] and mx.get(v["gt"], 0) > v["size"]:
+            if v["size"] != v["ida_size"] and mx.get(v["gt"], 0) > v["size"] and n not in ignore_mx:
                 demoted.append((n, mx[v["gt"]], v["size"]))
                 v["action"] = "report"
                 v["items"] = []

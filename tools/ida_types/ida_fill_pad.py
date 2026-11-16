@@ -548,6 +548,21 @@ def apply_entry(e, apply=False):
                 nm.startswith("baseclass_")) for off, nm, sz, cands, conf in e["items"]]
         size = e["size"]
         n = len(req)
+    elif mode == "retype":
+        want = {nm: (sz, cands) for off, nm, sz, cands, conf in e["items"]}
+        req, n = [], 0
+        for i in range(len(u)):
+            m = u[i]
+            if _PAD.match(m.name or ""):
+                continue
+            ty = m.type
+            if m.name in want and m.size // 8 == want[m.name][0]:
+                nt = _resolve_type(want[m.name][1], want[m.name][0], {})
+                if nt.get_size() == m.size // 8 and not (nt.is_array() and nt.get_array_element().get_size() == 1):
+                    ty = nt
+                    n += 1
+            req.append((m.offset // 8, m.name, ty, m.cmt, m.is_baseclass()))
+        size = t.get_size()
     elif mode == "restore":
         req = []
         for off, nm in e["members"]:

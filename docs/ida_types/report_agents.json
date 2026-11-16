@@ -1,0 +1,522 @@
+[
+ {
+  "id": "A101",
+  "family": "bots / AI",
+  "structs": [
+   "bot_data_t"
+  ],
+  "wrong_member_hits": 343
+ },
+ {
+  "id": "A102",
+  "family": "vehicle physics",
+  "structs": [
+   "HelicopterDynamics"
+  ],
+  "wrong_member_hits": 233
+ },
+ {
+  "id": "A103",
+  "family": "vehicle physics",
+  "structs": [
+   "BgVehiclePhysics"
+  ],
+  "wrong_member_hits": 176
+ },
+ {
+  "id": "A104",
+  "family": "vehicle physics",
+  "structs": [
+   "BgVehiclePhysicsGround"
+  ],
+  "wrong_member_hits": 141
+ },
+ {
+  "id": "A105",
+  "family": "vehicle physics",
+  "structs": [
+   "CgVehicleSystemMP"
+  ],
+  "wrong_member_hits": 129
+ },
+ {
+  "id": "A106",
+  "family": "client game",
+  "structs": [
+   "CgSnapshotMP"
+  ],
+  "wrong_member_hits": 120
+ },
+ {
+  "id": "A107",
+  "family": "vehicle physics",
+  "structs": [
+   "FlightDynamics"
+  ],
+  "wrong_member_hits": 119
+ },
+ {
+  "id": "A108",
+  "family": "online",
+  "structs": [
+   "PartyData"
+  ],
+  "wrong_member_hits": 108
+ },
+ {
+  "id": "A109",
+  "family": "server game",
+  "structs": [
+   "GenericTask"
+  ],
+  "wrong_member_hits": 104
+ },
+ {
+  "id": "A110",
+  "family": "online",
+  "structs": [
+   "OnlineMatchmakerOmniscient"
+  ],
+  "wrong_member_hits": 75
+ },
+ {
+  "id": "A111",
+  "family": "online",
+  "structs": [
+   "OnlineQuests"
+  ],
+  "wrong_member_hits": 71
+ },
+ {
+  "id": "A112",
+  "family": "effects",
+  "structs": [
+   "ParticleManager"
+  ],
+  "wrong_member_hits": 64
+ },
+ {
+  "id": "A113",
+  "family": "misc",
+  "structs": [
+   "DB_DecompressState",
+   "refdef_t",
+   "Ragdoll",
+   "NetRelay",
+   "MarkInfo",
+   "NetTelemetry",
+   "ComputeCmdBufState",
+   "BgAntiLag",
+   "CachedContentIOStreamDCache",
+   "ShakeState",
+   "MemoryFile",
+   "CachedCreateChatCallback",
+   "BucketAllocator",
+   "NetThread",
+   "ID3D12Device"
+  ],
+  "wrong_member_hits": 162
+ },
+ {
+  "id": "A114",
+  "family": "misc",
+  "structs": [
+   "TaskItem",
+   "UserSignedInToLiveFence",
+   "DemonwareFence",
+   "StreamLoader",
+   "sd_decoder",
+   "NetInit",
+   "StreamUpdateMultiView",
+   "ScriptableEventDisablePhysicsSubShapeDef",
+   "PlayerStatsFence",
+   "NetworkingFence",
+   "ID3D12Resource",
+   "ConeTargetInfo",
+   "ABFence",
+   "NetEndpoint",
+   "BG_SpawnGroup_Loot_Table"
+  ],
+  "wrong_member_hits": 31
+ },
+ {
+  "id": "A115",
+  "family": "misc",
+  "structs": [
+   "overlappedTask",
+   "ComputeShader",
+   "BulletFireParams",
+   "RefString",
+   "DiskFile",
+   "Vehicle",
+   "Umbra__ImpShadowCuller",
+   "bitarray_224",
+   "actor_prone_info_t",
+   "NetChannel",
+   "NetBacklog",
+   "MatchmakingData",
+   "Umbra__BufferAllocator",
+   "LeaderBoardResult_LeaderBoardRow_10__200",
+   "InviteJoinHSM_xb3"
+  ],
+  "wrong_member_hits": 5
+ },
+ {
+  "id": "A116",
+  "family": "misc",
+  "structs": [
+   "CEntPlayerInfo",
+   "BgStatic",
+   "BgAntiLagEntityHistoryExtended",
+   "DBFileHandle",
+   "BgPredictedEntitySystem",
+   "BINKSHADERSD3D12GPU",
+   "BG_SpawnGroup_Loot_Set",
+   "workerTrace_t",
+   "pooledStorageWriteFileInfo",
+   "playlistInfo",
+   "dwMultiFileTask",
+   "WeaponXAnim",
+   "WeaponSFXPackageSounds",
+   "Umbra__Visibility",
+   "Umbra__Transformer"
+  ],
+  "wrong_member_hits": 0
+ },
+ {
+  "id": "A117",
+  "family": "misc",
+  "structs": [
+   "Umbra__Tome",
+   "Umbra__DepthBuffer",
+   "UIQuadCache",
+   "ShakeStateInternal",
+   "ReactiveMotionModelInfo",
+   "ProfanityAsyncTaskData",
+   "PlayerWeaponCommonState",
+   "PlayerAnimsetState",
+   "PlayerAnimsetAlias",
+   "PlayerAnimEntry",
+   "PipDef",
+   "PacketStream_NetPacket_1288_65536_0",
+   "PacketStream_NetPacket_1288_32768_0",
+   "PacketStream_NetPacket_1288_262144_1",
+   "PMROctreeFactoryNode"
+  ],
+  "wrong_member_hits": 0
+ },
+ {
+  "id": "A118",
+  "family": "misc",
+  "structs": [
+   "NetLoopback",
+   "NetBuffer_65536_0",
+   "NetBuffer_32768_0",
+   "NetBuffer_262144_1",
+   "MaterialPipelineState",
+   "MPSCQueue_RB_BackendDataCopier__Cmd_16384",
+   "ID3D12PipelineState",
+   "ID3D12Pageable",
+   "FriendListGlobal",
+   "EntityTagInfo",
+   "EdgeQueryCache",
+   "Edge",
+   "DiskReadContext",
+   "DObjBoneParentMap",
+   "DDLMember"
+  ],
+  "wrong_member_hits": 0
+ },
+ {
+  "id": "A119",
+  "family": "misc",
+  "structs": [
+   "CrosslaunchHSM",
+   "ComputeShaderProgram",
+   "ComputeData",
+   "ComputeContextData",
+   "CmdBufState",
+   "ChallengeXPCache",
+   "Camo",
+   "CEntVehicleInfo",
+   "CEntTurretInfo",
+   "BestHostData",
+   "AnalyticsBuffer",
+   "ActiveClanData",
+   "ASM_Context"
+  ],
+  "wrong_member_hits": 0
+ },
+ {
+  "id": "A120",
+  "family": "Demonware",
+  "structs": [
+   "DWWrappers",
+   "bdLobbyService",
+   "DWLobbyService",
+   "DWClans",
+   "DWAsyncMatchMaking",
+   "DWMessaging",
+   "bdTelemetryDLogSink",
+   "DWMail",
+   "DWAchievementEngine",
+   "DWEventLog",
+   "DWMarketplace",
+   "DWServicesAccess",
+   "DWPublisherVariables",
+   "DWObjectStore",
+   "DWFriends",
+   "DWAchievementEngineClient",
+   "bdClansGroupMembershipProposal"
+  ],
+  "wrong_member_hits": 161
+ },
+ {
+  "id": "A121",
+  "family": "Demonware",
+  "structs": [
+   "bdPublisherVariables",
+   "DWTitleUtilities",
+   "DWProfiles",
+   "DWMatchScheduler",
+   "DWUserLists",
+   "DWTeams",
+   "DWTags",
+   "DWServerInventory",
+   "DWRichPresenceService",
+   "DWReward",
+   "DWRegulations",
+   "DWPooledStorage",
+   "DWMatchMaking",
+   "DWMLG",
+   "DWLootGen",
+   "DWGroup",
+   "DWDML"
+  ],
+  "wrong_member_hits": 21
+ },
+ {
+  "id": "A122",
+  "family": "Demonware",
+  "structs": [
+   "DWCounter",
+   "bdObjectStoreGetPublisherObjectsResponse",
+   "bdStructUserAccountID",
+   "bdClansAddOrUpdateGroupMemberResponse",
+   "bdUpgradeAnonUnoAccRequest",
+   "bdClansUploadGroupFileResponse",
+   "bdChannelCreateChannelResponse",
+   "bdStructOptionalObject_bdStructUserAccountID",
+   "bdStructOptionalObject_bdClansGroupMembershipProposal",
+   "bdStatsInfo",
+   "bdSessionID",
+   "bdPublisherVariablesInfo",
+   "bdFileID",
+   "bdEventLogID",
+   "bdBoolResult"
+  ],
+  "wrong_member_hits": 1
+ },
+ {
+  "id": "A123",
+  "family": "renderer",
+  "structs": [
+   "GfxCmdBufState",
+   "GfxBackEndData",
+   "GfxShaderTextureRWView",
+   "GfxSunShadowProjectionSetup",
+   "GfxMultiLightGridFXLightingBuffers",
+   "RB_BackendDataCopier",
+   "GfxCmdBufInput",
+   "GfxMeshData",
+   "GfxCmdBufSourceState",
+   "RB_BackendDataCopier__CmdMemCopy",
+   "GfxWorldTransientDrawCache",
+   "GfxVoxelTree",
+   "GfxVertexBufferState",
+   "GfxSurfaceBounds",
+   "GfxGlassVertex",
+   "GfxDrawCallOutput",
+   "GfxComputeBufferState",
+   "GfxCmdBuf",
+   "GfxAsync2DFrameData"
+  ],
+  "wrong_member_hits": 74
+ },
+ {
+  "id": "A124",
+  "family": "online",
+  "structs": [
+   "OnlineChallengesManager",
+   "OnlineClan",
+   "MatchMakerOmniLobbyData",
+   "Online_Store",
+   "Online_Friends",
+   "OnlineMgr",
+   "OnlineProgression",
+   "OnlineBattlepass",
+   "Online_Dailylogin",
+   "OnlineChatManager",
+   "OnlineMatchmakerTelemetry",
+   "Online_LootCrate",
+   "Online_Commerce",
+   "Online_BlockList",
+   "Online_AAR",
+   "OnlineUserLists",
+   "LobbyData"
+  ],
+  "wrong_member_hits": 139
+ },
+ {
+  "id": "A125",
+  "family": "Havok",
+  "structs": [
+   "hknpSolverInfo",
+   "HavokPhysicsFreeListMemorySystem",
+   "hkgpConvexHullImpl",
+   "hkAabb24_16_24_Codec",
+   "HavokPhysicsShapeViewer",
+   "hkpRagdollConstraintData",
+   "hknpManifold",
+   "hkpDeformableFixedConstraintData",
+   "HavokPhysicsHitCollector",
+   "hkpRagdollConstraintData__Atoms",
+   "HavokPhysicsShapeTagCodec",
+   "hkpRagdollMotorConstraintAtom",
+   "hkpDeformableFixedConstraintData__Atoms",
+   "hknpEvent",
+   "hkcdWeldingUtil__MotionWeldConfig",
+   "hkReflect__BoolValue",
+   "hkInplaceArrayAligned16_hknpCollisionResult_10_hkContainerHeapAllocator"
+  ],
+  "wrong_member_hits": 59
+ },
+ {
+  "id": "A126",
+  "family": "bots / AI",
+  "structs": [
+   "bfx__NavigatorImpl",
+   "bot_info_t",
+   "AITaskBucket_Spread",
+   "AITaskBucket_Lazy",
+   "AIBlackboard",
+   "AINewAgentInterface",
+   "bfx__Area",
+   "bfx__Task",
+   "bfx__ComponentManager",
+   "bfx__ActiveAreasInSphereCursor",
+   "bfx__VRT",
+   "bfx__VolumePathSegment",
+   "bfx__Repulsor",
+   "bfx__ProbeResults",
+   "bfx__Navigator",
+   "bfx__LinkSegment",
+   "bfx__Link"
+  ],
+  "wrong_member_hits": 32
+ },
+ {
+  "id": "A127",
+  "family": "server game",
+  "structs": [
+   "GStaticMP",
+   "GMissileSP",
+   "GAntiLagMP",
+   "GUtilsSP",
+   "GUtilsMP",
+   "GTurretMP",
+   "GBullet",
+   "GTargetAssist"
+  ],
+  "wrong_member_hits": 21
+ },
+ {
+  "id": "A128",
+  "family": "client game",
+  "structs": [
+   "CgBallisticsSP",
+   "CgClientSideEffectsSystem",
+   "CgBallistics",
+   "CgAntiLag",
+   "CgCompassSystemMP",
+   "CgAntiLagSP",
+   "CgDynamicMedia"
+  ],
+  "wrong_member_hits": 14
+ },
+ {
+  "id": "A129",
+  "family": "vehicle physics",
+  "structs": [
+   "CgVehicleSystem",
+   "GVehicles",
+   "CgVehicleEventSystem",
+   "GVehiclesSP",
+   "CgVehicleSystemSP",
+   "BgVehiclePhysicsManager"
+  ],
+  "wrong_member_hits": 6
+ },
+ {
+  "id": "A130",
+  "family": "client",
+  "structs": [
+   "ClSnapshot",
+   "ClStatic",
+   "ClientPlayerWeaponInfo",
+   "ClConnection",
+   "ClActiveClientSP",
+   "ClActiveClientMP"
+  ],
+  "wrong_member_hits": 2
+ },
+ {
+  "id": "A131",
+  "family": "sound",
+  "structs": [
+   "snd_rv_params",
+   "SndAliasGroupTracking",
+   "SndMusicAsset",
+   "SndMusicState",
+   "SndAssetBankEntry"
+  ],
+  "wrong_member_hits": 48
+ },
+ {
+  "id": "A132",
+  "family": "effects",
+  "structs": [
+   "FxGlassCrackWork",
+   "ParticleState",
+   "ParticleData",
+   "ParticleModuleInitRunner"
+  ],
+  "wrong_member_hits": 70
+ },
+ {
+  "id": "A133",
+  "family": "server",
+  "structs": [
+   "SvServerInitSettings",
+   "SvGameModeApplication",
+   "SvGameModeAppSP"
+  ],
+  "wrong_member_hits": 20
+ },
+ {
+  "id": "A134",
+  "family": "telemetry",
+  "structs": [
+   "DLogEvent_ScreenView"
+  ],
+  "wrong_member_hits": 1
+ },
+ {
+  "id": "A135",
+  "family": "UI",
+  "structs": [
+   "LUITraceRunner"
+  ],
+  "wrong_member_hits": 1
+ }
+]

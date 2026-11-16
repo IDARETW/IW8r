@@ -99,6 +99,31 @@ offsets (`PartyData` around `PartyMember` 504 -> 488, `BgVehiclePhysicsManager` 
 `BgVehiclePhysicsObjectBuffer` 3360 -> 3312). Replay accesses on the right member 19,530 -> 22,517, on a wrong
 member 5,449 -> 5,260; structs that were only padding 415 -> 31.
 
+Retype pass (`make_retype_plan.py`): 69 named byte-array members in 34 structs got their struct type back where the
+local type now has the same size and the game-test count (`cg_t.viewShake` = `Shake`, `playerState_s.objectives` =
+`ObjectiveView[32]`, `SvClientMP.clientConnection` = `NetConnection`, ...). No offset or size changed.
+
+### Report pass, wave 1 (A101-A110, read-only agents; `REPORT_AGENT_PROCEDURE.md`, proposals in `out/ida_types/proposals`)
+
+Applied by the coordinator through the builder (proposal members as anchors, proposal sizes as proofs), plan
+`apply_plan4.json`, backup `local_types_20261115_before_report_wave1.h`:
+
+| Struct | Change | Evidence |
+|---|---|---|
+| `BgVehiclePhysics` | 1960 -> 688, ~60 members (-36 from game-test) | A103: `BgVehiclePhysicsGround::Setup@0x140D1B490` memsets from +688 and runs its wheels there; Load/SaveToMemFile |
+| `BgVehiclePhysicsGround` | 3240 -> 3112, wheels at 688 | A104 members; size: `BgVehiclePhysicsTank::Setup@0x140D1C251` writes its first own member at +0xC28 (coordinator) |
+| `BgVehiclePhysicsGround__Wheel` | 152 -> 148 (no `m_state`) | A104: `LoadWheelRecord@0x140D220C0`, stride `148*i` in Setup |
+| `FlightDynamics` | 22272 (invented) -> 1264 | A107 members (-40 from 688); size = start of `HelicopterDynamics::m_MainRotor` (A102) |
+| `HelicopterDynamics` | 2416 -> 2368, tail -48 | A102: Setup / SaveToMemFile / LoadFromMemFile displacements |
+| `CgVehicleSystem` / `CgVehicleSystemMP` / `CgVehicleEventSystem` | 1152280 -> 1135880 / 1157400 -> 1141000 / 18144 -> 14040 | A105: `CG_MainMP_Init` memset 0x116908; physics manager memset 0xFF000 at +77328 |
+| `CgSnapshotMP` | 763992 -> 405680 (entities 768, weapons 400) | A106: `CG_SnapshotMP_ClearSnapshots@0x1417ADEA0` (two snapshots 405680 apart), `CL_CGameMP_GetSnapshot` |
+| `GenericTask` / `TaskItem` | 80 -> 88 (extra pointer at +24) / 88 -> 96 | A109; `TaskManager::Update@0x1413CCB97` step 0x60, `m_nextLocalTaskId` at +0x3000 = 128 * 96 (`TaskManager` kept, its 1024-byte pad was the missing 8 bytes per item) |
+| `OnlineMatchmakerOmniscient` | 1077400 -> 1071120 | A110: constructor offsets; lobby data is 92400 (no 6424-byte additional-slots list) |
+| `PartyData` | size kept 373704, ~40 offsets fixed (subparties stride 1016, `currentHost` 48) | A108: `g_partyData` to the next global 0x5B3C8, memcpy 0x5B3C8 in `PartyAtomic_BuildJoinInfo` |
+| `PartyHostDetails` | 80 -> 48 | anchors to the end, A108 |
+
+Not applied: `bot_data_t` (A101: size unproven, only 4 members), `MatchMakerOmniLobbyData` (wave 3, A124).
+
 ## Wave 5
 
 Pending for the apply pass:

@@ -44,7 +44,7 @@ def main():
     gt = json.load(open(RL.S + "gt_types_all.json"))
     al = json.load(open(RL.S + "all_align.json"))
     consts = collections.defaultdict(collections.Counter)
-    agent = {f.split(".")[0] for f in os.listdir("out/ida_types/before")}
+    agent = RL.agent_set() if hasattr(RL, "agent_set") else agent_set()
     tot = {}
     for label, ida in (("before", before), ("after", after)):
         w = RL.World(gt, ida, {k: dict(v) for k, v in al["pairs"].items()}, consts, agent)

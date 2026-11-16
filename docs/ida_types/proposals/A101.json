@@ -1,0 +1,24 @@
+{"agent": "A101", "structs": [
+  {"name": "bot_data_t",
+   "size": null,
+   "size_evidence": "NOT PROVEN. Lower bound 32696: highest direct bot-pointer access (Bot_SetBotPersistentMatchData@0x141346bd0 writes +32688 as a 4-byte float). Bot_ResetBotInfo@0x1413462e0 also reaches +32692 (dword index 8173). SV_BotInit@0x141359d50 stores bot+16 = a1+34064 = bot+32696, and Bot_ResetBotInfo clears a 0x4400 (17408) byte block through bot[2] at that address, which suggests the bot region reaches at least 50104 if the block is embedded. Upper bound: bot_data_t sits in SvClientMP at +1368 inside _pad558 (178184 bytes) and sendAsActive follows at +179552, so 178184 if the bot is the last member before it. Game-test 131056 is not contradicted, and neither is IDA 261536, but nothing here proves either.",
+   "members": [
+     [0, "botDataHeader", "gentity_s *", "Bot_ResetBotInfo@0x1413462e0: `*bot = entity` (8-byte store at +0; entity is the gentity whose first word is the client index; Bot_ResetLife@0x141346760 reads `*bot` as a pointer)"],
+     [8, "botInfo", "bot_info_t", "Bot_ResetBotInfo@0x1413462e0: `bot[1] = *(*bot + 344)` (pointer at +8 = botInfo+0); Bot_ResetLife@0x141346760 reads botInfo.baseclass_0[352] at +360 (bot[45]). Size of bot_info_t left to A054/A055"],
+     [29440, "botMatchData", "bot_match_data_t", "Bot_SetBotPersistentMatchData@0x141346bd0: raw `mov [rsi+7EE4h], 0` (+32484) and `mov [rsi+7FB0h], edi` (+32688) fall inside it; start follows botInfo (8 + 29432 = 29440). End is not proven, see changed_members"],
+     [32692, "bIsScriptedAgent", "int", "Bot_ResetBotInfo@0x1413462e0: `if (*((_DWORD*)bot + 8173) == 0)` at entry and `*((_DWORD*)bot + 8173) = 0` later (dword index 8173 = +32692). Name taken from the game-test anchor (gt 32860 -> Replay 32692); the offset is what Replay code shows"]
+   ],
+   "changed_members": [
+     ["botDataHeader", "width 4 -> 8 (game-test/IDA unsigned int; Replay gentity_s * pointer at +0)", "Bot_ResetBotInfo@0x1413462e0: `*bot = entity`, and `v6 = (__int16 *)*bot`"],
+     ["bIsScriptedAgent", "offset 32860 -> 32692 (game-test and IDA have it at 32860)", "Bot_ResetBotInfo@0x1413462e0: dword +32692 tested and cleared; name from packet anchor gt 32860 -> Replay 32692 (count 1)"],
+     ["botMatchData", "size 3420 -> 3252 (end moves to 32692), UNCONFIRMED", "Bot_SetBotPersistentMatchData@0x141346bd0: last botMatchData write is +32688 (4 bytes, ends 32692); the flag at 32692 lies outside it. Nothing proves the struct ends there"]
+   ],
+   "unconfirmed": [
+     "size: not proven (see size_evidence). IDA 261536 has a 130480-byte pad at +131048 that no Replay access supports",
+     "botDebugData (gt 98184 at 32864 in game-test, IDA 32864, builder 32696): no Replay access through the bot pointer past +32696; the 17408-byte block at bot+32696 (bot[2]) may be part of it or may be a separate allocation. Not decidable from these functions",
+     "botDataFooter (gt +131048, IDA +261528): no Replay evidence found",
+     "_pad4 (+4, 4 bytes): no Replay access; the 8-byte pointer at +0 covers it",
+     "bot[2] (+16): an 8-byte pointer, the start of a 17408-byte block cleared by Bot_ResetBotInfo. Its owner belongs to the bot_info_t agents (botInfo+8)"
+   ],
+   "notes": "The current IDA members at +0 and +4 are wrong for Replay (one 8-byte pointer, not header + pad), and bIsScriptedAgent is at +32692, not +32860. The bot data is embedded in SvClientMP at +1368 (SV_BotInit), so the coordinator should check the client's _pad558 (SvClientMP, 178184 bytes at +1368) against any proposed bot size before resizing either struct. Bot_ResetBotInfo clears [0,29272) only, so the persistent part starts at 29272 (the difficulty flag Bot_SetBotPersistentMatchData writes at +29272)."}
+]}

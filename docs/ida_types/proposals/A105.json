@@ -1,0 +1,54 @@
+{"agent": "A105", "structs": [
+  {"name": "CgVehicleSystemMP",
+   "size": 1141000,
+   "size_evidence": "CG_MainMP_Init@0x141792e60: memset_0((&g_CG_EntryTablePtr)[v5], 0, 0x116908u) zeroes the whole struct (0x116908 = 1141000) and then calls CgVehicleSystemMP_ctor on it; CgVehicleSystemMP::Init@0x1417b93f0 zeroes up to a1+1141000 (memset a1+1135880, 0x1400). Replaces the builder guess 1141008, which is not supported.",
+   "members": [
+     [0, "baseclass_0", "CgVehicleSystem", "CgVehicleSystemMP_ctor@0x1417b82a0 sets the base vftable at this+0 and builds every base sub-object through this+1135876; the MP tail starts at 1135880"],
+     [1135880, "m_vehEffects", null, "CgVehicleSystemMP::Init@0x1417b93f0: memset_0(a1 + 1135880, 0, 0x1400u) = 5120 bytes (game-test vehicleEffects[128], 40 bytes each)"]
+   ],
+   "changed_members": [
+     ["_pad0 / m_vehicleSlots / _pad1284C", "replaced by baseclass_0 (CgVehicleSystem, 1135880) + m_vehEffects; the 588-byte pad and the m_vehicleSlots blob are wrong", "CgVehicleSystemMP::Init@0x1417b93f0 and CgVehicleSystemMP_ctor@0x1417b82a0 (see below)"],
+     ["total size", "1157400 -> 1141000", "CG_MainMP_Init@0x141792e60: memset_0(..., 0x116908u)"]
+   ],
+   "unconfirmed": ["m_vehEffects element type (only the 40-byte stride is confirmed by 5120 / 128)"],
+   "notes": "The MP class holds one member of its own, m_vehEffects at 1135880, after a base that is 16400 bytes smaller than game-test. The base proposal is in the CgVehicleSystem entry below and is the same delta; it is not my struct, so it is listed for the coordinator."},
+
+  {"name": "CgVehicleSystem",
+   "size": 1135880,
+   "size_evidence": "m_vehEffects starts at Replay +1135880 (CgVehicleSystemMP::Init@0x1417b93f0 memset a1+1135880, 0x1400). CgVehicleSystemMP_ctor@0x1417b82a0 writes the collision vftable at +1135856 and zero at +1135872, so the base ends at +1135880. Game-test base 1152280 minus 16400 = 1135880, the delta is split between the physics manager (-12296) and the event system (-4104).",
+   "members": [
+     [0, "baseclass_0", "BGVehicles", "CgVehicleSystemMP_ctor@0x1417b82a0: this+0 = CgVehicleSystem_vftable_2524CA8; BGVehicles_ctor(this+1121808) is the base sub-object at the event system"],
+     [12, "m_vehicleClients", null, "CgVehicleSystemMP::Init@0x1417b93f0: memset_0(a1+12, 0, 0x241) then flag bytes at 589+588*i = -2 and memset_0(a1+590, 0, 0x123BE): array 12..75276 = 128 x 588"],
+     [75276, "m_scriptableDamageInfo", null, "scriptable size 2052 (75276..77328): CgVehicleSystemMP_ctor@0x1417b82a0 writes dword at this+77324 = scriptable+2048 (m_cursor, game-test +0x800)"],
+     [77328, "m_vehiclePhysicsManager", null, "CgVehicleSystemMP_ctor@0x1417b82a0: memset_0(this+77328, 0, 0xFF000) (1044480 bytes) runs up to the event system at +1121808 (game-test manager 1056776, so -12296)"],
+     [1121808, "m_vehicleEventSystem", "CgVehicleEventSystem", "CgVehicleSystemMP_ctor@0x1417b82a0: BGVehicles_ctor(this+1121808); CgVehicleEventSystem::Init(this+1121808)"],
+     [1135848, "m_vehicleAnimSystem", null, "derived, not read directly: collision vftable at +1135856 with the 4-byte game-test pad before it (game-test anim 1152248 - 16400 = 1135848); UNCONFIRMED position, CONFIRMED end"],
+     [1135856, "m_vehicleCollisionSystem", null, "CgVehicleSystemMP_ctor@0x1417b82a0: *(this+1135856) = CgVehicleSystem_vftable_2524C98"],
+     [1135872, "m_lastPhysicsStepTime", "float", "CgVehicleSystemMP_ctor@0x1417b82a0: *(_QWORD *)(this+1135872) = 0 (8 bytes)"],
+     [1135876, "m_revPriorityUpdateTime", "int", "same 8-byte zero write at +1135872 covers +1135876"]
+   ],
+   "changed_members": [
+     ["m_vehiclePhysicsManager", "1056776 -> 1044480 (-12296)", "CgVehicleSystemMP_ctor@0x1417b82a0: memset_0(this+77328, 0, 0xFF000u); event system object begins at this+1121808 = 77328 + 1044480"],
+     ["m_vehicleEventSystem", "18144 -> 14040 (-4104)", "CgVehicleEventSystem::Init@0x140d5a100: last write is int at +14032 inside RumbleInfo (13984..14040); event system ends where the anim system starts, 1121808 + 14040 = 1135848"],
+     ["baseclass_0 total", "1152280 -> 1135880 (-16400)", "sum of the two deltas above"]
+   ],
+   "unconfirmed": ["m_localClientNum, m_vehicleAnimSystem exact offset (1135848 is derived), manager internal layout (1044480 = 2 x 423936 objects + 2 x 98304 components, no lagTime or pads, unconfirmed)"],
+   "notes": "Base struct for CgVehicleSystemMP. Included so the coordinator sees the 16400-byte shrink is accounted for. Not my entry; apply only through the owner of CgVehicleSystem."},
+
+  {"name": "CgVehicleEventSystem",
+   "size": 14040,
+   "size_evidence": "CgVehicleEventSystem::Init@0x140d5a100: memset_0(this+8712, 0, 0x1400) = playback ids (5120) ends at +13832; last write int at +14032 inside RumbleInfo (13984..14040); the next base member (anim) at 1135848 - 1121808 = 14040.",
+   "members": [
+     [0, "baseclass_0", null, "game-test base 528 bytes (m_lock at 8, m_lastEventTimes at 12); Replay m_sounds starts at 528"],
+     [8712, "m_vehiclePlaybackIds", null, "CgVehicleEventSystem::Init@0x140d5a100: memset_0(this+8712, 0, 0x1400u) = 5120 bytes (game-test 0x3210 - 4104)"],
+     [13832, "m_soundsCursor", "int", "CgVehicleEventSystem::Init@0x140d5a100: *(this+13832) = 0"],
+     [13840, "m_rumbleGraphCarContinuous", "RumbleGraph", "Init@0x140d5a100: name pointer \"CarDrift\" at +13840, int at +13848, floats at +13852..+13860"],
+     [13984, "m_rumbleCarContinuous", "RumbleInfo", "Init@0x140d5a100: name at +13984, float at +13996, rumble graph pointers at +14000..+14024, int at +14032"]
+   ],
+   "changed_members": [
+     ["m_sounds", "12288 -> 8184 (528..8712)", "CgVehicleEventSystem::Init@0x140d5a100: playback ids start at +8712, so the sound array is 8712 - 528 = 8184 bytes"],
+     ["total size", "18144 -> 14040 (-4104)", "Init@0x140d5a100 (end of RumbleInfo at +14040)"]
+   ],
+   "unconfirmed": ["m_sounds element count and type; m_localClientNum at +13836 (only the offset from game-test is known)"],
+   "notes": "Child of CgVehicleSystem (base). Named in case the coordinator has no entry for it; not my entry."}
+]}

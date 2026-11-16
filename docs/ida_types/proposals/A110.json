@@ -1,0 +1,35 @@
+{"agent": "A110", "structs": [
+  {"name": "OnlineMatchmakerOmniscient",
+   "size": null,
+   "size_evidence": "NOT PROVEN EXACTLY. Candidate 1071120 = end of m_eventHandler (vptr stored at this+1071104, 16-byte member) and = packet replay_max_access_end (1071120). The object is a static (OnlineMatchmakerOmniscient::ms_instance at 0x14C27E4B0, GetInstance returns it); no allocator or stride gives its size, so 1071120 is a lower bound. Current IDA 1077400 and game-test 1077544 are both wrong by the lobby shrink of 6424 (see changed_members).",
+   "members": [
+     [0, "m_state", "unsigned int", "Pump@0x141046E10: `m_state = (int)this->m_state` and the switch on it; ctor@0x14103FC80: `*(DWORD *)this = 0`"],
+     [4, "m_lobbyState", "unsigned int", "Pump@0x141046E10: `switch (this->m_lobbyState)` (cases 0,1,2,8,10), and the second switch after the state switch"],
+     [8, "m_controllerIndex", "int", "ctor@0x14103FC80: `*(DWORD *)(this + 8) = -1`; Pump@0x141046E10: `DWServicesAccess::isReady(..., this->m_controllerIndex)`"],
+     [16, "m_playerList", null, "ctor@0x14103FC80: node loop from this+16 with stride 232 (29 QWORDs), 200 nodes; free list head this+46416; sentinel this+46424; list ends at 46440. Node+16 is the Player (GetTeamFor/GetSquadFor/GetPlayerValueByXuid read node+104 = Player.m_userId, node+192/196/208 = Player 0xB0/0xB4/0xC0; UpdatePlayers@0x14104CF40: node+180/184 = Player 0xA4/0xA8 = current/queued member status, SetPlayerCurrentStatus@0x141049B50 uses player+164/168)"],
+     [46440, "m_responseBuffer", "char[16384]", "ctor@0x14103FC80: the player list ends at 46440 (position only; the 16384 size is game-test and fits the next confirmed member at 62824)"],
+     [62824, "m_response", "bdStringResult", "ctor@0x14103FC80: `bdSerializedStringRecord_CtorBody(this + 62824, 1)`; RunLobbyDisband/ResetMatchmaking access 62856 and 62864 (packet anchors, inside the 64-byte result)"],
+     [62888, "m_requestBuffer", "char[16384]", "position: 62824 + 64 = 62888; the next confirmed member m_outstandingTaskId is at 79272 (packet anchor identity), so 62888..79272 is 16384 bytes"],
+     [79272, "m_outstandingTaskId", "unsigned int", "packet anchors: identity access pairs at 79272 (3 hits, RunLobbyDisband and ResetMatchmaking in packet replay_functions); not re-read in this pass"],
+     [79280, "m_mmingData", null, "ctor@0x14103FC80: `*(QWORD *)(this + 79280) = 0` and `*(DWORD *)(this + 79344) = 0`; Pump@0x141046E10: `*(QWORD *)&this->m_mmingData[72]` compared with Online_GetEpochTimeFromAuth_ms, and `m_mmingData[64]` DWORD in case 6"],
+     [79632, "m_lobbyData", null, "ctor@0x14103FC80: `MatchMakerOmniLobbyData_ctor(this + 79632)`; TaskUpdateLobbyDocument@0x14104BA20: `*(QWORD *)(a1 + 79656)` compared with the lobby doc id (lobby +24 = m_lobbyid); Pump@0x141046E10: `this->m_lobbyData[496]` (lobby +0x1F0 = m_amITheLobbyHost)"],
+     [172032, "m_lobbyDocuments", "bdLobbyDocuments", "ctor@0x14103FC80: `bdLobbyDocuments::bdLobbyDocuments(this + 172032, 1)`"],
+     [172096, "m_params", null, "ctor@0x14103FC80: stores at 172096..172160 (DWORD -1, QWORD 0 ..., XUID NullXUID at 172136, DWORD 1 at 172152), then `QosPayload::InitEntryList(this + 172168)`; the block 172096..172168 is 72 bytes (game-test OmniscientMatchmakingParams 72)"],
+     [172168, "m_qos", "Qos", "ctor@0x14103FC80: `QosPayload::InitEntryList(this + 172168)` is the first store after the params block. Size 882424 is game-test and NOT re-derived here"],
+     [1070976, "m_telemetry", "OnlineMatchmakerTelemetry", "ctor@0x14103FC80: `OnlineMatchmakerTelemetry::OnlineMatchmakerTelemetry(this + 1070976)`; Pump@0x141046E10: telemetry ResetLobby/RemovePlayer reach the same address (decompiler index 9960 into the scratch view = 1070976)"],
+     [1071008, "m_callbacks", "tCallbacks", "OnlineMatchmakerOmniscient::SetCallbacks (packet replay_functions): eight QWORD stores at this+1071008..1071064 (stride 8); Pump reads this+1071072 (callbacks +64)"],
+     [1071104, "m_eventHandler", "OnlineAsyncMatchmakingEventHandler", "ctor@0x14103FC80: `*(QWORD *)(this + 1071104) = k_OnlineMatchmakerOmniscientVTable`; Pump reads 1071104 (packet replay_functions)"]
+   ],
+   "changed_members": [
+     ["m_lobbyData", "size 98824 -> 92400 (child MatchMakerOmniLobbyData; the child owner must apply it)", "MatchMakerOmniLobbyData_ctor@0x14103F870: list heads at lobby +5304..+51920; the 6424-byte PlayerValue<int> list that game-test has at lobby +0xB7F8 is not built. A 4824-byte XUID-node list (24-byte nodes) sits at lobby +0xB7F8 (47096) and `*(this + 51920) = 0` (m_qosing) follows directly at lobby +0xCAD0"],
+     ["m_lobbyDocuments .. m_eventHandler", "all later members move -6424 (game-test 178456 -> Replay 172032, ..., 1077528 -> 1071104)", "ctor@0x14103FC80 offsets: 172032, 172096, 172168, 1070976, 1071008, 1071104. Each one is game-test minus 6424; the shift is the lobby size change above"],
+     ["m_qos", "size 882424 (game-test), start 172168; end 1054592 derived as the start of m_scratchBuffer", "UNCONFIRMED: see unconfirmed"]
+   ],
+   "unconfirmed": [
+     "m_scratchBuffer (game-test char[16384]) at 1054592: INTERP only. 1070976 (telemetry, ctor) minus 16384; no direct access to the scratch base was found",
+     "m_qos size 882424 and its end at 1054592: not re-derived; relies on the interp scratch base",
+     "m_outstandingTaskId 79272 and m_requestBuffer 62888: rely on packet anchors and positions, not on a read function in this pass",
+     "bdTeamProfile conflict: the lobby ctor constructs a bdTeamProfile at lobby +52232 (Replay 131864), but game-test has m_syncLobbyDocsResult (bdBoolResult, 56 bytes) at lobby 0xE520 = 58656 (-6424 = 52232). TaskUpdateLobbyDocument reads flag `a1 + 131896` (= 131864 + 32). The type disagrees with game-test; the lobby child owner must resolve it"
+   ],
+   "notes": "Residuals in the packet are artifacts. The packet puts m_response at 62808 (-40 / +16 residuals); the constructor stores bdSerializedStringRecord at 62824 (the game-test offset), and m_outstandingTaskId is identity at 79272, so the members between are unchanged. The entire shift is inside m_lobbyData (lobby -6424 from the 6424-byte additional-slots list that Replay does not build), which moves every later member by -6424. The size proposal depends on the lobby child (92400) and on the exact size of m_qos (unconfirmed). Player list node offsets used for the evidence are the Player fields in the game-test layout (Player 0xB0 team, 0xB4 squad, 0xC0 performance, 0xA4/0xA8 statuses, 0x60 bIsLocal)."}
+]}

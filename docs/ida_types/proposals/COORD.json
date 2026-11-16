@@ -1,0 +1,37 @@
+{
+ "agent": "COORD",
+ "structs": [
+  {
+   "name": "FlightDynamics",
+   "size": 1264,
+   "size_evidence": "base of HelicopterDynamics, whose first own member m_MainRotor is at Replay +1264 (A102: HelicopterDynamics Setup / SaveToMemFile / LoadFromMemFile); game-test has it at 1312 = sizeof(FlightDynamics), no gap; the access at +2780 is a SoundData address of the derived HelicopterDynamics computed in FixUpLoad (A107), not a FlightDynamics member",
+   "members": [],
+   "ignore_max_access": true
+  },
+  {
+   "name": "BgVehiclePhysicsGround",
+   "size": 3112,
+   "size_evidence": "BgVehiclePhysicsTank (base BgVehiclePhysicsTreadedBase : BgVehiclePhysicsGround, no own members in TreadedBase) writes its first own member m_treadTorqueRatio at +0xC28 = 3112 and m_movDirection at +0xC30: BgVehiclePhysicsTank::Setup@0x140D1C251/0x140D1C258, BgVehiclePhysicsTank::SaveToMemFile@0x140D23D85; game-test Tank's first member is at 3240 = sizeof(BgVehiclePhysicsGround). The qword write at +3112 in the IDA-named BgVehiclePhysicsGround_ResetRuntimeState is the tank's member",
+   "members": []
+  },
+  {
+   "name": "TaskItem",
+   "size": 96,
+   "size_evidence": "TaskManager::Update@0x1413CCB97/0x1413CCB9B and TaskManager::CreateTask@0x1413CC670 step through m_tasks by 0x60; TaskManager's m_nextLocalTaskId is at +0x3000 = 128 * 96 (CreateTask@0x1413CC6CF reads [rbp+3000h]); GenericTask is 88 (A109)",
+   "members": [
+    [
+     0,
+     "m_state",
+     "unsigned int",
+     "A109: state at +0"
+    ],
+    [
+     8,
+     "m_task",
+     "GenericTask",
+     "A109: task at +8"
+    ]
+   ]
+  }
+ ]
+}

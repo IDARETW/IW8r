@@ -25,6 +25,16 @@ BASE_ALIGN = {1: 1, 2: 2, 4: 4, 8: 8, 16: 16}
 BASE_C = {"unsigned": "unsigned int", "char16_t": "unsigned __int16", "char32_t": "unsigned int", "HRESULT": "int",
           "std::nullptr_t": "void *", "char8_t": "char", "signed char": "char"}
 MANUAL_VERIFIED = {"cg_t", "CgGlobalsMP", "CgGlobalsSP"}
+USE_HINTS = False   # sizes implied by one parent / derived layout proved unreliable (CgWeaponSystem 4824 -> 16)
+
+
+def agent_set():
+    """Structs the agent waves 1-5 edited from Replay evidence (snapshot in out/ida_types/before written before the
+    report pass started; report-pass agents only read IDA, their snapshots do not make a struct verified)."""
+    d = "out/ida_types/before"
+    mark = "out/ida_types/report_pass_start.txt"
+    cut = float(open(mark).read()) if os.path.exists(mark) else float("inf")
+    return {f.split(".")[0] for f in os.listdir(d) if os.path.getmtime(os.path.join(d, f)) < cut}
 
 
 def sanitize(n):
@@ -52,8 +62,29 @@ class World:
                 self.i2g[n] = g
         self.memo_align = {}
         self.alloc = json.load(open(S + "alloc_sizes.json")) if os.path.exists(S + "alloc_sizes.json") else {}
+        self.props = {}
+        pdir = "out/ida_types/proposals"
+        for fn in sorted(os.listdir(pdir)) if os.path.isdir(pdir) else []:
+            if fn.endswith(".json"):
+                try:
+                    d = json.load(open(os.path.join(pdir, fn)))
+                except Exception:
+                    continue
+                for x in d.get("structs", []):
+                    if isinstance(x, dict) and x.get("name"):
+                        x["_agent"] = d.get("agent", fn[:-5])
+                        old = self.props.get(x["name"])
+                        if old:
+                            old["members"] = list(old.get("members", [])) + list(x.get("members", []))
+                            if isinstance(x.get("size"), int):
+                                old["size"], old["_agent"] = x["size"], x["_agent"]
+                            if x.get("ignore_max_access"):
+                                old["ignore_max_access"] = True
+                        else:
+                            self.props[x["name"]] = x
         self.res = {}            # gt name -> result
-        self.size_hint = {}      # gt name -> Counter of Replay sizes implied by parents
+        self.size_hint = {}      # gt name -> Counter of Replay sizes implied by parents / derived classes
+        self.next_hint = {}
         sc = collections.Counter(gt[g]["size"] for g in self.g2i)
         self.size_amb = sc
 
@@ -309,6 +340,21 @@ class World:
                     if m:
                         votes[k][m[0] - (y[0] - s["off"])] += 5
                         break
+        prop = self.props.get(ida_name)
+        if prop:
+            pm = {}
+            for x in prop.get("members", []):
+                if isinstance(x, list) and len(x) >= 2 and isinstance(x[0], int):
+                    pm[x[1]] = x[0]
+            for k, s in enumerate(sl):
+                for y in s["group"]:
+                    nm = y[1] if not y[5] else None
+                    if nm in pm:
+                        votes[k][pm[nm] - (y[0] - s["off"])] += 50
+                        break
+                    if y[5] and ("baseclass_0" in pm or "baseclass_%X" % y[0] in pm):
+                        votes[k][pm.get("baseclass_0", pm.get("baseclass_%X" % y[0]))] += 50
+                        break
         pts = []
         for k, c in enumerate(votes):
             if not c:
@@ -329,7 +375,9 @@ class World:
         gsz = t["size"]
         proof = None
         target = None
-        if agent and it["size"] > 0 and (it["size"] != gsz or g in MANUAL_VERIFIED):
+        if prop and isinstance(prop.get("size"), int) and prop["size"] > 0:
+            target, proof = prop["size"], "agent proposal %s" % prop.get("_agent", "")
+        elif agent and it["size"] > 0 and (it["size"] != gsz or g in MANUAL_VERIFIED):
             target, proof = it["size"], "agent-verified"
         elif g in self.alloc:
             target, proof = self.alloc[g]
@@ -343,11 +391,12 @@ class World:
                 amb = self.size_amb.get(gsz, 1)
                 if n1 >= 3 and n1 >= 2 * n2 and amb <= 2 and gsz >= 24:
                     target, proof = r1, "sizeof votes %d" % n1
-            h = None
+            h = self.size_hint.get(g) if USE_HINTS else None
             if target is None and h:
                 (r1, n1), = h.most_common(1)
-                if n1 >= 2 or len(h) == 1:
-                    target, proof = r1, "parent layouts"
+                n2 = h.most_common(2)[1][1] if len(h) > 1 else 0
+                if n1 >= 2 * n2 + 1:
+                    target, proof = r1, "layout of %d parent/derived structs" % n1
         # ---- lay out ----
         order = sorted(fixed)
         roff = [None] * len(sl)
@@ -422,7 +471,19 @@ class World:
         for c, d in resized.items():
             s = sl[c]
             if s["child"] and s["kind"] == "struct" and not s["fixed"] and conf[c] == "absorbed":
-                self.size_hint.setdefault(s["child"], collections.Counter())[s["rsize"]] += 1
+                self.next_hint.setdefault(s["child"], collections.Counter())[s["rsize"]] += 1
+        # a base class ends where the derived class's first own (anchored) field starts
+        for k in range(len(sl) - 1):
+            s, nx = sl[k], sl[k + 1]
+            if not (s["base"] and s["child"] and s["el"] and roff[k] is not None and conf[k + 1] == "anchor"):
+                continue
+            if self.res.get(s["child"], {}).get("size_proof"):
+                continue
+            if True:
+                gbs = self.gt[s["child"]]["size"]
+                gap = nx["off"] - s["off"] - gbs
+                if gap >= 0:
+                    self.next_hint.setdefault(s["child"], collections.Counter())[fixed[k + 1] - roff[k] - gap] += 1
         for k, s in enumerate(sl):
             s["roff"], s["conf"] = roff[k], conf[k]
             s["how"] = how.get(k) or ("resized %+d" % resized[k] if k in resized else (conf[k] or ""))
@@ -443,7 +504,7 @@ class World:
         maxr = max((int(k.split(":")[1]) for k in self.pairs.get(g, {})), default=-1)
         self.res[g] = {"ida": ida_name, "size": size, "gt_size": gsz, "ida_size": it["size"], "size_proof": size_proof,
                        "slots": sl, "gstarts": gstarts, "anchored": anchored, "evidence": nanch, "agent": agent,
-                       "unresolved": unresolved, "max_replay": maxr}
+                       "unresolved": unresolved, "max_replay": maxr, "prop": bool(prop)}
 
     def pushdown(self, order, orig):
         """Top-down sweep: access pairs of each parent that land in a placed by-value child become pairs of that
@@ -578,7 +639,7 @@ def compare(w, g):
     moved = [[m[1], m[0], wn[m[1]][0], wn[m[1]][4]] for m in mem if m[1] in wn and wn[m[1]][0] != m[0]]
     info["moved"] = moved
     size_change = r["size"] != it["size"]
-    if r["agent"] or (not moved and not size_change):
+    if (r["agent"] and not r.get("prop")) or (not moved and not size_change):
         f = fills(GOOD + (() if r["agent"] else ("open", "prior")))
         return ("fill" if f else "same"), f, info
     # candidate relayout: confident builder fields + IDA members that are not game-test fields and do not overlap
@@ -603,13 +664,15 @@ def compare(w, g):
     items.sort(key=lambda x: x[0])
     new = score(w, g, items)
     info.update({"score_new": new, "dropped": gone})
-    proven_size = r["size_proof"] is not None and (r["size_proof"] != "parent layouts")
+    proven_size = r["size_proof"] is not None
     reasons = []
     if size_change and not proven_size:
         reasons.append("size %d -> %d not proven" % (it["size"], r["size"]))
-    if size_change and r["max_replay"] >= r["size"]:
+    prop = w.props.get(r["ida"]) or {}
+    if size_change and r["max_replay"] >= r["size"] and not prop.get("ignore_max_access"):
         reasons.append("Replay accesses +%d past the new size" % r["max_replay"])
-    if moved and not (new[0] > old[0] and new[1] <= old[1] // 2):
+    better = (new[0] > old[0] and new[1] <= old[1] // 2) or (r.get("prop") and new[0] >= old[0] and new[1] <= old[1])
+    if moved and not better:
         reasons.append("moves not better supported (ok/bad %s -> %s)" % (old, new))
     if not moved and size_change and not reasons and new[1] > old[1]:
         reasons.append("more conflicts after resize")
@@ -633,7 +696,7 @@ def main():
     for k, n in al["consts"].items():
         g, r = map(int, k.split(":"))
         consts[g][r] += n
-    agent = {f.split(".")[0] for f in os.listdir("out/ida_types/before")}
+    agent = agent_set()
     w = World(gt, ida, al["pairs"], consts, agent)
     order = w.order()
     orig = {k: dict(v) for k, v in w.pairs.items()}
@@ -646,7 +709,7 @@ def main():
                 d[k] = d.get(k, 0) + n
         w.pairs = merged
         w.res = {}
-        w.size_hint = {} if p == 0 else w.size_hint
+        w.size_hint, w.next_hint = w.next_hint, {}
         for g in order:
             w.build(g)
         extra = w.pushdown(order, orig)
