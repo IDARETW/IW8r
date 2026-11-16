@@ -1,0 +1,54 @@
+// Copyright 2026 xensik. All rights reserved.
+//
+// Use of this source code is governed by a GNU GPLv3 license
+// that can be found in the LICENSE file.
+
+#include "xsk/stdinc.hpp"
+#include "xsk/utils/zlib.hpp"
+#include "zlib.h"
+
+namespace xsk::utils
+{
+
+auto zlib::compress(std::vector<u8> const& data) -> std::vector<u8>
+{
+    auto length = compressBound(static_cast<uLong>(data.size()));
+
+    auto output = std::vector<u8>{};
+    output.resize(length);
+
+    auto result = compress2(reinterpret_cast<Bytef*>(output.data()), &length, reinterpret_cast<const Bytef*>(data.data()), static_cast<uLong>(data.size()), Z_BEST_COMPRESSION);
+
+    if (result == Z_OK)
+    {
+        output.resize(length);
+        return output;
+    }
+
+    throw error(std::format("zlib compress error {}", result));
+}
+
+auto zlib::decompress(std::vector<u8> const& data, const u32 length) -> std::vector<u8>
+{
+    auto output = std::vector<u8>{};
+    output.resize(length);
+
+    // uLongf is 64-bit on LP64, do not alias it over a u32
+    auto size = static_cast<uLongf>(length);
+    auto result = uncompress(reinterpret_cast<Bytef*>(output.data()), &size, reinterpret_cast<const Bytef*>(data.data()), static_cast<uLong>(data.size()));
+
+    if (result == Z_OK)
+    {
+        output.resize(size);
+        return output;
+    }
+
+    throw error(std::format("zlib decompress error {}", result));
+}
+
+auto zlib::crc32(u8 const* data, const usize size) -> u32
+{
+    return static_cast<u32>(::crc32(0, reinterpret_cast<const Bytef*>(data), static_cast<uInt>(size)));
+}
+
+} // namespace xsk::utils

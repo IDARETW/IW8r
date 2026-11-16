@@ -27,6 +27,29 @@ target("iw8r_core")
     -- stb_image (third_party/stb, public domain / MIT): included only by src/core/stb_image_impl.cpp.
     add_includedirs("third_party/stb")
 
+-- zlib (third_party/zlib, zlib licence): compressed script stacks (iw8r-gsc) and the integrated tools.
+target("zlib")
+    set_kind("static")
+    set_warnings("none")
+    add_files("third_party/zlib/*.c")
+    add_includedirs("third_party/zlib", {public = true})
+
+-- The IW8 GSC compiler (gsc-tool by xensik, GPL-3: src/tools/gsc/LICENSE), only what compiling IW8 scripts needs.
+target("xsk_gsc")
+    set_kind("static")
+    set_warnings("none")
+    add_deps("zlib")
+    add_files("src/tools/gsc/src/utils/*.cpp", "src/tools/gsc/src/gsc/*.cpp", "src/tools/gsc/src/gsc/common/*.cpp",
+              "src/tools/gsc/src/gsc/engine/iw8*.cpp", "src/tools/gsc/api/*.cpp")
+    add_includedirs("src/tools/gsc/include", {public = true})
+
+-- iw8r-gsc: compiles a map's scripts as "gsc-tool -m comp -g iw8 -s pc" does (the build calls it).
+target("iw8r-gsc")
+    set_kind("binary")
+    set_warnings("none")
+    add_deps("xsk_gsc")
+    add_files("src/tools/gsc/cli/*.cpp")
+
 -- Command line tool used by mappers' scripts and by the milestone tests.
 target("iw8r")
     set_kind("binary")
@@ -36,7 +59,7 @@ target("iw8r")
 -- Unit + fixture tests (synthetic, IW8 sample room, stock IW8 MapEnts, optional grammar corpus).
 target("iw8r_tests")
     set_kind("binary")
-    add_deps("iw8r_core")
+    add_deps("iw8r_core", "xsk_gsc")
     add_files("tests/*.cpp")
 
 -- Shared viewport code: D3D11 scene renderer, render/pick cache, camera math.
@@ -72,7 +95,8 @@ target("qtads")
 target("IW8Radiant")
     add_rules("qt.widgetapp")
     add_frameworks("QtCore", "QtGui", "QtWidgets", "QtTest", "QtNetwork")
-    add_deps("iw8r_core", "iw8r_viewport", "qtads")
+    -- iw8r-gsc is built with the editor: the build compiles map scripts with it (Tool Paths gsc_tool).
+    add_deps("iw8r_core", "iw8r_viewport", "qtads", "iw8r-gsc")
     add_files("src/qtapp/*.cpp")
     add_files("src/qtapp/*.h")
     on_load(function (target) target:set("qt.moc.flags", "-D_WIN32", "-DWIN32", "-D_WIN64", "-D_MSC_VER=1944") end)

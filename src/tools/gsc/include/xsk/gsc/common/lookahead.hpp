@@ -1,0 +1,39 @@
+// Copyright 2026 xensik. All rights reserved.
+//
+// Use of this source code is governed by a GNU GPLv3 license
+// that can be found in the LICENSE file.
+
+#pragma once
+
+namespace xsk::gsc
+{
+
+struct lookahead
+{
+    char const* position{ nullptr };
+    usize available{ 0 };
+    char last_byte{ 0 };
+    char curr_byte{ 0 };
+
+    lookahead(char const* data, usize size);
+
+    auto advance() -> void
+    {
+        ++position;
+        last_byte = curr_byte;
+
+        if (available == 0 || --available == 0) [[unlikely]]
+        {
+            available = 0;
+            curr_byte = 0;
+        }
+        else
+        {
+            curr_byte = *position;
+        }
+    }
+
+    auto ended() const { return available == 0; };
+};
+
+} // namespace xsk::gsc

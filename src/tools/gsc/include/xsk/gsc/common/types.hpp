@@ -1,0 +1,130 @@
+// Copyright 2026 xensik. All rights reserved.
+//
+// Use of this source code is governed by a GNU GPLv3 license
+// that can be found in the LICENSE file.
+
+#pragma once
+
+#include "xsk/gsc/common/asset.hpp"
+#include "xsk/gsc/common/scope.hpp"
+#include "xsk/gsc/common/buffer.hpp"
+#include "xsk/gsc/common/assembly.hpp"
+#include "xsk/gsc/common/location.hpp"
+#include "xsk/gsc/common/exception.hpp"
+#include "xsk/gsc/common/lookahead.hpp"
+#include "xsk/gsc/common/directive.hpp"
+#include "xsk/gsc/common/space.hpp"
+#include "xsk/gsc/common/token.hpp"
+#include "xsk/gsc/common/define.hpp"
+#include "xsk/gsc/common/ast.hpp"
+
+namespace xsk::gsc
+{
+
+enum class instance : u8
+{
+    server,
+    client,
+};
+
+enum class build : u8
+{
+    prod       = 0,
+    dev_blocks = 1 << 0,
+    dev_maps   = 1 << 1,
+    dev        = dev_blocks | dev_maps,
+};
+
+inline auto operator&(build lhs, build rhs) -> build
+{
+    return static_cast<build>(static_cast<std::underlying_type_t<build>>(lhs) & static_cast<std::underlying_type_t<build>>(rhs));
+}
+
+enum class endian : u8
+{
+    little,
+    big,
+};
+
+enum class system : u8
+{
+    pc32,
+    pc64,
+    ps3,
+    xb2,
+};
+
+enum class engine : u8
+{
+    iw5,
+    iw6,
+    iw7,
+    iw8,
+    iw9,
+    s1,
+    s2,
+    s4,
+    h1,
+    h2,
+};
+
+struct feature
+{
+    enum values : u32
+    {
+        none       = 0,
+        str4       = 1 << 0,  // strings size 4
+        tok4       = 1 << 1,  // tokenid size 4
+        waitframe  = 1 << 2,  // waitframe opcode
+        params     = 1 << 3,  // packed func params
+        boolfuncs  = 1 << 4,  // isdefined, istrue
+        boolnotand = 1 << 5,  // !&& expr opcode
+        offs8      = 1 << 6,  // offset shift by 8
+        offs9      = 1 << 7,  // offset shift by 9
+        extension  = 1 << 8,  // farcall paths keep extension
+        hash       = 1 << 9,  // iw9 identifiers
+        farcall    = 1 << 10, // iw9 new call system
+        foreach    = 1 << 11, // iw9 foreach
+        anim8      = 1 << 12, // animation ref size 8
+    };
+
+    feature(const values value) : value_(value) {}
+    operator values() const  { return value_; }
+    operator bool() const { return value_ != values::none; }
+    auto operator|(const feature::values rhs) const -> feature::values { return (value_ | rhs); }
+    auto operator&(const feature::values rhs) const -> feature::values { return (value_ & rhs); }
+
+    friend auto operator|(const feature::values lhs, const feature::values rhs) -> feature::values
+    {
+        return static_cast<feature::values>(static_cast<std::underlying_type_t<feature::values>>(lhs) | static_cast<std::underlying_type_t<feature::values>>(rhs));
+    }
+
+    friend auto operator&(const feature::values lhs, const feature::values rhs) -> feature::values
+    {
+        return static_cast<feature::values>(static_cast<std::underlying_type_t<feature::values>>(lhs) & static_cast<std::underlying_type_t<feature::values>>(rhs));
+    }
+
+private:
+    values value_;
+};
+
+// string obfuscation routines
+enum class crypt : u8
+{
+    none,
+    mul,
+    add,
+    sub,
+    rot,
+};
+
+enum class switch_type
+{
+    none,
+    integer,
+    string,
+};
+
+struct context;
+
+} // namespace xsk::gsc

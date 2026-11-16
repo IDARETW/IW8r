@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-16
 
+- **The map script compiler is part of the project** (owner: "stop relying on ACTs, gsc-tool, and the x64-zt fork";
+  "get the three implemented cleanly into the src"; "only integrate what's needed"). `iw8r-gsc.exe` is built from
+  `src/tools/gsc` (gsc-tool 1.6.2 by xensik, GPL-3: only the IW8 compiler, no decompiler or other games) and is the
+  default Tool Paths `gsc_tool`; the package ships it. Proven against gsc-tool.exe 1.6.2 on every converted map script
+  on the workstation (62): same `.gscbin` bytes, same messages. The plan for ACTS and x64-zt is in
+  [docs/PLAN_OWN_TOOLS.md](docs/PLAN_OWN_TOOLS.md).
 - **Effect previews show what they left out** (owner: "a lot of the vfx dont show anything in the preview"; 38 of the
   159 exported effects drew nothing). Runners play their child effects where their particles are (the children are
   exported from the parent's zone when needed; 3 levels deep), model particles draw their XModel (shells, debris,

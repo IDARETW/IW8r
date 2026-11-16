@@ -1,0 +1,95 @@
+// Copyright 2026 xensik. All rights reserved.
+//
+// Use of this source code is governed by a GNU GPLv3 license
+// that can be found in the LICENSE file.
+
+#pragma once
+
+#include "xsk/gsc/common/types.hpp"
+#include "xsk/gsc/lexer.hpp"
+
+namespace xsk::gsc
+{
+
+struct preprocessor
+{
+private:
+    context* ctx_;
+    std::stack<lexer> lexer_;
+    std::vector<std::string> includes_;
+    std::stack<std::stack<directive>> indents_;
+    std::unordered_map<std::string_view, directive::kind> directives_;
+    std::unordered_map<std::string, define> defines_;
+    std::set<std::string> reject_;
+    std::deque<token> tokens_;
+    std::vector<token> expr_;
+    std::string date_;
+    std::string time_;
+    usize curr_expr_{ 0 };
+    u32 expand_{ 0 };
+    u32 skip_{ 0 };
+
+public:
+    preprocessor(context* ctx, std::string const& name, u8 const* data, usize size);
+    auto process() -> token;
+    auto push_header(location const& loc, std::string const& file) -> void;
+    auto pop_header() -> void;
+    auto ban_header(location const& loc) const -> void;
+
+private:
+    auto skip_line() -> void;
+    auto next_token() -> token;
+    auto read_token() -> token;
+    auto read_directive(token const& tok) -> void;
+    auto read_directive_if(token const& tok) -> void;
+    auto read_directive_ifdef(token const& tok) -> void;
+    auto read_directive_ifndef(token const& tok) -> void;
+    auto read_directive_elif(token const& tok) -> void;
+    auto read_directive_elifdef(token const& tok) -> void;
+    auto read_directive_elifndef(token const& tok) -> void;
+    auto read_directive_else(token const& tok) -> void;
+    auto read_directive_endif(token const& tok) -> void;
+    auto read_directive_define(token const& tok) -> void;
+    auto read_directive_undef(token const& tok) -> void;
+    auto read_directive_pragma(token const& tok) -> void;
+    auto read_directive_warning(token const& tok) -> void;
+    auto read_directive_error(token const& tok) -> void;
+    auto read_directive_line(token const& tok) -> void;
+    auto read_directive_include(token const& hash, token& name) -> void;
+    auto read_directive_inline(token const& hash, token& name) -> void;
+    auto read_directive_usingtree(token const& hash, token& name) -> void;
+    auto read_hashtoken(token const& hash) -> void;
+    auto read_hashtoken_animtree(token const& hash, token& name) -> void;
+    auto expandable(token& tok) -> define*;
+    auto paste(token const& lhs, token const& rhs) -> token;
+    auto expand(token& tok, define& def) -> bool;
+    auto expand_arg(std::vector<token> const& arg) -> std::vector<token>;
+    auto expand_params(token const& tok, define const& def) -> std::vector<std::vector<token>>;
+    auto expect(token const& tok, const token::kind expected, spacing space = spacing::none) const -> void;
+    auto evaluate() -> bool;
+    auto eval_next() -> token&;
+    auto eval_peek() -> token&;
+    auto eval_prev() -> token&;
+    auto eval_atend() -> bool;
+    auto eval_check(token::kind type) -> bool;
+    auto eval_match(token::kind type) -> bool;
+    auto eval_consume(token::kind type, std::string_view msg);
+    auto eval_expr() -> i64;
+    auto eval_expr_or() -> i64;
+    auto eval_expr_and() -> i64;
+    auto eval_expr_bwor() -> i64;
+    auto eval_expr_bwexor() -> i64;
+    auto eval_expr_bwand() -> i64;
+    auto eval_expr_eq() -> i64;
+    auto eval_expr_lge() -> i64;
+    auto eval_expr_shift() -> i64;
+    auto eval_expr_add() -> i64;
+    auto eval_expr_factor() -> i64;
+    auto eval_expr_unary() -> i64;
+    auto eval_expr_primary() -> i64;
+    auto get_local_time(std::tm& l_time) const -> void;
+    auto get_date_define(std::tm const* time_p) -> void;
+    auto get_time_define(std::tm const* time_p) -> void;
+};
+
+} // namespace xsk::gsc

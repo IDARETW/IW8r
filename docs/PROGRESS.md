@@ -2,6 +2,13 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-16 (owner: integrate ACTS, gsc-tool and x64-zt into src for the open-source release, only what is needed):
+  - gsc-tool done: src/tools/gsc (1.6.2, synced by tools/patches/gsc_sync_upstream.py + gsc_trim_context.py),
+    api/iw8r_gsc.* (iw8r::gsc::compileIw8Script), cli -> bin/<mode>/iw8r-gsc.exe (built with the editor), default
+    gsc_tool path; tests/gsc_compiler_tests.cpp + tests/data/gsc. NOTE x64-zt's submodule is 1.4.10 (no ".gsc" on
+    far-call names); 1.6.2 is what the editor used and what the game ran.
+  - Next: x64-zt (src/tools/zonetool, iw3 + iw8 + convert/iw3_iw8 only) then ACTS (mw19replay handler closure); plan
+    and parity method in docs/PLAN_OWN_TOOLS.md.
 - 2026-11-16 (owner: blank effect previews; "a one-time full metadata and thumbnails for everything we can in the
   menus ... include it as part of the project"; "compress previews too"; "stop relying on ACTs, gsc-tool, and the
   x64-zt fork"):
