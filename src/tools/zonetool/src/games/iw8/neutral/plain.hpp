@@ -1,0 +1,688 @@
+#pragma once
+
+#include "resolver.hpp"
+#include "../iw8.hpp"
+#include "../zone/loader.hpp"
+
+#include <zone/script_strings.hpp>
+#include <zone/zone_memory.hpp>
+
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#include <cstring>
+#include <map>
+#include <optional>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <variant>
+#include <vector>
+
+// The reads and writes that the generated adapters (tools/gen_iw8_neutral.py) share: strings, character buffers, enum
+// names, arrays with a count, asset references by name, and the members that must hold nothing.
+namespace zonetool::iw8::neutral::plain
+{
+	constexpr std::size_t rounded(const std::size_t size)
+	{
+		return (size + 7) & ~std::size_t(7);
+	}
+
+	// An upper bound for one allocation of this many bytes: the memory of a rebuild is sized in advance from these.
+	constexpr std::size_t sized(const std::size_t size)
+	{
+		return rounded(size) + 32;
+	}
+
+	// The memory one asset is rebuilt in. Equal strings of an asset are one string, as in the zones the game ships.
+	class context
+	{
+	public:
+		explicit context(zone_memory& memory)
+			: memory_(memory)
+		{
+		}
+
+		template <typename T>
+		T* allocate(const std::size_t count = 1)
+		{
+			return this->memory_.allocate<T>(count);
+		}
+
+		template <typename T>
+		T* manual_allocate(const std::size_t size, const std::size_t count = 1)
+		{
+			return this->memory_.manual_allocate<T>(size, count);
+		}
+
+		// The pointer written for an id of pointer_ids in this asset, or the result of make() when there is none yet.
+		template <typename Native, typename Make>
+		Native* shared(const std::uint32_t id, Make&& make)
+		{
+			auto& written = this->shared_[id];
+			if (!written)
+			{
+				written = make();
+			}
+
+			return static_cast<Native*>(written);
+		}
+
+		char* text(const std::string& value)
+		{
+			auto& pooled = this->strings_[value];
+			if (!pooled)
+			{
+				auto* copy = this->memory_.manual_allocate<char>(rounded(value.size() + 1));
+				std::memcpy(copy, value.data(), value.size());
+				pooled = copy;
+			}
+
+			return pooled;
+		}
+
+	private:
+		zone_memory& memory_;
+		std::map<std::string, char*> strings_;
+		std::map<std::uint32_t, void*> shared_;
+	};
+
+	// While it lives, the pointers that an asset reads get ids in the order they are met, so that members that point to the
+	// same object (the events that two states share) show it: 0 for no pointer, then 1, 2, ...
+	class pointer_ids
+	{
+	public:
+		pointer_ids()
+			: previous_(current_)
+		{
+			current_ = this;
+		}
+
+		~pointer_ids()
+		{
+			current_ = previous_;
+		}
+
+		pointer_ids(const pointer_ids&) = delete;
+		pointer_ids& operator=(const pointer_ids&) = delete;
+
+		// The id of the pointer and whether this is the first member that points to it.
+		static std::pair<std::uint32_t, bool> claim(const void* pointer)
+		{
+			if (!pointer)
+			{
+				return {0, false};
+			}
+
+			const auto found = current_->ids_.try_emplace(pointer, static_cast<std::uint32_t>(current_->ids_.size() + 1));
+			return {found.first->second, found.second};
+		}
+
+		static std::uint32_t of(const void* pointer)
+		{
+			if (!pointer)
+			{
+				return 0;
+			}
+
+			const auto found = current_->ids_.try_emplace(pointer, static_cast<std::uint32_t>(current_->ids_.size() + 1));
+			return found.first->second;
+		}
+
+	private:
+		pointer_ids* previous_;
+		std::map<const void*, std::uint32_t> ids_;
+		static inline pointer_ids* current_ = nullptr;
+	};
+
+	// The type of the module that an event list or a module member is read or written in, for the structs whose meaning
+	// depends on it (the generated tagged unions set it).
+	class module_scope
+	{
+	public:
+		explicit module_scope(const std::uint32_t type)
+			: previous_(current_)
+		{
+			current_ = type;
+		}
+
+		~module_scope()
+		{
+			current_ = previous_;
+		}
+
+		module_scope(const module_scope&) = delete;
+		module_scope& operator=(const module_scope&) = delete;
+
+		static std::uint32_t current()
+		{
+			return current_;
+		}
+
+	private:
+		inline static thread_local std::uint32_t current_ = 0xFFFFFFFFu;
+		std::uint32_t previous_;
+	};
+
+	// Set by the verifier while it reads an asset whose type IW8_NEUTRAL_TRACE names: each generated reader logs its name, so
+	// that a crash in an adapter shows the struct it was reading.
+	inline bool trace_enabled = false;
+
+	inline void trace(const char* what)
+	{
+		if (trace_enabled)
+		{
+			std::fprintf(stderr, "  %s\n", what);
+			std::fflush(stderr);
+		}
+	}
+
+	[[noreturn]] inline void fail(const std::string& what, const char* problem)
+	{
+		throw std::runtime_error(what + " " + problem);
+	}
+
+	// A character buffer holds a zero-terminated text; whatever follows the terminator has to be zero.
+	template <std::size_t Size>
+	std::string read_text(const char (&buffer)[Size], const char* what)
+	{
+		const auto* end = static_cast<const char*>(std::memchr(buffer, 0, Size));
+		if (!end)
+		{
+			fail(what, "has no terminator in its character buffer");
+		}
+
+		for (auto* byte = end; byte < buffer + Size; ++byte)
+		{
+			if (*byte)
+			{
+				fail(what, "has data after the terminator of its character buffer");
+			}
+		}
+
+		return std::string(buffer, end);
+	}
+
+	template <std::size_t Size>
+	void write_text(char (&buffer)[Size], const std::string& text, const char* what)
+	{
+		if (text.size() >= Size || text.find('\0') != std::string::npos)
+		{
+			fail(what, "has a text that does not fit its character buffer");
+		}
+
+		std::memset(buffer, 0, Size);
+		std::memcpy(buffer, text.data(), text.size());
+	}
+
+	inline std::optional<std::string> read_string(const char* text)
+	{
+		return text ? std::optional<std::string>(text) : std::nullopt;
+	}
+
+	inline char* write_string(context& memory, const std::optional<std::string>& text)
+	{
+		return text ? memory.text(*text) : nullptr;
+	}
+
+	// A script string is a number that names a string of the game's table: the neutral data holds the text, and
+	// the number is made again when the asset is written.
+	inline std::optional<std::string> read_script_string(const scr_string_t id)
+	{
+		const auto* text = SL_ConvertToString(id);
+		return text ? std::optional<std::string>(text) : std::nullopt;
+	}
+
+	inline std::uint32_t write_script_string(const std::optional<std::string>& text)
+	{
+		return text ? static_cast<std::uint32_t>(SL_GetString(text->data())) : 0;
+	}
+
+	inline std::size_t string_size(const std::optional<std::string>& text)
+	{
+		return text ? rounded(text->size() + 1) : 0;
+	}
+
+	inline std::string enum_name(const std::span<const std::pair<std::int64_t, std::string_view>> table, const std::int64_t value,
+		const char* what)
+	{
+		for (const auto& [number, name] : table)
+		{
+			if (number == value)
+			{
+				return std::string(name);
+			}
+		}
+
+		fail(what, "has an enum value without a name");
+		return {};
+	}
+
+	inline std::int64_t enum_value(const std::span<const std::pair<std::int64_t, std::string_view>> table, const std::string& name,
+		const char* what)
+	{
+		for (const auto& [number, text] : table)
+		{
+			if (text == name)
+			{
+				return number;
+			}
+		}
+
+		fail(what, "has an enum name that is not known");
+		return 0;
+	}
+
+	// A set of flags as the names of the bits that are set; a bit without a name cannot be carried.
+	inline std::vector<std::string> flag_names(const std::span<const std::pair<std::int64_t, std::string_view>> table,
+		std::uint64_t value, const char* what)
+	{
+		std::vector<std::string> names;
+		for (const auto& [number, name] : table)
+		{
+			const auto bits = static_cast<std::uint64_t>(number);
+			// Only a single bit names a flag: a name for several bits is a shorthand for them.
+			if (bits && (bits & (bits - 1)) == 0 && (value & bits) == bits)
+			{
+				names.emplace_back(name);
+				value &= ~bits;
+			}
+		}
+
+		if (value)
+		{
+			fail(what, "has flag bits without a name");
+		}
+
+		return names;
+	}
+
+	inline std::uint64_t flag_value(const std::span<const std::pair<std::int64_t, std::string_view>> table,
+		const std::vector<std::string>& names, const char* what)
+	{
+		std::uint64_t value = 0;
+		for (const auto& name : names)
+		{
+			value |= static_cast<std::uint64_t>(enum_value(table, name, what));
+		}
+
+		return value;
+	}
+
+	// The scalars of a vector type (a union or a register type) or of an overlay: copied as they are, so that a NaN keeps
+	// its bits.
+	template <typename Scalar, std::size_t Count>
+	std::array<Scalar, Count> read_scalars(const void* vector)
+	{
+		std::array<Scalar, Count> out;
+		std::memcpy(out.data(), vector, sizeof(out));
+		return out;
+	}
+
+	template <typename Scalar, std::size_t Count>
+	void write_scalars(void* vector, const std::array<Scalar, Count>& values)
+	{
+		std::memcpy(vector, values.data(), sizeof(values));
+	}
+
+	// A block of scalars of more than one dimension: the neutral type is nested arrays of the same layout.
+	template <typename Block>
+	Block read_block(const void* block)
+	{
+		Block out;
+		std::memcpy(&out, block, sizeof(out));
+		return out;
+	}
+
+	template <typename Block>
+	void write_block(void* block, const Block& values)
+	{
+		std::memcpy(block, &values, sizeof(values));
+	}
+
+	// While it lives, the bytes of the array whose elements are being read: a reader of an element that follows pointers to other
+	// elements asks whether a pointer is inside.
+	class element_range
+	{
+	public:
+		element_range(const void* first, const std::size_t bytes)
+			: previous_(current_), first_(static_cast<const std::uint8_t*>(first)), bytes_(bytes)
+		{
+			current_ = this;
+		}
+
+		~element_range()
+		{
+			current_ = previous_;
+		}
+
+		element_range(const element_range&) = delete;
+		element_range& operator=(const element_range&) = delete;
+
+		static bool contains(const void* pointer)
+		{
+			const auto* byte = static_cast<const std::uint8_t*>(pointer);
+			return current_ && byte >= current_->first_ && byte < current_->first_ + current_->bytes_;
+		}
+
+	private:
+		element_range* previous_;
+		const std::uint8_t* first_;
+		std::size_t bytes_;
+		static inline element_range* current_ = nullptr;
+	};
+
+	// A pointer member that no stream rule describes holds nothing in a zone; a value would be lost.
+	template <typename T>
+	void require_zero(const T& value, const char* what)
+	{
+		if constexpr (std::is_pointer_v<T>)
+		{
+			if (value)
+			{
+				fail(what, "points at data that no stream rule describes");
+			}
+		}
+		else if constexpr (std::is_array_v<T>)
+		{
+			for (const auto& item : value)
+			{
+				require_zero(item, what);
+			}
+		}
+		else
+		{
+			std::array<std::uint8_t, sizeof(T)> bytes{};
+			std::memcpy(bytes.data(), &value, sizeof(T));
+			if (std::ranges::any_of(bytes, [](const std::uint8_t byte) { return byte != 0; }))
+			{
+				fail(what, "holds a value in a member that is padding or unused");
+			}
+		}
+	}
+
+	// The elements of an array member. The pointer is null when the asset has none; a count without an array is an error.
+	template <typename Element, typename Count, typename Read>
+	auto read_array(const Element* elements, const Count count, const char* what, Read&& read)
+		-> std::optional<std::vector<decltype(read(*elements))>>
+	{
+		if (!elements)
+		{
+			if (count)
+			{
+				fail(what, "has a count and no array");
+			}
+
+			return std::nullopt;
+		}
+
+		std::vector<decltype(read(*elements))> out;
+		out.reserve(static_cast<std::size_t>(count));
+		for (std::size_t index = 0; index < static_cast<std::size_t>(count); ++index)
+		{
+			out.push_back(read(elements[index]));
+		}
+
+		return out;
+	}
+
+	// A pointer to a struct that is one slot of an array: null is an empty slot.
+	template <typename Pointee, typename Read>
+	auto read_pointee(const Pointee* pointee, Read&& read) -> std::optional<decltype(read(*pointee))>
+	{
+		if (!pointee)
+		{
+			return std::nullopt;
+		}
+
+		return read(*pointee);
+	}
+
+	template <typename Pointee, typename Item, typename Write>
+	Pointee* write_pointee(const std::optional<Item>& item, context& memory, Write&& write)
+	{
+		if (!item)
+		{
+			return nullptr;
+		}
+
+		auto* pointee = memory.manual_allocate<Pointee>(rounded(sizeof(Pointee)));
+		write(*pointee, *item);
+		return pointee;
+	}
+
+	// A fixed number of elements behind a pointer, each read by the caller; a vector when the element is the type that holds them
+	// (the children of a tree node).
+	template <std::size_t Count, bool Vector, typename Element, typename Read>
+	auto read_fixed_with(const Element* elements, Read&& read) -> std::optional<std::vector<decltype(read(*elements))>>
+	{
+		if (!elements)
+		{
+			return std::nullopt;
+		}
+
+		std::vector<decltype(read(*elements))> out;
+		out.reserve(Count);
+		for (std::size_t index = 0; index < Count; ++index)
+		{
+			out.push_back(read(elements[index]));
+		}
+
+		return out;
+	}
+
+	template <std::size_t Count, typename Element, typename Read>
+	auto read_fixed_with(const Element* elements, Read&& read) -> std::optional<std::array<decltype(read(*elements)), Count>>
+	{
+		if (!elements)
+		{
+			return std::nullopt;
+		}
+
+		std::array<decltype(read(*elements)), Count> out;
+		for (std::size_t index = 0; index < Count; ++index)
+		{
+			out[index] = read(elements[index]);
+		}
+
+		return out;
+	}
+
+	// A pointer to one object.
+	template <typename Element, typename Read>
+	auto read_single(const Element* element, Read&& read) -> std::optional<decltype(read(*element))>
+	{
+		if (!element)
+		{
+			return std::nullopt;
+		}
+
+		return read(*element);
+	}
+
+	template <typename Element, std::size_t Count>
+	std::optional<std::array<Element, Count>> read_fixed(const Element* elements)
+	{
+		if (!elements)
+		{
+			return std::nullopt;
+		}
+
+		std::array<Element, Count> out;
+		std::copy_n(elements, Count, out.begin());
+		return out;
+	}
+
+	template <typename Element, typename Items, typename Write>
+	Element* write_array(const std::optional<Items>& items, context& memory, Write&& write)
+	{
+		if (!items)
+		{
+			return nullptr;
+		}
+
+		auto* elements = memory.manual_allocate<Element>(rounded(std::max<std::size_t>(items->size(), 1) * sizeof(Element)));
+		for (std::size_t index = 0; index < items->size(); ++index)
+		{
+			write(elements[index], (*items)[index]);
+		}
+
+		return elements;
+	}
+
+	// An array that the members with the same id share: written for the first of them.
+	template <typename Element, typename Items, typename Write>
+	Element* write_shared_array(const std::uint32_t id, const std::optional<Items>& items, context& memory, Write&& write)
+	{
+		if (!items)
+		{
+			return nullptr;
+		}
+
+		return memory.shared<Element>(id, [&] { return write_array<Element>(items, memory, write); });
+	}
+
+	// The first `count` elements of a fixed array, whose other elements are zero (a list of assets in an array of the largest
+	// size a zone can hold).
+	template <typename Element, std::size_t Size, typename Read>
+	auto read_prefix(const Element (&elements)[Size], const std::size_t count, const char* what, Read&& read)
+		-> std::optional<std::vector<decltype(read(elements[0]))>>
+	{
+		if (count > Size)
+		{
+			fail(what, "has a count beyond its array");
+		}
+
+		for (std::size_t index = count; index < Size; ++index)
+		{
+			require_zero(elements[index], what);
+		}
+
+		std::vector<decltype(read(elements[0]))> out;
+		out.reserve(count);
+		for (std::size_t index = 0; index < count; ++index)
+		{
+			out.push_back(read(elements[index]));
+		}
+
+		return out;
+	}
+
+	template <typename Element, std::size_t Size, typename Items, typename Write>
+	void write_prefix(Element (&elements)[Size], const std::optional<Items>& items, Write&& write)
+	{
+		if (!items)
+		{
+			return;
+		}
+
+		if (items->size() > Size)
+		{
+			fail("an array", "has more elements than its fixed size");
+		}
+
+		for (std::size_t index = 0; index < items->size(); ++index)
+		{
+			write(elements[index], (*items)[index]);
+		}
+	}
+
+	// An array whose count stays a field: the array may be absent while the count is not (its elements are in another zone).
+	template <typename Element, typename Count, typename Read>
+	auto read_array_if_present(const Element* elements, const Count count, const char* what, Read&& read)
+		-> std::optional<std::vector<decltype(read(*elements))>>
+	{
+		if (!elements)
+		{
+			return std::nullopt;
+		}
+
+		return read_array(elements, count, what, read);
+	}
+
+	// An array that members with different counts point to: the first member holds it, the others only its id.
+	template <typename Element, typename Count, typename Read>
+	auto read_borrowed(const Element* elements, const Count count, const char* what, Read&& read)
+		-> std::optional<std::vector<decltype(read(*elements))>>
+	{
+		if (!pointer_ids::claim(elements).second)
+		{
+			return std::nullopt;
+		}
+
+		return read_array(elements, count, what, read);
+	}
+
+	template <typename Element, typename Items, typename Write>
+	Element* write_borrowed_array(const std::uint32_t id, const std::optional<Items>& items, context& memory, Write&& write)
+	{
+		if (!id)
+		{
+			return nullptr;
+		}
+
+		return memory.shared<Element>(id, [&]() -> Element* {
+			if (!items)
+			{
+				fail("a borrowed array", "is used before the member that holds it");
+			}
+
+			return write_array<Element>(items, memory, write);
+		});
+	}
+
+	template <typename Element, typename Item, typename Write>
+	Element* write_single(const std::optional<Item>& item, context& memory, Write&& write)
+	{
+		if (!item)
+		{
+			return nullptr;
+		}
+
+		auto* element = memory.manual_allocate<Element>(rounded(sizeof(Element)));
+		write(*element, *item);
+		return element;
+	}
+
+	template <typename Count, typename Items>
+	Count count_of(const std::optional<Items>& items)
+	{
+		return items ? static_cast<Count>(items->size()) : Count{};
+	}
+
+	// The definition name of the asset that a pointer holds (a reference stub's name without its comma).
+	inline std::optional<std::string> read_asset(const std::int32_t type, const void* header)
+	{
+		if (!header)
+		{
+			return std::nullopt;
+		}
+
+		const auto* name = get_asset_name(type, header);
+		if (!name || !*name)
+		{
+			fail("an asset reference", "points at an asset without a name");
+		}
+
+		return name[0] == ',' ? name + 1 : name;
+	}
+
+	template <typename Header>
+	Header* resolve_asset(const asset_resolver& resolve, const std::int32_t type, const std::optional<std::string>& name)
+	{
+		if (!name)
+		{
+			return nullptr;
+		}
+
+		auto* header = static_cast<Header*>(resolve(type, *name));
+		if (!header)
+		{
+			fail("the referenced asset " + *name, "is absent");
+		}
+
+		return header;
+	}
+}

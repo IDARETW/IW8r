@@ -10,7 +10,7 @@ import os, shutil, subprocess, sys, time
 here = os.path.dirname(os.path.abspath(__file__))
 root = os.path.dirname(here)
 args = sys.argv[1:]
-exe = r'E:\mw124\x64-zt\build\bin\x64\Release\zonetool.exe'
+exe = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'release', 'iw8r-zt.exe')
 extraction, map_id = os.path.join(root, 'out', 'scr-br', 'iw8build', 'mp_scrbr', 'extraction'), 'mp_scrbr'
 if '--exe' in args:
     exe = args[args.index('--exe') + 1]

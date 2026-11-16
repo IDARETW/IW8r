@@ -1,0 +1,248 @@
+#pragma once
+
+#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <limits>
+#include <string_view>
+#include <vector>
+
+#include "map_edges.hpp"
+
+namespace iw8::havok
+{
+
+// Numbered breakable panes: physicscontents_glass (0x10, Physics_CreateContents)
+// and surftype_glass_pane (9). Backlot's numbered panes are glass_solid (39) with
+// solid|soundclip|soundreflect: surface 39 has zero bullet_penetration depth, so
+// Replay's penetrating bullet loop stops before G_Bullet_DamageGlass, and the
+// collision filter only drops a destroyed piece whose filter info carries 0x10.
+// Mantling or sprinting through a pane also requires 0x10 and surface 9 or 40.
+inline constexpr std::uint32_t kBreakableGlassContents = 0x10u;
+// The contents bits that Replay names (q_PhysicsScript_CreateContents 0x10A5850):
+// solid 1, foliage 2, vehicletrigger 8, glass 0x10 through useclip 0x20000000.
+inline constexpr std::uint32_t kReplayContents = 0x27F7FFFBu;
+inline constexpr std::uint32_t kBreakableGlassSurfaceMaterial = 9u;
+inline constexpr std::uint32_t kGlassMaterialNameCrc = 0xF728E572u;
+
+struct BakeInput
+{
+    std::filesystem::path replayExecutable;
+    std::filesystem::path collision;
+    std::filesystem::path footsteps;
+    // Cut the world collision into the 32 x 32 grid of streamed collision tiles (IW8 Radiant research 90).
+    bool tiles{};
+};
+
+// The grid of collision tiles is fixed by the game: 32 x 32 tiles of 8192 units, centred on the origin.
+inline constexpr int kCollisionTileGrid = 32;
+inline constexpr float kCollisionTileSize = 8192.0f;
+inline constexpr std::uint32_t kCollisionTileCount = 1024;
+
+// The Havok shape of one collision tile (CollisionTile.havokTileShapeData) and its slot in the world shape list
+// (CollisionTile.worldCollisionShapeIdx). Only tiles with collision have one.
+struct CollisionTileShape
+{
+    std::uint32_t index{};
+    std::uint32_t slot{};
+    std::vector<std::uint8_t> data;
+};
+
+struct CollisionModel
+{
+    std::array<float, 3> minimum{};
+    std::array<float, 3> maximum{};
+    std::uint32_t hullCount{};
+    std::uint16_t shapeIndex{std::numeric_limits<std::uint16_t>::max()};
+};
+
+struct CollisionSlab
+{
+    std::array<float, 3> direction{};
+    float midpoint{};
+    float halfSize{};
+};
+
+struct CollisionHull
+{
+    std::array<float, 3> minimum{};
+    std::array<float, 3> maximum{};
+    std::uint32_t contents{};
+    std::uint32_t model{};
+    std::vector<CollisionSlab> slabs;
+};
+
+struct TriggerModel
+{
+    std::uint32_t collisionModel{};
+    bool staticPhysics{true};
+};
+
+struct LadderFace
+{
+    std::array<float, 3> bottom{};
+    std::array<float, 3> top{};
+    std::array<float, 3> normal{};
+    float width{};
+};
+
+struct BakeResult
+{
+    std::vector<std::uint8_t> world;
+    std::vector<std::uint8_t> entities;
+    std::vector<CollisionModel> models;
+    std::vector<CollisionHull> hulls;
+    std::vector<TriggerModel> triggers;
+    std::vector<LadderFace> ladders;
+    // Mount edges of the map (IW8 Radiant research 125), from the file <collision>.edges when it is there.
+    std::vector<iw8r::MapEdge> mountEdges;
+    // With BakeInput::tiles: `world` is the list with one slot per tile below, and these are the tile shapes.
+    bool tiled{};
+    std::vector<CollisionTileShape> tiles;
+};
+
+struct PhysicsMesh
+{
+    std::vector<std::array<float, 3>> vertices;
+    std::vector<std::array<std::uint32_t, 3>> triangles;
+    std::uint32_t contents{1};
+    // Replay surface type (0..63) reported by bullet and footstep traces.
+    std::uint32_t surfaceType{};
+};
+
+// A simulated clutter body, as shipped Replay DynEnt clutter (mp_hideout
+// decor_misc_props_01_bucket_metal, uk_spray_bottle_01, kitchen_01_teapot_01):
+// one dynamic convex polytope with mass properties. Light props (debris)
+// use simulation category 5, PBQ_Debris and PMP_Debris; heavier ones 4,
+// PBQ_Dynamic and PMP_Dynamic. materialCrc names a physicsmaterial.hkx entry.
+struct ClutterBody
+{
+    float mass{1.0f};
+    std::uint32_t materialCrc{};
+    bool debris{true};
+};
+
+struct PhysicsAsset
+{
+    std::string name;
+    std::vector<std::uint8_t> havokData;
+    std::uint32_t contents{1};
+    std::uint32_t useCategory{3};
+    std::uint32_t simulationCategory{1};
+    // The bodies of the Havok data, each of the contents and simulation category above, and its constraints: the
+    // asset's numRigidBodies and numConstraints (shipped clutter in pieces: 2 and 1).
+    std::uint32_t bodies{1};
+    std::uint32_t constraints{};
+};
+
+// Bakes without the Replay executable from here on: the shapes and physics objects are built
+// natively, with the Havok type compendium of the Replay zone folder (code_post_gfx).
+// With checkWithReplay, the Replay executable loads the shape lists and checks their bounds.
+void UseNativeHavok(const std::filesystem::path &zoneFolder, bool checkWithReplay = false);
+bool UsesNativeHavok();
+
+void PrepareCollisionBaker(const std::filesystem::path &replayExecutable);
+bool FindOpaqueString(std::string_view value, std::uint32_t &id);
+BakeResult BakeCollision(const BakeInput &input);
+// keyframedBody stores the body contents and sentinel motion ids in the
+// serialized body, as shipped KeyframedEntity (script model) assets do.
+// With clutter, the body is a simulated convex hull of the mesh vertices
+// (useCategory 3; the simulation category comes from the clutter class).
+PhysicsAsset BakePhysicsAsset(std::string name, const PhysicsMesh &mesh,
+                              std::uint32_t useCategory = 3,
+                              std::uint32_t simulationCategory = 1,
+                              bool keyframedBody = false,
+                              const ClutterBody *clutter = nullptr);
+
+// The rigid bodies of a model that moves in pieces and the hinges between them, as the source game keeps them (game
+// units): a door on its box, a lamp head on its rods. Each body moves the bone of its name.
+struct PhysicsSystemBody
+{
+    std::string name;
+    // The frame of the body in the model.
+    std::array<float, 3> position{};
+    std::array<float, 4> orientation{0.0f, 0.0f, 0.0f, 1.0f};
+    // kg; 0 for a body that does not move.
+    float mass{};
+    // The convex pieces of its shape in the body's frame, each with its convex radius.
+    struct Piece
+    {
+        std::vector<std::array<float, 3>> points;
+        float convexRadius{};
+    };
+    std::vector<Piece> pieces;
+};
+
+// A hinge (or a limited hinge, with friction and an angle range) by the values of its Havok constraint atoms.
+struct PhysicsHinge
+{
+    struct Frame
+    {
+        // The columns of its rotation.
+        std::array<std::array<float, 3>, 3> rotation{};
+        std::array<float, 3> translation{};
+    };
+
+    std::string name;
+    std::uint32_t bodyA{};
+    std::uint32_t bodyB{};
+    // In body A and in body B.
+    Frame frameA;
+    Frame frameB;
+    bool stabilization{};
+    float maxLinearImpulse{};
+    float maxAngularImpulse{};
+    float maxAngle{};
+    std::uint8_t freeAxis{};
+    std::uint8_t solvingMethod{};
+    std::uint8_t bodiesToNotify{};
+    std::uint8_t velocityStabilization{};
+    bool linearImpulseLimit{};
+    float breachImpulse{};
+    float inertiaStabilization{};
+    bool limited{};
+    bool friction{};
+    std::uint8_t frictionAxis{};
+    std::uint8_t frictionAxes{};
+    float maxFrictionTorque{};
+    bool limit{};
+    std::uint8_t limitAxis{};
+    std::uint8_t cosineAxis{};
+    float minAngle{};
+    float maxLimitAngle{};
+    float limitTau{};
+    float limitDamping{};
+};
+
+struct PhysicsSystem
+{
+    std::vector<PhysicsSystemBody> bodies;
+    std::vector<PhysicsHinge> hinges;
+};
+
+// A clutter PhysicsAsset of the system's bodies and hinges, as shipped Replay clutter in pieces (mp_emporium
+// container_electrical_box_01_small: a door hinged to its box): each body a convex hull, or the compound of its pieces,
+// with the clutter's material and class; the mesh gives the contents and surface type. Native Havok only.
+PhysicsAsset BakePhysicsSystem(std::string name, const PhysicsSystem &system, const PhysicsMesh &mesh,
+                               const ClutterBody &clutter);
+
+// The Havok data of an XModelDetailCollision asset: a HavokPhysicsXModelLOD with the model's collision mesh, which the
+// detail physics world holds for bullet and melee traces (shipped static models carry one beside their PhysicsAsset).
+struct XModelDetailCollision
+{
+    std::string name;
+    std::string bodyName;
+    std::vector<std::uint8_t> havokData;
+};
+
+// Native Havok only (UseNativeHavok). The mesh takes the contents and surface type of its PhysicsMesh.
+XModelDetailCollision BakeXModelDetailCollision(std::string name, const PhysicsMesh &mesh);
+// Whether static models get a detail collision (only with native Havok).
+void UseDetailCollision(bool enabled);
+bool UsesDetailCollision();
+
+// The Havok data of a PhysicsFXShape (the debris of physics-light particles): the convex hull of the points (Havok units)
+// at the 17 scales of the Replay tools, as a self-describing tagfile. Native Havok only (UseNativeHavok).
+std::vector<std::uint8_t> BuildFxShape(const std::vector<std::array<float, 3>> &points);
+
+} // namespace iw8::havok

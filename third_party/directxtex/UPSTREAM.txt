@@ -1,0 +1,1 @@
+directxtex from the x64-zt fork's deps/DirectXTex at f06dd7e590f8942488aef61759f0b21299618307 (may2026-3-gf06dd7e); only the files its build uses.

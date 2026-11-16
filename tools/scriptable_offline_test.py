@@ -9,7 +9,7 @@ Usage: py -3 -I tools/scriptable_offline_test.py <extraction folder> <map id> <w
 Nothing is written outside the work folder. The game folder is only read."""
 import glob, hashlib, json, os, shutil, subprocess, sys
 
-LIVE = r'E:\mw124\x64-zt\build\bin\x64\Release\zonetool.exe'
+LIVE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'release', 'iw8r-zt.exe')
 NEW = r'C:\zsw-iw8r\scriptables\build\bin\x64\Release\zonetool.exe'
 GAME = r'E:\IW8\Builds\1.20-replay'
 ACTS = r'E:\mw124\atian-cod-tools\build\bin\Release\acts.exe'

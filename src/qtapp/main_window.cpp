@@ -5716,7 +5716,8 @@ QString MainWindow::toolPath(const QString& key) const {
         {"acts", "E:/mw124/atian-cod-tools/build/bin/Release/acts.exe"},
         {"replay", "E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe"},
         {"oodle", "E:/IW8/Builds/1.20-replay/oo2core_7_win64.dll"},
-        {"zonetool", "E:/mw124/x64-zt/build/bin/x64/Release/zonetool.exe"},
+        // The project's own zone writer and map converter (src/tools/zonetool, the x64-zt fork), beside the editor.
+        {"zonetool", QCoreApplication::applicationDirPath() + "/iw8r-zt.exe"},
         // The project's own IW8 script compiler (src/tools/gsc, gsc-tool 1.6.2), built and shipped beside the editor.
         {"gsc_tool", QCoreApplication::applicationDirPath() + "/iw8r-gsc.exe"},
     };
@@ -5733,7 +5734,7 @@ void MainWindow::toolPathsDialog() {
     dlg.setWindowTitle("Tool Paths");
     auto* form = new QFormLayout(&dlg);
     QMap<QString, QLineEdit*> edits;
-    const QList<QPair<QString, QString>> rows = {{"acts", "ACTS (acts.exe)"}, {"replay", "Replay 1.20 game_dx12_ship_replay.exe"}, {"oodle", "Oodle (oo2core_7_win64.dll)"}, {"zonetool", "x64-zt (zonetool.exe)"}, {"gsc_tool", "GSC compiler (compiles the map script; empty = iw8r-gsc.exe beside the editor)"}, {"x64zt_output", "x64-zt output folder (empty = app data)"},
+    const QList<QPair<QString, QString>> rows = {{"acts", "ACTS (acts.exe)"}, {"replay", "Replay 1.20 game_dx12_ship_replay.exe"}, {"oodle", "Oodle (oo2core_7_win64.dll)"}, {"zonetool", "Zone writer (empty = iw8r-zt.exe beside the editor)"}, {"gsc_tool", "GSC compiler (compiles the map script; empty = iw8r-gsc.exe beside the editor)"}, {"x64zt_output", "x64-zt output folder (empty = app data)"},
                                                  {"launch", "Game exe for Launch Replay (empty = the Replay exe)"}};
     for (const auto& [key, label] : rows) {
         auto* row = new QHBoxLayout();

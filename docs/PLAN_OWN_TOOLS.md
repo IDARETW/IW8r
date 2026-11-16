@@ -47,7 +47,28 @@ github"; "only integrate what's needed".
   gsc-tool 1.6.2, far calls, errors).
 - The editor's default `gsc_tool` path is `iw8r-gsc.exe` beside the editor; the package ships it.
 
-## 2. x64-zt (the IW8 zone writer and the IW3 map converter)
+## 2. x64-zt (the IW8 zone writer and the IW3 map converter) (done 2026-11-16)
+
+Done: `src/tools/zonetool` (fork e648a414, 385 files) and `third_party/{zstd,lz4,minizip,nlohmann_json,gsl,glaze,
+libtomcrypt,libtommath,directxtex}` copied by `tools/patches/zt_sync_fork.py`; built by `src/tools/zonetool/xmake.lua`
+(the fork's settings: C++23, /MT, /O1 with /O2 for IW8 and the converter, no LTO, `/BASE:0x180000000 /DYNAMICBASE:NO`,
+without the project-wide /utf-8 and Windows macros) into `bin/<mode>/iw8r-zt.exe`, built with the editor and shipped.
+Parity with the fork's zonetool.exe, byte for byte on every file the converter writes:
+
+| Command | Input | Result |
+|---|---|---|
+| buildextraction | mp_iw8r_fxtest (21 MB extraction) | 33 files identical |
+| buildextraction | mp_cinderrail (1.4 GB extraction; extraction unchanged) | 46 files identical, the 394 MB zone included |
+| editzone | first-person look (lit filter over 10 shared techset zones) | identical |
+| editzone | mp_rust and mp_bm_tut stock edits | identical; a mp_hideout edit fails the same way in both |
+| dumpzone, buildzone, verifyzone | mp_hideout with a vision edit (`tools/m2_rebuild_mapents.ps1`) | identical dump and zone, verify passed |
+
+The ACTS exports the converter asks for during a build (`_stock_cache`) differ between any two runs of the same acts.exe;
+they are ACTS's output and are checked with ACTS (section 3). Tools: `tools/zt_parity.py`, `tools/zt_editzone_parity.py`.
+Defaults switched: Tool Paths `zonetool`, `tools/m2_rebuild_mapents.ps1`, `run_offline_proofs.py`,
+`stock_edit_editor_check.py`, `scriptable_offline_test.py`.
+
+Survey (before the port):
 
 Needed: `src/cli`, `src/common`, `src/core`, `src/games/iw8`, `src/games/iw3` (3 files: the converter's source game),
 `src/convert/iw3_iw8` (the map pipeline the editor's builds go through). Left out: games h1, h2, iw6, iw7, s1, s2 and

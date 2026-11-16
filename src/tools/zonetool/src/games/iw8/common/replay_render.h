@@ -1,0 +1,390 @@
+#pragma once
+#include "../zone/iw8_zone.h"
+#include "replay_bounds.h"
+#include <array>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+namespace replayrender
+{
+// The most world surfaces and surface materials the writer takes. Its indices are 32-bit
+// and Umbra's object IDs reach 2^24; stock maps hold up to 9378 world surfaces
+// (mp_aniyah_tac; mp_donetsk 82208). IW7 Depot needs more than 4096.
+inline constexpr std::size_t kMaxWorldSurfaces = 65535;
+
+struct Shader
+{
+    unsigned type;
+    std::string name, debugName;
+    std::vector<uint8_t> header, program;
+};
+// Resident pixel bytes, shared by every material definition of the same image file
+// (Greenband's 98 glass panes each carry the 3 x 89 MB world atlas: 30 GB as copies).
+// Writes through data() copy a shared buffer first.
+class ImagePixels
+{
+public:
+    const uint8_t *data() const { return bytes ? bytes->data() : nullptr; }
+    uint8_t *data() { return own().data(); }
+    size_t size() const { return bytes ? bytes->size() : 0; }
+    bool empty() const { return !size(); }
+    void resize(const size_t count) { own().resize(count); }
+    void share(std::shared_ptr<std::vector<uint8_t>> source) { bytes = std::move(source); }
+    const std::shared_ptr<std::vector<uint8_t>> &shared() const { return bytes; }
+
+private:
+    std::vector<uint8_t> &own()
+    {
+        if (!bytes)
+            bytes = std::make_shared<std::vector<uint8_t>>();
+        else if (bytes.use_count() > 1)
+            bytes = std::make_shared<std::vector<uint8_t>>(*bytes);
+        return *bytes;
+    }
+    std::shared_ptr<std::vector<uint8_t>> bytes;
+};
+struct Image
+{
+    std::string name;
+    uint16_t width{}, height{};
+    unsigned mipCount = 1, format = 7;
+    uint32_t flags = 0;
+    uint16_t depth = 1, numElements = 1;
+    uint8_t semantic = 1, category = 1;
+    ImagePixels pixels;
+};
+struct Technique
+{
+    std::string name;
+    std::vector<uint8_t> header, states, rootsig, statebits, args;
+    std::array<std::string, 4> shaders;
+};
+struct DecalVolumeMaterial
+{
+    std::string name;
+    std::array<std::string, 6> channels;
+    uint32_t flags{};
+    std::array<float, 3> colorTint{1.0f, 1.0f, 1.0f};
+    float alphaDissolveParms{};
+    float emissiveScale{1.0f};
+    uint32_t packedDisplacementScaleAndBias{3154132992u};
+    float displacementCutoffDistance{750.0f};
+    float displacementCutoffFalloff{0.004f};
+    uint32_t packedTemperatureBaseAndScale{48128u};
+    uint8_t rows{1};
+    uint8_t columns{1};
+};
+struct Material
+{
+    std::string material;
+    // IW3 material this one converts (render JSON "source"); empty for
+    // generated variants and stock carriers.
+    std::string source;
+    std::vector<uint8_t> materialInfo, constants, bufferIndices, textureHeaders;
+    std::string techset;
+    std::vector<uint8_t> techsetHeader;
+    std::vector<Shader> shaders;
+    std::vector<Technique> techniques;
+    std::vector<std::string> images;
+    std::string decalVolumeMaterial;
+    DecalVolumeMaterial decalVolumeDefinition;
+    std::vector<Image> imageDefinitions;
+    std::vector<std::array<std::vector<uint8_t>, 4>> buffers;
+};
+struct BrushModel
+{
+    replaybounds::Bounds bounds{};
+    unsigned firstSurface = 0;
+    unsigned surfaceCount = 0;
+};
+struct DpvsPlane
+{
+    std::array<float, 3> normal{};
+    float distance{};
+    uint8_t type{};
+};
+struct Portal
+{
+    std::array<float, 4> plane{};
+    unsigned cell{};
+    std::vector<std::array<float, 3>> vertices;
+    std::array<std::array<float, 3>, 2> hullAxis{};
+};
+struct CellTree
+{
+    replaybounds::Bounds bounds{};
+    unsigned firstSurface{};
+    unsigned surfaceCount{};
+    unsigned childrenOffset{};
+    uint16_t childCount{};
+    std::vector<uint16_t> staticModelIndexes;
+    std::vector<unsigned> surfaceIndexes;
+};
+struct Cell
+{
+    replaybounds::Bounds bounds{};
+    std::vector<Portal> portals;
+    std::vector<CellTree> trees;
+};
+// A GfxReflectionProbeInstance of the source (IW7's has Replay's layout): the
+// oriented box that the probe covers, its priority and feather, the projection
+// origin and the extents that box projection reflects to, and the rotation of
+// the capture.
+struct ReflectionProbeInstance
+{
+    std::array<float, 3> position{};
+    std::array<float, 4> rotation{0, 0, 0, 1};
+    std::array<float, 3> center{};
+    std::array<std::array<float, 3>, 3> axes{};
+    std::array<float, 3> halfSize{};
+    float priority = 0;
+    std::array<float, 3> feather{};
+    std::array<float, 3> expandNegative{};
+    std::array<float, 3> expandPositive{};
+};
+struct ReflectionProbe
+{
+    std::array<float, 3> origin{};
+    replaybounds::Bounds volume{};
+    Image image;
+    std::array<std::array<float, 9>, 4> sh{};
+    // The source's instances; none: one axis-aligned instance of the volume.
+    std::vector<ReflectionProbeInstance> instances;
+    // That instance's priority (higher wins where boxes overlap) and feather (1 / blend distance per axis).
+    float priority = 10.0f;
+    std::array<float, 3> feather{1.0f, 1.0f, 4.0f};
+};
+// A projected mask of a volumetric (GfxVolumetricMask, 40 bytes). R_VOL_AddVolumetric
+// (0x1418B6EC0) binds the image of an opacity mask (type 2) and offsets its UV by
+// scroll * time; other types draw nothing.
+struct VolumetricMask
+{
+    uint32_t type = 0; // 0 none, 2 opacity map
+    uint32_t axis = 0; // VolumetricAxis
+    Image image;
+    std::array<float, 2> scale{}, offset{}, scroll{};
+};
+// A world volumetric (GfxVolumetric, 264 bytes): an oriented fog box that the
+// volumetric pass adds while its Umbra object (user-ID class 3) is visible.
+struct Volumetric
+{
+    std::string livePath;
+    // Flag 2: the anisotropy replaces the vision's; flag 4: the colour replaces its albedo.
+    uint32_t flags = 0;
+    std::array<float, 3> center{}, halfSize{};
+    std::array<std::array<float, 3>, 3> axes{};
+    std::array<float, 3> color{};
+    float density = 0, falloff = 0, heightFade = 0, anisotropy = 0;
+    std::array<VolumetricMask, 4> masks;
+};
+// Replay works on decal volumes in groups of up to 16 (0x141881940).
+inline constexpr std::size_t kDecalVolumesPerCollection = 16;
+// A static decal volume of the world (GfxStaticDecalVolumePacked, 44 bytes): an oriented box that projects its
+// material along its first axis onto the surfaces inside it. Replay draws a collection of them while its Umbra
+// object (user-ID class 6) is visible.
+struct DecalVolume
+{
+    std::array<float, 3> center{};
+    // The depth axis (into the surface), then the width and height axes of the picture.
+    std::array<std::array<float, 3>, 3> axes{};
+    std::array<float, 3> halfSize{};
+    uint32_t material = 0; // index into Mesh::decalVolumeMaterials
+    float opacity = 1, feather = 0;
+    int drawOrder = 0; // -4 .. 3
+    std::array<float, 4> uvMatrix{1, 0, 0, 1};
+    std::array<float, 2> uvOffset{};
+};
+struct NativeLightmapImage
+{
+    uint32_t format{};
+    uint16_t width{};
+    uint16_t height{};
+    std::vector<uint8_t> pixels;
+};
+struct NativeLightmap
+{
+    std::array<NativeLightmapImage, 3> images;
+};
+struct GlassPane
+{
+    std::string material;
+    std::string materialShattered;
+    std::array<float, 3> origin{};
+    std::array<float, 4> quaternion{};
+    std::array<float, 4> texVecs{};
+    std::array<float, 2> texCoordOrigin{};
+    float halfWidth{};
+    float halfHeight{};
+    float halfThickness{};
+    // FxGlassDef.color, highMipRadiusInvSq, shatteredHighMipRadiusInvSq and numCrackRings, and the piece's supportMask.
+    // The defaults are those of the IW3 panes (the colour white, the mp_backlot2 values, support of every pane).
+    uint32_t color{0xFFFFFFFFu};
+    float highMipRadiusInvSq{0.00015481660375371575f};
+    float shatteredHighMipRadiusInvSq{0.6341288f};
+    int32_t numCrackRings{-1};
+    uint32_t supportMask{0xF0000000u};
+};
+// GfxSModelSurfMatIndirection.cullType classes of the GPU triangle/cluster
+// culling (stock mp_shipment survey of 1473 surfaces, 2026-10-16): 0xEF opaque
+// back-face culled; 0xFF only model decals laid on other geometry (logos,
+// "_decals" meshes, licence plates: bit 4); 0x6F glass/translucent (bit 7
+// clear); 0x6E double-sided (bit 0 clear). Decal and layer meshes classed as
+// ordinary opaque lost triangles to occlusion against the surface under them,
+// so they flickered and drew dotted (Greenband cables, posters, carpets).
+inline uint8_t StaticModelCullType(const bool backfaceCull, const bool decal,
+                                   const bool translucent)
+{
+    if (decal)
+        return backfaceCull ? 0xFF : 0x7E;
+    if (translucent)
+        return backfaceCull ? 0x6F : 0x6E;
+    return backfaceCull ? 0xEF : 0x6E;
+}
+struct StaticModelSurface
+{
+    replaybounds::Bounds bounds{};
+    std::string material;
+    // StaticModelCullType: two-sided surfaces must not be back-face culled.
+    uint8_t cullType{0xEF};
+};
+struct StaticModelLod
+{
+    float distance{};
+    std::vector<StaticModelSurface> surfaces;
+};
+struct StaticModel
+{
+    std::string name;
+    replaybounds::Bounds bounds{};
+    std::vector<StaticModelLod> lods;
+    // STATIC_MODEL_FLAG_REACTIVEMOTION: Replay's sim bends the placements (the XModel has reactive-motion parts).
+    bool reactiveMotion{};
+};
+struct StaticModelInstance
+{
+    unsigned model{};
+    std::array<float, 3> origin{};
+    std::array<float, 4> quaternion{0, 0, 0, 1};
+    float scale{1};
+    // Absent: derive local casters geometrically. Empty: authored exclusion from every local light.
+    std::optional<std::vector<uint32_t>> shadowLights;
+    // Replay's per-instance LOD distance scale index (the instance flags byte, 0..15; 6 is 1.0):
+    // R_AddAllStaticModelSurfacesCamera_LodCalc multiplies the model's LOD thresholds by
+    // dword_142578690[index] for each placement. Entries match IW7's g_lodDistIndexToScale.
+    uint8_t lodScaleIndex{6};
+    // IW8 Radiant no_shadow: the collection's sun shadow mask is 0 (no runtime sun shadow).
+    bool noSunShadow{};
+};
+struct StaticModels
+{
+    std::vector<StaticModel> models;
+    std::vector<StaticModelInstance> instances;
+};
+struct Mesh : Material
+{
+    replaybounds::Bounds sceneBounds{{0, 0, 0}, {100000, 100000, 100000}};
+    replaybounds::Bounds drawBounds{{0, 0, 0}, {100000, 100000, 100000}};
+    std::vector<Material> additionalMaterials;
+    std::vector<Material> assetMaterials;
+    // Stock materials (common zones) referenced by name only.
+    std::vector<std::string> stockMaterials;
+    // GfxWorld sunflare_t (+0x3E28) values, in field order from spriteSize:
+    // 6 floats, 2 ints (flare fades), 3 floats, 2 ints (blind fades), 3 floats,
+    // 2 ints (glare fades). Empty leaves hasValidData false.
+    std::vector<double> sunFlare;
+    std::vector<BrushModel> brushModels;
+    std::vector<DpvsPlane> planes;
+    std::vector<uint16_t> nodes;
+    std::vector<Cell> cells;
+    std::vector<unsigned> sortedSurfaceIndexes;
+    std::vector<ReflectionProbe> reflectionProbes;
+    Image reflectionProbeArrayImage;
+    std::vector<NativeLightmap> nativeLightmaps;
+    std::vector<GlassPane> glassPanes;
+    std::vector<Volumetric> volumetrics;
+    std::vector<DecalVolume> decalVolumes;
+    // The Materials of the decal volumes: an asset material with a decal volume definition, or a stock one.
+    std::vector<std::string> decalVolumeMaterials;
+    std::vector<unsigned> surfaceMaterials;
+    unsigned opaqueCount = 0;
+    // World surfaces of Replay's lit decal range (blended with a depth bias), which
+    // follow the opaque ones and precede the translucent ones.
+    unsigned decalCount = 0;
+    std::vector<uint8_t> surfaces, bounds, drawSurfs, surfData, positions, aux, indices;
+    // Nine floats per opaque, non-sky world-model triangle (GfxWorld heightfield).
+    std::vector<float> solidTriangles;
+    // The same surfaces by index: static casters for local-light shadow lists.
+    std::vector<uint32_t> shadowCasterSurfaces;
+    // Per-surface local caster membership, with the same absent/empty distinction as instances.
+    std::vector<std::optional<std::vector<uint32_t>>> surfaceShadowLights;
+    unsigned count = 0;
+    unsigned words() const
+    {
+        return (count + 31) / 32;
+    }
+    unsigned worldSurfaceCount() const
+    {
+        return brushModels.empty() ? count : brushModels.front().surfaceCount;
+    }
+};
+Mesh Load(const std::string &path);
+// The same from a definition already in memory (the IW3 converter's); `path` still places the files it names.
+Mesh Load(const std::string &path, const nlohmann::json &definition);
+void RegisterMaterial(iw8::ZoneWriter &writer, const Mesh &mesh);
+// Large resident image sets share the native techsets companion. The budget is a
+// soft main-zone target; larger sets balance between both zones. FF size guards still apply.
+void RegisterMapMaterials(iw8::ZoneWriter &main, iw8::ZoneWriter &techsets,
+                          const Mesh &mesh, uint64_t mainImageBudget = 2ull << 30);
+void RegisterMaterialReference(iw8::ZoneWriter &writer, const std::string &name);
+void RegisterReflectionProbeImage(iw8::ZoneWriter &writer, const Mesh &mesh);
+// The images of the world volumetrics' masks, ahead of the GfxWorld that references them.
+void RegisterVolumetricMaskImages(iw8::ZoneWriter &writer, const Mesh &mesh);
+// The GfxVolumetric array of GfxWorldDraw.volumetrics (after lightmapTransientIndex) with
+// each one's live path; mask images are references to their registered definitions.
+void EmitVolumetrics(iw8::ZoneWriter &writer, const Mesh &mesh);
+// Decal volumes draw per collection: runs of up to 16 volumes in their order, all in transient zone 0.
+uint32_t DecalVolumeCollectionCount(const Mesh &mesh);
+// The decal volume counts and pointers of GfxWorldDraw, and the visibility words of the collections.
+void StampDecalVolumes(std::vector<uint8_t> &world, const Mesh &mesh);
+// The decal volume arrays of GfxWorldDraw (after iesLookupTexture, before the transient zones): the Materials as
+// name references, the collections and the zeroed indirection table.
+void EmitDecalVolumeTables(iw8::ZoneWriter &writer, const Mesh &mesh);
+// GfxWorldTransientZone.decalVolumes (after the light grid): the packed volumes, the collection bounds and the uids.
+void StampTransientDecalVolumes(uint8_t *transient, const Mesh &mesh);
+void EmitTransientDecalVolumes(iw8::ZoneWriter &writer, const Mesh &mesh);
+void StampWorld(std::vector<uint8_t> &world, const Mesh &mesh);
+void EmitSurfaces(iw8::ZoneWriter &writer, const Mesh &mesh);
+void StampTransient(uint8_t *transient, const Mesh &mesh);
+void EmitVertices(iw8::ZoneWriter &writer, const Mesh &mesh);
+void EmitSortedSurfaces(iw8::ZoneWriter &writer, const Mesh &mesh,
+                        const StaticModels &staticModels);
+void StampStaticModels(std::vector<uint8_t> &world, const StaticModels &models);
+void EmitStaticModels(iw8::ZoneWriter &writer, const StaticModels &models,
+                      unsigned lastSunPrimaryLightIndex);
+std::vector<std::vector<replaybounds::Bounds>>
+BuildCellTreeBounds(const Mesh &mesh, const StaticModels &models);
+// The draw table's reflection-probe instances: one fallback, then each probe's
+// own instances (one at least).
+uint32_t ReflectionProbeInstanceCount(const Mesh &mesh);
+void StampReflectionProbes(std::vector<uint8_t> &world, const Mesh &mesh,
+                           const iw8::ZoneWriter &writer);
+void EmitReflectionProbes(iw8::ZoneWriter &writer, const Mesh &mesh);
+// World-space bounds of one static-model instance.
+replaybounds::Bounds StaticModelWorldBounds(const StaticModels &models, size_t instance);
+// primaryLights: static local-light indices registered as Umbra light objects.
+std::vector<uint8_t> BuildUmbraTome(const Mesh &mesh, const StaticModels &staticModels,
+                                    const std::vector<uint32_t> &primaryLights = {},
+                                    uint32_t reflectionProbeInstances = 0);
+// Occluder boxes for the next BuildUmbraTome (x0, y0, z0, x1, y1, z1 each; empty: the one-cell tome). With boxes the
+// tome gets real cells and portals (umbra_bake.hpp): Umbra then hides what lies behind them. maxCells limits the
+// cells (0: the baker's default).
+void SetUmbraOccluders(std::vector<std::array<float, 6>> occluders, uint32_t maxCells = 0);
+// What the last BuildUmbraTome did with them ("" when it wrote the one-cell tome without being asked for more).
+const std::string &UmbraBakeSummary();
+// The conservative tome itself (what BuildUmbraTome writes): one tile, one cell over minimum..maximum that holds every
+// object, each object spanning the whole box, so Umbra culls nothing (no occlusion, no frustum or contribution cull)
+// and the GPU passes do all culling. userIDs: one Umbra user ID per object (class in bits 28-30).
+std::vector<uint8_t> BuildConservativeUmbraTome(const std::vector<uint32_t> &userIDs,
+                                                const float (&minimum)[3], const float (&maximum)[3]);
+} // namespace replayrender

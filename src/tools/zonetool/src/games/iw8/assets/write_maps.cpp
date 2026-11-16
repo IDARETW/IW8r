@@ -1,0 +1,784 @@
+#include <cstdio>
+#include <std_include.hpp>
+#include "../iw8_structs.h"
+#include "../zone/iw8_zone.h"
+#include "../zone/maps_write.h"
+#include "replay_ies.h"
+#include "../common/replay_lightgrid.h"
+#include "../common/replay_render.h"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstring>
+#include <limits>
+#include <string>
+#include <string_view>
+#include <vector>
+namespace iw8maps
+{
+
+using iw8::ZoneWriter;
+using namespace iw8; // XFILE_BLOCK_*, PTR_*
+
+// stamp helpers into a fixed-size zeroed struct buffer
+static inline void stamp64(uint8_t *p, size_t off, uint64_t v)
+{
+    std::memcpy(p + off, &v, 8);
+}
+static inline void stamp32(uint8_t *p, size_t off, uint32_t v)
+{
+    std::memcpy(p + off, &v, 4);
+}
+static inline void stamp16(uint8_t *p, size_t off, uint16_t v)
+{
+    std::memcpy(p + off, &v, 2);
+}
+static inline void stampf(uint8_t *p, size_t off, float v)
+{
+    std::memcpy(p + off, &v, 4);
+}
+
+void emitNativeLightmapTemp(ZoneWriter &zw, const replayrender::Mesh &mesh)
+{
+    if (mesh.nativeLightmaps.empty())
+        return;
+    if (mesh.nativeLightmaps.size() != 1)
+        throw std::runtime_error("native Replay lightmap packing currently requires one lightmap");
+
+    constexpr size_t rootSize = 0xF10;
+    constexpr size_t rawSize = 0x78;
+    constexpr size_t imageRawSize = 0x28;
+    std::array<uint8_t, rootSize> root{};
+    stamp32(root.data(), 0x00, 0); // resident transient zone
+    stamp32(root.data(), 0x04, 1); // numLightmaps
+    stamp32(root.data(), 0x08, 0); // firstLightmapIndex
+    stamp32(root.data(), 0x0C, 1); // REGULAR_UNCOMPRESSED
+    const auto &lightmap = mesh.nativeLightmaps.front();
+    for (size_t channel = 0; channel < lightmap.images.size(); ++channel)
+    {
+        const auto &source = lightmap.images[channel];
+        uint8_t *raw = root.data() + 0x10 + channel * imageRawSize;
+        stamp32(raw, 0x00, source.format);
+        stamp32(raw, 0x04, 3); // resident raw texture, target fixture flags
+        stamp32(raw, 0x08, static_cast<uint32_t>(source.pixels.size()));
+        stamp16(raw, 0x0C, source.width);
+        stamp16(raw, 0x0E, source.height);
+        stamp16(raw, 0x10, 1); // depth
+        stamp16(raw, 0x12, 1); // numElements
+        raw[0x14] = 1;         // levelCount
+        // textureId at +0x18 remains the native NULLID value.
+        stamp64(raw, 0x20, PTR_FOLLOWS);
+    }
+    static_assert(0x10 + 32 * rawSize == rootSize);
+
+    // Load_GfxWorldTransientZone pushes stream 5 before visiting every nested
+    // field, including tempLightmapData. The pointer loader aligns this root
+    // in that current virtual stream. Each GfxImageRaw then pushes stream 7
+    // independently and aligns its resident pixels to 16 bytes before
+    // RB_ProcessGfxLightmapAtlasData consumes it.
+    zw.align(7);
+    zw.write(root.data(), root.size());
+    for (const auto &image : lightmap.images)
+    {
+        zw.pushStream(XFILE_BLOCK_UNK7);
+        zw.align(15);
+        zw.write(image.pixels.data(), image.pixels.size());
+        zw.popStream();
+    }
+}
+
+void emitFxMapBody(ZoneWriter &zw, const char *assetName, const replayrender::Mesh &mesh)
+{
+    const uint32_t pieceCount = static_cast<uint32_t>(mesh.glassPanes.size());
+    if (!pieceCount)
+        return;
+
+    std::vector<std::array<uint8_t, 120>> definitions;
+    std::vector<uint8_t> definitionIndices;
+    for (const auto &pane : mesh.glassPanes)
+    {
+        std::array<uint8_t, 120> definition{};
+        stampf(definition.data(), 0, pane.halfThickness);
+        std::memcpy(definition.data() + 4, pane.texVecs.data(), sizeof(pane.texVecs));
+        // FxGlassDef.color (white for the IW3 panes).
+        stamp32(definition.data(), 0x14, pane.color);
+        const auto material = zw.assetAlias(ASSET_TYPE_MATERIAL, pane.material);
+        stamp64(definition.data(), 0x18, material);
+        stamp64(definition.data(), 0x20,
+                zw.assetAlias(ASSET_TYPE_MATERIAL, pane.materialShattered));
+        stamp64(definition.data(), 0x28,
+                zw.assetAlias(ASSET_TYPE_PHYSICSASSET, kGlassPhysicsName));
+        for (const size_t offset : {0x30u, 0x38u, 0x40u})
+            stamp64(definition.data(), offset, PTR_FOLLOWS);
+        for (const size_t offset : {0x50u, 0x58u, 0x60u})
+            stamp64(definition.data(), offset, PTR_FOLLOWS);
+        // FxGlassDef.highMipRadiusInvSq, shatteredHighMipRadiusInvSq and numCrackRings (the IW3 panes take the shipped
+        // mp_backlot2 values, with numCrackRings as a 32-bit -1, the engine default; a single 0xFF byte read as 255 rings).
+        stampf(definition.data(), 0x68, pane.highMipRadiusInvSq);
+        stampf(definition.data(), 0x6C, pane.shatteredHighMipRadiusInvSq);
+        stamp32(definition.data(), 0x70, static_cast<uint32_t>(pane.numCrackRings));
+        const auto found = std::find(definitions.begin(), definitions.end(), definition);
+        const auto index = static_cast<size_t>(found - definitions.begin());
+        if (found == definitions.end())
+        {
+            if (definitions.size() == 256)
+                throw std::runtime_error("Replay glass exceeds 256 distinct pane definitions");
+            definitions.push_back(definition);
+        }
+        definitionIndices.push_back(static_cast<uint8_t>(index));
+    }
+
+    constexpr uint32_t sparePieces = 512;
+    const uint32_t pieceLimit = pieceCount + sparePieces;
+    const uint32_t pieceWordCount = (pieceLimit + 31u) >> 5;
+    const uint32_t cellCount = static_cast<uint32_t>(mesh.cells.size());
+    const uint32_t geoDataLimit = pieceLimit * 8;
+    const uint32_t initGeoDataCount = pieceCount * 4;
+    constexpr size_t globals = 0x08;
+    constexpr size_t system = 0x30;
+
+    std::vector<uint8_t> world(iw8sz::FX_MAP, 0);
+    stamp64(world.data(), 0x00, PTR_FOLLOWS);
+    stamp32(world.data(), globals + 0x00, static_cast<uint32_t>(definitions.size()));
+    stamp64(world.data(), globals + 0x08, PTR_FOLLOWS); // defs
+    stamp64(world.data(), globals + 0x20, PTR_FOLLOWS); // runtime distances
+    stamp32(world.data(), system + 0x08, pieceLimit);
+    stamp32(world.data(), system + 0x0C, pieceWordCount);
+    stamp32(world.data(), system + 0x10, cellCount);
+    stamp32(world.data(), system + 0x18, std::numeric_limits<uint16_t>::max());
+    stamp32(world.data(), system + 0x1C, geoDataLimit);
+    stamp32(world.data(), system + 0x24, initGeoDataCount);
+    for (const size_t offset : {0x28, 0x30, 0x38, 0x40, 0x48, 0x50, 0x58, 0x60, 0x68, 0x70, 0x88})
+        stamp64(world.data(), system + offset, PTR_FOLLOWS);
+    stamp32(world.data(), system + 0x84, pieceCount);
+
+    zw.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    zw.align(7);
+    zw.write(world.data(), world.size());
+    zw.pushStream(XFILE_BLOCK_VIRTUAL);
+    zw.writeStr(assetName);
+
+    zw.align(7);
+    constexpr std::array<std::string_view, 3> glassEffects{
+        "vfx/code/glass/glass_shatter_piece",
+        "vfx/code/glass/glass_shatter_64x64",
+        "vfx/code/glass/glass_shatter_32x32"};
+    constexpr std::array<const char *, 3> glassSounds{
+        "glass_pane_shatter", "glass_pane_blowout", "glass_pane_breakout"};
+    zw.write(definitions.data(), definitions.size() * sizeof(definitions.front()));
+    for (size_t index = 0; index < definitions.size(); ++index)
+    {
+        for (const auto name : glassEffects)
+        {
+            // Replay FxGlassDef loads each non-null VFX reference as a 128-byte
+            // TEMP_PRELOAD alias, followed by its comma-prefixed virtual name.
+            zw.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+            zw.align(15);
+            std::array<uint8_t, 128> particle{};
+            stamp64(particle.data(), 0, PTR_FOLLOWS);
+            zw.write(particle.data(), particle.size());
+            zw.pushStream(XFILE_BLOCK_VIRTUAL);
+            zw.writeStr("," + std::string(name));
+            zw.popStream();
+            zw.popStream();
+        }
+        for (const char *sound : glassSounds)
+            zw.writeStr(sound);
+    }
+
+    zw.align(1);
+    for (const auto &pane : mesh.glassPanes)
+    {
+        const int16_t width = static_cast<int16_t>(std::lround(pane.halfWidth * 32.0f));
+        const int16_t height = static_cast<int16_t>(std::lround(pane.halfHeight * 32.0f));
+        const int16_t vertices[4][2]{{width, static_cast<int16_t>(-height)},
+                                     {static_cast<int16_t>(-width), static_cast<int16_t>(-height)},
+                                     {static_cast<int16_t>(-width), height},
+                                     {width, height}};
+        zw.write(vertices, sizeof(vertices));
+    }
+
+    zw.align(3);
+    for (size_t index = 0; index < mesh.glassPanes.size(); ++index)
+    {
+        const auto &pane = mesh.glassPanes[index];
+        uint8_t state[52]{};
+        std::memcpy(state, pane.quaternion.data(), sizeof(pane.quaternion));
+        std::memcpy(state + 0x10, pane.origin.data(), sizeof(pane.origin));
+        stampf(state, 0x1C,
+               std::sqrt(pane.halfWidth * pane.halfWidth + pane.halfHeight * pane.halfHeight));
+        std::memcpy(state + 0x20, pane.texCoordOrigin.data(), sizeof(pane.texCoordOrigin));
+        // FxGlassInitPieceState.supportMask (every pane of the IW3 panes).
+        stamp32(state, 0x28, pane.supportMask);
+        stampf(state, 0x2C, pane.halfWidth * pane.halfHeight * 8.0f);
+        state[0x30] = definitionIndices[index];
+        state[0x31] = 4;
+        zw.write(state, sizeof(state));
+    }
+    zw.popStream();
+    zw.popStream();
+
+    // Replay creates mutable fracture data in its zero-filled stream 4.
+    zw.pushStream(XFILE_BLOCK_SHARED_STREAM);
+    zw.align(3);
+    zw.reserveCalc(definitions.size() * sizeof(float)); // FxGlassGlobals::distances[defCount]
+    zw.align(3);
+    zw.reserveCalc(size_t(pieceLimit) * 32); // piecePlaces
+    zw.align(3);
+    zw.reserveCalc(size_t(pieceLimit) * 32); // pieceStates
+    zw.align(3);
+    zw.reserveCalc(size_t(pieceLimit) * 40); // pieceDynamics
+    zw.align(1);
+    zw.reserveCalc(size_t(geoDataLimit) * 4);
+    zw.align(3);
+    zw.reserveCalc(size_t(pieceWordCount) * 4);
+    zw.align(3);
+    zw.reserveCalc(size_t(cellCount) * pieceWordCount * 4);
+    zw.reserveCalc((size_t(pieceLimit) + 15) & ~size_t(15));
+    zw.align(3);
+    zw.reserveCalc(size_t(pieceLimit) * 12);
+    zw.align(3);
+    zw.reserveCalc(size_t((pieceLimit + 3u) & ~3u) * 4);
+    zw.popStream();
+
+    zw.pushStream(XFILE_BLOCK_TEMP_POSTLOAD);
+    zw.align(7);
+    zw.reserveCalc(iw8sz::FX_MAP);
+    zw.align(7);
+    for (size_t index = 0; index < glassEffects.size() * definitions.size(); ++index)
+    {
+        zw.align(15);
+        zw.reserveCalc(128);
+    }
+    zw.align(31);
+    zw.popStream();
+}
+
+void emitGlassMapBody(ZoneWriter &zw, const char *assetName, const replayrender::Mesh &mesh)
+{
+    const uint32_t pieceCount = static_cast<uint32_t>(mesh.glassPanes.size());
+    std::vector<uint8_t> gl(kSizeGlass, 0);
+    stamp64(gl.data(), kGL_name, PTR_FOLLOWS);
+    stamp64(gl.data(), kGL_glassData, PTR_FOLLOWS);
+    // Replay Load_GlassWorldPtr uses stream 1 for the body.
+    zw.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    zw.align(7);
+    zw.write(gl.data(), gl.size());
+    zw.pushStream(XFILE_BLOCK_VIRTUAL);
+    zw.writeStr(assetName); // name
+    // Replay Load_GlassWorld DF31E0 calls AllocLoad_G_GlassData DFC9E0
+    // (alignment 7), then Load_G_GlassData DFD220 (40 bytes). G_InitGlass
+    // 1213500 always dereferences this object even with no breakable pieces.
+    zw.align(7);
+    uint8_t glassData[40]{};
+    if (pieceCount)
+    {
+        stamp64(glassData, 0x00, PTR_FOLLOWS);
+        stamp32(glassData, 0x08, pieceCount);
+        stamp64(glassData, 0x20, PTR_FOLLOWS);
+    }
+    zw.write(glassData, sizeof(glassData));
+    if (pieceCount)
+    {
+        zw.align(3);
+        std::vector<uint8_t> pieces(size_t(pieceCount) * 12);
+        zw.write(pieces.data(), pieces.size());
+
+        zw.align(7);
+        uint8_t tree[24]{};
+        stamp64(tree, 0x08, PTR_FOLLOWS);
+        stamp32(tree, 0x14, pieceCount);
+        zw.write(tree, sizeof(tree));
+        zw.align(3);
+        for (uint32_t piece = 0; piece < pieceCount; ++piece)
+            zw.writeT(piece);
+    }
+    zw.popStream();
+    zw.popStream();
+    // Preload/Postload use stream 2 (Load uses stream 1) for the same body.
+    zw.pushStream(XFILE_BLOCK_TEMP_POSTLOAD);
+    zw.align(7);
+    zw.reserveCalc(kSizeGlass);
+    zw.align(31);
+    zw.popStream();
+}
+
+// Replay render world with converted BSP triangles, authored brush models, and a sun.
+void emitGfxMapBody(ZoneWriter &zw, const char *assetName, const std::string &meshPath,
+                    const replayrender::Mesh &mesh,
+                    const uint32_t primaryLightCount, const uint32_t sunPrimaryLightIndex,
+                    const replayrender::StaticModels &staticModels,
+                    const uint32_t dynamicModelCount, const uint32_t dynamicBrushCount,
+                    const replaysunshadow::Data &sunShadow,
+                    const std::array<float, 3> &sunDirection,
+                    const iw8::heightfield::Data *heightfield,
+                    const iw8::locallights::Data *localLights,
+                    const uint32_t scriptablePrimaryLightCount)
+{
+    if (primaryLightCount < 2 || sunPrimaryLightIndex >= primaryLightCount ||
+        scriptablePrimaryLightCount > primaryLightCount - sunPrimaryLightIndex - 1)
+        throw std::runtime_error("invalid primary-light table for GfxWorld");
+
+    const auto lightGrid = replaylightgrid::Load(meshPath);
+    static const iw8::locallights::Data noLocalLights;
+    const auto &lights = localLights ? *localLights : noLocalLights;
+    if (!lights.Empty() && lights.lightCount != primaryLightCount)
+        throw std::runtime_error("GfxWorld local-light data does not match the primary lights");
+    // Draw-table probe instances: one fallback, then each probe's own.
+    const auto umbraTome = replayrender::BuildUmbraTome(
+        mesh, staticModels, lights.umbraLights,
+        replayrender::ReflectionProbeInstanceCount(mesh));
+    if (!replayrender::UmbraBakeSummary().empty())
+        std::printf("%s\n", replayrender::UmbraBakeSummary().c_str());
+    const auto cellCount = static_cast<uint32_t>(mesh.cells.size());
+    const auto cellWordCount = (cellCount + 31u) >> 5;
+    std::vector<uint8_t> gw(kSizeGfxWorld, 0);
+    if (!sunShadow.bytes.empty())
+    {
+        // Load_GfxWorldDraw (0xD96710) creates the runtime GPU record at
+        // +0x3800 from these bytes. Only the data pointer and params are disk
+        // inputs; the 96-byte runtime record remains zero until loading.
+        if (sunShadow.bytes.size() > 0x7ffffffcu)
+            throw std::runtime_error("compressed sun-shadow data exceeds native size");
+        stamp32(gw.data(), replaymap::CompressedSunShadowSize,
+                static_cast<uint32_t>(sunShadow.bytes.size()));
+        stamp64(gw.data(), replaymap::CompressedSunShadowData, PTR_FOLLOWS);
+        std::memcpy(gw.data() + replaymap::CompressedSunShadowParams,
+                    &sunShadow.parameters, sizeof(sunShadow.parameters));
+    }
+    stamp64(gw.data(), kGW_name, PTR_FOLLOWS);
+    stamp64(gw.data(), kGW_baseName, PTR_FOLLOWS);
+    stamp32(gw.data(), kGW_bspVersion, 243);
+    stamp32(gw.data(), 0x14, sunPrimaryLightIndex); // lastSunPrimaryLightIndex
+    stamp32(gw.data(), 0x18, primaryLightCount);
+    // The mutable and scriptable ranges follow the static lights; stock Replay worlds use these end indices even when
+    // all their counts are zero. The source's GSC-scripted lights are the last lights and take both the mutable and
+    // the static scriptable range, the Scriptables' own range staying empty and the moving one starting at the end
+    // (stock mp_t_reflex: 7/40, 7/40, 7/0, 47/0; mp_br_quarry: 643/2 likewise).
+    const uint32_t firstScriptable = primaryLightCount - scriptablePrimaryLightCount;
+    stamp32(gw.data(), 0x1C, firstScriptable);             // firstMutablePrimaryLight
+    stamp32(gw.data(), 0x20, scriptablePrimaryLightCount); // mutablePrimaryLightCount
+    stamp32(gw.data(), 0x24, firstScriptable);             // firstStaticScriptablesPrimaryLight
+    stamp32(gw.data(), 0x2C, firstScriptable);             // firstStaticScriptablePrimaryLight
+    stamp32(gw.data(), 0x30, scriptablePrimaryLightCount); // staticScriptablePrimaryLightCount
+    stamp32(gw.data(), 0x34, primaryLightCount);           // firstMovingScriptablePrimaryLight
+    // These are world-wide material sort ranges, not per-surface values. Both
+    // shipped Replay mp_m_king and mp_rust GfxWorld assets carry this table.
+    // Leaving the zero-initialized ranges excludes decal draw keys (7..17),
+    // including the bullet-impact decals used by ordinary walls and models.
+    constexpr std::array<uint32_t, 15> sortKeys{
+        7, 14, 17, 35, 24, 36, 41, 1, 6, 7, 17, 18, 34, 35, 40};
+    for (size_t index = 0; index < sortKeys.size(); ++index)
+        stamp32(gw.data(), 0x3C + index * sizeof(uint32_t), sortKeys[index]);
+    stamp64(gw.data(), 0x3D68, PTR_FOLLOWS);     // runtime GfxLight[], zero-fill stream 4
+    if (heightfield)
+        iw8::heightfield::Stamp(gw, *heightfield, zw);
+    iw8::locallights::Stamp(gw, lights, dynamicModelCount, dynamicBrushCount);
+    // sunflare_t at +0x3E28 (Load_sunflare_t 0xE41700): hasValidData, sprite and
+    // flare materials (stock ",sun" / ",sun_flare", as shipped mp_rust), the
+    // converted sizes, cosines and fade times, and sunFxPosition (the direction
+    // to the sun).
+    constexpr size_t kSunFlare = 0x3E28;
+    if (mesh.sunFlare.size() == 18)
+    {
+        gw[kSunFlare] = 1;
+        stamp64(gw.data(), kSunFlare + 0x08, PTR_FOLLOWS);
+        stamp64(gw.data(), kSunFlare + 0x10, PTR_FOLLOWS);
+        constexpr std::array<bool, 18> isInteger{false, false, false, false, false, false,
+                                                 true,  true,  false, false, false, true,
+                                                 true,  false, false, false, true,  true};
+        for (size_t index = 0; index < mesh.sunFlare.size(); ++index)
+        {
+            const size_t offset = kSunFlare + 0x18 + index * 4;
+            if (isInteger[index])
+                stamp32(gw.data(), offset, static_cast<uint32_t>(std::lround(mesh.sunFlare[index])));
+            else
+                stampf(gw.data(), offset, static_cast<float>(mesh.sunFlare[index]));
+        }
+        for (size_t axis = 0; axis < 3; ++axis)
+            stampf(gw.data(), kSunFlare + 0x60 + axis * 4, sunDirection[axis]);
+    }
+    // Native Load_GfxBrushModelArray DD1750 consumes 96 bytes per model;
+    // allocator DCF750 uses alignment mask 3. Entity model indices refer to
+    // this array directly, so preserve every authored IW3 brush-model slot.
+    stamp32(gw.data(), 0x3DF0, static_cast<uint32_t>(mesh.brushModels.size()));
+    stamp64(gw.data(), 0x3DF8, PTR_FOLLOWS);
+    // Stock Replay inflates the world model bounds by one unit. The synthetic
+    // sky cube is a background surface, not the physical extent of the world.
+    mesh.sceneBounds.Write(gw.data() + kGW_bounds, mesh.count ? 1.f : 0.f);
+    stamp32(gw.data(), kGW_dpvsPlanes + kGW_dpp_cellCount, cellCount);
+    stamp16(gw.data(), kGW_dpvsPlanes + kGW_dpp_planeCount,
+            static_cast<uint16_t>(mesh.planes.size()));
+    stamp64(gw.data(), kGW_dpvsPlanes + kGW_dpp_planes,
+            mesh.planes.empty() ? PTR_NULL : PTR_FOLLOWS);
+    stamp16(gw.data(), kGW_dpvsPlanes + kGW_dpp_nodeCount,
+            static_cast<uint16_t>(mesh.nodes.size()));
+    stamp64(gw.data(), kGW_dpvsPlanes + kGW_dpp_nodes, PTR_FOLLOWS); // REQUIRED non-null
+    // Load_GfxWorldDpvsPlanes D94FB0 allocates 512 uints per cell in stream 4.
+    stamp64(gw.data(), kGW_dpvsPlanes + kGW_dpp_sceneEntCellBits, PTR_FOLLOWS);
+    stamp64(gw.data(), kGW_cells, PTR_FOLLOWS); // REQUIRED non-null
+    stamp64(gw.data(), kGW_cellTransientInfos, PTR_FOLLOWS);
+    // Replay draw @0x648: transientZoneCount @+0x184, pointers @+0x188.
+    // Zone zero is resident and required by R_ReflectionProbe_WorldStartup.
+    stamp32(gw.data(), 0x648 + 0x184, 1);
+    stamp64(gw.data(), 0x648 + 0x188, PTR_FOLLOWS);
+    if (!mesh.nativeLightmaps.empty())
+    {
+        if (mesh.nativeLightmaps.size() != 1)
+            throw std::runtime_error(
+                "native Replay lightmap packing currently requires one lightmap");
+        // GfxWorldLightmapReindexData at draw +0xD0. Replay's regular
+        // uncompressed atlas owns three packed channels for the one source
+        // lightmap and resolves it through resident transient zone zero.
+        stamp32(gw.data(), 0x718, 4);          // imagePixelSize
+        stamp32(gw.data(), 0x71C, 3);          // reindexCount
+        stamp64(gw.data(), 0x720, PTR_FOLLOWS); // reindexElement
+        stamp32(gw.data(), 0x728, 1);          // packedLightmapCount
+        stamp64(gw.data(), 0x730, PTR_FOLLOWS); // packedLightmap
+        stamp32(gw.data(), 0x7C4, 1);          // REGULAR_UNCOMPRESSED
+        stamp32(gw.data(), 0x7C8, 1);          // lightmapCount
+        stamp64(gw.data(), 0x37D0, PTR_FOLLOWS); // lightmapTransientIndex
+    }
+    // Replay R_GpuLightGrid_DataAvailable (188E940) checks this byte before
+    // sampling. A resident grid uses SINGLE, as in the shipped Shipment world.
+    gw[0x7C0] = lightGrid ? 1 : 0;
+    // R_SetLightScaleInfo (197CB93) multiplies secondary diffuse by this value.
+    // Zero-initializing it disables indirect light, even with a valid grid.
+    stampf(gw.data(), 0x37F0, 1.0f);
+    // Mandatory IES lookup image: the map's own strip (iw8::ies::Register).
+    stamp64(gw.data(), 0x648 + 0xF0, zw.assetAlias(ASSET_TYPE_IMAGE, iw8::ies::kLookupName));
+    stamp64(gw.data(), kGW_cellVisBits,
+            PTR_FOLLOWS); // REQUIRED non-null (cellCount-gated memset, no own count)
+    stamp64(gw.data(), 0x3EF8, PTR_FOLLOWS); // cellHasSunLitSurfsBits[cellWordCount]
+    const uint32_t primaryLightVisDataCount = (primaryLightCount + 31u) >> 5;
+    // The draw table has one fallback reflection-probe instance in addition
+    // to the probes' own. R_InitWorld clears this family from the draw
+    // instance count without checking the DPVS pointer, so the count and
+    // resident stream-4 allocation must be emitted together.
+    const uint32_t reflectionProbeInstanceCount =
+        replayrender::ReflectionProbeInstanceCount(mesh);
+    const uint32_t reflectionProbeVisDataCount =
+        (reflectionProbeInstanceCount + 31u) >> 5;
+    stamp32(gw.data(), replaymap::PrimaryLightVisDataCount, primaryLightVisDataCount);
+    stamp32(gw.data(), replaymap::ReflectionProbeVisDataCount,
+            reflectionProbeVisDataCount);
+    stamp64(gw.data(), replaymap::PrimaryLightVisData, PTR_FOLLOWS);
+    stamp64(gw.data(), replaymap::ReflectionProbeVisData, PTR_FOLLOWS);
+    // World volumetrics (GfxWorldDraw.volumetrics: count, array, no mask atlas) and their
+    // visibility words, which the Umbra query sets (class-3 objects) and R_InitWorld clears
+    // from the volumetric count: the count and its resident words go together.
+    const auto volumetricCount = static_cast<uint32_t>(mesh.volumetrics.size());
+    const uint32_t volumetricVisDataCount = (volumetricCount + 31u) >> 5;
+    if (volumetricCount)
+    {
+        stamp32(gw.data(), replaymap::Volumetrics, volumetricCount);
+        stamp64(gw.data(), replaymap::Volumetrics + 8, PTR_FOLLOWS);
+        stamp32(gw.data(), replaymap::VolumetricVisDataCount, volumetricVisDataCount);
+        stamp64(gw.data(), replaymap::VolumetricVisData, PTR_FOLLOWS);
+    }
+    replayrender::StampDecalVolumes(gw, mesh);
+    const uint32_t decalVisDataCount = (replayrender::DecalVolumeCollectionCount(mesh) + 31u) >> 5;
+    // R_EntityMoved 1959A60 indexes localClient*80 + entityNum/32.
+    stamp32(gw.data(), 0x3F20, 160);
+    stamp64(gw.data(), 0x3F28, PTR_FOLLOWS);
+    // Replay's GfxWorld DPVS-dynamic data is separate from the DynEntityList
+    // transient population. Each client basis has two local-client bitsets.
+    // A nonzero MapEnts/DynEntityList count requires matching resident cell
+    // and view bitsets: the native entity update at 1975650 dereferences them.
+    const std::array<uint32_t, 2> dynEntClientCounts{dynamicModelCount, dynamicBrushCount};
+    const std::array<uint32_t, 2> dynEntWordCounts{
+        2u * ((dynamicModelCount + 31u) >> 5),
+        2u * ((dynamicBrushCount + 31u) >> 5)};
+    for (size_t basis = 0; basis < dynEntClientCounts.size(); ++basis)
+    {
+        stamp32(gw.data(), replaymap::DynEntDpvs + basis * 4, dynEntWordCounts[basis]);
+        stamp32(gw.data(), replaymap::DynEntDpvs + 8 + basis * 4, dynEntClientCounts[basis]);
+        stamp32(gw.data(), replaymap::DynEntMotionBitsEntries + basis * 4,
+                dynEntWordCounts[basis]);
+        if (dynEntWordCounts[basis])
+        {
+            stamp64(gw.data(), replaymap::DynEntDpvsCellBits + basis * 8, PTR_FOLLOWS);
+            stamp64(gw.data(), replaymap::DynEntMotionBits + basis * 8, PTR_FOLLOWS);
+            stamp64(gw.data(), replaymap::SceneDynModel + basis * 8, PTR_FOLLOWS);
+        }
+    }
+    // The signed Shipment world has these eleven present view slots for each
+    // nonempty basis; their payloads are mutable zero-filled stream-4 bitsets.
+    constexpr std::array<uint8_t, 11> dynEntVisViews{0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11};
+    for (const auto view : dynEntVisViews)
+    {
+        if (dynEntWordCounts[0])
+            stamp64(gw.data(), replaymap::DynEntDpvsVisModel + size_t(view) * 8,
+                    PTR_FOLLOWS);
+        if (dynEntWordCounts[1])
+            stamp64(gw.data(), replaymap::DynEntDpvsVisBrush + size_t(view) * 8,
+                    PTR_FOLLOWS);
+    }
+    stamp32(gw.data(), replaymap::UmbraTomeSize, static_cast<uint32_t>(umbraTome.size()));
+    stamp64(gw.data(), replaymap::UmbraTomeData, PTR_FOLLOWS);
+    replayrender::StampWorld(gw, mesh);
+    replayrender::StampStaticModels(gw, staticModels);
+    replayrender::StampReflectionProbes(gw, mesh, zw);
+    // Replay Load_GfxWorldPtr RVA 0xD96DA0: stream 1, alignment mask 15.
+    // The generated tome gives Replay's stock camera query a conservative cell
+    // containing every converted world surface. Other unimplemented render data
+    // remains null; do not stamp pointers from another build.
+    zw.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    zw.align(15);
+    zw.write(gw.data(), gw.size());
+    zw.pushStream(XFILE_BLOCK_VIRTUAL); // dev DB_PushStreamPos(8) -> retail VIRTUAL/5
+    zw.writeStr(
+        assetName); // name     = raw "maps/mp/mp_test.d3dbsp\0" (struct stamp = PTR_FOLLOWS)
+    zw.writeStr(assetName); // baseName = raw "maps/mp/mp_test.d3dbsp\0" (own copy; struct stamp =
+                            // PTR_FOLLOWS)
+    if (!mesh.planes.empty())
+    {
+        zw.align(3);
+        for (const auto &source : mesh.planes)
+        {
+            uint8_t plane[20]{};
+            std::memcpy(plane, source.normal.data(), sizeof(float) * source.normal.size());
+            stampf(plane, 0xC, source.distance);
+            plane[0x10] = source.type;
+            zw.write(plane, sizeof(plane));
+        }
+    }
+    zw.align(1);
+    zw.write(mesh.nodes.data(), mesh.nodes.size() * sizeof(mesh.nodes.front()));
+    zw.align(1);
+    for (uint32_t cellIndex = 0; cellIndex < cellCount; ++cellIndex)
+        zw.writeT<uint32_t>(cellIndex); // aabbTreeIndex, resident transient zone zero
+    zw.align(7);
+    for (const auto &source : mesh.cells)
+    {
+        std::vector<uint8_t> cell(kSizeGfxCell, 0);
+        source.bounds.Write(cell.data());
+        stamp16(cell.data(), kGC_portalCount, static_cast<uint16_t>(source.portals.size()));
+        stamp64(cell.data(), kGC_portals, source.portals.empty() ? PTR_NULL : PTR_FOLLOWS);
+        zw.write(cell.data(), cell.size());
+    }
+    for (const auto &cell : mesh.cells)
+    {
+        if (cell.portals.empty())
+            continue;
+        zw.align(7);
+        for (const auto &source : cell.portals)
+        {
+            uint8_t portal[0x50]{};
+            std::memcpy(portal + 0x18, source.plane.data(), sizeof(float) * source.plane.size());
+            stamp64(portal, 0x28, PTR_FOLLOWS);
+            stamp16(portal, 0x30, static_cast<uint16_t>(source.cell));
+            portal[0x34] = static_cast<uint8_t>(source.vertices.size());
+            std::memcpy(portal + 0x38, source.hullAxis.data(), sizeof(source.hullAxis));
+            zw.write(portal, sizeof(portal));
+        }
+        for (const auto &portal : cell.portals)
+        {
+            zw.align(3);
+            zw.write(portal.vertices.data(),
+                     portal.vertices.size() * sizeof(portal.vertices.front()));
+        }
+    }
+    replayrender::EmitSurfaces(zw, mesh);
+    replayrender::EmitStaticModels(zw, staticModels, sunPrimaryLightIndex);
+    replayrender::EmitReflectionProbes(zw, mesh);
+    if (!mesh.nativeLightmaps.empty())
+    {
+        const auto &lightmap = mesh.nativeLightmaps.front();
+        // Three native channels select the same packed image rectangle.
+        zw.align(3);
+        for (uint32_t channel = 0; channel < 3; ++channel)
+        {
+            const std::array<uint32_t, 5> reindex{
+                0u, 0u, 0u, lightmap.images[channel].width, lightmap.images[channel].height};
+            zw.write(reindex.data(), sizeof(reindex));
+        }
+        zw.align(3);
+        const std::array<uint32_t, 2> packed{lightmap.images[0].width,
+                                             lightmap.images[0].height};
+        zw.write(packed.data(), sizeof(packed));
+    }
+    // Load_GfxWorldDraw D96710 loads iesLookupTexture before transient zones;
+    // it aliases the "*ieslookup" image registered ahead of the world.
+    replayrender::EmitDecalVolumeTables(zw, mesh);
+    // Load_GfxWorldDraw D96710 visits its 1536 inline asset pointers.
+    // Load_GfxWorldTransientZonePtr D970B0: stream 1, alignment 7;
+    // Load_GfxWorldTransientZone D96E90: 0x148 bytes, name in VIRTUAL.
+    zw.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    zw.align(7);
+    uint8_t transient[0x148]{};
+    stamp64(transient, 0, PTR_FOLLOWS);
+    stamp32(transient, 0xD8, cellCount);   // every source cell is resident
+    stamp64(transient, 0xE0, PTR_FOLLOWS); // aabbTreeCounts
+    stamp64(transient, 0xE8, PTR_FOLLOWS); // one GfxCellTree pointer per cell
+    if (!mesh.nativeLightmaps.empty())
+        stamp64(transient, 0xF0, PTR_FOLLOWS);
+    if (lightGrid)
+        stamp64(transient, 0xF8, PTR_FOLLOWS);
+    replayrender::StampTransient(transient, mesh);
+    replayrender::StampTransientDecalVolumes(transient, mesh);
+    zw.write(transient, sizeof(transient));
+    zw.pushStream(XFILE_BLOCK_VIRTUAL);
+    zw.writeStr(assetName);
+    replayrender::EmitVertices(zw, mesh);
+    const auto treeBounds = replayrender::BuildCellTreeBounds(mesh, staticModels);
+    zw.align(3);
+    for (const auto &cell : mesh.cells)
+        zw.writeT<uint32_t>(static_cast<uint32_t>(cell.trees.size()));
+    zw.align(7);
+    for (const auto &cell : mesh.cells)
+        zw.writeT<uint64_t>(cell.trees.empty() ? PTR_NULL : PTR_FOLLOWS);
+    for (size_t cellIndex = 0; cellIndex < mesh.cells.size(); ++cellIndex)
+    {
+        const auto &cell = mesh.cells[cellIndex];
+        if (cell.trees.empty())
+            continue;
+        // Load_GfxCellTree reads its array count from Replay's temp stream.
+        zw.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+        zw.align(3);
+        zw.writeT<uint32_t>(static_cast<uint32_t>(cell.trees.size()));
+        zw.popStream();
+        zw.align(7);
+        for (size_t treeIndex = 0; treeIndex < cell.trees.size(); ++treeIndex)
+        {
+            const auto &source = cell.trees[treeIndex];
+            if (source.staticModelIndexes.size() > UINT16_MAX)
+                throw std::runtime_error("Replay AABB tree has too many static-model indexes");
+            for (const auto index : source.staticModelIndexes)
+                if (index >= staticModels.instances.size())
+                    throw std::runtime_error("Replay AABB tree references an invalid static model");
+            uint8_t tree[48]{};
+            treeBounds[cellIndex][treeIndex].Write(tree);
+            stamp32(tree, 0x18, source.surfaceCount);
+            stamp32(tree, 0x1C, source.firstSurface);
+            stamp32(tree, 0x20, source.childrenOffset);
+            stamp16(tree, 0x24, source.childCount);
+            stamp16(tree, 0x26, static_cast<uint16_t>(source.staticModelIndexes.size()));
+            if (!source.staticModelIndexes.empty())
+                stamp64(tree, 0x28, PTR_FOLLOWS);
+            zw.write(tree, sizeof(tree));
+        }
+        zw.align(1);
+        for (const auto &source : cell.trees)
+            for (const auto index : source.staticModelIndexes)
+                zw.writeT<uint16_t>(index);
+    }
+    emitNativeLightmapTemp(zw, mesh);
+    replaylightgrid::Emit(zw, lightGrid);
+    replayrender::EmitTransientDecalVolumes(zw, mesh);
+    zw.popStream();
+    zw.popStream();
+    if (!mesh.nativeLightmaps.empty())
+    {
+        zw.align(3);
+        zw.writeT<uint32_t>(0); // lightmap 0 resides in transient zone slot 0
+    }
+    replayrender::EmitVolumetrics(zw, mesh);
+    // Native byte allocation has no extra alignment. The compressed forest
+    // follows lightmapTransientIndex and precedes the brush-model array.
+    if (!sunShadow.bytes.empty())
+        zw.write(sunShadow.bytes.data(), sunShadow.bytes.size());
+    // Load_GfxWorld then visits frustumLights (+0x3CA0, Load_GfxFrustumLights
+    // 0xD91900), lightViewFrustums (+0x3D60) and the heightfields (+0x3D88)
+    // before the brush models.
+    iw8::locallights::EmitFrustumLights(zw, lights);
+    iw8::locallights::EmitViewFrustums(zw, lights);
+    if (heightfield)
+        iw8::heightfield::Emit(zw, *heightfield);
+    zw.align(3);
+    for (const auto &model : mesh.brushModels)
+    {
+        uint8_t brushModel[96]{};
+        // Replay GfxBrushModel: authored local bounds +0x38, radius +0x50,
+        // first surface +0x54, uint16 surface count +0x58, MDAO index +0x5C.
+        model.bounds.Write(brushModel + 0x38);
+        stampf(brushModel, 0x50, model.bounds.Radius());
+        stamp32(brushModel, 0x54, model.firstSurface);
+        stamp16(brushModel, 0x58, static_cast<uint16_t>(model.surfaceCount));
+        stamp32(brushModel, 0x5C, UINT32_MAX);
+        zw.write(brushModel, sizeof(brushModel));
+    }
+    // Load_GfxWorld visits sun.spriteMaterial and sun.flareMaterial after the
+    // brush models (the sky-illumination and +0x3E08/+0x3E18 arrays between
+    // them are null here): two Material references.
+    if (mesh.sunFlare.size() == 18)
+    {
+        for (const char *name : {",sun", ",sun_flare"})
+        {
+            zw.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+            zw.align(7);
+            uint8_t material[0x78]{};
+            stamp64(material, 0, PTR_FOLLOWS);
+            zw.write(material, sizeof(material));
+            zw.pushStream(XFILE_BLOCK_VIRTUAL);
+            zw.writeStr(name);
+            zw.popStream();
+            zw.popStream();
+        }
+    }
+    // After the stream-4 bitsets: shadowGeomOptimized (+0x3F78) and lightAABB
+    // (+0x3F80) precede the static DPVS.
+    iw8::locallights::EmitShadowGeometry(zw, lights);
+    iw8::locallights::EmitLightAABB(zw, lights);
+    replayrender::EmitSortedSurfaces(zw, mesh, staticModels);
+    zw.align(15);
+    zw.write(umbraTome.data(), umbraTome.size());
+    zw.popStream();
+    zw.popStream();
+
+    // Replay allocates per-cell scene and visibility bitsets in stream 4.
+    // Preload_GfxWorldPtr RVA 0xDB2EB0 and Postload RVA 0xDA6CD0 use stream 2.
+    // Reserve both body destinations; only one copy is serialized.
+    zw.pushStream(XFILE_BLOCK_TEMP_POSTLOAD);
+    zw.align(15);
+    zw.reserveCalc(kSizeGfxWorld);
+    zw.align(31);
+    zw.popStream();
+    zw.pushStream(XFILE_BLOCK_TEMP_POSTLOAD);
+    zw.align(7);
+    zw.reserveCalc(0x148);
+    zw.align(31);
+    zw.popStream();
+    zw.pushStream(XFILE_BLOCK_TEMP_POSTLOAD);
+    zw.align(15);
+    zw.reserveCalc(0xE8);
+    zw.align(31);
+    zw.popStream();
+    zw.pushStream(XFILE_BLOCK_SHARED_STREAM); // Replay stream 4 = zero-fill
+    const size_t additionalSceneBits = cellCount > 1 ? size_t(cellCount - 1) * 512 * 4 : 0;
+    const size_t additionalCellVisBits =
+        cellCount > 1 ? size_t(cellCount) * cellWordCount * 4 - 4 : 0;
+    const size_t additionalSunBits = cellWordCount > 1 ? size_t(cellWordCount - 1) * 4 : 0;
+    const size_t additionalPrimaryLights = size_t(primaryLightCount - 2) * 0x98;
+    const size_t additionalPrimaryLightVis = size_t(primaryLightVisDataCount - 1) * 4;
+    const size_t reflectionProbeVis = size_t(reflectionProbeVisDataCount) * 4;
+    // Each visibility family is aligned to 128 bytes in stream 4.
+    const size_t volumetricVis = volumetricVisDataCount ? 128 + ((size_t(volumetricVisDataCount) * 4 + 127) & ~size_t(127)) : 0;
+    const size_t decalVis = decalVisDataCount ? 128 + ((size_t(decalVisDataCount) * 4 + 127) & ~size_t(127)) : 0;
+    const size_t smodelVisDataCount = (staticModels.instances.size() + 31) >> 5;
+    const size_t additionalSmodelVis =
+        smodelVisDataCount ? 24 * ((smodelVisDataCount * 4 + 127) & ~size_t(127)) : 0;
+    const size_t dynEntCellBitsBytes =
+        size_t(cellCount) * 4 * (dynEntWordCounts[0] + dynEntWordCounts[1]);
+    const size_t dynEntViewBitsBytes =
+        dynEntVisViews.size() * 32 * (dynEntWordCounts[0] + dynEntWordCounts[1]);
+    const size_t dynEntSceneBytes =
+        12 * (size_t(dynamicModelCount) + dynamicBrushCount);
+    const size_t dynEntMotionBytes =
+        4 * size_t(dynEntWordCounts[0] + dynEntWordCounts[1]);
+    zw.reserveCalc(0xD00 + additionalSceneBits + additionalCellVisBits + additionalSunBits +
+                    additionalPrimaryLights + additionalPrimaryLightVis + reflectionProbeVis +
+                    volumetricVis + decalVis + additionalSmodelVis +
+                   dynEntCellBitsBytes + dynEntViewBitsBytes + dynEntSceneBytes +
+                   dynEntMotionBytes +
+                   // Light shadow/motion bitsets, plus slack for the realignment
+                   // they cause to later 128-byte-aligned allocations.
+                   (lights.Empty() ? 0
+                                   : iw8::locallights::ZeroFillBytes(lights, dynamicModelCount,
+                                                                     dynamicBrushCount) +
+                                         256));
+    zw.popStream();
+}
+
+} // namespace iw8maps

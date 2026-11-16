@@ -1,0 +1,203 @@
+#pragma once
+#include <array>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace dumpsrc
+{
+
+struct ModelBindPose
+{
+    std::array<float, 4> quat{};
+    std::array<float, 3> trans{};
+    float transWeight{};
+};
+static_assert(sizeof(ModelBindPose) == 32);
+
+struct ModelBoneInfo
+{
+    std::array<float, 3> midPoint{}, halfSize{};
+    float radiusSquared{};
+};
+static_assert(sizeof(ModelBoneInfo) == 28);
+
+struct ModelSkeleton
+{
+    std::vector<uint8_t> parentList;
+    std::vector<std::array<int16_t, 4>> quats;
+    std::vector<std::array<float, 3>> trans;
+    std::vector<uint8_t> partClassification;
+    std::vector<ModelBindPose> baseMat;
+    std::vector<ModelBoneInfo> boneInfo;
+};
+
+// Model metadata and skeleton from an IW5 .xme6 dump. Geometry lives in the sibling .xse assets.
+struct XModelLodDump
+{
+    float dist = 0.f;                   // IW5 XSurfaceLod.dist
+    uint16_t numSurfacesInLod = 0;      // IW5 XSurfaceLod.numSurfacesInLod
+    uint16_t surfIndex = 0;             // IW5 XSurfaceLod.surfIndex (running surf offset)
+    std::array<uint32_t, 6> partBits{}; // IW5 XSurfaceLod.partBits[6] (24B)
+    std::string surfsName;              // read_asset<ModelSurface> name "zonetool_<model>_<lod>"
+                                        //   ("" if this LOD has no surface asset)
+};
+
+struct XModelDumpFull
+{
+    bool loaded = false; // true once the .xme6 parsed clean (cursor reached EOF)
+    bool clean = false;  // true if the full walk consumed EXACTLY the whole file (no desync)
+    std::string name;    // XModel asset name (== file stem)
+
+    // header counts (from the IW5 32-bit XModel blob — offsets validated against real bytes)
+    uint8_t numBones = 0;     // @+4
+    uint8_t numRootBones = 0; // @+5
+    uint8_t numSurfaces = 0;  // @+6  (== IW8 XModel.numsurfs; == sum of lod numSurfacesInLod)
+    uint8_t lodRampType = 0;  // @+7
+    float scale = 1.f;        // @+8
+    uint8_t numLods = 0;      // @+241
+    int8_t collLod = -1;      // @+242
+    uint8_t flags = 0;        // @+243 (IW5 XModel.flags — char)
+    int32_t numColSurfs = 0;  // @+248
+    int32_t contents = 0;     // @+252 (IW5 XModel.contents)
+    float radius = 0.f;       // @+260 (IW5 XModel.radius)
+    float boundsMid[3] = {0, 0,
+                          0}; // @+264 (IW5 Bounds.midPoint) — model-space, == IW8 Bounds.midPoint
+    float boundsHalf[3] = {0, 0, 0}; // @+276 (IW5 Bounds.halfSize) — == IW8 Bounds.halfSize
+
+    // Bone names become zone-local script-string indices during serialization.
+    std::vector<std::string> boneNames;
+    ModelSkeleton skeleton;
+
+    // per-LOD surface links + scalars ([numLods] meaningful; up to 4 in IW5)
+    std::array<XModelLodDump, 4> lods{};
+
+    // material asset names ([numSurfaces]); OFFSET-deduped entries are resolved back to a real name
+    // by the BinReader, so duplicates appear as repeated real names (never empty unless truly
+    // null).
+    std::vector<std::string> materials;
+
+    // sub-asset links (may be empty)
+    std::string physPresetName;
+    std::string physCollmapName;
+
+    // convenience: the lod0 XModelSurfs name (what the IW8 XModel primarily cross-references)
+    const std::string &primarySurfs() const
+    {
+        for (const auto &l : lods)
+            if (!l.surfsName.empty())
+                return l.surfsName;
+        static const std::string empty;
+        return empty;
+    }
+};
+
+// Read XModel/<name>.xme6 under <dumpDir>. Incomplete or inconsistent records return false.
+bool readXModel(const std::string &dumpDir, const std::string &name, XModelDumpFull &out);
+
+// Lower-level: parse an already-loaded .xme6 byte buffer. (readXModel = read file + this.)
+bool parseXModel(const std::vector<uint8_t> &bytes, const std::string &nameHint,
+                 XModelDumpFull &out);
+
+} // namespace dumpsrc
+
+// Converted Replay model data. Asset names become packed references when the zone is written.
+namespace convert::xmodel
+{
+
+struct Iw8LodInfo
+{
+    float dist = 0.f;
+    uint16_t numsurfs = 0;              // XModelLodInfo.numsurfs (= IW5 numSurfacesInLod)
+    uint16_t surfIndex = 0;             // XModelLodInfo.surfIndex
+    std::array<uint32_t, 8> partBits{}; // IW8 DObjPartBits 32B (IW5 24B zero-extended)
+    uint8_t flags = 0;
+    std::string surfsName; // XModelSurfs cross-ref name (lod link)
+};
+
+// One part of Replay's reactive motion (ReactiveMotionModelPart, 32 bytes): the reactive-motion sim samples the wind
+// and the pushes at its centre and turns the vertices of its piece index (vertex green) about its pivot, blended by
+// their weight (vertex blue). A root part's pivot is in model space; a child's is in its parent's rest frame.
+struct Iw8ReactiveMotionPart
+{
+    std::array<float, 3> center{};
+    float stiffness = 0.f;   // written as a half float
+    uint16_t parent = 0xFFFF; // hierarchy parent (USE_HIERARCHY models); 0xFFFF: none
+    std::array<float, 3> pivot{};
+    std::array<float, 4> rotation{0, 0, 0, 1}; // rest rotation, written as a PackedQuatDec3n
+};
+
+// Replay's ReactiveMotionModelInfo (XModel +0xD0, 0x60 bytes): the wind scales (area, amplitude, frequency, then 1)
+// and the parts. Static placements of the model bend when their GfxStaticModel carries STATIC_MODEL_FLAG_REACTIVEMOTION.
+struct Iw8ReactiveMotion
+{
+    std::array<float, 4> wind{0.1f, 0.2f, 0.3f, 1.0f};
+    std::vector<Iw8ReactiveMotionPart> parts;
+};
+
+struct Iw8XModelRecord
+{
+    std::string name;
+
+    uint16_t numsurfs = 0; // XModel.numsurfs (u16 in IW8)
+    uint8_t numLods = 0;
+    uint8_t collLod = 0;
+    uint8_t numBones = 0;
+    uint8_t numRootBones = 0;
+    uint16_t numClientBones = 0;
+    uint8_t shadowCutoffLod = 0;
+    uint8_t lodRampType = 0; // not an IW8 field; kept for fidelity/debug (unused by writer)
+    uint32_t flags = 0;
+    int32_t contents = 0;
+    float scale = 1.f;
+    float radius = 0.f;
+    float boundsMid[3] = {0, 0, 0};
+    float boundsHalf[3] = {0, 0, 0};
+
+    std::vector<std::string> boneNames; // [numBones], remapped through the zone script-string table
+    dumpsrc::ModelSkeleton skeleton;
+    std::vector<Iw8LodInfo> lods;       // [numLods]  (XModel.lodInfo[6]; extras zeroed by writer)
+    std::vector<std::string> materials; // [numsurfs] material cross-ref names (materialHandles)
+    std::vector<float> himipRadiusInvSq; // [numsurfs] required by Replay's stream-combine builder
+    std::optional<Iw8ReactiveMotion> reactiveMotion;
+
+    std::string physPresetName; // informational (PhysicsAsset cross-ref deferred)
+    std::string physCollmapName;
+    std::string physicsAssetName;
+};
+
+// IW5 dump -> IW8 record. Pure field mapping (no I/O). Returns true on success.
+bool toIw8(const dumpsrc::XModelDumpFull &in, Iw8XModelRecord &out);
+
+} // namespace convert::xmodel
+
+// ===================================================================================================
+// Stage C — the IW8 writer entry points (defined in src/iw8/write_xmodel.cpp).
+// ===================================================================================================
+namespace iw8
+{
+class ZoneWriter;
+namespace havok
+{
+struct PhysicsAsset;
+struct XModelDetailCollision;
+}
+} // namespace iw8
+
+namespace iw8
+{
+
+// Register the IW8 XModel(9) asset body for `rec` into the writer (zw.add(...) with the body
+// callback). Materials and LOD surface assets must be registered before the model. Bone names
+// are registered in the zone's script-string table. Call before zw.build().
+void writeXModel(ZoneWriter &zw, const convert::xmodel::Iw8XModelRecord &rec);
+void writePhysicsAsset(ZoneWriter &zw, const havok::PhysicsAsset &asset);
+void writePhysicsAssetReference(ZoneWriter &zw, const std::string &name);
+void writeXModelDetailCollision(ZoneWriter &zw, const havok::XModelDetailCollision &asset);
+
+// Convenience: read <dumpDir>/XModel/<name>.xme6 -> convert -> register. Returns false if the .xme6
+// is missing or unparseable; the caller logs and skips that asset.
+bool addXModelFromDump(ZoneWriter &zw, const std::string &dumpDir, const std::string &name);
+
+} // namespace iw8

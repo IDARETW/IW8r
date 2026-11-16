@@ -1,0 +1,66 @@
+#include <std_include.hpp>
+#include "commands.hpp"
+
+namespace zonetool::cli
+{
+	namespace
+	{
+		bool is_flag(const std::string& arg)
+		{
+			return arg.size() > 1 && arg[0] == '-' && arg[1] != '-';
+		}
+
+		std::vector<std::string> without_flags(const std::span<const std::string> args)
+		{
+			std::vector<std::string> result;
+			std::ranges::copy_if(args, std::back_inserter(result), [](const std::string& arg)
+			{
+				return !is_flag(arg);
+			});
+			return result;
+		}
+	}
+
+	std::span<const command> commands()
+	{
+		static const std::array list
+		{
+			command{"inspect", "inspect <zone> | inspect --all", inspect},
+			command{"dumpzone", "dumpzone <zone> [--target <game> [--<option> <value>]...]", dump_zone},
+			command{"dumpasset", "dumpasset <type> <name> <zone> [--target <game>]", dump_asset},
+			command{"verifyzone", "verifyzone <zone> | verifyzone --all", verify_zone},
+			command{"listzone", "listzone <zone> | listzone --all", list_zone},
+			command{"buildzone", "buildzone <zone>", build_zone},
+			command{"buildextraction", "buildextraction <extraction folder> --map <id> --replay <game_dx12_ship_replay.exe> [--metadata <json>] [--style iw3|iw8] [--acts <acts.exe>] [--output <folder>]", build_extraction},
+			command{"editzone", "editzone <zone> <edits.json> <output folder>", edit_zone},
+			command{"refreshzone", "refreshzone <deployed map folder> <rebuilt map folder> [<output folder>]", refresh_zone},
+			command{"patchzone", "patchzone <base.ff> <new.ff> [<out.fp>]", patch_zone},
+			command{"havokinfo", "havokinfo <file with Havok tagfile data> [--items]", havok_info},
+			command{"streaminfo", "streaminfo <zone> [<out.json>]", stream_info},
+			command{"generatecsv", "generatecsv <map> [sp] [--path <dir>]...", generate_csv},
+		};
+
+		return list;
+	}
+
+	bool execute(const settings& settings, const std::span<const std::string> all_args)
+	{
+		const auto args = without_flags(all_args);
+		if (args.empty())
+		{
+			return true;
+		}
+
+		for (const auto& command : commands())
+		{
+			if (command.name == args.front())
+			{
+				command.handler(settings, std::span(args).subspan(1));
+				return true;
+			}
+		}
+
+		std::cout << std::format("unknown command \"{}\"\n", args.front());
+		return false;
+	}
+}

@@ -1,0 +1,1 @@
+libtommath from the x64-zt fork's deps/libtommath at ae40a87a920099a7d9d00979570e0c8d917a1fd7 (v1.3.0-418-gae40a87); only the files its build uses.

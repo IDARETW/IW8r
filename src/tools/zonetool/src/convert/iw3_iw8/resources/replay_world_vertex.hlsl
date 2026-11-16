@@ -1,0 +1,162 @@
+// Replay 1.20 static BSP layout 35: 88-byte surface records and raw vertex streams.
+#ifdef GLASS_PANE
+// Replay's native glass vertex buffer (code buffer 47), 28 bytes per vertex.
+// The signed glass shader reads UV at +12 and tangent frame at +16.
+#ifndef GLASS_ENVIRONMENT
+#define GLASS_ENVIRONMENT float4(.8, 4, 2.5, .625)
+#endif
+struct GlassVertex {
+    float3 position;
+    uint texcoord;
+    uint tangentFrame;
+    uint color;
+    uint lightingHandle;
+};
+StructuredBuffer<GlassVertex> glassVertices : register(t2);
+#else
+struct SurfaceData {
+    uint transientZone;
+    uint layerCount;
+    uint positionOffset;
+    uint tangentOffset;
+    uint lightmapOffset;
+    uint colorOffset;
+    uint textureOffset;
+    uint unused[15];
+};
+StructuredBuffer<SurfaceData> surfaces : register(t13);
+ByteAddressBuffer positions : register(t14);
+ByteAddressBuffer attributes : register(t15);
+#endif
+cbuffer ReplayView : register(b2) {
+    float4 replayView[6];
+};
+cbuffer ReplaySurface : register(b9) {
+    uint4 surfaceIndex;
+};
+struct Output {
+    float4 position : SV_POSITION;
+    float4 uv : TEXCOORDS0;
+    float2 lightmapUV : LMAPCOORDS0;
+    float3 normal : NORMAL0;
+    float4 tangent : TANGENT0;
+    float4 color : COLOR0;
+    nointerpolation float2 metadata : MAPDATA0;
+    nointerpolation float4 materialParameters : MATERIALPARMS0;
+    float3 relativePosition : WORLDPOS0;
+};
+// IW3 polygon offset as a pull toward the camera (fraction of the distance).
+// IW3 (R_ForceSetPolygonOffset) sets D3D9 DEPTHBIAS level * r_polygonOffsetBias
+// (-1) / 65536 and SLOPESCALEDEPTHBIAS level * r_polygonOffsetScale (-1) on a
+// [0, 1] depth range with r_znear 4: the constant term brings a decal
+// level * d^2 / 262144 units nearer (0.34 units at 300, 3.8 at 1000): along
+// the view ray that is a constant depth-buffer offset, exact per pixel. The
+// slope term is left to the hardware bias of the _bias techniques: estimated
+// per vertex from each vertex's view angle it tilted large decal triangles
+// through their wall, so stains showed in patches that moved as the camera
+// turned (Greenband, owner test 2026-10-16). Mapper decals sit on or slightly behind their
+// wall and relied on it: Greenband's stains (gnbr_com_stain_01, offset1)
+// flickered against Replay's far smaller hardware bias (owner test 2026-10-16).
+float Iw3PolygonOffset(uint level, float3 relative, float3 normal) {
+    if (level == 0)
+        return 0;
+    float viewDistance = max(dot(relative, replayView[3].xyz), 0);
+    return level * min(viewDistance * (1.0 / 262144.0), .03);
+}
+
+Output main(uint id : SV_VertexID) {
+#ifdef GLASS_PANE
+    GlassVertex vertex = glassVertices[id];
+    precise float3 p = vertex.position;
+    precise float3 offset = -replayView[4].xyz;
+#else
+    SurfaceData s = surfaces[surfaceIndex.x];
+    precise float3 p = asfloat(positions.Load3(s.positionOffset + id * 12));
+    precise float3 offset = (float3)(-asint(replayView[5].xyz)) / 4096.0;
+#endif
+    precise float4 relative;
+    relative.x = dot(float4(p, offset.x), float4(1, 0, 0, 1));
+    relative.y = dot(float4(p, offset.y), float4(0, 1, 0, 1));
+    relative.z = dot(float4(p, offset.z), float4(0, 0, 1, 1));
+    relative.w = 1;
+    Output o;
+    o.relativePosition = relative.xyz;
+#ifdef GLASS_PANE
+    o.uv = float4(f16tof32(vertex.texcoord & 0xffff), f16tof32(vertex.texcoord >> 16), 0, 0);
+    o.metadata = float2(GLASS_TILE, GLASS_FLAGS);
+    o.materialParameters = GLASS_ENVIRONMENT;
+    o.lightmapUV = 0;
+    uint packed = vertex.tangentFrame;
+#else
+    o.uv = float4(asfloat(attributes.Load2(s.textureOffset + id * s.layerCount * 8)), 0, 0);
+    if (s.layerCount >= 2)
+        o.uv.zw = asfloat(attributes.Load2(s.textureOffset + id * s.layerCount * 8 + 8));
+    o.metadata = o.uv.zw;
+    o.materialParameters =
+        s.layerCount >= 4 ? asfloat(attributes.Load4(s.textureOffset + id * s.layerCount * 8 + 16))
+                          : float4(.8, 4, 2.5, .625);
+    o.lightmapUV = s.lightmapOffset ? asfloat(attributes.Load2(s.lightmapOffset + id * 8)) : 0;
+    uint packed = attributes.Load(s.tangentOffset + id * 4);
+#endif
+    // Sky surfaces (kind 1) lie at infinity, as Replay's own sky does (its vertex shader projects
+    // view directions only): the sky box is around the camera wherever it is. Placed around the
+    // world's origin, the box showed its walls to a camera away from the origin: IW7 Breakneck's
+    // spawns are 40000 units out, beyond the box's 32768.
+    bool sky = (uint)o.metadata.y % 4 == 1;
+    bool skyObject = false;
+#ifdef MAP_SKY_OBJECTS
+    // The sky's other surfaces (flag bit 23: an extraction's distant models) keep their directions from the play space
+    // as positions, drawn at infinity as the sky box is.
+    skyObject = !sky && ((uint)o.metadata.y & 8388608) != 0;
+    sky = sky || skyObject;
+#endif
+    if (sky) {
+        relative.xyz = p;
+        o.relativePosition = p;
+    }
+    // IW3 layer rank (flags bits 12-17, sort - 8): decal and blended layers move
+    // toward the camera along their own view ray by rank * 1.2e-5 of their distance, so
+    // coplanar layers keep IW3's order at any distance and view angle.
+    precise float4 projected = relative;
+    projected.xyz *= 1 - (((uint)o.metadata.y >> 12) & 63) * 1.2e-5;
+    float3 xyz = (float3(packed & 1023, (packed >> 10) & 1023, (packed >> 20) & 511) *
+                      float3(2.0 / 1023, 2.0 / 1023, 2.0 / 511) -
+                  1) *
+                 .7071067811865475;
+    float largest = sqrt(1 - min(dot(xyz, xyz), 1));
+    uint largestIndex = packed >> 30;
+    float4 q = largestIndex == 0   ? float4(largest, xyz)
+               : largestIndex == 1 ? float4(xyz.x, largest, xyz.yz)
+               : largestIndex == 2 ? float4(xyz.xy, largest, xyz.z)
+                                   : float4(xyz, largest);
+    o.normal = float3(2 * (q.x * q.z + q.w * q.y), 2 * (q.y * q.z - q.w * q.x),
+                      1 - 2 * (q.x * q.x + q.y * q.y));
+    o.tangent = float4(1 - 2 * (q.y * q.y + q.z * q.z), 2 * (q.x * q.y + q.w * q.z),
+                       2 * (q.x * q.z - q.w * q.y), (packed & (1u << 29)) ? -1 : 1);
+    // IW3 polygon offset (flags bits 18-19: offset1, offset2).
+    projected.xyz *= 1 - Iw3PolygonOffset(((uint)o.metadata.y >> 18) & 3, projected.xyz, o.normal);
+    o.position.x = dot(projected, replayView[0]);
+    o.position.y = dot(projected, replayView[1]);
+    o.position.z = dot(projected, replayView[2]);
+    o.position.w = dot(projected, replayView[3]);
+    // At their distance, effects beyond the sky box were cut where they passed behind it: IW7
+    // Scorch's sun, 28160 units away and up to 21000 wide. Depth is reversed, so a z/w of 1e-7 is
+    // farther than any geometry.
+    if (sky)
+        o.position.z = o.position.w * 1e-7;
+    // The sky's other surfaces keep the order of their distances (one scale for all, export_world): z = 1e-7 w + 1.2e-4
+    // gives the reversed depth 1e-7 + 1.2e-4 / w, a perspective depth just in front of the sky box (1e-7): 1.02e-7 at
+    // their farthest (60000 units as drawn), about 1.3e-7 at Breakneck's nearest (3559 units as drawn), far behind the
+    // world (Replay's main view is an infinite reversed projection, depth = zNear / w: BuildInfinitePerspectiveMatrix
+    // 0x1413DD900). With one depth for all, the pieces of Breakneck's black hole flickered against each other in shards
+    // as the GPU's draw order changed.
+    if (skyObject)
+        o.position.z = o.position.w * 1e-7 + 1.2e-4;
+#ifdef GLASS_PANE
+    uint color = vertex.color;
+#else
+    uint color = s.colorOffset ? attributes.Load(s.colorOffset + id * 4) : 0xffffffff;
+#endif
+    o.color = float4(color & 255, (color >> 8) & 255, (color >> 16) & 255, color >> 24) / 255.0;
+    return o;
+}

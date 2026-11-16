@@ -1,0 +1,1870 @@
+#pragma once
+#include "../iw8_map_structs.h" // pinned Replay 1.20 map field maps and sizes
+#include "../iw8_structs.h"
+#include "iw8_zone.h"
+#include "iw8_zonebuffer.h"
+#include "../common/physics_asset_serialization.h"
+#include "../assets/replay_dynentity.h"
+#include "../assets/replay_ies.h"
+#include "../common/replay_havok.h"
+#include "replay_client_triggers.h"
+#include "replay_map_layout.h"
+#include "replay_netconst.h"
+#include "replay_spawns.h"
+#include "../common/replay_static_model_collision.h"
+
+#include <array>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <limits>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace iw8
+{
+static_assert(ASSET_TYPE_NET_CONST_STRINGS == replayncs::AssetType,
+              "Replay net-const-string asset ordinal");
+
+// fixed sizes (g_assetSizes @0x4A9D7F0) — cross-checked vs iw8::maps:: pinned sizeofs at compile
+// time.
+static constexpr size_t kSizeClipMap = 0xF8;
+static constexpr size_t kSizeMapEnts = replaymap::MapEntsSize;
+static constexpr size_t kSizeComWorld = 0xA8;
+static_assert(kSizeClipMap == sizeof(iw8::maps::clipMap_t), "clipMap size drift");
+static_assert(kSizeMapEnts == sizeof(iw8::maps::MapEnts), "MapEnts size drift");
+static_assert(kSizeComWorld == sizeof(iw8::maps::ComWorld), "ComWorld size drift");
+
+// clipMap_t field offsets
+static constexpr size_t kCM_name = 0x00, kCM_isInUse = 0x08, kCM_mapEnts = 0x18, kCM_bpMin = 0x80,
+                        kCM_bpMax = 0x8C, kCM_havokSize = 0xB8, kCM_havokData = 0xC0,
+                        kCM_glassInitCount = 0xD8, kCM_glassPieceLimit = 0xDC, kCM_checksum = 0xF0;
+// MapEnts field offsets
+static constexpr size_t kME_name = 0x00, kME_entityString = 0x08, kME_numEntityChars = 0x10,
+                        kME_trigger = 0x18;
+static constexpr size_t kME_havokEntsShapeDataSize = 0x148, kME_havokEntsShapeData = 0x150,
+                        kME_numSubModels = 0x158, kME_cmodels = 0x160,
+                        kME_edgeListUsedQueryTypes = 0x168, kME_numEdgeLists = 0x16C,
+                        kME_edgeLists = 0x170, kME_edgeListSpatialTree = 0x178,
+                        kME_dynEntCount = 0x190, kME_dynEntCountTotal = 0x198,
+                        kME_dynEntityListsCount = 0x19C, kME_dynEntListIds = 0x1A0,
+                        kME_dynEntNoSpatialCount = 0x1B8, kME_dynEntMaxClientHistoryCount = 0x1BC,
+                        kME_dynEntMaxPosePartCount = 0x1BE, kME_dynEntsWithExtraPosePartsCount = 0x1C0;
+// ComWorld field offsets (com_map(24)=0xA8) — pinned: name@0, isInUse@8, primaryLightCount@0x30.
+static constexpr size_t kCW_name = 0x00, kCW_isInUse = 0x08, kCW_primaryLightCount = 0x30;
+static_assert(offsetof(iw8::maps::ComWorld, name) == kCW_name, "ComWorld.name off");
+static_assert(offsetof(iw8::maps::ComWorld, isInUse) == kCW_isInUse, "ComWorld.isInUse off");
+static_assert(offsetof(iw8::maps::ComWorld, primaryLightCount) == kCW_primaryLightCount,
+              "ComWorld.plc off");
+
+inline void stamp64(uint8_t *p, size_t off, uint64_t v)
+{
+    std::memcpy(p + off, &v, 8);
+}
+inline void stamp32(uint8_t *p, size_t off, uint32_t v)
+{
+    std::memcpy(p + off, &v, 4);
+}
+inline void stamp16(uint8_t *p, size_t off, uint16_t v)
+{
+    std::memcpy(p + off, &v, 2);
+}
+inline void stampf(uint8_t *p, size_t off, float v)
+{
+    std::memcpy(p + off, &v, 4);
+}
+
+inline uint64_t packOffset(const uint32_t stream, const uint64_t offset)
+{
+    if (offset >= std::numeric_limits<uint32_t>::max())
+        throw std::runtime_error("Replay packed offset exceeds 32 bits");
+    return (static_cast<uint64_t>(stream & 0xF) << 32) | (offset + 1);
+}
+
+inline void emitPhysicsAssetReference(ZoneBuffer &zb,
+                                      const char *name = ",scriptbrushmodeldummydefault")
+{
+    uint8_t asset[0x58]{};
+    stamp64(asset, 0, PTR_FOLLOWS);
+    zb.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    zb.align(7);
+    zb.write(asset, sizeof(asset));
+    zb.pushStream(XFILE_BLOCK_VIRTUAL);
+    zb.writeStr(name);
+    zb.popStream();
+    zb.popStream();
+    // Map zones load through Preload_PhysicsAssetPtr (0xDFB170), which places this
+    // stub in stream 2 where Load_PhysicsAssetPtr (0xDF3A60) uses stream 1. Reserve
+    // it in both. Unreserved, Greenband's static-model collision stubs overran
+    // stream 2 into stream 6, which the preload allocator places right after it,
+    // and corrupted the map script's bytecode ("unknown function", owner 2026-10-15).
+    zb.pushStream(XFILE_BLOCK_TEMP_POSTLOAD);
+    zb.align(7);
+    zb.reserveCalc(sizeof(asset));
+    zb.popStream();
+}
+
+// The inline stub of an XModelDetailCollision that a static-model collision row names: Replay loads it through
+// Preload_XModelDetailCollisionPtr (0xE2F540) into stream 2 and Load_XModelDetailCollisionPtr (0xE2A4B0) into stream 1,
+// so the struct (0x28) is reserved in both, as the PhysicsAsset stub is.
+inline void emitXModelDetailCollisionReference(ZoneBuffer &zb, const char *name)
+{
+    uint8_t asset[iw8sz::XMODEL_DETAIL_COLLISION]{};
+    stamp64(asset, 0, PTR_FOLLOWS);
+    zb.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    zb.align(7);
+    zb.write(asset, sizeof(asset));
+    zb.pushStream(XFILE_BLOCK_VIRTUAL);
+    zb.writeStr(name);
+    zb.popStream();
+    zb.popStream();
+    zb.pushStream(XFILE_BLOCK_TEMP_POSTLOAD);
+    zb.align(7);
+    zb.reserveCalc(sizeof(asset));
+    zb.popStream();
+}
+
+inline void emitStaticModelCollisionModelLists(
+    ZoneBuffer &zb, const staticmodelcollision::Plan &plan)
+{
+    if (plan.models.empty())
+        return;
+
+    if (plan.models.size() > std::numeric_limits<uint32_t>::max() ||
+        plan.structureMemoryCost == 0)
+        throw std::runtime_error("Replay static-model collision list has invalid counts");
+
+    std::vector<uint64_t> physicsPointers(plan.models.size());
+    std::unordered_map<std::string, uint64_t> physicsAliases;
+    std::vector<uint64_t> detailPointers(plan.models.size(), PTR_NULL);
+    std::unordered_map<std::string, uint64_t> detailAliases;
+    uint64_t virtualCursor = 0;
+
+    zb.align(7);
+    maps::StaticModelCollisionModelList list{};
+    list.numModels = static_cast<uint32_t>(plan.models.size());
+    list.models = reinterpret_cast<void *>(PTR_FOLLOWS);
+    list.structureMemoryCost = plan.structureMemoryCost;
+    zb.writeT(list);
+    zb.align(7);
+    const uint64_t virtualBase = zb.streamSize(XFILE_BLOCK_VIRTUAL);
+    const uint64_t modelBytes =
+        static_cast<uint64_t>(plan.models.size()) * sizeof(maps::StaticModelCollisionModel);
+    if (virtualBase >= std::numeric_limits<uint32_t>::max() ||
+        modelBytes > std::numeric_limits<uint32_t>::max() - virtualBase)
+        throw std::runtime_error("Replay static-model collision model offset exceeds 32 bits");
+    virtualCursor = virtualBase + modelBytes;
+
+    for (std::size_t index = 0; index < plan.models.size(); ++index)
+    {
+        const auto &source = *plan.models[index].source;
+        if (source.physicsAssetName.empty() || source.physicsAssetName.front() == ',' ||
+            source.physicsAssetName.find('\0') != std::string::npos)
+            throw std::runtime_error("Replay static-model collision has an invalid PhysicsAsset name");
+
+        const auto existing = physicsAliases.find(source.physicsAssetName);
+        if (existing != physicsAliases.end())
+        {
+            physicsPointers[index] = existing->second;
+        }
+        else
+        {
+            if (virtualCursor > std::numeric_limits<uint32_t>::max() - 7)
+                throw std::runtime_error("Replay PhysicsAsset insertion offset exceeds 32 bits");
+            virtualCursor = (~uint64_t{7}) & (virtualCursor + 7);
+            const uint64_t alias = packOffset(XFILE_BLOCK_VIRTUAL, virtualCursor);
+            physicsAliases.emplace(source.physicsAssetName, alias);
+            physicsPointers[index] = PTR_INSERT;
+            if (virtualCursor > std::numeric_limits<uint32_t>::max() - 8)
+                throw std::runtime_error("Replay PhysicsAsset insertion offset exceeds 32 bits");
+            virtualCursor += 8;
+            // Replay resolves a comma-prefixed inline asset stub as a reference.
+            const uint64_t nameBytes = static_cast<uint64_t>(source.physicsAssetName.size()) + 2;
+            if (virtualCursor > std::numeric_limits<uint32_t>::max() ||
+                nameBytes > std::numeric_limits<uint32_t>::max() - virtualCursor)
+                throw std::runtime_error("Replay PhysicsAsset name offset exceeds 32 bits");
+            virtualCursor += nameBytes;
+        }
+
+        if (!source.detailCollisionName.empty())
+        {
+            if (source.detailCollisionName.front() == ',' ||
+                source.detailCollisionName.find('\0') != std::string::npos)
+                throw std::runtime_error("Replay static-model collision has an invalid XModelDetailCollision name");
+            const auto existingDetail = detailAliases.find(source.detailCollisionName);
+            if (existingDetail != detailAliases.end())
+            {
+                detailPointers[index] = existingDetail->second;
+            }
+            else
+            {
+                if (virtualCursor > std::numeric_limits<uint32_t>::max() - 7)
+                    throw std::runtime_error("Replay XModelDetailCollision insertion offset exceeds 32 bits");
+                virtualCursor = (~uint64_t{7}) & (virtualCursor + 7);
+                detailAliases.emplace(source.detailCollisionName,
+                                      packOffset(XFILE_BLOCK_VIRTUAL, virtualCursor));
+                detailPointers[index] = PTR_INSERT;
+                virtualCursor += 8;
+                const uint64_t nameBytes = static_cast<uint64_t>(source.detailCollisionName.size()) + 2;
+                if (virtualCursor > std::numeric_limits<uint32_t>::max() ||
+                    nameBytes > std::numeric_limits<uint32_t>::max() - virtualCursor)
+                    throw std::runtime_error("Replay XModelDetailCollision name offset exceeds 32 bits");
+                virtualCursor += nameBytes;
+            }
+        }
+
+        if (virtualCursor > std::numeric_limits<uint32_t>::max() - 3)
+            throw std::runtime_error("Replay static-model collision instance offset exceeds 32 bits");
+        virtualCursor = (~uint64_t{3}) & (virtualCursor + 3);
+        const uint64_t instanceBytes =
+            static_cast<uint64_t>(source.instances.size()) *
+            sizeof(maps::StaticModelCollisionInstance);
+        if (virtualCursor > std::numeric_limits<uint32_t>::max() ||
+            instanceBytes > std::numeric_limits<uint32_t>::max() - virtualCursor)
+            throw std::runtime_error("Replay static-model collision instance offset exceeds 32 bits");
+        virtualCursor += instanceBytes;
+    }
+    if (virtualCursor >= std::numeric_limits<uint32_t>::max())
+        throw std::runtime_error("Replay static-model collision data exceeds packed-offset range");
+
+    std::vector<maps::StaticModelCollisionModel> models;
+    models.reserve(plan.models.size());
+    for (std::size_t index = 0; index < plan.models.size(); ++index)
+    {
+        const auto &planned = plan.models[index];
+        const auto &source = *planned.source;
+        if (planned.scriptString == 0 || source.instances.empty() ||
+            source.instances.size() > std::numeric_limits<uint32_t>::max())
+            throw std::runtime_error("Replay static-model collision row has invalid counts");
+        maps::StaticModelCollisionModel model{};
+        model.name = planned.scriptString;
+        model.physicsAsset = reinterpret_cast<void *>(physicsPointers[index]);
+        model.detailCollision = reinterpret_cast<void *>(detailPointers[index]);
+        model.numInstances = static_cast<uint32_t>(source.instances.size());
+        model.instances = reinterpret_cast<void *>(PTR_FOLLOWS);
+        models.push_back(model);
+    }
+    zb.write(models.data(), models.size() * sizeof(models.front()));
+
+    std::unordered_map<std::string, uint64_t> emittedAliases;
+    std::unordered_map<std::string, uint64_t> emittedDetailAliases;
+    for (const auto &planned : plan.models)
+    {
+        const auto &source = *planned.source;
+        if (!emittedAliases.contains(source.physicsAssetName))
+        {
+            zb.align(7);
+            const uint64_t alias = packOffset(XFILE_BLOCK_VIRTUAL,
+                                              zb.streamSize(XFILE_BLOCK_VIRTUAL));
+            const auto expected = physicsAliases.at(source.physicsAssetName);
+            if (alias != expected)
+                throw std::runtime_error("Replay PhysicsAsset insertion alias drifted");
+            zb.reserveCalc(8);
+            emittedAliases.emplace(source.physicsAssetName, alias);
+            const std::string referenceName = "," + source.physicsAssetName;
+            emitPhysicsAssetReference(zb, referenceName.c_str());
+        }
+
+        if (!source.detailCollisionName.empty() &&
+            !emittedDetailAliases.contains(source.detailCollisionName))
+        {
+            zb.align(7);
+            const uint64_t alias = packOffset(XFILE_BLOCK_VIRTUAL,
+                                              zb.streamSize(XFILE_BLOCK_VIRTUAL));
+            if (alias != detailAliases.at(source.detailCollisionName))
+                throw std::runtime_error("Replay XModelDetailCollision insertion alias drifted");
+            zb.reserveCalc(8);
+            emittedDetailAliases.emplace(source.detailCollisionName, alias);
+            const std::string referenceName = "," + source.detailCollisionName;
+            emitXModelDetailCollisionReference(zb, referenceName.c_str());
+        }
+
+        zb.align(3);
+        for (const auto &sourceInstance : source.instances)
+        {
+            if (!std::all_of(sourceInstance.origin.begin(), sourceInstance.origin.end(),
+                             [](const float value) { return std::isfinite(value); }) ||
+                !std::all_of(sourceInstance.angles.begin(), sourceInstance.angles.end(),
+                             [](const float value) { return std::isfinite(value); }) ||
+                !std::isfinite(sourceInstance.scale) || sourceInstance.scale <= 0.0f)
+                throw std::runtime_error("Replay static-model collision transform is invalid");
+            maps::StaticModelCollisionInstance instance{};
+            std::copy(sourceInstance.origin.begin(), sourceInstance.origin.end(),
+                      instance.origin.v);
+            std::copy(sourceInstance.angles.begin(), sourceInstance.angles.end(),
+                      instance.angles.v);
+            instance.scale = sourceInstance.scale;
+            zb.writeT(instance);
+        }
+    }
+}
+
+inline void emitMapTriggers(ZoneBuffer &zb, const havok::BakeResult &collision)
+{
+    if (collision.triggers.empty())
+        return;
+    if (collision.triggers.size() > std::numeric_limits<uint16_t>::max())
+        throw std::runtime_error("Replay trigger-model count exceeds 16 bits");
+
+    std::vector<std::vector<const havok::CollisionHull *>> hulls(collision.triggers.size());
+    std::size_t totalHulls = 0;
+    std::size_t totalSlabs = 0;
+    for (std::size_t triggerIndex = 0; triggerIndex < collision.triggers.size(); ++triggerIndex)
+    {
+        const auto &trigger = collision.triggers[triggerIndex];
+        if (!trigger.staticPhysics || trigger.collisionModel == 0 ||
+            trigger.collisionModel >= collision.models.size())
+            throw std::runtime_error("Replay trigger model is invalid");
+        for (const auto &hull : collision.hulls)
+            if (hull.model == trigger.collisionModel)
+            {
+                hulls[triggerIndex].push_back(&hull);
+                ++totalHulls;
+                totalSlabs += hull.slabs.size();
+            }
+        if (hulls[triggerIndex].empty())
+            throw std::runtime_error("Replay trigger model has no collision hulls");
+    }
+    if (totalHulls > std::numeric_limits<uint16_t>::max() ||
+        totalSlabs > std::numeric_limits<uint16_t>::max())
+        throw std::runtime_error("Replay trigger geometry exceeds 16-bit indices");
+
+    zb.align(7);
+    const uint64_t arrayStart = zb.streamSize(XFILE_BLOCK_VIRTUAL);
+    const uint64_t insertionOffset =
+        (arrayStart + collision.triggers.size() * sizeof(maps::TriggerModel) + 7) & ~uint64_t{7};
+    const uint64_t alias = packOffset(XFILE_BLOCK_VIRTUAL, insertionOffset);
+    uint16_t firstHull = 0;
+    for (std::size_t index = 0; index < collision.triggers.size(); ++index)
+    {
+        maps::TriggerModel model{};
+        model.contents = 1;
+        model.hullCount = static_cast<uint16_t>(hulls[index].size());
+        model.firstHull = firstHull;
+        model.physicsAsset = reinterpret_cast<void *>(index == 0 ? PTR_INSERT : alias);
+        model.physicsShapeOverrideIdx =
+            collision.models[collision.triggers[index].collisionModel].shapeIndex;
+        zb.writeT(model);
+        firstHull = static_cast<uint16_t>(firstHull + model.hullCount);
+    }
+    zb.align(7);
+    if (zb.streamSize(XFILE_BLOCK_VIRTUAL) != insertionOffset)
+        throw std::runtime_error("Replay trigger physics insertion offset drifted");
+    zb.reserveCalc(8);
+    emitPhysicsAssetReference(zb, ",triggermodelstaticdummydefault");
+
+    zb.align(3);
+    uint16_t firstSlab = 0;
+    for (const auto &group : hulls)
+        for (const auto *source : group)
+        {
+            maps::TriggerHull hull{};
+            for (std::size_t axis = 0; axis < 3; ++axis)
+            {
+                hull.bounds.midPoint.v[axis] =
+                    (source->minimum[axis] + source->maximum[axis]) * 0.5f;
+                hull.bounds.halfSize.v[axis] =
+                    (source->maximum[axis] - source->minimum[axis]) * 0.5f;
+            }
+            hull.contents = 1;
+            hull.slabCount = static_cast<uint16_t>(source->slabs.size());
+            hull.firstSlab = firstSlab;
+            zb.writeT(hull);
+            firstSlab = static_cast<uint16_t>(firstSlab + hull.slabCount);
+        }
+
+    if (totalSlabs)
+    {
+        zb.align(3);
+        for (const auto &group : hulls)
+            for (const auto *source : group)
+                for (const auto &sourceSlab : source->slabs)
+                {
+                    maps::TriggerSlab slab{};
+                    std::copy(sourceSlab.direction.begin(), sourceSlab.direction.end(),
+                              slab.direction.v);
+                    slab.midpoint = sourceSlab.midpoint;
+                    slab.halfSize = sourceSlab.halfSize;
+                    zb.writeT(slab);
+                }
+    }
+}
+
+// MapEnts.clientTrigger (+0x68) and clientTriggerBlend (+0x118) header fields.
+inline void stampClientTriggers(uint8_t *me, const ClientTriggerSet &set)
+{
+    if (!set.paSpeakers.empty())
+    {
+        stamp32(me, 0x3C8, static_cast<uint32_t>(set.paSpeakers.size()));
+        stamp64(me, 0x3D0, PTR_FOLLOWS);
+    }
+    constexpr size_t base = 0x68;
+    const auto count = static_cast<uint32_t>(set.triggers.size());
+    if (!count)
+        return;
+    if (count > 0x4000) // CG_StartClientSideTriggers Com_Errors past 0x4000
+        throw std::runtime_error("Replay client trigger count exceeds 0x4000");
+    size_t hulls = 0, slabs = 0, chars = 0;
+    std::vector<std::string> names;
+    for (const auto &trigger : set.triggers)
+    {
+        hulls += trigger.hulls.size();
+        for (const auto &hull : trigger.hulls)
+            slabs += hull.slabs.size();
+        for (const std::string *name : {&trigger.audio, &trigger.npc})
+            if (!name->empty() && std::find(names.begin(), names.end(), *name) == names.end())
+            {
+                names.push_back(*name);
+                chars += name->size() + 1;
+            }
+    }
+    stamp32(me, base + 0x00, count);
+    stamp64(me, base + 0x08, PTR_FOLLOWS);
+    stamp32(me, base + 0x10, static_cast<uint32_t>(hulls));
+    stamp64(me, base + 0x18, hulls ? PTR_FOLLOWS : PTR_NULL);
+    stamp32(me, base + 0x20, static_cast<uint32_t>(slabs));
+    stamp64(me, base + 0x28, slabs ? PTR_FOLLOWS : PTR_NULL);
+    stamp32(me, base + 0x30, static_cast<uint32_t>(chars));
+    stamp64(me, base + 0x38, chars ? PTR_FOLLOWS : PTR_NULL);
+    for (size_t offset = 0x40; offset <= 0xA8; offset += 8)
+        stamp64(me, base + offset, PTR_FOLLOWS);
+    if (!set.blendNodes.empty())
+    {
+        if (set.blendNodes.size() > std::numeric_limits<uint16_t>::max())
+            throw std::runtime_error("Replay client trigger blend node count exceeds 16 bits");
+        stamp16(me, 0x118, static_cast<uint16_t>(set.blendNodes.size()));
+        stamp64(me, 0x120, PTR_FOLLOWS);
+    }
+}
+
+// The client trigger arrays in x64-zt asset_streams.cpp stream_clienttriggers /
+// stream_clienttriggerblend order (VIRTUAL, after the server triggers). Stock
+// mp_shipment: model flags 0, vision -1 for non-vision triggers, null
+// detailSoundBank / linkTo pointers, parent -1. The spatial tree holds no tree,
+// only an always list of every trigger, which the frame test walks like a leaf
+// (the ladders' edge list tree is built the same way).
+inline void emitClientTriggers(ZoneBuffer &zb, const ClientTriggerSet &set)
+{
+    const size_t count = set.triggers.size();
+    if (!count)
+        return;
+    std::string text;
+    const auto offsetOf = [&](const std::string &name) -> int16_t {
+        if (name.empty())
+            return -1;
+        size_t at = 0;
+        while (at < text.size())
+        {
+            const size_t end = text.find('\0', at);
+            if (text.compare(at, end - at, name) == 0)
+                return static_cast<int16_t>(at);
+            at = end + 1;
+        }
+        if (text.size() + name.size() + 1 > static_cast<size_t>(std::numeric_limits<int16_t>::max()))
+            throw std::runtime_error("Replay client trigger string exceeds 16-bit offsets");
+        text += name;
+        text += '\0';
+        return static_cast<int16_t>(at);
+    };
+    std::vector<int16_t> audio, npc;
+    for (const auto &trigger : set.triggers)
+    {
+        audio.push_back(offsetOf(trigger.audio));
+        npc.push_back(offsetOf(trigger.npc));
+    }
+
+    struct Model
+    {
+        uint16_t hullCount;
+        uint32_t firstHull;
+        uint32_t flags;
+    };
+    struct Hull
+    {
+        float midPoint[3], halfSize[3];
+        uint16_t slabCount;
+        uint32_t firstSlab;
+    };
+    struct Slab
+    {
+        float dir[3], midPoint, halfSize;
+    };
+    struct ReverbPan
+    {
+        bool hasCustomPosition;
+        float position[3], maxWallDistance, minReverbVolume;
+    };
+    struct BlendNode
+    {
+        float pointA[3], pointB[3];
+        uint16_t triggerA, triggerB;
+    };
+    static_assert(sizeof(Model) == 12 && sizeof(Hull) == 32 && sizeof(Slab) == 20 && sizeof(ReverbPan) == 24 &&
+                  sizeof(BlendNode) == 28);
+
+    zb.align(3);
+    uint32_t firstHull = 0;
+    for (const auto &trigger : set.triggers)
+    {
+        if (trigger.hulls.empty() || trigger.hulls.size() > std::numeric_limits<uint16_t>::max())
+            throw std::runtime_error("Replay client trigger hull count is invalid");
+        Model model;
+        std::memset(&model, 0, sizeof(model)); // padding included
+        model.hullCount = static_cast<uint16_t>(trigger.hulls.size());
+        model.firstHull = firstHull;
+        zb.writeT(model);
+        firstHull += static_cast<uint32_t>(trigger.hulls.size());
+    }
+    zb.align(3);
+    uint32_t firstSlab = 0;
+    bool anySlab = false;
+    for (const auto &trigger : set.triggers)
+        for (const auto &source : trigger.hulls)
+        {
+            Hull hull;
+            std::memset(&hull, 0, sizeof(hull));
+            for (size_t axis = 0; axis < 3; ++axis)
+            {
+                hull.midPoint[axis] = source.midPoint[axis];
+                hull.halfSize[axis] = source.halfSize[axis];
+            }
+            if (source.slabs.size() > std::numeric_limits<uint16_t>::max())
+                throw std::runtime_error("Replay client trigger slab count exceeds 16 bits");
+            hull.slabCount = static_cast<uint16_t>(source.slabs.size());
+            hull.firstSlab = firstSlab;
+            zb.writeT(hull);
+            firstSlab += hull.slabCount;
+            anySlab = anySlab || hull.slabCount;
+        }
+    if (anySlab)
+    {
+        zb.align(3);
+        for (const auto &trigger : set.triggers)
+            for (const auto &hull : trigger.hulls)
+                for (const auto &source : hull.slabs)
+                    zb.writeT(Slab{{source.dir[0], source.dir[1], source.dir[2]}, source.midPoint, source.halfSize});
+    }
+    if (!text.empty())
+        zb.write(text.data(), text.size());
+    const auto writeShorts = [&](const auto &value) {
+        zb.align(1);
+        for (size_t i = 0; i < count; ++i)
+            zb.writeT<int16_t>(value(i));
+    };
+    const auto writeFloats = [&](const auto &value) {
+        zb.align(3);
+        for (size_t i = 0; i < count; ++i)
+            zb.writeT<float>(value(i));
+    };
+    writeShorts([](size_t) { return int16_t{-1}; }); // visionSetTriggers
+    writeShorts([&](size_t i) { return static_cast<int16_t>(set.triggers[i].type); });
+    zb.align(3);
+    for (const auto &trigger : set.triggers)
+        for (const float value : trigger.origin)
+            zb.writeT(value);
+    writeFloats([&](size_t i) { return set.triggers[i].scriptDelay; });
+    writeFloats([&](size_t i) { return set.triggers[i].priority; });
+    writeShorts([&](size_t i) { return audio[i]; });
+    writeShorts([&](size_t i) { return set.triggers[i].blend; });
+    writeShorts([&](size_t i) { return npc[i]; });
+    writeShorts([&](size_t i) { return set.triggers[i].audioState; });
+    zb.align(7);
+    for (size_t i = 0; i < count; ++i)
+        zb.writeT<uint64_t>(PTR_NULL); // detailSoundBank
+    zb.align(3);
+    for (const auto &trigger : set.triggers)
+    {
+        const auto &source = trigger.reverbPan;
+        ReverbPan pan;
+        std::memset(&pan, 0, sizeof(pan));
+        pan.hasCustomPosition = source.hasCustomPosition;
+        std::copy(source.position.begin(), source.position.end(), pan.position);
+        pan.maxWallDistance = source.maxWallDistance;
+        pan.minReverbVolume = source.minReverbVolume;
+        zb.writeT(pan);
+    }
+    writeShorts([](size_t) { return int16_t{-1}; }); // parent
+    zb.align(7);
+    for (size_t i = 0; i < count; ++i)
+        zb.writeT<uint64_t>(PTR_NULL); // linkTo
+    zb.align(7);
+    uint8_t tree[24]{};
+    stamp64(tree, 8, PTR_FOLLOWS);
+    stamp32(tree, 20, static_cast<uint32_t>(count));
+    zb.write(tree, sizeof(tree));
+    zb.align(3);
+    for (uint32_t i = 0; i < count; ++i)
+        zb.writeT(i);
+
+    if (!set.blendNodes.empty())
+    {
+        zb.align(3);
+        for (const auto &node : set.blendNodes)
+        {
+            if (node.triggerA >= count || node.triggerB >= count)
+                throw std::runtime_error("Replay client trigger blend node names a missing trigger");
+            zb.writeT(BlendNode{{node.pointA[0], node.pointA[1], node.pointA[2]},
+                                {node.pointB[0], node.pointB[1], node.pointB[2]},
+                                node.triggerA,
+                                node.triggerB});
+        }
+    }
+}
+
+inline void emitCmodels(ZoneBuffer &zb, const havok::BakeResult &collision)
+{
+    if (collision.models.empty())
+        return;
+    if (collision.models.size() > std::numeric_limits<uint32_t>::max())
+        throw std::runtime_error("Replay cmodel count exceeds 32 bits");
+
+    zb.align(7);
+    const uint64_t arrayStart = zb.streamSize(XFILE_BLOCK_VIRTUAL);
+    const uint64_t insertionOffset =
+        (arrayStart + collision.models.size() * sizeof(maps::cmodel_t) + 7) & ~uint64_t{7};
+    const uint64_t alias = packOffset(XFILE_BLOCK_VIRTUAL, insertionOffset);
+    bool insertedReference = false;
+    for (std::size_t index = 0; index < collision.models.size(); ++index)
+    {
+        const auto &model = collision.models[index];
+        uint8_t cmodel[sizeof(maps::cmodel_t)]{};
+        float radiusSquared = 0.0f;
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            const float midpoint = (model.minimum[axis] + model.maximum[axis]) * 0.5f;
+            const float halfSize = (model.maximum[axis] - model.minimum[axis]) * 0.5f;
+            if (!std::isfinite(midpoint) || !std::isfinite(halfSize) || halfSize < 0.0f)
+                throw std::runtime_error("Replay cmodel has invalid bounds");
+            stampf(cmodel, axis * 4, midpoint);
+            stampf(cmodel, 12 + axis * 4, halfSize);
+            radiusSquared += halfSize * halfSize;
+        }
+        stampf(cmodel, 0x18, std::sqrt(radiusSquared));
+        const bool hasShape = index > 0 && model.shapeIndex != std::numeric_limits<uint16_t>::max();
+        if (hasShape)
+        {
+            stamp64(cmodel, 0x20, insertedReference ? alias : PTR_INSERT);
+            std::memcpy(cmodel + 0x28, &model.shapeIndex, sizeof(model.shapeIndex));
+            insertedReference = true;
+        }
+        else
+        {
+            const uint16_t shape = index == 0 ? 0 : std::numeric_limits<uint16_t>::max();
+            std::memcpy(cmodel + 0x28, &shape, sizeof(shape));
+        }
+        const uint16_t noNavObstacle = std::numeric_limits<uint16_t>::max();
+        std::memcpy(cmodel + 0x2A, &noNavObstacle, sizeof(noNavObstacle));
+        zb.write(cmodel, sizeof(cmodel));
+    }
+
+    if (insertedReference)
+    {
+        zb.align(7);
+        if (zb.streamSize(XFILE_BLOCK_VIRTUAL) != insertionOffset)
+            throw std::runtime_error("Replay cmodel insertion offset drifted");
+        zb.reserveCalc(8);
+        emitPhysicsAssetReference(zb);
+    }
+}
+
+// The map's edge list (IW8 Radiant research 125): the ladders' centre lines (bucket 2, one leaf, as it has always been
+// written) and the mount edges (bucket 0, an octree with node sets as stock maps have it). The trees come from
+// map_edges.hpp, which also checks them.
+inline void emitMapEdgeListBody(ZoneBuffer &zb, const std::vector<havok::LadderFace> &ladders,
+                                const std::vector<iw8r::MapEdge> &mountEdges)
+{
+    if (ladders.size() > 512)
+        throw std::runtime_error("Replay ladder edge list count is invalid");
+    if (ladders.empty() && mountEdges.empty())
+        throw std::runtime_error("Replay edge list has no edges");
+    if (mountEdges.size() > 200000)
+        throw std::runtime_error("Replay edge list has too many mount edges");
+
+    std::vector<iw8r::MapEdge> all;
+    all.reserve(ladders.size() * 2 + mountEdges.size());
+    for (const auto &ladder : ladders)
+    {
+        iw8r::MapEdge center{};
+        std::copy_n(ladder.top.data(), 3, center.a);
+        std::copy_n(ladder.bottom.data(), 3, center.b);
+        // Replay EdgeAdjacentFaceNormalUnpack (13F04E0) rotates world X
+        // around the edge direction. Our centerline runs downwards (-Z),
+        // so the reference angle is the negative world yaw. BG_GetLadderInfo
+        // (CC4470 -> 13EC520) averages the two adjacent normals; a synthetic
+        // centerline has one authored facing, so both normals must coincide.
+        center.adjacentNormal = -std::atan2(ladder.normal[1], ladder.normal[0]);
+        center.openAngle = 0;
+        center.flags = iw8r::kEdgeFlagLadder;
+        all.push_back(center);
+
+        iw8r::MapEdge width{};
+        const float tangent[2]{-ladder.normal[1], ladder.normal[0]};
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            width.a[axis] = ladder.top[axis];
+            width.b[axis] = ladder.top[axis];
+        }
+        width.a[0] += tangent[0] * ladder.width * 0.5f;
+        width.a[1] += tangent[1] * ladder.width * 0.5f;
+        width.b[0] -= tangent[0] * ladder.width * 0.5f;
+        width.b[1] -= tangent[1] * ladder.width * 0.5f;
+        width.adjacentNormal = 0.0f;
+        width.openAngle = 15944;
+        width.flags = iw8r::kEdgeFlagLadder;
+        all.push_back(width);
+    }
+    all.insert(all.end(), mountEdges.begin(), mountEdges.end());
+
+    // The ladder tree stays one leaf (bit 2 of the flat buckets).
+    const iw8r::MapEdgeList list = iw8r::buildMapEdgeList(std::move(all), 8, 10, 4u);
+    if (const char *wrong = iw8r::validateMapEdgeList(list); *wrong)
+        throw std::runtime_error(std::string("Replay edge list: ") + wrong);
+    static_assert(sizeof(iw8r::MapEdgeNode) == 16);
+
+    struct Edge
+    {
+        float endpoint[2][4];
+    };
+    struct Metadata
+    {
+        float adjacentNormal;
+        uint16_t openAngle;
+        uint8_t flags;
+        uint8_t pad;
+    };
+    static_assert(sizeof(Edge) == 32);
+    static_assert(sizeof(Metadata) == 8);
+    std::vector<Edge> edges(list.edges.size());
+    std::vector<Metadata> metadata(list.edges.size());
+    for (std::size_t index = 0; index < list.edges.size(); ++index)
+    {
+        const auto &source = list.edges[index];
+        edges[index] = {};
+        std::copy_n(source.a, 3, edges[index].endpoint[0]);
+        std::copy_n(source.b, 3, edges[index].endpoint[1]);
+        metadata[index] = {source.adjacentNormal, source.openAngle, source.flags, 0};
+    }
+
+    uint8_t body[iw8sz::EDGELIST]{};
+    stamp64(body, 0x00, PTR_FOLLOWS);
+    for (std::size_t axis = 0; axis < 3; ++axis)
+    {
+        stampf(body, 0x08 + axis * 4, list.mins[axis]);
+        stampf(body, 0x14 + axis * 4, list.maxs[axis]);
+    }
+    stamp32(body, 0x24, list.queryTypes);
+    stamp32(body, 0x28, list.queryTypes);
+    stamp32(body, 0x30, static_cast<uint32_t>(edges.size()));
+    body[0x34] = 1;
+    stamp32(body, 0x38, static_cast<uint32_t>(edges.size()));
+    stamp64(body, 0x40, PTR_FOLLOWS);
+    stamp64(body, 0x48, PTR_FOLLOWS);
+    stamp32(body, 0x50, static_cast<uint32_t>(list.trees.size()));
+    stamp64(body, 0x58, PTR_FOLLOWS);
+    if (!list.nodeSets.empty())
+    {
+        stamp32(body, 0x60, static_cast<uint32_t>(list.nodeSets.size()));
+        stamp64(body, 0x68, PTR_FOLLOWS);
+    }
+    stamp32(body, 0x70, static_cast<uint32_t>(list.indices.size()));
+    stamp64(body, 0x78, PTR_FOLLOWS);
+    // Mount adjacency (the edges a mounted player can move between): one word per edge and the records, or neither.
+    static_assert(sizeof(iw8r::MapEdgeAdjacency) == 12);
+    if (!list.adjacencyMeta.empty())
+    {
+        stamp32(body, 0x80, static_cast<uint32_t>(list.adjacencyMeta.size()));
+        stamp64(body, 0x88, PTR_FOLLOWS);
+        stamp32(body, 0x90, static_cast<uint32_t>(list.adjacency.size()));
+        stamp64(body, 0x98, PTR_FOLLOWS);
+    }
+
+    zb.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    zb.align(7);
+    zb.write(body, sizeof(body));
+    zb.pushStream(XFILE_BLOCK_VIRTUAL);
+    zb.writeStr("mapedgelist_00000");
+    zb.align(31); // Replay AllocLoad_float4x2 (0xDF1B70).
+    zb.write(edges.data(), edges.size() * sizeof(Edge));
+    zb.align(3);
+    zb.write(metadata.data(), metadata.size() * sizeof(Metadata));
+
+    zb.align(15);
+    for (const auto &tree : list.trees)
+    {
+        uint8_t octree[0x170]{};
+        for (std::size_t level = 0; level < 16; ++level)
+        {
+            const float levelHalfWidth = std::ldexp(tree.halfWidth, -static_cast<int>(level));
+            for (std::size_t axis = 0; axis < 3; ++axis)
+                stampf(octree, level * 16 + axis * 4, levelHalfWidth);
+            stampf(octree, 0x124 + level * 4, 3.0f * levelHalfWidth * levelHalfWidth);
+        }
+        for (std::size_t axis = 0; axis < 3; ++axis)
+            stampf(octree, 0x100 + axis * 4, tree.minExtent[axis]);
+        stampf(octree, 0x10C, -tree.halfWidth);
+        std::memcpy(octree + 0x110, &tree.root, 16);
+        stamp32(octree, 0x120, tree.nodeSetCount);
+        octree[0x164] = static_cast<uint8_t>(tree.bucket);
+        octree[0x165] = 3;
+        zb.write(octree, sizeof(octree));
+    }
+    if (!list.nodeSets.empty())
+    {
+        zb.align(127); // the game's loader aligns a node set to its own size (asset_streams.cpp stream_mapedgelist)
+        zb.write(list.nodeSets.data(), list.nodeSets.size() * sizeof(list.nodeSets[0]));
+    }
+    zb.align(3);
+    zb.write(list.indices.data(), list.indices.size() * sizeof(uint32_t));
+    if (!list.adjacencyMeta.empty())
+    {
+        zb.align(3);
+        zb.write(list.adjacencyMeta.data(), list.adjacencyMeta.size() * sizeof(uint32_t));
+        zb.align(3);
+        zb.write(list.adjacency.data(), list.adjacency.size() * sizeof(iw8r::MapEdgeAdjacency));
+    }
+    zb.popStream();
+    zb.popStream();
+}
+
+// Emit one MapEnts asset body: struct(0x408)->TEMP_PRELOAD(1), then name + entityString ->
+// SpatialPartition_Population_Partition {float dist; u32 axis:2, rightChild:29}.
+// Stock leaves (mp_hideout dynent tree, ACTS 2026-10-16) are dist 0, axis 3,
+// rightChild 0; axis 0-2 is a split with left child i+1. An all-zero entry is an
+// X split at 0 whose children are out of range / itself, not a leaf.
+inline void writeSpatialLeaf(ZoneBuffer &zb)
+{
+    zb.writeT<float>(0.0f);
+    zb.writeT<uint32_t>(3u);
+}
+
+// The map's scriptable instances with their interned script strings (classname, target, targetname, script_linkname,
+// script_linkto, script_noteworthy: the ScriptableInstance field order) and, at emit time, the alias of each
+// instance's definition reference.
+struct MapScriptables
+{
+    // Loot points (spawnGroupLoot). Each takes one scriptable slot at run time: the loot count and the three server
+    // counts include them (research 86: on every stock map with loot).
+    std::vector<MapLootPoint> loot;
+    // One loot zone over every loot point (the small stock BR maps have one: mp_br_tut "tutorial_scavenger"); the loot
+    // tables pick the loot set by the zone name (IW8 Radiant research 87 section 2.4). Empty: no zone.
+    std::string lootZoneName;
+    uint32_t lootZoneString = 0;  // its script-string index
+    // Authored loot clusters and zones (collision JSON "loot_boxes"). With zones given, lootZoneName is not used: each
+    // point takes the first zone whose box holds it, and the first cluster whose box holds it ("first box", the rule
+    // of every stock map, research 89 section 3).
+    std::vector<MapLootBox> lootClusters, lootZones;
+    std::vector<uint32_t> lootZoneStrings;  // script-string index of each zone name
+    std::vector<ScriptableInstance> instances;
+    std::vector<std::array<uint32_t, 6>> strings;
+    std::vector<uint64_t> definitionAliases;
+};
+
+// VIRTUAL(8). Caller is responsible for the surrounding push/pop. `ents` is the IW8 numeric-keyId
+// entityString (NUL added here).
+inline void emitMapEntsBody(ZoneBuffer &zb, const char *assetName, const std::string &ents,
+                            const ReplaySpawns *spawns = nullptr,
+                            const havok::BakeResult *collision = nullptr,
+                            const uint64_t edgeListAlias = PTR_NULL,
+                            const DynamicEntityCounts &dynamic = {},
+                            const ClientTriggerSet *clientTriggers = nullptr,
+                            const MapScriptables *scriptables = nullptr)
+{
+    const uint32_t dynamicModelCount = dynamic.models;
+    const uint32_t dynamicBrushCount = dynamic.brushes;
+    uint8_t me[kSizeMapEnts];
+    std::memset(me, 0, sizeof(me));
+    stamp64(me, kME_name, PTR_FOLLOWS);
+    stamp64(me, kME_entityString, PTR_FOLLOWS);
+    stamp32(me, kME_numEntityChars, (uint32_t)(ents.size() + 1)); // strlen + NUL
+    if (spawns && !spawns->records.empty())
+    {
+        stamp32(me, 0x128, static_cast<uint32_t>(spawns->records.size()));
+        stamp64(me, 0x130, PTR_FOLLOWS);
+    }
+    if (collision)
+    {
+        if (!collision->triggers.empty())
+        {
+            std::size_t hullCount = 0;
+            std::size_t slabCount = 0;
+            for (const auto &trigger : collision->triggers)
+                for (const auto &hull : collision->hulls)
+                    if (hull.model == trigger.collisionModel)
+                    {
+                        ++hullCount;
+                        slabCount += hull.slabs.size();
+                    }
+            stamp32(me, kME_trigger + 0x00, static_cast<uint32_t>(collision->triggers.size()));
+            stamp64(me, kME_trigger + 0x08, PTR_FOLLOWS);
+            stamp32(me, kME_trigger + 0x10, static_cast<uint32_t>(hullCount));
+            stamp64(me, kME_trigger + 0x18, PTR_FOLLOWS);
+            stamp32(me, kME_trigger + 0x20, static_cast<uint32_t>(slabCount));
+            stamp64(me, kME_trigger + 0x28, slabCount ? PTR_FOLLOWS : PTR_NULL);
+        }
+        if (!collision->entities.empty())
+        {
+            stamp32(me, kME_havokEntsShapeDataSize,
+                    static_cast<uint32_t>(collision->entities.size()));
+            stamp64(me, kME_havokEntsShapeData, PTR_FOLLOWS);
+        }
+        if (!collision->models.empty())
+        {
+            stamp32(me, kME_numSubModels, static_cast<uint32_t>(collision->models.size()));
+            stamp64(me, kME_cmodels, PTR_FOLLOWS);
+        }
+        if (!collision->ladders.empty() || !collision->mountEdges.empty())
+        {
+            if (!edgeListAlias)
+                throw std::runtime_error("Replay ladder edge list alias is missing");
+            // The buckets with edges: 4 ladder centre lines, 1 mount edges. Bit 1 (mantle edges) stays clear: the game
+            // then finds a mantle ledge with a trace (IW8 Radiant research 125 section 2.1).
+            stamp32(me, kME_edgeListUsedQueryTypes,
+                    (collision->ladders.empty() ? 0u : 4u) | (collision->mountEdges.empty() ? 0u : 1u));
+            stamp32(me, kME_numEdgeLists, 1);
+            stamp64(me, kME_edgeLists, PTR_FOLLOWS);
+            stamp64(me, kME_edgeListSpatialTree, PTR_FOLLOWS);
+        }
+    }
+    if (clientTriggers)
+        stampClientTriggers(me, *clientTriggers);
+    const uint64_t dynamicCount = static_cast<uint64_t>(dynamicModelCount) + dynamicBrushCount;
+    if (dynamicCount > UINT32_MAX)
+        throw std::runtime_error("Replay dynamic-entity count exceeds 32 bits");
+    if (dynamicCount)
+    {
+        stamp32(me, kME_dynEntCount, dynamicModelCount);
+        stamp32(me, kME_dynEntCount + sizeof(uint32_t), dynamicBrushCount);
+        stamp32(me, kME_dynEntCountTotal, static_cast<uint32_t>(dynamicCount));
+        stamp32(me, kME_dynEntityListsCount, 1);
+        stamp64(me, kME_dynEntListIds, PTR_FOLLOWS);
+        if (dynamicModelCount > UINT16_MAX || dynamicBrushCount > UINT16_MAX)
+            throw std::runtime_error("Replay no-spatial dynamic-entity count exceeds 16 bits");
+        // Model clutter and scriptable instance entries are spatial (replay_dynentity.cpp); scriptable physics
+        // entries and brushes are not.
+        stamp16(me, kME_dynEntNoSpatialCount, static_cast<uint16_t>(dynamic.noSpatialModels));
+        stamp16(me, kME_dynEntNoSpatialCount + sizeof(uint16_t),
+                static_cast<uint16_t>(dynamicBrushCount));
+        stamp16(me, kME_dynEntMaxClientHistoryCount, 10000);
+        // Replay sizes the client pool of extra pose parts (multi-body clutter) from these two
+        // (DynEntCL_AllocateClientMemory 0x1417F0410); without it, adding a multi-body entry pops
+        // block -1 (DynEntCL_AddEntity 0x1417ED580).
+        me[kME_dynEntMaxPosePartCount] = dynamic.maxPoseParts;
+        stamp32(me, kME_dynEntsWithExtraPosePartsCount, dynamic.entriesWithExtraPoseParts);
+    }
+    // Both DynEnt spatial populations are queried on the first client frame,
+    // even with no dynamic entities. Replay DDFC10/DDFAE0: two inline 56-byte
+    // populations, each with one empty leaf and its -1 bucket sentinel.
+    stamp64(me, 0x1C8, PTR_FOLLOWS);
+    stamp64(me, 0x1D0, PTR_FOLLOWS);
+    stamp32(me, 0x1E8, 0xFFFFFFFFu); // empty dynEntNoSpatialList node
+    // ScriptableCl spatial initialization (12EC5F0) needs a tree even when
+    // there are no authored instances: spawned characters use reserved slots.
+    // A null tree exits before allocating their instance-to-marker table.
+    stamp64(me, 0x2C0, PTR_FOLLOWS);
+    const bool hasScriptables = scriptables && !scriptables->instances.empty();
+    const uint32_t lootCount = scriptables ? static_cast<uint32_t>(scriptables->loot.size()) : 0u;
+    if (lootCount > 65000)
+        throw std::runtime_error("a map takes at most 65000 loot points");
+    if (lootCount)
+    {
+        // SpawnGroup at 0x2D0 (after ScriptableMapEnts, which ends with ffMemCost at 0x2C8): pointCount, points; no
+        // clusters, no zones.
+        stamp16(me, 0x2D0, static_cast<uint16_t>(lootCount));
+        stamp64(me, 0x2D8, PTR_FOLLOWS);
+        if (!scriptables->lootClusters.empty())
+        {
+            stamp16(me, 0x2E0, static_cast<uint16_t>(scriptables->lootClusters.size())); // SpawnGroup.clusterCount
+            stamp64(me, 0x2E8, PTR_FOLLOWS);                                             // SpawnGroup.clusters
+        }
+        if (!scriptables->lootZones.empty())
+        {
+            stamp16(me, 0x2F0, static_cast<uint16_t>(scriptables->lootZones.size())); // SpawnGroup.zoneCount
+            stamp64(me, 0x2F8, PTR_FOLLOWS);
+        }
+        else if (!scriptables->lootZoneName.empty())
+        {
+            stamp16(me, 0x2F0, 1);           // SpawnGroup.zoneCount
+            stamp64(me, 0x2F8, PTR_FOLLOWS); // SpawnGroup.zones
+        }
+        stamp32(me, 0x204, lootCount); // lootInstanceCount
+        stamp32(me, 0x208, lootCount); // the three server counts: the instances are added below
+        stamp32(me, 0x20C, lootCount);
+        stamp32(me, 0x210, lootCount);
+        stamp32(me, 0x2C8, 216);
+    }
+    if (hasScriptables)
+    {
+        // ScriptableMapEnts at 0x1F8. The counts follow the definitions of the instances as in stock maps (IW8 Radiant
+        // research 86, checked on mp_shipment and mp_backlot2): server instances are those whose definition has
+        // server-instanced parts, the fixed and usable part counts are the sums over the instances, and the physics
+        // limits count the instances by two definition flags (main and detailed; research 89). Loot points add to
+        // the server counts; no reserved instances.
+        const auto &instances = scriptables->instances;
+        if (scriptables->strings.size() != instances.size() || scriptables->definitionAliases.size() != instances.size())
+            throw std::runtime_error("Replay scriptable instance tables disagree");
+        uint32_t server = 0, fixedParts = 0, usableParts = 0, limits = 0, detailLimits = 0;
+        for (const auto &instance : instances)
+        {
+            server += instance.serverInstancedParts ? 1 : 0;
+            fixedParts += instance.serverInstancedParts;
+            usableParts += instance.usableParts;
+            limits += instance.physicsLimit ? 1 : 0;
+            detailLimits += instance.physicsLimitDetail ? 1 : 0;
+        }
+        stamp32(me, 0x1FC, static_cast<uint32_t>(instances.size())); // mapInstanceCount
+        stamp32(me, 0x208, server + lootCount);                      // serverInstanceCount
+        stamp32(me, 0x20C, fixedParts + lootCount);                  // serverFixedPartCount
+        stamp32(me, 0x210, usableParts + lootCount);                 // serverUsablePartCount
+        // ScriptablePhysicsLimits: client main, detailed, motion, then the same three for the server.
+        for (unsigned k = 0; k < 6; ++k)
+            stamp32(me, 0x214 + k * 4, k % 3 == 1 ? detailLimits : limits);
+        stamp64(me, 0x230, PTR_FOLLOWS);        // mapInstances
+        // ffMemCost: stock 1240 = this 216-byte block + its two 64-entry reserved-dynent tables, which are not written.
+        stamp32(me, 0x2C8, 216);
+    }
+    zb.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    zb.align(
+        7); // struct -> retail STREAM 1: live [STREAM-STATE] map_ents curStream=1 (srv's small TEMP
+            // scratch s0=0x6F0 exposes streams 0,1 only -- a real game zone confirms s1 reserves,
+            // s2 does NOT). gfx_map/glass_map differ (curStream=2, big scratch) -- do NOT unify.
+    zb.write(me, sizeof(me));
+    zb.pushStream(XFILE_BLOCK_VIRTUAL);
+    zb.writeStr(assetName); // name
+    zb.write(ents.data(), ents.size());
+    zb.writeT<uint8_t>(0); // entityString + NUL
+    if (collision)
+        emitMapTriggers(zb, *collision);
+    if (clientTriggers)
+        emitClientTriggers(zb, *clientTriggers);
+    if (spawns)
+        spawns->writeRecords(zb);
+    if (collision && !collision->entities.empty())
+    {
+        zb.align(15);
+        zb.write(collision->entities.data(), collision->entities.size());
+    }
+    if (collision)
+        emitCmodels(zb, *collision);
+    if (collision && (!collision->ladders.empty() || !collision->mountEdges.empty()))
+    {
+        zb.align(7);
+        zb.writeT(edgeListAlias);
+        zb.align(7);
+        uint8_t tree[24]{};
+        stamp64(tree, 8, PTR_FOLLOWS);
+        stamp32(tree, 20, 1);
+        zb.write(tree, sizeof(tree));
+        zb.align(3);
+        zb.writeT<uint32_t>(0);
+    }
+    if (dynamicCount)
+    {
+        zb.align(1);
+        zb.writeT<uint16_t>(0); // dynentitylist0
+    }
+    for (unsigned i = 0; i < 2; ++i)
+    {
+        zb.align(7);
+        uint8_t population[0x38]{};
+        stamp64(population, 0, PTR_FOLLOWS);
+        stamp64(population, 8, PTR_FOLLOWS);
+        stamp32(population, 0x28, 1);
+        zb.write(population, sizeof(population));
+        // DDFAE0 -> DDFE70. GatherPartitions reads tree->extents before
+        // advancing the iterator; a null tree cannot represent empty data.
+        zb.align(7);
+        uint8_t tree[24]{};
+        stamp64(tree, 0, PTR_FOLLOWS);
+        stamp64(tree, 8, PTR_FOLLOWS);
+        stamp32(tree, 16, 1);
+        zb.write(tree, sizeof(tree));
+        zb.align(3);
+        writeSpatialLeaf(zb);
+        zb.align(3);
+        // Population 0 is the radial clutter population; its leaf bounds the
+        // clutter. Stock leaf extents are the entries' bounds.
+        // Population 1 is the sparse occluders (door instance entries), bounded the same way.
+        const bool clutter = i == 0 && dynamic.radialModels;
+        const bool occluders = i == 1 && dynamic.occluderModels;
+        const auto &mins = occluders ? dynamic.occluderMins : dynamic.modelMins;
+        const auto &maxs = occluders ? dynamic.occluderMaxs : dynamic.modelMaxs;
+        for (unsigned k = 0; k < 3; ++k)
+            zb.writeT<float>(clutter || occluders ? mins[k] : -100000.f);
+        for (unsigned k = 0; k < 3; ++k)
+            zb.writeT<float>(clutter || occluders ? maxs[k] : 100000.f);
+        zb.align(3);
+        zb.writeT<uint32_t>(0xFFFFFFFFu);
+    }
+    // Load_ScriptableMapEnts DBCF30: the instance records (72 bytes, align 8; the definition is an alias of the
+    // name-only reference registered before this asset, the six names are script-string indices), the two reserved
+    // dynent tables (none), then DDFE70, the spatial tree (one leaf that holds every instance).
+    if (hasScriptables)
+    {
+        zb.align(7);
+        for (size_t index = 0; index < scriptables->instances.size(); ++index)
+        {
+            const auto &instance = scriptables->instances[index];
+            uint8_t record[72]{};
+            stamp64(record, 0, scriptables->definitionAliases[index]);
+            for (unsigned k = 0; k < 3; ++k)
+            {
+                stampf(record, 8 + k * 4, instance.origin[k]);
+                stampf(record, 20 + k * 4, instance.angles[k]);
+            }
+            for (unsigned k = 0; k < 6; ++k)
+                stamp32(record, 32 + k * 4, scriptables->strings[index][k]);
+            record[70] = instance.flags;
+            zb.write(record, sizeof(record));
+        }
+    }
+    zb.align(7);
+    uint8_t scriptableTree[24]{};
+    stamp64(scriptableTree, 0, PTR_FOLLOWS);
+    stamp64(scriptableTree, 8, PTR_FOLLOWS);
+    stamp32(scriptableTree, 16, 1);
+    zb.write(scriptableTree, sizeof(scriptableTree));
+    zb.align(3);
+    writeSpatialLeaf(zb);
+    zb.align(3);
+    for (unsigned k = 0; k < 3; ++k)
+        zb.writeT<float>(-100000.f);
+    for (unsigned k = 0; k < 3; ++k)
+        zb.writeT<float>(100000.f);
+    // MapEnts.spawnGroupLoot.points: SpawnGroupPoint, 28 bytes (origin, angles, u16 cluster, u16 zone), align 4.
+    if (lootCount && (!scriptables->lootClusters.empty() || !scriptables->lootZones.empty()))
+    {
+        // Authored boxes: each point takes the first cluster and the first zone whose box holds it. Lists are
+        // ascending; a zone lists its points except the cache points, and the clusters whose first point is in it; a
+        // cluster's zone is the zone of its first point (else the zone that holds its middle). Research 89 section 3.
+        const auto &clusters = scriptables->lootClusters;
+        const auto &zones = scriptables->lootZones;
+        const auto holds = [](const MapLootBox &box, const std::array<float, 3> &p) {
+            for (unsigned k = 0; k < 3; ++k)
+                if (std::abs(p[k] - box.mid[k]) > box.half[k])
+                    return false;
+            return true;
+        };
+        std::vector<uint16_t> pointCluster(lootCount, 0xFFFDu), pointZone(lootCount, 0);
+        std::vector<std::vector<uint16_t>> clusterPoints(clusters.size()), zonePoints(zones.size()), zoneClusters(zones.size());
+        for (size_t i = 0; i < lootCount; ++i)
+        {
+            const auto &point = scriptables->loot[i];
+            for (size_t z = 0; z < zones.size(); ++z)
+                if (holds(zones[z], point.origin))
+                {
+                    pointZone[i] = static_cast<uint16_t>(z + 1);
+                    break;
+                }
+            if (point.cache)
+                pointCluster[i] = 0xFFFBu;
+            else
+                for (size_t c = 0; c < clusters.size(); ++c)
+                    if (holds(clusters[c], point.origin))
+                    {
+                        pointCluster[i] = static_cast<uint16_t>(c);
+                        clusterPoints[c].push_back(static_cast<uint16_t>(i));
+                        break;
+                    }
+            if (pointZone[i] && !point.cache)
+                zonePoints[pointZone[i] - 1u].push_back(static_cast<uint16_t>(i));
+        }
+        std::vector<uint16_t> clusterZone(clusters.size(), 0);
+        for (size_t c = 0; c < clusters.size(); ++c)
+        {
+            if (!clusterPoints[c].empty())
+                clusterZone[c] = pointZone[clusterPoints[c].front()];
+            else
+                for (size_t z = 0; z < zones.size(); ++z)
+                    if (holds(zones[z], clusters[c].mid))
+                    {
+                        clusterZone[c] = static_cast<uint16_t>(z + 1);
+                        break;
+                    }
+            if (!clusterPoints[c].empty() && clusterZone[c])
+                zoneClusters[clusterZone[c] - 1u].push_back(static_cast<uint16_t>(c));
+        }
+        zb.align(3);
+        for (size_t i = 0; i < lootCount; ++i)
+        {
+            const auto &point = scriptables->loot[i];
+            for (const float value : point.origin)
+                zb.writeT(value);
+            for (const float value : point.angles)
+                zb.writeT(value);
+            zb.writeT<uint16_t>(pointCluster[i]);
+            zb.writeT<uint16_t>(pointZone[i]);
+        }
+        const auto writeList = [&](const std::vector<uint16_t> &list) {
+            if (list.empty())
+                return;
+            zb.align(1);
+            for (const auto index : list)
+                zb.writeT<uint16_t>(index);
+        };
+        if (!clusters.empty())
+        {
+            // SpawnGroupCluster (40 bytes, align 8): zone, pointCount, points, bounds; then each cluster's points.
+            zb.align(7);
+            for (size_t c = 0; c < clusters.size(); ++c)
+            {
+                uint8_t record[40]{};
+                stamp16(record, 0, clusterZone[c]);
+                stamp16(record, 2, static_cast<uint16_t>(clusterPoints[c].size()));
+                if (!clusterPoints[c].empty())
+                    stamp64(record, 8, PTR_FOLLOWS);
+                for (unsigned k = 0; k < 3; ++k)
+                {
+                    stampf(record, 16 + k * 4, clusters[c].mid[k]);
+                    stampf(record, 28 + k * 4, clusters[c].half[k]);
+                }
+                zb.write(record, sizeof(record));
+            }
+            for (size_t c = 0; c < clusters.size(); ++c)
+                writeList(clusterPoints[c]);
+        }
+        if (!zones.empty())
+        {
+            // SpawnGroupZone (56 bytes, align 8): name, pointCount, points, clusterCount, clusters, bounds; then each
+            // zone's points and clusters.
+            zb.align(7);
+            for (size_t z = 0; z < zones.size(); ++z)
+            {
+                uint8_t record[56]{};
+                stamp32(record, 0, scriptables->lootZoneStrings.at(z));
+                stamp16(record, 4, static_cast<uint16_t>(zonePoints[z].size()));
+                if (!zonePoints[z].empty())
+                    stamp64(record, 8, PTR_FOLLOWS);
+                stamp16(record, 16, static_cast<uint16_t>(zoneClusters[z].size()));
+                if (!zoneClusters[z].empty())
+                    stamp64(record, 24, PTR_FOLLOWS);
+                for (unsigned k = 0; k < 3; ++k)
+                {
+                    stampf(record, 32 + k * 4, zones[z].mid[k]);
+                    stampf(record, 44 + k * 4, zones[z].half[k]);
+                }
+                zb.write(record, sizeof(record));
+            }
+            for (size_t z = 0; z < zones.size(); ++z)
+            {
+                writeList(zonePoints[z]);
+                writeList(zoneClusters[z]);
+            }
+        }
+    }
+    else if (lootCount)
+    {
+        zb.align(3);
+        for (const auto &point : scriptables->loot)
+        {
+            for (const float value : point.origin)
+                zb.writeT(value);
+            for (const float value : point.angles)
+                zb.writeT(value);
+            zb.writeT<uint16_t>(point.cache ? 0xFFFBu : 0xFFFDu);
+            zb.writeT<uint16_t>(scriptables->lootZoneName.empty() ? 0 : 1);
+        }
+        if (!scriptables->lootZoneName.empty())
+        {
+            // SpawnGroupZone (56 bytes, align 8): name, pointCount, points, clusterCount, clusters, bounds. The zone
+            // lists every point except the cache points (rule 3 of research 89: as every stock zone does).
+            std::vector<uint16_t> listed;
+            float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
+            for (size_t i = 0; i < scriptables->loot.size(); ++i)
+            {
+                const auto &point = scriptables->loot[i];
+                for (unsigned k = 0; k < 3; ++k)
+                {
+                    lo[k] = (std::min)(lo[k], point.origin[k]);
+                    hi[k] = (std::max)(hi[k], point.origin[k]);
+                }
+                if (!point.cache)
+                    listed.push_back(static_cast<uint16_t>(i));
+            }
+            zb.align(7);
+            uint8_t zone[56]{};
+            stamp32(zone, 0, scriptables->lootZoneString);
+            stamp16(zone, 4, static_cast<uint16_t>(listed.size()));
+            if (!listed.empty())
+                stamp64(zone, 8, PTR_FOLLOWS);
+            for (unsigned k = 0; k < 3; ++k)
+            {
+                // A margin of 64 units around the points, as the stock zone boxes reach past their points.
+                stampf(zone, 32 + k * 4, (lo[k] + hi[k]) * 0.5f);
+                stampf(zone, 44 + k * 4, (hi[k] - lo[k]) * 0.5f + 64.0f);
+            }
+            zb.write(zone, sizeof(zone));
+            if (!listed.empty())
+            {
+                zb.align(1);
+                for (const auto index : listed)
+                    zb.writeT<uint16_t>(index);
+            }
+        }
+    }
+    // MapEnts.audioPASpeakers: after the scriptables (and the empty spawn-group,
+    // effect, mayhem and spawner lists) in stream_mapents order.
+    if (clientTriggers && !clientTriggers->paSpeakers.empty())
+    {
+        zb.align(3);
+        for (const auto &speaker : clientTriggers->paSpeakers)
+        {
+            for (const float value : speaker.origin)
+                zb.writeT(value);
+            zb.writeT(speaker.nameHash);
+            zb.writeT(speaker.entChannelHash);
+        }
+    }
+    zb.popStream();
+    zb.popStream();
+}
+
+// Emit srv_<map> zone: map_ents(29) + col_map(23). assetName = "maps/mp/<map>.d3dbsp".
+inline void buildMapZone(ZoneBuffer &zb, const char *assetName, const std::string &ents)
+{
+    // 1) XAssetList root -> TEMP(0)
+    zb.pushStream(XFILE_BLOCK_TEMP);
+    IW8_XAssetList al{};
+    al.stringList.count = 0;
+    al.stringList.loaded = 0;
+    al.stringList.strings = PTR_NULL;
+    al.assetCount = 2;
+    al.assetReadPos = 0;
+    al.assets = PTR_FOLLOWS;
+    zb.writeT(al);
+    zb.popStream();
+
+    // 2) XAsset[2] -> VIRTUAL(8): [0] map_ents(29), [1] col_map(23). header=-3 (insert).
+    zb.pushStream(XFILE_BLOCK_VIRTUAL);
+    zb.align(7);
+    IW8_XAsset a0{};
+    a0.type = ASSET_TYPE_MAP_ENTS;
+    a0.header = PTR_INSERT;
+    zb.writeT(a0);
+    IW8_XAsset a1{};
+    a1.type = ASSET_TYPE_COL_MAP;
+    a1.header = PTR_INSERT;
+    zb.writeT(a1);
+
+    // 3a) asset[0] map_ents(29): the standalone MapEnts. Keep its native
+    // insertion-slot alias for the clipMap dependency below.
+    zb.align(7);
+    const uint64_t mapEntsInsertionOffset = zb.streamSize(XFILE_BLOCK_VIRTUAL);
+    if (mapEntsInsertionOffset >= UINT32_MAX)
+        throw std::runtime_error("map_ents insertion offset exceeds Replay's packed range");
+    const uint64_t mapEntsAlias =
+        (static_cast<uint64_t>(XFILE_BLOCK_VIRTUAL) << 32) | (mapEntsInsertionOffset + 1);
+    zb.reserveCalc(8); // native DB_InsertPointer slot
+    emitMapEntsBody(zb, assetName, ents);
+
+    // 3b) asset[1] col_map(23): clipMap struct -> TEMP_PRELOAD(1), variable data -> VIRTUAL(8).
+    zb.align(7);
+    zb.reserveCalc(8); // top-level clipMap DB_InsertPointer slot
+    uint8_t cm[kSizeClipMap];
+    std::memset(cm, 0, sizeof(cm));
+    stamp64(cm, kCM_name, PTR_FOLLOWS);
+    stamp32(cm, kCM_isInUse, 1);
+    stamp64(cm, kCM_mapEnts, mapEntsAlias);
+    // generous world AABB (covers the spawns; broadphase only)
+    stampf(cm, kCM_bpMin + 0, -100000.f);
+    stampf(cm, kCM_bpMin + 4, -100000.f);
+    stampf(cm, kCM_bpMin + 8, -100000.f);
+    stampf(cm, kCM_bpMax + 0, 100000.f);
+    stampf(cm, kCM_bpMax + 4, 100000.f);
+    stampf(cm, kCM_bpMax + 8, 100000.f);
+    stamp32(cm, kCM_havokSize, 0);
+    stamp64(cm, kCM_havokData, PTR_NULL); // no collision data
+    stamp32(cm, kCM_checksum, 0);
+
+    zb.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    zb.align(
+        7); // struct -> retail STREAM 1: live [STREAM-STATE] map_ents curStream=1 (srv's small TEMP
+            // scratch s0=0x6F0 exposes streams 0,1 only -- a real game zone confirms s1 reserves,
+            // s2 does NOT). gfx_map/glass_map differ (curStream=2, big scratch) -- do NOT unify.
+    zb.write(cm, sizeof(cm));
+    zb.pushStream(XFILE_BLOCK_VIRTUAL);
+    zb.writeStr(assetName); // clipMap name
+    zb.popStream();
+    zb.popStream();
+
+    zb.popStream(); // VIRTUAL (XAsset array) -> TEMP
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Structural Replay srv zone: map_ents(29) + col_map(23) + com_map(24).
+// This is the extension of buildMapZone that adds com_map (research doc 10/14b: com_map is NOT
+// omittable). Optional `bounds` overrides the generous broadphase AABB
+// when the dump's colmap verts gave a tight one. All three structs are zeroed buffers with
+// named-field stamps validated against the iw8::maps:: pinned offsets.
+struct MapBounds
+{
+    float mn[3];
+    float mx[3];
+    bool valid = false;
+};
+// Replay mp_aniyah_tac ComPrimaryLight[1], including the adjacent .fp patch.
+// These are native linear-light values, not display RGB or an exposure scale.
+struct MapSun
+{
+    struct PrimaryLight
+    {
+        uint8_t type = 0;
+        uint8_t exponent = 0;
+        bool canUseShadowMap = false;
+        float color[3]{};
+        float direction[3]{};
+        float up[3]{};
+        float origin[3]{};
+        float radius = 0.0f;
+        float cosHalfFovOuter = 0.0f;
+        float cosHalfFovInner = 0.0f;
+        float rotationLimit = 0.0f;
+        float translationLimit = 0.0f;
+        float intensity = 1.0f; // ComPrimaryLight +0x10 (local lights: see main CalibrateLocalLights)
+        // The source gives the intensity (in light units), so calibration only scales it.
+        bool authoredIntensity = false;
+        // How far in front of the light its shadow map starts (ComPrimaryLight +0x74; shipped lights 8 to 60).
+        float shadowNearPlaneBias = 8.0f;
+        // ComPrimaryLight +0x0C: an ID of the light (stock lights and IW7's each have their own; IW3's none).
+        uint32_t entityId = 0;
+        // Light shape and shadow parameters. The defaults are the shipped local-light defaults that IW3 lights take
+        // (mp_hideout, 124 lights: points with the smallest shipped bulb); IW7 lights keep their own.
+        float bulbRadius = 1.0f;                // +0x5C
+        float bulbLength[3]{};                  // +0x60 (tube lights)
+        bool isVolumetric = false;              // +4
+        bool needsDynamicShadows = true;        // +3, for shadow-mapped spots
+        float shadowSoftness = 0.55f;           // +0x78
+        float shadowBias = 0.75f;               // +0x7C
+        float shadowArea = 0.0018f;             // +0x80
+        float distanceFalloff = 0.2f;           // +0x84
+        float fadeOffset[2]{};                  // +0x54
+        float uvIntensity = 0.0f;               // +0x14 (UV vision)
+        float irIntensity = 0.0f;               // +0x18 (thermal vision)
+        std::string definition;
+    };
+
+    float intensity = 24.649917602539062f;
+    float color[3]{0.9941421151161194f, 1.0032469034194946f, 0.9850855469703674f};
+    float direction[3]{-0.5795004963874817f, 0.4210316836833954f, 0.6977904438972473f};
+    float up[3]{};
+    uint32_t sunPrimaryLightIndex = 1;
+    // The source's GSC-scripted primary lights (IW7 ComWorld's scriptable range): the last lights of the table, as
+    // Replay's stock worlds keep them (mp_t_reflex: 40 of its 47 lights, from 7). None by default.
+    uint32_t scriptablePrimaryLightCount = 0;
+    // Stock light units per IW3 unit (--style iw8, iw3::LightUnitScale); 1 for iw3.
+    float lightUnitScale = 1.0f;
+    std::vector<PrimaryLight> primaryLights;
+    // The IES profiles of the source's light definitions (IW7), registered with the world's IES strip.
+    std::vector<iw8::ies::Profile> iesProfiles;
+};
+
+// Emit one ComWorld asset body (com_map 24): struct(0xA8)->TEMP_PRELOAD(1),
+// variable data -> VIRTUAL(8). The policy fields match a stock 1.20 Replay MP
+// world. The authored map still owns its sun direction, color and intensity.
+inline void emitComWorldBody(ZoneBuffer &zb, const char *assetName, const MapSun &lighting = {})
+{
+    const uint32_t primaryLightCount =
+        lighting.primaryLights.empty() ? 2u : static_cast<uint32_t>(lighting.primaryLights.size());
+    if (primaryLightCount < 2 || lighting.sunPrimaryLightIndex >= primaryLightCount ||
+        lighting.scriptablePrimaryLightCount > primaryLightCount - lighting.sunPrimaryLightIndex - 1)
+        throw std::runtime_error("invalid primary-light table");
+    // G_Spawn_ScriptPrimaryLight (0x140FC4A00) indexes a script light's entity by its pl# minus this first index
+    // (ComWorld +0x44, s_primaryLightScriptBaseIndex).
+    const uint32_t firstScriptablePrimaryLight = primaryLightCount - lighting.scriptablePrimaryLightCount;
+
+    uint8_t cw[kSizeComWorld];
+    std::memset(cw, 0, sizeof(cw));
+    stamp64(cw, kCW_name, PTR_FOLLOWS);
+    stamp32(cw, kCW_isInUse, 1);
+    stamp32(cw, 0x0C, 1); // useForwardPlus
+    stamp32(cw, 0x10, 3); // production bake quality
+    constexpr float trVisRadii[]{4500.0f, 25000.0f, 30000.0f, 40000.0f, 50000.0f};
+    for (unsigned i = 0; i < 5; ++i)
+        stampf(cw, 0x18 + i * 4, trVisRadii[i]);
+    stampf(cw, 0x2C, 1500.0f);
+    // Primary light zero is the reserved unlit entry. Replay's light-copy caller
+    // passes [0, count-1] without a zero-count guard (18D9690).
+    stamp32(cw, kCW_primaryLightCount, primaryLightCount);
+    stamp64(cw, 0x38, PTR_FOLLOWS);
+    stamp32(cw, 0x40, lighting.scriptablePrimaryLightCount);
+    stamp32(cw, 0x44, firstScriptablePrimaryLight);
+    stamp32(cw, 0x48, 1);                 // one resident transient-table entry
+    stamp64(cw, 0x50, PTR_FOLLOWS);
+    std::memset(cw + 0x78, 0xFF, 0x30); // stock initial state for an empty Umbra gate set
+    zb.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    zb.align(
+        7); // struct -> retail STREAM 1: live [STREAM-STATE] map_ents curStream=1 (srv's small TEMP
+            // scratch s0=0x6F0 exposes streams 0,1 only -- a real game zone confirms s1 reserves,
+            // s2 does NOT). gfx_map/glass_map differ (curStream=2, big scratch) -- do NOT unify.
+    zb.write(cw, sizeof(cw));
+    zb.pushStream(XFILE_BLOCK_VIRTUAL);
+    zb.writeStr(assetName); // name
+    zb.align(7);
+    for (uint32_t index = 0; index < primaryLightCount; ++index)
+    {
+        uint8_t light[0xA0]{}; // Replay 1.20 Load_ComWorld DF27B0
+        const MapSun::PrimaryLight *source =
+            lighting.primaryLights.empty() ? nullptr : &lighting.primaryLights[index];
+        if (source)
+        {
+            light[1] = source->type;
+            light[2] = source->canUseShadowMap ? 1 : 0;
+            stamp32(light, 0x0C, source->entityId);
+            stampf(light, 0x10, index == 0 ? 0.0f : source->intensity);
+            stampf(light, 0x14, source->uvIntensity);
+            stampf(light, 0x18, source->irIntensity);
+            for (unsigned component = 0; component < 3; ++component)
+            {
+                stampf(light, 0x20 + 4 * component, source->color[component]);
+                stampf(light, 0x2C + 4 * component, source->direction[component]);
+                stampf(light, 0x38 + 4 * component, source->up[component]);
+                stampf(light, 0x44 + 4 * component, source->origin[component]);
+            }
+            stampf(light, 0x50, source->radius);
+            stampf(light, 0x6C, source->cosHalfFovOuter);
+            stampf(light, 0x70, source->cosHalfFovInner);
+            if (source->type >= 2)
+            {
+                // needsDynamicShadows: shipped mp_hideout sets it on exactly the
+                // shadow-mapped spots, the lights GfxWorld lightAABB lists
+                // (replay_locallights NeedsDynamicShadows). IW3 spot shadow maps
+                // include entities, so its shadowed spots qualify.
+                light[3] = source->type == 2 && source->canUseShadowMap && source->needsDynamicShadows ? 1 : 0;
+                light[4] = source->isVolumetric ? 1 : 0;
+                // Shipped local-light defaults (mp_hideout, 124 lights): IW3 lights
+                // are points (smallest shipped bulb 1), shadow near-plane bias 8,
+                // softness 0.55, bias 0.75, area 0.0018, distance falloff 0.2, and
+                // collimation cos(90 deg) = no collimation.
+                // Shipped local lights (mp_hideout, 124 of 124) set spawnFlags by their
+                // shadows: 0 with dynamic shadows, 32 with a static shadow map, 40
+                // without one.
+                light[0] = source->canUseShadowMap ? (light[3] ? 0 : 32) : 40;
+                stampf(light, 0x54, source->fadeOffset[0]);
+                stampf(light, 0x58, source->fadeOffset[1]);
+                stampf(light, 0x5C, source->bulbRadius);
+                // Shipped local lights keep their tube along cross(up, dir), at least
+                // 1/255 long (124 of 124, perpendicular to dir within 3e-8). Replay
+                // gives a zero tube (1, 1, 1) / 255 (R_InitPrimaryLights 18D9839),
+                // which leans off dir and sends the runtime light volume through its
+                // capsule path (R_GenerateSpotLightModelMain 0x14186EAE0: radius scaled, caps reprojected).
+                std::array<float, 3> tube{source->bulbLength[0], source->bulbLength[1],
+                                          source->bulbLength[2]};
+                const float tubeLength =
+                    std::sqrt(tube[0] * tube[0] + tube[1] * tube[1] + tube[2] * tube[2]);
+                if (!(tubeLength >= 1.0f / 255.0f))
+                {
+                    const auto &up = source->up;
+                    const auto &dir = source->direction;
+                    std::array<float, 3> right{up[1] * dir[2] - up[2] * dir[1],
+                                               up[2] * dir[0] - up[0] * dir[2],
+                                               up[0] * dir[1] - up[1] * dir[0]};
+                    const float rightLength =
+                        std::sqrt(right[0] * right[0] + right[1] * right[1] + right[2] * right[2]);
+                    if (std::isfinite(rightLength) && rightLength > 1e-6f)
+                        for (unsigned component = 0; component < 3; ++component)
+                            tube[component] = right[component] / rightLength / 255.0f;
+                }
+                for (unsigned component = 0; component < 3; ++component)
+                    stampf(light, 0x60 + 4 * component, tube[component]);
+                stampf(light, 0x74, source->shadowNearPlaneBias);
+                stampf(light, 0x78, source->shadowSoftness);
+                stampf(light, 0x7C, source->shadowBias);
+                stampf(light, 0x80, source->shadowArea);
+                stampf(light, 0x84, source->distanceFalloff);
+                stampf(light, 0x88, -4.371138828673793e-08f);
+            }
+            stampf(light, 0x8C, source->rotationLimit);
+            stampf(light, 0x90, source->translationLimit);
+            stamp64(light, 0x98, source->definition.empty() ? PTR_NULL : PTR_FOLLOWS);
+        }
+        if (index == lighting.sunPrimaryLightIndex)
+        {
+            light[1] = 1;
+            stampf(light, 0x10, lighting.intensity);
+            for (unsigned component = 0; component < 3; ++component)
+            {
+                stampf(light, 0x20 + 4 * component, lighting.color[component]);
+                stampf(light, 0x2C + 4 * component, lighting.direction[component]);
+                stampf(light, 0x38 + 4 * component, lighting.up[component]);
+            }
+            stamp64(light, 0x98, PTR_NULL);
+        }
+        zb.write(light, sizeof(light));
+    }
+    if (!lighting.primaryLights.empty())
+        for (const auto &light : lighting.primaryLights)
+            if (!light.definition.empty())
+                zb.writeStr(light.definition.c_str());
+    zb.align(1);
+    zb.writeT<uint16_t>(0x8000); // stock resident transient-table entry
+    zb.popStream();
+    zb.popStream();
+}
+
+// Per-level NetConstStrings, indexed by replayncs type. Replay resolves a networked
+// entity's model (G_SetModel) and every script loadfx (G_EffectIndex) through these
+// tables: a map entity whose model is in no loaded "mdl" table spawns with model
+// index 0 and no DObj, and loadfx reports "Could not allocate/find effect ID".
+using LevelNetConstStrings = std::array<std::vector<std::string>, replayncs::Count>;
+
+// Required level NCS assets, one per type. Body (0x20, Load_NetConstStrings
+// 0x140DFDA50): name, stringType +8, sourceType +12, flags +16, entryCount +20,
+// stringList +24 = const char*[entryCount] (each inline) then the strings, all in
+// the name's stream. Empty tables are accepted (ProcessNetConstStringMap skips them).
+inline void emitLevelNetConstStrings(ZoneBuffer &zb, unsigned type,
+                                     const std::vector<std::string> &strings)
+{
+    const std::string name = std::string("ncs_") + replayncs::Tags[type] + "_level";
+    zonetool::iw8::NetConstStrings body{};
+    body.name = reinterpret_cast<const char *>(PTR_FOLLOWS);
+    body.stringType = static_cast<zonetool::iw8::NetConstStringType>(type);
+    body.sourceType = replayncs::LevelSource;
+    body.entryCount = static_cast<uint32_t>(strings.size());
+    body.stringList = strings.empty() ? nullptr : reinterpret_cast<const char **>(PTR_FOLLOWS);
+    // ZoneWriter reserves the top-level DB_InsertPointer slot.
+    zb.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    zb.align(7);
+    zb.writeT(body);
+    zb.pushStream(XFILE_BLOCK_VIRTUAL);
+    zb.writeStr(name.c_str());
+    if (!strings.empty())
+    {
+        zb.align(7);
+        for (size_t index = 0; index < strings.size(); ++index)
+            zb.writeT<uint64_t>(PTR_FOLLOWS);
+        for (const auto &value : strings)
+            zb.writeStr(value.c_str());
+    }
+    zb.popStream();
+    zb.popStream();
+    zb.pushStream(XFILE_BLOCK_TEMP_POSTLOAD);
+    zb.align(7);
+    zb.reserveCalc(sizeof(body));
+    zb.align(31);
+    zb.popStream();
+}
+
+// Shipped Replay maps (mp_shipment, mp_aniyah_tac) carry their netconststrings,
+// edgelist, map_ents, col_map and com_map in the main map zone that every client
+// loads; srv_<map> holds only server extras. The client physics world (ragdolls,
+// non-host prediction) needs this collision, so register it in the main zone.
+// MapEnts and the static-model rows store these script-string indices directly,
+// so they must lead the zone's string list: call before registering any asset.
+struct MapWorldStrings
+{
+    std::shared_ptr<ReplaySpawns> spawns;
+    std::shared_ptr<staticmodelcollision::Plan> staticCollisionPlan;
+    bool hasLinearLightDef = false;
+    uint32_t lightDefNameStringIndex = 0;
+    std::shared_ptr<MapScriptables> scriptables;
+};
+inline MapWorldStrings internMapWorldStrings(
+    ZoneWriter &writer, const std::string &ents, const MapSun &lighting,
+    const std::vector<staticmodelcollision::Model> &collisionModels,
+    const std::vector<ScriptableInstance> *scriptableInstances = nullptr,
+    const std::vector<MapLootPoint> *lootPoints = nullptr, const std::string &lootZoneName = {},
+    const std::vector<MapLootBox> *lootClusters = nullptr, const std::vector<MapLootBox> *lootZones = nullptr)
+{
+    MapWorldStrings result;
+    result.spawns = std::make_shared<ReplaySpawns>(ents);
+    result.staticCollisionPlan = std::make_shared<staticmodelcollision::Plan>(
+        staticmodelcollision::makePlan(collisionModels, *result.spawns));
+    for (size_t index = 0; index < lighting.primaryLights.size(); ++index)
+        if (index != lighting.sunPrimaryLightIndex &&
+            lighting.primaryLights[index].definition == "light_point_linear")
+            result.hasLinearLightDef = true;
+    if (result.hasLinearLightDef)
+    {
+        if (result.spawns->records.empty())
+            throw std::runtime_error("local lightdef requires Replay spawn string list");
+        result.lightDefNameStringIndex = result.spawns->intern("light_point_linear");
+    }
+    if (scriptableInstances && !scriptableInstances->empty())
+    {
+        // The class name of an instance is "scriptable_<definition>" (stock: 8005 = scriptable_com_trafficcone_01);
+        // an empty name is the null string (index 0), as in stock records.
+        result.scriptables = std::make_shared<MapScriptables>();
+        result.scriptables->instances = *scriptableInstances;
+        const auto name = [&](const std::string &text) { return text.empty() ? 0u : result.spawns->intern(text); };
+        for (const auto &instance : *scriptableInstances)
+            result.scriptables->strings.push_back({result.spawns->intern("scriptable_" + instance.definition),
+                                                   name(instance.target), name(instance.targetname), name(instance.linkname),
+                                                   name(instance.linkto), name(instance.noteworthy)});
+    }
+    if (lootPoints && !lootPoints->empty())
+    {
+        if (!result.scriptables)
+            result.scriptables = std::make_shared<MapScriptables>();
+        result.scriptables->loot = *lootPoints;
+        if (!lootZoneName.empty())
+        {
+            result.scriptables->lootZoneName = lootZoneName;
+            result.scriptables->lootZoneString = result.spawns->intern(lootZoneName);
+        }
+        if (lootClusters)
+            result.scriptables->lootClusters = *lootClusters;
+        if (lootZones)
+        {
+            result.scriptables->lootZones = *lootZones;
+            for (const auto &zone : *lootZones)
+                result.scriptables->lootZoneStrings.push_back(result.spawns->intern(zone.name));
+        }
+        if (result.scriptables->lootClusters.size() >= 0xFFFB || result.scriptables->lootZones.size() >= 0xFFFF)
+            throw std::runtime_error("too many loot clusters or zones");
+    }
+    const auto &strings = result.spawns->strings;
+    if (strings.size() > 2)
+        for (size_t index = 1; index < strings.size(); ++index)
+            if (writer.internScriptString(strings[index]) != index)
+                throw std::runtime_error("map script strings must lead the zone string list");
+    return result;
+}
+
+// The static-model PhysicsAsset bodies must already be registered in `writer`.
+inline void registerMapWorldAssets(ZoneWriter &writer, const MapWorldStrings &strings,
+                                   const std::string &assetName, const std::string &ents,
+                                   const MapBounds &bounds, const MapSun &lighting,
+                                   const havok::BakeResult &collision,
+                                   const uint32_t glassInitCount, const uint32_t glassPieceLimit,
+                                   const DynamicEntityCounts &dynamic, const bool lightDefInZone,
+                                   const LevelNetConstStrings &levelStrings = {},
+                                   std::shared_ptr<const ClientTriggerSet> clientTriggers = {})
+{
+    const auto spawns = strings.spawns;
+    const auto scriptables = strings.scriptables;
+    const auto staticCollisionPlan = strings.staticCollisionPlan;
+    // "Ladders" here: the map has an edge list (ladder centre lines, mount edges or both).
+    const bool hasLadders = !collision.ladders.empty() || !collision.mountEdges.empty();
+    const bool hasLinearLightDef = strings.hasLinearLightDef;
+
+    if (hasLadders)
+        writer.add(ASSET_TYPE_EDGELIST, assetName, [&collision](ZoneWriter &output) {
+            emitMapEdgeListBody(output.buffer(), collision.ladders, collision.mountEdges);
+        });
+    writer.add(ASSET_TYPE_MAP_ENTS, assetName,
+               [assetName, ents, spawns, &collision, hasLadders, dynamic, clientTriggers, scriptables](ZoneWriter &output) {
+                   const uint64_t edgeListAlias =
+                       hasLadders ? output.assetAlias(ASSET_TYPE_EDGELIST, assetName) : PTR_NULL;
+                   if (scriptables)
+                   {
+                       scriptables->definitionAliases.clear();
+                       // A carried definition is not in this body: its pointer is set when the zone is written
+                       // again with the definition added (convert.cpp).
+                       for (const auto &instance : scriptables->instances)
+                           scriptables->definitionAliases.push_back(
+                               instance.carryZone.empty() ? output.assetAlias(ASSET_TYPE_SCRIPTABLE, instance.definition)
+                                                          : PTR_NULL);
+                   }
+                   emitMapEntsBody(output.buffer(), assetName.c_str(), ents, spawns.get(),
+                                   &collision, edgeListAlias, dynamic, clientTriggers.get(), scriptables.get());
+               });
+
+    // col_map(23): clipMap struct -> TEMP_PRELOAD, variable data -> VIRTUAL.
+    writer.add(ASSET_TYPE_COL_MAP, assetName,
+               [assetName, bounds, lighting, &collision, glassInitCount, glassPieceLimit,
+                staticCollisionPlan](ZoneWriter &output) {
+                   auto &zb = output.buffer();
+                   uint8_t cm[kSizeClipMap];
+                   std::memset(cm, 0, sizeof(cm));
+                   stamp64(cm, kCM_name, PTR_FOLLOWS);
+                   // Shipped clip maps store isInUse 0; the loader marks the live asset.
+                   stamp32(cm, kCM_isInUse, 0);
+                   stamp32(cm, 0x0C, staticCollisionPlan->models.empty() ? 0u : 1u);
+                   stamp64(cm, 0x10, staticCollisionPlan->models.empty() ? PTR_NULL : PTR_FOLLOWS);
+                   stamp64(cm, kCM_mapEnts, output.assetAlias(ASSET_TYPE_MAP_ENTS, assetName));
+                   stamp64(cm, 0x20, PTR_FOLLOWS);
+                   cm[0x28] = 1; // R_UpdateActiveStage 19864E0 always copies stage zero.
+                   for (int k = 0; k < 3; ++k)
+                   {
+                   {
+                       // q_HavokPhysics_CreateWorld sizes every physics world's broadphase
+                       // from these bounds, and a body that leaves it is frozen in place
+                       // (q_HavokPhysics_OnBodyExitedBroadphase). Shipped maps pad far past
+                       // the playable area (mp_hideout -53152..77920, z -3584..29184), so
+                       // flung ragdolls and props keep simulating; pad likewise.
+                       const float pad = k < 2 ? 16384.f : 8192.f;
+                       // And never smaller than the box every small shipped map stores (mp_shipment,
+                       // mp_m_speedball: -30720 -31744 -14336 .. 34816 33792 51200; IW8 Radiant research
+                       // 124): killstreak aircraft fly above and start outside a small map's padded box.
+                       static const float stockMin[3] = {-30720.f, -31744.f, -14336.f};
+                       static const float stockMax[3] = {34816.f, 33792.f, 51200.f};
+                       stampf(cm, kCM_bpMin + (size_t)k * 4, bounds.valid ? std::min(bounds.mn[k] - pad, stockMin[k]) : -100000.f);
+                       stampf(cm, kCM_bpMax + (size_t)k * 4, bounds.valid ? std::max(bounds.mx[k] + pad, stockMax[k]) : 100000.f);
+                   }
+                   }
+                   stamp32(cm, kCM_havokSize, static_cast<uint32_t>(collision.world.size()));
+                   stamp64(cm, kCM_havokData, collision.world.empty() ? PTR_NULL : PTR_FOLLOWS);
+                   stamp32(cm, kCM_glassInitCount, glassInitCount);
+                   stamp32(cm, kCM_glassPieceLimit, glassPieceLimit);
+                   stamp32(cm, kCM_checksum, 0);
+
+                   zb.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+                   zb.align(7);
+                   zb.write(cm, sizeof(cm));
+                   zb.pushStream(XFILE_BLOCK_VIRTUAL);
+                   zb.writeStr(assetName.c_str()); // clipMap name
+                   emitStaticModelCollisionModelLists(zb, *staticCollisionPlan);
+                   zb.popStream();
+                   zb.pushStream(XFILE_BLOCK_VIRTUAL);
+                   zb.align(7);
+                   // Load_clipMap_t E0FD30 -> Load_StageArray E05480, 40 bytes.
+                   uint8_t stage[sizeof(iw8::maps::Stage)]{};
+                   stamp64(stage, offsetof(iw8::maps::Stage, name), PTR_FOLLOWS);
+                   // Replay selects this Stage byte before copying the ComWorld sun to the frame.
+                   if (lighting.sunPrimaryLightIndex > std::numeric_limits<uint8_t>::max())
+                       throw std::runtime_error("sun primary-light index exceeds Replay stage range");
+                   stage[offsetof(iw8::maps::Stage, sunPrimaryLightIndex)] =
+                       static_cast<uint8_t>(lighting.sunPrimaryLightIndex);
+                   // Stage 0 is the fallback R_UpdateActiveStage (19864E0) never tests
+                   // against a trigger; shipped maps mark it 1024 (no trigger).
+                   const uint16_t noTrigger = 1024;
+                   std::memcpy(stage + offsetof(iw8::maps::Stage, triggerIndex), &noTrigger,
+                               sizeof(noTrigger));
+                   zb.write(stage, sizeof(stage));
+                   zb.writeStr("default");
+                   if (!collision.world.empty())
+                   {
+                       zb.align(15);
+                       zb.write(collision.world.data(), collision.world.size());
+                   }
+                   zb.popStream();
+                   zb.popStream();
+               });
+
+    // Shipped Replay Rust carries this definition beside its ComWorld. The target
+    // type-34 loader reads a 0x20 body in stream 1. Its name follows inline: an
+    // alias into the zone's script-string block went stale once other assets
+    // interned strings (Discovery's read "ry_8/smodel_330").
+    if (hasLinearLightDef && !lightDefInZone)
+    {
+        writer.add(ASSET_TYPE_LIGHTDEF, "light_point_linear", [](ZoneWriter &output) {
+            uint8_t lightDef[iw8sz::LIGHTDEF]{};
+            stamp64(lightDef, 0x00, PTR_FOLLOWS);
+            output.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+            output.align(7);
+            output.write(lightDef, sizeof(lightDef));
+            output.pushStream(XFILE_BLOCK_VIRTUAL);
+            output.writeStr("light_point_linear");
+            output.popStream();
+            output.popStream();
+        });
+    }
+
+    writer.add(ASSET_TYPE_COM_MAP, assetName, [assetName, lighting](ZoneWriter &output) {
+        emitComWorldBody(output.buffer(), assetName.c_str(), lighting);
+    });
+    for (unsigned type = 0; type < replayncs::Count; ++type)
+        writer.add(ASSET_TYPE_NET_CONST_STRINGS,
+                   std::string("ncs_") + replayncs::Tags[type] + "_level",
+                   [type, strings = levelStrings[type]](ZoneWriter &output) {
+                       emitLevelNetConstStrings(output.buffer(), type, strings);
+                   });
+}
+
+} // namespace iw8

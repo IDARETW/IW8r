@@ -5,6 +5,12 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-16
 
+- **The zone writer and map converter are part of the project.** `iw8r-zt.exe` is built from `src/tools/zonetool`
+  (the x64-zt fork with its 485 IW8 Radiant commits, GPL-3; only IW8, the IW3 map pipeline the editor's builds use, and
+  their libraries in `third_party`) and is the default Tool Paths `zonetool`; the package ships it. Proven against the
+  fork's zonetool.exe: map builds of the effects test map and Cinderrail (every file the same, the 394 MB zone
+  included), stock edits and the first-person look (the same zones), and the dump / build / verify path of the
+  mapents and vision edits (the same dump and zone). Details: [docs/PLAN_OWN_TOOLS.md](docs/PLAN_OWN_TOOLS.md).
 - **The map script compiler is part of the project** (owner: "stop relying on ACTs, gsc-tool, and the x64-zt fork";
   "get the three implemented cleanly into the src"; "only integrate what's needed"). `iw8r-gsc.exe` is built from
   `src/tools/gsc` (gsc-tool 1.6.2 by xensik, GPL-3: only the IW8 compiler, no decompiler or other games) and is the

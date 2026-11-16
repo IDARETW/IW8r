@@ -1,0 +1,145 @@
+#pragma once
+#include "../iw8_structs.h"
+#include "../zone/iw8_zonebuffer.h"
+#include "replay_havok.h"
+#include <array>
+#include <cstdint>
+#include <cstring>
+#include <limits>
+#include <stdexcept>
+#include <string>
+
+namespace iw8
+{
+
+// Both the server map writer and ZoneWriter use the same native PhysicsAsset body.
+// The caller supplies the top-level XAsset entry and its DB_InsertPointer slot.
+template <typename Writer>
+void emitPhysicsAssetBody(Writer &writer, const havok::PhysicsAsset &asset)
+{
+    if (asset.name.empty() || asset.havokData.empty() ||
+        asset.havokData.size() > std::numeric_limits<std::uint32_t>::max() || !asset.contents ||
+        !((asset.useCategory == 0 && asset.simulationCategory == 0) ||
+          (asset.useCategory == 3 && asset.simulationCategory == 1) ||
+          (asset.useCategory == 7 && asset.simulationCategory == 9) ||
+          // Simulated clutter: DynamicDebris / Dynamic (shipped mp_hideout clutter).
+          (asset.useCategory == 3 &&
+           (asset.simulationCategory == 4 || asset.simulationCategory == 5))))
+        throw std::runtime_error("emitPhysicsAssetBody: invalid native physics asset");
+    // Several bodies only as simulated clutter in pieces (shipped mp_emporium container_electrical_box_01_small).
+    if (!asset.bodies || (asset.bodies > 1 && asset.useCategory != 3) || (asset.constraints && asset.bodies < 2))
+        throw std::runtime_error("emitPhysicsAssetBody: invalid native physics asset bodies");
+
+    std::array<std::uint8_t, iw8sz::PHYSICSASSET> body{};
+    const auto put = [&](const std::size_t offset, const auto value) {
+        if (offset + sizeof(value) > body.size())
+            throw std::runtime_error("emitPhysicsAssetBody: field exceeds Replay layout");
+        std::memcpy(body.data() + offset, &value, sizeof(value));
+    };
+    put(0x00, PTR_FOLLOWS);
+    put(0x08, PTR_FOLLOWS);
+    put(0x10, static_cast<std::uint32_t>(asset.havokData.size()));
+    put(0x14, asset.useCategory);
+    // numRigidBodies, numConstraints; per body a simulation category, contents and an SFX and VFX event slot (shipped
+    // assets leave the slots empty).
+    put(0x18, asset.bodies);
+    put(0x1C, asset.constraints);
+    put(0x20, PTR_FOLLOWS);
+    put(0x28, PTR_FOLLOWS);
+    put(0x30, asset.bodies);
+    put(0x34, asset.bodies);
+    put(0x38, PTR_FOLLOWS);
+    put(0x40, PTR_FOLLOWS);
+    put(0x54, std::uint32_t{asset.useCategory == 0 ? 0u : 1u});
+
+    writer.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    writer.align(7);
+    writer.write(body.data(), body.size());
+    writer.pushStream(XFILE_BLOCK_VIRTUAL);
+    writer.writeStr(asset.name.c_str());
+    writer.align(15);
+    writer.write(asset.havokData.data(), asset.havokData.size());
+    writer.align(3);
+    for (std::uint32_t index = 0; index < asset.bodies; ++index)
+        writer.writeT(asset.simulationCategory);
+    writer.align(3);
+    for (std::uint32_t index = 0; index < asset.bodies; ++index)
+        writer.writeT(asset.contents);
+    writer.align(7);
+    for (std::uint32_t index = 0; index < asset.bodies; ++index)
+        writer.writeT(std::uint64_t{0});
+    writer.align(7);
+    for (std::uint32_t index = 0; index < asset.bodies; ++index)
+        writer.writeT(std::uint64_t{0});
+    writer.popStream();
+    writer.popStream();
+}
+
+template <typename Writer>
+void emitPhysicsAssetReferenceBody(Writer &writer, const std::string &name)
+{
+    if (name.empty() || name.front() == ',' || name.find('\0') != std::string::npos)
+        throw std::runtime_error("invalid PhysicsAsset reference name");
+    std::array<std::uint8_t, iw8sz::PHYSICSASSET> body{};
+    const std::uint64_t follows = PTR_FOLLOWS;
+    std::memcpy(body.data(), &follows, sizeof(follows));
+    writer.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    writer.align(7);
+    writer.write(body.data(), body.size());
+    writer.pushStream(XFILE_BLOCK_VIRTUAL);
+    writer.writeStr(("," + name).c_str());
+    writer.popStream();
+    writer.popStream();
+}
+
+// An XModelDetailCollision (Load_XModelDetailCollision 0xE2A3A0): the struct, then the name, the Havok data (16-aligned)
+// and the script strings that name its bodies.
+template <typename Writer>
+void emitXModelDetailCollisionBody(Writer &writer, const havok::XModelDetailCollision &asset,
+                                   const std::uint32_t bodyNameString)
+{
+    if (asset.name.empty() || asset.havokData.empty() ||
+        asset.havokData.size() > std::numeric_limits<std::uint32_t>::max())
+        throw std::runtime_error("emitXModelDetailCollisionBody: invalid detail collision");
+
+    std::array<std::uint8_t, iw8sz::XMODEL_DETAIL_COLLISION> body{};
+    const auto put = [&](const std::size_t offset, const auto value) {
+        std::memcpy(body.data() + offset, &value, sizeof(value));
+    };
+    put(0x00, PTR_FOLLOWS);
+    put(0x08, static_cast<std::uint32_t>(asset.havokData.size()));
+    put(0x10, PTR_FOLLOWS);
+    put(0x18, std::uint32_t{1});
+    put(0x20, PTR_FOLLOWS);
+
+    writer.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    writer.align(7);
+    writer.write(body.data(), body.size());
+    writer.pushStream(XFILE_BLOCK_VIRTUAL);
+    writer.writeStr(asset.name.c_str());
+    writer.align(15);
+    writer.write(asset.havokData.data(), asset.havokData.size());
+    writer.align(3);
+    writer.writeT(bodyNameString);
+    writer.popStream();
+    writer.popStream();
+}
+
+template <typename Writer>
+void emitXModelDetailCollisionReferenceBody(Writer &writer, const std::string &name)
+{
+    if (name.empty() || name.front() == ',' || name.find('\0') != std::string::npos)
+        throw std::runtime_error("invalid XModelDetailCollision reference name");
+    std::array<std::uint8_t, iw8sz::XMODEL_DETAIL_COLLISION> body{};
+    const std::uint64_t follows = PTR_FOLLOWS;
+    std::memcpy(body.data(), &follows, sizeof(follows));
+    writer.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
+    writer.align(7);
+    writer.write(body.data(), body.size());
+    writer.pushStream(XFILE_BLOCK_VIRTUAL);
+    writer.writeStr(("," + name).c_str());
+    writer.popStream();
+    writer.popStream();
+}
+
+} // namespace iw8

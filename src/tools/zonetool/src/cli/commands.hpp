@@ -1,0 +1,32 @@
+#pragma once
+
+#include "settings.hpp"
+
+namespace zonetool::cli
+{
+	using command_handler = void(*)(const settings& settings, std::span<const std::string> args);
+
+	struct command
+	{
+		std::string_view name;
+		std::string_view usage;
+		command_handler handler;
+	};
+
+	std::span<const command> commands();
+	bool execute(const settings& settings, std::span<const std::string> args);
+
+	void inspect(const settings& settings, std::span<const std::string> args);
+	void dump_zone(const settings& settings, std::span<const std::string> args);
+	void dump_asset(const settings& settings, std::span<const std::string> args);
+	void verify_zone(const settings& settings, std::span<const std::string> args);
+	void list_zone(const settings& settings, std::span<const std::string> args);
+	void build_zone(const settings& settings, std::span<const std::string> args);
+	void build_extraction(const settings& settings, std::span<const std::string> args);
+	void edit_zone(const settings& settings, std::span<const std::string> args);
+	void havok_info(const settings& settings, std::span<const std::string> args);
+	void stream_info(const settings& settings, std::span<const std::string> args);
+	void refresh_zone(const settings& settings, std::span<const std::string> args);
+	void patch_zone(const settings& settings, std::span<const std::string> args);
+	void generate_csv(const settings& settings, std::span<const std::string> args);
+}

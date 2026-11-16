@@ -1,0 +1,340 @@
+#pragma once
+
+#include <iw8/dump/conv_xsurface.h>
+#include <iw8/dump/xmodel_dump.h>
+#include <iw8/assets/replay_dynentity.h>
+#include <iw8/common/replay_havok.h>
+#include <iw8/assets/replay_impact.h>
+#include <iw8/common/replay_navigation.h>
+#include <iw8/common/replay_render.h>
+#include <iw8/assets/replay_sound.h>
+#include <iw8/common/replay_static_model_collision.h>
+#include <iw8/common/replay_sunshadow.h>
+#include "iw3_vision.h"
+#include <iw8/assets/replay_vfx.h>
+#include <iw8/assets/replay_xanim.h>
+#include <iw8/zone/replay_client_triggers.h>
+
+#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace zonetool
+{
+class zone_memory;
+namespace iw8 { struct zone_asset; }
+}
+
+namespace iw3
+{
+struct ImportOptions
+{
+    std::filesystem::path fastfile;
+    std::string map;
+    std::filesystem::path unlinker;
+    std::filesystem::path scratchRoot;
+    // The encoded image, probe and shader cache (content-addressed, safe to share between conversions).
+    std::filesystem::path renderCache;
+    std::vector<std::filesystem::path> searchPaths;
+    // Convert IW3 gametype visuals (flag props, headquarters radios).
+    bool iw3ModeAssets{true};
+    // IW3's look, or Replay's native fog/atmosphere/volumetrics (iw3_vision.h).
+    MapStyle style{MapStyle::iw3};
+    float exposureAdjust{}; // EV before the native grading CLUT and tone curve.
+    // An extraction in the layout of the extraction cache (extracted/, skeleton/ and their complete files) that another
+    // front end wrote, for example from IW7 zones. It replaces the OAT Unlinker.
+    std::filesystem::path extraction;
+    // The zone folder of the Replay install (beside --replay's executable): stock technique sets and materials.
+    std::filesystem::path replayZones;
+};
+
+struct PreparedXModel
+{
+    // IW3 source model and the conversion role it took (smodel, dynmodel,
+    // entitymodel, fxmodel, partmodel), for the output ledger.
+    std::string source, role;
+    convert::xmodel::Iw8XModelRecord model;
+    std::vector<conv_xsurf::Iw8Surfs> lods;
+    iw8::havok::PhysicsAsset physicsAsset;
+    // The detail collision of a static model (native Havok): bullets and melee hit it in the detail physics world.
+    iw8::havok::XModelDetailCollision detailCollision;
+};
+
+struct PreparedFxDependency
+{
+    std::string name;
+    std::string type;
+};
+
+struct PreparedFxFloatRange
+{
+    float base{};
+    float amplitude{};
+};
+
+struct PreparedFxIntRange
+{
+    std::int32_t base{};
+    std::int32_t amplitude{};
+};
+
+struct PreparedFxVec3Range
+{
+    std::array<float, 3> base{};
+    std::array<float, 3> amplitude{};
+};
+
+struct PreparedFxSpawn
+{
+    std::array<std::int32_t, 2> raw{};
+    std::int32_t loopingIntervalMsec{};
+    std::int32_t loopingCount{};
+    PreparedFxIntRange oneShotCount{};
+};
+
+struct PreparedFxAtlas
+{
+    std::uint8_t behavior{};
+    std::uint8_t index{};
+    std::uint8_t fps{};
+    std::uint8_t loopCount{};
+    std::uint8_t colIndexBits{};
+    std::uint8_t rowIndexBits{};
+    std::int16_t entryCount{};
+};
+
+struct PreparedFxVisualState
+{
+    std::array<std::uint8_t, 4> color{};
+    float rotationDelta{};
+    float rotationTotal{};
+    std::array<float, 2> size{};
+    float scale{};
+};
+
+struct PreparedFxVisualSample
+{
+    PreparedFxVisualState base{};
+    PreparedFxVisualState amplitude{};
+};
+
+struct PreparedFxVelocityFrame
+{
+    PreparedFxVec3Range velocity{};
+    PreparedFxVec3Range totalDelta{};
+};
+
+struct PreparedFxVelocitySample
+{
+    PreparedFxVelocityFrame local{};
+    PreparedFxVelocityFrame world{};
+};
+
+struct PreparedFxTrailVertex
+{
+    std::array<float, 2> position{};
+    std::array<float, 2> normal{};
+    float texCoord{};
+};
+
+struct PreparedFxTrail
+{
+    std::int32_t scrollTimeMsec{};
+    std::int32_t repeatDist{};
+    std::int32_t splitDist{};
+    std::vector<PreparedFxTrailVertex> vertices;
+    std::vector<std::uint16_t> indices;
+};
+
+enum class PreparedFxVisualKind : std::uint8_t
+{
+    none,
+    material,
+    xmodel,
+    effect,
+    sound,
+    decal,
+};
+
+struct PreparedFxVisual
+{
+    PreparedFxVisualKind kind{PreparedFxVisualKind::none};
+    // Ordinary visuals have zero or one name. A decal has exactly two material
+    // slots, with an empty string preserving a source null pointer.
+    std::vector<std::string> names;
+};
+
+struct PreparedFxElement
+{
+    std::int32_t flags{};
+    // Drawn with an IW3 distortion material (stock Replay refraction state).
+    bool distortion{};
+    PreparedFxSpawn spawn{};
+    PreparedFxFloatRange spawnRange{};
+    PreparedFxFloatRange fadeInRange{};
+    PreparedFxFloatRange fadeOutRange{};
+    float spawnFrustumCullRadius{};
+    PreparedFxIntRange spawnDelayMsec{};
+    PreparedFxIntRange lifeSpanMsec{};
+    std::array<PreparedFxFloatRange, 3> spawnOrigin{};
+    PreparedFxFloatRange spawnOffsetRadius{};
+    PreparedFxFloatRange spawnOffsetHeight{};
+    std::array<PreparedFxFloatRange, 3> spawnAngles{};
+    std::array<PreparedFxFloatRange, 3> angularVelocity{};
+    PreparedFxFloatRange initialRotation{};
+    PreparedFxFloatRange gravity{};
+    PreparedFxFloatRange reflectionFactor{};
+    PreparedFxAtlas atlas{};
+    std::uint8_t type{};
+    std::uint8_t visualCount{};
+    std::uint8_t velocityIntervalCount{};
+    std::uint8_t visualStateIntervalCount{};
+    std::vector<PreparedFxVelocitySample> velocitySamples;
+    std::vector<PreparedFxVisualSample> visualSamples;
+    bool visualsPresent{};
+    std::vector<PreparedFxVisual> visuals;
+    std::array<float, 3> collisionMins{};
+    std::array<float, 3> collisionMaxs{};
+    std::string effectOnImpact;
+    std::string effectOnDeath;
+    std::string effectEmitted;
+    PreparedFxFloatRange emitDist{};
+    PreparedFxFloatRange emitDistVariance{};
+    std::optional<PreparedFxTrail> trail;
+    std::uint8_t sortOrder{};
+    std::uint8_t lightingFrac{};
+    std::uint8_t useItemClip{};
+};
+
+struct PreparedFx
+{
+    std::string name;
+    std::filesystem::path sourcePath;
+    std::int32_t flags{};
+    std::int32_t totalSize{};
+    std::int32_t msecLoopingLife{};
+    std::array<std::uint32_t, 3> elementCounts{};
+    std::vector<PreparedFxElement> elements;
+    std::vector<PreparedFxDependency> dependencies;
+};
+
+struct PreparedRawFile
+{
+    std::string name;
+    std::vector<std::uint8_t> data;
+};
+
+struct PreparedMap
+{
+    std::filesystem::path root;
+    // Rung spacing of the map's ladder models; 0 keeps Replay's 12 (map.json
+    // ladderRungDistance, applied by the DW client).
+    float ladderRungDistance{};
+    std::filesystem::path collision;
+    std::filesystem::path footsteps;
+    std::filesystem::path scratch;
+    std::vector<PreparedXModel> xmodels;
+    std::vector<PreparedRawFile> rawFiles;
+    // Fresh Replay definitions materialized from version-neutral asset data.
+    std::unique_ptr<zonetool::zone_memory> nativeAssetMemory;
+    std::vector<zonetool::iw8::zone_asset> nativeAssets;
+    // IW3 animations the converted scripts play (vehicle destroy anims).
+    std::vector<iw8::xanim::Anim> xanims;
+    std::vector<PreparedFx> fxEffects;
+    std::unordered_map<std::string, std::string> fxMaterialAliases;
+    // Replay Particle_MaterialData per IW3 FX material (feather, falloff, eye offset).
+    std::unordered_map<std::string, std::array<std::uint8_t, 192>> fxParticleMaterialData;
+    std::vector<iw8::vfx::Effect> vfxEffects;
+    std::string vfxLightDef;
+    // The light definitions the map registers from its source's IES profiles (IW7): a native effect's light that
+    // names one keeps it; the others take vfxLightDef.
+    std::set<std::string> iesLightDefs;
+    // Debris shapes of native effects (IW7 physics-light modules) built as
+    // Replay PhysicsFXShape Havok data, and the common-zone assets (pipelines,
+    // the default particle shape) that native effects name.
+    struct FxShape
+    {
+        std::string name;
+        std::vector<std::uint8_t> havokData;
+    };
+    std::vector<FxShape> vfxShapes;
+    // Particle sim animations of native effects (IW7's baked particles) with their
+    // converted effect materials.
+    std::vector<iw8::vfx::ParticleSim> vfxParticleSims;
+    std::set<std::pair<IW8_XAssetType, std::string>> vfxReferences;
+    std::string smallGlassEffect;
+    iw8::impact::EffectOverrides impactOverrides;
+    replayrender::StaticModels staticModels;
+    std::vector<iw8::staticmodelcollision::Model> staticModelCollisionModels;
+    replaysunshadow::Scene shadowScene;
+    // The native render definition, handed to the packager in memory (the scratch keeps a copy only when
+    // IW8_ZONETOOL_KEEP_SCRATCH keeps the scratch). The packager empties it once the mesh is read.
+    nlohmann::json render;
+    std::vector<iw8::DynamicEntity> dynamicEntities;
+    // Scriptable instances of the map (collision JSON "scriptable_instances"); their dynamic entities are already in
+    // dynamicEntities.
+    std::vector<iw8::ScriptableInstance> scriptableInstances;
+    // Stock assets to carry into the map zone (collision JSON "carry_assets": [{"zone", "type", "name"}]), for example
+    // the vehicle definitions of the stock Warzone maps; each comes with everything it uses.
+    struct CarryAsset
+    {
+        std::string zone, type, name;
+    };
+    std::vector<CarryAsset> carryAssets;
+    // The world collision is built as streamed collision tiles (collision JSON "collision_tiles": true).
+    bool collisionTiles = false;
+    // The name of the one loot zone over the loot points (collision JSON "loot_zone"; empty: none).
+    std::string lootZone;
+    // Authored loot clusters and zones (collision JSON "loot_boxes": {"clusters": [{mid, half}], "zones": [{name,
+    // mid, half}]}).
+    std::vector<iw8::MapLootBox> lootClusters, lootZones;
+    // Loot points of the map (collision JSON "loot_points").
+    std::vector<iw8::MapLootPoint> lootPoints;
+    iw8::navigation::Source navigation;
+    // IW8 GSC translated from the map's IW3 scripts (without the generated
+    // minimap function), compiled with gsc-tool at package time.
+    std::string mapScript;
+    // New game type scripts the map carries (IW8 Radiant research 91 / 92): IW8 GSC files
+    // extracted/scripts/mp/gametypes/<name>.gsc, compiled as they are (no IW3 translation) into the map zone as
+    // scripts/mp/gametypes/<name>.gsc. A stock name cannot be replaced from a map zone (research 91), so these are new
+    // names; the match is started with that game type.
+    std::vector<std::pair<std::string, std::string>> gameTypeScripts;
+    // HUD materials the map's source scripts name in precacheshader / setshader string literals (the translation drops
+    // precacheshader); listed in the level "mat" NetConstStrings table at package time.
+    std::vector<std::string> scriptMaterials;
+    // Converted IW3 film grade (empty name without one); the generated Replay
+    // vision file in rawFiles references it.
+    std::string gradingClutName;
+    std::vector<std::uint8_t> gradingClutPixels;
+    // Converted IW3 sound aliases (always-loaded map bank), when any convert.
+    std::optional<iw8::sound::Bank> soundBank;
+    // Client-side audio zones of the source map (IW7 maps/clienttriggers.json), when
+    // it has any.
+    std::shared_ptr<const iw8::ClientTriggerSet> clientTriggers;
+    // Map-intro chyron (localize mp_chyron/<map>_<team>_<1..4> in eng_<map>):
+    // line 2's clock, which the game follows with the running seconds
+    // ("Day 1 10:30:"), and each team's unit (allies, axis; stock IW8 names).
+    std::string chyronClock;
+    std::array<std::string, 2> chyronUnits;
+    // The map's own localized strings (the extraction's localize/strings.tsv): key and text, written into eng_<map>.
+    std::vector<std::pair<std::string, std::string>> mapStrings;
+
+    PreparedMap();
+    PreparedMap(const PreparedMap &) = delete;
+    PreparedMap &operator=(const PreparedMap &) = delete;
+    PreparedMap(PreparedMap &&other) noexcept;
+    PreparedMap &operator=(PreparedMap &&other) noexcept;
+    ~PreparedMap();
+};
+
+// Optional asset_data/rumbles.json; validates the semantic closure before allocating native definitions.
+void PrepareRumbleAssets(const std::filesystem::path &extractionRoot, PreparedMap &prepared);
+
+PreparedMap PrepareFastfile(const ImportOptions &options);
+} // namespace iw3

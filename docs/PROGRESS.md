@@ -7,8 +7,12 @@
     api/iw8r_gsc.* (iw8r::gsc::compileIw8Script), cli -> bin/<mode>/iw8r-gsc.exe (built with the editor), default
     gsc_tool path; tests/gsc_compiler_tests.cpp + tests/data/gsc. NOTE x64-zt's submodule is 1.4.10 (no ".gsc" on
     far-call names); 1.6.2 is what the editor used and what the game ran.
-  - Next: x64-zt (src/tools/zonetool, iw3 + iw8 + convert/iw3_iw8 only) then ACTS (mw19replay handler closure); plan
-    and parity method in docs/PLAN_OWN_TOOLS.md.
+  - x64-zt done: src/tools/zonetool (fork e648a414 via tools/patches/zt_sync_fork.py; src/tools/zonetool/xmake.lua is
+    ours and survives a sync), third_party libs, bin/<mode>/iw8r-zt.exe (dep of IW8Radiant), default zonetool path and
+    script defaults. Parity tools: tools/zt_parity.py (buildextraction; use a SHORT scratch root like E:/zp, ACTS
+    fails on long paths), tools/zt_editzone_parity.py. Results table in docs/PLAN_OWN_TOOLS.md section 2.
+  - Next: ACTS (mw19replay handler closure -> src/tools/acts, iw8r-acts.exe); then the setup wizard / Tool Paths
+    wording (x64-zt, ACTS rows), THIRD_PARTY.md, LICENSE, README.
 - 2026-11-16 (owner: blank effect previews; "a one-time full metadata and thumbnails for everything we can in the
   menus ... include it as part of the project"; "compress previews too"; "stop relying on ACTs, gsc-tool, and the
   x64-zt fork"):

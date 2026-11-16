@@ -16,7 +16,7 @@ if (-not (Test-Path (Join-Path $bin 'IW8Radiant.exe'))) { throw "build first: $b
 if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
 New-Item -ItemType Directory -Force $dest | Out-Null
 
-$files = @('IW8Radiant.exe', 'iw8r.exe', 'iw8r-gsc.exe', 'qtadvanceddocking.dll') +
+$files = @('IW8Radiant.exe', 'iw8r.exe', 'iw8r-gsc.exe', 'iw8r-zt.exe', 'qtadvanceddocking.dll') +
          (Get-ChildItem $bin -Filter 'Qt6*.dll' | ForEach-Object Name)
 foreach ($f in $files) { Copy-Item (Join-Path $bin $f) $dest }
 # Qt plugin folders written by windeployqt.

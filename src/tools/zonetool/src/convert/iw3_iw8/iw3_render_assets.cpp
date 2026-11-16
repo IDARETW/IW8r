@@ -1,0 +1,9035 @@
+#include <std_include.hpp>
+#include "iw3_render_assets.h"
+#include <iw8/common/replay_render.h>
+#include <array>
+#include "iw3_ledger.h"
+
+#include "resources.h"
+
+#include <iw8/assets/replay_stock_library.h>
+#include <iw8/structs.hpp>
+
+#include <iw8/common/fs_util.h>
+#include <iw8/common/log.h>
+#include <iw8/common/scratch_files.h>
+#include <iw8/dump/xsurface_convert.h>
+#include <BC.h>
+#include <DirectXTex.h>
+
+#include <Windows.h>
+#include <bcrypt.h>
+#include <d3dcompiler.h>
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <bit>
+#include <charconv>
+#include <chrono>
+#include <complex>
+#include <condition_variable>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <deque>
+#include <exception>
+#include <fstream>
+#include <functional>
+#include <future>
+#include <limits>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <regex>
+#include <set>
+#include <span>
+#include <stdexcept>
+#include <string_view>
+#include <thread>
+#include <tuple>
+#include <unordered_map>
+
+namespace iw3
+{
+namespace
+{
+using Json = nlohmann::json;
+
+// Surface flag bit 20: an unlit surface whose material parameters' w is its emission gain.
+constexpr unsigned kEmissionFlag = 1u << 20;
+
+struct Image
+{
+    unsigned width{};
+    unsigned height{};
+    std::vector<std::uint8_t> rgba;
+    // Authored source levels in largest-to-smallest order, excluding this level.
+    std::vector<Image> mips;
+    std::vector<std::uint8_t> nativeBc7;
+    unsigned nativeBc7Levels{};
+};
+
+struct Cubemap
+{
+    unsigned width{};
+    unsigned height{};
+    unsigned mipCount{};
+    std::vector<std::vector<Image>> faces;
+    std::vector<std::uint8_t> residentPixels;
+    // Stored linear value x absoluteScale = IW3's radiance (decoded rgb * a).
+    float absoluteScale{1};
+    // The probe array stores the image times this (an editor capture: its mean luminance brought to the stock
+    // probes' level; 1 for every other source).
+    float arrayGain{1};
+};
+
+struct SourceMaterial
+{
+    std::string name;
+    unsigned surfaceTypeBits{};
+    std::string color;
+    std::string normal;
+    std::string response;
+    // The stock Replay world images of an extraction (replayColorMap, replayNormalGlossMap: IW7's colour with its
+    // specular alpha, its packed normal map with gloss in red), and whether they hold them (replaySpecularAlpha,
+    // replayGloss).
+    std::string replayColor;
+    std::string replayNormalGloss;
+    bool replaySpecularAlpha{};
+    bool replayGloss{};
+    // Every surface of the material is lightmapped (replayStockOnly): with a stock world material it needs no converted
+    // one.
+    bool replayStockOnly{};
+    // An IW7 world distortion (iw7Distortion): its distortion map (raw: offset in red/green, strength in blue), UV
+    // animation (scroll x/y, rotation) and scale, drawn by Replay's stock world distortion material.
+    std::string distortionMap;
+    std::array<float, 4> distortionUvAnimation{};
+    std::array<float, 2> distortionScale{};
+    // A stock layer's alpha, reveal and thickness map (replayRevealMap: red alpha, green reveal).
+    std::string replayReveal;
+    // The layers of a stock layered surface's material (replayLayers): each a material of its own, blending by its
+    // weight or multiplying, with its reveal ramp's sharpness and whether its alpha, reveal and thickness map holds an
+    // alpha.
+    struct ReplayLayer
+    {
+        std::string material;
+        bool multiply{};
+        std::optional<float> reveal;
+        bool alpha{};
+    };
+    std::vector<ReplayLayer> replayLayers;
+    // A blended material's own reveal ramp sharpness and whether its alpha, reveal and thickness map holds an alpha
+    // (replayRevealSharpness, replayAlpha): what a stock decal of it blends by.
+    std::optional<float> replayRevealSharpness;
+    bool replayAlpha{};
+    // An unlit material's emission in the units of the native lightmap (replayEmission): what a stock emissive material
+    // of it emits.
+    std::optional<std::array<float, 3>> replayEmission;
+    // A material of the sky's surfaces (skyObject) and its UV animation (uvAnimParms.xyz) and its mask's
+    // (maskUvAnimParms.xyz).
+    bool skyObject{};
+    std::array<float, 3> uvAnimation{};
+    std::array<float, 3> maskUvAnimation{};
+    // The light that passes through the material to the side facing away (transmission.rgb: IW7's *_trans techsets).
+    std::array<float, 3> transmission{};
+    // The sharpness of an IW7 layer's or decal's reveal ramp (iw7RevealSharpness, kRevealLayerFlag).
+    float revealSharpness{};
+    // The axes along which an IW7 material's colour sampler clamps (iw7ClampAxes: bit 0 U, bit 1 V).
+    unsigned clampAxes{};
+    // Whether the material dims by the volumetric extinction before it (iw7VolumetricExtinction: IW7's god-ray cards).
+    bool volumetricExtinction{};
+    // An unlit material's mask (maskMap) and whether an extraction gives unlit materials theirs (unlitMask).
+    std::string mask;
+    bool unlitMask{};
+    // IW3 detailMap and detailScale.xy (lp_*d0* techsets: colour + detail - 0.5).
+    std::string detail;
+    std::array<float, 2> detailScale{1, 1};
+    // IW3 mc_*_flag_* techsets: the cloth wave vertex shader (MAP_FLAG_WAVE).
+    bool flagWave{};
+    // An extraction's IW7 flag cloth and foliage (iw7FlagWave: flagParms and the two waves of IW7's flagext vertex
+    // shader, MAP_IW7_FLAG_WAVE; iw7FlagClassic: the flag shader's three fixed waves, MAP_IW7_FLAG_CLASSIC).
+    std::optional<std::array<float, 12>> iw7FlagWave;
+    bool iw7FlagClassic{};
+    // An extraction's IW7 reactive foliage (iw7ReactiveMotion): static models bend by Replay's reactive-motion sim
+    // (MAP_REACTIVE_MOTION).
+    bool reactiveMotion{};
+    // An extraction's IW7 model flow (iw7Flow: mcopw_effectunlit_*_flow_*): its flow map and surface parameters,
+    // flowMapConst.x, flowMapPeriod.xz and whether it expands its colour (mkhdr), drawn by a MAP_FLOW variant.
+    struct Flow
+    {
+        std::string map, surface;
+        float scale{};
+        std::array<float, 2> period{};
+        bool hdr{};
+    };
+    std::optional<Flow> flow;
+    // An extraction's IW7 model UV distortion (iw7ModelUvd: mopw_effectunlit_add_lin_ct_ndw_uvd_nocast_evc, PS 5e1809e2):
+    // its noise map, uvDistortParms (scroll xy, scale zw) and the strength over textureAtlas.xy, drawn by a MAP_UVD
+    // variant.
+    struct Uvd
+    {
+        std::string map;
+        std::array<float, 4> scroll{};
+        std::array<float, 2> strength{};
+        // textureAtlas.xy of the twins that take the noise per atlas cell (MAP_UVD_CELLS), none for the others.
+        std::optional<std::array<float, 2>> cells;
+    };
+    std::optional<Uvd> uvd;
+    // IW3 wc_water (waterMap water_t, exported by OAT): the M x N wave spectrum
+    // H0 (re, im pairs) with each wave vector's wTerm, and the water_l_sun
+    // constants envMapParms and waterColor.
+    struct Water
+    {
+        unsigned size{};
+        std::vector<float> h0;
+        std::vector<float> wTerm;
+        std::array<float, 4> environment{};
+        std::array<float, 3> color{};
+    };
+    std::shared_ptr<const Water> water;
+    std::array<float, 4> tint{1, 1, 1, 1};
+    std::array<float, 4> environment{0.8f, 4.0f, 2.5f, 0.625f};
+    // High dynamic range emission of an unlit material: the emissionScale constant of converters
+    // of engines whose unlit materials emit above 1 (IW7 lamps: tint 318); IW3 materials have none.
+    float emission{1};
+    SurfaceKind kind{SurfaceKind::opaque};
+    bool castsShadow{true};
+    bool shadowOnly{};
+    bool staticModelShadowOnly{};
+    bool entityNoDraw{};
+    unsigned flags{};
+    unsigned cullMode{1}; // Replay: none=0, back=1, front=2.
+    bool depthBias{};     // IW3 polygonOffset on the color pass, or a decal sort.
+    unsigned sortKey{4};
+    unsigned blend{};     // 0 alpha or opaque, 1 additive, 2 multiply, 3 srcalpha additive
+    // IW3 effect-model terms of falloff layers: the near fade (featherParms.x,
+    // alpha *= saturate(view depth * x)) and the eye offset (eyeOffsetParms.x
+    // units toward the camera).
+    std::array<float, 2> effect{0, 0};
+    unsigned polygonOffset{}; // IW3 colour-pass polygonOffset: 0, offset1 1, offset2 2.
+};
+
+enum class FxMaterialFamily
+{
+    unsupported,
+    alpha,
+    alphaFeather,
+    additive,
+    additiveFeather,
+    cloud,
+    decal,
+    // IW3 distortion_* screen refraction. Replay distortion needs a native
+    // refraction technique; these elements are left out of converted effects.
+    distortion,
+};
+
+struct SourceFxMaterial
+{
+    std::string name;
+    std::string techniqueSet;
+    std::string image;
+    std::string normal;
+    std::string response;
+    std::array<float, 4> tint{1, 1, 1, 1};
+    unsigned rows{1};
+    unsigned columns{1};
+    FxMaterialFamily family{FxMaterialFamily::unsupported};
+    // srcalpha/one blending, drawn by the one/one additive family with the
+    // colour map premultiplied by its alpha (the same result).
+    bool premultiplied{};
+    // An alpha-blended material that the extraction marks lit (IW7's lit effects), drawn through Replay's lit
+    // effect technique, which lights each particle by the scene.
+    bool lit{};
+    // An atlas material whose frames the extraction marks blended (IW7's textureAtlasFrameBlend; IW3 has none), drawn
+    // through the stock frame-blend twin of its technique set where Replay has one.
+    bool frameBlend{};
+    // A material without a depth test (IW7's nodepth glows: Scorch's lava glare), which draws over the world.
+    bool noDepth{};
+    // IW3 zfeather featherParms (x = 1 / depth), falloff (falloffParms .z/.w,
+    // begin/end colours) and eye offset (eyeOffsetParms.x).
+    std::optional<std::array<float, 4>> feather, falloff, eyeOffset;
+    std::array<float, 4> falloffBegin{1, 1, 1, 1}, falloffEnd{1, 1, 1, 1};
+    // IW3 distortion_* (heat haze): world-unit displacement along the particle
+    // tangent/binormal per unit of the colour map's xy * 2 - 1.
+    std::array<float, 4> distortionScale{};
+    struct Flow
+    {
+        std::string map, surface;
+        std::array<float, 4> scale{}, period{};
+        bool hdr{};
+        // IW7's dissolve flow (PS 39eb46cf, d2bc120f): alphaDissolveParms.x, the K of
+        // alpha = saturate((texel.a * mask + vertex alpha) * K - K).
+        std::optional<float> dissolve;
+        // The lit flow's alpha mask (PS a386c911: its alpha times the flow's), empty for none.
+        std::string mask;
+        // IW7's lit UV distortion (iw7Uvd: PS c258449e, 5d9b9a5b) in place of the flow: map is its noise map, scale its
+        // scroll (xy) and scale (zw), period the strength, the atlas (yz) and the dissolve K (w); no surface map.
+        bool uvd{};
+        // IW7's alpha-tested lit effects (iw7AlphaTest: PSs c4e82cfb, c4b7c455, and 5e767f2f with the UV distortion):
+        // cut at 0.501961 and drawn opaque; without the distortion they read no flow image.
+        bool atest{};
+        // The zfeather UV-distortion twins (PSs 8d6f8ca6, 971dbac6): their noise per atlas cell, at frac(uv * atlas).
+        bool cell{};
+    };
+    std::optional<Flow> flow;
+};
+
+std::vector<std::uint8_t> ReadBytes(const std::filesystem::path &path)
+{
+    std::vector<std::uint8_t> data;
+    if (!zt::read_file(path.string(), data))
+        throw std::runtime_error("cannot read " + path.string());
+    return data;
+}
+
+// The package's files stay in memory (zt::scratch); IW8_ZONETOOL_KEEP_SCRATCH writes them to the disk too.
+bool KeepScratchFiles()
+{
+    static const bool keep = GetEnvironmentVariableW(L"IW8_ZONETOOL_KEEP_SCRATCH", nullptr, 0) != 0;
+    return keep;
+}
+
+void WriteBytes(const std::filesystem::path &path, const std::vector<std::uint8_t> &data)
+{
+    if (zt::scratch::Holds(path) && zt::scratch::Put(path, std::make_shared<std::vector<std::uint8_t>>(data)) &&
+        !KeepScratchFiles())
+        return;
+    if (!zt::write_file(path.string(), data))
+        throw std::runtime_error("cannot write " + path.string());
+}
+
+std::array<std::uint8_t, 8> EncodeBc4Block(const std::array<std::uint8_t, 16> &values)
+{
+    const auto [minimum, maximum] = std::minmax_element(values.begin(), values.end());
+    std::array<std::uint8_t, 8> block{};
+    block[0] = *maximum;
+    block[1] = *minimum;
+    if (block[0] == block[1])
+        return block;
+
+    std::array<unsigned, 8> palette{block[0], block[1]};
+    for (unsigned index = 1; index <= 6; ++index)
+        palette[index + 1] = ((7 - index) * unsigned(block[0]) +
+                              index * unsigned(block[1]) + 3) /
+                             7;
+
+    std::uint64_t indices = 0;
+    for (unsigned pixel = 0; pixel < values.size(); ++pixel)
+    {
+        unsigned best = 0;
+        unsigned distance = UINT_MAX;
+        for (unsigned candidate = 0; candidate < palette.size(); ++candidate)
+        {
+            const unsigned delta = palette[candidate] > values[pixel]
+                                       ? palette[candidate] - values[pixel]
+                                       : values[pixel] - palette[candidate];
+            if (delta < distance)
+            {
+                distance = delta;
+                best = candidate;
+            }
+        }
+        indices |= std::uint64_t(best) << (pixel * 3);
+    }
+    for (unsigned byte = 0; byte < 6; ++byte)
+        block[byte + 2] = static_cast<std::uint8_t>(indices >> (byte * 8));
+    return block;
+}
+
+std::vector<std::uint8_t> EncodeBc4(const unsigned width, const unsigned height,
+                                    const std::vector<std::uint8_t> &values)
+{
+    if (values.size() != static_cast<std::size_t>(width) * height)
+        throw std::runtime_error("invalid BC4 source dimensions");
+    const unsigned blocksWide = (width + 3) / 4;
+    const unsigned blocksHigh = (height + 3) / 4;
+    std::vector<std::uint8_t> encoded(static_cast<std::size_t>(blocksWide) * blocksHigh * 8);
+    for (unsigned blockY = 0; blockY < blocksHigh; ++blockY)
+        for (unsigned blockX = 0; blockX < blocksWide; ++blockX)
+        {
+            std::array<std::uint8_t, 16> blockValues{};
+            for (unsigned y = 0; y < 4; ++y)
+                for (unsigned x = 0; x < 4; ++x)
+                {
+                    const unsigned sourceX = std::min(blockX * 4 + x, width - 1);
+                    const unsigned sourceY = std::min(blockY * 4 + y, height - 1);
+                    blockValues[y * 4 + x] = values[static_cast<std::size_t>(sourceY) * width +
+                                                        sourceX];
+                }
+            const auto block = EncodeBc4Block(blockValues);
+            std::memcpy(encoded.data() +
+                            (static_cast<std::size_t>(blockY) * blocksWide + blockX) * 8,
+                        block.data(), block.size());
+        }
+    return encoded;
+}
+
+std::vector<std::uint8_t> EncodeBc5(const unsigned width, const unsigned height,
+                                    const std::vector<std::uint8_t> &xValues,
+                                    const std::vector<std::uint8_t> &yValues)
+{
+    const auto x = EncodeBc4(width, height, xValues);
+    const auto y = EncodeBc4(width, height, yValues);
+    std::vector<std::uint8_t> encoded(x.size() * 2);
+    for (std::size_t block = 0; block < x.size() / 8; ++block)
+    {
+        std::memcpy(encoded.data() + block * 16, x.data() + block * 8, 8);
+        std::memcpy(encoded.data() + block * 16 + 8, y.data() + block * 8, 8);
+    }
+    return encoded;
+}
+
+std::uint32_t EncodeUnsignedFloat(const float value, const unsigned mantissaBits)
+{
+    if (!(value > 0.0f))
+        return 0;
+    int exponent = 0;
+    const float mantissa = std::frexp(value, &exponent) * 2.0f;
+    int biasedExponent = exponent - 1 + 15;
+    if (biasedExponent <= 0)
+    {
+        const auto denormal = static_cast<std::uint32_t>(
+            std::lround(std::ldexp(value, 14 + static_cast<int>(mantissaBits))));
+        return std::min(denormal, (1u << mantissaBits) - 1);
+    }
+    if (biasedExponent >= 31)
+        return (30u << mantissaBits) | ((1u << mantissaBits) - 1);
+    auto fraction = static_cast<std::uint32_t>(
+        std::lround((mantissa - 1.0f) * static_cast<float>(1u << mantissaBits)));
+    if (fraction == (1u << mantissaBits))
+    {
+        fraction = 0;
+        if (++biasedExponent >= 31)
+            return (30u << mantissaBits) | ((1u << mantissaBits) - 1);
+    }
+    return (static_cast<std::uint32_t>(biasedExponent) << mantissaBits) | fraction;
+}
+
+std::uint32_t EncodeR11G11B10(const float red, const float green, const float blue)
+{
+    const std::uint32_t r = EncodeUnsignedFloat(red, 6);
+    const std::uint32_t g = EncodeUnsignedFloat(green, 6);
+    const std::uint32_t b = EncodeUnsignedFloat(blue, 5);
+    return r | (g << 11) | (b << 22);
+}
+
+struct NativeLightmapPixel
+{
+    std::uint32_t irradiance{};
+    std::uint8_t ambient{};
+    std::uint8_t directionX{};
+    std::uint8_t directionY{};
+};
+
+// How an extraction's lightmap layers hold their light: bytes in [0, 1] (IW3), or log2(1 + scale * value) /
+// log2(1 + scale * maximum) (the world's "lightmap_encoding", IW7); and whether the first layer is a constant
+// ambient (IW7 lights A + B * sat(N.D)) or IW3's A * N.z.
+struct LightmapLayerEncoding
+{
+    float logScale = 0.0f;
+    float logMaximum = 0.0f;
+    bool constantAmbient = false;
+    // The light units of Replay's shaders (--style iw8's lightUnitScale, as the native light grid takes it): the native
+    // lightmap's colour is stored in them when stock world materials read it.
+    float unitScale = 1.0f;
+
+    float Decode(const std::uint8_t byte) const
+    {
+        const float value = byte * (1.0f / 255.0f);
+        return logScale > 0.0f ? (std::exp2(value * logMaximum) - 1.0f) / logScale : value;
+    }
+};
+
+LightmapLayerEncoding ReadLightmapLayerEncoding(const Json &world)
+{
+    LightmapLayerEncoding result;
+    if (const auto encoding = world.find("lightmap_encoding"); encoding != world.end())
+    {
+        const float scale = encoding->at("log_scale").get<float>();
+        const float maximum = encoding->at("maximum").get<float>();
+        if (!(scale > 0.0f) || !(maximum > 0.0f))
+            throw std::runtime_error("invalid lightmap encoding");
+        result.logScale = scale;
+        result.logMaximum = std::log2(1.0f + scale * maximum);
+        result.constantAmbient = encoding->value("constant_ambient", false);
+    }
+    return result;
+}
+
+std::array<std::uint8_t, 2> EncodeOctDirection(const float slopeX, const float slopeY)
+{
+    const float denominator = 1.0f + std::abs(slopeX) + std::abs(slopeY);
+    const float octX = slopeX / denominator;
+    const float octY = slopeY / denominator;
+    const auto encode = [](const float value) {
+        return static_cast<std::uint8_t>(
+            std::lround(std::clamp(value * 127.5f, 0.0f, 255.0f)));
+    };
+    return {encode(1.0f + octX + octY), encode(1.0f + octX - octY)};
+}
+
+NativeLightmapPixel EncodeNativeLightmapPixel(const std::array<std::uint8_t, 4> &a,
+                                             const std::array<std::uint8_t, 4> &b,
+                                             const LightmapLayerEncoding &encoding)
+{
+    // Replay's world shader (stock PS a3f48686, disassembled) lights a texel as
+    // (1 - f) C / max(D.z, .001) sat(N.D) + f C from its colour C (R11G11B10F),
+    // ambient fraction f (BC4) and tangent-space direction D (octahedral BC5).
+    constexpr float byteScale = 1.0f / 255.0f;
+    const float slopeX = 4.07999992f * (a[3] * byteScale) - 2.07999992f;
+    const float slopeY = 4.06451607f * (b[3] * byteScale) - 2.06451607f;
+    const float directionZ = 1.0f / std::sqrt(1.0f + slopeX * slopeX + slopeY * slopeY);
+    std::array<float, 3> ambient{}, directional{}, irradiance{};
+    for (unsigned channel = 0; channel < 3; ++channel)
+    {
+        ambient[channel] = encoding.Decode(a[channel]);
+        directional[channel] = encoding.Decode(b[channel]);
+        irradiance[channel] = ambient[channel] + directional[channel] * directionZ;
+    }
+    const auto luminance = [](const std::array<float, 3> &rgb) {
+        return .2126f * rgb[0] + .7152f * rgb[1] + .0722f * rgb[2];
+    };
+    if (encoding.constantAmbient)
+    {
+        // IW7 lights A + B sat(N.D): C = A + B D.z and f = A / C are the same light, exact in luminance.
+        const float total = luminance(irradiance);
+        const float fraction = total > 0.0f ? std::clamp(luminance(ambient) / total, 0.0f, 1.0f) : 1.0f;
+        const auto direction = EncodeOctDirection(slopeX, slopeY);
+        return {EncodeR11G11B10(irradiance[0] * encoding.unitScale, irradiance[1] * encoding.unitScale,
+                                irradiance[2] * encoding.unitScale),
+                static_cast<std::uint8_t>(std::lround(fraction * 255.0f)), direction[0], direction[1]};
+    }
+    // IW3 lights A N.z + B sat(N.D): with no ambient (f = 0), the shared direction is fitted to the three colour
+    // channels, preserving the flat-normal result.
+    float irradianceSquared = 0.0f;
+    float directionalDot = 0.0f;
+    for (unsigned channel = 0; channel < 3; ++channel)
+    {
+        irradianceSquared += irradiance[channel] * irradiance[channel];
+        directionalDot += irradiance[channel] * directional[channel];
+    }
+    const float ratio = irradianceSquared > 0.0f
+                            ? directionZ * directionalDot / irradianceSquared
+                            : 0.0f;
+    const auto direction = EncodeOctDirection(slopeX * ratio, slopeY * ratio);
+    return {EncodeR11G11B10(irradiance[0] * encoding.unitScale, irradiance[1] * encoding.unitScale,
+                            irradiance[2] * encoding.unitScale),
+            0, direction[0], direction[1]};
+}
+
+Image EncodeNativeWorldNormal(Image source)
+{
+    for (std::size_t offset = 0; offset < source.rgba.size(); offset += 4)
+    {
+        const float slopeX = 4.07999992f * (source.rgba[offset] / 255.0f) - 2.07999992f;
+        const float slopeY = 4.06451607f * (source.rgba[offset + 1] / 255.0f) - 2.06451607f;
+        const auto direction = EncodeOctDirection(slopeX, slopeY);
+        // The retained Replay shader decodes its normal from G and A and reads
+        // gloss from R (shipped "<n>&<g>"). The IW3 R channel is the normal X
+        // slope; start neutral, the caller stores IW3 gloss when it has one.
+        source.rgba[offset] = 128;
+        source.rgba[offset + 1] = direction[0];
+        source.rgba[offset + 2] = 255;
+        source.rgba[offset + 3] = direction[1];
+    }
+    return source;
+}
+
+Json ReadJson(const std::filesystem::path &path)
+{
+    std::ifstream input(path, std::ios::binary);
+    if (!input)
+        throw std::runtime_error("cannot read " + path.string());
+    // Parsed from memory: nlohmann reads a stream one character at a time (a 200 MB world took 25 s).
+    input.seekg(0, std::ios::end);
+    std::string text(static_cast<std::size_t>(input.tellg()), '\0');
+    input.seekg(0);
+    input.read(text.data(), static_cast<std::streamsize>(text.size()));
+    return Json::parse(text);
+}
+
+void WriteJson(const std::filesystem::path &path, const Json &value)
+{
+    if (zt::scratch::Holds(path))
+    {
+        const auto text = value.dump();
+        zt::scratch::Put(path, std::make_shared<std::vector<std::uint8_t>>(text.begin(), text.end()));
+        if (!KeepScratchFiles())
+            return;
+    }
+    // The folder is made only when the file does not open (thousands of materials go into one).
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    if (!output)
+    {
+        std::filesystem::create_directories(path.parent_path());
+        output.clear();
+        output.open(path, std::ios::binary | std::ios::trunc);
+    }
+    if (!output)
+        throw std::runtime_error("cannot write " + path.string());
+    const auto text = value.dump();
+    output.write(text.data(), static_cast<std::streamsize>(text.size()));
+    if (!output)
+        throw std::runtime_error("cannot finish " + path.string());
+}
+
+std::string ResourceText(const unsigned id)
+{
+    const HRSRC resource = FindResourceW(nullptr, MAKEINTRESOURCEW(id), MAKEINTRESOURCEW(10));
+    if (!resource)
+        throw std::runtime_error("iw3 converter resource is missing");
+    const HGLOBAL loaded = LoadResource(nullptr, resource);
+    const auto *data = static_cast<const char *>(LockResource(loaded));
+    const DWORD size = SizeofResource(nullptr, resource);
+    if (!loaded || !data || !size)
+        throw std::runtime_error("iw3 converter resource is empty");
+    return std::string(data, data + size);
+}
+
+template <class T> T Read(const std::span<const std::uint8_t> data, const std::size_t offset)
+{
+    if (offset > data.size() || sizeof(T) > data.size() - offset)
+        throw std::runtime_error("truncated DDS image");
+    T value{};
+    std::memcpy(&value, data.data() + offset, sizeof(value));
+    return value;
+}
+
+std::uint8_t Expand5(const unsigned value)
+{
+    return static_cast<std::uint8_t>((value << 3) | (value >> 2));
+}
+
+std::uint8_t Expand6(const unsigned value)
+{
+    return static_cast<std::uint8_t>((value << 2) | (value >> 4));
+}
+
+std::array<std::uint8_t, 4> Color565(const std::uint16_t value)
+{
+    return {Expand5((value >> 11) & 31), Expand6((value >> 5) & 63), Expand5(value & 31), 255};
+}
+
+void StorePixel(Image &image, const unsigned x, const unsigned y,
+                const std::array<std::uint8_t, 4> &color)
+{
+    if (x >= image.width || y >= image.height)
+        return;
+    std::memcpy(image.rgba.data() + (static_cast<std::size_t>(y) * image.width + x) * 4,
+                color.data(), 4);
+}
+
+void DecodeColorBlock(Image &image, const unsigned blockX, const unsigned blockY,
+                      const std::uint8_t *block, const bool dxt1)
+{
+    std::array<std::array<std::uint8_t, 4>, 4> colors{};
+    const std::uint16_t a = static_cast<std::uint16_t>(block[0] | block[1] << 8);
+    const std::uint16_t b = static_cast<std::uint16_t>(block[2] | block[3] << 8);
+    colors[0] = Color565(a);
+    colors[1] = Color565(b);
+    if (!dxt1 || a > b)
+    {
+        for (unsigned channel = 0; channel < 3; ++channel)
+        {
+            colors[2][channel] =
+                static_cast<std::uint8_t>((2 * colors[0][channel] + colors[1][channel]) / 3);
+            colors[3][channel] =
+                static_cast<std::uint8_t>((colors[0][channel] + 2 * colors[1][channel]) / 3);
+        }
+        colors[2][3] = colors[3][3] = 255;
+    }
+    else
+    {
+        for (unsigned channel = 0; channel < 3; ++channel)
+            colors[2][channel] =
+                static_cast<std::uint8_t>((colors[0][channel] + colors[1][channel]) / 2);
+        colors[2][3] = 255;
+        colors[3] = {0, 0, 0, 0};
+    }
+    const std::uint32_t indices = Read<std::uint32_t>(std::span(block, 8), 4);
+    for (unsigned y = 0; y < 4; ++y)
+        for (unsigned x = 0; x < 4; ++x)
+            StorePixel(image, blockX * 4 + x, blockY * 4 + y,
+                       colors[(indices >> (2 * (y * 4 + x))) & 3]);
+}
+
+std::array<std::uint8_t, 16> DecodeDxt5Alpha(const std::uint8_t *block)
+{
+    std::array<std::uint8_t, 8> table{};
+    table[0] = block[0];
+    table[1] = block[1];
+    if (table[0] > table[1])
+        for (unsigned index = 1; index <= 6; ++index)
+            table[index + 1] =
+                static_cast<std::uint8_t>(((7 - index) * table[0] + index * table[1]) / 7);
+    else
+    {
+        for (unsigned index = 1; index <= 4; ++index)
+            table[index + 1] =
+                static_cast<std::uint8_t>(((5 - index) * table[0] + index * table[1]) / 5);
+        table[6] = 0;
+        table[7] = 255;
+    }
+    std::uint64_t bits = 0;
+    for (unsigned index = 0; index < 6; ++index)
+        bits |= static_cast<std::uint64_t>(block[index + 2]) << (index * 8);
+    std::array<std::uint8_t, 16> alpha{};
+    for (unsigned index = 0; index < 16; ++index)
+        alpha[index] = table[(bits >> (index * 3)) & 7];
+    return alpha;
+}
+
+unsigned MaskShift(const std::uint32_t mask)
+{
+    if (!mask)
+        return 0;
+    unsigned shift = 0;
+    while (((mask >> shift) & 1) == 0)
+        ++shift;
+    return shift;
+}
+
+unsigned MaskBits(std::uint32_t mask)
+{
+    unsigned bits = 0;
+    while (mask)
+    {
+        bits += mask & 1;
+        mask >>= 1;
+    }
+    return bits;
+}
+
+std::uint8_t ExtractChannel(const std::uint32_t value, const std::uint32_t mask,
+                            const std::uint8_t fallback)
+{
+    if (!mask)
+        return fallback;
+    const unsigned shift = MaskShift(mask);
+    const unsigned bits = MaskBits(mask);
+    const std::uint32_t sample = (value & mask) >> shift;
+    const std::uint32_t maximum = (1u << bits) - 1u;
+    return static_cast<std::uint8_t>((sample * 255u + maximum / 2u) / maximum);
+}
+
+void DecodeUncompressed(Image &image, const std::uint8_t *source, const unsigned bits,
+                        const std::array<std::uint32_t, 4> &masks)
+{
+    if (bits != 8 && bits != 16 && bits != 24 && bits != 32)
+        throw std::runtime_error("unsupported uncompressed DDS pixels");
+
+    const unsigned stride = bits / 8;
+    const bool luminance = !masks[1] && !masks[2] && (masks[0] || bits == 8);
+    for (std::size_t index = 0; index < static_cast<std::size_t>(image.width) * image.height;
+         ++index)
+    {
+        std::uint32_t value = 0;
+        std::memcpy(&value, source + index * stride, stride);
+        auto *pixel = image.rgba.data() + index * 4;
+        if (luminance)
+        {
+            const std::uint8_t sample =
+                masks[0] ? ExtractChannel(value, masks[0], 0) : static_cast<std::uint8_t>(value);
+            pixel[0] = pixel[1] = pixel[2] = sample;
+            pixel[3] = ExtractChannel(value, masks[3], 255);
+            continue;
+        }
+        for (unsigned channel = 0; channel < 4; ++channel)
+            pixel[channel] = ExtractChannel(value, masks[channel], channel == 3 ? 255 : 0);
+    }
+}
+
+std::size_t DdsLevelSize(const unsigned width, const unsigned height, const std::uint32_t fourCC,
+                         const unsigned bits)
+{
+    if (fourCC == 0x31545844u)
+        return static_cast<std::size_t>((width + 3) / 4) * ((height + 3) / 4) * 8;
+    if (fourCC == 0x33545844u || fourCC == 0x35545844u)
+        return static_cast<std::size_t>((width + 3) / 4) * ((height + 3) / 4) * 16;
+    return (static_cast<std::size_t>(width) * height * bits + 7) / 8;
+}
+
+Image DecodeDdsLevel(std::span<const std::uint8_t> source, unsigned width, unsigned height,
+                     std::uint32_t fourCC, unsigned bits,
+                     const std::array<std::uint32_t, 4> &masks);
+
+std::vector<Image> DecodeDds(const std::filesystem::path &path)
+{
+    const auto bytes = ReadBytes(path);
+    const std::span<const std::uint8_t> data(bytes);
+    if (bytes.size() < 128 || std::memcmp(bytes.data(), "DDS ", 4) != 0 ||
+        Read<std::uint32_t>(data, 4) != 124)
+        throw std::runtime_error("invalid DDS image " + path.string());
+    const unsigned height = Read<std::uint32_t>(data, 12);
+    const unsigned width = Read<std::uint32_t>(data, 16);
+    const unsigned mipCount = std::max(1u, Read<std::uint32_t>(data, 28));
+    const std::uint32_t fourCC = Read<std::uint32_t>(data, 84);
+    if (fourCC == 0x30315844u)
+    {
+        DirectX::ScratchImage source;
+        DirectX::TexMetadata metadata{};
+        if (FAILED(DirectX::LoadFromDDSMemory(data.data(), data.size(), DirectX::DDS_FLAGS_NONE, &metadata, source)) ||
+            metadata.format != DXGI_FORMAT_BC7_UNORM || metadata.dimension != DirectX::TEX_DIMENSION_TEXTURE2D ||
+            metadata.arraySize != 1 || metadata.IsCubemap() || !width || !height || width > 8192 || height > 8192 ||
+            mipCount > 14)
+            throw std::runtime_error("unsupported DDS DX10 image " + path.string());
+        DirectX::ScratchImage decoded;
+        if (FAILED(DirectX::Decompress(source.GetImages(), source.GetImageCount(), metadata,
+                                      DXGI_FORMAT_R8G8B8A8_UNORM, decoded)))
+            throw std::runtime_error("cannot decode DDS BC7 image " + path.string());
+        const auto level = [&](const unsigned index) {
+            const auto &input = *decoded.GetImage(index, 0, 0);
+            Image output{static_cast<unsigned>(input.width), static_cast<unsigned>(input.height),
+                         std::vector<std::uint8_t>(input.width * input.height * 4)};
+            for (std::size_t row = 0; row < input.height; ++row)
+                std::memcpy(output.rgba.data() + row * input.width * 4,
+                            input.pixels + row * input.rowPitch, input.width * 4);
+            return output;
+        };
+        Image image = level(0);
+        for (unsigned index = 1; index < metadata.mipLevels; ++index)
+            image.mips.push_back(level(index));
+        image.nativeBc7.assign(source.GetPixels(), source.GetPixels() + source.GetPixelsSize());
+        image.nativeBc7Levels = static_cast<unsigned>(metadata.mipLevels);
+        std::vector<Image> result;
+        result.push_back(std::move(image));
+        return result;
+    }
+    const unsigned bits = Read<std::uint32_t>(data, 88);
+    const std::array<std::uint32_t, 4> masks{
+        Read<std::uint32_t>(data, 92), Read<std::uint32_t>(data, 96),
+        Read<std::uint32_t>(data, 100), Read<std::uint32_t>(data, 104)};
+    const std::uint32_t caps2 = Read<std::uint32_t>(data, 112);
+    if (!width || !height || width > 8192 || height > 8192 || mipCount > 14 ||
+        (fourCC && fourCC != 0x31545844u && fourCC != 0x33545844u && fourCC != 0x35545844u))
+        throw std::runtime_error("unsupported DDS image " + path.string());
+    const unsigned faces = (caps2 & 0x200u) ? 6u : 1u;
+    if (faces == 6 && (caps2 & 0xFC00u) != 0xFC00u)
+        throw std::runtime_error("incomplete DDS cubemap " + path.string());
+
+    std::size_t offset = 128;
+    std::vector<Image> result;
+    result.reserve(faces);
+    for (unsigned face = 0; face < faces; ++face)
+    {
+        const std::size_t topSize = DdsLevelSize(width, height, fourCC, bits);
+        if (offset > bytes.size() || topSize > bytes.size() - offset)
+            throw std::runtime_error("truncated DDS pixels " + path.string());
+        Image image{width, height,
+                    std::vector<std::uint8_t>(static_cast<std::size_t>(width) * height * 4)};
+        const std::uint8_t *source = bytes.data() + offset;
+        if (fourCC)
+        {
+            const unsigned blockSize = fourCC == 0x31545844u ? 8u : 16u;
+            for (unsigned by = 0; by < (height + 3) / 4; ++by)
+                for (unsigned bx = 0; bx < (width + 3) / 4; ++bx)
+                {
+                    const std::uint8_t *block =
+                        source +
+                        (static_cast<std::size_t>(by) * ((width + 3) / 4) + bx) * blockSize;
+                    DecodeColorBlock(image, bx, by, block + (blockSize - 8), fourCC == 0x31545844u);
+                    if (fourCC == 0x33545844u)
+                    {
+                        std::uint64_t alpha = Read<std::uint64_t>(std::span(block, 16), 0);
+                        for (unsigned index = 0; index < 16; ++index)
+                        {
+                            const unsigned x = bx * 4 + index % 4, y = by * 4 + index / 4;
+                            if (x < width && y < height)
+                                image.rgba[(static_cast<std::size_t>(y) * width + x) * 4 + 3] =
+                                    static_cast<std::uint8_t>(((alpha >> (index * 4)) & 15) * 17);
+                        }
+                    }
+                    else if (fourCC == 0x35545844u)
+                    {
+                        const auto alpha = DecodeDxt5Alpha(block);
+                        for (unsigned index = 0; index < 16; ++index)
+                        {
+                            const unsigned x = bx * 4 + index % 4, y = by * 4 + index / 4;
+                            if (x < width && y < height)
+                                image.rgba[(static_cast<std::size_t>(y) * width + x) * 4 + 3] =
+                                    alpha[index];
+                        }
+                    }
+                }
+        }
+        else
+        {
+            try
+            {
+                DecodeUncompressed(image, source, bits, masks);
+            }
+            catch (const std::runtime_error &)
+            {
+                throw std::runtime_error("unsupported uncompressed DDS image " + path.string());
+            }
+        }
+        for (unsigned level = 0, w = width, h = height; level < mipCount; ++level)
+        {
+            if (level && w == 1 && h == 1 && !image.mips.empty() &&
+                image.mips.back().width == 1 && image.mips.back().height == 1)
+                throw std::runtime_error("DDS has too many mip levels " + path.string());
+            const std::size_t size = DdsLevelSize(w, h, fourCC, bits);
+            if (offset > bytes.size() || size > bytes.size() - offset)
+                throw std::runtime_error("truncated DDS mip pixels " + path.string());
+            if (level)
+                image.mips.push_back(DecodeDdsLevel(data.subspan(offset, size), w, h,
+                                                    fourCC, bits, masks));
+            offset += size;
+            w = std::max(1u, w / 2);
+            h = std::max(1u, h / 2);
+        }
+        result.push_back(std::move(image));
+    }
+    return result;
+}
+
+Image DecodeDdsLevel(const std::span<const std::uint8_t> source, const unsigned width,
+                     const unsigned height, const std::uint32_t fourCC, const unsigned bits,
+                     const std::array<std::uint32_t, 4> &masks)
+{
+    const std::size_t required = DdsLevelSize(width, height, fourCC, bits);
+    if (source.size() != required)
+        throw std::runtime_error("invalid DDS mip payload");
+    Image image{width, height,
+                std::vector<std::uint8_t>(static_cast<std::size_t>(width) * height * 4)};
+    if (fourCC)
+    {
+        const unsigned blockSize = fourCC == 0x31545844u ? 8u : 16u;
+        for (unsigned blockY = 0; blockY < (height + 3) / 4; ++blockY)
+            for (unsigned blockX = 0; blockX < (width + 3) / 4; ++blockX)
+            {
+                const auto *block =
+                    source.data() +
+                    (static_cast<std::size_t>(blockY) * ((width + 3) / 4) + blockX) * blockSize;
+                DecodeColorBlock(image, blockX, blockY, block + (blockSize - 8),
+                                 fourCC == 0x31545844u);
+                if (fourCC == 0x33545844u)
+                {
+                    const std::uint64_t alpha = Read<std::uint64_t>(std::span(block, blockSize), 0);
+                    for (unsigned index = 0; index < 16; ++index)
+                    {
+                        const unsigned x = blockX * 4 + index % 4;
+                        const unsigned y = blockY * 4 + index / 4;
+                        if (x < width && y < height)
+                            image.rgba[(static_cast<std::size_t>(y) * width + x) * 4 + 3] =
+                                static_cast<std::uint8_t>(((alpha >> (index * 4)) & 15) * 17);
+                    }
+                }
+                else if (fourCC == 0x35545844u)
+                {
+                    const auto alpha = DecodeDxt5Alpha(block);
+                    for (unsigned index = 0; index < 16; ++index)
+                    {
+                        const unsigned x = blockX * 4 + index % 4;
+                        const unsigned y = blockY * 4 + index / 4;
+                        if (x < width && y < height)
+                            image.rgba[(static_cast<std::size_t>(y) * width + x) * 4 + 3] =
+                                alpha[index];
+                    }
+                }
+            }
+    }
+    else
+    {
+        DecodeUncompressed(image, source.data(), bits, masks);
+    }
+    return image;
+}
+
+float Linear(float value);
+std::uint8_t SrgbByte(float linear);
+
+// The stock probes' mean luminance (IW8 Radiant research 123: mp_shipment 0.82, mp_hideout 0.87, mp_m_speedball
+// 0.93 over all their probes): the level an editor capture is stored at.
+constexpr float kStockProbeMeanLuminance = 0.9f;
+
+// The gain that brings a cube's mean luminance (linear, weighted by solid angle) to the stock level. A black or
+// nearly black capture keeps gain 1; the gain is held to 64.
+float StockProbeGain(const Cubemap &cubemap)
+{
+    double sum = 0, weights = 0;
+    for (const auto &face : cubemap.faces)
+    {
+        if (face.empty())
+            continue;
+        const Image &image = face.front();
+        for (unsigned y = 0; y < image.height; ++y)
+            for (unsigned x = 0; x < image.width; ++x)
+            {
+                const double u = 2.0 * (x + 0.5) / image.width - 1.0, v = 2.0 * (y + 0.5) / image.height - 1.0;
+                const double weight = 1.0 / std::pow(1.0 + u * u + v * v, 1.5);
+                const std::uint8_t *texel = image.rgba.data() + (std::size_t(y) * image.width + x) * 4;
+                sum += weight * (0.2126 * Linear(texel[0] / 255.0f) + 0.7152 * Linear(texel[1] / 255.0f) +
+                                 0.0722 * Linear(texel[2] / 255.0f));
+                weights += weight;
+            }
+    }
+    const double mean = weights > 0 ? sum / weights : 0;
+    if (!(mean > 1.0e-3))
+        return 1.0f;
+    return static_cast<float>(std::min(double(kStockProbeMeanLuminance) / mean, 64.0));
+}
+
+Cubemap DecodeDdsCubemap(const std::filesystem::path &path, const bool editorCapture = false)
+{
+    const auto bytes = ReadBytes(path);
+    const std::span<const std::uint8_t> data(bytes);
+    if (bytes.size() < 128 || std::memcmp(bytes.data(), "DDS ", 4) != 0 ||
+        Read<std::uint32_t>(data, 4) != 124)
+        throw std::runtime_error("invalid reflection-probe DDS " + path.string());
+    const unsigned height = Read<std::uint32_t>(data, 12);
+    const unsigned width = Read<std::uint32_t>(data, 16);
+    const unsigned mipCount = std::max(1u, Read<std::uint32_t>(data, 28));
+    const std::uint32_t fourCC = Read<std::uint32_t>(data, 84);
+    const unsigned bits = Read<std::uint32_t>(data, 88);
+    const std::array<std::uint32_t, 4> masks{
+        Read<std::uint32_t>(data, 92), Read<std::uint32_t>(data, 96),
+        Read<std::uint32_t>(data, 100), Read<std::uint32_t>(data, 104)};
+    const std::uint32_t caps2 = Read<std::uint32_t>(data, 112);
+    // Half-float captures (D3DFMT_A16B16G16R16F, IW7 extractions) are linear colour
+    // of a high range: they keep their colour (IW3's desaturation below answers
+    // IW3's clipped captures), scaled as the IW3 probes are, from the average of the
+    // colours through the 8-bit knee (light_level) the extraction used before, at
+    // most to the 99.9th percentile of the luminance.
+    if (fourCC == 113)
+    {
+        if (!width || width != height || width > 4096 || mipCount > 13 || (caps2 & 0xFE00u) != 0xFE00u)
+            throw std::runtime_error("unsupported reflection-probe DDS " + path.string());
+        const auto knee = [](const float value) {
+            return value <= 0.5f ? value : 0.5f + 0.5f * (1.0f - std::exp((0.5f - value) * 2.0f));
+        };
+        std::array<std::vector<std::vector<float>>, 6> levels;
+        std::size_t offset = 128;
+        for (unsigned face = 0; face < 6; ++face)
+            for (unsigned level = 0, size = width; level < mipCount; ++level, size = std::max(1u, size / 2))
+            {
+                const std::size_t bytesOfLevel = std::size_t(size) * size * 8;
+                if (offset > bytes.size() || bytesOfLevel > bytes.size() - offset)
+                    throw std::runtime_error("truncated reflection-probe DDS " + path.string());
+                auto &values = levels[face].emplace_back(std::size_t(size) * size * 3);
+                for (std::size_t texel = 0; texel < std::size_t(size) * size; ++texel)
+                    for (unsigned channel = 0; channel < 3; ++channel)
+                    {
+                        const float value =
+                            xsurf_conv::halfToFloat(Read<std::uint16_t>(data, offset + texel * 8 + channel * 2));
+                        values[texel * 3 + channel] = std::isfinite(value) ? std::max(value, 0.0f) : 0.0f;
+                    }
+                offset += bytesOfLevel;
+            }
+        if (offset != bytes.size())
+            throw std::runtime_error("reflection-probe DDS contains trailing data " + path.string());
+        double kneeSum = 0, linearSum = 0;
+        std::vector<float> luminances;
+        for (const auto &face : levels)
+            for (std::size_t texel = 0; texel < face.front().size() / 3; ++texel)
+            {
+                const float *rgb = face.front().data() + texel * 3;
+                const float luminance = 0.2126f * rgb[0] + 0.7152f * rgb[1] + 0.0722f * rgb[2];
+                kneeSum += 0.2126f * knee(rgb[0]) + 0.7152f * knee(rgb[1]) + 0.0722f * knee(rgb[2]);
+                linearSum += luminance;
+                luminances.push_back(luminance);
+            }
+        float scale = 1;
+        if (!luminances.empty() && linearSum > 0)
+        {
+            const auto top = luminances.begin() + static_cast<std::ptrdiff_t>((luminances.size() - 1) * 999 / 1000);
+            std::nth_element(luminances.begin(), top, luminances.end());
+            scale = static_cast<float>(kneeSum / linearSum);
+            if (*top > 0)
+                scale = std::min(scale, 1.0f / *top);
+        }
+        Cubemap result{width, height, mipCount, std::vector<std::vector<Image>>(6), {}};
+        result.absoluteScale = 1.0f / scale;
+        for (unsigned face = 0; face < 6; ++face)
+            for (unsigned level = 0, size = width; level < mipCount; ++level, size = std::max(1u, size / 2))
+            {
+                Image image{size, size, std::vector<std::uint8_t>(std::size_t(size) * size * 4, 255)};
+                const auto &values = levels[face][level];
+                for (std::size_t texel = 0; texel < std::size_t(size) * size; ++texel)
+                    for (unsigned channel = 0; channel < 3; ++channel)
+                        image.rgba[texel * 4 + channel] = SrgbByte(std::min(values[texel * 3 + channel] * scale, 1.0f));
+                result.faces[face].push_back(std::move(image));
+            }
+        for (unsigned level = 0; level < mipCount; ++level)
+            for (unsigned face = 0; face < 6; ++face)
+            {
+                result.residentPixels.insert(result.residentPixels.end(), result.faces[face][level].rgba.begin(),
+                                             result.faces[face][level].rgba.end());
+                result.residentPixels.resize((result.residentPixels.size() + 15) & ~std::size_t{15});
+            }
+        if (editorCapture)
+            result.arrayGain = StockProbeGain(result);
+        return result;
+    }
+    if (!width || width != height || width > 4096 || mipCount > 13 ||
+        (caps2 & 0xFE00u) != 0xFE00u ||
+        (fourCC && fourCC != 0x31545844u && fourCC != 0x33545844u && fourCC != 0x35545844u))
+        throw std::runtime_error("unsupported reflection-probe DDS " + path.string());
+    unsigned terminalWidth = width;
+    unsigned terminalHeight = height;
+    for (unsigned level = 1; level < mipCount; ++level)
+    {
+        if (terminalWidth == 1 && terminalHeight == 1)
+            throw std::runtime_error("reflection-probe DDS has too many mips " + path.string());
+        terminalWidth = std::max(1u, terminalWidth / 2);
+        terminalHeight = std::max(1u, terminalHeight / 2);
+    }
+
+    Cubemap result{width, height, mipCount, std::vector<std::vector<Image>>(6), {}};
+    for (auto &face : result.faces)
+        face.reserve(mipCount);
+    std::size_t offset = 128;
+    for (unsigned face = 0; face < 6; ++face)
+    {
+        unsigned mipWidth = width;
+        unsigned mipHeight = height;
+        for (unsigned level = 0; level < mipCount; ++level)
+        {
+            const std::size_t size = DdsLevelSize(mipWidth, mipHeight, fourCC, bits);
+            if (offset > bytes.size() || size > bytes.size() - offset)
+                throw std::runtime_error("truncated reflection-probe DDS " + path.string());
+            result.faces[face].push_back(DecodeDdsLevel(data.subspan(offset, size), mipWidth,
+                                                        mipHeight, fourCC, bits, masks));
+            offset += size;
+            mipWidth = std::max(1u, mipWidth / 2);
+            mipHeight = std::max(1u, mipHeight / 2);
+        }
+    }
+    if (offset != bytes.size())
+        throw std::runtime_error("reflection-probe DDS contains trailing data " + path.string());
+    // IW3 captured probes from its D3D9 A8R8G8B8 framebuffer (B, G, R, A bytes),
+    // which the DDS masks describe. Read by those masks, every Nuketown probe's
+    // up face is light-blue sky (209,237,242) and its sides wood and siding
+    // (149,121,95); an earlier red/blue swap turned the surroundings blue in
+    // every reflection (owner test 2026-10-14: blue weapons and car metal).
+    // The captures are clipped and far more saturated than the map renders
+    // (Nuketown's grass and fences read neon); Replay's stock and probe-lit
+    // materials reflected that as miscoloured highlights. At 40% desaturation
+    // the brown fences still tinted weapons and ground red (owner test
+    // 2026-10-14, both styles), so reflections keep only each texel's
+    // luminance (linear light): their brightness and shapes, no hue.
+    // IW3 probes are HDR-encoded: its lit shaders read rgb * a (disassembled
+    // ps_lm_sun_r0c0s0: texldl probe; mul rgb, a) in gamma space, alpha 0.02-0.5.
+    // Luminance from rgb alone (before round 94) lost that intensity: dim walls
+    // reflected as brightly as the sky and windows washed out white (owner round
+    // 93). Texels now take the luminance of rgb * a, scaled so each probe keeps
+    // its former average (stock-shaded weapons and players read these images
+    // as normalised probes) without exceeding 1; absoluteScale recovers IW3's
+    // radiance for surfaces that need it (window glass).
+    const auto pixelLuminance = [](const std::uint8_t *texel, const bool intensity) {
+        const float a = intensity ? texel[3] / 255.0f : 1.0f;
+        return 0.2126f * Linear(texel[0] / 255.0f * a) + 0.7152f * Linear(texel[1] / 255.0f * a) +
+               0.0722f * Linear(texel[2] / 255.0f * a);
+    };
+    double colourSum = 0, intensitySum = 0;
+    float intensityMax = 0;
+    std::size_t texels = 0;
+    for (auto &face : result.faces)
+        if (!face.empty())
+            for (std::size_t pixel = 0; pixel < face.front().rgba.size(); pixel += 4)
+            {
+                colourSum += pixelLuminance(&face.front().rgba[pixel], false);
+                const float value = pixelLuminance(&face.front().rgba[pixel], true);
+                intensitySum += value;
+                intensityMax = std::max(intensityMax, value);
+                ++texels;
+            }
+    float scale = 1;
+    if (texels && intensitySum > 0 && intensityMax > 0)
+        scale = static_cast<float>(std::min(colourSum / intensitySum, 1.0 / intensityMax));
+    if (editorCapture)
+    {
+        // The editor's own render of the map (IW8 Radiant research 123): colour as it is, no IW3 intensity in the
+        // alpha; stored at the stock probes' level.
+        result.absoluteScale = 1.0f;
+        result.arrayGain = StockProbeGain(result);
+    }
+    else
+    {
+        result.absoluteScale = 1.0f / scale;
+        for (auto &face : result.faces)
+            for (auto &image : face)
+                for (std::size_t pixel = 0; pixel < image.rgba.size(); pixel += 4)
+                {
+                    const float luminance = std::min(pixelLuminance(&image.rgba[pixel], true) * scale, 1.0f);
+                    const std::uint8_t grey = SrgbByte(luminance);
+                    image.rgba[pixel] = image.rgba[pixel + 1] = image.rgba[pixel + 2] = grey;
+                }
+    }
+    for (unsigned level = 0; level < mipCount; ++level)
+        for (unsigned face = 0; face < 6; ++face)
+        {
+            result.residentPixels.insert(result.residentPixels.end(),
+                                         result.faces[face][level].rgba.begin(),
+                                         result.faces[face][level].rgba.end());
+            result.residentPixels.resize((result.residentPixels.size() + 15) & ~std::size_t{15});
+        }
+    return result;
+}
+
+std::vector<Image> DecodeIwi(const std::filesystem::path &path)
+{
+    const auto bytes = ReadBytes(path);
+    const std::span<const std::uint8_t> data(bytes);
+    if (bytes.size() < 28 || std::memcmp(bytes.data(), "IWi\x06", 4) != 0)
+        throw std::runtime_error("invalid IW3 IWI image " + path.string());
+    const unsigned format = bytes[4], flags = bytes[5];
+    const unsigned width = Read<std::uint16_t>(data, 6), height = Read<std::uint16_t>(data, 8);
+    const unsigned depth = Read<std::uint16_t>(data, 10);
+    if (!width || !height || width > 4096 || height > 4096 || (flags & 8) || depth > 1 ||
+        format < 1 || format > 13 || (format >= 6 && format <= 10))
+        throw std::runtime_error("unsupported IW3 IWI image " + path.string());
+    const unsigned faces = flags & 4 ? 6u : 1u;
+    const unsigned bytesPerPixel = format == 1 ? 4u : format == 2 ? 3u : format == 3 ? 2u : 1u;
+    const std::uint32_t fourCC = format == 11   ? 0x31545844u
+                                 : format == 12 ? 0x33545844u
+                                 : format == 13 ? 0x35545844u
+                                                : 0u;
+    const std::size_t faceSize = fourCC ? DdsLevelSize(width, height, fourCC, 0)
+                                        : static_cast<std::size_t>(width) * height * bytesPerPixel;
+    if (faceSize > bytes.size() || faceSize * faces > bytes.size() - 28 ||
+        Read<std::uint32_t>(data, 12) != bytes.size())
+        throw std::runtime_error("truncated IW3 IWI image " + path.string());
+    const std::size_t start = bytes.size() - faceSize * faces;
+    if ((flags & 2u) && start != 28)
+        throw std::runtime_error("unexpected IW3 IWI mip payload " + path.string());
+    std::vector<Image> result;
+    result.reserve(faces);
+    for (unsigned face = 0; face < faces; ++face)
+    {
+        const std::uint8_t *source = bytes.data() + start + face * faceSize;
+        Image image{width, height,
+                    std::vector<std::uint8_t>(static_cast<std::size_t>(width) * height * 4)};
+        if (fourCC)
+        {
+            const unsigned blockSize = fourCC == 0x31545844u ? 8u : 16u;
+            for (unsigned by = 0; by < (height + 3) / 4; ++by)
+                for (unsigned bx = 0; bx < (width + 3) / 4; ++bx)
+                {
+                    const std::uint8_t *block =
+                        source +
+                        (static_cast<std::size_t>(by) * ((width + 3) / 4) + bx) * blockSize;
+                    DecodeColorBlock(image, bx, by, block + (blockSize - 8), fourCC == 0x31545844u);
+                    if (fourCC == 0x33545844u)
+                    {
+                        const std::uint64_t alpha = Read<std::uint64_t>(std::span(block, 16), 0);
+                        for (unsigned index = 0; index < 16; ++index)
+                        {
+                            const unsigned x = bx * 4 + index % 4, y = by * 4 + index / 4;
+                            if (x < width && y < height)
+                                image.rgba[(static_cast<std::size_t>(y) * width + x) * 4 + 3] =
+                                    static_cast<std::uint8_t>(((alpha >> (index * 4)) & 15) * 17);
+                        }
+                    }
+                    else if (fourCC == 0x35545844u)
+                    {
+                        const auto alpha = DecodeDxt5Alpha(block);
+                        for (unsigned index = 0; index < 16; ++index)
+                        {
+                            const unsigned x = bx * 4 + index % 4, y = by * 4 + index / 4;
+                            if (x < width && y < height)
+                                image.rgba[(static_cast<std::size_t>(y) * width + x) * 4 + 3] =
+                                    alpha[index];
+                        }
+                    }
+                }
+        }
+        else
+        {
+            for (std::size_t index = 0; index < static_cast<std::size_t>(width) * height; ++index)
+            {
+                const std::uint8_t *pixel = source + index * bytesPerPixel;
+                auto *target = image.rgba.data() + index * 4;
+                if (format == 1)
+                    target[0] = pixel[2], target[1] = pixel[1], target[2] = pixel[0],
+                    target[3] = pixel[3];
+                else if (format == 2)
+                    target[0] = pixel[2], target[1] = pixel[1], target[2] = pixel[0],
+                    target[3] = 255;
+                else if (format == 3)
+                    target[0] = target[1] = target[2] = pixel[0], target[3] = pixel[1];
+                else if (format == 4)
+                    target[0] = target[1] = target[2] = pixel[0], target[3] = 255;
+                else
+                    target[0] = target[1] = target[2] = 255, target[3] = pixel[0];
+            }
+        }
+        result.push_back(std::move(image));
+    }
+    // IW3 stores its mip levels smallest first. Preserve the authored levels
+    // for direct Replay materials instead of averaging the top level again;
+    // thin alpha details such as shattered glass otherwise disappear in mips.
+    if (faces == 1 && !(flags & 2u))
+    {
+        std::size_t offset = start;
+        unsigned mipWidth = width, mipHeight = height;
+        while (mipWidth > 1 || mipHeight > 1)
+        {
+            mipWidth = std::max(1u, mipWidth / 2);
+            mipHeight = std::max(1u, mipHeight / 2);
+            const std::size_t size =
+                fourCC ? DdsLevelSize(mipWidth, mipHeight, fourCC, 0)
+                       : static_cast<std::size_t>(mipWidth) * mipHeight * bytesPerPixel;
+            if (offset < 28 || size > offset - 28)
+                throw std::runtime_error("truncated IW3 IWI mip chain " + path.string());
+            offset -= size;
+            if (fourCC)
+            {
+                result.front().mips.push_back(DecodeDdsLevel(data.subspan(offset, size),
+                                                              mipWidth, mipHeight, fourCC, 0,
+                                                              {0, 0, 0, 0}));
+                continue;
+            }
+            Image mip{mipWidth, mipHeight,
+                      std::vector<std::uint8_t>(static_cast<std::size_t>(mipWidth) *
+                                                mipHeight * 4)};
+            for (std::size_t index = 0; index <
+                                        static_cast<std::size_t>(mipWidth) * mipHeight;
+                 ++index)
+            {
+                const auto *pixel = bytes.data() + offset + index * bytesPerPixel;
+                auto *target = mip.rgba.data() + index * 4;
+                if (format == 1)
+                    target[0] = pixel[2], target[1] = pixel[1], target[2] = pixel[0],
+                    target[3] = pixel[3];
+                else if (format == 2)
+                    target[0] = pixel[2], target[1] = pixel[1], target[2] = pixel[0],
+                    target[3] = 255;
+                else if (format == 3)
+                    target[0] = target[1] = target[2] = pixel[0], target[3] = pixel[1];
+                else if (format == 4)
+                    target[0] = target[1] = target[2] = pixel[0], target[3] = 255;
+                else
+                    target[0] = target[1] = target[2] = 255, target[3] = pixel[0];
+            }
+            result.front().mips.push_back(std::move(mip));
+        }
+        if (offset != 28)
+            throw std::runtime_error("invalid IW3 IWI mip layout " + path.string());
+    }
+    return result;
+}
+
+Image SolidImage(const std::array<std::uint8_t, 4> color)
+{
+    return {1, 1, {color[0], color[1], color[2], color[3]}};
+}
+
+std::vector<Image> LoadImage(const std::filesystem::path &root,
+                             const std::vector<std::filesystem::path> &sourcePaths,
+                             const std::string &name)
+{
+    ledger::Use("image", name);
+    if (name == "$white")
+        return {SolidImage({255, 255, 255, 255})};
+    if (name == "$black")
+        return {SolidImage({0, 0, 0, 255})};
+    // Water specular: sRGB 80 is linear .08, Replay F0 .25 * .08 = .02 (water).
+    if (name == "$water_specular")
+        return {SolidImage({80, 80, 80, 255})};
+    if (name == "$identitynormalmap")
+        return {SolidImage({128, 128, 255, 255})};
+    const auto path = root / "images" / (name + ".dds");
+    std::error_code error;
+    if (std::filesystem::is_regular_file(path, error))
+        return DecodeDds(path);
+    // Extracted from a map-local IWD.
+    if (const auto iwi = root / "images" / (name + ".iwi");
+        std::filesystem::is_regular_file(iwi, error))
+        return DecodeIwi(iwi);
+    for (const auto &source : sourcePaths)
+    {
+        for (const auto &candidate :
+             {source / "images" / (name + ".dds"), source / "raw" / "images" / (name + ".dds")})
+            if (std::filesystem::is_regular_file(candidate, error))
+                return DecodeDds(candidate);
+        for (const auto &candidate :
+             {source / "images" / (name + ".iwi"), source / "raw" / "images" / (name + ".iwi")})
+            if (std::filesystem::is_regular_file(candidate, error))
+                return DecodeIwi(candidate);
+    }
+    // The engine's grey image, when no source ships one (IW7 materials name it).
+    if (name == "$gray")
+        return {SolidImage({128, 128, 128, 255})};
+    // Composite images the IW3 converter generates (`~<name>~<hash>`) change
+    // hash on every recompile; a map IWD packed from another compile carries
+    // the same image under a different hash.
+    if (const auto tilde = name.rfind('~'); name.starts_with('~') && tilde != std::string::npos &&
+                                            tilde > 0 && name.size() - tilde == 9)
+    {
+        const std::string prefix = name.substr(0, tilde + 1);
+        std::vector<std::filesystem::path> directories{root / "images"};
+        for (const auto &source : sourcePaths)
+        {
+            directories.push_back(source / "images");
+            directories.push_back(source / "raw" / "images");
+        }
+        for (const auto &directory : directories)
+        {
+            if (!std::filesystem::is_directory(directory, error))
+                continue;
+            for (const auto &entry : std::filesystem::directory_iterator(directory, error))
+            {
+                const auto file = entry.path().filename().string();
+                const auto extension = entry.path().extension().string();
+                if (!file.starts_with(prefix) || entry.path().stem().string().size() != name.size())
+                    continue;
+                if (extension == ".dds" || extension == ".iwi")
+                {
+                    zt::warn("iw3: image '%s' is missing; using '%s' from another compile",
+                             name.c_str(), file.c_str());
+                    return extension == ".dds" ? DecodeDds(entry.path()) : DecodeIwi(entry.path());
+                }
+            }
+        }
+    }
+    throw std::runtime_error("missing IW3 image '" + name +
+                             "'; add the matching IW3 main and raw directories with --search-path");
+}
+
+float Linear(const float value)
+{
+    return value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
+}
+
+float Srgb(const float value)
+{
+    return value <= 0.0031308f ? value * 12.92f : 1.055f * std::pow(value, 1.0f / 2.4f) - 0.055f;
+}
+
+// Texture resampling decodes and re-encodes 8-bit sRGB for every texel; use
+// exact tables instead of pow(). A byte b holds sRGB [(b-0.5)/255, (b+0.5)/255),
+// so the 255 linear thresholds reproduce lround(Srgb(v) * 255) exactly.
+float LinearByte(const std::uint8_t value)
+{
+    static const auto table = [] {
+        std::array<float, 256> result{};
+        for (unsigned index = 0; index < result.size(); ++index)
+            result[index] = Linear(static_cast<float>(index) / 255.0f);
+        return result;
+    }();
+    return table[value];
+}
+
+std::uint8_t SrgbByte(const float linear)
+{
+    // The byte is the count of thresholds at or below the value. Each of 4096 buckets of [0, 1) knows the count at
+    // its start, so a value moves past the few thresholds inside its bucket; the rest (1 and above, NaN) search.
+    static constexpr unsigned kBuckets = 4096;
+    struct Tables
+    {
+        std::array<float, 255> thresholds{};
+        std::array<std::uint8_t, kBuckets> start{};
+    };
+    static const Tables tables = [] {
+        Tables result;
+        for (unsigned index = 0; index < result.thresholds.size(); ++index)
+            result.thresholds[index] = Linear((static_cast<float>(index) + 0.5f) / 255.0f);
+        for (unsigned bucket = 0; bucket < kBuckets; ++bucket)
+            result.start[bucket] = static_cast<std::uint8_t>(
+                std::upper_bound(result.thresholds.begin(), result.thresholds.end(),
+                                 static_cast<float>(bucket) / kBuckets) -
+                result.thresholds.begin());
+        return result;
+    }();
+    if (linear < 0.0f)
+        return 0;
+    if (linear < 1.0f)
+    {
+        // The bucket index rounds down, so the bucket's start is at or below the value.
+        const auto bucket = std::min(static_cast<unsigned>(linear * kBuckets), kBuckets - 1);
+        unsigned count = tables.start[bucket];
+        while (count < tables.thresholds.size() && tables.thresholds[count] <= linear)
+            ++count;
+        return static_cast<std::uint8_t>(count);
+    }
+    return static_cast<std::uint8_t>(
+        std::upper_bound(tables.thresholds.begin(), tables.thresholds.end(), linear) - tables.thresholds.begin());
+}
+
+std::array<std::array<float, 9>, 4> ProjectReflectionSh(const Cubemap &cubemap)
+{
+    if (cubemap.faces.size() != 6 || cubemap.faces.front().empty())
+        throw std::runtime_error("reflection probe has no cubemap faces");
+    std::array<std::array<double, 9>, 4> accumulated{};
+    double totalWeight = 0.0;
+    for (unsigned face = 0; face < 6; ++face)
+    {
+        const Image &image = cubemap.faces[face].front();
+        if (image.width != cubemap.width || image.height != cubemap.height)
+            throw std::runtime_error("reflection-probe cubemap faces do not match");
+        for (unsigned y = 0; y < image.height; ++y)
+            for (unsigned x = 0; x < image.width; ++x)
+            {
+                const double u = 2.0 * (static_cast<double>(x) + 0.5) / image.width - 1.0;
+                const double v = 2.0 * (static_cast<double>(y) + 0.5) / image.height - 1.0;
+                std::array<double, 3> direction{};
+                switch (face)
+                {
+                case 0:
+                    direction = {1.0, -v, -u};
+                    break;
+                case 1:
+                    direction = {-1.0, -v, u};
+                    break;
+                case 2:
+                    direction = {u, 1.0, v};
+                    break;
+                case 3:
+                    direction = {u, -1.0, -v};
+                    break;
+                case 4:
+                    direction = {u, -v, 1.0};
+                    break;
+                default:
+                    direction = {-u, -v, -1.0};
+                    break;
+                }
+                const double length =
+                    std::sqrt(direction[0] * direction[0] + direction[1] * direction[1] +
+                              direction[2] * direction[2]);
+                for (double &component : direction)
+                    component /= length;
+                const double dx = direction[0], dy = direction[1], dz = direction[2];
+                const std::array<double, 9> basis{0.282095,
+                                                  0.488603 * dy,
+                                                  0.488603 * dz,
+                                                  0.488603 * dx,
+                                                  1.092548 * dx * dy,
+                                                  1.092548 * dy * dz,
+                                                  0.315392 * (3.0 * dz * dz - 1.0),
+                                                  1.092548 * dx * dz,
+                                                  0.546274 * (dx * dx - dy * dy)};
+                const double weight = 1.0 / std::pow(1.0 + u * u + v * v, 1.5);
+                const std::size_t offset = (static_cast<std::size_t>(y) * image.width + x) * 4;
+                const double red = Linear(image.rgba[offset + 0] / 255.0f);
+                const double green = Linear(image.rgba[offset + 1] / 255.0f);
+                const double blue = Linear(image.rgba[offset + 2] / 255.0f);
+                // The fourth vector tracks probe brightness in stock Replay probes
+                // (mp_backlot2: median 0.93 x luminance), not the IW3 capture alpha.
+                const std::array<double, 4> sample{red, green, blue,
+                                                   0.2126 * red + 0.7152 * green + 0.0722 * blue};
+                for (unsigned channel = 0; channel < 4; ++channel)
+                    for (unsigned coefficient = 0; coefficient < 9; ++coefficient)
+                        accumulated[channel][coefficient] +=
+                            sample[channel] * basis[coefficient] * weight;
+                totalWeight += weight;
+            }
+    }
+    if (!(totalWeight > 0.0) || !std::isfinite(totalWeight))
+        throw std::runtime_error("reflection-probe SH projection has invalid weight");
+    constexpr double sphereArea = 12.56637061435917295385;
+    std::array<std::array<float, 9>, 4> result{};
+    for (unsigned channel = 0; channel < 4; ++channel)
+        for (unsigned coefficient = 0; coefficient < 9; ++coefficient)
+        {
+            const double value = accumulated[channel][coefficient] * sphereArea / totalWeight;
+            if (!std::isfinite(value))
+                throw std::runtime_error("reflection-probe SH projection is non-finite");
+            result[channel][coefficient] = static_cast<float>(value);
+        }
+    return result;
+}
+
+std::array<float, 3> SampleCubemapLinear(const Cubemap &cubemap, const unsigned level,
+                                        const std::array<float, 3> &direction)
+{
+    if (cubemap.faces.size() != 6 || level >= cubemap.mipCount)
+        throw std::runtime_error("invalid reflection-probe cubemap level");
+    const Image &first = cubemap.faces.front().at(level);
+    if (!first.width || first.width != first.height)
+        throw std::runtime_error("reflection-probe cubemap level is not square");
+    for (const auto &face : cubemap.faces)
+        if (face.size() <= level || face[level].width != first.width ||
+            face[level].height != first.height)
+            throw std::runtime_error("reflection-probe cubemap level dimensions differ");
+
+    const float ax = std::abs(direction[0]);
+    const float ay = std::abs(direction[1]);
+    const float az = std::abs(direction[2]);
+    unsigned faceIndex = 0;
+    float u = 0.0f, v = 0.0f;
+    if (ax >= ay && ax >= az)
+    {
+        if (direction[0] >= 0.0f)
+            faceIndex = 0, u = -direction[2] / ax, v = -direction[1] / ax;
+        else
+            faceIndex = 1, u = direction[2] / ax, v = -direction[1] / ax;
+    }
+    else if (ay >= ax && ay >= az)
+    {
+        if (direction[1] >= 0.0f)
+            faceIndex = 2, u = direction[0] / ay, v = direction[2] / ay;
+        else
+            faceIndex = 3, u = direction[0] / ay, v = -direction[2] / ay;
+    }
+    else
+    {
+        if (direction[2] >= 0.0f)
+            faceIndex = 4, u = direction[0] / az, v = -direction[1] / az;
+        else
+            faceIndex = 5, u = -direction[0] / az, v = -direction[1] / az;
+    }
+
+    const Image &face = cubemap.faces[faceIndex][level];
+    const float sourceX = (u * 0.5f + 0.5f) * face.width - 0.5f;
+    const float sourceY = (v * 0.5f + 0.5f) * face.height - 0.5f;
+    const int x0 = std::clamp(static_cast<int>(std::floor(sourceX)), 0,
+                              static_cast<int>(face.width) - 1);
+    const int y0 = std::clamp(static_cast<int>(std::floor(sourceY)), 0,
+                              static_cast<int>(face.height) - 1);
+    const int x1 = std::min(x0 + 1, static_cast<int>(face.width) - 1);
+    const int y1 = std::min(y0 + 1, static_cast<int>(face.height) - 1);
+    const float fx = std::clamp(sourceX - std::floor(sourceX), 0.0f, 1.0f);
+    const float fy = std::clamp(sourceY - std::floor(sourceY), 0.0f, 1.0f);
+    std::array<float, 3> result{};
+    for (unsigned iy = 0; iy < 2; ++iy)
+        for (unsigned ix = 0; ix < 2; ++ix)
+        {
+            const float weight = (ix ? fx : 1.0f - fx) * (iy ? fy : 1.0f - fy);
+            const auto offset =
+                (static_cast<std::size_t>(iy ? y1 : y0) * face.width + (ix ? x1 : x0)) * 4;
+            for (unsigned channel = 0; channel < result.size(); ++channel)
+                result[channel] += Linear(face.rgba[offset + channel] / 255.0f) * weight;
+        }
+    return result;
+}
+
+std::vector<std::uint8_t> BuildReflectionProbeArray(const std::vector<Cubemap> &cubemaps,
+                                                    const unsigned width,
+                                                    const unsigned mipCount)
+{
+    if (cubemaps.empty() || width < 4 || (width & (width - 1)) || !mipCount)
+        throw std::runtime_error("reflection-probe array has no images");
+    const std::size_t taskCount = static_cast<std::size_t>(mipCount) * cubemaps.size();
+    std::vector<std::vector<std::uint8_t>> slices(taskCount);
+    std::atomic_size_t nextTask{};
+    std::exception_ptr failure;
+    std::mutex failureMutex;
+    const auto encode = [&]()
+    {
+        try
+        {
+            while (true)
+            {
+                const std::size_t task = nextTask.fetch_add(1);
+                if (task >= taskCount)
+                    return;
+                const unsigned level = static_cast<unsigned>(task / cubemaps.size());
+                const auto &cubemap = cubemaps[task % cubemaps.size()];
+                const unsigned targetWidth = std::max(1u, width >> level);
+                if (targetWidth < 4 || targetWidth % 4)
+                    throw std::runtime_error("reflection-probe array mip is not BC6H block aligned");
+                // The cube level whose texels match the array level's: an octahedron of width W covers the sphere
+                // as a cube of W / sqrt(6) texel faces does. A finer level, read with one bilinear tap per texel,
+                // skips texels: IW7's 128-texel cubes (one level finer than IW3's 64, which this rule keeps) gave
+                // aliased, pixelated reflections at every blurred level.
+                const float faceTexels = static_cast<float>(targetWidth) / std::sqrt(6.0f);
+                unsigned sourceLevel = 0;
+                while (sourceLevel + 1 < cubemap.mipCount &&
+                       static_cast<float>(std::max(1u, cubemap.width >> (sourceLevel + 1))) >= faceTexels)
+                    ++sourceLevel;
+                std::vector<float> image(static_cast<std::size_t>(targetWidth) * targetWidth * 4);
+                for (unsigned y = 0; y < targetWidth; ++y)
+                    for (unsigned x = 0; x < targetWidth; ++x)
+                    {
+                        const float ox =
+                            2.0f * (static_cast<float>(x) + 0.5f) / targetWidth - 1.0f;
+                        const float oy =
+                            2.0f * (static_cast<float>(y) + 0.5f) / targetWidth - 1.0f;
+                        std::array<float, 3> direction{
+                            ox, oy, 1.0f - std::abs(ox) - std::abs(oy)};
+                        if (direction[2] < 0.0f)
+                        {
+                            const auto sign = [](const float value) {
+                                return value < 0.0f ? -1.0f : 1.0f;
+                            };
+                            const float oldX = direction[0];
+                            direction[0] = (1.0f - std::abs(direction[1])) * sign(oldX);
+                            direction[1] = (1.0f - std::abs(oldX)) * sign(direction[1]);
+                        }
+                        const float length =
+                            std::sqrt(direction[0] * direction[0] +
+                                      direction[1] * direction[1] +
+                                      direction[2] * direction[2]);
+                        for (float &component : direction)
+                            component /= length;
+                        const auto sample =
+                            SampleCubemapLinear(cubemap, sourceLevel, direction);
+                        const std::size_t pixel =
+                            (static_cast<std::size_t>(y) * targetWidth + x) * 4;
+                        for (unsigned channel = 0; channel < sample.size(); ++channel)
+                            image[pixel + channel] = sample[channel] * cubemap.arrayGain;
+                        image[pixel + 3] = 1.0f;
+                    }
+                const std::size_t expected =
+                    static_cast<std::size_t>(targetWidth / 4) * (targetWidth / 4) * 16;
+                auto &compressed = slices[task];
+                compressed.resize(expected);
+                DirectX::XMVECTOR block[16];
+                for (unsigned blockY = 0; blockY < targetWidth / 4; ++blockY)
+                    for (unsigned blockX = 0; blockX < targetWidth / 4; ++blockX)
+                    {
+                        for (unsigned y = 0; y < 4; ++y)
+                            for (unsigned x = 0; x < 4; ++x)
+                            {
+                                const std::size_t pixel =
+                                    (static_cast<std::size_t>(blockY * 4 + y) * targetWidth +
+                                     blockX * 4 + x) *
+                                    4;
+                                block[y * 4 + x] =
+                                    DirectX::XMVectorSet(image[pixel], image[pixel + 1],
+                                                         image[pixel + 2], 1.0f);
+                            }
+                        const std::size_t target =
+                            (static_cast<std::size_t>(blockY) * (targetWidth / 4) + blockX) *
+                            16;
+                        DirectX::D3DXEncodeBC6HU(compressed.data() + target, block,
+                                                 DirectX::BC_FLAGS_NONE);
+                    }
+            }
+        }
+        catch (...)
+        {
+            std::lock_guard lock(failureMutex);
+            if (!failure)
+                failure = std::current_exception();
+            nextTask.store(taskCount);
+        }
+    };
+    const unsigned workerCount =
+        std::max(1u, std::min<unsigned>(static_cast<unsigned>(taskCount),
+                                       std::thread::hardware_concurrency()));
+    std::vector<std::thread> workers;
+    workers.reserve(workerCount);
+    for (unsigned worker = 0; worker < workerCount; ++worker)
+        workers.emplace_back(encode);
+    for (auto &worker : workers)
+        worker.join();
+    if (failure)
+        std::rethrow_exception(failure);
+
+    std::vector<std::uint8_t> result;
+    for (const auto &slice : slices)
+    {
+        result.insert(result.end(), slice.begin(), slice.end());
+        result.resize((result.size() + 15) & ~std::size_t{15});
+    }
+    return result;
+}
+
+// Alpha-tested colour maps carry black (or unrelated) colour in their cut-away
+// texels. Filtering, mips and the atlas's BC7 blocks pulled it into the visible
+// edge texels: dark, speckled outlines on IW3 cut-out decals (owner test
+// 2026-10-14, zz_trailer_decal "INDEPENDENT MOVING & DELIVERY"). Grow the visible
+// colour outward through the cut-away texels; alpha is unchanged.
+// Runs body(chunk, begin, end) over `count` items in `chunks` contiguous chunks, each on its own thread.
+template <class Body> void ForChunks(const std::size_t count, const std::size_t chunks, const Body &body)
+{
+    std::vector<std::thread> threads;
+    for (std::size_t chunk = 1; chunk < chunks; ++chunk)
+        threads.emplace_back(body, chunk, count * chunk / chunks, count * (chunk + 1) / chunks);
+    body(std::size_t{0}, std::size_t{0}, count / chunks);
+    for (auto &thread : threads)
+        thread.join();
+}
+
+std::size_t ChunkCount(const std::size_t count)
+{
+    return std::clamp<std::size_t>(count / 65536, 1, std::max(1u, std::thread::hardware_concurrency()));
+}
+
+void BleedCutoutColor(Image &level, const unsigned visibleAlpha = 128)
+{
+    const std::size_t width = level.width, height = level.height;
+    std::vector<std::uint8_t> known(width * height);
+    std::size_t knownCount = 0;
+    for (std::size_t index = 0; index < known.size(); ++index)
+        knownCount += known[index] = level.rgba[index * 4 + 3] >= visibleAlpha;
+    if (knownCount == 0 || knownCount == known.size())
+        return;
+    // Up to 32 passes: each unknown texel next to a known one (wrapping) takes their mean colour, read from the
+    // pass before. Only texels next to the previous pass's new ones can join, so a pass visits those alone.
+    const auto neighbours = [&](const std::size_t index, const auto &visit) {
+        const std::size_t x = index % width, y = index / width;
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx)
+                visit(((y + height + dy) % height) * width + (x + width + dx) % width);
+    };
+    // Large levels find their candidates and their passes' colours on every core (each reads the pass before).
+    std::vector<std::uint32_t> candidates;
+    {
+        const auto chunks = ChunkCount(known.size());
+        std::vector<std::vector<std::uint32_t>> found(chunks);
+        ForChunks(known.size(), chunks, [&](const std::size_t chunk, const std::size_t begin, const std::size_t end) {
+            for (std::size_t index = begin; index < end; ++index)
+                if (!known[index])
+                {
+                    bool touches = false;
+                    neighbours(index, [&](const std::size_t neighbour) { touches = touches || known[neighbour]; });
+                    if (touches)
+                        found[chunk].push_back(static_cast<std::uint32_t>(index));
+                }
+        });
+        for (const auto &part : found)
+            candidates.insert(candidates.end(), part.begin(), part.end());
+    }
+    std::vector<std::uint32_t> queued(known.size(), 0); // the pass (plus one) a texel is a candidate in
+    struct Update
+    {
+        std::uint32_t index;
+        std::array<std::uint8_t, 3> rgb;
+    };
+    std::vector<Update> updates;
+    for (unsigned pass = 0; pass < 32 && !candidates.empty(); ++pass)
+    {
+        updates.clear();
+        const auto chunks = ChunkCount(candidates.size());
+        std::vector<std::vector<Update>> found(chunks);
+        ForChunks(candidates.size(), chunks, [&](const std::size_t chunk, const std::size_t begin, const std::size_t end) {
+            for (std::size_t at = begin; at < end; ++at)
+            {
+                const std::uint32_t index = candidates[at];
+                unsigned sum[3]{}, count = 0;
+                neighbours(index, [&](const std::size_t neighbour) {
+                    if (!known[neighbour])
+                        return;
+                    for (unsigned channel = 0; channel < 3; ++channel)
+                        sum[channel] += level.rgba[neighbour * 4 + channel];
+                    ++count;
+                });
+                if (!count)
+                    continue;
+                Update update{index, {}};
+                for (unsigned channel = 0; channel < 3; ++channel)
+                    update.rgb[channel] = static_cast<std::uint8_t>(sum[channel] / count);
+                found[chunk].push_back(update);
+            }
+        });
+        for (const auto &part : found)
+            updates.insert(updates.end(), part.begin(), part.end());
+        for (const Update &update : updates)
+        {
+            std::copy(update.rgb.begin(), update.rgb.end(), level.rgba.begin() + std::size_t{update.index} * 4);
+            known[update.index] = 1;
+        }
+        candidates.clear();
+        for (const Update &update : updates)
+            neighbours(update.index, [&](const std::size_t neighbour) {
+                if (!known[neighbour] && queued[neighbour] != pass + 1)
+                {
+                    queued[neighbour] = pass + 1;
+                    candidates.push_back(static_cast<std::uint32_t>(neighbour));
+                }
+            });
+    }
+}
+
+// A same-size colour sample's bytes depend only on the texel's channel byte, its alpha byte and the tint: the
+// channel's linear value premultiplied by alpha and divided back, then re-encoded (Resize's store below).
+std::uint8_t AlignedColorByte(const std::uint8_t value, const std::uint8_t alphaByte, const float tint)
+{
+    const float alpha = alphaByte / 255.0f;
+    const float sample = LinearByte(value) * alpha;
+    return SrgbByte(std::clamp((alpha > 1.0e-6f ? sample / alpha : 0.0f) * tint, 0.0f, 1.0f));
+}
+
+std::uint8_t AlignedAlphaByte(const std::uint8_t alphaByte, const float tint)
+{
+    const float alpha = std::clamp(alphaByte / 255.0f * tint, 0.0f, 1.0f);
+    return static_cast<std::uint8_t>(std::clamp(std::lround(alpha * 255.0f), 0l, 255l));
+}
+
+// Those bytes for every channel and alpha byte of one tint, kept per thread for the last tints it used (the
+// resident images tint each base level and mip the same way).
+struct AlignedColorTable
+{
+    std::array<float, 4> tint{};
+    std::array<std::array<std::uint8_t, 65536>, 3> color{}; // [channel][alpha << 8 | value]
+    std::array<std::uint8_t, 256> alpha{};
+};
+
+const AlignedColorTable &AlignedColorTableFor(const std::array<float, 4> &tint)
+{
+    thread_local std::vector<std::unique_ptr<AlignedColorTable>> tables;
+    for (const auto &table : tables)
+        if (std::memcmp(table->tint.data(), tint.data(), sizeof(tint)) == 0)
+            return *table;
+    if (tables.size() == 4)
+        tables.erase(tables.begin());
+    auto table = std::make_unique<AlignedColorTable>();
+    table->tint = tint;
+    for (unsigned alpha = 0; alpha < 256; ++alpha)
+    {
+        table->alpha[alpha] = AlignedAlphaByte(static_cast<std::uint8_t>(alpha), tint[3]);
+        for (unsigned channel = 0; channel < 3; ++channel)
+            for (unsigned value = 0; value < 256; ++value)
+                table->color[channel][alpha << 8 | value] =
+                    AlignedColorByte(static_cast<std::uint8_t>(value), static_cast<std::uint8_t>(alpha), tint[channel]);
+    }
+    tables.push_back(std::move(table));
+    return *tables.back();
+}
+
+Image Resize(const Image &source, const unsigned width, const unsigned height, const bool color,
+             const std::array<float, 4> &tint = {1, 1, 1, 1})
+{
+    Image output{width, height,
+                 std::vector<std::uint8_t>(static_cast<std::size_t>(width) * height * 4)};
+    const auto store = [&](const std::size_t texel, const float (&sample)[4]) {
+        const float alpha = std::clamp(sample[3] * tint[3], 0.0f, 1.0f);
+        for (unsigned channel = 0; channel < 4; ++channel)
+        {
+            auto &target = output.rgba[texel * 4 + channel];
+            const float value = sample[channel];
+            if (color && channel < 3)
+                target = SrgbByte(std::clamp(
+                    (sample[3] > 1.0e-6f ? value / sample[3] : 0.0f) * tint[channel], 0.0f,
+                    1.0f));
+            else
+                target = static_cast<std::uint8_t>(std::clamp(
+                    std::lround((channel == 3 ? alpha : value) * 255.0f), 0l, 255l));
+        }
+    };
+    // At the same size each sample lands on its own texel when the coordinates below come out whole: the texel weighs
+    // 1 and the three others add zeros, so reading the one texel gives the same values (the colour maps of every
+    // resident image are tinted this way, base level and mips).
+    bool aligned = width == source.width && height == source.height;
+    for (unsigned y = 0; y < height && aligned; ++y)
+        aligned = (static_cast<float>(y) + 0.5f) * source.height / height - 0.5f == static_cast<float>(y);
+    for (unsigned x = 0; x < width && aligned; ++x)
+        aligned = (static_cast<float>(x) + 0.5f) * source.width / width - 0.5f == static_cast<float>(x);
+    if (aligned)
+    {
+        const std::size_t texels = static_cast<std::size_t>(width) * height;
+        if (color && texels >= 16384)
+        {
+            const auto &table = AlignedColorTableFor(tint);
+            for (std::size_t texel = 0; texel < texels; ++texel)
+            {
+                const std::uint8_t *bytes = source.rgba.data() + texel * 4;
+                std::uint8_t *target = output.rgba.data() + texel * 4;
+                const unsigned alpha = bytes[3] << 8;
+                for (unsigned channel = 0; channel < 3; ++channel)
+                    target[channel] = table.color[channel][alpha | bytes[channel]];
+                target[3] = table.alpha[bytes[3]];
+            }
+            return output;
+        }
+        for (std::size_t texel = 0; texel < texels; ++texel)
+        {
+            const std::uint8_t *bytes = source.rgba.data() + texel * 4;
+            const float alpha = bytes[3] / 255.0f;
+            float sample[4]{};
+            for (unsigned channel = 0; channel < 4; ++channel)
+                sample[channel] += (color && channel < 3 ? LinearByte(bytes[channel]) * alpha : bytes[channel] / 255.0f) * 1.0f;
+            store(texel, sample);
+        }
+        return output;
+    }
+    for (unsigned y = 0; y < height; ++y)
+    {
+        const float sy = (static_cast<float>(y) + 0.5f) * source.height / height - 0.5f;
+        const int sy0 = static_cast<int>(std::floor(sy));
+        const int y0 =
+            std::clamp(sy0, 0, static_cast<int>(source.height) - 1);
+        const int y1 = std::clamp(sy0 + 1, 0, static_cast<int>(source.height) - 1);
+        const float fy = sy - sy0;
+        for (unsigned x = 0; x < width; ++x)
+        {
+            const float sx = (static_cast<float>(x) + 0.5f) * source.width / width - 0.5f;
+            const int sx0 = static_cast<int>(std::floor(sx));
+            const int x0 =
+                std::clamp(sx0, 0, static_cast<int>(source.width) - 1);
+            const int x1 = std::clamp(sx0 + 1, 0, static_cast<int>(source.width) - 1);
+            const float fx = sx - sx0;
+            float sample[4]{};
+            for (unsigned iy = 0; iy < 2; ++iy)
+                for (unsigned ix = 0; ix < 2; ++ix)
+                {
+                    const float weight = (ix ? fx : 1 - fx) * (iy ? fy : 1 - fy);
+                    const std::size_t offset =
+                        (static_cast<std::size_t>(iy ? y1 : y0) * source.width +
+                         static_cast<unsigned>(ix ? x1 : x0)) *
+                        4;
+                    const float alpha = source.rgba[offset + 3] / 255.0f;
+                    for (unsigned channel = 0; channel < 4; ++channel)
+                    {
+                        const float value = color && channel < 3
+                                                ? LinearByte(source.rgba[offset + channel]) * alpha
+                                                : source.rgba[offset + channel] / 255.0f;
+                        sample[channel] += value * weight;
+                    }
+                }
+            store(static_cast<std::size_t>(y) * width + x, sample);
+        }
+    }
+    return output;
+}
+
+void Paste(Image &target, const Image &source, const unsigned x, const unsigned y)
+{
+    if (x > target.width || y > target.height || source.width > target.width - x ||
+        source.height > target.height - y)
+        throw std::runtime_error("IW3 atlas write exceeds its dimensions");
+    for (unsigned row = 0; row < source.height; ++row)
+        std::memcpy(target.rgba.data() + (static_cast<std::size_t>(y + row) * target.width + x) * 4,
+                    source.rgba.data() + static_cast<std::size_t>(row) * source.width * 4,
+                    static_cast<std::size_t>(source.width) * 4);
+}
+
+// Colours and environment parameters are non-negative; falloffParms holds
+// scale/bias pairs whose biases are negative (IW3 god rays: -0.0526, -0.111).
+template <std::size_t Size>
+std::array<float, Size> Literal(const Json &value, const std::array<float, Size> &fallback,
+                                const bool signedValues = false)
+{
+    if (!value.is_array() || value.size() != Size)
+        return fallback;
+    std::array<float, Size> result{};
+    for (std::size_t index = 0; index < Size; ++index)
+    {
+        result[index] = value.at(index).get<float>();
+        if (!std::isfinite(result[index]) || (!signedValues && result[index] < 0) ||
+            std::abs(result[index]) > 64)
+            throw std::runtime_error("invalid IW3 material constant");
+    }
+    return result;
+}
+
+std::filesystem::path FindMaterial(const std::filesystem::path &root,
+                                   const std::vector<std::filesystem::path> &sourcePaths,
+                                   const std::string &name)
+{
+    if (name.empty() || name.find("..") != std::string::npos ||
+        name.find(':') != std::string::npos || name.find('\\') != std::string::npos ||
+        name.front() == '/')
+        throw std::runtime_error("invalid IW3 material name");
+    std::vector<std::filesystem::path> relativePaths{std::filesystem::path("materials") /
+                                                     (name + ".json")};
+    if (name.starts_with("mc/"))
+        relativePaths.push_back(std::filesystem::path("materials") / (name.substr(3) + ".json"));
+
+    std::error_code error;
+    std::vector<std::filesystem::path> roots{root};
+    roots.insert(roots.end(), sourcePaths.begin(), sourcePaths.end());
+    for (const auto &source : roots)
+        for (const auto &relative : relativePaths)
+        {
+            const auto candidate = source / relative;
+            if (std::filesystem::is_regular_file(candidate, error))
+                return candidate;
+            error.clear();
+        }
+    return {};
+}
+
+std::array<float, 4> FxLiteral(const Json &value, const char *field)
+{
+    if (!value.is_array() || value.size() != 4)
+        throw std::runtime_error(std::string("invalid IW3 FX material ") + field);
+    std::array<float, 4> result{};
+    for (std::size_t index = 0; index < result.size(); ++index)
+    {
+        const double component = value.at(index).get<double>();
+        if (!std::isfinite(component) || std::abs(component) > 1000000.0)
+            throw std::runtime_error(std::string("invalid IW3 FX material ") + field);
+        result[index] = static_cast<float>(component);
+    }
+    return result;
+}
+
+SourceFxMaterial ReadFxMaterial(const std::filesystem::path &root,
+                                const std::vector<std::filesystem::path> &sourcePaths,
+                                const std::string &name)
+{
+    ledger::Use("material", name);
+    const auto path = FindMaterial(root, sourcePaths, name);
+    if (path.empty())
+        throw std::runtime_error("missing IW3 FX material '" + name +
+                                 "'; add the matching IW3 main and raw directories with "
+                                 "--search-path");
+    const Json source = ReadJson(path);
+    SourceFxMaterial material;
+    material.name = name;
+    material.techniqueSet = source.at("techniqueSet").get<std::string>();
+    // The family follows the technique set without its eye offset, which the particle material data carries
+    // (FxParticleMaterialData): IW7's feathered eye-offset glows (effect_zfeather_add_eyeoffset) are feathered additive.
+    std::string_view technique = material.techniqueSet;
+    if (technique.ends_with("_eyeoffset"))
+        technique.remove_suffix(std::string_view("_eyeoffset").size());
+    const bool noFogAlias = technique.ends_with("_nofog");
+    if (technique == "effect" || technique == "effect_nofog")
+        material.family = FxMaterialFamily::alpha;
+    else if (technique == "effect_zfeather" ||
+        technique == "effect_zfeather_nofog")
+        material.family = FxMaterialFamily::alphaFeather;
+    else if (technique == "effect_zfeather_add" ||
+             technique == "effect_zfeather_add_nofog")
+        material.family = FxMaterialFamily::additiveFeather;
+    // particle_cloud_add is an additive cloud; Replay draws it as an additive sprite.
+    // The view-angle falloff of the other additive variants has no Replay
+    // counterpart; they draw as plain additive sprites.
+    else if (technique == "effect_add_nofog" || technique == "effect_add" ||
+             technique == "particle_cloud_add" ||
+             technique == "particle_cloud_outdoor_add" ||
+             technique == "effect_falloff_add" ||
+             technique == "effect_falloff_add_nofog")
+        material.family = FxMaterialFamily::additive;
+    // Likewise the falloff and spot-shadowed alpha variants draw as plain
+    // (feathered) alpha sprites.
+    else if (technique == "effect_falloff" ||
+             technique == "effect_falloff_nofog")
+        material.family = FxMaterialFamily::alpha;
+    else if (technique == "effect_zfeather_falloff" ||
+             technique == "effect_zfeather_falloff_nofog" ||
+             technique == "effect_zfeather_spot" ||
+             technique == "effect_zfeather_spot_nofog")
+        material.family = FxMaterialFamily::alphaFeather;
+    // The view-angle falloff of these additive sprites (IW3 fire roar) has no
+    // Replay counterpart; the feathered additive family draws them unfaded.
+    else if (technique == "effect_zfeather_falloff_add" ||
+             technique == "effect_zfeather_falloff_add_nofog")
+        material.family = FxMaterialFamily::additiveFeather;
+    else if (technique.starts_with("distortion"))
+    {
+        material.family = FxMaterialFamily::distortion;
+        for (const auto &texture : source.value("textures", Json::array()))
+            if (texture.value("name", std::string{}) == "colorMap")
+                material.image = texture.value("image", std::string{});
+        for (const auto &constant : source.value("constants", Json::array()))
+            if (constant.value("name", std::string{}) == "distortionScale")
+                material.distortionScale = FxLiteral(constant.at("literal"), "distortion scale");
+        return material;
+    }
+    else if (technique == "particle_cloud" ||
+             technique == "particle_cloud_outdoor")
+        material.family = FxMaterialFamily::cloud;
+    else if (std::regex_match(material.techniqueSet,
+                              std::regex("[mw]c_l_sm_b0c0(n0)?(s0)?")))
+        material.family = FxMaterialFamily::decal;
+    else
+        return material;
+
+    if (source.at("_game") != "iw3" || source.at("_type") != "material" ||
+        source.at("_version") != 1)
+        throw std::runtime_error("unsupported IW3 FX material metadata: " + name);
+    const auto &atlas = source.at("textureAtlas");
+    material.rows = atlas.at("rows").get<unsigned>();
+    material.columns = atlas.at("columns").get<unsigned>();
+    material.lit = source.value("lit", false) &&
+                   (material.family == FxMaterialFamily::alpha || material.family == FxMaterialFamily::alphaFeather);
+    material.frameBlend = source.value("frame_blend", false);
+    if (source.contains("iw7Flow"))
+    {
+        const auto &flow = source.at("iw7Flow");
+        material.flow = SourceFxMaterial::Flow{flow.at("map").get<std::string>(),
+                                              flow.at("surface").get<std::string>(),
+                                              FxLiteral(flow.at("scale"), "flow scale"),
+                                              FxLiteral(flow.at("period"), "flow period"),
+                                              flow.at("hdr").get<bool>()};
+        if (flow.contains("dissolve"))
+            material.flow->dissolve = flow.at("dissolve").get<float>();
+        material.flow->mask = flow.value("mask", std::string());
+        // The owned flow PS covers the blended and additive families, either with the zfeather intersection; the lit
+        // flow (blended, with or without its mask) has no HDR expansion or dissolve.
+        const bool flowFamily = material.family == FxMaterialFamily::alpha ||
+                                material.family == FxMaterialFamily::alphaFeather ||
+                                material.family == FxMaterialFamily::additive ||
+                                material.family == FxMaterialFamily::additiveFeather;
+        const bool litFlow = material.lit && !material.flow->hdr && !material.flow->dissolve;
+        if ((material.lit && !litFlow) || (!material.lit && !material.flow->mask.empty()) || material.frameBlend ||
+            !flowFamily || !(material.flow->period[0] > 0) || !(material.flow->period[2] > 0) ||
+            (material.flow->dissolve && !(std::isfinite(*material.flow->dissolve) && *material.flow->dissolve > 0)))
+            throw std::runtime_error("unsupported IW7 flow material contract: " + name);
+    }
+    if (source.contains("iw7Uvd"))
+    {
+        const auto &uvd = source.at("iw7Uvd");
+        SourceFxMaterial::Flow flow{uvd.at("map").get<std::string>(), {}, FxLiteral(uvd.at("scroll"), "uv distortion"),
+                                    FxLiteral(uvd.at("parameters"), "uv distortion parameters"), false};
+        flow.uvd = true;
+        flow.cell = uvd.value("cell", false);
+        // A dissolve K of 0: the twin without the dissolve (684ca3a1), whose alpha is the texel's times the particle's.
+        if (flow.period[3] > 0)
+            flow.dissolve = flow.period[3];
+        // The owned lit effect PS takes the blended family, with or without the zfeather intersection.
+        if (material.flow || !material.lit || material.frameBlend ||
+            (material.family != FxMaterialFamily::alpha && material.family != FxMaterialFamily::alphaFeather) ||
+            !(flow.period[1] > 0) || !(flow.period[2] > 0) || !(flow.period[3] >= 0))
+            throw std::runtime_error("unsupported IW7 UV-distortion material contract: " + name);
+        material.flow = std::move(flow);
+    }
+    if (source.value("iw7AlphaTest", false))
+    {
+        // The owned lit effect PS cuts and draws it opaque (FLOW_ATEST), alone or with the UV distortion.
+        if (!material.flow)
+            material.flow.emplace();
+        // The zfeather twin (971dbac6) feathers inside its UV distortion's dissolve.
+        const bool family = material.family == FxMaterialFamily::alpha ||
+                            (material.family == FxMaterialFamily::alphaFeather && material.flow->uvd);
+        if (!material.lit || material.frameBlend || !family ||
+            (!material.flow->uvd && (!material.flow->map.empty() || material.flow->dissolve)))
+            throw std::runtime_error("unsupported IW7 alpha-tested effect contract: " + name);
+        material.flow->atest = true;
+    }
+    if (!material.rows || !material.columns || material.rows > 255 || material.columns > 255 ||
+        !std::has_single_bit(material.columns) ||
+        static_cast<std::uint64_t>(material.rows) * material.columns > 65535)
+        throw std::runtime_error("unsupported IW3 FX material atlas: " + name);
+
+    const auto validImageName = [](const std::string &image) {
+        return !image.empty() && image.find("..") == std::string::npos &&
+               image.find(':') == std::string::npos && image.find('\\') == std::string::npos &&
+               image.front() != '/';
+    };
+
+    if (material.family == FxMaterialFamily::decal)
+    {
+        const int stateFlags = source.at("stateFlags").get<int>();
+        if (source.at("cameraRegion") != "decal" || (stateFlags != 52 && stateFlags != 53) ||
+            material.rows != 1 || material.columns != 1)
+            throw std::runtime_error("unsupported IW3 FX decal metadata: " + name);
+        const auto &textures = source.at("textures");
+        if (!textures.is_array() || textures.empty() || textures.size() > 3)
+            throw std::runtime_error("IW3 FX decal texture set is unsupported: " + name);
+        for (const auto &texture : textures)
+        {
+            const std::string semantic = texture.at("semantic").get<std::string>();
+            const std::string image = texture.at("image").get<std::string>();
+            if (!validImageName(image))
+                throw std::runtime_error("IW3 FX decal has an invalid image name: " + name);
+            // "$identitynormalmap" and other "$" names are engine defaults.
+            if (image.front() == '$' && semantic != "colorMap")
+                continue;
+            if (semantic == "colorMap" && material.image.empty())
+                material.image = image;
+            else if (semantic == "normalMap" && material.normal.empty())
+                material.normal = image;
+            else if (semantic == "specularMap" && material.response.empty())
+                material.response = image;
+            else
+                throw std::runtime_error("IW3 FX decal has an unsupported texture semantic: " +
+                                         name);
+        }
+        if (material.image.empty())
+            throw std::runtime_error("IW3 FX decal has no color map: " + name);
+        bool foundTint = false, foundEnvironment = false;
+        for (const auto &constant : source.at("constants"))
+        {
+            const std::string key = constant.at("name").get<std::string>();
+            if (key == "colorTint")
+                material.tint = FxLiteral(constant.at("literal"), "color tint"), foundTint = true;
+            else if (key == "envMapParms")
+                FxLiteral(constant.at("literal"), "environment parameters"),
+                    foundEnvironment = true;
+            else
+                throw std::runtime_error("IW3 FX decal has an unsupported constant: " + name);
+        }
+        (void)foundEnvironment;
+        if (!foundTint)
+            throw std::runtime_error("IW3 FX decal is missing its color tint: " + name);
+        return material;
+    }
+
+    const int spriteStateFlags = source.at("stateFlags").get<int>();
+    if (source.at("cameraRegion") != "emissive" ||
+        (spriteStateFlags != 16 &&
+         !(material.family == FxMaterialFamily::alpha &&
+           (spriteStateFlags == 20 || spriteStateFlags == 24))))
+    {
+        if (material.family == FxMaterialFamily::alpha)
+        {
+            material.family = FxMaterialFamily::unsupported;
+            return material;
+        }
+        throw std::runtime_error("unsupported IW3 FX material metadata: " + name);
+    }
+
+    const auto &textures = source.at("textures");
+    if (!textures.is_array() || textures.size() != 1)
+        throw std::runtime_error("IW3 FX material must have one color texture: " + name);
+    const auto &texture = textures.front();
+    if (texture.at("name") != "colorMap" || texture.at("semantic") != "colorMap")
+        throw std::runtime_error("IW3 FX material has an unsupported texture semantic: " + name);
+    material.image = texture.at("image").get<std::string>();
+    if (!validImageName(material.image))
+        throw std::runtime_error("IW3 FX material has an invalid image name: " + name);
+    // An alpha-tested effect without the distortion has no flow image; the UV distortion has no surface map.
+    if (material.flow && (((!material.flow->atest || material.flow->uvd) && !validImageName(material.flow->map)) ||
+                          (!material.flow->uvd && !material.flow->atest && !validImageName(material.flow->surface)) ||
+                          (!material.flow->mask.empty() && !validImageName(material.flow->mask))))
+        throw std::runtime_error("IW7 flow material has an invalid image name: " + name);
+    const auto &sampler = texture.at("samplerState");
+    const std::string filter = sampler.at("filter").get<std::string>();
+    const std::string mipMap = sampler.at("mipMap").get<std::string>();
+    const bool clamped = sampler.at("clampU").get<bool>() &&
+                         sampler.at("clampV").get<bool>() &&
+                         sampler.at("clampW").get<bool>();
+    const bool wrapped = !sampler.at("clampU").get<bool>() &&
+                         !sampler.at("clampV").get<bool>() &&
+                         !sampler.at("clampW").get<bool>();
+    const bool outdoorCloud = material.techniqueSet == "particle_cloud_outdoor";
+    const bool supportedFilter = filter == "linear" || filter == "aniso2x" ||
+                                 (outdoorCloud && filter == "aniso4x");
+    // Sprite UVs stay inside [0, 1], so clamp and wrap addressing only differ in
+    // the last texel at the border; both are converted.
+    if ((material.family == FxMaterialFamily::cloud ? !clamped : !(wrapped || clamped)) ||
+        !supportedFilter ||
+        (mipMap != "disabled" && mipMap != "nearest" && mipMap != "linear"))
+    {
+        if (!noFogAlias)
+            zt::warn("iw3: FX material %s sampler has no pinned Replay mapping; its effect "
+                     "elements are not converted",
+                     name.c_str());
+        material.family = FxMaterialFamily::unsupported;
+        return material;
+    }
+
+    bool foundColorState = false;
+    for (const auto &state : source.at("stateBits"))
+    {
+        if (!state.value("colorWriteRgb", false) || state.value("polymodeLine", false))
+            continue;
+        if (foundColorState)
+            throw std::runtime_error("IW3 FX material has multiple color states: " + name);
+        foundColorState = true;
+        const bool noDepth = state.at("depthTest") == "always" || state.at("depthTest") == "disabled";
+        const bool shared = state.at("blendOpRgb") == "add" &&
+                            (state.at("depthTest") == "less_equal" || noDepth) &&
+                            !state.at("depthWrite").get<bool>();
+        material.noDepth = noDepth;
+        // IW3 opaque cutout particles (alphaTest ge128, one/zero, depth write)
+        // draw through the alpha-blended family: their alpha is a hard mask.
+        const bool cutout = state.at("alphaTest") == "ge128" &&
+                            state.at("srcBlendRgb") == "one" &&
+                            state.at("dstBlendRgb") == "zero";
+        const bool alpha = (state.at("alphaTest") == "gt0" &&
+                            state.at("srcBlendRgb") == "srcalpha" &&
+                            state.at("dstBlendRgb") == "invsrcalpha") ||
+                           cutout;
+        // invdestcolor/one (IW3 "screen" fire) is drawn additively.
+        const bool additive = state.at("alphaTest") == "disabled" &&
+                              (state.at("srcBlendRgb") == "one" ||
+                               state.at("srcBlendRgb") == "invdestcolor") &&
+                              state.at("dstBlendRgb") == "one";
+        const bool alphaAdditive = state.at("srcBlendRgb") == "srcalpha" &&
+                                   state.at("dstBlendRgb") == "one";
+        const bool wantsAlpha = material.family == FxMaterialFamily::alpha ||
+                                 material.family == FxMaterialFamily::alphaFeather ||
+                                 material.family == FxMaterialFamily::cloud;
+        if (shared && alphaAdditive)
+        {
+            material.family = material.family == FxMaterialFamily::alphaFeather ||
+                                      material.family == FxMaterialFamily::additiveFeather
+                                  ? FxMaterialFamily::additiveFeather
+                                  : FxMaterialFamily::additive;
+            material.premultiplied = true;
+            continue;
+        }
+        if ((!shared && !cutout) || (wantsAlpha ? !alpha : !additive))
+        {
+            // An unmapped blend (srcalpha/one particle_cloud in mp_broadcast2)
+            // drops only the effect elements that use this material.
+            zt::warn("iw3: FX material %s blend state has no pinned Replay mapping; its effect "
+                     "elements are not converted",
+                     name.c_str());
+            material.family = FxMaterialFamily::unsupported;
+            return material;
+        }
+    }
+    if (!foundColorState)
+        throw std::runtime_error("IW3 FX material has no color state: " + name);
+
+    if (material.family == FxMaterialFamily::cloud)
+    {
+        if (material.rows != 1 || material.columns != 1 || !source.at("constants").empty())
+            throw std::runtime_error("IW3 cloud material has no pinned Replay atlas mapping: " +
+                                     name);
+        return material;
+    }
+
+    bool foundFeather = false, foundTint = false;
+    for (const auto &constant : source.at("constants"))
+    {
+        const std::string key = constant.at("name").get<std::string>();
+        const bool falloffTechnique = material.techniqueSet.find("falloff") != std::string::npos;
+        const bool eyeOffsetTechnique = material.techniqueSet.find("eyeoffset") != std::string::npos;
+        if (key == "featherParms" &&
+            (material.family == FxMaterialFamily::alphaFeather ||
+             material.family == FxMaterialFamily::additiveFeather))
+        {
+            material.feather = FxLiteral(constant.at("literal"), "feather parameters");
+            if (!((*material.feather)[0] > 0))
+                throw std::runtime_error("IW3 FX material has a non-positive feather scale: " + name);
+            foundFeather = true;
+        }
+        else if (key == "featherParms" && eyeOffsetTechnique)
+            continue; // effect_add_eyeoffset carries featherParms its technique never reads
+        else if (key == "colorTint")
+            material.tint = FxLiteral(constant.at("literal"), "color tint"), foundTint = true;
+        else if (key == "falloffParms" && falloffTechnique)
+            material.falloff = FxLiteral(constant.at("literal"), "falloff parameters");
+        else if (key == "falloffBeginColor" && falloffTechnique)
+            material.falloffBegin = FxLiteral(constant.at("literal"), "falloff begin colour");
+        else if (key == "falloffEndColor" && falloffTechnique)
+            material.falloffEnd = FxLiteral(constant.at("literal"), "falloff end colour");
+        else if (key == "eyeOffsetParms" && eyeOffsetTechnique)
+            material.eyeOffset = FxLiteral(constant.at("literal"), "eye offset parameters");
+        else if (material.techniqueSet.find("_spot") != std::string::npos)
+            continue; // effect_zfeather_spot: the spot-shadow term has no particle equivalent
+        else
+            throw std::runtime_error("IW3 FX material has an unsupported constant: " + name);
+    }
+    if ((material.techniqueSet.find("falloff") != std::string::npos && !material.falloff) ||
+        (material.techniqueSet.find("eyeoffset") != std::string::npos && !material.eyeOffset))
+        throw std::runtime_error("IW3 FX material is missing falloff or eye-offset parameters: " + name);
+    const bool requiresFeather = material.family == FxMaterialFamily::alphaFeather ||
+                                 material.family == FxMaterialFamily::additiveFeather;
+    // IW3 additive clouds carry no tint constant (white).
+    if (!foundTint && material.techniqueSet.starts_with("particle_cloud"))
+        foundTint = true;
+    if (!foundTint || (requiresFeather && !foundFeather))
+        throw std::runtime_error("IW3 FX material is missing required constants: " + name);
+    return material;
+}
+
+// Replay Particle_MaterialData for an IW3 FX material, as the stock particle
+// shaders (techsets_common elcq/unlit_6_effect_*) read it per particle
+// (featureEnabledFlags +188):
+//  - 16 feather: PS alpha *= saturate((scene depth - particle depth) * +96.x),
+//    VS alpha *= saturate(view depth * +96.x) — IW3 zfeather's soft intersection
+//    and near fade. Stock layout +96 = (1/D, D, D, 1), +112 = (D/100, 0, D/100,
+//    0.01); +116 = 0 keeps the plain (non-spherical) fade.
+//  - 1 falloff: f = saturate((N.V)^2 * +0.z + +0.w) * saturate(+0.y * (+0.x - d^2));
+//    rgb *= lerp(+32, +16, f), alpha *= f — IW3's falloffParms .z/.w with
+//    begin colour = +16 (opaque), end colour = +32 (transparent). IW3 has no
+//    distance term, so +0.xy hold it at 1.
+//  - 4 eye offset: VS moves clip depth toward the camera by +64.x.
+std::optional<std::array<std::uint8_t, 192>> FxParticleMaterialData(const SourceFxMaterial &material)
+{
+    if (!material.feather && !material.falloff && !material.eyeOffset)
+        return std::nullopt;
+    std::array<float, 48> data{};
+    std::uint32_t flags = 0;
+    const auto set = [&](const std::size_t offset, const std::array<float, 4> &value) {
+        std::copy(value.begin(), value.end(), data.begin() + offset / 4);
+    };
+    set(16, {1, 1, 1, 1});
+    set(32, {1, 1, 1, 1});
+    if (material.falloff)
+    {
+        flags |= 1;
+        set(0, {1e30f, 1e-29f, (*material.falloff)[2], (*material.falloff)[3]});
+        set(16, material.falloffBegin);
+        set(32, material.falloffEnd);
+    }
+    if (material.eyeOffset)
+    {
+        flags |= 4;
+        set(64, {(*material.eyeOffset)[0], 0, 0, 0});
+    }
+    if (material.feather)
+    {
+        flags |= 16;
+        const float scale = (*material.feather)[0];
+        const float depth = 1.0f / scale;
+        set(96, {scale, depth, depth, 1});
+        set(112, {depth / 100, 0, depth / 100, 0.01f});
+    }
+    std::array<std::uint8_t, 192> bytes{};
+    std::memcpy(bytes.data(), data.data(), 188);
+    std::memcpy(bytes.data() + 188, &flags, sizeof(flags));
+    return bytes;
+}
+
+std::vector<std::uint8_t> DecodeBase64(const std::string_view text)
+{
+    std::vector<std::uint8_t> bytes;
+    unsigned buffer = 0, bits = 0;
+    for (const char c : text)
+    {
+        int value;
+        if (c >= 'A' && c <= 'Z')
+            value = c - 'A';
+        else if (c >= 'a' && c <= 'z')
+            value = c - 'a' + 26;
+        else if (c >= '0' && c <= '9')
+            value = c - '0' + 52;
+        else if (c == '+')
+            value = 62;
+        else if (c == '/')
+            value = 63;
+        else if (c == '=')
+            break;
+        else
+            throw std::runtime_error("invalid base64 in an IW3 material export");
+        buffer = (buffer << 6) | static_cast<unsigned>(value);
+        bits += 6;
+        if (bits >= 8)
+        {
+            bits -= 8;
+            bytes.push_back(static_cast<std::uint8_t>(buffer >> bits));
+        }
+    }
+    return bytes;
+}
+
+std::vector<float> DecodeFloats(const Json &value, const std::size_t count, const char *what)
+{
+    const auto bytes = DecodeBase64(value.get<std::string>());
+    if (bytes.size() != count * sizeof(float))
+        throw std::runtime_error(std::string("IW3 water ") + what + " has the wrong size");
+    std::vector<float> floats(count);
+    std::memcpy(floats.data(), bytes.data(), bytes.size());
+    for (const float f : floats)
+        if (!std::isfinite(f))
+            throw std::runtime_error(std::string("IW3 water ") + what + " is not finite");
+    return floats;
+}
+
+// In-place radix-2 complex FFT (exp(+i), unnormalised) of n = 2^k points.
+void WaterFft(std::vector<std::complex<double>> &data, const std::size_t offset,
+              const std::size_t stride, const std::size_t n)
+{
+    std::vector<std::complex<double>> a(n);
+    for (std::size_t i = 0; i < n; ++i)
+        a[i] = data[offset + i * stride];
+    for (std::size_t i = 1, j = 0; i < n; ++i)
+    {
+        std::size_t bit = n >> 1;
+        for (; j & bit; bit >>= 1)
+            j ^= bit;
+        j ^= bit;
+        if (i < j)
+            std::swap(a[i], a[j]);
+    }
+    for (std::size_t length = 2; length <= n; length <<= 1)
+    {
+        const double angle = 2.0 * 3.14159265358979323846 / static_cast<double>(length);
+        const std::complex<double> step(std::cos(angle), std::sin(angle));
+        for (std::size_t i = 0; i < n; i += length)
+        {
+            std::complex<double> w(1.0, 0.0);
+            for (std::size_t k = 0; k < length / 2; ++k)
+            {
+                const auto u = a[i + k], v = a[i + k + length / 2] * w;
+                a[i + k] = u + v;
+                a[i + k + length / 2] = u - v;
+                w *= step;
+            }
+        }
+    }
+    for (std::size_t i = 0; i < n; ++i)
+        data[offset + i * stride] = a[i];
+}
+
+// IW3's wave map (KisakCOD r_water.cpp) as a looping flipbook: frame f is the
+// map at t = period * f / frames. IW3 per frame: H = (H0.re * sin(phase + 255
+// steps), H0.im * sin(phase)) with phase = wTerm * 162.97 t on a 1024-step
+// sine table (wTerm rad/s), a 2D FFT, texel = min(|H| / (M N), 1) as L8. Each
+// wave's frequency snaps to whole cycles per loop so the loop has no seam
+// (Discovery's slowest, 1.46 rad/s, moves by under 7%). Layout: 16 x 16 tiles
+// of 64 x 64, four consecutive frames in a texel's RGBA (MAP_WATER shader).
+constexpr unsigned kWaterFrames = 1024;
+constexpr unsigned kWaterImageSize = 1024;
+constexpr double kWaterFramesPerSecond = 30.0;
+
+std::vector<std::uint8_t> BakeWaterFlipbook(const SourceMaterial::Water &water)
+{
+    const unsigned size = water.size;
+    if (size != 64)
+        throw std::runtime_error("IW3 water map is not 64 x 64 (no flipbook layout)");
+    const double pi = 3.14159265358979323846;
+    const double period = kWaterFrames / kWaterFramesPerSecond;
+    const double cycle = 2.0 * pi / period;
+    std::vector<double> omega(std::size_t{size} * size);
+    for (std::size_t i = 0; i < omega.size(); ++i)
+        omega[i] = std::round(static_cast<double>(water.wTerm[i]) * 162.9746551513672 * 2.0 * pi /
+                              1024.0 / cycle) *
+                   cycle;
+    std::vector<std::uint8_t> pixels(std::size_t{kWaterImageSize} * kWaterImageSize * 4);
+    std::vector<std::complex<double>> h(std::size_t{size} * size);
+    for (unsigned frame = 0; frame < kWaterFrames; ++frame)
+    {
+        const double t = period * frame / kWaterFrames;
+        for (std::size_t i = 0; i < h.size(); ++i)
+        {
+            if (water.wTerm[i] == 0.0f)
+            {
+                h[i] = 0;
+                continue;
+            }
+            const double phase = omega[i] * t;
+            h[i] = {water.h0[2 * i] * std::sin(phase + 255.0 * 2.0 * pi / 1024.0),
+                    water.h0[2 * i + 1] * std::sin(phase)};
+        }
+        for (unsigned row = 0; row < size; ++row)
+            WaterFft(h, std::size_t{row} * size, 1, size);
+        for (unsigned column = 0; column < size; ++column)
+            WaterFft(h, column, size, size);
+        const unsigned tile = frame / 4, channel = frame % 4;
+        const std::size_t originX = tile % 16 * size, originY = tile / 16 * size;
+        for (unsigned y = 0; y < size; ++y)
+            for (unsigned x = 0; x < size; ++x)
+            {
+                const double value = std::min(
+                    std::abs(h[std::size_t{y} * size + x]) / static_cast<double>(size * size), 1.0);
+                pixels[((originY + y) * kWaterImageSize + originX + x) * 4 + channel] =
+                    static_cast<std::uint8_t>(value * 255.9989929199219);
+            }
+    }
+    return pixels;
+}
+
+SourceMaterial ReadMaterial(const std::filesystem::path &root,
+                            const std::vector<std::filesystem::path> &sourcePaths,
+                            const std::string &name)
+{
+    ledger::Use("material", name);
+    const auto path = FindMaterial(root, sourcePaths, name);
+    if (path.empty())
+    {
+        // CoD4's stock placeholders are not exported as material JSON. They
+        // are untextured lit surfaces, so the conversion can represent them
+        // without inventing a texture dependency.
+        if (name == "mc/lambert1" || name == "mc/gfx_missing_fx")
+        {
+            SourceMaterial material;
+            material.name = name;
+            material.color = "$white";
+            material.normal = "$identitynormalmap";
+            material.response = "$white";
+            return material;
+        }
+        throw std::runtime_error(
+            "missing IW3 material '" + name +
+            "'; add the matching IW3 main and raw directories with --search-path");
+    }
+    const Json source = ReadJson(path);
+    SourceMaterial material;
+    material.name = name;
+    material.surfaceTypeBits = source.value("surfaceTypeBits", 0u);
+    if (source.contains("gameFlags"))
+    {
+        const auto &flags = source.at("gameFlags");
+        if (!flags.is_array())
+            throw std::runtime_error("Invalid IW3 material game flags: " + name);
+        material.castsShadow = false;
+        for (const auto &flag : flags)
+            if (flag == "CASTS_SHADOW")
+                material.castsShadow = true;
+    }
+    const std::string techset = source.at("techniqueSet").get<std::string>();
+    material.flagWave = techset.starts_with("mc_") && techset.find("_flag_") != std::string::npos;
+    if (source.contains("iw7FlagWave"))
+    {
+        const auto &wave = source.at("iw7FlagWave");
+        if (!wave.is_array() || wave.size() != 12)
+            throw std::runtime_error("Invalid IW7 flag wave of material " + name);
+        std::array<float, 12> parameters{};
+        for (std::size_t index = 0; index < parameters.size(); ++index)
+            parameters[index] = wave.at(index).get<float>();
+        material.iw7FlagWave = parameters;
+        material.iw7FlagClassic = source.value("iw7FlagClassic", false);
+        material.flagWave = true;
+    }
+    material.reactiveMotion = source.value("iw7ReactiveMotion", false);
+    if (source.contains("iw7Flow"))
+    {
+        const auto &flow = source.at("iw7Flow");
+        SourceMaterial::Flow value;
+        value.map = flow.at("map").get<std::string>();
+        value.surface = flow.at("surface").get<std::string>();
+        value.scale = flow.at("scale").at(0).get<float>();
+        value.period = {flow.at("period").at(0).get<float>(), flow.at("period").at(2).get<float>()};
+        value.hdr = flow.at("hdr").get<bool>();
+        if (value.map.empty() || value.surface.empty() || value.map.find("..") != std::string::npos ||
+            value.surface.find("..") != std::string::npos || !std::isfinite(value.scale) ||
+            !(value.period[0] > 0) || !(value.period[1] > 0))
+            throw std::runtime_error("unsupported IW7 model flow contract: " + name);
+        material.flow = std::move(value);
+    }
+    if (source.contains("iw7ModelUvd"))
+    {
+        const auto &uvd = source.at("iw7ModelUvd");
+        SourceMaterial::Uvd value;
+        value.map = uvd.at("map").get<std::string>();
+        value.scroll = uvd.at("scroll").get<std::array<float, 4>>();
+        value.strength = uvd.at("strength").get<std::array<float, 2>>();
+        if (uvd.contains("cells"))
+            value.cells = uvd.at("cells").get<std::array<float, 2>>();
+        const auto finite = [](const auto &values) {
+            return std::ranges::all_of(values, [](const float v) { return std::isfinite(v); });
+        };
+        if (value.map.empty() || value.map.find("..") != std::string::npos || !finite(value.scroll) ||
+            !finite(value.strength) || material.flow ||
+            (value.cells && (!finite(*value.cells) || !((*value.cells)[0] > 0) || !((*value.cells)[1] > 0))))
+            throw std::runtime_error("unsupported IW7 model UV-distortion contract: " + name);
+        material.uvd = std::move(value);
+    }
+    // caulk_shadow (Greenband's gnbr_caulk_shadow, an mc_unlit material) is
+    // invisible geometry that only casts sun shadow, as shadowcaster is.
+    const bool caulkShadow = name.find("caulk_shadow") != std::string::npos;
+    material.entityNoDraw = source.value("iw7ShadowOnly", false);
+    material.staticModelShadowOnly = material.entityNoDraw || techset == "shadowcaster" ||
+                                    techset == "mc_shadowcaster" || caulkShadow;
+    if (caulkShadow)
+        material.castsShadow = true;
+    if (techset == "shadowcaster" || caulkShadow)
+    {
+        material.kind = SurfaceKind::skipped;
+        material.shadowOnly = true;
+        for (const auto &state : source.value("stateBits", Json::array()))
+        {
+            if (!state.contains("cullFace"))
+                continue;
+            const std::string cull = state.at("cullFace").get<std::string>();
+            if (cull != "none" && cull != "back" && cull != "front")
+                throw std::runtime_error("Unsupported IW3 material culling: " + name);
+            material.cullMode = cull == "none" ? 0 : cull == "back" ? 1 : 2;
+            break;
+        }
+        return material;
+    }
+    if (std::regex_search(techset, std::regex("(^|_)sky($|_)", std::regex::icase)))
+    {
+        material.kind = SurfaceKind::skipped;
+        return material;
+    }
+    bool authoredAlpha =
+        std::regex_search(techset, std::regex("(^|_)[at][0-9]", std::regex::icase)) ||
+        techset.find("alphatest") != std::string::npos;
+    const bool blended = std::regex_search(techset, std::regex("(^|_)b[0-9]", std::regex::icase));
+    std::string alphaMode = "ge128";
+    bool foundColorState = false;
+    for (const auto &texture : source.value("textures", Json::array()))
+    {
+        const std::string semantic = texture.value("semantic", std::string{});
+        // IW3 exports the detail map with the colour semantic (TS_COLOR_MAP); only its
+        // sampler name tells it apart, so the name wins (Nuketown me_sidewalk_01).
+        if (semantic == "detailMap" || texture.value("name", std::string{}) == "detailMap")
+            material.detail = texture.at("image").get<std::string>();
+        else if (semantic == "colorMap")
+            material.color = texture.at("image").get<std::string>();
+        else if (semantic == "normalMap")
+            material.normal = texture.at("image").get<std::string>();
+        else if (semantic == "specularMap")
+            material.response = texture.at("image").get<std::string>();
+        else if (semantic == "replayColorMap")
+            material.replayColor = texture.at("image").get<std::string>();
+        else if (semantic == "replayNormalGlossMap")
+            material.replayNormalGloss = texture.at("image").get<std::string>();
+        else if (semantic == "replayRevealMap")
+            material.replayReveal = texture.at("image").get<std::string>();
+        else if (semantic == "maskMap")
+            material.mask = texture.at("image").get<std::string>();
+    }
+    // An extraction's unlit material carries its mask in the response image (MAP_UNLIT_MASKS: the colour's alpha is
+    // multiplied by the mask's); without a mask it takes no response image, so none stands in for one.
+    if (source.contains("unlitMask"))
+    {
+        material.unlitMask = source.at("unlitMask").get<bool>();
+        material.response = material.unlitMask ? material.mask : std::string{};
+    }
+    material.skyObject = source.value("skyObject", false);
+    for (const auto &layer : source.value("replayLayers", Json::array()))
+    {
+        SourceMaterial::ReplayLayer entry;
+        entry.material = layer.at("material").get<std::string>();
+        entry.multiply = layer.value("multiply", false);
+        if (layer.contains("reveal"))
+            entry.reveal = layer.at("reveal").get<float>();
+        entry.alpha = layer.value("alpha", false);
+        material.replayLayers.push_back(std::move(entry));
+    }
+    material.replaySpecularAlpha = source.value("replaySpecularAlpha", false);
+    material.replayGloss = source.value("replayGloss", false);
+    material.replayStockOnly = source.value("replayStockOnly", false);
+    if (source.contains("iw7Distortion"))
+    {
+        const Json &distortion = source.at("iw7Distortion");
+        material.distortionMap = distortion.at("map").get<std::string>();
+        material.distortionUvAnimation = distortion.at("uvAnimation").get<std::array<float, 4>>();
+        material.distortionScale = distortion.at("scale").get<std::array<float, 2>>();
+        if (material.distortionMap.empty() || !material.replayStockOnly)
+            throw std::runtime_error("unsupported IW7 world distortion contract: " + name);
+    }
+    if (source.contains("replayRevealSharpness"))
+        material.replayRevealSharpness = source.at("replayRevealSharpness").get<float>();
+    material.replayAlpha = source.value("replayAlpha", false);
+    // High dynamic range: IW7 lamps emit up to 318 in their lightmaps' units.
+    if (source.contains("replayEmission"))
+    {
+        std::array<float, 3> emission{};
+        const auto &values = source.at("replayEmission");
+        for (std::size_t channel = 0; channel < 3; ++channel)
+        {
+            emission[channel] = values.at(channel).get<float>();
+            if (!std::isfinite(emission[channel]) || emission[channel] < 0 || emission[channel] > 65504)
+                throw std::runtime_error("invalid stock emission: " + name);
+        }
+        material.replayEmission = emission;
+    }
+    for (const auto &constant : source.value("constants", Json::array()))
+    {
+        const std::string key = constant.value("name", std::string{});
+        if (key == "colorTint")
+            material.tint = Literal<4>(constant.at("literal"), material.tint);
+        else if (key == "detailScale")
+        {
+            // Detail tiling is often far above the colour constants' range.
+            const auto &literal = constant.at("literal");
+            if (literal.is_array() && literal.size() >= 2)
+                for (std::size_t axis = 0; axis < 2; ++axis)
+                {
+                    const float value = literal.at(axis).get<float>();
+                    if (!std::isfinite(value) || value == 0 || std::abs(value) > 4096)
+                        throw std::runtime_error("invalid IW3 detailScale: " + name);
+                    material.detailScale[axis] = value;
+                }
+        }
+        else if (key == "envMapParms")
+            material.environment = Literal<4>(constant.at("literal"), material.environment);
+        else if (key == "emissionScale")
+            material.emission = Literal<4>(constant.at("literal"), {1, 1, 1, 1})[0];
+        else if (key == "uvAnimParms" || key == "maskUvAnimParms" || key == "transmission")
+        {
+            auto &values = key == "uvAnimParms"       ? material.uvAnimation
+                           : key == "maskUvAnimParms" ? material.maskUvAnimation
+                                                      : material.transmission;
+            const auto &literal = constant.at("literal");
+            for (std::size_t axis = 0; axis < 3; ++axis)
+                values[axis] = literal.at(axis).get<float>();
+        }
+    }
+    for (const auto &state : source.value("stateBits", Json::array()))
+    {
+        if (!foundColorState && state.value("colorWriteRgb", false) &&
+            !state.value("polymodeLine", false))
+        {
+            const auto cull = state.value("cullFace", std::string("back"));
+            if (cull != "none" && cull != "back" && cull != "front")
+                throw std::runtime_error("Unsupported IW3 material culling: " + name);
+            material.cullMode = cull == "none" ? 0 : cull == "back" ? 1 : 2;
+            foundColorState = true;
+        }
+        const std::string test = state.value("alphaTest", std::string{});
+        if (test == "gt0" || test == "lt128" || test == "ge128")
+        {
+            authoredAlpha = true;
+            if (state.value("colorWriteRgb", false) && !state.value("polymodeLine", false))
+                alphaMode = test;
+        }
+    }
+    if (material.color.empty())
+        throw std::runtime_error("IW3 material has no color map: " + name);
+    // Decals offset their lit pass (IW3 technique 7). Every IW3 material also
+    // carries an offset2 debug state, so only the lit pass's state counts.
+    // An IW7 material whose decal bias comes from an unlit state (no lit technique, so no state 7) carries
+    // iw7DecalBias from the IW7 exporter (export_materials: decal_offset); the lit state below reads the others.
+    material.depthBias = source.value("iw7DecalBias", false);
+    if (const auto entries = source.find("stateBitsEntry");
+        entries != source.end() && entries->is_array() && entries->size() > 7)
+    {
+        const int litState = entries->at(7).get<int>();
+        const auto &states = source.value("stateBits", Json::array());
+        if (litState >= 0 && static_cast<std::size_t>(litState) < states.size())
+        {
+            const std::string offset =
+                states.at(litState).value("polygonOffset", std::string("offset0"));
+            material.depthBias = material.depthBias || (offset != "offset0" && offset != "offsetShadowmap");
+        }
+    }
+    // IW3 layers world decals (sorts "decal - bottom 1" 9 to "decal - top"
+    // 23: stains, cracks, signage, painted numbers) on the coplanar surface
+    // by sort order alone, without polygon offset. Replay's depth prepass and
+    // reversed depth make such layers z-fight unless they are biased.
+    material.sortKey = source.value("sortKey", 4u);
+    // Decal sorts take NO hardware bias (only IW3's own polygonOffset levels
+    // above do): the rank nudge below orders coplanar layers on its own, in
+    // proportion to distance. Replay's slope-scaled bias grows at grazing
+    // angles and with distance; it pulled Discovery's yellow sign
+    // (dsc_dec_sign_industrial_e), which the map buries 2 units behind an
+    // opaque rib wall where IW3 never shows it, through that wall seen at an
+    // angle and not head-on (owner 2026-10-17: "looking directly at the signs
+    // makes the sign print disappear"). Before 2026-10-17 every sort >= 9 was
+    // biased, which also kept an opaque decal-sort base (dsc_ter_ice_icicle_wall,
+    // sort 12) from out-pulling the blended layer on it (mtl_p_dec_ice_cliffs,
+    // sort 43): with no bias on either, their ranks (4, 35) order them.
+    // Layer rank (flags bits 12-17) = IW3 sort - 8. The vertex shaders pull a
+    // ranked surface toward the camera by rank * 1.2e-5 of its distance, which
+    // keeps IW3's draw order between coplanar layers at
+    // any distance and view angle. Replay's opaque lit pass tests depth EQUAL
+    // against the prepass, so equal-depth layers otherwise swap with the
+    // camera (owner test 2026-10-15: Greenband sand, gravel, mats, windows).
+    if (material.sortKey > 8)
+        material.flags |= std::min(63u, material.sortKey - 8) << 12;
+    // The colour pass's blend (lit, lit sun, lit sun shadow, then the unlit
+    // and emissive passes of unlit techniques). Unlit additive, screen and
+    // multiply techniques (wc_unlit_add, wc_unlit_falloff_add god rays and
+    // window hotspots, wc_unlit_multiply stains) carry no _b<n> name tag.
+    // Nor do unlit alpha-blended layers (srcalpha/invsrcalpha, no depth write:
+    // Greenband's koi mural waves, plants and fish). Their depth states carry a
+    // gt0 alpha test, which made them depth-writing cut-outs: a layer sitting
+    // slightly in front then hid the later layers behind it (the koi head under
+    // waves_depthfix, map simulator 2026-10-16). IW3 draws them blended.
+    bool stateBlended = false;
+    if (const auto entries = source.find("stateBitsEntry");
+        entries != source.end() && entries->is_array())
+    {
+        const auto &states = source.value("stateBits", Json::array());
+        for (const int technique : {7, 8, 9, 4, 5})
+        {
+            if (static_cast<std::size_t>(technique) >= entries->size())
+                continue;
+            const int index = entries->at(technique).get<int>();
+            if (index < 0 || static_cast<std::size_t>(index) >= states.size())
+                continue;
+            const auto &state = states.at(index);
+            if (!state.value("colorWriteRgb", false) || state.value("polymodeLine", false))
+                continue;
+            const std::string polygonOffset = state.value("polygonOffset", std::string("offset0"));
+            material.polygonOffset = polygonOffset == "offset1" ? 1u : polygonOffset == "offset2" ? 2u : 0u;
+            const std::string src = state.value("srcBlendRgb", std::string("one"));
+            const std::string dst = state.value("dstBlendRgb", std::string("zero"));
+            if (src == "srcalpha" && dst == "invsrcalpha" && !state.value("depthWrite", true))
+                stateBlended = true;
+            if (dst == "one" && (src == "one" || src == "invdestcolor"))
+                material.blend = 1; // additive; IW3 "screen" adds in Replay's HDR target
+            else if (dst == "one" && src == "srcalpha")
+                material.blend = 3; // alpha-weighted additive
+            else if ((src == "zero" && dst == "srccolor") || (src == "destcolor" && dst == "zero"))
+                material.blend = 2; // multiply
+            break;
+        }
+    }
+    if (material.blend)
+    {
+        // Additive and multiply layers never occlude and take no light.
+        material.castsShadow = false;
+        material.flags |= material.blend == 2 ? 512u : 256u;
+    }
+    // IW3 falloff (vertcol_simple_fog_foa, zfeather_foa_nf_eo_dtex vertex
+    // shaders): f = saturate((N.V)^2 * falloffParms.z + falloffParms.w) and
+    // colour *= f * lerp(falloffEndColor, falloffBeginColor, f), so god rays
+    // fade to nothing edge on. The zfeather and eyeoffset model techniques also
+    // fade alpha by saturate(view depth * featherParms.x) and draw
+    // eyeOffsetParms.x units nearer the camera.
+    if (techset.find("falloff") != std::string::npos)
+    {
+        std::array<float, 4> parms{0, 0, 2.128f, -0.064f}, begin{1, 1, 1, 1}, end{.5f, .5f, .5f, .5f};
+        for (const auto &constant : source.value("constants", Json::array()))
+        {
+            const std::string key = constant.value("name", std::string{});
+            if (key == "falloffParms")
+                parms = Literal<4>(constant.at("literal"), parms, true);
+            else if (key == "falloffBeginColor")
+                begin = Literal<4>(constant.at("literal"), begin);
+            else if (key == "falloffEndColor")
+                end = Literal<4>(constant.at("literal"), end);
+            else if (key == "featherParms" && techset.find("zfeather") != std::string::npos)
+                material.effect[0] = Literal<4>(constant.at("literal"), {0, 0, 0, 0})[0];
+            else if (key == "eyeOffsetParms" && techset.find("eyeoffset") != std::string::npos)
+                material.effect[1] = Literal<4>(constant.at("literal"), {0, 0, 0, 0})[0];
+        }
+        const float beginLevel = std::max({begin[0], begin[1], begin[2], 1.0e-3f});
+        const float endLevel = std::max({end[0], end[1], end[2], 0.0f});
+        for (std::size_t channel = 0; channel < 3; ++channel)
+            material.tint[channel] *= begin[channel];
+        material.environment = {parms[2], parms[3], endLevel / beginLevel, 0};
+        material.flags |= 1024u;
+    }
+    material.kind = blended || stateBlended || material.blend
+                        ? SurfaceKind::glass
+                        : (authoredAlpha ? SurfaceKind::cutout : SurfaceKind::opaque);
+    // A blended layer that is not glass (snow, ice, dirt and grime decals)
+    // takes the lighting of the surface under it (2048): drawn like glass, its
+    // averaged-environment film and missing shadow made it change against that
+    // surface with the view (Discovery's ice cave, owner test 2026-10-15).
+    if (material.kind == SurfaceKind::glass && !material.blend &&
+        !std::regex_search(name, std::regex("glass", std::regex::icase)))
+        material.flags |= 2048u;
+    // IW3 wc_water draws a procedural wave map (waterMap) in waterColor with the
+    // envMapParms reflection; its colorMap slot holds a placeholder (case64blue
+    // on Discovery) that IW3 never shows. Draw the water colour, reflective.
+    if (techset.find("water") != std::string::npos)
+    {
+        std::array<float, 4> water{0.1f, 0.1f, 0.1f, 1.0f};
+        for (const auto &constant : source.value("constants", Json::array()))
+            if (constant.value("name", std::string{}) == "waterColor")
+                water = Literal<4>(constant.at("literal"), water);
+        material.color = "$white";
+        material.normal = "$identitynormalmap";
+        material.response = "$water_specular";
+        material.tint = {water[0], water[1], water[2], 1.0f};
+        material.kind = SurfaceKind::opaque;
+        material.blend = 0;
+        material.flags &= ~(256u | 512u | 1024u);
+        material.castsShadow = false;
+        for (const auto &texture : source.value("textures", Json::array()))
+            if (texture.value("semantic", std::string{}) == "waterMap" && texture.contains("water"))
+            {
+                const auto &spectrum = texture.at("water");
+                auto data = std::make_shared<SourceMaterial::Water>();
+                const unsigned m = spectrum.at("m").get<unsigned>();
+                if (m != spectrum.at("n").get<unsigned>() || m == 0 || m > 64 || (m & (m - 1)))
+                    throw std::runtime_error("IW3 water " + name + " has an unsupported size");
+                data->size = m;
+                data->h0 = DecodeFloats(spectrum.at("h0"), std::size_t{m} * m * 2, "H0");
+                data->wTerm = DecodeFloats(spectrum.at("wTerm"), std::size_t{m} * m, "wTerm");
+                data->environment = {0.1f, 0.95f, 5.0f, 2.5f};
+                for (const auto &constant : source.value("constants", Json::array()))
+                    if (constant.value("name", std::string{}) == "envMapParms")
+                        data->environment = Literal<4>(constant.at("literal"), data->environment);
+                data->color = {water[0], water[1], water[2]};
+                material.water = std::move(data);
+            }
+    }
+    if (material.kind == SurfaceKind::cutout)
+        material.flags = alphaMode == "gt0" ? 8u : (alphaMode == "lt128" ? 16u : 0u);
+    // `$identitynormalmap` is a stock flat-normal placeholder.  Its texture
+    // payload is retained for the native material contract, but setting the
+    // authored-normal flag would make SourceWorldNormal decode it as a
+    // slope-map (the shader's flag is the normal-map enable bit).
+    if (!material.normal.empty() && material.normal != "$identitynormalmap")
+        material.flags |= 32u;
+    if (!material.response.empty())
+        material.flags |= 64u;
+    // IW3 unlit techniques (mc_unlit, mc_unlit_replace, lamp and screen
+    // materials) show their colour map as emitted light. So do the model and
+    // materials whose techset has no lit pass at all (stateBitsEntry: lit
+    // techniques 7-20 absent, unlit 4 or emissive 5 present), as IW3 never
+    // lights them: the model effect technique (mc_effect), e.g. Discovery's
+    // lantern glass mtl_p_rus_vork_lantern_glass_out, which drew dark and lit.
+    bool noLitPass = false;
+    if (const auto entries = source.find("stateBitsEntry");
+        entries != source.end() && entries->is_array() && entries->size() > 20)
+    {
+        noLitPass = (entries->at(4).get<int>() >= 0 || entries->at(5).get<int>() >= 0);
+        for (std::size_t technique = 7; technique <= 20 && noLitPass; ++technique)
+            noLitPass = entries->at(technique).get<int>() < 0;
+    }
+    if (techset.find("unlit") != std::string::npos || noLitPass)
+        material.flags |= 128u;
+    // An unlit surface that emits above 1 carries the gain in the material parameters' w (unused
+    // by unlit shading) and flag bit 20; the world shader applies it with MAP_EMISSION.
+    if ((material.flags & 128u) && material.emission > 1.0f)
+    {
+        material.flags |= kEmissionFlag;
+        material.environment[3] = material.emission;
+    }
+    // IW3 polygon offset level (flags bits 18-19), which the vertex shaders
+    // turn into IW3's distance-scaled pull toward the camera.
+    material.flags |= material.polygonOffset << 18;
+    if (source.value("iw7BackFaceNormals", false))
+        material.flags |= kBackFaceNormalsFlag;
+    if (source.contains("iw7RevealSharpness"))
+    {
+        material.flags |= kRevealLayerFlag;
+        // Kept above 0: the shaders find a reveal ramp by its sharpness (MAP_REVEAL_LAYERS).
+        material.revealSharpness = std::max(source.at("iw7RevealSharpness").get<float>(), 1e-6f);
+    }
+    material.clampAxes = source.value("iw7ClampAxes", 0u) & 3u;
+    material.volumetricExtinction = source.value("iw7VolumetricExtinction", false);
+    return material;
+}
+
+// Replay draws translucent surfaces by material sort key first (GfxDrawSurf
+// primarySortKey is the key's top field); stock GfxWorld's translucent range is
+// sortKeyTransBegin 18 .. sortKeyTransEnd 34, with 24 its distortion key. IW3
+// orders its blended layers by sort (Greenband's koi mural: background 9,
+// waves 10, plants 14, fish 29, scales 30). Giving every converted blended
+// layer one key (26) left their order to the engine's draw order, so layers
+// swapped (map simulator, 2026-10-16). Spread the map's distinct IW3 sorts over
+// the translucent range in IW3 order; a single sort keeps 26.
+std::map<unsigned, std::uint8_t> TranslucentSortKeys(const std::set<unsigned> &iw3Sorts)
+{
+    std::vector<std::uint8_t> slots;
+    for (std::uint8_t key = 18; key <= 34; ++key)
+        if (key != 24)
+            slots.push_back(key);
+    std::map<unsigned, std::uint8_t> keys;
+    if (iw3Sorts.size() == 1)
+    {
+        keys[*iw3Sorts.begin()] = 26;
+        return keys;
+    }
+    std::size_t index = 0;
+    for (const unsigned sort : iw3Sorts)
+    {
+        keys[sort] = slots[index * (slots.size() - 1) / (iw3Sorts.size() - 1)];
+        ++index;
+    }
+    return keys;
+}
+
+bool FoliageName(const std::string &value)
+{
+    return std::regex_search(
+        value, std::regex("leaf|leaves|foliage|tree|bush|branch|grass|fern|pine|hedge|palm",
+                          std::regex::icase));
+}
+
+std::string TileKey(const SourceMaterial &material)
+{
+    std::string key = material.color + '\x1f' + material.normal + '\x1f' + material.response;
+    for (const float value : material.tint)
+    {
+        const std::uint32_t bits = std::bit_cast<std::uint32_t>(value);
+        key.append(reinterpret_cast<const char *>(&bits), sizeof(bits));
+    }
+    return key;
+}
+
+void ClassifyFoliage(SourceMaterial &material, const Image &color)
+{
+    if (material.kind != SurfaceKind::opaque || !FoliageName(material.name + " " + material.color))
+        return;
+    std::size_t low = 0, high = 0;
+    for (std::size_t offset = 3; offset < color.rgba.size(); offset += 4)
+        color.rgba[offset] < 128 ? ++low : ++high;
+    const std::size_t threshold = color.rgba.size() / 4 / 1000;
+    if (low > threshold && high > threshold)
+        material.kind = SurfaceKind::cutout;
+}
+
+std::vector<std::uint8_t> Sha256(const std::span<const std::uint8_t> data)
+{
+    std::vector<std::uint8_t> digest(32);
+    if (BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, const_cast<PUCHAR>(data.data()),
+                   static_cast<ULONG>(data.size()), digest.data(), static_cast<ULONG>(digest.size())) < 0)
+        throw std::runtime_error("cannot calculate SHA-256");
+    return digest;
+}
+
+std::string Hex(const std::span<const std::uint8_t> data)
+{
+    constexpr char digits[] = "0123456789abcdef";
+    std::string output(data.size() * 2, '0');
+    for (std::size_t index = 0; index < data.size(); ++index)
+    {
+        output[index * 2] = digits[data[index] >> 4];
+        output[index * 2 + 1] = digits[data[index] & 15];
+    }
+    return output;
+}
+
+std::vector<std::uint8_t> Unhex(const std::string &text)
+{
+    if (text.size() % 2)
+        throw std::runtime_error("invalid embedded technique hex");
+    std::vector<std::uint8_t> output(text.size() / 2);
+    auto digit = [](const char value) -> unsigned {
+        if (value >= '0' && value <= '9')
+            return value - '0';
+        if (value >= 'a' && value <= 'f')
+            return value - 'a' + 10;
+        throw std::runtime_error("invalid embedded technique hex digit");
+    };
+    for (std::size_t index = 0; index < output.size(); ++index)
+        output[index] =
+            static_cast<std::uint8_t>((digit(text[index * 2]) << 4) | digit(text[index * 2 + 1]));
+    return output;
+}
+
+template <class T> T At(const std::vector<std::uint8_t> &data, const std::size_t offset)
+{
+    if (offset > data.size() || sizeof(T) > data.size() - offset)
+        throw std::runtime_error("invalid technique template");
+    T result{};
+    std::memcpy(&result, data.data() + offset, sizeof(result));
+    return result;
+}
+
+template <class T>
+void Put(std::vector<std::uint8_t> &data, const std::size_t offset, const T value)
+{
+    if (offset > data.size() || sizeof(T) > data.size() - offset)
+        throw std::runtime_error("invalid technique template");
+    std::memcpy(data.data() + offset, &value, sizeof(value));
+}
+
+std::string HlslNumber(const float value)
+{
+    if (!std::isfinite(value))
+        throw std::runtime_error("IW3 material has a nonfinite shader constant");
+    std::array<char, 48> buffer{};
+    const auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value,
+                                      std::chars_format::general,
+                                      std::numeric_limits<float>::max_digits10);
+    if (result.ec != std::errc{})
+        throw std::runtime_error("cannot format IW3 material shader constant");
+    return std::string(buffer.data(), result.ptr);
+}
+
+// Compiled shaders by source and target: a map compiles one source many times (each material variant), and the
+// render cache keeps them between runs (D3DCompile output is deterministic).
+std::filesystem::path g_shaderCacheRoot;
+std::mutex g_shaderCacheMutex;
+// Each shader compiles once in a run: threads that need one being compiled wait for it.
+std::unordered_map<std::string, std::shared_future<std::vector<std::uint8_t>>> g_compiledShaders;
+
+std::vector<std::uint8_t> CompileUncached(const std::string &source, const char *target, const char *name);
+
+// IW8 Radiant's map surface shader (world JSON "iw8r_surface_shader": the IW8RSurface struct and its iw8rSurface
+// function), prepended to the surface pixel shaders with IW8R_CUSTOM; empty for maps without one.
+std::string g_surfaceShaderSource;
+// True when that shader reads the scene's depth (iw8rSceneDepth): the lit techniques then bind Replay's scene depth
+// (code image 0) where the thermal mask (code image 79) was.
+bool g_surfaceSceneDepth = false;
+
+std::vector<std::uint8_t> Compile(const std::string &source, const char *target, const char *name)
+{
+    std::string keyed = std::string(target) + '\n' + name + '\n' + source;
+    const auto digest = Sha256(std::span(reinterpret_cast<const std::uint8_t *>(keyed.data()), keyed.size()));
+    const std::string key = Hex(std::span(digest).first(16)) + "_" + target;
+    std::promise<std::vector<std::uint8_t>> promise;
+    std::shared_future<std::vector<std::uint8_t>> pending;
+    bool owner = false;
+    {
+        std::lock_guard lock(g_shaderCacheMutex);
+        const auto [found, inserted] = g_compiledShaders.try_emplace(key);
+        if (inserted)
+        {
+            found->second = promise.get_future().share();
+            owner = true;
+        }
+        pending = found->second;
+    }
+    if (!owner)
+        return pending.get();
+    try
+    {
+        // The cache is an optimisation: an entry that does not read (another conversion writing it) compiles again,
+        // and an entry that exists is never replaced (a reader could fail).
+        const auto file = g_shaderCacheRoot.empty() ? std::filesystem::path{} : g_shaderCacheRoot / ("shader_" + key + ".dxbc");
+        std::error_code error;
+        std::vector<std::uint8_t> program;
+        if (!file.empty() && std::filesystem::is_regular_file(file, error))
+        {
+            try
+            {
+                program = ReadBytes(file);
+            }
+            catch (const std::exception &)
+            {
+                program.clear();
+            }
+            if (program.size() < 4 || std::memcmp(program.data(), "DXBC", 4) != 0)
+                program.clear();
+        }
+        if (program.empty())
+        {
+            program = CompileUncached(source, target, name);
+            if (!file.empty() && !std::filesystem::exists(file, error))
+            {
+                auto partial = file;
+                partial += "." + std::to_string(GetCurrentProcessId()) + "." + std::to_string(GetCurrentThreadId()) +
+                           ".partial";
+                try
+                {
+                    std::filesystem::create_directories(g_shaderCacheRoot, error);
+                    WriteBytes(partial, program);
+                    if (!std::filesystem::exists(file, error))
+                        std::filesystem::rename(partial, file, error);
+                }
+                catch (const std::exception &)
+                {
+                }
+                std::filesystem::remove(partial, error);
+            }
+        }
+        promise.set_value(program);
+        return program;
+    }
+    catch (...)
+    {
+        promise.set_exception(std::current_exception());
+        std::lock_guard lock(g_shaderCacheMutex);
+        g_compiledShaders.erase(key);
+        throw;
+    }
+}
+
+std::vector<std::uint8_t> CompileUncached(const std::string &source, const char *target, const char *name)
+{
+    ID3DBlob *program = nullptr, *errors = nullptr;
+    const HRESULT result = D3DCompile(source.data(), source.size(), name, nullptr, nullptr, "main",
+                                      target, D3DCOMPILE_ENABLE_STRICTNESS, 0, &program, &errors);
+    std::string message;
+    if (errors)
+    {
+        message.assign(static_cast<const char *>(errors->GetBufferPointer()),
+                       errors->GetBufferSize());
+        errors->Release();
+    }
+    if (FAILED(result) || !program)
+        throw std::runtime_error("cannot compile IW3 Replay shader: " + message);
+    const auto *begin = static_cast<const std::uint8_t *>(program->GetBufferPointer());
+    std::vector<std::uint8_t> output(begin, begin + program->GetBufferSize());
+    program->Release();
+    if (output.size() < 4 || std::memcmp(output.data(), "DXBC", 4) != 0)
+        throw std::runtime_error("D3D compiler returned an invalid shader");
+    return output;
+}
+
+Json Shader(const unsigned type, const std::string &label, const std::string &debugName,
+            const std::vector<std::uint8_t> &program)
+{
+    const auto digest = Sha256(program);
+    const std::string name = "mw120r_" + label + "_" + Hex(std::span(digest).first(12));
+    std::array<std::uint8_t, 40> header{};
+    const std::uint32_t length = static_cast<std::uint32_t>(program.size());
+    std::uint32_t identity{};
+    std::memcpy(&identity, digest.data(), sizeof(identity));
+    std::memcpy(header.data() + 32, &length, sizeof(length));
+    std::memcpy(header.data() + 36, &identity, sizeof(identity));
+    return {{"type", type},
+            {"name", name},
+            {"debugName", debugName},
+            {"header", Hex(header)},
+            {"program", Hex(program)}};
+}
+
+// A technique's state identities from a seed, its header and its shaders: techniques that share a header but not
+// their shaders (a world variant and its native twin, a glass layer with and without a detail map) keep apart.
+void PatchStateIdentity(Json &technique, const std::vector<std::uint8_t> &seed)
+{
+    auto states = Unhex(technique.at("states").get<std::string>());
+    const auto header = Unhex(technique.at("header").get<std::string>());
+    std::string shaders;
+    for (const auto &shader : technique.at("shaders"))
+        if (shader.is_string())
+            shaders += shader.get<std::string>() + ';';
+    for (std::size_t offset = 0; offset < states.size(); offset += 16)
+    {
+        std::vector<std::uint8_t> input = seed;
+        input.insert(input.end(), header.begin(), header.end());
+        input.insert(input.end(), shaders.begin(), shaders.end());
+        input.push_back(static_cast<std::uint8_t>(offset));
+        const auto digest = Sha256(input);
+        std::copy_n(digest.begin(), 8, states.begin() + offset);
+    }
+    technique["states"] = Hex(states);
+}
+
+// Shipped Replay decal techniques (tw/..._812004, tmo/..._814000) set otherBits
+// 0x10, the polygon-offset depth bias. IW3 decals need it to avoid z-fighting
+// with the coplanar surface they sit on.
+void ApplyDepthBias(Json &techset)
+{
+    techset["name"] = techset.at("name").get<std::string>() + "_bias";
+    for (auto &technique : techset.at("techniques"))
+    {
+        auto header = Unhex(technique.at("header").get<std::string>());
+        Put<std::uint64_t>(header, 0xA0, At<std::uint64_t>(header, 0xA0) | 0x10ull);
+        technique["header"] = Hex(header);
+        technique["name"] = technique.at("name").get<std::string>() + "_bias";
+        PatchStateIdentity(technique, header);
+    }
+}
+
+std::string CoveragePrefix(const std::string &source, const std::string &signature)
+{
+    const std::string original = "float4 main(Input input) : SV_TARGET0";
+    const std::size_t start = source.find(original);
+    const std::size_t clip = source.find("clip(texel.a - .5);", start);
+    if (start == std::string::npos || clip == std::string::npos)
+        throw std::runtime_error("embedded IW3 shader is missing alpha coverage");
+    return source.substr(0, start) + signature +
+           source.substr(start + original.size(),
+                         clip + std::strlen("clip(texel.a - .5);") - (start + original.size()));
+}
+
+std::string PrepassSource(const std::string &source)
+{
+    return CoveragePrefix(source, "float main(Input input) : SV_TARGET1") + R"(
+    float3 normal = normalize(input.normal);
+    uint3 packed = (uint3)(saturate(normal * .5 + .5) * 1023.0);
+    return asfloat(packed.x | (packed.y << 10) | (packed.z << 20));
+}
+)";
+}
+
+std::string VelocitySource(const std::string &source)
+{
+    // Replay's VELRGD prepass writes screen motion to target 0 beside the packed
+    // normal. The encoding is the shipped model prepass (cb7[176].x selects raw).
+    return CoveragePrefix(source, "void main(Input input, out float4 velocity : SV_TARGET0, "
+                                  "out float packedNormal : SV_TARGET1)") +
+           R"(
+    float3 normal = normalize(input.normal);
+    uint3 packed = (uint3)(saturate(normal * .5 + .5) * 1023.0);
+    packedNormal = asfloat(packed.x | (packed.y << 10) | (packed.z << 20));
+    float4 delta = (input.clipPosition.xyxy / input.clipPosition.w -
+                    input.previousClipPosition.xyxy / input.previousClipPosition.w) *
+                   float4(.5, -.5, 960, -540);
+    float2 fast = sqrt(saturate((abs(delta.zw) - 3) * 0.012987));
+    float2 slow = min(abs(delta.zw) * (1.0 / 3.0), 1);
+    float2 encoded = (slow - fast) * .5 + fast;
+    encoded = saturate((delta.xy >= 0 ? encoded : -encoded) * .5 + 0.501961);
+    velocity = float4(0, 0, replayLighting[176].x != 0 ? delta.xy : encoded);
+}
+)";
+}
+
+std::string ShadowSource(const std::string &source)
+{
+    std::string output = CoveragePrefix(source, "void main(Input input)");
+    const std::string key = "uint kind = flags % 4;";
+    const std::size_t where = output.find(key);
+    if (where == std::string::npos)
+        throw std::runtime_error("embedded IW3 shader is missing its material kind");
+    output.insert(where + key.size(), "\n    if (kind != 3) return;");
+    output += "\n}\n";
+    return output;
+}
+
+void AppendTextureArgument(Json &technique, std::string_view hex);
+
+void AppendCoverageArgument(Json &technique, bool staticModel)
+{
+    AppendTextureArgument(technique, staticModel ? "051000000000" : "051001000000");
+}
+
+// Per-instance IW3 light-grid lighting for static models (StaticModelLightingImage):
+// material texture slot 0x3D bound to the lit pixel shader's t6.
+constexpr std::uint8_t kInstanceLightingSlot = 0x3D;
+constexpr unsigned kInstanceLightingColumns = 256; // instances per block row (16 x 5 texels each)
+
+void AppendTextureArgument(Json &technique, const std::string_view hex)
+{
+    auto header = Unhex(technique.at("header").get<std::string>());
+    auto args = Unhex(technique.at("args").get<std::string>());
+    const auto argument = Unhex(std::string(hex));
+    // Shipped records keep each argument category sorted by type (code
+    // constants, textures, then code images); insert into the stable block.
+    std::size_t at = (std::size_t{header[0x78]} + header[0x79]) * 6;
+    const std::size_t end = at + std::size_t{header[0x7A]} * 6;
+    if (end > args.size())
+        throw std::runtime_error("technique argument counts exceed the argument array");
+    // Within the material-texture arguments (type 5) Replay resolves each slot
+    // by searching the material's slot-sorted texture table onward from the
+    // previous argument's match, with no end check (R_ResourceBindings_ApplyBufferCommandList 0x1419824A0). The
+    // arguments must therefore ascend by slot: t9/slot 0x3C appended after
+    // t8/slot 0x3F walked off the table and bound garbage (map-load crash at
+    // 0x1413BEAD0, x64dbg owner session 2026-10-15).
+    const auto slotOf = [](const std::vector<std::uint8_t> &bytes, const std::size_t offset) {
+        return bytes[offset + 4] | (bytes[offset + 5] << 8);
+    };
+    while (at < end && (args[at] < argument[0] ||
+                        (args[at] == argument[0] &&
+                         (argument[0] != 5 || slotOf(args, at) <= slotOf(argument, 0)))))
+        at += 6;
+    args.insert(args.begin() + static_cast<std::ptrdiff_t>(at), argument.begin(), argument.end());
+    ++header[0x7A];
+    technique["header"] = Hex(header);
+    technique["args"] = Hex(args);
+}
+
+// Re-points a technique's code image argument (type 1) from one code image to another, the register kept.
+void RepointCodeImage(Json &technique, const std::uint16_t from, const std::uint16_t to)
+{
+    auto args = Unhex(technique.at("args").get<std::string>());
+    unsigned found = 0;
+    for (std::size_t at = 0; at + 6 <= args.size(); at += 6)
+        if (args[at] == 1 && (args[at + 4] | (args[at + 5] << 8)) == from)
+        {
+            args[at + 4] = static_cast<std::uint8_t>(to & 0xff);
+            args[at + 5] = static_cast<std::uint8_t>(to >> 8);
+            ++found;
+        }
+    if (found != 1)
+        throw std::runtime_error("the lit technique has no single code image " + std::to_string(from) +
+                                 " argument to give the scene depth");
+    technique["args"] = Hex(args);
+}
+
+void KeepReferencedShaders(Json &techset)
+{
+    std::set<std::string> needed;
+    for (const auto &technique : techset.at("techniques"))
+        for (unsigned index = 0; index < 4; ++index)
+            if (!technique.at("shaders").at(index).is_null())
+                needed.insert(std::to_string(14 + index) + ":" +
+                              technique.at("shaders").at(index).get<std::string>());
+    Json shaders = Json::object();
+    for (const auto &key : needed)
+        shaders[key] = techset.at("shaders").at(key);
+    techset["shaders"] = std::move(shaders);
+}
+
+void ApplyStaticModelTechniqueLayout(Json &techset)
+{
+    struct Layout
+    {
+        std::string_view header;
+        std::string_view states;
+        std::string_view args;
+    };
+    static constexpr std::array layouts{
+        Layout{"000000000000000000000000000001ffff00ffff0000ffffffffffffffffffffffffffffffffff00000"
+               "00000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+               "00000000000000000000000000000000000000000000000000000000000000000000000000000002000"
+               "00000006000020200000000000000000000000000000000000000000000000001000000010e00000000"
+               "0000000000000fffffff0000000000000000",
+               "e5d7c9c4c8440c1b0000000000000000c58419b67124f4440000000000000000",
+               "00020000a400000205000100"},
+        Layout{"00000000000000001b000000000001ffff00ffff0000ffffffffffffffffffffffffffffffffff00000"
+               "00000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+               "00000000000000000000000000000000000000000000000000000000000000000000000000000002000"
+               "00000006000000100000000000000000000000000000000000000000000000001000000210e00000000"
+               "000000000000ffffffff0000000000000000",
+               "29a55f10348ebbff0000000000000000", "00020000a400000205000100"},
+        Layout{"00000000000000001c000000000001ffff00ffff0000ffffffffffffffffffffffffffffffffff00000"
+               "00000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+               "00000000000000000000000000000000000000000000000000000000000000000000000000000002000"
+               "00000006000000100000000000000000000000000000000000000000000000001000000220e00000000"
+               "000000000000ffffffff0000000000000000",
+               "7cc9a43f6b5db46a0000000000000000", "00020000a400000205000100"},
+        Layout{"000000000000000022000000000001ffffffffff0000ffffffffffffffffffffffffffffffffff00000"
+               "00000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+               "0000000000000000000000000000000000000000000000000000000000000000000000000000000e040"
+               "00000008000020100000000000000000000000000000000000000000000000002000000010800000000"
+               "000000000000000000000000000000000000",
+               "9553be8776054af60000000000000000",
+               "00020000a400001204000000000205000100001006000400001007006700011003004f00030200001f0"
+               "0030201001d00030202001e00031004002c00051000000000051001000900051002003b000812070000"
+               "00091001000000091002000900091003003600091000004800"},
+    };
+    if (techset.at("techniques").size() != layouts.size())
+        throw std::runtime_error("embedded Replay technique set has the wrong pass count");
+    techset["header"] = "00000000000000002010000400000000140009000000000001000018040000000000000000"
+                        "000000000000000000000000000000000000000000000000000000";
+    for (std::size_t index = 0; index < layouts.size(); ++index)
+    {
+        Json &technique = techset.at("techniques").at(index);
+        technique["header"] = layouts[index].header;
+        technique["states"] = layouts[index].states;
+        technique["args"] = layouts[index].args;
+    }
+    techset["source"] =
+        "Exact Replay 1.20 static-model technique layout; process/GPU pointers removed.";
+}
+
+enum class TechniqueGeometry
+{
+    world,
+    staticModel,
+    // Script, dynamic and effect XModels draw through Replay's DObj path.
+    entity,
+};
+
+// World atlas tiles may span 2x2 cells (sources at least twice the cell size);
+// set by PrepareRenderAssets before any techset is compiled.
+std::string g_tileSpanDefines;
+// MAP_EMISSION when a world material emits above 1 (kEmissionFlag); IW3 maps compile without it.
+std::string g_emissionDefines;
+// MAP_BACK_FACE_NORMALS when a material lights its back faces (kBackFaceNormalsFlag); IW3 maps compile without it.
+std::string g_backFaceDefines;
+// MAP_REVEAL_LAYERS when a world layer blends by its reveal map (kRevealLayerFlag); IW3 maps compile without it.
+std::string g_revealDefines;
+// MAP_SKY_OBJECTS when surfaces draw in the sky at run time (skyObject materials, flag bit 23); IW3 maps compile without
+// it.
+std::string g_skyObjectDefines;
+// MAP_UNLIT_MASKS when an extraction's unlit materials carry their masks in the response image (unlitMask); IW3 maps
+// compile without it.
+std::string g_unlitMaskDefines;
+// MAP_UV_ANIMATION when a material animates its UVs (an extraction's uvAnimParms, maskUvAnimParms): each generated
+// material keeps its animation in row 3 of its pixel constants and its mask's in row 2 (cb3, which the stock root
+// signatures of our techniques bind and our shaders otherwise leave unread); IW3 maps compile without it.
+std::string g_uvAnimationDefines;
+// MAP_TRANSMISSION when a material passes light to its far side (an extraction's transmission): each generated material
+// keeps it in row 1 of its pixel constants (and a reveal ramp's sharpness in row 1.w: MAP_REVEAL_LAYERS); IW3 maps compile
+// without it.
+std::string g_transmissionDefines;
+// MAP_UV_CLAMP when a material's colour sampler clamps (an extraction's iw7ClampAxes): each generated material keeps
+// its axes in row 3.w of its pixel constants; IW3 maps compile without it.
+std::string g_uvClampDefines;
+// MAP_VOLUMETRIC_EXTINCTION when a material dims by the volumetric extinction before it (an extraction's
+// iw7VolumetricExtinction): each generated material keeps 1 for it in row 2.w of its pixel constants; IW3 maps compile
+// without it.
+std::string g_extinctionDefines;
+// MAP_IW7_SPECULAR when the extraction's specular maps hold IW7's F0 and gloss ("iw7_specular"); IW3 maps compile
+// without it.
+std::string g_iw7SpecularDefines;
+// The pixel defines of native world techsets: world surfaces that bind their material's own images (a Replay
+// material per source material) in place of their tile of the shared atlases.
+constexpr std::string_view kNativeWorldDefines = "#define MAP_NATIVE_WORLD 1\n";
+
+void ReplaceAtlasTokens(std::string &source, const unsigned columns, const unsigned atlasSize)
+{
+    if (!g_tileSpanDefines.empty() && source.rfind(g_tileSpanDefines, 0) != 0)
+        source = g_tileSpanDefines + source;
+    for (const auto &[token, value] :
+         {std::pair<std::string_view, unsigned>{"ATLAS_COLUMNS", columns},
+          std::pair<std::string_view, unsigned>{"ATLAS_SIZE", atlasSize}})
+        for (std::size_t at = source.find(token); at != std::string::npos;
+             at = source.find(token, at + 1))
+            source.replace(at, token.size(), std::to_string(value));
+}
+
+Json BuildTechset(const std::string &map, const unsigned columns, const unsigned atlasSize,
+                  const TechniqueGeometry geometry,
+                  const std::string &glassEnvironment, const bool instanceLighting = false,
+                  const std::string &lightVolumeDefines = {},
+                  const std::string &lightmapDefines = {}, const bool bakedSun = false,
+                  const std::string &modelVertexDefines = {},
+                  const std::string &detailDefines = {},
+                  const std::string &pixelDefines = {})
+{
+    const bool staticModel = geometry == TechniqueGeometry::staticModel;
+    const bool entity = geometry == TechniqueGeometry::entity;
+    const bool model = staticModel || entity;
+    Json techset = Json::parse(
+        ResourceText(entity ? IDR_IW3_ENTITY_TECHSET_TEMPLATE : IDR_IW3_TECHSET_TEMPLATE));
+    if (staticModel)
+        ApplyStaticModelTechniqueLayout(techset);
+    std::string pixelSource =
+        "#define MAP_SOURCE_SUN_MASK 1\n#define MAP_SOURCE_CHANNELS 1\n" + glassEnvironment +
+        g_emissionDefines + g_backFaceDefines + g_revealDefines + g_iw7SpecularDefines + g_skyObjectDefines +
+        g_unlitMaskDefines + g_uvAnimationDefines + g_transmissionDefines + g_uvClampDefines + g_extinctionDefines +
+        g_surfaceShaderSource;
+    if (const char *diag = std::getenv("IW8_ZONETOOL_DIAG_NO_PROBES"); diag && *diag == '1')
+        pixelSource += "#define MAP_DIAG_NO_PROBES 1\n";
+    if (model)
+        pixelSource += "#define STATIC_MODEL 1\n";
+    if (staticModel && instanceLighting)
+        pixelSource += "#define MAP_INSTANCE_LIGHTING 1\n";
+    if (entity && !lightVolumeDefines.empty())
+        pixelSource += lightVolumeDefines;
+    const bool lightmapTextures = !model && !lightmapDefines.empty();
+    if (lightmapTextures)
+        pixelSource += lightmapDefines;
+    if (bakedSun)
+        pixelSource += "#define MAP_BAKED_SUN 1\n";
+    const bool detailTexture = model && !detailDefines.empty();
+    const bool waterTexture = !model && detailDefines.find("#define MAP_WATER ") != std::string::npos;
+    // Native world surfaces bind their material's own images (kNativeWorldDefines), their detail map at slot 0x3D.
+    const bool nativeWorld = !model && pixelDefines.find(kNativeWorldDefines) != std::string::npos;
+    const bool nativeDetailTexture = nativeWorld && detailDefines.find("#define MAP_DETAIL ") != std::string::npos;
+    // IW7's model flow (MAP_FLOW): the flow map and its surface parameters at slots 0x39 / 0x3A.
+    const bool flowTextures = model && pixelDefines.find("#define MAP_FLOW ") != std::string::npos;
+    // IW7's model UV distortion (MAP_UVD): its noise map at slot 0x39.
+    const bool uvdTexture = model && pixelDefines.find("#define MAP_UVD ") != std::string::npos;
+    pixelSource += detailDefines;
+    pixelSource += pixelDefines;
+    pixelSource += ResourceText(IDR_IW3_PIXEL_SHADER);
+    ReplaceAtlasTokens(pixelSource, columns, atlasSize);
+    // Coverage passes of material-texture surfaces bind no view mip bias; sample with the gradients alone. They bind
+    // only the colour (MAP_COVERAGE: the sky surfaces' masks stay out of them).
+    const std::string coverageSource =
+        "#define MAP_COVERAGE 1\n" + (model || nativeWorld ? "#define MAP_MIP_BIAS 0\n" + pixelSource : pixelSource);
+    const auto pixel = Compile(pixelSource, "ps_5_0", "iw3_map_surface.hlsl");
+    const std::string vertexDefines =
+        (entity ? "#define MAP_ENTITY 1\n" : "") +
+        (model ? g_backFaceDefines + modelVertexDefines : g_skyObjectDefines);
+    const char *vertexName = entity        ? "iw3_entity_vertex.hlsl"
+                             : staticModel ? "iw3_model_vertex.hlsl"
+                                           : "iw3_world_vertex.hlsl";
+    const std::string vertexText =
+        ResourceText(model ? IDR_IW3_MODEL_VERTEX_SHADER : IDR_IW3_VERTEX_SHADER);
+    const auto vertex = Compile(vertexDefines + vertexText, "vs_5_0", vertexName);
+    Json pixelShader = Shader(17, "iw3_surface", "iw3_map_surface.hlsl", pixel);
+    Json vertexShader = Shader(14, entity ? "iw3_entity" : staticModel ? "iw3_model" : "iw3_world",
+                               vertexName, vertex);
+    Json &lit = techset.at("techniques").back();
+    auto litHeader = Unhex(lit.at("header").get<std::string>());
+    if (!model)
+        litHeader[0x9C] = 35;
+    lit["header"] = Hex(litHeader);
+    const Json oldPixel = lit.at("shaders").at(3);
+    if (oldPixel.is_string())
+        techset.at("shaders").erase("17:" + oldPixel.get<std::string>());
+    lit["shaders"][3] = pixelShader.at("name");
+    lit["shaders"][0] = vertexShader.at("name");
+    techset["shaders"]["17:" + pixelShader.at("name").get<std::string>()] = pixelShader;
+    techset["shaders"]["14:" + vertexShader.at("name").get<std::string>()] = vertexShader;
+    const auto techDigest = Sha256(pixel);
+    techset["name"] = "tw/mw120r_" + map +
+                      (entity ? "_entity_" : staticModel ? "_model_" : "_") +
+                      Hex(std::span(techDigest).first(6));
+    lit["name"] =
+        "TECHNIQUE_LIT_FORWARDPLUS_BITMASK_" + techset.at("name").get<std::string>().substr(3);
+    if ((staticModel && instanceLighting) || (entity && !lightVolumeDefines.empty()))
+        AppendTextureArgument(lit, "051006003d00"); // type 5, pixel stage, t6, slot 0x3D
+    if (lightmapTextures)
+    {
+        AppendTextureArgument(lit, "051007003e00"); // t7, slot 0x3E: lightmap A + direction X
+        AppendTextureArgument(lit, "051008003f00"); // t8, slot 0x3F: lightmap B + direction Y
+    }
+    if (bakedSun)
+        AppendTextureArgument(lit, "051009003c00"); // t9, slot 0x3C: baked sun depth
+    if (detailTexture)
+        AppendTextureArgument(lit, "05100a003e00"); // t10, slot 0x3E: IW3 detail map
+    if (waterTexture)
+        AppendTextureArgument(lit, "05100a003d00"); // t10, slot 0x3D: IW3 water flipbook
+    if (nativeDetailTexture)
+        AppendTextureArgument(lit, "05100a003d00"); // t10, slot 0x3D: the native world material's detail map
+    if (nativeWorld)
+        AppendTextureArgument(lit, "05100b004000"); // t11, slot 0x40: lightmap primary-light mask
+    if (flowTextures)
+    {
+        AppendTextureArgument(lit, "05100c003900"); // t12, slot 0x39: MaterialTextureID_flowMap
+        AppendTextureArgument(lit, "05100d003a00"); // t13, slot 0x3A: MaterialTextureID_flowSurfaceParamsMap
+    }
+    if (uvdTexture)
+        AppendTextureArgument(lit, "05100c003900"); // t12, slot 0x39: the noise map, in MaterialTextureID_flowMap
+    if (g_surfaceSceneDepth)
+        RepointCodeImage(lit, 79, 0); // t4 (models t3): Replay's scene depth for iw8rSceneDepth
+    PatchStateIdentity(lit, pixel);
+
+    const auto depthProgram =
+        Compile(PrepassSource(coverageSource), "ps_5_0", "iw3_depth_coverage.hlsl");
+    Json depthShader = Shader(17, "iw3_depth", "iw3_depth_coverage.hlsl", depthProgram);
+    Json &depth = techset.at("techniques").front();
+    auto depthHeader = Unhex(depth.at("header").get<std::string>());
+    if (At<std::uint32_t>(depthHeader, 8) != 0)
+        throw std::runtime_error("embedded technique set has no depth prepass");
+    if (!model)
+    {
+        depthHeader[0x9C] = 35;
+    }
+    depth["header"] = Hex(depthHeader);
+    depth["shaders"] =
+        Json::array({vertexShader.at("name"), nullptr, nullptr, depthShader.at("name")});
+    depth["name"] = "TECHNIQUE_DEPTH_PREPASS_" + depthShader.at("name").get<std::string>();
+    AppendCoverageArgument(depth, model);
+    PatchStateIdentity(depth, depthProgram);
+    techset["shaders"]["17:" + depthShader.at("name").get<std::string>()] = depthShader;
+
+    const auto shadowProgram =
+        Compile(ShadowSource(coverageSource), "ps_5_0", "iw3_shadow_coverage.hlsl");
+    Json shadowShader = Shader(17, "iw3_shadow", "iw3_shadow_coverage.hlsl", shadowProgram);
+    Json shadowVertexShader;
+    if (model)
+    {
+        const char *shadowVertexName =
+            entity ? "iw3_entity_shadow_vertex.hlsl" : "iw3_model_shadow_vertex.hlsl";
+        const auto shadowVertexProgram =
+            Compile(vertexDefines + "#define MAP_MODEL_SHADOW_PASS 1\n" + vertexText, "vs_5_0",
+                    shadowVertexName);
+        shadowVertexShader = Shader(14, entity ? "iw3_entity_shadow" : "iw3_model_shadow",
+                                    shadowVertexName, shadowVertexProgram);
+        techset["shaders"]["14:" + shadowVertexShader.at("name").get<std::string>()] =
+            shadowVertexShader;
+    }
+    // Replay picks the DObj prepass variant per draw (velocity, stencil and
+    // object-id, rigid or skinned). The lit pass only shades where its prepass
+    // wrote depth, so every variant the shipped mco techset carries must exist
+    // or the object draws nothing. Stencil/object-id differ only in state.
+    std::vector<std::uint8_t> velocityProgram;
+    Json velocityShader;
+    Json velocityVertexShader;
+    if (entity)
+    {
+        velocityProgram = Compile(VelocitySource("#define MAP_ENTITY_VELOCITY 1\n"
+                                                 "#define MAP_LIGHTING_ROWS 177\n" +
+                                                 coverageSource),
+                                  "ps_5_0", "iw3_velocity_coverage.hlsl");
+        velocityShader = Shader(17, "iw3_velocity", "iw3_velocity_coverage.hlsl", velocityProgram);
+        const auto velocityVertexProgram =
+            Compile(vertexDefines + "#define MAP_ENTITY_VELOCITY 1\n" + vertexText, "vs_5_0",
+                    "iw3_entity_velocity_vertex.hlsl");
+        velocityVertexShader = Shader(14, "iw3_entity_velocity", "iw3_entity_velocity_vertex.hlsl",
+                                      velocityVertexProgram);
+        techset["shaders"]["17:" + velocityShader.at("name").get<std::string>()] = velocityShader;
+        techset["shaders"]["14:" + velocityVertexShader.at("name").get<std::string>()] =
+            velocityVertexShader;
+    }
+    std::vector<unsigned> shadowTypes;
+    for (auto &technique : techset.at("techniques"))
+    {
+        auto header = Unhex(technique.at("header").get<std::string>());
+        const unsigned type = At<std::uint32_t>(header, 8);
+        const bool velocityPrepass =
+            type == 3 || type == 6 || type == 12 || type == 15 || type == 21 || type == 24;
+        if (entity && velocityPrepass)
+        {
+            // DObj prepass with motion: previous-frame bone rows and view.
+            technique["shaders"] = Json::array(
+                {velocityVertexShader.at("name"), nullptr, nullptr, velocityShader.at("name")});
+            technique["name"] = "TECHNIQUE_DEPTH_PREPASS_" + std::to_string(type) + "_" +
+                                velocityShader.at("name").get<std::string>();
+            AppendCoverageArgument(technique, model);
+            PatchStateIdentity(technique, velocityProgram);
+            continue;
+        }
+        if (entity && (type == 9 || type == 18))
+        {
+            technique["shaders"] =
+                Json::array({vertexShader.at("name"), nullptr, nullptr, depthShader.at("name")});
+            technique["name"] = "TECHNIQUE_DEPTH_PREPASS_" + std::to_string(type) + "_" +
+                                depthShader.at("name").get<std::string>();
+            AppendCoverageArgument(technique, model);
+            PatchStateIdentity(technique, depthProgram);
+            continue;
+        }
+        if (type != 27 && type != 28)
+            continue;
+        if (!model)
+        {
+            header[0x9C] = 35;
+        }
+        technique["header"] = Hex(header);
+        technique["shaders"] =
+            Json::array({model ? shadowVertexShader.at("name") : vertexShader.at("name"),
+                         nullptr, nullptr, shadowShader.at("name")});
+        technique["name"] = "TECHNIQUE_SHADOW_" + std::to_string(type) + "_" +
+                            shadowShader.at("name").get<std::string>();
+        AppendCoverageArgument(technique, model);
+        PatchStateIdentity(technique, shadowProgram);
+        shadowTypes.push_back(type);
+    }
+    std::sort(shadowTypes.begin(), shadowTypes.end());
+    if (shadowTypes != std::vector<unsigned>{27, 28})
+        throw std::runtime_error("embedded technique set has incomplete shadow passes");
+    techset["shaders"]["17:" + shadowShader.at("name").get<std::string>()] = shadowShader;
+    auto header = Unhex(techset.at("header").get<std::string>());
+    if (staticModel)
+    {
+        Put<std::uint32_t>(header, 0x10, 589844u);
+        Put<std::uint64_t>(header, 8, At<std::uint64_t>(header, 8) & ~0x400000000ull);
+    }
+    Put<std::uint32_t>(header, 8, At<std::uint32_t>(header, 8) & ~0x1000u);
+    techset["header"] = Hex(header);
+    techset["coveragePrepass"] = true;
+    techset["coverageShadows"] = true;
+    for (const auto &technique : techset.at("techniques"))
+        if (technique.at("shaders").at(0).is_null() || technique.at("shaders").at(3).is_null())
+            throw std::runtime_error("embedded technique set has an unassigned pass: " +
+                                     technique.at("name").get<std::string>());
+    KeepReferencedShaders(techset);
+    return techset;
+}
+
+Json CreateVariant(const Json &base, const Json &material, const std::string &stem,
+                   const std::string &map, const std::string &kind)
+{
+    Json techset = base;
+    Json lit = techset.at("techniques").back();
+    auto header = Unhex(lit.at("header").get<std::string>());
+    std::uint64_t other = At<std::uint64_t>(header, 0xA0);
+    const bool foliage = kind.ends_with("foliage");
+    const bool glass = kind.ends_with("glass") || kind.starts_with("glass");
+    // glass_b<n>: an IW3 additive or multiply layer (GlassBlendBits).
+    unsigned blend = 0;
+    if (const auto at = kind.find("glass_b"); glass && at != std::string::npos &&
+                                               at + 7 < kind.size() && kind[at + 7] >= '0' &&
+                                               kind[at + 7] <= '9')
+        blend = static_cast<unsigned>(kind[at + 7] - '0'); // not glass_bias
+    other = (other & ~(0xE00ull | 3ull)) | (foliage ? 0x800ull : 0xC00ull);
+    Put<std::uint64_t>(header, 0xA0, other);
+    Put<std::uint64_t>(header, 0xA8, glass ? GlassBlendBits(blend) : 0ull);
+    lit["header"] = Hex(header);
+    const auto identity = Sha256(header);
+    techset["name"] = "tw/mw120r_" + map + "_" + kind + "_" + Hex(std::span(identity).first(6));
+    lit["name"] = "TECHNIQUE_LIT_FORWARDPLUS_BITMASK_mw120r_" + map + "_" + kind;
+    PatchStateIdentity(lit, header);
+    Json techniques = Json::array();
+    if (foliage)
+    {
+        for (const auto &source : techset.at("techniques"))
+        {
+            auto coverageHeader = Unhex(source.at("header").get<std::string>());
+            if (At<std::uint32_t>(coverageHeader, 8) == 34)
+                continue;
+            Json coverage = source;
+            Put<std::uint64_t>(coverageHeader, 0xA0,
+                               At<std::uint64_t>(coverageHeader, 0xA0) & ~3ull);
+            coverage["header"] = Hex(coverageHeader);
+            PatchStateIdentity(coverage, coverageHeader);
+            techniques.push_back(coverage);
+        }
+    }
+    techniques.push_back(lit);
+    techset["techniques"] = std::move(techniques);
+    auto techsetHeader = Unhex(techset.at("header").get<std::string>());
+    std::uint64_t flags = At<std::uint64_t>(techsetHeader, 8) & ~(0x8080ull | 1ull);
+    if (foliage)
+        flags |= 0xA1;
+    else if (glass)
+        flags = (flags & ~0x20ull) | 1ull;
+    Put<std::uint64_t>(techsetHeader, 8, flags);
+    std::fill(techsetHeader.begin() + 24, techsetHeader.begin() + 56, std::uint8_t{0});
+    for (const auto &technique : techset.at("techniques"))
+    {
+        const auto techniqueHeader = Unhex(technique.at("header").get<std::string>());
+        const unsigned type = At<std::uint32_t>(techniqueHeader, 8);
+        if (type >= 256)
+            throw std::runtime_error("technique type exceeds the Replay mask");
+        techsetHeader[24 + type / 8] |= static_cast<std::uint8_t>(1u << (type % 8));
+    }
+    techset["header"] = Hex(techsetHeader);
+    KeepReferencedShaders(techset);
+    const std::string materialFile = stem + "." + kind + ".material.json";
+    const std::string techsetFile = stem + "." + kind + ".techset.json";
+    Json variant = material;
+    variant["techset"] = techset.at("name");
+    variant["techsetDefinition"] = techsetFile;
+    return {{"definition", materialFile},
+            {"techsetFile", techsetFile},
+            {"techset", std::move(techset)},
+            {"material", std::move(variant)}};
+}
+
+Image Downsample(const Image &source, const bool color)
+{
+    const unsigned width = std::max(1u, source.width / 2), height = std::max(1u, source.height / 2);
+    Image output{width, height,
+                 std::vector<std::uint8_t>(static_cast<std::size_t>(width) * height * 4)};
+    // An atlas-sized level's rows go to every core (each output texel reads only its own four).
+    const auto rows = [&](const std::size_t, const std::size_t firstRow, const std::size_t endRow) {
+        for (auto y = static_cast<unsigned>(firstRow); y < endRow; ++y)
+            for (unsigned x = 0; x < width; ++x)
+            {
+                float sum[4]{};
+                for (unsigned iy = 0; iy < 2; ++iy)
+                    for (unsigned ix = 0; ix < 2; ++ix)
+                    {
+                        const unsigned sx = std::min(source.width - 1, x * 2 + ix);
+                        const unsigned sy = std::min(source.height - 1, y * 2 + iy);
+                        const std::size_t offset =
+                            (static_cast<std::size_t>(sy) * source.width + sx) * 4;
+                        const float alpha = source.rgba[offset + 3] / 255.0f;
+                        for (unsigned channel = 0; channel < 4; ++channel)
+                        {
+                            const float value = color && channel < 3
+                                                    ? LinearByte(source.rgba[offset + channel]) * alpha
+                                                    : source.rgba[offset + channel] / 255.0f;
+                            sum[channel] += value * 0.25f;
+                        }
+                    }
+                for (unsigned channel = 0; channel < 4; ++channel)
+                {
+                    auto &target = output.rgba[(static_cast<std::size_t>(y) * width + x) * 4 + channel];
+                    const float value = sum[channel];
+                    if (color && channel < 3)
+                        target = SrgbByte(
+                            std::clamp(sum[3] > 1.0e-6f ? value / sum[3] : 0.0f, 0.0f, 1.0f));
+                    else
+                        target = static_cast<std::uint8_t>(
+                            std::clamp(std::lround(value * 255.0f), 0l, 255l));
+                }
+            }
+    };
+    const std::size_t texels = static_cast<std::size_t>(width) * height;
+    ForChunks(height, texels >= 1u << 22 ? std::min<std::size_t>(ChunkCount(texels), height) : 1, rows);
+    return output;
+}
+
+// Alpha-tested textures lose coverage in averaged mips, so thin cutouts (wire,
+// fence slats, foliage) erode and vanish with distance. Scale each mip's alpha
+// so the fraction of texels passing the 0.5 test matches the top level.
+void PreserveAlphaCoverage(Image &image, const bool color)
+{
+    const auto passing = [](const Image &level, const unsigned threshold) {
+        std::size_t count = 0;
+        for (std::size_t index = 3; index < level.rgba.size(); index += 4)
+            count += level.rgba[index] >= threshold;
+        return count;
+    };
+    const std::size_t texels = static_cast<std::size_t>(image.width) * image.height;
+    if (!texels)
+        return;
+    const double coverage = double(passing(image, 128)) / double(texels);
+    if (coverage <= 0.0 || coverage >= 1.0)
+        return;
+    Image previous = image;
+    for (std::size_t level = 0;; ++level)
+    {
+        if (previous.width == 1 && previous.height == 1)
+            break;
+        const unsigned width = std::max(1u, previous.width / 2);
+        const unsigned height = std::max(1u, previous.height / 2);
+        if (level >= image.mips.size())
+            image.mips.push_back(Downsample(previous, color));
+        Image &mip = image.mips[level];
+        if (mip.width != width || mip.height != height)
+            throw std::runtime_error("invalid authored image mip dimensions");
+        std::array<std::size_t, 256> histogram{};
+        for (std::size_t index = 3; index < mip.rgba.size(); index += 4)
+            ++histogram[mip.rgba[index]];
+        // Lowest alpha whose pass count still reaches the top-level coverage.
+        const auto wanted = static_cast<std::size_t>(
+            std::ceil(coverage * double(width) * double(height)));
+        unsigned threshold = 255;
+        for (std::size_t total = 0; threshold > 0; --threshold)
+        {
+            total += histogram[threshold];
+            if (total >= wanted)
+                break;
+        }
+        threshold = std::max(threshold, 1u);
+        // Cap the boost: large scales pushed faint gap texels (white lattice
+        // gaps) over the cutoff and made them flicker between mips.
+        const float scale = std::min(128.0f / float(threshold), 2.0f);
+        for (std::size_t index = 3; index < mip.rgba.size(); index += 4)
+            mip.rgba[index] = static_cast<std::uint8_t>(
+                std::min(255l, std::lround(mip.rgba[index] * scale)));
+        previous = mip;
+    }
+}
+
+std::vector<std::uint8_t> MipChain(Image image, const unsigned levels, const bool color)
+{
+    std::vector<std::uint8_t> output;
+    auto authoredMips = std::move(image.mips);
+    image.mips.clear();
+    for (unsigned level = 0; level < levels; ++level)
+    {
+        output.insert(output.end(), image.rgba.begin(), image.rgba.end());
+        output.resize((output.size() + 15) & ~std::size_t{15});
+        if (level + 1 < levels)
+        {
+            const unsigned width = std::max(1u, image.width / 2);
+            const unsigned height = std::max(1u, image.height / 2);
+            if (level < authoredMips.size())
+            {
+                if (authoredMips[level].width != width ||
+                    authoredMips[level].height != height ||
+                    authoredMips[level].rgba.size() !=
+                        static_cast<std::size_t>(width) * height * 4)
+                    throw std::runtime_error("invalid authored image mip dimensions");
+                image = std::move(authoredMips[level]);
+            }
+            else
+                image = Downsample(image, color);
+        }
+    }
+    return output;
+}
+
+// Fast BC7 mode 6 block (one subset, 7-bit RGBA endpoints with p-bits,
+// 4-bit indices): principal-axis endpoints, all four p-bit pairs scored.
+// DirectXTex's reference BC7 search took hours for an 8192 atlas. Returns the squared error of the block.
+int EncodeBc7Mode6Block(const std::uint8_t (&pixels)[16][4], std::uint8_t *out)
+{
+    static constexpr int weights[16]{0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64};
+    float mean[4]{};
+    for (const auto &pixel : pixels)
+        for (int c = 0; c < 4; ++c)
+            mean[c] += pixel[c] / 16.0f;
+    float covariance[4][4]{};
+    for (const auto &pixel : pixels)
+        for (int a = 0; a < 4; ++a)
+            for (int b = 0; b < 4; ++b)
+                covariance[a][b] += (pixel[a] - mean[a]) * (pixel[b] - mean[b]);
+    float axis[4]{1, 1, 1, 1};
+    for (int iteration = 0; iteration < 8; ++iteration)
+    {
+        float next[4]{};
+        for (int a = 0; a < 4; ++a)
+            for (int b = 0; b < 4; ++b)
+                next[a] += covariance[a][b] * axis[b];
+        float length = 0;
+        for (const float value : next)
+            length = std::max(length, std::abs(value));
+        if (length < 1e-6f)
+            break;
+        for (int a = 0; a < 4; ++a)
+            axis[a] = next[a] / length;
+    }
+    float low = 1e30f, high = -1e30f;
+    for (const auto &pixel : pixels)
+    {
+        float t = 0;
+        for (int c = 0; c < 4; ++c)
+            t += (pixel[c] - mean[c]) * axis[c];
+        low = std::min(low, t);
+        high = std::max(high, t);
+    }
+    float axisLength = 0;
+    for (const float value : axis)
+        axisLength += value * value;
+    if (axisLength > 0)
+    {
+        low /= axisLength;
+        high /= axisLength;
+    }
+    float ends[2][4];
+    for (int c = 0; c < 4; ++c)
+    {
+        ends[0][c] = std::clamp(mean[c] + axis[c] * low, 0.0f, 255.0f);
+        ends[1][c] = std::clamp(mean[c] + axis[c] * high, 0.0f, 255.0f);
+    }
+    int bestError = INT_MAX;
+    int bestQ[2][4]{}, bestP[2]{};
+    std::uint8_t bestIndex[16]{};
+    for (int pbits = 0; pbits < 4; ++pbits)
+    {
+        const int p[2]{pbits & 1, pbits >> 1};
+        int q[2][4], value[2][4];
+        for (int e = 0; e < 2; ++e)
+            for (int c = 0; c < 4; ++c)
+            {
+                q[e][c] = std::clamp(static_cast<int>(std::lround((ends[e][c] - p[e]) / 2.0f)), 0, 127);
+                value[e][c] = q[e][c] * 2 + p[e];
+            }
+        int palette[16][4];
+        for (int i = 0; i < 16; ++i)
+            for (int c = 0; c < 4; ++c)
+                palette[i][c] = ((64 - weights[i]) * value[0][c] + weights[i] * value[1][c] + 32) >> 6;
+        int error = 0;
+        std::uint8_t index[16];
+        for (int pixel = 0; pixel < 16 && error < bestError; ++pixel)
+        {
+            int best = INT_MAX;
+            for (int i = 0; i < 16; ++i)
+            {
+                int d = 0;
+                for (int c = 0; c < 4; ++c)
+                {
+                    const int delta = palette[i][c] - pixels[pixel][c];
+                    d += delta * delta;
+                }
+                if (d < best)
+                {
+                    best = d;
+                    index[pixel] = static_cast<std::uint8_t>(i);
+                }
+            }
+            error += best;
+        }
+        if (error < bestError)
+        {
+            bestError = error;
+            std::memcpy(bestQ, q, sizeof(q));
+            bestP[0] = p[0];
+            bestP[1] = p[1];
+            std::memcpy(bestIndex, index, sizeof(index));
+        }
+    }
+    if (bestIndex[0] & 8)
+    {
+        // The anchor index stores only three bits: swap the endpoints.
+        for (int c = 0; c < 4; ++c)
+            std::swap(bestQ[0][c], bestQ[1][c]);
+        std::swap(bestP[0], bestP[1]);
+        for (auto &index : bestIndex)
+            index = static_cast<std::uint8_t>(15 - index);
+    }
+    std::memset(out, 0, 16);
+    unsigned position = 0;
+    const auto put = [&](const unsigned value, const unsigned bits) {
+        for (unsigned bit = 0; bit < bits; ++bit, ++position)
+            if (value >> bit & 1u)
+                out[position >> 3] |= static_cast<std::uint8_t>(1u << (position & 7));
+    };
+    put(1u << 6, 7); // mode 6
+    for (int c = 0; c < 4; ++c)
+    {
+        put(static_cast<unsigned>(bestQ[0][c]), 7);
+        put(static_cast<unsigned>(bestQ[1][c]), 7);
+    }
+    put(static_cast<unsigned>(bestP[0]), 1);
+    put(static_cast<unsigned>(bestP[1]), 1);
+    put(bestIndex[0], 3);
+    for (int pixel = 1; pixel < 16; ++pixel)
+        put(bestIndex[pixel], 4);
+    return bestError;
+}
+
+// One endpoint pair and the indices of `count` channels from `first` of a block: principal-axis endpoints, then
+// rounds of index assignment and least-squares endpoints, each quantized to `endpointBits` as BC7 unquantizes them.
+// Returns the squared error over those channels.
+int FitBc7Endpoints(const int (&texels)[16][4], const int first, const int count, const int endpointBits,
+                    const int indexBits, int (&endpoints)[2][3], std::uint8_t (&indices)[16])
+{
+    static constexpr int weights2[4]{0, 21, 43, 64};
+    static constexpr int weights3[8]{0, 9, 18, 27, 37, 46, 55, 64};
+    const int *weights = indexBits == 3 ? weights3 : weights2;
+    const int levels = 1 << indexBits, maximum = (1 << endpointBits) - 1;
+    const auto expand = [&](const int q) { return (q << (8 - endpointBits)) | (q >> (2 * endpointBits - 8)); };
+    const auto quantize = [&](const float value) {
+        const int rounded = std::clamp(static_cast<int>(std::lround(value * maximum / 255.0f)), 0, maximum);
+        int best = rounded;
+        for (int q = std::max(0, rounded - 1); q <= std::min(maximum, rounded + 1); ++q)
+            if (std::abs(expand(q) - value) < std::abs(expand(best) - value))
+                best = q;
+        return best;
+    };
+    float mean[3]{};
+    for (const auto &texel : texels)
+        for (int c = 0; c < count; ++c)
+            mean[c] += texel[first + c] / 16.0f;
+    float axis[3]{1, 1, 1};
+    if (count > 1)
+    {
+        float covariance[3][3]{};
+        for (const auto &texel : texels)
+            for (int a = 0; a < count; ++a)
+                for (int b = 0; b < count; ++b)
+                    covariance[a][b] += (texel[first + a] - mean[a]) * (texel[first + b] - mean[b]);
+        for (int iteration = 0; iteration < 8; ++iteration)
+        {
+            float next[3]{};
+            for (int a = 0; a < count; ++a)
+                for (int b = 0; b < count; ++b)
+                    next[a] += covariance[a][b] * axis[b];
+            float length = 0;
+            for (int a = 0; a < count; ++a)
+                length = std::max(length, std::abs(next[a]));
+            if (length < 1e-6f)
+                break;
+            for (int a = 0; a < count; ++a)
+                axis[a] = next[a] / length;
+        }
+    }
+    float low = 1e30f, high = -1e30f, axisLength = 0;
+    for (const auto &texel : texels)
+    {
+        float t = 0;
+        for (int c = 0; c < count; ++c)
+            t += (texel[first + c] - mean[c]) * axis[c];
+        low = std::min(low, t);
+        high = std::max(high, t);
+    }
+    for (int c = 0; c < count; ++c)
+        axisLength += axis[c] * axis[c];
+    float ends[2][3]{};
+    for (int c = 0; c < count; ++c)
+    {
+        ends[0][c] = std::clamp(mean[c] + axis[c] * low / axisLength, 0.0f, 255.0f);
+        ends[1][c] = std::clamp(mean[c] + axis[c] * high / axisLength, 0.0f, 255.0f);
+    }
+    int bestError = INT_MAX;
+    for (int round = 0; round < 3; ++round)
+    {
+        int q[2][3]{}, value[2][3]{};
+        for (int e = 0; e < 2; ++e)
+            for (int c = 0; c < count; ++c)
+                value[e][c] = expand(q[e][c] = quantize(ends[e][c]));
+        int palette[8][3]{};
+        for (int i = 0; i < levels; ++i)
+            for (int c = 0; c < count; ++c)
+                palette[i][c] = ((64 - weights[i]) * value[0][c] + weights[i] * value[1][c] + 32) >> 6;
+        int error = 0;
+        std::uint8_t index[16];
+        for (int texel = 0; texel < 16; ++texel)
+        {
+            int best = INT_MAX;
+            for (int i = 0; i < levels; ++i)
+            {
+                int d = 0;
+                for (int c = 0; c < count; ++c)
+                {
+                    const int delta = palette[i][c] - texels[texel][first + c];
+                    d += delta * delta;
+                }
+                if (d < best)
+                {
+                    best = d;
+                    index[texel] = static_cast<std::uint8_t>(i);
+                }
+            }
+            error += best;
+        }
+        if (error < bestError)
+        {
+            bestError = error;
+            std::memcpy(endpoints, q, sizeof(q));
+            std::memcpy(indices, index, sizeof(index));
+        }
+        if (error == 0)
+            break;
+        float a00 = 0, a01 = 0, a11 = 0, b0[3]{}, b1[3]{};
+        for (int texel = 0; texel < 16; ++texel)
+        {
+            const float w = weights[index[texel]] / 64.0f, u = 1 - w;
+            a00 += u * u;
+            a01 += u * w;
+            a11 += w * w;
+            for (int c = 0; c < count; ++c)
+            {
+                b0[c] += u * texels[texel][first + c];
+                b1[c] += w * texels[texel][first + c];
+            }
+        }
+        const float determinant = a00 * a11 - a01 * a01;
+        if (std::abs(determinant) < 1e-6f)
+            break;
+        for (int c = 0; c < count; ++c)
+        {
+            ends[0][c] = std::clamp((b0[c] * a11 - b1[c] * a01) / determinant, 0.0f, 255.0f);
+            ends[1][c] = std::clamp((b1[c] * a00 - b0[c] * a01) / determinant, 0.0f, 255.0f);
+        }
+    }
+    return bestError;
+}
+
+// BC7 modes 4 and 5: colour and alpha each with their own endpoints and indices, after a rotation that may swap a
+// colour channel into alpha. They keep two channels that vary apart, which mode 6's single line cannot: IW7 response
+// maps (grey F0 in RGB, gloss in alpha) stayed RGBA8 under the PSNR guard and filled a fifth of Scorch's zone. Mode 4
+// gives one of them 3-bit indices (index mode 1: colour). Returns the squared error of the block.
+int EncodeBc7ScalarBlock(const std::uint8_t (&pixels)[16][4], const unsigned mode, const unsigned rotation,
+                         const unsigned indexMode, std::uint8_t *out)
+{
+    int texels[16][4];
+    for (int texel = 0; texel < 16; ++texel)
+        for (int c = 0; c < 4; ++c)
+            texels[texel][c] = pixels[texel][c];
+    if (rotation)
+        for (auto &texel : texels)
+            std::swap(texel[rotation - 1], texel[3]);
+    const int colorBits = mode == 4 ? 5 : 7, alphaBits = mode == 4 ? 6 : 8;
+    const int colorIndexBits = mode == 4 && indexMode ? 3 : 2, alphaIndexBits = mode == 4 && !indexMode ? 3 : 2;
+    int color[2][3], alpha[2][3];
+    std::uint8_t colorIndex[16], alphaIndex[16];
+    const int error = FitBc7Endpoints(texels, 0, 3, colorBits, colorIndexBits, color, colorIndex) +
+                      FitBc7Endpoints(texels, 3, 1, alphaBits, alphaIndexBits, alpha, alphaIndex);
+    // The first texel's index of each set drops its top bit: swap the endpoints of a set that has it set.
+    const auto anchor = [](int (&ends)[2][3], std::uint8_t (&index)[16], const int bits) {
+        if (index[0] >> (bits - 1))
+        {
+            std::swap(ends[0], ends[1]);
+            for (auto &value : index)
+                value = static_cast<std::uint8_t>((1 << bits) - 1 - value);
+        }
+    };
+    anchor(color, colorIndex, colorIndexBits);
+    anchor(alpha, alphaIndex, alphaIndexBits);
+    std::memset(out, 0, 16);
+    unsigned position = 0;
+    const auto put = [&](const unsigned value, const unsigned bits) {
+        for (unsigned bit = 0; bit < bits; ++bit, ++position)
+            if (value >> bit & 1u)
+                out[position >> 3] |= static_cast<std::uint8_t>(1u << (position & 7));
+    };
+    const auto putIndices = [&](const std::uint8_t (&index)[16], const int bits) {
+        put(index[0], bits - 1);
+        for (int texel = 1; texel < 16; ++texel)
+            put(index[texel], bits);
+    };
+    put(1u << mode, mode + 1);
+    put(rotation, 2);
+    if (mode == 4)
+        put(indexMode, 1);
+    for (int c = 0; c < 3; ++c)
+    {
+        put(static_cast<unsigned>(color[0][c]), colorBits);
+        put(static_cast<unsigned>(color[1][c]), colorBits);
+    }
+    put(static_cast<unsigned>(alpha[0][0]), alphaBits);
+    put(static_cast<unsigned>(alpha[1][0]), alphaBits);
+    // The 2-bit set comes first: colour, except under mode 4's index mode 1.
+    if (mode == 4 && indexMode)
+    {
+        putIndices(alphaIndex, alphaIndexBits);
+        putIndices(colorIndex, colorIndexBits);
+    }
+    else
+    {
+        putIndices(colorIndex, colorIndexBits);
+        putIndices(alphaIndex, alphaIndexBits);
+    }
+    return error;
+}
+
+// The best of BC7 mode 6 and modes 5 and 4 (every rotation and index mode) for a block; the others are searched
+// only where mode 6 leaves an error.
+int EncodeBc7Block(const std::uint8_t (&pixels)[16][4], std::uint8_t *out)
+{
+    int best = EncodeBc7Mode6Block(pixels, out);
+    if (best <= 16)
+        return best;
+    std::uint8_t candidate[16];
+    for (unsigned rotation = 0; rotation < 4; ++rotation)
+        for (unsigned variant = 0; variant < 3; ++variant)
+        {
+            const int error = EncodeBc7ScalarBlock(pixels, variant ? 4 : 5, rotation, variant == 2, candidate);
+            if (error < best)
+            {
+                best = error;
+                std::memcpy(out, candidate, 16);
+            }
+        }
+    return best;
+}
+
+std::atomic<std::size_t> g_bc7DecodeMismatches{0};
+
+// The squared error of a BC7 block as DirectXTex decodes it, over every channel.
+std::uint64_t Bc7DecodedError(const std::uint8_t *block, const std::uint8_t (&pixels)[16][4])
+{
+    DirectX::XMVECTOR decoded[16];
+    DirectX::D3DXDecodeBC7(decoded, block);
+    std::uint64_t error = 0;
+    for (int texel = 0; texel < 16; ++texel)
+    {
+        DirectX::XMFLOAT4 value;
+        DirectX::XMStoreFloat4(&value, decoded[texel]);
+        const float channels[4]{value.x, value.y, value.z, value.w};
+        for (int c = 0; c < 4; ++c)
+        {
+            const int delta = static_cast<int>(std::lround(channels[c] * 255.0f)) - pixels[texel][c];
+            error += static_cast<std::uint64_t>(delta * delta);
+        }
+    }
+    return error;
+}
+
+// BC7 encoding of a RGBA8 mip chain laid out by MipChain (any size, down to 1x1) with the best of modes 6, 5 and 4
+// per block: a level under four texels across fills its block with its edge texels repeated, as the block grid of a
+// smaller mip does. `error` receives the squared error over every coded channel as DirectXTex decodes the blocks, so
+// the caller's PSNR guard also holds against an encoding fault.
+std::vector<std::uint8_t> EncodeBc7Rectangle(const std::vector<std::uint8_t> &rgba, const unsigned width,
+                                             const unsigned height, const unsigned levels, double &error,
+                                             const unsigned maxWorkers = 0)
+{
+    struct Level
+    {
+        unsigned width, height;
+        std::size_t source, target;
+    };
+    std::vector<Level> table;
+    std::size_t source = 0, target = 0;
+    for (unsigned level = 0; level < levels; ++level)
+    {
+        const unsigned levelWidth = std::max(1u, width >> level), levelHeight = std::max(1u, height >> level);
+        table.push_back({levelWidth, levelHeight, source, target});
+        source += (std::size_t{levelWidth} * levelHeight * 4 + 15) & ~std::size_t{15};
+        target += std::size_t{(levelWidth + 3) / 4} * ((levelHeight + 3) / 4) * 16;
+    }
+    if (source != rgba.size())
+        throw std::runtime_error("BC7 image input does not match its mip chain");
+    std::vector<std::uint8_t> output(target);
+    std::vector<std::pair<unsigned, unsigned>> rows; // level, block row
+    for (unsigned level = 0; level < table.size(); ++level)
+        for (unsigned row = 0; row < (table[level].height + 3) / 4; ++row)
+            rows.emplace_back(level, row);
+    std::vector<std::uint64_t> rowErrors(rows.size());
+    std::atomic<std::size_t> next{0};
+    const auto encode = [&] {
+        std::uint8_t block[16][4];
+        for (std::size_t task; (task = next.fetch_add(1)) < rows.size();)
+        {
+            const Level &level = table[rows[task].first];
+            const unsigned blockY = rows[task].second, blocksWide = (level.width + 3) / 4;
+            std::uint64_t rowError = 0;
+            for (unsigned blockX = 0; blockX < blocksWide; ++blockX)
+            {
+                for (unsigned y = 0; y < 4; ++y)
+                    for (unsigned x = 0; x < 4; ++x)
+                        std::memcpy(block[y * 4 + x],
+                                    rgba.data() + level.source +
+                                        (std::size_t{std::min(blockY * 4 + y, level.height - 1)} * level.width +
+                                         std::min(blockX * 4 + x, level.width - 1)) *
+                                            4,
+                                    4);
+                auto *out = output.data() + level.target + (std::size_t{blockY} * blocksWide + blockX) * 16;
+                const int estimate = EncodeBc7Block(block, out);
+                // The encoder's error is the error of the block as DirectXTex decodes it (no conversion has found
+                // another): one block in 64 is decoded to keep checking it.
+                if ((blockY + blockX) % 64 == 0 && Bc7DecodedError(out, block) != static_cast<std::uint64_t>(estimate))
+                    ++g_bc7DecodeMismatches;
+                rowError += static_cast<std::uint64_t>(estimate);
+            }
+            rowErrors[task] = rowError;
+        }
+    };
+    const unsigned workerLimit = maxWorkers ? maxWorkers : std::max(1u, std::thread::hardware_concurrency());
+    const unsigned workerCount = static_cast<unsigned>(std::clamp<std::size_t>(rows.size() / 8, 1, workerLimit));
+    std::vector<std::thread> workers;
+    for (unsigned worker = 1; worker < workerCount; ++worker)
+        workers.emplace_back(encode);
+    encode();
+    for (auto &worker : workers)
+        worker.join();
+    std::uint64_t total = 0;
+    for (const auto rowError : rowErrors)
+        total += rowError;
+    error = static_cast<double>(total);
+    return output;
+}
+
+// Encoded caches are keyed by the input digest and the encoder that wrote them.
+// The key names the encoder by version, not by converter executable: keyed by
+// the executable's hash, every rebuild missed and re-encoded identical probes
+// (BC6H, about 5 minutes per map) and atlases. Bump a version whenever its
+// encoder changes.
+constexpr const char *kBc7AtlasEncoderVersion = "bc7-mode6-v1";
+constexpr const char *kBc6hProbeEncoderVersion = "bc6h-dxtex-v2";
+
+// BC7 encoding of a square RGBA8 mip chain laid out by MipChain.
+// Values pass through unchanged, so sRGB data stays sRGB for format 45.
+std::vector<std::uint8_t> EncodeBc7Chain(const std::vector<std::uint8_t> &rgba,
+                                         const unsigned size, const unsigned levels,
+                                         const std::filesystem::path &cacheRoot)
+{
+    const auto inputDigest = Sha256(rgba);
+    const auto cacheFile =
+        cacheRoot.empty() ? std::filesystem::path{}
+                          : cacheRoot / ("atlas_" + Hex(std::span(inputDigest).first(16)) + "_" + kBc7AtlasEncoderVersion + ".bc7");
+    struct Level
+    {
+        unsigned width;
+        std::size_t source;
+        std::size_t target;
+    };
+    std::vector<Level> table;
+    std::size_t source = 0, target = 0;
+    for (unsigned level = 0, width = size; level < levels; ++level, width = std::max(4u, width / 2))
+    {
+        if (width % 4)
+            throw std::runtime_error("BC7 atlas level is not a multiple of four");
+        table.push_back({width, source, target});
+        source += (std::size_t{width} * width * 4 + 15) & ~std::size_t{15};
+        target += std::size_t{width / 4} * (width / 4) * 16;
+    }
+    if (source != rgba.size())
+        throw std::runtime_error("BC7 atlas input does not match its mip chain");
+    // A cached chain counts only at its exact encoded size: a full disk once left
+    // an empty atlas file that the next conversion read back (zt-34).
+    std::error_code cacheError;
+    if (!cacheFile.empty() && std::filesystem::is_regular_file(cacheFile, cacheError) &&
+        std::filesystem::file_size(cacheFile, cacheError) == target && !cacheError)
+        return ReadBytes(cacheFile);
+    std::vector<std::uint8_t> output(target);
+    std::vector<std::pair<unsigned, unsigned>> rows; // level, block row
+    for (unsigned level = 0; level < table.size(); ++level)
+        for (unsigned row = 0; row < table[level].width / 4; ++row)
+            rows.emplace_back(level, row);
+    std::atomic<std::size_t> next{0};
+    const auto encode = [&] {
+        std::uint8_t block[16][4];
+        for (std::size_t task; (task = next.fetch_add(1)) < rows.size();)
+        {
+            const Level &level = table[rows[task].first];
+            const unsigned blockY = rows[task].second;
+            const unsigned blocksWide = level.width / 4;
+            for (unsigned blockX = 0; blockX < blocksWide; ++blockX)
+            {
+                for (unsigned y = 0; y < 4; ++y)
+                    std::memcpy(block[y * 4],
+                                rgba.data() + level.source +
+                                    ((std::size_t{blockY} * 4 + y) * level.width + blockX * 4) * 4,
+                                16);
+                EncodeBc7Mode6Block(block, output.data() + level.target +
+                                               (std::size_t{blockY} * blocksWide + blockX) * 16);
+            }
+        }
+    };
+    const unsigned workerCount = std::max(1u, std::thread::hardware_concurrency());
+    std::vector<std::thread> workers;
+    for (unsigned worker = 0; worker < workerCount; ++worker)
+        workers.emplace_back(encode);
+    for (auto &worker : workers)
+        worker.join();
+    // The cache is an optimisation: write through a temporary file renamed when
+    // complete, and keep converting when the disk is full.
+    if (!cacheFile.empty())
+    {
+        // Per process: both styles of a map convert in parallel, and a shared
+        // temporary name made their renames fail.
+        auto partial = cacheFile;
+        partial += "." + std::to_string(GetCurrentProcessId()) + ".partial";
+        try
+        {
+            WriteBytes(partial, output);
+            std::filesystem::rename(partial, cacheFile, cacheError);
+            if (cacheError)
+                zt::warn("iw3: atlas cache not written (%s)", cacheError.message().c_str());
+        }
+        catch (const std::exception &error)
+        {
+            zt::warn("iw3: atlas cache not written (%s)", error.what());
+        }
+        std::filesystem::remove(partial, cacheError);
+    }
+    return output;
+}
+
+std::string ImageName(const std::string &map, const unsigned channel,
+                      const std::vector<std::uint8_t> &pixels)
+{
+    const auto digest = Sha256(pixels);
+    return "mw120r/" + map + "_" + std::to_string(channel) + "_" + Hex(std::span(digest).first(8));
+}
+
+// IW3 specular RGB is sRGB reflectance (dielectrics sit near F0 0.04, about
+// 56/255), whereas Replay's intensity is a multiplier of its default dielectric
+// (255 for "&defaultspec"). Returns the intensity in every channel.
+Image ReplaySpecularIntensity(Image specular)
+{
+    specular.mips.clear();
+    specular.nativeBc7.clear();
+    specular.nativeBc7Levels = 0;
+    static const auto reflectance = [] {
+        std::array<std::uint8_t, 256> table{};
+        for (unsigned value = 0; value < table.size(); ++value)
+            table[value] = static_cast<std::uint8_t>(std::min(
+                255l, std::lround(255.0f * LinearByte(static_cast<std::uint8_t>(value)) / 0.04f)));
+        return table;
+    }();
+    for (std::size_t offset = 0; offset + 3 < specular.rgba.size(); offset += 4)
+    {
+        const auto intensity = reflectance[std::max(
+            {specular.rgba[offset], specular.rgba[offset + 1], specular.rgba[offset + 2]})];
+        specular.rgba[offset] = specular.rgba[offset + 1] = specular.rgba[offset + 2] =
+            specular.rgba[offset + 3] = intensity;
+    }
+    return specular;
+}
+
+// Replay "<n>&<g>": octahedral normal in G/A and gloss in R. IW3 gloss is the
+// specular map's alpha; without one the identity normal keeps gloss 128.
+Image ReplayNormalGloss(const Image *normal, const Image *response)
+{
+    Image packed = normal ? EncodeNativeWorldNormal(*normal)
+                          : Image{1, 1, std::vector<std::uint8_t>{128, 128, 255, 128}};
+    if (response)
+    {
+        if (packed.width == 1 && packed.height == 1)
+        {
+            const auto identity = packed.rgba;
+            packed = {response->width, response->height,
+                      std::vector<std::uint8_t>(std::size_t(response->width) * response->height * 4)};
+            for (std::size_t offset = 0; offset < packed.rgba.size(); offset += 4)
+                std::copy(identity.begin(), identity.end(), packed.rgba.begin() + offset);
+        }
+        packed.mips.clear();
+        const Image gloss = Resize(*response, packed.width, packed.height, false);
+        for (std::size_t offset = 0; offset < packed.rgba.size(); offset += 4)
+            packed.rgba[offset] = gloss.rgba[offset + 3];
+    }
+    return packed;
+}
+
+std::string FxMaterialName(const std::string &map, const SourceFxMaterial &source)
+{
+    const std::string key = map + '\x1f' + source.name + '\x1f' + source.techniqueSet;
+    const auto bytes = std::span(reinterpret_cast<const std::uint8_t *>(key.data()), key.size());
+    const auto digest = Sha256(bytes);
+    return "elcq/mw120r_fx_" + Hex(std::span(digest).first(8));
+}
+
+Json BuildFxMaterialDefinition(const SourceFxMaterial &source)
+{
+    constexpr std::string_view alphaSimpleTechset =
+        "elcq/unlit_6_effect_bad_ta0_802_4_0_1_0_0_0_100000023_0_0_2_0_0";
+    constexpr std::string_view alphaTechset =
+        "elcq/unlit_6_effect_bad_ta0_802_1004_0_1_0_0_0_100000023_0_0_2_0_0";
+    constexpr std::string_view additiveTechset =
+        "elcq/unlit_6_effect_bad_tca_802_10a4_0_1_0_0_0_100060023_0_0_3_0_0";
+    constexpr std::string_view additiveSimpleTechset =
+        "elcq/unlit_6_effect_bad_tca_802_4_0_1_0_0_0_100060023_0_0_3_0_0";
+    constexpr std::string_view cloudTechset =
+        "elcq/unlit_6_effect_bad_ta0_802_4_0_1_0_0_0_100020023_0_0_2_0_0";
+    // The lit twin of alphaTechset (stock vfx_postfx_bokeh_sharp_sheet_1_lit, techsets_common): its PS samples the
+    // albedo's alpha, lights the particle from the per-particle lighting array and writes a real output alpha.
+    constexpr std::string_view litTechset =
+        "elcq/unlit_6_effect_bad_ta0_802_1004_0_1_0_0_0_10000020b_0_0_2_0_0";
+    // The frame-blend (0x2000) twins of additiveTechset (stock fire, techsets_common vfx_pyro_exp_rise) and
+    // litTechset (techsets_common_core_mp): the same constants, buffers and resources (disassembled VS e116fc27 / PS
+    // 069e69f0 and VS 5f0b7518 / PS 29734230 against their twins'); the VS also passes the next frame's offset in the
+    // atlas and the particle's frame fraction, and the PS mixes the two frames. Replay's 10a4 additive set draws with
+    // the shaders of its 1004 set. The unlit alpha set has no stock twin.
+    constexpr std::string_view additiveBlendTechset =
+        "elcq/unlit_6_effect_bad_tca_802_3004_0_1_0_0_0_100060023_0_0_3_0_0";
+    constexpr std::string_view litBlendTechset =
+        "elcq/unlit_6_effect_bad_ta0_802_3004_0_1_0_0_0_10000020b_0_0_2_0_0";
+    // The depthless twin of the one-image alpha set (stock vfx_energy_emp_ring_wave, techsets_common_base_mp: the
+    // same texture slot, tint constant and buffer as alphaSimpleTechset's vfx_ui_precision_marker; the 803 sets of
+    // Replay's flares, laser dots and UI rings draw over the world). Like it, it adds the colour.
+    constexpr std::string_view depthlessTechset =
+        "elcq/unlit_6_effect_bad_ta0_803_24_0_1_0_0_0_100000023_0_0_2_0_0";
+    const bool frameBlend = source.frameBlend && source.rows * source.columns > 1;
+    if (source.family == FxMaterialFamily::decal)
+    {
+        std::vector<std::uint8_t> info(32);
+        Put<std::uint32_t>(info, 4, 98304u);
+        Put<std::uint32_t>(info, 0xC, 0x800000u);
+        info[0x10] = 3;
+        info[0x11] = 29;
+        info[0x1A] = 1;
+        info[0x1B] = 1;
+        return {{"schema", 1},
+                {"source", source.name},
+                {"info", Hex(info)},
+                {"techset", "null"},
+                {"textures", Json::array()},
+                {"constants", ""},
+                {"bufferIndices", ""},
+                {"buffers", Json::array()},
+                {"imageDefinitions", Json::array()},
+                {"decalVolumeMaterial", "i/vfx_decal_surface_glass_2"}};
+    }
+    const bool alpha = source.family == FxMaterialFamily::alpha;
+    const bool cloud = source.family == FxMaterialFamily::cloud;
+    if (!alpha && source.family != FxMaterialFamily::alphaFeather && source.family != FxMaterialFamily::additive &&
+        source.family != FxMaterialFamily::additiveFeather && !cloud)
+        throw std::runtime_error("IW3 FX material family is not ready for Replay emission");
+    // A one-image unlit material without a depth test takes the depthless set in the one-image alpha layout; any other
+    // keeps its depth-tested set (Replay has no depthless twin of those).
+    const bool depthless = source.noDepth && !source.lit && !cloud && source.rows == 1 && source.columns == 1;
+    const bool simpleAlpha = (alpha && source.rows == 1 && source.columns == 1) || depthless;
+    const bool additive = !depthless && (source.family == FxMaterialFamily::additive ||
+                                         source.family == FxMaterialFamily::additiveFeather);
+    const bool simpleAdditive = !depthless && source.family == FxMaterialFamily::additive &&
+                                source.rows == 1 && source.columns == 1;
+    if (source.noDepth && !depthless)
+        zt::info("iw3: FX material %s has no depth test, which Replay's sets of its kind lack; it draws depth-tested",
+                 source.name.c_str());
+
+    std::vector<std::uint8_t> info(32);
+    Put<std::uint32_t>(info, 0, 1u);
+    Put<std::uint32_t>(info, 0xC, 0x40200Cu);
+    info[0x10] = 4;
+    info[0x11] = 35;
+    info[0x12] = 16;
+    info[0x14] = 1;
+    info[0x15] = cloud || simpleAlpha ? 1 : simpleAdditive ? 2 : additive ? 4 : 3;
+    info[0x16] = cloud || simpleAlpha || simpleAdditive ? 1 : 2;
+    info[0x1A] = static_cast<std::uint8_t>(source.rows);
+    info[0x1B] = static_cast<std::uint8_t>(source.columns);
+
+    std::vector<std::uint8_t> constants;
+    const auto appendConstant = [&](const std::uint32_t index, const auto &value) {
+        const std::size_t offset = constants.size();
+        constants.resize(offset + 20);
+        Put(constants, offset, index);
+        std::memcpy(constants.data() + offset + 4, value.data(), 16);
+    };
+    if (source.lit)
+    {
+        // Stock vfx_postfx_bokeh_sharp_sheet_1_lit: albedo at slot 0 (MaterialTextureID_albedoMap) and transmittance at
+        // slot 0x44 (transmittanceMap); constants 9 layerData1 (packed bytes the PS reads from cb3 row 1), 18
+        // absorptionScale (row 2) and the atlas (94, 95). Its shaders read the atlas from vertex rows 9-10 and pixel row
+        // 9 (disassembled VS 372e0e1a / PS a9864c07), so the vertex rows are 176 bytes and the pixel block 160; the
+        // shadow technique's buffer holds the vertex rows and the first 48 pixel bytes, as stock. No tint constant: the
+        // particle colour and the scene's light give the colour.
+        info[0x14] = 2;
+        info[0x15] = 4;
+        info[0x16] = 2;
+        const std::array<std::uint32_t, 4> layerData{0xFFFFFFFFu, 0x00FF17E7u, 0x0000BC00u, 0u};
+        const std::array<float, 4> absorption{1, 1, 1, 1};
+        const std::array<float, 4> atlas{static_cast<float>(source.columns), static_cast<float>(source.rows),
+                                         1.0f / static_cast<float>(source.columns),
+                                         1.0f / static_cast<float>(source.rows)};
+        const std::array<std::uint32_t, 4> atlasBits{
+            source.rows * source.columns, source.columns - 1,
+            static_cast<std::uint32_t>(std::countr_zero(source.columns)), 0u};
+        appendConstant(9u, layerData);
+        appendConstant(18u, absorption);
+        appendConstant(94u, atlas);
+        appendConstant(95u, atlasBits);
+        std::vector<std::uint8_t> vertexConstants(176);
+        std::memcpy(vertexConstants.data() + 144, atlas.data(), 16);
+        std::memcpy(vertexConstants.data() + 160, atlasBits.data(), 16);
+        std::vector<std::uint8_t> pixelConstants(160);
+        std::memcpy(pixelConstants.data() + 16, layerData.data(), 16);
+        std::memcpy(pixelConstants.data() + 32, absorption.data(), 16);
+        std::memcpy(pixelConstants.data() + 144, atlas.data(), 16);
+        std::vector<std::uint8_t> bufferIndices(195, 0xFF);
+        bufferIndices[29] = 0;
+        bufferIndices[30] = 1;
+        return {{"schema", 1},
+                {"source", source.name},
+                {"info", Hex(info)},
+                {"techset", frameBlend ? litBlendTechset : litTechset},
+                {"textures", Json::array({{{"header", "0000000000000000"}, {"image", ""}},
+                                          {{"header", "4400000000000000"}, {"image", ""}}})},
+                {"constants", Hex(constants)},
+                {"bufferIndices", Hex(bufferIndices)},
+                {"buffers", Json::array({Json::array({Hex(vertexConstants), "", "",
+                                                       Hex(std::vector<std::uint8_t>(pixelConstants.begin(),
+                                                                                     pixelConstants.begin() + 48))}),
+                                          Json::array({Hex(vertexConstants), "", "", Hex(pixelConstants)})})},
+                {"imageDefinitions", Json::array()}};
+    }
+    if (additive)
+    {
+        // Native Replay one-image additive contracts carry a target-owned
+        // effect-color setup at index 9. The shipped 1x1 tca/4 and atlas
+        // tca/10a4 fixtures use distinct third words.
+        appendConstant(9u,
+                       std::array<std::uint32_t, 4>{0xFFFFFFFFu, 0x00FF17E7u,
+                                                     simpleAdditive ? 0x4C2B5D08u
+                                                                    : 0x4C2B5CAFu,
+                                                     0u});
+    }
+    appendConstant(36u, source.tint);
+    if (!cloud && !simpleAlpha && !simpleAdditive)
+    {
+        const std::array<float, 4> atlas{static_cast<float>(source.columns),
+                                         static_cast<float>(source.rows),
+                                         1.0f / static_cast<float>(source.columns),
+                                         1.0f / static_cast<float>(source.rows)};
+        appendConstant(94u, atlas);
+        const std::array<std::uint32_t, 4> atlasBits{
+            source.rows * source.columns, source.columns - 1,
+            static_cast<std::uint32_t>(std::countr_zero(source.columns)), 0u};
+        appendConstant(95u, atlasBits);
+
+        std::vector<std::uint8_t> vertexConstants(160);
+        std::memcpy(vertexConstants.data() + 128, atlas.data(), 16);
+        std::memcpy(vertexConstants.data() + 144, atlasBits.data(), 16);
+        // Buffer 0 serves technique 29 (shadow), buffer 1 technique 30 (the
+        // emissive pass that draws the particle). Stock atlas effect materials
+        // (techsets_common vfx_pyro_exp_rise, vfx_vol_dust_turbulent_corner_anim_1)
+        // give buffer 1 the vertex rows and a 144-byte pixel block: row 1 the
+        // effect-colour setup (additive only), row 2 tint, row 8 atlas. An empty
+        // buffer 1 zeroed the atlas scale and drew every particle as one texel
+        // (owner test 2026-10-14: grey smoke squares, impact rectangles).
+        std::vector<std::uint8_t> pixelConstants(144);
+        if (additive)
+        {
+            const std::array<std::uint32_t, 4> effectColor{0xFFFFFFFFu, 0x00FF17E7u, 0x4C2B5CAFu, 0u};
+            std::memcpy(pixelConstants.data() + 16, effectColor.data(), 16);
+        }
+        std::memcpy(pixelConstants.data() + 32, source.tint.data(), 16);
+        std::memcpy(pixelConstants.data() + 128, atlas.data(), 16);
+        std::vector<std::uint8_t> bufferIndices(195, 0xFF);
+        bufferIndices[29] = 0;
+        bufferIndices[30] = 1;
+
+        return {{"schema", 1},
+                {"source", source.name},
+                {"info", Hex(info)},
+                {"techset", additive ? (frameBlend ? additiveBlendTechset : additiveTechset) : alphaTechset},
+                {"textures", Json::array({{{"header", "1200000000000000"},
+                                            {"image", ""}}})},
+                {"constants", Hex(constants)},
+                {"bufferIndices", Hex(bufferIndices)},
+                {"buffers", Json::array({Json::array({Hex(vertexConstants), "", "", ""}),
+                                          Json::array({Hex(vertexConstants), "", "",
+                                                       Hex(pixelConstants)})})},
+                {"imageDefinitions", Json::array()}};
+    }
+
+    std::vector<std::uint8_t> pixelConstants(48);
+    if (simpleAdditive)
+    {
+        const std::array<std::uint32_t, 4> effectColor{
+            0xFFFFFFFFu, 0x00FF17E7u, 0x4C2B5D08u, 0u};
+        std::memcpy(pixelConstants.data() + 16, effectColor.data(), 16);
+    }
+    std::memcpy(pixelConstants.data() + 32, source.tint.data(), 16);
+    std::vector<std::uint8_t> bufferIndices(195, 0xFF);
+    bufferIndices[30] = 0;
+    return {{"schema", 1},
+            {"source", source.name},
+            {"info", Hex(info)},
+            {"techset", cloud ? cloudTechset
+                               : depthless ? depthlessTechset
+                               : simpleAdditive ? additiveSimpleTechset : alphaSimpleTechset},
+            {"textures", Json::array({{{"header", "1200000000000000"},
+                                        {"image", ""}}})},
+            {"constants", Hex(constants)},
+            {"bufferIndices", Hex(bufferIndices)},
+            {"buffers", Json::array({Json::array({"", "", "", Hex(pixelConstants)})})},
+            {"imageDefinitions", Json::array()}};
+}
+
+// feather: the zfeather flow twins (IW7 PS d384b91e, 4622c9c5, a6efe634), which also read the template's scene depth and
+// Particle_MaterialData. additive: the additive flow (IW7 PS 40967ff1, 6a577499, 8ce146ac), which cuts and outputs as
+// Replay's additive effects do. lit: IW7's lit flow (PS a386c911) on Replay's lit effect set (VS 372e0e1a / PS a9864c07,
+// 14 stable and 5 never arguments), its mask at MaterialTextureID_opacityMap. uvd: IW7's lit UV distortion (PS c258449e,
+// 5d9b9a5b) on the lit set in place of the flow, with its tint in pixel row 0.
+Json BuildFlowFxTechset(const Json &stock, const std::string &name, const bool feather, const bool additive,
+                        const bool lit, const SourceFxMaterial::Flow &flow)
+{
+    using NativeTechnique = zonetool::iw8::MaterialTechnique;
+    using NativeArgument = zonetool::iw8::MaterialShaderArgument;
+    using enum zonetool::iw8::MaterialArgumentType;
+    constexpr auto emissive = zonetool::iw8::TECHNIQUE_EMISSIVE;
+    static_assert(sizeof(NativeTechnique) == 184 && sizeof(NativeArgument) == 6);
+    Json result = stock;
+    result["name"] = name;
+    auto setHeader = Unhex(result.at("header").get<std::string>());
+    auto nativeSet = At<zonetool::iw8::MaterialTechniqueSet>(setHeader, 0);
+    std::fill(std::begin(nativeSet.techniqueMask.mask), std::end(nativeSet.techniqueMask.mask), 0);
+    nativeSet.techniqueMask.mask[0] = 1ull << emissive;
+    Put(setHeader, 0, nativeSet);
+    result["header"] = Hex(setHeader);
+    if (lit && additive)
+        throw std::runtime_error("Replay's lit effect set has no additive flow");
+    const bool uvd = flow.uvd, atest = flow.atest, cell = flow.uvd && flow.cell;
+    if ((uvd || atest) && !lit)
+        throw std::runtime_error("the owned UV distortion and alpha test are lit only");
+    const std::string variant = std::string(lit ? "_lit" : "") + (additive ? "_add" : "") + (feather ? "_feather" : "") +
+                                (uvd ? "_uvd" : "") + (cell ? "_cell" : "") + (atest ? "_atest" : "");
+    const std::string defines = std::string(lit ? "#define FLOW_LIT 1\n" : "") +
+                                (additive ? "#define FLOW_ADDITIVE 1\n" : "") +
+                                (feather ? "#define FLOW_FEATHER 1\n" : "") + (uvd ? "#define FLOW_UVD 1\n" : "") +
+                                (cell ? "#define FLOW_UVD_CELL 1\n" : "") + (atest ? "#define FLOW_ATEST 1\n" : "");
+    const auto pixel = Shader(17, "iw7_fx_flow" + variant, "iw7_effect_flow.hlsl",
+        Compile(defines + ResourceText(IDR_IW3_EFFECT_FLOW_PIXEL_SHADER), "ps_5_0", "iw7_effect_flow.hlsl"));
+    for (auto technique : stock.at("techniques"))
+    {
+        auto header = Unhex(technique.at("header").get<std::string>());
+        auto native = At<NativeTechnique>(header, 0);
+        if (native.type != emissive)
+            continue;
+        // Keep the native stable bindings. Row4 is viewOrigin; request gameTime in free row8.
+        const auto original = Unhex(technique.at("args").get<std::string>());
+        const unsigned stableCount = lit ? 14 : 13, neverCount = lit ? 5 : 4;
+        if (native.perPrimArgCount || native.perObjArgCount || native.stableArgCount != stableCount ||
+            native.neverArgCount != neverCount ||
+            original.size() != (stableCount + neverCount) * sizeof(NativeArgument))
+            throw std::runtime_error("Replay flow template has an unexpected argument layout");
+        std::vector<std::uint8_t> args;
+        const auto argument = [&](const zonetool::iw8::MaterialArgumentType type, const std::uint8_t stage,
+                                  const std::uint16_t dest, const std::uint16_t index) {
+            const auto offset = args.size();
+            args.resize(offset + sizeof(NativeArgument));
+            Put(args, offset, NativeArgument{type, stage, dest, index});
+        };
+        // The flow images follow the template's own textures (the lit set's Particle_MaterialData holds t6).
+        const std::uint16_t flowRegister = lit ? 7 : 6;
+        for (unsigned index = 0; index < stableCount; ++index)
+        {
+            if (index == 4)
+                argument(MTL_ARG_CODE_CONST, 16, 8, 2); // gameTime -> pixel CB2[8]
+            if (index == stableCount - 1)
+            {
+                argument(MTL_ARG_MATERIAL_TEXTURE, 16, flowRegister, 57); // native MaterialTextureID_flowMap
+                argument(MTL_ARG_MATERIAL_TEXTURE, 16, flowRegister + 1, 58); // MaterialTextureID_flowSurfaceParamsMap
+                if (lit)
+                    argument(MTL_ARG_MATERIAL_TEXTURE, 16, 9, 27); // MaterialTextureID_opacityMap: the mask
+            }
+            args.insert(args.end(), original.begin() + index * sizeof(NativeArgument),
+                        original.begin() + (index + 1) * sizeof(NativeArgument));
+        }
+        if (lit)
+        {
+            // The lit set's pixel rows (1 layerData1, 2 absorptionScale, 9 atlas) and vertex atlas rows 9-10 stay; the
+            // flow constants take rows 3 and 4, the UV distortion's tint row 0.
+            if (uvd)
+                argument(MTL_ARG_MATERIAL_CONST, 16, 0, 36); // emissiveParams0: source tint
+            argument(MTL_ARG_MATERIAL_CONST, 16, 1, 9);
+            argument(MTL_ARG_MATERIAL_CONST, 16, 2, 18);
+            argument(MTL_ARG_MATERIAL_CONST, 16, 3, 90); // flowMapConsts
+            argument(MTL_ARG_MATERIAL_CONST, 16, 4, 37); // emissiveParams1: source period
+            argument(MTL_ARG_MATERIAL_CONST, 2, 9, 94);
+            argument(MTL_ARG_MATERIAL_CONST, 16, 9, 94);
+            argument(MTL_ARG_MATERIAL_CONST, 2, 10, 95);
+            native.stableArgCount = 18;
+            native.neverArgCount = uvd ? 8 : 7;
+        }
+        else
+        {
+            argument(MTL_ARG_MATERIAL_CONST, 16, 0, 36); // emissiveParams0: source tint
+            argument(MTL_ARG_MATERIAL_CONST, 16, 1, 90); // flowMapConsts
+            argument(MTL_ARG_MATERIAL_CONST, 16, 2, 37); // emissiveParams1: source period
+            argument(MTL_ARG_MATERIAL_CONST, 16, 3, 38); // emissiveParams2: HDR mode
+            argument(MTL_ARG_MATERIAL_CONST, 2, 8, 94);
+            argument(MTL_ARG_MATERIAL_CONST, 2, 9, 95);
+            native.stableArgCount = 16;
+            native.neverArgCount = 6;
+        }
+        native.stableArgSize = 144;
+        Put(header, 0, native);
+        technique["header"] = Hex(header);
+        technique["args"] = Hex(args);
+        technique["name"] = name + "_emissive";
+        technique["shaders"][3] = pixel.at("name");
+        PatchStateIdentity(technique, header);
+        result["techniques"] = Json::array({technique});
+        const std::string vertexKey = "14:" + technique["shaders"][0].get<std::string>();
+        result["shaders"] = {{vertexKey, stock.at("shaders").at(vertexKey)},
+                              {"17:" + pixel.at("name").get<std::string>(), pixel}};
+        return result;
+    }
+    throw std::runtime_error("Replay flow template has no emissive technique");
+}
+
+Json BuildFlowFxMaterialDefinition(const SourceFxMaterial &source, const std::string &techset)
+{
+    using NativeMaterial = zonetool::iw8::Material;
+    using NativeConstant = zonetool::iw8::MaterialConstantDef;
+    using NativeTexture = zonetool::iw8::MaterialTextureDef;
+    static_assert(offsetof(NativeMaterial, drawSurf) - offsetof(NativeMaterial, contents) == 32);
+    static_assert(sizeof(NativeConstant) == 20 && offsetof(NativeTexture, image) == 8);
+    Json direct = BuildFxMaterialDefinition(source);
+    auto info = Unhex(direct.at("info").get<std::string>());
+    NativeMaterial native{};
+    if (info.size() != 32)
+        throw std::runtime_error("Replay flow material has an unexpected metadata layout");
+    std::memcpy(&native.contents, info.data(), info.size());
+    native.textureCount = source.lit ? 5 : 3;
+    // The UV distortion also keeps its tint (constant 36).
+    native.constantCount = source.flow->uvd ? 7 : 6;
+    native.constantBufferCount = 1;
+    std::memcpy(info.data(), &native.contents, info.size());
+    const std::array<float, 4> atlas{static_cast<float>(source.columns), static_cast<float>(source.rows),
+                                    1.0f / source.columns, 1.0f / source.rows};
+    const std::array<std::uint32_t, 4> atlasBits{source.rows * source.columns, source.columns - 1,
+                                               static_cast<unsigned>(std::countr_zero(source.columns)), 0};
+    const auto texture = [](const std::uint8_t id) {
+        NativeTexture value{};
+        value.index = id;
+        const auto bytes = std::span(reinterpret_cast<const std::uint8_t *>(&value), offsetof(NativeTexture, image));
+        return Json{{"header", Hex(bytes)}, {"image", ""}};
+    };
+    if (source.lit)
+    {
+        // The lit set's material (BuildFxMaterialDefinition's lit branch: albedo 0, transmittance 0x44, layerData1 9 in
+        // pixel row 1, absorptionScale 18 in row 2, the atlas in vertex rows 9-10 and pixel row 9) with the flow maps
+        // (57, 58), the mask (27, MaterialTextureID_opacityMap) and the flow constants in pixel rows 3 (90) and 4 (37).
+        const std::array<std::uint32_t, 4> layerData{0xFFFFFFFFu, 0x00FF17E7u, 0x0000BC00u, 0u};
+        const std::array<float, 4> absorption{1, 1, 1, 1};
+        std::vector<std::uint8_t> constants, vertex(176), pixel(160), indices(zonetool::iw8::TECHNIQUE_COUNT, 0xFF);
+        const auto append = [&](const std::uint8_t id, const auto &value) {
+            const auto offset = constants.size();
+            constants.resize(offset + sizeof(NativeConstant));
+            NativeConstant constant{};
+            constant.index = id;
+            std::memcpy(&constant.literal, value.data(), sizeof(constant.literal));
+            Put(constants, offset, constant);
+        };
+        append(9, layerData);
+        append(18, absorption);
+        if (source.flow->uvd)
+            append(36, source.tint);
+        append(37, source.flow->period);
+        append(90, source.flow->scale);
+        append(94, atlas);
+        append(95, atlasBits);
+        std::memcpy(vertex.data() + 144, atlas.data(), 16);
+        std::memcpy(vertex.data() + 160, atlasBits.data(), 16);
+        if (source.flow->uvd)
+            std::memcpy(pixel.data(), source.tint.data(), 16);
+        std::memcpy(pixel.data() + 16, layerData.data(), 16);
+        std::memcpy(pixel.data() + 32, absorption.data(), 16);
+        std::memcpy(pixel.data() + 48, source.flow->scale.data(), 16);
+        std::memcpy(pixel.data() + 64, source.flow->period.data(), 16);
+        std::memcpy(pixel.data() + 144, atlas.data(), 16);
+        indices[zonetool::iw8::TECHNIQUE_EMISSIVE] = 0;
+        direct["info"] = Hex(info);
+        direct["techset"] = techset;
+        direct["textures"] = Json::array();
+        for (const auto id : std::array<std::uint8_t, 5>{0, 0x44, 57, 58, 27})
+            direct["textures"].push_back(texture(id));
+        direct["constants"] = Hex(constants);
+        direct["bufferIndices"] = Hex(indices);
+        direct["buffers"] = Json::array({Json::array({Hex(vertex), "", "", Hex(pixel)})});
+        return direct;
+    }
+    // Pixel row 3: x = mkhdr, y = dissolve K, z = 1 with a dissolve.
+    const std::array<float, 4> hdr{source.flow->hdr ? 1.0f : 0.0f, source.flow->dissolve.value_or(0.0f),
+                                   source.flow->dissolve ? 1.0f : 0.0f, 0};
+    std::vector<std::uint8_t> constants, vertex(160), pixel(64), indices(zonetool::iw8::TECHNIQUE_COUNT, 0xFF);
+    const auto append = [&](const std::uint8_t id, const auto &value) {
+        const auto offset = constants.size();
+        constants.resize(offset + sizeof(NativeConstant));
+        NativeConstant constant{};
+        constant.index = id;
+        std::memcpy(&constant.literal, value.data(), sizeof(constant.literal));
+        Put(constants, offset, constant);
+    };
+    append(36, source.tint);
+    append(37, source.flow->period);
+    append(38, hdr);
+    append(90, source.flow->scale);
+    append(94, atlas);
+    append(95, atlasBits);
+    std::memcpy(vertex.data() + 128, atlas.data(), 16);
+    std::memcpy(vertex.data() + 144, atlasBits.data(), 16);
+    std::memcpy(pixel.data(), source.tint.data(), 16);
+    std::memcpy(pixel.data() + 16, source.flow->scale.data(), 16);
+    std::memcpy(pixel.data() + 32, source.flow->period.data(), 16);
+    std::memcpy(pixel.data() + 48, hdr.data(), 16);
+    indices[zonetool::iw8::TECHNIQUE_EMISSIVE] = 0;
+    direct["info"] = Hex(info);
+    direct["techset"] = techset;
+    direct["textures"] = Json::array();
+    for (const auto id : std::array<std::uint8_t, 3>{18, 57, 58})
+        direct["textures"].push_back(texture(id));
+    direct["constants"] = Hex(constants);
+    direct["bufferIndices"] = Hex(indices);
+    direct["buffers"] = Json::array({Json::array({Hex(vertex), "", "", Hex(pixel)})});
+    return direct;
+}
+} // namespace
+
+namespace
+{
+int g_bc7Images = -1;
+
+constexpr const char *kBc7ResidentEncoderVersion = "bc7-m654-v1";
+
+// A resident image of a material: its name in the material and its image definition.
+struct ResidentImageResult
+{
+    std::string name;
+    Json definition;
+    bool considered{}; // a BC7 candidate (bc7_images, a size of whole blocks)
+    bool compressed{};
+    std::size_t rawBytes{}, packedBytes{};
+    double psnr{};
+    unsigned channel{};
+};
+
+// Runs the resident images of world and model materials on every core. A submit waits while the queue is full,
+// which bounds the source images held at once.
+class ResidentImagePool
+{
+  public:
+    ResidentImagePool()
+    {
+        // Sources of a sixteenth of the free memory, between 256 MB and 2 GB: a job holds about four times its source,
+        // so the jobs in flight take about a quarter.
+        MEMORYSTATUSEX memory{sizeof(memory)};
+        const std::uint64_t available = GlobalMemoryStatusEx(&memory) ? memory.ullAvailPhys : 0;
+        this->heldBytes_ = static_cast<std::size_t>(std::clamp<std::uint64_t>(available / 16, 256ull << 20, 2048ull << 20));
+        const unsigned count = std::max(1u, std::thread::hardware_concurrency());
+        for (unsigned worker = 0; worker < count; ++worker)
+            this->workers_.emplace_back([this] { this->run(); });
+    }
+
+    ~ResidentImagePool()
+    {
+        {
+            std::lock_guard lock(this->mutex_);
+            this->stopping_ = true;
+        }
+        this->work_.notify_all();
+        for (auto &worker : this->workers_)
+            worker.join();
+    }
+
+    // `bytes`: the image data that the job holds. Jobs in flight hold at most heldBytes_ unless one alone is larger.
+    std::size_t submit(std::move_only_function<ResidentImageResult()> job, const std::size_t bytes)
+    {
+        std::unique_lock lock(this->mutex_);
+        this->room_.wait(lock, [&] {
+            return this->queue_.size() < 2 * this->workers_.size() &&
+                   (this->held_ == 0 || this->held_ + bytes <= this->heldBytes_);
+        });
+        const std::size_t index = this->results_.size();
+        this->results_.emplace_back();
+        this->sizes_.push_back(bytes);
+        this->held_ += bytes;
+        this->queue_.emplace_back(index, std::move(job));
+        ++this->pending_;
+        this->work_.notify_one();
+        return index;
+    }
+
+    // Waits for every job; rethrows the first failure.
+    std::vector<ResidentImageResult> finish()
+    {
+        std::unique_lock lock(this->mutex_);
+        this->done_.wait(lock, [this] { return this->pending_ == 0; });
+        if (this->failure_)
+            std::rethrow_exception(this->failure_);
+        std::vector<ResidentImageResult> results;
+        results.reserve(this->results_.size());
+        for (auto &result : this->results_)
+            results.push_back(std::move(*result));
+        this->results_.clear();
+        this->sizes_.clear();
+        return results;
+    }
+
+  private:
+    void run()
+    {
+        for (;;)
+        {
+            std::pair<std::size_t, std::move_only_function<ResidentImageResult()>> job;
+            {
+                std::unique_lock lock(this->mutex_);
+                this->work_.wait(lock, [this] { return this->stopping_ || !this->queue_.empty(); });
+                if (this->queue_.empty())
+                    return;
+                job = std::move(this->queue_.front());
+                this->queue_.pop_front();
+            }
+            std::optional<ResidentImageResult> result;
+            std::exception_ptr failure;
+            try
+            {
+                result = job.second();
+            }
+            catch (...)
+            {
+                failure = std::current_exception();
+            }
+            {
+                std::lock_guard lock(this->mutex_);
+                if (failure && !this->failure_)
+                    this->failure_ = failure;
+                this->results_[job.first] = std::move(result);
+                this->held_ -= this->sizes_[job.first];
+                if (--this->pending_ == 0)
+                    this->done_.notify_all();
+            }
+            this->room_.notify_all();
+        }
+    }
+
+    std::mutex mutex_;
+    std::condition_variable work_, room_, done_;
+    std::deque<std::pair<std::size_t, std::move_only_function<ResidentImageResult()>>> queue_;
+    std::size_t heldBytes_{};
+    std::vector<std::optional<ResidentImageResult>> results_;
+    std::vector<std::size_t> sizes_;
+    std::size_t held_{};
+    std::size_t pending_{};
+    std::exception_ptr failure_;
+    bool stopping_{};
+    std::vector<std::thread> workers_;
+};
+
+// BC7 resident chains by their pixels: an image that several materials use (a shared normal map, one texture in
+// world and model domains) encodes once, and once per cache.
+struct EncodedResident
+{
+    std::vector<std::uint8_t> bytes;
+    double error{};
+};
+
+class ResidentEncodeCache
+{
+  public:
+    explicit ResidentEncodeCache(std::filesystem::path root) : root_(std::move(root))
+    {
+    }
+
+    EncodedResident encode(const std::vector<std::uint8_t> &pixels, const std::vector<std::uint8_t> &digest,
+                           const unsigned width, const unsigned height, const unsigned levels, const unsigned workers)
+    {
+        const std::string key = Hex(std::span(digest).first(16)) + "_" + std::to_string(width) + "x" + std::to_string(height);
+        std::shared_future<EncodedResident> pending;
+        std::promise<EncodedResident> promise;
+        bool owner = false;
+        {
+            std::lock_guard lock(this->mutex_);
+            auto found = this->encoding_.find(key);
+            if (found == this->encoding_.end())
+            {
+                found = this->encoding_.emplace(key, promise.get_future().share()).first;
+                owner = true;
+            }
+            pending = found->second;
+        }
+        if (!owner)
+            return pending.get();
+
+        try
+        {
+            EncodedResident result = this->load(key);
+            if (result.bytes.empty())
+            {
+                result.bytes = EncodeBc7Rectangle(pixels, width, height, levels, result.error, workers);
+                this->store(key, result);
+            }
+            promise.set_value(result);
+            // Later uses read the cache file (or encode again without one); the bytes are not held for the run.
+            std::lock_guard lock(this->mutex_);
+            this->encoding_.erase(key);
+            return result;
+        }
+        catch (...)
+        {
+            promise.set_exception(std::current_exception());
+            std::lock_guard lock(this->mutex_);
+            this->encoding_.erase(key);
+            throw;
+        }
+    }
+
+  private:
+    std::filesystem::path file(const std::string &key) const
+    {
+        return this->root_ / ("resident_" + key + "_" + kBc7ResidentEncoderVersion + ".bc7");
+    }
+
+    EncodedResident load(const std::string &key) const
+    {
+        EncodedResident result;
+        if (this->root_.empty())
+            return result;
+        std::error_code error;
+        const auto path = this->file(key);
+        if (!std::filesystem::is_regular_file(path, error) || std::filesystem::file_size(path, error) <= sizeof(double) || error)
+            return result;
+        // An entry that does not read (another conversion writing it) encodes again.
+        std::vector<std::uint8_t> bytes;
+        try
+        {
+            bytes = ReadBytes(path);
+        }
+        catch (const std::exception &)
+        {
+            return result;
+        }
+        if (bytes.size() <= sizeof(double))
+            return result;
+        std::memcpy(&result.error, bytes.data(), sizeof(double));
+        result.bytes.assign(bytes.begin() + sizeof(double), bytes.end());
+        return result;
+    }
+
+    // The cache is an optimisation: a full disk keeps converting.
+    void store(const std::string &key, const EncodedResident &result) const
+    {
+        if (this->root_.empty())
+            return;
+        std::vector<std::uint8_t> bytes(sizeof(double));
+        std::memcpy(bytes.data(), &result.error, sizeof(double));
+        bytes.insert(bytes.end(), result.bytes.begin(), result.bytes.end());
+        const auto path = this->file(key);
+        auto partial = path;
+        partial += "." + std::to_string(GetCurrentProcessId()) + "." +
+                   std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id())) + ".partial";
+        std::error_code error;
+        try
+        {
+            std::filesystem::create_directories(this->root_, error);
+            WriteBytes(partial, bytes);
+            std::filesystem::rename(partial, path, error);
+        }
+        catch (const std::exception &)
+        {
+        }
+        std::filesystem::remove(partial, error);
+    }
+
+    std::filesystem::path root_;
+    std::mutex mutex_;
+    std::map<std::string, std::shared_future<EncodedResident>> encoding_;
+};
+}
+
+void UseBc7Images(const int mode)
+{
+    g_bc7Images = mode;
+}
+
+bool HasStaticModelSurface(const std::filesystem::path &exportRoot,
+                           const std::vector<std::filesystem::path> &sourcePaths,
+                           const std::string &name)
+{
+    const auto material = ReadMaterial(exportRoot, sourcePaths, name);
+    return material.staticModelShadowOnly ? material.castsShadow : material.kind != SurfaceKind::skipped;
+}
+
+namespace
+{
+// A world.decal_volumes entry that passed validation: the replayrender::DecalVolume definition without its
+// material index, and the material name of the extraction.
+struct SourceDecalVolume
+{
+    Json definition;
+    std::string material;
+};
+
+SourceDecalVolume ReadDecalVolume(const Json &source)
+{
+    if (!source.is_object())
+        throw std::runtime_error("it is not an object");
+    const auto numbers = [&](const char *key, const std::size_t count, const double limit,
+                             const std::optional<std::vector<double>> &fallback = std::nullopt) {
+        const auto found = source.find(key);
+        if (found == source.end())
+        {
+            if (!fallback)
+                throw std::runtime_error(std::string(key) + " is missing");
+            return *fallback;
+        }
+        if (!found->is_array() || found->size() != count)
+            throw std::runtime_error(std::format("{} needs {} numbers", key, count));
+        std::vector<double> values;
+        for (const auto &value : *found)
+        {
+            if (!value.is_number() || !std::isfinite(value.get<double>()) || std::abs(value.get<double>()) > limit)
+                throw std::runtime_error(std::format("{} has a value that is not a number within {}", key, limit));
+            values.push_back(value.get<double>());
+        }
+        return values;
+    };
+    const auto number = [&](const char *key, const double fallback, const double low, const double high) {
+        const auto found = source.find(key);
+        if (found == source.end())
+            return fallback;
+        if (!found->is_number() || !(found->get<double>() >= low && found->get<double>() <= high))
+            throw std::runtime_error(std::format("{} is not a number from {} to {}", key, low, high));
+        return found->get<double>();
+    };
+    SourceDecalVolume volume;
+    const auto material = source.find("material");
+    if (material == source.end() || !material->is_string())
+        throw std::runtime_error("material is missing");
+    volume.material = material->get<std::string>();
+    if (volume.material.empty() || volume.material.size() > 255 || volume.material.front() == ',' ||
+        volume.material.find('\0') != std::string::npos)
+        throw std::runtime_error("material is not a valid name");
+    // Replay world positions stay within 262144 units; a half size packs as an R11G11B10F float (below 65536).
+    const auto center = numbers("center", 3, 262144.0);
+    auto halfSize = numbers("half_size", 3, 65536.0);
+    for (auto &value : halfSize)
+    {
+        if (!(value > 0) || value >= 65536.0)
+            throw std::runtime_error("half_size needs three values above 0 and below 65536");
+        value = std::max(value, 0x1p-14);
+    }
+    const auto axesValue = source.find("axes");
+    if (axesValue == source.end() || !axesValue->is_array() || axesValue->size() != 3)
+        throw std::runtime_error("axes needs three vectors");
+    std::array<std::array<double, 3>, 3> axes{};
+    for (std::size_t axis = 0; axis < 3; ++axis)
+    {
+        const auto &row = axesValue->at(axis);
+        if (!row.is_array() || row.size() != 3)
+            throw std::runtime_error("axes needs three vectors of three numbers");
+        for (std::size_t k = 0; k < 3; ++k)
+        {
+            if (!row.at(k).is_number() || !std::isfinite(row.at(k).get<double>()))
+                throw std::runtime_error("axes has a value that is not a finite number");
+            axes[axis][k] = row.at(k).get<double>();
+        }
+    }
+    // The packed record stores a rotation: the axes must be unit vectors at right angles, and right handed.
+    const auto dot = [&](const std::size_t a, const std::size_t b) {
+        return axes[a][0] * axes[b][0] + axes[a][1] * axes[b][1] + axes[a][2] * axes[b][2];
+    };
+    const double handedness = axes[0][0] * (axes[1][1] * axes[2][2] - axes[1][2] * axes[2][1]) -
+                              axes[0][1] * (axes[1][0] * axes[2][2] - axes[1][2] * axes[2][0]) +
+                              axes[0][2] * (axes[1][0] * axes[2][1] - axes[1][1] * axes[2][0]);
+    constexpr double tolerance = 0.01;
+    if (std::abs(dot(0, 0) - 1) > tolerance || std::abs(dot(1, 1) - 1) > tolerance || std::abs(dot(2, 2) - 1) > tolerance ||
+        std::abs(dot(0, 1)) > tolerance || std::abs(dot(0, 2)) > tolerance || std::abs(dot(1, 2)) > tolerance ||
+        handedness < 0)
+        throw std::runtime_error("axes are not three unit vectors at right angles (depth x width = height)");
+    const double drawOrder = number("draw_order", 0, -4, 3);
+    if (drawOrder != std::floor(drawOrder))
+        throw std::runtime_error("draw_order is not a whole number");
+    // The matrix and the offset pack as half floats.
+    volume.definition = {{"center", center},
+                         {"axes", axes},
+                         {"half_size", halfSize},
+                         {"opacity", number("opacity", 1, 0, 1)},
+                         {"feather", number("feather", 0, 0, 1)},
+                         {"draw_order", static_cast<int>(drawOrder)},
+                         {"uv_matrix", numbers("uv_matrix", 4, 65504.0, std::vector<double>{1, 0, 0, 1})},
+                         {"uv_offset", numbers("uv_offset", 2, 65504.0, std::vector<double>{0, 0})}};
+    return volume;
+}
+
+std::vector<SourceDecalVolume> ReadDecalVolumes(const Json &world)
+{
+    std::vector<SourceDecalVolume> volumes;
+    const auto list = world.find("decal_volumes");
+    if (list == world.end())
+        return volumes;
+    if (!list->is_array())
+    {
+        zt::warn("iw3: world.decal_volumes is not an array; the map has no decal volumes");
+        return volumes;
+    }
+    // The frame takes 0x800 visible collections of 16 (replayrender::kDecalVolumesPerCollection); a material index
+    // has 11 bits, with 0x7FF for none.
+    constexpr std::size_t maximumVolumes = 0x800 * 16, maximumMaterials = 0x7FF;
+    std::set<std::string> materials;
+    for (std::size_t index = 0; index < list->size(); ++index)
+    {
+        try
+        {
+            if (volumes.size() == maximumVolumes)
+                throw std::runtime_error("the map already has the most decal volumes that Replay draws (32768)");
+            SourceDecalVolume volume = ReadDecalVolume(list->at(index));
+            if (!materials.contains(volume.material) && materials.size() == maximumMaterials)
+                throw std::runtime_error("the map already has 2047 decal volume materials");
+            materials.insert(volume.material);
+            volumes.push_back(std::move(volume));
+        }
+        catch (const std::exception &error)
+        {
+            zt::warn("iw3: decal volume %zu is left out: %s", index, error.what());
+        }
+    }
+    return volumes;
+}
+} // namespace
+
+RenderPlan PrepareRenderAssets(const std::filesystem::path &exportRoot, const Json &world,
+                               const std::vector<std::string> &surfaceMaterials,
+                               const std::vector<std::string> &worldMaterials,
+                               const std::vector<std::string> &modelMaterials,
+                               const std::vector<std::string> &entityMaterials,
+                               const std::vector<std::string> &fxMaterials,
+                               const std::vector<std::string> &shadowWorldMaterials,
+                               const std::vector<std::string> &shadowModelMaterials,
+                               const std::vector<std::filesystem::path> &sourcePaths,
+                               const std::filesystem::path &mapDirectory, const std::string &map,
+                               const std::filesystem::path &cacheRoot,
+                               const std::string &surfaceShaderDefines,
+                               const unsigned staticModelInstances,
+                               const EntityLightVolume *entityLightVolume,
+                               const float lightUnitScale, const bool iw3Effects,
+                               const std::filesystem::path &replayZones)
+{
+    zt::LapTimer timing("render");
+    g_shaderCacheRoot = cacheRoot;
+    std::set<std::string> unique(surfaceMaterials.begin(), surfaceMaterials.end());
+    std::vector<SourceMaterial> materials;
+    materials.reserve(unique.size());
+    std::unordered_map<std::string, std::vector<Image>> images;
+    const bool iw7Images = world.value("iw7_specular", false);
+    auto image = [&](const std::string &name) -> const std::vector<Image> & {
+        auto found = images.find(name);
+        if (found == images.end())
+            found = images.emplace(name, LoadImage(exportRoot, sourcePaths, name)).first;
+        return found->second;
+    };
+    const auto parallelFor = [](const std::size_t count, const auto &body) {
+        std::atomic<std::size_t> next{0};
+        std::exception_ptr failure;
+        std::mutex failureMutex;
+        const auto run = [&] {
+            for (std::size_t index; (index = next.fetch_add(1)) < count;)
+            {
+                try
+                {
+                    body(index);
+                }
+                catch (...)
+                {
+                    std::lock_guard lock(failureMutex);
+                    if (!failure)
+                        failure = std::current_exception();
+                }
+            }
+        };
+        std::vector<std::thread> workers;
+        const auto workerCount = std::min<std::size_t>(count, std::max(1u, std::thread::hardware_concurrency()));
+        for (std::size_t worker = 1; worker < workerCount; ++worker)
+            workers.emplace_back(run);
+        run();
+        for (auto &worker : workers)
+            worker.join();
+        if (failure)
+            std::rethrow_exception(failure);
+    };
+    const std::vector<std::string> uniqueNames(unique.begin(), unique.end());
+    std::vector<SourceMaterial> readMaterials(uniqueNames.size());
+    parallelFor(uniqueNames.size(),
+                [&](const std::size_t index) { readMaterials[index] = ReadMaterial(exportRoot, sourcePaths, uniqueNames[index]); });
+    {
+        // Every image an emitter below reads is decoded here, on every core: colour, normal, response, detail, the
+        // stock replay colour, normal-gloss and reveal maps, the world distortion map, and the IW7 model flow and UV
+        // distortion maps. IW7 maps used to preload their colour maps only, so the atlas tile, static model, entity
+        // and glass emitters decoded the rest one at a time on the main thread (Breakneck: 259 s of static model
+        // materials, 66 s of entity materials, 67 s of atlas tiles, most of it serial decoding). The emitters load
+        // these images anyway; only the thread and the order change. Reveal, distortion, flow and UV-distortion
+        // images come only from IW7 extractions (export_materials.cpp, export_world.cpp), so IW3 keeps its set.
+        std::set<std::string> imageNames;
+        for (const SourceMaterial &material : readMaterials)
+        {
+            if (material.kind == SurfaceKind::skipped)
+                continue;
+            for (const std::string *name : {&material.color, &material.normal, &material.response, &material.detail,
+                                             &material.replayColor, &material.replayNormalGloss, &material.replayReveal,
+                                             &material.distortionMap})
+                if (!name->empty())
+                    imageNames.insert(*name);
+            if (material.flow)
+                for (const std::string *name : {&material.flow->map, &material.flow->surface})
+                    if (!name->empty())
+                        imageNames.insert(*name);
+            if (material.uvd && !material.uvd->map.empty())
+                imageNames.insert(material.uvd->map);
+        }
+        const std::vector<std::string> names(imageNames.begin(), imageNames.end());
+        std::vector<std::optional<std::vector<Image>>> loaded(names.size());
+        parallelFor(names.size(), [&](const std::size_t index) {
+            try
+            {
+                loaded[index] = LoadImage(exportRoot, sourcePaths, names[index]);
+            }
+            catch (const std::exception &)
+            {
+            }
+        });
+        for (std::size_t index = 0; index < names.size(); ++index)
+            if (loaded[index])
+                images.emplace(names[index], std::move(*loaded[index]));
+    }
+    for (std::size_t materialIndex = 0; materialIndex < uniqueNames.size(); ++materialIndex)
+    {
+        const std::string &name = uniqueNames[materialIndex];
+        SourceMaterial material = std::move(readMaterials[materialIndex]);
+        if (material.kind != SurfaceKind::skipped)
+        {
+            const auto &color = image(material.color);
+            if (color.size() != 1)
+                throw std::runtime_error("IW3 material color map is a cubemap: " + name);
+            ClassifyFoliage(material, color.front());
+            // Grass blades, leaves and hedges: their IW3 specular maps read as a
+            // wet sheen under Replay's view-angle reflections (owner test
+            // 2026-10-15, Greenband grass). Foliage shades without a specular
+            // map (the shader's matte default). IW7's foliage keeps its own
+            // physical specular (MAP_IW7_SPECULAR).
+            if (FoliageName(material.name + " " + material.color) && !material.response.empty() &&
+                !world.value("iw7_specular", false))
+            {
+                material.response.clear();
+                material.flags &= ~64u;
+            }
+        }
+        materials.push_back(std::move(material));
+    }
+    g_iw7SpecularDefines = world.value("iw7_specular", false) ? "#define MAP_IW7_SPECULAR 1\n" : "";
+    // "umbra_occluders": [[x0, y0, z0, x1, y1, z1], ...] (IW8 Radiant plan 2.4): solid boxes for the occlusion bake of
+    // the map's Umbra tome; "umbra_max_cells" limits its cells. Without the key the one-cell tome is written.
+    {
+        std::vector<std::array<float, 6>> occluders;
+        if (const auto boxes = world.find("umbra_occluders"); boxes != world.end() && boxes->is_array())
+            for (const auto &box : *boxes)
+            {
+                if (!box.is_array() || box.size() != 6)
+                    throw std::runtime_error("umbra_occluders: a box is six numbers (minimum and maximum corner)");
+                std::array<float, 6> values{};
+                for (size_t k = 0; k < 6; ++k)
+                    values[k] = box[k].get<float>();
+                occluders.push_back(values);
+            }
+        replayrender::SetUmbraOccluders(std::move(occluders), world.value("umbra_max_cells", 0u));
+    }
+    g_surfaceShaderSource.clear();
+    g_surfaceSceneDepth = false;
+    if (const auto custom = world.find("iw8r_surface_shader"); custom != world.end() && custom->is_string() &&
+                                                              !custom->get<std::string>().empty())
+    {
+        const std::string code = custom->get<std::string>();
+        // An editor that hands over the screen inputs (pixel, viewDepth, eye) has them in its struct; a shader that
+        // calls iw8rSceneDepth gets the function (defined in the surface shader, after the view constants) and the
+        // depth's precision.
+        std::string head = "#define IW8R_CUSTOM 1\n";
+        if (code.find("viewDepth;") != std::string::npos && code.find(" eye;") != std::string::npos)
+            head += "#define IW8R_SURFACE_SCREEN 1\n";
+        g_surfaceSceneDepth = code.find("iw8rSceneDepth(") != std::string::npos;
+        if (g_surfaceSceneDepth)
+            head += "#define IW8R_SCENE_DEPTH 1\nfloat iw8rSceneDepth(float2 pixel);\n"
+                    "static const float iw8rSceneDepthStep = 1.0 / 1024.0;\n";
+        g_surfaceShaderSource = head + code + "\n#line 1 \"iw3_map_surface.hlsl\"\n";
+    }
+    g_emissionDefines = std::ranges::any_of(materials, [](const SourceMaterial &material) {
+                            return (material.flags & kEmissionFlag) != 0;
+                        })
+                            ? "#define MAP_EMISSION 1\n"
+                            : "";
+    g_backFaceDefines = std::ranges::any_of(materials, [](const SourceMaterial &material) {
+                            return (material.flags & kBackFaceNormalsFlag) != 0;
+                        })
+                            ? "#define MAP_BACK_FACE_NORMALS 1\n"
+                            : "";
+    g_revealDefines = std::ranges::any_of(materials, [](const SourceMaterial &material) {
+                          return (material.flags & kRevealLayerFlag) != 0;
+                      })
+                          ? "#define MAP_REVEAL_LAYERS 1\n"
+                          : "";
+    g_skyObjectDefines = std::ranges::any_of(materials, [](const SourceMaterial &material) { return material.skyObject; })
+                             ? "#define MAP_SKY_OBJECTS 1\n"
+                             : "";
+    g_unlitMaskDefines = std::ranges::any_of(materials, [](const SourceMaterial &material) { return material.unlitMask; })
+                             ? "#define MAP_UNLIT_MASKS 1\n"
+                             : "";
+    // The rows a material stamps into its pixel constants: transmission and reveal sharpness (row 1), mask UV animation
+    // and volumetric extinction (row 2), UV animation and clamp axes (row 3).
+    std::unordered_map<std::string, std::array<std::array<float, 4>, 3>> materialRows;
+    for (const SourceMaterial &material : materials)
+        if (material.uvAnimation != std::array<float, 3>{} || material.maskUvAnimation != std::array<float, 3>{} ||
+            material.transmission != std::array<float, 3>{} || material.revealSharpness != 0 || material.clampAxes != 0 ||
+            material.volumetricExtinction)
+        {
+            const auto row = [](const std::array<float, 3> &xyz, const float w) {
+                return std::array{xyz[0], xyz[1], xyz[2], w};
+            };
+            materialRows.emplace(material.name, std::array{row(material.transmission, material.revealSharpness),
+                                                           row(material.maskUvAnimation, material.volumetricExtinction ? 1.0f : 0.0f),
+                                                           row(material.uvAnimation, static_cast<float>(material.clampAxes))});
+        }
+    const auto anyMaterial = [&](const auto &field) {
+        return std::ranges::any_of(materials, [&](const SourceMaterial &material) {
+            return material.*field != std::array<float, 3>{};
+        });
+    };
+    g_uvAnimationDefines = anyMaterial(&SourceMaterial::uvAnimation) || anyMaterial(&SourceMaterial::maskUvAnimation)
+                               ? "#define MAP_UV_ANIMATION 1\n"
+                               : "";
+    g_transmissionDefines = anyMaterial(&SourceMaterial::transmission) ? "#define MAP_TRANSMISSION 1\n" : "";
+    g_uvClampDefines = std::ranges::any_of(materials, [](const SourceMaterial &material) { return material.clampAxes != 0; })
+                           ? "#define MAP_UV_CLAMP 1\n"
+                           : "";
+    g_extinctionDefines =
+        std::ranges::any_of(materials, [](const SourceMaterial &material) { return material.volumetricExtinction; })
+            ? "#define MAP_VOLUMETRIC_EXTINCTION 1\n"
+            : "";
+    // IW3 DXT5 normal maps keep Y replicated in RGB and X in alpha (red equals
+    // green texel for texel). Every consumer here reads X from red, so move
+    // alpha into red once per image; this left one bump axis flat before.
+    std::set<std::string> swizzledNormals;
+    std::size_t movedNormals = 0;
+    for (const SourceMaterial &material : materials)
+    {
+        if (iw7Images || material.normal.empty() || material.normal == "$identitynormalmap" ||
+            !swizzledNormals.insert(material.normal).second)
+            continue;
+        image(material.normal);
+        auto &levels = images.at(material.normal);
+        const auto replicatedY = [](const Image &level) {
+            std::size_t matching = 0, texels = level.rgba.size() / 4;
+            std::uint8_t lowAlpha = 255, highAlpha = 0;
+            for (std::size_t offset = 0; offset < level.rgba.size(); offset += 4)
+            {
+                matching += std::abs(int(level.rgba[offset]) - int(level.rgba[offset + 1])) <= 8;
+                lowAlpha = std::min(lowAlpha, level.rgba[offset + 3]);
+                highAlpha = std::max(highAlpha, level.rgba[offset + 3]);
+            }
+            return texels && matching * 100 >= texels * 97 && highAlpha - lowAlpha > 16;
+        };
+        if (levels.empty() || !replicatedY(levels.front()))
+            continue;
+        const auto swizzle = [](Image &level) {
+            level.nativeBc7.clear();
+            level.nativeBc7Levels = 0;
+            for (std::size_t offset = 0; offset < level.rgba.size(); offset += 4)
+            {
+                level.rgba[offset] = level.rgba[offset + 3];
+                level.rgba[offset + 3] = 255;
+            }
+        };
+        for (Image &level : levels)
+        {
+            swizzle(level);
+            for (Image &mip : level.mips)
+                swizzle(mip);
+        }
+        ++movedNormals;
+    }
+    zt::info("iw3: moved X from alpha to red in %zu of %zu DXT5 normal map(s)", movedNormals,
+             swizzledNormals.size());
+    timing.lap("material images");
+
+    // Atlas tiles are for world (BSP and brush-model) surfaces only: static models,
+    // entities and effects bind their own textures. Giving every model material a
+    // tile as well left Discovery's 123 world materials 128-pixel tiles.
+    const std::set<std::string> worldSurfaceMaterials(worldMaterials.begin(), worldMaterials.end());
+    // Native FxGlass panes draw with the world technique and sample the atlas
+    // too, but the converter replaces their brush surfaces with panes before
+    // this point: without their own tile every pane read tile 0 (Nuketown's
+    // windows showed a wood texture, owner rounds 85-90).
+    const auto atlasMaterial = [&](const SourceMaterial &material) {
+        return material.kind != SurfaceKind::skipped &&
+               (worldSurfaceMaterials.contains(material.name) || material.kind == SurfaceKind::glass);
+    };
+    std::map<std::string, std::size_t> tileNumbers;
+    for (const auto &material : materials)
+        if (atlasMaterial(material))
+            tileNumbers.emplace(TileKey(material), 0);
+    // IW3 world detail maps sample their own colour-atlas tile (opaque and blended
+    // world surfaces; models bind the detail image directly).
+    const auto worldDetailed = [&](const SourceMaterial &material) {
+        return !material.detail.empty() &&
+               ((material.kind == SurfaceKind::opaque && !material.depthBias) ||
+                material.kind == SurfaceKind::glass) &&
+               worldSurfaceMaterials.contains(material.name);
+    };
+    const auto detailTileKey = [](const std::string &image) { return "detail" + image; };
+    for (const auto &material : materials)
+    {
+        if (worldDetailed(material))
+        {
+            tileNumbers.emplace(detailTileKey(material.detail), 0);
+            zt::info("iw3: world detail %s: %s x %g %g", material.name.c_str(),
+                     material.detail.c_str(), material.detailScale[0], material.detailScale[1]);
+        }
+        else if (!material.detail.empty() && worldSurfaceMaterials.contains(material.name))
+            zt::warn("iw3: world detail %s not applied (kind %u, depth bias %d)",
+                     material.name.c_str(), static_cast<unsigned>(material.kind),
+                     material.depthBias ? 1 : 0);
+    }
+    zt::info("iw3: %zu world material(s), %zu with a detail map", worldSurfaceMaterials.size(),
+             static_cast<std::size_t>(std::count_if(
+                 materials.begin(), materials.end(),
+                 [](const SourceMaterial &material) { return !material.detail.empty(); })));
+    const std::size_t visibleCount = tileNumbers.size();
+    RenderPlan plan;
+    const auto &sourceProbes = world.at("reflection_probes");
+    if (!sourceProbes.is_array() || sourceProbes.empty() || sourceProbes.size() > 256)
+        throw std::runtime_error("invalid IW3 reflection-probe table");
+    plan.reflectionProbes.reserve(sourceProbes.size());
+    std::vector<Cubemap> probeCubemaps;
+    std::vector<float> probeLevels;
+    std::vector<float> probeGains;
+    probeCubemaps.reserve(sourceProbes.size());
+    // IW3 reserves probe 0 for R_CreateDefaultProbe's flat diagnostic image.
+    // R_FindNearestReflectionProbe/R_AddAllProbesToAllCells skip it when
+    // authored captures exist. Only those captures belong in Replay's array,
+    // SH table and spatial instances; retain the sole default for unprobed maps.
+    const std::size_t firstProbe = sourceProbes.size() > 1 ? 1 : 0;
+    for (std::size_t index = firstProbe; index < sourceProbes.size(); ++index)
+    {
+        const auto &source = sourceProbes.at(index);
+        const auto &sourceOrigin = source.at("origin");
+        const std::string sourceName = source.at("image").get<std::string>();
+        if (!sourceOrigin.is_array() || sourceOrigin.size() != 3 || sourceName.empty() ||
+            sourceName.find("..") != std::string::npos ||
+            sourceName.find(':') != std::string::npos ||
+            sourceName.find('\\') != std::string::npos || sourceName.front() == '/')
+            throw std::runtime_error("invalid IW3 reflection probe");
+        ReflectionProbePlan probe;
+        probe.sourceIndex = index;
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            probe.origin[axis] = sourceOrigin.at(axis).get<float>();
+            if (!std::isfinite(probe.origin[axis]) || std::abs(probe.origin[axis]) > 100000.0f)
+                throw std::runtime_error("IW3 reflection-probe origin is outside Replay range");
+        }
+        std::string sourceFile = sourceName;
+        std::ranges::replace(sourceFile, '*', '_');
+        const auto sourcePath = exportRoot / "images" / (sourceFile + ".dds");
+        std::error_code error;
+        if (!std::filesystem::is_regular_file(sourcePath, error))
+            throw std::runtime_error("missing IW3 reflection-probe image '" + sourceName + "'");
+        const bool editorCapture = source.value("capture", std::string()) == "editor";
+        Cubemap cubemap = DecodeDdsCubemap(sourcePath, editorCapture);
+        // Stored value x level = the capture's own radiance, whatever the array's gain.
+        probeLevels.push_back(cubemap.absoluteScale / cubemap.arrayGain);
+        probeGains.push_back(cubemap.arrayGain);
+        probe.sh = ProjectReflectionSh(cubemap);
+        // The zone's SH describes the stored image.
+        for (auto &channel : probe.sh)
+            for (float &coefficient : channel)
+                coefficient *= cubemap.arrayGain;
+        if (editorCapture)
+            zt::info("iw3: reflection probe %zu is an editor capture: colour kept, stored at %.2fx (mean luminance %.3f)",
+                     index, cubemap.arrayGain, kStockProbeMeanLuminance / cubemap.arrayGain);
+        const std::string filename = map + "_reflection_probe_" + std::to_string(index) + ".rgba";
+        const auto digest = Sha256(cubemap.residentPixels);
+        const std::string targetName = "mw120r/" + map + "_reflection_probe_" +
+                                       std::to_string(index) + "_" +
+                                       Hex(std::span(digest).first(8));
+        WriteBytes(mapDirectory / filename, cubemap.residentPixels);
+        probe.image = {{"name", targetName},
+                       {"width", cubemap.width},
+                       {"height", cubemap.height},
+                       {"rgba8", filename},
+                       {"format", 7},
+                       {"flags", 0x8001u},
+                       {"depth", 1},
+                       {"numElements", 1},
+                       {"semantic", 1},
+                       {"category", 1},
+                       {"mipCount", cubemap.mipCount}};
+        plan.reflectionProbes.push_back(std::move(probe));
+        probeCubemaps.push_back(std::move(cubemap));
+    }
+    {
+        std::array<std::array<double, 3>, 9> average{};
+        for (std::size_t slot = 0; slot < plan.reflectionProbes.size(); ++slot)
+        {
+            // The glass environment keeps the capture's own level (the array gain taken out again).
+            const auto &probe = plan.reflectionProbes[slot];
+            const double gain = slot < probeGains.size() && probeGains[slot] > 0 ? probeGains[slot] : 1.0;
+            for (unsigned coefficient = 0; coefficient < 9; ++coefficient)
+                for (unsigned channel = 0; channel < 3; ++channel)
+                    average[coefficient][channel] +=
+                        probe.sh[channel][coefficient] / gain / plan.reflectionProbes.size();
+        }
+        plan.glassEnvironment = "#define MAP_GLASS_SH {";
+        for (unsigned coefficient = 0; coefficient < 9; ++coefficient)
+            plan.glassEnvironment +=
+                std::string(coefficient ? "," : "") + "float3(" +
+                HlslNumber(static_cast<float>(average[coefficient][0])) + "," +
+                HlslNumber(static_cast<float>(average[coefficient][1])) + "," +
+                HlslNumber(static_cast<float>(average[coefficient][2])) + ")";
+        plan.glassEnvironment += "}\n";
+        // Per probe image slice: stored value x level = IW3 radiance (linear).
+        plan.glassEnvironment += "#define MAP_PROBE_LEVELS {";
+        for (std::size_t slot = 0; slot < probeLevels.size(); ++slot)
+            plan.glassEnvironment += (slot ? "," : "") + HlslNumber(probeLevels[slot]);
+        if (probeLevels.empty())
+            plan.glassEnvironment += "1";
+        plan.glassEnvironment += "}\n";
+        // Sources with their own probe instances (IW7) reflect them as the stock
+        // shader does, instead of one probe per surface.
+        if (std::any_of(sourceProbes.begin(), sourceProbes.end(),
+                        [](const Json &probe) { return probe.contains("instances"); }))
+            plan.glassEnvironment += "#define MAP_PROBE_BOXES 1\n";
+        // Every converted surface variant shares this preamble (map fog included).
+        plan.glassEnvironment += surfaceShaderDefines;
+    }
+    constexpr unsigned arrayWidth = 256;
+    constexpr unsigned arrayMipCount = 6;
+    timing.lap("probe cubemaps and SH");
+    // The reference BC6H encoder dominates conversion time, but its output
+    // depends only on the probe images; reuse it across rebuilds.
+    std::vector<std::uint8_t> probeKey{'p', 'r', 'o', 'b', 'e', '-', 'b', 'c', '6', 'h', '-', 'v', '1'};
+    const auto appendKey = [&probeKey](const std::uint32_t value) {
+        for (unsigned shift = 0; shift < 32; shift += 8)
+            probeKey.push_back(static_cast<std::uint8_t>(value >> shift));
+    };
+    appendKey(arrayWidth);
+    appendKey(arrayMipCount);
+    for (const Cubemap &cubemap : probeCubemaps)
+    {
+        appendKey(cubemap.width);
+        appendKey(cubemap.height);
+        appendKey(cubemap.mipCount);
+        if (cubemap.arrayGain != 1.0f)
+        {
+            std::uint32_t gainBits;
+            std::memcpy(&gainBits, &cubemap.arrayGain, sizeof(gainBits));
+            appendKey(0x6761696eu); // "gain"
+            appendKey(gainBits);
+        }
+        for (const auto &face : cubemap.faces)
+            for (const Image &level : face)
+            {
+                appendKey(level.width);
+                appendKey(level.height);
+                probeKey.insert(probeKey.end(), level.rgba.begin(), level.rgba.end());
+            }
+    }
+    const auto probeDigest = Sha256(probeKey);
+    const auto probeCache =
+        cacheRoot.empty() ? std::filesystem::path{}
+                          : cacheRoot / ("probes_" + Hex(std::span(probeDigest).first(16)) + "_" + kBc6hProbeEncoderVersion + ".bc6h");
+    std::vector<std::uint8_t> arrayPixels;
+    std::error_code cacheError;
+    if (!probeCache.empty() && std::filesystem::is_regular_file(probeCache, cacheError) &&
+        std::filesystem::file_size(probeCache, cacheError) == probeCubemaps.size() * 87360 &&
+        !cacheError)
+    {
+        arrayPixels = ReadBytes(probeCache);
+        zt::info("iw3: reusing cached reflection-probe array %s", probeCache.string().c_str());
+    }
+    else
+    {
+        arrayPixels = BuildReflectionProbeArray(probeCubemaps, arrayWidth, arrayMipCount);
+        if (!probeCache.empty())
+        {
+            // Per process: both styles of a map encode the same probes in
+            // parallel, and a shared temporary name made both renames fail.
+            auto partial = probeCache;
+            partial += "." + std::to_string(GetCurrentProcessId()) + ".partial";
+            try
+            {
+                WriteBytes(partial, arrayPixels);
+                std::filesystem::rename(partial, probeCache, cacheError);
+                if (cacheError)
+                    zt::warn("iw3: probe cache not written (%s)", cacheError.message().c_str());
+            }
+            catch (const std::exception &error)
+            {
+                zt::warn("iw3: probe cache not written (%s)", error.what());
+            }
+            std::filesystem::remove(partial, cacheError);
+        }
+    }
+    timing.lap("probe BC6H array");
+    constexpr std::size_t bytesPerSlice = 87360;
+    if (arrayPixels.size() != probeCubemaps.size() * bytesPerSlice)
+        throw std::runtime_error("BC6H reflection-probe array has an invalid resident size");
+    const auto arrayDigest = Sha256(arrayPixels);
+    const std::string arrayFile = map + "_reflection_probe_array_octahedron.bc6h";
+    const std::string arrayName = "mw120r/" + map + "_reflection_probe_array_octahedron_" +
+                                  Hex(std::span(arrayDigest).first(8));
+    WriteBytes(mapDirectory / arrayFile, arrayPixels);
+    plan.reflectionProbeArrayImage = {{"name", arrayName},
+                                      {"width", arrayWidth},
+                                      {"height", arrayWidth},
+                                      {"bc6h", arrayFile},
+                                      {"format", 42},
+                                      {"flags", 0x10020001u},
+                                      {"depth", 1},
+                                      {"numElements", probeCubemaps.size()},
+                                      {"semantic", 1},
+                                      {"category", 1},
+                                      {"mipCount", arrayMipCount}};
+    // World volumetrics (an IW7 extraction's GfxWorldDraw.volumetrics): Replay's GfxVolumetric holds the same
+    // oriented box, density, falloff and projected masks. An opacity mask's image becomes a resident RGBA8 image
+    // with its source levels, each padded to 16 bytes as the resident loader reads them.
+    std::set<std::string> volumetricMaskFiles;
+    for (const auto &source : world.value("volumetrics", Json::array()))
+    {
+        Json volumetric = source;
+        Json masks = Json::array();
+        for (const auto &mask : source.value("masks", Json::array()))
+        {
+            const auto imageName = mask.at("image").get<std::string>();
+            const auto &faces = image(imageName);
+            if (faces.size() != 1)
+                throw std::runtime_error("volumetric mask image is not a 2D image: " + imageName);
+            const auto &top = faces.front();
+            std::vector<Image> generated;
+            std::vector<const Image *> levels{&top};
+            for (const auto &mip : top.mips)
+                levels.push_back(&mip);
+            if (top.mips.empty())
+                for (auto width = top.width, height = top.height; width > 1 || height > 1;)
+                {
+                    width = std::max(1u, width / 2);
+                    height = std::max(1u, height / 2);
+                    generated.push_back(Resize(generated.empty() ? top : generated.back(), width, height, false));
+                }
+            for (const auto &mip : generated)
+                levels.push_back(&mip);
+            std::vector<std::uint8_t> pixels;
+            for (std::size_t level = 0; level < levels.size(); ++level)
+            {
+                const auto &current = *levels[level];
+                if (current.width != std::max(1u, top.width >> level) ||
+                    current.height != std::max(1u, top.height >> level) ||
+                    current.rgba.size() != std::size_t(current.width) * current.height * 4)
+                    throw std::runtime_error("volumetric mask image has an inconsistent mip chain: " + imageName);
+                pixels.insert(pixels.end(), current.rgba.begin(), current.rgba.end());
+                pixels.resize((pixels.size() + 15) & ~std::size_t{15});
+            }
+            const auto digest = Sha256(pixels);
+            const std::string stem = map + "_volumetric_mask_" + Hex(std::span(digest).first(8));
+            if (volumetricMaskFiles.insert(stem).second)
+                WriteBytes(mapDirectory / (stem + ".rgba"), pixels);
+            Json entry = mask;
+            entry["image"] = {{"name", "mw120r/" + stem},
+                              {"width", top.width},
+                              {"height", top.height},
+                              {"rgba8", stem + ".rgba"},
+                              {"format", 6},
+                              {"mipCount", levels.size()}};
+            masks.push_back(std::move(entry));
+        }
+        volumetric["masks"] = std::move(masks);
+        plan.volumetrics.push_back(std::move(volumetric));
+    }
+    if (!plan.volumetrics.empty())
+        zt::info("iw3: %zu world volumetrics, %zu mask images", plan.volumetrics.size(), volumetricMaskFiles.size());
+    // Decal volumes (world.decal_volumes): oriented boxes that project a decal material onto the surfaces inside
+    // them. An entry that Replay cannot draw safely is left out with a warning; it never fails the build.
+    std::vector<SourceDecalVolume> decalVolumeSources = ReadDecalVolumes(world);
+    // A material with a file in the extraction is built as an effect decal is (the FX material pass below); any
+    // other name must be a Material of a common zone with a decal volume definition.
+    std::vector<std::string> decalFxMaterials;
+    {
+        std::map<std::string, bool> usable;
+        std::set<std::string> stockNames;
+        for (const auto &volume : decalVolumeSources)
+        {
+            if (usable.contains(volume.material))
+                continue;
+            usable[volume.material] = false;
+            try
+            {
+                if (FindMaterial(exportRoot, sourcePaths, volume.material).empty())
+                {
+                    stockNames.insert(volume.material);
+                    continue;
+                }
+                const SourceFxMaterial source = ReadFxMaterial(exportRoot, sourcePaths, volume.material);
+                if (source.family != FxMaterialFamily::decal)
+                    throw std::runtime_error("its technique set " + source.techniqueSet + " is not a decal");
+                for (const auto &name : {source.image, source.normal, source.response})
+                    if (!name.empty())
+                        image(name);
+                usable[volume.material] = true;
+                decalFxMaterials.push_back(volume.material);
+            }
+            catch (const std::exception &error)
+            {
+                zt::warn("iw3: decal volume material %s is not usable (%s); its decal volumes are left out",
+                         volume.material.c_str(), error.what());
+            }
+        }
+        if (!stockNames.empty())
+        {
+            std::set<std::string> stock;
+            try
+            {
+                if (replayZones.empty())
+                    throw std::runtime_error("no Replay zone folder (--replay) to check them in");
+                stock = iw8::stock::CommonDecalVolumeMaterials(replayZones, stockNames);
+            }
+            catch (const std::exception &error)
+            {
+                zt::warn("iw3: stock decal volume materials are not checked: %s", error.what());
+            }
+            for (const auto &name : stockNames)
+            {
+                usable[name] = stock.contains(name);
+                if (!usable[name])
+                    zt::warn("iw3: decal volume material %s has no file in the extraction and is not a common-zone "
+                             "Material with a decal volume definition; its decal volumes are left out",
+                             name.c_str());
+            }
+            plan.stockMaterials.insert(stock.begin(), stock.end());
+        }
+        std::erase_if(decalVolumeSources, [&](const SourceDecalVolume &volume) { return !usable.at(volume.material); });
+    }
+    timing.lap("materials and reflection probes");
+    std::vector<std::array<unsigned, 2>> lightmapDimensions;
+    for (const auto &pair : world.value("lightmaps", Json::array()))
+    {
+        if (!pair.is_array() || pair.size() != 2 || pair.at(1).at("format") != 21 ||
+            pair.at(1).at("height").get<unsigned>() % 2)
+            throw std::runtime_error("unsupported IW3 lightmap format");
+        lightmapDimensions.push_back(
+            {pair.at(1).at("width"), pair.at(1).at("height").get<unsigned>() / 2});
+    }
+    unsigned columns = 0, cell = 0;
+    // One 8192 BC7 atlas. Generated world materials read IW3's lightmaps from the
+    // uncompressed lightmap layers (any number of lightmaps); the world's native
+    // lightmap table below (Replay's own format) is written for the engine alone.
+    const unsigned atlasSize = 8192u;
+    plan.atlasSize = atlasSize;
+    std::vector<bool> occupied;
+    for (const unsigned candidate : {4u, 8u, 16u, 32u})
+    {
+        const unsigned candidateCell = atlasSize / candidate;
+        std::vector<bool> candidateOccupied(static_cast<std::size_t>(candidate) * candidate);
+        std::vector<LightmapRectangle> rectangles;
+        bool fits = true;
+        for (const auto &dimensions : lightmapDimensions)
+        {
+            const unsigned cellsWide = (dimensions[0] + candidateCell - 1) / candidateCell;
+            const unsigned cellsHigh = (dimensions[1] + candidateCell - 1) / candidateCell;
+            bool placed = false;
+            if (cellsWide <= candidate && cellsHigh <= candidate)
+                for (int row = static_cast<int>(candidate - cellsHigh); row >= 0 && !placed; --row)
+                    for (unsigned column = 0; column + cellsWide <= candidate && !placed; ++column)
+                    {
+                        bool free = true;
+                        for (unsigned y = 0; y < cellsHigh && free; ++y)
+                            for (unsigned x = 0; x < cellsWide; ++x)
+                                free &= !candidateOccupied[(row + y) * candidate + column + x];
+                        if (!free)
+                            continue;
+                        for (unsigned y = 0; y < cellsHigh; ++y)
+                            for (unsigned x = 0; x < cellsWide; ++x)
+                                candidateOccupied[(row + y) * candidate + column + x] = true;
+                        rectangles.push_back({column * candidateCell,
+                                              static_cast<unsigned>(row) * candidateCell,
+                                              dimensions[0], dimensions[1]});
+                        placed = true;
+                    }
+            if (!placed)
+            {
+                fits = false;
+                break;
+            }
+        }
+        const std::size_t freeCells =
+            std::count(candidateOccupied.begin(), candidateOccupied.end(), false);
+        if (fits && freeCells >= visibleCount + 6)
+        {
+            columns = candidate;
+            cell = candidateCell;
+            occupied = std::move(candidateOccupied);
+            plan.lightmaps = std::move(rectangles);
+            break;
+        }
+    }
+    if (!columns)
+        throw std::runtime_error("IW3 material and lightmap data exceed the Replay atlas");
+    // A world material whose largest source (colour, normal or specular map, or a
+    // detail map) is at least twice the cell takes a 2x2 block, keeping 1024
+    // textures at their resolution in 512 cells (Discovery: eleven 1024 maps).
+    std::map<std::string, unsigned> keySize;
+    {
+        const auto sourceSize = [&](const std::string &name) -> unsigned {
+            if (name.empty() || name.front() == '$')
+                return 0;
+            const Image &first = image(name).front();
+            return std::max(first.width, first.height);
+        };
+        for (const auto &material : materials)
+        {
+            if (!atlasMaterial(material))
+                continue;
+            unsigned &size = keySize[TileKey(material)];
+            size = std::max({size, sourceSize(material.color), sourceSize(material.normal),
+                             sourceSize(material.response)});
+            if (!material.detail.empty())
+            {
+                unsigned &detailSize = keySize[detailTileKey(material.detail)];
+                detailSize = std::max(detailSize, sourceSize(material.detail));
+            }
+        }
+    }
+    std::vector<std::uint8_t> tileSpan(occupied.size(), 1);
+    const auto takeBlock = [&](const unsigned span) -> std::optional<std::size_t> {
+        for (unsigned row = 0; row + span <= columns; ++row)
+            for (unsigned column = 0; column + span <= columns; ++column)
+            {
+                bool free = true;
+                for (unsigned y = 0; y < span && free; ++y)
+                    for (unsigned x = 0; x < span && free; ++x)
+                        free = !occupied[(row + y) * columns + column + x];
+                if (!free)
+                    continue;
+                for (unsigned y = 0; y < span; ++y)
+                    for (unsigned x = 0; x < span; ++x)
+                        occupied[(row + y) * columns + column + x] = true;
+                const std::size_t tile = std::size_t{row} * columns + column;
+                tileSpan[tile] = static_cast<std::uint8_t>(span);
+                return tile;
+            }
+        return std::nullopt;
+    };
+    std::size_t freeCells = std::count(occupied.begin(), occupied.end(), false);
+    std::size_t pendingSmall = tileNumbers.size() + 6; // every tile at one cell, plus the sky
+    std::size_t spanned = 0, halved = 0;
+    std::set<std::string> assigned;
+    for (auto &[key, number] : tileNumbers)
+    {
+        const auto size = keySize.find(key);
+        if (size == keySize.end() || size->second < 2 * cell)
+            continue;
+        // A 2x2 block costs three cells more than a single tile.
+        if (freeCells < pendingSmall + 3)
+        {
+            ++halved;
+            continue;
+        }
+        if (const auto tile = takeBlock(2))
+        {
+            number = *tile;
+            assigned.insert(key);
+            freeCells -= 4;
+            --pendingSmall;
+            ++spanned;
+        }
+        else
+            ++halved;
+    }
+    for (auto &[key, number] : tileNumbers)
+    {
+        if (assigned.contains(key))
+            continue;
+        const auto tile = takeBlock(1);
+        if (!tile)
+            throw std::runtime_error("IW3 material tiles exceed the Replay atlas");
+        number = *tile;
+        --freeCells;
+        --pendingSmall;
+    }
+    if (spanned || halved)
+        zt::info("iw3: %zu world texture(s) keep %u pixels in 2x2 atlas tiles%s", spanned, 2 * cell,
+                 halved ? (", " + std::to_string(halved) + " reduced to " + std::to_string(cell) +
+                           " (atlas full)")
+                              .c_str()
+                        : "");
+    {
+        const std::size_t words = (tileSpan.size() + 31) / 32;
+        std::vector<std::uint32_t> bits(words, 0);
+        for (std::size_t tile = 0; tile < tileSpan.size(); ++tile)
+            if (tileSpan[tile] == 2)
+                bits[tile / 32] |= 1u << (tile % 32);
+        g_tileSpanDefines = "#define MAP_TILE_SPAN_WORDS " + std::to_string(words) +
+                            "\n#define MAP_TILE_SPAN_BITS {";
+        for (std::size_t word = 0; word < words; ++word)
+            g_tileSpanDefines += (word ? "," : "") + std::to_string(bits[word]) + "u";
+        g_tileSpanDefines += "}\n";
+    }
+    const auto tileCell = [&](const std::size_t tile) { return cell * tileSpan.at(tile); };
+    // World surfaces, the sky and glass panes draw native materials of their own (the native world materials below)
+    // when the map's lightmaps are textures of their own: no surface reads the atlases, which are not built. Atlas
+    // coordinates remain the lightmap UVs' units. MW120R_ATLAS_WORLD=1 keeps the atlas path for every surface.
+    static const bool atlasWorld = std::getenv("MW120R_ATLAS_WORLD") != nullptr;
+    const bool nativeWorld = !plan.lightmaps.empty() && !atlasWorld;
+    const std::size_t atlasBytes = nativeWorld ? 0 : std::size_t{atlasSize} * atlasSize * 4;
+    std::array<Image, 3> atlases{Image{atlasSize, atlasSize, std::vector<std::uint8_t>(atlasBytes)},
+                                 Image{atlasSize, atlasSize, std::vector<std::uint8_t>(atlasBytes)},
+                                 Image{atlasSize, atlasSize, std::vector<std::uint8_t>(atlasBytes)}};
+    struct AtlasTileMipSource
+    {
+        std::size_t tile;
+        std::string image;
+        std::array<float, 4> tint;
+    };
+    // (tileCell is defined above with the tile spans.)
+    std::array<std::vector<AtlasTileMipSource>, 3> atlasTileMips;
+
+    plan.columns = columns;
+    // Model falloff layers take their own IW3 parameters from a per-map table
+    // in the model vertex shaders (row 0: the stock ramp). Model vertices have
+    // no material constants, and a fixed ramp drew Gulag's god-ray cones as
+    // flat sheets (owner test 2026-10-16).
+    std::vector<std::array<float, 6>> falloffRows{{2.128f, -0.064f, 0.5f, 0, 0, 0}};
+    std::set<std::size_t> writtenTiles;
+    // The tiles resize and paste on every core after the loop (tiles never overlap). A job reads its source as the
+    // loop saw it: a colour map that bleeds later is copied for the jobs queued before the bleed.
+    struct AtlasJob
+    {
+        unsigned atlas;
+        const Image *source;
+        std::shared_ptr<const Image> snapshot;
+        unsigned size;
+        bool color;
+        std::array<float, 4> tint;
+        std::size_t tile;
+    };
+    std::vector<AtlasJob> atlasJobs;
+    const auto queuePaste = [&](const unsigned atlas, const Image &source, const unsigned size, const bool color,
+                                const std::array<float, 4> &tint, const std::size_t tile) {
+        if (!nativeWorld)
+            atlasJobs.push_back({atlas, &source, nullptr, size, color, tint, tile});
+    };
+    std::set<std::string> bledColors;
+    for (const SourceMaterial &material : materials)
+    {
+        MaterialPlan item;
+        if ((material.flags & 1024u) != 0)
+        {
+            const std::array<float, 6> row{material.environment[0], material.environment[1],
+                                           material.environment[2], 0,
+                                           material.effect[0], material.effect[1]};
+            const auto found = std::find(falloffRows.begin(), falloffRows.end(), row);
+            if (found != falloffRows.end())
+                item.falloffIndex = static_cast<unsigned>(found - falloffRows.begin());
+            else if (falloffRows.size() < 64)
+            {
+                item.falloffIndex = static_cast<unsigned>(falloffRows.size());
+                falloffRows.push_back(row);
+            }
+            else
+                zt::warn("iw3 render: falloff layer %s uses the stock ramp (64 rows in use)",
+                         material.name.c_str());
+        }
+        item.kind = material.kind;
+        item.castsShadow = material.castsShadow;
+        item.shadowOnly = material.shadowOnly;
+        item.staticModelShadowOnly = material.staticModelShadowOnly;
+        item.entityNoDraw = material.entityNoDraw;
+        item.flags = material.flags;
+        item.cullMode = material.cullMode;
+        item.depthBias = material.depthBias;
+        item.blend = material.blend;
+        item.sourceSurfaceTypeBits = material.surfaceTypeBits;
+        item.environment = material.environment;
+        item.reactiveMotion = material.reactiveMotion;
+        if (atlasMaterial(material))
+        {
+            item.tile = tileNumbers.at(TileKey(material));
+            if (writtenTiles.insert(item.tile).second)
+            {
+                const auto retainMips = [&](const unsigned channel, const std::string &name) {
+                    if (name.empty())
+                        return;
+                    const Image &source = image(name).front();
+                    const unsigned size = tileCell(item.tile);
+                    if (source.width == size && source.height == size && !source.mips.empty())
+                        atlasTileMips[channel].push_back(
+                            {item.tile, name, material.tint});
+                };
+                // Cut-out and blended colour maps: IW3 DXT5 transparent texels
+                // hold arbitrary colours that filtering pulls into visible edges.
+                // A reveal layer's alpha is its reveal, not coverage: its colour
+                // shows wherever the layer's weight reaches the reveal.
+                const bool blendedAlpha = material.kind == SurfaceKind::glass && material.blend == 0 &&
+                                          !(material.flags & kRevealLayerFlag);
+                if ((material.kind == SurfaceKind::cutout || blendedAlpha) &&
+                    bledColors.insert(material.color).second)
+                {
+                    image(material.color);
+                    Image &source = images.at(material.color).front();
+                    std::shared_ptr<const Image> unbled;
+                    for (auto &job : atlasJobs)
+                        if (!job.snapshot && job.source == &source)
+                        {
+                            if (!unbled)
+                                unbled = std::make_shared<const Image>(source);
+                            job.snapshot = unbled;
+                        }
+                    const unsigned visibleAlpha = blendedAlpha ? 1u : 128u;
+                    BleedCutoutColor(source, visibleAlpha);
+                    for (Image &mip : source.mips)
+                        BleedCutoutColor(mip, visibleAlpha);
+                }
+                const unsigned size = tileCell(item.tile);
+                queuePaste(0, image(material.color).front(), size, true, material.tint, item.tile);
+                retainMips(0, material.color);
+                if (!material.normal.empty())
+                {
+                    queuePaste(1, image(material.normal).front(), size, false, {1, 1, 1, 1}, item.tile);
+                    retainMips(1, material.normal);
+                }
+                if (!material.response.empty())
+                {
+                    queuePaste(2, image(material.response).front(), size, false, {1, 1, 1, 1}, item.tile);
+                    retainMips(2, material.response);
+                }
+            }
+            if (worldDetailed(material))
+            {
+                const std::size_t detailTile = tileNumbers.at(detailTileKey(material.detail));
+                const auto found = std::find_if(
+                    plan.worldDetails.begin(), plan.worldDetails.end(), [&](const auto &row) {
+                        return row.tile == detailTile && row.scale == material.detailScale;
+                    });
+                item.worldDetail = static_cast<int>(found - plan.worldDetails.begin());
+                if (found == plan.worldDetails.end())
+                    plan.worldDetails.push_back({detailTile, material.detailScale});
+                if (writtenTiles.insert(detailTile).second)
+                {
+                    // IW3 stores the detail map as raw gamma bytes; the colour atlas
+                    // decodes sRGB and the shader re-encodes, as for colour maps.
+                    const Image &source = image(material.detail).front();
+                    const unsigned size = tileCell(detailTile);
+                    queuePaste(0, source, size, true, {1, 1, 1, 1}, detailTile);
+                    if (source.width == size && source.height == size && !source.mips.empty())
+                        atlasTileMips[0].push_back({detailTile, material.detail, {1, 1, 1, 1}});
+                }
+            }
+        }
+        if (material.water && material.kind == SurfaceKind::opaque &&
+            worldSurfaceMaterials.contains(material.name))
+        {
+            const auto pixels = BakeWaterFlipbook(*material.water);
+            const auto digest = Sha256(pixels);
+            const std::string id = Hex(std::span(digest).first(8));
+            RenderPlan::WorldWater row;
+            row.file = map + "_water_" + id + ".rgba";
+            row.image = "mw120r/" + map + "_water_" + id;
+            row.environment = material.water->environment;
+            row.color = material.water->color;
+            WriteBytes(mapDirectory / row.file, pixels);
+            item.worldWater = static_cast<int>(plan.worldWaters.size());
+            plan.worldWaters.push_back(std::move(row));
+            zt::info("iw3: world water %s: %u-frame wave flipbook (%.1f s loop)",
+                     material.name.c_str(), kWaterFrames, kWaterFrames / kWaterFramesPerSecond);
+        }
+        // Technique variants follow every visible material, world or model.
+        if (material.kind != SurfaceKind::skipped)
+        {
+            plan.hasCutout |= item.kind == SurfaceKind::cutout;
+            plan.hasCutoutBias |= item.kind == SurfaceKind::cutout && item.depthBias;
+            plan.hasOpaqueBias |= item.kind == SurfaceKind::opaque && item.depthBias;
+            plan.hasGlass |= item.kind == SurfaceKind::glass;
+        }
+        item.skyObject = material.skyObject;
+        item.uvAnimation = material.uvAnimation;
+        plan.materials.emplace(material.name, item);
+    }
+    {
+        std::atomic<std::size_t> next{0};
+        std::exception_ptr failure;
+        std::mutex failureMutex;
+        const auto paste = [&] {
+            for (std::size_t index; (index = next.fetch_add(1)) < atlasJobs.size();)
+            {
+                try
+                {
+                    const auto &job = atlasJobs[index];
+                    Paste(atlases[job.atlas],
+                          Resize(job.snapshot ? *job.snapshot : *job.source, job.size, job.size, job.color, job.tint),
+                          static_cast<unsigned>(job.tile % columns) * cell,
+                          static_cast<unsigned>(job.tile / columns) * cell);
+                }
+                catch (...)
+                {
+                    std::lock_guard lock(failureMutex);
+                    if (!failure)
+                        failure = std::current_exception();
+                }
+            }
+        };
+        std::vector<std::thread> workers;
+        for (unsigned worker = 1; worker < std::max(1u, std::thread::hardware_concurrency()); ++worker)
+            workers.emplace_back(paste);
+        paste();
+        for (auto &worker : workers)
+            worker.join();
+        if (failure)
+            std::rethrow_exception(failure);
+        atlasJobs.clear();
+    }
+    plan.modelFalloffDefines = "#define MAP_FALLOFF_TABLE {";
+    for (std::size_t row = 0; row < falloffRows.size(); ++row)
+    {
+        const auto &values = falloffRows[row];
+        for (std::size_t column = 0; column < values.size(); ++column)
+            plan.modelFalloffDefines +=
+                std::string(row || column ? "," : "") + HlslNumber(values[column]);
+    }
+    plan.modelFalloffDefines +=
+        "}\n#define MAP_FALLOFF_ROWS " + std::to_string(falloffRows.size()) + "\n";
+
+    const std::set<std::string> worldCasters(shadowWorldMaterials.begin(),
+                                             shadowWorldMaterials.end());
+    const std::set<std::string> modelCasters(shadowModelMaterials.begin(),
+                                             shadowModelMaterials.end());
+    timing.lap("atlas tiles");
+    for (const SourceMaterial &source : materials)
+    {
+        if (!source.castsShadow ||
+            (source.kind != SurfaceKind::opaque && source.kind != SurfaceKind::cutout &&
+             !source.shadowOnly))
+            continue;
+        const auto addCaster = [&](const bool worldDomain) {
+            const auto &requested = worldDomain ? worldCasters : modelCasters;
+            if (!requested.contains(source.name))
+                return;
+            replaysunshadow::Material caster;
+            // The generated world foliage shadow variants disable culling on
+            // both depth passes; model variants retain their authored cull.
+            caster.cullMode = worldDomain && source.kind == SurfaceKind::cutout
+                                  ? 0u
+                                  : source.cullMode;
+            caster.atlasTile = worldDomain;
+            if (source.kind == SurfaceKind::cutout)
+                caster.alphaTest = source.flags & 8u ? 2u : source.flags & 16u ? 3u : 1u;
+            if (!source.color.empty())
+            {
+                const Image &resident = image(source.color).front();
+                caster.width = worldDomain ? cell : resident.width;
+                caster.height = worldDomain ? cell : resident.height;
+                if (caster.alphaTest)
+                {
+                    const Image mask = Resize(resident, caster.width, caster.height, true,
+                                              source.tint);
+                    const std::size_t pixels =
+                        static_cast<std::size_t>(caster.width) * caster.height;
+                    caster.alpha.reserve(pixels);
+                    for (std::size_t pixel = 0; pixel < pixels; ++pixel)
+                        caster.alpha.push_back(mask.rgba[pixel * 4 + 3]);
+                }
+            }
+            else
+            {
+                caster.width = caster.height = 1; // Shadow-only techset is opaque.
+            }
+            if (plan.shadowScene.materials.size() >= UINT32_MAX)
+                throw std::runtime_error("IW3 shadow material table exceeds Replay limits");
+            const unsigned index = static_cast<unsigned>(plan.shadowScene.materials.size());
+            plan.shadowScene.materials.push_back(std::move(caster));
+            (worldDomain ? plan.worldShadowMaterials : plan.modelShadowMaterials)
+                .emplace(source.name, index);
+        };
+        addCaster(true);
+        addCaster(false);
+    }
+
+    for (std::size_t face = 0; face < plan.skyTiles.size(); ++face)
+    {
+        const auto tile = takeBlock(1);
+        if (!tile)
+            throw std::runtime_error("IW3 sky tiles exceed the Replay atlas");
+        plan.skyTiles[face] = *tile;
+    }
+    const std::string skyName = world.at("sky").get<std::string>();
+    // A map with no sky surfaces (an enclosed map such as mp_gulag) exports no
+    // sky image. Nothing draws the sky then; a dark cubemap fills its tiles.
+    if (skyName.empty() && !images.contains(skyName))
+    {
+        images.emplace(skyName, std::vector<Image>(6, SolidImage({24, 26, 30, 255})));
+        zt::info("iw3: map has no sky image; using a dark placeholder sky cubemap");
+    }
+    const auto &sky = image(skyName);
+    if (sky.size() != 6)
+        throw std::runtime_error("IW3 sky image is not a complete cubemap: " + skyName);
+    for (unsigned face = 0; face < 6 && !nativeWorld; ++face)
+        Paste(atlases[0], Resize(sky[face], cell, cell, true),
+              static_cast<unsigned>(plan.skyTiles[face] % columns) * cell,
+              static_cast<unsigned>(plan.skyTiles[face] / columns) * cell);
+
+    // IW3's two lightmap layers (A colour + direction X, B colour + direction Y)
+    // also go to uncompressed RGBA8 textures over the atlas region the lightmaps
+    // occupy. In the BC7 atlases the A colour shares mode-6 blocks with unrelated
+    // channels (direction, B colour), which shifted its hue: on Nuketown 2.2% of
+    // lit texels lost over 15% green (purple), with errors up to 173/255 at seams.
+    unsigned lightmapLeft = atlasSize, lightmapTop = atlasSize, lightmapRight = 0,
+             lightmapBottom = 0;
+    for (const auto &rectangle : plan.lightmaps)
+    {
+        lightmapLeft = std::min(lightmapLeft, rectangle.x);
+        lightmapTop = std::min(lightmapTop, rectangle.y);
+        lightmapRight = std::max(lightmapRight, rectangle.x + rectangle.width);
+        lightmapBottom = std::max(lightmapBottom, rectangle.y + rectangle.height);
+    }
+    LightmapLayerEncoding lightmapEncoding = ReadLightmapLayerEncoding(world);
+    if (world.value("replay_stock_world", false))
+        lightmapEncoding.unitScale = lightUnitScale;
+    Image lightmapPrimary, lightmapSecondary;
+    // The primary-light visibility mask over the same region, for native world surfaces, which bind their own
+    // colour images where atlas surfaces read the mask from the colour atlas.
+    std::vector<std::uint8_t> lightmapMask;
+    if (!plan.lightmaps.empty())
+    {
+        lightmapPrimary = {lightmapRight - lightmapLeft, lightmapBottom - lightmapTop,
+                           std::vector<std::uint8_t>(std::size_t{lightmapRight - lightmapLeft} *
+                                                     (lightmapBottom - lightmapTop) * 4)};
+        lightmapSecondary = lightmapPrimary;
+        lightmapMask.resize(std::size_t{lightmapPrimary.width} * lightmapPrimary.height);
+    }
+    std::size_t lightmapIndex = 0;
+    for (const auto &pair : world.value("lightmaps", Json::array()))
+    {
+        if (!pair.is_array() || pair.size() != 2 || pair.at(0).at("format") != 50 ||
+            pair.at(1).at("format") != 21)
+            throw std::runtime_error("unsupported IW3 lightmap format");
+        const auto &primary = pair.at(0), &secondary = pair.at(1);
+        const unsigned width = secondary.at("width"), fullHeight = secondary.at("height"),
+                       height = fullHeight / 2;
+        if (!width || !height || fullHeight % 2)
+            throw std::runtime_error("invalid IW3 lightmap dimensions");
+        const auto firstBytes = ReadBytes(exportRoot / primary.at("file").get<std::string>());
+        const auto secondBytes = ReadBytes(exportRoot / secondary.at("file").get<std::string>());
+        if (firstBytes.size() != static_cast<std::size_t>(primary.at("width").get<unsigned>()) *
+                                     primary.at("height").get<unsigned>() ||
+            secondBytes.size() != static_cast<std::size_t>(width) * height * 8)
+            throw std::runtime_error("invalid IW3 lightmap byte count");
+        const auto &rectangle = plan.lightmaps.at(lightmapIndex++);
+        Image primaryMask{primary.at("width"), primary.at("height"),
+                          std::vector<std::uint8_t>(
+                              static_cast<std::size_t>(primary.at("width").get<unsigned>()) *
+                              primary.at("height").get<unsigned>() * 4)};
+        for (std::size_t index = 0; index < firstBytes.size(); ++index)
+            primaryMask.rgba[index * 4 + 0] = primaryMask.rgba[index * 4 + 1] =
+                primaryMask.rgba[index * 4 + 2] = primaryMask.rgba[index * 4 + 3] =
+                    firstBytes[index];
+        const Image mask = Resize(primaryMask, width, height, false);
+        Image color{width, height,
+                    std::vector<std::uint8_t>(static_cast<std::size_t>(width) * height * 4)};
+        Image normal = color, response = color;
+        const std::size_t half = static_cast<std::size_t>(width) * height * 4;
+        for (std::size_t index = 0; index < static_cast<std::size_t>(width) * height; ++index)
+        {
+            const auto *a = secondBytes.data() + index * 4;
+            const auto *b = secondBytes.data() + half + index * 4;
+            color.rgba[index * 4 + 0] = a[2];
+            color.rgba[index * 4 + 1] = a[1];
+            color.rgba[index * 4 + 2] = a[0];
+            color.rgba[index * 4 + 3] = mask.rgba[index * 4];
+            normal.rgba[index * 4 + 0] = a[3];
+            normal.rgba[index * 4 + 1] = b[3];
+            normal.rgba[index * 4 + 2] = a[2];
+            normal.rgba[index * 4 + 3] = a[1];
+            response.rgba[index * 4 + 0] = b[2];
+            response.rgba[index * 4 + 1] = b[1];
+            response.rgba[index * 4 + 2] = b[0];
+            response.rgba[index * 4 + 3] = a[0];
+            const std::size_t target =
+                ((rectangle.y - lightmapTop + index / width) * std::size_t{lightmapPrimary.width} +
+                 rectangle.x - lightmapLeft + index % width) * 4;
+            lightmapMask[target / 4] = mask.rgba[index * 4];
+            for (const auto &[layer, source] :
+                 {std::pair{&lightmapPrimary, a}, std::pair{&lightmapSecondary, b}})
+            {
+                layer->rgba[target + 0] = source[2];
+                layer->rgba[target + 1] = source[1];
+                layer->rgba[target + 2] = source[0];
+                layer->rgba[target + 3] = source[3];
+            }
+        }
+        // Replay 1.20's native temporary lightmap atlas takes one BC4 ambient
+        // fraction, one R11G11B10F irradiance image and one BC5 octahedral
+        // direction image per target lightmap. IW3's primary image is a sun
+        // visibility mask, not that ambient fraction. The baked opaque world
+        // material consumes this native atlas; generated materials still read
+        // the separate source atlases above.
+        if (lightmapDimensions.size() == 1)
+        {
+            const std::size_t pixelCount = static_cast<std::size_t>(width) * height;
+            std::vector<std::uint8_t> maskValues(pixelCount), directionX(pixelCount),
+                directionY(pixelCount), irradiance(pixelCount * sizeof(std::uint32_t));
+            for (std::size_t index = 0; index < pixelCount; ++index)
+            {
+                const auto *a = secondBytes.data() + index * 4;
+                const auto *b = secondBytes.data() + half + index * 4;
+                const auto sample = EncodeNativeLightmapPixel(
+                    {a[2], a[1], a[0], a[3]}, {b[2], b[1], b[0], b[3]}, lightmapEncoding);
+                maskValues[index] = sample.ambient;
+                directionX[index] = sample.directionX;
+                directionY[index] = sample.directionY;
+                std::memcpy(irradiance.data() + index * sizeof(sample.irradiance),
+                            &sample.irradiance, sizeof(sample.irradiance));
+            }
+            NativeLightmapPlan native;
+            native.width = width;
+            native.height = height;
+            native.files = {map + "_native_lightmap_0.bc4",
+                            map + "_native_lightmap_0.r11g11b10f",
+                            map + "_native_lightmap_0.bc5"};
+            WriteBytes(mapDirectory / native.files[0], EncodeBc4(width, height, maskValues));
+            WriteBytes(mapDirectory / native.files[1], irradiance);
+            WriteBytes(mapDirectory / native.files[2],
+                       EncodeBc5(width, height, directionX, directionY));
+            plan.nativeLightmaps.push_back(std::move(native));
+            plan.nativeLightmapRegion = rectangle;
+        }
+        if (!nativeWorld)
+        {
+            Paste(atlases[0], color, rectangle.x, rectangle.y);
+            Paste(atlases[1], normal, rectangle.x, rectangle.y);
+            Paste(atlases[2], response, rectangle.x, rectangle.y);
+        }
+    }
+
+    if (lightmapDimensions.size() > 1)
+    {
+        // The lightmaps' bounding region of the atlas, as single-lightmap maps
+        // keep their lightmap's own dimensions.
+        const unsigned nativeWidth = lightmapRight - lightmapLeft;
+        const unsigned nativeHeight = lightmapBottom - lightmapTop;
+        const std::size_t nativePixelCount = static_cast<std::size_t>(nativeWidth) * nativeHeight;
+        NativeLightmapPlan native;
+        native.width = nativeWidth;
+        native.height = nativeHeight;
+        native.files = {map + "_native_lightmap_0.bc4",
+                        map + "_native_lightmap_0.r11g11b10f",
+                        map + "_native_lightmap_0.bc5"};
+
+        std::vector<std::uint8_t> maskValues(nativePixelCount),
+            irradiance(nativePixelCount * sizeof(std::uint32_t)),
+            directionX(nativePixelCount), directionY(nativePixelCount);
+        // The lightmap layers over the lightmaps' region: A colour + direction X, B colour + direction Y.
+        for (std::size_t index = 0; index < nativePixelCount; ++index)
+        {
+            const auto *primary = lightmapPrimary.rgba.data() + index * 4;
+            const auto *secondary = lightmapSecondary.rgba.data() + index * 4;
+            const auto sample = EncodeNativeLightmapPixel(
+                {primary[0], primary[1], primary[2], primary[3]},
+                {secondary[0], secondary[1], secondary[2], secondary[3]}, lightmapEncoding);
+            maskValues[index] = sample.ambient;
+            directionX[index] = sample.directionX;
+            directionY[index] = sample.directionY;
+            std::memcpy(irradiance.data() + index * sizeof(sample.irradiance),
+                        &sample.irradiance, sizeof(sample.irradiance));
+        }
+        WriteBytes(mapDirectory / native.files[0],
+                   EncodeBc4(nativeWidth, nativeHeight, maskValues));
+        WriteBytes(mapDirectory / native.files[1], irradiance);
+        WriteBytes(mapDirectory / native.files[2],
+                   EncodeBc5(nativeWidth, nativeHeight, directionX, directionY));
+        plan.nativeLightmaps.push_back(std::move(native));
+        plan.nativeLightmapRegion = {lightmapLeft, lightmapTop, nativeWidth, nativeHeight};
+    }
+
+    timing.lap("shadow casters, sky and lightmaps");
+    const unsigned mipCount = static_cast<unsigned>(std::log2(cell)) - 1;
+    Json material = Json::parse(ResourceText(IDR_IW3_MATERIAL_TEMPLATE));
+    const std::string stem = map + ".d3dbsp";
+    plan.material = "w/mw120r_" + map;
+    plan.instanceLightingImage = "mw120r/" + map + "_smodel_lighting";
+    plan.instanceLightingFile = map + "_smodel_lighting.rgba";
+    plan.sunDepthImage = "mw120r/" + map + "_sun_depth";
+    plan.sunDepthFile = map + "_sun_depth.rgba";
+    // Material texture tables stay in slot order (0, 9, 0x3B, then these).
+    const Json sunDepthTexture = {{"header", "3c00000000000000"}, {"image", plan.sunDepthImage}};
+    const Json sunDepthDefinition = {{"name", plan.sunDepthImage},
+                                     {"width", replaysunshadow::DepthImageWidth},
+                                     {"height", replaysunshadow::DepthImageHeight},
+                                     {"rgba8", plan.sunDepthFile},
+                                     {"format", 6},
+                                     {"mipCount", 1}};
+    plan.instanceLightingCount = staticModelInstances;
+    plan.materialDefinition = stem + ".material.json";
+    std::set<std::string> writtenResidentImages;
+    std::mutex writtenResidentMutex;
+    // World and model images of extractions that opt in ("bc7_images") are block compressed when the encoding
+    // keeps their detail: RGBA8 images fill most of a large map's zone (IW7 Frontier: 1.1 of 2.1 GB).
+    const bool bc7Images = g_bc7Images >= 0 ? g_bc7Images == 1 : world.value("bc7_images", false);
+    struct Bc7Stats
+    {
+        std::size_t compressed{}, kept{}, rawBytes{}, packedBytes{};
+        std::array<double, 3> lowest{200.0, 200.0, 200.0}; // by channel: colour, normal, response
+    } bc7Stats;
+    ResidentEncodeCache residentCache(cacheRoot);
+    // Thread time of the resident images by step (microseconds), for the log.
+    std::array<std::atomic<std::uint64_t>, 5> residentTime{};
+    const auto residentLap = [&](const std::size_t step, std::chrono::steady_clock::time_point &from) {
+        const auto now = std::chrono::steady_clock::now();
+        residentTime[step] += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now - from).count());
+        from = now;
+    };
+    // The image of a material texture and its definition. Safe on any thread: it writes the image file once.
+    const auto computeResident = [&](const unsigned channel, Image source, const std::array<float, 4> tint,
+                                     const std::string domain, const bool alphaCoverage,
+                                     const std::optional<Image> alphaChannel, const bool linearData,
+                                     const unsigned encodeWorkers, const bool colourImage = false) {
+        // Texture 0 is a colour map (sRGB format, colour mips) unless it holds data; a stock layered material's layer
+        // colours are colour maps in later textures (colourImage).
+        auto lapStart = std::chrono::steady_clock::now();
+        const bool colour = (channel == 0 || colourImage) && !linearData;
+        const bool nativeBc7 = bc7Images && !colour && !alphaCoverage && !alphaChannel &&
+                               tint == std::array<float, 4>{1, 1, 1, 1} && !source.nativeBc7.empty();
+        auto nativePixels = nativeBc7 ? std::move(source.nativeBc7) : std::vector<std::uint8_t>{};
+        if (colour)
+        {
+            for (auto &mip : source.mips)
+                mip = Resize(mip, mip.width, mip.height, true, tint);
+            auto authoredMips = std::move(source.mips);
+            source = Resize(source, source.width, source.height, true, tint);
+            source.mips = std::move(authoredMips);
+            if (alphaCoverage)
+                PreserveAlphaCoverage(source, true);
+        }
+        unsigned levels = 1, width = source.width, height = source.height;
+        while (width > 1 || height > 1)
+        {
+            width = std::max(1u, width / 2);
+            height = std::max(1u, height / 2);
+            ++levels;
+        }
+        if (nativeBc7)
+            levels = source.nativeBc7Levels;
+        const unsigned sourceWidth = source.width, sourceHeight = source.height;
+        residentLap(0, lapStart);
+        auto pixels = MipChain(std::move(source), levels, colour);
+        if (alphaChannel)
+        {
+            // Color mips weight texels by alpha as coverage, so a data channel
+            // stored in alpha gets its own chain and replaces alpha afterwards.
+            Image data = Resize(*alphaChannel, sourceWidth, sourceHeight, false);
+            if (sourceWidth == alphaChannel->width && sourceHeight == alphaChannel->height)
+                data.mips = alphaChannel->mips;
+            const auto dataPixels = MipChain(std::move(data), levels, false);
+            if (dataPixels.size() != pixels.size())
+                throw std::runtime_error("alpha data chain does not match its color chain");
+            for (std::size_t offset = 3; offset < pixels.size(); offset += 4)
+                pixels[offset] = dataPixels[offset];
+        }
+        residentLap(1, lapStart);
+        const auto digest = Sha256(pixels);
+        residentLap(2, lapStart);
+        const std::string id = Hex(std::span(digest).first(8));
+        const std::string stemName = map + "_" + domain + "_" + std::to_string(channel) + "_" + id;
+        ResidentImageResult result;
+        result.name = "mw120r/" + stemName;
+        result.channel = channel;
+        const auto writeOnce = [&](const std::string &filename, const std::vector<std::uint8_t> &bytes) {
+            {
+                std::lock_guard lock(writtenResidentMutex);
+                if (!writtenResidentImages.insert(filename).second)
+                    return;
+            }
+            WriteBytes(mapDirectory / filename, bytes);
+        };
+        if (nativeBc7)
+        {
+            // BC7 mip payloads already meet Replay format 44's 16-byte alignment.
+            const std::string filename = stemName + "_native.bc7";
+            writeOnce(filename, nativePixels);
+            result.considered = true;
+            result.compressed = true;
+            result.psnr = 200.0;
+            result.rawBytes = pixels.size();
+            result.packedBytes = nativePixels.size();
+            result.definition = {{"name", result.name}, {"width", sourceWidth}, {"height", sourceHeight},
+                                 {"bc7", filename}, {"format", 44}, {"mipCount", levels}};
+            residentLap(4, lapStart);
+            return result;
+        }
+        if (bc7Images && (domain == "world" || domain == "model") && sourceWidth >= 4 && sourceHeight >= 4 &&
+            sourceWidth % 4 == 0 && sourceHeight % 4 == 0)
+        {
+            // The cut-off is the mean squared error of a channel over the whole chain: the sources were
+            // BC1 or BC3 files (or 8-bit normals), so a PSNR in the high thirties adds no visible change.
+            const auto encoded = residentCache.encode(pixels, digest, sourceWidth, sourceHeight, levels, encodeWorkers);
+            residentLap(3, lapStart);
+            double texels = 0;
+            for (unsigned level = 0; level < levels; ++level)
+                texels += double(std::max(1u, sourceWidth >> level)) * std::max(1u, sourceHeight >> level);
+            result.considered = true;
+            result.psnr = encoded.error > 0 ? 10.0 * std::log10(255.0 * 255.0 * texels * 4.0 / encoded.error) : 200.0;
+            if (result.psnr >= (channel == 0 ? 38.0 : 40.0))
+            {
+                result.compressed = true;
+                result.rawBytes = pixels.size();
+                result.packedBytes = encoded.bytes.size();
+                const std::string filename = stemName + ".bc7";
+                writeOnce(filename, encoded.bytes);
+                residentLap(4, lapStart);
+                result.definition = {{"name", result.name},
+                                     {"width", sourceWidth},
+                                     {"height", sourceHeight},
+                                     {"bc7", filename},
+                                     {"format", colour ? 45 : 44},
+                                     {"mipCount", levels}};
+                return result;
+            }
+        }
+        const std::string filename = stemName + ".rgba";
+        writeOnce(filename, pixels);
+        residentLap(4, lapStart);
+        result.definition = {{"name", result.name},
+                             {"width", sourceWidth},
+                             {"height", sourceHeight},
+                             {"rgba8", filename},
+                             {"format", colour ? 7 : 6},
+                             {"mipCount", levels}};
+        return result;
+    };
+    const auto countResident = [&](const ResidentImageResult &result) {
+        if (!result.considered)
+            return;
+        if (!result.compressed)
+        {
+            ++bc7Stats.kept;
+            return;
+        }
+        auto &lowest = bc7Stats.lowest[std::min(result.channel, 2u)];
+        lowest = std::min(lowest, result.psnr);
+        ++bc7Stats.compressed;
+        bc7Stats.rawBytes += result.rawBytes;
+        bc7Stats.packedBytes += result.packedBytes;
+    };
+    const auto residentImage = [&](Json &definition, const unsigned channel, Image source,
+                                   const std::array<float, 4> &tint,
+                                   const std::string_view domain,
+                                   const bool alphaCoverage = false,
+                                   const Image *alphaChannel = nullptr,
+                                   const bool linearData = false) {
+        const auto result = computeResident(channel, std::move(source), tint, std::string(domain), alphaCoverage,
+                                            alphaChannel ? std::optional<Image>(*alphaChannel) : std::nullopt,
+                                            linearData, 0);
+        definition["textures"][channel]["image"] = result.name;
+        definition["imageDefinitions"].push_back(result.definition);
+        countResident(result);
+    };
+    // The world and model materials (thousands of images on IW7 maps) encode their images on every core; their
+    // material files are written once the images are done (finishResidentImages).
+    std::optional<ResidentImagePool> residentPool;
+    struct DeferredMaterial
+    {
+        std::filesystem::path path;
+        Json definition;
+        std::vector<std::pair<unsigned, std::size_t>> images; // texture channel, job
+    };
+    std::vector<DeferredMaterial> deferredMaterials;
+    std::vector<std::pair<unsigned, std::size_t>> pendingImages;
+    // The images of a material texture, made on the worker: the image and an optional alpha data channel. The
+    // sources of the cached images stay where the image cache holds them.
+    using ResidentRecipe = std::move_only_function<std::pair<Image, std::optional<Image>>()>;
+    const auto imageBytes = [](const Image &image) {
+        std::size_t bytes = image.rgba.size();
+        for (const auto &mip : image.mips)
+            bytes += mip.rgba.size();
+        return bytes;
+    };
+    const auto residentImageRecipe = [&](Json &definition, const unsigned channel, ResidentRecipe recipe,
+                                         const std::size_t bytes, const std::array<float, 4> &tint,
+                                         const std::string_view domain, const bool alphaCoverage = false,
+                                         const bool colourImage = false) {
+        if (!residentPool)
+            residentPool.emplace();
+        const auto job = residentPool->submit(
+            [&computeResident, channel, recipe = std::move(recipe), tint, domain = std::string(domain),
+             alphaCoverage, colourImage]() mutable {
+                auto [source, alpha] = recipe();
+                return computeResident(channel, std::move(source), tint, domain, alphaCoverage, std::move(alpha), false, 1,
+                                       colourImage);
+            },
+            bytes);
+        definition["textures"][channel]["image"] = "";
+        definition["imageDefinitions"].push_back({{"pendingResidentImage", job}});
+        pendingImages.emplace_back(channel, job);
+    };
+    // A cached image (copied on the worker) or an image of its own.
+    const auto residentImageAsync = [&](Json &definition, const unsigned channel, const Image &cached,
+                                        const std::array<float, 4> &tint, const std::string_view domain,
+                                        const bool alphaCoverage = false) {
+        residentImageRecipe(
+            definition, channel,
+            [source = &cached]() { return std::pair{*source, std::optional<Image>{}}; },
+            imageBytes(cached), tint, domain, alphaCoverage);
+    };
+    const auto residentImageOwned = [&](Json &definition, const unsigned channel, Image owned,
+                                        const std::array<float, 4> &tint, const std::string_view domain) {
+        const auto bytes = imageBytes(owned);
+        residentImageRecipe(
+            definition, channel,
+            [source = std::move(owned)]() mutable { return std::pair{std::move(source), std::optional<Image>{}}; },
+            bytes, tint, domain);
+    };
+    // With MAP_UV_ANIMATION, MAP_TRANSMISSION, MAP_REVEAL_LAYERS, MAP_UV_CLAMP or MAP_VOLUMETRIC_EXTINCTION every generated
+    // material keeps its rows (or zeros) in its pixel constants: transmission and reveal sharpness in row 1, mask UV
+    // animation and volumetric extinction in row 2, UV animation and clamp axes in row 3; Replay's stock world materials
+    // keep their own rows.
+    const auto stampMaterialRows = [&](Json &definition) {
+        if ((g_uvAnimationDefines.empty() && g_transmissionDefines.empty() && g_revealDefines.empty() &&
+             g_uvClampDefines.empty() && g_extinctionDefines.empty()) ||
+            !definition.contains("buffers") || definition.at("buffers").empty() ||
+            definition.value("techset", std::string{}).find("_native_world_cull") != std::string::npos)
+            return;
+        auto &stage = definition["buffers"][0][3];
+        auto constants = Unhex(stage.get<std::string>());
+        if (constants.size() < 64)
+            return;
+        const auto found = materialRows.find(definition.value("source", std::string{}));
+        const auto rows = found != materialRows.end() ? found->second : std::array<std::array<float, 4>, 3>{};
+        for (std::size_t row = 0; row < 3; ++row)
+            for (std::size_t k = 0; k < 4; ++k)
+                Put<float>(constants, 16 * (row + 1) + 4 * k, rows[row][k]);
+        stage = Hex(constants);
+    };
+    const auto writeMaterial = [&](const std::filesystem::path &path, Json definition) {
+        stampMaterialRows(definition);
+        if (pendingImages.empty())
+        {
+            WriteJson(path, definition);
+            return;
+        }
+        deferredMaterials.push_back({path, std::move(definition), std::exchange(pendingImages, {})});
+    };
+    const auto finishResidentImages = [&] {
+        if (!residentPool)
+            return;
+        if (!pendingImages.empty())
+            throw std::runtime_error("IW3 resident images have no material");
+        const auto results = residentPool->finish();
+        residentPool.reset();
+        for (auto &material : deferredMaterials)
+        {
+            auto &definitions = material.definition["imageDefinitions"];
+            for (const auto &[channel, job] : material.images)
+            {
+                const auto &result = results.at(job);
+                material.definition["textures"][channel]["image"] = result.name;
+                auto slot = std::ranges::find_if(definitions, [job](const Json &definition) {
+                    return definition.is_object() && definition.contains("pendingResidentImage") &&
+                           definition.at("pendingResidentImage").get<std::size_t>() == job;
+                });
+                if (slot == definitions.end())
+                    throw std::runtime_error("IW3 resident image lost its definition");
+                *slot = result.definition;
+                countResident(result);
+            }
+            WriteJson(material.path, material.definition);
+        }
+        deferredMaterials.clear();
+    };
+    const auto decalImage = [&](Json &definition, const unsigned channel, Image source,
+                                const std::string_view domain, const unsigned format,
+                                const Image *alphaChannel = nullptr) {
+        const bool bc4 = format == 39;
+        if (source.width == 1 && source.height == 1 && !bc4)
+        {
+            residentImage(definition, channel, std::move(source), {1, 1, 1, 1}, domain, false,
+                          alphaChannel);
+            return;
+        }
+        unsigned size = 8;
+        while (size < std::max(source.width, source.height) && size < 1024)
+            size *= 2;
+        const bool color = format == 45;
+        if (source.width != size || source.height != size)
+        {
+            source = Resize(source, size, size, color);
+            source.mips.clear();
+        }
+        // Levels stop at the 4x4 block; the atlas copy skips smaller mips.
+        unsigned levels = 1;
+        for (unsigned width = size; width > 4; width /= 2)
+            ++levels;
+        std::vector<std::uint8_t> encoded;
+        if (bc4)
+        {
+            // The mask channel is the IW3 colour map's alpha (decal opacity).
+            Image mask = source;
+            for (std::size_t offset = 0; offset < mask.rgba.size(); offset += 4)
+                mask.rgba[offset] = mask.rgba[offset + 1] = mask.rgba[offset + 2] =
+                    source.rgba[offset + 3];
+            for (auto &mip : mask.mips)
+                for (std::size_t offset = 0; offset < mip.rgba.size(); offset += 4)
+                    mip.rgba[offset] = mip.rgba[offset + 1] = mip.rgba[offset + 2] =
+                        mip.rgba[offset + 3];
+            const auto chain = MipChain(std::move(mask), levels, false);
+            std::size_t offset = 0;
+            for (unsigned level = 0, width = size; level < levels; ++level, width /= 2)
+            {
+                std::vector<std::uint8_t> values(std::size_t{width} * width);
+                for (std::size_t texel = 0; texel < values.size(); ++texel)
+                    values[texel] = chain[offset + texel * 4 + 3];
+                offset += (values.size() * 4 + 15) & ~std::size_t{15};
+                const auto blocks = EncodeBc4(width, width, values);
+                encoded.insert(encoded.end(), blocks.begin(), blocks.end());
+                encoded.resize((encoded.size() + 15) & ~std::size_t{15});
+            }
+        }
+        else
+        {
+            auto pixels = MipChain(std::move(source), levels, color);
+            if (alphaChannel)
+            {
+                Image data = Resize(*alphaChannel, size, size, false);
+                const auto dataPixels = MipChain(std::move(data), levels, false);
+                if (dataPixels.size() != pixels.size())
+                    throw std::runtime_error("decal alpha chain does not match its color chain");
+                for (std::size_t offset = 3; offset < pixels.size(); offset += 4)
+                    pixels[offset] = dataPixels[offset];
+            }
+            encoded = EncodeBc7Chain(pixels, size, levels, {});
+        }
+        const auto digest = Sha256(encoded);
+        const std::string id = Hex(std::span(digest).first(8));
+        const std::string filename = map + "_" + std::string(domain) + "_" +
+                                     std::to_string(channel) + "_" + id +
+                                     (bc4 ? ".bc4" : ".bc7");
+        const std::string name = "mw120r/" + map + "_" + std::string(domain) + "_" +
+                                 std::to_string(channel) + "_" + id;
+        if (writtenResidentImages.insert(filename).second)
+            WriteBytes(mapDirectory / filename, encoded);
+        definition["textures"][channel]["image"] = name;
+        definition["imageDefinitions"].push_back({{"name", name},
+                                                  {"width", size},
+                                                  {"height", size},
+                                                  {bc4 ? "bc4" : "bc7", filename},
+                                                  {"format", format},
+                                                  {"mipCount", levels}});
+    };
+    material["techsetDefinition"] = stem + ".techset.json";
+    material["imageDefinitions"] = Json::array();
+    std::array<std::pair<std::string, std::string>, 3> atlasFiles; // image name, file
+    if (nativeWorld)
+    {
+        // No surface reads the atlases: the materials built on the world material keep the engine's own images.
+        for (const auto &[channel, builtin] :
+             {std::pair{0u, "$gray"}, std::pair{1u, "$identitynormalmap"}, std::pair{2u, "$black"}})
+            material["textures"][channel]["image"] = builtin;
+        zt::info("iw3: no source atlas: world surfaces, the sky and glass panes draw native materials");
+    }
+    else
+    {
+        // The three atlases build their mips and encode on their own threads; their definitions join the material in
+        // channel order. The authored tile sources are found first (the image cache is not shared between threads).
+        std::array<std::vector<const Image *>, 3> tileSources;
+        for (unsigned channel = 0; channel < 3; ++channel)
+            for (const auto &tile : atlasTileMips[channel])
+                tileSources[channel].push_back(&image(tile.image).front());
+        std::array<std::exception_ptr, 3> atlasFailures;
+        const auto buildAtlas = [&](const unsigned channel) {
+            // Keep authored mip coverage inside exact-size material tiles. The
+            // surrounding atlas (including lightmaps and sky) still downsamples
+            // normally; the source's lower levels must not be re-averaged away.
+            for (unsigned level = 1; level < mipCount && !atlasTileMips[channel].empty(); ++level)
+            {
+                Image next = Downsample(level == 1 ? atlases[channel]
+                                                   : atlases[channel].mips.back(),
+                                        channel == 0);
+                const unsigned mipCell = cell >> level;
+                for (std::size_t tileIndex = 0; tileIndex < atlasTileMips[channel].size(); ++tileIndex)
+                {
+                    const auto &tile = atlasTileMips[channel][tileIndex];
+                    const unsigned tileMip = tileCell(tile.tile) >> level;
+                    const auto &sourceMips = tileSources[channel][tileIndex]->mips;
+                    if (level > sourceMips.size() || sourceMips[level - 1].width != tileMip ||
+                        sourceMips[level - 1].height != tileMip)
+                        continue;
+                    const Image authored = Resize(sourceMips[level - 1], tileMip, tileMip,
+                                                  channel == 0,
+                                                  channel == 0 ? tile.tint
+                                                               : std::array<float, 4>{1, 1, 1, 1});
+                    Paste(next, authored, static_cast<unsigned>(tile.tile % columns) * mipCell,
+                          static_cast<unsigned>(tile.tile / columns) * mipCell);
+                }
+                atlases[channel].mips.push_back(std::move(next));
+            }
+            auto chain = MipChain(std::move(atlases[channel]), mipCount, channel == 0);
+            if constexpr (atlasSize > 4096)
+                chain = EncodeBc7Chain(chain, atlasSize, mipCount, cacheRoot);
+            const std::string filename =
+                map + "_atlas_" + std::to_string(channel) + (atlasSize > 4096 ? ".bc7" : ".rgba");
+            atlasFiles[channel] = {ImageName(map, channel, chain), filename};
+            WriteBytes(mapDirectory / filename, chain);
+        };
+        {
+            std::array<std::thread, 3> threads;
+            for (unsigned channel = 0; channel < 3; ++channel)
+                threads[channel] = std::thread([&, channel] {
+                    try
+                    {
+                        buildAtlas(channel);
+                    }
+                    catch (...)
+                    {
+                        atlasFailures[channel] = std::current_exception();
+                    }
+                });
+            for (auto &thread : threads)
+                thread.join();
+            for (const auto &failure : atlasFailures)
+                if (failure)
+                    std::rethrow_exception(failure);
+        }
+        for (unsigned channel = 0; channel < 3; ++channel)
+        {
+            const auto &[name, filename] = atlasFiles[channel];
+            material["textures"][channel]["image"] = name;
+            if constexpr (atlasSize > 4096)
+                // Replay format table 0x1423E25F0: 44 BC7_UNORM, 45 BC7_UNORM_SRGB.
+                material["imageDefinitions"].push_back({{"name", name},
+                                                        {"width", atlasSize},
+                                                        {"height", atlasSize},
+                                                        {"bc7", filename},
+                                                        {"format", channel == 0 ? 45 : 44},
+                                                        {"mipCount", mipCount}});
+            else
+                material["imageDefinitions"].push_back({{"name", name},
+                                                        {"width", atlasSize},
+                                                        {"height", atlasSize},
+                                                        {"rgba8", filename},
+                                                        {"format", channel == 0 ? 7 : 6},
+                                                        {"mipCount", mipCount}});
+        }
+        zt::info("iw3: source atlas %ux%u, %u columns, %u-pixel material tiles, %u mips", atlasSize,
+                 atlasSize, columns, cell, mipCount);
+    }
+    timing.lap("atlas mips");
+    // World materials (and their variants and glass panes, which share the world
+    // technique) add the two uncompressed lightmap layers; model materials keep
+    // the three atlas textures.
+    Json worldMaterial = material;
+    {
+        auto info = Unhex(worldMaterial.at("info").get<std::string>());
+        if (info[0x14] != worldMaterial.at("textures").size())
+            throw std::runtime_error("world material texture count does not match its textures");
+        worldMaterial["textures"].push_back(sunDepthTexture);
+        worldMaterial["imageDefinitions"].push_back(sunDepthDefinition);
+        info[0x14] = static_cast<std::uint8_t>(worldMaterial.at("textures").size());
+        worldMaterial["info"] = Hex(info);
+    }
+    std::string lightmapDefines;
+    if (!plan.lightmaps.empty())
+    {
+        const auto emitLightmap = [&](Image &layer, const std::string &suffix,
+                                      const char *header) {
+            const std::string file = map + "_lightmap_" + suffix + ".rgba";
+            const std::string name = "mw120r/" + map + "_lightmap_" + suffix;
+            // Replay's resident loader pads each mip to 16 bytes.
+            layer.rgba.resize((layer.rgba.size() + 15) & ~std::size_t{15});
+            WriteBytes(mapDirectory / file, layer.rgba);
+            worldMaterial["textures"].push_back({{"header", header}, {"image", name}});
+            worldMaterial["imageDefinitions"].push_back({{"name", name},
+                                                         {"width", layer.width},
+                                                         {"height", layer.height},
+                                                         {"rgba8", file},
+                                                         {"format", 6},
+                                                         {"mipCount", 1}});
+        };
+        auto info = Unhex(worldMaterial.at("info").get<std::string>());
+        if (info[0x14] != worldMaterial.at("textures").size())
+            throw std::runtime_error("world material texture count does not match its textures");
+        emitLightmap(lightmapPrimary, "primary", "3e00000000000000");
+        emitLightmap(lightmapSecondary, "secondary", "3f00000000000000");
+        info[0x14] = static_cast<std::uint8_t>(worldMaterial.at("textures").size());
+        worldMaterial["info"] = Hex(info);
+        lightmapDefines = "#define MAP_LIGHTMAP_TEXTURES 1\n#define MAP_LIGHTMAP_ORIGIN float2(" +
+                          std::to_string(lightmapLeft) + ", " + std::to_string(lightmapTop) +
+                          ")\n#define MAP_LIGHTMAP_SIZE float2(" +
+                          std::to_string(lightmapPrimary.width) + ", " +
+                          std::to_string(lightmapPrimary.height) + ")\n";
+        // Extractions that keep a lightmap's high range store its layers as log2(1 + scale * value) / log2(1 + scale
+        // * maximum) (IW7).
+        if (lightmapEncoding.logScale > 0.0f)
+        {
+            char define[128];
+            std::snprintf(define, sizeof(define), "#define MAP_LIGHTMAP_LOG float2(%.9g, %.9g)\n",
+                          lightmapEncoding.logScale, lightmapEncoding.logMaximum);
+            lightmapDefines += define;
+        }
+        zt::info("iw3: lightmap layers %ux%u at (%u, %u) as uncompressed textures",
+                 lightmapPrimary.width, lightmapPrimary.height, lightmapLeft, lightmapTop);
+    }
+    Json techset = BuildTechset(map, columns, plan.atlasSize, TechniqueGeometry::world,
+                                plan.glassEnvironment, false, {}, lightmapDefines, true);
+    timing.lap("world techset");
+    material["techset"] = techset.at("name");
+    worldMaterial["techset"] = techset.at("name");
+    WriteJson(mapDirectory / plan.materialDefinition, worldMaterial);
+    WriteJson(mapDirectory / (stem + ".techset.json"), techset);
+    std::vector<std::string> worldVariants;
+    std::set<std::string> cutoutKinds;
+    for (const auto &[name, entry] : plan.materials)
+        if (entry.kind == SurfaceKind::cutout)
+            cutoutKinds.insert(CutoutVariantKind(entry));
+    worldVariants.insert(worldVariants.end(), cutoutKinds.begin(), cutoutKinds.end());
+    std::set<std::string> glassKinds;
+    for (const auto &[name, entry] : plan.materials)
+        if (entry.kind == SurfaceKind::glass)
+            glassKinds.insert(GlassVariantKind(entry));
+    worldVariants.insert(worldVariants.end(), glassKinds.begin(), glassKinds.end());
+    worldVariants.push_back("sky");
+    if (plan.hasOpaqueBias)
+        worldVariants.push_back("opaque_bias");
+    for (std::size_t row = 0; row < plan.worldDetails.size(); ++row)
+        worldVariants.push_back("detail" + std::to_string(row));
+    for (std::size_t row = 0; row < plan.worldWaters.size(); ++row)
+        worldVariants.push_back("water" + std::to_string(row));
+    // The world variant `name` (worldVariants: cut-out kinds, blended layers, the sky, depth-biased opaque surfaces,
+    // detail and water rows): its techset and material, from `base`, the world techset. Native twins (native: base is
+    // the native world techset) sample their material's own images; their detail rows bind the detail map itself.
+    const auto buildWorldVariant = [&](const std::string &name, const Json &base, const bool native) {
+        const std::string pixelDefines = native ? std::string(kNativeWorldDefines) : std::string{};
+        const auto detailDefines = [&](const RenderPlan::WorldDetail &detail) {
+            char defines[192];
+            if (native)
+                std::snprintf(defines, sizeof(defines),
+                              "#define MAP_DETAIL 1\n#define MAP_DETAIL_SCALE float2(%.9g, %.9g)\n",
+                              detail.scale[0], detail.scale[1]);
+            else
+                std::snprintf(defines, sizeof(defines),
+                              "#define MAP_WORLD_DETAIL_TILE %zu\n#define MAP_DETAIL_SCALE float2(%.9g, %.9g)\n",
+                              detail.tile, detail.scale[0], detail.scale[1]);
+            return std::string(defines);
+        };
+        Json variant;
+        if (name.starts_with("detail"))
+        {
+            // IW3 wc_*d0* (disassembled ps_lm_sun_r0c0d0n0s0_sm3): colour +
+            // detail(uv * detailScale.xy) - 0.5 in gamma space, before the vertex colour.
+            const auto &detail = plan.worldDetails.at(std::stoul(name.substr(6)));
+            Json detailed = BuildTechset(map, columns, plan.atlasSize, TechniqueGeometry::world,
+                                         plan.glassEnvironment, false, {}, lightmapDefines, true,
+                                         {}, detailDefines(detail), pixelDefines);
+            const std::string suffix = "_" + name;
+            detailed["name"] = base.at("name").get<std::string>() + suffix;
+            for (auto &technique : detailed.at("techniques"))
+            {
+                const auto header = Unhex(technique.at("header").get<std::string>());
+                technique["name"] = technique.at("name").get<std::string>() + suffix;
+                PatchStateIdentity(technique, header);
+            }
+            Json detailedMaterial = worldMaterial;
+            detailedMaterial["techset"] = detailed.at("name");
+            detailedMaterial["techsetDefinition"] = stem + "." + name + ".techset.json";
+            variant = {{"definition", stem + "." + name + ".material.json"},
+                       {"techsetFile", stem + "." + name + ".techset.json"},
+                       {"techset", std::move(detailed)},
+                       {"material", std::move(detailedMaterial)}};
+        }
+        else if (name.starts_with("water"))
+        {
+            // IW3 wc_water (water_l_sun): the wave flipbook at t10 (slot 0x3D,
+            // between the baked sun depth 0x3C and the lightmaps 0x3E/0x3F).
+            const auto &water = plan.worldWaters.at(std::stoul(name.substr(5)));
+            char defines[320];
+            std::snprintf(defines, sizeof(defines),
+                          "#define MAP_WATER 1\n#define MAP_WATER_FRAMES %uu\n"
+                          "#define MAP_WATER_PERIOD %.9g\n"
+                          "#define MAP_WATER_ENV float4(%.9g, %.9g, %.9g, %.9g)\n"
+                          "#define MAP_WATER_COLOR float3(%.9g, %.9g, %.9g)\n",
+                          kWaterFrames, kWaterFrames / kWaterFramesPerSecond, water.environment[0],
+                          water.environment[1], water.environment[2], water.environment[3],
+                          water.color[0], water.color[1], water.color[2]);
+            Json watered = BuildTechset(map, columns, plan.atlasSize, TechniqueGeometry::world,
+                                        plan.glassEnvironment, false, {}, lightmapDefines, true,
+                                        {}, defines, pixelDefines);
+            const std::string suffix = "_" + name;
+            watered["name"] = base.at("name").get<std::string>() + suffix;
+            for (auto &technique : watered.at("techniques"))
+            {
+                const auto header = Unhex(technique.at("header").get<std::string>());
+                technique["name"] = technique.at("name").get<std::string>() + suffix;
+                PatchStateIdentity(technique, header);
+            }
+            Json wateredMaterial = worldMaterial;
+            wateredMaterial["techset"] = watered.at("name");
+            wateredMaterial["techsetDefinition"] = stem + "." + name + ".techset.json";
+            auto &textures = wateredMaterial["textures"];
+            std::size_t at = 0;
+            while (at < textures.size() &&
+                   Unhex(textures[at].at("header").get<std::string>()).at(0) < 0x3D)
+                ++at;
+            textures.insert(textures.begin() + static_cast<std::ptrdiff_t>(at),
+                            Json{{"header", "3d00000000000000"}, {"image", water.image}});
+            wateredMaterial["imageDefinitions"].push_back({{"name", water.image},
+                                                           {"width", kWaterImageSize},
+                                                           {"height", kWaterImageSize},
+                                                           {"rgba8", water.file},
+                                                           {"format", 6},
+                                                           {"mipCount", 1}});
+            auto info = Unhex(wateredMaterial.at("info").get<std::string>());
+            info[0x14] = static_cast<std::uint8_t>(textures.size());
+            wateredMaterial["info"] = Hex(info);
+            variant = {{"definition", stem + "." + name + ".material.json"},
+                       {"techsetFile", stem + "." + name + ".techset.json"},
+                       {"techset", std::move(watered)},
+                       {"material", std::move(wateredMaterial)}};
+        }
+        else if (name == "opaque_bias")
+        {
+            Json biased = base;
+            ApplyDepthBias(biased);
+            Json biasedMaterial = worldMaterial;
+            biasedMaterial["techset"] = biased.at("name");
+            biasedMaterial["techsetDefinition"] = stem + "." + name + ".techset.json";
+            variant = {{"definition", stem + "." + name + ".material.json"},
+                       {"techsetFile", stem + "." + name + ".techset.json"},
+                       {"techset", std::move(biased)},
+                       {"material", std::move(biasedMaterial)}};
+        }
+        else if (name.starts_with("foliage_"))
+        {
+            variant = CreateVariant(base, worldMaterial, stem, map, "foliage");
+            if (name.find("_back") != std::string::npos)
+            {
+                Json &cutout = variant["techset"];
+                cutout["name"] = cutout.at("name").get<std::string>() + "_back";
+                for (auto &technique : cutout.at("techniques"))
+                {
+                    auto header = Unhex(technique.at("header").get<std::string>());
+                    // The shadow back-face pass keeps its own culling.
+                    if (At<std::uint32_t>(header, 8) == 28)
+                        continue;
+                    Put<std::uint64_t>(header, 0xA0, (At<std::uint64_t>(header, 0xA0) & ~3ull) | 1);
+                    technique["header"] = Hex(header);
+                    technique["name"] = technique.at("name").get<std::string>() + "_back";
+                    PatchStateIdentity(technique, header);
+                }
+            }
+            if (name.ends_with("_bias"))
+                ApplyDepthBias(variant["techset"]);
+            variant["definition"] = stem + "." + name + ".material.json";
+            variant["techsetFile"] = stem + "." + name + ".techset.json";
+            variant["material"]["techset"] = variant.at("techset").at("name");
+            variant["material"]["techsetDefinition"] = variant.at("techsetFile");
+        }
+        else
+        {
+            // glass..._d<row>: a blended layer with an IW3 detail map, drawn with the detail
+            // variant's shader.
+            Json detailBase;
+            if (const auto at = name.find("_d"); name.starts_with("glass") && at != std::string::npos &&
+                                                 at + 2 < name.size() && std::isdigit(static_cast<unsigned char>(name[at + 2])))
+            {
+                const auto &detail = plan.worldDetails.at(std::stoul(name.substr(at + 2)));
+                detailBase = BuildTechset(map, columns, plan.atlasSize, TechniqueGeometry::world,
+                                          plan.glassEnvironment, false, {}, lightmapDefines, true, {},
+                                          detailDefines(detail), pixelDefines);
+            }
+            variant = CreateVariant(detailBase.is_null() ? base : detailBase, worldMaterial, stem, map, name);
+            if (name.starts_with("glass") && name.ends_with("_bias"))
+            {
+                ApplyDepthBias(variant["techset"]);
+                variant["material"]["techset"] = variant.at("techset").at("name");
+            }
+            if (name.starts_with("glass") && world.value("translucent_glass", false))
+            {
+                // Blended BSP surfaces draw in the translucent camera region, after the sky, as
+                // native panes do (3, 26). In the lit opaque region (0) of the world material the
+                // sky drew over them wherever they were in front of it: IW7 Frontier's roof glass
+                // was missing (owner test 2026-10-18). Extractions opt in ("translucent_glass"),
+                // so IW3 maps keep their output until this is checked on them.
+                auto info = Unhex(variant.at("material").at("info").get<std::string>());
+                info[0x10] = 3;
+                info[0x11] = 26;
+                variant["material"]["info"] = Hex(info);
+            }
+        }
+        return variant;
+    };
+    for (const std::string &kind : worldVariants)
+    {
+        const Json variant = buildWorldVariant(kind, techset, false);
+        WriteJson(mapDirectory / variant.at("definition").get<std::string>(),
+                  variant.at("material"));
+        WriteJson(mapDirectory / variant.at("techsetFile").get<std::string>(),
+                  variant.at("techset"));
+        plan.additionalMaterials.push_back({{"schema", 1},
+                                            {"material", plan.material + "_" + kind},
+                                            {"materialDefinition", variant.at("definition")}});
+    }
+    timing.lap("world variants");
+
+    // Native world materials: a Replay material per source world material, the native twin of its world variant
+    // (kNativeWorldDefines) with the material's own colour, normal and response images in the atlas slots, its
+    // detail map at slot 0x3D and the lightmap mask at 0x40. They sample at the source's resolution with the
+    // material sampler (wrap, anisotropy, every mip), where atlas tiles were clamped, at most 512 texels (IW7
+    // Frontier: 229 of 396 at 256 once the atlas filled) and pulled toward their centre at a distance: the smeared
+    // ground of the owner's IW7 tests. Their surfaces keep the atlas vertex records (lightmap UVs in atlas units, the
+    // reflection probe tag). The sky faces and the glass panes take native materials too.
+    Json nativeTechset;
+    std::map<std::string, Json> nativeVariants;
+    std::string maskName;
+    Json maskDefinition;
+    // The native twin of each world variant ("" for the world material), written once under names of its own:
+    // CreateVariant names a variant by its kind and lit header, which the twin shares with its atlas variant.
+    const auto nativeVariant = [&](const std::string &kind) -> const Json & {
+        if (const auto found = nativeVariants.find(kind); found != nativeVariants.end())
+            return found->second;
+        Json variant;
+        if (kind.empty())
+        {
+            Json material = worldMaterial;
+            material["techset"] = nativeTechset.at("name");
+            variant = {{"techset", nativeTechset}, {"material", std::move(material)}};
+        }
+        else
+        {
+            variant = buildWorldVariant(kind, nativeTechset, true);
+            Json &techset = variant["techset"];
+            techset["name"] = techset.at("name").get<std::string>() + "_native";
+            for (auto &technique : techset.at("techniques"))
+                technique["name"] = technique.at("name").get<std::string>() + "_native";
+            variant["material"]["techset"] = techset.at("name");
+        }
+        const std::string file = stem + ".native" + (kind.empty() ? "" : "." + kind) + ".techset.json";
+        variant["material"]["techsetDefinition"] = file;
+        WriteJson(mapDirectory / file, variant.at("techset"));
+        return nativeVariants.emplace(kind, std::move(variant)).first->second;
+    };
+    // The lightmap mask (slot 0x40, after the lightmaps) closes a native material's texture table.
+    const auto addLightmapMask = [&](Json &direct) {
+        direct["textures"].push_back({{"header", "4000000000000000"}, {"image", maskName}});
+        direct["imageDefinitions"].push_back(maskDefinition);
+        auto info = Unhex(direct.at("info").get<std::string>());
+        info[0x14] = static_cast<std::uint8_t>(direct.at("textures").size());
+        direct["info"] = Hex(info);
+    };
+    // A native material's own images, as static models take them (shared with the model materials of the same
+    // images): the tinted colour (IW3 "ge128" cut-outs keep their alpha coverage; a reveal layer's alpha is data, its
+    // reveal, which keeps a linear chain of its own), the normal and the response; then the detail map of a detail
+    // row (slot 0x3D, after the baked sun depth 0x3C, as the table stays slot-sorted) and the lightmap mask.
+    const auto nativeImages = [&](Json &direct, const SourceMaterial &source, const MaterialPlan &planned) {
+        const bool alphaCoverage = planned.kind == SurfaceKind::cutout && !(source.flags & 24u);
+        if (source.flags & kRevealLayerFlag)
+        {
+            const Image &color = image(source.color).front();
+            residentImageRecipe(
+                direct, 0,
+                [color = &color] {
+                    const auto opaqueAlpha = [](Image &level) {
+                        for (std::size_t offset = 3; offset < level.rgba.size(); offset += 4)
+                            level.rgba[offset] = 255;
+                    };
+                    Image opaque = *color;
+                    opaqueAlpha(opaque);
+                    for (auto &mip : opaque.mips)
+                        opaqueAlpha(mip);
+                    return std::pair{std::move(opaque), std::optional<Image>(*color)};
+                },
+                imageBytes(color) * 2, source.tint, "model");
+        }
+        else
+            residentImageAsync(direct, 0, image(source.color).front(), source.tint, "model", alphaCoverage);
+        if (source.normal.empty())
+            residentImageOwned(direct, 1, Image{1, 1, std::vector<std::uint8_t>{128, 128, 128, 128}}, {1, 1, 1, 1},
+                               "model");
+        else
+            residentImageAsync(direct, 1, image(source.normal).front(), {1, 1, 1, 1}, "model");
+        if (source.response.empty())
+            residentImageOwned(direct, 2, Image{1, 1, std::vector<std::uint8_t>{0, 0, 0, 0}}, {1, 1, 1, 1}, "model");
+        else
+            residentImageAsync(direct, 2, image(source.response).front(), {1, 1, 1, 1}, "model");
+        if (planned.worldDetail >= 0 && planned.worldWater < 0)
+        {
+            auto &textures = direct["textures"];
+            std::size_t at = 0;
+            while (at < textures.size() && Unhex(textures[at].at("header").get<std::string>()).at(0) < 0x3D)
+                ++at;
+            textures.insert(textures.begin() + static_cast<std::ptrdiff_t>(at),
+                            Json{{"header", "3d00000000000000"}, {"image", ""}});
+            residentImageAsync(direct, static_cast<unsigned>(at), image(source.detail).front(), {1, 1, 1, 1},
+                               "model_detail");
+        }
+        addLightmapMask(direct);
+    };
+    // Stock Replay world materials (MW120R_STOCK_WORLD, AGENTS.md plan 1.4): Replay's own world technique sets with the
+    // extraction's stock images, for the opaque materials of lightmapped surfaces. Replay's world shaders are IW7's: the
+    // colour alpha s is a metalness ramp (metal = sat((s - .1) / .9), F0 = metal c + min(s, .1)), the gloss g reads as
+    // 1 - sqrt(1 - g), the normal is hemi-octahedral in G/A, the lightmap is the native one (C, f, D), and the layered
+    // twc4 shader (PS f7dc13c5, disassembled) blends layers by IW7's weights and reveal ramp. Single-layer materials take
+    // resources/techset_template.json (stock tw/lit_3_lit_rpl_ta1_804000_...); layered ones the stock twc4 technique set
+    // and material of their layer count, read from the game install (iw8::stock::Library). Decal, blended and cut-out
+    // surfaces keep the generated materials.
+    std::optional<iw8::stock::Library> stockLibrary;
+    // Shadow-only and distortion world materials have no converted equivalent: their stock ones build in every route.
+    const bool stockOnlyWorld = std::ranges::any_of(materials, [&](const SourceMaterial &source) {
+        return ((source.shadowOnly && source.castsShadow) || !source.distortionMap.empty()) &&
+               worldSurfaceMaterials.contains(source.name);
+    });
+    const auto buildStockWorldMaterials = [&](const std::set<std::string> &neededWorldMaterials,
+                                              const bool visibleMaterials) {
+        // The stock techniques with a material's cull mode and depth bias (the back-face shadow technique, 28, culls
+        // the other side), under names of their own. A two-sided material culls back faces: its surfaces draw their
+        // back faces as faces of their own (the writer mirrors them), as Replay's single-sided world does.
+        std::map<std::string, std::pair<std::string, std::string>> techsets;
+        const auto stockTechset = [&](const Json &stock, const std::string &family, const std::string &variant,
+                                      const SourceMaterial &source) -> const std::pair<std::string, std::string> & {
+            const unsigned cullMode = (source.flags & kBackFaceNormalsFlag) ? 1u : source.cullMode;
+            const std::string suffix = "_cull" + std::to_string(cullMode) + variant + (source.depthBias ? "_bias" : "");
+            const std::string name = family + "/mw120r_" + map + "_native_world" + suffix;
+            auto [entry, inserted] = techsets.try_emplace(name);
+            if (!inserted)
+                return entry->second;
+            Json techset = stock;
+            techset["name"] = name;
+            techset["nativeReplayFixture"] = true;
+            for (auto &technique : techset.at("techniques"))
+            {
+                auto header = Unhex(technique.at("header").get<std::string>());
+                unsigned cull = cullMode;
+                if (At<std::uint32_t>(header, 8) == 28 && cull)
+                    cull = 3 - cull;
+                Put<std::uint64_t>(header, 0xA0, (At<std::uint64_t>(header, 0xA0) & ~3ull) | cull |
+                                                     (source.depthBias ? 0x10ull : 0ull));
+                technique["header"] = Hex(header);
+                technique["name"] = technique.at("name").get<std::string>() + "_mw120r_" + map + suffix;
+                PatchStateIdentity(technique, header);
+            }
+            const std::string file = stem + ".native_world" + suffix + ".techset.json";
+            WriteJson(mapDirectory / file, techset);
+            entry->second = {name, file};
+            return entry->second;
+        };
+        // A pixel constant row of a stock material: the row of its constant buffers (cb3[row] of each buffer that holds
+        // it: a cut-out's depth prepass buffer holds the first three) and of its constant table (the row's id: 0x48 the
+        // shared row, then per layer L the flags and UV transform 0x00 + L, the tint and reveal sharpness 0x09 + L, the
+        // specular, gloss and normal strength 0x36 + L).
+        const auto setRow = [](Json &direct, const std::uint32_t id, const std::size_t row,
+                               const std::array<std::uint32_t, 4> &value) {
+            auto table = Unhex(direct.at("constants").get<std::string>());
+            std::optional<std::vector<std::uint8_t>> previous;
+            for (std::size_t offset = 0; offset + 20 <= table.size(); offset += 20)
+                if (At<std::uint32_t>(table, offset) == id)
+                {
+                    previous.emplace(table.begin() + static_cast<std::ptrdiff_t>(offset + 4),
+                                     table.begin() + static_cast<std::ptrdiff_t>(offset + 20));
+                    for (std::size_t k = 0; k < 4; ++k)
+                        Put<std::uint32_t>(table, offset + 4 + 4 * k, value[k]);
+                }
+            if (!previous)
+                throw std::runtime_error("stock world material has no constant row " + std::to_string(id));
+            bool written = false;
+            for (auto &buffer : direct.at("buffers"))
+            {
+                auto bytes = Unhex(buffer.at(3).get<std::string>());
+                if (bytes.size() < 16 * (row + 1) ||
+                    !std::equal(previous->begin(), previous->end(), bytes.begin() + static_cast<std::ptrdiff_t>(16 * row)))
+                    continue;
+                for (std::size_t k = 0; k < 4; ++k)
+                    Put<std::uint32_t>(bytes, 16 * row + 4 * k, value[k]);
+                buffer[3] = Hex(bytes);
+                written = true;
+            }
+            if (!written)
+                throw std::runtime_error("stock world material has no constant buffer row " + std::to_string(row));
+            direct["constants"] = Hex(table);
+        };
+        const auto row = [](const Json &direct, const std::size_t row) {
+            const auto buffer = Unhex(direct.at("buffers").back().at(3).get<std::string>());
+            if (buffer.size() < 16 * (row + 1))
+                throw std::runtime_error("stock world material lacks a constant row");
+            return std::array<std::uint32_t, 4>{At<std::uint32_t>(buffer, 16 * row), At<std::uint32_t>(buffer, 16 * row + 4),
+                                                At<std::uint32_t>(buffer, 16 * row + 8),
+                                                At<std::uint32_t>(buffer, 16 * row + 12)};
+        };
+        // The specular and gloss row of a layer: specular scale and bias (s = (alpha (scale + 1) + bias) / 256), gloss
+        // scale and bias, normal strength ((byte + 1) / 256). IW7's alpha is its s; without it, IW7's dielectric 0.04
+        // (10 / 256). Without a packed gloss, IW7's mid gloss (128).
+        const auto setSpecular = [&](Json &direct, const unsigned layer, const std::size_t at, const SourceMaterial &source) {
+            auto value = row(direct, at);
+            value[0] = source.replaySpecularAlpha ? 0x00FFu : 0x0A00u;
+            value[1] = (source.replayGloss ? 0x00FFu : 0x8000u) | 0xFF0000u;
+            setRow(direct, 0x36 + layer, at, value);
+        };
+        // A colour map: IW7 decodes its colour maps as c^2, Replay's sRGB ones by the sRGB curve; the colour is stored so
+        // that Replay reads IW7's c^2. Its alpha (IW7's specular) is data with a chain of its own.
+        const auto stockColour = [&](Json &direct, const unsigned channel, const SourceMaterial &source) {
+            residentImageRecipe(
+                direct, channel,
+                [color = &image(source.replayColor).front()] {
+                    const auto reencode = [](Image &level) {
+                        for (std::size_t offset = 0; offset < level.rgba.size(); offset += 4)
+                        {
+                            for (std::size_t component = 0; component < 3; ++component)
+                            {
+                                const float value = level.rgba[offset + component] * (1.0f / 255.0f);
+                                level.rgba[offset + component] = SrgbByte(value * value);
+                            }
+                            level.rgba[offset + 3] = 255;
+                        }
+                    };
+                    Image opaque = *color;
+                    reencode(opaque);
+                    for (auto &mip : opaque.mips)
+                        reencode(mip);
+                    return std::pair{std::move(opaque), std::optional<Image>(*color)};
+                },
+                imageBytes(image(source.replayColor).front()), source.tint, "world", false, true);
+        };
+        // The alpha map (slot 0x1B, alpha in red) of a colour map that keeps its alpha, the alpha test of a cut-out (IW3
+        // flag 8: alpha above 0; 16: alpha below 0.5) moved to Replay's test of 0.5 and above.
+        const auto alphaMapOf = [&](Json &direct, const unsigned channel, const SourceMaterial &source, const unsigned test) {
+            residentImageRecipe(
+                direct, channel,
+                [color = &image(source.replayColor).front(), test] {
+                    const auto alphaMap = [test](const Image &level) {
+                        Image result{level.width, level.height, std::vector<std::uint8_t>(level.rgba.size())};
+                        for (std::size_t offset = 0; offset < level.rgba.size(); offset += 4)
+                        {
+                            const std::uint8_t alpha = level.rgba[offset + 3];
+                            result.rgba[offset] = test == 8 ? (alpha ? 255 : 0) : test == 16 ? (alpha < 128 ? 255 : 0) : alpha;
+                            result.rgba[offset + 3] = 255;
+                        }
+                        return result;
+                    };
+                    Image map = alphaMap(*color);
+                    for (const auto &mip : color->mips)
+                        map.mips.push_back(alphaMap(mip));
+                    return std::pair{std::move(map), std::optional<Image>{}};
+                },
+                imageBytes(image(source.replayColor).front()), {1, 1, 1, 1}, "world");
+        };
+        const auto addMaterial = [&](Json direct, const std::string &sourceName, MaterialPlan &planned) {
+            const auto sourceBytes =
+                std::span(reinterpret_cast<const std::uint8_t *>(sourceName.data()), sourceName.size());
+            const auto nameDigest = Sha256(sourceBytes);
+            const std::string id = Hex(std::span(nameDigest).first(8));
+            const std::string materialFile = stem + ".stock." + id + ".material.json";
+            writeMaterial(mapDirectory / materialFile, std::move(direct));
+            plan.additionalMaterials.push_back({{"schema", 1},
+                                                {"material", "w/mw120r_" + map + "_stock_" + id},
+                                                {"materialDefinition", materialFile}});
+            planned.stockWorldMaterialIndex = static_cast<unsigned>(plan.additionalMaterials.size());
+        };
+
+        // The stock layered materials of the layer counts: the standard twc4 permutation of each (VS e2fa6708 / PS
+        // f7dc13c5 for two layers), from mp_shipment.
+        static constexpr std::array<const char *, 3> stockLayered{"twc4/145n_27n", "twc4/2n_15n_3n", "twc4/2n_15n_21n_3n"};
+        std::set<std::string> layered;
+        for (const auto &name : neededWorldMaterials)
+            if (const auto at = name.find("__layer"); at != std::string::npos)
+                layered.insert(name.substr(0, at));
+        const Json singleTechset = Json::parse(ResourceText(IDR_IW3_TECHSET_TEMPLATE));
+        std::size_t count = 0, layeredCount = 0, decalCount = 0, cutoutCount = 0, emissiveCount = 0,
+                    shadowCount = 0, distortionCount = 0;
+        for (const SourceMaterial &source : materials)
+        {
+            if (!neededWorldMaterials.contains(source.name))
+                continue;
+            MaterialPlan &planned = plan.materials.at(source.name);
+            if (source.shadowOnly && source.castsShadow)
+            {
+                if (replayZones.empty())
+                    throw std::runtime_error("shadow-only world materials need the Replay install (--replay)");
+                if (!stockLibrary)
+                    stockLibrary.emplace(replayZones);
+                // An alpha-tested caster (IW3 flag 8 or 16) casts through its colour map's alpha, as its local-light caster
+                // does (alphaTest 2 or 3 in the caster records): it draws as the stock cut-out (tw
+                // plastic_pvc_wire_cable_sheet_01_ge128, whose shadow techniques test slot 0x1B at 0.5), not as an opaque
+                // shadowcaster. Its colour is not otherwise drawn.
+                const bool alphaTested = (source.flags & 24u) && !source.replayColor.empty();
+                Json direct = stockLibrary->Material(alphaTested ? "tw/plastic_pvc_wire_cable_sheet_01_ge128"
+                                                                 : "tw/shadowcaster");
+                const auto &[techsetName, techsetFile] =
+                    stockTechset(stockLibrary->TechniqueSet(direct.at("techset").get<std::string>()),
+                                 "tw", alphaTested ? "_cutout" : "_shadowcaster", source);
+                direct["source"] = source.name;
+                direct["techset"] = techsetName;
+                direct["techsetDefinition"] = techsetFile;
+                direct["imageDefinitions"] = Json::array();
+                if (alphaTested)
+                {
+                    const auto channelOf = [&](const unsigned slot) {
+                        const auto &textures = direct.at("textures");
+                        for (std::size_t index = 0; index < textures.size(); ++index)
+                            if (Unhex(textures[index].at("header").get<std::string>()).at(0) == slot)
+                                return static_cast<unsigned>(index);
+                        throw std::runtime_error("stock cut-out material has no texture slot " + std::to_string(slot));
+                    };
+                    // The normal map is the identity, as the lit cut-out's is.
+                    for (auto &texture : direct.at("textures"))
+                        texture["image"] = Unhex(texture.at("header").get<std::string>()).at(0) == 0x09 ? "$identitynormalmap"
+                                                                                                        : "$black";
+                    stockColour(direct, channelOf(0x00), source);
+                    alphaMapOf(direct, channelOf(0x1B), source, source.flags & 24u);
+                }
+                else
+                {
+                    for (auto &texture : direct.at("textures"))
+                    {
+                        const auto header = Unhex(texture.at("header").get<std::string>());
+                        if (header.at(0) == 0)
+                            texture["image"] = "$gray";
+                    }
+                }
+                addMaterial(std::move(direct), source.name, planned);
+                planned.worldMaterialIndex = planned.stockWorldMaterialIndex;
+                ++shadowCount;
+                continue;
+            }
+            // An IW7 world distortion draws as Replay's stock world distortion material (twc/dub_water_wall_waves_dist:
+            // technique set twc/dist_10_distortion_rpl_ta0_8000_3_0_0_0, sort 24 = GfxWorld sortKeyDistortion, camera
+            // region 3), IW7's distortion map in its slot 0x9D, its UV animation in constant 0x3F (vertex row 0) and its
+            // scale in constant 0x7F (pixel row 1). The stock VS (893b6231) turns the UV about its middle and scrolls it
+            // as IW7's VS (aa277930) does; the stock PS (bd3434da) offsets the scene by the map as IW7's PS (89c34e12).
+            if (!source.distortionMap.empty())
+            {
+                if (replayZones.empty())
+                    throw std::runtime_error("world distortion materials need the Replay install (--replay)");
+                if (!stockLibrary)
+                    stockLibrary.emplace(replayZones);
+                Json direct = stockLibrary->Material("twc/dub_water_wall_waves_dist");
+                const auto &[techsetName, techsetFile] =
+                    stockTechset(stockLibrary->TechniqueSet(direct.at("techset").get<std::string>()), "tw",
+                                 "_distortion", source);
+                direct["source"] = source.name;
+                direct["techset"] = techsetName;
+                direct["techsetDefinition"] = techsetFile;
+                direct["imageDefinitions"] = Json::array();
+                const std::array<float, 4> scale{source.distortionScale[0], source.distortionScale[1], 0.0f, 0.0f};
+                auto constants = Unhex(direct.at("constants").get<std::string>());
+                std::size_t found = 0;
+                for (std::size_t offset = 0; offset + 20 <= constants.size(); offset += 20)
+                {
+                    const auto hash = At<std::uint32_t>(constants, offset);
+                    const auto &value = hash == 0x3Fu ? source.distortionUvAnimation : scale;
+                    if (hash != 0x3Fu && hash != 0x7Fu)
+                        continue;
+                    std::memcpy(constants.data() + offset + 4, value.data(), 16);
+                    ++found;
+                }
+                auto &stages = direct.at("buffers").at(0);
+                auto vertexRows = Unhex(stages.at(0).get<std::string>());
+                auto pixelRows = Unhex(stages.at(3).get<std::string>());
+                if (found != 2 || vertexRows.size() < 16 || pixelRows.size() < 32)
+                    throw std::runtime_error("stock world distortion material layout changed");
+                std::memcpy(vertexRows.data(), source.distortionUvAnimation.data(), 16);
+                std::memcpy(pixelRows.data() + 16, scale.data(), 16);
+                direct["constants"] = Hex(constants);
+                stages[0] = Hex(vertexRows);
+                stages[3] = Hex(pixelRows);
+                residentImage(direct, 0, image(source.distortionMap).front(), {1, 1, 1, 1}, "world_distortion", false,
+                              nullptr, true);
+                addMaterial(std::move(direct), source.name, planned);
+                planned.worldMaterialIndex = planned.stockWorldMaterialIndex;
+                planned.stockDistortion = true;
+                ++distortionCount;
+                continue;
+            }
+            if (!visibleMaterials || source.replayColor.empty() ||
+                source.name.find("__layer") != std::string::npos)
+                continue;
+            // An unlit opaque material draws as a stock emissive one (tw/uk_periph_emissive_light: the opaque permutation
+            // with its emissive map, slot 0x12, times the emission row 0x24, which Replay scales as it scales the
+            // lightmap, PS c8c1d12c): no albedo or specular, IW7's colour as the emissive map and its tint as the emission.
+            if (planned.kind == SurfaceKind::opaque && (source.flags & 128u) && source.replayEmission &&
+                !layered.contains(source.name) && source.replayLayers.empty() && planned.worldWater < 0 &&
+                planned.worldDetail < 0)
+            {
+                if (replayZones.empty())
+                    throw std::runtime_error("stock emissive materials need the Replay install (--replay)");
+                if (!stockLibrary)
+                    stockLibrary.emplace(replayZones);
+                Json direct = stockLibrary->Material("tw/uk_periph_emissive_light");
+                const auto &[techsetName, techsetFile] =
+                    stockTechset(stockLibrary->TechniqueSet(direct.at("techset").get<std::string>()), "tw", "_emissive", source);
+                direct["source"] = source.name;
+                direct["techset"] = techsetName;
+                direct["techsetDefinition"] = techsetFile;
+                direct["imageDefinitions"] = Json::array();
+                std::optional<unsigned> emissiveChannel;
+                const auto &textures = direct.at("textures");
+                for (std::size_t index = 0; index < textures.size(); ++index)
+                {
+                    const unsigned slot = Unhex(textures[index].at("header").get<std::string>()).at(0);
+                    direct["textures"][index]["image"] = "$black";
+                    if (slot == 0x12)
+                        emissiveChannel = static_cast<unsigned>(index);
+                }
+                if (!emissiveChannel)
+                    throw std::runtime_error("stock emissive material has no emissive slot");
+                SourceMaterial emissive = source;
+                emissive.tint = {1, 1, 1, 1};
+                stockColour(direct, *emissiveChannel, emissive);
+                // In Replay's light units, as the native lightmap.
+                const auto &emission = *source.replayEmission;
+                setRow(direct, 0x24, 3,
+                       {std::bit_cast<std::uint32_t>(emission[0] * lightUnitScale),
+                        std::bit_cast<std::uint32_t>(emission[1] * lightUnitScale),
+                        std::bit_cast<std::uint32_t>(emission[2] * lightUnitScale), std::bit_cast<std::uint32_t>(1.0f)});
+                auto specular = row(direct, 4);
+                specular[0] = 0;
+                setRow(direct, 0x36, 4, specular);
+                addMaterial(std::move(direct), source.name, planned);
+                ++emissiveCount;
+                continue;
+            }
+            // A lit single-sided cut-out draws as a stock alpha-tested material (tw lit_3_lit_alt: its depth prepass and
+            // shadow techniques test the red of slot 0x1B at 0.5, its lit technique the opaque one).
+            if (planned.kind == SurfaceKind::cutout && !(source.flags & (128u | kRevealLayerFlag | kEmissionFlag)) &&
+                source.emission == 1 && !layered.contains(source.name) && source.replayLayers.empty() &&
+                planned.worldWater < 0 && planned.worldDetail < 0)
+            {
+                if (replayZones.empty())
+                    throw std::runtime_error("stock cut-outs need the Replay install (--replay)");
+                if (!stockLibrary)
+                    stockLibrary.emplace(replayZones);
+                Json direct = stockLibrary->Material("tw/plastic_pvc_wire_cable_sheet_01_ge128");
+                const auto &[techsetName, techsetFile] =
+                    stockTechset(stockLibrary->TechniqueSet(direct.at("techset").get<std::string>()), "tw", "_cutout", source);
+                direct["source"] = source.name;
+                direct["techset"] = techsetName;
+                direct["techsetDefinition"] = techsetFile;
+                direct["imageDefinitions"] = Json::array();
+                const auto channelOf = [&](const unsigned slot) {
+                    const auto &textures = direct.at("textures");
+                    for (std::size_t index = 0; index < textures.size(); ++index)
+                        if (Unhex(textures[index].at("header").get<std::string>()).at(0) == slot)
+                            return static_cast<unsigned>(index);
+                    throw std::runtime_error("stock cut-out material has no texture slot " + std::to_string(slot));
+                };
+                for (auto &texture : direct.at("textures"))
+                    texture["image"] = Unhex(texture.at("header").get<std::string>()).at(0) == 0x09 ? "$identitynormalmap"
+                                                                                                    : "$black";
+                stockColour(direct, channelOf(0x00), source);
+                if (!source.replayNormalGloss.empty())
+                    residentImageAsync(direct, channelOf(0x09), image(source.replayNormalGloss).front(), {1, 1, 1, 1}, "world");
+                // The alpha: IW7's alpha map (red alpha, as Replay's), else the colour's own alpha.
+                const unsigned test = source.flags & 24u;
+                if (!source.replayReveal.empty() && source.replayAlpha && !test)
+                    residentImageAsync(direct, channelOf(0x1B), image(source.replayReveal).front(), {1, 1, 1, 1}, "world");
+                else if (!source.replaySpecularAlpha)
+                    alphaMapOf(direct, channelOf(0x1B), source, test);
+                else
+                    continue;
+                auto flags = row(direct, 1);
+                flags[0] = (!source.replayNormalGloss.empty() ? 1u | 2u : 0u) | (source.replayGloss ? 4u : 0u) | 8u;
+                setRow(direct, 0x00, 1, flags);
+                setSpecular(direct, 0, 3, source);
+                addMaterial(std::move(direct), source.name, planned);
+                ++cutoutCount;
+                continue;
+            }
+            // A lit blended decal (stains, signs, paint lines: flag 2048, alpha blended) draws as a stock decal (twc
+            // lit_3_lit_bad_tca, PS 39852264): its colour tinted by the vertex colour, its coverage the vertex alpha
+            // through IW7's reveal ramp or times its alpha map (slot 0x1B: red alpha, green reveal).
+            if (planned.kind == SurfaceKind::glass && !source.blend && (source.flags & 2048u) && !(source.flags & 128u) &&
+                !(source.flags & (kRevealLayerFlag | kEmissionFlag)) && source.emission == 1 && !layered.contains(source.name))
+            {
+                if (replayZones.empty())
+                    throw std::runtime_error("stock decals need the Replay install (--replay)");
+                if (!stockLibrary)
+                    stockLibrary.emplace(replayZones);
+                Json direct = stockLibrary->Material("twc/paint_lines_01_thick_yellow_clean");
+                const auto &[techsetName, techsetFile] =
+                    stockTechset(stockLibrary->TechniqueSet(direct.at("techset").get<std::string>()), "tw", "_decal", source);
+                direct["source"] = source.name;
+                direct["techset"] = techsetName;
+                direct["techsetDefinition"] = techsetFile;
+                direct["imageDefinitions"] = Json::array();
+                const auto channelOf = [&](const unsigned slot) {
+                    const auto &textures = direct.at("textures");
+                    for (std::size_t index = 0; index < textures.size(); ++index)
+                        if (Unhex(textures[index].at("header").get<std::string>()).at(0) == slot)
+                            return static_cast<unsigned>(index);
+                    throw std::runtime_error("stock decal material has no texture slot " + std::to_string(slot));
+                };
+                for (auto &texture : direct.at("textures"))
+                    texture["image"] = Unhex(texture.at("header").get<std::string>()).at(0) == 0x09 ? "$identitynormalmap"
+                                                                                                    : "$black";
+                stockColour(direct, channelOf(0x00), source);
+                if (!source.replayNormalGloss.empty())
+                    residentImageAsync(direct, channelOf(0x09), image(source.replayNormalGloss).front(), {1, 1, 1, 1}, "world");
+                // The alpha, reveal and thickness map; a colour map that keeps the alpha itself (no specular in its
+                // alpha) gives it.
+                bool alpha = source.replayAlpha, reveal = source.replayRevealSharpness.has_value();
+                if (!source.replayReveal.empty())
+                    residentImageAsync(direct, channelOf(0x1B), image(source.replayReveal).front(), {1, 1, 1, 1}, "world");
+                else if (!source.replaySpecularAlpha)
+                {
+                    residentImageRecipe(
+                        direct, channelOf(0x1B),
+                        [color = &image(source.replayColor).front()] {
+                            const auto alphaMap = [](const Image &level) {
+                                Image result{level.width, level.height, std::vector<std::uint8_t>(level.rgba.size())};
+                                for (std::size_t offset = 0; offset < level.rgba.size(); offset += 4)
+                                {
+                                    result.rgba[offset] = level.rgba[offset + 3];
+                                    result.rgba[offset + 3] = 255;
+                                }
+                                return result;
+                            };
+                            Image map = alphaMap(*color);
+                            for (const auto &mip : color->mips)
+                                map.mips.push_back(alphaMap(mip));
+                            return std::pair{std::move(map), std::optional<Image>{}};
+                        },
+                        imageBytes(image(source.replayColor).front()), {1, 1, 1, 1}, "world");
+                    alpha = true;
+                    reveal = false;
+                }
+                else
+                    alpha = reveal = false;
+                auto flags = row(direct, 1);
+                flags[0] = (!source.replayNormalGloss.empty() ? 1u | 2u : 0u) | (source.replayGloss ? 4u : 0u) |
+                           (alpha ? 8u : 0u) | (reveal ? 16u : 0u);
+                setRow(direct, 0x00, 1, flags);
+                auto tint = row(direct, 2);
+                const auto sharpness = static_cast<std::uint32_t>(
+                    std::clamp(std::lround(source.replayRevealSharpness.value_or(1.0f) * 255.0f), 0l, 255l));
+                tint[0] = 0x00FFFFFFu | (sharpness << 24);
+                setRow(direct, 0x09, 2, tint);
+                setSpecular(direct, 0, 3, source);
+                addMaterial(std::move(direct), source.name, planned);
+                ++decalCount;
+                continue;
+            }
+            if (planned.kind != SurfaceKind::opaque || planned.worldWater >= 0 || planned.worldDetail >= 0 ||
+                (source.flags & (128u | kRevealLayerFlag | kEmissionFlag)) || source.emission != 1)
+                continue;
+            if (source.replayLayers.empty())
+            {
+                // A material of overlays (layers drawn as surfaces of their own) keeps the generated shader beneath them.
+                if (layered.contains(source.name))
+                    continue;
+                const auto &[techsetName, techsetFile] = stockTechset(singleTechset, "tw", "", source);
+                Json direct = Json::parse(ResourceText(IDR_IW3_MATERIAL_TEMPLATE));
+                direct["source"] = source.name;
+                direct["techset"] = techsetName;
+                direct["techsetDefinition"] = techsetFile;
+                direct["imageDefinitions"] = Json::array();
+                setSpecular(direct, 0, 3, source);
+                stockColour(direct, 0, source);
+                if (!source.replayNormalGloss.empty())
+                    residentImageAsync(direct, 1, image(source.replayNormalGloss).front(), {1, 1, 1, 1}, "world");
+                addMaterial(std::move(direct), source.name, planned);
+                ++count;
+                continue;
+            }
+
+            // A stock layered surface's material: the layers' images in the stock material's slots (colour L, normal 9 +
+            // L, alpha and reveal 0x1C + L - 1, tint mask 0x3B + L), their rows set as IW7 blends them.
+            const std::size_t layers = source.replayLayers.size() + 1;
+            if (layers < 2 || layers > stockLayered.size() + 1)
+                throw std::runtime_error("stock layered material " + source.name + " has " + std::to_string(layers) + " layers");
+            if (replayZones.empty())
+                throw std::runtime_error("stock layered materials need the Replay install (--replay)");
+            if (!stockLibrary)
+                stockLibrary.emplace(replayZones);
+            Json direct = stockLibrary->Material(stockLayered[layers - 2]);
+            const auto &[techsetName, techsetFile] =
+                stockTechset(stockLibrary->TechniqueSet(direct.at("techset").get<std::string>()), "tw",
+                             "_layers" + std::to_string(layers), source);
+            direct["source"] = source.name;
+            direct["techset"] = techsetName;
+            direct["techsetDefinition"] = techsetFile;
+            direct["imageDefinitions"] = Json::array();
+            // Without its layer materials' names (the stock material's sub-materials, info byte 0x17 its count).
+            direct.erase("subMaterials");
+            auto metadata = Unhex(direct.at("info").get<std::string>());
+            metadata.at(0x17) = 0;
+            direct["info"] = Hex(metadata);
+            std::vector<SourceMaterial> layerMaterials{source};
+            for (const auto &layer : source.replayLayers)
+                layerMaterials.push_back(ReadMaterial(exportRoot, sourcePaths, layer.material));
+            for (auto &texture : direct.at("textures"))
+            {
+                const unsigned slot = Unhex(texture.at("header").get<std::string>()).at(0);
+                texture["image"] = slot >= 0x09 && slot < 0x09 + layers ? "$identitynormalmap" : "$black";
+            }
+            for (std::size_t layer = 0; layer < layers; ++layer)
+            {
+                const SourceMaterial &material = layerMaterials[layer];
+                const auto channelOf = [&](const unsigned slot) {
+                    const auto &textures = direct.at("textures");
+                    for (std::size_t index = 0; index < textures.size(); ++index)
+                        if (Unhex(textures[index].at("header").get<std::string>()).at(0) == slot)
+                            return static_cast<unsigned>(index);
+                    throw std::runtime_error("stock layered material has no texture slot " + std::to_string(slot));
+                };
+                // A layer whose colour is an engine image (IW7's $black of a multiply layer) takes Replay's own, or a
+                // texel of its colour.
+                if (!material.replayColor.empty())
+                    stockColour(direct, channelOf(static_cast<unsigned>(layer)), material);
+                else if (material.color == "$black" || material.color == "$gray")
+                    direct["textures"][channelOf(static_cast<unsigned>(layer))]["image"] = material.color;
+                else if (material.color == "$white")
+                    residentImageRecipe(
+                        direct, channelOf(static_cast<unsigned>(layer)),
+                        [] { return std::pair{Image{1, 1, std::vector<std::uint8_t>{255, 255, 255, 255}}, std::optional<Image>{}}; },
+                        4, material.tint, "world", false, true);
+                else
+                    throw std::runtime_error("stock layer " + material.name + " has no colour");
+                if (!material.replayNormalGloss.empty())
+                    residentImageAsync(direct, channelOf(0x09 + static_cast<unsigned>(layer)),
+                                       image(material.replayNormalGloss).front(), {1, 1, 1, 1}, "world");
+                setSpecular(direct, static_cast<unsigned>(layer), 3 + 3 * layer, material);
+                if (!layer)
+                    continue;
+                const auto &info = source.replayLayers[layer - 1];
+                if (!material.replayReveal.empty())
+                    residentImageAsync(direct, channelOf(0x1C + static_cast<unsigned>(layer) - 1),
+                                       image(material.replayReveal).front(), {1, 1, 1, 1}, "world");
+                // Flags: normal (1), occlusion (2) and gloss (4) blend where the layer has its normal map; alpha (8) and
+                // reveal (16) from its alpha, reveal and thickness map; colour mode lerp or multiply (bits 7-8).
+                auto flags = row(direct, 1 + 3 * layer);
+                const bool normal = !material.replayNormalGloss.empty();
+                const bool revealMap = !material.replayReveal.empty();
+                flags[0] = (normal ? 1u | 2u : 0u) | (material.replayGloss ? 4u : 0u) |
+                           (revealMap && info.alpha ? 8u : 0u) | (revealMap && info.reveal ? 16u : 0u) |
+                           (info.multiply ? 1u << 7 : 0u);
+                setRow(direct, 0x00 + static_cast<std::uint32_t>(layer), 1 + 3 * layer, flags);
+                // Tint (white: the colour carries it) and the reveal sharpness k in the top byte.
+                auto tint = row(direct, 2 + 3 * layer);
+                const auto sharpness = static_cast<std::uint32_t>(
+                    std::clamp(std::lround(info.reveal.value_or(1.0f) * 255.0f), 0l, 255l));
+                tint[0] = 0x00FFFFFFu | (sharpness << 24);
+                setRow(direct, 0x09 + static_cast<std::uint32_t>(layer), 2 + 3 * layer, tint);
+            }
+            planned.stockLayers = static_cast<unsigned>(layers);
+            addMaterial(std::move(direct), source.name, planned);
+            ++layeredCount;
+        }
+        zt::info("iw3: %zu stock Replay world materials, %zu stock layered ones, %zu stock decals, %zu stock cut-outs and "
+                 "%zu stock emissive ones, %zu shadow-only ones and %zu distortion ones in %zu technique sets",
+                 count, layeredCount, decalCount, cutoutCount, emissiveCount, shadowCount, distortionCount,
+                 techsets.size());
+        return count + layeredCount + decalCount + cutoutCount + emissiveCount + shadowCount + distortionCount;
+    };
+    if (nativeWorld)
+    {
+        auto encodedMask = EncodeBc4(lightmapPrimary.width, lightmapPrimary.height, lightmapMask);
+        encodedMask.resize((encodedMask.size() + 15) & ~std::size_t{15});
+        maskName = "mw120r/" + map + "_lightmap_mask";
+        const std::string maskFile = map + "_lightmap_mask.bc4";
+        WriteBytes(mapDirectory / maskFile, encodedMask);
+        maskDefinition = {{"name", maskName},
+                          {"width", lightmapPrimary.width},
+                          {"height", lightmapPrimary.height},
+                          {"bc4", maskFile},
+                          {"format", 39},
+                          {"mipCount", 1}};
+        nativeTechset = BuildTechset(map, columns, plan.atlasSize, TechniqueGeometry::world, plan.glassEnvironment,
+                                     false, {}, lightmapDefines, true, {}, {}, std::string(kNativeWorldDefines));
+        const std::set<std::string> neededWorldMaterials(worldMaterials.begin(), worldMaterials.end());
+        // Stock world materials first: a material whose surfaces they all draw needs no converted one.
+        std::size_t nativeMaterials =
+            world.value("replay_stock_world", false) || stockOnlyWorld
+                ? buildStockWorldMaterials(neededWorldMaterials, world.value("replay_stock_world", false))
+                : 0;
+        for (const SourceMaterial &source : materials)
+        {
+            if (!neededWorldMaterials.contains(source.name))
+                continue;
+            MaterialPlan &planned = plan.materials.at(source.name);
+            if (planned.kind == SurfaceKind::sky || planned.kind == SurfaceKind::skipped ||
+                (planned.stockWorldMaterialIndex && source.replayStockOnly))
+                continue;
+            Json direct = nativeVariant(WorldVariantKind(planned)).at("material");
+            direct["source"] = source.name;
+            nativeImages(direct, source, planned);
+            const auto sourceBytes =
+                std::span(reinterpret_cast<const std::uint8_t *>(source.name.data()), source.name.size());
+            const auto nameDigest = Sha256(sourceBytes);
+            const std::string id = Hex(std::span(nameDigest).first(8));
+            const std::string materialFile = stem + ".world." + id + ".material.json";
+            writeMaterial(mapDirectory / materialFile, std::move(direct));
+            plan.additionalMaterials.push_back({{"schema", 1},
+                                                {"material", "w/mw120r_" + map + "_world_" + id},
+                                                {"materialDefinition", materialFile}});
+            planned.worldMaterialIndex = static_cast<unsigned>(plan.additionalMaterials.size());
+            ++nativeMaterials;
+        }
+        // The sky faces: a material each with its face image whole, at the extraction's resolution (atlas faces took
+        // one cell: 256 texels on IW7 Frontier), sampled at its top level inside its edges (the native sky kind).
+        for (unsigned face = 0; face < 6; ++face)
+        {
+            Json direct = nativeVariant("sky").at("material");
+            direct["source"] = skyName + "#" + std::to_string(face);
+            residentImageAsync(direct, 0, sky[face], {1, 1, 1, 1}, "model");
+            residentImageOwned(direct, 1, Image{1, 1, std::vector<std::uint8_t>{128, 128, 128, 128}}, {1, 1, 1, 1},
+                               "model");
+            residentImageOwned(direct, 2, Image{1, 1, std::vector<std::uint8_t>{0, 0, 0, 0}}, {1, 1, 1, 1}, "model");
+            addLightmapMask(direct);
+            const std::string materialFile = stem + ".sky" + std::to_string(face) + ".material.json";
+            writeMaterial(mapDirectory / materialFile, std::move(direct));
+            plan.additionalMaterials.push_back({{"schema", 1},
+                                                {"material", plan.material + "_sky_face" + std::to_string(face)},
+                                                {"materialDefinition", materialFile}});
+            plan.skyMaterials[face] = static_cast<unsigned>(plan.additionalMaterials.size());
+        }
+        zt::info("iw3: %zu native world materials and 6 sky faces in %zu technique sets", nativeMaterials,
+                 nativeVariants.size());
+    }
+    else if (stockOnlyWorld)
+        buildStockWorldMaterials(worldSurfaceMaterials, false);
+    timing.lap("native world materials");
+
+    // FxGlassSystem supplies its own vertices. A BSP glass variant cannot be
+    // used here: Replay R_DrawGlassSurf (18F9F00) rejects layouts other than 31.
+    // The panes are named in surface order and then built on every core (an IW7 map holds hundreds); they join the
+    // asset materials in that order.
+    struct Pane
+    {
+        const std::string *sourceName;
+        std::string kind, definition;
+        Json material;
+    };
+    std::vector<Pane> panes;
+    std::set<std::string> assetMaterialNames;
+    for (const auto &existing : plan.assetMaterials)
+        assetMaterialNames.insert(existing.at("material").get<std::string>());
+    for (const std::string &sourceName : surfaceMaterials)
+    {
+        auto &entry = plan.materials.at(sourceName);
+        if (entry.kind != SurfaceKind::glass || !entry.glassMaterial.empty())
+            continue;
+        const auto sourceBytes = std::span(
+            reinterpret_cast<const std::uint8_t *>(sourceName.data()), sourceName.size());
+        const auto sourceDigest = Sha256(sourceBytes);
+        const std::string kind = "pane_" + std::to_string(entry.tile) + "_" +
+                                 std::to_string(entry.flags) + "_" +
+                                 Hex(std::span(sourceDigest).first(8)) + "_glass";
+        entry.glassMaterial = plan.material + "_" + kind;
+        if (assetMaterialNames.insert(entry.glassMaterial).second)
+            panes.push_back({&sourceName, kind, {}});
+    }
+    parallelFor(panes.size(), [&](const std::size_t paneIndex) {
+        auto &pane = panes[paneIndex];
+        const std::string &sourceName = *pane.sourceName;
+        const auto &entry = plan.materials.at(sourceName);
+        Json variant = CreateVariant(nativeWorld ? nativeTechset : techset, worldMaterial, stem, map, pane.kind);
+        Json &paneTechset = variant.at("techset");
+        const auto &environment = entry.environment;
+        const std::string vertexSource = "#define GLASS_PANE 1\n#define GLASS_TILE " +
+            std::to_string(entry.tile) + "\n#define GLASS_FLAGS " +
+            std::to_string(entry.flags | 2u) + "\n#define GLASS_ENVIRONMENT float4(" +
+            HlslNumber(environment[0]) + "," + HlslNumber(environment[1]) + "," +
+            HlslNumber(environment[2]) + "," + HlslNumber(environment[3]) + ")\n" +
+            ResourceText(IDR_IW3_VERTEX_SHADER);
+        Json vertex = Shader(14, "iw3_glass", "iw3_glass_vertex.hlsl",
+                             Compile(vertexSource, "vs_5_0", "iw3_glass_vertex.hlsl"));
+        Json &lit = paneTechset.at("techniques").back();
+        auto header = Unhex(lit.at("header").get<std::string>());
+        header[0x9C] = 31;
+        // Shipped Replay glass techsets (techsets_mp_backlot2 g/...) map every
+        // pipeline-state slot except 19-21 to their single state. The glass
+        // draw selects slots other than 1, and an unmapped 0xFF slot makes
+        // the pane draw nothing.
+        for (std::size_t slot = 0; slot < 25; ++slot)
+            header[0x0F + slot] = slot >= 19 && slot <= 21 ? 0xFF : 0;
+        lit["header"] = Hex(header);
+        lit["shaders"][0] = vertex.at("name");
+        paneTechset["shaders"]["14:" + vertex.at("name").get<std::string>()] = vertex;
+        auto args = Unhex(lit.at("args").get<std::string>());
+        bool glassBuffer = false;
+        for (std::size_t offset = 0; offset < args.size(); offset += 6)
+            if (args[offset] == 3 && args[offset + 1] == 2 &&
+                At<std::uint16_t>(args, offset + 2) == 13 &&
+                At<std::uint16_t>(args, offset + 4) == 45)
+            {
+                // Signed Replay glass: VS t2 = code buffer 47, stride 28.
+                Put<std::uint16_t>(args, offset + 2, 2);
+                Put<std::uint16_t>(args, offset + 4, 47);
+                glassBuffer = true;
+            }
+        if (!glassBuffer)
+            throw std::runtime_error("Glass technique has no native vertex-buffer binding");
+        lit["args"] = Hex(args);
+        PatchStateIdentity(lit, Unhex(vertex.at("program").get<std::string>()));
+        auto type = Unhex(paneTechset.at("header").get<std::string>());
+        Put<std::uint32_t>(type, 0x10, 0x100000u);
+        paneTechset["header"] = Hex(type);
+        KeepReferencedShaders(paneTechset);
+        auto info = Unhex(variant.at("material").at("info").get<std::string>());
+        if (sourceName.find("shattered") != std::string::npos)
+        {
+            // Replay's native shattered pane uses glass contents/surface flags,
+            // not the opaque baseboard flags inherited by the material template.
+            Put<std::uint32_t>(info, 0x00, 0x2010u);
+            Put<std::uint32_t>(info, 0x04, 0x4C4000u);
+        }
+        else
+        {
+            // Breakable intact panes use glass contents and surftype_glass_pane
+            // (9 << 19). Backlot's opaque tinted pane is glass_solid (39), which
+            // Replay treats as bulletproof.
+            Put<std::uint32_t>(info, 0x00, 0x10u);
+            Put<std::uint32_t>(info, 0x04, 0x480000u);
+        }
+        Put<std::uint32_t>(info, 0xC, 0x100000u);
+        info[0x10] = 3;
+        info[0x11] = 26;
+        variant["material"]["info"] = Hex(info);
+        pane.definition = variant.at("definition").get<std::string>();
+        pane.material = std::move(variant.at("material"));
+        WriteJson(mapDirectory / variant.at("techsetFile").get<std::string>(), paneTechset);
+    });
+    // Native panes sample their material's own images (queued here: the resident images are not built on threads).
+    std::map<std::string_view, const SourceMaterial *> paneSources;
+    for (const SourceMaterial &source : materials)
+        paneSources.emplace(source.name, &source);
+    for (auto &pane : panes)
+    {
+        const auto &entry = plan.materials.at(*pane.sourceName);
+        if (nativeWorld)
+            nativeImages(pane.material, *paneSources.at(*pane.sourceName), entry);
+        writeMaterial(mapDirectory / pane.definition, std::move(pane.material));
+        plan.assetMaterials.push_back(
+            {{"schema", 1}, {"material", entry.glassMaterial}, {"materialDefinition", pane.definition}});
+    }
+
+    // Static placements draw through Replay's static-model tables; script,
+    // dynamic and effect XModels draw as DObjs, whose shaders take the object
+    // from per-draw constants. Shipped Replay keeps a material per usage
+    // (tmo/... versus mo/...), so each usage gets its own geometry type.
+    const auto emitModelMaterials = [&](const TechniqueGeometry geometry,
+                                        const std::vector<std::string> &needed,
+                                        std::string MaterialPlan::*target) {
+        const bool entity = geometry == TechniqueGeometry::entity;
+        const std::string usage = entity ? "entity" : "model";
+        Json modelMaterialTemplate = material;
+        auto modelInfo = Unhex(modelMaterialTemplate.at("info").get<std::string>());
+        Put<std::uint32_t>(modelInfo, 0xC, entity ? 0x80014u : 589844u);
+        // Static placements read their IW3 light-grid lighting (one ambient
+        // cube per instance) from a shared fourth texture.
+        const bool instanceLighting = !entity && staticModelInstances > 0;
+        // Entities (DObjs) sample the world-space light-grid volume instead.
+        const bool volumeLighting = entity && entityLightVolume;
+        if (modelInfo[0x14] != modelMaterialTemplate.at("textures").size())
+            throw std::runtime_error("model material texture count does not match its textures");
+        modelMaterialTemplate["textures"].push_back(sunDepthTexture);
+        if (instanceLighting || volumeLighting)
+            modelMaterialTemplate["textures"].push_back(
+                {{"header", "3d00000000000000"},
+                 {"image", instanceLighting ? plan.instanceLightingImage : entityLightVolume->image}});
+        modelInfo[0x14] = static_cast<std::uint8_t>(modelMaterialTemplate.at("textures").size());
+        modelMaterialTemplate["info"] = Hex(modelInfo);
+        Json modelTechset =
+            BuildTechset(map, columns, plan.atlasSize, geometry, plan.glassEnvironment,
+                         instanceLighting, volumeLighting ? entityLightVolume->defines : std::string{},
+                         {}, true, plan.modelFalloffDefines);
+        std::array<Json, 5> modelTechsets{};
+        modelTechsets[static_cast<unsigned>(SurfaceKind::opaque)] = modelTechset;
+
+        for (const auto &[kind, enabled, surfaceKind] :
+             std::array<std::tuple<std::string, bool, SurfaceKind>, 2>{
+                 std::tuple{usage + "_foliage", plan.hasCutout, SurfaceKind::cutout},
+                 std::tuple{usage + "_glass", plan.hasGlass, SurfaceKind::glass}})
+        {
+            if (!enabled)
+                continue;
+            Json variant = CreateVariant(modelTechset, modelMaterialTemplate, stem, map, kind);
+            modelTechsets[static_cast<unsigned>(surfaceKind)] = std::move(variant.at("techset"));
+        }
+
+        const std::set<std::string> neededMaterials(needed.begin(), needed.end());
+        std::set<unsigned> glassSorts;
+        for (const SourceMaterial &source : materials)
+            if (neededMaterials.contains(source.name) && source.kind == SurfaceKind::glass)
+                glassSorts.insert(source.sortKey);
+        const auto translucentKeys = TranslucentSortKeys(glassSorts);
+        // IW3 detail materials (opaque lp_*d0*): one lit variant per distinct
+        // detailScale, sampling the detail map from material slot 0x3E.
+        std::map<std::pair<float, float>, std::pair<unsigned, Json>> detailTechsets;
+        const auto detailVariant = [&](const SourceMaterial &source)
+            -> const std::pair<unsigned, Json> & {
+            const std::pair key{source.detailScale[0], source.detailScale[1]};
+            auto found = detailTechsets.find(key);
+            if (found == detailTechsets.end())
+            {
+                char defines[160];
+                std::snprintf(defines, sizeof(defines),
+                              "#define MAP_DETAIL 1\n#define MAP_DETAIL_SCALE float2(%.9g, %.9g)\n",
+                              key.first, key.second);
+                Json techset = BuildTechset(
+                    map, columns, plan.atlasSize, geometry, plan.glassEnvironment,
+                    instanceLighting, volumeLighting ? entityLightVolume->defines : std::string{},
+                    {}, true, plan.modelFalloffDefines, defines);
+                const unsigned index = static_cast<unsigned>(detailTechsets.size());
+                found = detailTechsets.emplace(key, std::pair{index, std::move(techset)}).first;
+            }
+            return found->second;
+        };
+        // Flag cloth: IW3's (mc_*_flag_*: IW3's wave, wave 0) and an extraction's
+        // IW7 flags (IW7's two waves with each material's parameters, waves 1 on),
+        // and IW7 reactive foliage (Replay's reactive-motion sim, alone or with a
+        // wave): one variant per surface kind and motion whose vertex shader moves
+        // the surface. Static models only: the time is view row 4 .w of the
+        // static-model layout; DObj views use another layout.
+        std::map<std::string, unsigned> flagWaves{{"#define MAP_FLAG_WAVE 1\n", 0u}};
+        std::map<std::pair<unsigned, unsigned>, Json> flagTechsets;
+        const auto waveOf = [&](const SourceMaterial &source)
+            -> std::pair<unsigned, std::string> {
+            std::string defines = source.flagWave ? "#define MAP_FLAG_WAVE 1\n" : "";
+            if (source.iw7FlagWave)
+            {
+                const auto &wave = *source.iw7FlagWave;
+                char text[512];
+                if (source.iw7FlagClassic)
+                    std::snprintf(text, sizeof(text),
+                                  "#define MAP_IW7_FLAG_CLASSIC 1\n"
+                                  "#define MAP_IW7_FLAG_PHASE float4(%.9g, %.9g, %.9g, %.9g)\n",
+                                  wave[0], wave[1], wave[2], wave[3]);
+                else
+                    std::snprintf(text, sizeof(text),
+                                  "#define MAP_IW7_FLAG_WAVE 1\n"
+                                  "#define MAP_IW7_FLAG_PHASE float4(%.9g, %.9g, %.9g, %.9g)\n"
+                                  "#define MAP_IW7_FLAG_WAVE0 float4(%.9g, %.9g, %.9g, %.9g)\n"
+                                  "#define MAP_IW7_FLAG_WAVE1 float4(%.9g, %.9g, %.9g, %.9g)\n",
+                                  wave[0], wave[1], wave[2], wave[3], wave[4], wave[5], wave[6],
+                                  wave[7], wave[8], wave[9], wave[10], wave[11]);
+                defines = text;
+            }
+            if (source.reactiveMotion)
+                defines += "#define MAP_REACTIVE_MOTION 1\n";
+            const auto index =
+                flagWaves.try_emplace(defines, static_cast<unsigned>(flagWaves.size())).first->second;
+            return {index, defines};
+        };
+        const auto flagSuffix = [](const unsigned wave) {
+            return wave ? "_motion" + std::to_string(wave) : std::string("_flag");
+        };
+        const auto flagVariant = [&](const SourceMaterial &source,
+                                     const unsigned kind) -> const Json & {
+            const auto [wave, defines] = waveOf(source);
+            auto &techset = flagTechsets[{kind, wave}];
+            if (techset.empty())
+            {
+                Json opaque = BuildTechset(
+                    map, columns, plan.atlasSize, geometry, plan.glassEnvironment,
+                    instanceLighting, std::string{}, {}, true, plan.modelFalloffDefines + defines);
+                if (kind == static_cast<unsigned>(SurfaceKind::opaque))
+                    techset = std::move(opaque);
+                else
+                    techset = std::move(
+                        CreateVariant(opaque, modelMaterialTemplate, stem, map,
+                                      usage + flagSuffix(wave) +
+                                          (kind == static_cast<unsigned>(SurfaceKind::cutout)
+                                               ? "_foliage"
+                                               : "_glass"))
+                            .at("techset"));
+            }
+            return techset;
+        };
+        // Unlit model materials that emit above 1 (kEmissionFlag; model vertices carry no flag
+        // bit 20): one variant per gain and surface kind, whose pixel shader applies the gain.
+        std::map<std::pair<float, unsigned>, std::pair<unsigned, Json>> emissionTechsets;
+        const auto emissionVariant = [&](const SourceMaterial &source, const unsigned kind)
+            -> const std::pair<unsigned, Json> & {
+            const std::pair key{source.emission, kind};
+            auto found = emissionTechsets.find(key);
+            if (found == emissionTechsets.end())
+            {
+                char defines[96];
+                std::snprintf(defines, sizeof(defines), "#define MAP_MODEL_EMISSION %.9g\n",
+                              source.emission);
+                Json opaque = BuildTechset(
+                    map, columns, plan.atlasSize, geometry, plan.glassEnvironment,
+                    instanceLighting, volumeLighting ? entityLightVolume->defines : std::string{},
+                    {}, true, plan.modelFalloffDefines, {}, defines);
+                const unsigned index = static_cast<unsigned>(emissionTechsets.size());
+                Json techset =
+                    kind == static_cast<unsigned>(SurfaceKind::opaque)
+                        ? std::move(opaque)
+                        : std::move(CreateVariant(opaque, modelMaterialTemplate, stem, map,
+                                                  usage + "_emit" + std::to_string(index) +
+                                                      (kind == static_cast<unsigned>(SurfaceKind::cutout)
+                                                           ? "_foliage"
+                                                           : "_glass"))
+                                        .at("techset"));
+                found = emissionTechsets.emplace(key, std::pair{index, std::move(techset)}).first;
+            }
+            return found->second;
+        };
+        // IW7 model flow (MAP_FLOW): one variant per flow setting, emission gain and surface kind, whose pixel shader
+        // pulls the colour map along the flow map (its constants baked in) and binds the flow images at t12/t13.
+        std::map<std::tuple<float, float, float, bool, float, unsigned>, std::pair<unsigned, Json>> flowTechsets;
+        const auto flowVariant = [&](const SourceMaterial &source, const unsigned kind, const bool emissive)
+            -> const std::pair<unsigned, Json> & {
+            const auto &flow = *source.flow;
+            const float emission = emissive ? source.emission : 1.0f;
+            const std::tuple key{flow.scale, flow.period[0], flow.period[1], flow.hdr, emission, kind};
+            auto found = flowTechsets.find(key);
+            if (found == flowTechsets.end())
+            {
+                char defines[256];
+                std::snprintf(defines, sizeof(defines),
+                              "#define MAP_FLOW 1\n#define MAP_FLOW_SCALE %.9g\n#define MAP_FLOW_PERIOD float2(%.9g, %.9g)\n",
+                              flow.scale, flow.period[0], flow.period[1]);
+                std::string pixel = defines;
+                if (flow.hdr)
+                    pixel += "#define MAP_FLOW_HDR 1\n";
+                if (emissive)
+                {
+                    std::snprintf(defines, sizeof(defines), "#define MAP_MODEL_EMISSION %.9g\n", source.emission);
+                    pixel += defines;
+                }
+                Json opaque = BuildTechset(
+                    map, columns, plan.atlasSize, geometry, plan.glassEnvironment,
+                    instanceLighting, volumeLighting ? entityLightVolume->defines : std::string{},
+                    {}, true, plan.modelFalloffDefines, {}, pixel);
+                const unsigned index = static_cast<unsigned>(flowTechsets.size());
+                Json techset =
+                    kind == static_cast<unsigned>(SurfaceKind::opaque)
+                        ? std::move(opaque)
+                        : std::move(CreateVariant(opaque, modelMaterialTemplate, stem, map,
+                                                  usage + "_flow" + std::to_string(index) +
+                                                      (kind == static_cast<unsigned>(SurfaceKind::cutout)
+                                                           ? "_foliage"
+                                                           : "_glass"))
+                                        .at("techset"));
+                found = flowTechsets.emplace(key, std::pair{index, std::move(techset)}).first;
+            }
+            return found->second;
+        };
+        // IW7 model UV distortion (MAP_UVD): one variant per distortion setting, emission gain and surface kind, whose
+        // pixel shader samples the colour map at UVs moved by the noise map (its constants baked in), bound at t12.
+        std::map<std::tuple<float, float, float, float, float, float, float, float, float, unsigned>,
+                 std::pair<unsigned, Json>>
+            uvdTechsets;
+        const auto uvdVariant = [&](const SourceMaterial &source, const unsigned kind, const bool emissive)
+            -> const std::pair<unsigned, Json> & {
+            const auto &uvd = *source.uvd;
+            const float emission = emissive ? source.emission : 1.0f;
+            const auto cells = uvd.cells.value_or(std::array{0.0f, 0.0f});
+            const std::tuple key{uvd.scroll[0], uvd.scroll[1], uvd.scroll[2], uvd.scroll[3],
+                                 uvd.strength[0], uvd.strength[1], cells[0], cells[1], emission, kind};
+            auto found = uvdTechsets.find(key);
+            if (found == uvdTechsets.end())
+            {
+                char defines[256];
+                std::snprintf(defines, sizeof(defines),
+                              "#define MAP_UVD 1\n#define MAP_UVD_SCROLL float4(%.9g, %.9g, %.9g, %.9g)\n"
+                              "#define MAP_UVD_STRENGTH float2(%.9g, %.9g)\n",
+                              uvd.scroll[0], uvd.scroll[1], uvd.scroll[2], uvd.scroll[3], uvd.strength[0],
+                              uvd.strength[1]);
+                std::string pixel = defines;
+                if (uvd.cells)
+                {
+                    std::snprintf(defines, sizeof(defines), "#define MAP_UVD_CELLS float2(%.9g, %.9g)\n", cells[0],
+                                  cells[1]);
+                    pixel += defines;
+                }
+                if (emissive)
+                {
+                    std::snprintf(defines, sizeof(defines), "#define MAP_MODEL_EMISSION %.9g\n", source.emission);
+                    pixel += defines;
+                }
+                Json opaque = BuildTechset(
+                    map, columns, plan.atlasSize, geometry, plan.glassEnvironment,
+                    instanceLighting, volumeLighting ? entityLightVolume->defines : std::string{},
+                    {}, true, plan.modelFalloffDefines, {}, pixel);
+                const unsigned index = static_cast<unsigned>(uvdTechsets.size());
+                Json techset =
+                    kind == static_cast<unsigned>(SurfaceKind::opaque)
+                        ? std::move(opaque)
+                        : std::move(CreateVariant(opaque, modelMaterialTemplate, stem, map,
+                                                  usage + "_uvd" + std::to_string(index) +
+                                                      (kind == static_cast<unsigned>(SurfaceKind::cutout)
+                                                           ? "_foliage"
+                                                           : "_glass"))
+                                        .at("techset"));
+                found = uvdTechsets.emplace(key, std::pair{index, std::move(techset)}).first;
+            }
+            return found->second;
+        };
+        std::map<std::tuple<unsigned, unsigned, int, int, int, int, int>, std::pair<std::string, std::string>>
+            techsetFiles;
+        for (const SourceMaterial &source : materials)
+        {
+            if (!neededMaterials.contains(source.name) || (entity && source.entityNoDraw) ||
+                (!entity && source.staticModelShadowOnly ? !source.castsShadow : source.kind == SurfaceKind::skipped))
+                continue;
+            const unsigned kind = static_cast<unsigned>(
+                source.kind == SurfaceKind::skipped ? SurfaceKind::opaque : source.kind);
+            if (kind >= modelTechsets.size() || modelTechsets[kind].empty())
+                throw std::runtime_error("IW3 render plan omitted a model technique variant");
+            const auto sourceBytes = std::span(
+                reinterpret_cast<const std::uint8_t *>(source.name.data()), source.name.size());
+            const auto nameDigest = Sha256(sourceBytes);
+            const std::string id = Hex(std::span(nameDigest).first(8));
+            const std::string materialName = "w/mw120r_" + map + "_" + usage + "_" + id;
+            const std::string materialFile = stem + "." + usage + "." + id + ".material.json";
+            const unsigned blend = source.kind == SurfaceKind::glass ? source.blend : 0u;
+            const bool detailed = !source.detail.empty() && source.kind == SurfaceKind::opaque;
+            const int detailIndex = detailed ? static_cast<int>(detailVariant(source).first) : -1;
+            // Blended flags (IW7's translucent tarps and tent trims) move too: flagVariant builds
+            // their glass variant as the static one is built.
+            const bool moving = source.flagWave || source.reactiveMotion;
+            const bool flag = moving && !detailed && geometry == TechniqueGeometry::staticModel;
+            // DObj (entity) cloth and reactive foliage draw static too: replay_model_vertex.hlsl compiles the wave and the
+            // reactive sim out under MAP_ENTITY (no placement origin or scale per draw), so the drop is reported here.
+            if (moving && !flag)
+                zt::warn("iw3: flag or reactive material %s keeps a static surface", source.name.c_str());
+            const int wave = flag ? static_cast<int>(waveOf(source).first) : -1;
+            const bool flowing = source.flow.has_value() && !detailed && !flag;
+            const bool distorted = source.uvd.has_value() && !detailed && !flag;
+            const bool emissive = (source.flags & kEmissionFlag) != 0 && !detailed && !flag;
+            const int flowIndex = flowing ? static_cast<int>(flowVariant(source, kind, emissive).first) : -1;
+            const int uvdIndex = distorted ? static_cast<int>(uvdVariant(source, kind, emissive).first) : -1;
+            const int emissionIndex =
+                emissive && !flowing && !distorted ? static_cast<int>(emissionVariant(source, kind).first) : -1;
+            auto [techsetEntry, inserted] = techsetFiles.try_emplace(
+                {kind, source.cullMode | (source.depthBias ? 4u : 0u) | (blend << 3), detailIndex,
+                 wave, emissionIndex, flowIndex, uvdIndex});
+            if (inserted)
+            {
+                Json variant = detailed    ? detailVariant(source).second
+                               : flag      ? flagVariant(source, kind)
+                               : flowing   ? flowVariant(source, kind, emissive).second
+                               : distorted ? uvdVariant(source, kind, emissive).second
+                               : emissive  ? emissionVariant(source, kind).second
+                                           : modelTechsets[kind];
+                const std::string suffix =
+                    "_cull" + std::to_string(source.cullMode) + (source.depthBias ? "_bias" : "") +
+                    (blend ? "_b" + std::to_string(blend) : "") +
+                    (detailed ? "_d" + std::to_string(detailIndex) : "") +
+                    (flag ? flagSuffix(static_cast<unsigned>(wave)) : "") +
+                    (emissionIndex >= 0 ? "_e" + std::to_string(emissionIndex) : "") +
+                    (flowing ? "_f" + std::to_string(flowIndex) : "") +
+                    (distorted ? "_u" + std::to_string(uvdIndex) : "");
+                variant["name"] = variant.at("name").get<std::string>() + suffix;
+                for (auto &technique : variant.at("techniques"))
+                {
+                    auto header = Unhex(technique.at("header").get<std::string>());
+                    unsigned cull = source.cullMode;
+                    if (At<std::uint32_t>(header, 8) == 28 && cull)
+                        cull = 3 - cull; // Native back-face shadow pass reverses authored culling.
+                    Put<std::uint64_t>(header, 0xA0,
+                                       (At<std::uint64_t>(header, 0xA0) & ~3ull) | cull |
+                                           (source.depthBias ? 0x10ull : 0ull));
+                    if (source.kind == SurfaceKind::glass)
+                        Put<std::uint64_t>(header, 0xA8, GlassBlendBits(blend));
+                    technique["header"] = Hex(header);
+                    technique["name"] = technique.at("name").get<std::string>() + suffix;
+                    PatchStateIdentity(technique, header);
+                }
+                const std::string file =
+                    stem + "." + usage + "_" + std::to_string(kind) + suffix + ".techset.json";
+                techsetEntry->second = {variant.at("name").get<std::string>(), file};
+                WriteJson(mapDirectory / file, variant);
+            }
+            Json direct = modelMaterialTemplate;
+            direct["source"] = source.name;
+            if (!entity)
+            {
+                auto info = Unhex(direct.at("info").get<std::string>());
+                constexpr std::uint32_t noCastShadow = 0x40000u;
+                const auto flags = At<std::uint32_t>(info, 4);
+                Put<std::uint32_t>(info, 4, source.castsShadow ? flags & ~noCastShadow : flags | noCastShadow);
+                direct["info"] = Hex(info);
+            }
+            if (source.kind == SurfaceKind::glass)
+            {
+                // Shipped Replay model glass is submitted after opaque surfaces,
+                // in the translucent sort range (IW3 layer order kept).
+                auto info = Unhex(direct.at("info").get<std::string>());
+                info[0x10] = 3;
+                info[0x11] = translucentKeys.at(source.sortKey);
+                direct["info"] = Hex(info);
+            }
+            direct["techset"] = techsetEntry->second.first;
+            direct["techsetDefinition"] = techsetEntry->second.second;
+            direct["imageDefinitions"] = Json::array();
+            // A flowing material's flow images (slots 0x39 and 0x3A), or a distorted one's noise map (0x39), follow the
+            // normal map (9) and precede the response (0x3B): the texture table stays slot-sorted, as the technique's
+            // ascending arguments require.
+            unsigned responseChannel = 2;
+            if (flowing || distorted)
+            {
+                auto &textures = direct["textures"];
+                if (textures.size() < 3 || Unhex(textures[1].at("header").get<std::string>()).at(0) != 9 ||
+                    Unhex(textures[2].at("header").get<std::string>()).at(0) != 0x3B)
+                    throw std::runtime_error("model material template has an unexpected texture table");
+                textures.insert(textures.begin() + 2, Json{{"header", "3900000000000000"}, {"image", ""}});
+                if (flowing)
+                    textures.insert(textures.begin() + 3, Json{{"header", "3a00000000000000"}, {"image", ""}});
+                auto info = Unhex(direct.at("info").get<std::string>());
+                info[0x14] = static_cast<std::uint8_t>(textures.size());
+                direct["info"] = Hex(info);
+                responseChannel = flowing ? 4 : 3;
+            }
+            // IW3 "ge128" cutouts (flags 8/16 select gt0/lt128) clip at alpha 0.5.
+            const bool alphaCoverage =
+                source.kind == SurfaceKind::cutout && !(source.flags & 24u) &&
+                (entity || !source.staticModelShadowOnly);
+            residentImageAsync(direct, 0, image(source.color.empty() ? "$white" : source.color).front(), source.tint, "model",
+                          alphaCoverage);
+            if (source.normal.empty())
+                residentImageOwned(direct, 1, Image{1, 1, std::vector<std::uint8_t>{128, 128, 128, 128}}, {1, 1, 1, 1},
+                                   "model");
+            else
+                residentImageAsync(direct, 1, image(source.normal).front(), {1, 1, 1, 1}, "model");
+            if (flowing)
+            {
+                residentImageAsync(direct, 2, image(source.flow->map).front(), {1, 1, 1, 1}, "model_flow");
+                residentImageAsync(direct, 3, image(source.flow->surface).front(), {1, 1, 1, 1}, "model_flow");
+            }
+            if (distorted)
+                residentImageAsync(direct, 2, image(source.uvd->map).front(), {1, 1, 1, 1}, "model_uvd");
+            if (source.response.empty())
+                residentImageOwned(direct, responseChannel, Image{1, 1, std::vector<std::uint8_t>{0, 0, 0, 0}},
+                                   {1, 1, 1, 1}, "model");
+            else
+                residentImageAsync(direct, responseChannel, image(source.response).front(), {1, 1, 1, 1}, "model");
+            direct["imageDefinitions"].push_back(sunDepthDefinition);
+            if (instanceLighting)
+                direct["imageDefinitions"].push_back(
+                    {{"name", plan.instanceLightingImage},
+                     {"width", kInstanceLightingColumns * 16},
+                     {"height", (staticModelInstances + kInstanceLightingColumns - 1) /
+                                    kInstanceLightingColumns * 5},
+                     {"rgba8", plan.instanceLightingFile},
+                     {"format", 6},
+                     {"mipCount", 1}});
+            if (volumeLighting)
+                direct["imageDefinitions"].push_back({{"name", entityLightVolume->image},
+                                                      {"width", entityLightVolume->width},
+                                                      {"height", entityLightVolume->height},
+                                                      {"rgba8", entityLightVolume->file},
+                                                      {"format", 6},
+                                                      {"mipCount", 1}});
+            if (detailed)
+            {
+                // Slot 0x3E follows 0x3D: the table stays slot-sorted, as the
+                // technique's ascending texture arguments require.
+                direct["textures"].push_back({{"header", "3e00000000000000"}, {"image", "$gray"}});
+                const unsigned channel = static_cast<unsigned>(direct["textures"].size() - 1);
+                residentImageAsync(direct, channel, image(source.detail).front(), {1, 1, 1, 1},
+                              "model_detail");
+                auto info = Unhex(direct.at("info").get<std::string>());
+                info[0x14] = static_cast<std::uint8_t>(direct["textures"].size());
+                direct["info"] = Hex(info);
+            }
+            writeMaterial(mapDirectory / materialFile, std::move(direct));
+            plan.assetMaterials.push_back(
+                {{"schema", 1}, {"material", materialName}, {"materialDefinition", materialFile}});
+            plan.materials.at(source.name).*target = materialName;
+        }
+    };
+    timing.lap("glass materials");
+    emitModelMaterials(TechniqueGeometry::staticModel, modelMaterials, &MaterialPlan::modelMaterial);
+    timing.lap("static model materials");
+    emitModelMaterials(TechniqueGeometry::entity, entityMaterials, &MaterialPlan::entityMaterial);
+    timing.lap("entity materials");
+
+    std::size_t blendedFrames = 0, unblendedFrames = 0;
+    std::optional<iw8::stock::Library> flowLibrary;
+    std::vector<std::string> fxAndDecalMaterials = fxMaterials;
+    for (const auto &name : decalFxMaterials)
+        if (std::ranges::find(fxMaterials, name) == fxMaterials.end())
+            fxAndDecalMaterials.push_back(name);
+    for (const std::string &name : fxAndDecalMaterials)
+    {
+        SourceFxMaterial source = ReadFxMaterial(exportRoot, sourcePaths, name);
+        // IW3 effects are unlit LDR colours; in stock light units (--style iw8)
+        // they emit at the scale of the rest of the scene.
+        for (unsigned channel = 0; channel < 3; ++channel)
+            source.tint[channel] *= lightUnitScale;
+        if (source.family == FxMaterialFamily::unsupported)
+        {
+            zt::info("iw3: FX material %s (%s) has no Replay material family", name.c_str(),
+                     source.techniqueSet.c_str());
+            continue;
+        }
+        if (source.family == FxMaterialFamily::distortion && iw3Effects && !source.image.empty())
+        {
+            // --style iw3: IW3's own heat haze in Replay's distortion material
+            // (verified 2026-10-16): stock elcq/vfx_dist_heat_1 (techsets_common_mp)
+            // = EFFECT_QUAD, sort 36, techset dist_10_distortion_rpl_ta1, texture
+            // slot 0x9D (MaterialTextureID_distortionMap), constants 0x72
+            // featherParms0 and 0x7F distortionScale, one buffer (technique 30:
+            // VS 16 bytes = featherParms0, PS 96 bytes = featherParms0 row 0,
+            // distortionScale row 5). Its pixel shader (disassembled) reads
+            // cb3[0].x and cb3[5].xy and displaces the scene by distortionScale
+            // world units along the particle tangent/binormal x (map.xy * 2 - 1),
+            // as IW3's distortion_scale_zfeather VS/PS: the IW3 value and map carry over.
+            const std::string materialName = FxMaterialName(map, source);
+            const std::string id = materialName.substr(materialName.rfind('_') + 1);
+            const std::string materialFile = stem + ".fx." + id + ".material.json";
+            std::vector<std::uint8_t> info(32);
+            Put<std::uint32_t>(info, 0, 1u);
+            Put<std::uint32_t>(info, 0xC, 0x40200Cu);
+            info[0x10] = 4;
+            info[0x11] = 36;
+            info[0x12] = 16;
+            info[0x14] = 1;
+            info[0x15] = 2;
+            info[0x16] = 1;
+            info[0x1A] = 1;
+            info[0x1B] = 1;
+            constexpr std::array<float, 4> feather{1.0f / 30.0f, 30.0f, 30.0f, 0.025f};
+            const std::array<float, 4> scale{source.distortionScale[0], source.distortionScale[1],
+                                             0.0f, 0.0f};
+            std::vector<std::uint8_t> constants(40);
+            Put<std::uint32_t>(constants, 0, 0x72u);
+            std::memcpy(constants.data() + 4, feather.data(), 16);
+            Put<std::uint32_t>(constants, 20, 0x7Fu);
+            std::memcpy(constants.data() + 24, scale.data(), 16);
+            std::vector<std::uint8_t> vertexConstants(16), pixelConstants(96);
+            std::memcpy(vertexConstants.data(), feather.data(), 16);
+            std::memcpy(pixelConstants.data(), feather.data(), 16);
+            std::memcpy(pixelConstants.data() + 80, scale.data(), 16);
+            std::vector<std::uint8_t> bufferIndices(195, 0xFF);
+            bufferIndices[30] = 0;
+            Json direct = {{"schema", 1},
+                           {"source", source.name},
+                           {"info", Hex(info)},
+                           {"techset", "elcq/dist_10_distortion_rpl_ta1_0_12_0_0_0"},
+                           {"textures", Json::array({{{"header", "9d00000000000000"},
+                                                      {"image", ""}}})},
+                           {"constants", Hex(constants)},
+                           {"bufferIndices", Hex(bufferIndices)},
+                           {"buffers", Json::array({Json::array({Hex(vertexConstants), "", "",
+                                                                 Hex(pixelConstants)})})},
+                           {"imageDefinitions", Json::array()}};
+            const auto &sourceImage = image(source.image);
+            if (sourceImage.size() != 1)
+                throw std::runtime_error("IW3 distortion map is a cubemap: " + name);
+            residentImage(direct, 0, sourceImage.front(), {1, 1, 1, 1}, "fxdist", false, nullptr,
+                          true);
+            WriteJson(mapDirectory / materialFile, direct);
+            plan.assetMaterials.push_back(
+                {{"schema", 1}, {"material", materialName}, {"materialDefinition", materialFile}});
+            plan.fxDistortionMaterials.insert(name);
+            if (!plan.fxMaterialAliases.emplace(name, materialName).second)
+                throw std::runtime_error("duplicate IW3 FX material alias: " + name);
+            zt::info("iw3: FX distortion %s: IW3 map %s, distortionScale %g %g", name.c_str(),
+                     source.image.c_str(), scale[0], scale[1]);
+            continue;
+        }
+        if (source.family == FxMaterialFamily::distortion)
+        {
+            // --style iw8 (role rule): IW3 heat haze and shock rings become Replay's own refraction
+            // materials (common_mp vfx_dist_heat_1 / _shimmer_blast_1, used by
+            // the stock grenade and concussion effects).
+            std::string lower = name;
+            std::transform(lower.begin(), lower.end(), lower.begin(),
+                           [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            const bool blast = lower.find("shock") != std::string::npos ||
+                               lower.find("blast") != std::string::npos ||
+                               lower.find("wave") != std::string::npos;
+            const std::string stock =
+                blast ? "elcq/vfx_dist_heat_shimmer_blast_1" : "elcq/vfx_dist_heat_1";
+            plan.fxDistortionMaterials.insert(name);
+            plan.stockMaterials.insert(stock);
+            if (!plan.fxMaterialAliases.emplace(name, stock).second)
+                throw std::runtime_error("duplicate IW3 FX material alias: " + name);
+            continue;
+        }
+        const std::string materialName = FxMaterialName(map, source);
+        const std::string id = materialName.substr(materialName.rfind('_') + 1);
+        const std::string materialFile = stem + ".fx." + id + ".material.json";
+        Json direct = BuildFxMaterialDefinition(source);
+        if (source.frameBlend)
+            ++(direct.value("techset", std::string{}).find("_3004_") != std::string::npos ? blendedFrames
+                                                                                        : unblendedFrames);
+        if (source.flow)
+        {
+            if (!flowLibrary)
+                flowLibrary.emplace(replayZones, "common");
+            const std::string techsetName = "tw/mw120r_fx_" + id + "_flow";
+            const std::string techsetFile = stem + ".fx." + id + ".techset.json";
+            // The lit flow takes the lit twin of the unlit set (BuildFxMaterialDefinition's litTechset).
+            const auto stock = flowLibrary->TechniqueSet(
+                source.lit ? "elcq/unlit_6_effect_bad_ta0_802_1004_0_1_0_0_0_10000020b_0_0_2_0_0"
+                           : "elcq/unlit_6_effect_bad_ta0_802_1004_0_1_0_0_0_100000023_0_0_2_0_0");
+            const bool additive = source.family == FxMaterialFamily::additive ||
+                                  source.family == FxMaterialFamily::additiveFeather;
+            WriteJson(mapDirectory / techsetFile,
+                      BuildFlowFxTechset(stock, techsetName, source.feather.has_value(), additive, source.lit,
+                                         *source.flow));
+            direct = BuildFlowFxMaterialDefinition(source, techsetName);
+            direct["techsetDefinition"] = techsetFile;
+            const auto flowImage = [&](const std::string &input) -> const Image & {
+                const auto &faces = image(input);
+                if (faces.size() != 1)
+                    throw std::runtime_error("IW7 flow material needs 2D images: " + name);
+                return faces.front();
+            };
+            if (source.lit)
+            {
+                // Albedo, the black transmittance of the lit set (its alpha is then the particle's coverage), the flow
+                // maps and the mask: white for the lit flows without one (d29f9b4f / d241aa2a, a386c911 less its mask).
+                residentImage(direct, 0, flowImage(source.image), {1, 1, 1, 1}, "fxflow", false, nullptr, true);
+                residentImage(direct, 1, SolidImage({0, 0, 0, 255}), {1, 1, 1, 1}, "fxlit", false, nullptr, true);
+                // An alpha-tested effect without the distortion reads no flow map, the UV distortion no surface map:
+                // white.
+                const bool flowMap = !source.flow->atest || source.flow->uvd;
+                residentImage(direct, 2, flowMap ? flowImage(source.flow->map) : SolidImage({255, 255, 255, 255}),
+                              {1, 1, 1, 1}, flowMap ? "fxflow" : "fxlit", false, nullptr, true);
+                const bool surfaceMap = !source.flow->uvd && !source.flow->atest;
+                residentImage(direct, 3, surfaceMap ? flowImage(source.flow->surface) : SolidImage({255, 255, 255, 255}),
+                              {1, 1, 1, 1}, surfaceMap ? "fxflow" : "fxlit", false, nullptr, true);
+                const bool masked = !source.flow->mask.empty();
+                residentImage(direct, 4, masked ? flowImage(source.flow->mask) : SolidImage({255, 255, 255, 255}),
+                              {1, 1, 1, 1}, masked ? "fxflow" : "fxlit", false, nullptr, true);
+                if (source.flow->atest)
+                    zt::info("iw7: FX material %s keeps its alpha test%s, lit by the scene", name.c_str(),
+                             source.flow->uvd ? " and native UV distortion" : "");
+                else if (source.flow->uvd)
+                    zt::info("iw7: FX material %s keeps its native UV distortion%s, lit by the scene", name.c_str(),
+                             source.flow->dissolve ? " and alpha dissolve" : "");
+                else
+                    zt::info("iw7: FX material %s keeps native animated flow, lit by the scene, %s", name.c_str(),
+                             masked ? "with its mask" : "without a mask");
+            }
+            else
+            {
+                const std::array<std::string, 3> inputs{source.image, source.flow->map, source.flow->surface};
+                for (unsigned channel = 0; channel < inputs.size(); ++channel)
+                    residentImage(direct, channel, flowImage(inputs[channel]), {1, 1, 1, 1}, "fxflow", false, nullptr,
+                                  true);
+                zt::info("iw7: FX material %s keeps native animated flow and shader HDR expansion", name.c_str());
+            }
+        }
+        else if (source.family == FxMaterialFamily::decal)
+        {
+            // Replay decal volume material in the stock 0x44C layout: channel 0
+            // "<c>&<s>" (colour, Replay specular intensity in alpha), channel 1
+            // "<n>&<g>" (octahedral normal, gloss), channel 2 the colour map
+            // whose alpha is the decal's opacity.
+            const Image &color = image(source.image).front();
+            const Image *response =
+                source.response.empty() ? nullptr : &image(source.response).front();
+            const Image specular =
+                response ? ReplaySpecularIntensity(*response)
+                         : Image{1, 1, std::vector<std::uint8_t>{255, 255, 255, 255}};
+            Image opaque = color;
+            for (std::size_t offset = 3; offset < opaque.rgba.size(); offset += 4)
+                opaque.rgba[offset] = 255;
+            for (auto &mip : opaque.mips)
+                for (std::size_t offset = 3; offset < mip.rgba.size(); offset += 4)
+                    mip.rgba[offset] = 255;
+            Json packed = {{"textures", Json::array({Json::object(), Json::object()})},
+                           {"imageDefinitions", Json::array()}};
+            decalImage(packed, 0, std::move(opaque), "fxdecal", 45, &specular);
+            decalImage(packed, 1,
+                       ReplayNormalGloss(
+                           source.normal.empty() ? nullptr : &image(source.normal).front(),
+                           response),
+                       "fxdecal", 44);
+            Json mask = {{"textures", Json::array({Json::object()})},
+                         {"imageDefinitions", Json::array()}};
+            decalImage(mask, 0, color, "fxdecalmask", 39);
+            const std::string volumeName = "i/mw120r_fx_decal_" + id;
+            direct["imageDefinitions"] = packed.at("imageDefinitions");
+            for (const auto &definition : mask.at("imageDefinitions"))
+                direct["imageDefinitions"].push_back(definition);
+            direct["decalVolumeMaterial"] = volumeName;
+            direct["decalVolumeDefinition"] = {
+                {"name", volumeName},
+                {"channels", Json::array({packed["textures"][0]["image"],
+                                          packed["textures"][1]["image"],
+                                          mask["textures"][0]["image"], nullptr, nullptr,
+                                          nullptr})},
+                {"flags", 1100},
+                {"colorTint", Json::array({source.tint[0], source.tint[1], source.tint[2]})},
+                {"rows", 1},
+                {"columns", 1}};
+        }
+        else
+        {
+            const auto &sourceImage = image(source.image);
+            if (sourceImage.size() != 1)
+                throw std::runtime_error("IW3 FX material color map is a cubemap: " + name);
+            // The stock unlit techniques of the alpha, feathered alpha and cloud families
+            // (unlit_6_effect_bad_ta0_*_100000023 / _100020023, as stock vfx_postfx_bokeh_sharp_sheet_1)
+            // never sample the colour map's alpha and write an output alpha of 0 (PS b0ec5d88,
+            // disassembled): they add the colour. Premultiplied by its alpha, the colour map adds what
+            // the alpha blend would; as it was, every texel of alpha above 0 drew at full colour (IW7's
+            // debris atlases, whose cells keep alpha 1/255 and their grey, drew as grey squares).
+            if (source.lit)
+            {
+                // The lit technique (PS a9864c07) writes the lit colour premultiplied by the albedo's alpha a, and
+                // a * (1 - absorptionScale * transmittance) as both its output alpha and the weight of the fog
+                // in-scatter and volumetric scatter. A black transmittance (absorptionScale 1) makes that a: IW7's
+                // lit particles (smoke, steam, dust) occlude what is behind them and take the fog over their own
+                // coverage. A white one left them drawing additively, the background undimmed.
+                residentImage(direct, 0, sourceImage.front(), {1, 1, 1, 1}, "fx");
+                residentImage(direct, 1, SolidImage({0, 0, 0, 255}), {1, 1, 1, 1}, "fxlit", false, nullptr,
+                              true);
+            }
+            else if (source.premultiplied || source.family == FxMaterialFamily::alpha ||
+                source.family == FxMaterialFamily::alphaFeather || source.family == FxMaterialFamily::cloud)
+            {
+                Image premultiplied = sourceImage.front();
+                const auto multiply = [](std::vector<std::uint8_t> &rgba) {
+                    for (std::size_t offset = 0; offset + 3 < rgba.size(); offset += 4)
+                        for (std::size_t channel = 0; channel < 3; ++channel)
+                            rgba[offset + channel] = static_cast<std::uint8_t>(
+                                (rgba[offset + channel] * rgba[offset + 3] + 127) / 255);
+                };
+                multiply(premultiplied.rgba);
+                for (auto &mip : premultiplied.mips)
+                    multiply(mip.rgba);
+                residentImage(direct, 0, premultiplied, {1, 1, 1, 1}, "fx");
+            }
+            else
+                residentImage(direct, 0, sourceImage.front(), {1, 1, 1, 1}, "fx");
+        }
+        WriteJson(mapDirectory / materialFile, direct);
+        plan.assetMaterials.push_back(
+            {{"schema", 1}, {"material", materialName}, {"materialDefinition", materialFile}});
+        if (!plan.fxMaterialAliases.emplace(name, materialName).second)
+            throw std::runtime_error("duplicate IW3 FX material alias: " + name);
+        if (const auto data = FxParticleMaterialData(source))
+            plan.fxParticleMaterialData.emplace(name, *data);
+    }
+    for (const auto &volume : decalVolumeSources)
+    {
+        std::string replayMaterial = volume.material;
+        if (std::ranges::find(decalFxMaterials, volume.material) != decalFxMaterials.end())
+        {
+            const auto built = plan.fxMaterialAliases.find(volume.material);
+            if (built == plan.fxMaterialAliases.end())
+            {
+                zt::warn("iw3: decal volume material %s was not built; a decal volume is left out",
+                         volume.material.c_str());
+                continue;
+            }
+            replayMaterial = built->second;
+        }
+        const auto index =
+            std::ranges::find(plan.decalVolumeMaterials, replayMaterial) - plan.decalVolumeMaterials.begin();
+        if (index == static_cast<std::ptrdiff_t>(plan.decalVolumeMaterials.size()))
+            plan.decalVolumeMaterials.push_back(replayMaterial);
+        Json entry = volume.definition;
+        entry["material"] = index;
+        plan.decalVolumes.push_back(std::move(entry));
+    }
+    if (!plan.decalVolumes.empty())
+        zt::info("iw3: %zu decal volumes, %zu decal volume materials (%zu built from extraction materials)",
+                 plan.decalVolumes.size(), plan.decalVolumeMaterials.size(), decalFxMaterials.size());
+    if (blendedFrames || unblendedFrames)
+        zt::info("iw3: %zu FX materials blend their atlas frames through Replay's frame-blend techniques; %zu that the "
+                 "source blends step (the unlit alpha technique has no frame-blend twin)",
+                 blendedFrames, unblendedFrames);
+    finishResidentImages();
+    timing.lap("resident images");
+    zt::info("iw3: resident images: thread time %.1fs resize, %.1fs mips, %.1fs digests, %.1fs encode or cache, %.1fs writes",
+             residentTime[0] / 1e6, residentTime[1] / 1e6, residentTime[2] / 1e6, residentTime[3] / 1e6, residentTime[4] / 1e6);
+    if (bc7Images)
+    {
+        zt::info("iw3: %zu resident image(s) block compressed (%.0f MB to %.0f MB; lowest PSNR %.1f colour, %.1f normal, "
+                 "%.1f response dB), %zu kept uncompressed",
+                 bc7Stats.compressed, bc7Stats.rawBytes / 1048576.0, bc7Stats.packedBytes / 1048576.0,
+                 bc7Stats.lowest[0], bc7Stats.lowest[1], bc7Stats.lowest[2], bc7Stats.kept);
+        // The encoder's own error estimate against DirectXTex's decode: any difference is an encoding fault.
+        if (const auto mismatches = g_bc7DecodeMismatches.load())
+            zt::warn("iw3: %zu BC7 block(s) decode with another error than their encoder estimated", mismatches);
+    }
+    return plan;
+}
+std::vector<std::uint8_t> BuildLoadscreenPreview(const std::filesystem::path &exportRoot,
+                                                 const std::vector<std::filesystem::path> &sourcePaths,
+                                                 const std::string &sourceMap)
+{
+    const std::string name = "loadscreen_" + sourceMap;
+    std::vector<Image> images;
+    try
+    {
+        images = LoadImage(exportRoot, sourcePaths, name);
+    }
+    catch (const std::exception &)
+    {
+        return {};
+    }
+    if (images.size() != 1 || !images.front().width || !images.front().height)
+        return {};
+    Image image = images.front();
+    const unsigned largest = (std::max)(image.width, image.height);
+    if (largest > 2048)
+        image = Resize(image, (std::max)(1u, image.width * 2048 / largest),
+                       (std::max)(1u, image.height * 2048 / largest), true);
+    std::vector<std::uint8_t> result(16);
+    const std::array<std::uint32_t, 4> header{0x4952574Du, 1u, image.width, image.height};
+    std::memcpy(result.data(), header.data(), sizeof(header));
+    result.insert(result.end(), image.rgba.begin(), image.rgba.end());
+    zt::info("iw3: loading-screen preview %s %ux%u", name.c_str(), image.width, image.height);
+    return result;
+}
+} // namespace iw3

@@ -11,7 +11,7 @@ import stock_edit_test as t
 
 def main():
     args = sys.argv[1:]
-    zone, exe = 'mp_shipment', r'E:\mw124\x64-zt\build\bin\x64\Release\zonetool.exe'
+    zone, exe = 'mp_shipment', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'release', 'iw8r-zt.exe')
     while '--zone' in args:
         i = args.index('--zone'); zone = args[i + 1]; del args[i:i + 2]
     while '--exe' in args:

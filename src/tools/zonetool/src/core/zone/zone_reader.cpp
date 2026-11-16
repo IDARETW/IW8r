@@ -1,0 +1,545 @@
+#include <std_include.hpp>
+#include "zone_reader.hpp"
+
+#include "../xfile/structs.hpp"
+
+namespace zonetool
+{
+	namespace
+	{
+		std::uint8_t* allocate_block(const std::size_t size)
+		{
+			if (!size)
+			{
+				return nullptr;
+			}
+
+			const auto memory = VirtualAlloc(nullptr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+			if (!memory)
+			{
+				throw std::runtime_error(std::format("cannot allocate 0x{:X} bytes of block memory", size));
+			}
+
+			return static_cast<std::uint8_t*>(memory);
+		}
+
+		std::uint64_t pointer_value(const void* pointer)
+		{
+			return reinterpret_cast<std::uint64_t>(pointer);
+		}
+
+		struct zone_offset
+		{
+			std::uint64_t block_index;
+			std::uint64_t offset;
+		};
+
+		constexpr auto offset_tag_shift = 36;
+		constexpr std::uint64_t relative_offset_tag = 1;
+
+		zone_offset split_offset(const void* pointer)
+		{
+			const auto value = pointer_value(pointer);
+			return {(value >> 32) & 0xF, static_cast<std::uint32_t>(value) - 1ull};
+		}
+	}
+
+	zone_reader::zone_reader(const std::string_view data, const std::span<const std::uint64_t> block_sizes,
+		const zone_layout& layout)
+		: data_(data)
+		, layout_(layout)
+	{
+		this->blocks_.reserve(block_sizes.size());
+		for (const auto size : block_sizes)
+		{
+			this->blocks_.emplace_back(allocate_block(size), size, 0, 0, 0);
+		}
+	}
+
+	zone_reader::~zone_reader()
+	{
+		for (const auto& block : this->blocks_)
+		{
+			if (block.memory)
+			{
+				VirtualFree(block.memory, 0, MEM_RELEASE);
+			}
+		}
+	}
+
+	void zone_reader::set_inline_asset_loader(inline_asset_loader loader)
+	{
+		this->inline_asset_loader_ = std::move(loader);
+	}
+
+	void zone_reader::set_read_trace(read_trace trace)
+	{
+		this->read_trace_ = std::move(trace);
+	}
+
+	void zone_reader::keep_temp_data()
+	{
+		auto& block = this->blocks_[this->layout_.temp_block];
+		if (block.memory)
+		{
+			VirtualFree(block.memory, 0, MEM_RELEASE);
+		}
+
+		// Temp data never holds more bytes than the zone, plus the alignment of each read.
+		block.size = (16 * this->data_.size() + 0x10FFFFF) & ~std::size_t(0xFFFFF);
+		block.memory = static_cast<std::uint8_t*>(VirtualAlloc(nullptr, block.size, MEM_RESERVE, PAGE_READWRITE));
+		if (!block.memory)
+		{
+			throw std::runtime_error(std::format("cannot reserve 0x{:X} bytes for the temp block", block.size));
+		}
+
+		this->keep_temp_data_ = true;
+		this->temp_committed_ = 0;
+	}
+
+	void zone_reader::set_script_strings(std::vector<std::uint32_t> ids)
+	{
+		this->script_strings_ = std::move(ids);
+	}
+
+	void zone_reader::set_zone_index(const std::uint16_t index)
+	{
+		this->zone_index_ = index;
+	}
+
+	std::uint16_t zone_reader::zone_index() const
+	{
+		return this->zone_index_;
+	}
+
+	void zone_reader::set_shared_stream_keys(const std::span<const XStreamFileKey> keys)
+	{
+		this->shared_stream_keys_ = keys;
+		this->shared_stream_key_index_ = 0;
+	}
+
+	XStreamFileKey zone_reader::next_shared_stream_key()
+	{
+		if (this->shared_stream_key_index_ >= this->shared_stream_keys_.size())
+		{
+			throw std::runtime_error("the zone has no shared stream key left");
+		}
+
+		return this->shared_stream_keys_[this->shared_stream_key_index_++];
+	}
+
+	std::size_t zone_reader::shared_stream_keys_read() const
+	{
+		return this->shared_stream_key_index_;
+	}
+
+	void zone_reader::push_stream(const std::uint8_t block)
+	{
+		if (block >= this->blocks_.size())
+		{
+			throw std::runtime_error(std::format("block {} does not exist", block));
+		}
+
+		this->stream_stack_.emplace_back(this->current_block_, this->blocks_[block].position);
+		this->current_block_ = block;
+	}
+
+	void zone_reader::pop_stream()
+	{
+		if (this->stream_stack_.empty())
+		{
+			throw std::runtime_error("stream stack is empty");
+		}
+
+		const auto state = this->stream_stack_.back();
+		this->stream_stack_.pop_back();
+
+		if (this->current_block_ == this->layout_.temp_block)
+		{
+			if (!this->keep_temp_data_)
+			{
+				this->blocks_[this->layout_.temp_block].position = state.position_at_push;
+			}
+		}
+		else if (this->current_block_ == this->layout_.pop_aligned_block)
+		{
+			this->align(this->layout_.pop_alignment);
+		}
+
+		this->current_block_ = state.previous_block;
+	}
+
+	void zone_reader::align(const std::size_t alignment)
+	{
+		auto& block = this->current_block();
+		block.position = ((block.base + block.position + alignment) & ~alignment) - block.base;
+		block.largest_alignment = std::max(block.largest_alignment, alignment);
+	}
+
+	void zone_reader::begin_asset()
+	{
+		std::vector<std::size_t> positions;
+		positions.reserve(this->blocks_.size());
+		for (const auto& block : this->blocks_)
+		{
+			positions.push_back(block.position);
+		}
+
+		this->asset_starts_.push_back(std::move(positions));
+	}
+
+	void zone_reader::end_asset()
+	{
+		if (this->asset_starts_.empty())
+		{
+			throw std::runtime_error("asset stack is empty");
+		}
+
+		this->asset_starts_.pop_back();
+	}
+
+	void zone_reader::unsupported(const char* reader) const
+	{
+		throw std::runtime_error(std::format("the zone reader does not support {}", reader));
+	}
+
+	void zone_reader::set_block_base(const std::uint8_t block, const std::size_t base)
+	{
+		this->blocks_[block].base = base;
+	}
+
+	std::size_t zone_reader::end_anchored_data_start() const
+	{
+		if (!this->layout_.end_anchored_block)
+		{
+			return 0;
+		}
+
+		const auto& block = this->blocks_[*this->layout_.end_anchored_block];
+		return block.size - block.position;
+	}
+
+	std::size_t zone_reader::end_anchored_alignment() const
+	{
+		return this->layout_.end_anchored_block ? this->blocks_[*this->layout_.end_anchored_block].largest_alignment : 0;
+	}
+
+	std::uint8_t zone_reader::current_stream() const
+	{
+		return this->current_block_;
+	}
+
+	std::size_t zone_reader::remaining() const
+	{
+		return this->data_.size() - this->data_position_;
+	}
+
+	void zone_reader::read_raw(void* destination, const std::size_t size)
+	{
+		if (this->remaining() < size)
+		{
+			throw std::runtime_error(std::format("read of 0x{:X} bytes passes the end of the zone", size));
+		}
+
+		std::memcpy(destination, this->data_.data() + this->data_position_, size);
+		this->data_position_ += size;
+	}
+
+	void* zone_reader::read_bytes(const std::size_t size)
+	{
+		auto& block = this->current_block();
+		const auto is_runtime = this->current_block_ == this->layout_.runtime_block || this->current_block_ == this->layout_.unread_block;
+		if (block.position + size > block.size)
+		{
+			// Runtime data holds no file bytes, and some loaders size it differently from the game.
+			if (is_runtime)
+			{
+				return this->allocate_bytes(size);
+			}
+
+			throw std::runtime_error(std::format("block {} overflows at 0x{:X} + 0x{:X} (size 0x{:X})",
+				this->current_block_, block.position, size, block.size));
+		}
+
+		if (this->keep_temp_data_ && this->current_block_ == this->layout_.temp_block && block.position + size > this->temp_committed_)
+		{
+			const auto end = (block.position + size + 0xFFFFF) & ~std::size_t(0xFFFFF);
+			if (!VirtualAlloc(block.memory + this->temp_committed_, end - this->temp_committed_, MEM_COMMIT, PAGE_READWRITE))
+			{
+				throw std::runtime_error(std::format("cannot commit 0x{:X} bytes of temp data", end));
+			}
+
+			this->temp_committed_ = end;
+		}
+
+		const auto destination = block.memory + block.position;
+		if (is_runtime)
+		{
+			std::memset(destination, 0, size);
+		}
+		else
+		{
+			if (this->read_trace_)
+			{
+				this->read_trace_(this->data_position_, size, this->current_block_, block.position);
+			}
+
+			this->read_raw(destination, size);
+		}
+
+		block.position += size;
+		return destination;
+	}
+
+	bool zone_reader::is_inline(const void* pointer) const
+	{
+		const auto value = pointer_value(pointer);
+		return std::ranges::contains(this->layout_.following_markers, value) || value == this->layout_.insert_marker;
+	}
+
+	bool zone_reader::is_insert(const void* pointer) const
+	{
+		return pointer_value(pointer) == this->layout_.insert_marker;
+	}
+
+	bool zone_reader::is_offset(const void* pointer) const
+	{
+		if (this->is_inline(pointer))
+		{
+			return false;
+		}
+
+		// Stock zones leave the bits above the block index clear, and zonetool sets them to the pointer mask.
+		// Any other value is a raw heap pointer that the game ignores.
+		const auto tag = pointer_value(pointer) >> offset_tag_shift;
+		const auto relative = this->layout_.relative_offsets && tag == relative_offset_tag;
+		if (tag != this->layout_.offset_tag && !relative && (tag != 0 || !this->layout_.untagged_offsets))
+		{
+			return false;
+		}
+
+		const auto [block_index, offset] = split_offset(pointer);
+		if (block_index >= this->blocks_.size())
+		{
+			return false;
+		}
+
+		if (relative)
+		{
+			return !this->asset_starts_.empty();
+		}
+
+		return offset < this->blocks_[block_index].size;
+	}
+
+	bool zone_reader::contains(const void* pointer) const
+	{
+		const auto address = static_cast<const std::uint8_t*>(pointer);
+		return std::ranges::any_of(this->blocks_, [&](const block& block)
+		{
+			return address >= block.memory && address < block.memory + block.size;
+		});
+	}
+
+	void zone_reader::resolve_deferred_offsets()
+	{
+		if (!this->layout_.end_anchored_block)
+		{
+			return;
+		}
+
+		const auto block_index = *this->layout_.end_anchored_block;
+		const auto data_start = this->end_anchored_data_start();
+		for (const auto& deferred : this->deferred_offsets_)
+		{
+			if (deferred.offset < data_start)
+			{
+				throw std::runtime_error(std::format("offset 0x{:X} in block {} points before the data of the block",
+					deferred.offset, block_index));
+			}
+
+			const auto address = this->offset_address(block_index, deferred.offset - data_start);
+			*deferred.field = deferred.target == offset_target::alias ? *reinterpret_cast<void**>(address) : address;
+		}
+
+		this->deferred_offsets_.clear();
+	}
+
+	std::size_t zone_reader::count_misplaced_strings() const
+	{
+		const auto data_start = this->end_anchored_data_start();
+		return static_cast<std::size_t>(std::ranges::count_if(this->deferred_offsets_, [&](const deferred_offset& deferred)
+		{
+			return deferred.target == offset_target::string
+				&& (deferred.offset < data_start || !std::ranges::binary_search(this->string_positions_, deferred.offset - data_start));
+		}));
+	}
+
+	void zone_reader::move_deferred_offsets(const void* source, const std::size_t size, void* destination,
+		const std::size_t first)
+	{
+		const auto source_start = static_cast<const std::uint8_t*>(source);
+		for (auto& deferred : std::span(this->deferred_offsets_).subspan(std::min(first, this->deferred_offsets_.size())))
+		{
+			const auto field = reinterpret_cast<std::uint8_t*>(deferred.field);
+			if (field >= source_start && field < source_start + size)
+			{
+				deferred.field = reinterpret_cast<void**>(static_cast<std::uint8_t*>(destination) + (field - source_start));
+			}
+		}
+	}
+
+	void** zone_reader::insert_pointer()
+	{
+		this->push_stream(this->layout_.virtual_block);
+		this->align(7);
+
+		auto& block = this->current_block();
+		if (block.position + sizeof(void*) > block.size)
+		{
+			throw std::runtime_error("insert pointer overflows the virtual block");
+		}
+
+		const auto slot = reinterpret_cast<void**>(block.memory + block.position);
+		block.position += sizeof(void*);
+
+		this->pop_stream();
+		return slot;
+	}
+
+	zone_reader::block& zone_reader::current_block()
+	{
+		return this->blocks_[this->current_block_];
+	}
+
+	std::uint8_t* zone_reader::offset_address(const std::uint8_t block_index, const std::size_t offset) const
+	{
+		return this->blocks_[block_index].memory + offset;
+	}
+
+	void zone_reader::resolve_offset(void** field, const offset_target target)
+	{
+		if (!this->is_offset(*field))
+		{
+			throw std::runtime_error(std::format("pointer 0x{:016X} is not a valid zone offset", pointer_value(*field)));
+		}
+
+		auto [block_index, offset] = split_offset(*field);
+		if (this->layout_.relative_offsets && (pointer_value(*field) >> offset_tag_shift) == relative_offset_tag)
+		{
+			offset += this->asset_starts_.front()[block_index];
+		}
+
+		if (block_index == this->layout_.end_anchored_block)
+		{
+			this->deferred_offsets_.emplace_back(field, offset, target, this->blocks_[block_index].position);
+			return;
+		}
+
+		const auto block_size = this->blocks_[block_index].size;
+		if (offset >= block_size || (target == offset_target::alias && block_size - offset < sizeof(void*)))
+		{
+			throw std::runtime_error(std::format("pointer 0x{:016X} points past the end of block {}", pointer_value(*field), block_index));
+		}
+
+		const auto address = this->offset_address(static_cast<std::uint8_t>(block_index), offset);
+		if (target == offset_target::alias)
+		{
+			this->aliases_.emplace_back(field, reinterpret_cast<void**>(address));
+		}
+
+		*field = target == offset_target::alias ? *reinterpret_cast<void**>(address) : address;
+	}
+
+	std::size_t zone_reader::alias_count() const
+	{
+		return this->aliases_.size();
+	}
+
+	void zone_reader::move_aliases(const void* source, const std::size_t size, void* destination, const std::size_t first)
+	{
+		const auto start = static_cast<const std::uint8_t*>(source);
+		for (auto i = first; i < this->aliases_.size(); i++)
+		{
+			auto& field = this->aliases_[i].first;
+			const auto address = reinterpret_cast<const std::uint8_t*>(field);
+			if (address >= start && address < start + size)
+			{
+				field = reinterpret_cast<void**>(static_cast<std::uint8_t*>(destination) + (address - start));
+			}
+		}
+	}
+
+	void zone_reader::resolve_aliases()
+	{
+		// An alias of an alias resolves once the alias it points at resolves.
+		auto changed = true;
+		for (auto pass = 0; changed && pass < 8; pass++)
+		{
+			changed = false;
+			for (const auto& [field, slot] : this->aliases_)
+			{
+				if (*field != *slot)
+				{
+					*field = *slot;
+					changed = true;
+				}
+			}
+		}
+	}
+
+	char* zone_reader::read_string_data()
+	{
+		const auto start = this->data_.data() + this->data_position_;
+		const auto end = std::memchr(start, 0, this->remaining());
+		if (!end)
+		{
+			throw std::runtime_error("string passes the end of the zone");
+		}
+
+		const auto size = static_cast<const char*>(end) - start + 1;
+		if (this->current_block_ == this->layout_.end_anchored_block)
+		{
+			this->string_positions_.push_back(this->current_block().position);
+		}
+
+		return static_cast<char*>(this->read_bytes(size));
+	}
+
+	std::uint32_t zone_reader::map_script_string(const std::uint32_t index) const
+	{
+		if (index >= this->script_strings_.size())
+		{
+			throw std::runtime_error(std::format("script string {} does not exist (count {})", index, this->script_strings_.size()));
+		}
+
+		return this->script_strings_[index];
+	}
+
+	void zone_reader::read_asset_pointer(const std::int32_t type, void** field)
+	{
+		this->push_stream(this->layout_.temp_block);
+
+		if (*field)
+		{
+			if (this->is_inline(*field))
+			{
+				this->align(this->layout_.asset_alignment);
+				const auto slot = this->is_insert(*field) ? this->insert_pointer() : nullptr;
+				this->inline_asset_loader_(type, field, slot);
+			}
+			else
+			{
+				this->resolve_offset(field, offset_target::alias);
+			}
+		}
+
+		this->pop_stream();
+	}
+
+	void* zone_reader::allocate_bytes(const std::size_t size)
+	{
+		auto& allocation = this->allocations_.emplace_back(std::make_unique<std::uint8_t[]>(size));
+		return allocation.get();
+	}
+}

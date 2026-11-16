@@ -1,0 +1,1 @@
+lz4 from the x64-zt fork's deps/lz4 at 1b0fc692949cf474eb0d89db5f0dfa3698e9aa56 (v1.9.2-1526-g1b0fc692); only the files its build uses.
