@@ -14,7 +14,10 @@
     CollisionWorld::addSolid stays.
   - Movement as in Replay (player_move.*, research 140; IW8R_TEST_PLAY_INPUT=<script> drives real key presses):
     mantle (Space held / airborne), ladder behind a ladder model, slide, toggle crouch / prone on C / Ctrl, game mouse
-    scale. Pending at the time of writing: the step-up onto steep low prop faces (bobbing).
+    scale; then Replay's collision type 1 (raised capsule, ground prism, ledge walk, PM_SlideMove, rounded step
+    climb, ladder top-out vault, mantle ledge search 17-57). Open: Hideout cinderblock pile #1 (a steep pocket the
+    capsule never touches) still swings about 3 units; a floor hole in the extracted stock collision on one Hideout
+    walk line; the multiplayer suit values (ACTS cannot export suits).
   - GSC emulation (gsc_emulate.*, View > Behaviour Preview and the play preview), gizmo modes (Move / Rotate / Scale /
     All drop-down, local-axis drags), entity range shapes, Stock Map side panel (stock_map_panel.*), stock surface /
     prop picking with an outline (MainWindow::pickStockSurface / showStockSurfaceAt; signals stockSurfacePicked /
