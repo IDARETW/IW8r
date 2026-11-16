@@ -941,6 +941,9 @@ public:
     // (research 119, VERIFIED in Replay); off, it keeps drawing its last LOD. IW8R_GAME_LOD_CUTOFF=1 starts with it on.
     static void setGameLodCutoff(bool on);
     static bool gameLodCutoff();
+    // The cut of placements under a pixel (on with prop levels of detail; off: only the view's edges leave props out).
+    static void setPixelCull(bool on);
+    static bool pixelCull();
     // Last frame's placements by what decided them: drawn, outside the view, under the pixel size, past the game's
     // cut-off, hidden by the tome; pops = placements drawn the frame before and left out now while in view (not a LOD
     // swap). IW8R_POP_LOG=<file> appends one line per pop (bench diagnosis).

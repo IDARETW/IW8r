@@ -4824,7 +4824,7 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             if (e.why && tomeHidden) e.why = 2;
             const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
             e.dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-            if (e.why == 1 && e.dist > e.rad && e.rad < e.dist * pixelAngle * kPx) e.why = 3;
+            if (e.why == 1 && pixelCull() && e.dist > e.rad && e.rad < e.dist * pixelAngle * kPx) e.why = 3;
             e.lod = lodCentreDist ? e.dist : iw8r::placementBoxDistance(r, gMid, gHalf, eye);
             // Past the model's last LOD distance x the placement's scale the game does not draw it (research 119): only
             // with View > Game LOD Cut-off; else the last level goes on (below).
@@ -4923,7 +4923,7 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             float ld = 0;
             if (why == 1) {
                 const float mr = modelRad * std::max(sc, 1e-6f);
-                if (dist > mr && mr < dist * pixelAngle * kPx) why = 3;  // the model under kPx pixels in radius
+                if (pixelCull() && dist > mr && mr < dist * pixelAngle * kPx) why = 3;  // the model under kPx pixels in radius
                 // A stock prop past its last LOD distance x the placement's scale: the game does not draw it (research
                 // 100 section 3.3, 119); only with View > Game LOD Cut-off.
                 if (why == 1 && !noLodOut && g.lodOut > 0) {
@@ -4956,6 +4956,12 @@ std::atomic<bool>& gameLodCutoffFlag() {
 }  // namespace
 
 void SceneRenderer::setGameLodCutoff(bool on) { gameLodCutoffFlag() = on; }
+static std::atomic<bool>& pixelCullFlag() {
+    static std::atomic<bool> on{false};
+    return on;
+}
+void SceneRenderer::setPixelCull(bool on) { pixelCullFlag() = on; }
+bool SceneRenderer::pixelCull() { return pixelCullFlag(); }
 bool SceneRenderer::gameLodCutoff() { return gameLodCutoffFlag(); }
 
 std::string SceneRenderer::instanceCullReport() const {

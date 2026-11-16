@@ -2115,6 +2115,17 @@ int CameraView::textureFor(const std::string& material) {
                         maskChannel = 3;
                         break;
                     }
+                // A layer-0 "alpha + reveal" image (slot 27 of a blended decal, research 97: alpha in red, reveal in
+                // green), its alpha a flat white (`white&..._r`): the shape is the reveal. Shipment's container logos
+                // drew as solid rectangles from the white red channel (owner 2026-11-15).
+                if (maskChannel == 0) {
+                    uint8_t rMin = 255, rMax = 0, gMin = 255, gMax = 0;
+                    for (size_t k = 0; k + 3 < mask.pixels.size(); k += 4) {
+                        rMin = std::min(rMin, mask.pixels[k]), rMax = std::max(rMax, mask.pixels[k]);
+                        gMin = std::min(gMin, mask.pixels[k + 1]), gMax = std::max(gMax, mask.pixels[k + 1]);
+                    }
+                    if (rMin == rMax && gMax > gMin) maskChannel = 1;
+                }
             }
             const bool softMask = ctx_ && ctx_->scene.blendFor && ctx_->scene.blendFor(material) != 0;
             // Opaque stock images keep their specular code (research 95: metal / f0) as 192..254: never under any

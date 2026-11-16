@@ -5,6 +5,16 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Container logos on Shipment**: a blended decal whose slot-27 image is "alpha + reveal" with a flat white alpha
+  (`white&shipping_container_logo_01_r`) takes its opacity from the reveal (green); the logos drew as solid white or
+  dark rectangles. The containers' colours follow the map's own skins (the beige `logo_01_wet` model is beige in the
+  map data too).
+- **Props never switch or drop**: View > Game Lighting Options > Prop Levels of Detail is off by default (a new
+  setting): every prop draws its full model at every distance and nothing is cut under a pixel; only what is out of
+  the view is left out. Turning it on brings back the game's LOD distances.
+- Side panel tabs never selected yet are readable from the start (the docking library's own dark colour is replaced
+  in its sheet and every tab styled again once the panels exist).
+- Viewport bench: `IW8R_BENCH_PICK="x y ..."` names the stock object at pixels of the shot.
 - **Stock map objects work like the map's own** (owner re-check, night):
   - A click picks the stock prop under the cursor by its model's triangles (a model box only narrows the search) and
     outlines its edges; a world surface selects the connected surface (a wall, a floor) and outlines its border.

@@ -3897,7 +3897,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                                                                {"GamePostFx", "game/postFx"},
                                                                {"GameFilmGrain", "game/filmGrain"},
                                                                {"GameWhiteBalance", "game/whiteBalance"},
-                                                               {"GamePropLods", "game/propLods"},
+                                                               {"GamePropLods", "game/propLodSwitching"},
                                                                // Stock Map Detail (2026-11-15)
                                                                {"GameGtao", "game/gtao"},
                                                                {"GamePropLightGrid", "game/propLightGrid"},

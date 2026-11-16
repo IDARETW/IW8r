@@ -660,7 +660,7 @@ private:
     // View > Game Lighting Options > Stock Map Detail: props lit from the light grid / their lightmap (game/...).
     bool propLightGridOn_ = true, propLightmapsOn_ = true;
     uint32_t stockDetailOff_ = 0;  // the shader parts turned off (CameraView::setStockDetailOff)
-    bool propLodsEnabled_ = true;  // View > Game Lighting Options > Prop Levels of Detail (game/propLods)  // rebuildReferenceProps: prop LODs not cached yet (asked for at its end)
+    bool propLodsEnabled_ = false;  // View > Game Lighting Options > Prop Levels of Detail (game/propLods)  // rebuildReferenceProps: prop LODs not cached yet (asked for at its end)
     std::map<std::string, std::shared_ptr<const RefPropMesh>> refPropBuilt_;
     // Props read and converted on worker threads (startRefPropPrep): a rebuild pass that finds a cached model not
     // converted yet queues it and leaves the screen as it is; the pass after the workers takes refPropPrepared_.

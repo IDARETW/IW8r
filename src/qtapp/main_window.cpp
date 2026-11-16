@@ -135,6 +135,7 @@
 
 #include "DockAreaWidget.h"
 #include "DockManager.h"
+#include "DockWidgetTab.h"
 #include "asset_browser.h"
 #include "brush_flags.h"
 #include "brush_tools.h"
@@ -305,6 +306,8 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     ctx_.cam.speed = Settings::instance().value("camera/speed", 600.0).toDouble();
     ctx_.cam.fov = Settings::instance().value("camera/fov", 90.0).toDouble();
     buildDocks();
+    // Once every panel and its tab exist (and the saved layout is applied): their tab names styled again.
+    QTimer::singleShot(0, this, [this] { refreshDockTabStyle(); });
     toasts_ = new ToastHost(this);
     connect(compile_, &CompilePanel::finished, toasts_, [this](bool ok) {
         toasts_->showToast(ok ? LogLevel::Info : LogLevel::Error, ok ? "Compile finished" : "Compile failed", "compile");
@@ -1289,9 +1292,23 @@ void MainWindow::refreshDockTabStyle() {
     const QColor active = bg.lightness() < 128 ? QColor::fromRgbF(std::min(1.0, text.redF() * 0.5 + 0.5), std::min(1.0, text.greenF() * 0.5 + 0.5),
                                                                   std::min(1.0, text.blueF() * 0.5 + 0.5))
                                                : text.darker(140);
-    dock_->setStyleSheet(dockBaseStyle_ + QString("\nads--CDockWidgetTab QLabel { color: %1; }\n"
-                                                  "ads--CDockWidgetTab[activeTab=\"true\"] QLabel { color: %2; }\n")
-                                              .arg(mix(0.92).name(), active.name()));
+    // The library's own inactive colour (palette(dark)) is replaced in its sheet, not only overridden after it: tabs
+    // never selected kept it until their first re-polish (owner re-check 2026-11-15).
+    QString base = dockBaseStyle_;
+    base.replace(QRegularExpression(QStringLiteral("(?<![-\\w])color:\\s*palette\\(dark\\);")), QString("color: %1;").arg(mix(0.92).name()));
+    dock_->setStyleSheet(base + QString("\nads--CDockWidgetTab QLabel { color: %1; }\n"
+                                        "ads--CDockWidgetTab[activeTab=\"true\"] QLabel { color: %2; }\n")
+                                    .arg(mix(0.92).name(), active.name()));
+    // Every tab and its label styled again now (a tab is otherwise only re-polished when it is selected).
+    for (QWidget* t : dock_->findChildren<ads::CDockWidgetTab*>()) {
+        t->style()->unpolish(t);
+        t->style()->polish(t);
+        for (QLabel* l : t->findChildren<QLabel*>()) {
+            l->style()->unpolish(l);
+            l->style()->polish(l);
+            l->update();
+        }
+    }
 }
 
 void MainWindow::buildDocks() {
@@ -3024,13 +3041,16 @@ void MainWindow::buildMenus() {
         // the owner's in-game shot does not show (a scale of its scattered light, cb7[42].y, is not decoded yet).
         toggle("GameVolumetricFog", "Volumetric Fog (uncalibrated)", "game/volumetricFog", [this](bool on) { camera_->setVolumetricFogEnabled(on); },
                false);
-        toggle("GamePropLods", "Prop Levels of Detail (as in game)", "game/propLods", [this](bool on) {
+        // Off by default (owner 2026-11-15: no switching at all, so the view stays consistent): every prop at LOD0 and
+        // no pixel-size cut; on: the game's LOD distances and props under a pixel left out.
+        toggle("GamePropLods", "Prop Levels of Detail (as in game)", "game/propLodSwitching", [this](bool on) {
+            app::SceneRenderer::setPixelCull(on);
             if (propLodsEnabled_ == on) return;
             propLodsEnabled_ = on;
             refPropBuilt_.clear();
             refPropBuiltTris_ = 0;
             if (refProps_) QTimer::singleShot(0, this, [this] { rebuildReferenceProps(); });
-        });
+        }, false);
         {
             // The stock maps' rendering parts decoded from the game (research 105, 133, 135, 136, 137), each saved and
             // on by default; off shows the viewport as it was before that part, for a comparison.

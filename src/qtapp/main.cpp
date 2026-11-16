@@ -983,6 +983,18 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
         }
         shot("game_a");
         report << "instance_cull_a " + QString::fromStdString(cam->instanceCullReport());
+        // IW8R_BENCH_PICK="x y [x y ...]": the stock object at those pixels of the 1920 x 1080 shot (model, material).
+        if (const QStringList pk = qEnvironmentVariable("IW8R_BENCH_PICK").split(' ', Qt::SkipEmptyParts); pk.size() >= 2)
+            for (int k = 0; k + 1 < pk.size(); k += 2) {
+                const double nx = 2.0 * pk[k].toDouble() / 1920.0 - 1.0, ny = 1.0 - 2.0 * pk[k + 1].toDouble() / 1080.0;
+                const iw8r::Ray ray = iw8r::app::cameraRay(ctx.cam, nx, ny, 1920.0 / 1080.0);
+                const auto h = w.pickStockSurface(ray);
+                report << QString("pick %1 %2: %3").arg(pk[k], pk[k + 1],
+                                                          !h ? QString("nothing")
+                                                             : !h->material.isEmpty() ? "world " + h->material
+                                                             : h->light >= 0          ? QString("light %1").arg(h->light)
+                                                                                      : QString("prop %1 row %2").arg(h->model).arg(h->propIndex));
+            }
         // IW8R_BENCH_PATH="dx dy dz dyaw dpitch N [settle]": a camera path from camera a, N steps to a + the offsets
         // (units, degrees), one shot per step (path_00 .. path_N) with its props by cull reason and the pops (props drawn
         // at the step before and left out while in view: not a LOD swap). settle 0 = one frame per step (as flying),
