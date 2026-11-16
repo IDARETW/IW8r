@@ -1,5 +1,6 @@
 // IW8 Radiant Suite - which placed models collide, and with what shape, by the stock models' own collision
-// (verified in Replay 1.20 with the IDA database and ACTS exports, 2026-11-15).
+// (docs/research/142_static_model_collision.md: verified in Replay 1.20 with the IDA database, ACTS exports and the
+// game's Havok type compendium, 2026-11-15).
 //
 // The game (Replay 1.20) gives a static model collision only through the clipmap's static model collision lists, and an
 // entry there is exactly the XModel's physicsAsset / detailCollision pair: StaticModels_AddClipmapCollisionShapes puts
@@ -15,6 +16,7 @@
 // Z-up) where they could be read ("mesh" where not: the render mesh's hull stands in).
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -32,7 +34,12 @@ struct StockModelInstance;
 
 struct ModelPhysicsShape {
     uint32_t contents = 0;                  // OR of the physics asset's body contents
-    std::vector<std::vector<Vec3>> pieces;  // convex pieces, model space (inches, Z-up); empty: not read ("mesh")
+    std::vector<std::vector<Vec3>> pieces;  // convex pieces, model space (inches, Z-up)
+    // The triangles of its compressed mesh shapes (hknpCompressedMeshShape), model space (inches, Z-up).
+    std::vector<Vec3> meshVerts;
+    std::vector<std::array<uint32_t, 3>> meshTris;
+    // Read from the catalogue: convex pieces or triangles (else "mesh": the render mesh stands in).
+    bool readable() const { return !pieces.empty() || !meshTris.empty(); }
 };
 
 struct ModelPhysicsInfo {
@@ -43,7 +50,8 @@ struct ModelPhysicsInfo {
 
 class ModelPhysicsCatalog {
 public:
-    // Reads the catalogue file (lines "M <model> <physics> <detail>" and "P <physics> <contents> <shape> <note>").
+    // Reads the catalogue file (lines "M <model> <physics> <detail>" and "P <physics> <contents> <pieces> <triangles>
+    // <note>"; the older "P <physics> <contents> <pieces> <note>" too).
     bool load(const std::string& path, std::string* err = nullptr);
     void loadText(const std::string& text);
     // A model by the name a map gives it ("tm/foliage_alder_bush_large_01"); a leading ',' or '~' is ignored, and a
@@ -80,16 +88,21 @@ struct ModelCollisionChoice {
 ModelCollisionChoice chooseModelCollision(const std::string& model, const Entity* placement, bool customModel,
                                           const ModelPhysicsCatalog* catalog);
 
-// Outward planes (dot(n, x) <= d) of each convex piece, model space Z-up inches; a degenerate piece is left out, a
-// piece with more than maxPlanes planes is simplified (simplifyHull; maxPlanes < 4: as built).
-std::vector<std::vector<Plane>> physicsShapePlanes(const ModelPhysicsShape& shape, size_t maxPlanes);
+// Outward planes (dot(n, x) <= d) of each convex piece, model space Z-up inches; a piece with more than maxPlanes
+// planes is simplified (simplifyHull; maxPlanes < 4: as built), a sliver made half a unit thick, an open or oversized
+// one replaced by its box. With meshPieces, the shape's triangles add up to maxPieces convex pieces of their own
+// (convexPieces, as a render mesh would; the build's collision is convex brushes); without, they are left to the caller
+// (the play preview adds them as facets).
+std::vector<std::vector<Plane>> physicsShapePlanes(const ModelPhysicsShape& shape, size_t maxPlanes, int maxPieces = 4,
+                                                   bool meshPieces = true);
 
 // Planes in Z-up model space placed at origin + axis * (scale * p) (axis: the model's X, Y and Z in world space, unit
 // columns), as a convex piece of a placement.
 std::vector<Plane> placePlanes(const std::vector<Plane>& piece, const Vec3& origin, const Vec3 (&axis)[3], double scale);
 
 // Stock map props in the play preview: the collision of every placement within `radius` (x / y distance, the model's
-// size included; radius <= 0: all) of `around`, by chooseModelCollision. `renderPieces` gives a model's render-mesh
+// size included; radius <= 0: all) of `around`, by chooseModelCollision; a physics shape's triangles become facets
+// (CollisionWorld::addTriangle), its convex pieces convex solids. `renderPieces` gives a model's render-mesh
 // pieces (Z-up model space) for a stock model whose physics is not read or not catalogued, or null while they are not
 // ready (the placement is then counted as pending and left out). `skip` leaves placements out (props the document
 // hides: their collision goes with them in the rebuilt zone). Each call adds every placement in range: call it on a
@@ -101,6 +114,7 @@ struct StockPropCollisionStats {
     size_t walkThrough = 0;  // no collision (no stock physics asset)
     size_t pending = 0;      // render-mesh pieces not ready
     size_t solids = 0;       // convex solids added
+    size_t facets = 0;       // physics mesh triangles added as facets
 };
 StockPropCollisionStats addStockPropCollision(
     const std::vector<StockModelInstance>& props, CollisionWorld& world, const Vec3& around, double radius,

@@ -1,6 +1,7 @@
 #include "qt_gui_test_stock_panel.h"
 
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -10,6 +11,7 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
@@ -73,14 +75,52 @@ void runStockPanelChecks(std::function<void(const QString&)> section, std::funct
         int widestW = 0;
         if (p->scrollArea() && p->scrollArea()->widget())
             for (QWidget* c : p->scrollArea()->widget()->findChildren<QWidget*>())
-                if (c->isVisibleTo(p) && c->minimumSizeHint().width() > widestW) {
+                if (c->isVisibleTo(p) && c->findChildren<QWidget*>(Qt::FindDirectChildrenOnly).isEmpty() &&  // single controls
+                    c->minimumSizeHint().width() > widestW) {
                     widestW = c->minimumSizeHint().width();
                     const auto* lab = qobject_cast<const QLabel*>(c);
                     widest = QString("%1 %2 %3").arg(c->metaObject()->className(), c->objectName(), lab ? lab->text().left(60) : QString());
                 }
-        check(need <= 284, QString("it fits the narrow side section: its column needs %1 px (300 px with the scroll bar)%2")
-                               .arg(need)
-                               .arg(need <= 284 ? QString() : QString("; widest: %1 at %2 px").arg(widest).arg(widestW)));
+        // 284 px with the Windows UI font ("Intensity" 50 px wide, Segoe UI 9 pt); the suite runs on the offscreen
+        // platform, whose fallback font is about twice as wide, so the limit follows the font in use.
+        const double fontScale = std::max(1.0, p->fontMetrics().horizontalAdvance("Intensity") / 50.0);
+        const int limit = int(std::lround(284 * fontScale));
+        check(need <= limit, QString("it fits the narrow side section: its column needs %1 px (%2 px allowed: 300 px with the scroll bar, "
+                                     "x%3 for this font)%4")
+                                 .arg(need)
+                                 .arg(limit)
+                                 .arg(fontScale, 0, 'f', 2)
+                                 .arg(need <= limit ? QString() : QString("; widest: %1 at %2 px").arg(widest).arg(widestW)));
+        if (need > limit && p->scrollArea() && p->scrollArea()->widget()) {
+            // Every visible widget and layout 240 px or wider, with its parents, into the report (diagnosis).
+            QWidget* body = p->scrollArea()->widget();
+            const auto pathOf = [body](const QObject* o) {
+                QStringList parts;
+                for (; o && o != body; o = o->parent())
+                    parts.prepend(QString("%1(%2)").arg(o->metaObject()->className(), o->objectName()));
+                return parts.join("/");
+            };
+            for (QWidget* c : body->findChildren<QWidget*>())
+                if (c->isVisibleTo(p) && c->minimumSizeHint().width() >= 240) {
+                    QString extra;
+                    if (const auto* lab = qobject_cast<const QLabel*>(c)) extra = " text \"" + lab->text().left(80) + "\"";
+                    if (const auto* ab = qobject_cast<const QAbstractButton*>(c)) extra = " text \"" + ab->text().left(80) + "\"";
+                    std::fprintf(stderr, "stock panel width: %s\n", qPrintable(QString("    wide widget %1 px (min width %2, fixed %3): %4%5")
+                               .arg(c->minimumSizeHint().width()).arg(c->minimumWidth()).arg(c->maximumWidth())
+                               .arg(pathOf(c), extra)));
+                }
+            for (QLayout* lay : body->findChildren<QLayout*>())
+                if (lay->minimumSize().width() >= 240) {
+                    QStringList items;
+                    for (int k = 0; k < lay->count(); ++k)
+                        if (QLayoutItem* it = lay->itemAt(k))
+                            items << QString("%1:%2").arg(it->widget() ? QString(it->widget()->metaObject()->className()) + "(" +
+                                                                             it->widget()->objectName() + ")"
+                                                                       : QString(it->layout() ? "layout" : "spacer"))
+                                                     .arg(it->minimumSize().width());
+                    std::fprintf(stderr, "stock panel width: %s\n", qPrintable(QString("    wide layout %1 px in %2: %3").arg(lay->minimumSize().width()).arg(pathOf(lay->parentWidget()), items.join(" "))));
+                }
+        }
     }
 
     // ---- Sun: one undo step per change, a slider drag one step, spin box steps right after each other one step.

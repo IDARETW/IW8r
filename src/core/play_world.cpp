@@ -88,7 +88,7 @@ void buildPlayWorld(const MapFile& map, const PlayWorldOptions& opt, CollisionWo
             // Stock physics pieces: Z-up model space in inches (map units), so only the placement's own scale.
             auto pp = physicsPlanes.find(choice.shape);
             if (pp == physicsPlanes.end())
-                pp = physicsPlanes.emplace(choice.shape, physicsShapePlanes(*choice.shape, size_t(std::max(0, opt.maxPlanes)))).first;
+                pp = physicsPlanes.emplace(choice.shape, physicsShapePlanes(*choice.shape, size_t(std::max(0, opt.maxPlanes)), opt.maxPieces)).first;
             size_t made = 0;
             for (const auto& piece : pp->second) {
                 std::vector<Plane> planes;

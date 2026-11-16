@@ -119,7 +119,37 @@ void ModelPhysicsCatalog::loadText(const std::string& text) {
             if (name.empty() || shapes_.count(name)) continue;
             ModelPhysicsShape s;
             s.contents = uint32_t(std::strtoul(f[2].c_str(), nullptr, 16));
-            if (f[3] != "mesh") s.pieces = parsePieces(f[3]);
+            if (f[3] != "mesh" && f[3] != "-") s.pieces = parsePieces(f[3]);
+            // Triangles: "<x,y,z ...>|<i,j,k ...>" (absent in the older four-column records, whose 5th field is a note).
+            if (f.size() >= 5)
+                if (const size_t bar = f[4].find('|'); bar != std::string::npos) {
+                    std::vector<std::vector<Vec3>> verts = parsePieces(f[4].substr(0, bar));
+                    if (verts.size() == 1) s.meshVerts = std::move(verts[0]);
+                    const char* p = f[4].c_str() + bar + 1;
+                    while (*p) {
+                        char* end = nullptr;
+                        std::array<uint32_t, 3> t{};
+                        bool ok = true;
+                        for (int k = 0; k < 3 && ok; ++k) {
+                            const unsigned long v = std::strtoul(p, &end, 10);
+                            ok = end != p && v < s.meshVerts.size();
+                            t[size_t(k)] = uint32_t(v);
+                            p = end;
+                            if (k < 2) ok = ok && *p == ',', p += ok ? 1 : 0;
+                        }
+                        if (!ok) {
+                            s.meshTris.clear();
+                            break;
+                        }
+                        s.meshTris.push_back(t);
+                        if (*p == ' ') ++p;
+                        else if (*p) {
+                            s.meshTris.clear();
+                            break;
+                        }
+                    }
+                    if (s.meshTris.empty()) s.meshVerts.clear();
+                }
             shapes_.emplace(name, std::move(s));
         }
     }
@@ -183,12 +213,22 @@ ModelCollisionChoice chooseModelCollision(const std::string& model, const Entity
     const ModelPhysicsInfo* info = catalog->find(model);
     if (!info) return {ModelCollisionSource::RenderMesh, nullptr, "not in the physics catalogue"};
     if (info->physicsAsset.empty()) return {ModelCollisionSource::None, nullptr, "no stock physics asset"};
-    if (info->shape && !info->shape->pieces.empty()) return {ModelCollisionSource::PhysicsShape, info->shape, "stock physics shape"};
+    if (info->shape && info->shape->readable()) return {ModelCollisionSource::PhysicsShape, info->shape, "stock physics shape"};
     return {ModelCollisionSource::RenderMesh, nullptr, "stock physics not read"};
 }
 
-std::vector<std::vector<Plane>> physicsShapePlanes(const ModelPhysicsShape& shape, size_t maxPlanes) {
+std::vector<std::vector<Plane>> physicsShapePlanes(const ModelPhysicsShape& shape, size_t maxPlanes, int maxPieces, bool meshPieces) {
     std::vector<std::vector<Plane>> out;
+    if (meshPieces && !shape.meshTris.empty()) {
+        // The physics mesh as a model: convexPieces splits it like a render mesh (and keeps every piece closed).
+        ImportedModel m;
+        ImportedMesh mesh;
+        mesh.pos = shape.meshVerts;
+        for (const auto& t : shape.meshTris)
+            for (const uint32_t i : t) mesh.idx.push_back(i);
+        m.meshes.push_back(std::move(mesh));
+        for (auto& pc : convexPieces(m, maxPieces, maxPlanes)) out.push_back(std::move(pc));
+    }
     for (const auto& piece : shape.pieces) {
         AABB box;
         for (const Vec3& v : piece) box.add(v);
@@ -248,9 +288,10 @@ StockPropCollisionStats addStockPropCollision(
             auto bi = built.find(c.shape);
             if (bi == built.end()) {
                 Built b;
-                b.planes = physicsShapePlanes(*c.shape, maxPlanes);
+                b.planes = physicsShapePlanes(*c.shape, maxPlanes, 4, false);  // the triangles become facets below
                 for (const auto& piece : c.shape->pieces)
                     for (const Vec3& v : piece) b.reach = std::max(b.reach, std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z));
+                for (const Vec3& v : c.shape->meshVerts) b.reach = std::max(b.reach, std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z));
                 bi = built.emplace(c.shape, std::move(b)).first;
             }
             pieces = &bi->second.planes;
@@ -280,6 +321,13 @@ StockPropCollisionStats addStockPropCollision(
         const Vec3 axis[3] = {p.axis[0], p.axis[1], p.axis[2]};
         for (const auto& piece : *pieces)
             if (world.addConvex(placePlanes(piece, p.origin, axis, p.scale))) ++st.solids;
+        if (c.source == ModelCollisionSource::PhysicsShape && !c.shape->meshTris.empty()) {
+            // The physics mesh as the game has it: one facet per triangle, placed like the model.
+            const auto place = [&](const Vec3& v) { return p.origin + (axis[0] * v.x + axis[1] * v.y + axis[2] * v.z) * p.scale; };
+            for (const auto& t : c.shape->meshTris)
+                if (world.addTriangle(place(c.shape->meshVerts[t[0]]), place(c.shape->meshVerts[t[1]]), place(c.shape->meshVerts[t[2]]), 1.0))
+                    ++st.facets;
+        }
     }
     return st;
 }

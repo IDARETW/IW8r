@@ -374,6 +374,52 @@ TEST(model_physics_shipped_catalogue_bushes) {
             for (const Vec3& v : p) b.add(v);
         CHECK(b.maxs.z < 130 && b.maxs.x - b.mins.x < 20);
     }
+    // Compressed mesh physics (hknpCompressedMeshShape) is read too: the powerline's 36 triangles, and the crane's ten
+    // convex custom primitives.
+    const ModelCollisionChoice line = chooseModelCollision("city_prop_powerline_01", nullptr, false, &cat);
+    CHECK(line.source == ModelCollisionSource::PhysicsShape && line.shape && line.shape->meshTris.size() == 36);
+    if (line.shape) CHECK(!physicsShapePlanes(*line.shape, 24).empty());
+    const ModelCollisionChoice crane = chooseModelCollision("crane_hangar_large_01", nullptr, false, &cat);
+    CHECK(crane.source == ModelCollisionSource::PhysicsShape && crane.shape && crane.shape->pieces.size() == 10);
+}
+
+// Physics that is a triangle mesh: the build and the own-map preview make convex pieces of it, a stock map's walk
+// preview adds its triangles as facets.
+TEST(model_physics_mesh_shapes) {
+    // A box 40 x 20 x 30 (x 0..40, y 0..20, z 0..30) as 12 triangles, outward winding.
+    const char* text =
+        "M\ttm/t_mesh_only\tt_mesh_only\t-\n"
+        "P\tt_mesh_only\t2180\t-\t0,0,0 40,0,0 40,20,0 0,20,0 0,0,30 40,0,30 40,20,30 0,20,30|"
+        "0,2,1 0,3,2 4,5,6 4,6,7 0,1,5 0,5,4 1,2,6 1,6,5 2,3,7 2,7,6 3,0,4 3,4,7\t-\n"
+        "M\ttm/t_bad_mesh\tt_bad_mesh\t-\n"
+        "P\tt_bad_mesh\t2180\t-\t0,0,0 1,0,0 0,1,0 0,0,1|0,1,9\t-\n";
+    ModelPhysicsCatalog cat;
+    cat.loadText(text);
+    const ModelPhysicsInfo* info = cat.find("tm/t_mesh_only");
+    CHECK(info && info->shape && info->shape->pieces.empty() && info->shape->meshVerts.size() == 8 && info->shape->meshTris.size() == 12);
+    if (!info || !info->shape) return;
+    CHECK(info->shape->readable());
+    CHECK(chooseModelCollision("tm/t_mesh_only", nullptr, false, &cat).source == ModelCollisionSource::PhysicsShape);
+    // An index past the vertices: the triangles are dropped, so the render mesh stands in.
+    const ModelPhysicsInfo* bad = cat.find("tm/t_bad_mesh");
+    CHECK(bad && bad->shape && bad->shape->meshTris.empty() && !bad->shape->readable());
+    CHECK(chooseModelCollision("tm/t_bad_mesh", nullptr, false, &cat).source == ModelCollisionSource::RenderMesh);
+    // Build / own-map pieces: closed, holding the box's middle.
+    const auto pieces = physicsShapePlanes(*info->shape, 24);
+    CHECK(!pieces.empty());
+    size_t holding = 0;
+    for (const auto& pc : pieces) holding += inside(pc, Vec3{20, 10, 15});
+    CHECK(holding >= 1);
+    CHECK(physicsShapePlanes(*info->shape, 24, 4, false).empty());  // without mesh pieces: nothing (no convex pieces)
+    // A stock map's prop: 12 facets that stop a walk into the box, none beside it.
+    std::vector<StockModelInstance> props(1);
+    props[0].model = "tm/t_mesh_only";
+    props[0].origin = Vec3{100, 0, 0};
+    CollisionWorld w;
+    const StockPropCollisionStats st = addStockPropCollision(props, w, Vec3{}, 0, cat, 24);
+    CHECK(st.physics == 1 && st.facets == 12 && st.solids == 0);
+    CHECK(blocked(w, Vec3{40, 10, 1}, Vec3{200, 10, 1}));
+    CHECK(!blocked(w, Vec3{40, 80, 1}, Vec3{200, 80, 1}));
 }
 
 // An open collision piece (planes without end caps) is a slab through the whole map: the play preview's player started

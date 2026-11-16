@@ -55,6 +55,10 @@ public:
     Trace traceRay(const Vec3& start, const Vec3& end) const { return traceBox(start, end, Vec3{}, Vec3{}); }
     // Upright capsule (the Replay player shape, walk simulator profile): radius r, total height h, feet at the point.
     Trace traceCapsule(const Vec3& start, const Vec3& end, double r, double h) const;
+    // Upright flat-bottomed 8-sided prism, bottom at the point: radius r (to the corners), height h, corners on the x
+    // and y axes. Replay's player ground shape (collision type 1, research 140 section 8): Physics_CharacterCastPacked
+    // builds it as a 16-vertex hull (8 around, top and bottom, world aligned).
+    Trace traceCylinder(const Vec3& start, const Vec3& end, double r, double h) const;
 
     // Adds one convex solid (outward planes, inside dot(n, x) <= d) that blocks the player, as a placed model's hull
     // piece does in the built map (core play_world). False when the planes enclose nothing.
@@ -75,8 +79,9 @@ public:
 private:
     void addSolid(std::vector<Plane> planes, uint32_t contents, bool patch, bool ladder = false);
     void traceThrough(const Solid& s, int index, const Vec3& start, const Vec3& end, const Vec3& mins, const Vec3& maxs,
-                      Trace& tr, double capsuleRadius = 0) const;
-    Trace traceShape(const Vec3& start, const Vec3& end, const Vec3& mins, const Vec3& maxs, double capsuleRadius) const;
+                      Trace& tr, double capsuleRadius = 0, bool prism = false) const;
+    Trace traceShape(const Vec3& start, const Vec3& end, const Vec3& mins, const Vec3& maxs, double capsuleRadius,
+                     bool prism = false) const;
     std::vector<Solid> solids_;
     AABB bounds_;
     struct Mover {

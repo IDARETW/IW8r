@@ -37,6 +37,15 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
   selected effect plays under the Effects list; the Sounds panel plays the game's sounds (the common multiplayer
   banks, FLAC decoded by the editor; the first play prepares them once); a Tools panel lists the Tools menu's commands
   in groups with a search box. Research note 141 records the sound banks.
+- **The player collides as in Replay** (collision type 1, read from the exe; research 140 section 8): the stance
+  capsule raised by its stick height (8 standing, 4 crouched, 0 prone), a flat 8-sided ground prism swept before the
+  move and a ray after it, the 0.3 s ledge walk on a steep surface, the air slide along steep faces. Small bumps
+  under 8 units never block; the editor-only steep-face rules are gone. Steps keep an 18-unit stand-in (the game's
+  rounded climb gives 17.3 to 23 by direction).
+- **Stock physics shapes read exactly**: the catalogue tool reads the game's own Havok type table (types and member
+  offsets by name), follows each shape's vertex pointer, decodes multi-body assets and compressed meshes (triangles,
+  quads and convex pieces): 3,785 of 3,869 stock physics assets now read (3,494 before). Mesh physics collides as
+  exact triangles in the stock-map walk and as up to 4 convex pieces in a build. Research note 142.
 - **Placed models collide as in game**: a stock model blocks with its own physics asset's shape (a catalogue of 6,777
   stock models' physics, `data/asset_catalog/iw8_model_physics.tsv`); one without a physics asset (most bushes and
   grass) is walk-through, as in game. `iw8r_collision 1` on a placement makes it solid from its render mesh, `0` takes

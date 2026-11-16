@@ -804,6 +804,32 @@ int stockPanelShots(Shots& s, MainWindow& w, const QString& outDir) {
     ads::CDockWidget* d = dm ? dm->findDockWidget("Stock Map") : nullptr;
     QWidget* area = d ? static_cast<QWidget*>(d->dockAreaWidget()) : nullptr;
     if (area) s.widget(area, "stock_panel_docked.png", QString("The Stock Map panel as docked (%1 px wide)").arg(area->width()), 800);
+    // The docked panel's column, before and after a theme switch (the GUI suite switches themes before it measures),
+    // with its widest single control named.
+    {
+        const auto measure = [&](const QString& when) {
+            StockMapPanel* dp = w.stockMapPanel();
+            QWidget* body = dp && dp->scrollArea() ? dp->scrollArea()->widget() : nullptr;
+            if (!body) return;
+            QString widest;
+            int widestW = 0;
+            for (QWidget* c : body->findChildren<QWidget*>()) {
+                if (!c->isVisibleTo(body) || !c->findChildren<QWidget*>(Qt::FindDirectChildrenOnly).isEmpty()) continue;  // leaves only
+                if (c->minimumSizeHint().width() > widestW)
+                    widestW = c->minimumSizeHint().width(), widest = QString("%1 '%2'").arg(c->metaObject()->className(), c->objectName());
+            }
+            s.report << QString("-\tinfo\tdocked stock panel %1: its column needs %2 px; widest control %3 at %4 px")
+                            .arg(when)
+                            .arg(body->minimumSizeHint().width())
+                            .arg(widest)
+                            .arg(widestW);
+        };
+        measure("before a theme switch");
+        if (QAction* light = w.findChild<QAction*>("ThemeLight")) light->trigger();
+        if (QAction* dark = w.findChild<QAction*>("ThemeDark")) dark->trigger();
+        settle(w, 400);
+        measure("after Light then Dark");
+    }
     // The whole column at the narrow and the wide width of the side section (a panel of its own, all of it shown).
     for (const int width : {300, 420}) {
         auto* extra = new StockMapPanel(&w, &ctx);

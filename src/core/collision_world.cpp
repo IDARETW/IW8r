@@ -209,14 +209,28 @@ void CollisionWorld::addBrushesOf(const Entity& e, int patchSubdiv) {
 }
 
 void CollisionWorld::traceThrough(const Solid& s, int index, const Vec3& start, const Vec3& end, const Vec3& mins,
-                                  const Vec3& maxs, Trace& tr, double capsuleRadius) const {
+                                  const Vec3& maxs, Trace& tr, double capsuleRadius, bool prism) const {
     double enterFrac = -1.0, leaveFrac = 1.0;
     bool startOut = false, getOut = false;
     const Plane* clipPlane = nullptr;
     for (const Plane& pl : s.planes) {
         // Expand the plane by the box: the box corner that leads into the plane.
         Vec3 ofs;
-        if (capsuleRadius > 0) {
+        if (prism) {
+            // Octagonal prism support point: the corner (r sin t, r cos t), t = k * 45 degrees, lowest along n, on the
+            // bottom face for an upward-facing plane, the top face otherwise. The solids' axial bevels give the flat
+            // faces their contacts (a flat bottom resting on a ridge or a corner).
+            constexpr double h = 0.70710678118654752440;
+            static constexpr double kSin[8] = {0, h, 1, h, 0, -h, -1, -h}, kCos[8] = {1, h, 0, -h, -1, -h, 0, h};
+            const double cx = (mins.x + maxs.x) * 0.5, cy = (mins.y + maxs.y) * 0.5, r = (maxs.x - mins.x) * 0.5;
+            int best = 0;
+            double lowest = 1e300;
+            for (int k = 0; k < 8; ++k) {
+                const double v = pl.n.x * kSin[k] + pl.n.y * kCos[k];
+                if (v < lowest) lowest = v, best = k;
+            }
+            ofs = Vec3{cx + r * kSin[best], cy + r * kCos[best], pl.n.z > 0 ? mins.z : maxs.z};
+        } else if (capsuleRadius > 0) {
             // Capsule support point: the segment end lower along n, pulled back by the radius.
             const double cx = (mins.x + maxs.x) * 0.5, cy = (mins.y + maxs.y) * 0.5;
             const Vec3 bottom{cx, cy, mins.z + capsuleRadius}, top{cx, cy, maxs.z - capsuleRadius};
@@ -266,8 +280,12 @@ CollisionWorld::Trace CollisionWorld::traceCapsule(const Vec3& start, const Vec3
     return traceShape(start, end, Vec3{-r, -r, 0}, Vec3{r, r, std::max(h, 2 * r)}, r);
 }
 
+CollisionWorld::Trace CollisionWorld::traceCylinder(const Vec3& start, const Vec3& end, double r, double h) const {
+    return traceShape(start, end, Vec3{-r, -r, 0}, Vec3{r, r, std::max(h, 0.0)}, 0, true);
+}
+
 CollisionWorld::Trace CollisionWorld::traceShape(const Vec3& start, const Vec3& end, const Vec3& mins, const Vec3& maxs,
-                                                 double capsuleRadius) const {
+                                                 double capsuleRadius, bool prism) const {
     Trace tr;
     // Swept bounds for the broad phase.
     AABB swept;
@@ -279,7 +297,7 @@ CollisionWorld::Trace CollisionWorld::traceShape(const Vec3& start, const Vec3& 
         const Solid& s = solids_[i];
         bool overlap = true;
         for (int a = 0; a < 3; ++a) overlap &= swept.maxs[a] >= s.bounds.mins[a] - 1 && swept.mins[a] <= s.bounds.maxs[a] + 1;
-        if (overlap) traceThrough(s, int(i), start, end, mins, maxs, tr, capsuleRadius);
+        if (overlap) traceThrough(s, int(i), start, end, mins, maxs, tr, capsuleRadius, prism);
     };
     // Many solids (a stock map's world): the grid cells the sweep crosses, each solid once; movers every time.
     const int64_t x0 = int64_t(std::floor((swept.mins.x - 1) / kGridCell)), x1 = int64_t(std::floor((swept.maxs.x + 1) / kGridCell));

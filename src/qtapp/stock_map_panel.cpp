@@ -243,10 +243,10 @@ StockMapPanel::StockMapPanel(MainWindow* window, EditorContext* ctx, QWidget* pa
     header_ = noteLabel();
     header_->setTextFormat(Qt::RichText);
     v->addWidget(header_);
-    const int labelW = QFontMetrics(font()).horizontalAdvance("Intensity") + 8;
-    const auto rowLabel = [labelW](const QString& t) {
+    // Row labels share one width, made from the current font (fitRowLabels: when shown and on font changes).
+    const auto rowLabel = [this](const QString& t) {
         auto* l = new QLabel(t);
-        l->setFixedWidth(labelW);
+        rowLabels_.push_back(l);
         return l;
     };
 
@@ -365,7 +365,7 @@ StockMapPanel::StockMapPanel(MainWindow* window, EditorContext* ctx, QWidget* pa
                 applyDirection("direction");
             });
 
-        gameLighting_ = new QCheckBox("Game Lighting (shows the sun)");
+        gameLighting_ = new QCheckBox("Game Lighting");  // short: a check box does not wrap in the narrow column
         gameLighting_->setObjectName("stockSunGameLighting");
         gameLighting_->setToolTip("View > Game Lighting: the viewport lit as the built map looks in game, with this sun");
         l->addWidget(gameLighting_);
@@ -975,8 +975,18 @@ bool StockMapPanel::togglePickedPropHidden() {
 
 // ------------------------------------------------------------------ showing
 
+void StockMapPanel::fitRowLabels() {
+    for (QLabel* l : rowLabels_) l->setFixedWidth(l->fontMetrics().horizontalAdvance("Intensity") + 8);
+}
+
+void StockMapPanel::changeEvent(QEvent* e) {
+    QWidget::changeEvent(e);
+    if (e->type() == QEvent::FontChange || e->type() == QEvent::StyleChange) fitRowLabels();
+}
+
 void StockMapPanel::showEvent(QShowEvent* e) {
     QWidget::showEvent(e);
+    fitRowLabels();
     shownSig_.clear();
     scheduleRefresh();
 }

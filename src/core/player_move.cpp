@@ -29,38 +29,87 @@ struct Ctx {
     Vec3 mins, maxs;
 };
 
-void groundTrace(Ctx& c) {
-    const Vec3 down = c.s.origin - Vec3{0, 0, 0.25};  // playerCollisionTraceLength 0.25
-    const auto tr = c.w.traceCapsule(c.s.origin, down, c.p.radius, c.maxs.z);
-    if (tr.fraction == 1.0 || tr.allSolid) {
-        c.s.onGround = false;
-        return;
+// Stick height of a stance h units tall (BG_GroundTrace_ComputeProbeDistance 0x140CD7070): stickHeight / 40 x
+// 2 (half height - radius), 8 / 4 / 0 for the 70 / 50 / 30 stances.
+double stickFor(const MoveParams& p, double h) { return std::max(0.0, p.stickHeight / 40.0 * (h - 2 * p.radius)); }
+
+// The movement capsule (collision type 1, BG_Collision_ApplyProbeOffset 0x140CD7000 as PhysicsQuery_LegacyCapsuleHit-
+// Accepted 0x14109A940 builds it for every player capsule trace): the stance capsule with its bottom raised by the
+// stick height, the top where it was. Low bumps under the stick never block a move; the ground trace stands the feet on
+// what is walkable.
+CollisionWorld::Trace capsuleTrace(const CollisionWorld& w, const MoveParams& p, double h, const Vec3& a, const Vec3& b) {
+    const Vec3 lift{0, 0, stickFor(p, h)};
+    auto tr = w.traceCapsule(a + lift, b + lift, p.radius, h - lift.z);
+    tr.end = tr.end - lift;
+    return tr;
+}
+CollisionWorld::Trace moveTrace(const Ctx& c, const Vec3& a, const Vec3& b) { return capsuleTrace(c.w, c.p, c.maxs.z, a, b); }
+bool capsuleFits(const CollisionWorld& w, const MoveParams& p, const Vec3& at, double h) {
+    return !capsuleTrace(w, p, h, at, at).startSolid;
+}
+
+// Replay's ground trace, collision type 1 (PM_GroundTrace 0x140CD8650 -> PM_GroundTrace_ProbeAndResolve 0x140CD90C0
+// -> PM_GroundTrace_StanceChangeSolver 0x140CDA1B0; research 140 section 8). It runs twice a frame:
+//  - before the move (PM_Normal_Update, `settle`): a flat-bottomed 8-sided prism (the player radius, 2 (half height -
+//    radius) - stick tall) swept from stick + radius above the feet to `reach` below them; the feet go onto what it hits,
+//    0.125 above it, when that is walkable or the player is falling outside a jump's first 500 ms, and the movement capsule
+//    fits there (PM_GroundTrace_TryMoveOrigin 0x140CD9F40). So walkable tops under the prism's rim, a stair below, a curb
+//    below the stick, are stood on.
+//  - after the move (PM_Normal_UpdateCollide): a ray from the top of the capsule to `reach` below the feet; it only
+//    classifies (the next frame's first pass puts the feet down).
+// `reach`: 16 on the ground (playerCollisionStickExtension); in the air or within 500 ms of a jump 0.25, plus this
+// frame's fall (at most 15) when falling. A plane with normal z >= 0.7 is ground. A grounded player outside a jump's
+// first 500 ms keeps level support on a steeper plane for 0.3 s from the first such pass (the ledge walk).
+void groundTrace(Ctx& c, bool settle, double dt) {
+    PlayerState& s = c.s;
+    const MoveParams& p = c.p;
+    const double h = c.maxs.z, stick = stickFor(p, h);
+    const bool jumping = s.sinceJump < p.groundJumpWindow;
+    const bool airborne = !s.onGround;
+    double reach = p.stepDownSnap;
+    if (jumping || airborne) {
+        reach = 0.25;  // playerCollisionTraceLength
+        if (!jumping && s.velocity.z < 0) reach += std::min((-s.velocity.z + p.gravity * dt) * dt, 15.0);
     }
-    if (c.s.velocity.z > 0 && dot(c.s.velocity, tr.plane.n) > 10) {  // moving up and away: a jump just started
-        c.s.onGround = false;
-        return;
+    CollisionWorld::Trace tr;
+    if (settle) {
+        const Vec3 start = s.origin + Vec3{0, 0, stick + p.radius}, end = s.origin - Vec3{0, 0, reach};
+        tr = c.w.traceCylinder(start, end, p.radius, std::max(h - 2 * p.radius - stick, 1.0));
+        if (tr.fraction < 1 && !tr.allSolid && (tr.plane.n.z >= p.minWalkNormal || (airborne && !jumping))) {
+            const Vec3 feet = tr.end + Vec3{0, 0, p.groundSkin};
+            const Vec3 d = feet - s.origin;
+            if (dot(d, d) <= 1.0 / 64 || capsuleFits(c.w, p, feet, h)) s.origin = feet;
+        }
+    } else {
+        tr = c.w.traceRay(s.origin + Vec3{0, 0, h}, s.origin - Vec3{0, 0, reach});
     }
-    // The game's ground trace is a flat-bottomed cylinder reaching 16 units down (collision type 1): when the capsule's
-    // round bottom rests on a steep face, the floor under the feet is what the player stands on.
-    if (tr.plane.n.z < c.p.minWalkNormal) {
-        const auto under = c.w.traceRay(c.s.origin + Vec3{0, 0, 1}, c.s.origin - Vec3{0, 0, c.p.stepDownSnap});
-        if (under.fraction < 1 && !under.startSolid && under.plane.n.z >= c.p.minWalkNormal) {
-            c.s.groundNormal = under.plane.n;
-            c.s.onGround = true;
+    const auto noSupport = [&] {
+        s.steepTime = 0;
+        s.steepContact = false;
+    };
+    s.groundPlane = false;
+    if (tr.fraction >= 1.0 || tr.allSolid) {
+        s.onGround = false;
+        return noSupport();
+    }
+    if (s.velocity.z > 0 && dot(s.velocity, tr.plane.n) > 10) {  // moving up and away: a jump just started
+        s.onGround = false;
+        return noSupport();
+    }
+    s.groundPlane = true;
+    const bool walkable = tr.plane.n.z >= p.minWalkNormal;
+    if (!walkable && !airborne && !jumping) {
+        if (s.steepTime <= p.steepSupportSeconds) {  // the ledge walk (timer at PlayerState + 200 in Replay)
+            s.groundNormal = Vec3{0, 0, 1};
+            s.onGround = true;
+            s.steepContact = true;
             return;
         }
+    } else {
+        noSupport();
     }
-    // Ledge walk (Replay120GroundTrace / PM_GroundTrace_ProbeAndResolve 0x140CD90C0): a grounded player, not within
-    // 0.5 s of a jump, keeps level support on a plane too steep to stand on for up to 0.3 s, so a low steep prop is
-    // walked over instead of sliding the player back.
-    if (tr.plane.n.z < c.p.minWalkNormal && c.s.onGround && !c.s.jumpingState && c.s.sinceJump >= c.p.jumpMinInterval &&
-        c.s.steepTime <= c.p.steepSupportSeconds) {
-        c.s.groundNormal = Vec3{0, 0, 1};
-        c.s.steepContact = true;
-        return;
-    }
-    c.s.groundNormal = tr.plane.n;
-    c.s.onGround = tr.plane.n.z >= c.p.minWalkNormal;
+    s.groundNormal = tr.plane.n;
+    s.onGround = walkable;
 }
 
 // Quake 3 PM_SlideMove: up to four bumps, clipping the velocity against every plane touched. On the ground a face
@@ -80,19 +129,21 @@ bool slideMove(Ctx& c, double dt, bool gravity) {
         const Vec3 wn = normalize(w);
         return dot(wn, c.s.velocity) > 0 ? n : wn;
     };
+    // The ground plane (walkable or not: PM_ResolveGroundedMovement passes it while the ground trace has one) is the
+    // first clip plane, and the gravity half-step slides along it.
     Vec3 endVelocity = c.s.velocity;
     if (gravity) {
         endVelocity.z -= c.p.gravity * dt;
         c.s.velocity.z = (c.s.velocity.z + endVelocity.z) * 0.5;
-        if (c.s.onGround) c.s.velocity = clipVelocity(c.s.velocity, c.s.groundNormal, kOverbounce);
+        if (c.s.groundPlane) c.s.velocity = clipVelocity(c.s.velocity, c.s.groundNormal, kOverbounce);
     }
-    if (c.s.onGround) planes[numPlanes++] = c.s.groundNormal;
+    if (c.s.groundPlane) planes[numPlanes++] = c.s.groundNormal;
     if (length(c.s.velocity) > 1e-9) planes[numPlanes++] = normalize(c.s.velocity);
     double timeLeft = dt;
     int bump = 0;
     for (; bump < 4; ++bump) {
         const Vec3 end = c.s.origin + c.s.velocity * timeLeft;
-        const auto tr = c.w.traceCapsule(c.s.origin, end, c.p.radius, c.maxs.z);
+        const auto tr = moveTrace(c, c.s.origin, end);
         if (tr.allSolid) {
             c.s.velocity.z = 0;
             return true;
@@ -143,59 +194,60 @@ bool slideMove(Ctx& c, double dt, bool gravity) {
     return bump != 0;
 }
 
-// PM_StepSlideMove (0x14112F370): a blocked move is tried again from up to 18 units higher (an up trace of 19, step =
-// fraction * 19 - 1) and put back down; the step is kept only if it lands on a plane with normal z >= 0.3, has gained
-// no more than 36 x that normal z, and got further than the plain slide; otherwise the plain slide stands (no
-// stepping onto steep faces, which slid the player back down: bobbing against low stock props). Stepping up is allowed
-// only from the ground. (Walking down is the ground trace's stick extension, below.)
+// The move. Under collision type 1 Replay has no step move: PM_ResolveGroundedMovement (0x141130790) returns after
+// PM_SlideMove (plus a prone-only capsule move) when PhysicsQuery_AlwaysAcceptsHit. A step is climbed because the
+// capsule's round bottom, the stick height above the feet, rides up to the edge until the flat ground prism reaches the
+// top, and the next ground trace stands the feet there: about 17.3 face-on to a side of the prism, up to 23 toward
+// its corners (research 140 section 8.4). The editor's capsule trace is plane expansion, square at edges (it stops a full
+// radius from a face at any height), so a stand-in does the climb: Replay's own PM_StepSlideMove (0x14112F370, the
+// type 0 rules) lifting the raised capsule by stepSize - stick, so the feet climb stepSize (18) all around. A blocked
+// move (or one on ground flatter than normal z 0.9 does not need) is tried again from up to that much higher (an up
+// trace of lift = stepSize - stick + 1, step = fraction x lift - 1, at least 1) and put back down by the step, 9 more
+// on a ground plane; it stands when the
+// landing plane has normal z >= 0.3 and the step gained no more than 36 x that normal z, or when nothing was under
+// it (dropped back by the step), and only if it got further along the start velocity than the plain slide.
+// `allowStep` false: the slide alone (the air, the ladder).
 void stepSlideMove(Ctx& c, double dt, bool gravity, bool allowStep) {
     const Vec3 startO = c.s.origin, startV = c.s.velocity;
-    if (!slideMove(c, dt, gravity)) return;  // moved the whole way
+    const bool walking = c.s.groundPlane;  // the ground trace's plane flag (walkable or not)
+    const bool blocked = slideMove(c, dt, gravity);
     if (!allowStep) return;
-    const Vec3 down = startO - Vec3{0, 0, c.p.stepSize};
-    const auto downTr = c.w.traceCapsule(startO, down, c.p.radius, c.maxs.z);
-    // Moving up (a jump, not the trace of a slope clip left in the velocity) with no ground below: no step.
-    if (startV.z > 10 && (downTr.fraction == 1.0 || dot(downTr.plane.n, Vec3{0, 0, 1}) < 0.7)) return;
+    const double lift = std::max(c.p.stepSize - stickFor(c.p, c.maxs.z), 0.0) + 1;
     const Vec3 slideO = c.s.origin, slideV = c.s.velocity;
-    const auto upTr = c.w.traceCapsule(startO, startO + Vec3{0, 0, c.p.stepSize + 1}, c.p.radius, c.maxs.z);
-    if (upTr.allSolid) return;
-    const double stepHeight = (c.p.stepSize + 1) * upTr.fraction - 1;
-    if (stepHeight < 1) return;
-    c.s.origin = startO + Vec3{0, 0, stepHeight};
-    c.s.velocity = startV;
-    slideMove(c, dt, gravity);
-    const Vec3 dn = c.s.origin - Vec3{0, 0, stepHeight};
-    const auto dnTr = c.w.traceCapsule(c.s.origin, dn, c.p.radius, c.maxs.z);
-    if (!dnTr.allSolid) c.s.origin = dnTr.end;
-    const auto keepPlain = [&] {
-        c.s.origin = slideO;
-        c.s.velocity = slideV;
+    const auto progress = [&](const Vec3& o) { return (o.x - startO.x) * startV.x + (o.y - startO.y) * startV.y; };
+    const auto finish = [&] {  // the stepped move only if it got further than the plain slide
+        if (!(progress(c.s.origin) > progress(slideO) + 0.001)) {
+            c.s.origin = slideO;
+            c.s.velocity = slideV;
+        }
     };
-    // Progress along the original horizontal direction of motion.
-    const double hv = std::hypot(startV.x, startV.y);
-    const auto along = [&](const Vec3& a) {
-        return hv > 1e-9 ? ((a.x - startO.x) * startV.x + (a.y - startO.y) * startV.y) / hv : 0.0;
-    };
-    if (dnTr.fraction < 1) {
-        const double gained = c.s.origin.z - std::max(slideO.z, startO.z);
-        if (dnTr.plane.n.z < c.p.minWalkNormal && !dnTr.startSolid) {
-            // A landing on a face too steep to stand on. Replay keeps it for normal z >= 0.3; its flat ground cylinder
-            // then stands on whatever is under its rim. The editor's capsule has a round bottom, so it keeps such a step
-            // only when the stepped move really got further (over a crate's chamfered edge), not when it only crept up
-            // a steep face (the bobbing against low stock props).
-            if (along(c.s.origin) - along(slideO) < c.p.steepStepMinProgress) return keepPlain();
-            // Not clipped by the steep face: that would turn the walk into vertical speed and stall the next step.
-        } else if (gained > dnTr.plane.n.z * 36.0) {
-            return keepPlain();
+    double stepHeight = 0;
+    if (blocked || (walking && c.s.groundNormal.z < 0.9)) {
+        const auto upTr = moveTrace(c, startO, startO + Vec3{0, 0, lift});
+        stepHeight = upTr.allSolid ? 0.0 : lift * upTr.fraction - 1;
+        if (stepHeight >= 1) {
+            c.s.origin = startO + Vec3{0, 0, stepHeight};
+            c.s.velocity = startV;
+            slideMove(c, dt, gravity);
         } else {
-            c.s.velocity = clipVelocity(c.s.velocity, dnTr.plane.n, kOverbounce);
+            stepHeight = 0;
         }
     }
-    // Keep the step only if it got further along the original velocity than the plain slide.
-    if (along(c.s.origin) <= along(slideO) + 0.001) {
-        c.s.origin = slideO;
-        c.s.velocity = slideV;
+    if (!walking && stepHeight == 0) return finish();
+    const auto dnTr = moveTrace(c, c.s.origin, c.s.origin - Vec3{0, 0, stepHeight + (walking ? 9.0 : 0.0)});
+    if (dnTr.fraction >= 1) {
+        c.s.origin.z -= stepHeight;
+        return finish();
     }
+    if (!dnTr.allSolid && dnTr.plane.n.z >= 0.3) {
+        c.s.origin = dnTr.end;
+        if (stepHeight == 0 || c.s.origin.z - std::max(slideO.z, startO.z) <= dnTr.plane.n.z * 36.0) {
+            c.s.velocity = c.s.velocity - dnTr.plane.n * dot(c.s.velocity, dnTr.plane.n);  // PM_ProjectVectorOntoPlane
+            return finish();
+        }
+    }
+    c.s.origin = slideO;
+    c.s.velocity = slideV;
 }
 
 // PM_Friction (0x141121160): drop = friction * max(100, speed) * scale * dt, on the ground only.
@@ -497,7 +549,7 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
         const double speed = p.noclipSpeed * (in.sprint ? 2.0 : 1.0);
         s.velocity = length(wish) > 1e-9 ? normalize(wish) * speed : Vec3{};
         s.origin = s.origin + s.velocity * dt;
-        s.onGround = false;
+        s.onGround = s.groundPlane = false;
         s.sprinting = s.tacticalSprinting = s.sliding = s.mantling = false;
         return;
     }
@@ -514,7 +566,7 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
 
     // Stance: prone > crouch > stand; rising only when there is room. A slide keeps the crouched stance; prone needs
     // the ground (PM_AirMove turns a prone request in the air into a crouch).
-    auto fits = [&](double h) { return !world.traceCapsule(s.origin, s.origin, p.radius, h).startSolid; };
+    auto fits = [&](double h) { return capsuleFits(world, p, s.origin, h); };
     const bool proneWanted = in.prone && (s.onGround || s.prone);
     if (proneWanted) {
         s.prone = true;
@@ -529,8 +581,7 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
         else if (s.crouched && fits(p.standHeight)) s.crouched = false;
     }
     Ctx c{world, p, s, playerMins(p), stanceMaxs(p, s)};
-    groundTrace(c);
-    const bool wasGround = s.onGround;
+    groundTrace(c, true, dt);  // the first pass: puts the feet on the ground
     // Landing friction starts on the first grounded frame after a jump (Jump_ApplySlowdown with pm_time 0).
     if (s.jumpingState && s.onGround && s.landingMs <= 0) s.landingMs = p.jumpLandingSeconds * 1000.0;
 
@@ -642,7 +693,7 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
                 s.onLadder = false;
                 s.velocity = normalize(s.ladderNormal + Vec3{0, 0, p.ladderJumpUpDesire}) * p.ladderJumpBack;
                 stepSlideMove(c, dt, true, false);
-                groundTrace(c);
+                groundTrace(c, false, dt);
                 updateViewHeight(p, s, dt);
                 return;
             }
@@ -664,7 +715,7 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
             s.velocity = Vec3{0, 0, s.velocity.z} - s.ladderNormal * (p.ladderMagnetism * std::clamp(lc.gap / 10.0, 0.1, 1.0));
             stepSlideMove(c, dt, false, false);
             s.velocity = Vec3{0, 0, s.velocity.z};
-            groundTrace(c);
+            groundTrace(c, false, dt);
             if (s.onGround && in.forward < 0) s.onLadder = false;  // climbed down to the floor
             updateViewHeight(p, s, dt);
             return;
@@ -678,7 +729,6 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
 
     // Jump (Jump_Check 0x141101570): a fresh press on the ground, standing (or late out of a slide), 0.5 s after the
     // last jump start.
-    bool jumped = false;
     if (in.jump && !s.jumpHeld && s.onGround && s.sinceJump >= p.jumpMinInterval) {
         const bool lateSlide = !s.sliding && s.sinceSlideEnd < p.slideLateJumpSeconds && fits(p.standHeight);
         if (!s.prone && (!s.crouched || lateSlide)) {
@@ -701,7 +751,7 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
                 s.velocity.y *= hscale;
             }
             s.velocity.z = std::sqrt(2.0 * p.gravity * height);
-            s.onGround = false;
+            s.onGround = s.groundPlane = false;  // jumping away from the ground plane (no air clip against it)
             s.jumpingState = true;
             s.landingMs = 0;
             s.sinceJump = 0;
@@ -709,7 +759,6 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
             s.sprinting = s.tacticalSprinting = false;
             s.sprintButtonUpRequired = false;
             s.sliding = false;
-            jumped = true;
         }
     }
 
@@ -768,23 +817,13 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
         if (const double l = length(s.velocity); l > 1e-9) s.velocity = s.velocity * (speed0 / l);
         stepSlideMove(c, dt, false, true);
     } else {
-        stepSlideMove(c, dt, true, false);
+        // PM_AirMove (0x14111CBA0): a plane the ground trace hit but cannot stand on is slid along (PM_ClipSlideVelocity).
+        if (s.groundPlane) s.velocity = clipVelocity(s.velocity, s.groundNormal, kOverbounce);
+        stepSlideMove(c, dt, true, false);  // no step in the air: the ground trace's snap lands the player on edges
     }
-    groundTrace(c);
-
-    // Walking down stairs or off a short ledge (Replay120GroundTrace, collision type 1): grounded and not within 0.5 s
-    // of a jump, the ground trace reaches 16 units below the feet (playerCollisionStickExtension) and stands the player
-    // on a walkable surface found there.
-    if (wasGround && !s.onGround && !jumped && !s.jumpingState && s.sinceJump >= p.jumpMinInterval && s.velocity.z <= 0) {
-        const Vec3 down = s.origin - Vec3{0, 0, p.stepDownSnap};
-        const auto tr = world.traceCapsule(s.origin, down, p.radius, c.maxs.z);
-        if (tr.fraction < 1 && !tr.startSolid && !tr.allSolid && tr.plane.n.z >= p.minWalkNormal) {
-            s.origin = tr.end;
-            s.onGround = true;
-            s.groundNormal = tr.plane.n;
-            s.velocity.z = 0;
-        }
-    }
+    // The second pass. Walking down a stair or off a short ledge stays grounded here (the ray reaches 16 below the feet
+    // on the ground) and the next frame's first pass puts the feet down.
+    groundTrace(c, false, dt);
     if (s.onGround && s.velocity.z < 0) s.velocity.z = 0;
 
     // Timers: landing friction counts down from 1000 ms; the jump state ends with it.
@@ -822,17 +861,20 @@ bool placePlayer(const CollisionWorld& world, PlayerState& s, const Vec3& from, 
     const Vec3 maxs = playerMaxs(p, false);
     Vec3 start = from;
     // Out of a solid: try a few heights above.
-    for (int k = 0; k < 64 && world.traceCapsule(start, start, p.radius, maxs.z).startSolid; ++k) start.z += 8;
-    const auto tr = world.traceCapsule(start, start - Vec3{0, 0, 8192}, p.radius, maxs.z);
+    for (int k = 0; k < 64 && !capsuleFits(world, p, start, maxs.z); ++k) start.z += 8;
+    // Down onto the ground as the ground trace stands the player: the flat prism, the feet the skin above it.
+    const double stick = stickFor(p, maxs.z);
+    const auto tr = world.traceCylinder(start + Vec3{0, 0, stick}, start - Vec3{0, 0, 8192}, p.radius,
+                                        std::max(maxs.z - 2 * p.radius - stick, 1.0));
     if (tr.fraction == 1.0 || tr.allSolid) {
         s.origin = start;
         s.velocity = Vec3{};
-        s.onGround = false;
+        s.onGround = s.groundPlane = false;
         return false;
     }
-    s.origin = tr.end;
+    s.origin = tr.end + Vec3{0, 0, p.groundSkin};
     s.velocity = Vec3{};
-    s.onGround = true;
+    s.onGround = s.groundPlane = true;
     s.groundNormal = tr.plane.n;
     s.crouched = false;
     s.prone = false;

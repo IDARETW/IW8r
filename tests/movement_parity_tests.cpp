@@ -388,6 +388,7 @@ TEST(parity_ladder_behind_a_model_collision) {
         climbed |= s.onLadder;
         top = std::max(top, s.origin.z);
     }
+    steps(w, s, MoveInput{}, p, 2);  // a step lands the raised capsule; the next ground pass puts the feet on the top
     std::printf("  ladder behind a model: top %.1f, end %.1f %.1f %.1f ground %d ladder %d\n", top, s.origin.x, s.origin.y, s.origin.z,
                 int(s.onGround), int(s.onLadder));
     CHECK(climbed);
@@ -602,4 +603,100 @@ TEST(parity_steps_onto_a_chamfered_box) {
         if (!on) std::printf("  chamfer %.0f: end %.1f %.1f ground %d\n", deg, s.origin.x, s.origin.z, int(s.onGround));
         CHECK(on);
     }
+}
+
+namespace {
+
+// A convex slab with its top at `top`, bounded on one side by the vertical plane dot(e, x) <= 0 (e level): the edge the
+// player stands over.
+CollisionWorld edgeWorld(const Vec3& e, double top) {
+    CollisionWorld w = mpWorld();
+    const Vec3 side{-e.y, e.x, 0};
+    w.addConvex({{Vec3{0, 0, 1}, top}, {Vec3{0, 0, -1}, 0}, {e, 0}, {e * -1.0, 400}, {side, 400}, {side * -1.0, 400}});
+    return w;
+}
+
+}  // namespace
+
+// Replay's player collision, type 1 (research 140 section 8): the ground is found by a flat-bottomed 8-sided prism
+// (corners on the axes), the movement capsule's bottom is 8 above the feet, the feet stand 0.125 above the ground.
+TEST(parity_collision_type1_ground_prism) {
+    const MoveParams p;
+    constexpr double kPi = 3.14159265358979323846;
+    {  // The prism's flat bottom rests on a low ridge: the contact is level (the solid's axial bevel).
+        CollisionWorld w = mpWorld();
+        const double a = 60 * kPi / 180, run = 6 / std::tan(a);
+        CHECK(w.addConvex({{Vec3{0, 0, -1}, 0},
+                           {Vec3{-std::sin(a), 0, std::cos(a)}, -std::sin(a) * (200 - run)},
+                           {Vec3{std::sin(a), 0, std::cos(a)}, std::sin(a) * (200 + run)},
+                           {Vec3{0, 1, 0}, 400},
+                           {Vec3{0, -1, 0}, 400}}));
+        const auto tr = w.traceCylinder({190, 0, 40}, {190, 0, -10}, 15, 32);
+        CHECK(tr.fraction < 1 && tr.plane.n.z > 0.99 && std::fabs(tr.end.z - 6) < 0.1);
+    }
+    // The footprint: a corner reaches 15 along the axes and the diagonals, a flat side 15 cos 22.5 = 13.86 between them.
+    // A player placed over a 40-unit platform's edge stands on it while the footprint overlaps the top.
+    for (const double deg : {0.0, 45.0, 22.5}) {
+        const Vec3 e{std::cos(deg * kPi / 180), std::sin(deg * kPi / 180), 0};
+        const double reach = deg == 22.5 ? 15 * std::cos(22.5 * kPi / 180) : 15.0;
+        const CollisionWorld w = edgeWorld(e, 40);
+        PlayerState on, off;
+        placePlayer(w, on, e * (reach - 0.4) + Vec3{0, 0, 100}, p);
+        placePlayer(w, off, e * (reach + 0.4) + Vec3{0, 0, 100}, p);
+        CHECK(std::fabs(on.origin.z - 40 - p.groundSkin) < 0.1);
+        CHECK(off.origin.z < 1);
+        steps(w, on, MoveInput{}, p, 60);  // stands there: both ground passes keep it
+        CHECK(std::fabs(on.origin.z - 40 - p.groundSkin) < 0.1 && std::fabs(dot(on.origin, e) - (reach - 0.4)) < 0.1);
+    }
+}
+
+// The raised movement capsule: a 6-unit curb (under the 8 stick) never blocks the walk, the ground prism stands the feet
+// on it; the step stand-in climbs 18 (17 is climbed, 20 and 24 are not).
+TEST(parity_collision_type1_stick_and_step) {
+    const MoveParams p;
+    MoveInput in;
+    in.forward = 1;
+    {
+        const CollisionWorld w = mpWorld(mpBox(200, -200, 0, 600, 200, 6));
+        PlayerState s = placed(w, p, {0, 0, 50});
+        steps(w, s, in, p, 40);  // up to speed
+        double minSpeed = 1e9;
+        for (int i = 0; i < 60; ++i) {
+            playerMove(w, s, in, p);
+            minSpeed = std::min(minSpeed, hs(s));
+        }
+        CHECK(s.origin.x > 260 && std::fabs(s.origin.z - 6 - p.groundSkin) < 0.1 && s.onGround);
+        CHECK(minSpeed > 180);  // 190 x 1.15 x 0.86 = 188 steady
+    }
+    for (const double h : {17.0, 20.0, 24.0}) {
+        const CollisionWorld w = mpWorld(mpBox(200, -200, 0, 600, 200, h));
+        PlayerState s = placed(w, p, {0, 0, 50});
+        steps(w, s, in, p, 120);
+        if (h < p.stepSize) CHECK(s.origin.x > 220 && std::fabs(s.origin.z - h - p.groundSkin) < 0.1);
+        else CHECK(s.origin.x < 186 && s.origin.z < 1);
+    }
+}
+
+// The ledge walk (PM_GroundTrace_ProbeAndResolve: grounded, outside a jump's first 500 ms, a plane too steep to stand
+// on gives level support for 0.3 s), then PM_AirMove slides along it. A 46 degree slope (normal z 0.695): the prism's
+// uphill corner rests on it and the centre ray meets it 15.5 below the feet, inside the 16 reach.
+TEST(parity_ledge_walk_then_slide_on_a_steep_slope) {
+    const MoveParams p;
+    const double a = 46 * 3.14159265358979323846 / 180;
+    CollisionWorld w = mpWorld();
+    CHECK(w.addConvex({{Vec3{0, 0, -1}, 0},
+                       {Vec3{-std::sin(a), 0, std::cos(a)}, 0},  // z <= x tan a
+                       {Vec3{1, 0, 0}, 600},
+                       {Vec3{0, 1, 0}, 300},
+                       {Vec3{0, -1, 0}, 300}}));
+    PlayerState s = placed(w, p, {300, 0, 800});
+    const double z0 = s.origin.z;
+    CHECK(z0 > 300 && s.onGround);
+    double zAt025 = 0;
+    for (int i = 0; i < 60; ++i) {
+        playerMove(w, s, MoveInput{}, p);
+        if (i == 14) zAt025 = s.origin.z;  // 0.25 s
+    }
+    CHECK(std::fabs(zAt025 - z0) < 0.01);  // held by the ledge walk
+    CHECK(s.origin.z < z0 - 5 && s.origin.x < 300 - 3);  // then slid down the slope
 }

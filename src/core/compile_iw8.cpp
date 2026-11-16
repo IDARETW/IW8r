@@ -1943,13 +1943,9 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             if (choice.source == ModelCollisionSource::PhysicsShape && opt.modelCollisionHulls) {
                 auto pp = physicsPlanes.find(choice.shape);
                 if (pp == physicsPlanes.end())
-                    pp = physicsPlanes.emplace(choice.shape, physicsShapePlanes(*choice.shape, size_t(std::max(0, opt.modelCollisionMaxPlanes)))).first;
+                    pp = physicsPlanes.emplace(choice.shape, physicsShapePlanes(*choice.shape, size_t(std::max(0, opt.modelCollisionMaxPlanes)),
+                                                                                opt.modelCollisionMaxPieces)).first;
                 const Vec3 axis[3] = {ax[0], ax[1], ax[2]};
-                AABB pb;
-                for (const auto& piece : choice.shape->pieces)
-                    for (const Vec3& v : piece) pb.add(o + (ax[0] * v.x + ax[1] * v.y + ax[2] * v.z) * ms);
-                pb.mins = pb.mins - Vec3{1, 1, 1};
-                pb.maxs = pb.maxs + Vec3{1, 1, 1};
                 size_t made = 0;
                 for (const auto& pc : pp->second) {
                     CollisionBrush hb;
@@ -1957,6 +1953,11 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     hb.surfaceType = surfaceOfModel(*mv);
                     hb.modelHull = true;
                     hb.planes = placePlanes(pc, o, axis, ms);
+                    // The brush's own bounds (a simplified or widened piece reaches a little past the shape's points).
+                    AABB pb;
+                    if (hb.planes.empty() || !convexSolidBounds(hb.planes, pb)) continue;
+                    pb.mins = pb.mins - Vec3{1, 1, 1};
+                    pb.maxs = pb.maxs + Vec3{1, 1, 1};
                     hb.bounds = pb;
                     g.bounds.add(hb.bounds);
                     g.brushes.push_back(std::move(hb));

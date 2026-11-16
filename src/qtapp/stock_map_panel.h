@@ -112,6 +112,7 @@ public slots:
 
 protected:
     void showEvent(QShowEvent* e) override;
+    void changeEvent(QEvent* e) override;  // font / style changes: the row labels are sized again
 
 private:
     struct KeyEdit {
@@ -156,6 +157,8 @@ private:
     QSlider* yawSlider_ = nullptr;
     QDoubleSpinBox* yawSpin_ = nullptr;
     QLabel* sunInfo_ = nullptr;
+    std::vector<QLabel*> rowLabels_;  // Colour / Intensity / Pitch / Yaw: one width, from the current font
+    void fitRowLabels();
     QCheckBox* gameLighting_ = nullptr;
     QPushButton* resetSun_ = nullptr;
     // Sky

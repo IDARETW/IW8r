@@ -47,8 +47,15 @@ struct MoveParams {
     double sprintLeapHeight = 50;        // sprintLeap_height
     double sprintLeapSeconds = 0.3;      // sprintLeap_minSprintTimeMs 300
     double sprintLeapForwardScale = 0.4; // sprintLeap_forwardVelocityScale
-    double stepSize = 18;           // PM_StepSlideMove: up 19, step = fraction * 19 - 1
+    double stepSize = 18;           // the climb the step stand-in allows the feet (stepSlideMove; type 1: 17.3 .. 23)
     double stepDownSnap = 16;       // ground trace stick extension (playerCollisionStickExtension) while grounded
+    // Player collision type 1 (research 140 section 8): the movement capsule's bottom is raised by the stick height,
+    // stickHeight / 40 x 2 (half height - radius): 8 standing, 4 crouched, 0 prone (MP constant 8; SP dvar
+    // bg_standStickHeightBase); the ground is found by a flat-bottomed 8-sided prism swept from stick + radius above
+    // the feet; the feet stand groundSkin above what it hits.
+    double stickHeight = 8;
+    double groundSkin = 0.125;
+    double groundJumpWindow = 0.5;  // the ground trace treats the first 500 ms after a jump start as jumping
     double accelerate = 9, crouchAccelerate = 12, proneAccelerate = 19, airAccelerate = 1;  // PM_WalkMove literals
     double accelMinSpeed = 100;     // PM_Accelerate: accel * dt * max(100, wishspeed)
     double friction = 5.5, stopSpeed = 100;  // PM_Friction: friction * max(100, speed) * dt
@@ -59,7 +66,6 @@ struct MoveParams {
     double standLerp = 0.2, crouchDownLerp = 0.2, crouchUpLerp = 0.4, proneLerp = 0.4, mantleCrouchLerp = 0.1;
     double minWalkNormal = 0.7;     // PM_GroundTrace: cos(45.573 deg)
     double steepSupportSeconds = 0.3;  // ground trace ledge walk: level support on a too-steep plane for this long
-    double steepStepMinProgress = 1;   // editor: a step landing on a too-steep face must get this much further
     double pitchLimit = 85;         // PM_ClampViewPitch: +-85 degrees
     double noclipSpeed = 570;       // PM_CmdScale: 3 x g_speed for pm_type noclip
     // Slide (Slide_CanSlide / Slide_EndCheck; times and scales from the suit).
@@ -124,6 +130,7 @@ struct PlayerState {
     bool sprintButtonUpRequired = false;
     bool sprintRestore = false;   // PM_SetSprintRestore: the sprint comes back by itself (after a jump, a crouch)
     bool jumpingState = false;    // jump started and landing friction not finished
+    bool groundPlane = false;     // the last ground trace hit a plane, walkable or not (PM_AirMove slides along it)
     bool steepContact = false;    // the ground trace stood the player on a too-steep plane (ledge walk support)
     double steepTime = 0;         // how long that support has lasted
     double landingMs = 0;         // landing friction timer (pm_time analogue), 1000 .. 0

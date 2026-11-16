@@ -142,6 +142,9 @@ struct Runner {
                 show("up8", world.traceCapsule(s.origin + Vec3{0, 0, 8}, s.origin + Vec3{0, 0, 8}, mp.radius, mp.standHeight));
                 show("drop", world.traceCapsule(s.origin + Vec3{0, 0, 60}, s.origin - Vec3{0, 0, 200}, mp.radius, mp.standHeight));
                 show("ray", world.traceRay(s.origin + Vec3{0, 0, 60}, s.origin - Vec3{0, 0, 200}));
+                // The two ground passes (collision type 1, research 140 section 8): the prism, the centre ray.
+                show("prism", world.traceCylinder(s.origin + Vec3{0, 0, 23}, s.origin - Vec3{0, 0, 16}, mp.radius, 32));
+                show("ray70", world.traceRay(s.origin + Vec3{0, 0, mp.standHeight}, s.origin - Vec3{0, 0, 16}));
                 // Every solid the standing capsule overlaps right here (one-solid static tests through tiny worlds).
                 int listed = 0;
                 for (size_t i = 0; i < world.solids().size() && listed < 8; ++i) {
