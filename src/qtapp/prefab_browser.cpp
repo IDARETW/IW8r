@@ -29,6 +29,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPainter>
+#include <QPointer>
 #include <QPen>
 #include <QPushButton>
 #include <QResizeEvent>
@@ -59,6 +60,7 @@ enum Role {
     kModelRoots,               // a bundle's own model folder
     kPlaceable,
     kFromFile,                 // the picture shown came from kThumbFile
+    kPeekMissed,               // the pack has no picture: drawn or made by the picture source
 };
 
 // The badge drawn over a bundle's picture: a filled strip along the bottom with the word in it.
@@ -223,7 +225,11 @@ PrefabBrowser::PrefabBrowser(RootsFn roots, InsertFn insert, QWidget* parent)
     thumbTimer_ = new QTimer(this);
     thumbTimer_->setInterval(30);
     connect(thumbTimer_, &QTimer::timeout, this, [this] { loadVisibleThumbnails(); });
-    connect(list_->verticalScrollBar(), &QScrollBar::valueChanged, this, [this] { thumbTimer_->start(); });
+    // Stored pictures are asked for on every scroll step (the decoder keeps up with a flick); drawings wait for the timer.
+    connect(list_->verticalScrollBar(), &QScrollBar::valueChanged, this, [this] {
+        if (decoder_) loadVisibleThumbnails();
+        thumbTimer_->start();
+    });
     lay->addWidget(list_, 1);
     // How many are listed, or why the list is empty (no prefab folders, or nothing matches the filter).
     count_ = new QLabel(this);
@@ -327,11 +333,17 @@ PrefabBrowser::ModelMeshFn& modelMeshFn() {
 }
 bool g_thumbIncomplete = false;
 PrefabBrowser::PictureFn g_pictureSource;
+PrefabBrowser::PicturePeek g_picturePeek;
 }  // namespace
 
 void PrefabBrowser::setModelMesh(ModelMeshFn fn) { modelMeshFn() = std::move(fn); }
 bool PrefabBrowser::lastThumbnailIncomplete() { return g_thumbIncomplete; }
 void PrefabBrowser::setPictureSource(PictureFn fn) { g_pictureSource = std::move(fn); }
+void PrefabBrowser::setPicturePeek(PicturePeek fn) {
+    // IW8R_THUMB_DECODER=0: the pictures load on the GUI thread as before (thumb_bench.h compares the two).
+    if (qEnvironmentVariable("IW8R_THUMB_DECODER") == "0") return;
+    g_picturePeek = std::move(fn);
+}
 
 void PrefabBrowser::refreshIncomplete() {
     bool any = false;
@@ -339,6 +351,7 @@ void PrefabBrowser::refreshIncomplete() {
         QListWidgetItem* it = list_->item(i);
         if (!it->data(Qt::UserRole + 3).toBool()) continue;
         it->setData(Qt::UserRole + 1, false);
+        it->setData(kPeekMissed, false);  // made by now: the pack may have it
         any = true;
     }
     if (any && thumbTimer_) thumbTimer_->start();
@@ -545,6 +558,7 @@ QImage PrefabBrowser::thumbnail(const QString& mapFile, int size, const QStringL
 
 void PrefabBrowser::refresh() {
     scanned_ = true;
+    decoding_.clear();  // the items it points at are deleted now
     list_->clear();
     const QStringList roots = roots_ ? roots_() : QStringList();
     // Bundles first: each .iw8prefab folder is one entry with its manifest's title, description and tags.
@@ -620,20 +634,124 @@ void PrefabBrowser::refresh() {
     }
     setFilter(filter_->text());
     thumbTimer_->start();
+    ensureDecoder();
+    if (decoder_) {
+        // The first page's stored pictures decoded now, before the list is laid out and shown.
+        QStringList want;
+        QMultiHash<QString, QListWidgetItem*> asked;
+        for (int i = 0; i < list_->count() && asked.size() < 24; ++i) {
+            QListWidgetItem* it = list_->item(i);
+            if (it->isHidden()) continue;
+            if (const QString key = decoderKey(it); !key.isEmpty()) {
+                if (!asked.contains(key)) want << key;
+                asked.insert(key, it);
+            }
+        }
+        decoding_ = asked;
+        decoder_->want(want, kThumb);
+    }
+}
+
+void PrefabBrowser::ensureDecoder() {
+    if (g_picturePeek && !decoder_) {
+        QPointer<PrefabBrowser> self(this);
+        decoder_ = std::make_unique<ThumbDecoder>(
+            [peek = g_picturePeek](const QString& key) -> QImage {
+                if (key.startsWith("png:")) return QImage(key.mid(4));  // a bundle's thumb.png
+                return peek(key);
+            },
+            [self](std::vector<ThumbDecoder::Result> results) {
+                if (self) self->applyDecoded(std::move(results));
+            },
+            this, 3);
+    }
 }
 
 void PrefabBrowser::loadVisibleThumbnails() {
-    // A few parses per tick, visible rows first; stops when every visible row has its thumbnail.
-    int done = 0;
+    // The tiles on screen and the next two pages: stored pictures come from the decoder (worker threads); the others are
+    // drawn here, a few per tick. Stops when every tile on screen is drawn or waits for the decoder.
+    ensureDecoder();
     const QRect view = list_->viewport()->rect();
-    for (int i = 0; i < list_->count() && done < 6; ++i) {
+    // Rows are laid out in order (hidden ones skipped): start a little before the row at the top-left corner instead of
+    // asking all 6,000 for their rectangle on every tick.
+    int start = 0;
+    if (const QModelIndex at = list_->indexAt(QPoint(8, 8)); at.isValid()) start = std::max(0, at.row() - 8);
+    else if (const QSize g = list_->gridSize(); g.width() > 0 && g.height() > 0 && filter_->text().isEmpty()) {
+        // Between tiles: the row the scroll position implies (only without a filter: hidden rows break the count).
+        const int cols = std::max(1, view.width() / g.width());
+        start = std::max(0, list_->verticalScrollBar()->value() / g.height() * cols - 2 * cols);
+    }
+    std::vector<QListWidgetItem*> onScreen, ahead;
+    for (int i = start; i < list_->count(); ++i) {
         QListWidgetItem* it = list_->item(i);
-        if (it->isHidden() || it->data(Qt::UserRole + 1).toBool()) continue;
-        if (!view.intersects(list_->visualItemRect(it))) continue;
-        loadThumbnail(it);
-        ++done;
+        if (it->isHidden()) continue;
+        const QRect r = list_->visualItemRect(it);
+        if (r.bottom() < view.top()) continue;
+        if (r.top() > view.bottom()) {
+            if (ahead.size() >= 2 * std::max<size_t>(onScreen.size(), 6)) break;
+            ahead.push_back(it);
+            continue;
+        }
+        onScreen.push_back(it);
+    }
+    int done = 0;
+    QStringList want;
+    QMultiHash<QString, QListWidgetItem*> asked;
+    const auto consider = [&](QListWidgetItem* it, bool visible) {
+        if (it->data(kDrawn).toBool()) return;
+        if (decoder_ && !it->data(kPeekMissed).toBool()) {
+            if (const QString key = decoderKey(it); !key.isEmpty()) {
+                if (!asked.contains(key)) want << key;
+                asked.insert(key, it);
+                return;
+            }
+        }
+        if (visible && done < 6) {
+            loadThumbnail(it);
+            ++done;
+        }
+    };
+    for (QListWidgetItem* it : onScreen) consider(it, true);
+    for (QListWidgetItem* it : ahead) consider(it, false);
+    if (decoder_) {
+        decoding_ = asked;
+        decoder_->want(want, kThumb);  // replaces what an older scroll position asked for
     }
     if (done == 0) thumbTimer_->stop();
+}
+
+QString PrefabBrowser::decoderKey(const QListWidgetItem* it) const {
+    if (!it->data(kIsBundle).toBool()) return it->data(kPath).toString();
+    if (const QString file = it->data(kThumbFile).toString(); !file.isEmpty()) return "png:" + file;
+    return it->data(kContents).toString();  // "" (nothing to show): drawn here
+}
+
+void PrefabBrowser::applyDecoded(std::vector<ThumbDecoder::Result> results) {
+    bool again = false;
+    for (const ThumbDecoder::Result& r : results) {
+        const QList<QListWidgetItem*> items = decoding_.values(r.name);
+        decoding_.remove(r.name);
+        for (QListWidgetItem* it : items) {
+            if (it->data(kDrawn).toBool()) continue;
+            if (r.image.isNull()) {
+                it->setData(kPeekMissed, true);  // nothing stored: drawn or made by the picture source
+                again = true;
+                continue;
+            }
+            QImage base(kThumb, kThumb, QImage::Format_ARGB32_Premultiplied);
+            base.fill(QColor(32, 34, 38));
+            {
+                QPainter p(&base);
+                p.drawImage((kThumb - r.image.width()) / 2, (kThumb - r.image.height()) / 2, r.image);
+            }
+            const bool bundle = it->data(kIsBundle).toBool();
+            it->setData(kDrawn, true);
+            it->setData(kIncomplete, false);
+            it->setData(kFromFile, r.name.startsWith("png:"));
+            it->setIcon(QIcon(QPixmap::fromImage(bundle ? withBadge(base, it->data(kBadge).toString(), true) : base)));
+        }
+    }
+    if (again && thumbTimer_) thumbTimer_->start();
 }
 
 void PrefabBrowser::loadThumbnail(QListWidgetItem* it) {
@@ -753,6 +871,22 @@ int PrefabBrowser::thumbnailsLoaded() const {
     int n = 0;
     for (int i = 0; i < list_->count(); ++i) n += list_->item(i)->data(Qt::UserRole + 1).toBool() ? 1 : 0;
     return n;
+}
+
+QScrollBar* PrefabBrowser::scrollBar() const { return list_->verticalScrollBar(); }
+
+VisibleThumbs PrefabBrowser::visibleThumbState() const {
+    VisibleThumbs s;
+    if (!list_->isVisible()) return s;
+    const QRect view = list_->viewport()->rect();
+    for (int i = 0; i < list_->count(); ++i) {
+        const QListWidgetItem* it = list_->item(i);
+        if (it->isHidden() || !view.intersects(list_->visualItemRect(it))) continue;
+        ++s.visible;
+        if (!it->data(kDrawn).toBool() || it->data(kIncomplete).toBool()) ++s.waiting;
+        else ++s.real;
+    }
+    return s;
 }
 
 int PrefabBrowser::count() const { return list_->count(); }

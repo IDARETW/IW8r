@@ -1,4 +1,7 @@
 #include "play_world.h"
+#include "collision_world.h"
+
+#include <cmath>
 #include "test_harness.h"
 
 #include <filesystem>
@@ -108,4 +111,34 @@ TEST(play_world_models_and_prefabs) {
     buildPlayWorld(*pr.map, PlayWorldOptions{}, bare, &st);
     CHECK(st.models == 0 && !blocked(bare, Vec3{40, 0, 1}, Vec3{160, 0, 1}));
     fs::remove_all(dir, ec);
+}
+
+// A stock map's world in the play preview (owner checklist 2026-11-15: walking a stock map fell back to noclip, its
+// world gave no collision): triangles added as facets, and the grid broad phase giving the same traces as a plain
+// pass over every solid.
+TEST(collision_triangles_and_grid) {
+    CollisionWorld small, big;
+    // A floor of 2 x 64 x 64 triangles (32-unit squares) at z = 0, and a wall at x = 512.
+    const auto floor = [](CollisionWorld& w, int n) {
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < n; ++j) {
+                const double x = i * 32.0 - 1024, y = j * 32.0 - 1024;
+                w.addTriangle(Vec3{x, y, 0}, Vec3{x + 32, y, 0}, Vec3{x + 32, y + 32, 0});
+                w.addTriangle(Vec3{x, y, 0}, Vec3{x + 32, y + 32, 0}, Vec3{x, y + 32, 0});
+            }
+        w.addTriangle(Vec3{512, -1024, 0}, Vec3{512, 1024, 0}, Vec3{512, 1024, 512});
+        w.addTriangle(Vec3{512, -1024, 0}, Vec3{512, 1024, 512}, Vec3{512, -1024, 512});
+    };
+    floor(big, 64);  // 8,194 solids: the grid is used
+    CHECK(big.solids().size() == 8194);
+    CHECK(!big.addTriangle(Vec3{0, 0, 0}, Vec3{1, 0, 0}, Vec3{2, 0, 0}));  // degenerate
+    const auto down = big.traceCapsule(Vec3{100, 37, 200}, Vec3{100, 37, -200}, 15, 70);
+    CHECK(down.fraction < 1.0 && std::fabs(down.end.z) < 1.5);  // lands on the floor
+    const auto across = big.traceCapsule(Vec3{0, 0, 10}, Vec3{900, 0, 10}, 15, 70);
+    CHECK(across.fraction < 1.0 && across.end.x < 512 && across.end.x > 480);  // stopped by the wall
+    // The same traces with a plain pass (a world below the grid threshold, cut to the same area).
+    floor(small, 16);
+    const auto down2 = small.traceCapsule(Vec3{-900, -900, 200}, Vec3{-900, -900, -200}, 15, 70);
+    const auto down3 = big.traceCapsule(Vec3{-900, -900, 200}, Vec3{-900, -900, -200}, 15, 70);
+    CHECK(std::fabs(down2.fraction - down3.fraction) < 1e-9);
 }

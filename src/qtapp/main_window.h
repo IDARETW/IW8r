@@ -31,6 +31,7 @@
 class QLabel;
 class QLineEdit;
 class QMenu;
+class QPushButton;
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 
@@ -46,6 +47,8 @@ class CDockAreaWidget;
 #include "stock_smodels.h"
 #include "stock_prop_fetch.h"
 #include "scene.h"  // app::ReferenceTexBatch (decal and terrain layer batches)
+#include "collision_world.h"
+#include "model_physics.h"
 
 namespace iw8r {
 struct GameModePreset;
@@ -93,6 +96,7 @@ public:
     CompilePanel* compilePanel() const { return compile_; }
     LogPanel* logPanel() const { return logPanel_; }    // Console dock
     ToastHost* toasts() const { return toasts_; }       // bottom-right toast notifications
+    class StockMapPanel* stockMapPanel() const { return stockMapPanel_; }  // side bar Stock Map panel (stock_map_panel.h)
     QAction* action(const QString& command) const { return actions_.value(command); }
     int lastShortcutRows() const { return lastShortcutRows_; }  // rows of the last Help > Keyboard Shortcuts sheet
     // Stock sky names for the Sun & Sky dialog (filled once the sky route lands; free text is always allowed).
@@ -290,6 +294,8 @@ public:
     bool enterPrefab();
     bool leavePrefab();
     int prefabDepth() const { return int(prefabStack_.size()); }
+    void updatePrefabBanner();
+    QPushButton* prefabLeave_ = nullptr;
     // Writes <work>/edit.ents (+ edit.spawns.ents) and returns the pipeline arguments; false without a stock map.
     bool prepareStockRebuild(const QString& work, QStringList* args, QString* err);
     // The fast path (converter editzone, research 88): writes <work>/edit.ents and <work>/edits.json and gives the
@@ -481,6 +487,31 @@ public:  // (also the GUI test)
                                      size_t* swapped);
 private:
     void refreshStockWorldPreview();
+    // The stock world's surfaces as play preview collision (opaque surfaces as facets; removal boxes respected).
+    size_t addStockWorldCollision(CollisionWorld& w) const;
+public:  // (also the GUI test)
+    // A stock map's own surface under a camera ray (owner checklist 2026-11-15, D5): the nearest world triangle
+    // (triangles of iw8r_remove_world boxes left out) or stock prop (its model box; hidden props left out).
+    struct StockSurfacePick {
+        QString material;  // a world surface's material ("" for a prop)
+        QString model;     // a prop's model ("" for the world)
+        uint32_t propIndex = 0;
+        Vec3 at;
+        double t = 0;
+        int mesh = -1;                 // the world mesh (-1 for a prop)
+        std::array<Vec3, 8> corners{};  // a prop's model box corners in world space (bit 0 x, 1 y, 2 z: max)
+    };
+    std::optional<StockSurfacePick> pickStockSurface(const Ray& ray) const;
+    // The camera's click on nothing of the document: the stock surface in the status bar (a world material also to
+    // stockSurfacePicked). False when there is no stock surface there.
+    bool showStockSurfaceAt(const Ray& ray);
+    mutable const void* stockPickBoundsFor_ = nullptr;  // the stock world stockPickBounds_ was made for
+    mutable std::vector<AABB> stockPickBounds_;          // per world mesh
+    std::map<std::string, std::array<float, 6>> refPropBoxes_;  // stock prop model boxes (model space), for picking
+signals:
+    void stockSurfacePicked(const QString& material);  // StockMapPanel::setPickedMaterial
+    void stockPropPicked(const QString& model, uint32_t row);  // a stock prop clicked in the camera (its smodel row)
+private:
     void applyStockSunPreview();
     std::shared_ptr<const std::vector<app::ReferenceTexBatch>> stockRefBatches_;
     QString stockWorldEditSig_;
@@ -576,6 +607,13 @@ public:
     size_t propLgvZones() const { return refPropLgvBase_.size(); }  // transient zones in the camera's light grid stack
     // The stock reference's prop placements (null before a stock map is shown): the bench's "prop" camera.
     std::shared_ptr<const std::vector<StockModelInstance>> referencePropPlacements() const { return refProps_; }
+    // The stock map's props as play preview collision, by the build's model collision rule (core model_physics.h,
+    // where the rule is explained): every placement within `radius` of `around` (radius <= 0: all); a prop without a stock physics
+    // asset (most bushes) is walked through, one with a physics asset blocks with its pieces, the rest with their
+    // render mesh's hull (made on a worker thread: such a prop is left out until it is ready, then added by a later
+    // call). Props the document hides are left out. Each call adds every placement in range: call it on a world built
+    // without them. GUI thread. main_window_stock_collision.cpp.
+    StockPropCollisionStats addStockPropCollision(CollisionWorld& world, const Vec3& around, double radius);
 private:
     std::shared_ptr<std::vector<app::GpuVertex>> refBaseTris_;
     size_t refWorldTris_ = 0;
@@ -742,6 +780,17 @@ private:
     std::map<std::string, std::shared_ptr<const struct VfxSimDef>> fxSims_;  // camera effect preview (8.1)
 public:
     QString findVfxExport(const QString& name) const;
+public:
+    // Exports a stock effect with ACTS when the caches hold none (from the zone the common effects catalogue lists);
+    // true while an export runs. vfxExportDone follows (Effect Info, the camera and the Effects panel refresh then).
+    bool requestVfxExport(const QString& name);
+    void refreshDockTabStyle();  // the panels' tab labels readable in every theme
+    QString dockBaseStyle_;
+signals:
+    void vfxExportDone(const QString& name, bool ok);
+private:
+    QSet<QString> vfxExportFailed_;  // not exportable or failed: not asked again this session
+public:
     // The effect export files of the converter's stock cache [0] and of vfx_cache [1], by the file name's first part:
     // listed once by findVfxExport, again after forgetVfxFiles().
     mutable QHash<QString, QStringList> vfxFiles_[2];
@@ -981,6 +1030,8 @@ private:
         iw8r::app::Camera cam;
     };
     std::vector<PrefabParent> prefabStack_;
+    friend class StockMapPanel;  // reads the stock sun / world / props as loaded, shows sun edits at once
+    class StockMapPanel* stockMapPanel_ = nullptr;
     QString stockZone_;            // zone name of an opened stock map ("" otherwise)
     QString lastStockRebuild_;     // work folder of the last stock rebuild that passed its check ("" = none)
     QString lastStockRebuildZone_;

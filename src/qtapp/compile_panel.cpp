@@ -1,5 +1,6 @@
 #include "material_tints.h"
 #include "scriptable_catalog.h"
+#include "model_physics.h"
 #include "log_links.h"
 #include "build_report.h"
 #include "build_preflight.h"
@@ -936,6 +937,12 @@ bool CompilePanel::runExtraction() {
         if (opt.library) append(QString("custom materials: %1 in the library").arg(library.names().size()));
         // Stock scriptable definitions (6.14): the catalogue beside the editor.
         opt.scriptables = &ScriptableCatalog::shared(QCoreApplication::applicationDirPath().toStdString());
+        // Placed models collide by the stock models' own collision (core model_physics.h): data/asset_catalog/iw8_model_physics.tsv.
+        // IW8R_NO_MODEL_PHYSICS=1: every placed model by its render mesh, as before the rule (comparison builds).
+        if (qEnvironmentVariableIsEmpty("IW8R_NO_MODEL_PHYSICS")) {
+            opt.modelPhysics = &ModelPhysicsCatalog::shared(QCoreApplication::applicationDirPath().toStdString());
+            if (opt.modelPhysics->size() == 0) append("warning: data/asset_catalog/iw8_model_physics.tsv not found: placed models collide by their render mesh");
+        }
         opt.carryScriptables = PrefabBrowser::realScriptables();
         // 14.1: the collision layout for maps that do not say it themselves (worldspawn iw8r_collision).
         opt.collisionLayout = parseCollisionLayout(Settings::instance().value("build/collisionLayout", "auto").toString().toStdString());

@@ -64,8 +64,8 @@ bool PlayBehaviours::Volume::touches(const AABB& p) const {
     return brushes.empty();
 }
 
-std::vector<Id> PlayBehaviours::build(const MapFile& map, CollisionWorld& world) {
-    const std::vector<Id> moving = read(map);
+std::vector<Id> PlayBehaviours::build(const MapFile& map, CollisionWorld& world, const std::string& mapPath) {
+    const std::vector<Id> moving = read(map, mapPath);
     world.build(map, 4, [this](const Entity& e) { return moves(e); });
     attach(map, world);
     return moving;
@@ -77,8 +77,10 @@ bool PlayBehaviours::moves(const Entity& e) const {
     return tn && std::find(moverNames_.begin(), moverNames_.end(), *tn) != moverNames_.end();
 }
 
-std::vector<Id> PlayBehaviours::read(const MapFile& map) {
+std::vector<Id> PlayBehaviours::read(const MapFile& map, const std::string& mapPath) {
     moverNames_.clear();
+    script_.clear();
+    scriptMovers_.clear();
     doors_.clear();
     movers_.clear();
     triggers_.clear();
@@ -225,6 +227,27 @@ std::vector<Id> PlayBehaviours::read(const MapFile& map) {
         triggers_.push_back(std::move(t));
     }
 
+    // The map's own script (core gsc_emulate). Its brush models become movers: the named script_brushmodels whose
+    // name is in the script's text or that it moves in its first 30 s (a run ahead; tick() starts it again from 0).
+    const std::string src = !scriptOverride_.empty() ? scriptOverride_ : mapPath.empty() ? std::string() : readMapScript(map, mapPath);
+    if (src != scriptText_) scriptNotesShown_ = 0;
+    scriptText_ = src;
+    if (!src.empty() && script_.load(src, map)) {
+        script_.advanceTo(30);
+        std::vector<Id> moved;
+        for (const GscPose& p : script_.poses())
+            if (p.brush) moved.push_back(p.entity);
+        script_.advanceTo(0);
+        for (const Entity& e : map.entities) {
+            const std::string* tn = nonEmpty(e, "targetname");
+            if (!tn || lowered(e.classname()) != "script_brushmodel") continue;
+            if (std::find(moving.begin(), moving.end(), e.id) != moving.end()) continue;  // a door or mover of its keys
+            if (std::find(moved.begin(), moved.end(), e.id) == moved.end() && src.find(*tn) == std::string::npos) continue;
+            scriptMovers_.push_back({e.id, -1});
+            moving.push_back(e.id);
+        }
+    }
+
     for (const Entity& e : map.entities)
         if (std::find(moving.begin(), moving.end(), e.id) != moving.end())
             if (const std::string* tn = e.value("targetname")) moverNames_.push_back(*tn);
@@ -241,7 +264,17 @@ void PlayBehaviours::attach(const MapFile& map, CollisionWorld& world) {
                 const AABB b = world.moverBounds(m.group);
                 if (b.valid()) m.centre = (b.mins + b.maxs) * 0.5;
             }
+        for (ScriptMover& m : scriptMovers_)
+            if (m.entity == e.id) m.group = world.addMover(e);
     }
+}
+
+std::vector<GscNote> PlayBehaviours::takeScriptNotes() {
+    std::vector<GscNote> out;
+    const auto& all = script_.notes();
+    for (size_t i = scriptNotesShown_; i < all.size(); ++i) out.push_back(all[i]);
+    scriptNotesShown_ = std::max(scriptNotesShown_, all.size());
+    return out;
 }
 
 std::vector<PlayBehaviours::Event> PlayBehaviours::tick(double dt, const Vec3& feet, const Vec3& mins, const Vec3& maxs, bool use,
@@ -308,6 +341,27 @@ std::vector<PlayBehaviours::Event> PlayBehaviours::tick(double dt, const Vec3& f
         }
         world.setMoverPose(m.group, p.R, p.pivot, p.move);
         poses_.push_back(p);
+    }
+    // The map's own script on the same clock: whatever it moved, turned or hid (an entity the keys above already move
+    // keeps their pose). Its brush models collide where it has them; a deleted one keeps its last place.
+    if (script_.loaded()) {
+        script_.advanceTo(time_);
+        const size_t keyed = poses_.size();
+        for (const GscPose& g : script_.poses()) {
+            if (std::any_of(poses_.begin(), poses_.begin() + std::ptrdiff_t(keyed), [&](const Pose& q) { return q.entity == g.entity; }))
+                continue;
+            Pose p;
+            p.entity = g.entity;
+            for (int i = 0; i < 3; ++i)
+                for (int j = 0; j < 3; ++j) p.R[i][j] = g.R[i][j];
+            p.pivot = g.pivot;
+            p.move = g.move;
+            p.visible = g.visible;
+            if (!g.deleted)
+                for (const ScriptMover& m : scriptMovers_)
+                    if (m.entity == g.entity) world.setMoverPose(m.group, p.R, p.pivot, p.move);
+            poses_.push_back(p);
+        }
     }
     // Teleporters and jump pads fire when the player enters them (the script's cooldowns of 1 s and 0.5 s only keep a
     // player who stays inside from firing again; a teleported or launched player has left the volume by then).

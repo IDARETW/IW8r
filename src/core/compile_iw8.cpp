@@ -33,6 +33,7 @@
 #include "minimap.h"
 #include "model_import.h"
 #include "convex_hull.h"
+#include "model_physics.h"
 #include "sky_image.h"
 #include "tex_projection.h"
 #include "prefab.h"
@@ -1797,11 +1798,17 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
     }
     // Placed models: a solid collision shape per model in the world collision (CompileOptions::modelCollisionBoxes):
     // one convex brush per convex piece (modelCollisionHulls, roadmap 4.20), or an oriented box when the mesh gives no hull.
+    // Which models and which shape follow the stock models' own collision (CompileOptions::modelPhysics, model_physics.h):
+    // no stock physics asset (most bushes, grass): none; a physics asset with readable pieces: those pieces.
     size_t modelBoxes = 0;
     size_t hullModels = 0, hullBrushCount = 0;
+    size_t physicsModels = 0, physicsBrushCount = 0, walkThroughModels = 0, renderUncatalogued = 0, renderUnread = 0;
     if (opt.modelCollisionBoxes) {
         std::map<std::string, AABB> modelBounds;  // model name -> bounds in model space (Z-up, map units)
         std::map<std::string, std::vector<std::vector<Plane>>> modelPieces;  // model name -> convex pieces (Y-up, map units)
+        std::map<std::string, bool> modelCustom;  // model name -> the mapper's own model (model folders), not stock
+        // Stock physics pieces as outward planes in Z-up model space (inches = map units), per physics shape.
+        std::map<const ModelPhysicsShape*, std::vector<std::vector<Plane>>> physicsPlanes;
         // The surface a model's collision reads as (impacts, footsteps): the surface type most of its triangles have,
         // from its materials (owner playtest 2: hulls of placed models carried no type and read as concrete).
         std::map<std::string, int> modelSurface;
@@ -1822,22 +1829,22 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                 }
             return modelSurface[name] = best;
         };
+        // Convex pieces of the model in its file (Y-up) space. convexPieces works on the raw points; the plane offsets
+        // d are scaled to map units here like the points (a unit normal does not change under a uniform scale).
+        const auto piecesOf = [&](const ImportedModel& m, double scale) {
+            std::vector<std::vector<Plane>> pcs;
+            if (!opt.modelCollisionHulls) return pcs;
+            pcs = convexPieces(m, opt.modelCollisionMaxPieces, size_t(std::max(0, opt.modelCollisionMaxPlanes)));
+            for (auto& pc : pcs)
+                for (Plane& pl : pc) pl.d *= scale;
+            return pcs;
+        };
         const auto boundsOf = [&](const std::string& name) -> AABB {
             if (auto it = modelBounds.find(name); it != modelBounds.end()) return it->second;
             AABB b;
             const auto addYUp = [&](const ImportedModel& m, double scale) {
                 for (const auto& mesh : m.meshes)
                     for (const Vec3& p : mesh.pos) b.add(Vec3{p.x, -p.z, p.y} * scale);
-            };
-            // Convex pieces of the model in its file (Y-up) space. convexPieces works on the raw points; the plane offsets
-            // d are scaled to map units here like the points (a unit normal does not change under a uniform scale).
-            const auto piecesOf = [&](const ImportedModel& m, double scale) {
-                std::vector<std::vector<Plane>> pcs;
-                if (!opt.modelCollisionHulls) return pcs;
-                pcs = convexPieces(m, opt.modelCollisionMaxPieces, size_t(std::max(0, opt.modelCollisionMaxPlanes)));
-                for (auto& pc : pcs)
-                    for (Plane& pl : pc) pl.d *= scale;
-                return pcs;
             };
             std::vector<std::vector<Plane>> pcs;
             // A re-skinned copy of a custom model (iw8r_material) has its own name but the mesh of its base model: its
@@ -1846,6 +1853,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             if (opt.customModelVariants)
                 if (const auto v = opt.customModelVariants->find(name); v != opt.customModelVariants->end()) fileName = v->second.base;
             const std::string obj = isCustomModelName(fileName) ? findCustomModel(opt.modelRoots, fileName) : std::string();
+            modelCustom[name] = !obj.empty();
             if (!obj.empty()) {
                 ImportedModel im;
                 if (importModelFile(obj, im, nullptr)) {
@@ -1853,15 +1861,24 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                     addYUp(im, s);
                     pcs = piecesOf(im, s);
                 }
+                modelPieces[name] = std::move(pcs);
             } else if (opt.stockModels) {
-                if (auto it = opt.stockModels->find(name); it != opt.stockModels->end()) {
-                    addYUp(it->second, 1.0);
-                    pcs = piecesOf(it->second, 1.0);
-                }
+                if (auto it = opt.stockModels->find(name); it != opt.stockModels->end()) addYUp(it->second, 1.0);
+                // The render-mesh pieces of a stock model are made when a placement needs them (renderPiecesOf): most
+                // stock models collide by their physics pieces or not at all.
             }
             modelBounds[name] = b;
-            modelPieces[name] = std::move(pcs);
             return b;
+        };
+        const auto renderPiecesOf = [&](const std::string& name) -> const std::vector<std::vector<Plane>>& {
+            auto it = modelPieces.find(name);
+            if (it == modelPieces.end()) {
+                std::vector<std::vector<Plane>> pcs;
+                if (opt.stockModels)
+                    if (auto sm = opt.stockModels->find(name); sm != opt.stockModels->end()) pcs = piecesOf(sm->second, 1.0);
+                it = modelPieces.emplace(name, std::move(pcs)).first;
+            }
+            return it->second;
         };
         // Which script_models x64-zt keeps as entities (TakeUnscriptedScriptModels, iw3_fastfile.cpp ~4339-4380): a
         // gameobject or exploder, or a targetname another entity targets or a special name. Every other one becomes a
@@ -1887,6 +1904,14 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             if (!mv || mv->empty() || (*mv)[0] == '*') continue;
             const AABB mb = boundsOf(*mv);
             if (!mb.valid()) continue;
+            const bool variant = opt.customModelVariants && opt.customModelVariants->count(*mv);
+            const ModelCollisionChoice choice = chooseModelCollision(*mv, pe, modelCustom[*mv] || variant, opt.modelPhysics);
+            if (choice.source == ModelCollisionSource::None) {
+                ++walkThroughModels;
+                continue;
+            }
+            if (choice.why == std::string("not in the physics catalogue")) ++renderUncatalogued;
+            if (choice.why == std::string("stock physics not read")) ++renderUnread;
             double ang[3] = {0, 0, 0};
             if (const std::string* av = pe->value("angles"); av && !parseVec3Text(*av, ang)) ang[0] = ang[1] = ang[2] = 0;
             double ms = 1.0;
@@ -1913,7 +1938,38 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             // normal (the (x, -z, y) conversion above is a proper rotation, so outward stays outward) and the placement
             // x = o + R s with R's columns ax[0..2] (the box planes below use the same R), the world plane
             // dot(R nz, x) <= ms * d + dot(R nz, o).
-            const std::vector<std::vector<Plane>>& pcs = modelPieces[*mv];
+            // The stock physics pieces are Z-up already (model space, inches): dot(R n, x) <= ms * d + dot(R n, o), with
+            // brush bounds from the placed piece corners (they may reach a little past the render bounds).
+            if (choice.source == ModelCollisionSource::PhysicsShape && opt.modelCollisionHulls) {
+                auto pp = physicsPlanes.find(choice.shape);
+                if (pp == physicsPlanes.end())
+                    pp = physicsPlanes.emplace(choice.shape, physicsShapePlanes(*choice.shape, size_t(std::max(0, opt.modelCollisionMaxPlanes)))).first;
+                const Vec3 axis[3] = {ax[0], ax[1], ax[2]};
+                AABB pb;
+                for (const auto& piece : choice.shape->pieces)
+                    for (const Vec3& v : piece) pb.add(o + (ax[0] * v.x + ax[1] * v.y + ax[2] * v.z) * ms);
+                pb.mins = pb.mins - Vec3{1, 1, 1};
+                pb.maxs = pb.maxs + Vec3{1, 1, 1};
+                size_t made = 0;
+                for (const auto& pc : pp->second) {
+                    CollisionBrush hb;
+                    hb.contents = 1u;
+                    hb.surfaceType = surfaceOfModel(*mv);
+                    hb.modelHull = true;
+                    hb.planes = placePlanes(pc, o, axis, ms);
+                    hb.bounds = pb;
+                    g.bounds.add(hb.bounds);
+                    g.brushes.push_back(std::move(hb));
+                    ++physicsBrushCount;
+                    ++made;
+                }
+                if (made) {
+                    ++physicsModels;
+                    continue;
+                }
+            }
+            static const std::vector<std::vector<Plane>> kNoPieces;
+            const std::vector<std::vector<Plane>>& pcs = opt.modelCollisionHulls ? renderPiecesOf(*mv) : kNoPieces;
             if (!pcs.empty()) {
                 const AABB wb = placedBounds();
                 for (const auto& pc : pcs) {
@@ -1954,7 +2010,14 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             if (hullModels || modelBoxes)
                 warn.push_back("placed model collision: " + std::to_string(hullModels) + " model(s) as " + std::to_string(hullBrushCount) +
                                " convex hull brush(es), " + std::to_string(modelBoxes) + " as a solid box (no hull: flat or degenerate mesh)");
-        } else if (modelBoxes) {
+        }
+        if (physicsModels || walkThroughModels || renderUncatalogued || renderUnread)
+            warn.push_back("placed model collision by the stock models' physics (model_physics.h): " + std::to_string(physicsModels) +
+                           " model(s) as " + std::to_string(physicsBrushCount) + " brush(es) from their physics asset, " +
+                           std::to_string(walkThroughModels) + " walk-through (no stock physics asset, as in game: bushes, grass; or " +
+                           "iw8r_collision 0), render mesh for " + std::to_string(renderUncatalogued) + " not in the catalogue and " +
+                           std::to_string(renderUnread) + " whose physics shape is not read");
+        if (!opt.modelCollisionHulls && modelBoxes) {
             warn.push_back(std::to_string(modelBoxes) + " placed model(s) got a solid collision box (hulls off; players and bullets)");
         }
     }

@@ -3,15 +3,16 @@ floor) with nine labelled rows of objects, for the editor checklist (docs/EDITOR
 
 Rows, south (row 1, beside the player start) to north, items west to east; each row has a script_origin
 "row_<n>_<name>" at its west end:
-  1 materials       stock surfaces, a cut-out fence, a custom material, a custom cut-out grate
+  1 materials       stock surfaces in their shapes (ground pads, wall panels, a container box), a cut-out fence,
+                    a custom material, a custom cut-out grate
   2 shapes          tool brushes (caulk, clip, ladder), ramps, stairs, three patches
   3 models          stock models as misc_model (static props), one scaled, one rotated
   4 live_models     script_models the map script spins / bobs / blinks, a custom model, a destructible pallet
-  5 scriptables     stock scripted objects: a door, a traffic cone, a radio, a tyre
-  6 prefabs         misc_prefab placements from data/prefabs (cover, lamp, door, stock barrel)
+  5 scriptables     stock scripted objects: a double door (both leaves), a traffic cone, a radio, a tyre
+  6 prefabs         misc_prefab placements from data/prefabs (cover, floor lamp, door, stock barrel)
   7 lights          point lights (white, red, blue), a spot light, a reflection probe
   8 effects_sound   fire, smoke, sparks, heat haze (distortion), two sound emitters
-  9 gameplay        spawns (TDM and DM), a trigger, a scripted brush model, a ladder tower and mantle ledges
+  9 gameplay        spawns (TDM and DM), a trigger, a scripted brush model, a tower with a ladder prefab, mantle ledges
 
 Reuses the dev showcase's custom assets beside it (materials/, models/) and writes its map script
 (iw8r_compact_showcase.gsc, the dev showcase's spin / bob / blink). Stock names are Replay 1.20 assets from
@@ -41,7 +42,7 @@ MATERIALS = [
 MODELS = ["military_hq_crate_01_proxy", "tm/container_barrel_plastic_01_closed", "tm/furniture_cafe_chair_01",
           "tm/ee_light_fixture_lamp_short_02", "tm/accessory_plant_pot_fake_2", "tm/com_pallet_2", "com_junktire"]
 SCRIPTABLES = ["scriptable_door_wood_ornate_01_blue_double_l", "com_trafficcone_01", "equipment_military_radio_old_02", "com_junktire"]
-PREFABS = ["iw8r/cover/cover_barrel_group.map", "iw8r/lamps/lamp_short_table.map", "iw8r/doors/door_single_metal_frame.map",
+PREFABS = ["iw8r/cover/cover_barrel_group.map", "iw8r/lamps/lamp_tall_floor.map", "iw8r/doors/door_single_metal_frame.map",
            "stock/barrel/tm_container_barrel_plastic_01_closed_v01.map"]
 EFFECTS = ["vfx/iw8/veh/scriptables/shared/vfx_veh_fire_linger_med", "vfx/iw8/veh/scriptables/vfx_smoke_light_ch",
            "vfx/core/expl/spark_death", "vfx/iw8/level/safehouse/vfx_safehouse_finale_drone_heat_dist"]
@@ -72,14 +73,18 @@ def main():
     world.append(box(-W, H, 0, W, H + 16, CEIL, WALL))
     world.append(box(-W - 16, -H - 16, CEIL, W + 16, H + 16, CEIL + 16, "sky"))
 
-    # 1 materials: 64-unit blocks.
+    # 1 materials, each in the shape it is used for: ground as a low pad, walls and fences as upright panels, the
+    # container metal and the custom checker as boxes.
     label(1, "materials")
+    GROUND = ("grass", "sand", "terrain", "dirt", "gravel")
     for i, m in enumerate(MATERIALS):
         x, y = at(1, i)
-        if "chainlink" in m:
-            world.append(box(x, y, 0, x + 64, y + 8, 96, m))  # a fence panel (cut-out)
+        if any(g in m for g in GROUND):
+            world.append(box(x, y, 0, x + 64, y + 64, 4, m))       # a ground pad
+        elif "container" in m or m.startswith("iw8r_dev/"):
+            world.append(box(x, y, 0, x + 64, y + 64, 64, m))      # a box
         else:
-            world.append(box(x, y, 0, x + 64, y + 64, 64, m))
+            world.append(box(x, y, 0, x + 64, y + 12, 96, m))      # a wall or fence panel
     x, y = at(1, 8)
     world.append(box(x, y, 0, x + 64, y + 8, 96, "iw8r_dev/grate"))  # custom cut-out
 
@@ -100,10 +105,10 @@ def main():
     world.append(mesh([[(x + c * 48, y, 0), (x + c * 48, y + 48, 96 if c % 2 == 0 else 72), (x + c * 48, y + 96, 0)] for c in range(3)],
                       WALL, 3, 3))  # arch
     x, y = at(2, 7.2)
-    world.append(mesh([[(x + c * 32, y + r * 32, round(16 * math.sin(c) * math.cos(r))) for r in range(4)] for c in range(4)],
-                      "tmo/ee_foliage_grass_lm_short_green", 4, 4))  # terrain bump
+    world.append(mesh([[(x + c * 32, y + r * 32, 2 + round(8 * (1 + math.sin(c * 1.3) * math.cos(r * 1.1)))) for r in range(4)] for c in range(4)],
+                      "tmo/ee_foliage_grass_lm_short_green", 4, 4))  # terrain bump, above the floor
     x, y = at(2, 8.3)
-    world.append(mesh([[(x + c * 48, y + r * 48, 0) for r in range(2)] for c in range(2)], FLOOR, 2, 2))  # flat
+    world.append(mesh([[(x + c * 48, y + r * 48, 2) for r in range(2)] for c in range(2)], FLOOR, 2, 2))  # flat, 2 units up
 
     # 3 models: static props.
     label(3, "models")
@@ -132,6 +137,9 @@ def main():
     for i, d in enumerate(SCRIPTABLES):
         x, y = at(5, i * 1.6)
         entity([("classname", "scriptable"), ("scriptable", d), ("origin", f"{x + 32} {y + 32} 0"), ("angles", "0 90 0")])
+        if d.endswith("_double_l"):
+            # Its right leaf: hinged at the other jamb (each leaf is 27 units wide along its own +x), turned round.
+            entity([("classname", "scriptable"), ("scriptable", d[:-2] + "_r"), ("origin", f"{x + 32} {y + 32 + 54} 0"), ("angles", "0 270 0")])
 
     # 6 prefabs.
     label(6, "prefabs")
@@ -170,8 +178,11 @@ def main():
     x, y = at(9, 4.4)
     entity([("classname", "script_brushmodel"), ("targetname", "dev_door")], [box(x, y, 0, x + 16, y + 96, 112, WALL)])
     x, y = at(9, 5.2)
-    world.append(box(x, y, 0, x + 96, y + 96, 192, WALL))           # tower
-    world.append(box(x - 8, y + 32, 0, x, y + 64, 192, "ladder"))   # its ladder (-x face)
+    world.append(box(x, y, 0, x + 96, y + 96, 160, WALL))           # tower
+    # Its ladder on the -x face: the 160-unit wooden ladder prefab (model and climbing volume; the prefab's wall side
+    # is its +y, turned to face the tower).
+    entity([("classname", "misc_prefab"), ("model", "iw8r/ladders/ladder_old_wood_160.map"), ("origin", f"{x - 10} {y + 48} 0"),
+            ("angles", "0 270 0")])
     for i, h in enumerate([32, 56]):
         x, y = at(9, 6.6 + i)
         world.append(box(x, y, 0, x + 96, y + 96, h, FLOOR))         # mantle ledges

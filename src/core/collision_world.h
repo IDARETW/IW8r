@@ -5,6 +5,9 @@
 #pragma once
 
 #include <cstdint>
+#include <unordered_map>
+
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -61,6 +64,11 @@ public:
         return solids_.size() > before;
     }
 
+    // Adds one triangle as a thin facet (its plane, a back plane `thickness` behind it and the three edge planes) that
+    // blocks the player: a stock map's world surfaces in the play preview. Bounds come from the corners (no windings),
+    // so many triangles add quickly. False for a degenerate triangle.
+    bool addTriangle(const Vec3& a, const Vec3& b, const Vec3& c, double thickness = 1.0, uint32_t contents = 1);
+
     // Contents mask the player collides with (solid | player clip).
     static constexpr uint32_t kPlayerMask = 0x1u | 0x10000u;
 
@@ -79,6 +87,16 @@ private:
     };
     std::vector<Mover> movers_;
     void addBrushesOf(const Entity& e, int patchSubdiv);
+    // The broad phase over many solids: x/y cells of kGridCell units holding the static solids that overlap them,
+    // built on the first trace after a change (mutable: traces are const). Movers' solids are tested every trace.
+    static constexpr double kGridCell = 256.0;
+    static constexpr size_t kGridFrom = 2048;  // solids before the grid is used
+    mutable std::unordered_map<int64_t, std::vector<uint32_t>> grid_;
+    mutable std::vector<uint32_t> gridStamp_;
+    mutable uint32_t gridTick_ = 0;
+    mutable size_t gridSolids_ = 0;  // solids_.size() when the grid was built
+    mutable std::vector<uint32_t> moverSolidList_;
+    void buildGrid() const;
 };
 
 }  // namespace iw8r

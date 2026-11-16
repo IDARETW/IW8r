@@ -5,6 +5,70 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **The map's own script runs in the editor** (View > Behaviour Preview, and in Play Preview on its own clock): a
+  GSC interpreter for the subset maps use for moving things (`user_main`, threads, waits, notify / waittill / endon,
+  loops, arrays, vectors, `getent` / `getentarray`, the rotate / move calls with the game's accel / decel curves,
+  `linkto`, `hide` / `show` / `delete`). The showcase's row 4 spins, bobs and blinks as in game; unsupported lines
+  are noted once in the Console. Triggers, players, damage and animations are not emulated.
+- **Play Preview moves like the game** (Replay 1.20 values verified in the exe, docs/research/140): speeds and scales
+  per stance, the acceleration and friction floor, sprint and tactical sprint with its meter, jump with the repeat
+  penalty, slide start rules, step 18, walkable slope 0.7, the game's view height curves, pitch ±85, mantle up to 58,
+  the ladder speeds, the game's mouse look scale and default keys (C crouch / slide toggle, Ctrl prone, Shift sprint,
+  press again for tactical). The multiplayer suit could not be read; its values are the reference suit's.
+- **Walking: mantle, ladders and slides work with the game's controls** (checked with real key presses in the camera,
+  `IW8R_TEST_PLAY_INPUT`): mantle as in Replay (Space held while pushing into a ledge, or by itself in the air after a
+  jump), ladders found behind a ladder model's own collision and climbed at the game's speed, slides from a sprint
+  with C (tapped or held). Stock maps no longer freeze the player at spawns (open prop physics pieces had become
+  map-wide slabs).
+- **Lamp glare looks like the game's**: the lens-dirt flare pieces are drawn in screen space through their round mask
+  and at their own alpha (they were full-strength squares turning with the lamp's angle); a research note update
+  (139) records the flare shader rules.
+- **Props no longer vanish while in view**: a prop only swaps to its other levels of detail (past its last one it
+  keeps that one) and drops out only under a pixel; the game's own cut-off past the last LOD distance is View > Game
+  LOD Cut-off (off by default). Leaving Hideout: 3,154 props vanished in view before, now 529, all under a pixel.
+- **Effects**: one-shot effects replay; particles are not drawn as plain squares while their material loads; a heat
+  haze whose distortion image keeps its strength in alpha over a flat blue channel moves the scene again.
+- **The Effects panel preview is the effect as it looks**: a square view that follows the panel width, the whole run
+  fitted and centred, each particle drawn with its material's image and atlas frame (billboards, oriented sprites,
+  tails; blended or added, far to near; heat haze bends a checker behind it). It used to draw every effect as soft
+  grey discs.
+- **Side bar**: model tiles in three sizes with a compact preview; thumbnails read in the background (no empty tiles
+  while scrolling: Materials, Models and Prefabs jump to a new spot in about 10 ms instead of 120-140 ms); the
+  selected effect plays under the Effects list; the Sounds panel plays the game's sounds (the common multiplayer
+  banks, FLAC decoded by the editor; the first play prepares them once); a Tools panel lists the Tools menu's commands
+  in groups with a search box. Research note 141 records the sound banks.
+- **Placed models collide as in game**: a stock model blocks with its own physics asset's shape (a catalogue of 6,777
+  stock models' physics, `data/asset_catalog/iw8_model_physics.tsv`); one without a physics asset (most bushes and
+  grass) is walk-through, as in game. `iw8r_collision 1` on a placement makes it solid from its render mesh, `0` takes
+  its collision away. The build, the walk preview of an own map and a stock map's props in its walk preview follow the
+  same rule (the dev showcase: 238 render-mesh hull brushes before, 88 physics brushes and 2 hulls after).
+- **Gizmo modes**: a Move / Rotate / Scale / All drop-down on the toolbar (also View > Gizmo Mode, saved); All shows
+  arrows, rings and scale boxes together; in local space every part and every drag follows the object's axes. Ring
+  turns of a point entity about a world axis are exact now.
+- **Entity shapes in the view**: a light's radius sphere, a spot's inner and outer cone with its aim, a probe's box,
+  sound ranges (View > Entity Display > Sound Ranges), effect and spawn facing arrows; the selected entity's shapes
+  drawn on top, the others dimmed behind walls.
+- **Stock Map side panel** (its icon shows while a stock map is open): the sun (colour, intensity, direction, back to
+  stock), another map's sky, retexture pairs, world removal boxes, hidden props (a clicked prop can be hidden from
+  there) and the rebuild / install buttons; every change shows in the viewport at once and is one undo step.
+- **Fixes from the compact showcase checklist** (the owner's run, 2026-11-15 afternoon):
+  - Play Preview (Walk) on a stock map walks on the map's world: its opaque world surfaces are collision now (thin
+    facets, with a grid broad phase so traces stay fast on hundreds of thousands of triangles; sky, decals, foliage
+    cards and translucent surfaces left out, and so is whatever `iw8r_remove_world` takes out). It used to drop to
+    noclip there.
+  - Walking starts at the spawn nearest the camera when the camera is outside the map or above all of it (as after
+    opening a map), instead of noclip; a selected spawn still wins.
+  - A click in the camera on a stock map's own wall, floor or prop (nothing of the map file under the cursor) names it:
+    a world surface's material, or a prop's model and row, in the status bar, outlined in the view; a world material
+    also goes to the Stock Map panel's Retexture.
+  - Opening a stock map frames its play area (the spawns), not the whole map from far away.
+  - Leaving a prefab: a "Leave Prefab (back to ...)" button in the status bar while one is edited, and Esc with nothing
+    selected leaves it too.
+  - Effects with no export yet (the smoke and heat haze of the showcase's effects row) are exported from their zone on
+    demand, the first time they are shown; side panel tab names are readable in the dark theme.
+  - The compact showcase map: ground materials as low pads and wall materials as upright panels, the curved patches
+    above the floor, both leaves of the double door, the tall floor lamp, and the tower's ladder as the wooden ladder
+    prefab (model and climbing volume).
 - **Stock map edits show in the viewport as you make them**, without Rebuild Stock Zone: retexturing
   (`iw8r_stock_retexture`, only the pairs the rebuild can carry), removed world geometry (`iw8r_remove_world` boxes: the
   triangles inside and the decals on them), another map's sky (`iw8r_sky_from`) and the sun in Game Lighting

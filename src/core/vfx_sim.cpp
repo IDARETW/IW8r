@@ -283,6 +283,7 @@ VfxEmitterSim readEmitter(const Value& em, size_t index) {
     e.rotation = readGraph(mod("rotationGraph"), 1);
     if (const Value* r = mod("rotationGraph"); r && !boolOr(r->get("m_useRotationRate"), true)) e.rotation.present = false;
     e.intensity = readGraph(mod("intensityGraph"), 1);
+    e.emissive = readGraph(mod("emissiveGraph"), 5);
     e.drag = readGraph(mod("forceDragGraph"), 1);
     if (const Value* g = mod("gravity")) {
         double a = 0, b = 0;
@@ -370,7 +371,7 @@ constexpr uint64_t kBurstFlag = 1ull << 62;  // separates burst ids from continu
 enum Salt : uint32_t {
     kLife = 1, kVel = 2, /* 3, 4 */ kShape = 5, /* 6, 7 */ kAttrSize = 8, kAttrColor = 9, kGraphColor = 10, kGraphSize = 11,
     kGraphVel = 12, kGraphRot = 13, kGraphInt = 14, kGraphDrag = 15, kRotAngle = 16, kRotRate = 17, kAtlasStart = 18,
-    kAtlasCurve = 19, kMirrorU = 20, kMirrorV = 21, kMaterial = 22, kGravity = 23, kForce = 24,
+    kAtlasCurve = 19, kMirrorU = 20, kMirrorV = 21, kMaterial = 22, kGravity = 23, kForce = 24, kGraphEmissive = 25,
 };
 
 // Effect axes to the placement's.
@@ -557,6 +558,13 @@ void emitParticle(const VfxEmitterSim& em, size_t ei, uint32_t seed, uint64_t id
     if (em.intensity.present) {
         const double k = std::max(0.0f, em.intensity.eval(0, static_cast<float>(f), ri));
         for (int c = 0; c < 3; ++c) p.rgba[c] = static_cast<float>(p.rgba[c] * k);
+    }
+    if (em.emissive.present) {
+        // RGB (curves 0-2) x intensity (curve 3), at the age fraction; one random for the A/B lerp.
+        const float re = rnd(kGraphEmissive);
+        const double k = std::max(0.0f, em.emissive.eval(3, static_cast<float>(f), re));
+        for (int c = 0; c < 3; ++c) p.emissive[c] = static_cast<float>(std::max(0.0f, em.emissive.eval(size_t(c), static_cast<float>(f), re)) * k);
+        p.hasEmissive = true;
     }
     // Atlas, mirror, material.
     if (em.atlas.present && em.atlas.overLife) {

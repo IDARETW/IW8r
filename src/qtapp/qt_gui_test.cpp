@@ -73,7 +73,10 @@
 #include "prefab_browser.h"
 #include "qt_gui_test_bundles.h"
 #include "qt_gui_test_loot.h"
+#include "qt_gui_test_gizmo.h"
+#include "qt_gui_test_stock_panel.h"
 #include "qt_gui_test_prefab_models.h"
+#include "qt_gui_test_sidebar.h"
 #include "model_preview.h"
 #include "sky_image.h"
 #include "sun_sky_dialog.h"
@@ -203,6 +206,21 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
     w.activateWindow();
     r.check(QTest::qWaitForWindowActive(&w, 3000), "main window active (offscreen platform)");
     r.check(ctx.gridAxis == 0, "grid view is XY top");
+    // IW8R_GUI_ONLY=sidebar: only the side bar checks (qt_gui_test_sidebar.cpp).
+    if (qEnvironmentVariable("IW8R_GUI_ONLY") == "sidebar") {
+        w.waitForCatalogs();
+        iw8r::qt::runSidebarChecks([&r](const QString& sname) { r.section(sname); }, [&r](bool ok, const QString& m) { r.check(ok, m); }, w, outDir);
+        r.text += QString("\n%1 checks, %2 failures (IW8R_GUI_ONLY=sidebar)\n").arg(r.checks).arg(r.failures);
+        r.flush();
+        return r.failures ? 1 : 0;
+    }
+    // IW8R_GUI_ONLY=gizmo: only the gizmo checks (qt_gui_test_gizmo.cpp) on the opened room, for working on them.
+    if (qEnvironmentVariable("IW8R_GUI_ONLY") == "gizmo") {
+        iw8r::qt::runGizmoChecks([&r](const QString& sname) { r.section(sname); }, [&r](bool ok, const QString& m) { r.check(ok, m); }, w);
+        r.text += QString("\n%1 checks, %2 failures (IW8R_GUI_ONLY=gizmo)\n").arg(r.checks).arg(r.failures);
+        r.flush();
+        return r.failures ? 1 : 0;
+    }
 
     r.section("hotkey 5 -> grid 16");
     QTest::keyClick(&w, Qt::Key_5);
@@ -3079,6 +3097,9 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         for (int i = 0; i < 6 && ctx.doc.undoPosition() > pos; ++i) w.action("Undo")->trigger();
         r.check(ctx.doc.text() == before, "Undo restores the map");
     }
+
+    // Gizmo dropdown, the All gizmo, local-space drags and the entity range shapes (owner 2026-11-15).
+    iw8r::qt::runGizmoChecks([&r](const QString& sname) { r.section(sname); }, [&r](bool ok, const QString& m) { r.check(ok, m); }, w);
 
     r.section("one-key load map (7.2)");
     {
@@ -6681,6 +6702,25 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             r.check(cv->referenceInstances() >= w.referencePropMeshes() && w.referencePropMeshes() > 0,
                     QString("reference props draw as GPU instances (%1 instances)").arg(cv->referenceInstances()));
             {
+                // Stock surface picking (owner checklist 2026-11-15, D5): a ray down onto the map finds a world surface
+                // or a prop, shown outlined in the camera; a ray into the sky finds nothing.
+                const iw8r::AABB wb = w.referenceWorldBounds();
+                const iw8r::Vec3 prop = w.referencePropSample();
+                const iw8r::Ray down{prop + iw8r::Vec3{0, 0, 3000}, iw8r::Vec3{0, 0, -1}};
+                QElapsedTimer pt;
+                pt.start();
+                const auto hit = w.pickStockSurface(down);
+                const qint64 ms = pt.elapsed();
+                r.check(hit && (!hit->material.isEmpty() || !hit->model.isEmpty()),
+                        QString("a click on the stock map finds its surface: %1 (%2 ms)")
+                            .arg(hit ? (hit->material.isEmpty() ? "prop " + hit->model : hit->material) : QString("nothing"))
+                            .arg(ms));
+                r.check(w.showStockSurfaceAt(down) && cv->stockPickOutlineSize() >= 2, "the picked stock surface is outlined in the camera");
+                const iw8r::Ray up{iw8r::Vec3{wb.center().x, wb.center().y, wb.maxs.z + 100}, iw8r::Vec3{0, 0, 1}};
+                r.check(wb.valid() && !w.pickStockSurface(up), "a ray into the sky finds no stock surface");
+                cv->setStockPickOutline({});
+            }
+            {
                 // Next to one prop, with and without the instances: the props change the picture.
                 const iw8r::AABB wb = w.referenceWorldBounds();
                 if (wb.valid()) {
@@ -7152,6 +7192,18 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             r.check(ctx.doc.map().entities.size() > 100 && canonical > 0 && !ctx.scene.spawns.empty(),
                     QString("stock entities %1 (canonical keys %2), compiled spawns %3").arg(ctx.doc.map().entities.size()).arg(canonical).arg(ctx.scene.spawns.size()));
             r.check(ctx.doc.text().back() == '\0' && !ctx.doc.modified(), "entity string loaded unmodified (NUL terminator kept)");
+            {
+                // Owner checklist 2026-11-15, D1: the camera starts over the play area (the spawns), not far away.
+                iw8r::AABB play;
+                for (const auto& sp : ctx.scene.spawns) play.add(sp.origin);
+                const iw8r::Vec3 c = ctx.cam.pos;
+                const double half = play.valid() ? iw8r::length(play.maxs - play.mins) * 0.5 : 0;
+                const double away = play.valid() ? iw8r::length(c - play.center()) : 1e9;
+                r.check(play.valid() && away <= half * 1.6 + 1200,
+                        QString("opening the stock map frames its spawns (camera %1 units from their centre, their half size %2)")
+                            .arg(qRound(away))
+                            .arg(qRound(half)));
+            }
             // 6.1: the compiled spawns become entities, and the export splits them back out unchanged.
             const std::string stockText = ctx.doc.text();
             const size_t spawnCount = ctx.scene.spawns.size(), entCount = ctx.doc.map().entities.size();
@@ -7194,6 +7246,10 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
     // 13.5: the loot points of a Warzone stock map as entities, and their way into the stock rebuild.
     iw8r::qt::runLootPointChecks([&r](const QString& sname) { r.section(sname); }, [&r](bool ok, const QString& m) { r.check(ok, m); },
                                  [&r](const QString& why) { r.text += "  skip (" + why + ")\n"; }, w, outDir);
+    // The side bar's Stock Map panel on the same stock map (stock_map_panel.h).
+    iw8r::qt::runStockPanelChecks([&r](const QString& sname) { r.section(sname); }, [&r](bool ok, const QString& m) { r.check(ok, m); },
+                                  [&r](const QString& why) { r.text += "  skip (" + why + ")\n"; }, w,
+                                  "E:/IW8/Builds/1.20-replay/zone/mp_br_tut.ff", true);
 
     r.section("map source package export / import (4.26)");
     {
@@ -7448,6 +7504,8 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
     // Models inside placed prefabs, scriptables with their definition's model, reference markers out of captures.
     iw8r::qt::runPrefabModelChecks([&r](const QString& sname) { r.section(sname); }, [&r](bool ok, const QString& m) { r.check(ok, m); }, w,
                                    outDir);
+    // The side bar rework (owner 2026-11-15): model tiles, stored thumbnails, effect / sound previews, the Tools panel.
+    iw8r::qt::runSidebarChecks([&r](const QString& sname) { r.section(sname); }, [&r](bool ok, const QString& m) { r.check(ok, m); }, w, outDir);
 
     r.text += QString("\n%1 checks, %2 failures\n").arg(r.checks).arg(r.failures);
     QFile f(QDir(outDir).filePath("gui-test-report.txt"));

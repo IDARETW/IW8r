@@ -14,12 +14,17 @@
 //   - trigger iw8r_jump "<vx> <vy> <vz>": launch velocity.
 // Their brushes are movers of the collision world (CollisionWorld::addMover); poses() says where each mover is for
 // drawing it.
+//
+// The map's own GSC (worldspawn iw8r_script, core gsc_emulate) runs on the same clock when read() is given the map's
+// path: script_brushmodels it can name become movers too (they collide where the script has them), and poses() also
+// lists every entity the script moved, turned or hid - models included (drawn there; their collision stays put).
 #pragma once
 
 #include <string>
 #include <vector>
 
 #include "collision_world.h"
+#include "gsc_emulate.h"
 #include "map_text.h"
 
 namespace iw8r {
@@ -31,6 +36,7 @@ public:
         Id entity = kNoId;
         double R[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
         Vec3 pivot, move;
+        bool visible = true;  // false: hidden (or deleted) by the map script
     };
     struct Event {
         enum Kind { Teleport, Launch, DoorUsed } kind = Teleport;
@@ -42,10 +48,11 @@ public:
 
     // Reads the map's behaviours. Their brush entities are taken out of `world` (it is rebuilt from the map without
     // them) and added back as movers. Returns the entity ids of the movers.
-    std::vector<Id> build(const MapFile& map, CollisionWorld& world);
+    // `mapPath` (the .map file) finds the map's own script; without it the script does not run.
+    std::vector<Id> build(const MapFile& map, CollisionWorld& world, const std::string& mapPath = {});
     // The same in two steps, for a world built some other way (core play_world): read the behaviours, build the world
     // without the brush entities moves() names, then attach the movers to it.
-    std::vector<Id> read(const MapFile& map);
+    std::vector<Id> read(const MapFile& map, const std::string& mapPath = {});
     void attach(const MapFile& map, CollisionWorld& world);
     // Whether an entity's brushes move (a script_brushmodel whose targetname is a door's or a mover's; by name, so it
     // also answers for a copy of the map such as a flattened one).
@@ -59,6 +66,14 @@ public:
     double time() const { return time_; }
     size_t doorCount() const { return doors_.size(); }
     size_t moverCount() const { return movers_.size(); }
+    // The map's own script (empty when the map has none, or read() had no path).
+    const GscEmulation& script() const { return script_; }
+    size_t scriptMoverCount() const { return scriptMovers_.size(); }
+    // The script's notes (skipped statements and calls) not handed out before; a read() of the same script text does
+    // not hand them out again.
+    std::vector<GscNote> takeScriptNotes();
+    // Loads a script given as text (tests; read() with a map path reads the worldspawn's iw8r_script file).
+    void setScriptSource(const std::string& source) { scriptOverride_ = source; }
     std::vector<std::string> warnings;
 
 private:
@@ -104,6 +119,14 @@ private:
     std::vector<Pose> poses_;
     std::vector<std::string> moverNames_;
     double time_ = 0;
+    GscEmulation script_;
+    struct ScriptMover {
+        Id entity = kNoId;
+        int group = -1;
+    };
+    std::vector<ScriptMover> scriptMovers_;  // script_brushmodels the script may move: movers of the world
+    std::string scriptText_, scriptOverride_;
+    size_t scriptNotesShown_ = 0;
 };
 
 }  // namespace iw8r

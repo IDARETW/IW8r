@@ -115,3 +115,33 @@ units outside 0.47 % differ and the frame goes from 9.2 to 8.3 ms. Verdansk, rai
   levels separately (`shadowCutoffLod` is not read here).
 - A model with untextured parts in the viewport (a material that did not resolve) is never left out by distance, so
   that it does not lose only its textured parts.
+
+## 4. The editor's default since 2026-11-15: only LOD swaps
+
+Owner: "any object shifts should be just LOD shifts, i keep seeing objects completely vanishing and changing abruptly".
+The game does leave a placement out past its last LOD distance x lodScale (section 1, VERIFIED), so the editor keeps
+that rule behind **View > Game LOD Cut-off** (off by default, every camera view; `IW8R_GAME_LOD_CUTOFF=1` starts with
+it on). `SceneRenderer::cullTexInstances` now:
+
+- picks a placement's level as the level with the largest start (its meshes' `lodNear`) at or below dist x lodFov,
+  else the nearest level: the meshes' windows without gaps (a level not cached, or a mesh that could not be made, used
+  to leave a range where nothing drew); past the last LOD distance the last level goes on;
+- leaves a model out under the pixel size only when its bounding sphere is under 1 pixel in radius (was 4 "pixels" of a
+  fixed 0.0015 rad), the pixel taken from the frame's projection and height, and for a model without LOD meshes from the
+  whole model's box (its material parts no longer vanish one by one);
+- draws the model-layer passes (research 136) for the placements the mesh draws this frame (they were drawn for every
+  placement, also where another level or nothing was shown).
+
+Every other path that stops a stock prop or world part from drawing while in view: the frustum test (group or part
+sphere; world batches by their 2,048-unit chunks' triangle bounds); View > Umbra Visibility (tome, off by default);
+prop decals (`nearOnly` extra groups) past 4,000 units; Warzone's streamed tiles by radius; models past the 4 M
+distinct-triangle budget (`kPropTriangleBudget`) drawn as boxes (486 of Hideout's placements, all the time, not by the
+camera).
+
+Bench (Hideout, Game Lighting, 1920 x 1080, `IW8R_BENCH_PATH` + `IW8R_POP_LOG`; "cut" = `IW8R_GAME_LOD_CUTOFF=1
+IW8R_INST_CULL_PX=4`, the rule of before):
+- moving away from the map (-1600 -1600 700 to -3000 -3000 1200, 20 steps of about 100 units): with cut 3,154
+  placements vanish in view (2,363 at the cut-off, 791 under 4 pixels); now 529, all under 1 pixel in radius;
+- frame (game_still median, 120 frames): far view (-3000 -3000 1200, yaw 45.3, pitch -15.3) 15.2 / 15.3 ms against
+  13.4 ms cut (10,979 placements drawn against 4,351; 4.44 M against 3.71 M triangles); inside (`ent node_pathnode 30`)
+  13.7 ms against 13.4 ms for the build before. `IW8R_INST_CULL_PX=1.5` gives 14.4 ms on the far view.

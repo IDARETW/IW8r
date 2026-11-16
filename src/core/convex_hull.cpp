@@ -510,15 +510,64 @@ std::vector<Plane> convexHullPlanes(const std::vector<Vec3>& points, double merg
         if (!merged) sums.push_back(rf.n * rf.area);
     }
 
-    std::vector<Plane> planes;
-    for (const Vec3& s : sums) {
-        const Vec3 nn = normalize(s);
-        if (length(nn) < 0.5) continue;
-        double d = -std::numeric_limits<double>::infinity();
-        for (const Vec3& p : points) d = std::max(d, dot(nn, p));  // keeps every input point inside
-        planes.push_back(Plane{nn, d});
+    const auto planesOf = [&](const std::vector<Vec3>& normals) {
+        std::vector<Plane> planes;
+        for (const Vec3& s : normals) {
+            const Vec3 nn = normalize(s);
+            if (!(length(nn) > 0.5)) continue;
+            double d = -std::numeric_limits<double>::infinity();
+            for (const Vec3& p : points) d = std::max(d, dot(nn, p));  // keeps every input point inside
+            planes.push_back(Plane{nn, d});
+        }
+        return planes;
+    };
+    // The planes must close the solid. Faces of (almost) no area lose their direction in the area-weighted sums, and a
+    // long thin part (a wire, a bracket rod) can end up with two or four planes: a slab through the whole map (owner's
+    // Hideout walk 2026-11-15: 150 barbed wire brackets). Then every face keeps its own plane; still open: no hull.
+    std::vector<Plane> planes = planesOf(sums);
+    const Poly solid = solidOf(planes);
+    if (planes.size() >= 4 && !solid.empty() && boundedSolid(solid)) return planes;
+    std::vector<Vec3> each;
+    for (const RawFace& rf : raw) {
+        bool dup = false;
+        for (const Vec3& n : each) dup = dup || dot(n, rf.n) > 1.0 - 1e-12;
+        if (!dup) each.push_back(rf.n);
     }
-    return planes;
+    planes = planesOf(each);
+    const Poly solid2 = solidOf(planes);
+    if (planes.size() >= 4 && !solid2.empty() && boundedSolid(solid2)) return planes;
+    return {};
+}
+
+bool convexSolidBounds(const std::vector<Plane>& planes, AABB& out) {
+    out = AABB{};
+    if (planes.size() < 4) return false;
+    const Poly solid = solidOf(planes);
+    if (solid.empty() || !boundedSolid(solid)) return false;
+    for (const PolyFace& f : solid)
+        for (const Vec3& v : f.v) out.add(v);
+    return out.valid();
+}
+
+void thickenHull(std::vector<Plane>& planes, const std::vector<Vec3>& points, double minWidth) {
+    if (points.empty() || !(minWidth > 0)) return;
+    for (Plane& pl : planes) {
+        double lo = std::numeric_limits<double>::infinity();
+        for (const Vec3& p : points) lo = std::min(lo, dot(pl.n, p));
+        const double width = pl.d - lo;
+        if (width < minWidth) pl.d += 0.5 * (minWidth - width);
+    }
+}
+
+bool convexSolidWithin(const std::vector<Plane>& planes, const AABB& points) {
+    if (!points.valid()) return false;
+    AABB b;
+    if (!convexSolidBounds(planes, b)) return false;
+    const Vec3 s = points.maxs - points.mins;
+    const double pad = 2.0 + 0.25 * std::max({s.x, s.y, s.z});
+    for (int a = 0; a < 3; ++a)
+        if (b.mins[a] < points.mins[a] - pad || b.maxs[a] > points.maxs[a] + pad) return false;
+    return true;
 }
 
 std::vector<Plane> simplifyHull(const std::vector<Plane>& planes, size_t maxPlanes) {
@@ -650,6 +699,11 @@ std::vector<std::vector<Plane>> convexPieces(const ImportedModel& m, int maxPiec
     std::vector<std::vector<Plane>> out;
     for (const Piece& pc : pieces) {
         std::vector<Plane> planes = convexHullPlanes(pc.pts);
+        if (maxPlanesPerPiece >= 4 && !planes.empty()) planes = simplifyHull(planes, maxPlanesPerPiece);
+        // A sliver is made half a unit thick, and a hull that is open or reaches past its points (a slab through the
+        // map, owner's Hideout walk 2026-11-15) collides as the box below instead.
+        thickenHull(planes, pc.pts, 0.5);
+        if (!planes.empty() && !convexSolidWithin(planes, pc.box)) planes.clear();
         if (planes.empty() && pc.box.valid()) {
             // No hull (flat, or the points defeat the hull): the piece collides as its box, a little thickened when flat.
             AABB b = pc.box;
@@ -659,7 +713,6 @@ std::vector<std::vector<Plane>> convexPieces(const ImportedModel& m, int maxPiec
                       Plane{Vec3{0, -1, 0}, -b.mins.y}, Plane{Vec3{0, 0, 1}, b.maxs.z}, Plane{Vec3{0, 0, -1}, -b.mins.z}};
         }
         if (planes.empty()) continue;
-        if (maxPlanesPerPiece >= 4) planes = simplifyHull(planes, maxPlanesPerPiece);
         out.push_back(std::move(planes));
     }
     return out;

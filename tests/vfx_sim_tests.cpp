@@ -602,4 +602,17 @@ TEST(vfx_flare_modules_and_screen_layout) {
         const VfxFlareSprite nearS = vfxFlareSprite(lens, size, src, 1.0, 140.0), farS = vfxFlareSprite(lens, size, src, 1.0, 5000.0);
         CHECK(nearS.half[1] <= farS.half[1]);
     }
+    // Research 139 section 5: the emissive graph (RGB, intensity) is read and gives each particle the colour an unlit set
+    // adds; the anamorphic streak's is constant (0.98, 0.70, 0.31) x 4.
+    {
+        CHECK(anamorphic.emissive.present && anamorphic.emissive.a.size() == 5);
+        bool seen = false;
+        for (const VfxParticle& p : sampleVfx(def, 1.0, 1)) {
+            CHECK(p.hasEmissive);
+            if (p.emitter != 1) continue;
+            seen = true;
+            CHECK(std::fabs(p.emissive[0] - 0.98 * 4) < 0.05 && std::fabs(p.emissive[1] - 0.70 * 4) < 0.05 && std::fabs(p.emissive[2] - 0.31 * 4) < 0.05);
+        }
+        CHECK(seen);
+    }
 }

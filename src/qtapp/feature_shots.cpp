@@ -27,6 +27,7 @@
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QScrollArea>
 #include <QScreen>
 #include <QSignalBlocker>
 #include <QStatusBar>
@@ -53,6 +54,9 @@
 
 #include "asset_browser.h"
 #include "asset_usage_dialog.h"
+#include "thumb_bench.h"
+#include "vfx_preview_bench.h"
+#include "sound_preview.h"
 #include "atmosphere_dialog.h"
 #include "brush_tools.h"
 #include "camera_view.h"
@@ -67,6 +71,8 @@
 #include "ies_browser.h"
 #include "link_graph_view.h"
 #include "main_window.h"
+#include "qt_gui_test_stock_panel.h"
+#include "stock_map_panel.h"
 #include "material_editor.h"
 #include "model_cache.h"
 #include "outliner_panel.h"
@@ -726,6 +732,151 @@ View chosenView(MainWindow& w, const View& fixed, const std::vector<View>& searc
     return v;
 }
 
+// IW8R_FEATURE_SHOTS_ONLY=stock_panel (IW8R_STOCK_PANEL_ZONE=<zone .ff>, default mp_hideout): the side bar's Stock Map
+// panel on a stock map: the window with the panel, the panel at 300 and 420 px, the camera with Game Lighting before
+// and after sun edits made through the panel (with how much the picture changed), then the panel's GUI checks
+// (qt_gui_test_stock_panel.h) into the report.
+int stockPanelShots(Shots& s, MainWindow& w, const QString& outDir) {
+    EditorContext& ctx = w.context();
+    const QString zone = qEnvironmentVariableIsSet("IW8R_STOCK_PANEL_ZONE") ? qEnvironmentVariable("IW8R_STOCK_PANEL_ZONE")
+                                                                             : QString("E:/IW8/Builds/1.20-replay/zone/mp_hideout.ff");
+    const auto finish = [&] {
+        QFile f(QDir(outDir).filePath("feature-shots.txt"));
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(s.report.join("\n").toUtf8() + "\n");
+        return s.failed == 0 ? 0 : 2;
+    };
+    QElapsedTimer clock;
+    clock.start();
+    const auto step = [&](const QString& what) {  // progress in the report as the run goes
+        s.report << QString("-\tstep\t%1 (%2 s)").arg(what).arg(clock.elapsed() / 1000);
+        finish();
+    };
+    step("opening " + zone);
+    QString err;
+    if (!QFileInfo::exists(zone) || !w.openStockZone(zone, &err)) {
+        s.skip("stock_panel_window.png", "the Stock Map panel", zone + " could not be opened: " + err);
+        return finish();
+    }
+    StockMapPanel* p = w.stockMapPanel();
+    if (!p) {
+        s.skip("stock_panel_window.png", "the Stock Map panel", "the main window has none");
+        return finish();
+    }
+    step("opened; waiting for the stock sun");
+    const bool sunKnown = waitFor(w, [&] { return p->stockSun().known; }, 120000);
+    step(sunKnown ? "stock sun read; waiting for the props" : "stock sun NOT read; waiting for the props");
+    waitFor(w, [&] {
+        const auto st = w.stockPropStatus();
+        return st.loaded && !st.fetching;
+    }, 120000);
+    step("props; waiting for the textures");
+    s.report << "-\tinfo\t" + waitTexturesStable(w, 6000, 120000);
+    step("textures");
+    {
+        const StockMapPanel::Sun st = p->stockSun();
+        QString sd = "(none)";
+        for (const Entity& e : ctx.doc.map().entities)
+            if (e.isWorldspawn())
+                if (const std::string* v = e.value("sundirection")) sd = QString::fromStdString(*v);
+        s.report << QString("-\tinfo\tstock sun %1: colour %2 %3 %4, intensity %5, direction %6 %7 (worldspawn sundirection %8)")
+                        .arg(sunKnown ? "read" : "NOT read")
+                        .arg(st.color[0]).arg(st.color[1]).arg(st.color[2]).arg(st.intensity).arg(st.pitch).arg(st.yaw).arg(sd);
+    }
+    if (QAction* a = w.action("ToggleGameLighting"); a && !a->isChecked()) a->trigger();
+    {
+        // The middle of the map's own entities (spawns and the like stand on the ground), seen from above at an angle.
+        std::vector<double> xs, ys, zs;
+        for (const Entity& e : ctx.doc.map().entities)
+            if (auto o = e.origin()) xs.push_back(o->x), ys.push_back(o->y), zs.push_back(o->z);
+        const auto median = [](std::vector<double> v) {
+            if (v.empty()) return 0.0;
+            std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end());
+            return v[v.size() / 2];
+        };
+        look(w, Vec3{median(xs), median(ys), median(zs)}, 35, -35, 1400);
+    }
+    w.showDock("Stock Map");
+    step("panel shown");
+    settle(w, 2500);
+    s.window("stock_panel_window.png", "The Stock Map panel in the side section beside the camera (Game Lighting on, the stock sun)", 3000);
+    step("window picture");
+    ads::CDockManager* dm = w.findChild<ads::CDockManager*>();
+    ads::CDockWidget* d = dm ? dm->findDockWidget("Stock Map") : nullptr;
+    QWidget* area = d ? static_cast<QWidget*>(d->dockAreaWidget()) : nullptr;
+    if (area) s.widget(area, "stock_panel_docked.png", QString("The Stock Map panel as docked (%1 px wide)").arg(area->width()), 800);
+    // The whole column at the narrow and the wide width of the side section (a panel of its own, all of it shown).
+    for (const int width : {300, 420}) {
+        auto* extra = new StockMapPanel(&w, &ctx);
+        extra->setAttribute(Qt::WA_DeleteOnClose);
+        extra->resize(width, 900);
+        extra->show();
+        settle(w, 600);
+        extra->refresh();
+        QWidget* body = extra->scrollArea() ? extra->scrollArea()->widget() : nullptr;
+        if (body) {
+            const int h = body->heightForWidth(width) > 0 ? body->heightForWidth(width) : body->sizeHint().height();
+            extra->resize(width, h + 4);
+            settle(w, 400);
+            s.report << QString("-\tinfo\tstock panel at %1 px: its column needs %2 px").arg(width).arg(body->minimumSizeHint().width());
+        }
+        s.widget(extra, QString("stock_panel_%1.png").arg(width), QString("The Stock Map panel at %1 px, all of it").arg(width), 400);
+        extra->close();
+        settle(w, 200);
+        step(QString("panel at %1 px").arg(width));
+    }
+    // The viewport before and after the panel's sun edits: the picture must change (Game Lighting draws the stock sun).
+    CameraView* cam = w.cameraView();
+    const auto meanOf = [](const QImage& src) {
+        const QImage img = src.convertToFormat(QImage::Format_RGB32);
+        double sum[3] = {0, 0, 0};
+        size_t n = 0;
+        for (int y = 0; y < img.height(); y += 2) {
+            const auto* line = reinterpret_cast<const QRgb*>(img.constScanLine(y));
+            for (int x = 0; x < img.width(); x += 2, ++n) sum[0] += qRed(line[x]), sum[1] += qGreen(line[x]), sum[2] += qBlue(line[x]);
+        }
+        return std::array<double, 3>{sum[0] / std::max<size_t>(n, 1), sum[1] / std::max<size_t>(n, 1), sum[2] / std::max<size_t>(n, 1)};
+    };
+    const auto shot = [&](const QString& file, const QString& what) {
+        settle(w, 1200);
+        const QImage img = cam ? cam->renderImage(960, 540, false, 0, 600) : QImage();
+        s.saved(img, file, what);
+        return img;
+    };
+    const QImage before = shot("stock_panel_sun_before.png", "Camera with Game Lighting: the stock sun");
+    const StockMapPanel::Sun st = p->stockSun();
+    p->setSunColor(1, 0.3, 0.15);
+    p->setSunIntensity(st.intensity * 2.5);
+    const QImage red = shot("stock_panel_sun_red.png", "The same view after the panel's colour (1 0.3 0.15) and intensity (x 2.5)");
+    p->setSunDirection(-12, st.yaw + 120);
+    const QImage turned = shot("stock_panel_sun_turned.png", "The same view after the panel's direction (pitch -12, yaw + 120)");
+    s.window("stock_panel_window_edited.png", "The Stock Map panel with the edited sun: the viewport follows", 1500);
+    if (!before.isNull() && !red.isNull() && !turned.isNull()) {
+        const auto m0 = meanOf(before), m1 = meanOf(red), m2 = meanOf(turned);
+        const double redShift = (m1[0] - m1[2]) - (m0[0] - m0[2]);
+        const double turnShift = std::fabs(m2[0] - m1[0]) + std::fabs(m2[1] - m1[1]) + std::fabs(m2[2] - m1[2]);
+        s.report << QString("-\tinfo\tcamera mean rgb: stock %1 %2 %3, red sun %4 %5 %6, turned %7 %8 %9")
+                        .arg(m0[0], 0, 'f', 1).arg(m0[1], 0, 'f', 1).arg(m0[2], 0, 'f', 1)
+                        .arg(m1[0], 0, 'f', 1).arg(m1[1], 0, 'f', 1).arg(m1[2], 0, 'f', 1)
+                        .arg(m2[0], 0, 'f', 1).arg(m2[1], 0, 'f', 1).arg(m2[2], 0, 'f', 1);
+        s.note("-", QString("the viewport follows the panel's sun: red minus blue %1 brighter, the turned sun changes the mean by %2")
+                        .arg(redShift, 0, 'f', 1).arg(turnShift, 0, 'f', 1),
+               redShift > 2 && turnShift > 1 ? "ok" : "FAILED");
+        s.failed += redShift > 2 && turnShift > 1 ? 0 : 1;
+    }
+    p->resetSun();
+    revert(w);
+    step("camera pictures; the panel's checks");
+    // The panel's GUI checks on the same map (they undo what they do; at the end the map is opened again).
+    runStockPanelChecks([&s](const QString& name) { s.report << "-\tsection\t" + name; },
+                        [&](bool ok, const QString& m) {
+                            s.note("-", m, ok ? "ok" : "FAILED");
+                            s.failed += ok ? 0 : 1;
+                            finish();
+                        },
+                        [&s](const QString& why) { s.skip("-", "Stock Map panel checks", why); }, w, zone, true);
+    return finish();
+}
+
 }  // namespace
 
 int runFeatureShots(MainWindow& w, const QString& outDir) {
@@ -735,6 +886,17 @@ int runFeatureShots(MainWindow& w, const QString& outDir) {
     Shots s{w, outDir, {}, 0};
     ModalGuard guard(&s.report);
     w.resize(1600, 960);
+    // IW8R_FEATURE_SHOTS_ONLY=thumbs: the side bar thumbnail timings only (thumb_bench.h), before any map is open.
+    if (qEnvironmentVariable("IW8R_FEATURE_SHOTS_ONLY") == "thumbs") return runThumbBench(w, outDir);
+    // IW8R_FEATURE_SHOTS_ONLY=fx_panel: the side bar's effect preview, before and after (vfx_preview_bench.h).
+    if (qEnvironmentVariable("IW8R_FEATURE_SHOTS_ONLY") == "fx_panel") return runVfxPanelShots(w, outDir);
+    // IW8R_FEATURE_SHOTS_ONLY=sound: the sound preview's decoder checked on the game's banks (sound_preview.h);
+    // IW8R_SOUND_REFERENCE=<dir> of .flac / .wav pairs compares it sample by sample.
+    if (qEnvironmentVariable("IW8R_FEATURE_SHOTS_ONLY") == "sound")
+        return runSoundSelfTest(qEnvironmentVariable("IW8R_TOOL_REPLAY", "E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe"),
+                                qEnvironmentVariable("IW8R_SOUND_REFERENCE"), outDir);
+    // IW8R_FEATURE_SHOTS_ONLY=stock_panel: the side bar's Stock Map panel only (stockPanelShots).
+    if (qEnvironmentVariable("IW8R_FEATURE_SHOTS_ONLY") == "stock_panel") return stockPanelShots(s, w, outDir);
     EditorContext& ctx = w.context();
 
     const QString map = repoFile("samples/dev/mp_iw8r_show2.map");
@@ -761,7 +923,7 @@ int runFeatureShots(MainWindow& w, const QString& outDir) {
             settle(w, 1500);
             s.window("side_panel.png", "The side bar with the Materials panel open beside the camera", 4000);
             // Every side section panel on its own at the section's width (layout work on each panel).
-            for (const char* panel : {"Materials", "Models", "Prefabs", "Effects", "Sounds", "Images", "IW8 Spawns", "Undo History"}) {
+            for (const char* panel : {"Materials", "Models", "Prefabs", "Effects", "Sounds", "Images", "IW8 Spawns", "Undo History", "Tools"}) {
                 w.showDock(panel);
                 settle(w, 1200);
                 ads::CDockManager* dm = w.findChild<ads::CDockManager*>();
@@ -770,6 +932,46 @@ int runFeatureShots(MainWindow& w, const QString& outDir) {
                 const QString file = "panel_" + QString(panel).toLower().replace(' ', '_') + ".png";
                 if (area) s.widget(area, file, QString("The %1 panel in the side section (%2 px wide)").arg(panel).arg(area->width()), 1500);
                 else s.skip(file, QString("The %1 panel").arg(panel), "no dock area");
+            }
+            // The previews with something selected (owner 2026-11-15): a model's compact preview, an effect playing in the
+            // Effects panel (exported with ACTS first when needed), an alias playing in the Sounds panel (muted here).
+            {
+                const auto panelArea = [&w](const char* panel) -> QWidget* {
+                    ads::CDockManager* dm = w.findChild<ads::CDockManager*>();
+                    ads::CDockWidget* d = dm ? dm->findDockWidget(panel) : nullptr;
+                    return d ? static_cast<QWidget*>(d->dockAreaWidget()) : nullptr;
+                };
+                if (AssetBrowser* mb = w.modelsBrowser()) {
+                    w.showDock("Models");
+                    mb->setFilter("accessory_money");
+                    settle(w, 400);
+                    mb->selectRow(1);
+                    for (int i = 0; i < 100 && !mb->previewHasImage(); ++i) settle(w, 100);
+                    s.widget(panelArea("Models"), "panel_models_selected.png", "The Models panel with a model selected: its compact preview under the tiles", 1200);
+                    mb->setFilter("");
+                }
+                if (AssetBrowser* eb = w.effectsBrowser()) {
+                    w.showDock("Effects");
+                    eb->setFilter("vfx/core/expl/spark_death");
+                    settle(w, 400);
+                    eb->selectRow(0);
+                    for (int i = 0; i < 600 && !eb->effectPreview()->isVisible(); ++i) settle(w, 150);
+                    s.widget(panelArea("Effects"), "panel_effects_selected.png", "The Effects panel playing the selected effect", 1500);
+                    eb->setFilter("");
+                }
+                if (AssetBrowser* sb = w.soundsBrowser()) {
+                    w.showDock("Sounds");
+                    if (auto* sp = w.findChild<SoundPreview*>("soundPreview")) sp->setMuted(true);
+                    sb->setFilter("emt_smokestack_lp");
+                    settle(w, 400);
+                    sb->selectRow(0);
+                    settle(w, 200);
+                    if (auto* play = sb->findChild<QPushButton*>("soundPlay")) play->click();
+                    for (int i = 0; i < 1200 && !sb->soundStatus().startsWith("Playing") && !sb->soundStatus().contains(": "); ++i) settle(w, 150);
+                    s.widget(panelArea("Sounds"), "panel_sounds_selected.png", "The Sounds panel playing the selected alias (" + sb->soundStatus() + ")", 600);
+                    if (auto* sp = w.findChild<SoundPreview*>("soundPreview")) sp->stop();
+                    sb->setFilter("");
+                }
             }
             w.showDock("Materials");
             settle(w, 800);

@@ -626,6 +626,16 @@
           "examples": [
             "1"
           ]
+        },
+        "iw8r_collision": {
+          "type": "string",
+          "default": "",
+          "description": "Player collision of this placed model in the build and the play preview. Empty (default): by the stock model's own collision: a stock model with a physics asset blocks with that asset's shape, one without (most bushes, grass) is walked through, as in game; the mapper's own models use their mesh. 1: solid from the model's render mesh, even without a stock physics asset. 0: no collision.",
+          "required": false,
+          "examples": [
+            "1",
+            "0"
+          ]
         }
       }
     },
@@ -1001,6 +1011,16 @@
           "required": false,
           "examples": [
             "1"
+          ]
+        },
+        "iw8r_collision": {
+          "type": "string",
+          "default": "",
+          "description": "Player collision of this placed model in the build and the play preview. Empty (default): by the stock model's own collision: a stock model with a physics asset blocks with that asset's shape, one without (most bushes, grass) is walked through, as in game; the mapper's own models use their mesh. 1: solid from the model's render mesh, even without a stock physics asset. 0: no collision.",
+          "required": false,
+          "examples": [
+            "1",
+            "0"
           ]
         }
       }

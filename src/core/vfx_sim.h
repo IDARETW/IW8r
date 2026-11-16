@@ -90,6 +90,10 @@ struct VfxEmitterSim {
     float colorMin[4] = {1, 1, 1, 1}, colorMax[4] = {1, 1, 1, 1};
     bool looping = false;        // the effect plays on (IW7 bits 0x8 / 0x10, or a continuous emitter without a life)
     VfxGraph color, size, velocity, rotation, intensity, drag;
+    // emissiveGraph (curves 0-2 RGB, 3 intensity, 4 a second term; research 138 section 2): the colour an unlit set
+    // adds. The unlit effect and flare pixel shaders read this colour and only the alpha of the particle colour
+    // (VERIFIED in their disassembly, research 139 section 5; that the vertex's emissive is this graph is INFERRED).
+    VfxGraph emissive;
     double rotAngleMin = 0, rotAngleMax = 0, rotRateMin = 0, rotRateMax = 0;  // radians, rad/s
     struct Shape {
         int type = 0;            // 0 none (the origin), 1 box, 2 sphere, 3 cylinder, 4 ellipsoid
@@ -146,6 +150,8 @@ struct VfxParticle {
     double size = 0;            // inches (width)
     double size2[2] = {0, 0};   // width, height (a tail: width, length)
     float rgba[4] = {0, 0, 0, 0};  // linear colour x intensity (may exceed 1), alpha
+    float emissive[3] = {0, 0, 0};  // the emissive graph's RGB x its intensity (hasEmissive)
+    bool hasEmissive = false;
     double vel[3] = {0, 0, 0};  // inches/s at t (placement axes)
     double angle = 0;           // sprite rotation, radians
     double atlasPos = -1;       // play over life: 0..1; -1 otherwise

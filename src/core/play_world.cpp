@@ -8,6 +8,7 @@
 #include <set>
 
 #include "convex_hull.h"
+#include "model_physics.h"
 #include "prefab.h"
 
 namespace iw8r {
@@ -62,24 +63,54 @@ void buildPlayWorld(const MapFile& map, const PlayWorldOptions& opt, CollisionWo
 
     // Placed models: convex pieces (file Y-up coordinates) per model name, placed like the build does.
     std::map<const ImportedModel*, std::vector<std::vector<Plane>>> pieces;
+    // Which models collide and with what shape: the build's rule (compile_iw8.cpp, CompileOptions::modelPhysics).
+    const ModelPhysicsCatalog* catalog = opt.noPhysicsRule ? nullptr : (opt.physics ? opt.physics : &ModelPhysicsCatalog::shared());
+    std::map<const ModelPhysicsShape*, std::vector<std::vector<Plane>>> physicsPlanes;  // Z-up model space
     for (const Entity& e : use->entities) {
         if (!playModelCollides(e, *use)) continue;
         const std::string* mv = nonEmpty(e, "model");
         if (!mv || (*mv)[0] == '*' || !opt.modelOf) continue;
         const std::shared_ptr<const ImportedModel> m = opt.modelOf(e);
         if (!m || !m->bounds.valid()) continue;
-        auto it = pieces.find(m.get());
-        if (it == pieces.end()) {
-            // The render meshes, as compile_iw8.cpp's piecesOf (it does not read a glTF's collision nodes either).
-            it = pieces.emplace(m.get(), convexPieces(*m, opt.maxPieces, size_t(std::max(0, opt.maxPlanes)))).first;
+        // The scene cannot tell the mapper's own models from stock ones; an own model's name is not in the catalogue.
+        const ModelCollisionChoice choice = chooseModelCollision(*mv, &e, false, catalog);
+        if (choice.source == ModelCollisionSource::None) {
+            ++st.walkThrough;
+            continue;
         }
         Vec3 ang;
         if (const std::string* a = e.value("angles")) std::sscanf(a->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z);
         const Mat3 r = anglesToMatrix(ang);
         double ms = 1.0;
         if (const std::string* s = e.value("modelscale")) ms = std::max(0.001, std::atof(s->c_str()));
-        const double scale = (opt.modelScale > 0 ? opt.modelScale : 1.0) * ms;
         const Vec3 o = e.origin().value_or(Vec3{});
+        if (choice.source == ModelCollisionSource::PhysicsShape) {
+            // Stock physics pieces: Z-up model space in inches (map units), so only the placement's own scale.
+            auto pp = physicsPlanes.find(choice.shape);
+            if (pp == physicsPlanes.end())
+                pp = physicsPlanes.emplace(choice.shape, physicsShapePlanes(*choice.shape, size_t(std::max(0, opt.maxPlanes)))).first;
+            size_t made = 0;
+            for (const auto& piece : pp->second) {
+                std::vector<Plane> planes;
+                for (const Plane& pl : piece) {
+                    const Vec3 n = r * pl.n;
+                    planes.push_back({n, dot(n, o) + ms * pl.d});
+                }
+                if (out.addConvex(std::move(planes))) ++made;
+            }
+            if (made) {
+                ++st.models;
+                ++st.physicsModels;
+                st.hullPieces += made;
+                continue;
+            }
+        }
+        auto it = pieces.find(m.get());
+        if (it == pieces.end()) {
+            // The render meshes, as compile_iw8.cpp's piecesOf (it does not read a glTF's collision nodes either).
+            it = pieces.emplace(m.get(), convexPieces(*m, opt.maxPieces, size_t(std::max(0, opt.maxPlanes)))).first;
+        }
+        const double scale = (opt.modelScale > 0 ? opt.modelScale : 1.0) * ms;
         ++st.models;
         if (!it->second.empty()) {
             for (const auto& piece : it->second) {

@@ -4,6 +4,7 @@
 #include "shader_cache.h"
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <d3d11_1.h>
 #include <d3dcompiler.h>
@@ -1744,7 +1745,8 @@ const char* kParticleShader = R"(
 // pMode: x = HDR scene, y = unlit, z = per-particle light (Game Lighting), w = the sun shadow map is there.
 // pSunNear: x = near cascade bias, y = near cascade on, z = whole-scene bias. pSun: the sun's share on a lit particle.
 // pDist: xy = a distortion material's constant 127 (inches), zw = the target size. pFlare: x = screen-space flare quads,
-// y = the occlusion test's depth bias.
+// y = the occlusion test's depth bias, w = a dirty lens piece (1: pMask is its slot 145 image, 2: no image, a round
+// fall-off stands in).
 cbuffer Part : register(b0) {
     row_major float4x4 pVp; float4 pLight; float4 pMode;
     row_major float4x4 pSunVp; row_major float4x4 pSunVpNear; float4 pSunNear; float4 pSun; float4 pDist; float4 pFlare;
@@ -1756,6 +1758,7 @@ SamplerState pSamp : register(s0);
 SamplerComparisonState pShadowSamp : register(s1);
 SamplerState pClamp : register(s2);
 Texture2D<float> pDepth : register(t3);
+Texture2D pMask : register(t4);
 // A flare's source seen from the camera (research 139 section 1.4): of a 3x3 grid over its occlusion area, the share of
 // points where nothing in the scene is nearer than the source.
 float flareVisible(float3 src, float3 area) {
@@ -1799,10 +1802,12 @@ float sunVisible(float3 w) {
 PI vs_part(VI i) {
     PI o;
     if (pFlare.x > 0.5) {
-        // A flare piece: already on screen, over the scene, faded by its source's visibility.
+        // A flare piece: already on screen, over the scene, faded by its source's visibility v. The flare pixel shader
+        // (research 139 section 5, VERIFIED) adds image x emissive x (v x intensity) x saturate(v x alpha).
+        const float v = flareVisible(i.aux0, i.aux1);
         o.pos = float4(i.pos.xy, 0.5, 1.0);
         o.uv = i.uv;
-        o.col = float4(i.col.rgb * flareVisible(i.aux0, i.aux1), i.col.a);
+        o.col = float4(i.col.rgb * v, i.col.a * v);
         o.world = 0, o.t = 0, o.b = 0, o.light = pLight.rgb;
         return o;
     }
@@ -1820,11 +1825,26 @@ PI vs_part(VI i) {
 }
 float3 linOf(float3 c) { return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); }
 float4 ps_part(PI i) : SV_Target {
-    const float4 t = pTex.Sample(pSamp, i.uv);
+    float2 uv = i.uv;
+    float mask = 1.0;
+    if (pFlare.x > 0.5 && pFlare.w > 0.5) {
+        // A dirty lens piece (research 139 section 5, VERIFIED in its pixel shader, the flag-256 path): slot 18 at the
+        // screen's UV, the middle 16:9 of the image (lens grime fixed to the screen: it does not turn or move with the
+        // piece), masked by the red channel of slot 145 in the quad's UV. Slot 145 is sRGB (read linear by the game).
+        float2 s = i.pos.xy / pDist.zw;
+        const float aspect = pDist.z / pDist.w;
+        if (aspect > 1.777778) s.y = s.y * (1.777778 / aspect) + (1.0 - 1.777778 / aspect) * 0.5;
+        else if (aspect < 1.777778) s.x = s.x * (aspect * 0.5625) + (1.0 - aspect * 0.5625) * 0.5;
+        uv = s;
+        if (pFlare.w > 1.5) mask = pow(saturate(1.0 - 2.0 * length(i.uv - 0.5)), 3.0);  // no slot 145 image cached
+        else mask = linOf(saturate(pMask.Sample(pSamp, i.uv).rrr)).r;
+    }
+    const float4 t = pTex.Sample(pSamp, uv);
     const bool hdr = pMode.x > 0.5;
     const float3 tex = hdr ? linOf(saturate(t.rgb)) : t.rgb;
     const float3 col = hdr ? i.col.rgb : pow(max(i.col.rgb, 0.0), 1.0 / 2.2);
-    if (pMode.y > 0.5) return float4(tex * col * pLight.rgb, 0.0);  // unlit: adds (pLight = the emissive scale)
+    // Unlit: adds, x saturate(alpha) (the unlit effect and flare pixel shaders, VERIFIED; pLight = the emissive scale).
+    if (pMode.y > 0.5) return float4(tex * col * pLight.rgb * saturate(i.col.a * mask), 0.0);
     float3 light = i.light;
     if (!hdr && pMode.z > 0.5) light = min(1.5, pow(max(light, 0.0), 1.0 / 2.2));
     const float a = saturate(t.a * i.col.a);
@@ -2816,6 +2836,8 @@ void SceneRenderer::drawParticles(const float viewProj[16]) {
         cb[64] = b.distScale[0], cb[65] = b.distScale[1], cb[66] = float(std::max(1, w_)), cb[67] = float(std::max(1, h_));
         static const bool distDebug = std::getenv("IW8R_DIST_DEBUG") != nullptr;
         cb[68] = b.screen ? 1.0f : 0.0f, cb[69] = 1e-5f, cb[70] = distDebug ? 1.0f : 0.0f;
+        const bool maskImage = b.mask >= 0 && size_t(b.mask) < textures_.size();
+        cb[71] = b.screen && b.screenMask ? (maskImage ? 1.0f : 2.0f) : 0.0f;
         ctx_->UpdateSubresource(partCb_, 0, nullptr, cb, 0, 0);
     };
     UINT first = 0;
@@ -2892,6 +2914,8 @@ void SceneRenderer::drawParticles(const float viewProj[16]) {
             if (n && b.screen && tex >= 0 && size_t(tex) < textures_.size()) {
                 writePartCb(b);
                 ctx_->PSSetShaderResources(0, 1, &textures_[size_t(tex)]);
+                ID3D11ShaderResourceView* mk = b.screenMask && b.mask >= 0 && size_t(b.mask) < textures_.size() ? textures_[size_t(b.mask)] : nullptr;
+                ctx_->PSSetShaderResources(4, 1, &mk);
                 ctx_->Draw(n, first);
                 stats_.drawCalls++;
                 flareQuads_ += n / 6;
@@ -2900,6 +2924,7 @@ void SceneRenderer::drawParticles(const float viewProj[16]) {
         }
         ID3D11ShaderResourceView* noDepth = nullptr;
         ctx_->VSSetShaderResources(3, 1, &noDepth);
+        ctx_->PSSetShaderResources(4, 1, &noDepth);
         ctx_->OMSetRenderTargets(1, &rtv, dsv);
         if (rtv) rtv->Release();
         if (dsv) dsv->Release();
@@ -4678,8 +4703,39 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
     instCulledLast_ = 0;
     std::vector<float> keep, keepBig;
     static const float bigPx = std::getenv("IW8R_PREPASS_PX") ? std::max(0.0f, float(std::atof(std::getenv("IW8R_PREPASS_PX")))) : 24.0f;
-    static const float kPx = std::getenv("IW8R_INST_CULL_PX") ? std::max(0.5f, float(std::atof(std::getenv("IW8R_INST_CULL_PX")))) : 4.0f;
-    static const bool noLodOut = std::getenv("IW8R_NO_FOLIAGE_LOD_OUT") != nullptr;
+    // A placement whose bounding sphere is under kPx pixels in radius is left out (the one cut that is not a LOD swap:
+    // kept small so that only what is a dot or less goes; it was 4 px of a fixed 0.0015 rad "pixel", which dropped
+    // 8-pixel props on Hideout). IW8R_INST_CULL_PX sets it.
+    static const float kPx = std::getenv("IW8R_INST_CULL_PX") ? std::max(0.25f, float(std::atof(std::getenv("IW8R_INST_CULL_PX")))) : 1.0f;
+    // The game's cut past the last LOD distance only with View > Game LOD Cut-off (IW8R_NO_FOLIAGE_LOD_OUT: never).
+    static const bool noLodOutEnv = std::getenv("IW8R_NO_FOLIAGE_LOD_OUT") != nullptr;
+    const bool noLodOut = noLodOutEnv || !gameLodCutoff();
+    static const char* popLogPath = std::getenv("IW8R_POP_LOG");
+    InstCullStats st;
+    ++popFrame_;
+    FILE* popLog = nullptr;
+    // A pop: drawn the frame before, left out now while in view (state 1 = drawn; 2 tome, 3 pixel, 4 cut-off; 0 = out
+    // of view). Logged with the reason (IW8R_POP_LOG).
+    const auto popCheck = [&](std::vector<uint8_t>& prev, size_t i, uint8_t now, const char* kind, size_t idx, float dist, float rad,
+                              float lodDist) {
+        if (i < prev.size() && prev[i] == 1 && now >= 2) {
+            ++st.pops;
+            if (popLogPath) {
+                if (!popLog) popLog = std::fopen(popLogPath, "a");
+                static const char* why[] = {"view", "drawn", "tome", "pixel", "cutoff"};
+                if (popLog)
+                    std::fprintf(popLog, "frame %llu %s %zu placement %zu %s dist %.0f radius %.1f lod_dist %.0f\n", (unsigned long long)popFrame_,
+                                 kind, idx, i, why[now], dist, rad, lodDist);
+            }
+        }
+        if (i < prev.size()) prev[i] = now;
+    };
+    // One pixel at the frame's centre from the projection (its second column holds 1 / tanHalfFovY) and the frame's
+    // height; the fixed value before (nothing set it) was right for 1080 lines at a 90-degree view only.
+    {
+        const float ys = std::sqrt(viewProj[1] * viewProj[1] + viewProj[5] * viewProj[5] + viewProj[9] * viewProj[9]);
+        if (ys > 1e-6f && h_ > 0) pixelAngle = 2.0f / (ys * float(h_));
+    }
     // The game's field-of-view factor on LOD distances (GT R_SetLodParms): tanHalfFovY x 2.1186731, which is 1 at the
     // game's own view. The view-projection's second column holds the up axis x (1 / tanHalfFovY). IW8R_NO_LOD_FOV: off
     // (a bench switch).
@@ -4712,8 +4768,13 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
         float dist, rad;
         float lod;  // the game's LOD distance: to the nearest point of the placement's box
         bool out;
+        uint8_t why;    // 0 out of view, 1 drawn, 2 tome, 3 pixel, 4 the game's cut-off
+        float level;    // the chosen level's start distance (its meshes' lodNear)
     };
     std::vector<PlaceEval> ev;
+    std::vector<float> levels;
+    if (popLogPath && popPrevGroup_.size() != texLodGroups_.size()) popPrevGroup_.assign(texLodGroups_.size(), {});
+    if (popLogPath && popPrevMesh_.size() != refTexInst_.size()) popPrevMesh_.assign(refTexInst_.size(), {});
     for (const std::vector<size_t>& grp : texLodGroups_) {
         if (grp.empty()) continue;
         const GpuTexInstanced& lead = refTexInst_[grp[0]];
@@ -4743,39 +4804,78 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             const float sc = std::sqrt(r[0] * r[0] + r[4] * r[4] + r[8] * r[8]);
             PlaceEval& e = ev[i];
             e.rad = radius * std::max(sc, 1e-6f);
-            e.out = tomeHides(lead, i);
-            if (e.out) ++tomeCulledProps_;
+            e.why = 1;
+            const bool tomeHidden = tomeHides(lead, i);
+            if (tomeHidden) ++tomeCulledProps_;
             for (const auto& pl : fr.planes)
                 if (pl.n.x * c[0] + pl.n.y * c[1] + pl.n.z * c[2] - pl.d > e.rad) {
-                    e.out = true;
+                    e.why = 0;
                     break;
                 }
+            if (e.why && tomeHidden) e.why = 2;
             const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
             e.dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-            if (!e.out) e.out = e.dist > e.rad && e.rad < e.dist * pixelAngle * kPx;
+            if (e.why == 1 && e.dist > e.rad && e.rad < e.dist * pixelAngle * kPx) e.why = 3;
             e.lod = lodCentreDist ? e.dist : iw8r::placementBoxDistance(r, gMid, gHalf, eye);
-            // Past the model's last LOD distance x the placement's scale the game does not draw it (research 119).
-            if (!e.out && !noLodOut) e.out = iw8r::placementLodCulled(e.lod, lodFov, scaled ? lead.cullScale[i] : 1.0f, lead.lodOut);
+            // Past the model's last LOD distance x the placement's scale the game does not draw it (research 119): only
+            // with View > Game LOD Cut-off; else the last level goes on (below).
+            if (e.why == 1 && !noLodOut && iw8r::placementLodCulled(e.lod, lodFov, scaled ? lead.cullScale[i] : 1.0f, lead.lodOut)) e.why = 4;
+            e.out = e.why != 1;
             if (e.out) ++instCulledLast_;
+        }
+        // The level of each placement: the one with the largest start (its meshes' lodNear: 0 for LOD0, the game's
+        // distance of the level before for the others) at or below dist x the view factor, else the nearest one. This is
+        // the meshes' windows [lodNear, lodFar) without their gaps: a level that is not cached (or whose mesh could not
+        // be made) leaves no distance where nothing draws, and past the last LOD distance the last level goes on.
+        levels.clear();
+        for (size_t mi : grp)
+            if (refTexInst_[mi].visInst) levels.push_back(refTexInst_[mi].lodNear);
+        std::sort(levels.begin(), levels.end());
+        levels.erase(std::unique(levels.begin(), levels.end()), levels.end());
+        for (size_t i = 0; i < n && !levels.empty(); ++i) {
+            PlaceEval& e = ev[i];
+            if (e.out) continue;
+            const float dSel = e.lod * lodFov;  // the level by distance x the view factor
+            const auto it = std::upper_bound(levels.begin(), levels.end(), dSel);
+            e.level = it == levels.begin() ? levels.front() : *(it - 1);
+            if (!popLogPath) continue;  // the count below is a diagnosis (IW8R_POP_LOG): a loop over the group's meshes
+            // The windows of before (lodNear .. lodFar, the last open) would have drawn nothing here.
+            bool inWindow = false;
+            for (size_t mi : grp) {
+                const GpuTexInstanced& g = refTexInst_[mi];
+                const bool last = g.lodOut > 0 && g.lodFar >= g.lodOut;
+                const float farD = g.lodFar > 0 && !last ? g.lodFar : 1e30f;
+                if (dSel >= g.lodNear && dSel < farD) {
+                    inWindow = true;
+                    break;
+                }
+            }
+            if (!inWindow) ++st.gapsFilled;
         }
         for (size_t mi : grp) {
             GpuTexInstanced& g = refTexInst_[mi];
             if (!g.visInst) continue;
             keep.clear();
             keepBig.clear();
-            // The last level has no end of its own: the placement is left out by the rule above (e.out).
-            const bool last = g.lodOut > 0 && g.lodFar >= g.lodOut;
-            const float farD = g.lodFar > 0 && !last ? g.lodFar : 1e30f;
             for (size_t i = 0; i < n; ++i) {
                 const PlaceEval& e = ev[i];
-                const float dSel = e.lod * lodFov;  // the level by distance x the view factor
-                if (e.out || dSel < g.lodNear || dSel >= farD) continue;
+                if (e.out || e.level != g.lodNear) continue;
                 const float* r = &g.rows[i * 12];
                 std::vector<float>& to = e.dist <= e.rad || e.rad >= e.dist * pixelAngle * bigPx ? keepBig : keep;
                 to.insert(to.end(), r, r + 12);
                 to.insert(to.end(), &g.light[i * 12], &g.light[i * 12] + 12);
             }
             upload(g);
+        }
+        const size_t gi = size_t(&grp - texLodGroups_.data());
+        for (size_t i = 0; i < n; ++i) {
+            const PlaceEval& e = ev[i];
+            (e.why == 1 ? st.drawn : e.why == 0 ? st.frustum : e.why == 2 ? st.tome : e.why == 3 ? st.pixel : st.lodOut) += 1;
+        }
+        if (popLogPath && gi < popPrevGroup_.size()) {
+            std::vector<uint8_t>& prev = popPrevGroup_[gi];
+            if (prev.size() != n) prev.assign(n, 0);
+            for (size_t i = 0; i < n; ++i) popCheck(prev, i, ev[i].why, "group", gi, ev[i].dist, ev[i].rad, ev[i].lod * lodFov);
         }
     }
     for (GpuTexInstanced& g : refTexInst_) {
@@ -4784,6 +4884,15 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
         keep.clear();
         keepBig.clear();
         const size_t n = g.rows.size() / 12;
+        // The whole model's size decides the pixel cut (its box: every material part's together), so that the parts of
+        // one model go together instead of the small ones (labels, screws) first.
+        const float modelRad = std::max(g.radius, std::sqrt(g.boxHalf[0] * g.boxHalf[0] + g.boxHalf[1] * g.boxHalf[1] + g.boxHalf[2] * g.boxHalf[2]));
+        const size_t mi = size_t(&g - refTexInst_.data());
+        std::vector<uint8_t>* prev = nullptr;
+        if (popLogPath && mi < popPrevMesh_.size()) {
+            prev = &popPrevMesh_[mi];
+            if (prev->size() != n) prev->assign(n, 0);
+        }
         for (size_t i = 0; i < n; ++i) {
             const float* r = &g.rows[i * 12];
             const float c[3] = {r[0] * g.centre[0] + r[1] * g.centre[1] + r[2] * g.centre[2] + r[3],
@@ -4791,39 +4900,60 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                                 r[8] * g.centre[0] + r[9] * g.centre[1] + r[10] * g.centre[2] + r[11]};
             const float sc = std::sqrt(r[0] * r[0] + r[4] * r[4] + r[8] * r[8]);
             const float rad = g.radius * std::max(sc, 1e-6f);
-            bool out = tomeHides(g, i);
-            if (out) ++tomeCulledProps_;
+            uint8_t why = 1;
+            const bool tomeHidden = tomeHides(g, i);
+            if (tomeHidden) ++tomeCulledProps_;
             for (const auto& pl : fr.planes)
                 if (pl.n.x * c[0] + pl.n.y * c[1] + pl.n.z * c[2] - pl.d > rad) {
-                    out = true;
+                    why = 0;
                     break;
                 }
-            if (!out) {
-                const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
-                const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-                out = dist > rad && rad < dist * pixelAngle * kPx;  // radius under k pixels (4: Verdansk 37 -> 15.5 ms)
+            if (why && tomeHidden) why = 2;
+            const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
+            const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+            float ld = 0;
+            if (why == 1) {
+                const float mr = modelRad * std::max(sc, 1e-6f);
+                if (dist > mr && mr < dist * pixelAngle * kPx) why = 3;  // the model under kPx pixels in radius
                 // A stock prop past its last LOD distance x the placement's scale: the game does not draw it (research
-                // 100 section 3.3, 119).
-                if (!out && !noLodOut && g.lodOut > 0) {
-                    const float ld = lodCentreDist ? dist : iw8r::placementBoxDistance(r, g.boxMid, g.boxHalf, eye);
+                // 100 section 3.3, 119); only with View > Game LOD Cut-off.
+                if (why == 1 && !noLodOut && g.lodOut > 0) {
+                    ld = lodCentreDist ? dist : iw8r::placementBoxDistance(r, g.boxMid, g.boxHalf, eye);
                     const float cs = !lodCentreDist && g.cullScale.size() == n ? g.cullScale[i] : 1.0f;
-                    out = iw8r::placementLodCulled(ld, lodFov, cs, g.lodOut);
+                    if (iw8r::placementLodCulled(ld, lodFov, cs, g.lodOut)) why = 4;
                 }
             }
-            if (out) {
+            (why == 1 ? st.drawn : why == 0 ? st.frustum : why == 2 ? st.tome : why == 3 ? st.pixel : st.lodOut) += 1;
+            if (prev) popCheck(*prev, i, why, "mesh", mi, dist, rad, ld * lodFov);
+            if (why != 1) {
                 ++instCulledLast_;
                 continue;
             }
-            {
-                const float dx = c[0] - eye[0], dy = c[1] - eye[1], dz = c[2] - eye[2];
-                const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-                std::vector<float>& to = dist <= rad || rad >= dist * pixelAngle * bigPx ? keepBig : keep;
-                to.insert(to.end(), r, r + 12);
-                to.insert(to.end(), &g.light[i * 12], &g.light[i * 12] + 12);
-            }
+            std::vector<float>& to = dist <= rad || rad >= dist * pixelAngle * bigPx ? keepBig : keep;
+            to.insert(to.end(), r, r + 12);
+            to.insert(to.end(), &g.light[i * 12], &g.light[i * 12] + 12);
         }
         upload(g);
     }
+    if (popLog) std::fclose(popLog);
+    instStats_ = st;
+}
+
+namespace {
+std::atomic<bool>& gameLodCutoffFlag() {
+    static std::atomic<bool> on{std::getenv("IW8R_GAME_LOD_CUTOFF") != nullptr && std::string(std::getenv("IW8R_GAME_LOD_CUTOFF")) != "0"};
+    return on;
+}
+}  // namespace
+
+void SceneRenderer::setGameLodCutoff(bool on) { gameLodCutoffFlag() = on; }
+bool SceneRenderer::gameLodCutoff() { return gameLodCutoffFlag(); }
+
+std::string SceneRenderer::instanceCullReport() const {
+    const InstCullStats& s = instStats_;
+    return "drawn " + std::to_string(s.drawn) + " out_of_view " + std::to_string(s.frustum) + " under_pixel " + std::to_string(s.pixel) +
+           " game_cutoff " + std::to_string(s.lodOut) + " tome " + std::to_string(s.tome) + " pops " + std::to_string(s.pops) +
+           " lod_gaps_filled " + std::to_string(s.gapsFilled) + (gameLodCutoff() ? " (game cut-off on)" : " (game cut-off off)");
 }
 
 namespace {
@@ -5105,6 +5235,11 @@ void SceneRenderer::drawReferenceTexInstances() {
         UINT prevBm = 0xffffffff;
         for (const auto& g : refTexInst_) {
             if (g.layers.empty() || !g.vb || !g.inst || g.drawClass != 0) continue;
+            // The placements the mesh draws this frame (its level, in view), as the main pass: every placement's layer
+            // used to be drawn, also where another level (or nothing) is shown.
+            const bool lCulled = instCull_ && g.visInst && g.visible <= g.instances;
+            if (lCulled && g.visible == 0) continue;
+            if (!lCulled && g.lodGroup >= 0 && g.lodNear > 0) continue;
             if (!layerStateSet) {
                 layerStateSet = true;
                 ctx_->OMGetDepthStencilState(&prevDs, &prevRef);
@@ -5125,7 +5260,7 @@ void SceneRenderer::drawReferenceTexInstances() {
                 ID3D11ShaderResourceView* dsp = g.disp[0] > 0.5f && g.dispTex >= 0 && size_t(g.dispTex) < textures_.size() ? textures_[size_t(g.dispTex)] : nullptr;
                 ctx_->VSSetShaderResources(43, 1, &dsp);  // the static-model displacement's height image
             }
-            ID3D11Buffer* bufs[2] = {g.vb, g.inst};
+            ID3D11Buffer* bufs[2] = {g.vb, lCulled ? g.visInst : g.inst};
             ctx_->IASetVertexBuffers(0, 2, bufs, strides, offsets);
             ctx_->IASetIndexBuffer(g.ib, DXGI_FORMAT(g.ibFormat), 0);
             for (const PropLayer& L : g.layers) {
@@ -5145,7 +5280,7 @@ void SceneRenderer::drawReferenceTexInstances() {
                 ctx_->PSSetShaderResources(12, 1, &textures_[size_t(rv)]);
                 ID3D11ShaderResourceView* mk = L.mask >= 0 && size_t(L.mask) < textures_.size() ? textures_[size_t(L.mask)] : nullptr;
                 ctx_->PSSetShaderResources(36, 1, &mk);
-                drawInstIdx(g.vertices, g.instances);
+                drawInstIdx(g.vertices, lCulled ? g.visible : g.instances);
             }
         }
         if (!layerStateSet) return;

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "compile_iw8.h"
+#include "model_physics.h"
 #include "custom_materials.h"
 #include "map_text.h"
 
@@ -79,6 +80,8 @@ int cmdCompileIw8(int argc, char** argv) {
     if (!materialRoots.empty()) opt.library = &library;
     // Stock scriptable definitions: the catalogue found from the working folder upward.
     opt.scriptables = &iw8r::ScriptableCatalog::shared(std::filesystem::current_path().string());
+    // Placed models collide by the stock models' own collision (core model_physics.h).
+    opt.modelPhysics = &iw8r::ModelPhysicsCatalog::shared(std::filesystem::current_path().string());
     opt.carryScriptables = std::getenv("IW8R_CARRY_SCRIPTABLES") != nullptr;  // carry stock definitions into the map
     opt.modelRoots = modelRoots;
     opt.modelScale = modelScale;

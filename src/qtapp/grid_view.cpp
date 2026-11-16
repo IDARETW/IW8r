@@ -305,6 +305,32 @@ void GridView::paintEvent(QPaintEvent*) {
             }
         }
     }
+    {
+        // Entity ranges and facings (the camera's editor lines, scene.cpp appendEntityVisuals) seen along this view's
+        // axis: a light's radius circle and spot cone, a probe's volume, a sound's distance, a spawn's facing arrow.
+        // The others' dimmed first, then the selection's.
+        std::vector<app::GpuVertex> others, chosen;
+        app::appendEntityVisuals(ctx_->scene, ctx_->doc, others, chosen);
+        const auto draw = [&](const std::vector<app::GpuVertex>& v, int alpha, double width) {
+            uint32_t last = 0;
+            QPen pen(QColor(0, 0, 0), width);
+            for (size_t i = 0; i + 1 < v.size(); i += 2) {
+                const app::GpuVertex &a = v[i], &b = v[i + 1];
+                const double pa[3] = {a.x, a.y, a.z}, pb[3] = {b.x, b.y, b.z};
+                const double ah = pa[H], av = pa[V], bh = pb[H], bv = pb[V];
+                if (std::max(ah, bh) < h0 || std::min(ah, bh) > h1 || std::max(av, bv) < v0 || std::min(av, bv) > v1) continue;
+                if (a.rgba != last || i == 0) {
+                    last = a.rgba;
+                    pen.setColor(QColor(int(a.rgba & 0xff), int((a.rgba >> 8) & 0xff), int((a.rgba >> 16) & 0xff), alpha));
+                    p.setPen(pen);
+                }
+                p.drawLine(worldToWidget(ah, av), worldToWidget(bh, bv));
+            }
+        };
+        p.setBrush(Qt::NoBrush);
+        draw(others, 170, 1.0);
+        draw(chosen, 255, 1.5);
+    }
     // Entity display (2.17): names next to point entities and models, crosses at model origins.
     if ((ctx_->showEntityNames || ctx_->showModelOrigins) && ctx_->gridScale > 0.15) {
         QFont small = p.font();

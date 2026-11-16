@@ -430,8 +430,12 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
         }
     }
     if (g->hasArrow) {
-        edgeDst.push_back(gv(g->arrowFrom, 0xffffffffu));
-        edgeDst.push_back(gv(g->arrowTo, 0xffffffffu));
+        // The facing line with a head: two fins across it, level (scene.cpp's fresh build draws the same).
+        const Vec3 d = normalize(g->arrowTo - g->arrowFrom);
+        const Vec3 side = std::fabs(d.z) < 0.99 ? normalize(cross(d, Vec3{0, 0, 1})) : Vec3{1, 0, 0};
+        const Vec3 back = g->arrowTo - d * 9.0;
+        for (const Vec3& p : {g->arrowFrom, g->arrowTo, g->arrowTo, back + side * 5.0, g->arrowTo, back - side * 5.0})
+            edgeDst.push_back(gv(p, 0xffffffffu));
     }
     if (sc.captureMode) {  // probe capture: only surfaces (no outlines, markers or helpers)
         lines.clear();
@@ -983,30 +987,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                 d.mOverlay.push_back(gv(c, kSelEdge));
             }
         }
-        // Reflection probe volumes (5.5): mins/maxs keys relative to the origin, drawn as a teal wire box.
-        for (const auto& e : doc.map().entities) {
-            if (e.classname() != "reflection_probe") continue;
-            const std::string* sm = e.value("mins");
-            const std::string* sx = e.value("maxs");
-            Vec3 mn, mx;
-            if (!sm || !sx || std::sscanf(sm->c_str(), "%lf %lf %lf", &mn.x, &mn.y, &mn.z) != 3 ||
-                std::sscanf(sx->c_str(), "%lf %lf %lf", &mx.x, &mx.y, &mx.z) != 3)
-                continue;
-            const Vec3 o = e.origin().value_or(Vec3{});
-            const Vec3 a = o + mn, b = o + mx;
-            const uint32_t teal = 0xffc8c840u;
-            auto seg = [&](const Vec3& p, const Vec3& q) {
-                d.mLines.push_back(gv(p, teal));
-                d.mLines.push_back(gv(q, teal));
-            };
-            const Vec3 c[8] = {{a.x, a.y, a.z}, {b.x, a.y, a.z}, {b.x, b.y, a.z}, {a.x, b.y, a.z},
-                               {a.x, a.y, b.z}, {b.x, a.y, b.z}, {b.x, b.y, b.z}, {a.x, b.y, b.z}};
-            for (int k = 0; k < 4; ++k) {
-                seg(c[k], c[(k + 1) % 4]);
-                seg(c[4 + k], c[4 + (k + 1) % 4]);
-                seg(c[k], c[4 + k]);
-            }
-        }
+        // (Reflection probe volumes: appendEntityVisuals, below.)
         if (scene.tagsFor && !scene.captureMode) {
             // 3.18: the tags of each selected model (attach points: tag_origin, tag_fx, tag_light ...), on top.
             std::set<Id> done;
@@ -1088,6 +1069,8 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
             d.mOverlay.push_back(gv(b, 0xff30d0ffu));
         }
         appendHelperLines(scene, doc, d.mLines, d.mOverlay);  // damage cylinders, door use areas, teleporter lines (scene.cpp)
+        // Light radii and cones, probe volumes, sound ranges, effect axes, spawn facings (scene.cpp; editor only).
+        appendEntityVisuals(scene, doc, d.mLines, d.mOverlay);
         // World axes at the origin (X red, Y green, Z blue).
         d.mLines.push_back(gv({0, 0, 0}, 0xff3030ffu));
         d.mLines.push_back(gv({64, 0, 0}, 0xff3030ffu));

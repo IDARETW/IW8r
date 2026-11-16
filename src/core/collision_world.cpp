@@ -34,6 +34,11 @@ void CollisionWorld::addSolid(std::vector<Plane> planes, uint32_t contents, bool
     for (const Winding& w : buildBrushWindings(planes))
         for (const Vec3& v : w) s.bounds.add(v);
     if (!s.bounds.valid()) return;
+    // An open hull (a physics piece or model hull missing its caps) reaches the winding clip box (+-262144): it would
+    // be a slab through the whole map that the player stands inside (stuck in Hideout's play preview). IW maps stay
+    // within +-131072, so such a solid is dropped.
+    for (int a = 0; a < 3; ++a)
+        if (s.bounds.maxs[a] > 200000.0 || s.bounds.mins[a] < -200000.0) return;
     for (int a = 0; a < 3; ++a) {
         Vec3 n;
         n[a] = 1;
@@ -46,11 +51,64 @@ void CollisionWorld::addSolid(std::vector<Plane> planes, uint32_t contents, bool
     solids_.push_back(std::move(s));
 }
 
+bool CollisionWorld::addTriangle(const Vec3& a, const Vec3& b, const Vec3& c, double thickness, uint32_t contents) {
+    const Vec3 cr = cross(b - a, c - a);
+    if (length(cr) < 1e-6) return false;
+    const Vec3 n = normalize(cr);
+    Solid s;
+    s.contents = contents;
+    s.patch = true;
+    s.planes.reserve(11);
+    s.planes.push_back({n, dot(n, a)});
+    s.planes.push_back({n * -1.0, -dot(n, a) + thickness});
+    const Vec3 tri[3] = {a, b, c};
+    for (int k = 0; k < 3; ++k) {
+        const Vec3& p0 = tri[k];
+        const Vec3& p1 = tri[(k + 1) % 3];
+        Vec3 en = normalize(cross(p1 - p0, n));
+        if (dot(en, tri[(k + 2) % 3] - p0) > 0) en = en * -1.0;  // outward from the triangle
+        s.planes.push_back({en, dot(en, p0)});
+    }
+    for (const Vec3& p : tri) s.bounds.add(p), s.bounds.add(p - n * thickness);
+    for (int ax = 0; ax < 3; ++ax) {  // axial bevels, as addSolid adds
+        Vec3 v;
+        v[ax] = 1;
+        s.planes.push_back({v, s.bounds.maxs[ax]});
+        v[ax] = -1;
+        s.planes.push_back({v, -s.bounds.mins[ax]});
+    }
+    bounds_.add(s.bounds);
+    solids_.push_back(std::move(s));
+    return true;
+}
+
+void CollisionWorld::buildGrid() const {
+    grid_.clear();
+    moverSolidList_.clear();
+    std::vector<char> moving(solids_.size(), 0);
+    for (const Mover& m : movers_)
+        for (const size_t i : m.solids)
+            if (i < moving.size()) moving[i] = 1, moverSolidList_.push_back(uint32_t(i));
+    const auto key = [](int64_t x, int64_t y) { return (x << 32) ^ (y & 0xffffffffll); };
+    for (size_t i = 0; i < solids_.size(); ++i) {
+        if (moving[i]) continue;
+        const AABB& b = solids_[i].bounds;
+        const int64_t x0 = int64_t(std::floor((b.mins.x - 1) / kGridCell)), x1 = int64_t(std::floor((b.maxs.x + 1) / kGridCell));
+        const int64_t y0 = int64_t(std::floor((b.mins.y - 1) / kGridCell)), y1 = int64_t(std::floor((b.maxs.y + 1) / kGridCell));
+        for (int64_t x = x0; x <= x1; ++x)
+            for (int64_t y = y0; y <= y1; ++y) grid_[key(x, y)].push_back(uint32_t(i));
+    }
+    gridStamp_.assign(solids_.size(), 0);
+    gridTick_ = 0;
+    gridSolids_ = solids_.size();
+}
+
 void CollisionWorld::build(const MapFile& map, int patchSubdiv) { build(map, patchSubdiv, {}); }
 
 void CollisionWorld::build(const MapFile& map, int patchSubdiv, const std::function<bool(const Entity&)>& skip) {
     solids_.clear();
     movers_.clear();
+    gridSolids_ = ~size_t(0);  // the grid is built again at the next trace
     bounds_ = AABB{};
     for (const auto& e : map.entities) {
         if (!blocksPlayerClass(e.classname())) continue;  // triggers and other brush entities do not block
@@ -217,13 +275,36 @@ CollisionWorld::Trace CollisionWorld::traceShape(const Vec3& start, const Vec3& 
     swept.add(start + maxs);
     swept.add(end + mins);
     swept.add(end + maxs);
-    for (size_t i = 0; i < solids_.size(); ++i) {
+    const auto test = [&](size_t i) {
         const Solid& s = solids_[i];
         bool overlap = true;
         for (int a = 0; a < 3; ++a) overlap &= swept.maxs[a] >= s.bounds.mins[a] - 1 && swept.mins[a] <= s.bounds.maxs[a] + 1;
-        if (!overlap) continue;
-        traceThrough(s, int(i), start, end, mins, maxs, tr, capsuleRadius);
-        if (tr.allSolid) break;
+        if (overlap) traceThrough(s, int(i), start, end, mins, maxs, tr, capsuleRadius);
+    };
+    // Many solids (a stock map's world): the grid cells the sweep crosses, each solid once; movers every time.
+    const int64_t x0 = int64_t(std::floor((swept.mins.x - 1) / kGridCell)), x1 = int64_t(std::floor((swept.maxs.x + 1) / kGridCell));
+    const int64_t y0 = int64_t(std::floor((swept.mins.y - 1) / kGridCell)), y1 = int64_t(std::floor((swept.maxs.y + 1) / kGridCell));
+    if (solids_.size() >= kGridFrom && (x1 - x0 + 1) * (y1 - y0 + 1) <= 4096) {
+        if (gridSolids_ != solids_.size() || gridStamp_.size() != solids_.size()) buildGrid();
+        if (++gridTick_ == 0) std::fill(gridStamp_.begin(), gridStamp_.end(), 0u), gridTick_ = 1;
+        const auto key = [](int64_t x, int64_t y) { return (x << 32) ^ (y & 0xffffffffll); };
+        for (int64_t x = x0; x <= x1 && !tr.allSolid; ++x)
+            for (int64_t y = y0; y <= y1 && !tr.allSolid; ++y) {
+                const auto it = grid_.find(key(x, y));
+                if (it == grid_.end()) continue;
+                for (const uint32_t i : it->second) {
+                    if (gridStamp_[i] == gridTick_) continue;
+                    gridStamp_[i] = gridTick_;
+                    test(i);
+                    if (tr.allSolid) break;
+                }
+            }
+        for (const uint32_t i : moverSolidList_) {
+            if (tr.allSolid) break;
+            test(i);
+        }
+    } else {
+        for (size_t i = 0; i < solids_.size() && !tr.allSolid; ++i) test(i);
     }
     tr.end = start + (end - start) * tr.fraction;
     return tr;

@@ -95,6 +95,10 @@ struct ParticleBatch {
     // A flare (research 139 section 1): vertex positions are NDC (x, y; z unused), drawn over the scene after the
     // distortion; aux0 = the source (NDC x, y, depth), aux1 = the half extents of its occlusion test (NDC; z > 0: test).
     bool screen = false;
+    // A dirty lens flare (research 139 section 5): `texture` is read at the screen's UV (fitted to 16:9) and masked by
+    // the red channel of `mask` (texture slot 145) in the quad's UV; mask -1 = a round fall-off in its place.
+    bool screenMask = false;
+    int mask = -1;
     std::vector<ParticleVertex> v;  // 6 per quad
 };
 
@@ -925,15 +929,30 @@ private:
     void cullTexInstances(const float viewProj[16], const float eye[3], float pixelAngle);
     std::vector<std::vector<size_t>> texLodGroups_;  // refTexInst_ indices per LOD group (setReferenceTexInstances)
     bool instCull_ = true;
-    float pixelAngle_ = 0.0015f;  // setPixelAngle
+    float pixelAngle_ = 0.0015f;  // setPixelAngle (cullTexInstances takes it from the frame's projection and height)
 
 public:
     // The angle one pixel spans at the frame's centre (instance culling); the camera sets it from its FOV.
     void setPixelAngle(float a) { pixelAngle_ = a > 0 ? a : 0.0015f; }
     size_t instancesCulled() const { return instCulledLast_; }
+    // View > Game LOD Cut-off (every view; off by default, owner 2026-11-15: "any object shifts should be just LOD
+    // shifts"): on, a stock prop past its last LOD distance x its placement's lodScale is left out as the game does
+    // (research 119, VERIFIED in Replay); off, it keeps drawing its last LOD. IW8R_GAME_LOD_CUTOFF=1 starts with it on.
+    static void setGameLodCutoff(bool on);
+    static bool gameLodCutoff();
+    // Last frame's placements by what decided them: drawn, outside the view, under the pixel size, past the game's
+    // cut-off, hidden by the tome; pops = placements drawn the frame before and left out now while in view (not a LOD
+    // swap). IW8R_POP_LOG=<file> appends one line per pop (bench diagnosis).
+    std::string instanceCullReport() const;
 
 private:
     size_t instCulledLast_ = 0;
+    struct InstCullStats {
+        size_t drawn = 0, frustum = 0, pixel = 0, lodOut = 0, tome = 0, pops = 0, gapsFilled = 0;
+    } instStats_;
+    // Per LOD group / ungrouped mesh: last frame's state of each placement (1 = drawn; IW8R_POP_LOG only).
+    std::vector<std::vector<uint8_t>> popPrevGroup_, popPrevMesh_;
+    uint64_t popFrame_ = 0;
     std::vector<GpuTexInstanced> refTexInst_;
     ID3D11VertexShader* vsTexInst_ = nullptr;
     ID3D11InputLayout* layoutTexInst_ = nullptr;

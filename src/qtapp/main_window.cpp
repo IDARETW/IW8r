@@ -39,6 +39,8 @@
 #include "material_blend.h"
 #include "techset_info.h"
 #include "vfx_preview.h"
+#include "sound_preview.h"
+#include "tools_panel.h"
 #include "hot_channels.h"
 #include "port_wizard_dialog.h"
 #include "vfx_info.h"
@@ -162,6 +164,7 @@
 #include "replay_log_panel.h"
 #include "log_panel.h"
 #include "script_panel.h"
+#include "stock_map_panel.h"
 #include "outliner_panel.h"
 #include "toast_host.h"
 #include "leak_check.h"
@@ -266,7 +269,7 @@ bool stockDecalBatch(const StockDecalData& d, const StockDecalBatch& b, int orde
 
 namespace {
 QString qs(const std::string& s) { return QString::fromStdString(s); }
-constexpr int kDockLayoutVersion = 15;  // 15: logs in the bottom area under the camera  // 14: the bottom strip became the side bar and side section  // 12: Script, Outliner  // 11: Sounds  // 10: Images  // 9: Effects  // 8: Prefabs  // 7: Console  // 6: Live Link  // 3: Surface and Compile docks; 4: Replay Log; 5: Layers
+constexpr int kDockLayoutVersion = 17;  // 17: Tools  // 16: Stock Map  // 15: logs in the bottom area under the camera  // 14: the bottom strip became the side bar and side section  // 12: Script, Outliner  // 11: Sounds  // 10: Images  // 9: Effects  // 8: Prefabs  // 7: Console  // 6: Live Link  // 3: Surface and Compile docks; 4: Replay Log; 5: Layers
 
 // ACTS layout: <out>/mw19replay/<zone>/assets/map_ents/maps/mp/<map>.d3dbsp.0.asset.json
 QString findMapEntsJson(const QString& dir) {
@@ -310,6 +313,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     // Textured camera: custom materials, then exported stock images, then the ACTS material cache (fetched on demand).
     customMaterials_ = std::make_unique<MaterialLibrary>();
     matCache_ = new MaterialCache([this](const QString& k) { return toolPath(k); }, this);
+    VfxPreview::setMaterialCache(matCache_);  // the effect previews' sprites (side bar, Effect Info)
     connect(matCache_, &MaterialCache::materialReady, this, [this](const QString&) {
         camera_->materialImagesChanged();
         if (assetPreview_) assetPreview_->materialsChanged();
@@ -549,7 +553,10 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             auto def = std::make_shared<VfxSimDef>();
             if (buildVfxSim(text, *def) && !def->emitters.empty()) out = def;
         }
-        fxSims_[fx] = out;  // also remembers "no export" (cleared when Effect Info exports one)
+        // No export yet (an own map's fx_origin of a common effect): exported now with ACTS; the camera asks again when
+        // it is done (requestVfxExport clears this "no export" entry).
+        if (!out && f.isEmpty()) requestVfxExport(qs(fx));
+        fxSims_[fx] = out;
         return out;
     });
     // Research 138 section 6: an effect material for the particle preview, from the material cache (asked for when
@@ -586,6 +593,19 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             pm.cols = int(std::lround(c->second[0])), pm.rows = int(std::lround(c->second[1]));
         if (const auto c = e->consts.find(36); c != e->consts.end())
             for (int k = 0; k < 3; ++k) pm.emissive[k] = std::max(0.0f, c->second[size_t(k)]);
+        // A flare set with a slot 145 image (the dirty lens sets, research 139 section 5): the piece's round mask. The
+        // cache exports no slot 145; the image is used when another material cached it (glow_round_* are emissive images
+        // of the glow flares), else the camera puts a round fall-off in its place.
+        if (pm.flare)
+            for (const QString& t : e->textures)
+                if (t.startsWith("145=")) {
+                    pm.screenMask = true;
+                    QString img = t.mid(4).section('~', 0, 0);
+                    if (img.startsWith(',')) img.remove(0, 1);
+                    const QString dir = !e->emissiveDds.isEmpty() ? QFileInfo(e->emissiveDds).absolutePath() : matCache_->cacheRoot() + "/images";
+                    const QStringList hits = QDir(dir).entryList({img + "_*.dds", img + ".dds"}, QDir::Files);
+                    if (!hits.isEmpty()) pm.maskFile = QDir(dir).filePath(hits.first()).toStdString();
+                }
         return pm;
     });
     camera_->setProbeFolder([this] {
@@ -747,6 +767,12 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             *pending = true;
             return {};
         });
+        // Stored pictures straight from the packs on the browsers' worker threads (owner 2026-11-15: thumbnails cached
+        // once, never loaded while the panel is used): only rows the packs have nothing for go to the source above.
+        materials_->setThumbnailPeek([matThumbs, matFull](const QString& m) -> QImage {
+            if (QImage hit = matThumbs->getAny(m); !hit.isNull()) return hit;
+            return matFull->getAny(m);
+        });
         connect(matCache_, &MaterialCache::materialReady, materials_, [this] { materials_->refreshThumbnails(); });
         connect(matCache_, &MaterialCache::indexLoaded, materials_, [this] { materials_->refreshThumbnails(); });
         // Availability marks: what the caches tried and could not resolve is greyed with the reason.
@@ -775,7 +801,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
                     return pic;
                 modelCacheStock_->request({name});
                 *pending = true;
-                return {};
+                return modelFull->getAny(name);  // the grey picture of the full pack meanwhile (or a placeholder)
             }
             if (e->failed) return {};
             // The textured picture (textured_thumbs.h): made once, then read from its pack.
@@ -783,7 +809,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
                 if (QImage pic = t->picture(TexturedThumbs::Model, name); !pic.isNull()) return pic;
                 t->request(TexturedThumbs::Model, name);
                 *pending = true;
-                return {};
+                return modelFull->getAny(name);
             }
             return cached(*modelThumbs, name, e->glbPath, [&] {
                 const auto m = modelCacheStock_->loadModel(name);
@@ -791,6 +817,10 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             });
         });
         connect(modelCacheStock_, &ModelCache::modelReady, models_, [this] { models_->refreshThumbnails(); });
+        // The textured pack, read on the browser's worker threads (the pack outlives any read through its shared pointer).
+        if (TexturedThumbs* t = texturedThumbs())
+            models_->setThumbnailPeek([pack = t->storePtr(TexturedThumbs::Model)](const QString& name) { return pack->getAny(name); });
+        images_->setThumbnailPeek([imageThumbs](const QString& name) { return imageThumbs->getAny(name); });
         images_->setThumbnailSource([this, decodeFile, imageThumbs, cached](const QString& name, bool* pending) -> QImage {
             const QString dds = imageCache_->cachedDds(name);
             if (!dds.isEmpty()) return cached(*imageThumbs, name, dds, [&] { return decodeFile(dds); });
@@ -1244,13 +1274,50 @@ QIcon sidePanelIcon(char16_t glyph, const QString& title) {
     return icon;
 }
 
+// The panels' tab labels (side section, bottom area, the right-hand areas) from the theme's text colour: Qt Advanced
+// Docking draws an inactive tab's label in palette(dark), close to the background in the dark themes (owner checklist
+// 2026-11-15: "the tab text is hard to see").
+void MainWindow::refreshDockTabStyle() {
+    if (!dock_) return;
+    const QPalette p = QApplication::palette();
+    const QColor text = p.color(QPalette::WindowText), bg = p.color(QPalette::Window);
+    const auto mix = [&](double k) {
+        return QColor::fromRgbF(text.redF() * k + bg.redF() * (1 - k), text.greenF() * k + bg.greenF() * (1 - k), text.blueF() * k + bg.blueF() * (1 - k));
+    };
+    dock_->setStyleSheet(dockBaseStyle_ + QString("\nads--CDockWidgetTab QLabel { color: %1; }\n"
+                                                  "ads--CDockWidgetTab[activeTab=\"true\"] QLabel { color: %2; }\n")
+                                              .arg(mix(0.72).name(), text.name()));
+}
+
 void MainWindow::buildDocks() {
     ads::CDockManager::setConfigFlag(ads::CDockManager::OpaqueSplitterResize, true);
     ads::CDockManager::setConfigFlag(ads::CDockManager::FocusHighlighting, true);
     ads::CDockManager::setConfigFlag(ads::CDockManager::AllTabsHaveCloseButton, false);
     dock_ = new ads::CDockManager(this);
+    dockBaseStyle_ = dock_->styleSheet();
+    refreshDockTabStyle();
 
     camera_ = new CameraView(&ctx_, dev_, dc_);
+    // A stock map's world is walked on in the play preview (owner checklist 2026-11-15: it was noclip there).
+    camera_->setStockSurfacePicker([this](const Ray& r) { return showStockSurfaceAt(r); });
+    camera_->setPlayWorldExtras([this](CollisionWorld& w) {
+        QElapsedTimer t;
+        t.start();
+        const size_t n = addStockWorldCollision(w);
+        if (n) EditorLog::instance().add(LogLevel::Info, "play", QString("Stock world collision: %1 triangles (%2 ms)").arg(n).arg(t.elapsed()));
+        if (!refProps_ || refProps_->empty()) return;
+        t.restart();
+        const StockPropCollisionStats ps = addStockPropCollision(w, ctx_.cam.pos, 0.0);  // every prop
+        EditorLog::instance().add(LogLevel::Info, "play",
+                                  QString("Stock prop collision: %1 prop(s) by their stock physics, %2 by their mesh, %3 walk-through "
+                                          "(no physics asset, as in game), %4 not ready yet (next walk); %5 solids (%6 ms)")
+                                      .arg(ps.physics)
+                                      .arg(ps.renderMesh)
+                                      .arg(ps.walkThrough)
+                                      .arg(ps.pending)
+                                      .arg(ps.solids)
+                                      .arg(t.elapsed()));
+    });
     connect(camera_, &CameraView::contextMenuAt, this, [this](const QPoint& global, const QPointF& local) {
         QMenu* m = buildCameraContextMenu(local);
         m->setAttribute(Qt::WA_DeleteOnClose);
@@ -1291,6 +1358,42 @@ void MainWindow::buildDocks() {
         ctx_.doc.addEntity(kv, {}, "Place sound " + name.toStdString());
         ctx_.documentEdited("Placed sound_emitter " + name + (loop ? " (loop)" : " (one-shot every 5 s; edit the delay key)"));
     });
+    {
+        // Owner 2026-11-15: effects and sounds can be previewed in the side bar.
+        // Effects: the selected effect's export played by the simplified particle simulation (VfxPreview); a stock
+        // effect without an export is exported with ACTS first (requestVfxExport), the panel says so meanwhile.
+        auto previewed = std::make_shared<QString>();
+        const auto showFx = [this, previewed](const QString& name) {
+            *previewed = name;
+            const QString f = findVfxExport(name);
+            std::string text;
+            VfxSimDef def;
+            if (!f.isEmpty() && readFile(f.toStdString(), text) && buildVfxSim(text, def) && !def.emitters.empty()) {
+                effects_->setEffectPreview(&def, QString("%1\n%2 emitter(s), %3 (click the preview to pause)")
+                                                     .arg(name)
+                                                     .arg(def.emitters.size())
+                                                     .arg(def.duration < 0 ? QString("looping") : QString("one-shot %1 s").arg(def.duration, 0, 'f', 1)));
+                return;
+            }
+            if (!f.isEmpty()) return effects_->setEffectPreview(nullptr, name + "\nThe export has no particles the preview can show");
+            effects_->setEffectPreview(nullptr, requestVfxExport(name) ? name + "\nExporting with ACTS... (the preview starts when it is done)"
+                                                                       : name + "\nNo export, and not in a zone the editor can export it from");
+        };
+        connect(effects_, &AssetBrowser::effectHighlighted, this, showFx);
+        connect(this, &MainWindow::vfxExportDone, effects_, [previewed, showFx, this](const QString& name, bool ok) {
+            if (name != *previewed) return;
+            if (ok) showFx(name);
+            else effects_->setEffectPreview(nullptr, name + "\nThe ACTS export failed");
+        });
+        // Sounds: the alias decoded from the game's sound banks and played (sound_preview.h).
+        auto* sp = new SoundPreview([this](const QString& k) { return toolPath(k); }, this);
+        sp->setObjectName("soundPreview");
+        connect(sounds_, &AssetBrowser::soundPlayRequested, sp, [sp](const QString& alias) { sp->play(alias); });
+        connect(sounds_, &AssetBrowser::soundStopRequested, sp, &SoundPreview::stop);
+        connect(sp, &SoundPreview::statusChanged, sounds_, [this, sp](const QString& text, bool playing) {
+            sounds_->setSoundStatus(text, playing || sp->preparing());
+        });
+    }
     camera_->setAcceptDrops(true);
     grid_->setAcceptDrops(true);
     connect(camera_, &CameraView::assetHovered, this, [this](const QString& kind, const QString& name, const QPointF& pos) {
@@ -1384,6 +1487,12 @@ void MainWindow::buildDocks() {
     sidePanels.push_back(makeDock("Effects", effects_, true));
     sidePanels.push_back(makeDock("Images", images_, true));
     sidePanels.push_back(makeDock("Sounds", sounds_, true));
+    // The Tools menu's commands in groups (tools_panel.h; filled once the menu exists, at the end of the Tools menu).
+    sidePanels.push_back(makeDock("Tools", new ToolsPanel(), true));
+    // The open stock map's edits, live in the viewport (stock_map_panel.h; its icon shows only while one is open).
+    sidePanels.push_back(makeDock("Stock Map", stockMapPanel_ = new StockMapPanel(this, &ctx_), true));
+    connect(this, &MainWindow::stockSurfacePicked, stockMapPanel_, &StockMapPanel::setPickedMaterial);
+    connect(this, &MainWindow::stockPropPicked, stockMapPanel_, &StockMapPanel::setPickedProp);
     {
         // Prefabs: <map dir>/prefabs and the prefab folders (Preferences); double-click stamps one.
         prefabs_ = new PrefabBrowser(
@@ -1440,6 +1549,11 @@ void MainWindow::buildDocks() {
             *pending = true;
             return {};
         });
+        // The stored pictures read on the panel's worker threads (owner 2026-11-15: no loading on screen).
+        if (TexturedThumbs* t = texturedThumbs())
+            PrefabBrowser::setPicturePeek([pack = t->storePtr(TexturedThumbs::Prefab)](const QString& mapFile) {
+                return pack->get(mapFile, ThumbStore::signatureOf(mapFile));
+            });
         sidePanels.push_back(makeDock("Prefabs", prefabs_, true));
     }
     compile_ = new CompilePanel(&ctx_, [this](const QString& k) { return toolPath(k); });
@@ -1558,7 +1672,7 @@ void MainWindow::buildDocks() {
         // The side bar, in working order: assets, the map, building, script and game.
         static const std::pair<const char*, char16_t> order[] = {
             {"Materials", 0xE790}, {"Models", 0xF158}, {"Prefabs", 0xE74C}, {"Effects", 0xE945}, {"Sounds", 0xE767},
-            {"Images", 0xEB9F}, {"IW8 Spawns", 0xE707}, {"Undo History", 0xE81C}, {"Compile", 0xE90F}, {"Build Budget", 0xE9D2},
+            {"Images", 0xEB9F}, {"IW8 Spawns", 0xE707}, {"Stock Map", 0xE909}, {"Undo History", 0xE81C}, {"Tools", 0xEC7A}, {"Compile", 0xE90F}, {"Build Budget", 0xE9D2},
             {"Console", 0xE756}, {"Replay Log", 0xE9F9}, {"Script", 0xE943}, {"Live Link", 0xE71B}};
         // Docked beside the camera, not sliding over it: the camera is a native D3D window that an overlay ends up behind.
         for (const auto& [name, glyph] : order)
@@ -2130,6 +2244,11 @@ void MainWindow::buildMenus() {
     addCommand(edit, "DeleteSelection", "&Delete", QKeySequence(Qt::Key_Backspace),
                [this] { ctx_.documentEdited(ctx_.doc.deleteSelection() ? "Deleted" : "Nothing selected"); });
     addCommand(edit, "UnSelectSelection", "D&eselect", QKeySequence(Qt::Key_Escape), [this] {
+        // Inside a prefab with nothing selected, Esc leaves the prefab (Edit > Leave Prefab).
+        if (ctx_.doc.selection().empty() && prefabDepth() > 0) {
+            leavePrefab();
+            return;
+        }
         ctx_.doc.deselectAll();
         ctx_.documentEdited();
     });
@@ -2424,6 +2543,22 @@ void MainWindow::buildMenus() {
         });
     }
     {
+        // View > Game LOD Cut-off (off by default; owner 2026-11-15: "any object shifts should be just LOD shifts"): on,
+        // a stock prop past its last LOD distance x its placement's lodScale is left out as the game does (research 119);
+        // off, it keeps its last LOD. Every camera view (SceneRenderer::setGameLodCutoff).
+        QAction* lodCut = addCommand(view, "ToggleGameLodCutoff", "Game LOD Cut-off (props vanish past their last LOD distance, as in game)",
+                                     QKeySequence(), [this] {
+                                         const bool on = !app::SceneRenderer::gameLodCutoff();
+                                         app::SceneRenderer::setGameLodCutoff(on);
+                                         Settings::instance().setValue("view/gameLodCutoff", on);
+                                         if (QAction* a = action("ToggleGameLodCutoff")) a->setChecked(on);
+                                         if (camera_) camera_->update();
+                                     });
+        lodCut->setCheckable(true);
+        if (Settings::instance().value("view/gameLodCutoff", false).toBool()) app::SceneRenderer::setGameLodCutoff(true);
+        lodCut->setChecked(app::SceneRenderer::gameLodCutoff());
+    }
+    {
         // View > Game Mode: show what one gametype keeps (its objectives, triggers, script models and brushmodels, and
         // its spawns); the game deletes every other mode's gameobjects when a match starts (research 40).
         // M2.2: what the stock map's occlusion data (its Umbra tome) lets the game draw from the camera.
@@ -2526,8 +2661,48 @@ void MainWindow::buildMenus() {
     }
     addCommand(view, "GizmoMode", "Gizmo: Move / Rotate", QKeySequence(Qt::Key_R), [this] {
         camera_->toggleGizmoMode();
-        ctx_.setStatus(camera_->gizmoRotateMode() ? "Gizmo: rotate (drag a ring, 15 degree steps)" : "Gizmo: move");
+        ctx_.setStatus(CameraView::gizmoModeHelp(camera_->gizmoMode()));
     });
+    {
+        // Gizmo mode (owner 2026-11-15: a dropdown with Move / Rotate / Scale / All): View > Gizmo Mode and the main
+        // toolbar's dropdown set it, R and T toggle it; remembered between sessions.
+        QMenu* gm = view->addMenu("Gizmo &Mode");
+        auto* group = new QActionGroup(this);
+        static const char* const kGizmoModeIds[4] = {"GizmoModeMove", "GizmoModeRotate", "GizmoModeScale", "GizmoModeAll"};
+        const struct {
+            const char* id;
+            const char* text;
+            CameraView::GizmoMode mode;
+        } modes[] = {{"GizmoModeMove", "Move (arrows)", CameraView::GizmoMode::Move},
+                     {"GizmoModeRotate", "Rotate (rings)", CameraView::GizmoMode::Rotate},
+                     {"GizmoModeScale", "Scale (boxes)", CameraView::GizmoMode::Scale},
+                     {"GizmoModeAll", "All (move, rotate and scale)", CameraView::GizmoMode::All}};
+        for (const auto& m : modes) {
+            QAction* a = addCommand(gm, m.id, m.text, QKeySequence(), [this, mode = m.mode] {
+                camera_->setGizmoMode(mode);
+                if (QAction* own = action(kGizmoModeIds[int(mode)])) own->setChecked(true);
+                ctx_.setStatus(CameraView::gizmoModeHelp(mode));
+            });
+            if (a) {
+                a->setCheckable(true);
+                group->addAction(a);
+            }
+        }
+        // Every change (menu, dropdown, R, T): saved, and the menu and the dropdown show it.
+        connect(camera_, &CameraView::gizmoModeChanged, this, [this](int mode) {
+            mode = std::clamp(mode, 0, 3);
+            Settings::instance().setValue("view/gizmoMode", mode);
+            if (QAction* a = action(kGizmoModeIds[mode])) a->setChecked(true);
+            if (mainToolbar_)
+                if (auto* box = mainToolbar_->findChild<QComboBox*>("tb_GizmoModeCombo")) {
+                    const QSignalBlocker block(box);
+                    box->setCurrentIndex(mode);
+                }
+        });
+        const int saved = std::clamp(Settings::instance().value("view/gizmoMode", 0).toInt(), 0, 3);
+        camera_->setGizmoMode(CameraView::GizmoMode(saved));
+        if (QAction* a = action(kGizmoModeIds[saved])) a->setChecked(true);
+    }
     {
         // Entity display (2.17), remembered between sessions.
         QMenu* entDisplay = view->addMenu("Entity &Display");
@@ -2555,6 +2730,54 @@ void MainWindow::buildMenus() {
                 a->setChecked(ctx_.*(m.flag));
             }
         }
+        // Entity ranges (owner 2026-11-15: light radius, cone direction ... instead of bare diamonds): every light's
+        // radius sphere and spot cone, every sound's audible distance, dimmed (the selected entity shows its own
+        // either way). Editor lines only: never in captures or the game.
+        entDisplay->addSeparator();
+        ctx_.scene.showLightRanges = s.value("view/lightRanges", true).toBool();
+        ctx_.scene.showSoundRanges = s.value("view/soundRanges", false).toBool();
+        const struct {
+            const char* id;
+            const char* text;
+            bool app::SceneCache::*flag;
+            const char* key;
+        } ranges[] = {{"ShowLightRanges", "Light Ranges (radius and spot cone)", &app::SceneCache::showLightRanges, "view/lightRanges"},
+                      {"ShowSoundRanges", "Sound Ranges (audible distance)", &app::SceneCache::showSoundRanges, "view/soundRanges"}};
+        for (const auto& m : ranges) {
+            QAction* a = addCommand(entDisplay, m.id, m.text, QKeySequence(), [this, flag = m.flag, key = QString(m.key), id = QString(m.id)] {
+                ctx_.scene.*flag = !(ctx_.scene.*flag);
+                Settings::instance().setValue(key, ctx_.scene.*flag);
+                if (QAction* act = action(id)) act->setChecked(ctx_.scene.*flag);
+                ctx_.cameraMoved();
+                if (camera_) camera_->update();
+                if (grid_) grid_->update();
+            });
+            if (a) {
+                a->setCheckable(true);
+                a->setChecked(ctx_.scene.*(m.flag));
+            }
+        }
+        // A sound alias's audible distance: the catalogue's distMax (data/asset_catalog/iw8_common_sounds.tsv: alias,
+        // loop, distMax, zones), read on first use.
+        ctx_.scene.soundRangeFor = [table = std::shared_ptr<std::unordered_map<std::string, double>>()](const std::string& alias) mutable {
+            if (!table) {
+                table = std::make_shared<std::unordered_map<std::string, double>>();
+                QDir d(QCoreApplication::applicationDirPath());
+                for (int up = 0; up < 4 && !QFileInfo::exists(d.filePath("data/asset_catalog/iw8_common_sounds.tsv")); ++up) d.cdUp();
+                QFile f(d.filePath("data/asset_catalog/iw8_common_sounds.tsv"));
+                if (f.open(QIODevice::ReadOnly | QIODevice::Text))
+                    while (!f.atEnd()) {
+                        const QByteArray line = f.readLine();
+                        if (line.startsWith('#')) continue;
+                        const QList<QByteArray> cols = line.split('\t');
+                        bool ok = false;
+                        const double dist = cols.size() >= 3 ? cols[2].trimmed().toDouble(&ok) : 0.0;
+                        if (ok && dist > 0) table->emplace(cols[0].trimmed().toLower().toStdString(), dist);
+                    }
+            }
+            const auto it = table->find(alias);
+            return it == table->end() ? 0.0 : it->second;
+        };
     }
     {
         // Themes (9.2): applied live and remembered.
@@ -2566,6 +2789,7 @@ void MainWindow::buildMenus() {
                 Settings::instance().setValue("ui/theme", name);
                 applyTheme(name, QColor(Settings::instance().value("ui/accent").toString()));
                 rebuildMainToolbar();  // the line icons follow the theme's text colour
+                refreshDockTabStyle();
                 ctx_.setStatus("Theme: " + name);
             });
             a->setObjectName("Theme" + name);
@@ -2623,10 +2847,11 @@ void MainWindow::buildMenus() {
         });
     }
     {
-        QAction* loc = addCommand(view, "GizmoLocal", "Gizmo: Local Space (moves follow the entity's angles)", QKeySequence("Shift+R"), [this] {
+        QAction* loc = addCommand(view, "GizmoLocal", "Gizmo: Local Space (follows the entity's angles)", QKeySequence("Shift+R"), [this] {
             ctx_.gizmoLocal = !ctx_.gizmoLocal;
             if (QAction* a = action("GizmoLocal")) a->setChecked(ctx_.gizmoLocal);
-            ctx_.setStatus(ctx_.gizmoLocal ? "Gizmo: local space" : "Gizmo: world space");
+            ctx_.setStatus(ctx_.gizmoLocal ? "Gizmo: local space (one selected entity: arrows, rings and boxes follow its angles)"
+                                           : "Gizmo: world space");
             camera_->update();
         });
         if (loc) loc->setCheckable(true);
@@ -2647,7 +2872,7 @@ void MainWindow::buildMenus() {
     }
     addCommand(view, "GizmoScale", "Gizmo: Scale", QKeySequence(Qt::Key_T), [this] {
         camera_->toggleGizmoScale();
-        ctx_.setStatus(camera_->gizmoScaleMode() ? "Gizmo: scale (drag an axis box; models scale uniformly)" : "Gizmo: move");
+        ctx_.setStatus(CameraView::gizmoModeHelp(camera_->gizmoMode()));
     });
     {
         // Saved lit preview brightness (calibrate against the game once; applies to every map).
@@ -2668,12 +2893,12 @@ void MainWindow::buildMenus() {
         wp->setCheckable(true);
     }
     {
-        QAction* bp = addCommand(view, "BehaviourPreview", "Behaviour Preview (spinning and bobbing models move)", QKeySequence(), [this] {
+        QAction* bp = addCommand(view, "BehaviourPreview", "Behaviour Preview (the map script runs: scripted models move)", QKeySequence(), [this] {
             ctx_.behaviourPreview = !ctx_.behaviourPreview;
             if (QAction* a = action("BehaviourPreview")) a->setChecked(ctx_.behaviourPreview);
             ctx_.scene.behaviourTime = ctx_.behaviourPreview ? 0.0 : -1.0;
             ctx_.scene.invalidate();
-            ctx_.setStatus(ctx_.behaviourPreview ? "Behaviour preview on: models with iw8r_spin or iw8r_bob move in the camera as the map script moves them in game"
+            ctx_.setStatus(ctx_.behaviourPreview ? "Behaviour preview on: the map's own script runs in the camera (moves, turns, hide / show of its entities; iw8r_spin and iw8r_bob too); unsupported lines are noted in the Console"
                                                  : "Behaviour preview off");
             ctx_.cameraMoved();
         });
@@ -4916,14 +5141,80 @@ void MainWindow::buildMenus() {
         sw->setChecked(StallWatch::instance().running());
     }
     QAction* paths = tools->addAction("Tool Paths (ACTS, Replay, Oodle, x64-zt)...");
+    paths->setObjectName("ToolPaths");
     connect(paths, &QAction::triggered, this, [this] { toolPathsDialog(); });
     QAction* hk = tools->addAction("Hotkeys...");
+    hk->setObjectName("Hotkeys");
     connect(hk, &QAction::triggered, this, [this] {
         auto* d = new ads::CDockWidget(dock_, "Hotkeys");
         d->setWidget(new HotkeysPanel(actions_));
         d->setFeature(ads::CDockWidget::DockWidgetDeleteOnClose, true);
         dock_->addDockWidgetFloating(d);
     });
+    {
+        // Owner 2026-11-15: the Tools menu in the side bar. The Tools panel lists every entry in groups with a line on
+        // what it does; the asset panels get a Tools button with the entries of their kind. Both run the menu's actions.
+        const auto a = [this](const char* command) { return action(command); };
+        ads::CDockWidget* toolsDock = dock_ ? dock_->findDockWidget("Tools") : nullptr;  // its widget is out of the tree while closed
+        if (auto* tp = toolsDock ? qobject_cast<ToolsPanel*>(toolsDock->widget()) : nullptr) {
+            tp->clear();
+            using T = ToolsPanel::Tool;
+            tp->addGroup("Check the map", {
+                T{a("CheckMap"), "", "Problems a build or the game would trip on, with a jump to each"},
+                T{a("LeakCheck"), "Leak Check", "Find a hole to the void; the yellow line shows the path"},
+                T{a("ClearPointfile"), "", "Remove the leak line"},
+                T{a("AssetUsage"), "", "What the map uses, and own files it does not"},
+                T{a("ListUnusedCustomAssets"), "", "Own materials and models this map does not use"},
+            });
+            tp->addGroup("Place and arrange", {
+                T{a("DropToFloor"), "Drop to Floor", "Selected entities down onto what is under them"},
+                T{a("CreateRope"), "Create Rope", "A rope between the two selected"},
+                T{a("ScatterByRules"), "", "Models over surfaces by slope, material and spacing"},
+                T{a("ScatterModels"), "Scatter Models", "A number of one model around the 2D view centre"},
+                T{a("ModelPaintMode"), "Model Paint Mode", "Click surfaces in the camera to paint models (click again to stop)"},
+                T{a("MeasureTool"), "Measure", "Drag in a 2D view to measure (Alt+M)"},
+            });
+            tp->addGroup("Materials and shaders", {
+                T{a("MaterialInfo"), "Material Info", "The current material: images, shader, surface"},
+                T{a("CloneStockMaterial"), "Editable Copy of Material", "Copy the current stock material into the map to change it"},
+                T{a("TechsetInfo"), "Techset Info", "What the current material's technique set does"},
+                T{a("ReplaceMaterialInMap"), "Replace Material in Map", "Every face using one material takes the current one"},
+                T{a("ReplaceModelMaterial"), "Replace Model Material", "One material slot of the selected stock model"},
+                T{a("ShaderEditor"), "Shader Editor", "The map's surface shaders"},
+                T{a("AdjustImage"), "Adjust Image", "Brightness, tint, size, normal map from height"},
+                T{a("IesBrowser"), "IES Profiles", "Light profiles for lights"},
+            });
+            tp->addGroup("Models, effects and sounds", {
+                T{a("ModelInfo"), "Model Info", "The selected model: levels of detail, materials, bounds"},
+                T{a("EffectEditor"), "Effect Editor", "Make or change an effect"},
+                T{a("SoundSettings"), "Sound Settings", "Volume and loop of one of the map's own sounds"},
+            });
+            tp->addGroup("Gameplay", {
+                T{a("GenerateSpawns"), "", "A starting set of spawns over the walkable floors"},
+                T{a("GameModes"), "Game Modes", "Warzone and mode presets"},
+            });
+            tp->addGroup("Automation", {
+                T{a("RecordMacro"), "Record Macro", "Start or stop recording edits as a command script"},
+                T{a("RunCommandScript"), "", "Batch edits written as text"},
+            });
+            tp->addGroup("Stock assets and caches", {
+                T{a("AssetAudit"), "Availability Audit", "Which stock assets can be built"},
+                T{a("CacheManager"), "", "The exported stock asset caches and their size"},
+            });
+            tp->addGroup("Editor", {
+                T{paths, "Tool Paths", "Where ACTS, Replay, Oodle and x64-zt are"},
+                T{hk, "Hotkeys", "Keys of every command"},
+                T{a("WebServer"), "Web Server", "Use the suite from a browser (on / off)"},
+                T{a("WebServerSettings"), "", "Port, access from other machines, login"},
+                T{a("ToggleStallWatch"), "Report Freezes", "Freezes of the window reported in the Console"},
+            });
+        }
+        materials_->setToolActions({a("MaterialInfo"), a("CloneStockMaterial"), a("TechsetInfo"), a("ReplaceMaterialInMap"),
+                                    a("ShaderEditor"), a("AdjustImage")});
+        models_->setToolActions({a("ModelInfo"), a("ReplaceModelMaterial"), a("ScatterByRules"), a("ScatterModels"), a("ModelPaintMode")});
+        effects_->setToolActions({a("EffectEditor")});
+        sounds_->setToolActions({a("SoundSettings")});
+    }
 
     QMenu* help = menuBar()->addMenu("&Help");
     addCommand(help, "CommandPalette", "Command Palette...", QKeySequence("Ctrl+Shift+P"), [this] {
@@ -5299,6 +5590,25 @@ void MainWindow::loadDocument(const QString& path) {
     ctx_.scene.sync(ctx_.doc);
     AABB b;
     for (const app::PrimGeom* g : ctx_.scene.items()) b.add(g->bounds);
+    if (path.endsWith(".json", Qt::CaseInsensitive)) {
+        // A stock map: its play area (the spawns) instead of everything, which put the camera far above the map.
+        AABB play;
+        // The compiled spawns; the entity string's spawn entities only when there are none (Shipment's entity string
+        // also holds spawn-named camera spots far outside the play area).
+        for (const auto& sp : ctx_.scene.spawns) play.add(sp.origin);
+        if (ctx_.scene.spawns.empty())
+            for (const auto& e : ctx_.doc.map().entities) {
+                const std::string cls = e.classname();
+                if (cls.find("intermission") != std::string::npos || cls.find("camera") != std::string::npos) continue;
+                if ((cls.rfind("mp_", 0) == 0 && cls.find("spawn") != std::string::npos) || cls == "info_player_start")
+                    if (const auto o = e.origin()) play.add(*o);
+            }
+        if (play.valid()) {
+            play.add(play.mins - Vec3{256, 256, 0});
+            play.add(play.maxs + Vec3{256, 256, 384});
+            b = play;
+        }
+    }
     if (b.valid()) {
         ctx_.cam.yaw = 45;
         ctx_.cam.pitch = -30;
@@ -7109,6 +7419,51 @@ QString MainWindow::findVfxExport(const QString& name) const {
     return found;
 }
 
+bool MainWindow::requestVfxExport(const QString& name) {
+    if (name.isEmpty() || vfxExporting_.contains(name) || vfxExportFailed_.contains(name)) return vfxExporting_.contains(name);
+    QString stem = name;
+    stem.replace('\\', '/');
+    // 8.9: the zone that holds it (the always-loaded MP zones the common effects catalogue lists).
+    static const QHash<QString, QString> zones = [] {
+        QHash<QString, QString> z;
+        QDir d(QCoreApplication::applicationDirPath());
+        for (int up = 0; up < 4 && z.isEmpty(); ++up, d.cdUp())
+            if (QFile f(d.filePath("data/asset_catalog/iw8_common_vfx.tsv")); f.open(QIODevice::ReadOnly | QIODevice::Text))
+                while (!f.atEnd()) {
+                    const QStringList c = QString::fromUtf8(f.readLine()).trimmed().split('\t');
+                    if (c.size() >= 2 && !c[0].startsWith('#')) z.insert(c[0], c[1].section(',', 0, 0).trimmed());
+                }
+        return z;
+    }();
+    const QString zone = zones.value(stem);
+    if (zone.isEmpty()) {
+        vfxExportFailed_.insert(name);  // not in a zone the editor can export it from: asked once
+        return false;
+    }
+    const QString ownCache = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/vfx_cache";
+    vfxExporting_.insert(name);
+    ActsRequest req;
+    req.zone = zone;
+    req.types = "vfx";
+    req.names = {stem};
+    req.outDir = ownCache + "/" + zone;
+    QDir().mkpath(req.outDir);
+    ActsRunner::shared()->submit([this](const QString& k) { return toolPath(k); }, req, this, [this, name](const ActsResult& r) {
+        vfxExporting_.remove(name);
+        forgetVfxFiles();                   // new export files
+        fxSims_.erase(name.toStdString());  // the camera preview picks the new export up
+        const bool ok = r.started && (r.exitCode == 0 || r.exitCode == 127);
+        if (!ok) {
+            vfxExportFailed_.insert(name);
+            ctx_.setStatus("Effect export failed for " + name + " (ACTS)");
+        }
+        if (findChild<QDialog*>("effectInfoDialog")) showEffectInfo(name);  // refresh the open window
+        if (camera_) camera_->update();
+        emit vfxExportDone(name, ok);
+    });
+    return true;
+}
+
 QString MainWindow::showEffectInfo(const QString& name, bool show) {
     // The stock vfx exports the converter keeps (x64-zt _stock_cache, `<name>.vfx.<n>.asset.json`), research 50.
     const QString root = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/x64zt_output/_stock_cache";
@@ -7132,37 +7487,8 @@ QString MainWindow::showEffectInfo(const QString& name, bool show) {
             if (found.isEmpty()) found = f;
         }
     }
-    if (found.isEmpty() && !name.endsWith(".asset.json") && !vfxExporting_.contains(name)) {
-        // 8.9: export it now with ACTS from the zone that holds it (always-loaded MP zones list), then show it again.
-        QString zone;
-        QDir d(QCoreApplication::applicationDirPath());
-        for (int up = 0; up < 4 && zone.isEmpty(); ++up, d.cdUp())
-            if (QFile f(d.filePath("data/asset_catalog/iw8_common_vfx.tsv")); f.open(QIODevice::ReadOnly | QIODevice::Text))
-                while (!f.atEnd()) {
-                    const QStringList c = QString::fromUtf8(f.readLine()).trimmed().split('\t');
-                    if (c.size() >= 2 && c[0] == stem) {
-                        zone = c[1].section(',', 0, 0).trimmed();
-                        break;
-                    }
-                }
-        if (!zone.isEmpty()) {
-            vfxExporting_.insert(name);
-            ActsRequest req;
-            req.zone = zone;
-            req.types = "vfx";
-            req.names = {stem};
-            req.outDir = ownCache + "/" + zone;
-            QDir().mkpath(req.outDir);
-            ActsRunner::shared()->submit([this](const QString& k) { return toolPath(k); }, req, this, [this, name](const ActsResult& r) {
-                vfxExporting_.remove(name);
-                forgetVfxFiles();                   // new export files
-                fxSims_.erase(name.toStdString());  // the camera preview picks the new export up
-                if (findChild<QDialog*>("effectInfoDialog")) showEffectInfo(name);  // refresh the open window
-                if (!r.started || (r.exitCode != 0 && r.exitCode != 127)) ctx_.setStatus("Effect export failed for " + name + " (ACTS)");
-            });
-            ctx_.setStatus("Exporting " + name + " from " + zone + " with ACTS (Effect Info refreshes when it is done)");
-        }
-    }
+    if (found.isEmpty() && !name.endsWith(".asset.json") && requestVfxExport(name))
+        ctx_.setStatus("Exporting " + name + " with ACTS (Effect Info refreshes when it is done)");
     QString html = "<h3>" + name.toHtmlEscaped() + "</h3>";
     VfxInfo v;
     std::string err;
@@ -7309,7 +7635,8 @@ QMenu* MainWindow::buildCameraContextMenu(const QPointF& widgetPos) {
 }
 
 QStringList MainWindow::defaultToolbarCommands() {
-    return {"NewMap", "Open", "Save", "Undo", "Redo", "GizmoMode", "GizmoScale", "ToggleTexturedView", "ToggleLitPreview", "CompileMap",
+    // GizmoMode is the gizmo dropdown (Move / Rotate / Scale / All; rebuildMainToolbar), which covers GizmoScale too.
+    return {"NewMap", "Open", "Save", "Undo", "Redo", "GizmoMode", "ToggleTexturedView", "ToggleLitPreview", "CompileMap",
             "BuildDeployLoad", "PlayPreview", "WebServer"};
 }
 
@@ -7351,6 +7678,15 @@ QIcon toolbarIcon(const QString& id, const QColor& ink) {
         p.drawRect(QRectF(5, 13, 14, 14));
         p.drawLine(QPointF(14, 18), QPointF(26, 6));
         arrowHead({26, 6}, {0.707, -0.707});
+    } else if (id == "GizmoRotate") {  // the gizmo dropdown's Rotate: a ring with an arrow
+        p.drawArc(QRectF(5, 5, 22, 22), 60 * 16, 290 * 16);
+        arrowHead({21.5, 6.5}, {0.8, 0.6});
+        p.drawEllipse(QPointF(16, 16), 1.5, 1.5);
+    } else if (id == "GizmoAll") {  // the gizmo dropdown's All: a ring, two arrows and a box
+        p.drawEllipse(QPointF(16, 16), 12, 12);
+        p.drawLine(QPointF(16, 16), QPointF(16, 6)), p.drawLine(QPointF(16, 16), QPointF(26, 16));
+        arrowHead({16, 5}, {0, -1}), arrowHead({27, 16}, {1, 0});
+        p.drawRect(QRectF(7, 18, 6, 6));
     } else if (id == "ToggleTexturedView") {
         p.drawRect(QRectF(5, 5, 22, 22));
         p.fillRect(QRectF(5, 5, 11, 11), ink), p.fillRect(QRectF(16, 16, 11, 11), ink);
@@ -7408,12 +7744,38 @@ void MainWindow::rebuildMainToolbar() {
         addToolBar(Qt::TopToolBarArea, mainToolbar_);
         insertToolBarBreak(mainToolbar_);
     }
+    // The gizmo dropdown of the last build (clear() would leave its combo box behind).
+    for (QAction* old : mainToolbar_->actions())
+        if (old->objectName() == "tb_GizmoMode") delete old;
     mainToolbar_->clear();
     const QStringList ids = Settings::instance().value("ui/toolbar", defaultToolbarCommands()).toStringList();
     const QColor ink = palette().color(QPalette::WindowText);
+    const bool gizmoBox = ids.contains("GizmoMode") && camera_;
     for (const QString& id : ids) {
         QAction* a = actions_.value(id);
         if (!a) continue;
+        if (id == "GizmoScale" && gizmoBox) continue;  // the dropdown has Scale
+        if (id == "GizmoMode" && gizmoBox) {
+            // The gizmo mode as a dropdown (owner 2026-11-15): Move, Rotate, Scale or All (each part dragged on its own).
+            auto* box = new QComboBox(mainToolbar_);
+            box->setObjectName("tb_GizmoModeCombo");
+            box->setFocusPolicy(Qt::NoFocus);  // keys stay with the views (R, T, W A S D)
+            box->setToolTip("Gizmo mode: move arrows, rotate rings, scale boxes, or all three at once\n"
+                            "(R: move / rotate, T: move / scale; View > Gizmo Mode)");
+            box->addItem(toolbarIcon("GizmoMode", ink), "Move");
+            box->addItem(toolbarIcon("GizmoRotate", ink), "Rotate");
+            box->addItem(toolbarIcon("GizmoScale", ink), "Scale");
+            box->addItem(toolbarIcon("GizmoAll", ink), "All");
+            box->setCurrentIndex(int(camera_->gizmoMode()));
+            connect(box, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
+                const auto mode = CameraView::GizmoMode(std::clamp(i, 0, 3));
+                camera_->setGizmoMode(mode);  // gizmoModeChanged saves it and checks View > Gizmo Mode
+                ctx_.setStatus(CameraView::gizmoModeHelp(mode));
+            });
+            QAction* wa = mainToolbar_->addWidget(box);
+            wa->setObjectName("tb_GizmoMode");
+            continue;
+        }
         // A toolbar twin of the command: short label and flat icon; the menu keeps the full text.
         auto* t = new QAction(toolbarIcon(id, ink), toolbarLabel(id, a->text()), mainToolbar_);
         t->setObjectName("tb_" + id);
@@ -8592,6 +8954,11 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                     prepJobs.push_back(std::move(job));
                 }
                 return true;
+            }
+            if (built && built->hasBox) {  // its box for picking (pickStockSurface), kept after refPropBuilt_ is dropped
+                std::array<float, 6> pb;
+                std::copy(built->box, built->box + 6, pb.begin());
+                refPropBoxes_[in.model] = pb;
             }
             if (built && built->tris > 0 && meshTris + built->tris <= kPropTriangleBudget) {
                 meshTris += built->tris;

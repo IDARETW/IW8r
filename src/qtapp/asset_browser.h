@@ -2,8 +2,11 @@
 // Enter applies / places the asset; right-click has Favourites, Tags, Copy Name (and Show Image in Folder for materials
 // with an exported colour image).
 // Names come from data/asset_catalog/iw8_{materials,models}.tsv (tools/build_asset_catalog.py, built from x64-zt
-// verifyzone traces of the Replay 1.20 stock zones). Thumbnails come from ACTS exports indexed in
-// data/stock_assets/<zone>/index.json (tools/acts_asset_index.py) and are decoded on demand.
+// verifyzone traces of the Replay 1.20 stock zones). Thumbnails are made once and kept in packs (thumb_store.h); the
+// stored ones are decoded on worker threads for the rows on screen and the pages around them (ThumbDecoder), so a
+// panel opens and scrolls with its pictures; only rows with nothing stored go to the thumbnail source (ACTS exports,
+// the textured model pictures), which stores what it makes. Models are tiles in three sizes with a compact preview of
+// the selected one; Effects play the selected effect (VfxPreview); Sounds play the selected alias (sound_preview.h).
 #pragma once
 
 #include <memory>
@@ -15,6 +18,7 @@
 #include <QWidget>
 
 #include "editor_context.h"
+#include "thumb_store.h"
 
 class QAbstractItemView;
 class QLineEdit;
@@ -24,7 +28,15 @@ class QComboBox;
 class QLabel;
 class QStandardItem;
 class QStandardItemModel;
+class QStyledItemDelegate;
 class QSortFilterProxyModel;
+class QScrollBar;
+class QShowEvent;
+class QTimer;
+class QPushButton;
+namespace iw8r {
+struct VfxSimDef;
+}
 
 namespace iw8r::qt {
 
@@ -84,6 +96,33 @@ public:
     void setThumbnailSource(ThumbSource fn) { thumbSource_ = std::move(fn); refreshThumbnails(); }
     void refreshThumbnails();
     int thumbnailsLoaded() const;  // rows with a real thumbnail (tests)
+    // Tests: every row forgets its picture (made again from the packs or the source when it is needed), and how many of
+    // the first `count` listed rows show their real picture.
+    void forgetThumbnails();
+    int picturedRows(int count) const;
+    VisibleThumbs visibleThumbState() const;  // the rows on screen now (thumb_bench.h, tests)
+    QScrollBar* scrollBar() const;
+    // Stored pictures read on worker threads (ThumbDecoder, thumb_store.h): `peek` must be thread-safe and only read
+    // (the thumbnail packs); it returns the stored picture of a name or a null image. Rows it has none for go to the
+    // thumbnail source above (which may decode, render or request an export on the GUI thread).
+    using ThumbPeek = std::function<QImage(const QString& name)>;
+    void setThumbnailPeek(ThumbPeek fn);
+    // Models: the tile picture size (owner 2026-11-15: model thumbnails were too small); kept in the settings.
+    enum class TileSize { Small, Medium, Large };
+    void setTileSize(TileSize s);
+    TileSize tileSize() const { return tileSize_; }
+    int iconSide() const;          // the side the pictures are decoded at
+    int tileWidth() const;         // the current grid cell (tests)
+    bool previewShown() const;     // models: the selected model's preview box is showing
+    // Effects: the selected effect plays under the list (VfxPreview, the simplified particle simulation); a null def
+    // shows the caption only (exporting, not exportable).
+    void setEffectPreview(const VfxSimDef* def, const QString& caption);
+    class VfxPreview* effectPreview() const { return fxPreview_; }
+    // Sounds: the line under the list (what plays, what is being prepared, or why nothing plays) and the Play / Stop state.
+    void setSoundStatus(const QString& text, bool playing);
+    QString soundStatus() const;
+    // A Tools button in the options row whose menu holds the Tools menu commands of this kind of asset.
+    void setToolActions(const QList<QAction*>& actions);
     // Availability of a row's asset: "" = available or not known yet, else why it cannot be built (the caches tried and
     // failed). Unavailable visible rows are greyed with the reason in their tooltip.
     using StatusSource = std::function<QString(const QString& name)>;
@@ -106,11 +145,17 @@ signals:
     void modelHighlighted(const QString& name);  // the current model row changed (preview)
     void previewRequested(const QString& name);  // Models: open the 3D preview window
     void catalogReady();  // the catalogue read on the worker thread is in the list
+    void effectHighlighted(const QString& name);  // Effects: the current row changed (side bar preview)
+    void soundPlayRequested(const QString& name);  // Sounds: Play (or Enter on the Play button)
+    void soundStopRequested();
 
 public:
     void reloadCatalog() { load(); }  // after an availability audit (4.12)
     // The catalogue is read on a worker thread (seconds of files at start-up): true once the list holds the latest read.
     bool catalogLoaded() const { return loadedGen_ == loadGen_; }
+
+protected:
+    void showEvent(QShowEvent* e) override;
 
 private:
     void load();  // starts reading the catalogue on a worker thread; applyCatalog() fills the list
@@ -124,6 +169,7 @@ private:
     // The line above the list: the catalogue summary when everything is listed, else "N of M shown" or "No matches".
     void updateInfo();
     QIcon thumbnail(const QString& name);
+    QIcon placeholderIcon(const QString& name) const;
     QString filterText_;     // the search text the list is filtered by
     QString catalogInfo_;    // the summary load() wrote
     quint64 usedSignature_ = 0;  // the map content "In this map" was collected from (selection changes skip it)
@@ -154,7 +200,33 @@ private:
     ThumbSource thumbSource_;
     QSet<QString> pendingThumbs_;
     QSet<QString> realThumbs_;
-    QTimer* thumbs_ = nullptr;
+    QTimer* thumbs_ = nullptr;  // the slow pass (thumbnail source), after scrolling settles
+    QTimer* fast_ = nullptr;    // the stored pictures of the rows on screen (decoder), right away
+    std::unique_ptr<ThumbDecoder> decoder_;
+    QSet<QString> peekMissed_;  // nothing stored: the thumbnail source makes or requests it
+    QHash<QString, QString> fileKeys_;     // decoder key "file:<path>" -> row name (images named by the catalogue)
+    QHash<QString, QStandardItem*> items_;  // row name -> its item
+    std::vector<QString> iconOrder_;        // names given an icon, oldest first (memory is bounded)
+    int emptyPasses_ = 0;                  // passes that found the view not laid out yet
+    QStyledItemDelegate* delegate_ = nullptr;  // AssetTileDelegate
+    QObject* gridFit_ = nullptr;                // TileGridFit (tiles)
+    QComboBox* tileSizeBox_ = nullptr;
+    QWidget* previewBox_ = nullptr;             // models: the compact preview of the selected model
+    class VfxPreview* fxPreview_ = nullptr;     // effects: the selected effect
+    QLabel* fxCaption_ = nullptr;
+    QPushButton* soundPlay_ = nullptr;          // sounds: play / stop the selected alias
+    QLabel* soundCaption_ = nullptr;
+    QWidget* toolRow_ = nullptr;
+    TileSize tileSize_ = TileSize::Medium;
+    void applyTileSize();
+    std::pair<int, int> visibleRange() const;  // proxy rows on screen [first, last] (last < first: none)
+    void thumbPass();
+    void slowPass();
+    void applyDecoded(std::vector<ThumbDecoder::Result> results);
+    void setRowIcon(QStandardItem* item, const QString& name, const QIcon& icon);
+    void markStatus(QStandardItem* item);
+    void evictIcons(int keepFrom, int keepTo);
+    QString decoderKey(const QString& name);
 };
 
 }  // namespace iw8r::qt

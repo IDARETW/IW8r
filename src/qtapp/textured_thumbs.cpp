@@ -19,8 +19,8 @@ TexturedThumbs::TexturedThumbs(const QString& thumbDir, std::function<AssetPrevi
                                std::function<bool(const QString&)> modelWaiting, QObject* parent)
     : QObject(parent), makeWindow_(std::move(makeWindow)), modelWaiting_(std::move(modelWaiting)) {
     QDir().mkpath(thumbDir);
-    models_ = std::make_unique<ThumbStore>(QDir(thumbDir).filePath("models.textured.pack"));
-    prefabs_ = std::make_unique<ThumbStore>(QDir(thumbDir).filePath("prefabs.textured.pack"));
+    models_ = std::make_shared<ThumbStore>(QDir(thumbDir).filePath("models.textured.pack"));
+    prefabs_ = std::make_shared<ThumbStore>(QDir(thumbDir).filePath("prefabs.textured.pack"));
     timer_ = new QTimer(this);
     timer_->setInterval(kFrameMs);
     connect(timer_, &QTimer::timeout, this, [this] { step(); });

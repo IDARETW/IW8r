@@ -6,6 +6,8 @@
 #include "render.h"
 #include "custom_shader.h"
 #include <map>
+#include <QRegularExpression>
+#include <set>
 #include <QFileDialog>
 #include <QTextStream>
 
@@ -39,6 +41,9 @@
 #include "stock_install.h"
 #include "stock_spawns.h"
 #include "stock_zone_edit.h"
+#include "material_blend.h"
+#include "material_cache.h"
+#include "collision_world.h"
 
 namespace iw8r::qt {
 
@@ -1034,6 +1039,174 @@ void MainWindow::applyStockSunPreview() {
     stockSunSig_ = sig;
     stockSunApplied_ = true;
     if (intensity > 0) camera_->setGameStockSun(intensity, color, toward);
+}
+
+// ------------------------------------------------------------------ the stock world in the play preview
+
+size_t MainWindow::addStockWorldCollision(CollisionWorld& w) const {
+    if (!stockWorld_) return 0;
+    // Removal boxes that take the collision out (iw8r_remove_world, "collision" not 0).
+    std::vector<WorldRemovalBox> boxes;
+    for (const WorldRemovalBox& b : documentWorldRemovals(ctx_.doc.map()))
+        if (b.collision) boxes.push_back(b);
+    const auto inBox = [&](const Vec3& p, const WorldRemovalBox& b) {
+        return p.x >= b.mins.x - 1e-3 && p.y >= b.mins.y - 1e-3 && p.z >= b.mins.z - 1e-3 && p.x <= b.maxs.x + 1e-3 &&
+               p.y <= b.maxs.y + 1e-3 && p.z <= b.maxs.z + 1e-3;
+    };
+    size_t added = 0;
+    for (const ImportedMesh& m : stockWorld_->meshes) {
+        const QString mat = qs(m.material).remove(QChar(',')).trimmed().toLower();
+        const QString leaf = mat.section('/', -1);
+        // Not walked on or against in game: the sky, decals, foliage and grass cards, translucent surfaces.
+        if (leaf.startsWith("sky_") || mat.contains("decal") || mat.contains("foliage") || mat.contains("grass") || mat.contains("leaves") ||
+            mat.contains("ivy") || mat.contains("vine"))
+            continue;
+        if (const auto e = matCache_->lookup(qs(m.material).remove(QChar(',')).trimmed()); e && !e->failed &&
+            materialBlendFromTechset(e->techset.toStdString()) == MaterialBlend::Blend)
+            continue;
+        for (size_t t = 0; t + 2 < m.idx.size(); t += 3) {
+            const uint32_t i0 = m.idx[t], i1 = m.idx[t + 1], i2 = m.idx[t + 2];
+            if (i0 >= m.pos.size() || i1 >= m.pos.size() || i2 >= m.pos.size()) continue;
+            const Vec3 &a = m.pos[i0], &b = m.pos[i1], &c = m.pos[i2];
+            bool removed = false;
+            for (const WorldRemovalBox& box : boxes)
+                if (inBox(a, box) && inBox(b, box) && inBox(c, box)) {
+                    removed = true;
+                    break;
+                }
+            if (!removed && w.addTriangle(a, b, c, 2.0)) ++added;
+        }
+    }
+    return added;
+}
+
+// ------------------------------------------------------------------ picking the stock map's own surfaces
+
+std::optional<MainWindow::StockSurfacePick> MainWindow::pickStockSurface(const Ray& ray) const {
+    std::optional<StockSurfacePick> best;
+    double bestT = 1e300;
+    if (stockWorld_) {
+        if (stockPickBoundsFor_ != stockWorld_.get()) {
+            stockPickBounds_.assign(stockWorld_->meshes.size(), AABB{});
+            for (size_t i = 0; i < stockWorld_->meshes.size(); ++i)
+                for (const Vec3& p : stockWorld_->meshes[i].pos) stockPickBounds_[i].add(p);
+            stockPickBoundsFor_ = stockWorld_.get();
+        }
+        const std::vector<WorldRemovalBox> boxes = documentWorldRemovals(ctx_.doc.map());
+        const auto inBox = [](const Vec3& p, const WorldRemovalBox& b) {
+            return p.x >= b.mins.x - 1e-3 && p.y >= b.mins.y - 1e-3 && p.z >= b.mins.z - 1e-3 && p.x <= b.maxs.x + 1e-3 &&
+                   p.y <= b.maxs.y + 1e-3 && p.z <= b.maxs.z + 1e-3;
+        };
+        for (size_t mi = 0; mi < stockWorld_->meshes.size(); ++mi) {
+            const ImportedMesh& m = stockWorld_->meshes[mi];
+            const auto enter = rayAABB(ray, stockPickBounds_[mi]);
+            if (!enter || *enter >= bestT) continue;
+            const QString mat = qs(m.material).remove(QChar(',')).trimmed();
+            if (mat.section('/', -1).toLower().startsWith("sky_")) continue;  // the sky box is not a surface to pick
+            for (size_t t = 0; t + 2 < m.idx.size(); t += 3) {
+                const uint32_t i0 = m.idx[t], i1 = m.idx[t + 1], i2 = m.idx[t + 2];
+                if (i0 >= m.pos.size() || i1 >= m.pos.size() || i2 >= m.pos.size()) continue;
+                const Vec3 &a = m.pos[i0], &b = m.pos[i1], &c = m.pos[i2];
+                // Moller-Trumbore, both sides.
+                const Vec3 e1 = b - a, e2 = c - a;
+                const Vec3 pv = cross(ray.dir, e2);
+                const double det = dot(e1, pv);
+                if (std::fabs(det) < 1e-12) continue;
+                const double inv = 1.0 / det;
+                const Vec3 tv = ray.origin - a;
+                const double u = dot(tv, pv) * inv;
+                if (u < 0 || u > 1) continue;
+                const Vec3 qv = cross(tv, e1);
+                const double v = dot(ray.dir, qv) * inv;
+                if (v < 0 || u + v > 1) continue;
+                const double d = dot(e2, qv) * inv;
+                if (d <= 0.01 || d >= bestT) continue;
+                bool removed = false;
+                for (const WorldRemovalBox& box : boxes)
+                    if (inBox(a, box) && inBox(b, box) && inBox(c, box)) {
+                        removed = true;
+                        break;
+                    }
+                if (removed) continue;
+                bestT = d;
+                best = StockSurfacePick{mat, QString(), 0, ray.origin + ray.dir * d, d, int(mi)};
+            }
+        }
+    }
+    if (refProps_ && !refPropBoxes_.empty()) {
+        std::set<uint32_t> hidden;
+        for (const Entity& ws : ctx_.doc.map().entities)
+            if (const std::string* v = ws.isWorldspawn() ? ws.value("iw8r_hide_smodels") : nullptr)
+                for (const QString& tok : qs(*v).split(QRegularExpression("[\\s,]+"), Qt::SkipEmptyParts)) hidden.insert(tok.toUInt());
+        for (const StockModelInstance& in : *refProps_) {
+            const auto it = refPropBoxes_.find(in.model);
+            if (it == refPropBoxes_.end() || hidden.count(in.index)) continue;
+            const double sc = in.scale > 1e-6 ? in.scale : 1.0;
+            const Vec3 d = ray.origin - in.origin;
+            const Ray local{{dot(d, in.axis[0]) / sc, dot(d, in.axis[1]) / sc, dot(d, in.axis[2]) / sc},
+                            {dot(ray.dir, in.axis[0]), dot(ray.dir, in.axis[1]), dot(ray.dir, in.axis[2])}};
+            const auto& b = it->second;
+            AABB box;
+            box.mins = {b[0], b[1], b[2]};
+            box.maxs = {b[3], b[4], b[5]};
+            if (box.contains(local.origin)) continue;  // the camera inside a big model's box: what is beyond it
+            if (const auto tl = rayAABB(local, box); tl && *tl * sc < bestT) {
+                bestT = *tl * sc;
+                best = StockSurfacePick{QString(), qs(in.model), in.index, ray.origin + ray.dir * bestT, bestT};
+                for (int k = 0; k < 8; ++k) {
+                    const double x = (k & 1) ? b[3] : b[0], y = (k & 2) ? b[4] : b[1], z = (k & 4) ? b[5] : b[2];
+                    best->corners[size_t(k)] = in.origin + (in.axis[0] * x + in.axis[1] * y + in.axis[2] * z) * sc;
+                }
+            }
+        }
+    }
+    return best;
+}
+
+bool MainWindow::showStockSurfaceAt(const Ray& ray) {
+    if (!stockWorld_ && !refProps_) return false;
+    const auto hit = pickStockSurface(ray);
+    if (!hit) return false;
+    // Its outline in the camera: the world surface's triangles around the click, or the prop's model box.
+    std::vector<app::GpuVertex> lines;
+    const uint32_t col = 0xFF20D8FFu;  // amber (R in the low byte)
+    const auto line = [&](const Vec3& p, const Vec3& q) {
+        lines.push_back(app::GpuVertex{float(p.x), float(p.y), float(p.z), col});
+        lines.push_back(app::GpuVertex{float(q.x), float(q.y), float(q.z), col});
+    };
+    if (hit->mesh >= 0 && stockWorld_ && size_t(hit->mesh) < stockWorld_->meshes.size()) {
+        const ImportedMesh& m = stockWorld_->meshes[size_t(hit->mesh)];
+        const double r2 = 160.0 * 160.0;
+        for (size_t t = 0; t + 2 < m.idx.size() && lines.size() < 12000; t += 3) {
+            const uint32_t i0 = m.idx[t], i1 = m.idx[t + 1], i2 = m.idx[t + 2];
+            if (i0 >= m.pos.size() || i1 >= m.pos.size() || i2 >= m.pos.size()) continue;
+            const Vec3 &a = m.pos[i0], &b = m.pos[i1], &c = m.pos[i2];
+            const Vec3 mid = (a + b + c) * (1.0 / 3.0) - hit->at;
+            if (dot(mid, mid) > r2) continue;
+            line(a, b), line(b, c), line(c, a);
+        }
+    } else if (hit->mesh < 0) {
+        const auto& k = hit->corners;
+        for (int i = 0; i < 8; ++i)
+            for (int bit : {1, 2, 4})
+                if (!(i & bit)) line(k[size_t(i)], k[size_t(i | bit)]);
+    }
+    camera_->setStockPickOutline(std::move(lines));
+    if (!hit->material.isEmpty()) {
+        ctx_.setStatus(QString("Stock surface: %1 (the map's world, %2 units away). The Stock Map panel's Retexture takes it "
+                               "(or worldspawn iw8r_stock_retexture %1=<material>)")
+                           .arg(hit->material)
+                           .arg(qRound(hit->t)));
+        emit stockSurfacePicked(hit->material);
+    } else {
+        ctx_.setStatus(QString("Stock prop: %1 (row %2, %3 units away). To hide it: a brush around its origin, then "
+                               "File > Stock Map > Hide Stock Props In Selection")
+                           .arg(hit->model)
+                           .arg(hit->propIndex)
+                           .arg(qRound(hit->t)));
+        emit stockPropPicked(hit->model, hit->propIndex);
+    }
+    return true;
 }
 
 }  // namespace iw8r::qt

@@ -431,24 +431,29 @@ TEST(view_height_lerps_between_stances) {
     CHECK(eyeHeight(p, s) == p.standEye);
 }
 
+// Walking off a ledge (Replay120GroundTrace, research 140): grounded, the ground trace reaches 16 units below the feet
+// (playerCollisionStickExtension), so a 12-unit stair step is walked down without leaving the ground; a 24-unit
+// drop is a short fall.
 TEST(walking_down_a_step_keeps_ground_contact) {
-    CollisionWorld w;
-    w.build(testMap());
-    MoveParams p;
-    PlayerState s;
-    CHECK(placePlayer(w, s, {300, 300, 50}, p));
-    CHECK(std::fabs(s.origin.z - 16) < 0.5);  // on the 16-unit step
-    s.yaw = 180;                              // walk -x, off the step edge at x = 128
-    MoveInput in;
-    in.forward = 1;
-    int airborne = 0;
-    for (int i = 0; i < 240 && s.origin.x > 60; ++i) {
-        playerMove(w, s, in, p);
-        if (!s.onGround) ++airborne;
+    for (const double drop : {12.0, 24.0}) {
+        CollisionWorld w;
+        w.build(worldOf(floorOnly() + box(128, 200, 0, 1024, 400, drop)));
+        MoveParams p;
+        PlayerState s;
+        CHECK(placePlayer(w, s, {300, 300, drop + 50}, p));
+        CHECK(std::fabs(s.origin.z - drop) < 0.5);  // on the platform
+        s.yaw = 180;                                // walk -x, off the edge at x = 128
+        MoveInput in;
+        in.forward = 1;
+        int airborne = 0;
+        for (int i = 0; i < 240 && s.origin.x > 60; ++i) {
+            playerMove(w, s, in, p);
+            if (!s.onGround) ++airborne;
+        }
+        CHECK(s.origin.x < 60);
+        CHECK(drop < 16 ? airborne == 0 : airborne > 3);  // the stick extension catches 12, not 24
+        CHECK(std::fabs(s.origin.z) < 0.5);
     }
-    CHECK(s.origin.x < 60);
-    CHECK(airborne == 0);                     // the step-down snaps to the floor, no free fall
-    CHECK(std::fabs(s.origin.z) < 0.5);
 }
 
 // Ladders (6.8): a brush with the ladder tool material is climbable; looking down climbs down; jump pushes off.
@@ -471,19 +476,30 @@ TEST(play_ladder_climb_descend_pushoff) {
     CHECK(s.onLadder);
     const double z0 = s.origin.z;
     run(w, s, in, p, 1.0);
-    CHECK(s.onLadder && s.origin.z > z0 + 80);  // ~104 units/s up
+    // PM_LadderMove: 0.4 x 190 = 76 units / s at full forward, reached at the ladder acceleration 9.
+    CHECK(s.onLadder && s.origin.z > z0 + 65 && s.origin.z < z0 + 77);
+    CHECK(std::fabs(s.velocity.z - 76) < 0.5);
     CHECK(s.origin.x < 100 - p.radius + 1);     // stays in front of the face
-    // Looking down, forward climbs down.
-    const double z1 = s.origin.z;
+    // The view pitch does not matter (useLegacyPCLadderControls is off in MP): looking down, forward still climbs.
+    double z1 = s.origin.z;
     s.pitch = -45;
     run(w, s, in, p, 0.5);
-    CHECK(s.origin.z < z1 - 30);
+    CHECK(s.origin.z > z1 + 30);
+    // Back climbs down (turning from +76 to -76 at the ladder acceleration takes about 0.17 s).
+    z1 = s.origin.z;
+    MoveInput back;
+    back.forward = -1;
+    run(w, s, back, p, 1.0);
+    CHECK(s.onLadder && s.origin.z < z1 - 50 && std::fabs(s.velocity.z + 76) < 0.5);
+    // No input: the climb settles (vertical speed falls to 0 at the rate of gravity).
+    run(w, s, MoveInput{}, p, 0.2);
+    CHECK(s.onLadder && std::fabs(s.velocity.z) < 1e-6);
     s.pitch = 0;
-    // Jump: push off, away from the face, then fall.
+    // Jump: push off, away from the face at 200 (ladderJumpBackVelocity), then fall.
     MoveInput jump;
     jump.jump = true;
     playerMove(w, s, jump, p);
-    CHECK(!s.onLadder && s.velocity.x < -50);
+    CHECK(!s.onLadder && s.velocity.x < -150);
     run(w, s, MoveInput{}, p, 2.0);
     CHECK(s.onGround && s.origin.x < 80);
     // A plain (non-ladder) wall is not climbable.

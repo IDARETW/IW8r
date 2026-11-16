@@ -1092,16 +1092,23 @@ void SceneCache::sync(const Document& doc) {
         AABB entBounds;
         BrushPose brushPose;
         if (behaviourTime >= 0 && cls == "script_brushmodel") brushPose = brushBehaviourPose(e, behaviourTime);
+        // A pose of the play preview, else (Behaviour Preview) of the map's own script (core gsc_emulate): the whole
+        // entity, brushes or model, moved by a matrix, or left out while the script hides it.
+        const PlayPose* livePose = nullptr;
         if (!playPoses.empty())
-            if (const auto pp = playPoses.find(e.id); pp != playPoses.end()) {
-                brushPose = BrushPose{};
-                brushPose.any = true;
-                brushPose.matrix = true;
-                for (int i = 0; i < 3; ++i)
-                    for (int j = 0; j < 3; ++j) brushPose.rotation.m[i][j] = pp->second.R[i][j];
-                brushPose.pivot = pp->second.pivot;
-                brushPose.delta = pp->second.move;
-            }
+            if (const auto pp = playPoses.find(e.id); pp != playPoses.end()) livePose = &pp->second;
+        if (!livePose && behaviourTime >= 0 && !scriptPoses.empty())
+            if (const auto sp = scriptPoses.find(e.id); sp != scriptPoses.end()) livePose = &sp->second;
+        const bool poseHidden = livePose && !livePose->visible;
+        if (livePose) {
+            brushPose = BrushPose{};
+            brushPose.any = true;
+            brushPose.matrix = true;
+            for (int i = 0; i < 3; ++i)
+                for (int j = 0; j < 3; ++j) brushPose.rotation.m[i][j] = livePose->R[i][j];
+            brushPose.pivot = livePose->pivot;
+            brushPose.delta = livePose->move;
+        }
         // The owner's keys that buildPrim reads (a key change does not move the brushes' revs).
         uint64_t look = 0;
         if (!e.isWorldspawn()) {
@@ -1113,7 +1120,7 @@ void SceneCache::sync(const Document& doc) {
             if (!p || p->kind == PrimKind::Unknown) continue;
             hasPrim = true;
             if (filtered || hidden.count(it.id) || hidden.count(e.id) || hiddenByLayer.count(it.id) || hiddenByRegion.count(it.id) ||
-                hiddenByMode.count(e.id))
+                hiddenByMode.count(e.id) || poseHidden)
                 continue;
             PrimGeom* pg = hinted(e.id, it.id);
             if (!pg)
@@ -1136,7 +1143,7 @@ void SceneCache::sync(const Document& doc) {
             list_.push_back(pg);
         }
         if (!hasPrim && !e.isWorldspawn() && e.origin()) {
-            if (filtered || hidden.count(e.id) || hiddenByRegion.count(e.id) || hiddenByMode.count(e.id)) continue;
+            if (filtered || hidden.count(e.id) || hiddenByRegion.count(e.id) || hiddenByMode.count(e.id) || poseHidden) continue;
             uint64_t rev = 0;
             for (const auto& it : e.items) rev = std::max(rev, it.rev + 1);
             PrimGeom* pg = hinted(e.id, kNoId);
@@ -1158,7 +1165,22 @@ void SceneCache::sync(const Document& doc) {
             std::string label = prefab ? "misc_prefab:" + inst->model : model ? "model:" + model->name : cls;
             const auto ownDecal = cls == "iw8r_decal" ? ownDecals_.find(e.id) : ownDecals_.end();
             if (ownDecal != ownDecals_.end()) label += "@decal" + std::to_string(ownDecalPrint_);
-            if (behaviourTime >= 0 && model && movesInPreview(e, cls)) {
+            if (livePose) {
+                // Moved by the play preview or the map script: built at rest, then moved as a whole (the model's mesh, or
+                // the marker of an entity without one). The label differs, so the resting pose comes back after it.
+                pg = &cache_.insert_or_assign(e.id, prefab  ? buildPrefab(e, *inst, prefab, *this)
+                                                    : model ? buildModelGeom(me, *model, modelScale)
+                                                            : buildPointEntity(e)).first->second;
+                applyBrushPose(*pg, brushPose);
+                if (pg->hasArrow) {
+                    const Mat3& r = brushPose.rotation;
+                    pg->arrowFrom = brushPose.pivot + r * (pg->arrowFrom - brushPose.pivot) + brushPose.delta;
+                    pg->arrowTo = brushPose.pivot + r * (pg->arrowTo - brushPose.pivot) + brushPose.delta;
+                }
+                if (vehicle) pg->collides = false;
+                pg->label += "@pose";
+                pg->stamp = ++stampCounter_;
+            } else if (behaviourTime >= 0 && model && movesInPreview(e, cls)) {
                 // Rebuilt every tick while the preview runs; the label differs, so the resting pose comes back after it.
                 pg = &cache_.insert_or_assign(e.id, buildModelGeom(behaviourPose(me, behaviourTime), *model, modelScale)).first->second;
                 pg->label += "@behaviour";
@@ -1414,6 +1436,248 @@ void appendHelperLines(const SceneCache& scene, const Document& doc, std::vector
         auto& dst = h.always ? lines : overlay;
         dst.push_back(gv(h.a, h.rgba));
         dst.push_back(gv(h.b, h.rgba));
+    }
+}
+
+namespace {
+constexpr double kVisPi = 3.14159265358979;
+
+// The colour at `k` of its brightness (alpha kept).
+uint32_t scaledColour(uint32_t c, double k) {
+    const auto ch = [&](int sh) { return uint32_t(std::clamp(((c >> sh) & 0xffu) * k, 0.0, 255.0)) << sh; };
+    return (c & 0xff000000u) | ch(0) | ch(8) | ch(16);
+}
+
+// Two unit vectors perpendicular to unit `a` and to each other (u x v = a).
+void perpendiculars(const Vec3& a, Vec3& u, Vec3& v) {
+    const Vec3 ref = std::fabs(a.z) < 0.9 ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+    u = normalize(cross(ref, a));
+    v = cross(a, u);
+}
+
+struct VisPen {
+    std::vector<GpuVertex>* dst;
+    uint32_t col;
+    void seg(const Vec3& a, const Vec3& b) const {
+        dst->push_back(gv(a, col));
+        dst->push_back(gv(b, col));
+    }
+    // A circle about c in the plane of the unit vectors u, v.
+    void circle(const Vec3& c, const Vec3& u, const Vec3& v, double r, int n) const {
+        for (int k = 0; k < n; ++k) {
+            const double a0 = 2 * kVisPi * k / n, a1 = 2 * kVisPi * (k + 1) / n;
+            seg(c + u * (r * std::cos(a0)) + v * (r * std::sin(a0)), c + u * (r * std::cos(a1)) + v * (r * std::sin(a1)));
+        }
+    }
+    // A wire sphere: its three great circles on the world planes.
+    void sphere(const Vec3& c, double r, int n) const {
+        circle(c, {1, 0, 0}, {0, 1, 0}, r, n);
+        circle(c, {1, 0, 0}, {0, 0, 1}, r, n);
+        circle(c, {0, 1, 0}, {0, 0, 1}, r, n);
+    }
+    // An arrow from `from` along unit `d`, `len` long, its head a four-sided pyramid.
+    void arrow(const Vec3& from, const Vec3& d, double len) const {
+        const Vec3 tip = from + d * len;
+        seg(from, tip);
+        Vec3 u, v;
+        perpendiculars(d, u, v);
+        const double h = std::min(12.0, len * 0.3), w = h * 0.45;
+        const Vec3 base = tip - d * h;
+        const Vec3 fin[4] = {base + u * w, base + v * w, base - u * w, base - v * w};
+        for (int k = 0; k < 4; ++k) {
+            seg(tip, fin[k]);
+            seg(fin[k], fin[(k + 1) % 4]);
+        }
+    }
+    // A cone from `apex` along unit `d` with half angle `half` (radians), cut by the sphere of radius r about the apex:
+    // the rim circle, `gens` lines from the apex to it and the cap's arcs in two planes through the axis.
+    void cone(const Vec3& apex, const Vec3& d, double half, double r, int gens, int n, bool cap) const {
+        Vec3 u, v;
+        perpendiculars(d, u, v);
+        const Vec3 rim = apex + d * (r * std::cos(half));
+        const double rr = r * std::sin(half);
+        circle(rim, u, v, rr, n);
+        for (int k = 0; k < gens; ++k) {
+            const double a = 2 * kVisPi * k / gens + kVisPi / 4;
+            seg(apex, rim + u * (rr * std::cos(a)) + v * (rr * std::sin(a)));
+        }
+        if (!cap) return;
+        for (const Vec3& side : {u, v}) {
+            const int steps = std::max(4, n / 4);
+            for (int k = 0; k < steps; ++k) {
+                const double a0 = -half + 2 * half * k / steps, a1 = -half + 2 * half * (k + 1) / steps;
+                seg(apex + (d * std::cos(a0) + side * std::sin(a0)) * r, apex + (d * std::cos(a1) + side * std::sin(a1)) * r);
+            }
+        }
+    }
+};
+
+// Pitch / yaw / roll ("angles", degrees) as forward (+X of the entity) and up (+Z) directions.
+void anglesAxes(const Entity& e, Vec3& forward, Vec3& up) {
+    Vec3 ang;
+    if (const std::string* a = e.value("angles")) {
+        std::sscanf(a->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z);
+    } else if (const std::string* y = e.value("angle")) {
+        ang.y = std::atof(y->c_str());
+    }
+    const Mat3 m = anglesToMatrix(ang);
+    forward = Vec3{m.m[0][0], m.m[1][0], m.m[2][0]};
+    up = Vec3{m.m[0][2], m.m[1][2], m.m[2][2]};
+}
+
+double numberKey(const Entity& e, const char* key, double fallback) {
+    const std::string* s = e.value(key);
+    if (!s || s->empty()) return fallback;
+    char* end = nullptr;
+    const double v = std::strtod(s->c_str(), &end);
+    return end != s->c_str() && std::isfinite(v) ? v : fallback;
+}
+}  // namespace
+
+void appendEntityVisuals(const SceneCache& scene, const Document& doc, std::vector<GpuVertex>& lines, std::vector<GpuVertex>& overlay) {
+    if (scene.captureMode) return;
+    std::unordered_set<Id> selected;
+    for (const SelRef& r : doc.selection()) selected.insert(r.entity);
+    // targetname -> origin of the first entity that has it (a spot aimed at a target), read when a light first needs it.
+    std::unordered_map<std::string, Vec3> targets;
+    bool targetsRead = false;
+    // Unselected ranges are capped: thousands of light spheres would hide the map (and cost a pass per change).
+    constexpr size_t kMaxOtherRanges = 4096;
+    size_t otherRanges = 0;
+    // Only what is drawn (hidden, filtered, outside the region or the game mode: not), in the scene's order.
+    for (const PrimGeom* g : scene.items()) {
+        if (g->kind != PrimGeom::PointEntity || g->ref.item != kNoId || g->mesh) continue;
+        const std::string& label = g->label;  // the classname (buildPointEntity)
+        if (label.empty()) continue;
+        const char c0 = char(std::tolower(static_cast<unsigned char>(label[0])));
+        if (c0 != 'l' && c0 != 'r' && c0 != 's' && c0 != 'f' && c0 != 'm' && c0 != 'i') continue;  // none of the kinds below
+        const std::string cls = lowerOf(label);
+        const bool light = cls == "light" || cls == "light_spot" || cls == "light_omni";
+        const bool probe = cls == "reflection_probe";
+        const bool sound = cls == "sound_emitter";
+        const bool fx = cls == "fx_origin";
+        const bool spawn = (startsWith(cls, "mp_") && cls.find("spawn") != std::string::npos) || cls == "info_player_start";
+        if (!light && !probe && !sound && !fx && !spawn) continue;
+        const Entity* e = doc.findEntity(g->ref.entity);
+        if (!e) continue;
+        const auto origin = e->origin();
+        if (!origin) continue;
+        const Vec3 o = *origin;
+        const bool sel = selected.count(e->id) > 0;
+        std::vector<GpuVertex>& dst = sel ? overlay : lines;
+        const int n = sel ? 48 : 32;  // circle segments
+        if (light) {
+            // The build's rules (compile_iw8.cpp localPrimaryLights): radius 400, a spot when light_spot or a light with
+            // a found target or an fov key (150 degrees or more: an omni), aimed at the target or by its angles (+X
+            // without), fov_outer 90 / fov_inner 60, outer 1..170, inner below outer (else half of it).
+            Vec3 rgb{1, 1, 1};
+            {
+                const std::string* cs = e->value("_color");
+                if (!cs) cs = e->value("color");
+                Vec3 v;
+                if (cs && std::sscanf(cs->c_str(), "%lf %lf %lf", &v.x, &v.y, &v.z) == 3) rgb = v;
+                const double m = std::max({rgb.x, rgb.y, rgb.z});
+                rgb = m > 1e-6 ? rgb * (1.0 / m) : Vec3{0.6, 0.6, 0.6};
+                // A dark colour still shows: at least a fifth of white mixed in.
+                rgb = Vec3{0.2 + 0.8 * rgb.x, 0.2 + 0.8 * rgb.y, 0.2 + 0.8 * rgb.z};
+            }
+            const uint32_t full = packRGBA(rgb.x, rgb.y, rgb.z);
+            const bool show = sel || (scene.showLightRanges && otherRanges < kMaxOtherRanges);
+            double radius = numberKey(*e, "radius", 400.0);
+            if (!(radius > 0)) radius = 400.0;
+            std::optional<Vec3> aim;
+            if (const std::string* tk = e->value("target"); tk && !tk->empty()) {
+                if (!targetsRead) {
+                    targetsRead = true;
+                    for (const Entity& t : doc.map().entities)
+                        if (const std::string* tn = t.value("targetname"); tn && !tn->empty())
+                            if (const auto to = t.origin()) targets.emplace(*tn, *to);
+                }
+                if (const auto it = targets.find(*tk); it != targets.end() && length(it->second - o) > 1e-6) aim = normalize(it->second - o);
+            }
+            const bool hasFov = e->value("fov_outer") || e->value("fov_inner");
+            bool spot = cls == "light_spot" || (cls == "light" && (aim || hasFov));
+            double outer = numberKey(*e, "fov_outer", 90.0), inner = numberKey(*e, "fov_inner", 60.0);
+            if (spot && e->value("fov_outer") && outer >= 150.0) spot = false;
+            if (!show) continue;
+            if (!sel) ++otherRanges;
+            const VisPen pen{&dst, sel ? full : scaledColour(full, 0.62)};
+            if (!spot) {
+                pen.sphere(o, radius, n);
+                continue;
+            }
+            if (!(outer > 0)) outer = 90.0;
+            if (!(inner >= 0)) inner = 60.0;
+            outer = std::clamp(outer, 1.0, 170.0);
+            if (inner >= outer) inner = outer * 0.5;
+            Vec3 dir = aim.value_or(Vec3{});
+            if (!aim) {
+                Vec3 up;
+                anglesAxes(*e, dir, up);
+            }
+            dir = normalize(dir);
+            const double ho = outer * 0.5 * kVisPi / 180.0, hi = inner * 0.5 * kVisPi / 180.0;
+            pen.cone(o, dir, ho, radius, sel ? 8 : 4, n, true);
+            // The inner cone (full brightness inside it) in a lighter, thinner stroke: its rim and four lines.
+            const VisPen innerPen{&dst, sel ? scaledColour(packRGBA(0.5 + 0.5 * rgb.x, 0.5 + 0.5 * rgb.y, 0.5 + 0.5 * rgb.z), 0.85)
+                                            : scaledColour(full, 0.32)};
+            if (hi > 1e-3) innerPen.cone(o, dir, hi, radius, 4, n, false);
+            // The aim: an arrow from the lamp along its axis.
+            pen.arrow(o, dir, std::clamp(radius * 0.25, 24.0, 96.0));
+        } else if (probe) {
+            // The probe's volume (mins / maxs relative to the origin, both with an extent) as a teal box, and the probe
+            // itself as a small sphere (a reflection ball, not one more diamond).
+            const uint32_t teal = 0xffc8c840u;
+            const VisPen pen{&dst, sel ? 0xffffff60u : teal};
+            const std::string* sm = e->value("mins");
+            const std::string* sx = e->value("maxs");
+            Vec3 mn, mx;
+            if (sm && sx && std::sscanf(sm->c_str(), "%lf %lf %lf", &mn.x, &mn.y, &mn.z) == 3 && std::sscanf(sx->c_str(), "%lf %lf %lf", &mx.x, &mx.y, &mx.z) == 3 &&
+                mx.x > mn.x && mx.y > mn.y && mx.z > mn.z) {
+                const Vec3 a = o + mn, b = o + mx;
+                const Vec3 k[8] = {{a.x, a.y, a.z}, {b.x, a.y, a.z}, {b.x, b.y, a.z}, {a.x, b.y, a.z},
+                                   {a.x, a.y, b.z}, {b.x, a.y, b.z}, {b.x, b.y, b.z}, {a.x, b.y, b.z}};
+                for (int i = 0; i < 4; ++i) {
+                    pen.seg(k[i], k[(i + 1) % 4]);
+                    pen.seg(k[4 + i], k[4 + (i + 1) % 4]);
+                    pen.seg(k[i], k[4 + i]);
+                }
+            }
+            pen.sphere(o, 22, 24);
+        } else if (sound || fx) {
+            if (fx) {
+                // The axes the effect plays along (spawnfx forward and up of its angles; +X and +Z without angles).
+                Vec3 fwd, up;
+                anglesAxes(*e, fwd, up);
+                const VisPen pen{&dst, sel ? 0xff40c0ffu : 0xff3080f0u};  // orange
+                pen.arrow(o, normalize(fwd), 28);
+                const VisPen upPen{&dst, sel ? 0xffa0e0ffu : 0xff6090c0u};
+                upPen.seg(o, o + normalize(up) * 18);
+                upPen.seg(o + normalize(up) * 18 - normalize(fwd) * 4, o + normalize(up) * 18 + normalize(fwd) * 4);
+            } else {
+                // Sound waves: two rings around the emitter.
+                const VisPen pen{&dst, sel ? 0xff80ff90u : 0xff50b060u};
+                pen.circle(o, {1, 0, 0}, {0, 1, 0}, 15, 16);
+                pen.circle(o, {1, 0, 0}, {0, 1, 0}, 21, 16);
+            }
+            // The audible distance (the alias's distMax), for a sound_emitter or an fx_origin carrying a soundalias.
+            const std::string* alias = e->value("soundalias");
+            if (!alias || alias->empty() || !scene.soundRangeFor) continue;
+            if (!sel && (!scene.showSoundRanges || otherRanges >= kMaxOtherRanges)) continue;
+            const double dist = scene.soundRangeFor(lowerOf(*alias));
+            if (!(dist > 0)) continue;
+            if (!sel) ++otherRanges;
+            const VisPen pen{&dst, sel ? 0xff70f080u : 0xff306838u};
+            pen.sphere(o, dist, sel ? 64 : 40);
+        } else if (spawn) {
+            // The facing arrow on the floor, in the spawn's colour.
+            Vec3 fwd, up;
+            anglesAxes(*e, fwd, up);
+            Vec3 flat{fwd.x, fwd.y, 0};
+            if (length(flat) < 1e-6) flat = Vec3{1, 0, 0};
+            const VisPen pen{&dst, sel ? 0xffffffffu : (colorForClass(label) | 0xff000000u)};
+            pen.arrow(o + Vec3{0, 0, 1}, normalize(flat), 44);
+        }
     }
 }
 
@@ -1682,9 +1946,13 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
             }
         }
         if (g->hasArrow) {
+            // The facing line with a head: two fins across it, level (as camera_geometry.cpp genItem).
             auto& dst = sel ? overlay : lines;
-            dst.push_back(gv(g->arrowFrom, 0xffffffffu));
-            dst.push_back(gv(g->arrowTo, 0xffffffffu));
+            const Vec3 d = normalize(g->arrowTo - g->arrowFrom);
+            const Vec3 side = std::fabs(d.z) < 0.99 ? normalize(cross(d, Vec3{0, 0, 1})) : Vec3{1, 0, 0};
+            const Vec3 back = g->arrowTo - d * 9.0;
+            for (const Vec3& p : {g->arrowFrom, g->arrowTo, g->arrowTo, back + side * 5.0, g->arrowTo, back - side * 5.0})
+                dst.push_back(gv(p, 0xffffffffu));
         }
     }
     // Selected faces: tinted fill drawn on top plus an outline and a cross, so a face reads as selected
@@ -1713,30 +1981,7 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
             overlay.push_back(gv(c, kSelEdge));
         }
     }
-    // Reflection probe volumes (5.5): mins/maxs keys relative to the origin, drawn as a teal wire box.
-    for (const auto& e : doc.map().entities) {
-        if (e.classname() != "reflection_probe") continue;
-        const std::string* sm = e.value("mins");
-        const std::string* sx = e.value("maxs");
-        Vec3 mn, mx;
-        if (!sm || !sx || std::sscanf(sm->c_str(), "%lf %lf %lf", &mn.x, &mn.y, &mn.z) != 3 ||
-            std::sscanf(sx->c_str(), "%lf %lf %lf", &mx.x, &mx.y, &mx.z) != 3)
-            continue;
-        const Vec3 o = e.origin().value_or(Vec3{});
-        const Vec3 a = o + mn, b = o + mx;
-        const uint32_t teal = 0xffc8c840u;
-        auto seg = [&](const Vec3& p, const Vec3& q) {
-            lines.push_back(gv(p, teal));
-            lines.push_back(gv(q, teal));
-        };
-        const Vec3 c[8] = {{a.x, a.y, a.z}, {b.x, a.y, a.z}, {b.x, b.y, a.z}, {a.x, b.y, a.z},
-                           {a.x, a.y, b.z}, {b.x, a.y, b.z}, {b.x, b.y, b.z}, {a.x, b.y, b.z}};
-        for (int k = 0; k < 4; ++k) {
-            seg(c[k], c[(k + 1) % 4]);
-            seg(c[4 + k], c[4 + (k + 1) % 4]);
-            seg(c[k], c[4 + k]);
-        }
-    }
+    // (Reflection probe volumes: appendEntityVisuals, below.)
     if (scene.tagsFor && !scene.captureMode) {
         // 3.18: the tags of each selected model (attach points: tag_origin, tag_fx, tag_light ...), on top.
         std::set<Id> done;
@@ -1819,6 +2064,7 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
         overlay.push_back(gv(b, 0xff30d0ffu));
     }
     appendHelperLines(scene, doc, lines, overlay);  // damage cylinders, door use areas, teleporter lines
+    appendEntityVisuals(scene, doc, lines, overlay);  // light radii and cones, probe volumes, sound ranges, facings
     // World axes at the origin (X red, Y green, Z blue).
     lines.push_back(gv({0, 0, 0}, 0xff3030ffu));
     lines.push_back(gv({64, 0, 0}, 0xff3030ffu));

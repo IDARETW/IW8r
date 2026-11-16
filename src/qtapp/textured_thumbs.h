@@ -52,6 +52,8 @@ public:
     int queued() const { return int(queue_.size()) + (active_ ? 1 : 0); }
     int made() const { return made_; }
     ThumbStore& store(Kind kind) { return kind == Model ? *models_ : *prefabs_; }
+    // The pack itself, for reads on worker threads (ThumbDecoder): it stays valid however long the reader holds it.
+    std::shared_ptr<ThumbStore> storePtr(Kind kind) const { return kind == Model ? models_ : prefabs_; }
 
 signals:
     void pictureReady(int kind, const QString& name);
@@ -66,7 +68,7 @@ private:
     AssetPreviewWindow* window();
     static QString keyOf(Kind kind, const QString& name) { return QString::number(int(kind)) + '|' + name; }
 
-    std::unique_ptr<ThumbStore> models_, prefabs_;
+    std::shared_ptr<ThumbStore> models_, prefabs_;
     std::function<AssetPreviewWindow*()> makeWindow_;
     std::function<bool(const QString&)> modelWaiting_;
     AssetPreviewWindow* window_ = nullptr;

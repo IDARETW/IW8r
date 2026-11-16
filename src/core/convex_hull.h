@@ -29,11 +29,26 @@ std::vector<Plane> convexHullPlanes(const std::vector<Vec3>& points, double merg
 // Plane normals must be unit length.
 std::vector<Plane> simplifyHull(const std::vector<Plane>& planes, size_t maxPlanes);
 
+// The bounds of the solid dot(n, x) <= d (unit normals), clipped from a box of half size 1e6. False (out invalid) when
+// the planes enclose nothing or the solid is unbounded (reaches that box): an open plane set such as a slab.
+bool convexSolidBounds(const std::vector<Plane>& planes, AABB& out);
+
+// Moves out every plane along whose normal the points span less than minWidth, by half the shortfall, so a sliver
+// hull is at least about minWidth thick (a solid thinner than the winding clip tolerance, 0.01, comes out of
+// buildBrushWindings as a slab through the whole map). Only grows the solid.
+void thickenHull(std::vector<Plane>& planes, const std::vector<Vec3>& points, double minWidth);
+
+// True when the solid is closed (convexSolidBounds) and stays within `points` (the bounds of the points it was built
+// from) padded by 2 units plus a quarter of their largest side (a simplified hull grows a little past its points).
+bool convexSolidWithin(const std::vector<Plane>& planes, const AABB& points);
+
 // Convex decomposition of a model in its own coordinates. Triangles are welded per mesh on a 0.01 grid, and each
 // connected component (vertices linked by triangles) becomes a point set. Components are sorted by bounds volume;
 // while there are more than maxPieces (at least 1), the smallest one is merged into the piece with the nearest
-// bounds. Each piece gives one hull, simplified to maxPlanesPerPiece planes when that is 4 or more. Pieces that
-// are degenerate (flat) have no hull and are left out.
+// bounds. Each piece gives one hull, simplified to maxPlanesPerPiece planes when that is 4 or more. A piece that is
+// degenerate (flat: a foliage card, a sign) has no hull and collides as its box, thickened to half a unit.
+// A notched part is split first (splitConcave) so its hulls leave the opening free. Which models get these pieces at
+// all is model_physics.h's rule (a stock bush without a physics asset gets none).
 std::vector<std::vector<Plane>> convexPieces(const ImportedModel& m, int maxPieces, size_t maxPlanesPerPiece);
 
 // Brushes for convex pieces placed with a uniform scale, then rotated by anglesPitchYawRoll (degrees, the

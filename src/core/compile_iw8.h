@@ -109,6 +109,11 @@ struct CompileOptions {
     bool modelCollisionHulls = true;
     int modelCollisionMaxPieces = 4;    // convex pieces per model; the smallest pieces merge into the nearest one
     int modelCollisionMaxPlanes = 24;   // planes per piece; a larger hull is simplified (simplifyHull)
+    // Which placed models collide and with what shape, by the stock models' own collision (model_physics.h, research
+    // 140): a stock model without a physics asset (most bushes, grass) gets none, as in game; one with a physics asset
+    // gets that asset's convex pieces; the rest the render mesh's pieces as above. Null: every placed model gets the
+    // render mesh's pieces (the build before the rule). Not owned; the editor passes ModelPhysicsCatalog::shared().
+    const class ModelPhysicsCatalog* modelPhysics = nullptr;
     // Folder of the source map: relative worldspawn paths (iw8r_lut) resolve against it. Empty: the working folder.
     std::string mapDir;
     // Where a worldspawn "iw8r_surface_shader" is looked for after <mapDir>/shaders (core custom_shader): the

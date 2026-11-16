@@ -151,6 +151,8 @@ void CameraView::ensureSwapChain() {
     }
 }
 
+static double behaviourTimeHook();  // IW8R_BEHAVIOUR_TIME (next to timerEvent)
+
 void CameraView::render() {
     if (!rendererOk_) return;
     std::unique_lock<std::recursive_timed_mutex> gpuLock(gpuMutex());
@@ -165,6 +167,12 @@ void CameraView::render() {
     IW8R_PROF("r.total");
     {
         IW8R_PROF("r.sync");
+        if (const double bt = behaviourTimeHook(); bt >= 0) {  // test hook: the Behaviour Preview held at a time (captures)
+            ctx_->behaviourPreview = true;
+            ctx_->scene.behaviourTime = bt;
+            updateBehaviourScript();
+            ctx_->scene.invalidate();
+        }
         ctx_->scene.sync(ctx_->doc);
     }
     const qreal dpr = devicePixelRatioF();
@@ -662,6 +670,7 @@ void CameraView::render() {
     mix(ctx_->scene.tomeLinesVersion * 7 + 5);
     mix(ctx_->scene.gameOutlines ? 11 : 13);
     mix(ctx_->normalMaps ? 7 : 3);
+    mix((ctx_->scene.showLightRanges ? 17u : 19u) + (ctx_->scene.showSoundRanges ? 100u : 200u));  // entity range shapes
     {
         IW8R_PROF("r.lights_wind");
         // Light entities per pixel on textured surfaces while the lit preview is on (3.14).
@@ -912,6 +921,7 @@ void CameraView::render() {
     // The gizmo is a small stream of its own, sent again only when it changed.
     gizmoLines_.scratch.clear();
     if (!cleanCapture_) addGizmoLines();
+    if (!cleanCapture_) gizmoLines_.scratch.insert(gizmoLines_.scratch.end(), stockPickLines_.begin(), stockPickLines_.end());
     if (gizmoLines_.scratch.size() != gizmoLines_.v.size() ||
         (!gizmoLines_.v.empty() && std::memcmp(gizmoLines_.scratch.data(), gizmoLines_.v.data(), gizmoLines_.v.size() * sizeof(app::GpuVertex)) != 0)) {
         gizmoLines_.v.swap(gizmoLines_.scratch);
@@ -1021,56 +1031,110 @@ bool CameraView::gizmoActive() const {
     return ctx_->gizmo && !ctx_->doc.selection().empty() && ctx_->doc.selectionBounds().valid() && !ctx_->clipMode;
 }
 
-Vec3 CameraView::gizmoPivot() const {
-    if (gizmoDragAxis_ >= 0) {
-        // Follow the selection while dragging.
-        return ctx_->doc.selectionBounds().center();
+void CameraView::setGizmoMode(GizmoMode m) {
+    if (m == gizmoMode_) return;
+    // A drag of the old mode's handle goes back first (its release would arrive in the new mode).
+    if (gizmoDragAxis_ >= 0 || ringDragAxis_ >= 0) cancelViewDrag();
+    clearGizmoHover();  // the hovered handle belongs to the other mode
+    gizmoMode_ = m;
+    update();
+    emit gizmoModeChanged(int(m));
+}
+
+namespace {
+// The one selected point entity (not a brush or patch of an entity), else null.
+const Entity* singlePointEntity(const Document& doc) {
+    if (doc.selection().size() != 1) return nullptr;
+    const SelRef r = *doc.selection().begin();
+    return r.item == kNoId ? doc.findEntity(r.entity) : nullptr;
+}
+
+// cos and sin of a turn in degrees; quarter turns exact (as brush_ops trigOf), so 90 degree turns leave no noise.
+void gizmoTrig(double degrees, double& c, double& s) {
+    const double q = degrees / 90.0;
+    if (std::fabs(q - std::round(q)) < 1e-12) {
+        const long long k = ((std::llround(q) % 4) + 4) % 4;
+        static const double cs[4] = {1, 0, -1, 0}, sn[4] = {0, 1, 0, -1};
+        c = cs[k], s = sn[k];
+        return;
     }
+    const double a = degrees * 3.14159265358979 / 180.0;
+    c = std::cos(a), s = std::sin(a);
+}
+}  // namespace
+
+Vec3 CameraView::gizmoPivot() const {
+    // A single point entity turns and scales about its origin, where the gizmo is drawn (a model's bounds centre lies
+    // elsewhere); anything else about the selection's centre. Both follow the selection while it is dragged.
+    if (const Entity* e = singlePointEntity(ctx_->doc))
+        if (const auto o = e->origin()) return *o;
     return ctx_->doc.selectionBounds().center();
 }
 
 Vec3 CameraView::ringCentre() const {
     if (ringDragAxis_ >= 0) return ringPivot_;
+    // A single point entity turns in place, about its origin.
+    if (const Entity* e = singlePointEntity(ctx_->doc))
+        if (const auto o = e->origin()) return *o;
     // On the grid with Snap on (as Radiant rotates): grid-aligned brushes stay on the grid after 90 degree turns.
     return ctx_->snap ? snapToGrid(gizmoPivot(), ctx_->doc.grid()) : gizmoPivot();
 }
 
-Vec3 CameraView::gizmoAxisDir(int axis) const {
-    Vec3 d;
-    d[axis] = 1;
-    // Local space applies to moves of one selected point entity with angles (rings and scale stay on world axes).
-    if (!ctx_->gizmoLocal || gizmoRotate_ || gizmoScale_ || ctx_->doc.selection().size() != 1) return d;
-    const SelRef r = *ctx_->doc.selection().begin();
-    if (r.item != kNoId) return d;
-    const Entity* e = ctx_->doc.findEntity(r.entity);
+Vec3 CameraView::gizmoCentre() const {
+    // The rings (Rotate, All) are drawn about the turning pivot; All draws its arrows and boxes there too, so the three
+    // parts share one centre.
+    return gizmoMode_ == GizmoMode::Rotate || gizmoMode_ == GizmoMode::All ? ringCentre() : gizmoPivot();
+}
+
+bool CameraView::gizmoLocalFrame(Vec3 axes[3]) const {
+    // Local space: one selected point entity with angles (brushes and groups keep the world axes).
+    if (!ctx_->gizmoLocal) return false;
+    const Entity* e = singlePointEntity(ctx_->doc);
     const std::string* a = e ? e->value("angles") : nullptr;
-    if (!a) return d;
     Vec3 ang;
-    if (std::sscanf(a->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z) < 2) return d;
-    return normalize(anglesToMatrix(ang) * d);
+    if (!a || std::sscanf(a->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z) < 2) return false;
+    const Mat3 m = anglesToMatrix(ang);
+    for (int c = 0; c < 3; ++c) axes[c] = normalize(Vec3{m.m[0][c], m.m[1][c], m.m[2][c]});
+    return true;
+}
+
+Vec3 CameraView::gizmoAxisDir(int axis) const {
+    Vec3 axes[3];
+    if (axis >= 0 && axis <= 2 && gizmoLocalFrame(axes)) return axes[axis];
+    Vec3 d;
+    if (axis >= 0 && axis <= 2) d[axis] = 1;
+    return d;
+}
+
+void CameraView::ringFrame(int axis, Vec3& n, Vec3& u, Vec3& v) const {
+    // Angle 0 at +u (the next axis), 90 at +v (the one after): a right-handed turn about +n, as rotatePoint turns.
+    n = gizmoAxisDir(axis);
+    u = gizmoAxisDir((axis + 1) % 3);
+    v = gizmoAxisDir((axis + 2) % 3);
 }
 
 double CameraView::gizmoLength() const {
     // Constant on-screen size: a fraction of the distance to the camera.
-    return std::max(8.0, length(gizmoPivot() - ctx_->cam.pos) * 0.18);
+    return std::max(8.0, length(gizmoCentre() - ctx_->cam.pos) * 0.18);
+}
+
+double CameraView::ringRadius() const {
+    // All: the rings lie outside the arrow tips, so an arrow is never under a ring.
+    return gizmoLength() * (gizmoMode_ == GizmoMode::All ? 1.25 : 0.9);
+}
+
+double CameraView::scaleBoxDistance() const {
+    // Scale: the boxes end the handles; All: they sit on the arrows near the centre (the arrow tips move).
+    return gizmoLength() * (gizmoMode_ == GizmoMode::All ? 0.45 : 1.0);
 }
 
 CameraView::GizmoAxis CameraView::gizmoAxisOnScreen(int axis) const {
     GizmoAxis out;
     if (!gizmoActive() || axis < 0 || axis > 2) return out;
-    const double aspect = double(std::max(1, width())) / std::max(1, height());
-    const app::Mat4f m = app::viewProjection(ctx_->cam, aspect);
-    auto project = [&](const Vec3& p, QPointF& px) {
-        const double x = p.x * m.m[0] + p.y * m.m[4] + p.z * m.m[8] + m.m[12];
-        const double y = p.x * m.m[1] + p.y * m.m[5] + p.z * m.m[9] + m.m[13];
-        const double w = p.x * m.m[3] + p.y * m.m[7] + p.z * m.m[11] + m.m[15];
-        if (w <= 1e-6) return false;
-        px = QPointF((x / w * 0.5 + 0.5) * width(), (0.5 - y / w * 0.5) * height());
-        return true;
-    };
-    const Vec3 dir = gizmoAxisDir(axis);
-    const Vec3 c = gizmoPivot();
-    out.visible = project(c, out.from) && project(c + dir * gizmoLength(), out.to);
+    const Vec3 c = gizmoCentre();
+    const auto a = projectToWidget(c), b = projectToWidget(c + gizmoAxisDir(axis) * gizmoLength());
+    out.visible = a && b;
+    if (out.visible) out.from = *a, out.to = *b;
     return out;
 }
 
@@ -1096,33 +1160,28 @@ std::optional<QPointF> CameraView::projectToWidget(const Vec3& p) const {
     return QPointF((x / w * 0.5 + 0.5) * width(), (0.5 - y / w * 0.5) * height());
 }
 
-namespace {
-// Ring basis: u = next axis, v = the one after (angle 0 at +u, 90 at +v; matches rotatePoint's sense).
-void ringBasis(int axis, Vec3& u, Vec3& v) {
-    u = Vec3{};
-    v = Vec3{};
-    u[(axis + 1) % 3] = 1;
-    v[(axis + 2) % 3] = 1;
-}
-}  // namespace
-
 std::optional<QPointF> CameraView::gizmoRingPoint(int axis, double degrees) const {
-    if (!gizmoActive()) return std::nullopt;
-    Vec3 u, v;
-    ringBasis(axis, u, v);
-    const double r = gizmoLength() * 0.9, a = degrees * 3.14159265358979 / 180.0;
+    if (!gizmoActive() || axis < 0 || axis > 2) return std::nullopt;
+    Vec3 n, u, v;
+    ringFrame(axis, n, u, v);
+    const double r = ringRadius(), a = degrees * 3.14159265358979 / 180.0;
     return projectToWidget(ringCentre() + u * (r * std::cos(a)) + v * (r * std::sin(a)));
 }
 
+std::optional<QPointF> CameraView::gizmoScaleBoxPoint(int axis) const {
+    if (!gizmoActive() || axis < 0 || axis > 2 || (gizmoMode_ != GizmoMode::Scale && gizmoMode_ != GizmoMode::All)) return std::nullopt;
+    return projectToWidget(gizmoCentre() + gizmoAxisDir(axis) * scaleBoxDistance());
+}
+
 int CameraView::gizmoRingAt(const QPointF& p) const {
-    if (!gizmoActive() || !gizmoRotate_) return -1;
+    if (!gizmoActive() || (gizmoMode_ != GizmoMode::Rotate && gizmoMode_ != GizmoMode::All)) return -1;
     // Rings seen edge-on project to a line through the centre and pass over the other rings' points; when two
     // rings are about as close, prefer the one facing the camera (its angle is well defined there).
     int best = -1;
     double bestScore = 1e9;
     const Vec3 view = ctx_->cam.forward();
     for (int a = 0; a < 3; ++a) {
-        const double facing = std::fabs(view[a]);  // |cos| between the ring's axis and the view direction
+        const double facing = std::fabs(dot(view, gizmoAxisDir(a)));  // |cos| between the ring's axis and the view
         for (int k = 0; k < 72; ++k) {
             const auto q = gizmoRingPoint(a, k * 5.0);
             if (!q) continue;
@@ -1139,7 +1198,8 @@ int CameraView::gizmoRingAt(const QPointF& p) const {
 }
 
 int CameraView::gizmoHandleAt(const QPointF& p) const {
-    if (!gizmoActive() || gizmoRotate_) return -1;
+    // The move arrows (Move, All) or the scale handles (Scale: the whole handle up to its box).
+    if (!gizmoActive() || gizmoMode_ == GizmoMode::Rotate) return -1;
     int best = -1;
     double bestD = 8.0;
     for (int a = 0; a < 3; ++a) {
@@ -1160,20 +1220,42 @@ int CameraView::gizmoHandleAt(const QPointF& p) const {
     return best;
 }
 
+int CameraView::gizmoPartAt(const QPointF& p, int& axis) const {
+    axis = -1;
+    if (!gizmoActive()) return -1;
+    if (gizmoMode_ == GizmoMode::All) {
+        // The scale boxes sit on the arrows: within 7 px of a box's centre the box wins.
+        double bestD = 7.0;
+        for (int a = 0; a < 3; ++a)
+            if (const auto q = gizmoScaleBoxPoint(a)) {
+                const double d = std::hypot(p.x() - q->x(), p.y() - q->y());
+                if (d < bestD) bestD = d, axis = a;
+            }
+        if (axis >= 0) return 2;
+    }
+    if ((axis = gizmoHandleAt(p)) >= 0) return gizmoMode_ == GizmoMode::Scale ? 2 : 0;
+    if ((axis = gizmoRingAt(p)) >= 0) return 1;
+    return -1;
+}
+
 void CameraView::updateGizmoHover(const QPointF& p, Qt::KeyboardModifiers mods) {
     // What a left press here would grab (Shift / Ctrl clicks select instead).
     const bool grabs = !(mods & (Qt::ShiftModifier | Qt::ControlModifier)) && !ctx_->looking && !ctx_->playing;
-    const int axis = !grabs ? -1 : gizmoRotate_ ? gizmoRingAt(p) : gizmoHandleAt(p);
-    if (axis >= 0) setCursor(gizmoRotate_ ? Qt::OpenHandCursor : gizmoScale_ ? Qt::SizeFDiagCursor : Qt::SizeAllCursor);
+    int axis = -1;
+    const int part = grabs ? gizmoPartAt(p, axis) : -1;
+    if (part < 0) axis = -1;
+    if (axis >= 0) setCursor(part == 1 ? Qt::OpenHandCursor : part == 2 ? Qt::SizeFDiagCursor : Qt::SizeAllCursor);
     else if (hoverAxis_ >= 0) unsetCursor();
-    if (axis == hoverAxis_) return;
+    if (axis == hoverAxis_ && part == hoverPart_) return;
     hoverAxis_ = axis;
+    hoverPart_ = part;
     update();  // the hovered handle is drawn highlighted
 }
 
 void CameraView::clearGizmoHover() {
     if (hoverAxis_ < 0) return;
     hoverAxis_ = -1;
+    hoverPart_ = -1;
     unsetCursor();
     update();
 }
@@ -1181,91 +1263,173 @@ void CameraView::clearGizmoHover() {
 std::optional<double> CameraView::ringAngleForMouse(const QPointF& p, int axis) const {
     const double nx = 2.0 * p.x() / std::max(1, width()) - 1.0, ny = 1.0 - 2.0 * p.y() / std::max(1, height());
     const Ray ray = app::cameraRay(ctx_->cam, nx, ny, double(std::max(1, width())) / std::max(1, height()));
-    Vec3 n;
-    n[axis] = 1;
+    Vec3 n, u, v;
+    ringFrame(axis, n, u, v);
     const double denom = dot(n, ray.dir);
     if (std::fabs(denom) < 1e-6) return std::nullopt;
     const double t = dot(n, ringPivot_ - ray.origin) / denom;
     const Vec3 hit = ray.origin + ray.dir * t;
-    Vec3 u, v;
-    ringBasis(axis, u, v);
     return std::atan2(dot(hit - ringPivot_, v), dot(hit - ringPivot_, u)) * 180.0 / 3.14159265358979;
+}
+
+bool CameraView::rotateSelectionByGizmo(int axis, double degrees, const Vec3& pivot) {
+    if (axis < 0 || axis > 2 || degrees == 0) return false;
+    Vec3 n, u, v;
+    ringFrame(axis, n, u, v);  // the dragged ring's axis: a world axis, or the entity's own (local space)
+    // The turn about n (Rodrigues; right-handed, from +u toward +v for positive degrees as the ring's angles run).
+    double c = 1, s = 0;
+    gizmoTrig(degrees, c, s);
+    const double t = 1 - c;
+    Mat3 R;
+    R.m[0][0] = t * n.x * n.x + c, R.m[0][1] = t * n.x * n.y - s * n.z, R.m[0][2] = t * n.x * n.z + s * n.y;
+    R.m[1][0] = t * n.x * n.y + s * n.z, R.m[1][1] = t * n.y * n.y + c, R.m[1][2] = t * n.y * n.z - s * n.x;
+    R.m[2][0] = t * n.x * n.z - s * n.y, R.m[2][1] = t * n.y * n.z + s * n.x, R.m[2][2] = t * n.z * n.z + c;
+    struct Point {
+        Id id;
+        std::optional<Vec3> origin;
+        Vec3 angles;
+    };
+    std::vector<Point> points;
+    bool prims = false;
+    for (const SelRef& r : ctx_->doc.selection()) {
+        if (r.item != kNoId) {
+            prims = true;
+            continue;
+        }
+        const Entity* e = ctx_->doc.findEntity(r.entity);
+        if (!e) continue;
+        Point p{r.entity, e->origin(), {}};
+        if (const std::string* a = e->value("angles")) std::sscanf(a->c_str(), "%lf %lf %lf", &p.angles.x, &p.angles.y, &p.angles.z);
+        points.push_back(p);
+    }
+    ctx_->doc.beginGroup("Rotate");
+    // Brushes and patches turn about the world axis (local space needs one point entity alone, so the ring is a world
+    // one whenever primitives are selected).
+    bool any = prims && rotateSelectionAbout(*ctx_, axis, degrees, pivot);
+    // Point entities: the origin about the pivot and the angles as the exact turn about n. (rotateSelectionAbout adds
+    // the turn to one angle, which is a turn about the world axis only for yaw; the ring drawn on world X or Y turned a
+    // yawed entity about its own axis.)
+    const auto angle = [](double a) {
+        a = std::round(a * 10000.0) / 10000.0;
+        a = std::fmod(a, 360.0);
+        if (a < 0) a += 360.0;
+        if (std::fabs(a) < 1e-9 || std::fabs(a - 360.0) < 1e-9) a = 0;
+        return formatNumber(a);
+    };
+    for (const Point& p : points) {
+        if (p.origin) {
+            const Vec3 o = pivot + R * (*p.origin - pivot);
+            if (length(o - *p.origin) > 1e-9)
+                any |= ctx_->doc.setKeyValue(p.id, "origin", formatNumber(o.x) + " " + formatNumber(o.y) + " " + formatNumber(o.z));
+        }
+        const Mat3 m = R * anglesToMatrix(p.angles);
+        const Vec3 a = axisToAngles({Vec3{m.m[0][0], m.m[1][0], m.m[2][0]}, Vec3{m.m[0][1], m.m[1][1], m.m[2][1]},
+                                     Vec3{m.m[0][2], m.m[1][2], m.m[2][2]}});
+        any |= ctx_->doc.setKeyValue(p.id, "angles", angle(a.x) + " " + angle(a.y) + " " + angle(a.z));
+    }
+    ctx_->doc.endGroup();
+    return any;
 }
 
 void CameraView::addGizmoLines() {
     scalePreviewEdges_ = 0;
     if (!gizmoActive()) return;
-    const Vec3 c = gizmoRotate_ ? ringCentre() : gizmoPivot();
+    const Vec3 c = gizmoCentre();
     const double L = gizmoLength();
-    if (gizmoRotate_) {
-        const uint32_t ringCols[3] = {0xff3040ffu, 0xff40ff40u, 0xffff6040u};
+    const bool arrows = gizmoMode_ == GizmoMode::Move || gizmoMode_ == GizmoMode::All;
+    const bool rings = gizmoMode_ == GizmoMode::Rotate || gizmoMode_ == GizmoMode::All;
+    const bool boxes = gizmoMode_ == GizmoMode::Scale || gizmoMode_ == GizmoMode::All;
+    const bool dragging = gizmoDragAxis_ >= 0 || ringDragAxis_ >= 0;
+    // A part is drawn highlighted while it is dragged, or under a still mouse (part 0 arrow, 1 ring, 2 scale box).
+    const auto hot = [&](int part, int a) {
+        if (dragging) return part == 1 ? ringDragAxis_ == a : gizmoDragAxis_ == a && (part == 2) == dragScale_;
+        return hoverAxis_ == a && hoverPart_ == part;
+    };
+    const uint32_t cols[3] = {0xff3040ffu, 0xff40ff40u, 0xffff6040u};  // X red, Y green, Z blue (ABGR)
+    const uint32_t hotCol = 0xff40ffffu;
+    Vec3 ax[3];
+    for (int a = 0; a < 3; ++a) ax[a] = gizmoAxisDir(a);  // the world axes, or the entity's own in local space
+    const auto line = [&](const Vec3& p, const Vec3& q, uint32_t col) {
+        gizmoLines_.scratch.push_back(app::GpuVertex{float(p.x), float(p.y), float(p.z), col});
+        gizmoLines_.scratch.push_back(app::GpuVertex{float(q.x), float(q.y), float(q.z), col});
+    };
+    const auto dim = [](uint32_t col) {  // the same colour at 55 %, for the secondary strokes
+        const auto ch = [&](int sh) { return uint32_t(((col >> sh) & 0xffu) * 55 / 100) << sh; };
+        return (col & 0xff000000u) | ch(0) | ch(8) | ch(16);
+    };
+    if (rings) {
+        const Vec3 rc = ringCentre();
+        const double r = ringRadius();
         for (int a = 0; a < 3; ++a) {
-            Vec3 u, v;
-            ringBasis(a, u, v);
-            const bool hot = ringDragAxis_ >= 0 ? ringDragAxis_ == a : hoverAxis_ == a;
-            const uint32_t col = hot ? 0xff40ffffu : ringCols[a];
-            const double r = L * 0.9;
-            for (int k = 0; k < 48; ++k) {
-                const double a0 = k * 2 * 3.14159265358979 / 48, a1 = (k + 1) * 2 * 3.14159265358979 / 48;
-                const Vec3 p = c + u * (r * std::cos(a0)) + v * (r * std::sin(a0));
-                const Vec3 q = c + u * (r * std::cos(a1)) + v * (r * std::sin(a1));
-                gizmoLines_.scratch.push_back(app::GpuVertex{float(p.x), float(p.y), float(p.z), col});
-                gizmoLines_.scratch.push_back(app::GpuVertex{float(q.x), float(q.y), float(q.z), col});
+            const Vec3 u = ax[(a + 1) % 3], v = ax[(a + 2) % 3];
+            const uint32_t col = hot(1, a) ? hotCol : cols[a];
+            for (int k = 0; k < 64; ++k) {
+                const double a0 = k * 2 * 3.14159265358979 / 64, a1 = (k + 1) * 2 * 3.14159265358979 / 64;
+                line(rc + u * (r * std::cos(a0)) + v * (r * std::sin(a0)), rc + u * (r * std::cos(a1)) + v * (r * std::sin(a1)), col);
             }
             if (ringDragAxis_ == a) {
-                // Spoke at the current snapped angle.
-                const double ang = (ringStartAngle_ + ringDeltaDeg_) * 3.14159265358979 / 180.0;
-                const Vec3 p = c + u * (r * std::cos(ang)) + v * (r * std::sin(ang));
-                gizmoLines_.scratch.push_back(app::GpuVertex{float(c.x), float(c.y), float(c.z), col});
-                gizmoLines_.scratch.push_back(app::GpuVertex{float(p.x), float(p.y), float(p.z), col});
+                // Spokes at the start angle (dim) and at the current snapped angle, joined by an arc: the turn as a wedge.
+                const double from = ringStartAngle_ * 3.14159265358979 / 180.0;
+                const double to = (ringStartAngle_ + ringDeltaDeg_) * 3.14159265358979 / 180.0;
+                const auto at = [&](double ang, double rr) { return rc + u * (rr * std::cos(ang)) + v * (rr * std::sin(ang)); };
+                line(rc, at(from, r), dim(col));
+                line(rc, at(to, r), col);
+                const int steps = std::max(1, int(std::ceil(std::fabs(ringDeltaDeg_) / 5.0)));
+                for (int k = 0; k < steps; ++k)
+                    line(at(from + (to - from) * k / steps, r * 0.6), at(from + (to - from) * (k + 1) / steps, r * 0.6), col);
             }
         }
-        return;
     }
-    const uint32_t cols[3] = {0xff3040ffu, 0xff40ff40u, 0xffff6040u};  // X red, Y green, Z blue (ABGR)
-    for (int a = 0; a < 3; ++a) {
-        const Vec3 d = gizmoAxisDir(a);
-        const bool hot = gizmoDragAxis_ >= 0 ? gizmoDragAxis_ == a : hoverAxis_ == a;
-        const uint32_t col = hot ? 0xff40ffffu : cols[a];
-        auto line = [&](const Vec3& p, const Vec3& q) {
-            gizmoLines_.scratch.push_back(app::GpuVertex{float(p.x), float(p.y), float(p.z), col});
-            gizmoLines_.scratch.push_back(app::GpuVertex{float(q.x), float(q.y), float(q.z), col});
-        };
-        if (gizmoScale_) {
-            if (gizmoDragAxis_ == a && scaleStartBounds_.valid()) {
-                // Preview: the selection's bounds as they will be after release, scaled about the pivot on this axis.
+    if (arrows) {
+        for (int a = 0; a < 3; ++a) {
+            const Vec3& d = ax[a];
+            const uint32_t col = hot(0, a) ? hotCol : cols[a];
+            const Vec3 tip = c + d * L;
+            line(c, tip, col);
+            // Arrow head: a four-sided pyramid in the plane of the other two axes (turned with them in local space).
+            const Vec3 base = tip - d * (L * 0.16);
+            const Vec3 fin[4] = {base + ax[(a + 1) % 3] * (L * 0.06), base + ax[(a + 2) % 3] * (L * 0.06), base - ax[(a + 1) % 3] * (L * 0.06),
+                                 base - ax[(a + 2) % 3] * (L * 0.06)};
+            for (int k = 0; k < 4; ++k) {
+                line(tip, fin[k], col);
+                line(fin[k], fin[(k + 1) % 4], col);
+            }
+        }
+    }
+    if (boxes) {
+        const double boxHalf = L * (gizmoMode_ == GizmoMode::All ? 0.05 : 0.06);
+        for (int a = 0; a < 3; ++a) {
+            const bool dragged = gizmoDragAxis_ == a && dragScale_;
+            const uint32_t col = hot(2, a) ? hotCol : cols[a];
+            if (dragged && scaleStartBounds_.valid()) {
+                // Preview: the selection's bounds as they will be after release. One point entity (a model) scales
+                // uniformly about its origin; anything else along this axis about the pivot.
                 AABB b = scaleStartBounds_;
-                const double p0 = gizmoStartPivot_[a];
-                const double lo = p0 + (b.mins[a] - p0) * scaleFactor_, hi = p0 + (b.maxs[a] - p0) * scaleFactor_;
-                b.mins[a] = std::min(lo, hi), b.maxs[a] = std::max(lo, hi);
+                const Vec3& p0 = gizmoStartPivot_;
+                if (singlePointEntity(ctx_->doc)) {
+                    b.mins = p0 + (scaleStartBounds_.mins - p0) * scaleFactor_;
+                    b.maxs = p0 + (scaleStartBounds_.maxs - p0) * scaleFactor_;
+                } else {
+                    const double lo = p0[a] + (b.mins[a] - p0[a]) * scaleFactor_, hi = p0[a] + (b.maxs[a] - p0[a]) * scaleFactor_;
+                    b.mins[a] = std::min(lo, hi), b.maxs[a] = std::max(lo, hi);
+                }
                 Vec3 k[8];
                 for (int i = 0; i < 8; ++i) k[i] = Vec3{(i & 1) ? b.maxs.x : b.mins.x, (i & 2) ? b.maxs.y : b.mins.y, (i & 4) ? b.maxs.z : b.mins.z};
                 const int boxEdges[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
-                for (const auto& ed : boxEdges) line(k[ed[0]], k[ed[1]]);
+                for (const auto& ed : boxEdges) line(k[ed[0]], k[ed[1]], 0xff40ffffu);
                 scalePreviewEdges_ = 12;
             }
-            const double len = L * (gizmoDragAxis_ == a ? scaleFactor_ : 1.0);
-            const Vec3 tip = c + d * len;
-            line(c, tip);
-            // Box handle at the end.
-            const double b = L * 0.06;
-            const Vec3 corners[8] = {tip + Vec3{-b, -b, -b}, tip + Vec3{b, -b, -b}, tip + Vec3{b, b, -b}, tip + Vec3{-b, b, -b},
-                                     tip + Vec3{-b, -b, b},  tip + Vec3{b, -b, b},  tip + Vec3{b, b, b},  tip + Vec3{-b, b, b}};
-            const int edges[12][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6}, {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
-            for (const auto& ed : edges) line(corners[ed[0]], corners[ed[1]]);
-            continue;
+            const Vec3 tip = c + ax[a] * (scaleBoxDistance() * (dragged ? scaleFactor_ : 1.0));
+            // Scale: the handle is a line ending in the box; All: the arrow is the shaft (drawn while dragged, as the
+            // box leaves it).
+            if (gizmoMode_ == GizmoMode::Scale || dragged) line(c, tip, col);
+            // The box, turned with the axes.
+            const Vec3 e0 = ax[0] * boxHalf, e1 = ax[1] * boxHalf, e2 = ax[2] * boxHalf;
+            Vec3 k[8];
+            for (int i = 0; i < 8; ++i) k[i] = tip + ((i & 1) ? e0 : e0 * -1.0) + ((i & 2) ? e1 : e1 * -1.0) + ((i & 4) ? e2 : e2 * -1.0);
+            const int edges[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+            for (const auto& ed : edges) line(k[ed[0]], k[ed[1]], col);
         }
-        const Vec3 tip = c + d * L;
-        line(c, tip);
-        // Arrow head: two short fins in a perpendicular plane.
-        Vec3 side;
-        side[(a + 1) % 3] = 1;
-        Vec3 side2;
-        side2[(a + 2) % 3] = 1;
-        line(tip, tip - d * (L * 0.15) + side * (L * 0.06));
-        line(tip, tip - d * (L * 0.15) - side * (L * 0.06));
-        line(tip, tip - d * (L * 0.15) + side2 * (L * 0.06));
-        line(tip, tip - d * (L * 0.15) - side2 * (L * 0.06));
     }
 }
 
@@ -1274,8 +1438,9 @@ void CameraView::addGizmoLines() {
 // The play preview's collision as the built map has it (core play_world): the map's brushes, the contents of its
 // prefabs and its placed models' hulls.
 void CameraView::buildPlayWorld() {
-    // The movers first: their brushes are left out of the static world and added back as moving groups.
-    playBehaviours_.read(ctx_->doc.map());
+    // The movers first: their brushes are left out of the static world and added back as moving groups. (The map's path
+    // finds its own script, which runs on the same clock.)
+    playBehaviours_.read(ctx_->doc.map(), ctx_->doc.path());
     iw8r::PlayWorldOptions o;
     o.skip = [this](const Entity& e) { return playBehaviours_.moves(e); };
     o.mapPath = ctx_->doc.path();
@@ -1284,6 +1449,7 @@ void CameraView::buildPlayWorld() {
     o.modelScale = ctx_->scene.modelScale;
     iw8r::PlayWorldStats st;
     iw8r::buildPlayWorld(ctx_->doc.map(), o, world_, &st);
+    if (playWorldExtras_) playWorldExtras_(world_);  // a stock map's world (MainWindow)
     playWorldModels_ = st.models;
     playBehaviours_.attach(ctx_->doc.map(), world_);
 }
@@ -1296,9 +1462,11 @@ void CameraView::startPlay() {
     playMode_ = nullptr;
     buildPlayWorld();
     worldRevision_ = ctx_->doc.revision();
-    // Spawn: a selected spawn entity (its origin and yaw), else below the camera.
+    // Spawn: a selected spawn entity (its origin and yaw), else below the camera; when the camera is outside the map
+    // (or above all of it, as after opening a map), the spawn nearest the camera.
     Vec3 from = ctx_->cam.pos;
     double yaw = ctx_->cam.yaw;
+    bool chosen = false;
     for (const auto& r : ctx_->doc.selection()) {
         const Entity* e = ctx_->doc.findEntity(r.entity);
         if (!e || r.item != kNoId) continue;
@@ -1309,11 +1477,45 @@ void CameraView::startPlay() {
                 double p = 0, y = 0, rr = 0;
                 if (std::sscanf(a->c_str(), "%lf %lf %lf", &p, &y, &rr) >= 2) yaw = y;
             }
+            chosen = true;
             break;
         }
     }
     player_ = PlayerState{};
-    const bool floor = placePlayer(world_, player_, from, params_);
+    bool floor = false;
+    if (!chosen) {
+        const AABB wb = world_.bounds();
+        // Inside the map's footprint and not above all of it (a camera under the ceiling of a closed room counts).
+        const bool inside = wb.valid() && from.x > wb.mins.x && from.x < wb.maxs.x && from.y > wb.mins.y && from.y < wb.maxs.y &&
+                            from.z <= wb.maxs.z + 1;
+        floor = inside && placePlayer(world_, player_, from, params_);
+        if (!floor) {
+            // The nearest spawn: the document's spawn entities, then a stock map's compiled spawns.
+            double best = 1e300;
+            std::optional<std::pair<Vec3, double>> spawn;
+            const auto consider = [&](const std::string& cls, const Vec3& o, double y) {
+                if (!(cls.rfind("mp_", 0) == 0 && cls.find("spawn") != std::string::npos) && cls != "info_player_start") return;
+                const double d = length(o - ctx_->cam.pos);
+                if (d < best) best = d, spawn = std::pair<Vec3, double>{o, y};
+            };
+            for (const auto& e : ctx_->doc.map().entities)
+                if (auto o = e.origin()) {
+                    double p = 0, y = 0, rr = 0;
+                    if (const std::string* a = e.value("angles")) std::sscanf(a->c_str(), "%lf %lf %lf", &p, &y, &rr);
+                    consider(e.classname(), *o, y);
+                }
+            for (const auto& s : ctx_->scene.spawns) consider(s.name, s.origin, s.angles.y);
+            if (spawn) {
+                from = spawn->first + Vec3{0, 0, 8};
+                yaw = spawn->second;
+                player_ = PlayerState{};
+                floor = placePlayer(world_, player_, from, params_);
+            }
+        }
+        if (!floor && !inside) player_ = PlayerState{}, floor = placePlayer(world_, player_, ctx_->cam.pos, params_);
+    } else {
+        floor = placePlayer(world_, player_, from, params_);
+    }
     player_.yaw = yaw;
     player_.pitch = 0;
     if (!floor) player_.noclip = true;  // nothing below: fly instead of falling forever
@@ -1353,23 +1555,44 @@ void CameraView::stopPlay() {
     ctx_->cameraMoved();
 }
 
+// Play preview keys: the game's default keyboard binds (default_keys.cfg of Replay 1.20, research 140 section 6).
+static int playQtKey(PlayKey k) {
+    switch (k) {
+        case PlayKey::Forward: return Qt::Key_W;
+        case PlayKey::Back: return Qt::Key_S;
+        case PlayKey::Left: return Qt::Key_A;
+        case PlayKey::Right: return Qt::Key_D;
+        case PlayKey::Jump: return Qt::Key_Space;      // +gostand
+        case PlayKey::Crouch: return Qt::Key_C;        // +movedown / togglecrouch
+        case PlayKey::Prone: return Qt::Key_Control;   // +prone (LCTRL)
+        case PlayKey::Sprint: return Qt::Key_Shift;    // +breath_sprint (LSHIFT)
+        case PlayKey::Use: return Qt::Key_F;           // +activate
+        case PlayKey::AutoForward: return Qt::Key_H;   // autoforward
+        case PlayKey::Count: break;
+    }
+    return 0;
+}
+
+static PlayKey playKeyForQt(int qtKey) {
+    for (int k = 0; k < int(PlayKey::Count); ++k)
+        if (playQtKey(PlayKey(k)) == qtKey) return PlayKey(k);
+    return PlayKey::Count;
+}
+
 void CameraView::tickPlay(double dt) {
     if (!ctx_->playing) return;
     if (worldRevision_ != ctx_->doc.revision()) {  // edits while playing (undo, live changes)
         buildPlayWorld();
         worldRevision_ = ctx_->doc.revision();
     }
+    if (!playMode_) playControls_.reset();  // a new play session (startPlay clears playMode_)
+    // The game's default keyboard binds (default_keys.cfg; research 140): the held keys go through PlayControls, the
+    // game's client side (toggle crouch and prone, Space stands up before it jumps, tap C to slide, Shift again for
+    // tactical sprint, H autoforward), which makes the command for each movement step.
     auto down = [&](int k) { return ctx_->heldKeys.contains(k); };
-    MoveInput in;
-    in.forward = (down(Qt::Key_W) || down(Qt::Key_Up) ? 1 : 0) - (down(Qt::Key_S) || down(Qt::Key_Down) ? 1 : 0);
-    in.right = (down(Qt::Key_D) || down(Qt::Key_Right) ? 1 : 0) - (down(Qt::Key_A) || down(Qt::Key_Left) ? 1 : 0);
-    in.jump = down(Qt::Key_Space);
-    in.crouch = down(Qt::Key_C) || down(Qt::Key_Control);
-    in.prone = down(Qt::Key_Z);
-    in.sprint = down(Qt::Key_Shift);
-    in.highMantle = in.jump && !player_.onGround;  // Space in the air grabs a high ledge
-    in.up = (in.jump ? 1 : 0) - (in.crouch ? 1 : 0);  // noclip vertical
-    if (player_.noclip) in.crouch = false;
+    bool held[int(PlayKey::Count)] = {};
+    for (int k = 0; k < int(PlayKey::Count); ++k)
+        if (const int qk = playQtKey(PlayKey(k))) held[k] = down(qk);
     player_.yaw = ctx_->cam.yaw;
     player_.pitch = ctx_->cam.pitch;
     // The map's scripted objects (core play_behaviour): F is the game's Use key.
@@ -1397,24 +1620,33 @@ void CameraView::tickPlay(double dt) {
                     for (int j = 0; j < 3; ++j) pp.R[i][j] = p.R[i][j];
                 pp.pivot = p.pivot;
                 pp.move = p.move;
+                pp.visible = p.visible;  // hidden by the map script
             }
             ctx_->scene.invalidate();
         }
+        for (const GscNote& n : playBehaviours_.takeScriptNotes())
+            EditorLog::instance().add(LogLevel::Info, "script",
+                                      QString("Play preview, map script%1: %2")
+                                          .arg(n.line > 0 ? QString(" line %1").arg(n.line) : QString(), QString::fromStdString(n.text)));
     }
     // Fixed 1/60 s steps (the mover clamps long frames; this keeps jumps identical at any frame rate).
     double left = std::min(dt, 0.25);
     do {
-        in.dt = std::min(left, 1.0 / 60.0);
-        if (in.dt > 0) playerMove(world_, player_, in, params_);
-        left -= in.dt;
+        const double step = std::min(left, 1.0 / 60.0);
+        const MoveInput in = playControls_.input(held, player_, step);  // every step: the stance follows a slide's end
+        if (step > 0) playerMove(world_, player_, in, params_);
+        left -= step;
     } while (left > 1e-9);
     ctx_->cam.pos = player_.origin + Vec3{0, 0, player_.noclip ? 0.0 : eyeHeight(params_, player_)};
     // Movement mode in the status bar when it changes (mantle / slide / sprint / stance).
-    const char* mode = player_.noclip ? "noclip" : player_.mantling ? "mantle" : player_.sliding ? "slide" : player_.sprinting ? "sprint"
-                       : player_.prone ? "prone" : player_.crouched ? "crouch" : !player_.onGround ? "air" : "walk";
+    const char* mode = player_.noclip ? "noclip" : player_.mantling ? "mantle" : player_.onLadder ? "ladder" : player_.sliding ? "slide"
+                       : player_.tacticalSprinting ? "tactical sprint" : player_.sprinting ? "sprint" : player_.prone ? "prone"
+                       : player_.crouched ? "crouch" : !player_.onGround ? "air" : "walk";
     if (mode != playMode_) {
         playMode_ = mode;
-        ctx_->setStatus(QString("Play: %1  (WASD, Space jump/mantle, Shift sprint, C crouch/slide, Z prone, F use, N noclip, Esc exit)").arg(mode));
+        ctx_->setStatus(QString("Play: %1  (game keys: WASD, Space jump/stand, C crouch/slide, Ctrl prone, Shift sprint (again: tactical), "
+                                "F use, H autoforward; N noclip, Esc exit)")
+                            .arg(mode));
     }
     ctx_->cameraMoved();
 }
@@ -2002,6 +2234,7 @@ size_t CameraView::loadedNormalMaps() const {
 int CameraView::particleTexture(const std::string& material, const ParticleMaterial& pm) {
     // "\x08<material>": the sprite as the effect draws it. Lit: the colour image with its opacity (slot 27's alpha when
     // it varies, else its red; without one the colour image's own alpha). Unlit: the emissive image, opaque.
+    // Returns -2 while an image is still being read (the particle is not drawn yet), -1 when the material has none.
     const std::string key = "\x08" + material;
     if (const auto it = texIds_.find(key); it != texIds_.end()) return it->second;
     if (pm.distortion) {
@@ -2010,7 +2243,7 @@ int CameraView::particleTexture(const std::string& material, const ParticleMater
         DecodedTexture d;
         if (!decodedTexture(pm.distortionFile, kViewTextureSide, 1, d)) {
             moreToLoad_ = true;
-            return -1;
+            return -2;
         }
         if (!d.imageOk || d.image.width <= 0 || d.image.height <= 0) return texIds_[key] = -1;
         if (app::ddsIsSrgb(pm.distortionFile)) {
@@ -2023,13 +2256,15 @@ int CameraView::particleTexture(const std::string& material, const ParticleMater
                 if (k % 4 != 3) d.image.pixels[k] = lin[d.image.pixels[k]];
         }
         // The strength mask: the world's distortion images (BC1) keep it in blue, which the decoded shader reads; the
-        // effect images (BC3) leave blue empty and keep it in alpha (research 139 section 2.2): moved into blue.
-        uint8_t blueMax = 0, alphaMin = 255, alphaMax = 0;
+        // effect images (BC3) keep it in alpha with blue empty or flat (research 139 section 2.2; vfx_dist_heat_3_c:
+        // blue 123-131 of 255 everywhere, so the heat haze of vfx_safehouse_finale_drone_heat_dist moved nothing):
+        // moved into blue (the same rule as the side bar's preview, vfx_textures.cpp prepareVfxDistortion).
+        uint8_t blueMin = 255, blueMax = 0, alphaMin = 255, alphaMax = 0;
         for (size_t k = 0; k + 3 < d.image.pixels.size(); k += 4) {
-            blueMax = std::max(blueMax, d.image.pixels[k + 2]);
+            blueMin = std::min(blueMin, d.image.pixels[k + 2]), blueMax = std::max(blueMax, d.image.pixels[k + 2]);
             alphaMin = std::min(alphaMin, d.image.pixels[k + 3]), alphaMax = std::max(alphaMax, d.image.pixels[k + 3]);
         }
-        if (blueMax < 8 && alphaMax > alphaMin)
+        if ((blueMax < 8 && alphaMax > alphaMin) || (blueMax - blueMin < 16 && alphaMax - alphaMin > 32))
             for (size_t k = 0; k + 3 < d.image.pixels.size(); k += 4) d.image.pixels[k + 2] = d.image.pixels[k + 3];
         return texIds_[key] = renderer_->createTexture(d.image.pixels.data(), d.image.width, d.image.height);
     }
@@ -2038,18 +2273,18 @@ int CameraView::particleTexture(const std::string& material, const ParticleMater
     DecodedTexture a, m;
     if (!decodedTexture(main, kViewTextureSide, 1, a)) {
         moreToLoad_ = true;
-        return -1;
+        return -2;
     }
     const bool withMask = pm.lit && !pm.alphaFile.empty();
     if (withMask && !decodedTexture(pm.alphaFile, kViewTextureSide, 1, m)) {
         moreToLoad_ = true;
-        return -1;
+        return -2;
     }
     DecodedTexture dn;
     const bool withDensity = pm.lit && !withMask && !pm.densityFile.empty();
     if (withDensity && !decodedTexture(pm.densityFile, kViewTextureSide, 1, dn)) {
         moreToLoad_ = true;
-        return -1;
+        return -2;
     }
     if (!a.imageOk || a.image.width <= 0 || a.image.height <= 0) return texIds_[key] = -1;
     app::Rgba8Image& img = a.image;
@@ -2075,6 +2310,50 @@ int CameraView::particleTexture(const std::string& material, const ParticleMater
             }
     } else if (!pm.lit) {
         for (size_t k = 3; k < img.pixels.size(); k += 4) img.pixels[k] = 255;
+    }
+    // Never a hard square (owner 2026-11-15, "some vfx still show as squares"): a sprite whose image has no edge of its
+    // own, a lit one without any opacity (no slot 27 / 68 read, its colour image opaque) or an unlit one bright up to its
+    // border, gets a soft round edge in each atlas cell. A stand-in (INFERRED): the game's sprites carry their shape in
+    // these images; this only keeps a missing or unread one from drawing as a square.
+    {
+        const int cols = std::max(1, pm.cols), rows = std::max(1, pm.rows);
+        const double cw = double(img.width) / cols, ch = double(img.height) / rows;
+        bool opaque = true;
+        for (size_t k = 3; k < img.pixels.size() && opaque; k += 4) opaque = img.pixels[k] >= 250;
+        // The mean brightness of the pixels on the cells' borders (an unlit sprite adds: a bright border is a square).
+        double border = 0;
+        size_t borderN = 0;
+        for (int y = 0; y < img.height; ++y) {
+            const double ly = std::fmod(y + 0.5, ch);
+            const bool rowEdge = ly < 1.5 || ly > ch - 1.5;
+            for (int x = 0; x < img.width; ++x) {
+                const double lx = std::fmod(x + 0.5, cw);
+                if (!rowEdge && lx >= 1.5 && lx <= cw - 1.5) continue;
+                const uint8_t* p = &img.pixels[(size_t(y) * size_t(img.width) + size_t(x)) * 4];
+                border += (p[0] + p[1] + p[2]) / 3.0;
+                ++borderN;
+            }
+        }
+        const bool brightEdge = borderN && border / double(borderN) > 24.0;
+        // (A dirty lens image is read at the screen's UV under its own round mask: left as it is.)
+        static const bool plainQuads = qEnvironmentVariableIsSet("IW8R_PLAIN_PARTICLE_QUADS");  // A/B: as before
+        const bool soften = !plainQuads &&
+                            (pm.lit ? (opaque && !(withMask && m.imageOk) && !(withDensity && dn.imageOk)) : (brightEdge && !pm.screenMask));
+        if (soften)
+            EditorLog::instance().add(LogLevel::Info, "effects",
+                                      QString("Effect preview: %1 has no edge of its own (%2): drawn with a soft round edge")
+                                          .arg(QString::fromStdString(material), pm.lit ? "lit, its images give no opacity" : "unlit, bright to its border"));
+        if (soften)
+            for (int y = 0; y < img.height; ++y)
+                for (int x = 0; x < img.width; ++x) {
+                    const double u = std::fmod(double(x) + 0.5, double(img.width) / cols) * cols / img.width - 0.5;
+                    const double v = std::fmod(double(y) + 0.5, double(img.height) / rows) * rows / img.height - 0.5;
+                    const double w = std::clamp((1.0 - 2.0 * std::sqrt(u * u + v * v)) / 0.4, 0.0, 1.0);
+                    uint8_t* p = &img.pixels[(size_t(y) * size_t(img.width) + size_t(x)) * 4];
+                    if (pm.lit) p[3] = uint8_t(std::lround(p[3] * w));
+                    else
+                        for (int c = 0; c < 3; ++c) p[c] = uint8_t(std::lround(p[c] * w));
+                }
     }
     const int id = renderer_->createTexture(img.pixels.data(), img.width, img.height);
     return texIds_[key] = id;
@@ -2111,6 +2390,7 @@ void CameraView::appendEffectParticles() {
     struct Placed {
         Vec3 origin, angles;
         const std::string* fx;
+        double repeat = 0;  // an fx_origin's delay key (seconds between starts, as the build's script repeats it); 0 = none
     };
     // The mapper's fx_origin entities, then the stock map's own placed effects.
     std::vector<Placed> placed;
@@ -2120,9 +2400,11 @@ void CameraView::appendEffectParticles() {
         const auto o = e.origin();
         Vec3 ang{0, 0, 0};
         if (const std::string* a = e.value("angles")) std::sscanf(a->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z);
-        if (fx && o) placed.push_back({*o, ang, fx});
+        double repeat = 0;
+        if (const std::string* d = e.value("delay")) repeat = std::max(0.0, std::atof(d->c_str()));
+        if (fx && o) placed.push_back({*o, ang, fx, repeat});
     }
-    for (const StockEffect& s : stockEffects_) placed.push_back({s.origin, s.angles, &s.name});
+    for (const StockEffect& s : stockEffects_) placed.push_back({s.origin, s.angles, &s.name, 0.0});
     const Vec3 eye = ctx_->cam.pos;
     struct Quad {
         float depth;
@@ -2132,9 +2414,28 @@ void CameraView::appendEffectParticles() {
         bool screen;
         float emissive[3];
         float distScale[2];
+        bool screenMask = false;  // a dirty lens piece: the image at the screen's UV, masked by `mask` (slot 145)
+        int mask = -1;
         app::ParticleVertex v[6];
     };
     std::vector<Quad> quads;
+    // A dirty lens set's slot 145 image (research 139 section 5): its red channel is the piece's round mask.
+    const auto maskTexture = [&](const std::string& file) -> int {
+        if (file.empty()) return -1;
+        const std::string key = "\x09" + file;
+        if (const auto it = texIds_.find(key); it != texIds_.end()) return it->second;
+        DecodedTexture d;
+        if (!decodedTexture(file, kViewTextureSide, 1, d)) {
+            moreToLoad_ = true;
+            return -1;
+        }
+        if (!d.imageOk || d.image.width <= 0 || d.image.height <= 0) return texIds_[key] = -1;
+        return texIds_[key] = renderer_->createTexture(d.image.pixels.data(), d.image.width, d.image.height);
+    };
+    // The colour an unlit set adds: the particle colour x the emissive graph's RGB x intensity (its pixel shaders read a
+    // packed emissive colour and only the alpha of the particle colour, research 139 section 5; INFERRED that the
+    // packed colour is the two together, so a fire's orange colour graph stays with its white emissive graph).
+    const auto addColour = [](const VfxParticle& p, bool unlit, int k) { return unlit && p.hasEmissive ? p.rgba[k] * p.emissive[k] : p.rgba[k]; };
     const auto materialOf = [&](const std::string& name) -> const ParticleMaterial* {
         if (name.empty() || !particleMaterial_) return nullptr;
         if (const auto it = particleMats_.find(name); it != particleMats_.end()) return &it->second;
@@ -2152,9 +2453,14 @@ void CameraView::appendEffectParticles() {
         if (dist > 12000) continue;
         const auto def = effectSource_(*pl.fx);
         if (!def || def->emitters.empty()) continue;
-        const double loop = def->duration > 0 ? def->duration + 0.5 : 60.0;  // one-shots replay after a short pause
+        // A one-shot effect plays again every `delay` seconds (the fx_origin's key, as the built map's script repeats it),
+        // else after its run plus 1.5 s, so that a short burst keeps showing; a looping effect runs on without a restart
+        // (it used to start over every 60 s, every particle vanishing at once).
+        const double oneShot = def->duration >= 0 ? std::max(def->duration, 0.05) : -1.0;
+        const double period = oneShot > 0 ? (pl.repeat > 0 ? std::max(pl.repeat, oneShot + 0.1) : oneShot + 1.5) : 0.0;
+        const double at = period > 0 ? std::fmod(t, period) : t;
         const VfxAxes ax = vfxAxesFromAngles(pl.angles.x, pl.angles.y, pl.angles.z);
-        for (const VfxParticle& p : sampleVfx(*def, std::fmod(t, loop), seed, &ax)) {
+        for (const VfxParticle& p : sampleVfx(*def, at, seed, &ax)) {
             const VfxEmitterSim& em = def->emitters[size_t(p.emitter)];
             if (em.fadeOutMaxDistance > 0 && dist > em.fadeOutMaxDistance) continue;
             const bool flare = em.element == 3 && em.flare.present;
@@ -2162,6 +2468,10 @@ void CameraView::appendEffectParticles() {
             const std::string& matName = size_t(p.material) < em.materials.size() ? em.materials[size_t(p.material)] : em.material;
             const ParticleMaterial* pm = materialOf(matName);
             if (pm && pm->skip) continue;
+            // A material the cache is still resolving: nothing yet (it used to be a plain square in the meantime).
+            // IW8R_PLAIN_PARTICLE_QUADS: the plain quads of before (a sprite or flare without its image), for A/B.
+            static const bool plainQuads = qEnvironmentVariableIsSet("IW8R_PLAIN_PARTICLE_QUADS");
+            if (!pm && !matName.empty() && particleMaterial_ && !plainQuads) continue;
             if (flare) {
                 // A flare piece (research 139 section 1.3): its source on screen, the piece along the line from there
                 // through the centre, sized in screen heights. Behind the camera or off the screen: not drawn.
@@ -2178,8 +2488,10 @@ void CameraView::appendEffectParticles() {
                 const double ndc[2] = {clip[0] / clip[3], clip[1] / clip[3]};
                 if (std::fabs(ndc[0]) > 1.0 || std::fabs(ndc[1]) > 1.0) continue;
                 const VfxFlareSprite fs = vfxFlareSprite(em, p.size2, ndc, aspect, length(src - eye));
+                // Without its image (still read, or none) a flare piece draws nothing: a white screen square before.
                 int ftex = pm ? particleTexture(matName, *pm) : -1;
-                if (ftex < 0) ftex = whiteTex_;
+                if (ftex < 0 && plainQuads) ftex = whiteTex_;
+                if (ftex < 0) continue;
                 // The occlusion test's area: the query's world size x scale, as seen at the source (at least a pixel).
                 float area[3] = {0, 0, 0};
                 static const bool noOcclusion = qEnvironmentVariableIsSet("IW8R_NO_FLARE_OCCLUSION");  // A/B: always seen
@@ -2198,7 +2510,16 @@ void CameraView::appendEffectParticles() {
                 qd.lit = false, qd.distortion = false, qd.screen = true;
                 for (int k = 0; k < 3; ++k) qd.emissive[k] = pm ? pm->emissive[k] : 1.0f;
                 qd.distScale[0] = qd.distScale[1] = 0;
-                const double ca = std::cos(fs.angle), sa = std::sin(fs.angle);
+                // A dirty lens piece (research 139 section 5): its image is lens grime fixed to the screen, seen through
+                // the round slot 145 mask. Drawn without the mask it was a square of grime (the owner's "square-like"
+                // glare), and it turned with the source's angle about the centre (m_angularRotCount), so the square
+                // spun as a lamp passed the middle of the view.
+                // IW8R_OLD_FLARES: the pieces as drawn before (no mask, turned, the particle colour, alpha 1), for A/B.
+                static const bool oldFlares = qEnvironmentVariableIsSet("IW8R_OLD_FLARES");
+                qd.screenMask = pm && pm->screenMask && !oldFlares;
+                qd.mask = qd.screenMask ? maskTexture(pm->maskFile) : -1;
+                const double angle = qd.screenMask ? 0.0 : fs.angle;  // a round mask: its turn would show nothing but the grime's
+                const double ca = std::cos(angle), sa = std::sin(angle);
                 // The occlusion test's depth: the source's, but no farther than just in front of the sky box (drawn 60,000
                 // units out, it writes depth): a sun at infinity is hidden by the world, not by the sky.
                 double occ[4];
@@ -2209,7 +2530,8 @@ void CameraView::appendEffectParticles() {
                     // Rotated in screen-height units, then back to NDC x.
                     const double hx = fs.half[0] * aspect * sx, hy = fs.half[1] * sy;
                     app::ParticleVertex pv{float(fs.centre[0] + (hx * ca - hy * sa) / aspect), float(fs.centre[1] + hx * sa + hy * ca), 0.0f,
-                                           u, v, p.rgba[0], p.rgba[1], p.rgba[2], p.rgba[3]};
+                                           u, v, addColour(p, !oldFlares, 0), addColour(p, !oldFlares, 1), addColour(p, !oldFlares, 2),
+                                           oldFlares ? 1.0f : p.rgba[3]};
                     std::copy(srcAux, srcAux + 3, pv.aux0), std::copy(area, area + 3, pv.aux1);
                     return pv;
                 };
@@ -2223,9 +2545,31 @@ void CameraView::appendEffectParticles() {
             const bool distortion = pm && pm->distortion;
             int tex = pm ? particleTexture(matName, *pm) : -1;
             if (distortion && tex < 0) continue;  // its image is still loading: nothing to move the scene by yet
+            if (tex == -2 && !plainQuads) continue;  // its image is still being read: nothing yet (a plain square before)
             const bool lit = pm ? pm->lit : true;
             int cols = pm ? std::max(1, pm->cols) : 1, rows = pm ? std::max(1, pm->rows) : 1;
-            if (tex < 0) tex = whiteTex_, cols = rows = 1;  // not loaded (yet): the particle's colour on a plain quad
+            if (tex < 0 && plainQuads) tex = whiteTex_, cols = rows = 1;
+            if (tex < 0) {
+                // No image at all (the material failed or has none): a soft round sprite of the particle's colour.
+                const std::string softKey = "\x0Asoft";
+                if (const auto it = texIds_.find(softKey); it != texIds_.end()) {
+                    tex = it->second;
+                } else {
+                    constexpr int kSide = 64;
+                    std::vector<uint8_t> px(size_t(kSide) * kSide * 4);
+                    for (int y = 0; y < kSide; ++y)
+                        for (int x = 0; x < kSide; ++x) {
+                            const double u = (x + 0.5) / kSide - 0.5, v = (y + 0.5) / kSide - 0.5;
+                            const double s = std::clamp(1.0 - 2.0 * std::sqrt(u * u + v * v), 0.0, 1.0);
+                            const uint8_t a = uint8_t(std::lround(255.0 * s * s));
+                            uint8_t* p = &px[(size_t(y) * kSide + size_t(x)) * 4];
+                            p[0] = p[1] = p[2] = a, p[3] = a;
+                        }
+                    tex = texIds_[softKey] = renderer_->createTexture(px.data(), kSide, kSide);
+                }
+                cols = rows = 1;
+                if (tex < 0) continue;
+            }
             const Vec3 c = pl.origin + Vec3{p.pos[0], p.pos[1], p.pos[2]};
             const double w = std::max(0.25, p.size2[0] * 0.5), h = std::max(0.25, p.size2[1] * 0.5);
             Vec3 ax0, ax1;  // half extents
@@ -2298,7 +2642,9 @@ void CameraView::appendEffectParticles() {
             }
             const auto corner = [&](double sx, double sy, float u, float v) {
                 const Vec3 q = c + ax0 * sx + ax1 * sy;
-                app::ParticleVertex pv{float(q.x), float(q.y), float(q.z), u, v, p.rgba[0], p.rgba[1], p.rgba[2], p.rgba[3]};
+                const bool unlit = !qd.lit && !distortion;
+                app::ParticleVertex pv{float(q.x), float(q.y), float(q.z), u, v, addColour(p, unlit, 0), addColour(p, unlit, 1), addColour(p, unlit, 2),
+                                       p.rgba[3]};
                 std::copy(aux0, aux0 + 3, pv.aux0), std::copy(aux1, aux1 + 3, pv.aux1);
                 return pv;
             };
@@ -2314,10 +2660,11 @@ void CameraView::appendEffectParticles() {
     std::vector<app::ParticleBatch> batches;
     for (const Quad& q : quads) {
         if (batches.empty() || batches.back().texture != q.texture || batches.back().lit != q.lit || batches.back().distortion != q.distortion ||
-            batches.back().screen != q.screen) {
+            batches.back().screen != q.screen || batches.back().screenMask != q.screenMask || batches.back().mask != q.mask) {
             batches.emplace_back();
             batches.back().texture = q.texture, batches.back().lit = q.lit, batches.back().distortion = q.distortion;
             batches.back().screen = q.screen;
+            batches.back().screenMask = q.screenMask, batches.back().mask = q.mask;
             std::copy(q.emissive, q.emissive + 3, batches.back().emissive);
             std::copy(q.distScale, q.distScale + 2, batches.back().distScale);
         }
@@ -2836,8 +3183,12 @@ void CameraView::mousePressEvent(QMouseEvent* e) {
         pressPos_ = e->position().toPoint();
         const QPointF p = e->position();
         const bool grab = !(e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier));
-        // Rotate mode: grab a ring within 8 px.
-        if (const int ring = grab ? gizmoRingAt(p) : -1; ring >= 0) {
+        // The gizmo part within 8 px (scale boxes, then arrows, then rings; each mode shows its own parts).
+        int partAxis = -1;
+        const int part = grab ? gizmoPartAt(p, partAxis) : -1;
+        // A rotate ring: turn about its axis (the world's, or the entity's own in local space).
+        if (part == 1) {
+            const int ring = partAxis;
             ringPivot_ = ringCentre();
             ringDragAxis_ = ring;
             ringStartAngle_ = ringAngleForMouse(p, ring).value_or(0);
@@ -2846,29 +3197,37 @@ void CameraView::mousePressEvent(QMouseEvent* e) {
             update();
             return;
         }
-        // Grab a gizmo handle: within 8 px of an axis segment on screen.
-        if (const int best = grab ? gizmoHandleAt(p) : -1; best >= 0) {
+        // A move arrow or a scale box: dragged along its axis.
+        if (part == 0 || part == 2) {
+            const int best = partAxis;
             gizmoDragAxis_ = best;
-            gizmoStartPivot_ = gizmoPivot();
+            dragScale_ = part == 2;
+            gizmoStartPivot_ = gizmoCentre();
             gizmoStartT_ = axisParamForMouse(p, best);
             lmbDown_ = false;  // not a click-select
-            if (gizmoScale_) {
+            if (dragScale_) {
                 scaleFactor_ = 1.0;
                 scaleStartBounds_ = ctx_->doc.selectionBounds();  // drawn scaled while the handle moves
             } else {
-                // A move along a world axis lands the selection on the grid (Snap To Grid's reference: the
-                // primitives' bounds minimum, else the lowest point entity origin), so an off-grid object snaps on.
+                // A move along a world axis (or a local axis lying along one) lands the selection on the grid (Snap To
+                // Grid's reference: the primitives' bounds minimum, else the lowest point entity origin), so an off-grid
+                // object snaps on. A turned local axis moves in whole grid steps instead.
+                const Vec3 dir = gizmoAxisDir(best);
+                gizmoSnapAxis_ = -1;
+                for (int k = 0; k < 3; ++k)
+                    if (std::fabs(dir[k]) > 1.0 - 1e-9) gizmoSnapAxis_ = k;
+                const int k = gizmoSnapAxis_ >= 0 ? gizmoSnapAxis_ : best;
                 AABB prims;
                 std::optional<double> origin;
                 for (const SelRef& r : ctx_->doc.selection()) {
                     if (r.item == kNoId) {
                         if (const Entity* en = ctx_->doc.findEntity(r.entity))
-                            if (auto o = en->origin()) origin = std::min(origin.value_or((*o)[best]), (*o)[best]);
+                            if (auto o = en->origin()) origin = std::min(origin.value_or((*o)[k]), (*o)[k]);
                     } else if (const EntityItem* it = ctx_->doc.findItem(r.entity, r.item); it && it->prim()) {
                         prims.add(it->prim()->bounds());
                     }
                 }
-                gizmoSnapFrom_ = prims.valid() ? prims.mins[best] : origin.value_or(gizmoStartPivot_[best]);
+                gizmoSnapFrom_ = prims.valid() ? prims.mins[k] : origin.value_or(gizmoStartPivot_[k]);
                 gizmoMoveBy_ = 0;
                 ctx_->doc.beginDrag();
             }
@@ -2900,15 +3259,16 @@ void CameraView::mouseMoveEvent(QMouseEvent* e) {
             d = ctx_->snap ? std::round(d / 15.0) * 15.0 : d;  // Radiant rotation snap
             ringDeltaDeg_ = d;
             // Drag progress goes to the status bar only (a Console line per mouse move would flood the log).
-            ctx_->setTransientStatus(QString("Rotate %1 %2 degrees").arg(QChar("XYZ"[ringDragAxis_])).arg(d));
+            Vec3 frame[3];
+            ctx_->setTransientStatus(QString("Rotate %1%2 %3 degrees").arg(gizmoLocalFrame(frame) ? "local " : "").arg(QChar("XYZ"[ringDragAxis_])).arg(d));
             update();
         }
         return;
     }
-    if (gizmoDragAxis_ >= 0 && gizmoScale_) {
-        // Factor from how far the handle moved relative to the gizmo length; snaps to 0.05 steps.
+    if (gizmoDragAxis_ >= 0 && dragScale_) {
+        // Factor from how far the box moved relative to its distance from the centre; snaps to 0.05 steps.
         const double t = axisParamForMouse(e->position(), gizmoDragAxis_);
-        double f = std::max(0.05, 1.0 + (t - gizmoStartT_) / std::max(1.0, gizmoLength()));
+        double f = std::max(0.05, 1.0 + (t - gizmoStartT_) / std::max(1.0, scaleBoxDistance()));
         if (ctx_->snap) f = std::max(0.05, std::round(f * 20.0) / 20.0);
         scaleFactor_ = f;
         ctx_->setTransientStatus(QString("Scale %1 x%2").arg(QChar("XYZ"[gizmoDragAxis_])).arg(f, 0, 'f', 2));
@@ -2922,13 +3282,20 @@ void CameraView::mouseMoveEvent(QMouseEvent* e) {
         const double g = ctx_->doc.grid();
         double s = raw;
         if (ctx_->snap && g > 0) {
-            // World axis: snap where the selection ends up; a local (turned) axis keeps whole grid steps of travel.
-            s = std::fabs(dir[axis]) > 1.0 - 1e-9 ? std::round((gizmoSnapFrom_ + raw) / g) * g - gizmoSnapFrom_ : snapToGrid(raw, g);
+            // Along a world axis (or a local axis lying along one): snap where the selection ends up; a turned local
+            // axis keeps whole grid steps of travel.
+            if (gizmoSnapAxis_ >= 0) {
+                const double sign = dir[gizmoSnapAxis_] > 0 ? 1.0 : -1.0;
+                s = sign * (std::round((gizmoSnapFrom_ + sign * raw) / g) * g - gizmoSnapFrom_);
+            } else {
+                s = snapToGrid(raw, g);
+            }
         }
         gizmoMoveBy_ = s;
         ctx_->doc.updateDrag(dir * s);
         ctx_->documentEdited();
-        ctx_->setTransientStatus(QString("Move %1 %2").arg(QChar("XYZ"[axis])).arg(QString::fromStdString(formatNumber(s))));
+        Vec3 frame[3];
+        ctx_->setTransientStatus(QString("Move %1%2 %3").arg(gizmoLocalFrame(frame) ? "local " : "").arg(QChar("XYZ"[axis])).arg(QString::fromStdString(formatNumber(s))));
         return;
     }
     if (!ctx_->looking) {
@@ -2941,7 +3308,14 @@ void CameraView::mouseMoveEvent(QMouseEvent* e) {
     if (d.isNull()) return;
     lookTravel_ += std::abs(d.x()) + std::abs(d.y());
     auto& cam = ctx_->cam;
-    if ((e->modifiers() & Qt::ControlModifier) && !(e->modifiers() & Qt::ShiftModifier)) {
+    if (ctx_->playing) {
+        // The game's mouse look (CL_InputMP_ApplyLookInputToCmd, research 140): m_yaw / m_pitch 0.022 x the default
+        // mouse sensitivity 12 x 0.3 = 0.0792 degrees per count (a physical pixel of cursor travel at the default
+        // Windows pointer speed), pitch held to +-85 (PM_ClampViewPitch). Ctrl is prone here, not the stock drag.
+        const double k = mouseDegreesPerCount() * devicePixelRatioF();
+        cam.yaw -= d.x() * k;
+        cam.pitch = std::clamp(cam.pitch - d.y() * k, -params_.pitchLimit, params_.pitchLimit);
+    } else if ((e->modifiers() & Qt::ControlModifier) && !(e->modifiers() & Qt::ShiftModifier)) {
         // Stock Ctrl+RMB: drag forward/back along the view and yaw.
         cam.yaw -= d.x() * 0.25;
         cam.pos += cam.forward() * (-d.y() * cam.speed / 250.0);
@@ -2961,15 +3335,19 @@ void CameraView::mouseReleaseEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton && ringDragAxis_ >= 0) {
         const int axis = ringDragAxis_;
         ringDragAxis_ = -1;
-        const bool done = ringDeltaDeg_ != 0 && rotateSelectionAbout(*ctx_, axis, ringDeltaDeg_, ringPivot_);
-        ctx_->documentEdited(done ? QString("Rotated %1 degrees about %2 (undoable)").arg(ringDeltaDeg_).arg(QChar("XYZ"[axis])) : QString());
+        Vec3 frame[3];
+        const bool local = gizmoLocalFrame(frame);
+        const bool done = ringDeltaDeg_ != 0 && rotateSelectionByGizmo(axis, ringDeltaDeg_, ringPivot_);
+        ctx_->documentEdited(done ? QString("Rotated %1 degrees about %2%3 (undoable)").arg(ringDeltaDeg_).arg(local ? "local " : "").arg(QChar("XYZ"[axis]))
+                                  : QString());
         ringDeltaDeg_ = 0;
         updateGizmoHover(e->position(), e->modifiers());
         return;
     }
-    if (e->button() == Qt::LeftButton && gizmoDragAxis_ >= 0 && gizmoScale_) {
+    if (e->button() == Qt::LeftButton && gizmoDragAxis_ >= 0 && dragScale_) {
         const int axis = gizmoDragAxis_;
         gizmoDragAxis_ = -1;
+        dragScale_ = false;
         const double f = scaleFactor_;
         scaleFactor_ = 1.0;
         const bool done = scaleSelectionAbout(*ctx_, axis, f, gizmoStartPivot_);
@@ -3065,6 +3443,9 @@ void CameraView::mouseReleaseEvent(QMouseEvent* e) {
             cycleHits_.clear();
             if (mods == Qt::NoModifier) ctx_->doc.deselectAll();
             ctx_->documentEdited();
+            // A stock map: its own surface under the cursor (the material in the status bar and the Stock Map panel).
+            if (!(mods == Qt::NoModifier && stockSurfacePicker_ && stockSurfacePicker_(ray)) && !stockPickLines_.empty())
+                setStockPickOutline({});
             return;
         }
         const bool again = (p - cyclePos_).manhattanLength() <= 4 && hits == cycleHits_;
@@ -3076,6 +3457,7 @@ void CameraView::mouseReleaseEvent(QMouseEvent* e) {
                 if (ctx_->doc.isSelected(hits[i])) index = (i + 1) % hits.size();
         }
         cyclePos_ = p, cycleHits_ = hits, cycleIndex_ = index;
+        if (!stockPickLines_.empty()) setStockPickOutline({});
         ctx_->doc.select(hits[index], false);
         if (hits.size() > 1)
             ctx_->documentEdited(QString("Selected %1 of %2 overlapping objects under the cursor (click the same spot again for the next)")
@@ -3116,6 +3498,15 @@ bool CameraView::event(QEvent* e) {
         e->accept();
         return true;
     }
+    // Playing: the game's keys (with Ctrl held for prone: Ctrl+W, Ctrl+S ...) reach the play input, not the window's
+    // shortcuts; other combinations (Ctrl+Z undo) still work.
+    if (ctx_->playing && e->type() == QEvent::ShortcutOverride) {
+        const int k = static_cast<QKeyEvent*>(e)->key();
+        if (playKeyForQt(k) != PlayKey::Count || k == Qt::Key_Escape || k == Qt::Key_P || k == Qt::Key_N) {
+            e->accept();
+            return true;
+        }
+    }
     // Escape during a gizmo or ring drag cancels the drag here, before the window's Escape (deselect) shortcut runs.
     if (e->type() == QEvent::ShortcutOverride && (gizmoDragAxis_ >= 0 || ringDragAxis_ >= 0))
         if (static_cast<QKeyEvent*>(e)->key() == Qt::Key_Escape) {
@@ -3133,8 +3524,9 @@ void CameraView::cancelViewDrag() {
         update();
     }
     if (gizmoDragAxis_ >= 0) {
-        const bool scaling = gizmoScale_;
+        const bool scaling = dragScale_;
         gizmoDragAxis_ = -1;
+        dragScale_ = false;
         scaleFactor_ = 1.0;
         if (!scaling) ctx_->doc.endDrag(false);  // the translate drag moved a snapshot: put it back
         ctx_->documentEdited(scaling ? QStringLiteral("Scale cancelled") : QStringLiteral("Move cancelled"));
@@ -3160,10 +3552,14 @@ void CameraView::keyPressEvent(QKeyEvent* e) {
         if (e->key() == Qt::Key_N && !e->isAutoRepeat()) {
             player_.noclip = !player_.noclip;
             if (!player_.noclip) placePlayer(world_, player_, player_.origin, params_);
+            playControls_.stance = PlayStance::Stand;  // placePlayer stands the player up
             ctx_->setStatus(player_.noclip ? "PLAY: noclip on" : "PLAY: noclip off");
             return;
         }
-        if (!e->isAutoRepeat()) ctx_->heldKeys.insert(e->key());
+        if (!e->isAutoRepeat()) {
+            ctx_->heldKeys.insert(e->key());
+            playControls_.press(playKeyForQt(e->key()));  // a tap shorter than a frame still counts
+        }
         return;
     }
     if (!e->isAutoRepeat() && isCameraKey(e->key()) && !(e->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
@@ -3198,17 +3594,50 @@ void CameraView::leaveEvent(QEvent* e) {
     QWidget::leaveEvent(e);
 }
 
+// IW8R_BEHAVIOUR_TIME=<seconds> (test hook): the Behaviour Preview held at that time (-1 = not set).
+static double behaviourTimeHook() {
+    static const double t = [] {
+        bool ok = false;
+        const double v = qEnvironmentVariable("IW8R_BEHAVIOUR_TIME").toDouble(&ok);
+        return ok && v >= 0 ? v : -1.0;
+    }();
+    return t;
+}
+
 void CameraView::timerEvent(QTimerEvent* e) {
     if (e->timerId() == windTimer_.timerId()) {
         if (ctx_->behaviourPreview) {
             // Moving models are rebuilt at their pose for this moment.
-            ctx_->scene.behaviourTime = windClock_.isValid() ? windClock_.elapsed() / 1000.0 : 0.0;
+            ctx_->scene.behaviourTime = behaviourTimeHook() >= 0 ? behaviourTimeHook()
+                                        : windClock_.isValid() ? windClock_.elapsed() / 1000.0 : 0.0;
+            updateBehaviourScript();
             ctx_->scene.invalidate();
         }
         update();  // the sway is a shader uniform: no geometry rebuild
         return;
     }
     QWidget::timerEvent(e);
+}
+
+// The map's own GSC (worldspawn iw8r_script, core gsc_emulate) at the Behaviour Preview's time: where it has the
+// entities it moves, turns and hides. What it skipped (calls and statements it does not emulate) goes to the Console,
+// each once.
+void CameraView::updateBehaviourScript() {
+    behaviourScript_.update(ctx_->doc.map(), ctx_->doc.path(), ctx_->doc.revision(), std::max(0.0, ctx_->scene.behaviourTime));
+    ctx_->scene.scriptPoses.clear();
+    for (const GscPose& p : behaviourScript_.poses()) {
+        app::SceneCache::PlayPose& sp = ctx_->scene.scriptPoses[p.entity];
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j) sp.R[i][j] = p.R[i][j];
+        sp.pivot = p.pivot;
+        sp.move = p.move;
+        sp.visible = p.visible;
+    }
+    const QString file = QFileInfo(QString::fromStdString(behaviourScript_.scriptPath())).fileName();
+    for (const GscNote& n : behaviourScript_.takeNewNotes())
+        EditorLog::instance().add(LogLevel::Info, "script",
+                                  QString("Behaviour Preview, map script %1%2: %3")
+                                      .arg(file, n.line > 0 ? QString(" line %1").arg(n.line) : QString(), QString::fromStdString(n.text)));
 }
 
 size_t CameraView::referenceTexturesResolved() const {

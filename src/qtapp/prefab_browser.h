@@ -6,6 +6,7 @@
 #pragma once
 
 #include <QImage>
+#include <QMultiHash>
 #include <QStringList>
 #include <QWidget>
 #include <functional>
@@ -14,11 +15,13 @@
 #include <vector>
 
 #include "prefab_bundle.h"
+#include "thumb_store.h"
 
 class QLabel;
 class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
+class QScrollBar;
 
 namespace iw8r {
 struct ImportedModel;
@@ -83,6 +86,11 @@ public:
     // refreshIncomplete()). When set, the grey drawing of thumbnail() is not used for the list.
     using PictureFn = std::function<QImage(const QString& mapFile, bool* pending)>;
     static void setPictureSource(PictureFn fn);
+    // The stored picture of a prefab .map file, read on worker threads (ThumbDecoder): thread-safe, reads the pack only,
+    // a null image when there is none (that row goes to the picture source above). Owner 2026-11-15: no loading on
+    // screen for pictures that are already stored.
+    using PicturePeek = std::function<QImage(const QString& mapFile)>;
+    static void setPicturePeek(PicturePeek fn);
     void refreshIncomplete();               // redraw the thumbnails that had a box in place of a mesh
 
     // A three-quarter view of a map's brushes and models, fitted into `size` pixels; a null image when nothing can be
@@ -107,11 +115,18 @@ private:
     class QTimer* thumbTimer_ = nullptr;  // draws thumbnails of the visible rows a few at a time (5,000+ prefabs)
     void loadVisibleThumbnails();
     void loadThumbnail(QListWidgetItem* item);
+    std::unique_ptr<ThumbDecoder> decoder_;          // stored pictures of the tiles on screen and the next pages
+    QMultiHash<QString, QListWidgetItem*> decoding_;  // decoder key -> the tiles waiting for it (cleared by refresh())
+    QString decoderKey(const QListWidgetItem* it) const;  // "" = drawn on the GUI thread
+    void ensureDecoder();
+    void applyDecoded(std::vector<ThumbDecoder::Result> results);
     // Two tiles across the panel's width: the pictures shrink in a narrow side column (300 px) and stay 112 px at most.
     void fitTiles();
 
 public:
     int thumbnailsLoaded() const;  // tests
+    VisibleThumbs visibleThumbState() const;  // the tiles on screen now (thumb_bench.h, tests)
+    QScrollBar* scrollBar() const;
 };
 
 }  // namespace iw8r::qt

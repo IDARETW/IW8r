@@ -4,6 +4,7 @@
 #include <QDataStream>
 #include <QDir>
 #include <QFileInfo>
+#include <QPointer>
 #include <QSaveFile>
 
 #include <cstring>
@@ -36,21 +37,25 @@ void ThumbStore::ready() const {
 
 bool ThumbStore::contains(const QString& name) const {
     ready();
+    std::lock_guard lock(mx_);
     return index_.contains(name);
 }
 
 int ThumbStore::count() const {
     ready();
+    std::lock_guard lock(mx_);
     return int(index_.size());
 }
 
 qint64 ThumbStore::fileBytes() const {
     ready();
+    std::lock_guard lock(mx_);
     return fileBytes_;
 }
 
 qint64 ThumbStore::garbageBytes() const {
     ready();
+    std::lock_guard lock(mx_);
     return garbage_;
 }
 
@@ -107,23 +112,34 @@ ThumbStore::Scan ThumbStore::scan(const QString& path) {
 
 QImage ThumbStore::get(const QString& name, quint64 signature) {
     ready();
-    const auto it = index_.constFind(name);
-    if (it == index_.constEnd() || it->signature != signature || signature == 0) return {};
-    QFile f(path_);
-    if (!f.open(QIODevice::ReadOnly) || !f.seek(it->offset)) return {};
+    QByteArray jpeg;
+    {
+        // The bytes are read under the lock (a compaction rewrites the file); the JPEG is decoded outside it.
+        std::lock_guard lock(mx_);
+        const auto it = index_.constFind(name);
+        if (it == index_.constEnd() || it->signature != signature || signature == 0) return {};
+        QFile f(path_);
+        if (!f.open(QIODevice::ReadOnly) || !f.seek(it->offset)) return {};
+        jpeg = f.read(it->length);
+    }
     QImage img;
-    img.loadFromData(f.read(it->length), "JPG");
+    img.loadFromData(jpeg, "JPG");
     return img;
 }
 
 QImage ThumbStore::getAny(const QString& name) {
     ready();
-    const auto it = index_.constFind(name);
-    if (it == index_.constEnd()) return {};
-    QFile f(path_);
-    if (!f.open(QIODevice::ReadOnly) || !f.seek(it->offset)) return {};
+    QByteArray jpeg;
+    {
+        std::lock_guard lock(mx_);
+        const auto it = index_.constFind(name);
+        if (it == index_.constEnd()) return {};
+        QFile f(path_);
+        if (!f.open(QIODevice::ReadOnly) || !f.seek(it->offset)) return {};
+        jpeg = f.read(it->length);
+    }
     QImage img;
-    img.loadFromData(f.read(it->length), "JPG");
+    img.loadFromData(jpeg, "JPG");
     return img;
 }
 
@@ -157,6 +173,7 @@ void ThumbStore::put(const QString& name, quint64 signature, const QImage& image
         b.open(QIODevice::WriteOnly);
         image.convertToFormat(QImage::Format_RGB32).save(&b, "JPG", 85);
     }
+    std::lock_guard lock(mx_);
     QFile f(path_);
     if (!f.open(QIODevice::ReadWrite)) return;
     if (fileBytes_ < 8) {
@@ -214,6 +231,96 @@ void ThumbStore::compact() {
     index_ = std::move(fresh);
     fileBytes_ = bytes;
     garbage_ = 0;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// ThumbDecoder
+
+struct ThumbDecoder::Shared {
+    std::mutex mx;
+    std::condition_variable cv;
+    std::deque<QString> queue;
+    int side = 64;
+    int active = 0;
+    bool stop = false;
+    Peek peek;
+    Done done;
+    QPointer<QObject> context;
+};
+
+ThumbDecoder::ThumbDecoder(Peek peek, Done done, QObject* context, int threads) : s_(std::make_shared<Shared>()) {
+    s_->peek = std::move(peek);
+    s_->done = std::move(done);
+    s_->context = context;
+    for (int i = 0; i < std::max(1, threads); ++i)
+        threads_.emplace_back([s = s_] {
+            for (;;) {
+                std::vector<QString> batch;
+                int side = 64;
+                {
+                    std::unique_lock lock(s->mx);
+                    s->cv.wait(lock, [&] { return s->stop || !s->queue.empty(); });
+                    if (s->stop) return;
+                    // A few names per batch: the first tiles appear quickly, and a new want() is seen soon.
+                    while (!s->queue.empty() && batch.size() < 6) {
+                        batch.push_back(std::move(s->queue.front()));
+                        s->queue.pop_front();
+                    }
+                    side = s->side;
+                    ++s->active;
+                }
+                std::vector<Result> out;
+                out.reserve(batch.size());
+                for (const QString& n : batch) {
+                    QImage img = s->peek ? s->peek(n) : QImage();
+                    out.push_back({n, img.isNull() ? QImage() : fit(img, side), side});
+                }
+                QObject* ctx = nullptr;
+                {
+                    std::lock_guard lock(s->mx);
+                    --s->active;
+                    ctx = s->context.data();
+                    if (s->stop) return;
+                }
+                // Back on the GUI thread; dropped when the context object is gone by then.
+                if (ctx)
+                    QMetaObject::invokeMethod(ctx, [s, out = std::move(out)]() mutable {
+                        if (s->done) s->done(std::move(out));
+                    }, Qt::QueuedConnection);
+            }
+        });
+}
+
+ThumbDecoder::~ThumbDecoder() {
+    {
+        std::lock_guard lock(s_->mx);
+        s_->stop = true;
+        s_->queue.clear();
+    }
+    s_->cv.notify_all();
+    for (std::thread& t : threads_) t.join();
+}
+
+void ThumbDecoder::want(const QStringList& names, int side) {
+    {
+        std::lock_guard lock(s_->mx);
+        s_->queue.assign(names.begin(), names.end());
+        s_->side = side;
+    }
+    s_->cv.notify_all();
+}
+
+bool ThumbDecoder::busy() const {
+    std::lock_guard lock(s_->mx);
+    return !s_->queue.empty() || s_->active > 0;
+}
+
+QImage ThumbDecoder::fit(const QImage& img, int side) {
+    if (img.isNull() || side <= 0) return img;
+    QImage out = img.width() > side || img.height() > side ? img.scaled(side, side, Qt::KeepAspectRatio, Qt::SmoothTransformation) : img;
+    return out.format() == QImage::Format_RGB32 || out.format() == QImage::Format_ARGB32_Premultiplied
+               ? out
+               : out.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 }
 
 }  // namespace iw8r::qt

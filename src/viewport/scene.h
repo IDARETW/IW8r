@@ -253,13 +253,19 @@ public:
     // iw8r_lift and script_brushmodels with those keys or iw8r_door are drawn where the map script would have them at
     // that time (owner request 2026-11-11). Call invalidate() each tick.
     double behaviourTime = -1;
-    // The play preview's moving brush entities (core PlayBehaviours::poses): where each one is now. Every point p of
-    // the entity is drawn at pivot + R (p - pivot) + move. Empty when not playing. Call invalidate() after changing it.
+    // The play preview's moving entities (core PlayBehaviours::poses): where each one is now. Every point p of the
+    // entity (its brushes, or its model / marker) is drawn at pivot + R (p - pivot) + move; `visible` false (hidden by
+    // the map script) leaves it out. Empty when not playing. Call invalidate() after changing it.
     struct PlayPose {
         double R[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
         Vec3 pivot, move;
+        bool visible = true;
     };
     std::map<Id, PlayPose> playPoses;
+    // Behaviour Preview: where the map's own GSC (worldspawn iw8r_script, core gsc_emulate) has the entities it moved,
+    // turned or hid at behaviourTime (the camera runs it). Used only while behaviourTime >= 0; a play pose of the same
+    // entity wins. Call invalidate() after changing it.
+    std::map<Id, PlayPose> scriptPoses;
     // The destroyed state of an exploder (a model with targetname "exploder", as the S&D template's destroyed crate):
     // hidden in game until the exploder fires, so drawn as a small marker unless this is set. Call invalidate() after
     // changing it.
@@ -276,6 +282,14 @@ public:
         bool always = false;
     };
     const std::vector<HelperLine>& helperLines() const { return helperLines_; }
+
+    // Entity ranges (owner 2026-11-15: better gizmos than diamonds; appendEntityVisuals draws them): every light's
+    // radius and spot cone, every sound_emitter's audible distance. The selected entities show theirs either way.
+    // View > Entity Display > Light Ranges / Sound Ranges; the camera's geometry key reads them.
+    bool showLightRanges = true;
+    bool showSoundRanges = false;
+    // A sound alias's audible distance (the catalogue's distMax, units; 0 = unknown). Null: no sound ranges.
+    std::function<double(const std::string& alias)> soundRangeFor;
 
 private:
     void updateFaceEdges();
@@ -301,6 +315,14 @@ private:
 // SceneCache::helperLines as camera lines: the `always` ones into `lines` (depth-tested), the others into `overlay`
 // while their owner or other entity is selected. Nothing in probe capture mode.
 void appendHelperLines(const SceneCache& scene, const Document& doc, std::vector<GpuVertex>& lines, std::vector<GpuVertex>& overlay);
+
+// Editor-only shapes of point entities, beside their markers (owner 2026-11-15): a light's radius as a wire sphere in
+// its colour and a spot's outer and inner cone with its aim (the build's rules: compile_iw8.cpp localPrimaryLights), a
+// reflection_probe's mins / maxs volume, a sound_emitter's audible distance, an fx_origin's axes, a spawn's facing
+// arrow on the floor. The selected entities' go into `overlay` (on top, full colour), the others' into `lines`
+// (depth-tested, dimmed; light and sound ranges only with SceneCache::showLightRanges / showSoundRanges). Never in a
+// capture: nothing in probe capture mode, and clean captures leave out both streams (FrameInput.clean).
+void appendEntityVisuals(const SceneCache& scene, const Document& doc, std::vector<GpuVertex>& lines, std::vector<GpuVertex>& overlay);
 
 // Stock map reference geometry (3.9) as flat-shaded light-grey triangles. Meshes whose material names a sky are
 // skipped when `skipSky`. Returns the number of triangles written.

@@ -3,6 +3,9 @@
 // Save Selection As Prefab, explode / edit / make unique, and the asset folders the placed bundles bring.
 // These are MainWindow members kept in their own file (main_window.cpp is at the compiler's size limit).
 #include "main_window.h"
+#include <QTimer>
+#include <QStatusBar>
+#include <QPushButton>
 
 #include <algorithm>
 #include <cmath>
@@ -202,6 +205,20 @@ void MainWindow::showPrefabParameters() {
     ctx_.setStatus(QString("Prefab Parameters: %1 override(s) changed (one undo step)").arg(changed));
 }
 
+// While a prefab is edited: a button in the status bar that leaves it (also Esc with nothing selected, Ctrl+Shift+Q).
+void MainWindow::updatePrefabBanner() {
+    if (!prefabLeave_) {
+        prefabLeave_ = new QPushButton(this);
+        prefabLeave_->setObjectName("prefabLeaveButton");
+        prefabLeave_->setToolTip("Edit > Leave Prefab (Ctrl+Shift+Q, or Esc with nothing selected): back to the map that places it");
+        connect(prefabLeave_, &QPushButton::clicked, this, [this] { leavePrefab(); });
+        statusBar()->insertPermanentWidget(0, prefabLeave_);
+    }
+    prefabLeave_->setText(prefabStack_.empty() ? QString()
+                                               : QString("Leave Prefab (back to %1)").arg(QFileInfo(prefabStack_.back().path).fileName()));
+    prefabLeave_->setVisible(!prefabStack_.empty());
+}
+
 bool MainWindow::enterPrefab() {
     std::string model;
     for (const SelRef& r : ctx_.doc.selection())
@@ -226,6 +243,7 @@ bool MainWindow::enterPrefab() {
     }
     if (!confirmDiscard()) return false;
     prefabStack_.push_back({qs(ctx_.doc.path()), ctx_.cam});
+    QTimer::singleShot(0, this, [this] { updatePrefabBanner(); });
     loadDocument(qs(path));
     QString note;
     if (ref.kind == PrefabRef::Kind::Bundle) {
@@ -249,6 +267,7 @@ bool MainWindow::leavePrefab() {
     if (!confirmDiscard()) return false;
     const PrefabParent parent = prefabStack_.back();
     prefabStack_.pop_back();
+    QTimer::singleShot(0, this, [this] { updatePrefabBanner(); });
     prefabCache_.clear();  // instances re-read the edited prefab
     loadDocument(parent.path);
     ctx_.cam = parent.cam;

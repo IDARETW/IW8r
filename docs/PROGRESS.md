@@ -2,6 +2,30 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-15 night (owner filled the compact showcase checklist, then: "consolidate, fix anything, and make another
+  focused checklist of items that need to be checked again"; plus glare / popping, bush collision, "exact movement
+  controls", "the movement is not right", doors (were fine), "vfx still show as squares", the Effects panel preview).
+  Done with nine Opus helper agents (each its own files) and checked here:
+  - Walk preview: stock world triangles as collision (CollisionWorld::addTriangle + grid broad phase; MainWindow::
+    addStockWorldCollision), stock props by the game's physics rule (model_physics.*, data/asset_catalog/
+    iw8_model_physics.tsv, MainWindow::addStockPropCollision in main_window_stock_collision.cpp), start at the
+    nearest spawn when the camera is outside / above the map. Hideout: noclip 0, 281,648 solids. Open hull pieces
+    (barbed wire brackets: map-wide slabs that froze the player) fixed in convex_hull.cpp; a ±200,000 guard in
+    CollisionWorld::addSolid stays.
+  - Movement as in Replay (player_move.*, research 140; IW8R_TEST_PLAY_INPUT=<script> drives real key presses):
+    mantle (Space held / airborne), ladder behind a ladder model, slide, toggle crouch / prone on C / Ctrl, game mouse
+    scale. Pending at the time of writing: the step-up onto steep low prop faces (bobbing).
+  - GSC emulation (gsc_emulate.*, View > Behaviour Preview and the play preview), gizmo modes (Move / Rotate / Scale /
+    All drop-down, local-axis drags), entity range shapes, Stock Map side panel (stock_map_panel.*), stock surface /
+    prop picking with an outline (MainWindow::pickStockSurface / showStockSurfaceAt; signals stockSurfacePicked /
+    stockPropPicked), stock maps open framed on their spawns.
+  - Rendering: lamp flares in screen space with their mask (research 139 sec. 5), props never vanish in view (last LOD
+    kept; View > Game LOD Cut-off off by default; research 119 sec. 4), particles wait for their image, one-shot
+    replay, heat-haze alpha-in-flat-blue rule. Effects panel preview textured and square (vfx_preview.*,
+    vfx_textures.*).
+  - Side bar: model tiles, background thumbnail decode (thumb_store), Effects / Sounds previews (sound_preview.*: own
+    FLAC decoder, research 141), Tools panel (tools_panel.*). kDockLayoutVersion 17 (saved layouts reset once).
+  - Re-check list for the owner: artifact "Editor Re-check List" (only the items to check again).
 - 2026-11-15 late evening (owner: "make the rendering thread for the viewport, and get the effect preview branch
   integrated, and finalize the radiant tool"; then "the stock map edits should all be viewable in the viewport after
   making the changes"; then a crash "when i clicked to walk in the viewport"). Done and pushed:

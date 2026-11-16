@@ -3,7 +3,9 @@
 // CollisionWorld::build reads the map's own brushes only. The built map also collides with:
 //   - the contents of misc_prefab placements (the build flattens prefabs before it compiles: core prefab.h);
 //   - placed models (misc_model, and script_model the converter keeps static): one convex brush per convex piece of
-//     the model (core convex_hull.h), or an oriented box when the model gives no hull, as compile_iw8.cpp does.
+//     the model (core convex_hull.h), or an oriented box when the model gives no hull, as compile_iw8.cpp does; which
+//     models and which shape by the stock models' own collision (model_physics.h): a stock model without a physics
+//     asset (most bushes, grass) is walked through, one with a physics asset blocks with that asset's pieces.
 // buildPlayWorld adds both, so walking the map in the editor meets what a player meets in game.
 #pragma once
 
@@ -27,6 +29,10 @@ struct PlayWorldOptions {
     int maxPieces = 4, maxPlanes = 24;      // CompileOptions::modelCollisionMaxPieces / MaxPlanes
     // Brush entities left out of the static world (the play preview's movers, PlayBehaviours::moves).
     std::function<bool(const Entity&)> skip;
+    // The stock model collision catalogue (CompileOptions::modelPhysics). Null: ModelPhysicsCatalog::shared(), the
+    // one the editor's build uses; noPhysicsRule: every model by its render mesh (the build without the catalogue).
+    const class ModelPhysicsCatalog* physics = nullptr;
+    bool noPhysicsRule = false;
 };
 
 struct PlayWorldStats {
@@ -34,6 +40,8 @@ struct PlayWorldStats {
     size_t models = 0;       // placed models that collide
     size_t hullPieces = 0;   // convex brushes from their hulls
     size_t boxes = 0;        // models with no hull: an oriented box
+    size_t physicsModels = 0;  // of `models`: placed from their stock physics pieces (counted in hullPieces too)
+    size_t walkThrough = 0;    // placed models with no collision by the stock rule (no physics asset, iw8r_collision 0)
     std::vector<std::string> warnings;
 };
 

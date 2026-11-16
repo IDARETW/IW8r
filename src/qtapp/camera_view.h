@@ -133,6 +133,7 @@ public:
     // an earlier set.
     std::array<size_t, 5> referenceDecalStats() const { return renderer_->referenceDecalStats(); }
     size_t instancesCulled() const { return renderer_->instancesCulled(); }
+    std::string instanceCullReport() const { return renderer_->instanceCullReport(); }  // last frame's props by cull reason
     // File-keyed textures ("\x06<path>": the super terrain's albedo): {asked, loaded, failed}.
     std::array<size_t, 3> fileTextureStats() const {
         std::array<size_t, 3> s{};
@@ -267,6 +268,12 @@ public:
         std::string distortionFile;
         float distScale[2] = {0, 0};
         bool flare = false;  // an ecf/ flare set (research 139 section 1): additive, on screen
+        // A flare set with a second image (texture slot 145, the dirty lens sets `..._802_80004_...`; research 139
+        // section 5): its red channel masks the piece in the quad's UV while slot 18 is read at the screen's UV (VERIFIED
+        // in the pixel shader; which pieces read the screen is INFERRED). maskFile: its cached image ("" = not cached:
+        // a round fall-off stands in).
+        bool screenMask = false;
+        std::string maskFile;
         bool lit = true;            // lit sets (albedo, alpha blend); unlit sets add their emissive image
         std::string colorFile, alphaFile, emissiveFile;
         std::string densityFile;    // slot 68 (one channel, a transmittance): alpha x (1 - T) (lit sets without slot 27)
@@ -308,26 +315,35 @@ public:
     };
     bool gizmoActive() const;
     GizmoAxis gizmoAxisOnScreen(int axis) const;
-    // R toggles move / rotate. Rotate rings: the screen point of `degrees` on the ring around `axis`.
-    void toggleGizmoMode() {
-        clearGizmoHover();  // the hovered handle belongs to the other mode
-        gizmoRotate_ = !gizmoRotate_;
-        gizmoScale_ = false;
-        update();
+    // Gizmo mode (owner 2026-11-15: a toolbar dropdown): move arrows, rotate rings, scale boxes, or All three at once
+    // (each part dragged on its own). R toggles move / rotate, T move / scale; gizmoModeChanged follows every change.
+    enum class GizmoMode { Move = 0, Rotate = 1, Scale = 2, All = 3 };
+    void setGizmoMode(GizmoMode m);
+    GizmoMode gizmoMode() const { return gizmoMode_; }
+    static QString gizmoModeHelp(GizmoMode m) {  // the status line for a mode
+        switch (m) {
+            case GizmoMode::Rotate: return "Gizmo: rotate (drag a ring; 15 degree steps with Snap)";
+            case GizmoMode::Scale: return "Gizmo: scale (drag an axis box; models scale uniformly)";
+            case GizmoMode::All: return "Gizmo: all (arrows move, rings rotate, boxes scale)";
+            default: return "Gizmo: move (drag an arrow)";
+        }
     }
+    void toggleGizmoMode() { setGizmoMode(gizmoMode_ == GizmoMode::Rotate ? GizmoMode::Move : GizmoMode::Rotate); }
     // Scale gizmo (T): drag an axis handle; brushes scale along it, models scale uniformly (modelscale).
-    void toggleGizmoScale() {
-        clearGizmoHover();
-        gizmoScale_ = !gizmoScale_;
-        if (gizmoScale_) gizmoRotate_ = false;
-        update();
-    }
-    bool gizmoScaleMode() const { return gizmoScale_; }
+    void toggleGizmoScale() { setGizmoMode(gizmoMode_ == GizmoMode::Scale ? GizmoMode::Move : GizmoMode::Scale); }
+    bool gizmoScaleMode() const { return gizmoMode_ == GizmoMode::Scale; }
     double scaleDragFactor() const { return scaleFactor_; }
-    bool gizmoRotateMode() const { return gizmoRotate_; }
+    bool gizmoRotateMode() const { return gizmoMode_ == GizmoMode::Rotate; }
+    // Rotate rings (Rotate and All): the screen point of `degrees` on the ring around `axis`.
     std::optional<QPointF> gizmoRingPoint(int axis, double degrees) const;
+    // Scale boxes (Scale: at the handle tips; All: on the arrows, near the centre): the screen point of a box's centre.
+    std::optional<QPointF> gizmoScaleBoxPoint(int axis) const;
     // The handle or ring under the cursor while no button is held (drawn highlighted, move / rotate cursor); -1 none.
     int gizmoHoverAxis() const { return hoverAxis_; }
+    // Which part that is: 0 a move arrow, 1 a rotate ring, 2 a scale box (-1 none).
+    int gizmoHoverPart() const { return hoverAxis_ >= 0 ? hoverPart_ : -1; }
+    // The point the gizmo is drawn at (a single point entity: its origin; rotate rings: on the grid with Snap on).
+    Vec3 gizmoCentre() const;
     int scalePreviewEdges() const { return scalePreviewEdges_; }  // > 0 while a scale drag shows its outline
 
     // Play preview: walk the map as the player with collision (P enters, Esc leaves). Collision is built from the
@@ -654,6 +670,8 @@ signals:
     void assetDropped(const QString& kind, const QString& name, bool loop, const QPointF& pos);
     // Right click without moving (3.7): the main window shows the camera context menu.
     void contextMenuAt(const QPoint& globalPos, const QPointF& widgetPos);
+    // setGizmoMode changed the mode (int(GizmoMode)): the toolbar dropdown follows it.
+    void gizmoModeChanged(int mode);
 
 private:
     QBasicTimer windTimer_;  // repaints while the wind preview runs
@@ -806,30 +824,66 @@ private:
     CollisionWorld world_;
     size_t playWorldModels_ = 0;  // placed models that collide in the play preview
     PlayBehaviours playBehaviours_;  // the map's doors, lifts, spinners, teleporters and jump pads while playing
+    MapScriptRunner behaviourScript_;  // Behaviour Preview: the map's own GSC run to the preview clock (core gsc_emulate)
+    void updateBehaviourScript();      // runs it to scene.behaviourTime and hands its poses to the scene
     bool playUseHeld_ = false;
 public:
     const PlayBehaviours& playBehavioursForTest() const { return playBehaviours_; }
 private:
     void buildPlayWorld();
+public:
+    // Collision the play preview adds to the map's own (a stock map's world: MainWindow fills it).
+    void setPlayWorldExtras(std::function<void(CollisionWorld&)> fn) { playWorldExtras_ = std::move(fn); }
+    bool playNoclip() const { return player_.noclip; }                 // tests
+    size_t playSolids() const { return world_.solids().size(); }      // tests
+    const CollisionWorld& playWorld() const { return world_; }        // tests (play_input_test probes)
+private:
+    std::function<void(CollisionWorld&)> playWorldExtras_;
+public:
+    // A plain click on nothing of the document: a stock map's own surface under the cursor (MainWindow::showStockSurfaceAt).
+    void setStockSurfacePicker(std::function<bool(const Ray&)> fn) { stockSurfacePicker_ = std::move(fn); }
+private:
+    std::function<bool(const Ray&)> stockSurfacePicker_;
+public:
+    // The picked stock surface's outline (line pairs), drawn on top until the next click; empty = none.
+    void setStockPickOutline(std::vector<app::GpuVertex> lines) {
+        stockPickLines_ = std::move(lines);
+        update();
+    }
+    size_t stockPickOutlineSize() const { return stockPickLines_.size(); }  // tests
+private:
+    std::vector<app::GpuVertex> stockPickLines_;
     PlayerState player_;
     MoveParams params_;
+    PlayControls playControls_;  // the game's client input: toggle stances, tap to slide, tactical sprint
     uint64_t worldRevision_ = 0;
     int textureFor(const std::string& material);
     Vec3 gizmoPivot() const;
     Vec3 ringCentre() const;  // where the rotate rings are drawn, and the pivot a ring drag turns about
     double gizmoLength() const;
+    // The gizmo's own axes: with local space on and one point entity with angles selected, its rotated axes (false:
+    // the world axes, `axes` untouched). Every part (arrows, rings, scale boxes) and every drag follows them.
+    bool gizmoLocalFrame(Vec3 axes[3]) const;
+    void ringFrame(int axis, Vec3& n, Vec3& u, Vec3& v) const;  // ring normal and in-plane basis (angle 0 at +u)
+    double ringRadius() const;                                   // 0.9 x the length; All: outside the arrows
+    double scaleBoxDistance() const;                             // centre to scale box: the tip, All: inside
+    bool rotateSelectionByGizmo(int axis, double degrees, const Vec3& pivot);
     double axisParamForMouse(const QPointF& p, int axis) const;  // closest point on the drag axis to the mouse ray
+    // The part under `p` (within 8 px; scale boxes first, then arrows, then rings): 0 move, 1 ring, 2 scale; -1 none.
+    int gizmoPartAt(const QPointF& p, int& axis) const;
     int gizmoHandleAt(const QPointF& p) const;  // move / scale handle within 8 px of `p`, -1 none
     int gizmoRingAt(const QPointF& p) const;    // rotate ring within 8 px of `p`, -1 none
     void updateGizmoHover(const QPointF& p, Qt::KeyboardModifiers mods);
     void clearGizmoHover();
     int hoverAxis_ = -1;
+    int hoverPart_ = -1;  // what hoverAxis_ belongs to: 0 arrow, 1 ring, 2 scale box
     double gizmoSnapFrom_ = 0;  // world-axis moves snap this coordinate (primitive bounds minimum, else origin) to the grid
+    int gizmoSnapAxis_ = -1;    // the world axis the dragged axis lies along (-1: a turned local axis, whole grid steps)
     double gizmoMoveBy_ = 0;    // the current move along the handle, for the release line
     void addGizmoLines();
     int gizmoDragAxis_ = -1;
-    bool gizmoRotate_ = false;
-    bool gizmoScale_ = false;
+    GizmoMode gizmoMode_ = GizmoMode::Move;
+    bool dragScale_ = false;  // the gizmoDragAxis_ drag is a scale box's (else a move arrow's)
     double lookTravel_ = 0;  // mouse travel while the right button is down: a still click opens the context menu
     double scaleFactor_ = 1.0;  // current factor while dragging a scale handle
     AABB scaleStartBounds_;      // the selection's bounds when the scale drag began (the preview outline)

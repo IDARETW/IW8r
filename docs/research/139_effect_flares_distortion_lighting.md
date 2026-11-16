@@ -152,3 +152,70 @@ game's sampler does.
 - Flares: `m_direction`, `m_flareFlags`, the off-screen ray cast and the occlusion fade times are not modelled.
 - Distortion: the effect pixel shader was not disassembled.
 - All of these can be read in IDA: `ParticleEmitter_BuildSpriteVertices` and the `ecf/` / `elcq/dist_10` shaders.
+
+## 5. The lamp glare: dirty lens pieces, alpha and the emissive graph (2026-11-15)
+
+Owner report (Hideout, Game Lighting, Effect Preview): the glare of the lights was "square-like" and spun quickly when
+a lamp was passed or seen at some angles.
+
+### 5.1 Cause (seen in the data)
+
+- Hideout places 20 `vfx_hide_fluorescent_lf` (one flare piece, `ecf/vfx_postfx_dirty_lens_main_1`, size 100, alpha 1)
+  and 5 `vfx_hide_bulb_light_flare` (a dirty lens piece of size 70 with `m_angularRotCount` 10, a rainbow glow, a
+  rainbow ring of alpha 0.027 and a soft streak billboard).
+- The dirty lens set's slot 18 image is `vfx_postfx_screen_grime_1_e` (2048 x 1024, BC1 sRGB): lens grime over the whole
+  frame. Its slot 145 image is `vfx_postfx_glow_round_3_e`, a round glow. The preview drew only slot 18 on the piece's
+  square quad: a square of grime up to the height of the screen, 8x (fluorescent) to 36x (ring) too bright because the
+  alpha and the emissive graph were not used. With the angular rotation the square turned with the source's angle about
+  the screen's centre, which sweeps half a turn when a lamp passes near the middle of the view.
+
+### 5.2 The pixel shaders (VERIFIED, fxc /dumpbin of the exported techsets in `out\scriptable_study\_ts\techsets_common`)
+
+- `ecf/unlit_6_effect_bad_ta0_802_80004_...` (dirty lens) TECHNIQUE_EMISSIVE: PS `3ce5dd9d...`, VS `6b28c7d9...`. Its
+  arguments: material texture 18 -> t1, material texture 145 -> t3, material constant 36 -> cb3[2]. The PS:
+  - mask = t3.r at the quad's UV (TEXCOORD0.zw, which the VS sets to the vertex UV);
+  - a = saturate(visibility x vertex alpha x mask), discard when not above 0;
+  - t1 is read at the vertex UV, or, when bit 256 of the emitter's GPU flags (code buffer 49, offset 188) is set, at the
+    screen's UV fitted to 16:9 (the middle of a wider image: v' = v x (16/9) / aspect + (1 - (16/9) / aspect) / 2 when the
+    frame is wider, the same on u when narrower);
+  - colour = t1 x const 36 x exposure x emissive rgb x (visibility x intensity + a second term) x a.
+- `ecf/unlit_6_effect_bad_ta0_802_4_...` (the other flares) is the same without t3; `elcq/unlit_6_effect_bad_ta0_802_4_...`
+  (unlit effect quads) multiplies by saturate(vertex alpha) too and reads only the alpha of the particle colour: its RGB
+  comes from a second packed vertex colour.
+- INFERRED: that packed colour is the particle colour x the emissive graph (curves 0-2 RGB x curve 3 intensity: a fire
+  such as `vfx_veh_fire_linger_med` has an orange colour graph and a white emissive graph of up to 4.5); that bit 256 is set for the
+  dirty lens pieces (the grime image is a full-frame 2:1 picture; the material differs from the other flares only by
+  slot 145, sortKey 29 and surface flag 0x8000000). Where the game builds flare vertices was not found in IDA
+  (`RBT_Flare_Draw` only binds tables; the pieces are built on the GPU), so the size and turn rules of section 1.3 stay
+  INFERRED.
+
+### 5.3 What the preview does
+
+- `vfx_sim`: reads `emissiveGraph` (5 curves per set); `VfxParticle::emissive` = RGB x intensity.
+- Unlit sprites and flares add the particle colour x the emissive graph's colour when the emitter has one (else the
+  particle colour, as before), x saturate(alpha); flares x saturate(visibility x alpha). `IW8R_OLD_FLARES` draws the
+  flare pieces as before (no mask, turned, alpha 1, no emissive graph) for comparisons.
+- A flare set with a slot 145 image (`ParticleMaterial::screenMask`): slot 18 at the screen's UV (16:9 fit), x the
+  slot 145 red channel (read linear) at the quad's UV; the piece is not turned (a round mask shows no turn; the grime
+  stays on the screen). The cache does not export slot 145: the image is taken from the material cache when another
+  material cached it (Hideout: the glow flares' `glow_round_3_e`), else pow(saturate(1 - 2r), 3) stands in (fitted to
+  that image read linear: mean error 0.011).
+- Seen (bench, Hideout, `fx fluorescent_lf 0 220 180 -20 90`, occlusion test off): before, rotated squares of grime and
+  full-strength rainbow rings added up to 90 levels over 410,000 pixels; now round glows and faint rings add at most 10
+  levels. How bright the game draws them also depends on its exposure factor for effects (cb7[5].x) and a fade by the
+  piece's brightness in EV in the vertex shader, neither modelled.
+- Replay in the preview: a one-shot effect plays again every `delay` seconds of its fx_origin, else after its run plus
+  1.5 s; a looping effect runs on (it used to restart every 60 s, all its particles vanishing at once).
+
+### 5.4 No plain squares (owner: "some vfx still show as squares")
+
+- Cause: a particle whose material the cache was still resolving, or whose image was still being read, was drawn on a
+  plain white quad (lit sets: a grey square in the scene's light), and a flare piece without its image on a white
+  screen square. Seen on the compact showcase (row 8) with the bench's cache, where the fire and smoke materials were
+  not resolved: stacked grey squares; now nothing until they are.
+- Now: nothing is drawn until the material and its images are in (`particleTexture` returns -2 while reading); a
+  material without any image draws a soft round sprite of the particle's colour; a sprite image with no edge of its
+  own (lit: no slot 27 / 68 opacity read and an opaque colour image; unlit: bright up to its cells' borders) gets a soft
+  round edge per atlas cell (logged once per material, "Effect preview: ... drawn with a soft round edge"; none of
+  the sets drawn on the Hideout tandoor bench or the showcase needed it). `IW8R_PLAIN_PARTICLE_QUADS` restores the old
+  fallback for comparisons.

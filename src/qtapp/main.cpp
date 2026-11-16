@@ -69,6 +69,7 @@
 #include "model_cache.h"
 #include "feature_shots.h"
 #include "qt_gui_test.h"
+#include "play_input_test.h"
 #include "settings.h"
 #include "world_cache.h"
 #include "crash_handler.h"
@@ -981,6 +982,36 @@ int runViewportBench(iw8r::qt::MainWindow& w, const QString& mapFile, const QStr
             report << QString("stock_layers batches=%1 ready=%2 multiply=%3 with_normal=%4").arg(ls[0]).arg(ls[1]).arg(ls[2]).arg(ls[3]);
         }
         shot("game_a");
+        report << "instance_cull_a " + QString::fromStdString(cam->instanceCullReport());
+        // IW8R_BENCH_PATH="dx dy dz dyaw dpitch N [settle]": a camera path from camera a, N steps to a + the offsets
+        // (units, degrees), one shot per step (path_00 .. path_N) with its props by cull reason and the pops (props drawn
+        // at the step before and left out while in view: not a LOD swap). settle 0 = one frame per step (as flying),
+        // else the step's textures settle first. IW8R_POP_LOG=<file> names each pop.
+        if (const QStringList pv = qEnvironmentVariable("IW8R_BENCH_PATH").split(' ', Qt::SkipEmptyParts); pv.size() >= 6) {
+            const Vec3 p0 = ctx.cam.pos;
+            const double yaw0 = ctx.cam.yaw, pitch0 = ctx.cam.pitch, fov0 = ctx.cam.fov;
+            const int steps = std::max(1, pv[5].toInt());
+            const bool settleEach = pv.size() < 7 || pv[6] != "0";
+            for (int i = 0; i <= steps; ++i) {
+                const double f = double(i) / steps;
+                setCam(p0 + Vec3{pv[0].toDouble() * f, pv[1].toDouble() * f, pv[2].toDouble() * f}, yaw0 + pv[3].toDouble() * f,
+                       pitch0 + pv[4].toDouble() * f);
+                ctx.cam.fov = fov0;
+                if (settleEach) settle();
+                QElapsedTimer pt;
+                pt.start();
+                frame(nullptr);
+                const double ms = pt.nsecsElapsed() / 1e6;
+                const QString name = QString("path_%1").arg(i, 2, 10, QChar('0'));
+                cam->grabFrame().save(QDir(outDir).filePath(name + ".png"));
+                report << QString("%1 cam %2 %3 %4 yaw %5 pitch %6 frame_ms %7 props %8 flares %9")
+                              .arg(name).arg(ctx.cam.pos.x, 0, 'f', 1).arg(ctx.cam.pos.y, 0, 'f', 1).arg(ctx.cam.pos.z, 0, 'f', 1)
+                              .arg(ctx.cam.yaw, 0, 'f', 2).arg(ctx.cam.pitch, 0, 'f', 2).arg(ms, 0, 'f', 2)
+                              .arg(QString::fromStdString(cam->instanceCullReport())).arg(cam->effectFlareQuads());
+            }
+            camA();
+            settle();
+        }
         run("game_still", nullptr);
         counts("counts_game");
         run("game_moving", [&](int i, BenchSeries&) {
@@ -1742,11 +1773,18 @@ int main(int argc, char** argv) {
         if (const int walkAfter = qEnvironmentVariableIntValue("IW8R_TEST_WALK_AFTER"); walkAfter > 0)
             QTimer::singleShot(walkAfter * 1000, &w, [&w] {
                 if (QAction* a = w.action("PlayPreview")) a->trigger();
+                QTimer::singleShot(2500, &w, [&w] {
+                    const auto& c = w.context().cam.pos;
+                    std::fprintf(stderr, "walk test: noclip=%d at %.0f %.0f %.0f, %zu collision solids\n", w.cameraView()->playNoclip() ? 1 : 0,
+                                 c.x, c.y, c.z, w.cameraView()->playSolids());
+                });
                 QTimer::singleShot(6000, &w, [&w] {
                     if (QAction* a = w.action("PlayPreview")) a->trigger();
                     std::fprintf(stderr, "walk test: done\n");
                 });
             });
+        // IW8R_TEST_PLAY_INPUT=<script>: the play preview driven by real key events to the camera (play_input_test.h).
+        if (const QString script = qEnvironmentVariable("IW8R_TEST_PLAY_INPUT"); !script.isEmpty()) iw8r::qt::startPlayInputTest(w, script);
         // IW8R_QUIT_AFTER=<seconds>: a normal session that ends by itself (stall measurements with IW8R_STALL_WATCH).
         if (const int quitAfter = qEnvironmentVariableIntValue("IW8R_QUIT_AFTER"); quitAfter > 0)
             QTimer::singleShot(quitAfter * 1000, &app, &QCoreApplication::quit);

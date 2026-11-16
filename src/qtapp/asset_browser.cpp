@@ -2,6 +2,8 @@
 #include "asset_browser.h"
 
 #include <QSplitter>
+#include <QFrame>
+#include <QShowEvent>
 
 #include "flow_layout.h"
 #include <QVariantMap>
@@ -20,11 +22,13 @@
 #include <QPointer>
 #include <QUrl>
 
+#include <QApplication>
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QImage>
 #include <QJsonArray>
@@ -44,11 +48,15 @@
 #include <QTextStream>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <cstdio>
 #include <memory>
 #include <set>
 #include <thread>
 
 #include "brush_tools.h"
+#include "vfx_preview.h"
+#include <QAction>
+#include <QToolButton>
 #include "worker_guard.h"
 #include "texture_decode.h"
 
@@ -56,13 +64,32 @@ namespace iw8r::qt {
 
 namespace {
 
-// Asset list items: tiles (materials: thumbnail fitted in its box, short name, folder in grey) or rows (icon + name,
-// elided in the middle). The tooltip is the full name.
+// Asset list items: tiles (materials: thumbnail fitted in its box, short name, folder in grey; models: a larger picture
+// and the name on up to two lines) or rows (icon + name, elided in the middle). The tooltip is the full name.
 class AssetTileDelegate : public QStyledItemDelegate {
 public:
-    AssetTileDelegate(bool tiles, QObject* parent) : QStyledItemDelegate(parent), tiles_(tiles) {}
+    enum Style { Rows, MaterialTiles, ModelTiles };
+    AssetTileDelegate(Style style, QObject* parent) : QStyledItemDelegate(parent), style_(style) {}
+    Style style() const { return style_; }
+    // Models: the preset picture side (the tile is at least that wide) and the most it may grow to fill a row.
+    void setModelSize(int icon, int maxIcon) {
+        preset_ = icon;
+        maxIcon_ = maxIcon;
+        icon_ = icon;
+    }
+    int maxIcon() const { return style_ == ModelTiles ? maxIcon_ : kIcon; }
+    int minTileW() const { return style_ == ModelTiles ? preset_ + 16 : kTileW; }
+    int tileH() const {
+        if (style_ != ModelTiles) return kTileH;
+        return 4 + icon_ + 4 + 2 * QFontMetrics(QApplication::font()).height() + 6;
+    }
+    // A grid cell of this width: the picture grows (up to maxIcon) to use the row.
+    void fitCell(int cellW) {
+        cellW_ = cellW;
+        if (style_ == ModelTiles) icon_ = std::clamp(cellW - 14, preset_, maxIcon_);
+    }
     void paint(QPainter* p, const QStyleOptionViewItem& opt, const QModelIndex& idx) const override {
-        if (!tiles_) {
+        if (style_ == Rows) {
             QStyleOptionViewItem o = opt;
             o.textElideMode = Qt::ElideMiddle;
             QStyledItemDelegate::paint(p, o, idx);
@@ -72,15 +99,38 @@ public:
         const QRect r = opt.rect.adjusted(2, 2, -2, -2);
         if (opt.state & QStyle::State_Selected) p->fillRect(r, opt.palette.highlight());
         else if (opt.state & QStyle::State_MouseOver) p->fillRect(r, opt.palette.alternateBase());
-        const QSize ic(kIcon, kIcon);  // fixed box: a thumbnail arriving later does not move the text
+        const int side = style_ == ModelTiles ? icon_ : kIcon;
+        const QSize ic(side, side);  // fixed box: a thumbnail arriving later does not move the text
         const QRect iconBox(r.x() + (r.width() - ic.width()) / 2, r.y() + 3, ic.width(), ic.height());
         const QIcon icon = idx.data(Qt::DecorationRole).value<QIcon>();
         if (!icon.isNull()) icon.paint(p, iconBox, Qt::AlignCenter);  // scaled to fit, aspect kept
+        else if (style_ == ModelTiles) p->fillRect(iconBox, QColor(32, 34, 38));  // the box while its picture loads
         const QString name = idx.data(Qt::DisplayRole).toString();
-        const QString leaf = name.section('/', -1), folder = name.contains('/') ? name.section('/', 0, -2) : QString();
         const QFontMetrics fm(opt.font);
+        QColor textColor = opt.palette.text().color();
+        if (const QVariant fg = idx.data(Qt::ForegroundRole); fg.canConvert<QBrush>()) textColor = fg.value<QBrush>().color();
+        if (opt.state & QStyle::State_Selected) textColor = opt.palette.highlightedText().color();
+        p->setPen(textColor);
+        if (style_ == ModelTiles) {
+            // The name on two lines: as much of the start as fits (broken after an underscore when one is near), then
+            // the rest elided in the middle, so both ends of a long name show. The tooltip has the whole name.
+            const int w = r.width() - 6;
+            const QRect line1(r.x() + 3, iconBox.bottom() + 4, w, fm.height());
+            const QRect line2(line1.x(), line1.bottom() + 1, w, fm.height());
+            if (fm.horizontalAdvance(name) <= w) {
+                p->drawText(line1, Qt::AlignHCenter | Qt::AlignVCenter, name);
+            } else {
+                int cut = 1;
+                while (cut < name.size() && fm.horizontalAdvance(name.left(cut + 1)) <= w) ++cut;
+                if (const int us = int(name.left(cut).lastIndexOf('_')); us > cut * 2 / 3) cut = us + 1;
+                p->drawText(line1, Qt::AlignHCenter | Qt::AlignVCenter, name.left(cut));
+                p->drawText(line2, Qt::AlignHCenter | Qt::AlignVCenter, fm.elidedText(name.mid(cut), Qt::ElideMiddle, w));
+            }
+            p->restore();
+            return;
+        }
+        const QString leaf = name.section('/', -1), folder = name.contains('/') ? name.section('/', 0, -2) : QString();
         const QRect line1(r.x() + 3, iconBox.bottom() + 3, r.width() - 6, fm.height());
-        p->setPen(opt.state & QStyle::State_Selected ? opt.palette.highlightedText().color() : opt.palette.text().color());
         p->drawText(line1, Qt::AlignHCenter | Qt::AlignVCenter, fm.elidedText(leaf, Qt::ElideMiddle, line1.width()));
         if (!folder.isEmpty()) {
             QFont small = opt.font;
@@ -95,13 +145,16 @@ public:
     // Every tile is the same size (the grid cell), whatever its name or whether its thumbnail has loaded: a varying
     // size hint made the view re-flow (tiles per row changing) while scrolling.
     QSize sizeHint(const QStyleOptionViewItem& opt, const QModelIndex& idx) const override {
-        if (tiles_) return QSize(kTileW, kTileH);
+        // Model tiles fill their grid cell (the picture grows with it, so a narrower item would cut it off and leave
+        // gaps between tiles that clicks fall through).
+        if (style_ == ModelTiles) return QSize(std::max(minTileW(), cellW_ - 4), tileH());
+        if (style_ != Rows) return QSize(minTileW(), tileH());
         // List rows no wider than the view: a long name is elided in the middle instead of scrolling the list sideways.
         QSize s = QStyledItemDelegate::sizeHint(opt, idx);
         if (const auto* v = qobject_cast<const QAbstractItemView*>(opt.widget)) s.setWidth(std::min(s.width(), std::max(60, v->viewport()->width() - 4)));
         return s;
     }
-    // Narrow column: 124 px tiles (3 per row at about 400 px, 2 at 300); the grid widens each row to fill the view.
+    // Narrow column: 124 px material tiles (3 per row at about 400 px, 2 at 300); the grid widens each row to fill the view.
     static constexpr int kTileW = 124, kTileH = 104, kIcon = 64;
     bool helpEvent(QHelpEvent* e, QAbstractItemView* view, const QStyleOptionViewItem& opt, const QModelIndex& idx) override {
         if (e && e->type() == QEvent::ToolTip && idx.isValid()) {
@@ -113,32 +166,54 @@ public:
     }
 
 private:
-    bool tiles_;
+    Style style_;
+    int preset_ = 120, maxIcon_ = 156, icon_ = 120, cellW_ = 0;
 };
 
-// Materials: as many tile columns as fit the view at kTileW, each column widened to fill the row, so the grid never
-// leaves an empty strip on the right and the columns follow the panel width.
+// Tiles: as many columns as fit the view at the delegate's tile width, each column widened to fill the row, so the grid
+// never leaves an empty strip on the right and the columns follow the panel width (models: the pictures grow with it).
 class TileGridFit : public QObject {
 public:
-    explicit TileGridFit(QListView* view) : QObject(view), view_(view) {}
+    TileGridFit(QListView* view, AssetTileDelegate* delegate) : QObject(view), view_(view), delegate_(delegate) {}
+    void fit() {
+        // A few pixels of slack: cells adding up to the full viewport width wrapped the last one (the list keeps a
+        // small margin), so three columns showed as two.
+        const int w = view_->viewport()->width() - 6;
+        if (w <= 0) return;
+        const int cols = std::max(1, w / delegate_->minTileW());
+        delegate_->fitCell(w / cols);
+        const QSize grid(w / cols, delegate_->tileH() + 4);
+        if (view_->gridSize() != grid) {
+            view_->setGridSize(grid);
+            view_->doItemsLayout();
+        }
+    }
 
 protected:
     bool eventFilter(QObject* obj, QEvent* e) override {
-        if (e->type() == QEvent::Resize) {
-            // A few pixels of slack: cells adding up to the full viewport width wrapped the last one (the list keeps a
-            // small margin), so three columns showed as two.
-            const int w = view_->viewport()->width() - 6;
-            if (w > 0) {
-                const int cols = std::max(1, w / AssetTileDelegate::kTileW);
-                view_->setGridSize(QSize(w / cols, AssetTileDelegate::kTileH + 4));
-            }
-        }
+        if (e->type() == QEvent::Resize) fit();
         return QObject::eventFilter(obj, e);
     }
 
 private:
     QListView* view_;
+    AssetTileDelegate* delegate_;
 };
+
+// A row's own image file (a custom material's PNG / TGA / JPG, an exported stock colour DDS), fitted to `side`. Any thread.
+QImage decodeImageFile(const QString& file, int side) {
+    if (file.isEmpty()) return {};
+    if (!file.endsWith(".dds", Qt::CaseInsensitive)) return ThumbDecoder::fit(QImage(file), side);
+    // The mip level the icon needs, not the whole image (texture_decode.h).
+    app::Rgba8Image small;
+    if (!app::loadDdsPreview(file.toStdString(), side, small)) return {};
+    return ThumbDecoder::fit(QImage(small.pixels.data(), small.width, small.height, small.width * 4, QImage::Format_RGBA8888).copy(), side);
+}
+
+// Item data: a material the availability audit found without a colour image (its swatch is final).
+constexpr int kNoPicture = Qt::UserRole + 3;
+// Rows made ahead while the panel is closed (its first page or two).
+constexpr int kHiddenRows = 24;
 
 QDir repoData() {
     QDir d(QCoreApplication::applicationDirPath());
@@ -309,24 +384,80 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
     if (dragKind) view_->setDragEnabled(true);
     view_->setUniformItemSizes(true);
     view_->setTextElideMode(Qt::ElideMiddle);  // long asset paths keep both ends
-    view_->setItemDelegate(new AssetTileDelegate(kind == Kind::Materials, view_));
-    if (kind == Kind::Models || kind == Kind::Images) view_->setIconSize(QSize(40, 40));
-    if (kind == Kind::Materials) {
-        // Tiles: the whole thumbnail fitted in its box, the short name, the folder below (owner: previews and names were
-        // cut off). The full name is the tooltip.
+    auto* delegate = new AssetTileDelegate(kind == Kind::Materials ? AssetTileDelegate::MaterialTiles
+                                           : kind == Kind::Models  ? AssetTileDelegate::ModelTiles
+                                                                   : AssetTileDelegate::Rows,
+                                           view_);
+    delegate_ = delegate;
+    view_->setItemDelegate(delegate);
+    if (kind == Kind::Images) view_->setIconSize(QSize(40, 40));
+    if (kind == Kind::Materials || kind == Kind::Models) {
+        // Tiles: the whole thumbnail fitted in its box, the short name (models: on two lines), the folder below
+        // (owner: previews and names were cut off). The full name is the tooltip.
         view_->setViewMode(QListView::IconMode);
         view_->setMovement(QListView::Static);  // icon mode's free movement let drags shuffle tiles
         view_->setFlow(QListView::LeftToRight);
         view_->setWrapping(true);
-        view_->setIconSize(QSize(AssetTileDelegate::kIcon, AssetTileDelegate::kIcon));
-        view_->setGridSize(QSize(AssetTileDelegate::kTileW + 4, AssetTileDelegate::kTileH + 4));
-        view_->viewport()->installEventFilter(new TileGridFit(view_));  // columns follow the panel width
         view_->setResizeMode(QListView::Adjust);
         view_->setWordWrap(false);
         view_->setSpacing(0);
         view_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        view_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);  // a narrow column wraps the tiles, never scrolls sideways
+        if (kind == Kind::Models) view_->setUniformItemSizes(false);  // 7k rows of a constant size hint: cheap, never stale
+        gridFit_ = new TileGridFit(view_, delegate);
+        view_->viewport()->installEventFilter(gridFit_);  // columns follow the panel width
     }
-    if (kind == Kind::Models || kind == Kind::Images) {
+    if (kind == Kind::Models) {
+        // Owner 2026-11-15: larger model pictures, with a size choice (kept in the settings).
+        tileSizeBox_ = new QComboBox(this);
+        tileSizeBox_->setObjectName("assetTileSize");
+        tileSizeBox_->addItems({"Small", "Medium", "Large"});
+        tileSizeBox_->setToolTip("Picture size of the model tiles");
+        options->addWidget(tileSizeBox_);
+        tileSize_ = TileSize(std::clamp(Settings::instance().value(settingsKey("tileSize"), 1).toInt(), 0, 2));
+        applyTileSize();
+        {
+            const QSignalBlocker block(tileSizeBox_);
+            tileSizeBox_->setCurrentIndex(int(tileSize_));
+        }
+        connect(tileSizeBox_, &QComboBox::currentIndexChanged, this, [this](int i) { setTileSize(TileSize(i)); });
+        lay->addWidget(view_, 1);
+        // The selected model, compact under the tiles (only while one is selected): a small picture, its name, size and
+        // zone, and the 3D preview.
+        auto* box = new QFrame(this);
+        box->setObjectName("modelPreviewBox");
+        box->setFrameShape(QFrame::StyledPanel);
+        // The picture and the caption side by side, the button under them (its own line: the column stays narrow).
+        auto* grid = new QGridLayout(box);
+        grid->setContentsMargins(4, 4, 4, 4);
+        grid->setHorizontalSpacing(6);
+        grid->setVerticalSpacing(4);
+        preview_ = new QLabel(box);
+        preview_->setObjectName("modelPreview");
+        preview_->setFixedSize(96, 96);
+        preview_->setAlignment(Qt::AlignCenter);
+        preview_->setStyleSheet("background: #202226; border: 1px solid #3a3d44");
+        previewCaption_ = new QLabel("Select a model to preview it", box);
+        previewCaption_->setWordWrap(true);
+        previewCaption_->setStyleSheet("color: gray");
+        previewCaption_->setMinimumWidth(0);  // a long unbroken name is elided, never widening the column
+        previewCaption_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        previewCaption_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        auto* open3d = new QPushButton("Preview in 3D...", box);
+        open3d->setObjectName("modelPreview3d");
+        open3d->setToolTip("A textured 3D view of the model: orbit, pan and zoom, levels of detail, materials, collision hull");
+        connect(open3d, &QPushButton::clicked, this, [this] {
+            const QModelIndex idx = view_->currentIndex();
+            if (idx.isValid()) emit previewRequested(idx.data(Qt::DisplayRole).toString());
+        });
+        grid->addWidget(preview_, 0, 0, Qt::AlignTop);
+        grid->addWidget(previewCaption_, 0, 1);
+        grid->addWidget(open3d, 1, 0, 1, 2, Qt::AlignLeft);
+        grid->setColumnStretch(1, 1);
+        box->setVisible(false);
+        previewBox_ = box;
+        lay->addWidget(box);
+    } else if (kind == Kind::Images) {
         // The list above, the preview under it (side by side took 256 px of the narrow column); a splitter between them.
         auto* split = new QSplitter(Qt::Vertical, this);
         split->setObjectName("assetPreviewSplit");
@@ -342,43 +473,59 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
         preview_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         preview_->setAlignment(Qt::AlignCenter);
         preview_->setStyleSheet("background: #202226; border: 1px solid #3a3d44");
-        previewCaption_ = new QLabel("Select a model to preview it", this);
+        // The caption says "image", and its text may not widen the narrow column (a long unbroken name did).
+        previewCaption_ = new QLabel("Select an image to preview it", this);
         previewCaption_->setWordWrap(true);
         previewCaption_->setStyleSheet("color: gray");
-        // A long unbroken name clips instead of widening the column.
         previewCaption_->setMinimumWidth(0);
         previewCaption_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
         side->addWidget(preview_);
         side->addWidget(previewCaption_);
-        if (kind == Kind::Models) {
-            // Narrow column: the caption and the 3D button share one row (the button no longer takes a full line of its
-            // own), and the empty preview box is shorter than the Images one.
-            preview_->setMaximumHeight(200);
-            side->removeWidget(previewCaption_);
-            auto* captionRow = new QHBoxLayout();
-            captionRow->setContentsMargins(0, 0, 0, 0);
-            auto* open3d = new QPushButton("Preview in 3D...", this);
-            open3d->setObjectName("modelPreview3d");
-            open3d->setToolTip("A textured 3D view of the model: orbit, pan and zoom, levels of detail, materials, collision hull");
-            connect(open3d, &QPushButton::clicked, this, [this] {
-                const QModelIndex idx = view_->currentIndex();
-                if (idx.isValid()) emit previewRequested(idx.data(Qt::DisplayRole).toString());
-            });
-            captionRow->addWidget(previewCaption_, 1);
-            captionRow->addWidget(open3d, 0, Qt::AlignTop);
-            side->addLayout(captionRow);
-        }
         split->addWidget(sideBox);
         split->setStretchFactor(0, 3);
         split->setStretchFactor(1, 2);
-        if (kind == Kind::Models) split->setStretchFactor(1, 1);  // the list gets the spare height, not blank preview space
         lay->addWidget(split, 1);
-        if (kind == Kind::Images) {
-            // Images only: the caption says "image", and its text may not widen the narrow column (a long unbroken name did).
-            previewCaption_->setText("Select an image to preview it");
-            previewCaption_->setMinimumWidth(0);
-            previewCaption_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-        }
+    } else if (kind == Kind::Effects) {
+        // Owner 2026-11-15: the selected effect plays in the side bar (exported with ACTS the first time).
+        lay->addWidget(view_, 1);
+        fxPreview_ = new VfxPreview(this);
+        fxPreview_->setObjectName("effectPreview");
+        fxPreview_->setVisible(false);  // a square that follows the column's width (VfxPreview::heightForWidth)
+        fxCaption_ = new QLabel("Select an effect to preview it", this);
+        fxCaption_->setObjectName("effectPreviewCaption");
+        fxCaption_->setWordWrap(true);
+        fxCaption_->setStyleSheet("color: gray");
+        fxCaption_->setMinimumWidth(0);
+        fxCaption_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        lay->addWidget(fxPreview_);
+        lay->addWidget(fxCaption_);
+    } else if (kind == Kind::Sounds) {
+        // Owner 2026-11-15: the selected alias can be heard in the side bar.
+        lay->addWidget(view_, 1);
+        auto* row = new QHBoxLayout();
+        row->setContentsMargins(0, 0, 0, 0);
+        soundPlay_ = new QPushButton("Play", this);
+        soundPlay_->setObjectName("soundPlay");
+        soundPlay_->setToolTip("Play the selected alias (a random variant, as the game picks one); click again to stop. "
+                               "The first time prepares the zone's sound banks with ACTS (about half a minute, once).");
+        soundPlay_->setEnabled(false);
+        soundCaption_ = new QLabel("Select a sound, then Play", this);
+        soundCaption_->setObjectName("soundPreviewCaption");
+        soundCaption_->setWordWrap(true);
+        soundCaption_->setStyleSheet("color: gray");
+        soundCaption_->setMinimumWidth(0);
+        soundCaption_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        row->addWidget(soundPlay_, 0, Qt::AlignTop);
+        row->addWidget(soundCaption_, 1);
+        lay->addLayout(row);
+        connect(soundPlay_, &QPushButton::clicked, this, [this] {
+            if (soundPlay_->property("playing").toBool()) {
+                emit soundStopRequested();
+                return;
+            }
+            const QModelIndex idx = view_->currentIndex();
+            if (idx.isValid()) emit soundPlayRequested(idx.data(Qt::DisplayRole).toString());
+        });
     } else {
         lay->addWidget(view_, 1);
     }
@@ -446,9 +593,17 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
             menu.exec(view_->viewport()->mapToGlobal(at));
         });
     }
+    if (kind_ == Kind::Effects || kind_ == Kind::Sounds)
+        connect(view_->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex& idx) {
+            if (soundPlay_) soundPlay_->setEnabled(idx.isValid() || soundPlay_->property("playing").toBool());
+            if (kind_ == Kind::Effects && idx.isValid()) emit effectHighlighted(idx.data(Qt::DisplayRole).toString());
+        });
     if (kind_ == Kind::Models || kind_ == Kind::Images)
         connect(view_->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex& idx) {
-            if (!idx.isValid()) return;
+            if (!idx.isValid()) {
+                if (previewBox_) previewBox_->setVisible(false);  // models: the preview shows only while one is selected
+                return;
+            }
             if (kind_ == Kind::Images) emit imageHighlighted(idx.data(Qt::DisplayRole).toString());
             else emit modelHighlighted(idx.data(Qt::DisplayRole).toString());
         });
@@ -458,51 +613,26 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
         // face of a large map and refiltering 46k rows for a click is wasted work.
         if (filter->useOnly && contentSignature(ctx_->doc) != usedSignature_) refreshUsedFilter();
     });
-    // Thumbnails for the visible rows, decoded lazily after scrolling or filtering settles.
+    // Thumbnails of the rows on screen and around them: stored pictures come from the decoder (worker threads) as soon
+    // as the list moves (thumbPass, no wait); rows without one go to the thumbnail source after scrolling settles
+    // (slowPass: it may decode a DDS, render or request an export).
+    fast_ = new QTimer(this);
+    fast_->setSingleShot(true);
+    fast_->setInterval(0);
+    connect(fast_, &QTimer::timeout, this, [this] { thumbPass(); });
     auto* thumbs = new QTimer(this);
     thumbs_ = thumbs;
     thumbs->setSingleShot(true);
     thumbs->setInterval(120);
-    connect(thumbs, &QTimer::timeout, this, [this] {
-        if (kind_ == Kind::Effects || kind_ == Kind::Sounds) return;  // effects and sounds have no image
-        const QRect vis = view_->viewport()->rect();
-        int budget = 48;  // rows decoded per pass (rendering a model or decoding a DDS costs a few ms)
-        // Start at the row under the top-left of the viewport and stop below its bottom: the list has up to 46k
-        // rows, and asking every one for its rectangle on each pass (each scroll step, each cache answer) is what
-        // made scrolling stutter. Rows are laid out top to bottom in both view modes.
-        int r = 0;
-        for (const QPoint probe : {QPoint(4, 4), QPoint(vis.width() / 2, 4), QPoint(4, vis.height() / 2)})
-            if (const QModelIndex at = view_->indexAt(probe); at.isValid()) {
-                r = std::max(0, at.row() - 64);  // a few rows back: the probe may sit below a partly visible row
-                break;
-            }
-        for (; r < proxy_->rowCount() && budget > 0; ++r) {
-            const QModelIndex idx = proxy_->index(r, 0);
-            const QRect rect = view_->visualRect(idx);
-            if (rect.top() > vis.bottom()) break;
-            if (!rect.intersects(vis)) continue;
-            QStandardItem* item = model_->itemFromIndex(proxy_->mapToSource(idx));
-            if (!item || (!item->icon().isNull() && !pendingThumbs_.contains(item->text()))) continue;
-            item->setIcon(thumbnail(item->text()));
-            if (statusSource_) {
-                const QString why = statusSource_(item->text());
-                if (!why.isEmpty() && !unavailable_.contains(item->text())) {
-                    unavailable_.insert(item->text());
-                    item->setForeground(QColor(130, 130, 130));
-                    item->setToolTip(item->toolTip() + "\nNOT AVAILABLE in a build: " + why.left(300));
-                }
-            }
-            // A row that is still waiting for its cache costs a lookup only: every visible row is asked for in
-            // the first pass, so the caches get one large request instead of 48 names at a time.
-            if (!pendingThumbs_.contains(item->text())) --budget;
-        }
-        if (budget <= 0) thumbs_->start();  // more visible rows are waiting: continue after the event loop has run
-    });
-    connect(view_->verticalScrollBar(), &QScrollBar::valueChanged, thumbs, qOverload<>(&QTimer::start));
-    connect(proxy_, &QSortFilterProxyModel::layoutChanged, thumbs, qOverload<>(&QTimer::start));
-    connect(proxy_, &QSortFilterProxyModel::modelReset, thumbs, qOverload<>(&QTimer::start));
+    connect(thumbs, &QTimer::timeout, this, [this] { slowPass(); });
+    connect(view_->verticalScrollBar(), &QScrollBar::valueChanged, fast_, qOverload<>(&QTimer::start));
+    connect(view_->verticalScrollBar(), &QScrollBar::rangeChanged, fast_, qOverload<>(&QTimer::start));
+    connect(proxy_, &QSortFilterProxyModel::layoutChanged, fast_, qOverload<>(&QTimer::start));
+    connect(proxy_, &QSortFilterProxyModel::modelReset, fast_, qOverload<>(&QTimer::start));
+    connect(proxy_, &QSortFilterProxyModel::rowsInserted, fast_, qOverload<>(&QTimer::start));
+    connect(proxy_, &QSortFilterProxyModel::rowsRemoved, fast_, qOverload<>(&QTimer::start));
     load();
-    thumbs->start();
+    fast_->start();
 }
 
 // The catalogue as the worker thread read it: plain values, made into list rows on the GUI thread (applyCatalog).
@@ -663,11 +793,16 @@ void AssetBrowser::applyCatalog(const Catalog& c) {
         item->setToolTip(r.tip);
         if (kind_ == Kind::Sounds) item->setData(r.loop, Qt::UserRole + 2);
         if (r.tone == 1) item->setForeground(QColor(200, 160, 90));
+        if (r.tone == 1 && kind_ == Kind::Materials) item->setData(true, kNoPicture);
         else if (r.tone == 2) item->setForeground(QColor(130, 130, 130));
         else if (r.tone == 3) item->setForeground(QColor(120, 200, 255));
         items.append(item);
     }
     model_->clear();
+    iconOrder_.clear();  // the old items are gone; their icons stay in icons_ for the new ones
+    items_.clear();
+    items_.reserve(items.size());
+    for (QStandardItem* it : items) items_.insert(it->text(), it);
     model_->invisibleRootItem()->appendRows(items);  // one insert (a row at a time made the proxy filter each)
     for (auto it = c.imageFiles.constBegin(); it != c.imageFiles.constEnd(); ++it) imageFiles_.insert(it.key(), it.value());
     if (kit_ && kitNames_.isEmpty() && !c.kits.isEmpty()) {
@@ -696,19 +831,34 @@ void AssetBrowser::applyCatalog(const Catalog& c) {
     }
     updateInfo();
     emit catalogReady();
+    if (fast_) fast_->start();  // the first rows' stored pictures are decoded now, before the panel is opened
 }
 
 void AssetBrowser::setCustomMaterials(const QList<QPair<QString, QString>>& materials) {
     customMaterials_ = materials;  // kept for a catalogue (re)load that lands later
     // Drop the previous custom rows (flagged with UserRole + 1), then insert the new ones at the top.
     for (int r = model_->rowCount() - 1; r >= 0; --r)
-        if (model_->item(r)->data(Qt::UserRole + 1).toBool()) model_->removeRow(r);
+        if (model_->item(r)->data(Qt::UserRole + 1).toBool()) {
+            items_.remove(model_->item(r)->text());
+            model_->removeRow(r);
+        }
     for (int i = materials.size() - 1; i >= 0; --i) {
-        model_->insertRow(0, customItem(materials[i].first, materials[i].second));
+        QStandardItem* item = customItem(materials[i].first, materials[i].second);
+        model_->insertRow(0, item);
+        items_.insert(materials[i].first, item);
         imageFiles_.insert(materials[i].first, materials[i].second);
         icons_.remove(materials[i].first);
+        peekMissed_.remove(materials[i].first);
     }
     updateInfo();
+}
+
+QIcon AssetBrowser::placeholderIcon(const QString& name) const {
+    // The material's hashed viewport colour, so the swatch matches the 3D view.
+    const uint32_t c = app::colorForName(name.toStdString());
+    QPixmap px(iconSide(), iconSide());
+    px.fill(QColor(int(c & 0xff), int((c >> 8) & 0xff), int((c >> 16) & 0xff)));
+    return QIcon(px);
 }
 
 QIcon AssetBrowser::thumbnail(const QString& name) {
@@ -719,44 +869,319 @@ QIcon AssetBrowser::thumbnail(const QString& name) {
         bool pending = false;
         const QImage img = thumbSource_(name, &pending);
         if (!img.isNull()) {
+            icon = QIcon(QPixmap::fromImage(ThumbDecoder::fit(img, iconSide())));
+            if (pending) {  // an interim picture (models: the grey one while the textured one is made)
+                pendingThumbs_.insert(name);
+                return icon;
+            }
             pendingThumbs_.remove(name);
+            peekMissed_.remove(name);  // stored now: the decoder finds it next time
             realThumbs_.insert(name);
-            icon = QIcon(QPixmap::fromImage(img.scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
             icons_.insert(name, icon);
             return icon;
         }
         if (pending) pendingThumbs_.insert(name);
         else pendingThumbs_.remove(name);
     }
-    if (!file.isEmpty() && !file.endsWith(".dds", Qt::CaseInsensitive)) {
-        QImage q(file);  // custom PNG / TGA / JPG
-        if (!q.isNull()) icon = QIcon(QPixmap::fromImage(q.scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
-    } else if (!file.isEmpty()) {
-        // The mip level a 64-texel icon needs, not the whole image (texture_decode.h).
-        app::Rgba8Image small;
-        if (app::loadDdsPreview(file.toStdString(), 64, small)) {
-            const QImage q(small.pixels.data(), small.width, small.height, small.width * 4, QImage::Format_RGBA8888);
-            icon = QIcon(QPixmap::fromImage(q.copy()));
-        }
-    }
+    if (!file.isEmpty())
+        if (const QImage q = decodeImageFile(file, iconSide()); !q.isNull()) icon = QIcon(QPixmap::fromImage(q));
     if (!icon.isNull()) realThumbs_.insert(name);
     if (icon.isNull()) {
-        // Placeholder: the material's hashed viewport colour, so the swatch matches the 3D view.
-        const uint32_t c = app::colorForName(name.toStdString());
-        QPixmap px(64, 64);
-        px.fill(QColor(int(c & 0xff), int((c >> 8) & 0xff), int((c >> 16) & 0xff)));
-        icon = QIcon(px);
+        icon = placeholderIcon(name);
     }
     if (!pendingThumbs_.contains(name)) icons_.insert(name, icon);  // pending: asked again on refreshThumbnails()
     return icon;
 }
 
 void AssetBrowser::refreshThumbnails() {
+    // A cache answered: the rows waiting for it are asked again (the slow pass), and rows the packs had nothing for may
+    // have a stored picture now (the decoder).
     for (const QString& n : pendingThumbs_) icons_.remove(n);
+    peekMissed_.clear();
     if (thumbs_) thumbs_->start();
+    if (fast_) fast_->start();
 }
 
 int AssetBrowser::thumbnailsLoaded() const { return int(realThumbs_.size()); }
+
+void AssetBrowser::forgetThumbnails() {
+    for (auto it = items_.constBegin(); it != items_.constEnd(); ++it) it.value()->setIcon(QIcon());
+    icons_.clear();
+    iconOrder_.clear();
+    realThumbs_.clear();
+    peekMissed_.clear();
+    pendingThumbs_.clear();
+    if (fast_) fast_->start();
+}
+
+int AssetBrowser::picturedRows(int count) const {
+    int n = 0;
+    for (int r = 0; r < std::min(count, proxy_->rowCount()); ++r) {
+        const QStandardItem* item = model_->itemFromIndex(proxy_->mapToSource(proxy_->index(r, 0)));
+        n += item && !item->icon().isNull() && realThumbs_.contains(item->text());
+    }
+    return n;
+}
+
+void AssetBrowser::showEvent(QShowEvent* e) {
+    QWidget::showEvent(e);
+    emptyPasses_ = 0;
+    if (gridFit_) static_cast<TileGridFit*>(gridFit_)->fit();
+    if (fast_) fast_->start();
+}
+
+bool AssetBrowser::previewShown() const { return previewBox_ && previewBox_->isVisible(); }
+
+int AssetBrowser::tileWidth() const { return view_->gridSize().width(); }
+
+int AssetBrowser::iconSide() const {
+    if (kind_ == Kind::Models && delegate_) return static_cast<AssetTileDelegate*>(delegate_)->maxIcon();
+    return AssetTileDelegate::kIcon;
+}
+
+void AssetBrowser::applyTileSize() {
+    auto* d = static_cast<AssetTileDelegate*>(delegate_);
+    if (!d || d->style() != AssetTileDelegate::ModelTiles) return;
+    // Preset side and the most a picture grows to fill the row: about 3-4 small, 2 medium, 1-2 large tiles across
+    // a 300-420 px column.
+    static constexpr int kSides[3][2] = {{72, 96}, {120, 156}, {184, 240}};
+    const int i = std::clamp(int(tileSize_), 0, 2);
+    d->setModelSize(kSides[i][0], kSides[i][1]);
+    view_->setIconSize(QSize(kSides[i][1], kSides[i][1]));
+    if (gridFit_) static_cast<TileGridFit*>(gridFit_)->fit();
+}
+
+void AssetBrowser::setTileSize(TileSize t) {
+    if (kind_ != Kind::Models) return;
+    const bool changed = t != tileSize_;
+    tileSize_ = t;
+    Settings::instance().setValue(settingsKey("tileSize"), int(t));
+    if (tileSizeBox_ && tileSizeBox_->currentIndex() != int(t)) {
+        const QSignalBlocker block(tileSizeBox_);
+        tileSizeBox_->setCurrentIndex(int(t));
+    }
+    if (!changed) return;
+    applyTileSize();
+    // The pictures are decoded again at the new side (from the packs: a page takes a frame or two).
+    for (const QString& n : iconOrder_)
+        if (QStandardItem* item = items_.value(n)) item->setIcon(QIcon());
+    for (auto it = icons_.begin(); it != icons_.end(); ++it)
+        if (QStandardItem* item = items_.value(it.key())) item->setIcon(QIcon());
+    icons_.clear();
+    iconOrder_.clear();
+    view_->doItemsLayout();
+    if (fast_) fast_->start();
+}
+
+void AssetBrowser::setThumbnailPeek(ThumbPeek fn) {
+    // IW8R_THUMB_DECODER=0: every picture loads on the GUI thread as before (thumb_bench.h compares the two).
+    if (qEnvironmentVariable("IW8R_THUMB_DECODER") == "0") return;
+    QPointer<AssetBrowser> self(this);
+    decoder_ = std::make_unique<ThumbDecoder>(
+        [peek = std::move(fn)](const QString& key) -> QImage {
+            // "file:<path>": a row's own image file; else a stored picture by name. The decoder fits it to the tile.
+            if (key.startsWith("file:")) return decodeImageFile(key.mid(5), 256);
+            return peek ? peek(key) : QImage();
+        },
+        [self](std::vector<ThumbDecoder::Result> results) {
+            if (self) self->applyDecoded(std::move(results));
+        },
+        this, 3);
+    peekMissed_.clear();
+    if (fast_) fast_->start();
+}
+
+QString AssetBrowser::decoderKey(const QString& name) {
+    const QString file = imageFiles_.value(name);
+    if (file.isEmpty()) return name;
+    const QString key = "file:" + file;
+    fileKeys_.insert(key, name);
+    return key;
+}
+
+std::pair<int, int> AssetBrowser::visibleRange() const {
+    if (!view_->isVisible() || proxy_->rowCount() == 0) return {0, -1};
+    const QRect vis = view_->viewport()->rect();
+    // Start at the row under the top-left of the viewport and stop below its bottom: the list has up to 46k rows, and
+    // asking every one for its rectangle on each pass is what made scrolling stutter. Rows are laid out top to bottom.
+    int r = -1;
+    for (const QPoint probe : {QPoint(4, 4), QPoint(vis.width() / 2, 4), QPoint(4, vis.height() / 2), QPoint(vis.width() / 2, vis.height() / 2)})
+        if (const QModelIndex at = view_->indexAt(probe); at.isValid()) {
+            r = std::max(0, at.row() - 64);  // a few rows back: the probe may sit below a partly visible row
+            break;
+        }
+    if (r < 0) {
+        // No probe on a tile (gaps between them): the row the scroll position implies, a few rows back.
+        const QSize g = view_->gridSize();
+        if (view_->viewMode() == QListView::IconMode && g.width() > 0 && g.height() > 0) {
+            const int cols = std::max(1, vis.width() / g.width());
+            r = std::max(0, view_->verticalScrollBar()->value() / g.height() * cols - 2 * cols);
+        } else {
+            r = 0;
+        }
+    }
+    int first = -1, last = -1;
+    for (; r < proxy_->rowCount(); ++r) {
+        const QRect rect = view_->visualRect(proxy_->index(r, 0));
+        if (rect.top() > vis.bottom()) break;
+        if (!rect.intersects(vis)) continue;
+        if (first < 0) first = r;
+        last = r;
+    }
+    return first < 0 ? std::pair<int, int>{0, -1} : std::pair<int, int>{first, last};
+}
+
+void AssetBrowser::thumbPass() {
+    if (kind_ == Kind::Effects || kind_ == Kind::Sounds) return;  // effects and sounds have no image
+    auto [first, last] = visibleRange();
+    if (last < first) {
+        if (view_->isVisible() && proxy_->rowCount() > 0 && ++emptyPasses_ < 20) {
+            fast_->start(30);  // shown but not laid out yet: once it is
+            return;
+        }
+        // Not on screen: the first rows are made ahead (stored pictures decoded, the others asked of the source as
+        // before), so the panel opens with its pictures.
+        if (view_->isVisible() || proxy_->rowCount() == 0) return;
+        first = 0;
+        last = std::min(proxy_->rowCount(), kHiddenRows) - 1;
+    }
+    emptyPasses_ = 0;
+    fast_->setInterval(0);
+    const int page = last - first + 1;
+    QStringList want;
+    bool slow = false;
+    const auto consider = [&](int r, bool onScreen) {
+        if (r < 0 || r >= proxy_->rowCount()) return;
+        QStandardItem* item = model_->itemFromIndex(proxy_->mapToSource(proxy_->index(r, 0)));
+        if (!item) return;
+        const QString name = item->text();
+        if (pendingThumbs_.contains(name)) {
+            slow |= onScreen;  // its cache was asked: the source answers it (refreshThumbnails)
+            return;
+        }
+        if (!item->icon().isNull()) return;
+        if (const auto it = icons_.constFind(name); it != icons_.constEnd()) {
+            item->setIcon(*it);
+            return;
+        }
+        if (decoder_ && !peekMissed_.contains(name)) want << decoderKey(name);
+        else slow |= onScreen;
+    };
+    // The rows on screen first, then the next two pages, then the page above.
+    for (int r = first; r <= last; ++r) consider(r, true);
+    for (int r = last + 1; r <= last + 2 * page; ++r) consider(r, false);
+    for (int r = first - page; r < first; ++r) consider(r, false);
+    if (decoder_) decoder_->want(want, iconSide());  // replaces what an older position asked for
+    if (slow) thumbs_->start();  // restarted while the list moves: the caches are asked once it stops
+    evictIcons(first - page, last + 2 * page);
+}
+
+void AssetBrowser::applyDecoded(std::vector<ThumbDecoder::Result> results) {
+    bool slow = false;
+    for (ThumbDecoder::Result& r : results) {
+        const QString name = r.name.startsWith("file:") ? fileKeys_.value(r.name) : r.name;
+        if (name.isEmpty() || r.side != iconSide()) continue;  // decoded for another tile size: asked again
+        QStandardItem* item = items_.value(name);
+        if (!item) continue;
+        if (r.image.isNull()) {
+            if (item->data(kNoPicture).toBool()) {
+                // The availability audit found no colour image in the game ("builds grey"): its colour swatch for good,
+                // with no export asked for.
+                setRowIcon(item, name, placeholderIcon(name));
+                continue;
+            }
+            peekMissed_.insert(name);  // nothing stored: the thumbnail source makes or requests it
+            slow = true;
+            continue;
+        }
+        pendingThumbs_.remove(name);
+        realThumbs_.insert(name);
+        setRowIcon(item, name, QIcon(QPixmap::fromImage(r.image)));
+        markStatus(item);
+    }
+    if (slow && !thumbs_->isActive()) thumbs_->start();
+}
+
+void AssetBrowser::setRowIcon(QStandardItem* item, const QString& name, const QIcon& icon) {
+    item->setIcon(icon);
+    if (!icons_.contains(name)) iconOrder_.push_back(name);
+    icons_.insert(name, icon);
+}
+
+void AssetBrowser::markStatus(QStandardItem* item) {
+    if (!statusSource_ || unavailable_.contains(item->text())) return;
+    const QString why = statusSource_(item->text());
+    if (why.isEmpty()) return;
+    unavailable_.insert(item->text());
+    item->setForeground(QColor(130, 130, 130));
+    item->setToolTip(item->toolTip() + "\nNOT AVAILABLE in a build: " + why.left(300));
+}
+
+void AssetBrowser::evictIcons(int keepFrom, int keepTo) {
+    // About 96 MB of pictures per browser (6,000 material tiles, 400 large model tiles): the oldest ones away from the
+    // view are dropped and decoded again from the packs when they come back on screen.
+    const int side = iconSide();
+    const size_t cap = std::max<size_t>(240, size_t(96) * 1024 * 1024 / (size_t(side) * side * 4));
+    if (iconOrder_.size() <= cap) return;
+    std::vector<QString> keep;
+    size_t at = 0;
+    for (; at < iconOrder_.size() && iconOrder_.size() - at + keep.size() > cap; ++at) {
+        const QString& n = iconOrder_[at];
+        QStandardItem* item = items_.value(n);
+        const int row = item ? proxy_->mapFromSource(item->index()).row() : -1;
+        if (row >= keepFrom && row <= keepTo) {
+            keep.push_back(n);  // near the view: kept
+            continue;
+        }
+        icons_.remove(n);
+        if (item) item->setIcon(QIcon());
+    }
+    keep.insert(keep.end(), iconOrder_.begin() + qsizetype(at), iconOrder_.end());
+    iconOrder_ = std::move(keep);
+}
+
+void AssetBrowser::slowPass() {
+    if (kind_ == Kind::Effects || kind_ == Kind::Sounds) return;
+    auto [first, last] = visibleRange();
+    if (last < first && !view_->isVisible()) first = 0, last = std::min(proxy_->rowCount(), kHiddenRows) - 1;  // see thumbPass
+    int budget = 48;  // rows made per pass (rendering a model or decoding a DDS costs a few ms)
+    for (int r = first; r <= last && budget > 0; ++r) {
+        QStandardItem* item = model_->itemFromIndex(proxy_->mapToSource(proxy_->index(r, 0)));
+        if (!item) continue;
+        const QString name = item->text();
+        const bool pending = pendingThumbs_.contains(name);
+        if (!item->icon().isNull() && !pending) continue;
+        if (decoder_ && !peekMissed_.contains(name) && !pending) continue;  // the decoder brings its stored picture
+        const bool had = icons_.contains(name);
+        const QIcon icon = thumbnail(name);
+        item->setIcon(icon);
+        if (!had && icons_.contains(name)) iconOrder_.push_back(name);  // kept: counted for the memory bound
+        markStatus(item);
+        // A row that is still waiting for its cache costs a lookup only: every visible row is asked for in the first
+        // pass, so the caches get one large request instead of 48 names at a time.
+        if (!pendingThumbs_.contains(name)) --budget;
+    }
+    if (budget <= 0) thumbs_->start();  // more visible rows are waiting: continue after the event loop has run
+}
+
+QScrollBar* AssetBrowser::scrollBar() const { return view_->verticalScrollBar(); }
+
+VisibleThumbs AssetBrowser::visibleThumbState() const {
+    VisibleThumbs s;
+    if (kind_ == Kind::Effects || kind_ == Kind::Sounds || !view_->isVisible()) return s;
+    const QRect vis = view_->viewport()->rect();
+    const auto [first, last] = visibleRange();
+    for (int r = first; r <= last; ++r) {
+        const QModelIndex idx = proxy_->index(r, 0);
+        if (!view_->visualRect(idx).intersects(vis)) continue;
+        ++s.visible;
+        const QStandardItem* item = model_->itemFromIndex(proxy_->mapToSource(idx));
+        const QString n = idx.data(Qt::DisplayRole).toString();
+        if (!item || item->icon().isNull() || pendingThumbs_.contains(n)) ++s.waiting;
+        else if (realThumbs_.contains(n)) ++s.real;
+    }
+    return s;
+}
 
 void AssetBrowser::refreshUsedFilter() {
     auto* filter = static_cast<NameFilter*>(proxy_);
@@ -943,9 +1368,12 @@ void AssetBrowser::setPreview(const QImage& image, const QString& caption) {
     if (!pm.isNull() && (pm.width() > preview_->width() - 4 || pm.height() > preview_->height() - 4))
         pm = pm.scaled(preview_->size() - QSize(4, 4), Qt::KeepAspectRatio, Qt::SmoothTransformation);
     preview_->setPixmap(pm);
-    if (kind_ == Kind::Images) {
-        // Images only: the image name (the first line) is elided in the middle to the column width; the full caption is the
-        // tooltip. The text itself stays whole, so previewCaption() still returns it.
+    // Models: shown while a model is selected. A preview arriving later (its picture or export finished) for a model
+    // that is no longer selected updates the box but does not bring it back.
+    if (previewBox_) previewBox_->setVisible(view_->currentIndex().isValid());
+    if (kind_ == Kind::Images || kind_ == Kind::Models) {
+        // The name (the first line) is elided in the middle to the column width; the full caption is the tooltip. The
+        // text itself stays whole, so previewCaption() still returns it.
         const QStringList lines = caption.split('\n');
         const int width = std::max(120, previewCaption_->width() - 8);
         previewCaption_->setText(lines.isEmpty() ? QString()
@@ -956,7 +1384,50 @@ void AssetBrowser::setPreview(const QImage& image, const QString& caption) {
     previewCaption_->setText(caption);
 }
 
-QString AssetBrowser::previewCaption() const { return previewCaption_ ? previewCaption_->text() : QString(); }
+void AssetBrowser::setEffectPreview(const VfxSimDef* def, const QString& caption) {
+    if (!fxPreview_) return;
+    if (def) fxPreview_->setEffect(*def);
+    fxPreview_->setVisible(def != nullptr);
+    fxCaption_->setText(caption);
+    fxCaption_->setToolTip(caption);
+}
+
+void AssetBrowser::setSoundStatus(const QString& text, bool playing) {
+    if (!soundPlay_) return;
+    soundPlay_->setProperty("playing", playing);
+    soundPlay_->setText(playing ? "Stop" : "Play");
+    soundPlay_->setEnabled(playing || view_->currentIndex().isValid());
+    soundCaption_->setText(text);
+    soundCaption_->setToolTip(text);
+}
+
+QString AssetBrowser::soundStatus() const { return soundCaption_ ? soundCaption_->text() : QString(); }
+
+void AssetBrowser::setToolActions(const QList<QAction*>& actions) {
+    // One "Tools" button in the options row (a narrow column has no room for a row of buttons): its menu holds the
+    // Tools menu commands of this kind of asset, the same actions as the menu bar's.
+    delete toolRow_;
+    toolRow_ = nullptr;
+    if (actions.isEmpty()) return;
+    auto* b = new QToolButton(this);
+    b->setObjectName("assetTools");
+    b->setText("Tools");
+    b->setToolTip("Tools for this kind of asset (the same commands as in the Tools menu and the Tools panel)");
+    b->setPopupMode(QToolButton::InstantPopup);
+    b->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    auto* menu = new QMenu(b);
+    for (QAction* a : actions)
+        if (a) menu->addAction(a);
+    b->setMenu(menu);
+    toolRow_ = b;
+    if (QWidget* box = findChild<QWidget*>("assetOptions"); box && box->layout()) box->layout()->addWidget(b);
+}
+
+QString AssetBrowser::previewCaption() const {
+    // The whole caption (the label may show its first line elided; the tooltip keeps it whole).
+    if (!previewCaption_) return {};
+    return previewCaption_->toolTip().isEmpty() ? previewCaption_->text() : previewCaption_->toolTip();
+}
 
 bool AssetBrowser::previewHasImage() const { return preview_ && !preview_->pixmap().isNull(); }
 
