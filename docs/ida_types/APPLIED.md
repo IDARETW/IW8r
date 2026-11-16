@@ -185,7 +185,14 @@ e.g. `CgSnapshotMP::scalar_deleting_dtor` -> `OnlineBattlepass::scalar_deleting_
 `BgAntiLag` / `CgAntiLag` destructors, `NetThread::ProcessRequest` created), 17 struct comments for absent / opaque
 types. Wrong verdicts caught and reverted: `GfxCmdBuf` "absent" (it is held by `GfxDrawCallOutput`),
 `bitarray_224` 20 (back to 28: `ClientBits` reads +24; the 20-byte evidence was the 160-bit team mask), an unconfirmed
-footer anchor in `bot_data_t`. Final reserve pass A203-A209 (`report3_agents.json`) on the last clusters.
+footer anchor in `bot_data_t`. Final reserve pass A203-A209 (`report3_agents.json`, plans 11-12, backup
+`local_types_20261116_before_reserve.h`): `bot_data_t` 32696 (`SV_Agent_AllocatePools` 32696 * maxAgents; the
+17408-byte block after it is a separate sentient pool, not botDebugData), `DWServicesAccess` 22584 (= OnlineMgr+0,
+tail closure with one login), `GfxTexture` 64 (pool slot, heap handle at +56), `GfxReflectionProbeFilteringImageData`
+776 (three globals 0x308 apart), `hknpEvent` 6, `ParticleManager` members to +313744 with the upper-bound size
+2499504; absent: `CrosslaunchHSM`, the texture pool entry wrappers, `bdFileID`, `bdEventLogID`,
+`pooledStorageWriteFileInfo`, `AnalyticsBuffer`, `GfxWorldTransientDrawCache`. `g_onlineMgr` is the singleton
+(0x14C3851A0); the stray dword at 0x14C385198 is `dword_14C385198`. 74 of the owner's 75 extra agents used.
 
 Final state and the 135 structs still unproven: `ALL_STRUCTS.md`, `ALL_STRUCTS_REPORT.txt`. Open conflicts the
 agents found and nobody resolved yet: `bot_data_t` size (A101), `DWServicesAccess` list head (A124), `Online_Friends`

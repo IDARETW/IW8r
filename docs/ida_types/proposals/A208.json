@@ -1,0 +1,76 @@
+{"agent": "A208", "structs": [
+ {"name": "hknpEvent", "verdict": "partial", "size": null,
+  "size_evidence": "lower bound 6, upper bound 8, exact size not proven. Lower: hknpEvent::hknpEvent@0x141e72b40 is only `hknpApiCommand::hknpApiCommand(this)` (no own stores); hknpApiCommand_ArrayCtorBypass@0x141e66df0 builds an array of hknpApiCommand with stride 6 (`elements += 6`), so the 6-byte command base is what hknpEvent inherits. Upper: the dispatcher reads body ids at +8 and +12 only for derived event types (hknpEventDispatcher::exec@0x141eedea0, hknpEventMergeAndDispatcher::exec@0x141eee7e0), so the first derived own member starts at 8 (upper bound 8, from A195's reading of hknpManifoldEvent, not re-proven here). Best estimate 6.",
+  "members": [
+   [0, "baseclass_0", null, "hknpEvent::hknpEvent@0x141e72b40 calls hknpApiCommand::hknpApiCommand@0x141e71ea0 and nothing else; hknpApiCommand base is 6 bytes (stride-6 array ctor hknpApiCommand_ArrayCtorBypass@0x141e66df0). Game-test base is hkCommand (6 bytes). UNCONFIRMED which name (hkCommand or hknpApiCommand); the 6-byte size is the confirmed part"],
+   [4, "m_secondaryType", "unsigned __int16", "hknpEventDispatcher::exec@0x141eedea0: `v7 = *(_WORD *)(event + 4)`, `if (v7 >= 0xC)` and per-channel compare `*(_WORD *)(v5 + 16*v4 + 2)`; hknpEventMergeAndDispatcher::exec@0x141eee7e0 `if (*(_WORD *)(event + 4) != 0)` (type 0 is the merge path). Game-test m_secondaryType is also at +4, 2 bytes, inside the base"]
+  ],
+  "changed_members": [
+   ["status (+20, 1 byte)", "remove from hknpEvent: not a base member", "hknpEventMergeAndDispatcher::exec@0x141eee7e0 type-0 branch reads `*(_BYTE *)(event + 20)` as a +1/-1 sign (m_countDelta) only for derived type-0 events; the base layout ends before it"],
+   ["_pad0 (+0..+19)", "replace by baseclass_0 (+0..+5) plus own members from the derived side", "the base is 6 bytes; bytes +6..+19 are derived fields (body ids at +8/+12, merge keys at +24/+28 in the type-0 record of size 36)"]
+  ],
+  "unconfirmed": [
+   "+0..+3 (game-test m_sizePaddedTo16 @0, m_filterBits @2, m_primaryType @3): no Replay access found in the dispatch functions; they sit in the hkCommand base and are only the base header",
+   "exact size 6 vs 7 vs 8: needs a proven array stride of hknpEvent itself (no hknpEvent-typed array with a stride was found; hknpEventArray_ConstructElements@0x141e5df00 steps by 16 but its element is a 16-byte subscriber record, not an event)",
+   "IDA type name for baseclass_0 (hkCommand vs hknpApiCommand) not proven"
+  ],
+  "notes": "Verdict partial: the 6-byte command base and the +4 secondary type are proven; the 21-byte IDA layout is not the base (status at +20 and the body ids belong to derived event types). Coordinator: treat hknpEvent as a 6-byte base header, do not apply size 21. The derived type-0 event is at least 32 bytes (the merge record copies event+0..+31 into a 36-byte entry, hknpEventMergeAndDispatcher::exec@0x141eee7e0), so the 21-byte size is contradicted by Replay. Not checked here: the derived classes' own first-member offsets beyond the dispatch functions."},
+
+ {"name": "CrosslaunchHSM", "verdict": "absent", "size": null,
+  "size_evidence": "no Replay evidence of a 200-byte object or of any CrosslaunchHSM object. (1) No constructor, vtable or allocation: the only Replay function with the name is CrosslaunchHSM::HandleHSMCallback_WaitForControllerToBeActive@0x14102f780, and its xrefs are only one .rdata slot at 0x1423d7408 and its .pdata entry. (2) That .rdata slot is not a CrosslaunchHSM table: 0x1423d7408 is inside a table of AIActorInterface script-command handlers (neighbours AIActorInterface::OnScrCmd_SetTurretAnim@0x1423d7400, AIActorInterface::OnScrCmd_AnimCustom@0x1423d7410), so the callback is misfiled. (3) The callback reads `this+24` then `+384` (a gentity) and calls Actor_CachedSightEntityIsOwner, i.e. it runs on an actor object, not on the HSM. (4) dwLogOnHSM_base::HSM_IsInState@0x141614220 is the only HSM base reader (state count +132, states +16, base 136 bytes), and dwLogonHSMs_DetermineStartOrWaitAll and dwGetLogOnStatus call it; the global elements are the dwLogonHSM_xb3 array, not CrosslaunchHSM. (5) Byte scans for the 200 immediate (`BA C8 00 00 00`, `41 B8 C8 00 00 00`, `B9 C8 00 00 00`) hit no function in the CrosslaunchHSM or dwLogOnHSM code. Limit: the scans covered only edx, r8d and ecx immediates, not computed sizes.",
+  "members": [],
+  "changed_members": [],
+  "unconfirmed": [
+   "m_didWeComErrorDuringUpdate 136, m_pendingCrosslaunchController 140, m_pendingCrosslaunchXuid 144, m_hasBeenInitialized 152, m_targetMenu 153: no Replay access anywhere",
+   "m_embeddedObject192 (IDA placeholder): no evidence",
+   "the 136-byte base is dwLogOnHSM_base (base fields +16 states, +132 count, both confirmed by HSM_IsInState); IDA CrosslaunchHSM_base naming is not in the database"
+  ],
+  "notes": "Verdict absent: no allocation, vtable, global, or by-value use of a derived CrosslaunchHSM in Replay, and the only derived-named function sits in an AI script table. The A175 bounds (lower 136, upper 200) and the A119 claim that objects sit at g_dwLogonHSMs + 8496*i are both superseded: the stride-8496 array is dwLogonHSM_xb3, which the owner of that struct should check (IDA size 304 vs stride 8496). Coordinator: remove the CrosslaunchHSM struct and its base name, or keep it only as a name for the dwLogOnHSM_base callback table entry after a check."},
+
+ {"name": "bfx__ProbeResults", "verdict": "partial", "size": null,
+  "size_evidence": "the element of a Replay array with stride 52 is proven: bfx::LogSupplyProbeResults@0x141fb3380 `v9 = probeResults + 20; v9 += 52` and bfx_ApplySupplyProbeResults@0x141fb9cd0 `v9 = probeResults + 44; v9 += 52`, both loop over requestCount elements. The record is written to the replay log as \"SupplyProbeResults\" (string at +60 in the replay log block, with \"numRequests\", \"ProbeRequest\", \"CollideData\"). The 52 bytes are fully covered by the six members below (0..8 user data, 8..20 start, 20..32 end, 32 collided, 33..35 pad, 36..48 collide pos, 48..52 request id). Identity is NOT proven: the Replay record is named SupplyProbeResults and does not have the game-test bfx::ProbeResults order (game-test m_endPos at 0, m_endArea at 12, m_collided at 28, m_path at 44; none of m_endArea, m_collideEdgeIndex, m_distTravelled, m_generatePath, m_path is touched in Replay). Lower and upper bound for the record: 52 and 52.",
+  "members": [
+   [0, "m_probeUserData", "__int64", "bfx::LogSupplyProbeResults@0x141fb3380: `*(_QWORD *)(v9 - 20)` under \"m_probeUserData\" (record +0). Record of SupplyProbeResults, not the game-test bfx::ProbeResults order"],
+   [8, "m_startPos", "bfx__Vector3", "bfx::LogSupplyProbeResults@0x141fb3380: v9 - 12 under \"m_startPos\" (record +8, 12 bytes)"],
+   [20, "m_endPos", "bfx__Vector3", "bfx::LogSupplyProbeResults@0x141fb3380: v9 under \"m_endPos\" (record +20, 12 bytes); bfx_ApplySupplyProbeResults@0x141fb9cd0 does not read it"],
+   [32, "m_collided", "unsigned __int8", "bfx::LogSupplyProbeResults@0x141fb3380: `*(unsigned __int8 *)(v9 + 12)` under \"m_collided\"; bfx_ApplySupplyProbeResults@0x141fb9cd0: `*(_BYTE *)(v9 - 12)` copied to target +65"],
+   [36, "m_collidePos", "bfx__Vector3", "bfx::LogSupplyProbeResults@0x141fb3380: v9 + 16 under \"m_collidePos\"; bfx_ApplySupplyProbeResults@0x141fb9cd0: floats at v9-8, v9-4, v9 (record +36, +40, +44) transformed by the matrix at target+140"],
+   [48, "m_requestID", "unsigned int", "bfx::LogSupplyProbeResults@0x141fb3380: `*(unsigned int *)(v9 + 28)` under \"m_requestID\"; bfx_ApplySupplyProbeResults@0x141fb9cd0: `*(unsigned int *)(v9 + 4)` (record +48) compared with the target request id"]
+  ],
+  "changed_members": [
+   ["whole struct", "IDA bfx__ProbeResults (GT order: m_endPos @0, m_endArea @12, m_collided @28, m_collideEdgeIndex @32, m_distTravelled @36, m_generatePath @40, m_path @44) does not match the Replay record", "bfx::LogSupplyProbeResults@0x141fb3380, bfx_ApplySupplyProbeResults@0x141fb9cd0"],
+   ["m_collided", "move from +28 (game-test) to +32 (Replay)", "bfx::LogSupplyProbeResults@0x141fb3380 `v9 + 12`"]
+  ],
+  "unconfirmed": [
+   "identity: whether the record is the game-test bfx::ProbeResults (used by Nav_Trace and AINavigator2D::ReadPath in the game test) or a separate supply record; the replay log string says SupplyProbeResults",
+   "+33..+35: pad, no access",
+   "game-test m_endArea, m_collideEdgeIndex, m_distTravelled, m_generatePath, m_path: no Replay access in this record"
+  ],
+  "notes": "Verdict partial. The 52-byte record is proven; the struct name is not. The IDA struct bfx__ProbeResults should not keep the game-test order if the record is the Replay type. Struct rename proposal (not applied): bfx__ProbeResults -> SupplyProbeResults, to be applied only after the coordinator decides identity. Misnamed function: 0x14210e8d0 is named bfx::ProbeResults::~ProbeResults but destroys bdStructBufferSerializable at +16 and bdReferencable at +4216 (decompile), which no bfx result type holds; its callers are bdObjectStore code (bdObjectStoreJSONResponseBase::getJSONObjectFromJSONResponse@0x14210f0ba, bdObjectStoreStreaming::initHTTP@0x142160783 and @0x142160834). That is the source of the 4216 access. Correct name not proven: no rename proposed. Also the function bfx::ProbeResults::~ProbeResults is the only Replay function with that name; ProbeResults_bfx::~ProbeResults_bfx@0x1416163b0 (a different class, on a static array at 0x14f043690) is not this struct."},
+
+ {"name": "Umbra__Tome", "verdict": "partial", "size": null,
+  "size_evidence": "not a fixed-size struct. Umbra::Tome::init@0x141f94e40: result = *(unsigned int *)(tomeData + 8) is the blob's total size, checked against dataSize (`if (dataSize >= result) ... else return 7`). So the object size is per-instance, read from +8. Replay's highest access through this type is +80..+83 (DWORD), so the lower bound is 84 bytes. No fixed upper bound: the trailing bytes belong to the runtime blob. The IDA 364 is not a Replay size. Lower bound 84, upper bound = blob size at +8 (per instance).",
+  "members": [
+   [0, "m_magic", "unsigned int", "Umbra::Tome::init@0x141f94e40: `if (*(DWORD *)tomeData != -1163018018)` (header magic); Umbra::Tome::getStatus@0x141f94da0 decodes the version bits of the same DWORD (0xD6xxxxxx). Rename proposal from m_headerWord0 (name only)"],
+   [8, "m_blobSize", "unsigned int", "Umbra::Tome::init@0x141f94e40: `result = *(unsigned int *)(tomeData + 8)` compared with dataSize. Rename proposal from m_headerWord8"],
+   [64, "m_objectCount", "unsigned int", "Umbra::Tome::getObjectUserIDs@0x141f94ca0: `if ((int)objectIndex < 0 || objectIndex >= *(this + 16)) return 0` (+64 = this[16]). Rename proposal from m_headerData64. CONFLICT: Umbra_Tome_getStatusWord@0x141f94c90 is `return *(unsigned int *)(visibility + 64)`; its caller R_Umbra_QueryStaticVisibilityCmd@0x1418CE182 passes the object, which this agent did not verify as the Tome. UNCONFIRMED whether the caller passes the Tome"],
+   [76, "m_objectRangeOffset", "unsigned int", "Umbra::Tome::getObjectUserIDs@0x141f94ca0: `v6 = (unsigned int)*(this + 19)` (+76) is a byte offset to a start/end pair table; count = `*(this + 4*v4 + v6 + 4) - *(this + 4*v4 + v6)`. Rename proposal from m_objectUserIdCount (it is an offset, not a count). Confirmed"],
+   [80, "m_objectUserIdOffset", "unsigned int", "Umbra::Tome::getObjectUserIDs@0x141f94ca0: when +76 is 0, `v13 = *(unsigned int *)(this + 80)` is the byte offset to the int user-id table indexed by objectIndex (`this + v13 + 4*objectIndex`). Name kept. Confirmed"]
+  ],
+  "changed_members": [
+   ["m_headerWord0", "rename to m_magic", "Umbra::Tome::init@0x141f94e40 compares it with the constant"],
+   ["m_headerWord8", "rename to m_blobSize", "Umbra::Tome::init@0x141f94e40 (+8 = blob total size)"],
+   ["m_headerData64", "rename to m_objectCount", "Umbra::Tome::getObjectUserIDs@0x141f94ca0 (bound at +64)"],
+   ["m_objectUserIdCount", "rename to m_objectRangeOffset", "Umbra::Tome::getObjectUserIDs@0x141f94ca0 (+76 is a table offset)"]
+  ],
+  "unconfirmed": [
+   "+4..+7 (_pad4), +12..+63 (_padC), +68..+75 (_pad44), +84.. (_pad54, 280 bytes in IDA): no Replay access through this type; the blob is a runtime buffer",
+   "+64 second reader (getStatusWord, see members): UNCONFIRMED caller type",
+   "Umbra::ImpTome::getUserIDs@0x141f94e10 (called from getObjectUserIDs) reads ImpTome members; the user-ID table at +80 is read through Umbra::ImpTome, not this struct"
+  ],
+  "notes": "Verdict partial: the fixed header is proven (magic +0, blob size +8, object count +64, range offset +76, user-ID offset +80). The 364-byte fixed size should not be applied; the honest type is a header view of at least 84 bytes whose total size is the DWORD at +8. Coordinator: keep the header fields and drop the trailing _pad54 as a fixed size. Misnamed function: 0x141f94c90 is already named Umbra_Tome_getStatusWord in this database (not Umbra_Visibility_getStatusWord as the A117/A200 notes say), so no rename is needed for it; the object it reads is the one the caller passes, still open."}
+],
+"renames": [
+ ["0x14210e8d0", "bfx::ProbeResults::~ProbeResults", "none proposed", "destroys bdStructBufferSerializable at this+16 and bdReferencable at this+4216; callers are bdObjectStore code. Correct class name not proven"],
+ ["0x141f94c90", "Umbra_Tome_getStatusWord", "none (already named)", "earlier notes called it Umbra_Visibility_getStatusWord; the database name is already Umbra_Tome_getStatusWord"]
+]}

@@ -1,137 +1,44 @@
-# structs left for Replay checks (not changed beyond fills)
-ABFence                                          ida 112 computed 80 gt 80 anchors 1: size 112 -> 80 not proven
-AIBlackboard                                     ida 120 computed 112 gt 120 anchors 6: size 120 -> 112 not proven
-AINewAgentInterface                              ida 200 computed 32 gt 32 anchors 1: size 200 -> 32 not proven
-AITaskBucket_Lazy                                ida 520 computed 144 gt 80 anchors 1: size 520 -> 144 not proven
-ASM_Context                                      ida 200 computed 1 gt 1 anchors 0: size 200 -> 1 not proven
-bdFileID                                         ida 56 computed 72 gt 56 anchors 0: only game-test-prior members would move
-pooledStorageWriteFileInfo                       ida 16760 computed 16784 gt 16760 anchors 0: only game-test-prior members would move
-AnalyticsBuffer                                  ida 16784 computed 16808 gt 16784 anchors 0: only game-test-prior members would move
-BG_SpawnGroup_Loot_Table                         ida 166488 computed 166776 gt 190496 anchors 14: size 166488 -> 166776 not proven
-BestHostData                                     ida 44 computed 40 gt 44 anchors 4: size 44 -> 40 not proven
-BgAntiLag                                        ida 302784 computed 37848 gt 46040 anchors 13: size 302784 -> 37848 not proven
-BgPredictedEntitySystem                          ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
-BgStatic                                         ida 156488 computed 8 gt 8 anchors 1: size 156488 -> 8 not proven; Replay accesses +662704 past the new size
-BulletFireParams                                 ida 184 computed 160 gt 160 anchors 2: size 184 -> 160 not proven
-ConeTargetInfo                                   ida 848 computed 840 gt 840 anchors 2: size 848 -> 840 not proven
-CEntPlayerInfo                                   ida 104 computed 16 gt 16 anchors 2: size 104 -> 16 not proven
-CEntTurretInfo                                   ida 80 computed 72 gt 80 anchors 0: only game-test-prior members would move
-CEntVehicleInfo                                  ida 128 computed 124 gt 128 anchors 0: only game-test-prior members would move
-CgClientSideEffectsSystemMP                      ida 80064 computed 14520 gt 80064 anchors 0: size 80064 -> 14520 not proven
-bitarray_224                                     ida 32 computed 28 gt 28 anchors 1: size 32 -> 28 not proven
-EdgeQueryCache                                   ida 976 computed 960 gt 976 anchors 0: only game-test-prior members would move
-refdef_t                                         ida 69536 computed 2960 gt 69536 anchors 7: size 69536 -> 2960 not proven
-WeaponXAnim                                      ida 40456 computed 40440 gt 40456 anchors 0: only game-test-prior members would move
-ClientPlayerWeaponInfo                           ida 202520 computed 202440 gt 202520 anchors 5: size 202520 -> 202440 not proven
-ShakeStateInternal                               ida 124 computed 116 gt 124 anchors 4: size 124 -> 116 not proven; moves not better supported (ok/bad (70, 8) -> (48, 7))
-ShakeState                                       ida 1632 computed 276 gt 276 anchors 5: moves not better supported (ok/bad (134, 34) -> (90, 7))
-PipDef                                           ida 129440 computed 62864 gt 129440 anchors 0: only game-test-prior members would move
-CgVehicleSystemSP                                ida 1152280 computed 1135880 gt 1152280 anchors 1: size 1152280 -> 1135880 not proven
-ChallengeXPCache                                 ida 1240 computed 1224 gt 1240 anchors 3: size 1240 -> 1224 not proven
-ClActiveClientMP                                 ida 153024 computed 175576 gt 153024 anchors 16: more conflicts after resize
-ClConnection                                     ida 1057152 computed 16 gt 16 anchors 0: size 1057152 -> 16 not proven
-CmdBufState                                      ida 2504 computed 4280 gt 2504 anchors 6: more conflicts after resize
-GfxComputeBufferState                            ida 64 computed 104 gt 64 anchors 0: size 64 -> 104 not proven
-ComputeContextData                               ida 9192 computed 9912 gt 9192 anchors 0: only game-test-prior members would move
-ComputeData                                      ida 18424 computed 19864 gt 18424 anchors 0: size 18424 -> 19864 not proven
-CrosslaunchHSM                                   ida 200 computed 160 gt 160 anchors 0: size 200 -> 160 not proven
-DBFileHandle                                     ida 72 computed 16 gt 16 anchors 2: size 72 -> 16 not proven
-DB_DecompressState                               ida 673792 computed 584000 gt 280704 anchors 8: size 673792 -> 584000 not proven
-DWCounter                                        ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
-DWMatchMaking                                    ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
-DWRichPresenceService                            ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven; Replay accesses +16 past the new size
-DWServicesAccess                                 ida 163368 computed 23256 gt 163368 anchors 1: size 163368 -> 23256 not proven; moves not better supported (ok/bad (6, 3) -> (0, 0))
-DWTags                                           ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
-DemonwareFence                                   ida 120 computed 80 gt 80 anchors 1: size 120 -> 80 not proven
-DiskFile                                         ida 2400 computed 312 gt 288 anchors 2: size 2400 -> 312 not proven
-DiskReadContext                                  ida 64 computed 56 gt 64 anchors 4: Replay accesses +296 past the new size
-DiskFS                                           ida 90120 computed 94216 gt 90120 anchors 0: only game-test-prior members would move
-GTargetAssist                                    ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
-GTurretMP                                        ida 1032 computed 256 gt 256 anchors 1: size 1032 -> 256 not proven
-GVehicles                                        ida 1087032 computed 1059368 gt 1087032 anchors 2: size 1087032 -> 1059368 not proven
-GVehiclesSP                                      ida 1087032 computed 1059368 gt 1087032 anchors 0: size 1087032 -> 1059368 not proven
-GfxVertexBufferState                             ida 72 computed 112 gt 72 anchors 0: size 72 -> 112 not proven
-GfxCmdBuf                                        ida 9120 computed 9800 gt 9120 anchors 0: only game-test-prior members would move
-GfxAsync2DFrameData                              ida 22784 computed 24128 gt 22784 anchors 0: only game-test-prior members would move
-GfxDrawCallOutput                                ida 9136 computed 9816 gt 9136 anchors 0: only game-test-prior members would move
-GfxReflectionProbeRelightingBackEndData          ida 60 computed 52 gt 60 anchors 1: size 60 -> 52 not proven; moves not better supported (ok/bad (1, 8) -> (3, 5))
-GfxWorldTransientDrawCache                       ida 233472 computed 344064 gt 233472 anchors 0: only game-test-prior members would move
-GfxBackEndData                                   ida 11144708 computed 11801472 gt 7711488 anchors 11: moves not better supported (ok/bad (99, 13) -> (98, 13))
-GfxCmdBufInput                                   ida 7952 computed 7872 gt 7952 anchors 4: size 7952 -> 7872 not proven
-GfxCmdBufSourceState                             ida 11696 computed 11616 gt 11696 anchors 1: size 11696 -> 11616 not proven
-GfxGlassVertex                                   ida 32 computed 28 gt 28 anchors 0: size 32 -> 28 not proven; Replay accesses +28 past the new size
-GfxShaderTextureRWView                           ida 32 computed 24 gt 24 anchors 1: size 32 -> 24 not proven; Replay accesses +24 past the new size
-GfxSurfaceBounds                                 ida 56 computed 24 gt 24 anchors 0: size 56 -> 24 not proven
-HavokPhysicsShapeTagCodec                        ida 272 computed 56 gt 56 anchors 2: size 272 -> 56 not proven
-HavokPhysicsShapeViewer                          ida 336 computed 96 gt 336 anchors 3: size 336 -> 96 not proven
-ID3D12Device                                     ida 8 computed 88 gt 88 anchors 1: size 8 -> 88 not proven
-ID3D12Pageable                                   ida 8 computed 16 gt 16 anchors 1: size 8 -> 16 not proven
-ID3D12PipelineState                              ida 40 computed 48 gt 48 anchors 0: only game-test-prior members would move
-ID3D12Resource                                   ida 8 computed 16 gt 16 anchors 1: size 8 -> 16 not proven; Replay accesses +16 past the new size
-InviteJoinHSM_xb3                                ida 1544 computed 808 gt 808 anchors 1: size 1544 -> 808 not proven
-LobbyData                                        ida 380336 computed 373704 gt 380336 anchors 0: size 380336 -> 373704 not proven
-MarkInfo                                         ida 1984 computed 1968 gt 1984 anchors 14: Replay accesses reach +1976, past the new size 1968
-bdBoolResult                                     ida 56 computed 72 gt 56 anchors 0: only game-test-prior members would move
-MatchMakerOmniLobbyData                          ida 739200 computed 92400 gt 98824 anchors 46: size 739200 -> 92400 not proven; moves not better supported (ok/bad (139, 35) -> (136, 41))
-NetBacklog                                       ida 72 computed 16 gt 16 anchors 2: size 72 -> 16 not proven
-PacketStream_NetPacket_1288_262144_1             ida 265512 computed 265520 gt 265512 anchors 0: only game-test-prior members would move
-NetBuffer_262144_1                               ida 265512 computed 265520 gt 265512 anchors 0: size 265512 -> 265520 not proven
-PacketStream_NetPacket_1288_32768_0              ida 34344 computed 34352 gt 34344 anchors 0: only game-test-prior members would move
-NetBuffer_32768_0                                ida 34344 computed 34352 gt 34344 anchors 0: size 34344 -> 34352 not proven
-PacketStream_NetPacket_1288_65536_0              ida 67368 computed 67376 gt 67368 anchors 0: only game-test-prior members would move
-NetBuffer_65536_0                                ida 67368 computed 67376 gt 67368 anchors 0: size 67368 -> 67376 not proven
-NetRelay                                         ida 312 computed 304 gt 312 anchors 8: size 312 -> 304 not proven
-NetInit                                          ida 2944 computed 384 gt 384 anchors 11: size 2944 -> 384 not proven
-NetThread                                        ida 1060384 computed 132552 gt 334008 anchors 5: size 1060384 -> 132552 not proven
-NetworkingFence                                  ida 120 computed 80 gt 80 anchors 1: size 120 -> 80 not proven
-OnlineBattlepass                                 ida 3712 computed 552 gt 3712 anchors 2: size 3712 -> 552 not proven
-OnlineChallengesManager                          ida 175816 computed 175824 gt 257728 anchors 7: size 175816 -> 175824 not proven
-OnlineChatManager                                ida 12000 computed 864 gt 864 anchors 2: size 12000 -> 864 not proven; Replay accesses +1496 past the new size; moves not better supported (ok/bad (20, 1) -> (18, 0))
-bdClansGroupMembershipProposal                   ida 1472 computed 1472 gt 1472 anchors 8: moves not better supported (ok/bad (16, 2) -> (14, 2))
-bdStructOptionalObject_bdClansGroupMembershipProposal ida 1480 computed 1504 gt 1480 anchors 0: only game-test-prior members would move
-bdClansAddOrUpdateGroupMemberResponse            ida 1744 computed 1776 gt 1744 anchors 1: size 1744 -> 1776 not proven; moves not better supported (ok/bad (3, 0) -> (2, 1))
-bdStructUserAccountID                            ida 88 computed 96 gt 88 anchors 1: size 88 -> 96 not proven
-bdStructOptionalObject_bdStructUserAccountID     ida 96 computed 104 gt 96 anchors 1: size 96 -> 104 not proven
-OnlineMatchmakerTelemetry                        ida 48 computed 32 gt 32 anchors 2: size 48 -> 32 not proven
-OnlineMgr                                        ida 165272 computed 24480 gt 165272 anchors 1: size 165272 -> 24480 not proven
-OnlineProgression                                ida 124576 computed 15600 gt 124576 anchors 3: size 124576 -> 15600 not proven
-OnlineQuests                                     ida 124000 computed 49808 gt 82752 anchors 11: size 124000 -> 49808 not proven
-OnlineUserLists                                  ida 881200 computed 593200 gt 881200 anchors 1: size 881200 -> 593200 not proven
-Online_BlockList                                 ida 218056 computed 45256 gt 218056 anchors 2: size 218056 -> 45256 not proven
-Online_Commerce                                  ida 106144 computed 106160 gt 106144 anchors 0: size 106144 -> 106160 not proven
-Online_Dailylogin                                ida 240 computed 200 gt 240 anchors 1: size 240 -> 200 not proven
-Online_Friends                                   ida 1181944 computed 43688 gt 1181944 anchors 3: size 1181944 -> 43688 not proven
-bdObjectStoreGetPublisherObjectsResponse         ida 8296 computed 8304 gt 8296 anchors 2: size 8296 -> 8304 not proven
-Online_LootCrate                                 ida 23144 computed 23168 gt 23144 anchors 0: only game-test-prior members would move
-Online_Store                                     ida 193640 computed 193648 gt 193640 anchors 22: size 193640 -> 193648 not proven
-PMROctreeFactoryNode                             ida 176 computed 168 gt 176 anchors 0: only game-test-prior members would move
-ParticleData                                     ida 112 computed 96 gt 112 anchors 9: size 112 -> 96 not proven
-ParticleManager                                  ida 2501248 computed 313792 gt 314624 anchors 33: size 2501248 -> 313792 not proven
-PlayerStatsFence                                 ida 112 computed 80 gt 80 anchors 1: size 112 -> 80 not proven
-StreamUpdateMultiView                            ida 1104 computed 560 gt 1104 anchors 4: size 1104 -> 560 not proven
-SvGameModeAppSP                                  ida 200 computed 32 gt 32 anchors 2: size 200 -> 32 not proven
-Umbra__Transformer                               ida 1424 computed 1688 gt 1424 anchors 3: moves not better supported (ok/bad (50, 1) -> (48, 2))
-Umbra__ImpShadowCuller                           ida 45920 computed 48032 gt 45920 anchors 4: size 45920 -> 48032 not proven
-Umbra__Tome                                      ida 364 computed 1 gt 1 anchors 0: size 364 -> 1 not proven; Replay accesses +80 past the new size
-Umbra__Visibility                                ida 184 computed 128 gt 128 anchors 0: only game-test-prior members would move
-UserSignedInToLiveFence                          ida 128 computed 80 gt 80 anchors 1: size 128 -> 80 not proven
-WeaponSFXPackageSounds                           ida 776 computed 808 gt 808 anchors 0: size 776 -> 808 not proven
-bdEventLogID                                     ida 56 computed 72 gt 56 anchors 0: only game-test-prior members would move
-bdLobbyService                                   ida 6208 computed 6192 gt 6208 anchors 31: size 6208 -> 6192 not proven
-bfx__Task                                        ida 24 computed 16 gt 16 anchors 2: size 24 -> 16 not proven
-bfx__ComponentManager                            ida 576 computed 72 gt 72 anchors 2: size 576 -> 72 not proven
-bfx__Link                                        ida 136 computed 1 gt 1 anchors 0: size 136 -> 1 not proven; Replay accesses +104 past the new size
-bfx__LinkSegment                                 ida 80 computed 1 gt 1 anchors 0: size 80 -> 1 not proven; Replay accesses +72 past the new size
-bfx__Navigator                                   ida 200 computed 1 gt 1 anchors 0: size 200 -> 1 not proven; Replay accesses +256 past the new size
-bfx__ProbeResults                                ida 52 computed 56 gt 52 anchors 0: size 52 -> 56 not proven; Replay accesses +4216 past the new size
-bfx__Repulsor                                    ida 184 computed 1 gt 1 anchors 0: size 184 -> 1 not proven; Replay accesses +180 past the new size
-bfx__VolumePathSegment                           ida 12 computed 1 gt 1 anchors 0: size 12 -> 1 not proven; Replay accesses +32 past the new size
-bot_match_data_t                                 ida 3420 computed 3252 gt 3420 anchors 2: size 3420 -> 3252 not proven
-bot_info_t                                       ida 29432 computed 29272 gt 29432 anchors 6: size 29432 -> 29272 not proven
-bot_data_t                                       ida 261536 computed 130888 gt 131056 anchors 3: size 261536 -> 130888 not proven
-dwMultiFileTask                                  ida 273536 computed 273568 gt 273536 anchors 0: only game-test-prior members would move
-hkInplaceArrayAligned16_hknpCollisionResult_10_hkContainerHeapAllocator ida 1152 computed 1144 gt 1152 anchors 1: size 1152 -> 1144 not proven
-hkReflect__BoolValue                             ida 8 computed 1 gt 1 anchors 0: size 8 -> 1 not proven
-hknpEvent                                        ida 21 computed 6 gt 6 anchors 0: size 21 -> 6 not proven; Replay accesses +8 past the new size
-hknpManifold                                     ida 256 computed 248 gt 256 anchors 0: only game-test-prior members would move
-playlistInfo                                     ida 992 computed 928 gt 992 anchors 0: only game-test-prior members would move
+# Local structs after the report passes (2026-11-16)
+
+Every IDA local type with a game-test counterpart has a verdict. This file lists the ones that are not a normal
+Replay layout: types absent from this build, opaque interfaces, and the 5 whose Replay size static analysis could
+not pin. Each also carries a struct comment in IDA. Agent reports: docs/ida_types/results/<agent>.md.
+
+## Absent in this build (struct comment, layout left as game-test)
+
+- `ASM_Context` (IDA 200): Absent in this build under this name. Replay's per-player animation context is PlayerASM_Context (IDA 440 bytes; game-test 440; its members ps/const_ps/useEntityState/disableCache/playerAsm/holdrand/instances are touched by PlayerASM_DoFootNotetrack through a2 [A119, A172]
+- `AnalyticsBuffer` (IDA 16784): The analytics spawn path in Replay does not use a buffer object. GScr_BBReportSpawnTypes@0x1413D3210 and GScr_BBReportSpawnPlayerDetails@0x1413D3070 read the script arguments and call DLog_RecordEvent_6@0x1413D0300(logChannel, "analytics_spawn_types_raw_data"  [A119, A173, A209]
+- `CrosslaunchHSM` (IDA 200): Verdict absent: no allocation, vtable, global, or by-value use of a derived CrosslaunchHSM in Replay, and the only derived-named function sits in an AI script table. The A175 bounds (lower 136, upper 200) and the A119 claim that objects sit at g_dwLogonHSMs +  [A119, A175, A208]
+- `GfxAsync2DFrameData` (IDA 22784): Absent: no allocation, no global of this type, no by-value use in a Replay-typed struct, no function that takes or returns it. What Replay uses instead: GfxCmdBufState (IDA 10368) for command state, R_CreateDynamicBuffers@0x1418da6e0 for the dynamic upload and [A123, A185]
+- `GfxResidentTexturePoolEntry` (IDA 64): game-test's resident entry is a one-member wrapper around GfxTexture at +0; in Replay the resident texture IS the GfxTexture slot, so this wrapper does not exist in this build. The IDA union GfxTexturePoolEntry (144 bytes, resident/streamed members) has the sa [A207]
+- `GfxStreamedTexturePoolEntry` (IDA 192): The streamed fallback path is absent in this build. Replay keeps one 64-byte record per slot with a heap block at +56 instead. The IDA GfxTexturePoolEntry union that embeds this struct is not in A207 and is flagged for the coordinator. [A207]
+- `GfxWorldTransientDrawCache` (IDA 233472): Replay's world-draw side holds 1536 pointers at gfxWorld+392 (Mark_GfxWorldDraw@0x140D9D860 walks 0x600 slots with a pointer stride of 8, calling Mark_GfxWorldTransientZoneAsset). Each pointer is a separately allocated GfxWorldTransientZone (328 bytes), so ver [A123, A168, A209]
+- `HavokPhysicsShapeViewer` (IDA 336): absent: the class is not built into this Replay exe. Replay keeps only reflection records for the hknpShapeViewer::Options and hknpShapeViewer::Options::LevelOfDetail / ConvexRadiusDisplayMode names (data strings at 0x14265f7c0, 0x142660be0), an empty hknpShap [A125, A194]
+- `NetBuffer_262144_1` (IDA 265512): Absent. NetBuffer<262144,1> only wraps PacketStream<NetPacket,1288,262144,1> as m_stream at +0 (game-test). No Replay function or string carries the name NetBuffer or PacketStream_NetPacket_1288_262144_1 except the unwind record above; no Replay global, alloca [A118, A170]
+- `NetBuffer_32768_0` (IDA 34344): Absent. The IDA struct NetBuffer_32768_0 (34344 bytes, holding PacketStream_NetPacket_1288_32768_0 at +0) has no Replay counterpart. Coordinator: consider leaving the struct in place (no Replay user) rather than deleting it, unless the owner wants unused game- [A118, A188]
+- `NetBuffer_65536_0` (IDA 67368): absent: no allocation or global of this type (typed_globals empty), no by-value use inside a Replay struct (embedded_in only the IDA parent NetBuffer itself), no Replay function takes or returns it. Replay's NetLoopback does not use it: NetLoopback_InitRing@0x [A118, A189]
+- `PMROctreeFactoryNode` (IDA 176): Absent from Replay. Proof: (1) no function named PMROctreeFactoryNode::* or any constructor exists in names (names LIKE '%PMROctree%' gives only PMROctreeMetadata / PMROctreeNodeSet loaders and allocators, which are other types); (2) the only name containing P [A117, A178]
+- `PacketStream_NetPacket_1288_262144_1` (IDA 265512): Absent. Every Replay function named for this type is a different object: (1) PacketStream::Create@0x141b60470 (owner, streamIndex 0/1) calls SD_VoiceAllocate and writes fields at +1056/+1057/+1058, a sound voice stream, not a net packet stream; (2) PacketStrea [A117, A170]
+- `PacketStream_NetPacket_1288_32768_0` (IDA 34344): Absent. The 1288-byte NetPacket stream with a readable[256] table is not in Replay. Loopback (NetLoopback_InitRing@0x1412bd1c0) uses a 32832-byte ring. Other PacketStream variants (1288_65536_0, 1288_262144_1) are outside this entry. [A117, A188]
+- `PacketStream_NetPacket_1288_65536_0` (IDA 67368): absent in this build as the 1288/65536 variant: the only PacketStream allocator (SD_VoiceAllocate in PacketStream::Create) builds the voice stream, and the only accessor (ReadableAt) works on a larger object. Same residual risk as NetBuffer_65536_0 (runtime-co [A117, A189]
+- `bdEventLogID` (IDA 56): bdEventLog::recordEventsMixed reads a 4-byte event type at events+36 with a 72-byte element stride (`v13 += 18` DWORDs) and calls bdBufferParams::addSerializable on events+8*(9*i+2). dwRecordEventInternal@0x141504300, dwRecordEventFF@0x141504100 and dwRecordSt [A122, A180, A209]
+- `bdFileID` (IDA 56): Game-test holders: (1) dwCSWriteFileTask, +8 m_outFileID (56 bytes). Replay's closest counterpart, dwCSWriteFileComplete@0x1415066B0(storageRequest, outResult), reads storageRequest+8 as a POINTER to a bdRemoteTask (it calls through the object's vtable at +8 a [A122, A180, A209]
+- `bfx__Navigator` (IDA 200): Replay code that uses the name: all wrappers take this as bfx::NavigatorImpl and read +16 (space) and +24 (replay ID): bfx::Navigator::GetVel@0x142029090 (+100, +108 velocity via NavigatorImpl data), SetPos_0@0x142029280 (calls bfx::NavigatorImpl::SetPos), Cal [A126, A192]
+- `hkReflect__BoolValue` (IDA 8): Verdict absent: the 1-byte game-test BoolValue has no Replay type; Replay's reflection bool object is BoolImplN<bool> (16 bytes, value stored in caller storage). Coordinator may treat hkReflect__BoolValue as not present in this build. Not checked: the other Bo [A125, A195]
+- `pooledStorageWriteFileInfo` (IDA 16760): Replay's pooled upload path keeps its own per-file data inside the bdPooledStorage object (a1 = bdPooledStorage *): bdPooledStorage::_postUploadFile@0x14213CEA0 reads a WORD at a1+11352+1200*slot and a 0x81-byte name at a1+11354+1200*slot (1200-byte slot recor [A116, A172, A209]
+
+## Opaque external interfaces (vtable pointer only)
+
+- `ID3D12Device` (IDA 8): Keep IDA as is: size 8, vtable pointer only. Do not apply the game-test 88 (builder 88): it is not proven and no Replay code reads the object past +0. The coordinator should not add any member after vtbl. [A113, A197]
+- `ID3D12Pageable` (IDA 8): Opaque, keep the 8-byte vtable pointer. Game-test size 16 comes from the ID3D12DeviceChild base and is not Replay evidence. Pageable is not held by value in any struct Replay uses (the only IDA parent is ID3D12PipelineState, itself opaque). [A118, A197]
+- `ID3D12PipelineState` (IDA 8): Opaque. Current IDA layout (40 bytes, m_Packet at 8) is not supported by Replay; the coordinator may apply the 8-byte opaque form as a size-changing proposal. The PSO is not embedded by value in any Replay struct (IDA embedded_in is empty). [A118, A197]
+- `ID3D12Resource` (IDA 8): Opaque, keep size 8 vtable pointer. Do not apply the builder's 16 and do not treat R_DispatchIndirect's +16 as a Resource member. Agrees with first pass A114. [A114, A197]
+
+## Partial: Replay size not provable statically
+
+- `GfxCmdBuf` (IDA 9120): Not absent: GfxCmdBuf is held by value at +0 of a GfxDrawCallOutput element (A186), and a 9800-byte drawSlot local is a GfxCmdBuf-shaped object with useImmediateContext at +9768. Verdict partial: size bounded 9769..9804 with best 9800; the link that makes 9800 [A123, A185, A206, COORD]
+- `GfxTexturePoolEntry` (IDA 192): size 192 -> 144 not proven []
+- `GfxVertexBufferState` (IDA 72): Partial. Replay shows used/total at +0/+4 on the mayhem pool element (confirmed), but the element stride 168 and the +8 wrapped-buffer target contradict the 72-byte game-test layout. Do not apply 112 or 72: the owner should decide the pool element type (GfxBuf [A123, A185, A206]
+- `Umbra__Tome` (IDA 364): Verdict partial: the fixed header is proven (magic +0, blob size +8, object count +64, range offset +76, user-ID offset +80). The 364-byte fixed size should not be applied; the honest type is a header view of at least 84 bytes whose total size is the DWORD at  [A117, A200, A208]
+- `bdClansGroupMembershipProposal` (IDA 1472): Every game-test offset (16, 176, 336, 344, 408, 416, 420, 1448) is the Replay offset too. The A120 concern about deserialize writing at +144 and +304 is resolved: those are the bdStructBufferSerializable base (+128) inside each bdStructUserDetails at +16 and + [A120, A182]
+- `bfx__ProbeResults` (IDA 52): Verdict partial. The 52-byte record is proven; the struct name is not. The IDA struct bfx__ProbeResults should not keep the game-test order if the record is the Replay type. Struct rename proposal (not applied): bfx__ProbeResults -> SupplyProbeResults, to be a [A126, A192, A208]

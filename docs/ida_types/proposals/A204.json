@@ -1,0 +1,29 @@
+{"agent": "A204", "structs": [
+ {"name": "bot_data_t", "verdict": "resolved", "size": 32696,
+  "size_evidence": "method 1: SV_Agent_AllocatePools@0x141336520: `s_agentDataTable = Mem_HunkUser_AllocInternal(hunkUser, 32696 * maxAgents, 128)` then memset 32696 * maxAgents. method 4: Agent_GetAgentDataByIndex@0x141333200 returns `s_agentDataTable + 32696 * i`, and Agent_AllocateAgentEntity@0x141335790 passes `s_agentDataTable + 32696 * v0` as `struct bot_data_t *` to Bot_SetBotPersistentMatchData@0x141346bd0. The members line up to 32696 exactly: 8 (header) + 29264 (botInfo) + 3420 (botMatchData) + 4 (bIsScriptedAgent) = 32696. Client bots use the same struct at SvClientMP+1368 (SV_BotInit@0x141359d50 passes a1+1368), and SV_BotInit sets bot[2] = a1+34064 = bot+32696, the first byte past the struct.",
+  "members": [
+   [0, "botDataHeader", "gentity_s *", "Bot_ResetBotInfo@0x1413462e0: `*bot = entity` is an 8-byte store (entity = client+280 via SV_BotInit, or AgentDataByIndex via G_SaveMP_LoadState). Bot_ResetLife@0x141346760 reads `*bot->botDataHeader` as a gentity pointer. Width 8: the proposal replaces unsigned int + _pad4 (UNCONFIRMED only in the sense that it is a width change, see proposals)"],
+   [8, "botInfo", "bot_info_t", "Bot_ResetBotInfo@0x1413462e0: `bot[1] = *(*bot + 344)` (botInfo+0 sentient pointer). Bot_ResetLife@0x141346760: `bot->botInfo.baseclass_0[352]` (raw +360, navigator). G_SaveMP_SaveInitState@0x14122d030: `memcpy(dest, initState, 0x7258)` = bytes [0,29272) = header + botInfo, so botInfo is 29264 (member size owned by bot_info_t agents)"],
+   [29272, "botMatchData", "bot_match_data_t", "Bot_SetBotPersistentMatchData@0x141346bd0: `*(_DWORD*)a1->_pad7258 = v2` (difficulty store at +29272), `a1->_pad7258[4]` (+29276) and `a1->botMatchData.botMemory...` / `adsDelayFireTimeScoped` writes. G_SaveMP_SaveInitState@0x14122d030: `memcpy(&v5, initState + 29272, 0xD5C)` = 3420 bytes. G_SaveMP_LoadState@0x14122a130: `G_SaveFieldMP_ReadStruct(..., AgentDataByIndex + 29272, 3420)`. Current IDA position 29440 is wrong by +168"],
+   [32692, "bIsScriptedAgent", "int", "Bot_ResetBotInfo@0x1413462e0: `if (*((_DWORD*)bot + 8173) == 0)` gates the navigator release at entry, and `*((_DWORD*)bot + 8173) = 0` later (dword index 8173 = +32692). Offset proven. The name is the game-test name at its shifted offset (gt 32860 - 168); the semantics are UNCONFIRMED"]
+  ],
+  "changed_members": [
+   ["botDataHeader", "width 4 + _pad4 -> one gentity_s * (8 bytes)", "Bot_ResetBotInfo@0x1413462e0: `*bot = entity`"],
+   ["botInfo", "offset 8 (unchanged), size 29432 -> 29264 (owned by the bot_info_t agents; consistent with memcpy 0x7258 in G_SaveMP_SaveInitState)", "G_SaveMP_SaveInitState@0x14122d030"],
+   ["_pad7258", "168-byte pad at +29272 removed: botMatchData starts at +29272 (proposal: move member, see below)", "Bot_SetBotPersistentMatchData@0x141346bd0"],
+   ["botMatchData", "offset 29440 -> 29272 (size 3420 kept)", "G_SaveMP_SaveInitState@0x14122d030 memcpy 3420 at +29272"],
+   ["bIsScriptedAgent", "offset 32860 -> 32692", "Bot_ResetBotInfo@0x1413462e0: dword index 8173"],
+   ["botDebugData", "REMOVE from bot_data_t (it is not a member of the 32696-byte struct). Proposal: delete the member, keep the 98184 bytes only as a separate type if a Replay access ever proves a place for it", "stride 32696 in SV_Agent_AllocatePools and Agent_GetAgentDataByIndex; the 17408 block at +32696 is a separate pool (see notes)"],
+   ["botDataFooter", "REMOVE from bot_data_t. No Replay access, and the struct ends at +32696 (game-test writes the 0xFEEEFEEF sentinel at both ends in Bot_MakeBotData, which Replay does not carry at +0)", "size proof above"],
+   ["_pad1FFE8, _pad3FD9C", "REMOVE (pads beyond the 32696-byte struct)", "size proof above"],
+   ["(total size)", "261536 -> 32696", "size proof above"]
+  ],
+  "unconfirmed": [
+   "bIsScriptedAgent semantics (name taken from game-test; offset is proven)",
+   "botDebugData: game-test 98184 bytes at 32864 has no place in the Replay struct. Its Replay location and size are not found in bot_data_t. A101/A136 placed it at +32696, but that block is a separate sentient record array (see notes), not botDebugData",
+   "footer sentinel: not searched for by byte pattern; excluded by the size proof above"
+  ],
+  "notes": "Size 32696 is proven by the allocation of SV_Agent_AllocatePools and by the table stride 32696 in Agent_GetAgentDataByIndex and Agent_AllocateAgentEntity. Correction to earlier passes: the 17408-byte block at bot+32696 (pointed to by bot[2] at +16, set in SV_BotInit to a1+34064) is one entry of a 272 x 64-byte sentient record array. For agents SV_Agent_AllocatePools gives each entry its own block (`&v5[64 * 272 * i]`, a separate pool), and for client bots it sits in SvClientMP just after the struct, so it is not a member of bot_data_t and is not botDebugData. The 0x4400 memset in Bot_ResetBotInfo clears that block. For bot_info_t's owners: botInfo+8 (raw bot+16) is the pointer to this 17408-byte array. For the coordinator: changing bot_data_t's size from 261536 to 32696 changes the size of SvClientMP's embedded bot region (SvClientMP has _pad558 of 178184 bytes at +1368, which is a container, not evidence against 32696). Any SvClientMP member after the bot must be checked against client+1368+32696 = client+34064 before resizing."
+ }
+],
+"renames": []}

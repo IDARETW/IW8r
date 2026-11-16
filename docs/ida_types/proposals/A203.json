@@ -1,0 +1,45 @@
+{"agent": "A203", "structs": [
+  {"name": "ParticleManager", "verdict": "partial", "size": null,
+   "size_evidence": "NOT PROVEN. Lower bound 1362736 = g_particleManager+314160+512*2048: ParticleManager::UpdateBoneMapCache@0x141bb2590 indexes the 512-byte table with v30 = (entity & 0xFFF) - 2048, v30 in 0..2047 (decompile: `m_commandStreamBuf[512*(unsigned int)v30 + 720 + ...]`, base 313440+720 = 314160; instruction displacement 0x12CC4A30 - g_particleManager RVA 0x12C77F00 = 314160). Upper bound 2499504: the next separate object is the Decoder frame-child-pool lock at 0x152EDA2B0 (= g_particleManager+2499504, atexit dtor dynamic_atexit_destructor_for_stru_152EDA2B0), whose xrefs are only DecoderBlockContext_ResetAndRelease, DecoderCrypt_ParseHeader and dynamic_initializer_for_DecoderFrameChildPool. IDA 2501248 and game-test 314624 are both contradicted (the lower bound is above 314624; 2501248 runs into the decoder globals). No Replay access beyond 1362736 was found, but the 60-result xref list was not exhaustive.",
+   "members": [
+     [0, "m_archiveState", "unsigned int", "A112/A138 CONFIRMED: Release@0x141bb18e0 writes this->m_archiveState = 0; Init@0x141bb0050 writes +0 (not re-read by A203)"],
+     [8, "m_particleSystemBoneHashMap", null, "A203 re-read UpdateBoneMapCache@0x141bb2590: bucket walk this+262152..this+294952, sentinel `*(this+294952)=0`; A112 kept the map at 8..294968"],
+     [294968, "m_soundCreateList", "ParticleManager__Particle_SoundData[32]", "A112/A138 CONFIRMED: UpdateSounds@0x141bb3680 14-dword (56 B) stride; Init@0x141bb0050 memset(this+294968, 0, 0x700). Element 56 B, array 1792 B, ends 296760 (IDA pads 256 B after it: wrong)"],
+     [296760, "m_soundCreateListCount", "int", "A112/A138 CONFIRMED: Init@0x141bb0050 this+296760 = 0; UpdateSounds reads it as the create count"],
+     [296768, "m_soundDestroyList", "ParticleManager__Particle_SoundData[32]", "A112/A138 CONFIRMED: Init memset(this+296768, 0, 0x700); UpdateSounds second list"],
+     [298560, "m_soundDestroyListCount", "int", "A112/A138 CONFIRMED: Init this+298560 = 0; UpdateSounds"],
+     [298568, "m_soundPlayList", "ParticleManager__Particle_SoundData[32]", "A112/A138 CONFIRMED: Init memset(this+298568, 0, 0x700); UpdateSounds play list"],
+     [300360, "m_soundPlayListCount", "unsigned int", "A112/A138 CONFIRMED: Init this+300360 = 0; UpdateSounds guards the play loop"],
+     [300365, "m_localPlayerHasKillcamEntity", "bool", "A112/A138 CONFIRMED: AddSystem@0x141baf210 tests *(this+300365)"],
+     [300366, "m_isInitialized", "bool", "A112/A138 CONFIRMED: Init@0x141bb0050 guard *(this+300366)"],
+     [300367, "m_isRunning", "bool", "A112/A138 CONFIRMED: Init sets this+300367 after cache alloc"],
+     [300368, "m_localPlayerNVGState", "bool", "A112/A138 CONFIRMED: AddSystem passes this+300368 to ParticleSystem_UpdateEmitterGateFlags"],
+     [300369, "m_localPlayerThermalState", "bool", "A112/A138 CONFIRMED: AddSystem passes this+300369 to ParticleSystem_UpdateEmitterGateFlags"],
+     [300370, "m_isHighPlayerCount", "bool", "A112/A138 CONFIRMED: Init stores hasExtendedLimits at this+300370"],
+     [300388, "m_numSystemsUpdate", "int", "A203 re-read UpdateBoneMapCache@0x141bb2590: `v7 = *(int *)(this + 300388)` is the loop count over this+311824 systems"],
+     [311816, "m_updateBoneMapDobj", "int", "A203 re-read UpdateBoneMapCache: `*(this + 311816) = -1` at the end (LABEL_44)"],
+     [311824, "m_pSystems", "ParticleSystem **", "A203 re-read UpdateBoneMapCache: `*(this + 311824)` indexed 8*i; A112 CONFIRMED AddSystem append and Save"],
+     [313728, "m_commandStreamOffset", "int", "A112 CONFIRMED: Init _InterlockedExchange(this+313728, 0)"],
+     [313744, "m_globalTints", "float4[3]", "A203 re-read GetGlobalTintColor@0x141bafff0: `*(__m128i *)outColor = *(this + 16*(idx + 19609))` = 313744 + 16*idx; the count (3) is NOT proven, the index is u8 with no bound check. Game-test 314576 is not this member"],
+     [313440, "m_commandStreamBuf", null, "A203 re-read UpdateBoneMapCache: memset_0(&m_commandStreamBuf[400], 0, 0x140) clears the bitset region; the bitset (8*(id>>6)+400) and the 512-byte table (+720) share this buffer and overlap (see notes). IDA 1024-byte array is not a valid member size"]
+   ],
+   "changed_members": [
+     ["m_soundCreateList..m_soundPlayList", "IDA pads 256 B after each 1792-byte list; Replay has no pad (element 56 B, lists end at 296760 / 298560 / 300360)", "UpdateSounds@0x141bb3680; Init@0x141bb0050 memsets 0x700"],
+     ["m_soundCreateListCount, m_soundDestroyListCount, m_soundPlayListCount", "IDA 297016 / 299072 / 301128 -> Replay 296760 / 298560 / 300360 (shift -256 per list)", "Init@0x141bb0050"],
+     ["m_globalTints", "IDA 314576 (game-test) -> Replay 313744 (shift -832)", "GetGlobalTintColor@0x141bafff0"],
+     ["m_commandStreamOffset", "IDA 314496 -> Replay 313728", "Init@0x141bb0050"],
+     ["m_commandStreamAccessCheck, m_disableDebugDraw", "IDA 314560 / 314564 are not seen in the functions read; the Replay offsets 313732 / 313736 from the first pass were not re-proven and the 314160.. table covers that range", "A138"],
+     ["tail (313792 .. end)", "IDA 314624 .. 2501248 is a pad; Replay has the 1 MB table at 314160 (rows to 1362736) and the counter at 562480 inside it", "UpdateBoneMapCache@0x141bb2590"]
+   ],
+   "unconfirmed": [
+     "counter byte array at g_particleManager+562480, index id = entity & 0xFFF, range 0..4095 (A203 re-read: `_pad4CD00[(id)+247856] += ...` in both branches, so it is 4096 bytes, not the 2048 A138 assumed): it lies INSIDE the 512-byte table range 314160..1362736. Both are real accesses in the same function, so the Replay object has overlapping storage here or a Replay bug; not resolved",
+     "bitset for ids 2048..4095 (`m_commandStreamBuf[8*((id&0xFFF)>>6)+400]`, qword indices 32..63 = buffer offsets 656..904 = 314096..314344) overlaps table row 0 (314160..314672): not resolved",
+     "m_globalTints count: index is u8 (up to 255) with no bound check in GetGlobalTintColor; count 3 is IDA/A112 only",
+     "m_soloInstancePoolMap (300400, 7224 bytes), m_updateIndexSetLastUpdateTime/KillSystem/Update/Bolting (311800..311815), m_enableUpdate (312616), m_handleManager.m_restoring (312636): placed by elimination or not seen; not re-read by A203",
+     "m_localClientNum (IDA LocalClientNum_t at 301132): no 4-byte Replay access found; the 1-byte gap at 300364 is unexplained",
+     "tail 1362736 .. 2499504: no Replay access found; not exhaustive (xref query returned 60 of the referencing functions)"
+   ],
+   "notes": "Size stays OPEN (partial). A203 found: (1) the counter/table alias inside UpdateBoneMapCache, so no flat member layout can cover both as separate members; (2) the counter is 4096 bytes (id & 0xFFF), not 2048; (3) the table lower bound 1362736 contradicts game-test 314624 and the 313792 tail closure from the note; (4) the upper bound is 2499504 because the Decoder lock at that address belongs to DecoderFrameChildPool, not to ParticleManager; IDA's 2501248 covers the Decoder globals (IDA labels them `g_particleManager._pad200048+...`) and is wrong. The counter and the table are absolute RVA displacements from the g_particleManager symbol (no this register), and no name exists at g_particleManager+562480 (names table checked), so they are not named adjacent globals; the aliasing argues against two separate objects. Child ParticleManager__Particle_SoundData stays 56 bytes (A112/A138). s_particleBoneMapBitsets (0x152C67A10) is a separate named global before this object."}
+ ],
+ "renames": []
+}

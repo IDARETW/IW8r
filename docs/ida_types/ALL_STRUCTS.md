@@ -49,12 +49,24 @@ struct type back once that type had the same size.
 
 | | start | end |
 |---|---|---|
-| Replay accesses on the right member / on a wrong member | 19,530 / 5,449 | 23,863 / 4,151 |
-| structs with no padding left | 2,394 | 2,874 |
-| structs that were only padding | 415 | 27 |
-| padding share of all struct bytes | 35.7% | 15.5% |
-| bytes in named members | 95.6 M | 122.4 M |
-| builder verdict over the 4,410 structs with a game-test counterpart | | 4,239 agree with Replay or have nothing left to place, 135 unproven |
+| Replay accesses on the right member / on a wrong member | 19,530 / 5,449 | 24,306 / 3,907 |
+| structs with no padding left | 2,394 | 2,895 |
+| structs that were only padding | 415 | 26 |
+| padding share of all struct bytes | 35.7% | 10.4% |
+| bytes in named members | 95.6 M | 125.3 M |
+| builder verdict over the 4,410 structs with a game-test counterpart | | 4,380 agree with Replay or have nothing left to place, 20 absent, 4 opaque, 6 partial |
+
+The 135 structs the automated pass could not prove went through two report passes (35 + 74 read-only Haiku agents,
+`REPORT_AGENT_PROCEDURE.md`, `REPORT2_AGENT_PROCEDURE.md`): 108 resolved (rebuilt or proven consistent), 18 absent in
+this build, 4 opaque Direct3D interfaces, 5 partial (`GfxCmdBuf`, `GfxVertexBufferState`, `Umbra__Tome`,
+`bfx__ProbeResults`, `bdClansGroupMembershipProposal`). `ParticleManager` is laid out to +313744 with an UPPER-BOUND
+size (the next static starts at +2499504). Every non-normal verdict is a struct comment in IDA and is listed in
+`ALL_STRUCTS_REPORT.txt`. 54 misnamed functions / globals were renamed (`renames_applied.json`).
+
+What static analysis cannot settle (the 5 partials): the record base of `GfxDrawCallOutput` (so `GfxCmdBuf`'s exact
+size), a pool element that may be one struct or two (`GfxVertexBufferState`), a variable-length blob (`Umbra__Tome`),
+a record whose identity differs from its game-test name (`bfx__ProbeResults`), and two same-typed members whose order
+the Replay getters and game-test disagree on (`bdClansGroupMembershipProposal`, size proven).
 
 * Fills: 820 structs got names in their pads (about 2,500 fields); the roughly 1,000 fields without Replay evidence
   carry the member comment "game-test layout; no Replay access checks this field yet".

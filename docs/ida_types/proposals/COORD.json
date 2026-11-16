@@ -254,6 +254,33 @@
    "verdict": "partial",
    "size_evidence": "not absent: game-test embeds it at +0 of GfxDrawCallOutput, whose Replay records step 9808 bytes (A186); A185 only checked names",
    "members": []
+  },
+  {
+   "name": "DWServicesAccess",
+   "size": 22584,
+   "verdict": "resolved",
+   "size_evidence": "tail closure: m_login (DWLogin[8] in game-test, the last member) starts at +22488 with a 96-byte stride (A153, A205); with Replay's single local client it has one element and ends at +22584, the highest proven access (A205's lower bound); the object is OnlineMgr+0 (GetInstance = lea g_onlineMgr), below OnlineMgr's m_firstSystem at +24456",
+   "members": []
+  },
+  {
+   "name": "hknpEvent",
+   "size": 6,
+   "verdict": "resolved",
+   "size_evidence": "hknpEvent adds no members to its command base in game-test (base only, 6 bytes); the 6-byte command base is proven by a stride-6 array of hknpApiCommand and the type field at +4 (A208, A195); the fields at +8..+28 belong to derived event types",
+   "members": []
+  },
+  {
+   "name": "hknpEvent",
+   "ignore_max_access": true,
+   "size_evidence": "the +8..+28 accesses belong to derived event types (A208)",
+   "members": []
+  },
+  {
+   "name": "ParticleManager",
+   "size": 2499504,
+   "ignore_max_access": true,
+   "size_evidence": "UPPER BOUND, not the exact size: a separate static (the Decoder frame-child-pool lock, used only by Decoder functions) starts at g_particleManager+2499504 (A203); Replay reaches at least +1362736; IDA's 2501248 ran into the Decoder globals",
+   "members": []
   }
  ],
  "drop_size": {
@@ -270,6 +297,8 @@
  "force_relayout": {
   "ClActiveClientMP": "A145: size 175576 from the per-client allocation stride (AllocateClients) and ClearClient's 0x2ADD8 memset; every member placed from Replay code; the 14 wrong-member hits come from functions typed with the base ClActiveClient",
   "CmdBufState": "A158: size 4280 = start of ComputeCmdBufState's own member data (+4280); right-member hits 1 -> 30 against 3 new wrong ones",
-  "bitarray_224": "revert of the wave-2 20-byte resize (see bitarray_224 evidence)"
+  "bitarray_224": "revert of the wave-2 20-byte resize (see bitarray_224 evidence)",
+  "DWServicesAccess": "A205: the object is OnlineMgr+0; the 6 'right' hits of the old layout are game-test offsets of an 8-slot wrapper vector that Replay does not have; the new layout has 0 wrong hits",
+  "ParticleManager": "A112/A138/A203: members 294968..313744 sit at game-test -768 (sound lists 56-byte elements), right-member hits 14 -> 54, wrong 56 -> 24; size set to the proven upper bound (see size_evidence)"
  }
 }
