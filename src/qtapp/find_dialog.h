@@ -74,6 +74,10 @@ class EntityDefs;
 namespace iw8r::qt {
 // Entity definitions used by Check Map (set once by the main window).
 void setCheckMapEntityDefs(const EntityDefs* defs);
+// Every Check Map line of the open map: the Map Doctor's fixable findings first ("[fix] ...", in the order of `fixes`),
+// then the problems, warnings and notes ("Gameplay: ...", "Lights (warning): ..."); `summary` gets the count line.
+// The Check Map window and the side bar's Map Check panel both show these.
+QStringList checkMapLines(EditorContext* ctx, std::vector<DoctorFix>& fixes, QString* summary = nullptr);
 const EntityDefs* checkMapEntityDefs();  // null until the main window has loaded them
 
 class CheckMapDialog : public QDialog {

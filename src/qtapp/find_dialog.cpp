@@ -324,20 +324,16 @@ size_t CheckMapDialog::fixSelected() {
     return n;
 }
 
-void CheckMapDialog::recheck() {
-    list_->clear();
+QStringList checkMapLines(EditorContext* ctx_, std::vector<DoctorFix>& fixes_, QString* summary) {
+    QStringList out;
     // Map Doctor (9.12): fixable findings first, one row each, in the same order as fixes_.
     fixes_ = diagnoseMap(ctx_->doc.map());
-    for (const DoctorFix& f : fixes_) {
-        auto* item = new QListWidgetItem("[fix] " + qs(f.description));
-        item->setForeground(QColor(120, 200, 255));
-        list_->addItem(item);
-    }
+    for (const DoctorFix& f : fixes_) out << "[fix] " + qs(f.description);
     const auto problems = mapProblems(ctx_->doc.map());
-    for (const auto& p : problems) list_->addItem(qs(p));
+    for (const auto& p : problems) out << (qs(p));
     const auto gameplay = gameplayIssues(ctx_->doc.map());
     for (const auto& g : gameplay)
-        list_->addItem(QString("Gameplay: %1 (%2 at %3 %4 %5)")
+        out << (QString("Gameplay: %1 (%2 at %3 %4 %5)")
                            .arg(qs(g.message), qs(g.classname))
                            .arg(g.at.x)
                            .arg(g.at.y)
@@ -346,7 +342,7 @@ void CheckMapDialog::recheck() {
     if (g_defs)
         for (size_t i = 0; i < ctx_->doc.map().entities.size(); ++i)
             for (const auto& msg : g_defs->validate(ctx_->doc.map().entities[i])) {
-                list_->addItem(QString("Entity %1 (%2): %3").arg(i).arg(qs(ctx_->doc.map().entities[i].classname()), qs(msg)));
+                out << (QString("Entity %1 (%2): %3").arg(i).arg(qs(ctx_->doc.map().entities[i].classname()), qs(msg)));
                 ++defIssues;
             }
     // Links (6.25), light budget (5.15) and spawn sight lines / spacing (6.18).
@@ -354,13 +350,13 @@ void CheckMapDialog::recheck() {
     {
         const MapFile& m = ctx_->doc.map();
         for (const LinkIssue& i : checkLinks(m, buildLinkGraph(m))) {
-            list_->addItem(QString("Links%1: %2 (entity %3)").arg(i.error ? "" : " (warning)", qs(i.message)).arg(i.entity));
+            out << (QString("Links%1: %2 (entity %3)").arg(i.error ? "" : " (warning)", qs(i.message)).arg(i.entity));
             ++extra;
         }
         for (const auto& e : m.entities)
             if (e.isWorldspawn()) {
                 for (const std::string& w : checkSunKeys(e)) {
-                    list_->addItem("Sun (warning): " + qs(w));
+                    out << ("Sun (warning): " + qs(w));
                     ++extra;
                 }
                 break;
@@ -398,13 +394,13 @@ void CheckMapDialog::recheck() {
                 const QString works = k->worksInCustom == "yes" ? "runs in a custom map"
                                       : k->worksInCustom == "no" ? "does NOT run in a custom map"
                                                                  : "unknown in a custom map (game-mode objects work only in their mode)";
-                list_->addItem(QString("Stock scripted objects (note): %1 x %2 (%3): %4; handled by %5")
+                out << (QString("Stock scripted objects (note): %1 x %2 (%3): %4; handled by %5")
                                    .arg(n).arg(qs(kind), qs(k->classname), works, qs(k->handledBy.empty() ? "?" : k->handledBy)));
                 ++extra;
             }
         }
         for (const UnlitBaselineIssue& i : checkUnlitBaseline(m)) {  // 1.8 (research 55): no bake, so the sun is the light
-            list_->addItem(QString("Lighting%1: %2").arg(i.error ? "" : " (warning)", qs(i.message)));
+            out << (QString("Lighting%1: %2").arg(i.error ? "" : " (warning)", qs(i.message)));
             ++extra;
         }
         {
@@ -430,7 +426,7 @@ void CheckMapDialog::recheck() {
                                   "scripted objects to carry it into the map")
                               .arg(qs(def->name), qs(def->zones));
                 if (why.isEmpty()) continue;
-                list_->addItem(QString("Scriptables: entity %1 %2; it is left out of the build").arg(i).arg(why));
+                out << (QString("Scriptables: entity %1 %2; it is left out of the build").arg(i).arg(why));
                 ++extra;
             }
         }
@@ -457,14 +453,14 @@ void CheckMapDialog::recheck() {
                 const std::string* model = e.value("model");
                 if (!model || model->empty()) {
                     if (cls == "dynamic_prop") {
-                        list_->addItem(QString("Models: entity %1 (dynamic_prop) has no model").arg(i));
+                        out << (QString("Models: entity %1 (dynamic_prop) has no model").arg(i));
                         ++extra;
                     }
                     continue;
                 }
                 const auto it = missingModels.find(*model);
                 if (it == missingModels.end()) continue;
-                list_->addItem(QString("Models: entity %1 (%2) uses %3, which is not available in Replay (%4); it builds without the model")
+                out << (QString("Models: entity %1 (%2) uses %3, which is not available in Replay (%4); it builds without the model")
                                    .arg(i).arg(qs(cls), qs(*model), qs(it->second.empty() ? std::string("export failed") : it->second)));
                 ++extra;
             }
@@ -472,19 +468,19 @@ void CheckMapDialog::recheck() {
         // Which game modes the game will offer for this map (written to map.json by the build), and what is missing
         // for a mode the mapper has started on.
         for (const std::string& w : mapGameTypes(m).notes) {
-            list_->addItem("Game modes (note): " + qs(w));
+            out << ("Game modes (note): " + qs(w));
             ++extra;
         }
         for (const std::string& w : killstreakNotes(m)) {
-            list_->addItem("Killstreaks (note): " + qs(w));
+            out << ("Killstreaks (note): " + qs(w));
             ++extra;
         }
         for (const std::string& w : checkCallouts(m)) {
-            list_->addItem("Callouts (warning): " + qs(w));
+            out << ("Callouts (warning): " + qs(w));
             ++extra;
         }
         for (const LightBudgetIssue& i : checkLightBudget(collectLights(m))) {
-            list_->addItem(QString("Lights%1: %2").arg(i.error ? "" : " (warning)", qs(i.message)));
+            out << (QString("Lights%1: %2").arg(i.error ? "" : " (warning)", qs(i.message)));
             ++extra;
         }
         const auto spawns = collectSpawns(m);
@@ -492,15 +488,15 @@ void CheckMapDialog::recheck() {
             CollisionWorld world;
             world.build(m);
             for (const std::string& w : spawnWarnings(spawns, analyseSpawns(spawns, world))) {
-                list_->addItem("Spawns (warning): " + qs(w));
+                out << ("Spawns (warning): " + qs(w));
                 ++extra;
             }
         }
     }
     const LeakResult leak = checkLeak(ctx_->doc.map());
-    if (!leak.error.empty()) list_->addItem("Leak check: " + qs(leak.error));
+    if (!leak.error.empty()) out << ("Leak check: " + qs(leak.error));
     else if (!leak.sealed)
-        list_->addItem(QString("Leak: %1 (entity %2) reaches the void; Tools > Leak Check draws the path").arg(qs(leak.classname)).arg(leak.leakingEntity));
+        out << (QString("Leak: %1 (entity %2) reaches the void; Tools > Leak Check draws the path").arg(qs(leak.classname)).arg(leak.leakingEntity));
     // What the IW8 build will do with this map (the compiler's own warnings, without writing anything).
     int compileNotes = 0;
     {
@@ -514,7 +510,7 @@ void CheckMapDialog::recheck() {
             tdm += c == "mp_tdm_spawn";
         }
         auto note = [&](const QString& s) {
-            list_->addItem("IW8 build: " + s);
+            out << ("IW8 build: " + s);
             ++compileNotes;
         };
         if (!allies) note("no mp_tdm_spawn_allies_start (needed for a playable match)");
@@ -522,11 +518,23 @@ void CheckMapDialog::recheck() {
         if (tdm < 2) note(QString("%1 mp_tdm_spawn (two or more needed)").arg(tdm));
     }
     const size_t total = problems.size() + gameplay.size() + defIssues + extra + (leak.sealed ? 0 : 1);
-    info_->setText(!total && !compileNotes && fixes_.empty()
+    if (summary) *summary = (!total && !compileNotes && fixes_.empty()
                        ? QString("No problems found.")
                        : QString("%1 problem(s) (map, gameplay, links, lights, spawns, leak), %2 IW8 build note(s); %3 with an automatic fix "
                                  "([fix] lines: Fix Selected or Fix All).")
                              .arg(total).arg(compileNotes).arg(fixes_.size()));
+    return out;
+}
+
+void CheckMapDialog::recheck() {
+    list_->clear();
+    QString summary;
+    for (const QString& l : checkMapLines(ctx_, fixes_, &summary)) {
+        auto* item = new QListWidgetItem(l);
+        if (l.startsWith("[fix] ")) item->setForeground(QColor(120, 200, 255));
+        list_->addItem(item);
+    }
+    info_->setText(summary);
 }
 
 }  // namespace iw8r::qt

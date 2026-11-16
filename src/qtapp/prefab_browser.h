@@ -19,6 +19,8 @@
 
 class QLabel;
 class QLineEdit;
+class QMenu;
+class QMenu;
 class QListWidget;
 class QListWidgetItem;
 class QScrollBar;
@@ -98,8 +100,21 @@ public:
     // stock models.
     static QImage thumbnail(const QString& mapFile, int size = 96, const QStringList& modelRoots = {});
 
+    // Categories (the chips): "bundles", "doors", "windows", "stairs", "fences", "cover", "structure", "props", "lights",
+    // "foliage", "other"; "" = all. A plain prefab's category comes from its folder's name.
+    void setCategory(const QString& category);
+    QString category() const { return category_; }
+    QString categoryAt(int row) const;
+    void setRecentOnly(bool on);  // the Recent chip: the last 30 placed
+    QStringList recent() const;
+    QString stripTitle() const;   // the picked prefab in the strip (tests)
+    QString stripFacts() const;
+    bool stripShown() const;
+    void selectRow(int row);
+
 signals:
     void previewRequested(const QString& mapFile);  // context menu > Preview in 3D
+    void openRequested(const QString& mapFile);     // the strip's Open: the prefab's map opened to edit it
 
 protected:
     void showEvent(QShowEvent*) override;
@@ -110,7 +125,14 @@ private:
     InsertFn insert_;
     QLineEdit* filter_ = nullptr;
     QListWidget* list_ = nullptr;
-    QLabel* count_ = nullptr;  // "N prefabs", "N of M shown" or why the list is empty
+    QLabel* count_ = nullptr;  // "N prefabs", "N of M shown" or why the list is empty (shown only when empty)
+    class PanelHeader* header_ = nullptr;
+    class ChipBar* chips_ = nullptr;
+    class DetailsStrip* strip_ = nullptr;
+    QString category_;
+    bool recentOnly_ = false;
+    void noteRecent(const QString& file);
+    void updateStrip();
     bool scanned_ = false;
     class QTimer* thumbTimer_ = nullptr;  // draws thumbnails of the visible rows a few at a time (5,000+ prefabs)
     void loadVisibleThumbnails();

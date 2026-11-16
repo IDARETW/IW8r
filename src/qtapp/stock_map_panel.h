@@ -147,6 +147,7 @@ private:
     QStackedWidget* pages_ = nullptr;
     QScrollArea* scroll_ = nullptr;
     QLabel* header_ = nullptr;
+    class PanelHeader* panelHeader_ = nullptr;  // the side panels' header line: "Stock Map", the open zone
     // Sun
     QToolButton* colorButton_ = nullptr;
     QLineEdit* colorEdit_ = nullptr;

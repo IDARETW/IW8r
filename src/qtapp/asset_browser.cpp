@@ -54,7 +54,20 @@
 #include <thread>
 
 #include "brush_tools.h"
+#include "map_queries.h"
+#include "panel_chrome.h"
 #include "vfx_preview.h"
+#include <QActionGroup>
+#include <QElapsedTimer>
+#include <QHeaderView>
+#include <QMouseEvent>
+#include <QRegularExpression>
+#include <QTreeWidget>
+#include <QTreeWidgetItemIterator>
+#include <QLocale>
+#include <QMap>
+#include <algorithm>
+#include <cmath>
 #include <QAction>
 #include <QToolButton>
 #include "worker_guard.h"
@@ -64,12 +77,307 @@ namespace iw8r::qt {
 
 namespace {
 
+// Item data of a row: its chip group (groupsOf), and an audible distance (sounds).
+constexpr int kGroupRole = Qt::UserRole + 5;
+constexpr int kDistRole = Qt::UserRole + 6;
+
+// The filter chips of a panel: an id, the label, what it is, a pattern on the lower-case name (the first group whose
+// pattern matches; a group without one takes the rest) and, for effects, the dot colour of its rows.
+struct Group {
+    const char* id;
+    const char* label;
+    const char* tip;
+    const char* pattern;
+    QColor color;
+};
+
+const std::vector<Group>& groupsOf(AssetBrowser::Kind kind) {
+    static const std::vector<Group> none;
+    // Effects: what the effect is, from the words of its path (a fire in any folder is under Fire).
+    static const std::vector<Group> effects = {
+        {"muzzle", "Muzzle", "Weapon muzzle flashes", "muzflash|muzzle", QColor(240, 176, 48)},
+        {"expl", "Explosions", "Explosions, grenades, missiles", "expl|_exp(_|$)|blast|grenade|airstrike|bomb|missile|rocket", QColor(224, 80, 64)},
+        {"fire", "Fire", "Fire, flames, embers", "fire|flame|burn|ember|molotov|thermite|napalm", QColor(255, 128, 48)},
+        {"smoke", "Smoke", "Smoke, steam, fog, dust", "smk|smoke|steam|fog|mist|dust|haze|vapor|cloud", QColor(160, 164, 172)},
+        {"spark", "Sparks", "Sparks and electricity", "spark|elec|zap", QColor(245, 224, 80)},
+        {"light", "Lights", "Glows, lamps, flares, beams, objective markers", "light|glow|lamp|flare|beam|laser|strobe|signal|marker|beacon|flagbase|chev", QColor(232, 232, 176)},
+        {"impact", "Impacts", "Impacts, debris, glass, tracers, damage states", "impact|hit|debris|glass|tread|bullet|trail|tracer|damage|dmg|leak|dest", QColor(176, 128, 96)},
+        {"shell", "Shells", "Shell casings", "/shell/|shell_|casing|eject", QColor(200, 160, 80)},
+        {"blood", "Blood", "Blood and executions", "blood|flesh|gore|dismember|exec", QColor(176, 48, 64)},
+        {"other", "Other", "Everything else", nullptr, QColor(80, 192, 176)},
+    };
+    // Sounds: the alias's family, from its first word.
+    static const std::vector<Group> sounds = {
+        {"amb", "Ambience", "Ambient beds and emitters (amb_, emt_)", "^(amb|emt)_|ambient|wind|rain", {}},
+        {"mus", "Music", "Music (mus_)", "^mus_", {}},
+        {"expl", "Explosions", "Explosions", "^(exp|expl|explo|grenade|frag)_|explosion", {}},
+        {"veh", "Vehicles", "Vehicles", "^(veh|lbravo|apache|heli|tank|jeep|atv|cargo|truck|boat)", {}},
+        {"weap", "Weapons", "Weapon fire, reloads, shells, bullets", "^(weap|wex|wfoly|shell|mag|bullet|bulletspray|sniper|ar|smg|lm|pi|sh|case|attach|gun)_", {}},
+        {"move", "Movement", "Footsteps, mantles, foley", "^(mvmt|step|mantle|mount|plr|foley|move|slide|gesture|jump|land|prone|sprint)_", {}},
+        {"melee", "Melee", "Melee (melee_)", "^melee_", {}},
+        {"ui", "UI", "Menu and HUD sounds", "^(ui|hud|menu)_", {}},
+        {"other", "Other", "Everything else", nullptr, {}},
+    };
+    // Images: where the image is used.
+    static const std::vector<Group> images = {
+        {"world", "World", "World and prop images", nullptr, {}},
+        {"sky", "Sky", "Skies", "sky", {}},
+        {"weapons", "Weapons", "Weapons, attachments, cosmetics", "^(weapon|attachment|cosmetic|wpn|wm|vm)_", {}},
+        {"chars", "Characters", "Characters' bodies, heads, gear", "^(body|head|hands|viewhands|char|fullbody|mp_(eastern|western)|russian_army)", {}},
+        {"veh", "Vehicles", "Vehicles", "^veh", {}},
+        {"vfx", "Effects", "Effect sprites", "^(vfx|fx)_", {}},
+        {"ui", "UI", "Menus, HUD, icons, reticles", "^(ui|icon|hud|compass|minimap|loadscreen|emblem|callsign|reticle|playercard)_|_reticle", {}},
+        {"engine", "Engine", "Engine images ($ and * names)", "^[$*]", {}},
+    };
+    // Materials: what the surface is, from the words of its name; the mapper's own first ("own" is set on their rows).
+    static const std::vector<Group> materials = {
+        {"own", "Own", "The map's own materials", "^$", {}},
+        {"ground", "Ground", "Dirt, grass, gravel, rock, asphalt, floors",
+         "ground|dirt|grass|gravel|mud|sand|soil|rock|asphalt|road|terrain|moss|snow|floor|pavement|cobble", {}},
+        {"walls", "Walls", "Brick, plaster, concrete, tiles, stone", "wall|brick|plaster|concrete|tile|stucco|siding|block|stone", {}},
+        {"metal", "Metal", "Metal, steel, rust, corrugated sheets", "metal|steel|iron|rust|alum|corrugated|chrome", {}},
+        {"wood", "Wood", "Wood, planks, bark", "wood|plank|plywood|timber|bark", {}},
+        {"glass", "Glass", "Glass and windows", "glass|window", {}},
+        {"fabric", "Fabric", "Fabric, carpet, leather", "fabric|cloth|carpet|curtain|leather|rug", {}},
+        {"decals", "Decals", "Decals, reveal layers, grime, signs", "decal|_dec($|_)|^i/|_rvl|leak|grime|stain|graffiti|poster|sign", {}},
+        {"other", "Other", "Everything else (terrain blends, weapons, characters, effects)", nullptr, {}},
+    };
+    // Models: what the prop is.
+    static const std::vector<Group> models = {
+        {"structure", "Structure", "Walls, doors, windows, stairs, fences, pipes, frames",
+         "wall|door|window|stair|pillar|column|beam|fence|roof|frame|pipe|railing|rail_|scaffold|girder|gate|ladder|bridge|building|floor", {}},
+        {"containers", "Containers", "Crates, boxes, barrels, pallets, bins", "crate|box|barrel|container|pallet|bin_|dumpster|case_|sack|bag", {}},
+        {"furniture", "Furniture", "Chairs, tables, shelves, beds, lockers",
+         "chair|table|desk|sofa|couch|bed_|shelf|cabinet|furniture|bench|stool|dresser|wardrobe|locker|bookcase", {}},
+        {"household", "Household", "Small props: kitchen, books, bottles, decor",
+         "decor|kitchen|dinnerware|accessory|school|book|cup|plate|bottle|can_|food|toy|clock|vase|towel", {}},
+        {"foliage", "Foliage", "Trees, bushes, grass, plants", "foliage|tree|bush|grass|plant|fern|shrub|ivy|flower|hedge|leaf|leaves|vine|weed|cactus|palm", {}},
+        {"veh", "Vehicles", "Cars, trucks, helicopters, boats", "^veh|vehicle|car_|_car|truck|heli|boat|bike|tractor|bus_|plane|train", {}},
+        {"equipment", "Equipment", "Machinery, military and industrial gear", "equipment|machinery|industrial|military|pump|ac_unit|tank", {}},
+        {"lights", "Lights", "Lamps and light fixtures", "light|lamp|lantern|bulb", {}},
+        {"electronics", "Electronics", "Screens, computers, cables, speakers",
+         "tv_|computer|monitor|phone|radio|electronic|cable|wire|server|speaker|generator|antenna", {}},
+        {"debris", "Debris", "Rubble, trash, rocks, tires", "debris|rubble|trash|garbage|junk|litter|rock|stone|brick|plank|tire|cinder", {}},
+        {"signs", "Signs", "Signs, posters, flags", "sign|poster|banner|flag|billboard", {}},
+        {"other", "Other", "Everything else", nullptr, {}},
+    };
+    return kind == AssetBrowser::Kind::Effects ? effects : kind == AssetBrowser::Kind::Sounds ? sounds
+           : kind == AssetBrowser::Kind::Images ? images : kind == AssetBrowser::Kind::Materials ? materials : models;
+}
+
+// The group of a lower-case name: the first patterned group that matches, else the group without a pattern. The
+// expressions are made by the caller (one set per thread).
+QString groupOfName(const std::vector<Group>& groups, const std::vector<QRegularExpression>& res, const QString& lower) {
+    QString rest;
+    for (size_t i = 0; i < groups.size(); ++i) {
+        if (!groups[i].pattern) {
+            rest = groups[i].id;
+            continue;
+        }
+        if (res[i].match(lower).hasMatch()) return groups[i].id;
+    }
+    return rest;
+}
+
+std::vector<QRegularExpression> groupExpressions(const std::vector<Group>& groups) {
+    std::vector<QRegularExpression> out;
+    for (const Group& g : groups) out.emplace_back(g.pattern ? QString(g.pattern) : QString());
+    return out;
+}
+
+QString groupLabel(AssetBrowser::Kind kind, const QString& id) {
+    for (const Group& g : groupsOf(kind))
+        if (id == g.id) return g.label;
+    return {};
+}
+
+QColor groupColor(AssetBrowser::Kind kind, const QString& id) {
+    for (const Group& g : groupsOf(kind))
+        if (id == g.id) return g.color;
+    return {};
+}
+
+QString thousands(int n) { return QLocale().toString(n); }
+
+// Sounds: the waveform of what plays, the played part bright, a playhead while it plays.
+class WaveView : public QWidget {
+public:
+    explicit WaveView(QWidget* parent) : QWidget(parent) {
+        setObjectName("soundWave");
+        setFixedHeight(44);
+        setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        timer_ = new QTimer(this);
+        timer_->setInterval(33);
+        connect(timer_, &QTimer::timeout, this, [this] { update(); });
+    }
+    void setWave(const QVector<float>& peaks, double seconds, bool loop) {
+        peaks_ = peaks;
+        seconds_ = seconds;
+        loop_ = loop;
+        clock_.start();
+        setPlaying(true);
+    }
+    void setPlaying(bool on) {
+        playing_ = on;
+        if (on) timer_->start();
+        else timer_->stop();
+        update();
+    }
+    void clear() {
+        peaks_.clear();
+        setPlaying(false);
+    }
+    bool hasWave() const { return !peaks_.isEmpty(); }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.fillRect(rect(), themeMix(0.08));
+        if (peaks_.isEmpty()) {
+            p.setPen(themeMix(0.45));
+            p.drawText(rect(), Qt::AlignCenter, "Play to see the waveform");
+            return;
+        }
+        const int w = width(), h = height(), mid = h / 2;
+        double t = playing_ && seconds_ > 0 ? double(clock_.elapsed()) / 1000.0 : -1;
+        if (t >= 0 && loop_) t = std::fmod(t, seconds_);
+        if (t > seconds_) {
+            t = -1;
+            timer_->stop();
+        }
+        const int head = t >= 0 ? int(t / seconds_ * w) : -1;
+        const QColor bright = palette().color(QPalette::Highlight), dim = themeMix(0.4);
+        for (int x = 0; x < w; ++x) {
+            const int i = std::min(int(peaks_.size()) - 1, int(qint64(x) * peaks_.size() / std::max(1, w)));
+            const int a = std::max(1, int(peaks_[i] * float(h / 2 - 3)));
+            p.setPen(head < 0 || x <= head ? bright : dim);
+            p.drawLine(x, mid - a, x, mid + a);
+        }
+        if (head >= 0) {
+            p.setPen(palette().color(QPalette::WindowText));
+            p.drawLine(head, 0, head, h);
+        }
+        QFont f = font();
+        f.setPointSizeF(std::max(6.5, f.pointSizeF() - 1.5));
+        p.setFont(f);
+        p.setPen(themeMix(0.75));
+        p.drawText(rect().adjusted(4, 2, -4, -2), Qt::AlignRight | Qt::AlignBottom,
+                   QString("%1 s%2").arg(seconds_, 0, 'f', seconds_ < 10 ? 1 : 0).arg(loop_ ? ", loop" : ""));
+    }
+
+private:
+    QVector<float> peaks_;
+    double seconds_ = 0;
+    bool loop_ = false, playing_ = false;
+    QElapsedTimer clock_;
+    QTimer* timer_;
+};
+
 // Asset list items: tiles (materials: thumbnail fitted in its box, short name, folder in grey; models: a larger picture
 // and the name on up to two lines) or rows (icon + name, elided in the middle). The tooltip is the full name.
 class AssetTileDelegate : public QStyledItemDelegate {
 public:
-    enum Style { Rows, MaterialTiles, ModelTiles };
+    enum Style { Rows, MaterialTiles, ModelTiles, ImageTiles, EffectRows, SoundRows };
     AssetTileDelegate(Style style, QObject* parent) : QStyledItemDelegate(parent), style_(style) {}
+    // Rows: the facts of a name (pills at the right), the effect folder the list shows (folders are drawn relative to
+    // it), the alias that plays (its row shows Stop), the kind for dot colours, and the play button's action.
+    const QHash<QString, QString>* facts = nullptr;
+    QString folderBase, playing;
+    AssetBrowser::Kind kind = AssetBrowser::Kind::Materials;
+    std::function<void(const QModelIndex&)> onPlay;
+    static QRect playRect(const QRect& r) {
+        const int s = 18;
+        return QRect(r.x() + 5, r.y() + (r.height() - s) / 2, s, s);
+    }
+    bool editorEvent(QEvent* e, QAbstractItemModel* m, const QStyleOptionViewItem& opt, const QModelIndex& idx) override {
+        // A click on a sound row's play button plays (or stops) it; the row is selected as by any click.
+        if (style_ == SoundRows && onPlay && e->type() == QEvent::MouseButtonRelease) {
+            const auto* me = static_cast<QMouseEvent*>(e);
+            if (me->button() == Qt::LeftButton && playRect(opt.rect).contains(me->position().toPoint())) {
+                onPlay(idx);
+                return true;
+            }
+        }
+        return QStyledItemDelegate::editorEvent(e, m, opt, idx);
+    }
+    void paintRow(QPainter* p, const QStyleOptionViewItem& opt, const QModelIndex& idx) const {
+        p->save();
+        const QRect r = opt.rect;
+        const bool sel = opt.state & QStyle::State_Selected;
+        if (sel) p->fillRect(r, opt.palette.highlight());
+        else if (opt.state & QStyle::State_MouseOver) p->fillRect(r, themeMix(0.07));
+        const QString name = idx.data(Qt::DisplayRole).toString();
+        QColor text = opt.palette.text().color();
+        if (const QVariant fg = idx.data(Qt::ForegroundRole); fg.canConvert<QBrush>()) text = fg.value<QBrush>().color();
+        if (sel) text = opt.palette.highlightedText().color();
+        const QColor dim = sel ? text : themeMix(0.55);
+        const QFontMetrics fm(opt.font);
+        QFont small = opt.font;
+        small.setPointSizeF(std::max(6.5, small.pointSizeF() - 1.5));
+        const QFontMetrics sfm(small);
+        p->setRenderHint(QPainter::Antialiasing);
+        int x = r.x() + 6;
+        const int lineH = fm.height(), y1 = style_ == EffectRows ? r.y() + 3 : r.y() + (r.height() - lineH) / 2;
+        if (style_ == SoundRows) {
+            const QRect play = playRect(r);
+            const bool now = !playing.isEmpty() && playing == name;
+            const QColor ring = now ? (sel ? text : opt.palette.highlight().color()) : dim;
+            p->setPen(QPen(ring, 1.2));
+            p->setBrush(now ? QColor(ring.red(), ring.green(), ring.blue(), 50) : QColor(Qt::transparent));
+            p->drawEllipse(QRectF(play).adjusted(0.5, 0.5, -0.5, -0.5));
+            QFont gf = glyphFont().isEmpty() ? opt.font : QFont(glyphFont());
+            gf.setPixelSize(8);
+            p->setFont(gf);
+            p->setPen(now ? ring : text);
+            p->drawText(play, Qt::AlignCenter, glyphFont().isEmpty() ? QString(now ? "x" : ">") : QString(QChar(now ? glyph::Stop : glyph::Play)));
+            p->setFont(opt.font);
+            x = play.right() + 7;
+        } else {
+            const QColor dot = groupColor(kind, idx.data(kGroupRole).toString());
+            p->setPen(Qt::NoPen);
+            p->setBrush(dot.isValid() ? dot : dim);
+            p->drawEllipse(QRectF(r.x() + 7, y1 + (lineH - 8) / 2.0, 8, 8));
+            x = r.x() + 22;
+        }
+        // Facts as pills on the right ("loop" in blue first).
+        QStringList pills;
+        if (idx.data(Qt::UserRole + 2).toBool()) pills << "loop";
+        if (facts)
+            for (const QString& f : facts->value(name).split(factSep(), Qt::SkipEmptyParts))
+                if (!pills.contains(f)) pills << f;
+        int right = r.right() - 6;
+        p->setFont(small);
+        for (int i = int(pills.size()) - 1; i >= 0; --i) {
+            const int w = sfm.horizontalAdvance(pills[i]) + 10;
+            if (right - w < x + 60) break;
+            const QRectF pr(right - w, y1 + (lineH - sfm.height() - 2) / 2.0, w, sfm.height() + 2);
+            const bool loop = pills[i] == "loop";
+            const QColor c = loop && !sel ? QColor(120, 200, 255) : dim;
+            p->setPen(c);
+            p->setBrush(loop ? QColor(c.red(), c.green(), c.blue(), 40) : QColor(Qt::transparent));
+            p->drawRect(pr.adjusted(0.5, 0.5, -0.5, -0.5));  // square, as the chips (owner 2026-11-15)
+            p->drawText(pr, Qt::AlignCenter, pills[i]);
+            right -= w + 4;
+        }
+        p->setFont(opt.font);
+        p->setPen(text);
+        QString shown = name, folder;
+        if (style_ == EffectRows) {
+            shown = name.section('/', -1);
+            folder = name.section('/', 0, -2);
+            if (!folderBase.isEmpty() && folder == folderBase) folder.clear();
+            else if (!folderBase.isEmpty() && folder.startsWith(folderBase + "/")) folder = folder.mid(folderBase.size() + 1);
+            else if (folder.startsWith("vfx/")) folder = folder.mid(4);
+        }
+        p->drawText(QRect(x, y1, right - x, lineH), Qt::AlignLeft | Qt::AlignVCenter, fm.elidedText(shown, Qt::ElideMiddle, right - x));
+        if (!folder.isEmpty()) {
+            p->setFont(small);
+            p->setPen(dim);
+            const int w = r.right() - 6 - x;
+            p->drawText(QRect(x, y1 + lineH, w, sfm.height() + 2), Qt::AlignLeft | Qt::AlignVCenter, sfm.elidedText(folder, Qt::ElideMiddle, w));
+        }
+        p->restore();
+    }
     Style style() const { return style_; }
     // Models: the preset picture side (the tile is at least that wide) and the most it may grow to fill a row.
     void setModelSize(int icon, int maxIcon) {
@@ -89,6 +397,7 @@ public:
         if (style_ == ModelTiles) icon_ = std::clamp(cellW - 14, preset_, maxIcon_);
     }
     void paint(QPainter* p, const QStyleOptionViewItem& opt, const QModelIndex& idx) const override {
+        if (style_ == EffectRows || style_ == SoundRows) return paintRow(p, opt, idx);
         if (style_ == Rows) {
             QStyleOptionViewItem o = opt;
             o.textElideMode = Qt::ElideMiddle;
@@ -129,7 +438,9 @@ public:
             p->restore();
             return;
         }
-        const QString leaf = name.section('/', -1), folder = name.contains('/') ? name.section('/', 0, -2) : QString();
+        // Images: the name up to its packed partner ("a&b~hash" shows "a"); the tooltip has the whole name.
+        const QString leaf = style_ == ImageTiles ? name.section('~', 0, 0).section('&', 0, 0) : name.section('/', -1);
+        const QString folder = style_ != ImageTiles && name.contains('/') ? name.section('/', 0, -2) : QString();
         const QRect line1(r.x() + 3, iconBox.bottom() + 3, r.width() - 6, fm.height());
         p->drawText(line1, Qt::AlignHCenter | Qt::AlignVCenter, fm.elidedText(leaf, Qt::ElideMiddle, line1.width()));
         if (!folder.isEmpty()) {
@@ -148,6 +459,13 @@ public:
         // Model tiles fill their grid cell (the picture grows with it, so a narrower item would cut it off and leave
         // gaps between tiles that clicks fall through).
         if (style_ == ModelTiles) return QSize(std::max(minTileW(), cellW_ - 4), tileH());
+        if (style_ == EffectRows || style_ == SoundRows) {
+            // Edge to edge: the row as wide as the view (effects: the name, the folder under it).
+            const QFontMetrics fm(opt.font);
+            const int h = style_ == EffectRows ? 2 * fm.height() + 6 : std::max(24, fm.height() + 8);
+            const auto* v = qobject_cast<const QAbstractItemView*>(opt.widget);
+            return QSize(v ? std::max(60, v->viewport()->width() - 2) : 200, h);
+        }
         if (style_ != Rows) return QSize(minTileW(), tileH());
         // List rows no wider than the view: a long name is elided in the middle instead of scrolling the list sideways.
         QSize s = QStyledItemDelegate::sizeHint(opt, idx);
@@ -232,6 +550,9 @@ public:
     bool useList = false;
     std::set<QString> kit;   // names of the chosen kit
     bool useKit = false;
+    QString group;           // the chip ("" = all)
+    QString folder;          // effects: names under this folder ("" = all)
+    bool loopsOnly = false;  // sounds: the Loops chip
     void refresh() { invalidateFilter(); }
 
 protected:
@@ -240,6 +561,10 @@ protected:
         if (useOnly && !only.count(name)) return false;
         if (useList && !list.count(name)) return false;
         if (useKit && !kit.count(name)) return false;
+        const QModelIndex src = sourceModel()->index(row, 0, parent);
+        if (!group.isEmpty() && src.data(kGroupRole).toString() != group) return false;
+        if (!folder.isEmpty() && !name.startsWith(folder + "/")) return false;
+        if (loopsOnly && !src.data(Qt::UserRole + 2).toBool()) return false;
         return QSortFilterProxyModel::filterAcceptsRow(row, parent);
     }
 };
@@ -290,18 +615,24 @@ void focusListOnDown(QLineEdit* search, QAbstractItemView* list) {
 }
 
 AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWidget(parent), ctx_(ctx), kind_(kind) {
+    // Flush (owner 2026-11-15, panel_chrome.h): the header line (name, count, favourites star, the dots menu), the search
+    // across the panel, one row of filter chips, the list edge to edge, the selection's details strip at the bottom.
     auto* lay = new QVBoxLayout(this);
-    lay->setContentsMargins(4, 4, 4, 4);
+    lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(4);
-    // Row 1: the search and the Apply / Place button; row 2: the options, wrapping to more lines in a narrow column.
-    auto* top = new QHBoxLayout();
-    auto* optionsBox = new QWidget(this);
-    optionsBox->setObjectName("assetOptions");
-    auto* options = new FlowLayout(optionsBox);
+    header_ = new PanelHeader(kind == Kind::Materials ? "Materials" : kind == Kind::Models ? "Models" : kind == Kind::Effects ? "Effects"
+                              : kind == Kind::Sounds ? "Sounds" : "Images", this);
+    favButton_ = header_->addButton(glyph::Star, "Favourites only (right-click an asset > Add to Favourites)", true, "assetFavourites");
+    connect(favButton_, &QToolButton::toggled, this, [this](bool on) { setListModeTo(on ? 1 : 0, {}); });
+    menu_ = new QMenu(this);
+    header_->addMenuButton(menu_, "What the list shows, options, and the tools of this kind of asset", "assetTools");
+    lay->addWidget(header_);
+    auto* searchRow = new QHBoxLayout();
+    searchRow->setContentsMargins(6, 0, 6, 0);
+    searchRow->setSpacing(4);
     search_ = new QLineEdit(this);
     search_->setObjectName(kind == Kind::Materials ? "materialSearch" : kind == Kind::Effects ? "effectSearch"
                            : kind == Kind::Sounds ? "soundSearch" : "modelSearch");
-    // Short placeholders (the column is narrow); the longer hint is the tooltip.
     search_->setPlaceholderText(kind == Kind::Images ? "Search images" : kind == Kind::Effects ? "Search effects"
                                 : kind == Kind::Sounds ? "Search sounds" : kind == Kind::Materials ? "Search materials"
                                                                                                   : "Search models");
@@ -311,19 +642,42 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
                         : kind == Kind::Materials ? "46k stock IW8 materials (e.g. concrete, brick, plaster)"
                                                   : "Stock IW8 models (e.g. crate, barrel, car)");
     search_->setClearButtonEnabled(true);
-    top->addWidget(search_, 1);
-    usedOnly_ = new QCheckBox("In this map", this);
-    usedOnly_->setVisible(kind == Kind::Materials || kind == Kind::Models);
-    options->addWidget(usedOnly_);
-    listMode_ = new QComboBox(this);
-    listMode_->setObjectName("assetListMode");
-    listMode_->addItems({"All", "Favourites", "Recent"});
-    // Tag entries (#tag) can be long: elided in the box instead of widening the options row.
-    listMode_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    listMode_->setMinimumContentsLength(9);
-    listMode_->setToolTip("Favourites: right-click an asset > Add to Favourites. Recent: the last 30 placed or applied. "
-                          "#tag: assets you tagged (right-click > Tags...).");
-    options->addWidget(listMode_);
+    search_->addAction(glyphIcon(0xE721, 14, themeMix(0.55), "?"), QLineEdit::LeadingPosition);  // a magnifier
+    searchRow->addWidget(search_, 1);
+    QPushButton* use = nullptr;    // (kept for the wiring below; the strips have Apply / Place now)
+    QPushButton* place = nullptr;  // Apply / Place in the details strip
+    lay->addLayout(searchRow);
+    // The chips: the panel's groups (one at a time, with counts), then toggles.
+    chips_ = new ChipBar(this);
+    chips_->setObjectName("assetChips");
+    if (!groupsOf(kind).empty()) {
+        chips_->addChip("all", "All", -1, "Everything listed");
+        for (const Group& g : groupsOf(kind)) chips_->addChip(g.id, g.label, -1, g.tip, g.color);
+    }
+    if (kind == Kind::Sounds) chips_->addToggle("loops", "Loops", false, "Looping aliases only (ambience, engines, music beds)");
+    chips_->addToggle("recent", "Recent", false, "The last 30 placed or applied");
+    if (kind == Kind::Materials || kind == Kind::Models)
+        chips_->addToggle("inmap", "In this map", false,
+                          kind == Kind::Materials ? "Materials on the open map's faces" : "Models placed in the open map");
+    connect(chips_, &ChipBar::currentChanged, this, [this](const QString& id) {
+        static_cast<NameFilter*>(proxy_)->group = id == "all" ? QString() : id;
+        static_cast<NameFilter*>(proxy_)->refresh();
+        updateInfo();
+    });
+    connect(chips_, &ChipBar::toggled, this, [this](const QString& id, bool on) {
+        auto* f = static_cast<NameFilter*>(proxy_);
+        if (id == "recent") return setListModeTo(on ? 2 : 0, {});
+        if (id == "loops") {
+            f->loopsOnly = on;
+            f->refresh();
+            return updateInfo();
+        }
+        if (id == "inmap") {
+            usedOnly_ = on;
+            f->useOnly = on;
+            refreshUsedFilter();
+        }
+    });
     if (kind == Kind::Materials || kind == Kind::Models) {
         // Kits: stock families from tools/build_asset_kits.py (excluded_* kits are left out of the list), read with the
         // catalogue on the worker thread; the box is shown once applyCatalog() has filled it.
@@ -334,33 +688,28 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
         kit_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         kit_->setMinimumContentsLength(12);  // long kit names are elided, not widening the panel
         kit_->setVisible(false);
-        options->addWidget(kit_);
+        chips_->addWidget(kit_);
     }
-    // The availability catalog (data/asset_catalog/iw8_<kind>_status.tsv, tools: --asset-audit): assets that cannot be
-    // exported from Replay are hidden unless this is unticked; materials without a colour image are tinted.
-    buildableOnly_ = new QCheckBox("Buildable only", this);
-    buildableOnly_->setChecked(true);
-    buildableOnly_->setVisible(kind == Kind::Materials || kind == Kind::Models || kind == Kind::Effects || kind == Kind::Images);
-    buildableOnly_->setToolTip("Hide stock assets the availability audit could not export from Replay");
-    options->addWidget(buildableOnly_);
-    connect(buildableOnly_, &QCheckBox::toggled, this, [this] { load(); });
-    auto* use = new QPushButton(kind == Kind::Materials ? "Apply" : "Place", this);
-    use->setToolTip(kind == Kind::Materials ? "Apply to the selection (Shift+M)"
-                    : kind == Kind::Effects ? "Place an fx_origin with this effect at the view centre"
-                    : kind == Kind::Sounds ? "Place a sound_emitter with this alias at the view centre"
-                                            : "Place a static misc_model at the view centre");
-    top->addWidget(use);
-    use->setVisible(kind != Kind::Images);  // images are previewed only
-    lay->addLayout(top);
-    lay->addWidget(optionsBox);
+    lay->addWidget(chips_);
+    // Only what the count cannot say: that the catalogue is being read, or why the list is empty.
     info_ = new QLabel(this);
-    info_->setStyleSheet("color: gray");
-    info_->setWordWrap(true);  // the summary wraps instead of widening the panel
+    info_->setObjectName("assetInfo");
+    info_->setWordWrap(true);
+    info_->setContentsMargins(6, 0, 6, 0);
+    info_->setStyleSheet(QString("color: %1").arg(themeMix(0.6).name()));
+    info_->setVisible(false);
     lay->addWidget(info_);
-    // A list whose drags carry the asset (kind, name) so the camera and grid views can take the drop.
-    class DragList : public QListView {
+    // Lists with a small size hint: they stretch into the room there is, and a dock that sizes the panel by its hints
+    // (a scroll area) keeps the details strip on screen (first shots: the effect strip ran past the bottom).
+    class CompactList : public QListView {
     public:
-        DragList(QWidget* parent, const char* kind) : QListView(parent), kind_(kind) {}
+        using QListView::QListView;
+        QSize sizeHint() const override { return {200, 100}; }
+    };
+    // A list whose drags carry the asset (kind, name) so the camera and grid views can take the drop.
+    class DragList : public CompactList {
+    public:
+        DragList(QWidget* parent, const char* kind) : CompactList(parent), kind_(kind) {}
 
     protected:
         void startDrag(Qt::DropActions) override {
@@ -380,18 +729,28 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
     };
     const char* dragKind = kind_ == Kind::Materials ? "materials" : kind_ == Kind::Models ? "models"
                            : kind_ == Kind::Effects ? "effects" : kind_ == Kind::Sounds ? "sounds" : nullptr;
-    view_ = dragKind ? new DragList(this, dragKind) : new QListView(this);
+    view_ = dragKind ? static_cast<QListView*>(new DragList(this, dragKind)) : new CompactList(this);
     if (dragKind) view_->setDragEnabled(true);
+    view_->setFrameShape(QFrame::NoFrame);  // edge to edge
     view_->setUniformItemSizes(true);
     view_->setTextElideMode(Qt::ElideMiddle);  // long asset paths keep both ends
     auto* delegate = new AssetTileDelegate(kind == Kind::Materials ? AssetTileDelegate::MaterialTiles
                                            : kind == Kind::Models  ? AssetTileDelegate::ModelTiles
-                                                                   : AssetTileDelegate::Rows,
+                                           : kind == Kind::Images  ? AssetTileDelegate::ImageTiles
+                                           : kind == Kind::Effects ? AssetTileDelegate::EffectRows
+                                                                   : AssetTileDelegate::SoundRows,
                                            view_);
+    delegate->facts = &facts_;
+    delegate->kind = kind;
     delegate_ = delegate;
     view_->setItemDelegate(delegate);
-    if (kind == Kind::Images) view_->setIconSize(QSize(40, 40));
-    if (kind == Kind::Materials || kind == Kind::Models) {
+    if (kind == Kind::Effects || kind == Kind::Sounds) {
+        view_->setMouseTracking(true);  // the hover shade
+        view_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        view_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    }
+    if (kind == Kind::Sounds) delegate->onPlay = [this](const QModelIndex& idx) { playRow(idx); };
+    if (kind == Kind::Materials || kind == Kind::Models || kind == Kind::Images) {
         // Tiles: the whole thumbnail fitted in its box, the short name (models: on two lines), the folder below
         // (owner: previews and names were cut off). The full name is the tooltip.
         view_->setViewMode(QListView::IconMode);
@@ -413,7 +772,7 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
         tileSizeBox_->setObjectName("assetTileSize");
         tileSizeBox_->addItems({"Small", "Medium", "Large"});
         tileSizeBox_->setToolTip("Picture size of the model tiles");
-        options->addWidget(tileSizeBox_);
+        chips_->addWidget(tileSizeBox_);
         tileSize_ = TileSize(std::clamp(Settings::instance().value(settingsKey("tileSize"), 1).toInt(), 0, 2));
         applyTileSize();
         {
@@ -422,110 +781,181 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
         }
         connect(tileSizeBox_, &QComboBox::currentIndexChanged, this, [this](int i) { setTileSize(TileSize(i)); });
         lay->addWidget(view_, 1);
-        // The selected model, compact under the tiles (only while one is selected): a small picture, its name, size and
-        // zone, and the 3D preview.
-        auto* box = new QFrame(this);
-        box->setObjectName("modelPreviewBox");
-        box->setFrameShape(QFrame::StyledPanel);
-        // The picture and the caption side by side, the button under them (its own line: the column stays narrow).
-        auto* grid = new QGridLayout(box);
-        grid->setContentsMargins(4, 4, 4, 4);
-        grid->setHorizontalSpacing(6);
-        grid->setVerticalSpacing(4);
-        preview_ = new QLabel(box);
+        // The selected model in the strip (only while one is selected): a picture, its size and zone, Place, Preview in
+        // 3D and Info.
+        strip_ = new DetailsStrip(this);
+        strip_->setObjectName("modelPreviewBox");
+        auto* row = new QHBoxLayout();
+        row->setSpacing(6);
+        preview_ = new QLabel(strip_);
         preview_->setObjectName("modelPreview");
         preview_->setFixedSize(96, 96);
         preview_->setAlignment(Qt::AlignCenter);
-        preview_->setStyleSheet("background: #202226; border: 1px solid #3a3d44");
-        previewCaption_ = new QLabel("Select a model to preview it", box);
+        preview_->setStyleSheet("background: #202226; border: none");
+        previewCaption_ = new QLabel("Select a model to preview it", strip_);
         previewCaption_->setWordWrap(true);
-        previewCaption_->setStyleSheet("color: gray");
+        previewCaption_->setStyleSheet(QString("color: %1").arg(themeMix(0.6).name()));
         previewCaption_->setMinimumWidth(0);  // a long unbroken name is elided, never widening the column
         previewCaption_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
         previewCaption_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-        auto* open3d = new QPushButton("Preview in 3D...", box);
-        open3d->setObjectName("modelPreview3d");
-        open3d->setToolTip("A textured 3D view of the model: orbit, pan and zoom, levels of detail, materials, collision hull");
+        row->addWidget(preview_, 0, Qt::AlignTop);
+        row->addWidget(previewCaption_, 1);
+        strip_->body()->addLayout(row);
+        place = strip_->addAction(glyph::Add, "Place", "Place a static misc_model at the view centre (or drag the tile into a view)", "modelPlace");
+        QPushButton* open3d = strip_->addAction(glyph::Cube, "3D",
+                                                "A textured 3D view of the model: orbit, pan and zoom, levels of detail, materials, collision hull",
+                                                "modelPreview3d");
         connect(open3d, &QPushButton::clicked, this, [this] {
             const QModelIndex idx = view_->currentIndex();
             if (idx.isValid()) emit previewRequested(idx.data(Qt::DisplayRole).toString());
         });
-        grid->addWidget(preview_, 0, 0, Qt::AlignTop);
-        grid->addWidget(previewCaption_, 0, 1);
-        grid->addWidget(open3d, 1, 0, 1, 2, Qt::AlignLeft);
-        grid->setColumnStretch(1, 1);
-        box->setVisible(false);
-        previewBox_ = box;
-        lay->addWidget(box);
-    } else if (kind == Kind::Images) {
-        // The list above, the preview under it (side by side took 256 px of the narrow column); a splitter between them.
-        auto* split = new QSplitter(Qt::Vertical, this);
-        split->setObjectName("assetPreviewSplit");
-        split->setChildrenCollapsible(false);
-        split->addWidget(view_);
-        auto* sideBox = new QWidget(split);
-        auto* side = new QVBoxLayout(sideBox);
-        side->setContentsMargins(0, 0, 0, 0);
-        preview_ = new QLabel(this);
-        preview_->setObjectName("modelPreview");
-        preview_->setMinimumSize(128, 128);
-        preview_->setMaximumHeight(256);
-        preview_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-        preview_->setAlignment(Qt::AlignCenter);
-        preview_->setStyleSheet("background: #202226; border: 1px solid #3a3d44");
-        // The caption says "image", and its text may not widen the narrow column (a long unbroken name did).
-        previewCaption_ = new QLabel("Select an image to preview it", this);
-        previewCaption_->setWordWrap(true);
-        previewCaption_->setStyleSheet("color: gray");
-        previewCaption_->setMinimumWidth(0);
-        previewCaption_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-        side->addWidget(preview_);
-        side->addWidget(previewCaption_);
-        split->addWidget(sideBox);
-        split->setStretchFactor(0, 3);
-        split->setStretchFactor(1, 2);
-        lay->addWidget(split, 1);
-    } else if (kind == Kind::Effects) {
-        // Owner 2026-11-15: the selected effect plays in the side bar (exported with ACTS the first time).
+        QPushButton* info = strip_->addAction(glyph::Info, "Info", "Model Info: levels of detail, materials, bounds", "modelInfo");
+        connect(info, &QPushButton::clicked, this, [this] {
+            const QModelIndex idx = view_->currentIndex();
+            if (idx.isValid()) emit infoRequested(idx.data(Qt::DisplayRole).toString());
+        });
+        strip_->setVisible(false);
+        previewBox_ = strip_;
+        lay->addWidget(strip_);
+    } else if (kind == Kind::Materials) {
+        // The selected material in the strip: a larger picture, its type, how often the map uses it, its techset family;
+        // Apply, Select Faces, Replace in Map, Info.
         lay->addWidget(view_, 1);
-        fxPreview_ = new VfxPreview(this);
+        strip_ = new DetailsStrip(this);
+        auto* row = new QHBoxLayout();
+        row->setSpacing(6);
+        preview_ = new QLabel(strip_);
+        preview_->setObjectName("materialPreview");
+        preview_->setFixedSize(112, 112);
+        preview_->setAlignment(Qt::AlignCenter);
+        preview_->setStyleSheet("background: #202226; border: none");
+        row->addWidget(preview_, 0, Qt::AlignTop);
+        row->addStretch(1);
+        strip_->body()->addLayout(row);
+        place = strip_->addAction(glyph::Brush, "Apply", "Apply to the selected brushes or faces (Shift+M; or drag the tile onto a surface)",
+                                  "materialApply");
+        QPushButton* faces = strip_->addAction(glyph::Target, "Faces", "Select every brush in the map that uses this material", "materialSelectFaces");
+        connect(faces, &QPushButton::clicked, this, [this] {
+            const QModelIndex idx = view_->currentIndex();
+            if (!idx.isValid()) return;
+            const QString name = idx.data(Qt::DisplayRole).toString();
+            const auto refs = findByMaterial(ctx_->doc.map(), name.toStdString(), false);
+            ctx_->doc.deselectAll();
+            for (const auto& r : refs) ctx_->doc.select(r, true);
+            ctx_->documentEdited(QString("Selected %1 primitive(s) with %2").arg(refs.size()).arg(name));
+        });
+        QPushButton* replace = strip_->addAction(glyph::Redo, "Replace", "Replace this material everywhere in the map with another", "materialReplace");
+        connect(replace, &QPushButton::clicked, this, [this] {
+            const QModelIndex idx = view_->currentIndex();
+            if (idx.isValid()) emit replaceRequested(idx.data(Qt::DisplayRole).toString());
+        });
+        QPushButton* info = strip_->addAction(glyph::Info, "Info", "Material Info: images, shader, surface", "materialInfo");
+        connect(info, &QPushButton::clicked, this, [this] {
+            const QModelIndex idx = view_->currentIndex();
+            if (idx.isValid()) emit infoRequested(idx.data(Qt::DisplayRole).toString());
+        });
+        strip_->setVisible(false);
+        lay->addWidget(strip_);
+    } else if (kind == Kind::Images) {
+        // A grid of thumbnails; the selected image large in the strip with its size and format.
+        lay->addWidget(view_, 1);
+        strip_ = new DetailsStrip(this);
+        preview_ = new QLabel(strip_);
+        preview_->setObjectName("modelPreview");
+        preview_->setMinimumSize(96, 96);
+        preview_->setMaximumHeight(220);
+        preview_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+        preview_->setAlignment(Qt::AlignCenter);
+        preview_->setStyleSheet("background: #202226; border: none");
+        // The caption is kept whole here (previewCaption()); the strip shows it as the title and facts.
+        previewCaption_ = new QLabel(strip_);
+        previewCaption_->setVisible(false);
+        strip_->body()->addWidget(preview_);
+        QPushButton* copy = strip_->addAction(glyph::Copy, "Copy name", "Copy the image's whole name", "imageCopyName");
+        connect(copy, &QPushButton::clicked, this, [this] {
+            const QModelIndex idx = view_->currentIndex();
+            if (idx.isValid()) QGuiApplication::clipboard()->setText(idx.data(Qt::DisplayRole).toString());
+        });
+        strip_->setVisible(false);
+        lay->addWidget(strip_);
+    } else if (kind == Kind::Effects) {
+        // The folders of the effects' paths above the list (a splitter between them), the selected effect playing in
+        // the strip as a square (owner 2026-11-15) with Place fx_origin.
+        class CompactTree : public QTreeWidget {
+        public:
+            using QTreeWidget::QTreeWidget;
+            QSize sizeHint() const override { return {200, 90}; }
+        };
+        folders_ = new CompactTree(this);
+        folders_->setObjectName("effectFolders");
+        folders_->setHeaderHidden(true);
+        folders_->setColumnCount(2);
+        folders_->setFrameShape(QFrame::NoFrame);
+        folders_->setIndentation(12);
+        folders_->setUniformRowHeights(true);
+        folders_->header()->setStretchLastSection(false);
+        folders_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+        folders_->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+        folders_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        folders_->setTextElideMode(Qt::ElideMiddle);
+        folders_->setToolTip("The folders of the effects' paths: pick one to list the effects under it");
+        connect(folders_, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem* it) {
+            if (it) setFolder(it->data(0, Qt::UserRole).toString());
+        });
+        auto* split = new QSplitter(Qt::Vertical, this);
+        split->setObjectName("effectSplit");
+        split->setHandleWidth(4);
+        split->addWidget(folders_);
+        split->addWidget(view_);
+        split->setCollapsible(1, false);
+        split->setStretchFactor(0, 0);
+        split->setStretchFactor(1, 1);
+        split->setSizes({110, 400});
+        folders_->setMinimumHeight(48);  // the panel's minimum stays small: the strip below needs the room
+        view_->setMinimumHeight(64);
+        lay->addWidget(split, 1);
+        strip_ = new DetailsStrip(this);
+        fxPreview_ = new VfxPreview(strip_);
         fxPreview_->setObjectName("effectPreview");
         fxPreview_->setVisible(false);  // a square that follows the column's width (VfxPreview::heightForWidth)
-        fxCaption_ = new QLabel("Select an effect to preview it", this);
+        fxCaption_ = new QLabel(strip_);
         fxCaption_->setObjectName("effectPreviewCaption");
         fxCaption_->setWordWrap(true);
-        fxCaption_->setStyleSheet("color: gray");
+        fxCaption_->setStyleSheet(QString("color: %1").arg(themeMix(0.6).name()));
         fxCaption_->setMinimumWidth(0);
         fxCaption_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-        lay->addWidget(fxPreview_);
-        lay->addWidget(fxCaption_);
+        strip_->body()->addWidget(fxPreview_);
+        strip_->body()->addWidget(fxCaption_);
+        place = strip_->addAction(glyph::Add, "Place fx_origin", "Place an fx_origin with this effect at the view centre (or drag the row into a view)",
+                                  "effectPlace");
+        strip_->setVisible(false);
+        lay->addWidget(strip_);
     } else if (kind == Kind::Sounds) {
-        // Owner 2026-11-15: the selected alias can be heard in the side bar.
+        // A play button on every row; the selected alias in the strip with its waveform, Play / Stop and Place speaker.
         lay->addWidget(view_, 1);
-        auto* row = new QHBoxLayout();
-        row->setContentsMargins(0, 0, 0, 0);
-        soundPlay_ = new QPushButton("Play", this);
-        soundPlay_->setObjectName("soundPlay");
-        soundPlay_->setToolTip("Play the selected alias (a random variant, as the game picks one); click again to stop. "
-                               "The first time prepares the zone's sound banks with ACTS (about half a minute, once).");
-        soundPlay_->setEnabled(false);
-        soundCaption_ = new QLabel("Select a sound, then Play", this);
+        strip_ = new DetailsStrip(this);
+        wave_ = new WaveView(strip_);
+        soundCaption_ = new QLabel("Select a sound, then Play", strip_);
         soundCaption_->setObjectName("soundPreviewCaption");
         soundCaption_->setWordWrap(true);
-        soundCaption_->setStyleSheet("color: gray");
+        soundCaption_->setStyleSheet(QString("color: %1").arg(themeMix(0.6).name()));
         soundCaption_->setMinimumWidth(0);
         soundCaption_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-        row->addWidget(soundPlay_, 0, Qt::AlignTop);
-        row->addWidget(soundCaption_, 1);
-        lay->addLayout(row);
+        strip_->body()->addWidget(wave_);
+        strip_->body()->addWidget(soundCaption_);
+        soundPlay_ = strip_->addAction(glyph::Play, "Play",
+                                       "Play the selected alias (a random variant, as the game picks one); click again to stop. The first "
+                                       "time prepares the zone's sound banks with ACTS (about half a minute, once).",
+                                       "soundPlay");
+        soundPlay_->setEnabled(false);
+        place = strip_->addAction(glyph::Add, "Place speaker",
+                                  "Place a sound_emitter with this alias at the view centre (loops keep playing, one-shots repeat)", "soundPlace");
         connect(soundPlay_, &QPushButton::clicked, this, [this] {
-            if (soundPlay_->property("playing").toBool()) {
-                emit soundStopRequested();
-                return;
-            }
-            const QModelIndex idx = view_->currentIndex();
-            if (idx.isValid()) emit soundPlayRequested(idx.data(Qt::DisplayRole).toString());
+            if (soundPlay_->property("playing").toBool()) emit soundStopRequested();
+            else playRow(view_->currentIndex());
         });
+        strip_->setVisible(false);
+        lay->addWidget(strip_);
     } else {
         lay->addWidget(view_, 1);
     }
@@ -535,15 +965,15 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
     proxy_->setSourceModel(model_);
     proxy_->setFilterCaseSensitivity(Qt::CaseInsensitive);
     view_->setModel(proxy_);
+    if (kind == Kind::Effects) {
+        // What earlier previews found (loop / one-shot length), kept in the settings.
+        const QVariantMap kept = Settings::instance().value(settingsKey("facts")).toMap();
+        for (auto it = kept.begin(); it != kept.end(); ++it) facts_.insert(it.key(), it.value().toString());
+    }
 
     connect(search_, &QLineEdit::textChanged, this, [this](const QString& t) { setFilter(t); });
-    connect(listMode_, &QComboBox::currentIndexChanged, this, [this] { applyListMode(); });
     refillListModes();  // tag list modes (4.22)
     if (kit_) connect(kit_, &QComboBox::currentIndexChanged, this, [this] { setKit(kit_->currentData().toString()); });
-    connect(usedOnly_, &QCheckBox::toggled, this, [this, filter](bool on) {
-        filter->useOnly = on;
-        refreshUsedFilter();
-    });
     auto choose = [this](const QModelIndex& idx) {
         if (!idx.isValid()) return;
         const QString name = idx.data(Qt::DisplayRole).toString();
@@ -567,6 +997,11 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
             if (kind_ != Kind::Images)
                 menu.addAction(kind_ == Kind::Materials ? "Apply to Selection" : "Place", this, [choose, idx] { choose(idx); });
             if (kind_ == Kind::Models) menu.addAction("Preview in 3D...", this, [this, name] { emit previewRequested(name); });
+            if (kind_ == Kind::Sounds)
+                menu.addAction(playingName_ == name && soundPlay_ && soundPlay_->property("playing").toBool() ? "Stop" : "Play", this,
+                               [this, idx] { playRow(idx); });
+            if (kind_ == Kind::Effects && folders_)
+                menu.addAction("Show Its Folder", this, [this, name] { setFolder(name.section('/', 0, -2)); });
             if (kind_ == Kind::Materials || kind_ == Kind::Models || kind_ == Kind::Effects)
                 menu.addAction(kind_ == Kind::Materials ? "Material Info..." : kind_ == Kind::Models ? "Model Info..." : "Effect Info...", this,
                                [this, name] { emit infoRequested(name); });
@@ -596,18 +1031,24 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
     if (kind_ == Kind::Effects || kind_ == Kind::Sounds)
         connect(view_->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex& idx) {
             if (soundPlay_) soundPlay_->setEnabled(idx.isValid() || soundPlay_->property("playing").toBool());
+            updateStrip();
             if (kind_ == Kind::Effects && idx.isValid()) emit effectHighlighted(idx.data(Qt::DisplayRole).toString());
         });
+    if (kind_ == Kind::Materials)
+        connect(view_->selectionModel(), &QItemSelectionModel::currentChanged, this, [this] { updateStrip(); });
     if (kind_ == Kind::Models || kind_ == Kind::Images)
         connect(view_->selectionModel(), &QItemSelectionModel::currentChanged, this, [this](const QModelIndex& idx) {
             if (!idx.isValid()) {
                 if (previewBox_) previewBox_->setVisible(false);  // models: the preview shows only while one is selected
+                updateStrip();
                 return;
             }
+            updateStrip();  // before the preview: the main window may set it right away
             if (kind_ == Kind::Images) emit imageHighlighted(idx.data(Qt::DisplayRole).toString());
             else emit modelHighlighted(idx.data(Qt::DisplayRole).toString());
         });
-    connect(use, &QPushButton::clicked, this, [this, choose] { choose(view_->currentIndex()); });
+    if (use) connect(use, &QPushButton::clicked, this, [this, choose] { choose(view_->currentIndex()); });
+    if (place) connect(place, &QPushButton::clicked, this, [this, choose] { choose(view_->currentIndex()); });
     connect(ctx_, &EditorContext::documentChanged, this, [this, filter] {
         // Collected again only when the map's content changed: selection clicks signal a change too, and walking every
         // face of a large map and refiltering 46k rows for a click is wasted work.
@@ -641,6 +1082,8 @@ struct AssetBrowser::Catalog {
         QString name, tip;
         int tone = 0;  // 0 normal, 1 builds grey (no colour image), 2 not available in a build, 3 a looping sound
         bool loop = false;
+        QString group;  // the chip group (groupsOf)
+        int dist = 0;   // sounds: audible to (units)
     };
     std::vector<Row> rows;
     int hiddenStreamOnly = 0, hiddenMissing = 0;
@@ -695,6 +1138,7 @@ std::shared_ptr<AssetBrowser::Catalog> AssetBrowser::readCatalog(Kind kind, bool
                 const QStringList s = line.split('\t');
                 if (line.startsWith('#') || s.size() < 4) continue;
                 row.loop = s[1] == "1";
+                row.dist = s[2].toInt();
                 row.tip = QString("%1\n%2, audible to %3 units\nzones: %4").arg(s[0], row.loop ? "loop" : "one-shot", s[2], s[3]);
                 row.tone = row.loop ? 3 : 0;
                 c->rows.push_back(std::move(row));
@@ -727,6 +1171,11 @@ std::shared_ptr<AssetBrowser::Catalog> AssetBrowser::readCatalog(Kind kind, bool
             c->rows.push_back(std::move(row));
         }
     }
+    // The chip group of every row (here, on the worker thread, with this thread's expressions).
+    if (const auto& groups = groupsOf(kind); !groups.empty()) {
+        const std::vector<QRegularExpression> res = groupExpressions(groups);
+        for (Catalog::Row& r : c->rows) r.group = groupOfName(groups, res, r.name.toLower());
+    }
     // Colour images from ACTS exports (data/stock_assets/<zone>/index.json).
     if (kind == Kind::Materials) {
         const QDir assets(data.filePath("stock_assets"));
@@ -758,11 +1207,14 @@ std::shared_ptr<AssetBrowser::Catalog> AssetBrowser::readCatalog(Kind kind, bool
 
 void AssetBrowser::load() {
     const int gen = ++loadGen_;
-    const bool buildable = buildableOnly_ && buildableOnly_->isChecked();
+    const bool buildable = buildableOnly_;
     const QString dataDir = repoData().absolutePath();
     const bool wantKits = kit_ && kitNames_.isEmpty();
     const Kind kind = kind_;
-    if (model_->rowCount() == 0) info_->setText("Reading the catalogue...");
+    if (model_->rowCount() == 0) {
+        info_->setText("Reading the catalogue...");
+        info_->setVisible(true);
+    }
     QPointer<AssetBrowser> self(this);
     std::thread(guardedWorker(__FILE__, __LINE__, [self, gen, kind, buildable, dataDir, wantKits] {
         std::shared_ptr<const Catalog> cat = readCatalog(kind, buildable, dataDir, wantKits);
@@ -776,6 +1228,7 @@ QStandardItem* AssetBrowser::customItem(const QString& name, const QString& imag
     auto* item = new QStandardItem(name);
     item->setEditable(false);
     item->setData(true, Qt::UserRole + 1);
+    item->setData(QString("own"), kGroupRole);
     item->setToolTip(name + "\ncustom material: " + image);
     return item;
 }
@@ -792,10 +1245,12 @@ void AssetBrowser::applyCatalog(const Catalog& c) {
         item->setEditable(false);
         item->setToolTip(r.tip);
         if (kind_ == Kind::Sounds) item->setData(r.loop, Qt::UserRole + 2);
+        if (!r.group.isEmpty()) item->setData(r.group, kGroupRole);
+        if (r.dist > 0) item->setData(r.dist, kDistRole);
         if (r.tone == 1) item->setForeground(QColor(200, 160, 90));
         if (r.tone == 1 && kind_ == Kind::Materials) item->setData(true, kNoPicture);
         else if (r.tone == 2) item->setForeground(QColor(130, 130, 130));
-        else if (r.tone == 3) item->setForeground(QColor(120, 200, 255));
+        // tone 3 (a looping sound): the row's "loop" pill says it
         items.append(item);
     }
     model_->clear();
@@ -805,6 +1260,19 @@ void AssetBrowser::applyCatalog(const Catalog& c) {
     for (QStandardItem* it : items) items_.insert(it->text(), it);
     model_->invisibleRootItem()->appendRows(items);  // one insert (a row at a time made the proxy filter each)
     for (auto it = c.imageFiles.constBegin(); it != c.imageFiles.constEnd(); ++it) imageFiles_.insert(it.key(), it.value());
+    // The chips' counts and the effect folders.
+    if (chips_ && !groupsOf(kind_).empty()) {
+        QHash<QString, int> n;
+        for (const Catalog::Row& r : c.rows) ++n[r.group];
+        chips_->setCount("all", int(c.rows.size()));
+        for (const Group& g : groupsOf(kind_)) chips_->setCount(g.id, n.value(g.id));
+    }
+    if (kind_ == Kind::Sounds && chips_ && chips_->chip("loops")) {
+        int loops = 0;
+        for (const Catalog::Row& r : c.rows) loops += r.loop;
+        chips_->chip("loops")->setText(QString("Loops\t%1").arg(thousands(loops)));
+    }
+    fillFolders();
     if (kit_ && kitNames_.isEmpty() && !c.kits.isEmpty()) {
         kitNames_ = c.kits;
         QStringList names = kitNames_.keys();
@@ -821,7 +1289,7 @@ void AssetBrowser::applyCatalog(const Catalog& c) {
         catalogInfo_ = (QString("%1 stock %2 (Replay 1.20, %3)%4")
                            .arg(c.rows.size())
                            .arg(kind_ == Kind::Materials ? "materials" : kind_ == Kind::Images ? "images"
-                                : kind_ == Kind::Sounds ? "sound aliases (blue = loop)" : "models")
+                                : kind_ == Kind::Sounds ? "sound aliases" : "models")
                            .arg(c.fileName)
                            .arg(kind_ == Kind::Materials ? QString(", %1 with thumbnails").arg(imageFiles_.size())
                                 : kind_ == Kind::Models && hiddenStreamOnly_
@@ -923,8 +1391,32 @@ int AssetBrowser::picturedRows(int count) const {
     return n;
 }
 
+void AssetBrowser::resizeEvent(QResizeEvent* e) {
+    QWidget::resizeEvent(e);
+    fitEffectSquare();
+}
+
+void AssetBrowser::fitEffectSquare() {
+    // The effect square takes at most 2/5 of the height the panel is shown in, so the list keeps its room. The visible
+    // height, not the panel's own: a dock may hold the panel in a scroll area that grows with the panel's minimum, and
+    // a square following that height grew the panel past the screen (first shots: the strip scrolled off).
+    if (!fxPreview_) return;
+    int avail = height();
+    for (QWidget* p = parentWidget(); p; p = p->parentWidget())
+        if (auto* sa = qobject_cast<QAbstractScrollArea*>(p)) {
+            avail = sa->viewport()->height();
+            break;
+        }
+    fxPreview_->setMaxSide(std::clamp(avail * 2 / 5, 160, 420));
+}
+
 void AssetBrowser::showEvent(QShowEvent* e) {
     QWidget::showEvent(e);
+    if (!shownOnce_) {
+        shownOnce_ = true;
+        emit firstShown();
+    }
+    fitEffectSquare();
     emptyPasses_ = 0;
     if (gridFit_) static_cast<TileGridFit*>(gridFit_)->fit();
     if (fast_) fast_->start();
@@ -1204,19 +1696,29 @@ void AssetBrowser::refreshUsedFilter() {
 
 void AssetBrowser::updateInfo() {
     const int shown = proxy_->rowCount(), total = model_->rowCount();
-    if (shown == total) {
-        info_->setText(catalogInfo_);
-        return;
-    }
-    // What narrows the list, so an empty list says why it is empty.
+    // What narrows the list: the count's tooltip says it, and an empty list says why it is empty.
     QStringList by;
     if (!filterText_.isEmpty()) by << "\"" + filterText_ + "\"";
-    if (listMode_ && listMode_->currentIndex() != 0) by << listMode_->currentText();
+    if (listMode_ == 1) by << "favourites";
+    else if (listMode_ == 2) by << "recent";
+    else if (listMode_ == 3) by << "#" + listTag_;
+    if (chips_ && !chips_->current().isEmpty() && chips_->current() != "all") by << groupLabel(kind_, chips_->current());
+    if (!folder_.isEmpty()) by << "in " + folder_;
+    if (chips_ && chips_->isOn("loops")) by << "loops";
     if (kit_ && kit_->currentIndex() > 0) by << "kit " + kit_->currentText();
-    if (usedOnly_->isChecked()) by << "in this map";
-    const QString why = by.isEmpty() ? QString() : " (" + by.join(", ") + ")";
-    info_->setText(shown == 0 ? QString("No matches for %1 among %2").arg(by.isEmpty() ? QString("the filters") : by.join(", ")).arg(total)
-                              : QString("%1 of %2 shown%3").arg(shown).arg(total).arg(why));
+    if (usedOnly_) by << "in this map";
+    if (header_)
+        header_->setCount(shown == total ? thousands(total) : QString("%1 of %2").arg(thousands(shown), thousands(total)),
+                          catalogInfo_ + (by.isEmpty() ? QString() : "\nNarrowed by " + by.join(", ")));
+    if (total == 0 && !catalogLoaded()) {
+        info_->setText("Reading the catalogue...");
+        info_->setVisible(true);
+        return;
+    }
+    const bool empty = shown == 0 && total > 0;
+    info_->setText(empty ? QString("No matches for %1 among %2").arg(by.isEmpty() ? QString("the filters") : by.join(", "), thousands(total))
+                         : QString());
+    info_->setVisible(empty);
 }
 
 int AssetBrowser::usageCount(const QString& qname) const {
@@ -1265,21 +1767,69 @@ QStringList AssetBrowser::allTags() const {
 }
 
 void AssetBrowser::refillListModes() {
-    if (!listMode_) return;
-    const QString cur = listMode_->currentText();
-    QSignalBlocker block(listMode_);
-    while (listMode_->count() > 3) listMode_->removeItem(3);
-    for (const QString& t : allTags()) listMode_->addItem("#" + t);
-    const int i = listMode_->findText(cur);
-    listMode_->setCurrentIndex(i >= 0 ? i : 0);
-    applyListMode();
+    // A tag no asset has any more lists everything again.
+    if (listMode_ == 3 && !allTags().contains(listTag_)) {
+        listMode_ = 0;
+        listTag_.clear();
+    }
+    setListModeTo(listMode_, listTag_);
 }
 
 void AssetBrowser::showTag(const QString& tag) {
-    refillListModes();
-    const int i = listMode_ ? listMode_->findText("#" + tag.toLower()) : -1;
-    if (i >= 0) listMode_->setCurrentIndex(i);
+    if (allTags().contains(tag.toLower())) setListModeTo(3, tag.toLower());
+}
+
+void AssetBrowser::setListModeTo(int mode, const QString& tag) {
+    listMode_ = mode;
+    listTag_ = mode == 3 ? tag : QString();
+    // The star and the Recent chip show the mode; the dots menu is made again after the action that chose it.
+    if (favButton_) {
+        const QSignalBlocker block(favButton_);
+        favButton_->setChecked(mode == 1);
+        const char16_t g = mode == 1 ? glyph::StarFilled : glyph::Star;
+        favButton_->setProperty("glyph", int(g));
+        favButton_->setIcon(glyphIcon(g, 14));
+    }
+    if (chips_) chips_->setOn("recent", mode == 2);
+    QMetaObject::invokeMethod(this, [this] { rebuildMenu(); }, Qt::QueuedConnection);
     applyListMode();
+}
+
+void AssetBrowser::rebuildMenu() {
+    if (!menu_) return;
+    menu_->clear();
+    menu_->setToolTipsVisible(true);
+    auto* show = new QActionGroup(menu_);
+    const auto mode = [this, show](QMenu* in, const QString& text, int m, const QString& tag) {
+        QAction* a = in->addAction(text);
+        a->setCheckable(true);
+        a->setChecked(listMode_ == m && (m != 3 || listTag_ == tag));
+        show->addAction(a);
+        connect(a, &QAction::triggered, this, [this, m, tag] { setListModeTo(m, tag); });
+    };
+    menu_->addSection("Show");
+    mode(menu_, "All", 0, {});
+    mode(menu_, "Favourites", 1, {});
+    mode(menu_, "Recent", 2, {});
+    if (const QStringList tags = allTags(); !tags.isEmpty()) {
+        QMenu* tm = menu_->addMenu("Tags");
+        for (const QString& t : tags) mode(tm, "#" + t, 3, t);
+    }
+    if (kind_ != Kind::Sounds) {
+        menu_->addSeparator();
+        QAction* b = menu_->addAction("Buildable Only");
+        b->setCheckable(true);
+        b->setChecked(buildableOnly_);
+        b->setToolTip("Hide stock assets the availability audit could not export from Replay");
+        connect(b, &QAction::toggled, this, [this](bool on) {
+            buildableOnly_ = on;
+            load();
+        });
+    }
+    if (!toolActions_.isEmpty()) {
+        menu_->addSection("Tools");
+        for (QAction* a : toolActions_) menu_->addAction(a);
+    }
 }
 
 void AssetBrowser::setFilter(const QString& text) {
@@ -1314,7 +1864,7 @@ void AssetBrowser::noteRecent(const QString& name) {
     r.prepend(name);
     while (r.size() > 30) r.removeLast();
     Settings::instance().setValue(settingsKey("recent"), r);
-    if (listMode_ && listMode_->currentIndex() == 2) applyListMode();
+    if (listMode_ == 2) applyListMode();
 }
 
 QStringList AssetBrowser::kits() const {
@@ -1339,19 +1889,18 @@ void AssetBrowser::setKit(const QString& kit) {
     updateInfo();
 }
 
-void AssetBrowser::setListMode(ListMode m) { listMode_->setCurrentIndex(int(m)); applyListMode(); }
+void AssetBrowser::setListMode(ListMode m) { setListModeTo(int(m), {}); }
 
 void AssetBrowser::applyListMode() {
     auto* filter = static_cast<NameFilter*>(proxy_);
-    const int mode = listMode_ ? listMode_->currentIndex() : 0;
+    const int mode = listMode_;
     filter->useList = mode != 0;
     filter->list.clear();
     QStringList names = mode == 1 ? Settings::instance().value(settingsKey("favourites")).toStringList() : mode == 2 ? recent() : QStringList();
-    if (mode >= 3) {  // a tag
-        const QString tag = listMode_->currentText().mid(1);
+    if (mode == 3) {  // a tag
         const QVariantMap all = Settings::instance().value(settingsKey("tags")).toMap();
         for (auto it = all.begin(); it != all.end(); ++it)
-            if (it.value().toStringList().contains(tag)) names << it.key();
+            if (it.value().toStringList().contains(listTag_)) names << it.key();
     }
     filter->list.insert(names.begin(), names.end());
     filter->refresh();
@@ -1365,8 +1914,10 @@ void AssetBrowser::setPreview(const QImage& image, const QString& caption) {
     if (!preview_) return;
     // Fitted into the preview box (keeping its shape) instead of shown at full size and cut off.
     QPixmap pm = image.isNull() ? QPixmap() : QPixmap::fromImage(image);
-    if (!pm.isNull() && (pm.width() > preview_->width() - 4 || pm.height() > preview_->height() - 4))
-        pm = pm.scaled(preview_->size() - QSize(4, 4), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    // Images: the strip may not be laid out yet (shown with this preview), so the box is the panel's width.
+    const QSize box = kind_ == Kind::Images ? QSize(std::max(96, width() - 16), 210) : preview_->size() - QSize(4, 4);
+    if (!pm.isNull() && (pm.width() > box.width() || pm.height() > box.height()))
+        pm = pm.scaled(box, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     preview_->setPixmap(pm);
     // Models: shown while a model is selected. A preview arriving later (its picture or export finished) for a model
     // that is no longer selected updates the box but does not bring it back.
@@ -1379,6 +1930,15 @@ void AssetBrowser::setPreview(const QImage& image, const QString& caption) {
         previewCaption_->setText(lines.isEmpty() ? QString()
                                  : QFontMetrics(previewCaption_->font()).elidedText(lines.first(), Qt::ElideMiddle, width) + caption.mid(lines.first().size()));
         previewCaption_->setToolTip(caption);
+        if (kind_ == Kind::Images && strip_) {
+            // The strip: the name, then where it is used, its size and format (or why there is no picture).
+            const QModelIndex cur = view_->currentIndex();
+            QStringList facts{groupLabel(kind_, cur.data(kGroupRole).toString())};
+            facts += lines.mid(1);
+            facts.removeAll(QString());
+            strip_->setTitle(lines.value(0), facts.join(factSep()));
+            strip_->setVisible(cur.isValid());
+        }
         return;
     }
     previewCaption_->setText(caption);
@@ -1388,7 +1948,9 @@ void AssetBrowser::setEffectPreview(const VfxSimDef* def, const QString& caption
     if (!fxPreview_) return;
     if (def) fxPreview_->setEffect(*def);
     fxPreview_->setVisible(def != nullptr);
-    fxCaption_->setText(caption);
+    // The strip's title is the effect; this line says what the preview shows, or why there is none.
+    const QString status = caption.section('\n', 1);
+    fxCaption_->setText(status.isEmpty() ? caption : status);
     fxCaption_->setToolTip(caption);
 }
 
@@ -1396,30 +1958,23 @@ void AssetBrowser::setSoundStatus(const QString& text, bool playing) {
     if (!soundPlay_) return;
     soundPlay_->setProperty("playing", playing);
     soundPlay_->setText(playing ? "Stop" : "Play");
+    soundPlay_->setIcon(glyphIcon(playing ? glyph::Stop : glyph::Play, 14));
     soundPlay_->setEnabled(playing || view_->currentIndex().isValid());
     soundCaption_->setText(text);
     soundCaption_->setToolTip(text);
+    // The row of the alias that plays shows Stop; the waveform's playhead stops with it.
+    static_cast<AssetTileDelegate*>(delegate_)->playing = playing ? playingName_ : QString();
+    if (!playing && wave_) static_cast<WaveView*>(wave_)->setPlaying(false);
+    view_->viewport()->update();
 }
 
 QString AssetBrowser::soundStatus() const { return soundCaption_ ? soundCaption_->text() : QString(); }
 
 void AssetBrowser::setToolActions(const QList<QAction*>& actions) {
-    // One "Tools" button in the options row (a narrow column has no room for a row of buttons): its menu holds the
-    // Tools menu commands of this kind of asset, the same actions as the menu bar's.
-    delete toolRow_;
-    toolRow_ = nullptr;
-    if (actions.isEmpty()) return;
-    // A push button with a menu: its arrow sits on the right, centred, like the combo boxes beside it (a tool button
-    // put a small arrow in its bottom-right corner; owner re-check 2026-11-15).
-    auto* b = new QPushButton("Tools", this);
-    b->setObjectName("assetTools");
-    b->setToolTip("Tools for this kind of asset (the same commands as in the Tools menu and the Tools panel)");
-    auto* menu = new QMenu(b);
-    for (QAction* a : actions)
-        if (a) menu->addAction(a);
-    b->setMenu(menu);
-    toolRow_ = b;
-    if (QWidget* box = findChild<QWidget*>("assetOptions"); box && box->layout()) box->layout()->addWidget(b);
+    // The Tools menu commands of this kind of asset (the same actions as the menu bar's), at the end of the dots menu.
+    toolActions_ = actions;
+    toolActions_.removeAll(nullptr);
+    rebuildMenu();
 }
 
 QString AssetBrowser::previewCaption() const {
@@ -1431,5 +1986,160 @@ QString AssetBrowser::previewCaption() const {
 bool AssetBrowser::previewHasImage() const { return preview_ && !preview_->pixmap().isNull(); }
 
 void AssetBrowser::selectRow(int row) { view_->setCurrentIndex(proxy_->index(row, 0)); }
+
+void AssetBrowser::updateStrip() {
+    if (!strip_) return;
+    const QModelIndex idx = view_->currentIndex();
+    if (!idx.isValid()) {
+        strip_->setVisible(false);
+        return;
+    }
+    const QString name = idx.data(Qt::DisplayRole).toString();
+    const QString group = groupLabel(kind_, idx.data(kGroupRole).toString());
+    QStringList facts;
+    if (kind_ == Kind::Effects) {
+        if (!group.isEmpty()) facts << group;
+        if (const QString f = facts_.value(name); !f.isEmpty()) facts << (f == "loop" ? QString("looping") : "one-shot " + f);
+    } else if (kind_ == Kind::Sounds) {
+        facts << (idx.data(Qt::UserRole + 2).toBool() ? "loop" : "one-shot");
+        if (const QString f = facts_.value(name); !f.isEmpty()) facts += f.split(factSep(), Qt::SkipEmptyParts);
+        if (const int d = idx.data(kDistRole).toInt(); d > 0) facts << QString("audible to %1 u").arg(thousands(d));
+        if (!group.isEmpty()) facts << group;
+        if (wave_ && playingName_ != name) static_cast<WaveView*>(wave_)->clear();  // the waveform is of what plays
+    } else if (kind_ == Kind::Materials || kind_ == Kind::Models) {
+        if (!group.isEmpty()) facts << group;
+        const int uses = usageCount(name);
+        facts << (uses ? QString("used %1 time%2 in this map").arg(uses).arg(uses == 1 ? "" : "s") : QString("not used in this map"));
+        if (kind_ == Kind::Materials && name.contains('/')) facts << "techset family " + name.section('/', 0, 0);
+        if (QPushButton* r = strip_->findChild<QPushButton*>("materialReplace")) r->setEnabled(uses > 0);
+        if (QPushButton* f = strip_->findChild<QPushButton*>("materialSelectFaces")) f->setEnabled(uses > 0);
+        if (kind_ == Kind::Materials && preview_) {
+            // A larger picture than the tile's: the colour image again at the strip's size, else the tile's picture.
+            QPixmap pm;
+            if (const QString file = imageFiles_.value(name); !file.isEmpty())
+                if (const QImage img = decodeImageFile(file, 112); !img.isNull()) pm = QPixmap::fromImage(img);
+            if (pm.isNull()) pm = idx.data(Qt::DecorationRole).value<QIcon>().pixmap(112, 112);
+            preview_->setPixmap(pm);
+        }
+    } else if (!group.isEmpty()) {
+        facts << group;  // images: the size and format come with the preview (setPreview)
+    }
+    strip_->setTitle(name, facts.join(factSep()));
+    strip_->setVisible(true);
+}
+
+void AssetBrowser::setRowFact(const QString& name, const QString& fact, bool keep) {
+    if (facts_.value(name) == fact) return;
+    if (fact.isEmpty()) facts_.remove(name);
+    else facts_.insert(name, fact);
+    if (keep) {
+        QVariantMap kept = Settings::instance().value(settingsKey("facts")).toMap();
+        if (fact.isEmpty()) kept.remove(name);
+        else kept.insert(name, fact);
+        Settings::instance().setValue(settingsKey("facts"), kept);
+    }
+    view_->viewport()->update();
+    if (view_->currentIndex().data(Qt::DisplayRole).toString() == name) updateStrip();
+}
+
+void AssetBrowser::setRowFacts(const QHash<QString, QString>& facts) {
+    for (auto it = facts.begin(); it != facts.end(); ++it) facts_.insert(it.key(), it.value());
+    view_->viewport()->update();
+    updateStrip();
+}
+
+void AssetBrowser::setSoundWave(const QVector<float>& peaks, double seconds, bool loop) {
+    if (wave_) static_cast<WaveView*>(wave_)->setWave(peaks, seconds, loop);
+}
+
+void AssetBrowser::playRow(const QModelIndex& idx) {
+    if (!idx.isValid()) return;
+    const QString name = idx.data(Qt::DisplayRole).toString();
+    if (view_->currentIndex() != idx) view_->setCurrentIndex(idx);
+    if (soundPlay_ && soundPlay_->property("playing").toBool() && playingName_ == name) {
+        emit soundStopRequested();
+        return;
+    }
+    playingName_ = name;
+    emit soundPlayRequested(name);
+}
+
+void AssetBrowser::fillFolders() {
+    if (!folders_) return;
+    const QSignalBlocker block(folders_);
+    folders_->clear();
+    // Every folder of every path with the number of effects under it (at any depth); "vfx" is the root.
+    QMap<QString, int> count;
+    for (int r = 0; r < model_->rowCount(); ++r) {
+        const QStringList parts = model_->item(r)->text().split('/');
+        QString path;
+        for (int i = 0; i + 1 < int(parts.size()); ++i) {
+            path += (i ? "/" : "") + parts[i];
+            ++count[path];
+        }
+    }
+    auto* all = new QTreeWidgetItem(folders_, {"All effects", thousands(model_->rowCount())});
+    all->setData(0, Qt::UserRole, QString());
+    all->setIcon(0, glyphIcon(glyph::Effects, 14));
+    all->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
+    QHash<QString, QTreeWidgetItem*> items;
+    for (auto it = count.begin(); it != count.end(); ++it) {  // sorted: a folder comes before the folders in it
+        const QString& path = it.key();
+        if (path == "vfx") continue;
+        auto* item = new QTreeWidgetItem(items.value(path.section('/', 0, -2), all), {path.section('/', -1), thousands(it.value())});
+        item->setData(0, Qt::UserRole, path);
+        item->setToolTip(0, path);
+        item->setIcon(0, glyphIcon(glyph::Folder, 14, themeMix(0.7)));
+        item->setForeground(1, themeMix(0.5));
+        item->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
+        items.insert(path, item);
+    }
+    all->setExpanded(true);
+    folders_->setCurrentItem(items.value(folder_, all));
+}
+
+void AssetBrowser::setFolder(const QString& folder) {
+    folder_ = folder == "vfx" ? QString() : folder;
+    auto* f = static_cast<NameFilter*>(proxy_);
+    f->folder = folder_;
+    static_cast<AssetTileDelegate*>(delegate_)->folderBase = folder_;
+    f->refresh();
+    view_->viewport()->update();
+    updateInfo();
+    if (!folders_) return;
+    // The tree follows (the context menu's Show Its Folder, tests).
+    for (QTreeWidgetItemIterator it(folders_); *it; ++it)
+        if ((*it)->data(0, Qt::UserRole).toString() == folder_) {
+            if (folders_->currentItem() != *it) {
+                const QSignalBlocker block(folders_);
+                folders_->setCurrentItem(*it);
+                folders_->scrollToItem(*it);
+            }
+            break;
+        }
+}
+
+void AssetBrowser::setChip(const QString& id) {
+    if (!chips_) return;
+    chips_->setCurrent(id);
+    static_cast<NameFilter*>(proxy_)->group = id == "all" ? QString() : id;
+    static_cast<NameFilter*>(proxy_)->refresh();
+    updateInfo();
+}
+
+QString AssetBrowser::chip() const { return chips_ ? chips_->current() : QString(); }
+QStringList AssetBrowser::chipIds() const { return chips_ ? chips_->chipIds() : QStringList(); }
+
+QString AssetBrowser::groupOf(const QString& name) const {
+    const auto& groups = groupsOf(kind_);
+    if (groups.empty()) return {};
+    const std::vector<QRegularExpression> res = groupExpressions(groups);
+    return groupOfName(groups, res, name.toLower());
+}
+
+QString AssetBrowser::countText() const { return header_ ? header_->count() : QString(); }
+QString AssetBrowser::stripTitle() const { return strip_ ? strip_->titleText() : QString(); }
+QString AssetBrowser::stripFacts() const { return strip_ ? strip_->factsText() : QString(); }
+bool AssetBrowser::stripShown() const { return strip_ && strip_->isVisible(); }
 
 }  // namespace iw8r::qt

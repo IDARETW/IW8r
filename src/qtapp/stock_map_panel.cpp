@@ -45,6 +45,7 @@
 #include "asset_browser.h"
 #include "brush_ops.h"
 #include "flow_layout.h"
+#include "panel_chrome.h"
 #include "main_window.h"
 #include "map_text.h"
 #include "stock_world.h"
@@ -210,6 +211,10 @@ StockMapPanel::StockMapPanel(MainWindow* window, EditorContext* ctx, QWidget* pa
     setObjectName("stockMapPanel");
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(4);
+    // The header line every side panel has (panel_chrome.h): the panel's name and the stock map that is open.
+    panelHeader_ = new PanelHeader("Stock Map", this);
+    outer->addWidget(panelHeader_);
     pages_ = new QStackedWidget;
     outer->addWidget(pages_);
 
@@ -1031,6 +1036,7 @@ void StockMapPanel::refresh() {
     updateStockVisibility();
     const bool open = stockMapOpen();
     pages_->setCurrentIndex(open ? 1 : 0);
+    panelHeader_->setCount(open ? w_->stockZone() : QString("none open"));
     if (!open || !isVisible()) return;
     updateSelectionButtons();
     const Document& doc = ctx_->doc;

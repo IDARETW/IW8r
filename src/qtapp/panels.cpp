@@ -1,5 +1,11 @@
 #include "panels.h"
 #include "lightmap_fields.h"
+#include "panel_chrome.h"
+
+#include <QHash>
+#include <QMenu>
+#include <QPainter>
+#include <QStyledItemDelegate>
 
 #include <QAction>
 #include <QColorDialog>
@@ -932,21 +938,180 @@ void SurfacePanel::refresh() {
 
 // ------------------------------------------------------------------ history
 
+namespace {
+
+// What a step is, from the first word of its name: the row's icon.
+char16_t historyGlyph(const QString& name) {
+    const QString n = name.toLower();
+    const auto has = [&n](std::initializer_list<const char*> words) {
+        for (const char* w : words)
+            if (n.startsWith(w) || n.contains(QString(" ") + w)) return true;
+        return false;
+    };
+    if (has({"delete", "remove", "cut", "hide"})) return glyph::Delete;
+    if (has({"place", "add", "create", "new ", "insert", "paste", "generate", "spawn"})) return glyph::Add;
+    if (has({"clone", "duplicate", "copy"})) return glyph::Copy;
+    if (has({"move", "drag", "nudge", "translate", "drop", "snap"})) return 0xE7C2;  // move arrows
+    if (has({"rotate", "turn", "flip", "mirror"})) return 0xE7AD;                      // rotate
+    if (has({"scale", "resize", "size"})) return 0xE740;                               // full screen corners
+    if (has({"apply", "material", "texture", "paint", "fit", "align"})) return glyph::Brush;
+    if (has({"set ", "edit", "key", "rename", "change"})) return glyph::Edit;
+    if (has({"select"})) return 0xE762;                                                // select all
+    return glyph::History;
+}
+
+// What a step touched, counted from its operations.
+struct Touched {
+    int entAdded = 0, entRemoved = 0, primAdded = 0, primRemoved = 0, primChanged = 0, keys = 0, layers = 0;
+    std::set<SelRef> refs;  // the entities and primitives it touched (selectable while the step is applied)
+};
+
+Touched touchedBy(const Transaction& t) {
+    Touched out;
+    for (const Op& op : t.ops) {
+        const EntityItem* item = op.after ? &*op.after : op.before ? &*op.before : nullptr;
+        const bool prim = item && item->isPrimitive();
+        switch (op.type) {
+        case Op::Type::InsertEntity: ++out.entAdded; out.refs.insert({op.entity, kNoId}); break;
+        case Op::Type::RemoveEntity: ++out.entRemoved; break;
+        case Op::Type::InsertItem:
+            if (prim) ++out.primAdded, out.refs.insert({op.entity, op.item});
+            else ++out.keys, out.refs.insert({op.entity, kNoId});
+            break;
+        case Op::Type::RemoveItem:
+            if (prim) ++out.primRemoved;
+            else ++out.keys, out.refs.insert({op.entity, kNoId});
+            break;
+        case Op::Type::ReplaceItem:
+            if (prim) ++out.primChanged, out.refs.insert({op.entity, op.item});
+            else ++out.keys, out.refs.insert({op.entity, kNoId});
+            break;
+        case Op::Type::ReplaceHeader: ++out.layers; break;
+        }
+    }
+    return out;
+}
+
+QString touchedText(const Touched& t) {
+    QStringList parts;
+    const auto n = [&parts](int count, const char* one, const char* many, const char* what) {
+        if (count > 0) parts << QString("%1 %2 %3").arg(count).arg(count == 1 ? one : many, what);
+    };
+    n(t.entAdded, "entity", "entities", "added");
+    n(t.entRemoved, "entity", "entities", "removed");
+    n(t.primAdded, "brush", "brushes", "added");
+    n(t.primRemoved, "brush", "brushes", "removed");
+    n(t.primChanged, "brush", "brushes", "changed");
+    n(t.keys, "key", "keys", "set");
+    n(t.layers, "layer change", "layer changes", "");
+    return parts.isEmpty() ? QString("no change to the map") : parts.join(", ").trimmed();
+}
+
+// Rows: an icon, the step's name, what it touched under it; the current step marked with a bar, undone ones dimmed.
+class HistoryDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QSize sizeHint(const QStyleOptionViewItem& opt, const QModelIndex&) const override {
+        const QFontMetrics fm(opt.font);
+        return {100, 2 * fm.height() + 8};
+    }
+    void paint(QPainter* p, const QStyleOptionViewItem& opt, const QModelIndex& idx) const override {
+        p->save();
+        const QRect r = opt.rect;
+        const bool sel = opt.state & QStyle::State_Selected;
+        const bool current = idx.data(Qt::UserRole + 1).toBool(), undone = idx.data(Qt::UserRole + 2).toBool();
+        if (sel) p->fillRect(r, themeMix(0.14));
+        else if (opt.state & QStyle::State_MouseOver) p->fillRect(r, themeMix(0.07));
+        if (current) p->fillRect(QRect(r.x(), r.y() + 2, 3, r.height() - 4), opt.palette.highlight());
+        const QColor text = undone ? themeMix(0.45) : opt.palette.text().color(), dim = themeMix(undone ? 0.35 : 0.55);
+        const QFontMetrics fm(opt.font);
+        const QRect icon(r.x() + 9, r.y() + (r.height() - 16) / 2, 16, 16);
+        idx.data(Qt::DecorationRole).value<QIcon>().paint(p, icon, Qt::AlignCenter, undone ? QIcon::Disabled : QIcon::Normal);
+        const int x = icon.right() + 8;
+        QFont small = opt.font;
+        small.setPointSizeF(std::max(6.5, small.pointSizeF() - 1.5));
+        const QFontMetrics sfm(small);
+        // The step number on the right.
+        const QString num = idx.data(Qt::UserRole + 3).toString();
+        p->setFont(small);
+        p->setPen(dim);
+        const int numW = sfm.horizontalAdvance(num) + 2;
+        p->drawText(QRect(r.right() - 6 - numW, r.y() + 3, numW, fm.height()), Qt::AlignRight | Qt::AlignVCenter, num);
+        QFont name = opt.font;
+        name.setBold(current);
+        p->setFont(name);
+        p->setPen(text);
+        const int w = r.right() - 10 - numW - x;
+        p->drawText(QRect(x, r.y() + 3, w, fm.height()), Qt::AlignLeft | Qt::AlignVCenter,
+                    QFontMetrics(name).elidedText(idx.data(Qt::DisplayRole).toString(), Qt::ElideRight, w));
+        p->setFont(small);
+        p->setPen(dim);
+        const int w2 = r.right() - 6 - x;
+        p->drawText(QRect(x, r.y() + 3 + fm.height(), w2, sfm.height() + 2), Qt::AlignLeft | Qt::AlignVCenter,
+                    sfm.elidedText(idx.data(Qt::UserRole + 4).toString(), Qt::ElideRight, w2));
+        p->restore();
+    }
+};
+
+}  // namespace
+
 HistoryPanel::HistoryPanel(EditorContext* ctx, QWidget* parent) : QWidget(parent), ctx_(ctx) {
+    setObjectName("historyPanel");
     auto* lay = new QVBoxLayout(this);
-    lay->setContentsMargins(4, 4, 4, 4);
-    // Narrow side column (300-420 px): never scroll sideways, elide long step names (the full name is the tooltip), and
-    // do not let the list's own size hint widen the dock.
+    lay->setContentsMargins(0, 0, 0, 0);
+    lay->setSpacing(4);
+    header_ = new PanelHeader("Undo History", this);
+    undo_ = header_->addButton(glyph::Undo, "Undo (Ctrl+Z)", false, "historyUndo");
+    redo_ = header_->addButton(glyph::Redo, "Redo (Ctrl+Y)", false, "historyRedo");
+    menu_ = new QMenu(this);
+    menu_->setToolTipsVisible(true);
+    header_->addMenuButton(menu_, "Record and run edits as command scripts", "historyTools");
+    lay->addWidget(header_);
+    connect(undo_, &QToolButton::clicked, this, [this] {
+        if (ctx_->doc.undo()) ctx_->documentEdited();
+    });
+    connect(redo_, &QToolButton::clicked, this, [this] {
+        if (ctx_->doc.redo()) ctx_->documentEdited();
+    });
+    auto* searchRow = new QVBoxLayout();
+    searchRow->setContentsMargins(6, 0, 6, 0);
+    search_ = new QLineEdit(this);
+    search_->setObjectName("historySearch");
+    search_->setPlaceholderText("Search steps");
+    search_->setClearButtonEnabled(true);
+    search_->addAction(glyphIcon(0xE721, 14, themeMix(0.55), "?"), QLineEdit::LeadingPosition);
+    searchRow->addWidget(search_);
+    lay->addLayout(searchRow);
+    connect(search_, &QLineEdit::textChanged, this, [this] { applyFilter(); });
+    // Narrow side column (300-420 px): never scroll sideways; long step names are elided (the full name is the tooltip).
     list_ = new QListWidget(this);
+    list_->setObjectName("historyList");
+    list_->setFrameShape(QFrame::NoFrame);
     list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    list_->setTextElideMode(Qt::ElideRight);
     list_->setUniformItemSizes(true);
+    list_->setMouseTracking(true);
+    list_->setItemDelegate(new HistoryDelegate(list_));
     list_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     lay->addWidget(list_, 1);
-    // Where the document is in its history: the current step is bold in the list, and this line says it in words.
-    position_ = new QLabel(this);
-    position_->setWordWrap(true);
-    lay->addWidget(position_);
+    strip_ = new DetailsStrip(this);
+    selectTouched_ = strip_->addAction(glyph::Target, "Select changed",
+                                       "Select the entities and brushes this step added or changed (the step must be applied)",
+                                       "historySelectTouched");
+    lay->addWidget(strip_);
+    connect(selectTouched_, &QPushButton::clicked, this, [this] {
+        const int row = list_->currentRow();
+        const auto& h = ctx_->doc.history();
+        if (row < 1 || size_t(row) > h.size()) return;
+        ctx_->doc.deselectAll();
+        size_t n = 0;
+        for (const SelRef& r : touchedBy(h[size_t(row) - 1]).refs) {
+            const Entity* e = ctx_->doc.findEntity(r.entity);
+            if (!e || (r.item != kNoId && !ctx_->doc.findItem(r.entity, r.item))) continue;  // gone since
+            ctx_->doc.select(r, true);
+            ++n;
+        }
+        ctx_->documentEdited(QString("Selected %1 object(s) the step \"%2\" touched").arg(n).arg(qs(h[size_t(row) - 1].name)));
+    });
     connect(list_, &QListWidget::currentRowChanged, this, [this](int row) {
         if (filling_ || row < 0) return;
         const size_t target = size_t(row);
@@ -958,9 +1123,58 @@ HistoryPanel::HistoryPanel(EditorContext* ctx, QWidget* parent) : QWidget(parent
     refresh();
 }
 
+QString HistoryPanel::summaryOf(size_t step) const {
+    const auto& h = ctx_->doc.history();
+    return step >= 1 && step <= h.size() ? touchedText(touchedBy(h[step - 1])) : QString();
+}
+
+QString HistoryPanel::countText() const { return header_->count(); }
+QString HistoryPanel::stripTitle() const { return strip_->titleText(); }
+
+void HistoryPanel::setFilter(const QString& text) { search_->setText(text); }
+
+void HistoryPanel::setTools(const QList<QAction*>& actions) {
+    tools_ = actions;
+    tools_.removeAll(nullptr);
+    menu_->clear();
+    for (QAction* a : tools_) menu_->addAction(a);
+}
+
+int HistoryPanel::visibleSteps() const {
+    int n = 0;
+    for (int r = 0; r < list_->count(); ++r) n += !list_->item(r)->isHidden();
+    return n;
+}
+
+void HistoryPanel::applyFilter() {
+    const QStringList words = search_->text().toLower().split(' ', Qt::SkipEmptyParts);
+    for (int r = 1; r < list_->count(); ++r) {
+        QListWidgetItem* it = list_->item(r);
+        const QString hay = (it->text() + " " + it->data(Qt::UserRole + 4).toString()).toLower();
+        bool match = true;
+        for (const QString& w : words) match = match && hay.contains(w);
+        it->setHidden(!match);
+    }
+}
+
+void HistoryPanel::updateStrip() {
+    const auto& h = ctx_->doc.history();
+    const size_t pos = ctx_->doc.undoPosition();
+    if (pos == 0) {
+        strip_->setTitle("Opened document", h.empty() ? QString("No steps yet") : QString("%1 step(s) undone").arg(h.size()));
+        selectTouched_->setEnabled(false);
+        return;
+    }
+    const Transaction& t = h[pos - 1];
+    strip_->setTitle(qs(t.name), QString("Step %1 of %2").arg(pos).arg(h.size()) + factSep() + touchedText(touchedBy(t)));
+    selectTouched_->setEnabled(!touchedBy(t).refs.empty());
+}
+
 void HistoryPanel::refresh() {
     const auto& h = ctx_->doc.history();
     const size_t pos = ctx_->doc.undoPosition();
+    undo_->setEnabled(pos > 0);
+    redo_->setEnabled(pos < h.size());
     {
         // documentChanged also comes for selection clicks: the list is rebuilt only when what it shows (the step names
         // and the undo position) changed, so a long history does not cost a rebuild per click.
@@ -973,132 +1187,389 @@ void HistoryPanel::refresh() {
     }
     filling_ = true;
     list_->clear();
-    // Row 0 is the opened document; row k is step k (applied when k <= pos, otherwise undone and greyed).
-    QFont current = list_->font();
-    current.setBold(true);
-    list_->addItem("(opened document)");
-    for (size_t i = 0; i < h.size(); ++i) {
-        auto* item = new QListWidgetItem(qs(h[i].name));
-        item->setToolTip(qs(h[i].name));  // the full name: the row elides it in a narrow column
-        if (i >= pos) item->setForeground(QColor(120, 120, 120));
+    // Row 0 is the opened document; row k is step k (applied when k <= pos, otherwise undone and dimmed).
+    const auto add = [this](const QString& name, const QString& touched, char16_t g, bool current, bool undone, const QString& num) {
+        auto* item = new QListWidgetItem(glyphIcon(g, 16), name);
+        item->setToolTip(name + "\n" + touched + (undone ? "\n(undone: click to redo up to here)" : ""));
+        item->setData(Qt::UserRole + 1, current);
+        item->setData(Qt::UserRole + 2, undone);
+        item->setData(Qt::UserRole + 3, num);
+        item->setData(Qt::UserRole + 4, touched);
         list_->addItem(item);
-    }
-    if (QListWidgetItem* cur = list_->item(int(pos))) {  // the current position: bold, and selected below
-        cur->setFont(current);
-        cur->setToolTip(pos == 0 ? QString("Current position: opened document")
-                                 : QString("Current position: ") + qs(h[pos - 1].name));
-    }
+    };
+    add("Opened document", h.empty() ? QString("the map as it was opened") : QString("before step 1"), 0xE8A5, pos == 0, false, QString());
+    for (size_t i = 0; i < h.size(); ++i)
+        add(qs(h[i].name), touchedText(touchedBy(h[i])), historyGlyph(qs(h[i].name)), i + 1 == pos, i >= pos, QString::number(i + 1));
     list_->setCurrentRow(int(pos));
+    list_->scrollToItem(list_->currentItem());
     filling_ = false;
+    applyFilter();
     const size_t steps = h.size();
-    position_->setText(steps == 0 ? QString("No steps yet.")
-                                  : QString("Position: %1 of %2 steps applied.%3")
-                                        .arg(pos)
-                                        .arg(steps)
-                                        .arg(steps > pos ? QString(" %1 undone (grey).").arg(steps - pos) : QString()));
+    header_->setCount(steps == 0 ? QString("no steps") : pos == steps ? QString("%1 step%2").arg(steps).arg(steps == 1 ? "" : "s")
+                                                                     : QString("%1 of %2 applied").arg(pos).arg(steps),
+                      steps > pos ? QString("%1 step(s) undone (dimmed): click one to redo up to it").arg(steps - pos) : QString());
+    updateStrip();
 }
 
 // ------------------------------------------------------------------ IW8 spawns
 
+namespace {
+
+QColor teamColor(const QString& cls) {
+    if (cls.contains("allies")) return QColor(90, 150, 255);
+    if (cls.contains("axis")) return QColor(235, 90, 80);
+    if (cls.contains("attacker")) return QColor(240, 160, 60);
+    if (cls.contains("defender")) return QColor(80, 200, 180);
+    if (cls == "mp_global_intermission") return QColor(200, 200, 120);
+    return themeMix(0.6);
+}
+
+QString teamOf(const QString& cls) {
+    if (cls.contains("allies")) return "allies";
+    if (cls.contains("axis")) return "axis";
+    if (cls.contains("attacker")) return "attackers";
+    if (cls.contains("defender")) return "defenders";
+    return "any team";
+}
+
+// The spawn class a mode adds by default.
+QString defaultSpawnClass(const QString& mode) {
+    if (mode.isEmpty() || mode == "tdm") return "mp_tdm_spawn";
+    if (mode == "intermission") return "mp_global_intermission";
+    if (mode == "sd") return "mp_sd_spawn_attacker";
+    return "mp_" + mode + "_spawn";
+}
+
+QString shortNumber(double v) {
+    if (qAbs(v) < 0.05) v = 0.0;  // no "-0.0"
+    return QString::number(v, 'f', 0);
+}
+
+// Rows: a dot in the team's colour, the kind on the first line, the position and yaw under it; "start" / "stock" pills.
+class SpawnDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QSize sizeHint(const QStyleOptionViewItem& opt, const QModelIndex&) const override { return {100, 2 * QFontMetrics(opt.font).height() + 8}; }
+    void paint(QPainter* p, const QStyleOptionViewItem& opt, const QModelIndex& idx) const override {
+        p->save();
+        const QRect r = opt.rect;
+        const bool sel = opt.state & QStyle::State_Selected;
+        if (sel) p->fillRect(r, opt.palette.highlight());
+        else if (opt.state & QStyle::State_MouseOver) p->fillRect(r, themeMix(0.07));
+        const QColor text = sel ? opt.palette.highlightedText().color() : opt.palette.text().color();
+        const QColor dim = sel ? text : themeMix(0.55);
+        const QFontMetrics fm(opt.font);
+        QFont small = opt.font;
+        small.setPointSizeF(std::max(6.5, small.pointSizeF() - 1.5));
+        const QFontMetrics sfm(small);
+        p->setRenderHint(QPainter::Antialiasing);
+        p->setPen(Qt::NoPen);
+        p->setBrush(idx.data(Qt::UserRole + 1).value<QColor>());
+        p->drawEllipse(QRectF(r.x() + 8, r.y() + 3 + (fm.height() - 9) / 2.0, 9, 9));
+        const int x = r.x() + 24;
+        int right = r.right() - 6;
+        p->setFont(small);
+        const QStringList pills = idx.data(Qt::UserRole + 3).toStringList();
+        for (int i = int(pills.size()) - 1; i >= 0; --i) {
+            const int w = sfm.horizontalAdvance(pills[i]) + 10;
+            const QRectF pr(right - w, r.y() + 3 + (fm.height() - sfm.height() - 2) / 2.0, w, sfm.height() + 2);
+            p->setPen(dim);
+            p->setBrush(Qt::NoBrush);
+            p->drawRect(pr.adjusted(0.5, 0.5, -0.5, -0.5));  // square, as the chips
+            p->drawText(pr, Qt::AlignCenter, pills[i]);
+            right -= w + 4;
+        }
+        p->setFont(opt.font);
+        p->setPen(text);
+        p->drawText(QRect(x, r.y() + 3, right - x, fm.height()), Qt::AlignLeft | Qt::AlignVCenter,
+                    fm.elidedText(idx.data(Qt::DisplayRole).toString(), Qt::ElideRight, right - x));
+        p->setFont(small);
+        p->setPen(dim);
+        p->drawText(QRect(x, r.y() + 3 + fm.height(), r.right() - 6 - x, sfm.height() + 2), Qt::AlignLeft | Qt::AlignVCenter,
+                    idx.data(Qt::UserRole + 2).toString());
+        p->restore();
+    }
+};
+
+}  // namespace
+
+bool SpawnsPanel::isSpawnClass(const std::string& c) {
+    return c == "mp_global_intermission" || (c.rfind("mp_", 0) == 0 && c.find("spawn") != std::string::npos);
+}
+
+QString SpawnsPanel::modeOf(const QString& cls) {
+    if (cls == "mp_global_intermission") return "intermission";
+    const QStringList p = cls.split('_');
+    return p.size() >= 2 ? p[1] : QString();
+}
+
+QString SpawnsPanel::modeLabel(const QString& mode) {
+    static const QHash<QString, QString> names = {
+        {"tdm", "TDM"}, {"dm", "FFA"}, {"dom", "Domination"}, {"sd", "S&D"}, {"ctf", "CTF"}, {"koth", "Hardpoint"}, {"hq", "HQ"},
+        {"gun", "Gun Game"}, {"arena", "Gunfight"}, {"cyber", "Cyber Attack"}, {"grind", "Grind"}, {"infect", "Infected"},
+        {"intermission", "Intermission"}, {"br", "Warzone"}, {"conf", "Kill Confirmed"}, {"siege", "Reinforce"}};
+    return names.value(mode, mode.toUpper());
+}
+
 SpawnsPanel::SpawnsPanel(EditorContext* ctx, QWidget* parent) : QWidget(parent), ctx_(ctx) {
+    setObjectName("spawnsPanel");
     auto* lay = new QVBoxLayout(this);
-    lay->setContentsMargins(4, 4, 4, 4);
+    lay->setContentsMargins(0, 0, 0, 0);
+    lay->setSpacing(4);
+    header_ = new PanelHeader("IW8 Spawns", this);
+    QToolButton* add = header_->addButton(glyph::Add, "Add a spawn of the chosen mode at the camera (TDM when all are shown)", false, "spawnAdd");
+    menu_ = new QMenu(this);
+    menu_->setToolTipsVisible(true);
+    header_->addMenuButton(menu_, "Generate spawns, game modes", "spawnTools");
+    lay->addWidget(header_);
+    connect(add, &QToolButton::clicked, this, [this] {
+        // The chosen mode's spawn, whatever row is selected.
+        const QString cls = defaultSpawnClass(mode_);
+        const Vec3 at = ctx_->cam.pos - Vec3{0, 0, 60};
+        const Id id = ctx_->doc.addEntity({{"classname", cls.toStdString()},
+                                           {"origin", shortNumber(at.x).toStdString() + " " + shortNumber(at.y).toStdString() + " " +
+                                                          shortNumber(at.z).toStdString()},
+                                           {"angles", "0 " + shortNumber(ctx_->cam.yaw).toStdString() + " 0"}},
+                                          {}, "Add " + cls.toStdString());
+        if (id != kNoId) ctx_->documentEdited("Added " + cls + " at the camera (Drop to Floor puts it on the ground)");
+    });
+    chips_ = new ChipBar(this);
+    chips_->setObjectName("spawnChips");
+    chips_->addChip("", "All", -1, "Every spawn");
+    lay->addWidget(chips_);
+    connect(chips_, &ChipBar::currentChanged, this, [this](const QString& id) { setMode(id); });
     info_ = new QLabel(this);
     info_->setWordWrap(true);
+    info_->setContentsMargins(6, 0, 6, 0);
+    info_->setStyleSheet(QString("color: %1").arg(themeMix(0.6).name()));
     lay->addWidget(info_);
-    table_ = new QTableWidget(0, 4, this);
-    table_->setHorizontalHeaderLabels({"#", "name", "origin", "yaw"});
-    // Narrow side column: the name takes the spare width and elides, the numbers keep their short width,
-    // and the table never scrolls sideways (the full name and exact numbers are in the tooltips).
-    table_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    table_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    table_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    table_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    table_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    table_->setWordWrap(false);
-    table_->setTextElideMode(Qt::ElideRight);
-    table_->verticalHeader()->setVisible(false);
-    table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table_->setSelectionBehavior(QAbstractItemView::SelectRows);
-    lay->addWidget(table_, 1);
-    auto frame = [this](int row) {
-        if (filling_ || row < 0 || size_t(row) >= ctx_->scene.spawns.size()) return;
-        const auto& s = ctx_->scene.spawns[size_t(row)];
-        ctx_->cam.pos = s.origin + Vec3{0, 0, 60} - ctx_->cam.forward() * 160.0;
-        ctx_->gridCenterH = s.origin[ctx_->axisH()];
-        ctx_->gridCenterV = s.origin[ctx_->axisV()];
-        ctx_->cameraMoved();
-    };
-    // A click, the arrow keys (the current row) and Enter (the current row again) all go to the spawn.
-    connect(table_, &QTableWidget::cellClicked, this, [frame](int row, int) { frame(row); });
-    connect(table_, &QTableWidget::currentCellChanged, this, [frame](int row, int, int oldRow, int) {
-        if (row != oldRow) frame(row);
+    list_ = new QListWidget(this);
+    list_->setObjectName("spawnList");
+    list_->setFrameShape(QFrame::NoFrame);
+    list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    list_->setUniformItemSizes(true);
+    list_->setMouseTracking(true);
+    list_->setItemDelegate(new SpawnDelegate(list_));
+    list_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+    lay->addWidget(list_, 1);
+    strip_ = new DetailsStrip(this);
+    addLike_ = strip_->addAction(glyph::Add, "Add one here", "Another spawn of this kind at the camera, facing its way", "spawnAddLike");
+    selectMode_ = strip_->addAction(glyph::Target, "Select all", "Select every spawn of this mode in the map", "spawnSelectMode");
+    strip_->setVisible(false);
+    lay->addWidget(strip_);
+    connect(addLike_, &QPushButton::clicked, this, [this] { addHere(); });
+    connect(selectMode_, &QPushButton::clicked, this, [this] {
+        const int row = list_->currentItem() ? list_->currentItem()->data(Qt::UserRole + 4).toInt() : -1;
+        if (row < 0 || size_t(row) >= rows_.size()) return;
+        const QString mode = rows_[size_t(row)].mode;
+        ctx_->doc.deselectAll();
+        int n = 0;
+        for (const Row& r : rows_)
+            if (r.mode == mode && r.entity != kNoId) {
+                ctx_->doc.select({r.entity, kNoId}, true);
+                ++n;
+            }
+        ctx_->documentEdited(QString("Selected %1 %2 spawn(s)").arg(n).arg(modeLabel(mode)));
     });
-    connect(table_, &QTableWidget::cellActivated, this, [frame](int row, int) { frame(row); });
+    // A click, the arrow keys and Enter all go to the spawn (and select it when it is the map's own).
+    connect(list_, &QListWidget::currentRowChanged, this, [this](int row) {
+        if (filling_) return;
+        updateStrip();
+        frame(row);
+    });
+    connect(list_, &QListWidget::itemActivated, this, [this](QListWidgetItem* it) { frame(list_->row(it)); });
     connect(ctx_, &EditorContext::documentChanged, this, &SpawnsPanel::refresh);
     refresh();
 }
 
+void SpawnsPanel::setTools(const QList<QAction*>& actions) {
+    tools_ = actions;
+    tools_.removeAll(nullptr);
+    menu_->clear();
+    for (QAction* a : tools_) menu_->addAction(a);
+}
+
+Id SpawnsPanel::addHere() {
+    QListWidgetItem* it = list_->currentItem();
+    const int row = it ? it->data(Qt::UserRole + 4).toInt() : -1;
+    const QString cls = row >= 0 && size_t(row) < rows_.size() ? rows_[size_t(row)].cls : defaultSpawnClass(mode_);
+    const Vec3 at = ctx_->cam.pos - Vec3{0, 0, 60};
+    const Id id = ctx_->doc.addEntity({{"classname", cls.toStdString()},
+                                       {"origin", shortNumber(at.x).toStdString() + " " + shortNumber(at.y).toStdString() + " " +
+                                                      shortNumber(at.z).toStdString()},
+                                       {"angles", "0 " + shortNumber(ctx_->cam.yaw).toStdString() + " 0"}},
+                                      {}, "Add " + cls.toStdString());
+    if (id != kNoId) ctx_->documentEdited("Added " + cls + " at the camera (Drop to Floor puts it on the ground)");
+    return id;
+}
+
+void SpawnsPanel::frame(int listRow) {
+    QListWidgetItem* it = listRow >= 0 ? list_->item(listRow) : nullptr;
+    const int row = it ? it->data(Qt::UserRole + 4).toInt() : -1;
+    if (row < 0 || size_t(row) >= rows_.size()) return;
+    const Row& s = rows_[size_t(row)];
+    ctx_->cam.pos = s.origin + Vec3{0, 0, 60} - ctx_->cam.forward() * 160.0;
+    ctx_->gridCenterH = s.origin[ctx_->axisH()];
+    ctx_->gridCenterV = s.origin[ctx_->axisV()];
+    ctx_->cameraMoved();
+    if (s.entity != kNoId && !(ctx_->doc.selection().size() == 1 && ctx_->doc.isSelected({s.entity, kNoId}))) {
+        ctx_->doc.deselectAll();
+        ctx_->doc.select({s.entity, kNoId}, true);
+        ctx_->documentEdited();
+    }
+}
+
 namespace {
-// What the spawns table shows (index, name, origin, yaw): another map with as many spawns still rebuilds the table.
-quint64 spawnsSignature(const std::vector<Iw8SpawnRecord>& sp) {
-    quint64 h = 1469598103934665603ull;
+// What the spawns list shows: another map with as many spawns still rebuilds it.
+quint64 mixSpawns(quint64 h, const QString& cls, const Vec3& o, double yaw, Id id) {
     auto mix = [&h](quint64 v) { h = (h ^ v) * 1099511628211ull; };
     auto mixDouble = [&mix](double d) {
         quint64 bits = 0;
         std::memcpy(&bits, &d, sizeof bits);
         mix(bits);
     };
-    mix(sp.size());
-    for (const auto& s : sp) {
-        mix(s.index);
-        for (unsigned char c : s.name) mix(c);
-        mixDouble(s.origin.x);
-        mixDouble(s.origin.y);
-        mixDouble(s.origin.z);
-        mixDouble(s.angles.y);
-    }
+    for (const QChar c : cls) mix(c.unicode());
+    mixDouble(o.x);
+    mixDouble(o.y);
+    mixDouble(o.z);
+    mixDouble(yaw);
+    mix(id);
     return h;
 }
 
-// Short table text for a spawn number: one decimal place (the tooltip keeps the exact float32 value).
-QString shortSpawnNumber(double v) {
-    if (qAbs(v) < 0.05) v = 0.0;  // no "-0.0"
-    return QString::number(v, 'f', 1);
+Vec3 parseVec(const std::string* s) {
+    Vec3 v{0, 0, 0};
+    if (!s) return v;
+    const QStringList p = QString::fromStdString(*s).split(' ', Qt::SkipEmptyParts);
+    for (int i = 0; i < 3 && i < int(p.size()); ++i) v[i] = p[i].toDouble();
+    return v;
 }
 }  // namespace
 
 void SpawnsPanel::refresh() {
-    const auto& sp = ctx_->scene.spawns;
-    const quint64 sig = spawnsSignature(sp);
-    if (sig == shown_) return;
-    shown_ = sig;
-    filling_ = true;  // rebuilding the rows moves the current cell: the camera stays where it is
-    if (sp.empty()) {
-        info_->setText("Open an IW8 MapEnts dump (ACTS map_ents .asset.json, Replay 1.20) to list its compiled spawnList. "
-                       "IW8 keeps spawn points in MapEnts::spawnList, not in the entity string.");
-        table_->setRowCount(0);
-        filling_ = false;
-        return;
+    std::vector<Row> rows;
+    quint64 sig = 1469598103934665603ull;
+    for (const Entity& e : ctx_->doc.map().entities) {
+        const std::string cls = e.classname();
+        if (!isSpawnClass(cls)) continue;
+        Row r;
+        r.cls = QString::fromStdString(cls);
+        r.mode = modeOf(r.cls);
+        r.origin = parseVec(e.value("origin"));
+        if (const std::string* a = e.value("angles")) r.yaw = parseVec(a).y;
+        else if (const std::string* a1 = e.value("angle")) r.yaw = QString::fromStdString(*a1).toDouble();
+        r.entity = e.id;
+        sig = mixSpawns(sig, r.cls, r.origin, r.yaw, r.entity);
+        rows.push_back(r);
     }
-    info_->setText(QString("%1 compiled spawnList records (read-only; write-back is milestone 2)").arg(sp.size()));
-    table_->setRowCount(int(sp.size()));
-    for (size_t i = 0; i < sp.size(); ++i) {
-        const auto& s = sp[i];
-        auto* name = new QTableWidgetItem(qs(s.name));
-        name->setToolTip(qs(s.name));
-        auto* origin = new QTableWidgetItem(shortSpawnNumber(s.origin.x) + " " + shortSpawnNumber(s.origin.y) + " " +
-                                            shortSpawnNumber(s.origin.z));
-        origin->setToolTip(qs(formatFloat32(float(s.origin.x)) + " " + formatFloat32(float(s.origin.y)) + " " +
-                              formatFloat32(float(s.origin.z))));
-        auto* yaw = new QTableWidgetItem(shortSpawnNumber(s.angles.y));
-        yaw->setToolTip(qs(formatFloat32(float(s.angles.y))));
-        table_->setItem(int(i), 0, new QTableWidgetItem(QString::number(s.index)));
-        table_->setItem(int(i), 1, name);
-        table_->setItem(int(i), 2, origin);
-        table_->setItem(int(i), 3, yaw);
+    for (const auto& s : ctx_->scene.spawns) {
+        Row r;
+        r.cls = qs(s.name);
+        r.mode = modeOf(r.cls);
+        r.origin = s.origin;
+        r.yaw = s.angles.y;
+        r.index = s.index;
+        sig = mixSpawns(sig, r.cls, r.origin, r.yaw, 0);
+        rows.push_back(r);
+    }
+    sig ^= rows.size();
+    if (sig == shown_ && shown_) return;
+    shown_ = sig;
+    rows_ = std::move(rows);
+    // The chips: every mode the map has, most spawns first.
+    QHash<QString, int> counts;
+    for (const Row& r : rows_) ++counts[r.mode];
+    QStringList modes = counts.keys();
+    std::sort(modes.begin(), modes.end(), [&counts](const QString& a, const QString& b) {
+        return counts[a] != counts[b] ? counts[a] > counts[b] : a < b;
+    });
+    if (modes != this->modes()) {
+        chips_->clear();
+        chips_->addChip("", "All", int(rows_.size()), "Every spawn");
+        for (const QString& m : modes) chips_->addChip(m, modeLabel(m), counts[m], modeLabel(m) + " spawns");
+        if (!modes.contains(mode_)) mode_.clear();
+        chips_->setCurrent(mode_);
+    } else {
+        chips_->setCount("", int(rows_.size()));
+        for (const QString& m : modes) chips_->setCount(m, counts[m]);
+    }
+    fill();
+}
+
+QStringList SpawnsPanel::modes() const {
+    QStringList out = chips_->chipIds();
+    out.removeAll(QString());
+    return out;
+}
+
+void SpawnsPanel::setMode(const QString& mode) {
+    mode_ = mode;
+    chips_->setCurrent(mode);
+    fill();
+}
+
+void SpawnsPanel::fill() {
+    filling_ = true;  // rebuilding the rows moves the current row: the camera stays where it is
+    list_->clear();
+    int stock = 0;
+    for (size_t i = 0; i < rows_.size(); ++i) {
+        const Row& r = rows_[i];
+        stock += r.entity == kNoId;
+        if (!mode_.isEmpty() && r.mode != mode_) continue;
+        // The kind without its mode prefix ("allies start"), the mode first when all are shown.
+        QString rest = r.cls.mid(QString("mp_%1_").arg(r.mode).size());
+        rest.replace("spawn", "").replace('_', ' ');
+        rest = rest.simplified();
+        const QString name = (mode_.isEmpty() ? modeLabel(r.mode) + " " : QString()) + (rest.isEmpty() ? QString("spawn") : rest);
+        auto* item = new QListWidgetItem(name.trimmed());
+        item->setToolTip(r.cls + (r.entity == kNoId ? QString("\nstock compiled spawnList record %1 (read-only)").arg(r.index) : QString()));
+        item->setData(Qt::UserRole + 1, teamColor(r.cls));
+        item->setData(Qt::UserRole + 2, QString("%1 %2 %3").arg(shortNumber(r.origin.x), shortNumber(r.origin.y), shortNumber(r.origin.z)) + factSep() +
+                                             QString("yaw %1").arg(shortNumber(r.yaw)));
+        QStringList pills;
+        if (r.cls.contains("start")) pills << "start";
+        if (r.entity == kNoId) pills << "stock";
+        item->setData(Qt::UserRole + 3, pills);
+        item->setData(Qt::UserRole + 4, int(i));
+        list_->addItem(item);
     }
     filling_ = false;
+    const int shown = list_->count(), total = int(rows_.size());
+    header_->setCount(total == 0 ? QString("none") : shown == total ? QString("%1 spawn%2").arg(total).arg(total == 1 ? "" : "s")
+                                                                    : QString("%1 of %2").arg(shown).arg(total),
+                      stock ? QString("%1 of them from the stock map's compiled spawnList (read-only)").arg(stock) : QString());
+    info_->setText(total == 0 ? QString("No spawns yet: + adds one at the camera, and the menu's Generate Spawns makes a starting set over "
+                                        "the walkable floors. A stock map's compiled spawnList is listed when it is open.")
+                              : QString());
+    info_->setVisible(total == 0);
+    updateStrip();
+}
+
+int SpawnsPanel::visibleCount() const { return list_->count(); }
+
+void SpawnsPanel::selectRow(int row) { list_->setCurrentRow(row); }
+
+QString SpawnsPanel::countText() const { return header_->count(); }
+QString SpawnsPanel::stripTitle() const { return strip_->titleText(); }
+QString SpawnsPanel::stripFacts() const { return strip_->factsText(); }
+
+void SpawnsPanel::updateStrip() {
+    QListWidgetItem* it = list_->currentItem();
+    const int row = it ? it->data(Qt::UserRole + 4).toInt() : -1;
+    if (row < 0 || size_t(row) >= rows_.size()) {
+        strip_->setVisible(false);
+        return;
+    }
+    const Row& r = rows_[size_t(row)];
+    strip_->setTitle(r.cls, QStringList{modeLabel(r.mode), teamOf(r.cls),
+                                        QString("%1 %2 %3").arg(shortNumber(r.origin.x), shortNumber(r.origin.y), shortNumber(r.origin.z)),
+                                        QString("yaw %1").arg(shortNumber(r.yaw)), r.entity == kNoId ? QString("stock, read-only") : QString("the map's own")}
+                                .join(factSep()));
+    selectMode_->setText("Select all " + modeLabel(r.mode));
+    int own = 0;
+    for (const Row& o : rows_) own += o.mode == r.mode && o.entity != kNoId;
+    selectMode_->setEnabled(own > 0);
+    strip_->setVisible(true);
 }
 
 // ------------------------------------------------------------------ hotkeys

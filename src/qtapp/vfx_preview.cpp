@@ -371,7 +371,17 @@ void VfxPreview::setDiscStyle(bool on) {
     update();
 }
 
-int VfxPreview::side() const { return std::max(1, std::min(width(), kMaxSide)); }
+int VfxPreview::side() const { return std::max(1, std::min(width(), maxSide_)); }
+
+void VfxPreview::setMaxSide(int s) {
+    s = std::clamp(s, 64, kMaxSide);
+    if (s == maxSide_) return;
+    maxSide_ = s;
+    updateGeometry();
+    followWidth();
+    dirty_ = true;
+    update();
+}
 
 int VfxPreview::stripHeight() const {
     QFont f = font();
@@ -379,7 +389,7 @@ int VfxPreview::stripHeight() const {
     return QFontMetrics(f).lineSpacing() * 2 + 8;
 }
 
-int VfxPreview::heightForWidth(int w) const { return std::max(1, std::min(w, kMaxSide)) + stripHeight(); }
+int VfxPreview::heightForWidth(int w) const { return std::max(1, std::min(w, maxSide_)) + stripHeight(); }
 
 QSize VfxPreview::sizeHint() const { return {300, heightForWidth(300)}; }
 

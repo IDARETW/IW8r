@@ -22,6 +22,7 @@ class QTableWidget;
 class QToolButton;
 class QVBoxLayout;
 class QAction;
+class QMenu;
 
 namespace iw8r::qt {
 
@@ -119,12 +120,30 @@ class HistoryPanel : public QWidget {
     Q_OBJECT
 public:
     explicit HistoryPanel(EditorContext* ctx, QWidget* parent = nullptr);
+    // What step `step` (1-based) touched, in words ("2 entities added, 5 brushes changed"); tests.
+    QString summaryOf(size_t step) const;
+    QString countText() const;   // the header's position line (tests)
+    QString stripTitle() const;  // the step the strip shows (tests)
+    void setFilter(const QString& text);
+    // Record Macro and Run Command Script (the Tools menu's automation), in the dots menu.
+    void setTools(const QList<QAction*>& actions);
+    QList<QAction*> tools() const { return tools_; }
+    int visibleSteps() const;    // rows the search keeps, the opened document included (tests)
 public slots:
     void refresh();
 private:
+    void updateStrip();
+    void applyFilter();
     EditorContext* ctx_;
+    class PanelHeader* header_ = nullptr;
+    QToolButton* undo_ = nullptr;
+    QToolButton* redo_ = nullptr;
+    QLineEdit* search_ = nullptr;
     QListWidget* list_;
-    QLabel* position_;     // "Position: n of m steps applied." (wraps in a narrow column)
+    class DetailsStrip* strip_ = nullptr;
+    QPushButton* selectTouched_ = nullptr;
+    QMenu* menu_ = nullptr;
+    QList<QAction*> tools_;
     bool filling_ = false;
     std::vector<std::string> shownNames_;  // the step names and undo position the list shows
     size_t shownPos_ = size_t(-1);
@@ -134,14 +153,49 @@ class SpawnsPanel : public QWidget {
     Q_OBJECT
 public:
     explicit SpawnsPanel(EditorContext* ctx, QWidget* parent = nullptr);
+    // Generate Spawns and Game Modes (the Tools menu's gameplay commands), in the dots menu.
+    void setTools(const QList<QAction*>& actions);
+    QList<QAction*> tools() const { return tools_; }
+    // The spawns listed (the map's spawn entities, then a stock map's compiled spawnList), by mode.
+    int spawnCount() const { return int(rows_.size()); }
+    int visibleCount() const;
+    QStringList modes() const;  // the chips' modes, most spawns first ("tdm", "dm", "dom", "sd", ...)
+    void setMode(const QString& mode);  // "" = all
+    void selectRow(int row);            // a listed row (the current filter's)
+    QString countText() const;
+    QString stripTitle() const;
+    QString stripFacts() const;
+    Id addHere();                       // the Add button: a spawn of the selected kind (or the mode's) at the camera
+    static bool isSpawnClass(const std::string& classname);
+    static QString modeOf(const QString& classname);  // mp_tdm_spawn_axis_start -> "tdm"; mp_global_intermission -> "intermission"
+    static QString modeLabel(const QString& mode);    // "tdm" -> "TDM", "dm" -> "FFA", "sd" -> "S&D"
 public slots:
     void refresh();
 private:
+    struct Row {
+        QString cls, mode;
+        Vec3 origin;
+        double yaw = 0;
+        Id entity = kNoId;  // the map's own spawn; kNoId = a stock compiled record
+        uint32_t index = 0;
+    };
+    void fill();
+    void updateStrip();
+    void frame(int row);
     EditorContext* ctx_;
-    QLabel* info_;
-    QTableWidget* table_;
-    quint64 shown_ = 0;     // signature of the spawn records the table shows (0 = not filled yet)
-    bool filling_ = false;  // the table is being rebuilt: current-cell changes do not move the camera
+    class PanelHeader* header_ = nullptr;
+    class ChipBar* chips_ = nullptr;
+    QListWidget* list_ = nullptr;
+    class DetailsStrip* strip_ = nullptr;
+    QLabel* info_ = nullptr;
+    QMenu* menu_ = nullptr;
+    QPushButton* addLike_ = nullptr;
+    QPushButton* selectMode_ = nullptr;
+    QList<QAction*> tools_;
+    std::vector<Row> rows_;
+    QString mode_;          // the chip ("" = all)
+    quint64 shown_ = 0;     // signature of the spawns the list shows (0 = not filled yet)
+    bool filling_ = false;  // the list is being rebuilt: current-row changes do not move the camera
 };
 
 // Rebindable shortcuts. Bindings persist in IW8Radiant.ini next to the executable.

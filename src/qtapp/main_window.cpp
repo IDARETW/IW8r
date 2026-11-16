@@ -1,3 +1,5 @@
+#include "numeric_drag.h"
+#include "panel_chrome.h"
 #include "stock_terrain_layers.h"
 #include "stock_placed.h"
 #include "game_mode_view.h"
@@ -40,7 +42,7 @@
 #include "techset_info.h"
 #include "vfx_preview.h"
 #include "sound_preview.h"
-#include "tools_panel.h"
+#include "map_check_panel.h"
 #include "hot_channels.h"
 #include "port_wizard_dialog.h"
 #include "vfx_info.h"
@@ -270,7 +272,7 @@ bool stockDecalBatch(const StockDecalData& d, const StockDecalBatch& b, int orde
 
 namespace {
 QString qs(const std::string& s) { return QString::fromStdString(s); }
-constexpr int kDockLayoutVersion = 17;  // 17: Tools  // 16: Stock Map  // 15: logs in the bottom area under the camera  // 14: the bottom strip became the side bar and side section  // 12: Script, Outliner  // 11: Sounds  // 10: Images  // 9: Effects  // 8: Prefabs  // 7: Console  // 6: Live Link  // 3: Surface and Compile docks; 4: Replay Log; 5: Layers
+constexpr int kDockLayoutVersion = 18;  // 18: Map Check (Tools gone)  // 17: Tools  // 16: Stock Map  // 15: logs in the bottom area under the camera  // 14: the bottom strip became the side bar and side section  // 12: Script, Outliner  // 11: Sounds  // 10: Images  // 9: Effects  // 8: Prefabs  // 7: Console  // 6: Live Link  // 3: Surface and Compile docks; 4: Replay Log; 5: Layers
 
 // ACTS layout: <out>/mw19replay/<zone>/assets/map_ents/maps/mp/<map>.d3dbsp.0.asset.json
 QString findMapEntsJson(const QString& dir) {
@@ -305,6 +307,19 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     ctx_.doc.loadFromText("iwmap 4\r\n\"000_Global\" flags active\r\n\"The Map\" flags \r\n// entity 0\r\n{\r\n\"classname\" \"worldspawn\"\r\n}\r\n", "", nullptr);
     ctx_.cam.speed = Settings::instance().value("camera/speed", 600.0).toDouble();
     ctx_.cam.fov = Settings::instance().value("camera/fov", 90.0).toDouble();
+    // Number fields change by dragging (owner 2026-11-15, numeric_drag.h); one drag is one undo step.
+    {
+        QPointer<MainWindow> self(this);
+        numeric_drag::setHooks(
+            [self](const QString& what) {
+                if (self) self->ctx_.doc.beginGroup("Drag " + what.toStdString());
+            },
+            [self] {
+                if (!self) return;
+                self->ctx_.doc.endGroup();
+                self->ctx_.documentEdited();
+            });
+    }
     buildDocks();
     // Once every panel and its tab exist (and the saved layout is applied): their tab names styled again.
     QTimer::singleShot(0, this, [this] { refreshDockTabStyle(); });
@@ -1392,6 +1407,8 @@ void MainWindow::buildDocks() {
             std::string text;
             VfxSimDef def;
             if (!f.isEmpty() && readFile(f.toStdString(), text) && buildVfxSim(text, def) && !def.emitters.empty()) {
+                // Its row says loop / one-shot length from now on (kept: the next session knows it too).
+                effects_->setRowFact(name, def.duration < 0 ? QString("loop") : QString("%1 s").arg(def.duration, 0, 'f', 1), true);
                 effects_->setEffectPreview(&def, QString("%1\n%2 emitter(s), %3 (click the preview to pause)")
                                                      .arg(name)
                                                      .arg(def.emitters.size())
@@ -1415,6 +1432,25 @@ void MainWindow::buildDocks() {
         connect(sounds_, &AssetBrowser::soundStopRequested, sp, &SoundPreview::stop);
         connect(sp, &SoundPreview::statusChanged, sounds_, [this, sp](const QString& text, bool playing) {
             sounds_->setSoundStatus(text, playing || sp->preparing());
+        });
+        connect(sp, &SoundPreview::waveReady, sounds_,
+                [this](const QVector<float>& peaks, double seconds, bool loop) { sounds_->setSoundWave(peaks, seconds, loop); });
+        // Every alias's length and variants on its row, once the zone's index is in memory: read from the cache when
+        // the panel is first shown (a zone never prepared gets them after its first Play prepares it).
+        connect(sounds_, &AssetBrowser::firstShown, sp, [sp] { sp->loadIndex(); });
+        connect(sp, &SoundPreview::indexReady, sounds_, [this, sp](const QString& zone) {
+            const auto secs = [](double s) { return QString::number(s, 'f', s < 10 ? 1 : 0); };
+            QHash<QString, QString> facts;
+            const QHash<QString, SoundPreview::AliasFacts> all = sp->aliasFacts(zone);
+            for (auto it = all.begin(); it != all.end(); ++it) {
+                const SoundPreview::AliasFacts& f = it.value();
+                QStringList parts;
+                if (f.longest >= 0.05)
+                    parts << (f.longest - f.shortest < 0.05 ? secs(f.longest) : secs(f.shortest) + QChar(0x2013) + secs(f.longest)) + " s";
+                if (f.variants > 1) parts << QString(QChar(0x00D7)) + QString::number(f.variants);
+                if (!parts.isEmpty()) facts.insert(it.key(), parts.join(factSep()));
+            }
+            sounds_->setRowFacts(facts);
         });
     }
     camera_->setAcceptDrops(true);
@@ -1510,8 +1546,9 @@ void MainWindow::buildDocks() {
     sidePanels.push_back(makeDock("Effects", effects_, true));
     sidePanels.push_back(makeDock("Images", images_, true));
     sidePanels.push_back(makeDock("Sounds", sounds_, true));
-    // The Tools menu's commands in groups (tools_panel.h; filled once the menu exists, at the end of the Tools menu).
-    sidePanels.push_back(makeDock("Tools", new ToolsPanel(), true));
+    // The map's Check Map findings with the check tools (map_check_panel.h; owner 2026-11-15: the Tools side panel's
+    // tools go into the panels they belong to, the map checks into a panel of their own).
+    sidePanels.push_back(makeDock("Map Check", new MapCheckPanel(&ctx_), true));
     // The open stock map's edits, live in the viewport (stock_map_panel.h; its icon shows only while one is open).
     sidePanels.push_back(makeDock("Stock Map", stockMapPanel_ = new StockMapPanel(this, &ctx_), true));
     connect(this, &MainWindow::stockSurfacePicked, stockMapPanel_, &StockMapPanel::setPickedMaterial);
@@ -1530,6 +1567,7 @@ void MainWindow::buildDocks() {
             },
             [this](const QString& f, QString* err) { return insertPrefab(f, err); });
         connect(prefabs_, &PrefabBrowser::previewRequested, this, [this](const QString& f) { openAssetPreview(f, true); });
+        connect(prefabs_, &PrefabBrowser::openRequested, this, [this](const QString& f) { openPath(f); });  // asks to save first
         PrefabBrowser::setModelBounds([this](const std::string& m, double b[6]) {
             const auto e = modelCacheStock_ ? modelCacheStock_->lookup(qs(m)) : std::nullopt;
             if (!e || e->failed) return false;
@@ -1695,7 +1733,7 @@ void MainWindow::buildDocks() {
         // The side bar, in working order: assets, the map, building, script and game.
         static const std::pair<const char*, char16_t> order[] = {
             {"Materials", 0xE790}, {"Models", 0xF158}, {"Prefabs", 0xE74C}, {"Effects", 0xE945}, {"Sounds", 0xE767},
-            {"Images", 0xEB9F}, {"IW8 Spawns", 0xE707}, {"Stock Map", 0xE909}, {"Undo History", 0xE81C}, {"Tools", 0xEC7A}, {"Compile", 0xE90F}, {"Build Budget", 0xE9D2},
+            {"Images", 0xEB9F}, {"IW8 Spawns", 0xE707}, {"Stock Map", 0xE909}, {"Map Check", 0xE73E}, {"Undo History", 0xE81C}, {"Compile", 0xE90F}, {"Build Budget", 0xE9D2},
             {"Console", 0xE756}, {"Replay Log", 0xE9F9}, {"Script", 0xE943}, {"Live Link", 0xE71B}};
         // Docked beside the camera, not sliding over it: the camera is a native D3D window that an overlay ends up behind.
         for (const auto& [name, glyph] : order)
@@ -5182,68 +5220,25 @@ void MainWindow::buildMenus() {
         dock_->addDockWidgetFloating(d);
     });
     {
-        // Owner 2026-11-15: the Tools menu in the side bar. The Tools panel lists every entry in groups with a line on
-        // what it does; the asset panels get a Tools button with the entries of their kind. Both run the menu's actions.
+        // Owner 2026-11-15: no separate Tools side panel; the Tools menu stays in the menu bar, and each side bar panel's
+        // dots menu holds the tools that belong to it (the same actions as the menu's). Closed panels' widgets are out of
+        // the window's tree, so they are found through their docks.
         const auto a = [this](const char* command) { return action(command); };
-        ads::CDockWidget* toolsDock = dock_ ? dock_->findDockWidget("Tools") : nullptr;  // its widget is out of the tree while closed
-        if (auto* tp = toolsDock ? qobject_cast<ToolsPanel*>(toolsDock->widget()) : nullptr) {
-            tp->clear();
-            using T = ToolsPanel::Tool;
-            tp->addGroup("Check the map", {
-                T{a("CheckMap"), "", "Problems a build or the game would trip on, with a jump to each"},
-                T{a("LeakCheck"), "Leak Check", "Find a hole to the void; the yellow line shows the path"},
-                T{a("ClearPointfile"), "", "Remove the leak line"},
-                T{a("AssetUsage"), "", "What the map uses, and own files it does not"},
-                T{a("ListUnusedCustomAssets"), "", "Own materials and models this map does not use"},
-            });
-            tp->addGroup("Place and arrange", {
-                T{a("DropToFloor"), "Drop to Floor", "Selected entities down onto what is under them"},
-                T{a("CreateRope"), "Create Rope", "A rope between the two selected"},
-                T{a("ScatterByRules"), "", "Models over surfaces by slope, material and spacing"},
-                T{a("ScatterModels"), "Scatter Models", "A number of one model around the 2D view centre"},
-                T{a("ModelPaintMode"), "Model Paint Mode", "Click surfaces in the camera to paint models (click again to stop)"},
-                T{a("MeasureTool"), "Measure", "Drag in a 2D view to measure (Alt+M)"},
-            });
-            tp->addGroup("Materials and shaders", {
-                T{a("MaterialInfo"), "Material Info", "The current material: images, shader, surface"},
-                T{a("CloneStockMaterial"), "Editable Copy of Material", "Copy the current stock material into the map to change it"},
-                T{a("TechsetInfo"), "Techset Info", "What the current material's technique set does"},
-                T{a("ReplaceMaterialInMap"), "Replace Material in Map", "Every face using one material takes the current one"},
-                T{a("ReplaceModelMaterial"), "Replace Model Material", "One material slot of the selected stock model"},
-                T{a("ShaderEditor"), "Shader Editor", "The map's surface shaders"},
-                T{a("AdjustImage"), "Adjust Image", "Brightness, tint, size, normal map from height"},
-                T{a("IesBrowser"), "IES Profiles", "Light profiles for lights"},
-            });
-            tp->addGroup("Models, effects and sounds", {
-                T{a("ModelInfo"), "Model Info", "The selected model: levels of detail, materials, bounds"},
-                T{a("EffectEditor"), "Effect Editor", "Make or change an effect"},
-                T{a("SoundSettings"), "Sound Settings", "Volume and loop of one of the map's own sounds"},
-            });
-            tp->addGroup("Gameplay", {
-                T{a("GenerateSpawns"), "", "A starting set of spawns over the walkable floors"},
-                T{a("GameModes"), "Game Modes", "Warzone and mode presets"},
-            });
-            tp->addGroup("Automation", {
-                T{a("RecordMacro"), "Record Macro", "Start or stop recording edits as a command script"},
-                T{a("RunCommandScript"), "", "Batch edits written as text"},
-            });
-            tp->addGroup("Stock assets and caches", {
-                T{a("AssetAudit"), "Availability Audit", "Which stock assets can be built"},
-                T{a("CacheManager"), "", "The exported stock asset caches and their size"},
-            });
-            tp->addGroup("Editor", {
-                T{paths, "Tool Paths", "Where ACTS, Replay, Oodle and x64-zt are"},
-                T{hk, "Hotkeys", "Keys of every command"},
-                T{a("WebServer"), "Web Server", "Use the suite from a browser (on / off)"},
-                T{a("WebServerSettings"), "", "Port, access from other machines, login"},
-                T{a("ToggleStallWatch"), "Report Freezes", "Freezes of the window reported in the Console"},
-            });
-        }
+        const auto panel = [this](const char* name) -> QWidget* {
+            ads::CDockWidget* d = dock_ ? dock_->findDockWidget(name) : nullptr;
+            return d ? d->widget() : nullptr;
+        };
         materials_->setToolActions({a("MaterialInfo"), a("CloneStockMaterial"), a("TechsetInfo"), a("ReplaceMaterialInMap"),
-                                    a("ShaderEditor"), a("AdjustImage")});
-        models_->setToolActions({a("ModelInfo"), a("ReplaceModelMaterial"), a("ScatterByRules"), a("ScatterModels"), a("ModelPaintMode")});
-        effects_->setToolActions({a("EffectEditor")});
+                                    a("ShaderEditor"), a("AdjustImage"), a("AssetAudit"), a("CacheManager")});
+        models_->setToolActions({a("ModelInfo"), a("ReplaceModelMaterial"), a("ScatterByRules"), a("ScatterModels"), a("ModelPaintMode"),
+                                 a("DropToFloor"), a("AssetAudit"), a("CacheManager")});
+        effects_->setToolActions({a("EffectEditor"), a("AssetAudit"), a("CacheManager")});
         sounds_->setToolActions({a("SoundSettings")});
+        images_->setToolActions({a("AdjustImage"), a("IesBrowser"), a("AssetAudit"), a("CacheManager")});
+        if (auto* sp = qobject_cast<SpawnsPanel*>(panel("IW8 Spawns"))) sp->setTools({a("GenerateSpawns"), a("GameModes")});
+        if (auto* hp = qobject_cast<HistoryPanel*>(panel("Undo History"))) hp->setTools({a("RecordMacro"), a("RunCommandScript")});
+        if (auto* mc = qobject_cast<MapCheckPanel*>(panel("Map Check")))
+            mc->setTools({a("CheckMap"), a("LeakCheck"), a("ClearPointfile"), a("AssetUsage"), a("ListUnusedCustomAssets")});
     }
 
     QMenu* help = menuBar()->addMenu("&Help");
@@ -11105,6 +11100,34 @@ void MainWindow::previewModel(const QString& name) {
                             .arg(e->zone));
 }
 
+// The format and mip count in a DDS file's header ("BC7 sRGB", "12 mips"), for the Images panel's strip.
+static QStringList ddsFacts(const std::string& b) {
+    QStringList out;
+    if (b.size() < 128 || b.compare(0, 4, "DDS ") != 0) return out;
+    const auto u32 = [&b](size_t at) {
+        uint32_t v = 0;
+        std::memcpy(&v, b.data() + at, 4);
+        return v;
+    };
+    const uint32_t mips = u32(28);
+    const std::string cc = b.substr(84, 4);
+    QString fmt;
+    if (cc == "DX10" && b.size() >= 148) {
+        static const QHash<uint32_t, const char*> names = {
+            {2, "RGBA32F"}, {10, "RGBA16F"}, {24, "RGB10A2"}, {26, "R11G11B10F"}, {28, "RGBA8"}, {29, "RGBA8 sRGB"},
+            {49, "RG8"}, {61, "R8"}, {71, "BC1"}, {72, "BC1 sRGB"}, {74, "BC2"}, {75, "BC2 sRGB"}, {77, "BC3"},
+            {78, "BC3 sRGB"}, {80, "BC4"}, {81, "BC4 signed"}, {83, "BC5"}, {84, "BC5 signed"}, {95, "BC6H"},
+            {96, "BC6H signed"}, {98, "BC7"}, {99, "BC7 sRGB"}};
+        const uint32_t dxgi = u32(128);
+        fmt = names.contains(dxgi) ? QString(names.value(dxgi)) : QString("DXGI format %1").arg(dxgi);
+    } else if (u32(84)) {
+        fmt = QString::fromLatin1(cc.data(), 4).trimmed();
+    }
+    if (!fmt.isEmpty()) out << fmt;
+    if (mips > 1) out << QString("%1 mips").arg(mips);
+    return out;
+}
+
 void MainWindow::previewImage(const QString& name) {
     previewedImage_ = name;
     const QString dds = imageCache_->cachedDds(name);
@@ -11126,7 +11149,10 @@ void MainWindow::previewImage(const QString& name) {
     }
     const app::Rgba8Image small = app::downscale(img, 256);
     const QImage q = QImage(small.pixels.data(), small.width, small.height, small.width * 4, QImage::Format_RGBA8888).copy();
-    images_->setPreview(q, QString("%1\n%2 x %3").arg(name).arg(img.width).arg(img.height));
+    // The strip shows the lines after the name: the size, the format and the mip count of the file.
+    QStringList lines{name, QString("%1 x %2").arg(img.width).arg(img.height)};
+    lines += ddsFacts(bytes);
+    images_->setPreview(q, lines.join('\n'));
 }
 
 

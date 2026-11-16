@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -598,10 +599,96 @@ void SoundPreview::play(const QString& alias, const QString& zoneName) {
     Zone* z = zone(zoneName);
     if (z->failed) return setStatus("No sound preview for " + zoneName + ": " + z->error);
     if (!z->ready) {
+        if (indexing_) return setStatus("Reading the sound banks of " + zoneName + "...");  // it plays once read
         if (!preparing_) prepare(*z);
         return;
     }
     playResolved(alias);
+}
+
+void SoundPreview::loadIndex(const QString& zoneName) {
+    Zone* z = zone(zoneName);
+    if (z->ready) {
+        emit indexReady(zoneName);
+        return;
+    }
+    if (z->failed || preparing_ || indexing_) return;
+    const QString dir = cacheDir();
+    if (!QFileInfo::exists(dir + "/" + zoneName + ".aliases.tsv") || !QFileInfo::exists(dir + "/" + zoneName + ".all.sabl")) return;
+    loadPrepared(zoneName, true);
+}
+
+QHash<QString, SoundPreview::AliasFacts> SoundPreview::aliasFacts(const QString& zoneName) const {
+    QHash<QString, AliasFacts> out;
+    const auto it = zones_.constFind(zoneName);
+    if (it == zones_.constEnd() || !it.value()->ready) return out;
+    const Zone& z = *it.value();
+    for (auto a = z.aliases.constBegin(); a != z.aliases.constEnd(); ++a) {
+        AliasFacts f;
+        for (const uint32_t k : a.value())
+            for (const Zone::Bank& bank : z.banks)
+                if (const auto e = bank.byKey.constFind(k); e != bank.byKey.constEnd()) {
+                    const SabEntry& s = bank.entries[size_t(*e)];
+                    const double sec = s.rate ? double(s.frames) / s.rate : 0.0;
+                    f.shortest = f.variants ? std::min(f.shortest, sec) : sec;
+                    f.longest = std::max(f.longest, sec);
+                    f.loop |= s.looping != 0;
+                    ++f.variants;
+                    break;
+                }
+        if (f.variants) out.insert(a.key(), f);
+    }
+    return out;
+}
+
+void SoundPreview::loadPrepared(const QString& zoneName, bool quiet) {
+    const QString dir = cacheDir();
+    const QString zoneDir = QFileInfo(toolPath_("replay")).absolutePath() + "/zone";
+    const QString aliasFile = dir + "/" + zoneName + ".aliases.tsv", loaded = dir + "/" + zoneName + ".all.sabl";
+    if (quiet) indexing_ = true;
+    else setStatus("Reading the sound banks of " + zoneName + "...");
+    QPointer<SoundPreview> self(this);
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, zoneName, zoneDir, aliasFile, loaded, quiet] {
+        auto z = std::make_shared<Zone>();
+        z->name = zoneName;
+        QFile f(aliasFile);
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&f);
+            while (!in.atEnd()) {
+                const QStringList c = in.readLine().split('\t');
+                if (c.size() < 2) continue;
+                QVector<uint32_t> keys;
+                for (const QString& k : c[1].split(',', Qt::SkipEmptyParts)) keys << uint32_t(k.toULongLong(nullptr, 16));
+                z->aliases.insert(c[0], keys);
+            }
+        }
+        for (const QString& b : {zoneDir + "/patch_" + zoneName + ".sabs", zoneDir + "/" + zoneName + ".sabs", loaded}) {
+            if (!QFileInfo::exists(b)) continue;
+            Zone::Bank bank;
+            bank.file = b;
+            bank.entries = readSabIndex(b);
+            for (int i = 0; i < int(bank.entries.size()); ++i) bank.byKey.insert(bank.entries[size_t(i)].key, i);
+            if (!bank.entries.empty()) z->banks.push_back(std::move(bank));
+        }
+        QMetaObject::invokeMethod(qApp, [self, z, quiet] {
+            if (!self) return;
+            if (quiet) self->indexing_ = false;
+            if (z->aliases.isEmpty() || z->banks.empty()) {
+                if (quiet) return;  // a Play prepares the zone again, with its messages
+                self->preparing_ = false;
+                Zone* zz = self->zone(z->name);
+                zz->failed = true;
+                zz->error = "the alias index or the sound banks could not be read";
+                return self->setStatus("No sound preview for " + z->name + ": " + zz->error);
+            }
+            z->ready = true;
+            self->zones_[z->name] = z;
+            self->preparing_ = false;
+            if (!quiet) self->setStatus(QString("Sound previews ready: %1 aliases in %2 bank(s)").arg(z->aliases.size()).arg(z->banks.size()));
+            emit self->indexReady(z->name);
+            if (!self->wantAlias_.isEmpty() && self->wantZone_ == z->name) self->playResolved(self->wantAlias_);
+        }, Qt::QueuedConnection);
+    })).detach();
 }
 
 void SoundPreview::runActs(const QStringList& extra, const QString& outDir, bool structured, std::function<void(bool, const QString&)> done) {
@@ -655,42 +742,9 @@ void SoundPreview::prepare(Zone& z) {
         zz->error = why;
         self->setStatus("No sound preview for " + zoneName + ": " + why);
     };
-    // The last step, on a worker thread: the alias index and the banks' indexes read into memory.
-    const auto load = [self, zoneName, zoneDir, aliasFile, loaded, fail] {
-        if (!self) return;
-        self->setStatus("Reading the sound banks of " + zoneName + "...");
-        std::thread(guardedWorker(__FILE__, __LINE__, [self, zoneName, zoneDir, aliasFile, loaded, fail] {
-            auto z = std::make_shared<Zone>();
-            z->name = zoneName;
-            QFile f(aliasFile);
-            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                QTextStream in(&f);
-                while (!in.atEnd()) {
-                    const QStringList c = in.readLine().split('\t');
-                    if (c.size() < 2) continue;
-                    QVector<uint32_t> keys;
-                    for (const QString& k : c[1].split(',', Qt::SkipEmptyParts)) keys << uint32_t(k.toULongLong(nullptr, 16));
-                    z->aliases.insert(c[0], keys);
-                }
-            }
-            for (const QString& b : {zoneDir + "/patch_" + zoneName + ".sabs", zoneDir + "/" + zoneName + ".sabs", loaded}) {
-                if (!QFileInfo::exists(b)) continue;
-                Zone::Bank bank;
-                bank.file = b;
-                bank.entries = readSabIndex(b);
-                for (int i = 0; i < int(bank.entries.size()); ++i) bank.byKey.insert(bank.entries[size_t(i)].key, i);
-                if (!bank.entries.empty()) z->banks.push_back(std::move(bank));
-            }
-            QMetaObject::invokeMethod(qApp, [self, z, fail] {
-                if (!self) return;
-                if (z->aliases.isEmpty() || z->banks.empty()) return fail("the alias index or the sound banks could not be read");
-                z->ready = true;
-                self->zones_[z->name] = z;
-                self->preparing_ = false;
-                self->setStatus(QString("Sound previews ready: %1 aliases in %2 bank(s)").arg(z->aliases.size()).arg(z->banks.size()));
-                if (!self->wantAlias_.isEmpty() && self->wantZone_ == z->name) self->playResolved(self->wantAlias_);
-            }, Qt::QueuedConnection);
-        })).detach();
+    // The last step, on a worker thread: the alias index and the banks' indexes read into memory (loadPrepared).
+    const auto load = [self, zoneName] {
+        if (self) self->loadPrepared(zoneName, false);
     };
     // Step 2: the loaded bank, copied out of the decompressed zone.
     const auto bankStep = [self, ff, tmp, loaded, zoneName, load, fail] {
@@ -810,6 +864,19 @@ void SoundPreview::startPlayback(PcmSound pcm, const QString& what, bool loop) {
 #endif
     if (!started) return setStatus(what + ": the sound device did not play it");
     playing_ = true;
+    // The waveform for the Sounds panel: the loudest sample of each of 480 slices.
+    {
+        QVector<float> peaks(480, 0.f);
+        const int64_t frames = last_.frames();
+        const int ch = std::max(1, last_.channels);
+        for (int64_t f = 0; f < frames; ++f) {
+            float m = 0;
+            for (int c = 0; c < ch; ++c) m = std::max(m, std::abs(float(last_.samples[size_t(f * ch + c)])) / 32768.f);
+            float& p = peaks[int(f * peaks.size() / frames)];
+            p = std::max(p, m);
+        }
+        emit waveReady(peaks, last_.rate ? double(frames) / last_.rate : 0.0, loop);
+    }
     if (loop) endTimer_->stop();
     else endTimer_->start(int(std::min<int64_t>(last_.frames() * 1000 / std::max(1, last_.rate) + 150, 600000)));
     setStatus("Playing " + what);

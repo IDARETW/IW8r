@@ -2,6 +2,22 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-15 night, side bar revamp (owner: "each upper section sidebar menu needs their own individual revamp ... more
+  flush menus and actually useful UIs"; then "numeric values should be able to be dragged ... with constant scrolling
+  after a certain distance" and "we don't need a separate tools menu ... implement any appropriate tools into
+  already-existing menus or into new menus, and we can keep the tools tab at the top of the app"):
+  - Shared parts: panel_chrome.* (PanelHeader, ChipBar = the filter dropdown (owner: "make the buttons into a
+    dropdown list"), DetailsStrip, glyphIcon / themeMix / factSep).
+  - Done: Effects (folder tree, kind chips, facts kept in assets/effects/facts), Sounds (row play buttons, lengths /
+    variants from SoundPreview::loadIndex + aliasFacts, waveform), Images (grid, type chips, DDS format), IW8 Spawns
+    (by mode, add / select all), Undo History (what each step touched), Map Check (new panel, map_check_panel.*,
+    find_dialog checkMapLines shared with the Check Map window). The Tools side panel is gone (tools_panel.* deleted);
+    each panel's dots menu holds its tools; kDockLayoutVersion 18.
+  - Number fields: numeric_drag.* (application event filter on every QSpinBox / QDoubleSpinBox; one drag = one undo
+    group via Document::beginGroup).
+  - Materials (type chips, strip: Apply / Faces / Replace / Info), Models (category chips, strip: Place / 3D / Info),
+    Prefabs (category chips, Recent, strip: Place / 3D / Open / Folder) done the same way. Owner-open: Stock Map panel
+    customizability (RD4); the Stock Map panel was left as it is.
 - 2026-11-15 night (owner filled the compact showcase checklist, then: "consolidate, fix anything, and make another
   focused checklist of items that need to be checked again"; plus glare / popping, bush collision, "exact movement
   controls", "the movement is not right", doors (were fine), "vfx still show as squares", the Effects panel preview).

@@ -949,7 +949,7 @@ int runFeatureShots(MainWindow& w, const QString& outDir) {
             settle(w, 1500);
             s.window("side_panel.png", "The side bar with the Materials panel open beside the camera", 4000);
             // Every side section panel on its own at the section's width (layout work on each panel).
-            for (const char* panel : {"Materials", "Models", "Prefabs", "Effects", "Sounds", "Images", "IW8 Spawns", "Undo History", "Tools"}) {
+            for (const char* panel : {"Materials", "Models", "Prefabs", "Effects", "Sounds", "Images", "IW8 Spawns", "Map Check", "Undo History"}) {
                 w.showDock(panel);
                 settle(w, 1200);
                 ads::CDockManager* dm = w.findChild<ads::CDockManager*>();

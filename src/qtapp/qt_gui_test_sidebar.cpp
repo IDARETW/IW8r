@@ -4,6 +4,10 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDir>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
+#include <QLineEdit>
+#include <QMouseEvent>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -13,7 +17,10 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSet>
+#include <QSignalSpy>
 #include <QTest>
+#include <QTreeWidget>
 #include <QToolButton>
 
 #include <algorithm>
@@ -22,10 +29,14 @@
 
 #include "asset_browser.h"
 #include "main_window.h"
+#include "numeric_drag.h"
+#include "panel_chrome.h"
 #include "settings.h"
 #include "sound_preview.h"
 #include "thumb_store.h"
-#include "tools_panel.h"
+#include "map_check_panel.h"
+#include "panels.h"
+#include "prefab_browser.h"
 #include "vfx_preview.h"
 
 namespace iw8r::qt {
@@ -100,6 +111,71 @@ void waitFor(const std::function<bool()>& done, int ms) {
 
 void runSidebarChecks(std::function<void(const QString&)> section, std::function<void(bool, const QString&)> check, MainWindow& w,
                       const QString& outDir) {
+    section("number fields: drag to change");
+    {
+        // A field whose changes edit the map (as the panels' fields do): dragged sideways, it follows the mouse; past the
+        // zone it keeps scrolling while held; back inside it stops; the whole drag is one undo step.
+        EditorContext& ctx = w.context();
+        const Id world = ctx.doc.map().entities.empty() ? kNoId : ctx.doc.map().entities.front().id;
+        QWidget host;
+        host.setAttribute(Qt::WA_DontShowOnScreen);
+        auto* form = new QFormLayout(&host);
+        auto* spin = new QDoubleSpinBox(&host);
+        spin->setRange(-100000, 100000);
+        spin->setSingleStep(2);
+        form->addRow("Test amount", spin);
+        host.resize(260, 40);
+        host.show();
+        QTest::qWait(30);
+        QObject::connect(spin, &QDoubleSpinBox::valueChanged, &host, [&ctx, world](double v) {
+            ctx.doc.setKeyValue(world, "iw8r_drag_test", QString::number(v).toStdString());
+        });
+        const size_t undoBefore = ctx.doc.undoPosition();
+        QLineEdit* le = spin->findChild<QLineEdit*>();
+        const QPoint at = le ? QPoint(le->width() / 2, le->height() / 2) : QPoint();
+        const auto send = [&](QEvent::Type t, int dx, Qt::MouseButtons buttons) {
+            if (!le) return;
+            const QPoint local = at + QPoint(dx, 0);
+            QMouseEvent ev(t, QPointF(local), QPointF(le->mapToGlobal(local)), t == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton, buttons,
+                           Qt::NoModifier);
+            QApplication::sendEvent(le, &ev);
+        };
+        const int s0 = QApplication::startDragDistance() + 2;  // past the drag distance: the drag starts here
+        send(QEvent::MouseButtonPress, 0, Qt::LeftButton);
+        send(QEvent::MouseMove, s0, Qt::LeftButton);
+        send(QEvent::MouseMove, s0 + 40, Qt::LeftButton);  // 40 px = 10 steps of 2
+        const double followed = spin->value();
+        const bool started = numeric_drag::dragging();
+        send(QEvent::MouseMove, s0 + numeric_drag::kZone + 80, Qt::LeftButton);  // past the zone
+        const double atZone = spin->value();
+        QTest::qWait(300);
+        const double later = spin->value();
+        QTest::qWait(200);
+        const double later2 = spin->value();
+        send(QEvent::MouseMove, s0 + 40, Qt::LeftButton);  // back inside: it follows the mouse again
+        const double back = spin->value();
+        QTest::qWait(200);
+        const bool stopped = spin->value() == back;
+        send(QEvent::MouseButtonRelease, s0 + 40, Qt::NoButton);
+        QTest::qWait(20);
+        const Entity* ws = ctx.doc.findEntity(world);
+        const std::string* key = ws ? ws->value("iw8r_drag_test") : nullptr;
+        const bool oneStep = ctx.doc.undoPosition() == undoBefore + 1 && key && QString::fromStdString(*key).toDouble() == spin->value();
+        const QString stepName = ctx.doc.undoPosition() > 0 ? QString::fromStdString(ctx.doc.history()[ctx.doc.undoPosition() - 1].name) : QString();
+        check(le && started && followed == 20 && atZone == 100 && later > atZone + 10 && later2 > later && back > followed && stopped &&
+                  !numeric_drag::dragging(),
+              QString("a number field follows a sideways drag (40 px: %1), keeps scrolling past %2 px (%3 -> %4 -> %5) and stops back inside (%6)")
+                  .arg(followed).arg(numeric_drag::kZone).arg(atZone).arg(later).arg(later2).arg(back));
+        check(oneStep && stepName == "Drag Test amount",
+              QString("one drag is one undo step named after the field (\"%1\", %2 step(s))").arg(stepName).arg(ctx.doc.undoPosition() - undoBefore));
+        while (ctx.doc.undoPosition() > undoBefore) ctx.doc.undo();
+        ctx.documentEdited();
+        // A click that does not move gives the caret (typing), not a drag.
+        send(QEvent::MouseButtonPress, 0, Qt::LeftButton);
+        send(QEvent::MouseButtonRelease, 0, Qt::NoButton);
+        check(!numeric_drag::dragging() && ctx.doc.undoPosition() == undoBefore, "a click on a number field without moving is a plain click");
+    }
+
     section("side bar: model tiles");
     if (AssetBrowser* mb = w.modelsBrowser()) {
         w.showDock("Models");
@@ -159,7 +235,7 @@ void runSidebarChecks(std::function<void(const QString&)> section, std::function
     section("side bar: narrow column");
     {
         // Every panel fits a 300 px column without a sideways scroll bar.
-        for (const char* name : {"Materials", "Models", "Effects", "Sounds", "Images", "Tools"}) {
+        for (const char* name : {"Materials", "Models", "Effects", "Sounds", "Images", "Map Check", "IW8 Spawns", "Undo History"}) {
             w.showDock(name);
             QTest::qWait(50);
             QWidget* panel = nullptr;
@@ -168,7 +244,9 @@ void runSidebarChecks(std::function<void(const QString&)> section, std::function
             else if (QString(name) == "Effects") panel = w.effectsBrowser();
             else if (QString(name) == "Sounds") panel = w.soundsBrowser();
             else if (QString(name) == "Images") panel = w.imagesBrowser();
-            else panel = w.findChild<ToolsPanel*>();
+            else if (QString(name) == "Map Check") panel = w.findChild<MapCheckPanel*>();
+            else if (QString(name) == "IW8 Spawns") panel = w.findChild<SpawnsPanel*>();
+            else panel = w.findChild<HistoryPanel*>();
             if (!panel) {
                 check(false, QString("the %1 panel exists").arg(name));
                 continue;
@@ -239,20 +317,38 @@ void runSidebarChecks(std::function<void(const QString&)> section, std::function
         QTest::qWait(50);
         eb->selectRow(0);
         auto* caption = eb->findChild<QLabel*>("effectPreviewCaption");
-        const QString first = caption ? caption->text() : QString();
-        check(first.startsWith("vfx/core/expl/spark_death"), "selecting an effect puts it in the panel's preview: " + first.section('\n', 1, 1));
+        const QString first = eb->stripTitle();
+        check(eb->stripShown() && first.startsWith("vfx/core/expl/spark_death") && caption,
+              "selecting an effect puts it in the panel's details strip: " + first + " (" + eb->stripFacts() + ")");
         // Exported (now or before): the particle preview plays in the panel.
         waitFor([&] { return eb->effectPreview()->isVisible() || caption->text().contains("failed") || caption->text().contains("No export"); },
                 120000);
         check(eb->effectPreview()->isVisible() && eb->effectPreview()->effect().emitters.size() > 0,
-              "the selected effect plays in the side bar (" + caption->text().section('\n', 1, 1) + ")");
+              "the selected effect plays in the side bar (" + caption->text().section('\n', 0, 0) + ")");
         // Owner 2026-11-15: "the preview should be square with the vfx fit in the middle centered", and the particles
         // drawn as their sprites ("a lot of vfx shows as faint orbs").
         if (VfxPreview* pv = eb->effectPreview(); pv && pv->isVisible()) {
             const QRect vr = pv->viewRect();
-            check(vr.width() == vr.height() && vr.width() >= std::min(pv->width(), 520) - 1 && pv->height() > vr.height(),
-                  QString("the effect preview is a square across the panel (%1 x %2 in a %3 x %4 px preview)")
-                      .arg(vr.width()).arg(vr.height()).arg(pv->width()).arg(pv->height()));
+            // A square, as wide as the panel or as its height allows (2/5 of it: the list keeps its room), centred.
+            check(vr.width() == vr.height() && vr.width() >= std::min(pv->width(), pv->maxSide()) - 1 && pv->height() > vr.height() &&
+                      std::abs(vr.center().x() - pv->width() / 2) <= 1 && pv->maxSide() <= std::max(200, eb->height() * 2 / 5),
+                  QString("the effect preview is a centred square (%1 x %2 in a %3 x %4 px preview; at most %5 in a %6 px high panel)")
+                      .arg(vr.width()).arg(vr.height()).arg(pv->width()).arg(pv->height()).arg(pv->maxSide()).arg(eb->height()));
+            // The whole strip shows, its Place button included: the panel is not taller than where it is shown (a dock's
+            // scroll area grew with an earlier square and the strip scrolled off).
+            if (auto* place = eb->findChild<QPushButton*>("effectPlace")) {
+                QWidget* area = eb;
+                for (QWidget* p = eb->parentWidget(); p; p = p->parentWidget())
+                    if (auto* sa = qobject_cast<QAbstractScrollArea*>(p)) {
+                        area = sa->viewport();
+                        break;
+                    }
+                QTest::qWait(50);
+                const int bottom = place->mapTo(area, QPoint(0, place->height())).y();
+                check(place->isVisible() && bottom <= area->height() && eb->minimumSizeHint().height() <= area->height(),
+                      QString("the effect strip fits where the panel is shown (Place fx_origin ends at %1 of %2 px; the panel needs %3)")
+                          .arg(bottom).arg(area->height()).arg(eb->minimumSizeHint().height()));
+            }
             for (const int width : {300, 420}) {
                 VfxPreview sq;
                 sq.setAttribute(Qt::WA_DontShowOnScreen);
@@ -341,35 +437,276 @@ void runSidebarChecks(std::function<void(const QString&)> section, std::function
         }
     }
 
-    section("side bar: Tools panel");
-    w.showDock("Tools");  // a closed panel's widget is out of the window's tree
-    QTest::qWait(50);
-    if (auto* tp = w.findChild<ToolsPanel*>()) {
-        check(tp->toolCount() >= 30 && tp->groups().size() >= 6,
-              QString("the Tools panel lists the Tools menu's commands in groups (%1 in %2: %3)")
-                  .arg(tp->toolCount()).arg(tp->groups().size()).arg(tp->groups().join(", ")));
-        tp->setFilter("leak");
-        const int leak = tp->visibleToolCount();
-        tp->setFilter("");
-        check(leak >= 1 && leak <= 3, QString("its search narrows the list (\"leak\": %1)").arg(leak));
-        QAction* measure = w.action("MeasureTool");
-        auto* btn = tp->findChild<QToolButton*>("tool_MeasureTool");
-        if (measure && btn) {
-            const bool was = measure->isChecked();
-            btn->click();
-            const bool on = measure->isChecked() != was && btn->isChecked() == measure->isChecked();
-            btn->click();
-            check(on && measure->isChecked() == was, "a Tools panel button runs the menu's command and shows its on / off state");
-        } else {
-            check(false, "the Tools panel has the Measure Tool");
+    section("side bar: the tools in their panels");
+    {
+        // Owner 2026-11-15: no separate Tools side panel (the Tools menu stays in the menu bar); each panel's dots menu
+        // holds the tools that belong to it.
+        check(!w.findChild<QWidget*>("toolsPanel") && w.action("MeasureTool") && w.action("CheckMap"),
+              "there is no Tools side panel, and the Tools menu still has its commands");
+        for (AssetBrowser* b : {w.materialBrowser(), w.modelsBrowser(), w.effectsBrowser(), w.soundsBrowser(), w.imagesBrowser()}) {
+            auto* tb = b ? b->findChild<QToolButton*>("assetTools") : nullptr;
+            bool all = tb && tb->menu() && !b->toolActions().isEmpty();
+            if (all)
+                for (QAction* a : b->toolActions()) all &= tb->menu()->actions().contains(a);
+            check(all, QString("an asset panel's dots menu holds its kind's tools (%1)").arg(b ? b->toolActions().size() : 0));
         }
-        for (AssetBrowser* b : {w.materialBrowser(), w.modelsBrowser(), w.effectsBrowser(), w.soundsBrowser()}) {
-            auto* tb = b ? b->findChild<QPushButton*>("assetTools") : nullptr;
-            check(tb && tb->menu() && !tb->menu()->actions().isEmpty(),
-                  QString("an asset panel has a Tools button with its kind's commands (%1)").arg(tb && tb->menu() ? tb->menu()->actions().size() : 0));
+        const auto hasTool = [](const QList<QAction*>& tools, const char* command) {
+            for (QAction* a : tools)
+                if (a->objectName() == command) return true;
+            return false;
+        };
+        w.showDock("IW8 Spawns");
+        QTest::qWait(30);
+        auto* sp = w.findChild<SpawnsPanel*>();
+        w.showDock("Undo History");
+        QTest::qWait(30);
+        auto* hp = w.findChild<HistoryPanel*>();
+        w.showDock("Map Check");
+        QTest::qWait(30);
+        auto* mc = w.findChild<MapCheckPanel*>();
+        check(sp && hasTool(sp->tools(), "GenerateSpawns") && hasTool(sp->tools(), "GameModes") && hp && hasTool(hp->tools(), "RecordMacro") &&
+                  mc && hasTool(mc->tools(), "LeakCheck") && hasTool(mc->tools(), "CheckMap"),
+              "IW8 Spawns has Generate Spawns and Game Modes, Undo History the macros, Map Check the map's checks");
+    }
+
+    section("side bar: IW8 Spawns");
+    if (auto* sp = (w.showDock("IW8 Spawns"), QTest::qWait(30), w.findChild<SpawnsPanel*>())) {
+        EditorContext& ctx = w.context();
+        const size_t undo0 = ctx.doc.undoPosition();
+        const int before = sp->spawnCount();
+        ctx.doc.addEntity({{"classname", "mp_tdm_spawn_allies_start"}, {"origin", "100 200 0"}, {"angles", "0 90 0"}}, {}, "test spawn");
+        ctx.doc.addEntity({{"classname", "mp_tdm_spawn"}, {"origin", "300 200 0"}}, {}, "test spawn");
+        ctx.doc.addEntity({{"classname", "mp_dom_spawn"}, {"origin", "300 -200 0"}}, {}, "test spawn");
+        ctx.documentEdited();
+        QTest::qWait(30);
+        sp->setMode("tdm");
+        const int tdm = sp->visibleCount();
+        const Vec3 cam = ctx.cam.pos;
+        sp->selectRow(0);
+        QTest::qWait(30);
+        const QString title = sp->stripTitle();
+        check(sp->spawnCount() == before + 3 && sp->modes().contains("tdm") && sp->modes().contains("dom") && tdm >= 2 &&
+                  title.startsWith("mp_tdm_spawn") && sp->stripFacts().contains("TDM") && sp->countText().contains(" of "),
+              QString("IW8 Spawns lists the map's spawns by mode (%1 spawns, modes %2; TDM %3; strip \"%4\": %5)")
+                  .arg(sp->spawnCount()).arg(sp->modes().join(" ")).arg(tdm).arg(title, sp->stripFacts()));
+        check(ctx.doc.selection().size() == 1 && (cam.x != ctx.cam.pos.x || cam.y != ctx.cam.pos.y || cam.z != ctx.cam.pos.z),
+              "a spawn picked in the list is selected and the views go to it");
+        const Id added = sp->addHere();
+        QTest::qWait(30);
+        const Entity* e = ctx.doc.findEntity(added);
+        check(e && e->classname() == title.toStdString() && sp->spawnCount() == before + 4,
+              "Add one here adds another spawn of the picked kind at the camera");
+        sp->setMode("");
+        while (ctx.doc.undoPosition() > undo0) ctx.doc.undo();
+        ctx.documentEdited();
+        QTest::qWait(30);
+        check(sp->spawnCount() == before, "the spawns list follows undo");
+    }
+
+    section("side bar: Undo History");
+    if (auto* hp = (w.showDock("Undo History"), QTest::qWait(30), w.findChild<HistoryPanel*>())) {
+        EditorContext& ctx = w.context();
+        const size_t undo0 = ctx.doc.undoPosition();
+        ctx.doc.addEntity({{"classname", "info_null"}, {"origin", "0 0 64"}}, {}, "Place info_null");
+        const Id world = ctx.doc.map().entities.front().id;
+        ctx.doc.setKeyValue(world, "iw8r_history_test", "1");
+        ctx.documentEdited();
+        QTest::qWait(30);
+        const QString placed = hp->summaryOf(undo0 + 1), keyed = hp->summaryOf(undo0 + 2);
+        hp->setFilter("info_null");
+        const int found = hp->visibleSteps();
+        hp->setFilter("");
+        check(placed.contains("1 entity added") && keyed.contains("key") && found == 2 && !hp->stripTitle().isEmpty() &&
+                  hp->countText().contains("step"),
+              QString("Undo History says what each step touched (\"%1\", \"%2\"), searches the steps (%3) and shows the current one (\"%4\", %5)")
+                  .arg(placed, keyed).arg(found).arg(hp->stripTitle(), hp->countText()));
+        while (ctx.doc.undoPosition() > undo0) ctx.doc.undo();
+        ctx.documentEdited();
+    }
+
+    section("side bar: Map Check");
+    if (auto* mc = (w.showDock("Map Check"), QTest::qWait(30), w.findChild<MapCheckPanel*>())) {
+        mc->recheck();
+        const int total = mc->findingCount();
+        int build = 0;
+        for (const QString& l : mc->lines()) build += MapCheckPanel::kindOf(l) == "build";
+        mc->setChip("build");
+        const int shown = mc->visibleCount();
+        mc->selectRow(0);
+        for (int r = 0; r < total && !mc->stripTitle().startsWith("Build"); ++r) mc->selectRow(r);
+        const QString strip = mc->stripTitle();
+        mc->setChip("all");
+        check(total > 0 && shown == build && strip.startsWith("Build") && !mc->countText().isEmpty() &&
+                  MapCheckPanel::severityOf("Lights (warning): x") == "warning" && MapCheckPanel::kindOf("Spawns (warning): x") == "gameplay",
+              QString("Map Check lists the map's findings by kind (%1 findings, %2 build notes shown; strip \"%3\"; count %4)")
+                  .arg(total).arg(shown).arg(strip, mc->countText()));
+    }
+
+    section("side bar: Prefabs");
+    if (PrefabBrowser* pb = (w.showDock("Prefabs"), QTest::qWait(50), w.prefabBrowser())) {
+        if (pb->count() == 0) pb->refresh();
+        pb->setCategory("doors");
+        int doors = 0, other = 0;
+        for (int r = 0; r < pb->count(); ++r)
+            if (pb->shownAt(r)) (pb->categoryAt(r) == "doors" ? doors : other)++;
+        int first = -1;
+        for (int r = 0; r < pb->count() && first < 0; ++r)
+            if (pb->shownAt(r)) first = r;
+        pb->selectRow(first);
+        QTest::qWait(30);
+        const bool strip = pb->stripShown() && pb->stripTitle() == pb->titleAt(first) && pb->stripFacts().startsWith("Doors") &&
+                           pb->findChild<QPushButton*>("prefabOpen") && pb->findChild<QPushButton*>("prefabPlace");
+        pb->setCategory("");
+        check(doors > 20 && other == 0 && strip,
+              QString("the Prefabs chips list a category (Doors: %1, %2 others) and the strip shows the pick (\"%3\": %4)")
+                  .arg(doors).arg(other).arg(pb->stripTitle(), pb->stripFacts()));
+    }
+
+    section("side bar: flush asset panels");
+    {
+        // Owner 2026-11-15 ("more flush menus and actually useful UIs"): every asset panel has the header line (count,
+        // favourites star, dots menu), chips and an edge-to-edge list; effects, sounds and images a details strip.
+        for (AssetBrowser* b : {w.materialBrowser(), w.modelsBrowser(), w.effectsBrowser(), w.soundsBrowser(), w.imagesBrowser()}) {
+            if (!b) continue;
+            waitFor([&] { return b->catalogLoaded(); }, 30000);
+            b->setListMode(AssetBrowser::ListMode::All);
+            b->setFilter("");
+            auto* view = b->findChild<QListView*>();
+            check(!b->countText().isEmpty() && b->findChild<QToolButton*>("assetFavourites") && b->findChild<QWidget*>("assetChips") && view &&
+                      view->frameShape() == QFrame::NoFrame,
+                  QString("an asset panel has the flush header (count %1), favourites star, chips and an edge-to-edge list").arg(b->countText()));
+            // Owner 2026-11-15: the filter is a dropdown list (a square box across the panel), not a row of buttons.
+            auto* bar = b->findChild<ChipBar*>();
+            QPushButton* drop = bar ? bar->button() : nullptr;
+            const int entries = drop && drop->menu() ? int(drop->menu()->actions().size()) : 0;
+            check(drop && drop->menu() && entries >= 2 && !bar->findChild<QToolButton*>() && drop->styleSheet().contains("border-radius: 0px") &&
+                      !bar->shownText().isEmpty(),
+                  QString("its filter is one dropdown (\"%1\", %2 entries)").arg(bar ? bar->shownText() : QString()).arg(entries));
         }
-    } else {
-        check(false, "the side bar has a Tools panel");
+        if (AssetBrowser* eb = w.effectsBrowser()) {
+            w.showDock("Effects");
+            QTest::qWait(30);
+            // Kind chips: Fire lists fires only, and the count says how many of all.
+            const int total = eb->visibleCount();
+            eb->setChip("fire");
+            QTest::qWait(20);
+            int fires = 0, wrong = 0;
+            for (int r = 0; r < eb->visibleCount(); ++r) (eb->groupOf(eb->visibleName(r)) == "fire" ? fires : wrong)++;
+            check(eb->chipIds().contains("smoke") && fires > 10 && wrong == 0 && eb->visibleCount() < total && eb->countText().contains(" of "),
+                  QString("the Effects chips narrow the list by kind (Fire: %1 of %2, %3 wrong; count \"%4\")").arg(fires).arg(total).arg(wrong).arg(eb->countText()));
+            eb->setChip("all");
+            // The folder tree: a folder lists the effects under it.
+            eb->setFolder("vfx/core/expl");
+            QTest::qWait(20);
+            int under = 0, outside = 0;
+            for (int r = 0; r < eb->visibleCount(); ++r) (eb->visibleName(r).startsWith("vfx/core/expl/") ? under : outside)++;
+            auto* tree = eb->findChild<QTreeWidget*>("effectFolders");
+            const bool treeFollows = tree && tree->currentItem() && tree->currentItem()->data(0, Qt::UserRole).toString() == "vfx/core/expl";
+            check(under > 3 && outside == 0 && treeFollows && tree->topLevelItemCount() == 1,
+                  QString("the Effects folder tree lists a folder's effects (%1 under vfx/core/expl, %2 outside; tree %3)")
+                      .arg(under).arg(outside).arg(treeFollows ? "on it" : "NOT on it"));
+            eb->setFolder("");
+            // A known fact shows on the strip.
+            eb->setFilter("vfx/core/expl/spark_death");
+            QTest::qWait(20);
+            eb->selectRow(0);
+            const QString fx = eb->visibleName(0);
+            const QString was = eb->rowFact(fx);
+            eb->setRowFact(fx, "2.5 s");
+            check(eb->stripShown() && eb->stripFacts().contains("one-shot 2.5 s") && eb->findChild<QPushButton*>("effectPlace"),
+                  "the effect strip says its kind and length, with Place fx_origin (" + eb->stripFacts() + ")");
+            eb->setRowFact(fx, was);
+            eb->setFilter("");
+        }
+        if (AssetBrowser* sb = w.soundsBrowser()) {
+            w.showDock("Sounds");
+            QTest::qWait(30);
+            // The Loops chip lists looping aliases only.
+            const int total = sb->visibleCount();
+            auto* loops = sb->findChild<QAction*>("chip_loops");
+            if (loops) loops->trigger();
+            QTest::qWait(20);
+            auto* view = sb->findChild<QListView*>();
+            int looping = 0, other = 0;
+            for (int r = 0; r < sb->visibleCount() && view; ++r) (view->model()->index(r, 0).data(Qt::UserRole + 2).toBool() ? looping : other)++;
+            check(loops && looping > 50 && other == 0 && sb->visibleCount() < total,
+                  QString("the Sounds Loops chip lists looping aliases only (%1 loops, %2 others of %3)").arg(looping).arg(other).arg(total));
+            const QString shown = sb->findChild<ChipBar*>() ? sb->findChild<ChipBar*>()->shownText() : QString();
+            check(shown.endsWith("Loops"), "the dropdown names the switches that are on (" + shown + ")");
+            if (loops) loops->trigger();
+            sb->setChip("mus");
+            QTest::qWait(20);
+            check(sb->visibleCount() > 20 && sb->visibleName(0).startsWith("mus_"), QString("the Music chip lists music (%1)").arg(sb->visibleCount()));
+            sb->setChip("all");
+            // Facts on the strip; a click on a row's play button asks for that alias (the preview muted).
+            sb->setFilter("amb_");
+            QTest::qWait(20);
+            sb->selectRow(1);
+            const QString alias = sb->visibleName(1);
+            sb->setRowFacts({{alias, "1.5" + QString(QChar(0x2013)) + "4.0 s" + factSep() + QChar(0x00D7) + "3"}});
+            check(sb->stripShown() && sb->stripTitle() == alias && sb->stripFacts().contains("4.0 s") && sb->findChild<QPushButton*>("soundPlace"),
+                  "the sound strip shows the alias, its length and variants, with Place speaker (" + sb->stripFacts() + ")");
+            if (auto* sp = w.findChild<SoundPreview*>("soundPreview")) sp->setMuted(true);
+            QSignalSpy asked(sb, &AssetBrowser::soundPlayRequested);
+            if (view) {
+                QTest::qWait(30);
+                const QRect r = view->visualRect(view->model()->index(0, 0));
+                QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, QPoint(r.x() + 13, r.center().y()));
+            }
+            check(asked.size() == 1 && asked.first().value(0).toString() == sb->visibleName(0),
+                  QString("a sound row's play button plays that alias (%1 request(s))").arg(asked.size()));
+            emit sb->soundStopRequested();
+            if (auto* sp = w.findChild<SoundPreview*>("soundPreview")) sp->stop();
+            sb->setFilter("");
+        }
+        if (AssetBrowser* ib = w.imagesBrowser()) {
+            w.showDock("Images");
+            QTest::qWait(30);
+            ib->setChip("sky");
+            QTest::qWait(20);
+            int sky = 0, wrong = 0;
+            for (int r = 0; r < std::min(ib->visibleCount(), 400); ++r) (ib->groupOf(ib->visibleName(r)) == "sky" ? sky : wrong)++;
+            auto* view = ib->findChild<QListView*>();
+            check(view && view->viewMode() == QListView::IconMode && sky > 5 && wrong == 0,
+                  QString("the Images panel is a thumbnail grid with type chips (Sky: %1, %2 wrong)").arg(sky).arg(wrong));
+            ib->setChip("all");
+        }
+        for (AssetBrowser* b : {w.materialBrowser(), w.modelsBrowser()}) {
+            if (!b) continue;
+            const bool mat = b == w.materialBrowser();
+            w.showDock(mat ? "Materials" : "Models");
+            QTest::qWait(30);
+            const QString chipId = mat ? "walls" : "foliage";
+            b->setChip(chipId);
+            QTest::qWait(20);
+            int in = 0, wrong = 0;
+            for (int r = 0; r < std::min(b->visibleCount(), 300); ++r) (b->groupOf(b->visibleName(r)) == chipId ? in : wrong)++;
+            b->selectRow(0);
+            QTest::qWait(50);
+            const bool strip = b->stripShown() && b->stripTitle() == b->visibleName(0) && b->stripFacts().contains("this map") &&
+                               b->findChild<QPushButton*>(mat ? "materialApply" : "modelPlace");
+            check(in > 10 && wrong == 0 && strip,
+                  QString("the %1 chips narrow by type (%2: %3, %4 wrong) and the strip shows the pick with its actions (\"%5\": %6)")
+                      .arg(mat ? "Materials" : "Models", chipId).arg(in).arg(wrong).arg(b->stripTitle(), b->stripFacts()));
+            b->findChild<QListView*>()->setCurrentIndex({});
+            b->setChip("all");
+        }
+        if (AssetBrowser* eb = w.effectsBrowser()) {
+            // The star: favourites only.
+            const QString fav = eb->visibleName(0);
+            const bool wasFav = eb->isFavourite(fav);
+            eb->setFavourite(fav, true);
+            auto* star = eb->findChild<QToolButton*>("assetFavourites");
+            if (star) star->click();
+            QTest::qWait(20);
+            const int favs = eb->visibleCount();
+            bool listed = false;
+            for (int r = 0; r < favs; ++r) listed |= eb->visibleName(r) == fav;
+            if (star) star->click();
+            check(star && listed && favs < 50 && eb->visibleCount() > favs,
+                  QString("the star lists the favourites only (%1 shown, then %2)").arg(favs).arg(eb->visibleCount()));
+            eb->setFavourite(fav, wasFav);
+        }
     }
 
     section("side bar: closed panels make their first rows ahead");
@@ -377,7 +714,7 @@ void runSidebarChecks(std::function<void(const QString&)> section, std::function
         // Another panel open, so Materials is closed; every picture forgotten (earlier checks made some): a search there
         // still gets its first rows' pictures (from the pack on the decoder, or made by the source), ready when the
         // panel opens.
-        w.showDock("Tools");
+        w.showDock("Map Check");
         QTest::qWait(50);
         mb->setListMode(AssetBrowser::ListMode::All);
         mb->setKit("");

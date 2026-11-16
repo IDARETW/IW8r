@@ -22,6 +22,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVector>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -74,9 +75,22 @@ public:
     const PcmSound& lastSound() const { return last_; }
     // Tests: decode only, nothing is played.
     void setMuted(bool m) { muted_ = m; }
+    // The index of a zone prepared before (its alias table and banks in the cache), read without ACTS on a worker
+    // thread; indexReady when it is in memory. Nothing for a zone never prepared (its first Play prepares it).
+    void loadIndex(const QString& zone = "common_mp");
+    // Every alias of a read zone: how many variants have samples, the shortest and longest, whether one loops.
+    struct AliasFacts {
+        int variants = 0;
+        double shortest = 0, longest = 0;
+        bool loop = false;
+    };
+    QHash<QString, AliasFacts> aliasFacts(const QString& zone = "common_mp") const;
 
 signals:
     void statusChanged(const QString& text, bool playing);
+    void indexReady(const QString& zone);
+    // A sound started: its waveform (the peak of each of 480 slices, 0-1), its length, whether it loops.
+    void waveReady(const QVector<float>& peaks, double seconds, bool loop);
 
 private:
     struct Zone;
@@ -84,6 +98,7 @@ private:
     void prepare(Zone& z);
     void runActs(const QStringList& args, const QString& outDir, bool structured, std::function<void(bool ok, const QString& log)> done);
     void playResolved(const QString& alias);
+    void loadPrepared(const QString& zone, bool quiet);  // the cached index read (quiet: no status lines)
     void setStatus(const QString& text);
     void startPlayback(PcmSound pcm, const QString& what, bool loop);
 
@@ -92,7 +107,7 @@ private:
     QString wantAlias_, wantZone_;
     QByteArray wav_;  // what the sound API plays from (kept until stopped)
     PcmSound last_;
-    bool playing_ = false, preparing_ = false, muted_ = false;
+    bool playing_ = false, preparing_ = false, muted_ = false, indexing_ = false;
     QString status_;
     QTimer* endTimer_ = nullptr;
     QProcess* proc_ = nullptr;

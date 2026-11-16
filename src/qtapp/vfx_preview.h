@@ -52,6 +52,9 @@ public:
     bool hasHeightForWidth() const override { return !discs_; }
     int heightForWidth(int w) const override;
     QSize sizeHint() const override;
+    // The square's largest side (520 by default; the side bar keeps it to part of the panel's height).
+    void setMaxSide(int side);
+    int maxSide() const { return maxSide_; }
     QSize minimumSizeHint() const override;
 
 protected:
@@ -68,6 +71,7 @@ private:
     double loopLength() const;      // one-shot: its run and a pause; looping: the window the fit looks at
     double warmTime() const;        // looping: when the emitters have filled up (playback starts there)
     int side() const;               // the square's side for the current width
+    int maxSide_ = 520;
     int stripHeight() const;        // the text under the square
     void render();                  // the square into frame_
     void renderBackground();        // gradient, ground grid, origin into back_ (when the view changed)

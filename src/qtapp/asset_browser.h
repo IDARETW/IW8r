@@ -34,6 +34,9 @@ class QScrollBar;
 class QShowEvent;
 class QTimer;
 class QPushButton;
+class QToolButton;
+class QMenu;
+class QTreeWidget;
 namespace iw8r {
 struct VfxSimDef;
 }
@@ -121,8 +124,30 @@ public:
     // Sounds: the line under the list (what plays, what is being prepared, or why nothing plays) and the Play / Stop state.
     void setSoundStatus(const QString& text, bool playing);
     QString soundStatus() const;
-    // A Tools button in the options row whose menu holds the Tools menu commands of this kind of asset.
+    // The Tools menu commands of this kind of asset, at the end of the panel's dots menu.
     void setToolActions(const QList<QAction*>& actions);
+    QList<QAction*> toolActions() const { return toolActions_; }
+    // Short facts at the right of a row and in the details strip ("loop", "1.5 s", "0.4-1.2 s · x3"), by name; `keep`
+    // stores them in the settings (effects: known once previewed).
+    void setRowFact(const QString& name, const QString& fact, bool keep = false);
+    void setRowFacts(const QHash<QString, QString>& facts);
+    QString rowFact(const QString& name) const { return facts_.value(name); }
+    // Sounds: the waveform of what plays (peak per bucket, 0-1), its length; the strip draws it with a playhead.
+    void setSoundWave(const QVector<float>& peaks, double seconds, bool loop);
+    // The filter chips: the exclusive chip ("all" or a group id) and the chip ids (tests).
+    void setChip(const QString& id);
+    QString chip() const;
+    QStringList chipIds() const;
+    // The category of a name in this panel's chips ("" for Materials / Models), the same rule the chips filter by.
+    QString groupOf(const QString& name) const;
+    // Effects: the folder the list is narrowed to ("" = all), as the folder tree selects it.
+    void setFolder(const QString& folder);
+    QString folder() const { return folder_; }
+    // The header line's count ("37 of 1,020") and the details strip's title / facts (tests).
+    QString countText() const;
+    QString stripTitle() const;
+    QString stripFacts() const;
+    bool stripShown() const;
     // Availability of a row's asset: "" = available or not known yet, else why it cannot be built (the caches tried and
     // failed). Unavailable visible rows are greyed with the reason in their tooltip.
     using StatusSource = std::function<QString(const QString& name)>;
@@ -148,6 +173,7 @@ signals:
     void effectHighlighted(const QString& name);  // Effects: the current row changed (side bar preview)
     void soundPlayRequested(const QString& name);  // Sounds: Play (or Enter on the Play button)
     void soundStopRequested();
+    void firstShown();  // the panel was shown for the first time (sounds: the bank index is read then)
 
 public:
     void reloadCatalog() { load(); }  // after an availability audit (4.12)
@@ -156,6 +182,7 @@ public:
 
 protected:
     void showEvent(QShowEvent* e) override;
+    void resizeEvent(QResizeEvent* e) override;
 
 private:
     void load();  // starts reading the catalogue on a worker thread; applyCatalog() fills the list
@@ -177,15 +204,34 @@ private:
     EditorContext* ctx_;
     Kind kind_;
     QLineEdit* search_;
-    QCheckBox* usedOnly_;
-    QComboBox* listMode_ = nullptr;
+    bool usedOnly_ = false;          // "In this map" chip
+    int listMode_ = 0;               // 0 all, 1 favourites, 2 recent, 3 the tag listTag_
+    QString listTag_;
     QComboBox* kit_ = nullptr;
     QHash<QString, QStringList> kitNames_;  // kit -> names of this browser's kind
     QString settingsKey(const char* what) const;
     void applyListMode();
     void refillListModes();
-    QCheckBox* buildableOnly_ = nullptr;  // hide assets the availability catalog lists as missing
+    void setListModeTo(int mode, const QString& tag);
+    void rebuildMenu();               // the dots menu: show modes, tags, options, the kind's tools
+    void updateStrip();               // the details strip of the current row
+    void fillFolders();               // effects: the folder tree from the names
+    void playRow(const QModelIndex& idx);
+    void fitEffectSquare();           // effects: the preview square's largest side from the visible height
+    bool buildableOnly_ = true;       // hide assets the availability catalog lists as missing
     int hiddenMissing_ = 0;
+    class PanelHeader* header_ = nullptr;
+    class ChipBar* chips_ = nullptr;
+    class DetailsStrip* strip_ = nullptr;
+    QToolButton* favButton_ = nullptr;
+    QMenu* menu_ = nullptr;
+    QList<QAction*> toolActions_;
+    QHash<QString, QString> facts_;   // row facts (setRowFact)
+    QTreeWidget* folders_ = nullptr;  // effects: folders by path
+    QString folder_;
+    QWidget* wave_ = nullptr;         // sounds: WaveView
+    QString playingName_;             // sounds: the alias asked to play (its row shows Stop)
+    bool shownOnce_ = false;
     QLabel* info_;
     QListView* view_;
     QLabel* preview_ = nullptr;
@@ -216,7 +262,6 @@ private:
     QLabel* fxCaption_ = nullptr;
     QPushButton* soundPlay_ = nullptr;          // sounds: play / stop the selected alias
     QLabel* soundCaption_ = nullptr;
-    QWidget* toolRow_ = nullptr;
     TileSize tileSize_ = TileSize::Medium;
     void applyTileSize();
     std::pair<int, int> visibleRange() const;  // proxy rows on screen [first, last] (last < first: none)

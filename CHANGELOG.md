@@ -5,6 +5,49 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Number fields change by dragging** (owner, night): press on any number field that is not being typed in and drag
+  sideways: one step per 4 px (Shift finer, Ctrl ten steps). Further than 120 px from where the drag started the value
+  keeps scrolling while the button is held, faster further out; back inside it follows the mouse again. Esc puts the
+  value back; a click without moving is the usual click (caret, typing). One drag is one undo step ("Drag Offset X").
+  The pointer over a draggable field is the sideways arrow. Every spin box of the app, dialogs included.
+- **No separate Tools side panel** (owner: keep the Tools menu at the top, put the tools into the panels): each side
+  panel's dots menu holds its tools. Materials: Material Info, Editable Copy, Techset Info, Replace Material in Map,
+  Shader Editor, Adjust Image, Availability Audit, Cache Manager. Models: Model Info, Replace Model Material, Scatter
+  by Rules, Scatter Models, Model Paint Mode, Drop to Floor, Availability Audit, Cache Manager. Effects: Effect
+  Editor; Sounds: Sound Settings; Images: Adjust Image, IES Profiles; IW8 Spawns: Generate Spawns, Game Modes; Undo
+  History: Record Macro, Run Command Script.
+- **New side panel: Map Check**: the Check Map findings in the side bar, by kind (Fixable, Gameplay, Entities,
+  Lighting, Leak, Build, Map) with a severity icon each; the strip has Fix (Map Doctor findings) and Go To (selects
+  the entity a finding names and moves the views to it). Checked again a moment after the map changes while shown;
+  its menu has Check Map (the window), Leak Check, Clear Leak Line, Asset Usage and Unused Custom Assets.
+- **Side panels revamped, flush** (owner: "more flush menus and actually useful UIs"): one header line (name, count,
+  favourites star, dots menu), a search across the panel, one filter dropdown, the list edge to edge, and a details
+  strip with the selection's actions. The filter (owner: "make the buttons into a dropdown list") is a square box
+  across the panel naming what is shown ("Walls · In this map"); its list has the categories with their counts and,
+  under a rule, the switches that combine with them (Recent, Loops, In this map). The pills on the rows are square,
+  and a strip's buttons share one width. Below, "chips" means the dropdown's categories.
+  - Effects: a folder tree by path above the list, kind chips (Muzzle, Explosions, Fire, Smoke, Sparks, Lights,
+    Impacts, Shells, Blood) with a coloured dot on every row, the folder under each name, "loop" / one-shot length
+    on the rows once previewed (kept), the square preview and Place fx_origin in the strip.
+  - Sounds: a play button on every row, the length (range over variants) and variant count on every row once the
+    sound banks' index is read (from the cache, no ACTS run), family chips (Ambience, Music, Weapons, Movement, ...)
+    and a Loops chip, the waveform with a playhead, Play / Stop and Place speaker in the strip.
+  - Images: a thumbnail grid with chips by use (World, Sky, Weapons, Characters, Vehicles, Effects, UI, Engine), the
+    picture, size, DDS format and mip count in the strip.
+  - IW8 Spawns: the map's own spawns (and a stock map's compiled spawnList) by mode with counts, a dot in the team's
+    colour, position and yaw per row; a click selects it and moves the views there; Add One Here and Select All of
+    the mode in the strip; + adds a spawn of the chosen mode at the camera.
+  - Undo History: an icon per kind of step, what each step touched ("2 entities added, 5 brushes changed"), a search,
+    Undo / Redo in the header, Select Changed in the strip (selects what the step changed).
+  - Materials: type chips (Ground, Walls, Metal, Wood, Glass, Fabric, Decals, Own, Other) beside Recent, In this
+    map and the kits; the picked material in the strip with a larger picture, its type, how often the map uses it and
+    its techset family, and Apply / Faces (select every brush using it) / Replace / Info.
+  - Models: category chips (Structure, Containers, Furniture, Household, Foliage, Vehicles, Equipment, Lights,
+    Electronics, Debris, Signs); the picked model in the strip (picture, size and zone, Place / 3D / Info).
+  - Prefabs: category chips from the prefab's folder (Bundles, Doors, Windows, Stairs, Fences, Cover, Structure,
+    Props, Lights, Foliage) and Recent (the last 30 placed); the strip with Place / 3D / Open (the prefab's map, to
+    edit it) / Folder.
+
 - **Container logos on Shipment**: a blended decal whose slot-27 image is "alpha + reveal" with a flat white alpha
   (`white&shipping_container_logo_01_r`) takes its opacity from the reveal (green); the logos drew as solid white or
   dark rectangles. The containers' colours follow the map's own skins (the beige `logo_01_wet` model is beige in the

@@ -9,6 +9,17 @@ Mark each line OK / wrong (with a screenshot) and send it back.
 
 ## In the editor
 
+- [ ] **Side bar revamp (2026-11-15 night)**: every upper side panel has one header line (name, count, star, dots menu),
+  a search, one filter dropdown (categories with counts; Recent / Loops / In this map under the rule), the list edge to
+  edge and a strip at the bottom for the pick. Try: Effects (a folder in
+  the tree, a kind chip, an effect playing in the square, Place fx_origin), Sounds (the play button on a row, the
+  length on the rows, Loops chip, the waveform), Images (a chip, the size and format in the strip), Materials (a type
+  chip, Apply / Faces / Replace), Models (a category chip, Place / 3D), Prefabs (Doors chip, Open), IW8 Spawns (a mode
+  chip, Add one here, Select all), Map Check (a finding, Go to, Fix), Undo History (what each step touched). The
+  tools of the old Tools side panel are in each panel's dots menu; the Tools menu at the top is unchanged.
+- [ ] **Number fields drag (2026-11-15 night)**: press on any number field (Surface panel, Stock Map panel, a dialog)
+  and drag sideways: it follows the mouse; past about 120 px it keeps scrolling while held; Shift is finer, Ctrl
+  coarser, Esc puts it back; one drag is one Ctrl+Z.
 - [ ] **Start here (2026-11-15 evening):** the focused list in [EDITOR_TEST_CHECKLIST.md](EDITOR_TEST_CHECKLIST.md)
   (interactive copy: the "Compact Showcase Checklist" artifact page), on the compact showcase map
   `samples/dev/iw8r_compact_showcase.map`.
