@@ -16,7 +16,10 @@
     tools scripts (parity tools keep the fork as reference). tools/acts_parity.py is noise-aware (fork runs twice).
     Setup wizard / Tool Paths: "Replay reader" / "Zone writer", saved empty when equal to the bundled default.
   - zt build: xmake "smallest" adds /GL, so zt_flags uses /O1 with optimize "fork_size" (no flag); "fastest" = /O2.
-  - Next: LICENSE (GPL-3), THIRD_PARTY.md, README (building, what the user provides), package licence notes.
+  - Release files done: LICENSE (GPL-3, gsc-tool's text), THIRD_PARTY.md, README (clone --recursive, helper exes,
+    key table from src/tools/gsc, run_all_tests), package_release.ps1 copies every licence into licenses/.
+  - Before making the repo public (owner): 10 tracked files hold C:\Users\<user> paths (tools/dw_candidate_*.py,
+    tools/patches/docs_round*.py, ...); no email or keys are tracked. The fork checkouts are no longer needed to build.
 - 2026-11-16 (owner: blank effect previews; "a one-time full metadata and thumbnails for everything we can in the
   menus ... include it as part of the project"; "compress previews too"; "stop relying on ACTs, gsc-tool, and the
   x64-zt fork"):

@@ -40,19 +40,42 @@ foreach ($f in 'iw8_entity_defs.json', 'iw8_entity_classes.json', 'hotkey_preset
     if (Test-Path $src) { Copy-Item $src $dataDest }
 }
 
-# Licences: Qt (LGPLv3, dynamic linking), Qt Advanced Docking System (LGPLv2.1), stb (public domain / MIT).
+# Licences: the suite (GPL-3), the tools built from src/tools (gsc-tool and x64-zt: GPL-3; ACTS: MIT), the libraries
+# (THIRD_PARTY.md), Qt (LGPLv3, dynamic linking) and the Qt Advanced Docking System (LGPLv2.1).
 $lic = Join-Path $dest 'licenses'
 New-Item -ItemType Directory -Force $lic | Out-Null
+Copy-Item (Join-Path $root 'LICENSE') (Join-Path $lic 'IW8RadiantSuite-GPL-3.txt')
+Copy-Item (Join-Path $root 'THIRD_PARTY.md') (Join-Path $lic 'THIRD_PARTY.md')
 Copy-Item (Join-Path $root 'third_party\qtads\LICENSE') (Join-Path $lic 'QtADS-LGPL-2.1.txt')
+$licenseFiles = [ordered]@{
+    'gsc-tool-GPL-3.txt'      = 'src\tools\gsc\LICENSE'
+    'x64-zt-GPL-3.txt'        = 'src\tools\zonetool\LICENSE'
+    'ACTS-LICENSE.md'         = 'src\tools\acts\LICENSE.md'
+    'ACTS-MIT.md'             = 'src\tools\acts\licenses\mit.md'
+    'zlib.txt'                = 'third_party\zlib\LICENSE'
+    'minizip-Info-ZIP.txt'    = 'third_party\minizip\LICENSE.Info-Zip'
+    'zstd-BSD.txt'            = 'third_party\zstd\LICENSE'
+    'lz4-BSD-2.txt'           = 'third_party\lz4\lib\LICENSE'
+    'nlohmann-json-MIT.txt'   = 'third_party\nlohmann_json\LICENSE.MIT'
+    'GSL-MIT.txt'             = 'third_party\gsl\LICENSE'
+    'glaze-MIT.txt'           = 'third_party\glaze\LICENSE'
+    'libtomcrypt.txt'         = 'third_party\libtomcrypt\LICENSE'
+    'libtommath.txt'          = 'third_party\libtommath\LICENSE'
+    'DirectXTex-MIT.txt'      = 'third_party\directxtex\LICENSE'
+    'hash-library-zlib.txt'   = 'third_party\hash_library\LICENSE'
+    'bcdec.txt'               = 'third_party\bcdec\LICENSE'
+}
+foreach ($k in $licenseFiles.Keys) { Copy-Item (Join-Path $root $licenseFiles[$k]) (Join-Path $lic $k) }
 @"
-IW8 Radiant Suite third-party components
+IW8 Radiant Suite: GNU General Public License v3 (IW8RadiantSuite-GPL-3.txt). Source: https://github.com/IDARETW/IW8r
+The tools beside the editor are built from that source: iw8r-gsc.exe (gsc-tool by xensik, GPL-3), iw8r-zt.exe (x64-zt,
+GPL-3) and iw8r-acts.exe (atian-cod-tools by Antoine Willerval, MIT); the libraries are listed in THIRD_PARTY.md.
 - Qt 6.8 (https://www.qt.io): LGPL v3, used as unmodified shared libraries (Qt6*.dll and the plugin folders).
   Source: https://download.qt.io/official_releases/qt/6.8/ . You may replace these DLLs with your own build.
 - Qt Advanced Docking System (qtadvanceddocking.dll): LGPL v2.1, see QtADS-LGPL-2.1.txt.
   Source: https://github.com/githubuser0xFFFF/Qt-Advanced-Docking-System
-- stb_image (Sean Barrett): public domain / MIT, compiled into the executables.
 Requires the Microsoft Visual C++ 2015-2022 x64 redistributable (vc_redist.x64.exe from Microsoft).
-No game data, game executables, x64-zt, ACTS or Oodle binaries are included; the editor asks for their paths.
+No game data or game executables are included: the editor reads the game you own from the folder set in Tool Paths.
 "@ | Set-Content -Encoding utf8 (Join-Path $lic 'THIRD_PARTY.txt')
 
 # Files the editor needs at run time: stop when one did not reach the package (the shaders folder was once left out).

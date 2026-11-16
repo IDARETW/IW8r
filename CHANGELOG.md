@@ -5,6 +5,10 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-16
 
+- **Ready for a public repository.** The project is GPL-3 ([LICENSE](LICENSE)); [THIRD_PARTY.md](THIRD_PARTY.md) lists
+  the three tools built from `src/tools` and every library with its licence and source; the package's `licenses`
+  folder carries all of them. The README builds from a clone (`git clone --recursive`, any Qt folder), names the
+  helper exes, generates the key table from the repository's own gsc-tool copy and runs `tools/run_all_tests.ps1`.
 - **The Replay reader is part of the project: no outside tools are needed.** `iw8r-acts.exe` is built from
   `src/tools/acts` (the ACTS fork's Replay 1.20 reader, MIT; only the mw19replay handler and what it uses) and is the
   default Tool Paths `acts`, as `iw8r-zt.exe` and `iw8r-gsc.exe` are for the zone writer and the script compiler;
