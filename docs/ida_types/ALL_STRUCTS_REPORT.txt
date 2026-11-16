@@ -1,0 +1,276 @@
+# structs left for Replay checks (not changed beyond fills)
+ABFence                                          ida 112 computed 80 gt 80 anchors 1: size 112 -> 80 not proven
+AIBlackboard                                     ida 120 computed 112 gt 120 anchors 3: size 120 -> 112 not proven
+AINewAgentInterface                              ida 200 computed 32 gt 32 anchors 1: size 200 -> 32 not proven
+AITaskBucket_Lazy                                ida 520 computed 80 gt 80 anchors 1: size 520 -> 80 not proven
+AITaskBucket_Spread                              ida 96 computed 88 gt 96 anchors 3: size 96 -> 88 not proven; moves not better supported (ok/bad (0, 6) -> (2, 4))
+ASM_Context                                      ida 200 computed 1 gt 1 anchors 0: size 200 -> 1 not proven
+ActiveClanData                                   ida 156872 computed 42048 gt 42048 anchors 0: size 156872 -> 42048 not proven
+bdFileID                                         ida 56 computed 72 gt 56 anchors 0: size 56 -> 72 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+pooledStorageWriteFileInfo                       ida 16760 computed 16784 gt 16760 anchors 0: size 16760 -> 16784 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+AnalyticsBuffer                                  ida 16784 computed 16808 gt 16784 anchors 0: size 16784 -> 16808 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+BG_SpawnGroup_Loot_Set                           ida 4512 computed 3712 gt 4512 anchors 0: moves not better supported (ok/bad (1, 0) -> (1, 0))
+BG_SpawnGroup_Loot_Table                         ida 166488 computed 166488 gt 190496 anchors 2: moves not better supported (ok/bad (9, 1) -> (9, 1))
+BINKSHADERSD3D12GPU                              ida 2344 computed 2288 gt 2288 anchors 0: size 2344 -> 2288 not proven; Replay accesses +2320 past the new size; moves not better supported (ok/bad (1, 0) -> (0, 0))
+BestHostData                                     ida 44 computed 40 gt 44 anchors 4: size 44 -> 40 not proven
+BgAntiLag                                        ida 302784 computed 37848 gt 46040 anchors 5: size 302784 -> 37848 not proven
+BgAntiLagEntityHistoryExtended                   ida 544 computed 68 gt 68 anchors 1: size 544 -> 68 not proven
+BgPredictedEntitySystem                          ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+BgStatic                                         ida 156488 computed 8 gt 8 anchors 1: size 156488 -> 8 not proven; Replay accesses +662704 past the new size
+BgVehiclePhysics                                 ida 1960 computed 688 gt 728 anchors 55: size 1960 -> 688 not proven
+BgVehiclePhysicsGround                           ida 3240 computed 3112 gt 3240 anchors 18: size 3240 -> 3112 not proven
+BgVehiclePhysicsManager                          ida 1056776 computed 1044484 gt 1056776 anchors 0: size 1056776 -> 1044484 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+BucketAllocator                                  ida 1256 computed 1256 gt 1256 anchors 3: moves not better supported (ok/bad (9, 6) -> (11, 4))
+BulletFireParams                                 ida 184 computed 160 gt 160 anchors 1: size 184 -> 160 not proven
+ConeTargetInfo                                   ida 848 computed 840 gt 840 anchors 1: size 848 -> 840 not proven
+CEntPlayerInfo                                   ida 104 computed 16 gt 16 anchors 0: size 104 -> 16 not proven
+CEntTurretInfo                                   ida 80 computed 72 gt 80 anchors 0: size 80 -> 72 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+CEntVehicleInfo                                  ida 128 computed 124 gt 128 anchors 0: size 128 -> 124 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+CachedContentIOStreamDCache                      ida 1792 computed 232 gt 232 anchors 2: size 1792 -> 232 not proven
+bdChannelCreateChannelResponse                   ida 128 computed 128 gt 128 anchors 0: moves not better supported (ok/bad (1, 0) -> (1, 0))
+CachedCreateChatCallback                         ida 336 computed 352 gt 336 anchors 1: size 336 -> 352 not proven; moves not better supported (ok/bad (7, 7) -> (7, 7))
+Camo                                             ida 168 computed 184 gt 184 anchors 0: size 168 -> 184 not proven
+CgAntiLag                                        ida 209728 computed 144376 gt 152568 anchors 1: size 209728 -> 144376 not proven
+CgAntiLagSP                                      ida 4227768 computed 4219576 gt 4227768 anchors 1: size 4227768 -> 4219576 not proven
+CgBallistics                                     ida 286056 computed 286056 gt 286056 anchors 2: moves not better supported (ok/bad (3, 4) -> (14, 4))
+CgBallisticsSP                                   ida 2288416 computed 286056 gt 286056 anchors 1: size 2288416 -> 286056 not proven
+CgClientSideEffectsSystem                        ida 116160 computed 80064 gt 80064 anchors 2: size 116160 -> 80064 not proven
+CgCompassSystemMP                                ida 64280 computed 64160 gt 64280 anchors 4: size 64280 -> 64160 not proven
+CgDynamicMedia                                   ida 136 computed 24 gt 24 anchors 2: size 136 -> 24 not proven
+bitarray_224                                     ida 32 computed 28 gt 28 anchors 1: size 32 -> 28 not proven
+refdef_t                                         ida 69536 computed 2960 gt 69536 anchors 1: size 69536 -> 2960 not proven
+PlayerWeaponCommonState                          ida 2632 computed 2628 gt 2632 anchors 9: size 2632 -> 2628 not proven
+WeaponXAnim                                      ida 40456 computed 40440 gt 40456 anchors 0: size 40456 -> 40440 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+ClientPlayerWeaponInfo                           ida 202520 computed 202440 gt 202520 anchors 0: size 202520 -> 202440 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+ShakeStateInternal                               ida 124 computed 116 gt 124 anchors 4: size 124 -> 116 not proven; moves not better supported (ok/bad (70, 8) -> (48, 7))
+ShakeState                                       ida 1632 computed 276 gt 276 anchors 5: moves not better supported (ok/bad (134, 34) -> (90, 7))
+EdgeQueryCache                                   ida 976 computed 960 gt 976 anchors 0: size 976 -> 960 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+PipDef                                           ida 129440 computed 62864 gt 129440 anchors 0: size 129440 -> 62864 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+CgSnapshotMP                                     ida 763992 computed 405688 gt 763992 anchors 5: size 763992 -> 405688 not proven
+workerTrace_t                                    ida 128 computed 128 gt 128 anchors 0: moves not better supported (ok/bad (0, 0) -> (0, 0))
+CgVehicleEventSystem                             ida 18144 computed 14040 gt 18144 anchors 2: size 18144 -> 14040 not proven
+CgVehicleSystem                                  ida 1152280 computed 1135888 gt 1152280 anchors 1: size 1152280 -> 1135888 not proven; moves not better supported (ok/bad (269, 3) -> (269, 1))
+CgVehicleSystemMP                                ida 1157400 computed 1141008 gt 1157400 anchors 1: size 1157400 -> 1141008 not proven
+CgVehicleSystemSP                                ida 1152280 computed 1135888 gt 1152280 anchors 1: size 1152280 -> 1135888 not proven
+ChallengeXPCache                                 ida 1240 computed 1224 gt 1240 anchors 3: size 1240 -> 1224 not proven; moves not better supported (ok/bad (21, 20) -> (23, 14))
+ClSnapshot                                       ida 94860 computed 94816 gt 94856 anchors 0: size 94860 -> 94816 not proven; moves not better supported (ok/bad (0, 2) -> (0, 2))
+ClActiveClientMP                                 ida 153024 computed 177144 gt 153024 anchors 2: size 153024 -> 177144 not proven
+ClActiveClientSP                                 ida 56040 computed 55992 gt 56040 anchors 0: size 56040 -> 55992 not proven
+ClConnection                                     ida 1057152 computed 16 gt 16 anchors 0: size 1057152 -> 16 not proven
+ClStatic                                         ida 137036 computed 136992 gt 137320 anchors 2: size 137036 -> 136992 not proven; Replay accesses +175768 past the new size
+CmdBufState                                      ida 2504 computed 4280 gt 2504 anchors 4: more conflicts after resize
+ComputeCmdBufState                               ida 4328 computed 4320 gt 2544 anchors 3: Replay accesses +4320 past the new size
+GfxComputeBufferState                            ida 64 computed 104 gt 64 anchors 0: size 64 -> 104 not proven
+ComputeContextData                               ida 9192 computed 9912 gt 9192 anchors 0: size 9192 -> 9912 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+ComputeData                                      ida 18424 computed 19864 gt 18424 anchors 0: size 18424 -> 19864 not proven
+ComputeShaderProgram                             ida 24 computed 32 gt 32 anchors 0: size 24 -> 32 not proven; moves not better supported (ok/bad (1, 2) -> (1, 2))
+ComputeShader                                    ida 40 computed 40 gt 48 anchors 1: moves not better supported (ok/bad (3, 1) -> (3, 1))
+CrosslaunchHSM                                   ida 200 computed 160 gt 160 anchors 0: size 200 -> 160 not proven
+DBFileHandle                                     ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DB_DecompressState                               ida 673792 computed 280704 gt 280704 anchors 0: size 673792 -> 280704 not proven; Replay accesses +583952 past the new size; moves not better supported (ok/bad (0, 22) -> (0, 0))
+DDLMember                                        ida 64 computed 48 gt 48 anchors 0: size 64 -> 48 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+DLogEvent_ScreenView                             ida 1784 computed 1784 gt 1784 anchors 3: moves not better supported (ok/bad (16, 1) -> (20, 1))
+DObjBoneParentMap                                ida 8728 computed 8712 gt 8712 anchors 0: size 8728 -> 8712 not proven
+DWAchievementEngine                              ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+DWAchievementEngineClient                        ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+DWAsyncMatchMaking                               ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+DWClans                                          ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+DWCounter                                        ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DWDML                                            ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DWEventLog                                       ida 200 computed 32 gt 32 anchors 2: size 200 -> 32 not proven
+DWFriends                                        ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+DWGroup                                          ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DWLobbyService                                   ida 192 computed 48 gt 32 anchors 1: size 192 -> 48 not proven; moves not better supported (ok/bad (2, 23) -> (0, 25))
+DWLootGen                                        ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DWMLG                                            ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DWMail                                           ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+DWMarketplace                                    ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+DWMatchMaking                                    ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DWMatchScheduler                                 ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+DWMessaging                                      ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+DWObjectStore                                    ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+DWPooledStorage                                  ida 80 computed 16 gt 16 anchors 0: size 80 -> 16 not proven
+DWProfiles                                       ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+bdPublisherVariablesInfo                         ida 56 computed 72 gt 56 anchors 0: size 56 -> 72 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+DWPublisherVariables                             ida 120 computed 136 gt 120 anchors 1: size 120 -> 136 not proven
+DWRegulations                                    ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DWReward                                         ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DWRichPresenceService                            ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven; Replay accesses +16 past the new size
+DWServerInventory                                ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DWServicesAccess                                 ida 163368 computed 23256 gt 163368 anchors 1: size 163368 -> 23256 not proven; moves not better supported (ok/bad (6, 3) -> (0, 0))
+DWTags                                           ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DWTeams                                          ida 72 computed 16 gt 16 anchors 0: size 72 -> 16 not proven
+DWTitleUtilities                                 ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+DWUserLists                                      ida 80 computed 16 gt 16 anchors 0: size 80 -> 16 not proven
+DWWrappers                                       ida 17656 computed 1136 gt 17656 anchors 2: moves not better supported (ok/bad (4, 35) -> (9, 30))
+DemonwareFence                                   ida 120 computed 80 gt 80 anchors 1: size 120 -> 80 not proven
+DiskFile                                         ida 2400 computed 288 gt 288 anchors 0: size 2400 -> 288 not proven; Replay accesses +304 past the new size
+DiskReadContext                                  ida 64 computed 336 gt 64 anchors 1: size 64 -> 336 not proven; moves not better supported (ok/bad (0, 0) -> (4, 1))
+Edge                                             ida 24 computed 24 gt 24 anchors 0: moves not better supported (ok/bad (0, 0) -> (0, 0))
+EntityTagInfo                                    ida 128 computed 128 gt 128 anchors 0: moves not better supported (ok/bad (0, 0) -> (0, 0))
+FlightDynamics                                   ida 22272 computed 1272 gt 1312 anchors 24: Replay accesses +2780 past the new size
+FriendListGlobal                                 ida 48072 computed 28264 gt 48072 anchors 0: moves not better supported (ok/bad (0, 0) -> (0, 0))
+FxGlassCrackWork                                 ida 174592 computed 21824 gt 21824 anchors 10: size 174592 -> 21824 not proven
+GAntiLagMP                                       ida 4403320 computed 4354160 gt 4403320 anchors 1: size 4403320 -> 4354160 not proven; moves not better supported (ok/bad (4, 3) -> (5, 2))
+GBullet                                          ida 7680 computed 5064 gt 5064 anchors 2: size 7680 -> 5064 not proven
+GMissileSP                                       ida 136 computed 24 gt 24 anchors 1: size 136 -> 24 not proven
+MemoryFile                                       ida 176 computed 176 gt 176 anchors 8: moves not better supported (ok/bad (35, 7) -> (44, 6))
+GStaticMP                                        ida 19584 computed 19592 gt 19584 anchors 1: size 19584 -> 19592 not proven; moves not better supported (ok/bad (3, 6) -> (3, 5))
+GTargetAssist                                    ida 72 computed 16 gt 16 anchors 1: size 72 -> 16 not proven
+GTurretMP                                        ida 1032 computed 256 gt 256 anchors 1: size 1032 -> 256 not proven
+GUtilsMP                                         ida 128 computed 16 gt 16 anchors 1: size 128 -> 16 not proven
+GUtilsSP                                         ida 128 computed 16 gt 16 anchors 1: size 128 -> 16 not proven
+GVehicles                                        ida 1087032 computed 1074736 gt 1087032 anchors 1: size 1087032 -> 1074736 not proven; moves not better supported (ok/bad (18, 2) -> (18, 0))
+GVehiclesSP                                      ida 1087032 computed 1074736 gt 1087032 anchors 0: size 1087032 -> 1074736 not proven
+GenericTask                                      ida 80 computed 88 gt 80 anchors 7: size 80 -> 88 not proven
+GfxCmdBuf                                        ida 9120 computed 9800 gt 9120 anchors 0: size 9120 -> 9800 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+GfxVertexBufferState                             ida 72 computed 112 gt 72 anchors 0: size 72 -> 112 not proven
+GfxAsync2DFrameData                              ida 22784 computed 24128 gt 22784 anchors 0: size 22784 -> 24128 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+GfxMeshData                                      ida 12672 computed 1016 gt 1016 anchors 2: Replay accesses +1576 past the new size
+GfxWorldTransientDrawCache                       ida 233472 computed 344064 gt 233472 anchors 0: size 233472 -> 344064 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+GfxDrawCallOutput                                ida 9136 computed 9816 gt 9136 anchors 0: size 9136 -> 9816 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+GfxBackEndData                                   ida 11144708 computed 7860032 gt 7711488 anchors 11: size 11144708 -> 7860032 not proven; Replay accesses +11144704 past the new size; moves not better supported (ok/bad (99, 13) -> (98, 13))
+GfxCmdBufInput                                   ida 7952 computed 7872 gt 7952 anchors 4: size 7952 -> 7872 not proven
+GfxCmdBufSourceState                             ida 11696 computed 11616 gt 11696 anchors 0: size 11696 -> 11616 not proven
+GfxCmdBufState                                   ida 82880 computed 10400 gt 8816 anchors 4: size 82880 -> 10400 not proven
+GfxGlassVertex                                   ida 32 computed 28 gt 28 anchors 0: size 32 -> 28 not proven; Replay accesses +28 past the new size
+GfxMultiLightGridFXLightingBuffers               ida 4336 computed 5488 gt 4336 anchors 1: size 4336 -> 5488 not proven
+GfxShaderTextureRWView                           ida 32 computed 24 gt 24 anchors 1: size 32 -> 24 not proven; Replay accesses +24 past the new size
+GfxSunShadowProjectionSetup                      ida 140 computed 140 gt 140 anchors 2: moves not better supported (ok/bad (29, 8) -> (19, 9))
+GfxSurfaceBounds                                 ida 56 computed 24 gt 24 anchors 0: size 56 -> 24 not proven
+GfxVoxelTree                                     ida 112 computed 120 gt 120 anchors 0: size 112 -> 120 not proven
+HavokPhysicsFreeListMemorySystem                 ida 19584 computed 30816 gt 19584 anchors 13: size 19584 -> 30816 not proven; moves not better supported (ok/bad (61, 10) -> (100, 7))
+HavokPhysicsHitCollector                         ida 144 computed 128 gt 144 anchors 3: Replay accesses +128 past the new size; moves not better supported (ok/bad (16, 0) -> (15, 0))
+HavokPhysicsShapeTagCodec                        ida 272 computed 56 gt 56 anchors 2: size 272 -> 56 not proven
+HavokPhysicsShapeViewer                          ida 336 computed 112 gt 336 anchors 1: size 336 -> 112 not proven
+HelicopterDynamics                               ida 2416 computed 2368 gt 2416 anchors 29: size 2416 -> 2368 not proven
+ID3D12Device                                     ida 8 computed 88 gt 88 anchors 1: size 8 -> 88 not proven
+ID3D12Pageable                                   ida 8 computed 16 gt 16 anchors 1: size 8 -> 16 not proven
+ID3D12PipelineState                              ida 40 computed 48 gt 48 anchors 0: size 40 -> 48 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+ID3D12Resource                                   ida 8 computed 16 gt 16 anchors 1: size 8 -> 16 not proven; Replay accesses +16 past the new size
+InviteJoinHSM_xb3                                ida 1544 computed 808 gt 808 anchors 1: size 1544 -> 808 not proven
+LUITraceRunner                                   ida 37832 computed 37824 gt 37832 anchors 3: size 37832 -> 37824 not proven
+bdStatsInfo                                      ida 160 computed 160 gt 160 anchors 0: moves not better supported (ok/bad (0, 0) -> (0, 0))
+LeaderBoardResult_LeaderBoardRow_10__200         ida 41864 computed 41616 gt 41616 anchors 0: size 41864 -> 41616 not proven; moves not better supported (ok/bad (2, 0) -> (2, 0))
+PartyData                                        ida 373704 computed 373704 gt 380336 anchors 38: moves not better supported (ok/bad (494, 95) -> (547, 104))
+LobbyData                                        ida 380336 computed 373704 gt 380336 anchors 0: size 380336 -> 373704 not proven
+RB_BackendDataCopier__CmdMemCopy                 ida 32 computed 32 gt 32 anchors 0: moves not better supported (ok/bad (0, 0) -> (0, 0))
+MPSCQueue_RB_BackendDataCopier__Cmd_16384        ida 786448 computed 655376 gt 786448 anchors 0: moves not better supported (ok/bad (0, 0) -> (0, 0))
+MarkInfo                                         ida 1984 computed 1968 gt 1984 anchors 8: size 1984 -> 1968 not proven; moves not better supported (ok/bad (33, 12) -> (32, 10))
+bdBoolResult                                     ida 56 computed 72 gt 56 anchors 0: size 56 -> 72 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+MatchMakerOmniLobbyData                          ida 739200 computed 92400 gt 98824 anchors 32: size 739200 -> 92400 not proven; moves not better supported (ok/bad (137, 28) -> (143, 27))
+MatchmakingData                                  ida 601 computed 352 gt 352 anchors 6: moves not better supported (ok/bad (22, 5) -> (30, 4))
+MaterialPipelineState                            ida 16 computed 104 gt 104 anchors 0: size 16 -> 104 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+NetBacklog                                       ida 72 computed 16 gt 16 anchors 2: size 72 -> 16 not proven
+PacketStream_NetPacket_1288_262144_1             ida 265512 computed 265520 gt 265512 anchors 0: size 265512 -> 265520 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+NetBuffer_262144_1                               ida 265512 computed 265520 gt 265512 anchors 0: size 265512 -> 265520 not proven
+PacketStream_NetPacket_1288_32768_0              ida 34344 computed 34352 gt 34344 anchors 0: size 34344 -> 34352 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+NetBuffer_32768_0                                ida 34344 computed 34352 gt 34344 anchors 0: size 34344 -> 34352 not proven
+PacketStream_NetPacket_1288_65536_0              ida 67368 computed 67376 gt 67368 anchors 0: size 67368 -> 67376 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+NetBuffer_65536_0                                ida 67368 computed 67376 gt 67368 anchors 0: size 67368 -> 67376 not proven
+NetChannel                                       ida 168 computed 24 gt 24 anchors 0: size 168 -> 24 not proven
+NetEndpoint                                      ida 400 computed 400 gt 400 anchors 4: moves not better supported (ok/bad (36, 1) -> (36, 1))
+NetRelay                                         ida 312 computed 304 gt 312 anchors 4: size 312 -> 304 not proven
+NetInit                                          ida 2944 computed 376 gt 384 anchors 5: moves not better supported (ok/bad (12, 2) -> (13, 2))
+NetLoopback                                      ida 103032 computed 103056 gt 103032 anchors 0: size 103032 -> 103056 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+NetTelemetry                                     ida 39576 computed 27448 gt 39576 anchors 3: size 39576 -> 27448 not proven
+NetThread                                        ida 1060384 computed 132552 gt 334008 anchors 3: size 1060384 -> 132552 not proven
+NetworkingFence                                  ida 120 computed 80 gt 80 anchors 1: size 120 -> 80 not proven
+OnlineBattlepass                                 ida 3712 computed 552 gt 3712 anchors 1: size 3712 -> 552 not proven
+OnlineChallengesManager                          ida 175816 computed 175824 gt 257728 anchors 3: size 175816 -> 175824 not proven
+OnlineChatManager                                ida 12000 computed 1184 gt 864 anchors 1: size 12000 -> 1184 not proven; Replay accesses +1496 past the new size
+bdClansGroupMembershipProposal                   ida 1472 computed 1472 gt 1472 anchors 3: moves not better supported (ok/bad (16, 2) -> (15, 2))
+bdStructOptionalObject_bdClansGroupMembershipProposal ida 1480 computed 1504 gt 1480 anchors 0: size 1480 -> 1504 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+bdClansAddOrUpdateGroupMemberResponse            ida 1744 computed 1792 gt 1744 anchors 0: size 1744 -> 1792 not proven; moves not better supported (ok/bad (2, 0) -> (2, 0))
+bdClansUploadGroupFileResponse                   ida 416 computed 416 gt 416 anchors 0: moves not better supported (ok/bad (1, 0) -> (1, 0))
+bdStructUserAccountID                            ida 88 computed 96 gt 88 anchors 1: size 88 -> 96 not proven
+bdStructOptionalObject_bdStructUserAccountID     ida 96 computed 104 gt 96 anchors 1: size 96 -> 104 not proven
+OnlineClan                                       ida 3984 computed 3984 gt 3984 anchors 10: moves not better supported (ok/bad (62, 32) -> (69, 26))
+OnlineMatchmakerTelemetry                        ida 48 computed 32 gt 32 anchors 2: size 48 -> 32 not proven
+OnlineMatchmakerOmniscient                       ida 1077400 computed 1071120 gt 1077544 anchors 12: size 1077400 -> 1071120 not proven
+OnlineMgr                                        ida 165272 computed 24480 gt 165272 anchors 1: size 165272 -> 24480 not proven
+OnlineProgression                                ida 124576 computed 15600 gt 124576 anchors 3: size 124576 -> 15600 not proven
+OnlineQuests                                     ida 124000 computed 49808 gt 82752 anchors 4: size 124000 -> 49808 not proven
+OnlineUserLists                                  ida 881200 computed 593200 gt 881200 anchors 0: size 881200 -> 593200 not proven
+Online_AAR                                       ida 3200 computed 3192 gt 3200 anchors 1: size 3200 -> 3192 not proven
+Online_BlockList                                 ida 218056 computed 45256 gt 218056 anchors 0: size 218056 -> 45256 not proven
+Online_Commerce                                  ida 106144 computed 106160 gt 106144 anchors 0: size 106144 -> 106160 not proven
+Online_Dailylogin                                ida 240 computed 200 gt 240 anchors 1: size 240 -> 200 not proven
+Online_Friends                                   ida 1181944 computed 43688 gt 1181944 anchors 2: size 1181944 -> 43688 not proven
+bdObjectStoreGetPublisherObjectsResponse         ida 8296 computed 8304 gt 8296 anchors 2: size 8296 -> 8304 not proven; moves not better supported (ok/bad (6, 0) -> (6, 0))
+Online_LootCrate                                 ida 23144 computed 23168 gt 23144 anchors 0: size 23144 -> 23168 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+Online_Store                                     ida 193640 computed 193648 gt 193640 anchors 15: size 193640 -> 193648 not proven
+overlappedTask                                   ida 32 computed 40 gt 40 anchors 0: size 32 -> 40 not proven; moves not better supported (ok/bad (3, 1) -> (3, 1))
+PMROctreeFactoryNode                             ida 176 computed 168 gt 176 anchors 0: size 176 -> 168 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+ParticleData                                     ida 112 computed 96 gt 112 anchors 3: size 112 -> 96 not proven
+ParticleManager                                  ida 2501248 computed 313760 gt 314624 anchors 9: size 2501248 -> 313760 not proven
+ParticleModuleInitRunner                         ida 112 computed 104 gt 112 anchors 0: size 112 -> 104 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+ParticleState                                    ida 432 computed 416 gt 416 anchors 7: size 432 -> 416 not proven
+PlayerAnimEntry                                  ida 88 computed 104 gt 104 anchors 0: size 88 -> 104 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+PlayerAnimsetAlias                               ida 136 computed 152 gt 152 anchors 0: size 136 -> 152 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+PlayerAnimsetState                               ida 64 computed 96 gt 96 anchors 0: size 64 -> 96 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+PlayerStatsFence                                 ida 112 computed 80 gt 80 anchors 1: size 112 -> 80 not proven
+ProfanityAsyncTaskData                           ida 1064 computed 1072 gt 1064 anchors 0: size 1064 -> 1072 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+RB_BackendDataCopier                             ida 2360040 computed 1966824 gt 2360040 anchors 1: size 2360040 -> 1966824 not proven
+Ragdoll                                          ida 14116 computed 14116 gt 14116 anchors 1: moves not better supported (ok/bad (15, 16) -> (22, 9))
+ReactiveMotionModelInfo                          ida 96 computed 88 gt 64 anchors 0: size 96 -> 88 not proven
+RefString                                        ida 12 computed 12 gt 12 anchors 0: moves not better supported (ok/bad (0, 1) -> (0, 1))
+ScriptableEventDisablePhysicsSubShapeDef         ida 32 computed 40 gt 32 anchors 1: size 32 -> 40 not proven
+SndAliasGroupTracking                            ida 192 computed 176 gt 176 anchors 1: size 192 -> 176 not proven; moves not better supported (ok/bad (1, 5) -> (5, 3))
+SndAssetBankEntry                                ida 44 computed 52 gt 44 anchors 3: moves not better supported (ok/bad (8, 0) -> (8, 0))
+SndMusicAsset                                    ida 120 computed 124 gt 124 anchors 0: size 120 -> 124 not proven
+SndMusicState                                    ida 336 computed 352 gt 352 anchors 0: size 336 -> 352 not proven; moves not better supported (ok/bad (2, 1) -> (2, 1))
+StreamLoader                                     ida 704 computed 96 gt 96 anchors 2: size 704 -> 96 not proven
+StreamUpdateMultiView                            ida 1104 computed 560 gt 1104 anchors 1: size 1104 -> 560 not proven
+SvGameModeApplication                            ida 192 computed 24 gt 24 anchors 2: size 192 -> 24 not proven
+SvGameModeAppSP                                  ida 200 computed 32 gt 32 anchors 1: size 200 -> 32 not proven
+SvServerInitSettings                             ida 224 computed 220 gt 224 anchors 5: size 224 -> 220 not proven; moves not better supported (ok/bad (22, 20) -> (24, 16))
+TaskItem                                         ida 88 computed 96 gt 88 anchors 2: size 88 -> 96 not proven
+UIQuadCache                                      ida 248 computed 248 gt 248 anchors 0: moves not better supported (ok/bad (0, 0) -> (0, 0))
+Umbra__BufferAllocator                           ida 32928 computed 32928 gt 32928 anchors 0: moves not better supported (ok/bad (4, 0) -> (4, 0))
+Umbra__DepthBuffer                               ida 200 computed 72 gt 72 anchors 0: size 200 -> 72 not proven
+Umbra__Transformer                               ida 1424 computed 1688 gt 1424 anchors 0: moves not better supported (ok/bad (0, 1) -> (0, 1))
+Umbra__ImpShadowCuller                           ida 45920 computed 48016 gt 45920 anchors 2: size 45920 -> 48016 not proven; moves not better supported (ok/bad (62, 0) -> (62, 0))
+Umbra__Tome                                      ida 364 computed 1 gt 1 anchors 0: size 364 -> 1 not proven; Replay accesses +80 past the new size
+Umbra__Visibility                                ida 184 computed 128 gt 128 anchors 0: size 184 -> 128 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+UserSignedInToLiveFence                          ida 128 computed 80 gt 80 anchors 1: size 128 -> 80 not proven
+Vehicle                                          ida 2304 computed 2248 gt 2248 anchors 9: size 2304 -> 2248 not proven
+WeaponSFXPackageSounds                           ida 776 computed 808 gt 808 anchors 0: size 776 -> 808 not proven
+actor_prone_info_t                               ida 32 computed 24 gt 24 anchors 0: size 32 -> 24 not proven
+bdEventLogID                                     ida 56 computed 72 gt 56 anchors 0: size 56 -> 72 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+bdLobbyService                                   ida 6208 computed 6192 gt 6208 anchors 21: size 6208 -> 6192 not proven
+bdPublisherVariables                             ida 112 computed 128 gt 112 anchors 1: size 112 -> 128 not proven; moves not better supported (ok/bad (9, 2) -> (9, 2))
+bdSessionID                                      ida 56 computed 72 gt 56 anchors 0: size 56 -> 72 not proven
+bdTelemetryDLogSink                              ida 1120 computed 1120 gt 1120 anchors 6: moves not better supported (ok/bad (33, 5) -> (29, 9))
+bdUpgradeAnonUnoAccRequest                       ida 45576 computed 12736 gt 12736 anchors 0: size 45576 -> 12736 not proven
+bfx__ActiveAreasInSphereCursor                   ida 2144 computed 2144 gt 2144 anchors 2: moves not better supported (ok/bad (10, 0) -> (10, 0))
+bfx__Task                                        ida 24 computed 16 gt 16 anchors 2: size 24 -> 16 not proven
+bfx__Area                                        ida 72 computed 72 gt 72 anchors 6: moves not better supported (ok/bad (57, 2) -> (60, 2))
+bfx__ComponentManager                            ida 576 computed 72 gt 72 anchors 2: size 576 -> 72 not proven
+bfx__Link                                        ida 136 computed 1 gt 1 anchors 0: size 136 -> 1 not proven; Replay accesses +104 past the new size
+bfx__LinkSegment                                 ida 80 computed 1 gt 1 anchors 0: size 80 -> 1 not proven; Replay accesses +72 past the new size
+bfx__Navigator                                   ida 200 computed 1 gt 1 anchors 0: size 200 -> 1 not proven; Replay accesses +256 past the new size
+bfx__NavigatorImpl                               ida 760 computed 752 gt 760 anchors 11: Replay accesses +752 past the new size
+bfx__ProbeResults                                ida 52 computed 56 gt 52 anchors 0: size 52 -> 56 not proven; Replay accesses +4216 past the new size
+bfx__Repulsor                                    ida 184 computed 1 gt 1 anchors 0: size 184 -> 1 not proven; Replay accesses +180 past the new size
+bfx__VRT                                         ida 128 computed 80 gt 80 anchors 1: size 128 -> 80 not proven; moves not better supported (ok/bad (3, 0) -> (3, 0))
+bfx__VolumePathSegment                           ida 12 computed 1 gt 1 anchors 0: size 12 -> 1 not proven; Replay accesses +32 past the new size
+bot_info_t                                       ida 29432 computed 29400 gt 29432 anchors 2: size 29432 -> 29400 not proven
+bot_data_t                                       ida 261536 computed 130888 gt 131056 anchors 1: size 261536 -> 130888 not proven; moves not better supported (ok/bad (21, 343) -> (14, 349))
+dwMultiFileTask                                  ida 273536 computed 273568 gt 273536 anchors 0: size 273536 -> 273568 not proven; moves not better supported (ok/bad (0, 0) -> (0, 0))
+hkAabb24_16_24_Codec                             ida 288 computed 288 gt 288 anchors 12: moves not better supported (ok/bad (46, 10) -> (46, 8))
+hkInplaceArrayAligned16_hknpCollisionResult_10_hkContainerHeapAllocator ida 1152 computed 1144 gt 1152 anchors 1: size 1152 -> 1144 not proven; moves not better supported (ok/bad (7, 0) -> (7, 0))
+hkReflect__BoolValue                             ida 8 computed 1 gt 1 anchors 0: size 8 -> 1 not proven
+hkcdWeldingUtil__MotionWeldConfig                ida 352 computed 328 gt 352 anchors 0: size 352 -> 328 not proven; Replay accesses +336 past the new size
+hkgpConvexHullImpl                               ida 496 computed 496 gt 496 anchors 15: moves not better supported (ok/bad (85, 8) -> (86, 7))
+hknpEvent                                        ida 21 computed 6 gt 6 anchors 0: size 21 -> 6 not proven; Replay accesses +8 past the new size
+hknpManifold                                     ida 256 computed 248 gt 256 anchors 0: size 256 -> 248 not proven; moves not better supported (ok/bad (1, 1) -> (1, 1))
+hknpSolverInfo                                   ida 368 computed 360 gt 368 anchors 9: size 368 -> 360 not proven; Replay accesses +364 past the new size; moves not better supported (ok/bad (37, 29) -> (39, 25))
+hkpDeformableFixedConstraintData__Atoms          ida 336 computed 320 gt 336 anchors 2: size 336 -> 320 not proven; moves not better supported (ok/bad (15, 5) -> (16, 4))
+hkpDeformableFixedConstraintData                 ida 368 computed 368 gt 368 anchors 2: moves not better supported (ok/bad (21, 0) -> (24, 1))
+hkpRagdollMotorConstraintAtom                    ida 96 computed 80 gt 96 anchors 1: size 96 -> 80 not proven
+hkpRagdollConstraintData__Atoms                  ida 400 computed 384 gt 400 anchors 8: size 400 -> 384 not proven
+hkpRagdollConstraintData                         ida 432 computed 432 gt 432 anchors 2: moves not better supported (ok/bad (69, 1) -> (73, 1))
+playlistInfo                                     ida 992 computed 928 gt 992 anchors 0: moves not better supported (ok/bad (0, 0) -> (0, 0))
+sd_decoder                                       ida 4480 computed 4408 gt 4480 anchors 2: size 4480 -> 4408 not proven; moves not better supported (ok/bad (12, 2) -> (12, 2))
+snd_rv_params                                    ida 80 computed 80 gt 80 anchors 3: moves not better supported (ok/bad (26, 40) -> (25, 38))

@@ -427,3 +427,155 @@ def backup_all(path):
                 f.write("%s;\n\n" % s)
             n += 1
     print("wrote %d types to %s" % (n, path))
+
+
+def dump_udts(path):
+    """Every struct / union in Local Types as JSON: {name: {size, union, pack, members: [[off, name, size, type, base]]}}."""
+    import json
+    til = ida_typeinf.get_idati()
+    out = {}
+    for o in range(1, ida_typeinf.get_ordinal_limit(til)):
+        t = ida_typeinf.tinfo_t()
+        if not t.get_numbered_type(til, o) or not t.is_udt():
+            continue
+        u = ida_typeinf.udt_type_data_t()
+        if not t.get_udt_details(u):
+            continue
+        nm = t.get_type_name() or ("#%d" % o)
+        mem = []
+        for m in u:
+            mem.append([m.offset // 8, m.name, m.size // 8, m.type.dstr(), bool(m.is_baseclass())])
+        sz = t.get_size()
+        out[nm] = {"ord": o, "size": sz if sz != ida_typeinf.BADSIZE else -1, "union": bool(u.is_union),
+                   "pack": u.pack, "members": mem}
+    json.dump(out, open(path, "w"))
+    print("dumped %d UDTs to %s" % (len(out), path))
+
+
+PRIOR_CMT = "game-test layout; no Replay access checks this field yet"
+
+
+def _byte_array(size):
+    arr = ida_typeinf.tinfo_t()
+    arr.create_array(ida_typeinf.tinfo_t(ida_typeinf.BT_INT8 | ida_typeinf.BTMT_USIGNED), size)
+    return arr
+
+
+def _resolve_type(cands, size, cur):
+    for c in cands:
+        if c.startswith("@"):
+            m = cur.get(c[1:])
+            if m is not None and m.size // 8 == size:
+                return m.type
+            continue
+        try:
+            tt = _ctype(c)
+        except Exception:
+            continue
+        if tt.get_size() == size:
+            return tt
+    return _byte_array(size)
+
+
+def _rebuild(name, size, req, apply):
+    """req: [(offset, name, tinfo, comment, is_base)] -> the struct at `size`, same ordinal and pack."""
+    til, t, u = _get(name)
+    req = sorted(req, key=lambda x: x[0])
+    names = [x[1] for x in req]
+    if len(names) != len(set(names)):
+        raise ValueError("duplicate member names %s" % sorted({n for n in names if names.count(n) > 1}))
+    nu = ida_typeinf.udt_type_data_t()
+    nu.taudt_bits, nu.pack, nu.sda = u.taudt_bits, u.pack, u.sda
+    nu.is_union = False
+    cur = 0
+    for off, nm, ft, cmt, base in req:
+        fs = ft.get_size()
+        if off < cur:
+            raise ValueError("%s at 0x%X overlaps the previous member (ends 0x%X)" % (nm, off, cur))
+        if off > cur:
+            nu.push_back(_pad_member(cur, off - cur))
+        m = ida_typeinf.udm_t()
+        m.name, m.type, m.offset, m.size = nm, ft, off * 8, fs * 8
+        if cmt:
+            m.cmt = cmt
+        if base and ft.is_udt():
+            try:
+                m.set_baseclass(True)
+            except Exception:
+                pass
+        nu.push_back(m)
+        cur = off + fs
+    if cur > size:
+        raise ValueError("members end at 0x%X, past the size 0x%X" % (cur, size))
+    if cur < size:
+        nu.push_back(_pad_member(cur, size - cur))
+    nt = ida_typeinf.tinfo_t()
+    if not nt.create_udt(nu, ida_typeinf.BTF_STRUCT) or nt.get_size() != size:
+        raise ValueError("rebuilt struct has size %s, wanted %d" % (nt.get_size(), size))
+    chk = ida_typeinf.udt_type_data_t()
+    nt.get_udt_details(chk)
+    got = {chk[i].name: chk[i].offset // 8 for i in range(len(chk))}
+    for off, nm, ft, cmt, base in req:
+        if got.get(nm) != off:
+            raise ValueError("%s landed at %s, wanted 0x%X" % (nm, got.get(nm), off))
+    if not apply:
+        return "dry"
+    err = nt.set_numbered_type(til, t.get_ordinal(), ida_typeinf.NTF_REPLACE, name)
+    if err != ida_typeinf.TERR_OK:
+        raise ValueError("IDA could not save %s (error %s)" % (name, err))
+    return "applied"
+
+
+def apply_entry(e, apply=False):
+    """One plan entry from tools/ida_types/make_apply_plan.py: mode fill / relayout / restore."""
+    til, t, u = _get(e["name"])
+    cur = {u[i].name: u[i] for i in range(len(u))}
+    mode = e["mode"]
+    if mode == "fill":
+        req = [(u[i].offset // 8, u[i].name, u[i].type, u[i].cmt, u[i].is_baseclass()) for i in range(len(u))
+               if not _PAD.match(u[i].name or "")]
+        have = {x[1] for x in req}
+        n = 0
+        for off, nm, sz, cands, conf in e["items"]:
+            if nm in have:
+                continue
+            req.append((off, nm, _resolve_type(cands, sz, cur), PRIOR_CMT if conf == "prior" else None,
+                        nm.startswith("baseclass_")))
+            n += 1
+        size = t.get_size()
+    elif mode == "relayout":
+        req = [(off, nm, _resolve_type(cands, sz, cur), PRIOR_CMT if conf == "prior" else None,
+                nm.startswith("baseclass_")) for off, nm, sz, cands, conf in e["items"]]
+        size = e["size"]
+        n = len(req)
+    elif mode == "restore":
+        req = []
+        for off, nm in e["members"]:
+            m = cur[nm]
+            req.append((off, nm, m.type, m.cmt, m.is_baseclass()))
+        size = e["size"]
+        n = len(req)
+    else:
+        raise ValueError("unknown mode %s" % mode)
+    return _rebuild(e["name"], size, req, apply), n
+
+
+def apply_plan(path, start=0, count=None, apply=False, log=None):
+    """Run entries [start, start+count) of a plan file; failures are reported and skipped (nothing changes)."""
+    import json
+    plan = json.load(open(path))
+    part = plan[start:start + count if count else None]
+    ok, fail = [], []
+    for e in part:
+        try:
+            r, n = apply_entry(e, apply)
+            ok.append([e["name"], e["mode"], n, r])
+        except Exception as ex:
+            fail.append([e["name"], e["mode"], str(ex)])
+    print("%s entries %d..%d: %d ok, %d failed" % ("APPLY" if apply else "DRY RUN", start, start + len(part),
+                                                  len(ok), len(fail)))
+    for f in fail[:40]:
+        print("  FAIL", f)
+    if log:
+        with open(log, "a") as fh:
+            fh.write(json.dumps({"start": start, "apply": apply, "ok": ok, "fail": fail}) + "\n")

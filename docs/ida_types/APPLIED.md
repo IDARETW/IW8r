@@ -89,6 +89,16 @@ all 13 of A028's (terrain, `XModel` 688, `XSurface` 192, `XModelSurfs` 96, `StMe
 | methods | `this` typed in `cg_t::cg_t`, `cg_t::GetViewModelTransform`, 2 `CgGlobalsMP::`, 4 `CgGlobalsSP::` methods and `CgGlobalsMP_ctor` | decompiles read `this->m_characterInfo`, `this->predictedPlayerState.hudElems`, `this->localClientNum` |
 | `LocalClientGlobals` (0x14F26F940) | typed `cg_t *LocalClientGlobals[1]` (one slot; the next global is 8 bytes later) | decompiles now read `LocalClientGlobals[localClientNum]->inKillCam`, `->compassMapMaterial`, ... |
 
+## All structs from Replay logic (owner request "get ALL of the structs laid out")
+
+Method, numbers and rerun commands: `docs/ida_types/ALL_STRUCTS.md`; unproven differences: `ALL_STRUCTS_REPORT.txt`.
+Two rounds applied by the coordinator through `apply_plan()` (plans `out/ida_types/scan/apply_plan.json`,
+`apply_plan2.json`; log `apply_log.jsonl`; backup `local_types_20261115_before_all_structs.h`): 836 struct fills
+(2,340 fields, 911 of them game-test-only and marked by a member comment), 47 rebuilds, 2 parents kept at their old
+offsets (`PartyData` around `PartyMember` 504 -> 488, `BgVehiclePhysicsManager` around
+`BgVehiclePhysicsObjectBuffer` 3360 -> 3312). Replay accesses on the right member 19,530 -> 22,517, on a wrong
+member 5,449 -> 5,260; structs that were only padding 415 -> 31.
+
 ## Wave 5
 
 Pending for the apply pass:
