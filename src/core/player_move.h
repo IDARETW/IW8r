@@ -47,7 +47,6 @@ struct MoveParams {
     double sprintLeapHeight = 50;        // sprintLeap_height
     double sprintLeapSeconds = 0.3;      // sprintLeap_minSprintTimeMs 300
     double sprintLeapForwardScale = 0.4; // sprintLeap_forwardVelocityScale
-    double stepSize = 18;           // the climb the step stand-in allows the feet (stepSlideMove; type 1: 17.3 .. 23)
     double stepDownSnap = 16;       // ground trace stick extension (playerCollisionStickExtension) while grounded
     // Player collision type 1 (research 140 section 8): the movement capsule's bottom is raised by the stick height,
     // stickHeight / 40 x 2 (half height - radius): 8 standing, 4 crouched, 0 prone (MP constant 8; SP dvar
@@ -94,6 +93,13 @@ struct MoveParams {
     double ladderSlideSpeed = 100, ladderSlideAccel = 300;  // crouch held: slide down
     double ladderJumpBack = 200;        // ladderJumpBackVelocity
     double ladderJumpUpDesire = 0.3;    // ladderJumpDefaultUpDesire
+    // The ladder top-out (PM_LadderMove): climbing up with the suit's ladder anchor (ladder_anchorOffset, 60 in the
+    // reference void suit) bg_ladderVaultStartDistance (MP 15) above the ladder's top puts the feet on the top.
+    double ladderAnchorOffset = 60, ladderVaultOffset = 15;
+    // The view's height smoothing after a snap (CG view-Z smoothing, the game-test source's cg_viewZSmoothing*
+    // defaults): at least 1, at most 60, over 0.4 s at 32 units / s or slower down to 0.15 s at 100 or faster.
+    double viewSmoothMin = 1, viewSmoothMax = 60, viewSmoothTimeFast = 0.15, viewSmoothTimeSlow = 0.4;
+    double viewSmoothSpeedSlow = 32, viewSmoothSpeedFast = 100;
 };
 
 struct PlayerState {
@@ -115,6 +121,10 @@ struct PlayerState {
     bool sliding = false;         // crouched slide: crouched stance, forced-forward and friction scales apply
     double sprintMeter = 2.0;     // seconds left: the tactical sprint meter (or the legacy sprint meter)
     double viewHeight = 60;       // eye height above origin, lerped between stances: use eyeHeight()
+    // View smoothing of a snap of the feet (the ground trace putting them on a step, the ladder top-out): eyeHeight()
+    // lags the change by stepViewChange and eases it out over stepLerpTime.
+    double stepViewChange = 0, stepViewTime = 0, stepLerpTime = 0;
+    bool viewSnap = false;        // this frame moved the feet by a snap (pmove flag 0x100)
 
     // Mantle (valid while mantling; the camera follows origin, the traversal is kinematic).
     bool mantling = false;
@@ -131,6 +141,8 @@ struct PlayerState {
     bool sprintRestore = false;   // PM_SetSprintRestore: the sprint comes back by itself (after a jump, a crouch)
     bool jumpingState = false;    // jump started and landing friction not finished
     bool groundPlane = false;     // the last ground trace hit a plane, walkable or not (PM_AirMove slides along it)
+    bool standing = false;        // the frame's first ground pass stood the player on something (the HUD's "walk"; the
+                                  // second pass's centre ray can miss a top under the prism's rim: onGround false then)
     bool steepContact = false;    // the ground trace stood the player on a too-steep plane (ledge walk support)
     double steepTime = 0;         // how long that support has lasted
     double landingMs = 0;         // landing friction timer (pm_time analogue), 1000 .. 0

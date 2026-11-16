@@ -1641,7 +1641,7 @@ void CameraView::tickPlay(double dt) {
     // Movement mode in the status bar when it changes (mantle / slide / sprint / stance).
     const char* mode = player_.noclip ? "noclip" : player_.mantling ? "mantle" : player_.onLadder ? "ladder" : player_.sliding ? "slide"
                        : player_.tacticalSprinting ? "tactical sprint" : player_.sprinting ? "sprint" : player_.prone ? "prone"
-                       : player_.crouched ? "crouch" : !player_.onGround ? "air" : "walk";
+                       : player_.crouched ? "crouch" : !player_.onGround && !player_.standing ? "air" : "walk";
     if (mode != playMode_) {
         playMode_ = mode;
         ctx_->setStatus(QString("Play: %1  (game keys: WASD, Space jump/stand, C crouch/slide, Ctrl prone, Shift sprint (again: tactical), "

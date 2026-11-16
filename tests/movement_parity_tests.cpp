@@ -242,7 +242,9 @@ TEST(parity_view_height_curves) {
     CHECK(std::fabs(eyeHeight(p, d) - 11) < 1e-6);
 }
 
-// Mantle_GetMaxClimbHeight (0x141106C40): 58 units in MP. A standing jump press mantles onto 56, not onto 64.
+// Mantle_GetMaxClimbHeight (0x141106C40): 58 units in MP, above the feet. A jump press on the ground mantles onto
+// 56 at once; for 64 the jump goes first, and near its top (the ledge now within 58 of the feet) the airborne auto
+// mantle takes it (the edge band of research 140 section 8.8 sees the face below the old 29 chest probe).
 TEST(parity_mantle_height_limit) {
     const MoveParams p;
     for (const double h : {56.0, 64.0}) {
@@ -251,13 +253,15 @@ TEST(parity_mantle_height_limit) {
         MoveInput in;
         in.forward = 1;
         in.jump = true;
-        bool started = false;
+        playerMove(w, s, in, p);
+        CHECK(s.mantling == (h < 58));
+        in.jump = false;
+        bool started = s.mantling;
         for (int i = 0; i < 120 && !started; ++i) {
             playerMove(w, s, in, p);
-            in.jump = false;
             started = s.mantling;
         }
-        CHECK(started == (h < 58));
+        CHECK(started);
     }
 }
 
@@ -431,6 +435,24 @@ TEST(parity_mantle_activation_held_and_airborne) {
         std::printf("  airborne auto mantle: mantled %d, end %.1f %.1f ground %d\n", int(mantled), s.origin.x, s.origin.z, int(s.onGround));
         CHECK(mantled && std::fabs(s.origin.z - 80) < 0.5);
     }
+    {  // In the air with the ledge only 18 above the feet (below the old 29 chest probe): the edge band finds it.
+        const CollisionWorld w = mpWorld(mpBox(512, -200, 0, 600, 200, 48));
+        PlayerState s = placed(w, p, {490, 0, 50});
+        s.origin.z = 30;
+        s.velocity = Vec3{0, 0, 100};
+        s.onGround = s.groundPlane = false;
+        s.jumpingState = true;
+        s.sinceJump = 0.3;
+        MoveInput in;
+        in.forward = 1;
+        in.jump = true;
+        bool mantled = false;
+        for (int i = 0; i < 120 && !(mantled && !s.mantling); ++i) {
+            playerMove(w, s, in, p);
+            mantled |= s.mantling;
+        }
+        CHECK(mantled && std::fabs(s.origin.z - 48) < 0.5);
+    }
     {  // Crouched: no mantle, Space does nothing at the ledge.
         const CollisionWorld w = mpWorld(mpBox(512, -200, 0, 600, 200, 40));
         PlayerState s = placed(w, p, {490, 0, 50});
@@ -515,14 +537,17 @@ TEST(parity_movement_on_triangle_facets) {
         }
         CHECK(mantled && std::fabs(s.origin.z - 48) < 0.5);
     }
-    {  // A 16-unit facet step is walked up, a 12-unit one walked down without leaving the ground.
+    {  // A 16-unit facet step is walked up (the capsule meets the edge first and stops: a moment lost, as in the
+       // game when a frame jumps the prism's window), a 12-unit one walked down without leaving the ground.
         CollisionWorld w = facetWorld();
         facetBox(w, {200, -200, 0}, {600, 200, 16});
         PlayerState s = placed(w, p, {0, 0, 50});
         MoveInput in;
         in.forward = 1;
         steps(w, s, in, p, 90);
-        CHECK(s.onGround && s.origin.x > 260 && std::fabs(s.origin.z - 16) < 0.5);
+        if (!(s.onGround && s.origin.x > 220 && std::fabs(s.origin.z - 16) < 0.5))
+            std::printf("  facet step: end %.2f %.2f %.2f ground %d\n", s.origin.x, s.origin.y, s.origin.z, int(s.onGround));
+        CHECK(s.onGround && s.origin.x > 220 && std::fabs(s.origin.z - 16) < 0.5);
         CollisionWorld w2 = facetWorld();
         facetBox(w2, {-600, -200, 0}, {128, 200, 12});
         PlayerState d = placed(w2, p, {0, 0, 50});
@@ -651,7 +676,9 @@ TEST(parity_collision_type1_ground_prism) {
 }
 
 // The raised movement capsule: a 6-unit curb (under the 8 stick) never blocks the walk, the ground prism stands the feet
-// on it; the step stand-in climbs 18 (17 is climbed, 20 and 24 are not).
+// on it. Higher steps: the capsule's round bottom rides up to the edge until the prism reaches the top (no step move,
+// research 140 section 8.4), so the climb depends on the direction: walking along an axis a prism corner leads (it reaches
+// 15: up to 23 is climbed, 20 is, 24 is not); 22.5 degrees off it a flat side leads (13.86: up to 17.3; 16.5 is, 18 is not).
 TEST(parity_collision_type1_stick_and_step) {
     const MoveParams p;
     MoveInput in;
@@ -668,12 +695,26 @@ TEST(parity_collision_type1_stick_and_step) {
         CHECK(s.origin.x > 260 && std::fabs(s.origin.z - 6 - p.groundSkin) < 0.1 && s.onGround);
         CHECK(minSpeed > 180);  // 190 x 1.15 x 0.86 = 188 steady
     }
-    for (const double h : {17.0, 20.0, 24.0}) {
-        const CollisionWorld w = mpWorld(mpBox(200, -200, 0, 600, 200, h));
+    struct Case {
+        double yaw, height;
+        bool climbed;
+    };
+    for (const Case cs : {Case{0, 16, true}, Case{0, 20, true}, Case{0, 24, false}, Case{22.5, 16.5, true},
+                          Case{22.5, 18, false}}) {
+        const double a = cs.yaw * 3.14159265358979323846 / 180;
+        const Vec3 e{std::cos(a), std::sin(a), 0}, side{-std::sin(a), std::cos(a), 0};
+        CollisionWorld w = mpWorld();
+        CHECK(w.addConvex({{e * -1.0, -200}, {e, 600}, {side, 200}, {side * -1.0, 200}, {Vec3{0, 0, 1}, cs.height},
+                           {Vec3{0, 0, -1}, 0}}));
         PlayerState s = placed(w, p, {0, 0, 50});
+        s.yaw = cs.yaw;
         steps(w, s, in, p, 120);
-        if (h < p.stepSize) CHECK(s.origin.x > 220 && std::fabs(s.origin.z - h - p.groundSkin) < 0.1);
-        else CHECK(s.origin.x < 186 && s.origin.z < 1);
+        const double along = dot(s.origin, e);
+        const bool up = along > 220 && std::fabs(s.origin.z - cs.height - p.groundSkin) < 0.1;
+        const bool stopped = along < 200 - 13 && s.origin.z < 1;
+        if (cs.climbed ? !up : !stopped)
+            std::printf("  step %.1f high at yaw %.1f: along %.2f z %.2f\n", cs.height, cs.yaw, along, s.origin.z);
+        CHECK(cs.climbed ? up : stopped);
     }
 }
 
@@ -738,5 +779,81 @@ TEST(parity_settles_in_a_steep_v_pocket) {
                             zMin, zMax, rest, xMax, flips);
             CHECK(ok);
         }
+    }
+}
+
+// The ladder top-out (PM_LadderMove 0x140CC6BF0): climbing, the suit's ladder anchor (60 above the feet) reaching 15
+// above the ladder's top puts the feet on the top, 0.2 toward the ladder (VAULTING); the view eases over the 45 units
+// (view-Z smoothing) instead of jumping.
+TEST(parity_ladder_top_out_vault) {
+    const CollisionWorld w = mpWorld(mpBox(100, -24, 0, 104, 24, 120, "ladder") + mpBox(104, -64, 0, 300, 64, 120));
+    const MoveParams p;
+    PlayerState s = placed(w, p, {40, 0, 50});
+    MoveInput in;
+    in.forward = 1;
+    double before = 0, after = 0, eyeJump = 0;
+    bool vaulted = false, climbed = false;
+    for (int i = 0; i < 60 * 6 && !(vaulted && s.onGround && s.origin.x > 130); ++i) {
+        const bool was = s.onLadder;
+        const double z0 = s.origin.z, eye0 = s.origin.z + eyeHeight(p, s);
+        playerMove(w, s, in, p);
+        climbed |= s.onLadder;
+        if (was && !s.onLadder && !vaulted) {
+            vaulted = true;
+            before = z0;
+            after = s.origin.z;
+            eyeJump = s.origin.z + eyeHeight(p, s) - eye0;
+        }
+    }
+    std::printf("  ladder top-out: feet %.2f -> %.2f, eye moved %.2f that frame, end %.1f %.1f ground %d\n", before, after,
+                eyeJump, s.origin.x, s.origin.z, int(s.onGround));
+    CHECK(climbed && vaulted);
+    CHECK(before + p.ladderAnchorOffset < 120 + p.ladderVaultOffset + 1.5 && before + p.ladderAnchorOffset > 120 + 13);
+    CHECK(after > 119.9 && after < 121);
+    CHECK(std::fabs(eyeJump) < 5);  // smoothed, not the 45 units the feet moved
+    CHECK(s.onGround && std::fabs(s.origin.z - 120 - p.groundSkin) < 0.2 && s.origin.x > 130);
+}
+
+// View-Z smoothing on a step: the ground trace puts the feet on a 16-unit step in one frame, the eye follows over
+// 0.15 s (the player is faster than 100 units / s).
+TEST(parity_view_smooths_a_step_snap) {
+    const CollisionWorld w = mpWorld(mpBox(200, -200, 0, 600, 200, 16));
+    const MoveParams p;
+    PlayerState s = placed(w, p, {0, 0, 50});
+    MoveInput in;
+    in.forward = 1;
+    double feetJump = 0, eyeStep = 0;
+    for (int i = 0; i < 120; ++i) {
+        const double z0 = s.origin.z, eye0 = s.origin.z + eyeHeight(p, s);
+        playerMove(w, s, in, p);
+        feetJump = std::max(feetJump, s.origin.z - z0);
+        eyeStep = std::max(eyeStep, s.origin.z + eyeHeight(p, s) - eye0);
+    }
+    std::printf("  step view: feet up to %.2f in a frame, eye up to %.2f\n", feetJump, eyeStep);
+    CHECK(feetJump > 10 && eyeStep < 4);
+    CHECK(std::fabs(s.origin.z - 16 - p.groundSkin) < 0.1 && std::fabs(eyeHeight(p, s) - p.standEye) < 1e-9);
+}
+
+// Hideout jumpwalk 7 ended "standing" beside a thin facet strip (a 2-unit rail top 27 high): the prism's corner was
+// diagonally off the strip's end, but plane expansion grew the strip by the prism's corners along its axial bevels and
+// reported a footing there. With the prism's own sides as separating planes the player only stands where the octagon
+// really overlaps the top.
+TEST(parity_prism_no_phantom_footing_off_a_corner) {
+    const MoveParams p;
+    const auto world = [] {
+        CollisionWorld w = facetWorld();
+        facetQuad(w, {162, 664.5, 27}, {222, 664.5, 27}, {222, 666.5, 27}, {162, 666.5, 27}, {0, 0, 1});
+        return w;
+    };
+    {  // Diagonally off the strip's end corner (the octagon misses it by about 1): down on the floor.
+        const CollisionWorld w = world();
+        const auto tr = w.traceCylinder({154.8, 679.6, 60}, {154.8, 679.6, -10}, 15, 32);
+        CHECK(tr.fraction < 1 && tr.end.z < 1);
+    }
+    {  // Straight off the end by 10, over the strip's line: the octagon overlaps the top and stands on it.
+        const CollisionWorld w = world();
+        PlayerState s;
+        placePlayer(w, s, {152, 665.5, 60}, p);
+        CHECK(std::fabs(s.origin.z - 27 - p.groundSkin) < 0.1);
     }
 }

@@ -127,12 +127,20 @@ MantleCandidate findMantleCandidate(const CollisionWorld& world, Vec3 origin, Ve
     if (length(dir) < 0.5) return out;
     const Vec3 up{0, 0, 1};
 
-    // 1. A vertical face in front of the chest.
-    const Vec3 chest = origin + up * kChestHeight;
-    const auto wall = world.traceRay(chest, chest + dir * kWallReach);
-    if (wall.startSolid || wall.allSolid || wall.fraction >= 1) return out;
-    if (dot(wall.plane.n, dir) > -0.5 || std::fabs(wall.plane.n.z) >= kWalkableNormal) return out;
-    const double faceDist = dot(flat(wall.end - origin), dir);
+    // 1. A face in front of the body. The game queries the map's precomputed ledge edges in a frustum ahead of the
+    // player (Mantle_FindMantleEdge: EdgeOctreeQuery, half height mantle_check_height / 2 around the search origin +
+    // that half, from the radius - mantle_edge_search_near_plane_offset out; research 140 section 8.8), so a ledge low
+    // in that band is found too, in the air as well. The editor has no edge data: rays across the band (every 4 units
+    // from the lowest ledge height up, the 29 search centre among them) find the nearest face instead of one ray at 29.
+    double faceDist = 1e300;
+    for (double hgt = kMinLedgeHeight + 1; hgt <= 2 * kChestHeight; hgt += 4) {
+        const Vec3 at = origin + up * hgt;
+        const auto wall = world.traceRay(at, at + dir * kWallReach);
+        if (wall.startSolid || wall.allSolid || wall.fraction >= 1) continue;
+        if (dot(wall.plane.n, dir) > -0.5 || std::fabs(wall.plane.n.z) >= kWalkableNormal) continue;
+        faceDist = std::min(faceDist, dot(flat(wall.end - origin), dir));
+    }
+    if (faceDist > 1e299) return out;
 
     // 2. The first downward hit beyond the face, between the minimum and maximum ledge heights.
     double edgeDist = -1;

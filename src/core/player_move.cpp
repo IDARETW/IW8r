@@ -39,7 +39,7 @@ double stickFor(const MoveParams& p, double h) { return std::max(0.0, p.stickHei
 // what is walkable.
 CollisionWorld::Trace capsuleTrace(const CollisionWorld& w, const MoveParams& p, double h, const Vec3& a, const Vec3& b) {
     const Vec3 lift{0, 0, stickFor(p, h)};
-    auto tr = w.traceCapsule(a + lift, b + lift, p.radius, h - lift.z);
+    auto tr = w.traceCapsuleRounded(a + lift, b + lift, p.radius, h - lift.z);
     tr.end = tr.end - lift;
     return tr;
 }
@@ -78,7 +78,10 @@ void groundTrace(Ctx& c, bool settle, double dt) {
         if (tr.fraction < 1 && !tr.allSolid && (tr.plane.n.z >= p.minWalkNormal || (airborne && !jumping))) {
             const Vec3 feet = tr.end + Vec3{0, 0, p.groundSkin};
             const Vec3 d = feet - s.origin;
-            if (dot(d, d) <= 1.0 / 64 || capsuleFits(c.w, p, feet, h)) s.origin = feet;
+            if (dot(d, d) <= 1.0 / 64 || capsuleFits(c.w, p, feet, h)) {
+                s.origin = feet;
+                if (dot(d, d) > 1.0) s.viewSnap = true;  // k_PM_stanceChangeLimitOne: the view smooths it
+            }
         }
     } else {
         tr = c.w.traceRay(s.origin + Vec3{0, 0, h}, s.origin - Vec3{0, 0, reach});
@@ -216,61 +219,12 @@ bool slideMove(Ctx& c, double dt, bool gravity) {
     return bump != 0;
 }
 
-// The move. Under collision type 1 Replay has no step move: PM_ResolveGroundedMovement (0x141130790) returns after
-// PM_SlideMove (plus a prone-only capsule move) when PhysicsQuery_AlwaysAcceptsHit. A step is climbed because the
-// capsule's round bottom, the stick height above the feet, rides up to the edge until the flat ground prism reaches the
-// top, and the next ground trace stands the feet there: about 17.3 face-on to a side of the prism, up to 23 toward
-// its corners (research 140 section 8.4). The editor's capsule trace is plane expansion, square at edges (it stops a full
-// radius from a face at any height), so a stand-in does the climb: Replay's own PM_StepSlideMove (0x14112F370, the
-// type 0 rules) lifting the raised capsule by stepSize - stick, so the feet climb stepSize (18) all around. A blocked
-// move (or one on ground flatter than normal z 0.9 does not need) is tried again from up to that much higher (an up
-// trace of lift = stepSize - stick + 1, step = fraction x lift - 1, at least 1) and put back down by the step, 9 more
-// on a ground plane; it stands when the
-// landing plane has normal z >= 0.3 and the step gained no more than 36 x that normal z, or when nothing was under
-// it (dropped back by the step), and only if it got further along the start velocity than the plain slide.
-// `allowStep` false: the slide alone (the air, the ladder).
-void stepSlideMove(Ctx& c, double dt, bool gravity, bool allowStep) {
-    const Vec3 startO = c.s.origin, startV = c.s.velocity;
-    const bool walking = c.s.groundPlane;  // the ground trace's plane flag (walkable or not)
-    const bool blocked = slideMove(c, dt, gravity);
-    if (!allowStep) return;
-    const double lift = std::max(c.p.stepSize - stickFor(c.p, c.maxs.z), 0.0) + 1;
-    const Vec3 slideO = c.s.origin, slideV = c.s.velocity;
-    const auto progress = [&](const Vec3& o) { return (o.x - startO.x) * startV.x + (o.y - startO.y) * startV.y; };
-    const auto finish = [&] {  // the stepped move only if it got further than the plain slide
-        if (!(progress(c.s.origin) > progress(slideO) + 0.001)) {
-            c.s.origin = slideO;
-            c.s.velocity = slideV;
-        }
-    };
-    double stepHeight = 0;
-    if (blocked || (walking && c.s.groundNormal.z < 0.9)) {
-        const auto upTr = moveTrace(c, startO, startO + Vec3{0, 0, lift});
-        stepHeight = upTr.allSolid ? 0.0 : lift * upTr.fraction - 1;
-        if (stepHeight >= 1) {
-            c.s.origin = startO + Vec3{0, 0, stepHeight};
-            c.s.velocity = startV;
-            slideMove(c, dt, gravity);
-        } else {
-            stepHeight = 0;
-        }
-    }
-    if (!walking && stepHeight == 0) return finish();
-    const auto dnTr = moveTrace(c, c.s.origin, c.s.origin - Vec3{0, 0, stepHeight + (walking ? 9.0 : 0.0)});
-    if (dnTr.fraction >= 1) {
-        c.s.origin.z -= stepHeight;
-        return finish();
-    }
-    if (!dnTr.allSolid && dnTr.plane.n.z >= 0.3) {
-        c.s.origin = dnTr.end;
-        if (stepHeight == 0 || c.s.origin.z - std::max(slideO.z, startO.z) <= dnTr.plane.n.z * 36.0) {
-            c.s.velocity = c.s.velocity - dnTr.plane.n * dot(c.s.velocity, dnTr.plane.n);  // PM_ProjectVectorOntoPlane
-            return finish();
-        }
-    }
-    c.s.origin = slideO;
-    c.s.velocity = slideV;
-}
+// Steps: under collision type 1 Replay has no step move (PM_ResolveGroundedMovement 0x141130790 returns after
+// PM_SlideMove, plus a prone-only capsule move, when PhysicsQuery_AlwaysAcceptsHit), so the move is slideMove alone. A
+// step is climbed because the capsule's round bottom, the stick height above the feet, rides up to the edge until the
+// flat ground prism reaches the top, and the ground trace stands the feet there: about 17.3 face-on to a side of the
+// prism, up to 23 toward its corners (research 140 section 8.4). The movement trace rounds the bottom sphere against
+// the top edges of upright faces (CollisionWorld::traceCapsuleRounded), so the prism reaches the top as in the game.
 
 // PM_Friction (0x141121160): drop = friction * max(100, speed) * scale * dt, on the ground; under 1 unit / s (level
 // speed on the ground, full speed in the air) the whole velocity stops.
@@ -415,6 +369,27 @@ void updateViewHeight(const MoveParams& p, PlayerState& s, double dt) {
 }
 
 // PM_CmdScaleForStance (0x14111ED90): crouch / prone scales, blended along the time of a crouch <-> prone lerp.
+// The client's view-Z smoothing (CgPMove's step smoothing and CG_View in the game-test source): a frame whose feet were
+// snapped (pmove flag 0x100) by at least viewSmoothMin starts easing the view over the change (with what is left of
+// the last one, at most viewSmoothMax), slower when the player moves slowly.
+void updateStepView(const MoveParams& p, PlayerState& s, double dt, double frameStartZ) {
+    s.stepViewTime += dt;
+    const double dz = s.origin.z - frameStartZ;
+    if (s.viewSnap && std::fabs(dz) >= p.viewSmoothMin) {
+        const double left =
+            s.stepViewTime < s.stepLerpTime && s.stepLerpTime > 0 ? (1.0 - s.stepViewTime / s.stepLerpTime) * s.stepViewChange : 0.0;
+        s.stepViewChange = std::clamp(left + dz, -p.viewSmoothMax, p.viewSmoothMax);
+        const double v2 = dot(s.velocity, s.velocity), lo = p.viewSmoothSpeedSlow * p.viewSmoothSpeedSlow,
+                     hi = p.viewSmoothSpeedFast * p.viewSmoothSpeedFast;
+        const double slow = v2 <= lo ? 1.0 : v2 >= hi ? 0.0 : 1.0 - (v2 - lo) / (hi - lo);
+        s.stepLerpTime = p.viewSmoothTimeFast + (p.viewSmoothTimeSlow - p.viewSmoothTimeFast) * slow;
+        s.stepViewTime = 0;
+    } else if (s.stepViewTime > s.stepLerpTime) {
+        s.stepViewChange = 0;
+    }
+    s.viewSnap = false;
+}
+
 double stanceSpeedScale(const MoveParams& p, const PlayerState& s) {
     if (s.viewCurve >= 0 && s.viewLerpDur > 0) {
         const double f = std::clamp(s.viewLerpT / s.viewLerpDur, 0.0, 1.0);
@@ -554,7 +529,15 @@ Vec3 playerMins(const MoveParams& p) { return Vec3{-p.radius, -p.radius, 0}; }
 Vec3 playerMaxs(const MoveParams& p, bool crouched) {
     return Vec3{p.radius, p.radius, crouched ? p.crouchHeight : p.standHeight};
 }
-double eyeHeight(const MoveParams&, const PlayerState& s) { return s.viewHeight; }
+double eyeHeight(const MoveParams&, const PlayerState& s) {
+    // CG view-Z smoothing, interpolation type 2: (sin((t - 0.5) pi) + 1) / 2 of the way from the old height.
+    double offset = 0;
+    if (s.stepViewChange != 0 && s.stepLerpTime > 0 && s.stepViewTime < s.stepLerpTime) {
+        const double f = (std::sin((s.stepViewTime / s.stepLerpTime - 0.5) * kPi) + 1.0) * 0.5;
+        offset = (f - 1.0) * s.stepViewChange;
+    }
+    return s.viewHeight + offset;
+}
 
 void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& inRaw, const MoveParams& p) {
     const double dt = std::clamp(inRaw.dt, 0.0, 0.05);
@@ -606,6 +589,7 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
     }
     Ctx c{world, p, s, playerMins(p), stanceMaxs(p, s)};
     groundTrace(c, true, dt);  // the first pass: puts the feet on the ground
+    s.standing = s.onGround;
     // Landing friction starts on the first grounded frame after a jump (Jump_ApplySlowdown with pm_time 0).
     if (s.jumpingState && s.onGround && s.landingMs <= 0) s.landingMs = p.jumpLandingSeconds * 1000.0;
 
@@ -716,8 +700,9 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
             if (in.jump && !s.jumpHeld) {  // push off the ladder
                 s.onLadder = false;
                 s.velocity = normalize(s.ladderNormal + Vec3{0, 0, p.ladderJumpUpDesire}) * p.ladderJumpBack;
-                stepSlideMove(c, dt, true, false);
+                slideMove(c, dt, true);
                 groundTrace(c, false, dt);
+                updateStepView(p, s, dt, frameStart.z);
                 updateViewHeight(p, s, dt);
                 return;
             }
@@ -737,18 +722,23 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
             // Magnetism (ladderMagnetismEnhancedSpeed 100 over ladderMagnetismScaleDistance 10): pulled onto the face,
             // or against whatever stands in front of it (a ladder model's collision).
             s.velocity = Vec3{0, 0, s.velocity.z} - s.ladderNormal * (p.ladderMagnetism * std::clamp(lc.gap / 10.0, 0.1, 1.0));
-            stepSlideMove(c, dt, false, false);
+            slideMove(c, dt, false);
             s.velocity = Vec3{0, 0, s.velocity.z};
+            // The top-out: climbing up with the anchor 15 above the ladder's top, the feet go onto the top, 0.2 toward
+            // the ladder (VAULTING mode; the next frame's ladder check lets go, the view smooths the change). Within
+            // ladderCrestingModeDistance (2) below that the game plays the cresting animation, nothing moves.
+            if (s.velocity.z > 0 && s.origin.z + p.ladderAnchorOffset >= lc.top + p.ladderVaultOffset) {
+                s.origin = Vec3{s.origin.x, s.origin.y, lc.top} - s.ladderNormal * 0.2;
+                s.onLadder = false;
+                s.viewSnap = true;
+            }
             groundTrace(c, false, dt);
             if (s.onGround && in.forward < 0) s.onLadder = false;  // climbed down to the floor
+            updateStepView(p, s, dt, frameStart.z);
             updateViewHeight(p, s, dt);
             return;
         }
-        // Off the top (or side): the ladder face is gone; keep a small hop so the feet clear the top edge.
-        if (s.onLadder) {
-            s.onLadder = false;
-            if (in.forward > 0.1 && !s.onGround) s.velocity = fwd * (p.walkSpeed * 0.5) + Vec3{0, 0, 120};
-        }
+        s.onLadder = false;  // off the side: the ladder face is gone (PM_CheckLadderMove lets go)
     }
 
     // Jump (Jump_Check 0x141101570): a fresh press on the ground, standing (or late out of a slide), 0.5 s after the
@@ -841,11 +831,11 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
         const double speed0 = length(s.velocity);
         s.velocity = clipVelocity(s.velocity, s.groundNormal, kOverbounce);
         if (const double l = length(s.velocity); l > 1e-9) s.velocity = s.velocity * (speed0 / l);
-        stepSlideMove(c, dt, false, true);
+        slideMove(c, dt, false);
     } else {
         // PM_AirMove (0x14111CBA0): a plane the ground trace hit but cannot stand on is slid along (PM_ClipSlideVelocity).
         if (s.groundPlane) s.velocity = clipVelocity(s.velocity, s.groundNormal, kOverbounce);
-        stepSlideMove(c, dt, true, false);  // no step in the air: the ground trace's snap lands the player on edges
+        slideMove(c, dt, true);
     }
     // The second pass. Walking down a stair or off a short ledge stays grounded here (the ray reaches 16 below the feet
     // on the ground) and the next frame's first pass puts the feet down.
@@ -860,6 +850,7 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
         if (dot(moved, moved) < 0.25 * dot(s.velocity, s.velocity) * dt * dt)
             s.velocity = dot(moved, s.velocity) >= 0 ? moved * (1.0 / dt) : Vec3{};
     }
+    updateStepView(p, s, dt, frameStart.z);
 
     // Timers: landing friction counts down from 1000 ms; the jump state ends with it.
     if (s.landingMs > 0) {
@@ -887,6 +878,8 @@ bool placePlayer(const CollisionWorld& world, PlayerState& s, const Vec3& from, 
     s.sprintRestore = false;
     s.steepContact = false;
     s.steepTime = 0;
+    s.stepViewChange = s.stepViewTime = s.stepLerpTime = 0;
+    s.viewSnap = false;
     s.crouchHeld = s.slideHeld = false;
     s.viewHeight = s.viewFrom = s.viewTarget = p.standEye;
     s.viewLerpT = s.viewLerpDur = 0;

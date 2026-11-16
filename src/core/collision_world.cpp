@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "brush_ops.h"
 #include "iw8_contents.h"
@@ -31,7 +32,8 @@ void CollisionWorld::addSolid(std::vector<Plane> planes, uint32_t contents, bool
     s.patch = patch;
     s.ladder = ladder;
     // Bounds from the windings; axial bevel planes make box sweeps against slanted faces behave (Quake adds them too).
-    for (const Winding& w : buildBrushWindings(planes))
+    const std::vector<Winding> windings = buildBrushWindings(planes);
+    for (const Winding& w : windings)
         for (const Vec3& v : w) s.bounds.add(v);
     if (!s.bounds.valid()) return;
     // An open hull (a physics piece or model hull missing its caps) reaches the winding clip box (+-262144): it would
@@ -39,12 +41,27 @@ void CollisionWorld::addSolid(std::vector<Plane> planes, uint32_t contents, bool
     // within +-131072, so such a solid is dropped.
     for (int a = 0; a < 3; ++a)
         if (s.bounds.maxs[a] > 200000.0 || s.bounds.mins[a] < -200000.0) return;
+    // The top of each face (capsule edge rounding). An axial bevel that is one of the faces takes that face's top; one
+    // that only touches an edge or a corner bounds the faces beside it and is never rounded (+inf).
+    s.faceTop.reserve(planes.size() + 6);
+    for (size_t i = 0; i < planes.size(); ++i) {
+        double t = -1e300;
+        if (i < windings.size())
+            for (const Vec3& v : windings[i]) t = std::max(t, v.z);
+        s.faceTop.push_back(t > -1e299 ? float(t) : std::numeric_limits<float>::infinity());
+    }
+    const size_t faces = planes.size();
     for (int a = 0; a < 3; ++a) {
-        Vec3 n;
-        n[a] = 1;
-        planes.push_back({n, s.bounds.maxs[a]});
-        n[a] = -1;
-        planes.push_back({n, -s.bounds.mins[a]});
+        for (int side = 0; side < 2; ++side) {
+            Vec3 n;
+            n[a] = side == 0 ? 1.0 : -1.0;
+            const double d = side == 0 ? s.bounds.maxs[a] : -s.bounds.mins[a];
+            float top = std::numeric_limits<float>::infinity();
+            for (size_t i = 0; i < faces; ++i)
+                if (length(planes[i].n - n) < 1e-6 && std::fabs(planes[i].d - d) < 0.01) top = s.faceTop[i];
+            s.faceTop.push_back(top);
+            planes.push_back({n, d});
+        }
     }
     s.planes = std::move(planes);
     bounds_.add(s.bounds);
@@ -70,12 +87,24 @@ bool CollisionWorld::addTriangle(const Vec3& a, const Vec3& b, const Vec3& c, do
         s.planes.push_back({en, dot(en, p0)});
     }
     for (const Vec3& p : tri) s.bounds.add(p), s.bounds.add(p - n * thickness);
-    for (int ax = 0; ax < 3; ++ax) {  // axial bevels, as addSolid adds
-        Vec3 v;
-        v[ax] = 1;
-        s.planes.push_back({v, s.bounds.maxs[ax]});
-        v[ax] = -1;
-        s.planes.push_back({v, -s.bounds.mins[ax]});
+    // Face tops (capsule edge rounding): the front, the back, the three edge sides, then the bevels.
+    const Vec3 pts[6] = {a, b, c, a - n * thickness, b - n * thickness, c - n * thickness};
+    s.faceTop.reserve(11);
+    s.faceTop.push_back(float(std::max({a.z, b.z, c.z})));
+    s.faceTop.push_back(float(std::max({pts[3].z, pts[4].z, pts[5].z})));
+    for (int k = 0; k < 3; ++k)
+        s.faceTop.push_back(float(std::max({pts[k].z, pts[(k + 1) % 3].z, pts[k + 3].z, pts[(k + 1) % 3 + 3].z})));
+    for (int ax = 0; ax < 3; ++ax) {  // axial bevels, as addSolid adds (rounded only where one is a face, as there)
+        for (int side = 0; side < 2; ++side) {
+            Vec3 v;
+            v[ax] = side == 0 ? 1.0 : -1.0;
+            const double d = side == 0 ? s.bounds.maxs[ax] : -s.bounds.mins[ax];
+            float top = std::numeric_limits<float>::infinity();
+            for (size_t i = 0; i < 5; ++i)
+                if (length(s.planes[i].n - v) < 1e-6 && std::fabs(s.planes[i].d - d) < 0.01) top = s.faceTop[i];
+            s.faceTop.push_back(top);
+            s.planes.push_back({v, d});
+        }
     }
     bounds_.add(s.bounds);
     solids_.push_back(std::move(s));
@@ -151,6 +180,7 @@ void CollisionWorld::setMoverPose(int group, const double R[3][3], const Vec3& p
             const Vec3 onPlane = pivot + rot(base.n * base.d - pivot) + move;
             s.planes[p] = {n, dot(n, onPlane)};
         }
+        s.faceTop.assign(s.planes.size(), std::numeric_limits<float>::infinity());  // no edge rounding on movers
         AABB b;
         const AABB& rb = m.bounds[k];
         for (int c = 0; c < 8; ++c) {
@@ -209,11 +239,38 @@ void CollisionWorld::addBrushesOf(const Entity& e, int patchSubdiv) {
 }
 
 void CollisionWorld::traceThrough(const Solid& s, int index, const Vec3& start, const Vec3& end, const Vec3& mins,
-                                  const Vec3& maxs, Trace& tr, double capsuleRadius, bool prism) const {
+                                  const Vec3& maxs, Trace& tr, double capsuleRadius, bool prism, bool roundEdges) const {
     double enterFrac = -1.0, leaveFrac = 1.0;
-    bool startOut = false, getOut = false;
-    const Plane* clipPlane = nullptr;
-    for (const Plane& pl : s.planes) {
+    bool startOut = false, getOut = false, haveClip = false;
+    Plane clipPlane;
+    // One separating plane, the moving shape's support point `ofs` (relative to the moving point) leading into it.
+    // False: entirely in front of it, no contact with this solid.
+    const auto consider = [&](const Plane& pl, const Vec3& ofs) {
+        const double dist = pl.d - dot(ofs, pl.n);
+        const double d1 = dot(start, pl.n) - dist;
+        const double d2 = dot(end, pl.n) - dist;
+        if (d2 > 0) getOut = true;
+        if (d1 > 0) startOut = true;
+        if (d1 > 0 && (d2 >= kDistEpsilon || d2 >= d1)) return false;
+        if (d1 <= 0 && d2 <= 0) return true;
+        if (d1 > d2) {
+            const double f = std::max(0.0, (d1 - kDistEpsilon) / (d1 - d2));
+            if (f > enterFrac) {
+                enterFrac = f;
+                clipPlane = pl;
+                haveClip = true;
+            }
+        } else {
+            const double f = std::min(1.0, (d1 + kDistEpsilon) / (d1 - d2));
+            if (f < leaveFrac) leaveFrac = f;
+        }
+        return true;
+    };
+    const double cx = (mins.x + maxs.x) * 0.5, cy = (mins.y + maxs.y) * 0.5;
+    // The bottom sphere centre's lowest height over the sweep (edge rounding).
+    const double bottomZ = std::min(start.z, end.z) + mins.z + capsuleRadius;
+    for (size_t pi = 0; pi < s.planes.size(); ++pi) {
+        const Plane& pl = s.planes[pi];
         // Expand the plane by the box: the box corner that leads into the plane.
         Vec3 ofs;
         if (prism) {
@@ -222,7 +279,7 @@ void CollisionWorld::traceThrough(const Solid& s, int index, const Vec3& start, 
             // faces their contacts (a flat bottom resting on a ridge or a corner).
             constexpr double h = 0.70710678118654752440;
             static constexpr double kSin[8] = {0, h, 1, h, 0, -h, -1, -h}, kCos[8] = {1, h, 0, -h, -1, -h, 0, h};
-            const double cx = (mins.x + maxs.x) * 0.5, cy = (mins.y + maxs.y) * 0.5, r = (maxs.x - mins.x) * 0.5;
+            const double r = (maxs.x - mins.x) * 0.5;
             int best = 0;
             double lowest = 1e300;
             for (int k = 0; k < 8; ++k) {
@@ -232,28 +289,34 @@ void CollisionWorld::traceThrough(const Solid& s, int index, const Vec3& start, 
             ofs = Vec3{cx + r * kSin[best], cy + r * kCos[best], pl.n.z > 0 ? mins.z : maxs.z};
         } else if (capsuleRadius > 0) {
             // Capsule support point: the segment end lower along n, pulled back by the radius.
-            const double cx = (mins.x + maxs.x) * 0.5, cy = (mins.y + maxs.y) * 0.5;
             const Vec3 bottom{cx, cy, mins.z + capsuleRadius}, top{cx, cy, maxs.z - capsuleRadius};
             ofs = (pl.n.z > 0 ? bottom : top) - pl.n * capsuleRadius;
+            // An upright face whose top edge is below the bottom sphere's centre is met by the sphere at that edge: it
+            // reaches sqrt(r^2 - drop^2) toward the face instead of the full radius (none once the edge is a radius
+            // below the centre: the bevels keep the sphere off then).
+            if (roundEdges && std::fabs(pl.n.z) < 0.02 && pi < s.faceTop.size() && double(s.faceTop[pi]) < bottomZ) {
+                const double drop = bottomZ - double(s.faceTop[pi]);
+                const double reach = drop < capsuleRadius ? std::sqrt(capsuleRadius * capsuleRadius - drop * drop) : 0.0;
+                ofs = bottom - pl.n * reach;
+            }
         } else {
             for (int a = 0; a < 3; ++a) ofs[a] = pl.n[a] < 0 ? maxs[a] : mins[a];
         }
-        const double dist = pl.d - dot(ofs, pl.n);
-        const double d1 = dot(start, pl.n) - dist;
-        const double d2 = dot(end, pl.n) - dist;
-        if (d2 > 0) getOut = true;
-        if (d1 > 0) startOut = true;
-        if (d1 > 0 && (d2 >= kDistEpsilon || d2 >= d1)) return;  // entirely in front of this plane: no contact
-        if (d1 <= 0 && d2 <= 0) continue;
-        if (d1 > d2) {
-            const double f = std::max(0.0, (d1 - kDistEpsilon) / (d1 - d2));
-            if (f > enterFrac) {
-                enterFrac = f;
-                clipPlane = &pl;
-            }
-        } else {
-            const double f = std::min(1.0, (d1 + kDistEpsilon) / (d1 - d2));
-            if (f < leaveFrac) leaveFrac = f;
+        if (!consider(pl, ofs)) return;
+    }
+    if (prism) {
+        // The prism's own eight sides as separating planes. Plane expansion alone grows the solid by the prism's corners
+        // along the solid's axial bevels, so a prism standing diagonally off a thin solid's corner "overlaps" it (a
+        // phantom footing beside a rail's end). The solid's extent along each side direction is taken from its bounds,
+        // never less than the solid's own: this only removes such false contacts.
+        static constexpr double kCs = 0.92387953251128675613, kSn = 0.38268343236508977173;  // cos / sin 22.5
+        static constexpr double kUx[8] = {kCs, kSn, -kSn, -kCs, -kCs, -kSn, kSn, kCs};
+        static constexpr double kUy[8] = {kSn, kCs, kCs, kSn, -kSn, -kCs, -kCs, -kSn};
+        const double inner = (maxs.x - mins.x) * 0.5 * kCs;  // the centre to a side
+        for (int k = 0; k < 8; ++k) {
+            const Vec3 u{kUx[k], kUy[k], 0};
+            const double d = u.x * (u.x > 0 ? s.bounds.maxs.x : s.bounds.mins.x) + u.y * (u.y > 0 ? s.bounds.maxs.y : s.bounds.mins.y);
+            if (!consider(Plane{u, d}, Vec3{cx - u.x * inner, cy - u.y * inner, mins.z})) return;
         }
     }
     if (!startOut) {
@@ -265,9 +328,9 @@ void CollisionWorld::traceThrough(const Solid& s, int index, const Vec3& start, 
         }
         return;
     }
-    if (enterFrac < leaveFrac && enterFrac > -1 && enterFrac < tr.fraction && clipPlane) {
+    if (enterFrac < leaveFrac && enterFrac > -1 && enterFrac < tr.fraction && haveClip) {
         tr.fraction = std::max(0.0, enterFrac);
-        tr.plane = *clipPlane;
+        tr.plane = clipPlane;
         tr.solid = index;
     }
 }
@@ -280,12 +343,16 @@ CollisionWorld::Trace CollisionWorld::traceCapsule(const Vec3& start, const Vec3
     return traceShape(start, end, Vec3{-r, -r, 0}, Vec3{r, r, std::max(h, 2 * r)}, r);
 }
 
+CollisionWorld::Trace CollisionWorld::traceCapsuleRounded(const Vec3& start, const Vec3& end, double r, double h) const {
+    return traceShape(start, end, Vec3{-r, -r, 0}, Vec3{r, r, std::max(h, 2 * r)}, r, false, true);
+}
+
 CollisionWorld::Trace CollisionWorld::traceCylinder(const Vec3& start, const Vec3& end, double r, double h) const {
     return traceShape(start, end, Vec3{-r, -r, 0}, Vec3{r, r, std::max(h, 0.0)}, 0, true);
 }
 
 CollisionWorld::Trace CollisionWorld::traceShape(const Vec3& start, const Vec3& end, const Vec3& mins, const Vec3& maxs,
-                                                 double capsuleRadius, bool prism) const {
+                                                 double capsuleRadius, bool prism, bool roundEdges) const {
     Trace tr;
     // Swept bounds for the broad phase.
     AABB swept;
@@ -297,7 +364,7 @@ CollisionWorld::Trace CollisionWorld::traceShape(const Vec3& start, const Vec3& 
         const Solid& s = solids_[i];
         bool overlap = true;
         for (int a = 0; a < 3; ++a) overlap &= swept.maxs[a] >= s.bounds.mins[a] - 1 && swept.mins[a] <= s.bounds.maxs[a] + 1;
-        if (overlap) traceThrough(s, int(i), start, end, mins, maxs, tr, capsuleRadius, prism);
+        if (overlap) traceThrough(s, int(i), start, end, mins, maxs, tr, capsuleRadius, prism, roundEdges);
     };
     // Many solids (a stock map's world): the grid cells the sweep crosses, each solid once; movers every time.
     const int64_t x0 = int64_t(std::floor((swept.mins.x - 1) / kGridCell)), x1 = int64_t(std::floor((swept.maxs.x + 1) / kGridCell));

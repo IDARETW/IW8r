@@ -43,7 +43,11 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
   under 8 units never block; the editor-only steep-face rules are gone. Steps keep an 18-unit stand-in (the game's
   rounded climb gives 17.3 to 23 by direction). The slide is Replay's PM_SlideMove (8 planes, 4 bumps, crease
   following, repeat-hit nudge, steep faces as walls against world up), with its end-of-frame velocity check and the
-  air stop under 1 unit/s: a player dropped into a steep V settles at the bottom.
+  air stop under 1 unit/s: a player dropped into a steep V settles at the bottom. No step move under collision
+  type 1: the capsule's round bottom rides up an edge until the ground prism reaches the top (about 17 to 23 by
+  direction, as in game). Ladders vault onto the top as in PM_LadderMove; the view eases over snaps of the feet.
+  Mantle looks for ledges 17 to 57 above the feet (the game queries precomputed ledge edges in that box), so a
+  low ledge mantles in the air.
 - **Stock physics shapes read exactly**: the catalogue tool reads the game's own Havok type table (types and member
   offsets by name), follows each shape's vertex pointer, decodes multi-body assets and compressed meshes (triangles,
   quads and convex pieces): 3,785 of 3,869 stock physics assets now read (3,494 before). Mesh physics collides as

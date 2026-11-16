@@ -74,8 +74,8 @@ read and whether it is **verified** in the Replay exe or **inferred**.
 | Slide ends | time, a new crouch press, prone, jump, ADS, < 50 units / s, off the ground | Slide_EndCheck (game-test), `slide_min_continue_velocity` | inferred from game-test | same (ADS / firing not modeled) |
 | Jump out of a slide | velocity x suit `slide_jump_speed_scale` (0.5) within 300 ms | Jump_Check late-slide branch (`BG_ApplySuitScaleToVec3`), `slide_lateJumpGraceMs` | verified rule, scale suit (reference) | same |
 | Slide friction / boost | 0.15 / 0.001 downhill / 0.45 uphill; slide-in 0.2 s at 1.2 x 0.85^n | suit (reference `walk_slide.cpp`); post-slide decay 0.85 literal `0x14112E7C0` | partly verified | unchanged |
-| Step-up | collision type 1 has **no step move**: PM_ResolveGroundedMovement `0x141130790` returns after PM_SlideMove (and a prone-only capsule move) when PhysicsQuery_AlwaysAcceptsHit; the capsule's round bottom rides up to an edge until the ground prism reaches the top, about 17.3 face-on to a side of the prism, up to 23 toward its corners. (PM_StepSlideMove `0x14112F370`, up trace 19, `19 f - 1`, step 18 / 10, is the type 0 path.) | PM_ResolveGroundedMovement `0x141130790`, PM_GroundCapsuleSweepMove `0x141131D40` | verified | a stand-in (the editor's capsule trace is square at edges): PM_StepSlideMove's rules lifting the raised capsule by 18 - stick, so the feet climb 18 all around (section 8.4) |
-| Step landing | (stand-in) put down by the step, 9 more with a ground plane; kept on a plane with normal z >= 0.3 that gained <= 36 x normal z (velocity projected onto it), or dropped back by the step when nothing is under it; then only if it got further along the start velocity than the plain slide | PM_StepSlideMove `0x14112F370` | verified (type 0) | same; the editor-only steep-landing rules of section 7.1 are gone |
+| Step-up | collision type 1 has **no step move**: PM_ResolveGroundedMovement `0x141130790` returns after PM_SlideMove (and a prone-only capsule move) when PhysicsQuery_AlwaysAcceptsHit; the capsule's round bottom rides up to an edge until the ground prism reaches the top, about 17.3 face-on to a side of the prism, up to 23 toward its corners. (PM_StepSlideMove `0x14112F370`, up trace 19, `19 f - 1`, step 18 / 10, is the type 0 path.) | PM_ResolveGroundedMovement `0x141130790`, PM_GroundCapsuleSweepMove `0x141131D40` | verified | the same: no step move; the movement trace rounds the capsule's bottom against upright faces' top edges so the prism reaches the top (section 8.4) |
+| Step landing | type 0 only (PM_StepSlideMove `0x14112F370`: down by the step, 9 more with a ground plane; normal z >= 0.3, gained <= 36 x normal z; progress check) | PM_StepSlideMove `0x14112F370` | verified (type 0) | not used (type 1 has no step move) |
 | Steep faces on the ground | a face steeper than 0.7 against the ground plane is clipped as a wall perpendicular to the ground (no riding up it) | PM_ClipSlideVelocity `0x14111E9B0` | verified | `slideMove` |
 | Player collision | collision type 1: moves use the stance capsule with its bottom raised by the stick height (8 / 4 / 0); the ground is found by a flat-bottomed 8-sided prism | `s_paramRecordD_2437BA8` = 1, BG_Collision_ApplyProbeOffset `0x140CD7000`, Physics_CharacterCastPacked `0x14108D940` | verified | section 8 (new) |
 | Ground trace | two passes a frame: before the move the prism, swept from stick + radius above the feet, puts the feet 0.125 above a walkable hit (or any hit when falling); after the move a ray from the top of the capsule only classifies | PM_GroundTrace_ProbeAndResolve `0x140CD90C0`, PM_GroundTrace_StanceChangeSolver `0x140CDA1B0` | verified | section 8 (new) |
@@ -286,13 +286,16 @@ corners and 13.86 between them, then overlaps the top and the next ground trace 
 the capsule fits). That is about h < 17.3 face-on to a side of the prism and h < 23 toward a corner (world aligned:
 along the x / y axes and the diagonals); a chamfered or rounded edge lets the capsule closer still.
 
-The editor's capsule trace is plane expansion: against a face it stops a full radius away at any height (no rounded
-edges), so the prism never reaches the top. A stand-in does the climb: PM_StepSlideMove's own rules (read in full:
-tried when the slide was blocked or on a ground plane with normal z < 0.9; up trace `lift`, `step = lift f - 1`, at
-least 1; slide again; down by the step, 9 more with a ground plane; nothing under it: back down by the step; a landing
-with normal z >= 0.3 is kept if it gained <= 36 x normal z, the velocity projected onto it; then only if
-`dot(moved, startVelocity)` beats the plain slide's by 0.001) with `lift = 18 - stick + 1` for the raised capsule, so the
-feet climb 18 all around. No step in the air (type 1 has none; the ground trace's snap lands the player on edges).
+The editor's capsule trace is plane expansion: against an upright face it stopped a full radius away at any height,
+so the prism never reached the top. `CollisionWorld::traceCapsuleRounded` (used for every move) now gives the bottom
+sphere its edge: an upright face (normal z within 0.02 of level) whose top (`Solid::faceTop`, the highest point of its
+winding, kept per plane when a solid is added) is below the bottom sphere's centre is expanded by
+`sqrt(r^2 - drop^2)` instead of r (by nothing once the edge is a radius below the centre). An axial bevel takes the top
+of the face it coincides with, and is never rounded when it only touches an edge or a corner (it bounds the faces
+beside it: a wedge's foot). Movers keep the square capsule. With that, the climb is the game's: no step move at all, the
+capsule rides to the edge, the prism snaps the feet up (`parity_collision_type1_stick_and_step`: along an axis 16 and 20
+are climbed and 24 is not; 22.5 degrees off it 16.5 is and 18 is not). A step whose edge the capsule meets before the
+prism's window (16 at walk speed) costs a moment of speed, as the game's level-wall clip does.
 
 ### 8.5 What the preview does now
 
@@ -300,20 +303,21 @@ feet climb 18 all around. No step in the air (type 1 has none; the ground trace'
   checks; `groundTrace(settle)` as the two passes above, called before the move (`settle`) and after it (and after the
   ladder move); the ledge walk as Replay keeps it (the `jumpingState` condition is gone); the AirMove ground-plane clip;
   the jump clears the ground plane; the slide takes the ground plane (walkable or not) as its first clip plane and
-  slides the gravity half-step along it; `stepSlideMove` is the 8.4 stand-in; `placePlayer` drops the prism.
+  slides the gravity half-step along it; no step move (8.4); `placePlayer` drops the prism.
 - `collision_world.*`: `traceCylinder`, the octagonal prism by plane expansion (support corner per plane); the solids'
-  axial bevels give its flat bottom the level contact on a ridge or a corner.
+  axial bevels give its flat bottom the level contact on a ridge or a corner. `traceCapsuleRounded` and
+  `Solid::faceTop` (8.4).
 - Dropped editor rules (7.1): the ray from the feet under a steep contact (the second pass is the game's ray, from the
   top), the steep-landing progress / no-clip rules (`steepStepMinProgress`), the post-move capsule stick-down, and the
   "moving up, no ground below: no step" check. `parity_no_bobbing_against_a_low_steep_wedge` and
   `parity_steps_onto_a_chamfered_box` pass with the game's rules alone.
-- What a player notices: steps up to 18 are walked up (the game: about 17.3 to 23 by direction); bumps under 8 never
+- What a player notices: steps are climbed as in the game (about 17.3 to 23 by direction); bumps under 8 never
   block a walk and their walkable tops are stood on; the feet can stand up to 8 inside a steep low
   bump; the player stands over an edge until the prism leaves it (15 along the axes and diagonals, 13.9 between); a
   step lands in two stages one frame apart (capsule, then feet); a slope too steep to stand on holds the player 0.3 s,
   then slides them down it.
 - Tests: `parity_collision_type1_ground_prism` (flat bottom on a ridge; the footprint over a 40-unit edge at 0 / 45 /
-  22.5 degrees), `parity_collision_type1_stick_and_step` (a 6 curb does not slow the walk; 17 climbed, 20 and 24 not),
+  22.5 degrees), `parity_collision_type1_stick_and_step` (a 6 curb does not slow the walk; the climb by direction, 8.4),
   `parity_ledge_walk_then_slide_on_a_steep_slope` (46 degrees: held 0.25 s, then slides); the ladder-top test settles
   two frames for the feet.
 
@@ -321,13 +325,10 @@ feet climb 18 all around. No step in the air (type 1 has none; the ground trace'
 
 - Contacts are plane expansion (solid planes plus axial bevels, as the capsule always was): edge-against-edge contacts
   of the prism and of the capsule are not exact; the Havok cast tolerance is not known (the trace keeps 0.03125).
-- The direction-dependent climb of 8.4 (17.3 .. 23) and the chamfer help; the stand-in climbs 18 everywhere.
+- The rounded edge of 8.4 is for upright faces only; a sloped face's edge against the sphere is still square.
 - Flag 1 of pmove + 740 (the prism in the second pass) and pm flags 0x40 / 0x80000 were not identified; the second pass
   assumes them clear.
-- The view smoothing of a ground snap (pm flag 0x100 with the height change at pmove + 836) and flag A's 0x200 (a hit
-  more than `max(stick, 1)` above the feet) are not modeled.
-- The ladder top-out (`ladderCrestingModeDistance` 2, `ladderVaultOffset` 15) and the queries of the mantle probes (the
-  29-unit chest probe) were not researched in this pass.
+- Flag A's 0x200 (a hit more than `max(stick, 1)` above the feet) is not modeled.
 - Hideout through the input-test hook: the cinderblock pile (#0), the broken wall cap and the soda can are steady; at
   `debris_cinderblock_pile_a_01` #1 (W held into the pile) the player is in a pocket between steep block faces, never
   grounded, z within about 3 (32.0 .. 35.1) by the rules of 8.3 and 8.7; the 7.1 editor rule stood him still there.
@@ -369,3 +370,63 @@ feet climb 18 all around. No step in the air (type 1 has none; the ground trace'
   its velocity: the check cuts it short (to 0 when the drop is larger than the jump's first step). The code reads that
   way in Replay and in the game-test source; not seen in game. `jump_has_minimum_interval_and_no_bunny_hop_gain` now
   presses its second jump one frame after the landing frame.
+
+### 8.8 The mantle search band
+
+The editor's mantle (`player_mantle.cpp`, after the reference walk simulator) found the ledge's face with one ray 29
+above the feet (`searchCenterHeight`), so in the air a ledge less than 29 above the feet was never found. The game has
+no such probe: Mantle_FindMantleEdge (game-test `bg_mantle.cpp`; Replay registers the same `mantle_edge_search_*`
+dvars) queries the map's precomputed ledge edges (`EdgeOctreeQuery`, bucket MANTLE) in a frustum ahead of the player:
+half width `mantle_check_radius`, half height `mantle_check_height / 2` (`_air` values in the air) centred that half
+above the search origin, from `radius - mantle_edge_search_near_plane_offset` (5) to `radius + mantle_check_range + 0.125`
+out. 29 is that centre (`mantle_check_height` 58). The editor has no edge data, so the face search samples the whole
+band instead: rays every 4 units from 17 (the lowest ledge, 16, plus 1) to 57, the nearest steep face counting; the
+rest of the candidate checks are unchanged. Effect: in the air a ledge 16..29 above the feet is mantled
+(`parity_mantle_activation_held_and_airborne`, a 48 box with the feet at 30), and a 64 box is mantled near the top of a
+standing jump (`parity_mantle_height_limit`: from the ground 56 mantles at once and 64 does not; 58 is
+Mantle_GetMaxClimbHeight above the feet). The edge frustum's exact dvar values in Replay were not read (the reference's
+58 / radius + 25 stand).
+
+### 8.9 The ladder top-out and the view's height smoothing
+
+- **Top-out** (PM_LadderMove `0x140CC6BF0`, IDA "Mantle_UpdateMotionCore"; game-test `PM_LadderMove`, reference
+  `walk_ladder.cpp`): after the climb move, with the ladder anchor `origin.z + ladder_anchorOffset` (suit + 420; 60 in
+  the reference void suit) at least `bg_ladderVaultStartDistance` (MP 15) above the ladder's top while moving up, the
+  mode becomes VAULTING once: the feet go to the top's height (+1.2e-7) and 0.2 along the ladder's inward normal, pmove
+  flag 0x100 with the height change (the view smooths it); the next frame's ladder check finds the anchor above
+  top + 15 and lets go. Within `bg_ladderCrestingTransitionDistance` (2) below that the mode is CRESTING (an animation
+  state; nothing moves). The velocity is kept (a small rise after the vault). The preview does the same (the ladder's top
+  is its brush's highest point; the editor's old "small hop off the top" is gone, and leaving the face sideways just lets
+  go). `parity_ladder_top_out_vault`: on a 120 ladder the feet go from 74.8 to 120 in one frame, the eye moves 0 that
+  frame, and the player walks onto the platform.
+- **View-Z smoothing** (game-test `CgPMove` step smoothing and `CG_View`; `cg_viewZSmoothing*` defaults; the Replay
+  client function was not located): a frame whose feet were snapped (pmove flag 0x100: the ground trace moving them more
+  than 1, `k_PM_stanceChangeLimitOne`; the ladder vault) by at least `cg_viewZSmoothingMin` 1 starts easing the view
+  over the change (plus what was left of the last one, at most `cg_viewZSmoothingMax` 60), over
+  `cg_viewZSmoothingUpTimeMax` / `DownTimeMax` 0.4 s at 32 units / s or slower down to 0.15 s at 100 or faster, curve
+  `cg_viewZSmoothingInterpType` 2: `(sin((t - 0.5) pi) + 1) / 2`. `eyeHeight()` applies it (`PlayerState::stepView*`).
+  `parity_view_smooths_a_step_snap`: the feet go up 16 in one frame, the eye at most 1.04 a frame.
+
+### 8.10 The Hideout walk end spots (2026-11-16)
+
+Three spawn walks ended standing still but "air" at the end of the frame. Probed with the input-test hook:
+
+- **walk 0** (-996, -1418, 35.8): on a prop's table top (a convex hull 2.2 thick, 48 x 34, top 35.7, about 32 above the
+  floor), the centre 2 past its edge, an object on the table in front and a shelf 0.7 above the head. Reached by walking
+  up a 43 degree walkable prop face (the ground clip keeps the speed along the slope: 129 up), off its top and onto the
+  table by the airborne snap. Jump: the shelf stops it (no headroom); crouch and sprint work.
+- **walk 3 / jumpwalk 3** (-1265, -1848, 39.3): on a crate's top (hull 33 x 33, top 39.1, about 31 above the floor), the
+  centre 1.7 past its edge. Reached by rounded climbs of 7.8, 13 and 21 (each under 23 along a prism corner, 8.4).
+  Jump, crouch and sprint work.
+- **jumpwalk 7** (154.8, 679.6, 27.2): on a wall top 3.5 wide (a facet strip, 27 high), the centre 11.6 off it, the prism's
+  corner over it by 3.4; reached by the jump's airborne snap. A second contact there was false: the prism diagonally off
+  the end corner of the next strip (2 wide) "overlapped" it only through plane expansion (fixed below). Jump (with a new
+  press), crouch and sprint work.
+
+All three tops are walkable planes under the prism (normal z 1), as the game's snap requires; none is reached through a
+top the game's rules would refuse (Replay 1.20 still snaps an airborne player onto any hit; the later game-test build's
+`playerCharacterCollisionWallClimbFix` limits that to walkable ones). "Air" at the frame end is the game's own second
+pass, a centre ray, missing a top under the prism's rim; the ray queries the same world (props included). Changes:
+`traceCylinder` now also separates on the prism's eight sides against the solid's bounds (no phantom footing off a
+thin solid's corner; `parity_prism_no_phantom_footing_off_a_corner`), and `PlayerState::standing` keeps the first
+pass's verdict for the HUD ("walk", the hook logs "stood").

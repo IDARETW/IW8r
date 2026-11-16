@@ -47,7 +47,7 @@ struct Runner {
         std::fprintf(stderr,
                      "play-input %7.2f %-14s pos %8.1f %8.1f %7.1f  hs %6.1f vz %7.1f  %s%s%s%s%s%s%s%s%s eye %5.1f yaw %.0f\n",
                      clock.elapsed() / 1000.0, label, s.origin.x, s.origin.y, s.origin.z, std::hypot(s.velocity.x, s.velocity.y),
-                     s.velocity.z, cv()->playing() ? "" : "NOT-PLAYING ", s.onGround ? "ground " : "air ", s.crouched ? "crouch " : "",
+                     s.velocity.z, cv()->playing() ? "" : "NOT-PLAYING ", s.onGround ? "ground " : s.standing ? "stood " : "air ", s.crouched ? "crouch " : "",
                      s.prone ? "prone " : "", s.sprinting ? "sprint " : "", s.tacticalSprinting ? "tactical " : "",
                      s.sliding ? "slide " : "", s.mantling ? "mantle " : "", s.onLadder ? "ladder " : "", c.pos.z - s.origin.z, c.yaw);
         std::fflush(stderr);

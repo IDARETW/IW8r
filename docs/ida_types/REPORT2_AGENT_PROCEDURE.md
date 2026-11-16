@@ -40,7 +40,8 @@ Each struct must end with exactly one verdict:
   placed at its Replay offset. Game-test fields that no Replay instruction touches may be listed only when they fill
   the bytes between two confirmed members exactly (same total size, same order); mark those `"by elimination"`.
 - `absent`: the type does not exist in this build. Show it: no allocation, no global, no by-value use inside a struct
-  that Replay uses, no function that takes or returns it, and say what Replay uses instead if you can (example: Replay's
+  that Replay uses (check game-test's parents: a type that game-test embeds in a struct Replay uses is present even
+  when nothing names it, e.g. `GfxCmdBuf` inside `GfxDrawCallOutput`), no function that takes or returns it, and say what Replay uses instead if you can (example: Replay's
   loopback uses three 32832-byte rings, not `NetBuffer` objects).
 - `opaque`: an external object that Replay only reaches through an interface pointer (Direct3D 12 / COM interfaces
   such as `ID3D12Device`): only the vtable pointer at +0 is real, its size cannot and need not be known. Show that
@@ -71,6 +72,13 @@ Each struct must end with exactly one verdict:
    (`get_stack_frame`).
 
 A builder size or a game-test size is never proof on its own.
+
+**Replay is the PC build with ONE local client.** `LocalClientGlobals` has a single slot (`cg_t *[1]`). Arrays that
+game-test sizes per controller / per local client (`[8]`, `[2]`, `[MAX_LOCAL_CLIENTS]`) can have ONE element in
+Replay: the code still computes `base + index * stride`, but only index 0 is ever used, so element 1 would land on
+the next member. When per-controller slots for index >= 1 overlap other members, that is the sign: lay the array out
+with one element and check that the following members then sit exactly where Replay accesses them. A lower bound
+computed for "controller 7" is not a lower bound then. Global extents (method 5) are the best check.
 
 ## Misnamed functions and globals (owner: "allowed to rename any misnamed functions/symbols")
 
