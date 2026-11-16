@@ -74,6 +74,29 @@ def main():
             cnt["fill"] += 1
             cnt["fill_fields"] += len(v["items"])
             cnt["fill_prior"] += sum(1 for x in v["items"] if x[4] == "prior")
+    # verdicts from the second report pass: struct comments for absent / opaque types, and the rename list
+    renames = []
+    for fn in sorted(os.listdir(pdir)) if os.path.isdir(pdir) else []:
+        if not fn.endswith(".json"):
+            continue
+        d = json.load(open(os.path.join(pdir, fn), encoding="utf-8"))
+        for x in d.get("structs", []):
+            if isinstance(x, dict) and x.get("verdict") in ("absent", "opaque") and x.get("name") in ida:
+                why = " ".join((x.get("notes") or "").split())[:300]
+                text = ("Replay: %s. %s (%s)" % ("not present in this build" if x["verdict"] == "absent"
+                                                  else "opaque external interface, only the vtable pointer is real",
+                                                  why, d.get("agent", fn[:-5])))
+                plan.append({"name": x["name"], "mode": "comment", "text": text})
+                cnt["comment"] += 1
+        for r in d.get("renames", []) or []:
+            if isinstance(r, list) and len(r) >= 3:
+                new = re.sub(r"::`scalar deleting destructor'$", "::scalar_deleting_dtor", str(r[2]))
+                new = re.sub(r"::`vector deleting destructor'$", "::vector_deleting_dtor", new)
+                new = re.sub(r"::scalar deleting destructor$", "::scalar_deleting_dtor", new)
+                new = re.sub(r"::vector deleting destructor$", "::vector_deleting_dtor", new)
+                renames.append([r[0], r[1], new, r[3] if len(r) > 3 else "", d.get("agent", fn[:-5])])
+    json.dump([[a, b, c, d] for a, b, c, d, e in renames], open(out + "_renames.json", "w"), indent=0)
+    cnt["renames"] = len(renames)
     json.dump(plan, open(out + ".json", "w"))
     with open(out + "_report.txt", "w") as f:
         f.write("# structs left for Replay checks (not changed beyond fills)\n")

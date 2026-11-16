@@ -1,0 +1,13 @@
+{"agent": "A169", "structs": [
+ {"name": "LobbyData", "verdict": "resolved", "size": 373704,
+  "size_evidence": "method 3 (whole-object clear): Lobby_Init@0x141187EF0 clears g_lobbyData in three memsets: memset_0(&migrateData,0,0x4BF04) covers [8,311052); memset_0(&partyName,0,0x9FB9) covers [311056,351945); memset_0(_pad55ECA,0,0x54FE) covers [351946,373704). uiRoot (351945) and partyId (311052) are written separately, so the clear ends exactly at 373704 = PartyData size. Corroborated by PartyAtomic_BuildJoinInfo@0x141607580 memcpy size 5B3C8h (373704) at 0x1416076E8 (A108). Upper bound: next named global s_partyTweakMatchStartValueDvar@0x14C796220 is 0x5B440 (373824) after g_lobbyData@0x14C73ADE0.",
+  "members": [
+    [0, "party", "PartyData", "Lobby_GetPartyData@0x141187EE0: `return &g_lobbyData` typed `struct PartyData *`; Lobby_Init@0x141187EF0 writes the PartyData layout: session +0 (`g_lobbyData.session = &session`), partyId 311052 (`partyId = 0`), partyName 311056 (\"GameParty\"), uiRoot 351945 (`uiRoot[0] = 7` / `v1`), clientTaskService (PartyClientTaskService::Init), _pad185D0 99792 (PartyAtomic_InitMemberPool). All accesses are PartyData offsets; no LobbyData-only member exists in Replay."]
+  ],
+  "changed_members": [
+    ["party", "unsigned __int8[380336] -> PartyData by value (373704); LobbyData 380336 -> 373704", "Lobby_GetPartyData@0x141187EE0 returns &g_lobbyData as PartyData *; Lobby_Init@0x141187EF0 clear end 373704"]
+  ],
+  "unconfirmed": [],
+  "notes": "Replay's LobbyData is the lobby's PartyData instance: g_lobbyData is the only LobbyData object, and every Replay reference to it (38 data/offset xrefs in [0x14C73ADE0, 0x14C7961A8), all listed by idb_query on xrefs) lands on a PartyData offset (session 0, partyMembers 2192, _pad185D0 99792, currentHost 310960, areWeHost 311112, inParty 311116, partyId 311052, partyName 311056, uiRoot 351945). The packet's claim 'no Replay code touches LobbyData' is wrong: Lobby_IsLocalInParty, Lobby_GetHostXuid, Lobby_GetPartyData, Lobby_Init and Lobby_IsInRunningLobby_0 touch it. The proposal for the coordinator: LobbyData { PartyData party; } with size 373704, which needs PartyData to be 373704 (A092/A108 agree). Lead for A092, not applied here: the dynamic initializer for PartyState_14C73AE40 constructs members at lobby offsets 96, 136, 140, 144, 2192, 99792, 310960, 361984, 362000 and 373312, which fit the PartyData layout."}
+ ],
+ "renames": []}

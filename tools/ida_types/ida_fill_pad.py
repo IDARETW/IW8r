@@ -563,6 +563,8 @@ def apply_entry(e, apply=False):
                     n += 1
             req.append((m.offset // 8, m.name, ty, m.cmt, m.is_baseclass()))
         size = t.get_size()
+    elif mode == "comment":
+        return set_struct_comment(e["name"], e["text"], apply), 0
     elif mode == "restore":
         req = []
         for off, nm in e["members"]:
@@ -594,3 +596,37 @@ def apply_plan(path, start=0, count=None, apply=False, log=None):
     if log:
         with open(log, "a") as fh:
             fh.write(json.dumps({"start": start, "apply": apply, "ok": ok, "fail": fail}) + "\n")
+
+
+def set_struct_comment(name, text, apply=False):
+    """Type comment on a local struct (verdicts such as 'absent in this build' / 'opaque interface')."""
+    til, t, u = _get(name, allow_union=True)
+    if not apply:
+        return "dry"
+    if hasattr(t, "set_type_cmt"):
+        err = t.set_type_cmt(text)
+        if err not in (0, None, True) and err != ida_typeinf.TERR_OK:
+            raise ValueError("IDA could not set the comment of %s (%s)" % (name, err))
+    return "applied"
+
+
+def apply_renames(path, apply=False):
+    """[[ea_hex, old_name, new_name, proof], ...] -> rename when the current name is still old_name."""
+    import json
+    import ida_name
+    done, skipped = [], []
+    for ea_s, old, new, proof in json.load(open(path)):
+        ea = int(ea_s, 16) if isinstance(ea_s, str) else ea_s
+        cur = ida_name.get_name(ea)
+        if cur != old:
+            skipped.append([ea_s, old, new, "current name is %r" % cur])
+            continue
+        if apply:
+            if not ida_name.set_name(ea, new, ida_name.SN_NOCHECK | ida_name.SN_NOWARN | ida_name.SN_FORCE):
+                skipped.append([ea_s, old, new, "set_name failed"])
+                continue
+        done.append([ea_s, old, ida_name.get_name(ea) if apply else new])
+    print("%s renames: %d done, %d skipped" % ("APPLY" if apply else "DRY RUN", len(done), len(skipped)))
+    for s in skipped[:40]:
+        print("  SKIP", s)
+    return done, skipped

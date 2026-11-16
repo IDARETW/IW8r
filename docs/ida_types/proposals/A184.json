@@ -1,0 +1,69 @@
+{"agent": "A184", "structs": [
+  {"name": "GfxComputeBufferState", "verdict": "partial", "size": null,
+   "size_evidence": "best 104: R_ConstantBufferInfo_AllocateLinearRange@0x1418DD360 is called with ctx+0 (R_InitConstantBufferInfo_Linear@0x141966ED0: v16-112 bytes, v16 = GfxBackEndData+6616+9928k); its stores at +0, +4, +8 (wrapped) and the binding at +40 are proven; the 4-byte store R_InitConstantBufferInfo_Linear makes at ctx+104 (*((_DWORD*)v16-2) = size) is taken as the next member (distance 104). Lower bound 48 (wrapped starts at +8 and binding at +40). No Replay size for the whole struct is proven: the upper bound depends on the uint at +104 being a separate member of ComputeContextData.",
+   "members": [
+     [0, "used", "int", "R_ConstantBufferInfo_AllocateLinearRange@0x1418DD360: `*constantBufferInfo = 0` (4-byte store at +0)"],
+     [4, "total", "int", "R_ConstantBufferInfo_AllocateLinearRange@0x1418DD360: `constantBufferInfo[1] = sizeBytes` (4-byte store at +4)"],
+     [8, "wrappedBuffer", null, "R_ConstantBufferInfo_AllocateLinearRange@0x1418DD360: R_GfxWrappedBuffer_AllocateWithFlag20(..., constantBufferInfo+2 DWORDs = +8, ...); R_GfxWrappedBuffer_SubmitScaledBinding(+8, 4, +40). Type GfxWrappedRWBuffer (96) proposed only as the distance to +104; not proven"]
+   ],
+   "changed_members": [
+     ["wrappedBuffer", "unsigned __int8[56] -> GfxWrappedRWBuffer, 96 bytes (+8..+104) if the constantBufferSize store at ComputeContextData+104 is a member", "R_ConstantBufferInfo_AllocateLinearRange@0x1418DD360; R_InitConstantBufferInfo_Linear@0x141966ED0"],
+     ["size", "64 -> not proven (104 best, see size_evidence)", "R_InitConstantBufferInfo_Linear@0x141966ED0"]
+   ],
+   "unconfirmed": [
+     "wrappedBuffer extent: only its start (+8) and the store at +104 bound it; the 96-byte type is a distance, not a proven type",
+     "size 104 needs ComputeContextData+104 to be a separate member (constantBufferSize, game-test order suggests so)",
+     "R_GfxWrappedBuffer_SubmitScaledBinding at +40 lies inside the wrapped part; its exact type is not proven"
+   ],
+   "notes": "Partial: used/total/wrapped placement is proven (+0, +4, +8) for the first member of ComputeContextData, whose context is the R_InitConstantBufferInfo_Linear array element. The 'by elimination' size 104 is consistent with game-test order but not proven. A119's ComputeContextData base finding is now resolved: this is ComputeContextData+0."},
+
+  {"name": "ComputeContextData", "verdict": "resolved", "size": 9928,
+   "size_evidence": "method 4 (array stride, two sites): R_InitConstantBufferInfo_Linear@0x141966ED0 loop `v16 += 1241` (QWORDs, = 9928 bytes) over the two contexts of GfxBackEndData+6504 (ComputeData.contextData); R_InitComputeCmdBufState@0x1418BE0C0 `cmdBufferSet + 9928LL * bufferIndex`, with the context's fields at +6616 (command list), +6624 (allocator), +6632 (descriptor state) and +16376 (heap index) relative to cmdBufferSet, i.e. context+112, +120, +128, +9872. Both sites give 9928 and the fields fit inside it. Game-test 9192 is not this type.",
+   "members": [
+     [0, "constantBuffer", "GfxComputeBufferState", "R_InitConstantBufferInfo_Linear@0x141966ED0 passes ctx+0 as the ConstantBufferInfo; see GfxComputeBufferState (partial)"],
+     [104, "constantBufferSize", "unsigned int", "R_InitConstantBufferInfo_Linear@0x141966ED0: `*((_DWORD *)v16 - 2) = *v14` (store at ctx+104 before the allocation)"],
+     [112, "commandList", null, "R_InitConstantBufferInfo_Linear@0x141966ED0: device CreateCommandList(..., ppv = v16 = ctx+112); R_InitComputeCmdBufState@0x1418BE0C0: `(*(v8+6616))->Reset(allocator, 0)` where v8+6616 = ctx+112 (vtable slot 80)"],
+     [120, "commandAllocator", null, "R_InitConstantBufferInfo_Linear@0x141966ED0: CreateCommandAllocator(..., ppv = v16+1 = ctx+120); R_InitComputeCmdBufState: passes `*(v8+6624)` (= ctx+120) to Reset"],
+     [128, "descState", "GfxDescriptorState", "R_InitComputeCmdBufState@0x1418BE0C0: `R_InitDescriptorState(v8+6632)` (= ctx+128) and `computeCtx+4256 = v8+6632`; R_InitDescriptorState@0x1418791E0 writes its anyCbDescsDirty at +9712 (i.e. ctx+9840) within 9744 bytes. Ends at ctx+9872 where the next member starts"],
+     [9872, "heapIndex", "unsigned int", "R_InitComputeCmdBufState@0x1418BE0C0: `2136 * *(unsigned int *)(v8+16376) + cmdBufferSet + 28672` (= ctx+9872). Game-test name computeQueueIndex is NOT confirmed"],
+     [9876, "memcpyFenceData", "unsigned int *", "by elimination: game-test fields after computeQueueIndex fill ctx+9876..9928 (memcpyFenceData 8, computeFence 16, graphicsFence 16, endFenceData 8) with 4 bytes of pad at 9924; no Replay access"],
+     [9884, "computeFence", "ComputeFence", "by elimination: see memcpyFenceData; no Replay access"],
+     [9900, "graphicsFence", "ComputeFence", "by elimination: see memcpyFenceData; no Replay access"],
+     [9916, "endFenceData", "unsigned int *", "by elimination: see memcpyFenceData; no Replay access"]
+   ],
+   "changed_members": [
+     ["size", "9192 -> 9928", "R_InitConstantBufferInfo_Linear@0x141966ED0 (`v16 += 1241` QWORDs); R_InitComputeCmdBufState@0x1418BE0C0 (`9928LL * bufferIndex`)"],
+     ["descState", "unsigned __int8[9064] at +72 -> GfxDescriptorState (9744) at +128", "R_InitComputeCmdBufState@0x1418BE0C0"],
+     ["constantBufferSize", "+64 -> +104", "R_InitConstantBufferInfo_Linear@0x141966ED0"],
+     ["computeQueueIndex", "+9136 -> +9872 (heapIndex, name unconfirmed)", "R_InitComputeCmdBufState@0x1418BE0C0"],
+     ["constantBuffer", "GfxComputeBufferState 64 bytes -> 104 bytes (partial)", "R_InitConstantBufferInfo_Linear@0x141966ED0"]
+   ],
+   "unconfirmed": [
+     "heapIndex name (game-test computeQueueIndex): name not proven",
+     "+108 4-byte pad and the game-test fence fields at +9876..+9928: listed only by elimination",
+     "commandList / commandAllocator IDA types: COM interface pointers (ID3D12GraphicsCommandList / ID3D12CommandAllocator); no IDA type checked"
+   ],
+   "notes": "Resolved on size and on the members Replay touches. The context is a 9928-byte element of GfxBackEndData's contextData array (not the 9192 game-test type, and not the computeCtx global used by R_ComputeCmd_Finish, which is a different CmdBufState-family struct; A119's descriptor-pointer finding concerns that other struct). Owner check: the size of GfxDescriptorState is 9744 here, not the 9064 game-test value; A071 owns that struct."},
+
+  {"name": "ComputeData", "verdict": "partial", "size": null,
+   "size_evidence": "lower 19896 (method 4: contextData[2] at +40 with stride 9928 => 40 + 2*9928); upper 19904 only if the GfxBackEndData QWORD store at X+26368 (end of R_InitConstantBufferInfo_Linear's first loop, `*(_QWORD*)(BackEndData+26368) = 0`) is outside ComputeData. Base is GfxBackEndData+6464 (X = GfxBackEndData = the cmdBufferSet pointer of R_InitComputeCmdBufState and *cmdRef of R_ComputeCmd_Finish): asyncEnabled at X+6464 (Init), cmdPending at X+6467 (Finish clears it), cmdListData at X+6480 (R_ConstantBufferInfo_SetRecord call in Linear and Finish). Builder 19864 and game-test 18424 are not proven.",
+   "members": [
+     [0, "asyncEnabled", "bool", "R_InitComputeCmdBufState@0x1418BE0C0: `*(_BYTE *)(cmdBufferSet + 6464) != 0` (cmdBufferSet = X)"],
+     [3, "cmdPending", "bool", "R_ComputeCmd_Finish@0x1418BD4A0: `*(_BYTE *)(v2 + 6467) = 0`, v2 = X"],
+     [8, "cmdList", "ComputeCmdList *", "by elimination: bytes +8..+16 between cmdPending/_pad4 and cmdListData; no Replay access"],
+     [16, "cmdListData", "ComputeCmdList", "R_InitConstantBufferInfo_Linear@0x141966ED0: R_ConstantBufferInfo_SetRecord(X+6480, ptr, 0x100000); R_ComputeCmd_Finish@0x1418BD4A0 reads cmds X+6480, used X+6492, headsOffset X+6496; R_ClearComputeCmdList@0x1418BCAC0 writes used (+12) = 136 and headsOffset (+16) = 0"],
+     [40, "contextData", "ComputeContextData[2]", "R_InitConstantBufferInfo_Linear@0x141966ED0: element k's ConstantBufferInfo at X+6504+9928k; R_InitComputeCmdBufState@0x1418BE0C0: X+9928*bufferIndex + 6504 for the context fields"]
+   ],
+   "changed_members": [
+     ["contextData", "ComputeContextData[2] 18384 bytes -> 2 x 9928 = 19856 bytes at +40", "R_InitConstantBufferInfo_Linear@0x141966ED0"],
+     ["size", "18424 -> partial, 19896 lower bound, 19904 upper bound", "R_InitConstantBufferInfo_Linear@0x141966ED0 (QWORD store at X+26368)"]
+   ],
+   "unconfirmed": [
+     "smpEnabled (+1) and skinningEnabled (+2): no Replay access found; left as they are",
+     "end of ComputeData: whether X+26360..26368 belongs to ComputeData (size 19896 vs 19904)",
+     "cmdList at +8: type and presence not proven; list only by elimination"
+   ],
+   "notes": "Partial on size only: every touched member is placed (asyncEnabled +0, cmdPending +3, cmdListData +16, contextData +40). The base X+6464 is now confirmed from three independent sites (Init, Finish, Linear/SetRecord). The owner's question (whether cmdBufferSet is ComputeData itself or a parent with ComputeData at +6464): the answer is the parent, GfxBackEndData (A058's struct), with ComputeData at +6464. The GfxBackEndData layout around +6464..+26368 is padding in IDA now, so A058 should add ComputeData there."}
+ ],
+ "renames": []
+}

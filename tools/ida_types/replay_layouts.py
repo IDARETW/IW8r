@@ -64,6 +64,7 @@ class World:
         self.alloc = json.load(open(S + "alloc_sizes.json")) if os.path.exists(S + "alloc_sizes.json") else {}
         self.props = {}
         self.drop_size = set()
+        self.force = {}
         pdir = "out/ida_types/proposals"
         for fn in sorted(os.listdir(pdir)) if os.path.isdir(pdir) else []:
             if fn.endswith(".json"):
@@ -74,6 +75,7 @@ class World:
                     continue
                 for nm in d.get("drop_size", {}):
                     self.drop_size.add(nm)
+                self.force.update(d.get("force_relayout", {}))
                 for x in d.get("structs", []):
                     if isinstance(x, dict) and x.get("name"):
                         x["_agent"] = d.get("agent", fn[:-5])
@@ -84,6 +86,8 @@ class World:
                                 old["size"], old["_agent"] = x["size"], x["_agent"]
                             if x.get("ignore_max_access"):
                                 old["ignore_max_access"] = True
+                            if x.get("verdict"):
+                                old["verdict"] = x["verdict"]
                         else:
                             self.props[x["name"]] = x
         self.res = {}            # gt name -> result
@@ -346,15 +350,19 @@ class World:
                         break
         prop = self.props.get(ida_name)
         if prop:
-            pm = {}
+            pm, pw = {}, {}
             for x in prop.get("members", []):
                 if isinstance(x, list) and len(x) >= 2 and isinstance(x[0], int):
+                    ev = str(x[3] if len(x) > 3 else "").lower()
+                    if "unconfirmed" in ev or "no replay access" in ev or "unverified" in ev or "unproven" in ev:
+                        continue                      # listed by the agent but not proven: never an anchor
                     pm[x[1]] = x[0]
+                    pw[x[1]] = 3 if "elimination" in ev else 50
             for k, s in enumerate(sl):
                 for y in s["group"]:
                     nm = y[1] if not y[5] else None
                     if nm in pm:
-                        votes[k][pm[nm] - (y[0] - s["off"])] += 50
+                        votes[k][pm[nm] - (y[0] - s["off"])] += pw[nm]
                         break
                     if y[5] and ("baseclass_0" in pm or "baseclass_%X" % y[0] in pm):
                         votes[k][pm.get("baseclass_0", pm.get("baseclass_%X" % y[0]))] += 50
@@ -638,6 +646,18 @@ def compare(w, g):
 
     old = score(w, g, mem)
     info = {"score_old": old}
+    prop = w.props.get(r["ida"]) or {}
+    verdict = prop.get("verdict")
+    if verdict == "absent":
+        info["why"] = ["absent in this build (%s)" % prop.get("_agent", "")]
+        return "absent", [], info
+    if verdict == "opaque":
+        # COM / driver interface: only the vtable pointer at +0 is real
+        if it["size"] != 8 or len(mem) != 1:
+            return "relayout", [[0, mem[0][1] if mem and mem[0][0] == 0 and mem[0][2] == 8 else "__vftable", 8,
+                                 ["@" + mem[0][1]] if mem and mem[0][0] == 0 and mem[0][2] == 8 else ["void *"],
+                                 "anchor"]], dict(info, opaque=True, moved=[], dropped=[m[1] for m in mem[1:]])
+        return "opaque", [], info
     wn = {x[1]: x for x in want}
     # offset moves of existing members (width-only differences are ignored)
     moved = [[m[1], m[0], wn[m[1]][0], wn[m[1]][4]] for m in mem if m[1] in wn and wn[m[1]][0] != m[0]]
@@ -685,9 +705,16 @@ def compare(w, g):
     if size_change and r["max_replay"] >= r["size"] and not prop.get("ignore_max_access"):
         reasons.append("Replay accesses +%d past the new size" % r["max_replay"])
     better = (new[0] > old[0] and new[1] <= old[1] // 2) or (r.get("prop") and new[0] >= old[0] and new[1] <= old[1])
+    # an agent proved the size and resolved the layout from Replay code: accept unless it loses right-member hits
+    if (prop.get("verdict") == "resolved" or isinstance(prop.get("size"), int)) and r["size_proof"]             and new[0] >= 0.95 * old[0] and new[1] <= max(old[1], 1) * 1.5:
+        better = True
+        info["accepted_on_agent_proof"] = True
+    if r["ida"] in w.force:
+        better = True
+        info["forced"] = w.force[r["ida"]]
     if moved and not better:
         reasons.append("moves not better supported (ok/bad %s -> %s)" % (old, new))
-    if not moved and size_change and not reasons and new[1] > old[1]:
+    if not moved and size_change and not reasons and new[1] > old[1] and not info.get("accepted_on_agent_proof")             and not info.get("forced"):
         reasons.append("more conflicts after resize")
     if reasons:
         info["why"] = reasons
@@ -732,6 +759,8 @@ def main():
         r = w.res[g]
         act, items, extra = compare(w, g)
         cnt[act] += 1
+        if extra.get("opaque"):
+            r = dict(r, size=8)
         out[r["ida"]] = {"gt": g, "action": act, "size": r["size"], "ida_size": r["ida_size"], "gt_size": r["gt_size"],
                          "size_proof": r["size_proof"], "anchored": r["anchored"], "evidence": r["evidence"],
                          "agent": r["agent"], "unresolved": r["unresolved"], "items": items, "extra": extra}

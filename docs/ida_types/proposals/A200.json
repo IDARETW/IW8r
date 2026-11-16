@@ -1,0 +1,71 @@
+{"agent": "A200", "structs": [
+ {"name": "Umbra__Transformer", "verdict": "resolved", "size": 1424,
+  "size_evidence": "method 4: Umbra::ImpShadowCuller::ImpShadowCuller@0x141F8C080 zeroes m_cascades with a loop of 8 steps that advances `++m_cascades` (Umbra__Transformer*) and `v3 += 356` floats = 1424 bytes per cascade; IDA m_cascades is Transformer[8] = 11392 = 8 x 1424. Corroborated by method 9: Umbra_InitAlignedTransformerBlock@0x141F8E470 keeps a stack local `src[178]` (1424 bytes) constructed by Umbra::Transformer::Transformer, with `Src` placed right after it at rsp+5B0h",
+  "members": [
+   [0, "m_worldToClip", "Umbra__Matrix4x4", "Umbra::Transformer::Transformer@0x141F8C5D0: Umbra::Matrix4x4::ident(this); Umbra_Transformer_computeBasisFromMatrix@0x141F95A60: outTransformer[0..3] = sourceBlock[0..63]"],
+   [64, "m_worldToClipTranspose", "Umbra__Matrix4x4", "Transformer::Transformer@0x141F8C5D0: ident(this+64); computeBasisFromMatrix@0x141F95A60: outTransformer[4..7] = transpose of sourceBlock[0..63] (Umbra_Matrix4x4_TransposeInPlace)"],
+   [128, "m_frustumPlanes", "Umbra__Vector4[22]", "Transformer::Transformer@0x141F8C5D0 zeroes qwords 128..479; buildTransformBlocks@0x141F960A0: `result = 2*(k+8)` reads outBlocks+128+16k (plane k); computeBasisFromMatrix writes [8] (128) and [9] (144)"],
+   [480, "m_clipPlanesSIMD", "m128[22]", "Umbra_buildTransformBlocks@0x141F960A0: loop over k < m_planeCount stores 16 bytes at outBlocks+480+16k (`*(v21-368)`)"],
+   [832, "m_clipPlaneClass", "m128[22]", "Umbra_buildTransformBlocks@0x141F960A0: `*(v21-16) = _mm_cmplt_ps(0, plane k)` at outBlocks+832+16k"],
+   [1184, "m_cameraPos", "Umbra__Vector3", "Transformer::Transformer zeroes qword 1184 and dword 1192; computeBasisFromMatrix@0x141F95A60: qword sourceBlock+320 -> 1184 and dword sourceBlock+328 -> 1192"],
+   [1196, "m_planeCount", "int", "computeBasisFromMatrix: outTransformer[74].m128_i32[3] = sourceBlock[332] + 6 (1196); buildTransformBlocks loops `while (*(int*)(outBlocks+1196) > 0)` and uses it as the plane count for 480/832/1236"],
+   [1200, "m_depthRange", "unsigned int", "computeBasisFromMatrix: outTransformer[75].m128_i32[0] = sourceBlock[336] (1200)"],
+   [1204, "m_flipPortalWinding", "bool", "computeBasisFromMatrix: outTransformer[75].m128_i8[4] = Umbra_Matrix4x4_Determinant(outTransformer) < 0 (1204)"],
+   [1216, "m_predictionSIMD", "m128", "computeBasisFromMatrix: outTransformer[76] = axis vector (16 bytes at 1216)"],
+   [1232, "m_hasPrediction", "bool", "computeBasisFromMatrix: outTransformer[77].m128_i8[0] = |axisVector|^2 > 0 (1232); buildTransformBlocks: `if (*(outBlocks+1232) != 0 || *(outBlocks+1376) == 0)` picks the default bounds branch"],
+   [1236, "m_planeIndices", "int[22]", "buildTransformBlocks@0x141F960A0: `*v22++ = k` from outBlocks+1236 for k < m_planeCount"],
+   [1328, "m_frustumBoundsMinSIMD", "m128", "buildTransformBlocks: `*(__m128*)(outBlocks+1328)` written in both branches"],
+   [1344, "m_frustumBoundsMaxSIMD", "m128", "buildTransformBlocks: `*(__m128*)(outBlocks+1344) = v56` at the end of the function"],
+   [1360, "m_zeroPlane", "m128", "computeBasisFromMatrix: outTransformer[85] = plane from axis and sourceBlock[74] (1360)"],
+   [1376, "m_hasFarPlane", "bool", "computeBasisFromMatrix: outTransformer[86].m128_i8[0] = (dot(...) < 0) (1376); buildTransformBlocks reads it at 1376"],
+   [1377, "m_isOrtho", "bool", "computeBasisFromMatrix: outTransformer[86].m128_i8[1] = sourceBlock[3] is zero vector (1377)"],
+   [1392, "m_scissor", "Umbra__Vector4i", "buildTransformBlocks: `*(_OWORD*)(outBlocks+1392) = *(_OWORD*)sourceTransform` (four ints); Transformer::Transformer zeroes qwords 1392 and 1400"],
+   [1408, "m_threadId", "int", "computeBasisFromMatrix: outTransformer[88].m128_i32[0] = transformIndex parameter (1408). NOTE the Replay meaning is the transform index argument; the game-test name is kept"],
+   [1412, "m_numThreads", "int", "computeBasisFromMatrix: outTransformer[88].m128_i32[1] = sizeX parameter (1412). Replay writes the sizeX argument here, game-test name kept"],
+   [1416, "m_xSplits", "int", "computeBasisFromMatrix: outTransformer[88].m128_i32[2] = sizeY parameter (1416). Replay writes the sizeY argument here, game-test name kept"]
+  ],
+  "changed_members": [],
+  "unconfirmed": [
+   "m_threadId / m_numThreads / m_xSplits: offsets 1408/1412/1416 are CONFIRMED (Replay writes them), but Replay's parameter names are transformIndex / sizeX / sizeY, so the game-test names may describe other things; the coordinator decides whether to rename",
+   "pads 1205..1215 (11 bytes), 1233..1235 (3), 1324..1327 (4), 1378..1391 (14), 1420..1423 (4): no Replay access found"
+  ],
+  "notes": "IDA layout already matches every Replay offset and the size 1424 is proven, so no change is needed for the offsets. The builder size 1688 (sizeof votes) is wrong and must not be applied. Parent check: Umbra__ImpShadowCuller holds m_planeCuller by value (Transformer::Transformer called on &this->m_planeCuller in its constructor) and m_cascades[8], so the type is present, not absent. Umbra_TransformerState_init@0x141F8C3F0 zeroes the same fields as the constructor, so it uses the same layout."},
+
+ {"name": "Umbra__Tome", "verdict": "partial", "size": null,
+  "size_evidence": "not a fixed-size struct. Load_UmbraTome@0x1418CBC20 stores the blob pointer (`*outTome = tomeData` through Umbra::Tome::init@0x141F94E40) and Umbra::Tome::init compares dataSize with the blob's own total size read from +8 (`result = *(unsigned int*)(tomeData+8)`). The object is the runtime blob (rgp_world->umbraTome). Replay's highest access is +80..+83 (DWORD), so the lower bound is 84 bytes. No fixed upper bound exists: the size is per instance, read from +8",
+  "members": [
+   [0, "m_headerWord0", "unsigned int", "Umbra::Tome::init@0x141F94E40: `*(DWORD*)tomeData != -1163018018` (header magic); Umbra::Tome::getStatus@0x141F94DA0 decodes the version bits of the same DWORD (0xD6xxxxxx)"],
+   [8, "m_blobSize", "unsigned int", "Umbra::Tome::init@0x141F94E40: `result = *(unsigned int*)(tomeData+8)` is the blob size compared with dataSize. Rename proposal from m_headerWord8 (proof: this is the total size of the blob)"],
+   [64, "m_objectCount", "unsigned int", "Umbra::Tome::getObjectUserIDs@0x141F94CA0: `if (objectIndex < 0 || objectIndex >= this[16]) return 0` (+64). Rename proposal from m_headerData64. Also read by Umbra_Visibility_getStatusWord@0x141F94C90 (returns +64 as a status word) for rgp_world->umbraTome in R_Umbra_QueryStaticVisibilityCmd@0x1418CDD20; that conflict is in notes"],
+   [76, "m_objectRangeOffset", "unsigned int", "Umbra::Tome::getObjectUserIDs@0x141F94CA0: `v6 = this[19]` (+76) is a byte offset to a start/end pair table: `*(this+4*v4+v6+4) - *(this+4*v4+v6)` is the user-ID count. Rename proposal from m_objectUserIdCount (it is an offset, not a count)"],
+   [80, "m_objectUserIdOffset", "unsigned int", "Umbra::Tome::getObjectUserIDs@0x141F94CA0: when +76 is 0, `v13 = this[20]` (+80) is the byte offset to the int user-ID table indexed by objectIndex (`this + v13 + 4*objectIndex`)"]
+  ],
+  "changed_members": [
+   ["m_headerWord8", "rename to m_blobSize", "Umbra::Tome::init@0x141F94E40 (+8 = blob total size)"],
+   ["m_headerData64", "rename to m_objectCount", "Umbra::Tome::getObjectUserIDs@0x141F94CA0 (objectIndex bound at +64)"],
+   ["m_objectUserIdCount", "rename to m_objectRangeOffset", "Umbra::Tome::getObjectUserIDs@0x141F94CA0 (+76 is a table offset, not a count)"]
+  ],
+  "unconfirmed": [
+   "_pad4 (4..7), _padC (12..63), _pad44 (68..75), _pad54 (84..): no Replay access found; the blob is a runtime buffer. The IDA size 364 is not proven by Replay and the trailing 280 bytes are never read through this type",
+   "Umbra::ImpTome::getUserIDs@0x141F94E10 reads ImpTome members m_userIDs / m_userIDStarts (other struct, not Umbra__Tome): the user-ID table lives in a different struct"
+  ],
+  "notes": "Size proposal: the honest type is a header view of 84 bytes (lower bound) whose total size is the DWORD at +8; the 364-byte fixed size should not be applied. Conflict: +64 is read as an object count (getObjectUserIDs bound) and also returned by Umbra_Visibility_getStatusWord (called with rgp_world->umbraTome, so the Tome). Both readings are Replay evidence; the name is kept as m_objectCount for now and the coordinator should decide. Misnamed function: 0x141F94C90 Umbra_Visibility_getStatusWord reads a Tome, not a Visibility (see renames)."},
+
+ {"name": "Umbra__Visibility", "verdict": "resolved", "size": 128,
+  "size_evidence": "method 9: in R_Umbra_QueryStaticVisibilityCmd@0x1418CDD20 the local `portalGraph[16]` (128 bytes, frame rbp-20h, rsp+19460h) is the Visibility object: Umbra::Visibility::Visibility_0@0x141F8C750 is called on it, and the next local `destBlock[64]` starts exactly 128 bytes later (rsp+194E0h, rbp+60h). Game-test m_mem[128] agrees",
+  "members": [
+   [8, "m_slot8", "unsigned __int64", "Umbra::Query::queryPortalVisibility@0x141F91860: `(portalGraph+7)&~7` then `*(_QWORD*)(base+8) == 0` test. Name is a placeholder, meaning unknown"],
+   [16, "m_outputBuffer", "void *", "Umbra::Visibility::setOutputBuffer@0x141F94A50: `*(_QWORD*)(base+16) = outputBuffer`; queryPortalVisibility@0x141F91860 reads base+16 as the visualizeHull target"],
+   [48, "m_objectMask", "void *", "Umbra::Visibility::setOutputObjectMask@0x141F94A70: `*(_QWORD*)(base+48) = objectMask`; called from R_Umbra_QueryStaticVisibilityCmd"]
+  ],
+  "changed_members": [
+   ["m_mem (IDA: pad 56 then m_mem[128] at +56)", "replace by the fields above; the Replay layout has the struct start at +0", "Umbra::Visibility::Visibility_0@0x141F8C750 zeroes base+0..+63; setters use base+16 and base+48 relative to the object start"]
+  ],
+  "unconfirmed": [
+   "bytes 0..7, 24..47, 56..63 and 64..127: zeroed or never accessed by Replay (no named use); game-test gives only the 128-byte array"
+  ],
+  "notes": "IDA's 184-byte layout (56-byte pad, then m_mem at +56) is wrong: Replay's Visibility_0 zeroes the first 64 bytes of the object and the setters use +16 and +48 from the start. Size proposal 184 -> 128. The struct is a stack local in R_Umbra_QueryStaticVisibilityCmd, not a heap object, so it is present. Note that Umbra::Visibility::Visibility@0x141F8D190 takes a storage pointer and builds an Umbra::ImpShadowCuller there (45920-byte object), so that function is not the Visibility object; its name may be misleading (no rename proposed, the owner should check)."}
+],
+"renames": [
+ ["0x141F94C90", "Umbra_Visibility_getStatusWord", "Umbra_Tome_getStatusWord", "reads *(this+64) and is called with v10 = rgp_world->umbraTome in R_Umbra_QueryStaticVisibilityCmd@0x1418CDD20 (the Tome, not a Visibility; no game-test name checked for this accessor)"]
+]}

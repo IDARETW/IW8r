@@ -1,0 +1,33 @@
+{"agent": "A201", "structs": [
+ {"name": "GTargetAssist", "verdict": "resolved", "size": 16,
+  "size_evidence": "method 7 (derived first own member at sizeof(base)) with method 1 as corroboration: GTargetAssistSP::GTargetAssistSP@0x14185CA70 calls GTargetAssist::GTargetAssist then memset_0(this+0x10, 0, 0x320) on m_targetInfo (BgTargetAssist__TargetInfo, 4 bytes x 200); G_MainSP_AllocateGameMemory@0x14182B4F5 `mov r8d, 330h` = 816 = 16 + 800. GTargetAssistMP::GTargetAssistMP@0x140EB1EE0 also memsets from +0x10 (m_targetInfo x 600); G_MainMP_AllocateGameMemory@0x14121CB7E `mov r8d, 970h` = 2416 = 16 + 2400. Both derived totals give base 16 under the same placement.",
+  "members": [
+   [0, "__vftable", "void *", "GTargetAssist::GTargetAssist@0x140E99940: `*(_QWORD *)this = &GTargetAssist_vftable` (the derived ctor path stores GTargetAssistDerived_vftable at the same slot)"],
+   [8, "m_targetCount", "int", "GTargetAssist::GTargetAssist@0x140E99940: `*(_DWORD *)&this->baseclass_0[8] = 0`; game-test BgTargetAssist m_targetCount at +8 (int)"]
+  ],
+  "changed_members": [
+   ["baseclass_0 (unsigned __int8[16]) + _pad10 (unsigned __int8[56])", "replace by the two members above; total size 72 -> 16 (size change, coordinator to apply). GTargetAssistSP and GTargetAssistMP already put their own data at +16, so the SP/MP layouts need no change for this", "GTargetAssistSP::GTargetAssistSP@0x14185CA70, GTargetAssistMP::GTargetAssistMP@0x140EB1EE0"]
+  ],
+  "unconfirmed": ["bytes +12..+16: no Replay access and no game-test field, left as a pad"],
+  "notes": "replay_max_access_end is 12 (the m_targetCount int). Not embedded in any struct Replay uses. The base ctor is the only constructor that writes +0 and +8. The 72-byte IDA size came from the copy of the derived layout and is not supported by any Replay access."
+ },
+ {"name": "GTurretMP", "verdict": "partial", "size": null,
+  "size_evidence": "NOT PROVEN. Lower bound 132: GTurretMP::SpawnVirtual@0x1410117B0 writes int at +128 (`*(_DWORD *)(this + 128) = 0`, last byte 131). Upper bound candidate 256 (game-test GTurretMP 256, game-test GTurret 256): GTurretMP::vector_deleting_dtor@0x1405C5F30 stores GTurretMP_vftable at [rcx] and, when flags bit 0 is set, `mov edx, 100h` / `call bdMemory::deallocate_5` at 0x1405C5F48. That function is vtable slot 1 of GTurretMP_vftable (0x1427468C8, xref from .rdata). BLOCKER: slot 0 of the same vtable, Dtor8_scalar_deleting_Vt7468B8@0x1405C5E90, also stores GTurretMP_vftable but frees with `mov edx, 8` (0x1405C5EA8), so the vtable does not give one consistent object size. No GTurretMP allocation found: no 100h/140h/256/320 literal in G_MainMP_AllocateGameMemory or G_MainSP_AllocateGameMemory, and no constructor other than the two dtors stores GTurretMP_vftable.",
+  "members": [
+   [0, "__vftable", "void *", "GTurretMP::vector_deleting_dtor@0x1405C5F30: `mov [rcx], GTurretMP_vftable` (lea rax, GTurretMP_vftable at 0x1405C5F36); same store in Dtor8_scalar_deleting_Vt7468B8@0x1405C5E90"]
+  ],
+  "changed_members": [
+   ["_pad0[16] + m_field16 int", "Replay int at +16 is inside game-test GTurret m_data (GTurretData at +12, whose flags is +4 = +16). Proposed as a child of GTurret base, see notes", "GTurretMP::SpawnVirtual@0x1410117B0: `*(_DWORD *)(this + 16) = 0`"],
+   ["m_field128 int", "Replay int at +128 is inside m_data: GTurretData eTeam (team_t, data offset 116 = +128). Mapping by offset only", "GTurretMP::SpawnVirtual@0x1410117B0: `*(_DWORD *)(this + 128) = 0`"]
+  ],
+  "unconfirmed": [
+   "GTurret base (256 bytes, game-test GTurret: __vftable, bool m_inuse at 8, GTurretData m_data at 12): the Replay accesses at +16 and +128 both fall inside m_data at +12, which is consistent with the game-test layout; m_data at +12 and the names flags / eTeam are UNCONFIRMED (no Replay access to +8 or +12 found)",
+   "IDA 1024 char m_embedded1024 and _pad401[7] (the 1032-byte tail): no Replay access anywhere past +132; no evidence",
+   "game-test m_inuse at +8: no Replay access"
+  ],
+  "notes": "Verdict partial because the size is contested (slot 0 frees 8, slot 1 frees 256, same vtable) and no GTurretMP allocation is reachable. Size could be 256 if slot 1 is the true class dtor, but the constructor that stores GTurretMP_vftable is not in this database (only the two dtors). Next step for a follow-up: find who calls GTurretMP's vtable-owning allocation (e.g. a turret pool in a G_Main*AllocateGameMemory path with a computed stride), or resolve which dtor is GTurretMP's. The 1032-byte IDA size is not supported by any Replay access. GTurretMP::vector_deleting_dtor has no array loop, so the 'vector' name is also doubtful; see renames. vtable GTurretMP_vftable is three meaningful slots: [0] Dtor8, [1] vector_deleting_dtor, [2] _purecall; slot 3 at 0x1427468D0 is MultiProcessIndex_BuildFreeSpaceTableSignaled (a different function, not a turret virtual), so the table ends at slot 2. GTurretMP::SpawnVirtual, ThinkVirtual, SetMinimapVisible are not in this table."
+ }
+],
+"renames": [
+ ["0x1405C5E90", "Dtor8_scalar_deleting_Vt7468B8", "GTurretMP::scalar_deleting_dtor", "slot 0 of GTurretMP_vftable (0x1427468B8, xref from .rdata); the function stores GTurretMP_vftable at [rcx] and has the scalar flags-bit-0 deallocate. Name has the vtable address baked in. NOTE: its deallocate size is 8, which conflicts with the 256 of slot 1; the rename rests on the vtable store, not the size"]
+]}

@@ -1,0 +1,49 @@
+{"agent": "A190", "structs": [
+ {"name": "NetInit", "verdict": "resolved", "size": 263176,
+  "size_evidence": "method 5 + pool closure: NetStatic::NetStatic@0x140342F70 calls NetEndpointBuffer_InitPool(&s_netInitGlobal + 0x178) at 0x140342F8D; NetEndpointBuffer_InitPool@0x1410D5FA0 writes 657 NetEndpoint items with a stride of 100 ints (400 bytes) and memset_0(pool+4, 0, 0x4028C) => the pool is 262800 bytes, so the pool ends at 376 + 262800 = 263176. The next named global s_netConnectionBuffer is at 0x14D4AC628 = s_netInitGlobal (0x14D46C220) + 263176 exactly, so no byte of the static is left past the pool.",
+  "members": [
+   [0, "m_thread", "NetThread *", "NetRegistry_InitGlobal@0x1412BC010 writes 0 at +0; NetInit::Reset@0x1412BC7F0: a1->m_thread = a2; NetInit::OnlineTransition@0x1412BC740 and NetInit_OnNetStartComplete@0x1412BC0D0 read it (CONFIRMED)"],
+   [8, "m_loopback", "NetLoopback *", "NetInit::Reset@0x1412BC7F0: a1->m_loopback = a3 (CONFIRMED); NetRegistry_InitGlobal writes 0 at +8"],
+   [16, "m_relay", "NetRelay (only 304 bytes fit: see changed_members)", "NetRegistry_InitGlobal@0x1412BC010: NetRelay_ctor(netInit+16); NetInit::Reset@0x1412BC7F0: NetRelay::Reset((NetRelay*)a1->_pad10) i.e. +16 (CONFIRMED); NetInit_TryStartNetwork@0x1412BC1E0: NetRelay_UpdateConnectState(netInit+16)"],
+   [320, "m_relayOverride", "NetRelayOverride", "NetRegistry_InitGlobal: NetRelayOverride_ctor(netInit+320, netInit+16) (CONFIRMED, object start); NetInit::OnlineTransition@0x1412BC740: dwNetStart(1, m_listener, &a1->m_relay[256] = +320, ...) (CONFIRMED); size 16 by distance to +336"],
+   [336, "m_localAddr", "bdReference<bdCommonAddr>", "NetInit::Reset@0x1412BC7F0: a1->m_localAddr.m_ptr at +336 (CONFIRMED); NetInit::InitLocalAddr@0x1412BC2A0 reads it; NetRegistry_InitGlobal writes 0"],
+   [344, "m_localAddrUpdateTimer", "Timer", "NetRegistry_InitGlobal: Sys_InvalidateHandleAndReturn(netInit+344); NetInit::Reset: Sys_InvalidateHandle(&m_localAddrUpdateTimer); NetInit::InitLocalAddr: Timer::Start(&a1->m_localAddrUpdateTimer) (CONFIRMED); NetInit::IsLocalAddressUpdating@0x1412BC6D0: Timer::IsExpired(+344) (CONFIRMED)"],
+   [348, "m_offlinePending", "bool", "NetRegistry_InitGlobal: WORD 0 at +348 (CONFIRMED); NetInit::Reset writes 0; NetInit::OfflineTransition@0x1412BC710: a1->m_offlinePending = true (CONFIRMED); NetInit_TryStartNetwork@0x1412BC1E0 reads byte +348 (CONFIRMED)"],
+   [349, "m_onlineAttempted", "bool", "NetRegistry_InitGlobal: the WORD at +348 covers +349 (CONFIRMED); NetInit::Reset@0x1412BC7F0: a1->m_onlineAttempted = 0 (CONFIRMED); NetInit_OnNetStartComplete@0x1412BC0D0: v3->m_onlineAttempted = true (CONFIRMED)"],
+   [350, "m_localAddrResolved", "bool", "NetRegistry_InitGlobal: BYTE 0 at +350 (CONFIRMED); NetInit::Reset: a1->m_localAddrResolved = false (CONFIRMED); NetInit::InitLocalAddr: a1->m_localAddrResolved = true (CONFIRMED); NetInit_GetRetainedFlag@0x1412BC6C0 reads +350 (CONFIRMED)"],
+   [352, "m_onlineState", "unsigned __int64", "NetRegistry_InitGlobal: QWORD 0 at +352 (CONFIRMED); NetInit_GetStateAddr@0x1412BC270 returns netInit+352 (CONFIRMED); NetInit_RestartNetwork@0x1412BC8C0: netInit[44] (=+352) = *onlineState (CONFIRMED); NetInit_OnNetStartComplete@0x1412BC0D0: LODWORD(s_netRegistryGlobal->+352) compared with 3 and 1 (CONFIRMED). IDA name unkAfterFlags is a placeholder: rename proposed"],
+   [360, "m_config", "NetConfig *", "NetRegistry_InitGlobal: QWORD 0 at +360 (CONFIRMED); NetInit::InitLocalAddr reads a1->m_config (CONFIRMED); NetInit::IsLocalAddressUpdating reads it (CONFIRMED); NetInit_OnNetStartComplete calls its vfunc (CONFIRMED); NetInit_RestartNetwork: netInit[45] (=+360) = socketConfig (CONFIRMED)"],
+   [368, "m_listener", "NetEventListener *", "NetInit::OnlineTransition: dwNetStart(..., a1->m_listener, ...) (CONFIRMED); NetInit_TryStartNetwork: *(netInit+368) passed on (CONFIRMED); NetInit_RestartNetwork: netInit[46] (=+368) = startContext (CONFIRMED)"],
+   [376, "m_endpoints", "NetEndpointBuffer (262800 bytes, NetEndpoint[657])", "NetStatic::NetStatic@0x140342F70 passes &s_netInitGlobal + 0x178 (IDA _pad178) to NetEndpointBuffer_InitPool@0x1410D5FA0 (CONFIRMED); the pool loop is 657 x 400 bytes and the memset covers the rest (CONFIRMED). Replaces the game-test m_routerListener at +376: no separate router-listener member exists at +376 in Replay"]
+  ],
+  "changed_members": [
+   ["size", "2944 -> 263176", "pool closure and global extent (size_evidence)"],
+   ["m_relay", "IDA offset 64 (272 bytes) -> offset 16; size at most 304", "NetRelay_ctor(netInit+16) and NetRelayOverride_ctor(netInit+320): the relay override object starts at +320, so the relay ends by +320. The local type NetRelay is 312 bytes and would overlap +320: NetRelay itself needs a size proposal (see notes)"],
+   ["_pad10 (IDA 16..63)", "remove: relay starts at +16", "NetRegistry_InitGlobal, NetInit::Reset"],
+   ["relayOverride (absent in IDA)", "add NetRelayOverride at +320, 16 bytes", "NetRegistry_InitGlobal and NetInit::OnlineTransition at +320"],
+   ["unkAfterFlags (IDA 352, unsigned __int64)", "rename m_onlineState, same size and offset", "NetInit_GetStateAddr, NetInit_RestartNetwork, NetInit_OnNetStartComplete"],
+   ["_pad178 (IDA 376..2687), unkAt2688 (char[8]), _padA88 (248 bytes)", "replace by m_endpoints (NetEndpointBuffer, 262800 bytes) at +376; unkAt2688 and _padA88 lie inside the pool", "NetStatic::NetStatic, NetEndpointBuffer_InitPool"],
+   ["m_routerListener (game-test name at +376, unconfirmed)", "do not add: +376 is m_endpoints", "pool closes exactly at the next global"]
+  ],
+  "unconfirmed": ["m_routerListener at +376: no Replay access; +376..263176 is the endpoint pool", "unknown byte +351: not written or read by any Replay function found; left as pad"],
+  "notes": "Replay offsets follow the Replay code. The IDA layout is right at +336..+376 except for the names and sizes listed above. NetRegistry_InitGlobal@0x1412BC010 is the initializer of the static (writes 0 at +0, +8, +336, +344, +348/349, +350, +352, +360) and its constructor calls give the object starts at +16 (NetRelay_ctor), +320 (NetRelayOverride_ctor) and +344 (Sys_InvalidateHandleAndReturn). The static is s_netInitGlobal (0x14D46C220, typed NetInit, IDA size 2944): the global's type needs size 263176 when the coordinator applies this. s_netRegistryGlobal (0x14D46C210) is a NetInit * pointer set in NetRegistry_InitGlobal. NetRelay owner: the Replay NetRelay type (312 bytes) cannot be placed at +16 because NetRelayOverride is constructed at +320; NetRelay must be 304 bytes or less, which a NetRelay agent should check."
+ },
+ {"name": "NetworkingFence", "verdict": "partial", "size": null,
+  "size_evidence": "NOT PROVEN. Upper bound 80: the static fence object stru_14B4ABC10 (fence index 4, set in FenceObjects_Init@0x140F1A600) has the vtable s_staticInitVftable_ABC10 = 0x1423EC410, whose slot at +0x418 is NetworkingFence::UpdateIsPassingInternal@0x140F19B70 (CONFIRMED by the xrefs and by the dynamic initializer dynamic_initializer_for_qword_14B4ABC10). The next static fence object stru_14B4ABC60 is at +0x50, so the object is at most 80 bytes; the IDA size 120 is refuted and the IDA members m_conditions (+104) and m_pending (+112) cannot exist. Lower bound 73 if the static objects are packed with 8-byte alignment (the stride is 0x50 but other spacings 0x60 and 0xA0 also occur in this group, so this is not exact). Best value 80 (the FenceObject base size), but it is not proven.",
+  "members": [
+   [13, "m_isPassing", "bool", "NetworkingFence::UpdateIsPassingInternal@0x140F19B70: *(this+13) = NET_IsStarted && !dwNetIsModeTwo (CONFIRMED)"],
+   [14, "m_failed", "bool", "NetworkingFence::UpdateIsPassingInternal@0x140F19B70: *(this+14) = dwNetIsStartFailed || dwNetIsModeTwo (CONFIRMED); game-test FenceObject name m_failed at +14 (agrees)"],
+   [0, "baseclass_0", "FenceObject", "FenceObjects_Init@0x140F1A600 writes this+8 (m_controllerIndex), +24 (m_fenceDependencies) and +32 (m_ignoreIfGuest) of the static fence objects (CONFIRMED): the object has the FenceObject base; its field list belongs to the FenceObject agent"]
+  ],
+  "changed_members": [
+   ["size", "120 -> at most 80 (lower bound 73)", "static spacing of fence objects (size_evidence)"],
+   ["_pad0 (0..12)", "replace by baseclass_0 FenceObject (80)", "FenceObject base; only +13 and +14 are touched by NetworkingFence code"],
+   ["m_wasPassing (+14)", "rename m_failed", "UpdateIsPassingInternal writes +14 with dwNetIsStartFailed || dwNetIsModeTwo; the game-test name m_failed is at +14 too"],
+   ["_padF (15..103)", "replace by the base; no member of its own", "size bound 80"],
+   ["m_conditions (+104, char[8]) and m_pending (+112, char[8])", "remove", "beyond the 80-byte bound; no Replay access"]
+  ],
+  "unconfirmed": ["m_conditions, m_pending: no Replay access; outside the bound"],
+  "notes": "Verdict partial: the size is bounded (73..80) but not proven, so the coordinator should accept 80 only if another proof (for example a FenceObject size from a FenceObject agent, or a copy or clear of the object) is found. Identity: the fence index 4 object, which the static vtable names NetworkingFence, is not proven to be the network fence; the function name came from earlier name matching and is kept. Other fence objects in the same table (DemonwareFence, UserSignedInToLiveFence, PublisherVariablesFence, LiveStorageFence) use the same 24-byte vtable record layout (GetFenceValue, UpdateIsPassingInternal, UpdateDependencies). A FenceObject struct agent should own the +0..+79 base fields."
+ }
+],
+"renames": []}

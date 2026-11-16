@@ -1,0 +1,69 @@
+{"agent": "A136", "structs": [
+  {"name": "bot_match_data_t", "verdict": "resolved", "size": 3420,
+   "size_evidence": "method 6 (parent positions proven in Replay): botMatchData starts at bot+29272 (Bot_SetBotPersistentMatchData@0x141346bd0: `mov [rsi+7258h], r13d` at 0x141346c0a stores difficulty at raw 29272; generic setting writes `movss [rcx+rsi+7258h], xmm1` at 0x141346d47 use the same base); bIsScriptedAgent-named flag sits at bot+32692 (Bot_ResetBotInfo@0x1413462e0: `*((_DWORD*)bot+8173)` tested at entry and cleared, dword index 8173 = 32692). 32692 - 29272 = 3420. Lower bound also from a 4-byte store at match+3416 = raw 32688 (Bot_SetBotPersistentMatchData@0x141346d32 `mov [rsi+7FB0h], edi`, reached by setting key 3416 at 0x141346cc8 `cmp ecx, 0D58h`). Upper bound rests on the flag being a bot-level member: Reset clears [0,29272) with memset and then clears the flag separately, so the flag is outside the persistent block.",
+   "members": [
+     [0, "difficulty", "unsigned int", "Bot_SetBotPersistentMatchData@0x141346bd0: `mov [rsi+7258h], r13d` (0x141346c0a); r13d = GameStateInfo_Get()[0x21]; raw 29272 = match+0"],
+     [4, "personality", "unsigned int", "Bot_SetBotPersistentMatchData@0x141346bd0: `mov [rsi+725Ch], edx` (0x141346d7e); edx = G_rand % ebx, ebx = 3 if flags&0x20 else 1; raw 29276 = match+4"],
+     [3212, "flags", "int", "Bot_SetBotPersistentMatchData@0x141346bd0: `mov dword ptr [rsi+7EE4h], 0` (0x141346c19), `and [rsi+7EE4h], eax` (0x141346cb2), `or [rsi+7EE4h], eax` (0x141346cbd), `test byte ptr [rsi+7EE4h], 20h` (0x141346d62); setting key 3212 is `cmp ecx, 0C8Ch` (0x141346ca0); raw 32484 = match+3212. Bit tests 0x10/0x8/0x4 in Bot_CombatStateFire@0x14133b730 read the same word"],
+     [3240, "maxNonAutoFireDelay", "float", "raw access 32512 (packet list: Bot_UpdateCombat, Bot_CombatStateOffhandFire, Bot_ShouldThrowGrenade); name from gt offset, semantics not read"],
+     [3252, "minBurstFireTime", "float", "raw access 32524 (packet list: Bot_CombatStateFire@0x14133b730); name from gt offset, semantics not read"],
+     [3256, "maxBurstFireTime", "float", "raw access 32528 (packet list: Bot_CombatStateFire); name from gt offset"],
+     [3260, "minTimeBetweenBursts", "float", "raw access 32532 (packet list: Bot_CombatStateFire); name from gt offset"],
+     [3264, "maxTimeBetweenBursts", "float", "raw access 32536 (packet list: Bot_CombatStateFire); name from gt offset"],
+     [3284, "reactionTime", "float", "raw access 32556 (packet list: Bot_UpdatePathToEnemy, Bot_IsThrowingGrenade, Bot_CombatStateGrenade); name from gt offset"],
+     [3308, "cornerFireChance", "float", "raw access 32580 (packet list: Bot_CombatStateCornerCombat); name from gt offset"],
+     [3312, "cornerJumpChance", "float", "raw access 32584 (packet list: Bot_CombatStateCornerCombat); name from gt offset"],
+     [3316, "throwKnifeChance", "float", "raw access 32588 (packet list: Bot_CombatStateOffhandFire); name from gt offset"],
+     [3320, "meleeDist", "float", "raw access 32592 (packet list: Bot_UpdateCombat region); name from gt offset"],
+     [3328, "fireFromHipDist", "float", "raw access 32600 (packet list: Bot_UpdateEnemyTrack); name from gt offset"],
+     [3340, "pitchSpeed", "float", "Bot_UpdateViewAngles@0x14134bf00: `v19 = *(float*)(bot + 32612)` when no system active, read as the pitch damp rate in AngleDampTowardTarget on outAngles.v[0]; 32612 = match+3340. Semantics checked"],
+     [3344, "pitchSpeedAds", "float", "Bot_UpdateViewAngles@0x14134bf00: `v19 = *(float*)(bot + 32616)` when Scr_IsSystemActive is nonzero (ADS branch); 32616 = match+3344. Semantics checked"],
+     [3348, "grenadeCookPrecision", "float", "raw access 32620 (packet list: Bot_GrenadeReleaseTime); name from gt offset"],
+     [3360, "visionBlinded", "float", "raw access 32632 (packet list: Bot_UpdateMovement); name from gt offset"],
+     [3364, "blindDiveChance", "float", "raw access 32636 (packet list: Bot_UpdateMovement); name from gt offset"],
+     [3372, "strategyLevel", "float", "raw access 32644 (packet list: Bot_UpdateStance, Bot_UpdatePathToEnemy, Bot_UpdateMove_CombatWeapon); name from gt offset"],
+     [3412, "grenadeThrowbackChance", "float", "raw access 32684 (packet list: Bot_UpdateCombat); name from gt offset"],
+     [3416, "burstFireType", "unsigned int", "Bot_SetBotPersistentMatchData@0x141346bd0: setting key 3416 branch (0x141346cc8), `mov [rsi+7FB0h], edi` (0x141346d32) where edi is the table row index (integer, inc edi at 0x141346d3a); raw 32688 = match+3416. Bot_CombatStateFire@0x14133b730 reads the same word as an integer mode (`x - 1`, compares to 0/1/2). IDA currently calls this word adsDelayFireTimeScoped through the wrong base"]
+   ],
+   "changed_members": [
+     ["(all members)", "IDA match members are right relative to the struct start; the bot_data_t placement is wrong (see bot_data_t). Raw Replay offset = bot+29272 + member offset", "Bot_SetBotPersistentMatchData@0x141346bd0 raw stores 0x7258 / 0x725C / 0x7EE4 / 0x7FB0"],
+     ["size", "3420 kept", "gt size 3420, same as Replay (see size_evidence)"]
+   ],
+   "unconfirmed": [
+     "botMemory (+8, bot_mem_t 3204 bytes): not checked in this pass (bot_mem_t owned by another agent); the IDA access text `botMemory.events[30]` in decompiles is wrong because bot_mem_t is wrong in IDA, not because the match base is",
+     "adsDelayFireTime (+3244), adsDelayFireTimeScoped (+3248), and the other floats with no raw access in the packet list: kept by elimination between flags (+3212) and burstFireType (+3416), same total and order; names from game-test, not checked by Replay code",
+     "bIsScriptedAgent-related flag (bot+32692) is outside this struct; see bot_data_t"
+   ],
+   "notes": "Persistent match data lives at bot+29272 in Replay, not bot+29440. Every raw match access in the packet list is gt offset + 29272 (e.g. reactionTime 32556, pitchSpeed 32612, burstFireType 32688), and the offsets that were decompiled and checked match. The difficulty and personality stores that IDA currently places inside botInfo (searchLookNodes[6] and [8] of bot_info_t) are match+0 and match+4."},
+
+  {"name": "bot_data_t", "verdict": "partial", "size": null,
+   "size_evidence": "NOT PROVEN. Replay proves members up to bot+32696 and nothing beyond. Lower bound 32696: the last direct bot access is the 4-byte flag at +32692 (Bot_ResetBotInfo@0x1413462e0, tested at entry and cleared). Likely 50104: SV_BotInit@0x141359d50 sets bot[2] (bot+16) = a1+34064 = bot+32696, and Bot_ResetBotInfo memsets that 17408-byte block (0x4400) through bot[2]; if the block is embedded, the struct reaches 50104. Upper bound 178184: SvClientMP has an unnamed _pad558 of 178184 bytes at client+0x558 = +1368 (bot), and sendAsActive begins at client+179552 (per A101; not re-verified). Best estimate 130888 = game-test 131056 - 168, because every Replay member after botInfo sits exactly 168 lower than game-test (botMatchData 29272, bIsScriptedAgent 32692, botDebugData 32696, the footer at 130880). Nothing in Replay reads or clears the footer at +130880 or copies the whole bot, so 130888 is not proven. Note that SvClientMP_ctor@0x141229890 writes byte 0xFF at bot+0 and SvClientMP_ResetClient clears the whole client (0x4E6A8), so neither bounds the bot.",
+   "members": [
+     [0, "botDataHeader", "gentity_s *", "Bot_ResetBotInfo@0x1413462e0: `*bot = entity` (8-byte store; entity = client+280, SV_BotInit passes `*(a1+280)`); SvClientMP_ctor@0x141229890 writes byte 0xFF at client+1368 (bot+0). Width is 8, not 4 (proposal)"],
+     [8, "botInfo", "bot_info_t", "Bot_ResetBotInfo@0x1413462e0: `bot[1] = *(*bot + 344)` (sentient_s pointer = botInfo+0); Bot_ResetLife@0x141346760 reads `*(bot+8)`; bot[45] navigator at +360 = botInfo+352 (matches game-test offset 360). Size proposal: botInfo ends at +29272, so bot_info_t must be 29264 (see notes)"],
+     [16, "botInfo.<pointer> (bot[2], 8 bytes)", "void *", "SV_BotInit@0x141359d50 stores `a1+34064` at a1+1384 (bot+16); Bot_ResetBotInfo keeps it across the memset of [0,29272) and clears the 17408-byte block it points to. Inside bot_info_t's domain (botInfo+8); listed for the bot_info_t owner"],
+     [29272, "botMatchData", "bot_match_data_t", "Bot_SetBotPersistentMatchData@0x141346bd0: difficulty store at raw 29272 (0x141346c0a) and generic setting writes at base bot+29272 (0x141346d47); Bot_ResetBotInfo@0x1413462e0 clears only [0,29272) (`memset_0(bot,0,0x7258)`). Start proven; size 3420 proven (see bot_match_data_t)"],
+     [32692, "bIsScriptedAgent", "int", "Bot_ResetBotInfo@0x1413462e0: `*((_DWORD*)bot+8173)` tested at entry and cleared (dword index 8173 = 32692). Name is the game-test name at its shifted offset (gt 32860 -> 32692, shift -168). Semantics not verified (UNCONFIRMED name)"],
+     [32696, "botDebugData", "bot_debug_data_t", "17408-byte block at bot+32696: SV_BotInit@0x141359d50 `*(a1+1384) = a1+34064` (bot[2] = bot+32696); Bot_ResetBotInfo memsets it with 0x4400 through bot[2]. gt botDebugData 32864 - 168 = 32696. The full Replay size of botDebugData is unproven (gt 98184 unverified); only the first 17408 bytes are accessed by the block memset"],
+     [130880, "botDataFooter", "unsigned int", "game-test 131048 - 168 = 130880; no Replay access found (UNCONFIRMED)"]
+   ],
+   "changed_members": [
+     ["botDataHeader", "width 4 -> 8 (gentity_s *); _pad4 is the second half of the pointer", "Bot_ResetBotInfo@0x1413462e0: `*bot = entity`"],
+     ["botInfo", "size 29432 -> 29264 (proposal for the bot_info_t owners A054/A055); end at +29272", "botMatchData starts at +29272 (Bot_SetBotPersistentMatchData@0x141346bd0: raw 0x7258 stores)"],
+     ["botMatchData", "offset 29440 -> 29272 (size 3420 kept)", "Bot_SetBotPersistentMatchData@0x141346bd0"],
+     ["bIsScriptedAgent", "offset 32860 -> 32692", "Bot_ResetBotInfo@0x1413462e0: dword 8173 tested and cleared"],
+     ["botDebugData", "offset 32864 -> 32696 (size 98184 unproven)", "SV_BotInit@0x141359d50 bot[2] = bot+32696; memset 0x4400 in Bot_ResetBotInfo"],
+     ["botDataFooter", "offset 261528 -> 130880 (UNCONFIRMED)", "gt shift -168"],
+     ["(total size)", "261536 -> null (partial). Best estimate 130888, UNCONFIRMED", "see size_evidence"],
+     ["_pad1FFE8", "130480 bytes at 131048 in IDA: no Replay access supports it (remove after the footer is placed, owner's call)", "Replay accesses stop at +32696"]
+   ],
+   "unconfirmed": [
+     "total size: not proven (see size_evidence); the footer and the size beyond +32696 have no Replay access",
+     "botDebugData: whether the whole 98184 bytes are part of bot_data_t; only the 17408-byte block at +32696 is touched",
+     "botDataFooter at +130880: no Replay evidence",
+     "bIsScriptedAgent name: gt name at the shifted offset, semantics not checked"
+   ],
+   "notes": "Cross-agent finding for bot_info_t (A054/A055): the bot match data begins at raw bot+29272, so bot_info_t must end at or before botInfo+29264. IDA's bot_info_t is 29432 bytes, and its searchLookNodes array (botInfo+29252) runs across raw 29272, which is why IDA shows the difficulty store as searchLookNodes[6] and the personality store as [8]. The 168 bytes are somewhere in bot_info_t below 29264, and the members after botInfo are exactly gt - 168 in Replay, so the shift is inside bot_info_t. The renames below are not needed. Whether bot+16 (bot[2]) is botInfo+8 and points at the 17408-byte block is also for bot_info_t's owners."}
+ ],
+ "renames": []
+}

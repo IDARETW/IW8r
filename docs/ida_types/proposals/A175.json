@@ -1,0 +1,52 @@
+{"agent": "A175", "structs": [
+ {"name": "WeaponXAnim", "verdict": "partial", "size": null,
+  "size_evidence": "candidate 13648 (0x3550), not applied. CG_CreateWeaponViewModelXAnimDefs@0x14172D2F0 clears a4+240, a4+13888, a4+27536, a4+41184 with memset_0(.., 0x3550) each (a4 = ClientPlayerWeaponInfo, the cg_t playerWeaponInfo block): four consecutive trees at stride 13648. CG_CreateWeaponViewModelXAnim@0x14172CE70 calls XAnimCreateAnimsInPlaceWithParameters(0, animTree, 609, 35, 0, 160, &animTree[102].debugAnimNames, 1, ...): childCount 160 bindings at tree+9808 (animTree[102] of a 96-byte XAnim_s = 9792, debugAnimNames at +16), 9808 + 160*24 = 13648. Upper bound 40456 (IDA/game-test). Blocked: XAnim_s header fields Replay writes at XAnimCreateAnimsInPlaceWithParameters@0x1414CB160 (+4 flag, +8 parent, +12 childCount, +16 keyTable, +24 dataBuffer, +32 extraBuffer, +42 extraCount, +44 treeFlags) do not match IDA's XAnim_s member offsets (numBindings @28, bindings @40), so the xanim member type is unproven; and the debug arrays (debugName, debugAnimNames, debugNames: 9824..36616) have no Replay access.",
+  "members": [
+   [0, "xanim", "XAnim_s", "CG_CreateWeaponViewModelXAnim@0x14172CE70: animTree is the tree block at ClientPlayerWeaponInfo+240 (CG_CreateWeaponViewModelXAnimDefs@0x14172D2F0 passes a4+240); header written by XAnimCreateAnimsInPlaceWithParameters@0x1414CB160. Header field offsets disagree with XAnim_s, see size_evidence"],
+   [9808, "bindings", "XAnimParameterBinding[160]", "CG_CreateWeaponViewModelXAnim@0x14172CE70: dataBuffer = &animTree[102].debugAnimNames = tree+9808, childCount 160; game-test has bindings at 36616 (not Replay)"]
+  ],
+  "changed_members": [
+   ["bindings", "offset 36616 -> 9808, 160 x 24 bytes kept", "CG_CreateWeaponViewModelXAnim@0x14172CE70 (dataBuffer tree+9808, childCount 160)"],
+   ["entries", "offset 96 -> 80 (XAnim_s header is 80 bytes; entries[608] = 80..9808 by derivation)", "derived from bindings at 9808 and 608 entries of 16 bytes; anim id 609 is an index, not a count (XAnimCreateAnimsInPlaceWithParameters writes it at +0)"],
+   ["debugName, _pad2684, debugAnimNames, debugNames", "no Replay access; 26792 bytes of the game-test/IDA struct lie beyond the Replay tree size 13648 (IDA 40456 - 13648 = 26808 = these 26792 + 16 double-counted header bytes)", "CG_CreateWeaponViewModelXAnim@0x14172CE70 and XAnimCreateAnimsInPlaceWithParameters: no access; memset stride 0x3550 proves the Replay tree is 13648"]
+  ],
+  "unconfirmed": [
+   "entries[608] at 80 and the exact count (608 vs 609): derived, no direct access found",
+   "XAnim_s header member names and types: Replay writes +4,+8,+12,+16,+24,+32,+40,+42,+44, IDA names differ (size@0, initialized@4, numBindings@28, bindings@40); not placed",
+   "debugName / debugAnimNames / debugNames: no Replay access"
+  ],
+  "notes": "Replay tree stride is 13648, not 40456. Parent ClientPlayerWeaponInfo (IDA 202520): Replay trees sit at +240, +13888, +27536, +41184 (not IDA's animsTwoHandedAltMode 40696, animsRightHanded 81152, animsLeftHanded 121608). The parent proposal belongs to the parent's owner; the 13648 stride is the evidence. Coordinator: the 13648 size and the parent offsets must be decided together."},
+ {"name": "ChallengeXPCache", "verdict": "partial", "size": null,
+  "size_evidence": "best candidate 968 (0x3C8), not applied. OnlineChallengesManager::FlushXPCache@0x140F345C0 and ResetXPCache@0x140F3A2B0 walk 64 elements with stride 968 (pad8C += 968; 968*i). Element base B = pad8C; fields read at B-164 (flag), B-156 (xuid argument), B-84 (second xuid), B-12 (platform), B-4..B+16 (xp amount, split in two 8-byte pieces), B+796 (count of 32 weapon entries). Those offsets equal IDA's element offsets 0, 8, 80, 152, 160 if the element starts at B-164. Game-test size 1240 is not supported: the Replay element ends at 968 with the count at 960.",
+  "members": [
+   [0, "is_premium", "bool", "FlushXPCache@0x140F345C0: flag read at element+0 (B-164) selects quick-BR gamemode key (mp_addxp); element base derived from the xuid/platform offsets"],
+   [8, "xuid", "bdUserAccountID", "FlushXPCache@0x140F345C0: element+8 (B-156) passed as the user id to DWAchievementEngineClient::reportUserEvent"],
+   [80, "first_party_xuid", "bdUserAccountID", "FlushXPCache@0x140F345C0: element+80 (B-84) passed with the xuid"],
+   [152, "platform", "unsigned int", "FlushXPCache@0x140F345C0: element+152 (*(B-12)) passed to reportUserEvent"],
+   [160, "xp_amount", "secure_uint64_t", "FlushXPCache@0x140F345C0: element+160 and +176 (B-4..B+0 and B+12..B+16) form the Param0 and Param4 values"]
+  ],
+  "changed_members": [
+   ["weapon", "Replay weapon entries: 32 x 24 bytes starting at element+192 (v8 = B+40 steps 24 bytes; *(v8-3) = element+192 is the id), not IDA's ChallengeWeaponXPCache[32] at 208 with 32-byte elements", "FlushXPCache@0x140F345C0 loop (v8 += 6 DWORDs); ResetXPCache@0x140F3A2B0 memset_0(.., 0x300) = 32*24 bytes, loop v12 += 6 DWORDs"],
+   ["weapon_amount", "offset 1232 -> 960", "FlushXPCache@0x140F345C0: *(int*)(B+796) = element+960 is the weapon count (loop bound)"],
+   ["battlepass_xp_amount", "offset 184 unproven", "no Replay access found; element+184 lies inside the 24-byte xp region only if xp_amount is 24 bytes (Param pieces at +160/+176 suggest it)"]
+  ],
+  "unconfirmed": [
+   "size 968 depends on the element being ChallengeXPCache (the field offsets 0..160 agree; the weapon region does not)",
+   "battlepass_xp_amount at 184: no Replay access",
+   "_pad9C, _pad4D4: not touched"
+  ],
+  "notes": "The Replay element (968) is probably the same ChallengeXPCache type with a different weapon array and no trailing 1232 region; the owner of OnlineChallengesManager (A099, A124) should confirm the m_progressionState[1] element type. Do not change the builder value 1224 or IDA 1240 from this agent. A repair would need the element type proven first (size change = coordinator decision)."},
+ {"name": "CrosslaunchHSM", "verdict": "partial", "size": null,
+  "size_evidence": "not proven. Replay touches only base offsets: CrosslaunchHSM_base::HSM_IsInState@0x141614220 (named CrosslaunchHSM_base, see renames) reads state count at this+132 and states from this+16; CrosslaunchHSM::HandleHSMCallback_WaitForControllerToBeActive@0x14102F780 reads this+24 and calls Actor_CachedSightEntityIsOwner, and its only xref is an .rdata offset at 0x1423D7408 (a callback table, not a vtable of a CrosslaunchHSM). No allocation, global, stride or by-value use of a derived CrosslaunchHSM object was found. The first-pass claim that CrosslaunchHSM objects sit at g_dwLogonHSMs + 8496*i is wrong: those elements are dwLogonHSM_xb3 (typed global, and DetermineStartOrWaitAll takes dwLogonHSM_xb3 *); the global is the dwLogonHSM_xb3 array with stride 8496.",
+  "members": [],
+  "changed_members": [],
+  "unconfirmed": [
+   "m_didWeComErrorDuringUpdate 136, m_pendingCrosslaunchController 140, m_pendingCrosslaunchXuid 144, m_hasBeenInitialized 152, m_targetMenu 153: no Replay access",
+   "m_embeddedObject192 (IDA placeholder at 192): no evidence",
+   "the 136-byte base is Replay dwLogOnHSM_base (IDA 136; base fields +16 states, +132 count agree with IDA dwLogOnHSM_base m_HSMStateStack @16 and m_HSMStateStackSize @132)"
+  ],
+  "notes": "Bounds: lower 136 (Replay base accesses reach +132..+136), upper 200 (IDA). Verdict is partial because a 200-byte allocation search was not done; strong suspicion that the derived class does not exist in this build (its members have no Replay evidence, its callback reads an unrelated object). Coordinator: consider absent after an allocation scan for 200 / 0xC8 in the HSM code. The dwLogonHSM_xb3 global stride 8496 (0x2130; DetermineStartOrWaitAll uses 2124 DWORDs) conflicts with IDA's dwLogonHSM_xb3 size 304. That is for the owner of dwLogonHSM_xb3 (A100 range), not this agent."}
+ ],
+ "renames": [
+  ["0x141614220", "CrosslaunchHSM_base::HSM_IsInState", "dwLogOnHSM_base::HSM_IsInState", "callers dwGetLogOnStatus@0x1417EC930 and dwLogonHSMs_DetermineStartOrWaitAll@0x1417ECB60 pass g_dwLogonHSMs elements (dwLogonHSM_xb3, derived from dwLogOnHSM_base) and it reads the base state count at +132 (= dwLogOnHSM_base::m_HSMStateStackSize) and states from +16"]
+ ]}

@@ -1,0 +1,46 @@
+{"agent": "A148", "structs": [
+  {"name": "ShakeState", "verdict": "resolved", "size": 228,
+   "size_evidence": "method 4 (array stride) and method 6 (parent): CG_WeaponMotionState_InitShakeStates@0x141676350: `v2 = motionState + 48; for (i = 2; ...) { ShakeState::ShakeState(v2); v2 += 228; }`, and CG_ViewMotion_UpdateShakeState@0x141678AB0 indexes `228 * *(int *)(motionState + 984) + motionState + 48`; the array of 2 ends at motionState+504 (48 + 2*228), which is where InitShakeStates writes `*(motionState + 504) = 0`, the next member. Also UpdateCinematicBlend@0x141679180 writes the tail up to +228 (`blendState + 224` float).",
+   "members": [
+     [0, "m_rotation", "ShakeStateInternal", "ShakeState::ShakeState@0x1416763F0 writes the first 100-byte sub-block (flag at +32, floats 0..96); CG_ViewMotion_UpdateCinematicBlend@0x141679180 calls UpdateBlendState(blendState, ...) on this block. Game-test name by order (cg_shake.cpp ctor sets m_rotation first); size 100 proposed for ShakeStateInternal, see that entry"],
+     [100, "m_translation", "ShakeStateInternal", "CG_ViewMotion_UpdateCinematicBlend@0x141679180: `CG_ViewMotion_UpdateBlendState(blendState + 100, ...)`; ctor writes the identical 100-byte pattern at +100 (flag at +132). Game-test name by order"],
+     [200, "m_initialized", "bool", "CG_ViewMotion_UpdateCinematicBlend@0x141679180: `if (*(_BYTE *)(blendState + 200) == 0) { ...store prev angles/origin...; *(blendState + 200) = 1; }`; ctor writes 0 at +200"],
+     [201, "_pad201", null, "no Replay access in ctor, UpdateCinematicBlend or InitShakeStates; the 3 bytes before m_prevViewAngles"],
+     [204, "m_prevViewAngles", "vec3_t", "CG_ViewMotion_UpdateCinematicBlend@0x141679180: `*(QWORD *)(blendState + 204) = viewangles.xy; *(float *)(blendState + 212) = viewangles.z;` (also written every frame after AnglesWrapDeltaU32Triple)"],
+     [216, "m_prevOrigin", "vec3_t", "CG_ViewMotion_UpdateCinematicBlend@0x141679180: `*(QWORD *)(blendState + 216) = origin.xy; *(float *)(blendState + 224) = origin.z;`; speed uses `blendState + 216/220/224` against predictedPlayerState.origin"]
+   ],
+   "changed_members": [
+     ["m_rotation", "ShakeStateInternal size 124 -> 100 (0 -> 0)", "sub-block stride 100 in UpdateCinematicBlend and ctor pattern"],
+     ["m_translation", "offset 124 -> 100, ShakeStateInternal size 124 -> 100", "CG_ViewMotion_UpdateCinematicBlend@0x141679180 `blendState + 100`"],
+     ["m_initialized (game-test 248)", "offset 248 -> 200, type bool unchanged", "UpdateCinematicBlend@0x141679180 `blendState + 200`"],
+     ["m_prevViewAngles (game-test 252)", "offset 252 -> 204", "UpdateCinematicBlend@0x141679180 `blendState + 204`"],
+     ["m_prevOrigin (game-test 264)", "offset 264 -> 216", "UpdateCinematicBlend@0x141679180 `blendState + 216`"],
+     ["_padF8 (1384 bytes at 248)", "replaced by _pad201[3] at 201, members above; size 1632 -> 228", "stride 228 in InitShakeStates and UpdateShakeState"]
+   ],
+   "unconfirmed": [
+     "m_rotation vs m_translation: the names follow game-test order (the game-test ctor and layout list m_rotation first, and Replay block +0 is the first block). Offsets are proven; which block is rotation semantically is not proven in Replay"
+   ],
+   "notes": "The first-pass 1632 size (IDA pad) is wrong and 276 (game-test/builder) is wrong: Replay strides 228 per ShakeState. The game-test 248/252/264 tail is 200/204/216 in Replay (the sub-blocks shrink from 124 to 100 each). The ShakeState ctor (ShakeState::ShakeState@0x1416763F0) writes every byte of the two 100-byte blocks and the flag at +200; it never writes +204..+228, which UpdateCinematicBlend initializes on the first frame."},
+
+  {"name": "ShakeStateInternal", "verdict": "resolved", "size": 100,
+   "size_evidence": "method 6 (parent) and method 3 (ctor pattern): ShakeState::ShakeState@0x1416763F0 writes the same 100-byte pattern at +0 and +100 (identical flag and float slots relative to block start), and CG_ViewMotion_UpdateCinematicBlend@0x141679180 calls UpdateBlendState(blendState + 100, ...), so the second block starts exactly 100 after the first. The last Replay write in the block is m_view.m_value at +96 (UpdateBlendState / ApplyBlendSample on blendState+68 writes +28 of that sub-block = +96), so the block ends at 100.",
+   "members": [
+     [0, "m_combined", "ShakePerlinScale", "CG_ViewMotion_UpdateBlendState@0x1416794C0: writes bs+0, bs+4, bs+8 as the combined scale of m_movement (bs+36) and m_view (bs+68) per component with blendSample+168 mode (1 average, 2 product, else max); ShakePerlinScale size 32 proposed, see notes"],
+     [32, "m_initialized", "bool", "CG_ViewMotion_UpdateBlendState@0x1416794C0: `if (*(bs + 32) == 0) { ...reset...; *(bs + 32) = 1; }`; CG_ViewMotion_UpdateCinematicBlend@0x141679180 writes `*(blendState + 32) = 0` and `*(blendState + 132) = 0` (second block)"],
+     [36, "m_movement", "ShakePerlinScale", "CG_ViewMotion_UpdateBlendState@0x1416794C0: `CG_ViewMotion_ApplyBlendSample(blendState + 36, sampleTime, sampleScale, blendSample + 40)`; ApplyBlendSample@0x141678F30 writes +0..+28 of its target only"],
+     [68, "m_view", "ShakePerlinScale", "CG_ViewMotion_UpdateBlendState@0x1416794C0: `CG_ViewMotion_ApplyBlendSample(blendState + 68, sampleTime, sampleWeight, blendSample + 104)`; the ctor initializes +68..+96 with the same pattern as +36..+64"]
+   ],
+   "changed_members": [
+     ["m_combined", "game-test ShakePerlinScale 40 at 0 -> ShakePerlinScale 32 at 0", "UpdateBlendState writes only +0,+4,+8 of it and the 32-byte footprint"],
+     ["m_initialized", "offset 40 -> 32", "UpdateBlendState@0x1416794C0 `bs + 32`"],
+     ["_pad29 (3 bytes at 41)", "moves to 33, 3 bytes, no Replay access", "bool at 32 then m_movement at 36"],
+     ["m_movement", "offset 44 -> 36, size 40 -> 32", "ApplyBlendSample@0x141678F30 target at bs+36, next sub-field at bs+68 (= 36 + 32)"],
+     ["m_view", "offset 84 -> 68, size 40 -> 32", "UpdateBlendState `bs + 68`; sub-block ends at 100"]
+   ],
+   "unconfirmed": [
+     "game-test names m_combined, m_movement, m_view follow game-test order (cg_shake.cpp: m_rotation.m_combined, m_rotation.m_movement, m_rotation.m_view); the Replay offsets are proven, names by order",
+     "bytes 33..35 (3-byte pad after m_initialized): no Replay access found; left as _pad33[3]"
+   ],
+   "notes": "Proposal, not applied (size change and child retype are coordinator decisions). Replay ShakePerlinScale is 32 bytes, not 40: ApplyBlendSample@0x141678F30 writes only +0..+28 (+0/+4/+8 scale defaults 1.0 and the m_initialized flag at +12 (set to 1 or 0), +16/+20/+24 instant scales from FloatCurveSampleLinear lerps, +28 m_value), and the two targets bs+36 and bs+68 are 32 apart, so a 40-byte ShakePerlinScale would alias the next one. Game-test fields m_valueInstant (+32) and m_outValueSmoothed (+36) have no Replay write and do not exist in the 32-byte layout. That is a CHILD-STRUCT PROPOSAL for ShakePerlinScale (not in this agent's entry): size 40 -> 32, delete the trailing m_valueInstant and m_outValueSmoothed unless another Replay function proves them, and the _padD (13..15) pad stays as the game-test shape. Evidence: CG_ViewMotion_ApplyBlendSample@0x141678F30 and CG_ViewMotion_UpdateBlendState@0x1416794C0."}
+ ],
+ "renames": []}

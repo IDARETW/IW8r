@@ -1,0 +1,44 @@
+{"agent": "A189", "structs": [
+  {"name": "NetRelay", "verdict": "resolved", "size": 304,
+   "size_evidence": "method 6 (parent distance): NetRegistry_InitGlobal@0x1412bc010 calls NetRelay_ctor with rcx = registry+0x10 (lea rcx,[rcx+10h] before call at 0x1412bc032) and NetRelayOverride_ctor with rcx = registry+0x140 (lea rcx,[rdi+140h] at 0x1412bc037), so NetRelay occupies 0x10..0x140 = 304 bytes. Lower bound: NetRelay::Reset@0x1412c0140 has `mov [rdi+128h], rsi` (qword clear of +296..+304), and NetRelay::Request@0x1412c0090 reads +300 (sub edx,[rbx+12Ch]).",
+   "members": [
+     [0, "baseclass_0", "dwNetRelayListener", "NetRelay_ctor@0x1412bf6c0: *(relay) = NetRelay_vftable (vptr slot of the dwNetRelayListener base, 8 bytes)"],
+     [8, "m_init", "NetInit *", "NetRelay_ctor@0x1412bf6c0: *(relay+8) = owner (the object at s_netRegistryGlobal); NetRelay::ShouldShutdownMatchmaking@0x1412bffc0 reads it; NetRelay_UpdateConnectState@0x1412bfbb0 passes [rbx+8] to NetInit::RelayConnected / IsLocalAddressUpdating"],
+     [16, "m_registered", "bool", "NetRelay::Reset@0x1412c0140: cmp byte ptr [rcx+10h],0 ; mov byte ptr [rdi+10h],1 (after FenceManager_RegisterForFenceDependenciesUpdatesForAllControllers); NetRelay_ctor writes 0 at +16. GT m_config pointer at 16 does not exist in Replay"],
+     [20, "m_connectState", "NetRelay::ConnectState (u32)", "NetRelay::Reset: mov [rdi+14h],esi (0); NetRelay::Request@0x1412c0090: mov dword ptr [rbx+14h],2; NetRelay::RelayConnected@0x1412c0010: =4; NetRelay_UpdateConnectState@0x1412bfbb0: mov ecx,[rcx+14h] and stores 6, 5, 3, 0; NetRelay_ctor writes 0"],
+     [24, "m_retryTimer", "RetryTimer", "NetRelay_ctor: RetryTimer::RetryTimer(relay+24); NetRelay::Reset: lea rcx,[rdi+18h] (RetryTimer::Init); NetRelay::Request: lea rcx,[rbx+18h] (RetryTimer::Stop @0x1412c00ae); NetRelay_UpdateConnectState: lea rcx,[rbx+18h] (RetryTimer::IsExpired / Start); NetRelay::RelayConnected: RetryTimer::Reset(this+24). Distance to +72 is 48 = RetryTimer size"],
+     [72, "m_datacenter", "char[89]", "NetRelay_ctor: memset(relay+72,0,0x59); NetRelay::Reset: mov [rdi+48h],sil (clears the first byte); NetRelay_UpdateConnectState: Core_strcopy(relay+72, 89, ...) (copy size 89); NetRelay::GetRetailDebug@0x1412bfe10: lea rcx,[rbx+48h] is the base64 input string. NetRelay_GetDcQosResultBlock@0x1412bfe00 returns relay+72"],
+     [168, "m_id", "unsigned __int64", "NetRelay_ctor: *(relay+168)=0; NetRelay::Reset: mov [rdi+0A8h],rsi; NetRelay_UpdateConnectState@0x1412bfbb0: mov [rbx+0A8h],rax (from bdRelayAuthToken::getRelayID) and cmp [rbx+0A8h],rax, mov qword ptr [rbx+0A8h],0"],
+     [176, "m_authToken", "bdClientAuthTokenResult", "NetRelay_ctor: bdClientAuthTokenResult::bdClientAuthTokenResult(relay+176,1); NetRelay_FetchAuthToken@0x1412bf9a0: lea r8,[rsi+0B0h] (= +176) passed to getRelayClientAuthToken; NetRelay::AuthTokenFetchedCallback@0x1412bf7c0: lea rcx,[r14+0C0h] (= +192, token m_result); NetRelay::Reset: lea rcx,[rdi+0B8h] / [rdi+0C0h]. Distance to +296 is 120 = GT size"],
+     [296, "m_authTokenState", "NetRelay::AuthTokenState (u32)", "NetRelay_FetchAuthToken: mov [rsi+128h],eax (result 1 or 3); NetRelay::AuthTokenFetchedCallback: mov dword ptr [r14+128h],2 (success) and 3 (failure); NetRelay::Reset: mov [rdi+128h],rsi (qword clear 296..304); NetRelay_UpdateConnectState: cmp dword ptr [rbx+128h],2 and mov eax,[rbx+128h]; NetRelay::Request: mov eax,[rbx+128h]"],
+     [300, "m_authTokenExpiry", "int", "NetRelay::AuthTokenFetchedCallback: mov [r14+12Ch],edx (ExpiryDelta + Sys_Milliseconds/1000); NetRelay::Request@0x1412c0090: sub edx,[rbx+12Ch]; NetRelay::GetRetailDebug@0x1412bfe10: mov ecx,[rbx+12Ch]"]
+   ],
+   "changed_members": [
+     ["m_config (GT 16, NetConfig *, IDA 16)", "removed: no Replay access; raw +16 is a 1-byte m_registered flag, not a pointer", "NetRelay::Reset cmp byte ptr [rcx+10h],0"],
+     ["m_registered", "moved 24 -> 16", "NetRelay_ctor, NetRelay::Reset"],
+     ["m_connectState", "moved 28 -> 20", "NetRelay::Request mov dword ptr [rbx+14h],2"],
+     ["m_retryTimer", "moved 32 -> 24", "NetRelay::Reset lea rcx,[rdi+18h]"],
+     ["m_datacenter", "moved 80 -> 72 (char[89] kept)", "NetRelay_ctor memset(relay+72,0,0x59)"],
+     ["m_id", "moved 176 -> 168", "NetRelay::Reset mov [rdi+0A8h],rsi"],
+     ["m_authToken", "moved 184 -> 176", "NetRelay_FetchAuthToken lea r8,[rsi+0B0h]"],
+     ["m_authTokenState", "moved 304 -> 296", "NetRelay_FetchAuthToken mov [rsi+128h],eax"],
+     ["m_authTokenExpiry", "moved 308 -> 300", "NetRelay::AuthTokenFetchedCallback mov [r14+12Ch],edx"],
+     ["_pad19 (IDA 25, 3 bytes) and _padA9 (IDA 169, 7 bytes)", "removed; raw 161..168 is 7 untouched bytes (between datacenter end 161 and m_id 168)", "NetRelay_ctor memset ends at 161, m_id at 168"]
+   ],
+   "unconfirmed": [],
+   "notes": "Replay layout proven from raw displacements (disassembly), not from IDA's typed decompile names: the decompiler renders some auth-token accesses through IDA's old offsets (e.g. m_authToken._pad68[8]) but the raw instructions are [r14+128h] / [rbx+128h] = +296 and [r14+12Ch] / [rbx+12Ch] = +300. Result: the IDA layout is 8 bytes too wide from +16 on because GT m_config (NetConfig *) is absent in Replay. Proposal: retype the whole struct to this 304-byte layout (size change, so coordinator only). Note for the NetInit owner: NetInit.m_relay is a 272-byte blob at +64; NetRelay_ctor is only called from NetRegistry_InitGlobal@0x1412bc010, which places NetRelay at registry+0x10, so NetInit.m_relay is not this object. NetRelayOverride is at registry+0x140 and is not part of this struct. Enums to use: ConnectState values seen 0,2,3,4,5,6; AuthTokenState values seen 1,2,3 (0 cleared in Reset)."},
+  {"name": "NetBuffer_65536_0", "verdict": "absent", "size": null,
+   "size_evidence": "no proof of size: no Replay allocation of 67368 (0x10608), 67376 (0x10610) or 66848 (0x104A0 buffer). Immediate-value searches (find_bytes) hit only stack-frame displacements in Sys_ObfuscatedGuard_JpgCapture (mov [rsp+25808h+var_...]) and unrelated functions (R_CompressedSunShadow_BuildFrustumCells, TeamBalance_MakeSquads).",
+   "members": [],
+   "changed_members": [],
+   "unconfirmed": ["m_stream (IDA 0, PacketStream_NetPacket_1288_65536_0): no Replay access"],
+   "notes": "absent: no allocation or global of this type (typed_globals empty), no by-value use inside a Replay struct (embedded_in only the IDA parent NetBuffer itself), no Replay function takes or returns it. Replay's NetLoopback does not use it: NetLoopback_InitRing@0x1412bd1c0 builds three rings of 12-byte header + 32768 data + events (32832-byte stride per ring, memset 0x8000 at ring+12, events at ring+32824) instead. Residual risk: a size computed at runtime (not as an immediate) would not show up in the immediate search."},
+  {"name": "PacketStream_NetPacket_1288_65536_0", "verdict": "absent", "size": null,
+   "size_evidence": "no proof of size: no Replay allocation of 67368 or 67376 (see NetBuffer_65536_0). PacketStream::Create@0x141b60470 is a different object (voice stream: owner, streamIndex<=1, SD_VoiceAllocate, fields at 1056..1058); PacketStream::ReadableAt@0x1415e0110 reads this+34604 (a larger object, the 32768 variant per A117).",
+   "members": [],
+   "changed_members": [],
+   "unconfirmed": ["m_writeOffset (+0), m_readOffset (+4), m_readable (+8), m_buffer (+520): no Replay access found for this 1288/65536 variant"],
+   "notes": "absent in this build as the 1288/65536 variant: the only PacketStream allocator (SD_VoiceAllocate in PacketStream::Create) builds the voice stream, and the only accessor (ReadableAt) works on a larger object. Same residual risk as NetBuffer_65536_0 (runtime-computed size not searched)."}
+ ],
+ "renames": []
+}

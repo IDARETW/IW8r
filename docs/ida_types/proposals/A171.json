@@ -1,0 +1,34 @@
+{"agent": "A171", "structs": [
+  {"name": "dwMultiFileTask", "verdict": "partial", "size": null,
+   "size_evidence": "Not proven. Lower bound 273529 = end of m_taskInUse (Replay access at +273528, dwMultiFileTask::m_taskInUse write in bdValidatedContextUserStorageFileInfo_InitSlots@0x14129e7f0: mov [rbx+42C78h], cl). Upper bound 273560: the struct instance is the global fetchState@0x14D2B0A20 (dynamic_initializer_for_bdUserStorageStaticPools@0x140342a80 passes &fetchState to InitSlots, and its 24-element arrays sit at fetchState+0x188, +0x1988, +0x30C8, +0x3548, +0x4C88, +0x425B8, all matching the IDA offsets); the next named global is controllerStatData@0x14D2F36B8 = fetchState+273560, and no xref lands in the 0x14D2F3699..0x14D2F36B8 gap. Game-test 273536 (0x42C80) lies inside these bounds but nothing in Replay proves it. No Replay whole-object clear or copy of fetchState was found (the only xrefs to its base are the initializer's lea and the InitSlots call).",
+   "members": [
+     [0, "m_fileCount", "unsigned int", "bdValidatedContextUserStorageFileInfo_InitSlots@0x14129e7f0: mov [rbx], ecx (storage->m_fileCount = 0); IDA type already right"],
+     [8, "m_fileName", "char *[24]", "InitSlots@0x14129e7f0: mov [r12-424E0h], rcx with r12 = base+0x424E8, i.e. base+8+8*i (64-bit stores, stride 8); LiveStorage_MotdFetchComplete@0x14129eb80 prints fetchState+8 as the file name (\"No MOTD file found with name [%s]\"), so element 0 is a char*"],
+     [200, "m_error", "unsigned int[24]", "InitSlots: mov [r14-60h], ecx with r14 = base+296+4*i, i.e. base+200+4*i (32-bit, stride 4)"],
+     [296, "m_fileSize", "unsigned int[24]", "InitSlots: mov [r14], ecx (base+296+4*i, stride 4); LiveStorage_MotdFetchComplete@0x14129eb80 reads and writes element 0 at 0x14D2B0B48 as dword (the size check <= 0x400 and the write back)"],
+     [392, "m_infoResult", "bdContextUserStorageFileInfo[24]", "InitSlots: lea rdi,[rbx+188h] (base of the array); dynamic_initializer_for_bdUserStorageStaticPools@0x140342a80 steps the same array (base 0x14D2B0BA8) by 32 qwords = 256 bytes, equal to the IDA element size 256"],
+     [6536, "m_infoPublisherResult", "bdFileInfo[24]", "InitSlots: lea rcx,[rbx+1988h]; initializer steps 0x14D2B23A8 by 31 qwords = 248 bytes = bdFileInfo size 248"],
+     [12488, "m_dataResult", "bdFileData[24]", "InitSlots: p_m_fileData = base+16 (lea rsi,[rbx+30D8h] = 12504) and steps 6 qwords per element (stride 48 = bdFileData size 48); the store mov [rsi+8], eax writes element 0 at +24 (bdFileData::m_fileSize), and the store of the pointer goes to +16 (m_fileData), matching bdFileData's layout"],
+     [13640, "m_queryResult", "bdFileQueryResult[24]", "InitSlots: lea rcx,[rbx+3548h]; initializer steps 0x14D2B3F68 by 31 qwords = 248 = bdFileQueryResult size 248"],
+     [19592, "m_validatedFileInfo", "bdValidatedContextUserStorageFileInfo[24]", "InitSlots: lea rax,[rbx+4C88h] (local m_validatedFileInfo = storage->m_validatedFileInfo); initializer steps 0x14D2B56A8 by 1312 qwords = 10496 = element size 10496"],
+     [271496, "m_bufferSize", "unsigned int[24]", "InitSlots: mov [r14+42360h], eax with r14 = base+296+4*i, i.e. base+271496+4*i (stride 4); decompile line m_fileSize[67800] = 0"],
+     [271592, "m_buffer", "void *[24]", "InitSlots: r12 = base+271592 stepped by 8 (base of the pointer array, decompile *m_buffer = nullptr with ++m_buffer, stride 8)"],
+     [271784, "m_context", "char[16]", "dwMultiFileTask::SetContext@0x141505930: add rcx,425A8h (=271784); mov edx,10h; call Core_strcopy (16-byte destination)"],
+     [271800, "m_userAccountID", "bdUserAccountID[24]", "InitSlots: lea rcx,[rbx+425B8h] (=271800); initializer steps 0x14D2F2FD8 by 9 qwords = 72 = bdUserAccountID size 72"],
+     [273528, "m_taskInUse", "bool", "InitSlots@0x14129e7f0: mov [rbx+42C78h], cl after xor ecx,ecx (storage->m_taskInUse = false); the last member Replay touches, so the lower size bound is 273529"]
+   ],
+   "changed_members": [],
+   "unconfirmed": [
+     "_pad4 (+4, 4 bytes): no Replay access; only the gap between m_fileCount and m_fileName, left as a pad",
+     "_pad42C79 (+273529, 7 bytes): no Replay access; inside the unproven size bounds",
+     "exact struct size: 273536 (game-test, IDA) is inside [273529, 273560] but not proven; the 0x14D2F3698..0x14D2F36B8 gap is undefined in IDA and no code reaches it",
+     "m_error element type: IDA unsigned int is 4 bytes and Replay stores 32 bits (confirmed width); game-test says bdLobbyErrorCode (not checked; size-neutral only if 4 bytes)",
+     "m_context: Replay copies 16 bytes into it via Core_strcopy; the element type char[16] is consistent but not otherwise tested"
+   ],
+   "notes": "Every confirmed offset in IDA's current layout matches Replay (IDA's 392, 6536, 12488, 13640, 19592, 271496, 271592, 271784, 271800, 273528 are right); the builder layout (+24 shift from 392 onward, prior-only) is refuted by these Replay offsets. The struct instance is the global fetchState@0x14D2B0A20 (typed by InitSlots's argument). The LiveStorage MOTD globals named s_liveStorageMotdText@0x14D2B0A28 and s_motdByteCount@0x14D2B0B48 lie inside fetchState (at +8 and +296) and are used as m_fileName[0] and m_fileSize[0]; the two names cannot both be right, see renames. dwMultiFileTask::SetContext is the only Replay function named for this class; it stores its argument at +271784 (m_context), so it is an m_context setter, not a size source. No deleting destructor, allocation, or array-stride use of this struct was found in Replay."}
+ ],
+ "renames": [
+   ["0x14D2B0A28", "s_liveStorageMotdText", "fetchState_m_fileName_0", "inside fetchState (dwMultiFileTask base 0x14D2B0A20) at +8 = m_fileName[0]: InitSlots@0x14129e7f0 stores nullptr there (mov [r12-424E0h]); LiveStorage_MotdFetchComplete@0x14129eb80 passes &fetchState to dwFetchFileComplete and reads the pointer as the file name string. Coordinator may prefer removing this global name since the address is a struct member"],
+   ["0x14D2B0B48", "s_motdByteCount", "fetchState_m_fileSize_0", "inside fetchState at +296 = m_fileSize[0]: InitSlots@0x14129e7f0 writes 0 (mov [r14], ecx); LiveStorage_MotdFetchComplete@0x14129eb80 reads it as unsigned against 0x400 and writes it back"]
+ ]
+}

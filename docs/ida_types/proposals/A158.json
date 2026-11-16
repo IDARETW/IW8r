@@ -1,0 +1,33 @@
+{"agent": "A158", "structs": [
+  {"name": "CmdBufState", "verdict": "resolved", "size": 4280,
+   "size_evidence": "method 7 (derived class) plus last-member write: CmdBufState is the base of ComputeCmdBufState (4328, proven). Game-test ComputeCmdBufState puts its first own member 'data' at 2504 = sizeof(CmdBufState) and the base's last member constantBufferAllocations at 2496 (8 bytes). Replay shift +1776 gives constantBufferAllocations at 4272 (8 bytes, written by R_ComputeCmd_InitStateFromContext@0x1418BE2C0: `*(computeCtx+4272) = gfxContext[534]`, and by R_InitComputeCmdBufState@0x1418BE0C0 in both branches) and the first own member 'data' at 4280 (written by R_InitComputeCmdBufState: `*(computeCtx+4280) = cmdBufferSet / s_rbBackendStatePtr`). Base size = 4280.",
+   "members": [
+     [0, "constantsDirty", "unsigned int[4]", "R_InitCmdBufState@0x14198AF30: `drawState->_pad0[4*j] = 0` for j<4 (16 bytes)"],
+     [16, "_pad10", null, "16..3152 unnamed: GfxConstantBuffer[4][14] would be 3136 bytes (GfxConstantBuffer is 56 bytes in IDA) but no Replay index access was read; left as pad"],
+     [3152, "cmdBufData", "void *", "R_FlushResourceTransitions@0x141988320: `(*(v3 + 208))(v3, count, cmdBufState+3168)` with v3 = *(cmdBufState+3152) (command-list vtable call taking a barrier array); R_InitComputeCmdBufState@0x1418BE0C0 stores the command list here; R_InitCmdBufState preserves `drawState->cmdBufData`. Same member as ComputeCmdBufState.cmdBufData (proven). A119's name 'device' is wrong."],
+     [3160, "_pad3160", null, "8 bytes between cmdBufData and the barrier array; no Replay access read (game-test stageConfig/wavesTotal/threadGroupsPerCu/lockThresholdWavesTotal/computeLimitsDirty do not fit this 8-byte gap and no Replay function reads them)"],
+     [3168, "resourceTransitions", "D3D12_RESOURCE_BARRIER[32]", "R_HW_AddResourceTransition@0x141988BC0: record = cmdBuf + 32*(count + 99) = cmdBuf + 3168 + 32*count, fields +0 type, +4 flags, +8 resource, +16 subresource, +20 stateBefore, +24 stateAfter; R_FlushResourceTransitions passes cmdBufState+3168 as the array. 1024 bytes end where resourceTransitionCount starts (4192), so size by elimination between confirmed members"],
+     [4192, "resourceTransitionCount", "unsigned int", "R_HW_AddResourceTransition@0x141988BC0: `++*(cmdBuf+4192)`; R_FlushResourceTransitions@0x141988320 reads and zeroes it; R_InitComputeCmdBufState zeroes it"],
+     [4200, "resourceTransitionLabels", "unsigned __int64 *[4]", "UNCONFIRMED: game-test member (32 bytes at +1776); no Replay access read"],
+     [4232, "resourceTransitionLabelValues", "unsigned int[4]", "UNCONFIRMED: game-test member (16 bytes at +1776); no Replay access read"],
+     [4248, "resourceTransitionLabelCount", "unsigned int", "R_InitComputeCmdBufState@0x1418BE0C0: `*(computeCtx+4248) = 0` (dword) in both branches"],
+     [4252, "resourceTransitionDispatchOrDraw", "bool", "R_ComputeCmd_PrepareDispatch@0x1418BE360: `*(computeCtx+4252) = 1`; R_InitComputeCmdBufState: byte write 0"],
+     [4256, "descState", "GfxDescriptorState *", "R_RebindDescriptorState@0x141879DE0: `v1 = *(int **)(ctx+4256)`; R_ComputeCmd_PrepareDispatch reads it; R_InitComputeCmdBufState stores `v8+6632` / `v6[532]`; R_InitCmdBufState preserves `_padC58[1096]`"],
+     [4264, "commandSignatureType", "unsigned int", "R_InitComputeCmdBufState@0x1418BE0C0: `*(computeCtx+4264) = 0` (dword); R_ComputeCmd_InitStateFromContext@0x1418BE2C0 same; R_InitCmdBufState zeroes `_padC58[1104]` dword"],
+     [4272, "constantBufferAllocations", "void *", "R_ComputeCmd_InitStateFromContext@0x1418BE2C0: `*(computeCtx+4272) = gfxContext[534]`; R_InitCmdBufState preserves `_padC58[1112]`. Pointer type from game-test (GfxConstantBufferAllocations *)"],
+     [4280, "data", null, "belongs to ComputeCmdBufState (4328, proven), not to CmdBufState"]
+   ],
+   "changed_members": [
+     ["size", "2504 -> 4280: IDA and game-test both say 2504; Replay's tail sits +1776 later (resourceTransitionCount 4192 = 2416 + 1776), so the struct is 1776 bytes longer than game-test's base", "R_HW_AddResourceTransition@0x141988BC0, R_InitComputeCmdBufState@0x1418BE0C0"],
+     ["constantsDirty", "unchanged name and offset, 16 bytes", "R_InitCmdBufState@0x14198AF30"],
+     ["cmdBufData (game-test 'device')", "Replay offset 3152 is the command list, not a device; the name in the A119 packet is wrong", "R_FlushResourceTransitions@0x141988320"],
+     ["resourceTransitions", "game-test 1392 moves to Replay 3168 (shift +1776), 1024 bytes", "R_HW_AddResourceTransition@0x141988BC0"]
+   ],
+   "unconfirmed": [
+     "resourceTransitionLabels 4200 (32 bytes) and resourceTransitionLabelValues 4232 (16 bytes): game-test offsets shifted by +1776, no Replay access read",
+     "constants 16..3152 (3136 bytes): GfxConstantBuffer[4][14] at 56 bytes each is size-consistent, no Replay index access read",
+     "game-test stageConfig, wavesTotal, threadGroupsPerCu, lockThresholdWavesTotal, computeLimitsDirty: no Replay function reads them (R_ExecuteComputeCmdListInternal, R_ComputeCmd_PrepareDispatch and R_ComputeCmd_SubmitLockedBatch do not), and the gap that would hold them is 8 bytes. Proposed: absent in Replay's CmdBufState; owner to confirm"
+   ],
+   "notes": "Resolved: the Replay CmdBufState is the 4280-byte base of the proven ComputeCmdBufState (4328) and GfxCmdBufState (10368). Every member Replay touches is placed: cmdBufData, the barrier array, the transition count, labelCount, dispatchOrDraw, descState, commandSignatureType, constantBufferAllocations. Note for the owner: the computeCtx object in R_InitComputeCmdBufState and R_ComputeCmd_Finish is the ComputeCmdBufState (4328), so the separate ComputeContextData packet is probably the same family; not decided here. The apply step must resize CmdBufState from 2504 to 4280, which changes the size of any by-value embedding (none found: embedded_in is empty, typed_globals empty)."}
+],
+"renames": []}

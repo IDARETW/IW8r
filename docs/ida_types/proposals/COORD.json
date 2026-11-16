@@ -32,20 +32,244 @@
      "A109: task at +8"
     ]
    ]
+  },
+  {
+   "name": "ShakePerlinScale",
+   "size": 32,
+   "size_evidence": "A148: two ShakePerlinScale sub-blocks of ShakeStateInternal are 32 bytes apart (m_movement +36, m_view +68); ApplyBlendSample writes only +0..+28",
+   "members": []
+  },
+  {
+   "name": "ClActiveClient",
+   "size": 34584,
+   "size_evidence": "A145: ClActiveClientMP's first own member timeoutcount is at +34584 (derived-class start); ClActiveClient's deleting destructor passes 34584 to the sized delete",
+   "members": []
+  },
+  {
+   "name": "ClPredictResultMP",
+   "size": 160,
+   "size_evidence": "A145: the predicted-result block in ClActiveClientMP spans 160 bytes between confirmed members (+153676 .. +153836)",
+   "members": []
+  },
+  {
+   "name": "bot_info_t",
+   "size": 29264,
+   "size_evidence": "parent distance: in bot_data_t botInfo starts at +8 (Bot_ResetBotInfo, A157) and botMatchData, its next member in game-test with no gap (gt 8 / 29440), starts at raw +29272 (A136: difficulty / personality / burst-type stores)",
+   "members": []
+  },
+  {
+   "name": "DB_DecompressState",
+   "size": 584064,
+   "size_evidence": "parent distance: in the 623488-byte loader reader (allocation and free, A150) the state is at +0 and the next member starts at +584064; game-test DB_AuthLoadReader has its next member (inInflate) right after state (280704 = sizeof, 128-byte aligned); 584064 is the 128-aligned end of the last confirmed member encryptInfo (+583968)",
+   "members": []
+  },
+  {
+   "name": "NetListener",
+   "size": 24,
+   "size_evidence": "parent distance: game-test NetThread has m_listener at +8 and the next member m_sendBuffer at +40 (no gap); in Replay the send ring starts at +32 (A159: NetThread functions), so the listener is 24 bytes",
+   "members": []
+  },
+  {
+   "name": "OnlineUserLists",
+   "size": 296632,
+   "size_evidence": "tail closure: the UserList array is game-test's last member; Replay's constructor, destructor and reset/fetch loops run 3 times (one controller), so the array is 3 x 98856 from +64 and ends at 296632 (A165), below the next-global bound 296680",
+   "members": []
+  },
+  {
+   "name": "Online_BlockList",
+   "size": 5720,
+   "size_evidence": "tail closure: PlatformBlocklist[] is game-test's last member; Replay uses only controller 0 (SetPlayerBlocked passes 0), one 5648-byte element at +72 ends at 5720 (A165), below the 5872 bound",
+   "members": []
+  },
+  {
+   "name": "ClientVisionSetData",
+   "size": 59568,
+   "size_evidence": "parent distance in two Replay-proven layouts: cg_t's cvsData region is 59568 bytes (CG_T.md, cg_t rebuilt from Replay accesses) and PipDef holds one ending where PipDef's next member starts (A167); the transitory block is 356 bytes, not 556",
+   "members": []
+  },
+  {
+   "name": "ClientPlayerWeaponInfo",
+   "size": 68480,
+   "size_evidence": "parent distance in cg_t (laid out from Replay accesses, CG_T.md): the ClientPlayerWeaponInfo member is followed by the NVG start time at +100592, 68480 bytes later; A166 confirms a 240-byte header and 13648-byte anim blocks (CG_CreateWeaponViewModelXAnimDefs memsets)",
+   "members": []
+  },
+  {
+   "name": "WeaponXAnim",
+   "size": 13648,
+   "size_evidence": "array stride: CG_CreateWeaponViewModelXAnimDefs@0x14172D2F0 clears the anim trees of ClientPlayerWeaponInfo at a 13648-byte (0x3550) stride starting at +240 (A175, A166); 240 + 5 * 13648 = 68480 = ClientPlayerWeaponInfo's Replay size",
+   "members": []
+  },
+  {
+   "name": "ChallengeXPCache",
+   "size": 968,
+   "size_evidence": "array stride: OnlineChallengesManager's m_xpCache is 64 elements of 968 bytes from +56352 ending exactly at m_xpCacheAmount (+118304) (A144); FlushXPCache@0x140F345C0 and ResetXPCache@0x140F3A2B0 step 968 (A175)",
+   "members": []
+  },
+  {
+   "name": "playlistInfo",
+   "size": 928,
+   "size_evidence": "array stride: every Replay playlist accessor steps 928 bytes per playlist record (A179); IDA's 992 is game-test's; the members after 'name' are left to the builder (only the stride and the name at +0 are certain)",
+   "members": []
+  },
+  {
+   "name": "ABFence",
+   "size": 80,
+   "verdict": "resolved",
+   "size_evidence": "array of static fence objects: FenceObjects_Init builds the fence globals at a uniform 0x50 stride (0x14B4ABA80 .. 0x14B4AC2B0, each with its own class vtable; FenceManager iterates s_fenceObjects), so every fence class is 80 bytes = FenceObject with no members of its own (coordinator, also A178 PlayerStatsFence)",
+   "members": []
+  },
+  {
+   "name": "DemonwareFence",
+   "size": 80,
+   "verdict": "resolved",
+   "size_evidence": "array of static fence objects: FenceObjects_Init builds the fence globals at a uniform 0x50 stride (0x14B4ABA80 .. 0x14B4AC2B0, each with its own class vtable; FenceManager iterates s_fenceObjects), so every fence class is 80 bytes = FenceObject with no members of its own (coordinator, also A178 PlayerStatsFence)",
+   "members": []
+  },
+  {
+   "name": "NetworkingFence",
+   "size": 80,
+   "verdict": "resolved",
+   "size_evidence": "array of static fence objects: FenceObjects_Init builds the fence globals at a uniform 0x50 stride (0x14B4ABA80 .. 0x14B4AC2B0, each with its own class vtable; FenceManager iterates s_fenceObjects), so every fence class is 80 bytes = FenceObject with no members of its own (coordinator, also A178 PlayerStatsFence)",
+   "members": []
+  },
+  {
+   "name": "UserSignedInToLiveFence",
+   "size": 80,
+   "verdict": "resolved",
+   "size_evidence": "array of static fence objects: FenceObjects_Init builds the fence globals at a uniform 0x50 stride (0x14B4ABA80 .. 0x14B4AC2B0, each with its own class vtable; FenceManager iterates s_fenceObjects), so every fence class is 80 bytes = FenceObject with no members of its own (coordinator, also A178 PlayerStatsFence)",
+   "members": []
+  },
+  {
+   "name": "PlayerStatsFence",
+   "size": 80,
+   "verdict": "resolved",
+   "size_evidence": "array of static fence objects: FenceObjects_Init builds the fence globals at a uniform 0x50 stride (0x14B4ABA80 .. 0x14B4AC2B0, each with its own class vtable; FenceManager iterates s_fenceObjects), so every fence class is 80 bytes = FenceObject with no members of its own (coordinator, also A178 PlayerStatsFence)",
+   "members": []
+  },
+  {
+   "name": "bfx__Link",
+   "size": 128,
+   "size_evidence": "derived-class start: LinkStripImpl's own members start at +128 (A191); Replay accesses stay below 128; IDA's m_subObject128 is LinkStripImpl's first member",
+   "members": []
+  },
+  {
+   "name": "AITaskBucket",
+   "size": 72,
+   "size_evidence": "four static AITaskBucket_Lazy objects at 0x1429E7770 step 72 bytes and Lazy adds no members of its own (ShouldUpdate reads only base fields), so the base is 72 (A196)",
+   "members": []
+  },
+  {
+   "name": "BgStatic",
+   "ignore_max_access": true,
+   "size_evidence": "the +662704 access comes from BG_GetCharacterInfo, which takes a cg_t* (A116, A161)",
+   "members": []
+  },
+  {
+   "name": "DWRichPresenceService",
+   "ignore_max_access": true,
+   "size_evidence": "the +16 access is in a function that belongs to DWLobbyService (A121, A181)",
+   "members": []
+  },
+  {
+   "name": "DiskReadContext",
+   "ignore_max_access": true,
+   "size_evidence": "the +296 access is from DiskFS::StartRead, whose this is the DiskFile (A118, A177)",
+   "members": []
+  },
+  {
+   "name": "GfxGlassVertex",
+   "ignore_max_access": true,
+   "size_evidence": "the +28 access is the iterator stepping to the next 28-byte vertex (A186)",
+   "members": []
+  },
+  {
+   "name": "bdBoolResult",
+   "size": 56,
+   "verdict": "resolved",
+   "size_evidence": "parent distance: in MatchmakingData the next confirmed member m_timeOut is at +64 and bdBoolResult starts at +8 (A181); IDA's 56 already matches",
+   "members": []
+  },
+  {
+   "name": "OnlineMgr",
+   "size": 24480,
+   "verdict": "resolved",
+   "size_evidence": "tail closure: m_bInitialized, game-test's last member, is at +24472 (OnlineMgr_Init, A164), after m_firstSystem +24456 / m_currentSystem +24464; 8-byte alignment gives 24480",
+   "members": []
+  },
+  {
+   "name": "OnlineProgression",
+   "size": 15600,
+   "verdict": "resolved",
+   "size_evidence": "tail closure: m_levelProgression, game-test's last member, has one element (one local client) at +15584 and ends at +15600, the highest Replay access (A155)",
+   "members": []
+  },
+  {
+   "name": "Online_Store",
+   "size": 193648,
+   "verdict": "resolved",
+   "size_evidence": "tail closure: m_recommendationsBackoff, game-test's last member, is at +193616 (32 bytes, A140: the +8 shift inside TaskCreateRequest) and ends at +193648, where the copy constructor's last read ends",
+   "members": []
+  },
+  {
+   "name": "BgPredictedEntitySystem",
+   "size": 16,
+   "verdict": "resolved",
+   "size_evidence": "tail closure: m_currentPredictionIndex, game-test's last member, is the dword at +8 (A161); with the vtable the 8-byte-aligned size is 16, inside A161's bounds 12..20",
+   "members": []
+  },
+  {
+   "name": "DBFileHandle",
+   "size": 16,
+   "verdict": "resolved",
+   "size_evidence": "tail closure: dcacheFileID, game-test's last member, is the qword at +8 (A116, A176); size 16",
+   "members": []
+  },
+  {
+   "name": "GTurretMP",
+   "size": 256,
+   "verdict": "resolved",
+   "size_evidence": "GTurretMP adds no members to GTurret in game-test (256 both); the deleting destructor in GTurretMP's own vtable (slot 1) frees 256 (A201)",
+   "members": []
+  },
+  {
+   "name": "bitarray_224",
+   "size": 28,
+   "verdict": "resolved",
+   "size_evidence": "ClientBits derives from bitarray<224> and Replay reads ClientBits at +24 (the 7th word); game-test bitarray<224> is unsigned[7] = 28. A174's 20-byte evidence is the team mask, a bitarray<160>",
+   "members": []
+  },
+  {
+   "name": "bitarray_224",
+   "members": [
+    [
+     0,
+     "array",
+     "unsigned int[7]",
+     "game-test bitarray<224>; ClientBits reads +24"
+    ]
+   ]
+  },
+  {
+   "name": "GfxCmdBuf",
+   "verdict": "partial",
+   "size_evidence": "not absent: game-test embeds it at +0 of GfxDrawCallOutput, whose Replay records step 9808 bytes (A186); A185 only checked names",
+   "members": []
   }
  ],
  "drop_size": {
   "Ragdoll": "size inferred from a front shift (A113), not measured",
-  "NetRelay": "inferred from anchors (A113)",
   "NetTelemetry": "inferred from a shift (A113)",
-  "BgAntiLag": "inferred from member offsets (A113)",
-  "ShakeState": "unconfirmed (A113)",
-  "NetBacklog": "marked PROPOSAL (A115)",
   "DObjBoneParentMap": "lower bound only (A118)",
   "ActiveClanData": "inferred from the constructor loop and tail alignment (A119)",
   "HavokPhysicsShapeViewer": "sized free in the deleting destructor is ambiguous; A125 asks for review",
-  "bfx__Navigator": "base class of bfx__NavigatorImpl (760); the 760 is the implementation's size",
-  "ClConnection": "game-test ClConnection is 16 bytes; the 322584 stride is the per-connection object of ClConnectionMP_AllocateConnections (object = slot - 269700), not proven to be this type; no typed Replay access",
-  "ParticleData": "96 inferred from the ParticleState stride assuming ParticleData is the last member (A132)"
+  "bfx__Navigator": "base class of bfx__NavigatorImpl (760); the 760 is the implementation's size"
+ },
+ "verdict_override": {
+  "GfxCmdBuf": "partial: not absent; game-test embeds it at +0 of GfxDrawCallOutput, whose Replay records step 9808 bytes (A186); A185 only checked names"
+ },
+ "force_relayout": {
+  "ClActiveClientMP": "A145: size 175576 from the per-client allocation stride (AllocateClients) and ClearClient's 0x2ADD8 memset; every member placed from Replay code; the 14 wrong-member hits come from functions typed with the base ClActiveClient",
+  "CmdBufState": "A158: size 4280 = start of ComputeCmdBufState's own member data (+4280); right-member hits 1 -> 30 against 3 new wrong ones",
+  "bitarray_224": "revert of the wave-2 20-byte resize (see bitarray_224 evidence)"
  }
 }

@@ -1,0 +1,47 @@
+{"agent": "A191", "structs": [
+  {"name": "bfx__Task", "verdict": "resolved", "size": 16,
+   "size_evidence": "method 2 + method 7: bfx::Task::scalar_deleting_dtor@0x141fbb260 is slot 0 of ??_7Task@bfx@@6B@ (0x1426831a8), the vftable that bfx::Task::Task@0x141fbaf10 stores at +0; it calls bdMemory__deallocate_5 with edx=10h (sized delete 16). Derived SimulateTask: bfx_AsyncSim_CreateTask@0x141fac310 and bfx_System_SimulateAsync@0x141fac8c0 allocate 32 bytes, call bfx::Task::Task, then store system at +16 and deltaTime at +24, so the first own member of SimulateTask is at 16.",
+   "members": [
+     [0, "__vftable", "void *", "bfx::Task::Task@0x141fbaf10: lea rax, ??_7Task vftable; mov [rcx], rax (also stored by ~Task@0x141fbb0d0 and scalar_deleting_dtor@0x141fbb260)"],
+     [8, "m_pProxy", "bfx__HandleProxy *", "bfx::Task::Task@0x141fbaf10: mov [rcx+8], rdx; ~Task@0x141fbb0d0: mov rcx,[rcx+8] then DisconnectFromTask; bfx_AsyncSim_CreateTask passes the 16-byte proxy as rdx"]
+   ],
+   "changed_members": [
+     ["size", "24 -> 16", "see size_evidence"],
+     ["m_pNext (+16)", "delete: Replay never touches +16 of a Task; +16 is SimulateTask::system (bfx_AsyncSim_CreateTask@0x141fac310: mov [v10+16], system). Not a Task member", "bfx_AsyncSim_CreateTask@0x141fac310"],
+     ["m_vftable", "optional rename to __vftable (game-test name); same offset and type", "bfx::Task::Task@0x141fbaf10"]
+   ],
+   "unconfirmed": [],
+   "notes": "The IDA layout's 24-byte size and m_pNext are not Replay facts; the first pass guessed 16 and that is now proven. The vftable symbol's later slots (_purecall, then slots that belong to other classes, e.g. RemoteFunctionCaller dtor at slot 3) show the symbol is shared with neighbours, so only slots 0 and 1 are Task's own. The sized-delete lead is validated: the sized delete with 16 is in Task's own vtable slot 0."},
+
+  {"name": "bfx__ComponentManager", "verdict": "resolved", "size": 72,
+   "size_evidence": "method 1: bfx::SystemInstance::Init@0x141fb46a0 calls MemoryManager::Malloc(..., 72, ...) and then bfx::ComponentManager::ComponentManager(v6), storing v6 as this->m_pComponentManager. The constructor writes only bytes 0..67 (eight qwords at 0..56 and a dword at 64). Methods StartComponents@0x141fadae0, StopComponents@0x141fadb40, CreateAllComponentsForSpace@0x141fad980, DestroyAllComponentsForSpace@0x141fad9d0 and the destructor@0x141fad8e0 touch no byte above 67.",
+   "members": [
+     [0, "m_components", "bfx__InstanceComponent *[8]", "bfx::ComponentManager::ComponentManager@0x141fad8b0: eight qword stores at +0,+8,...,+56 (nullptr); ~ComponentManager@0x141fad8e0: loop over [rdi+rbx*8] for rbx 0..7; StartComponents@0x141fadae0: m_components[0..7]"],
+     [64, "m_state", "unsigned int", "ComponentManager::ComponentManager@0x141fad8b0: mov [rcx+40h], eax (0); StartComponents@0x141fadae0: (m_state & 0xFFFFFFFD) != 0 test, m_state = 1; StopComponents@0x141fadb40: if m_state == 1, m_state = 2. Game-test name and offset agree (enum bfx::ComponentManager::State, 4 bytes)"]
+   ],
+   "changed_members": [
+     ["size", "576 -> 72", "method 1 above"],
+     ["_pad44 (68, 60 bytes) and m_sub128, m_sub192, m_sub256, m_sub320, m_sub384, m_sub448, m_sub512 (7 blobs of 64 bytes at 128..575, plus the 8th blob at 512)", "delete: all lie outside the 72-byte object. Replace with a 4-byte pad at 68 if the layout needs it", "method 1 above; no Replay access anywhere in the class"],
+     ["m_state", "optional retype unsigned int -> the game-test enum bfx::ComponentManager::State (same size 4) if that enum exists in this IDA; otherwise leave", "StartComponents@0x141fadae0, StopComponents@0x141fadb40"]
+   ],
+   "unconfirmed": [],
+   "notes": "The 576-byte type was a copy of an over-sized layout; the true object is 72 bytes, which matches game-test. Nothing in Replay reads or writes the m_sub blobs. The 4 bytes at 68..71 are alignment padding in the allocation and no Replay access was found there."},
+
+  {"name": "bfx__Link", "verdict": "partial", "size": null,
+   "size_evidence": "Size proven at 128 (not used here because the verdict is partial): bfx::LinkBase::LinkBase@0x141fcca20 writes a self pointer to this+120 (mov [this+120]) and the qword at +112, so sizeof(LinkBase) >= 128; bfx::LinkStripImpl::Create@0x141fce340 calls LinkBase::LinkBase(v11) and then stores its own startAnchor at v11+128, so the derived first member starts at 128 (method 7). Link::Enable@0x141fc6ac0, SetLayerMask@0x141fca8d0 and SetLinkDat@0x141fca990 all end with a tail jump to the LinkBase method with the same this, so a Link object has the LinkBase layout.",
+   "members": [
+     [0, "__vftable", "void *", "LinkBase::LinkBase@0x141fcca20: *this = bfx::LinkBase vftable (base-class bytes 0..15 are HandleTargetBase / LinkBase; not mine)"],
+     [16, "m_owner", "void *", "LinkBase::LinkBase@0x141fcca20: *(this+16) = owner; Link::Enable@0x141fc6ac0: rax = [this+10h], then [rax+10h] -> [..+8] is passed to bfx__LogLinkEnable as recorderOwner"],
+     [104, "m_linkId", "unsigned int", "LinkBase::LinkBase@0x141fcca20: mov [this+104], linkId (4th argument). Link::Enable@0x141fc6ac0: mov edx,[rdi+68h] is the linkId log argument; SetLayerMask@0x141fca8d0 and SetLinkDat@0x141fca990 use the same field as linkId. The IDA name m_layerMask is wrong: SetLayerMask keeps its layerMask argument in edx and passes it to LinkBase::SetLayerMask, never storing it at +104"]
+   ],
+   "changed_members": [
+     ["m_layerMask (+104)", "rename to m_linkId, type unsigned int (CONFIRMED by LinkBase ctor and the three Link methods; game-test has no bfx::Link layout, so this is a proposal, not a rename)", "LinkBase::LinkBase@0x141fcca20, Link::Enable@0x141fc6ac0, SetLayerMask@0x141fca8d0"],
+     ["m_handle16 (+16)", "retype unsigned __int64 -> void * (same size) and rename m_owner: it is the owner pointer, not a handle", "LinkBase::LinkBase@0x141fcca20, Link::Enable@0x141fc6ac0"],
+     ["m_subObject128 (+128, char[8])", "delete from bfx__Link: the Link object ends at 128. In the derived LinkStripImpl the bytes at +128 are startAnchor (OWORD), not a Link member", "LinkStripImpl::Create@0x141fce340: *(OWORD*)(v11+128) = startAnchor"],
+     ["size", "136 -> 128 (LinkBase size), proposal", "size evidence above"]
+   ],
+   "unconfirmed": ["bfx::Link is the Replay object whose vtable is LinkBase's (its methods forward to LinkBase). The type name bfx::Link vs bfx::LinkBase is not resolved here; the objects come from a table walked in bfx_ReplayEvent_Planner@0x141ffd978 (mov rdi,[rbx]; call Link::Enable)", "+24 (pointer, set to this+120 when zero), +32, +40 (dword from a global byte), +48..+95 (48 bytes copied from linkDesc), +100 (flags dword), +112 (qword zero), +120 (self pointer): all written by LinkBase::LinkBase, not Link methods. Their names belong to bfx::LinkBase, which is not in my entry; they are not placed here"],
+   "notes": "Verdict partial because the bytes 24..127 are the LinkBase layout that LinkBase::LinkBase fills, and that struct is outside my entry; the size 128 is proven. The coordinator can resolve bfx__Link to 128 bytes together with LinkBase. The IDA 136-byte size and m_subObject128 are not Link facts."}
+ ],
+ "renames": []
+}

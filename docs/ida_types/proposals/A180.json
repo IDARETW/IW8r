@@ -1,0 +1,49 @@
+{"agent": "A180", "structs": [
+  {"name": "DWCounter", "verdict": "resolved", "size": 16,
+   "size_evidence": "upper bound: DWWrappers::init@0x140F6B880 passes this = rdi+1B8h to DWCounter::init@0x140F72720 (lea rcx,[rdi+1B8h] immediately before call DWCounter__init); the next by-value sibling DWRichPresenceService::init gets lea rcx,[rdi+1C8h], so DWCounter ends at or before +0x10. lower bound: DWCounter::init is `mov [rcx+8], rdx; mov al,1; ret`, so its access ends at +16. Size 16 (same as game-test 16, IDA 72 is wrong).",
+   "members": [
+     [8, "m_owningWrapper", "DWWrappers *", "DWCounter::init@0x140F72720: `mov [rcx+8], rdx` (rcx = this, rdx = a1 from DWWrappers::init: `DWCounter::init(a1->m_counter, a1)`)"]
+   ],
+   "changed_members": [
+     ["m_value (+8)", "rename to m_owningWrapper and retype unsigned __int64 -> DWWrappers * (same 8 bytes)", "DWCounter::init@0x140F72720"],
+     ["_pad10 (16..64) and m_subobject (64..72)", "remove with the size change 72 -> 16 (no Replay access; game-test has no such fields)", "DWCounter::init is 8 bytes of code, nothing else touched"],
+     ["struct size", "72 -> 16", "upper and lower bound above; DWWrappers::init places DWRichPresenceService at +0x1C8, sibling of DWCounter at +0x1B8"]
+   ],
+   "unconfirmed": [
+     "baseclass_0 (BaseDWWrapper, game-test base at +0, 8 bytes): no Replay access; the type BaseDWWrapper is not in IDA ('Type not found'). Left as _pad0[8]."
+   ],
+   "notes": "Replay offset of DWCounter inside DWWrappers is +0x1B8 (game-test +0x220). DWWrappers::init stores the owner at +8 of each embedded wrapper (DWCounter::init, DWMatchMaking::init); the IDA struct DWWrappers has no DWCounter member (packet embedded_in empty). The size is proven from the sibling offsets in DWWrappers::init, which is Replay evidence, not from the parent's rebuilt size. Proposal: apply the 16-byte size only together with the DWWrappers owner's layout (the slot after +0x1B8 must be DWRichPresenceService at +0x1C8)."},
+  {"name": "DWMatchMaking", "verdict": "resolved", "size": 16,
+   "size_evidence": "upper bound: DWWrappers::init@0x140F6B880 passes this = a1 (mov rcx, rdi; call DWMatchMaking__init) so DWMatchMaking sits at +0; the next by-value sibling DWAsyncMatchMaking::init gets lea rcx,[rdi+10h], so DWMatchMaking ends at or before +0x10. lower bound: DWMatchMaking::init@0x140F728A0 is `mov [rcx+8], rdx; mov al,1; ret`, so its access ends at +16. Size 16 (game-test 16; IDA 72 is wrong).",
+   "members": [
+     [8, "m_owningWrapper", "DWWrappers *", "DWMatchMaking::init@0x140F728A0: `mov [rcx+8], rdx` (DWWrappers::init@0x140F6B880: `DWMatchMaking::init(a1, a1)`, rdx = a1)"]
+   ],
+   "changed_members": [
+     ["field8 (+8)", "rename to m_owningWrapper and retype unsigned __int64 -> DWWrappers * (same 8 bytes)", "DWMatchMaking::init@0x140F728A0"],
+     ["_pad10 (16..64) and embeddedObj (64..72)", "remove with the size change 72 -> 16 (no Replay access)", "DWMatchMaking::init is 8 bytes of code"],
+     ["struct size", "72 -> 16", "upper and lower bound above"]
+   ],
+   "unconfirmed": [
+     "baseclass_0 (BaseDWWrapper, game-test base at +0, 8 bytes): no Replay access; BaseDWWrapper is not in IDA. Left as _pad0[8]."
+   ],
+   "notes": "Replay DWMatchMaking is at DWWrappers +0 (game-test m_matchmaking +0 agrees). The first-pass note (lea rcx,[rdi+388h] -> DWMatchMaking::init) is wrong: that lea is DWLobbyService::init (m_lobbyService at Replay +0x388, game-test +0x4410). DWMatchMaking::init is called with this = a1, see DWWrappers::init scan."},
+  {"name": "bdFileID", "verdict": "partial", "size": null,
+   "size_evidence": "not proven. Game-test 56 and IDA 56 agree but no Replay size evidence exists: no constructor, allocation, memset/copy, stride or global is named or reached by this type. Replay names none (idb_query: no function named bdFileID). Lower bound 0, upper bound unknown.",
+   "members": [],
+   "changed_members": [],
+   "unconfirmed": [
+     "m_fileID (+32, unsigned __int64): game-test offset; no Replay access found in the Replay upload paths (bdContentStreaming::_postUploadFile@0x1421339F0, bdPooledStorage::_preUpload@0x14213D390, DWPooledStorage::uploadSummaryMetaData@0x140F784F0): these read buffer fields at a1+22434, a1+11354, a1+42080 and write them into a task buffer, not into a bdFileID object.",
+     "baseclass_0 / baseclass_10 (bdTaskResult, bdSerializable at 0 and 16): game-test bases; the only Replay code that builds this base pair is dwRecordEventObject_ctor@0x1420FB1B0 (bdEventInfo, not bdFileID) and it writes a bool at +32 and a qword at +36, not an 8-byte ID at +32."
+   ],
+   "notes": "Left as partial. The only embedding is game-test pooledStorageWriteFileInfo.m_outFileID (+16664, parent not rebuilt, so no parent-distance proof). Replay evidence points toward this type being absent in the shipped build (no name, no object, no access), but absence is not proven because no complete xref search over Replay code for the 56-byte object exists. The procedure does not allow absent on this evidence, so: partial."},
+  {"name": "bdEventLogID", "verdict": "partial", "size": null,
+   "size_evidence": "not proven. Game-test 56 and IDA 56 agree but no Replay size evidence: no function named bdEventLogID, no allocation, no stride. Lower bound 0, upper bound unknown.",
+   "members": [],
+   "changed_members": [],
+   "unconfirmed": [
+     "m_eventLogID (+32, unsigned __int64): game-test offset; no Replay access. The Replay event path that handles event IDs uses different layouts: bdEventLog::recordEventsMixed@0x14212DE00 reads 4-byte event types at events+36 with an 72-byte element stride (`v13 += 18` DWORDs), DWEventLog::recordEventsMixed@0x140F75A80 takes the bdEventLog object from DWLobbyService::getEventLog, dwRecordEventInternal@0x141504300 calls DWEventLog::recordEventsMixed with no bdEventLogID object.",
+     "baseclass_0 / baseclass_10 (bdTaskResult, bdSerializable): see bdFileID; the Replay record object dwRecordEventObject_ctor@0x1420FB1B0 has these bases but writes a bool at +32, so it does not hold an 8-byte m_eventLogID at +32."
+   ],
+   "notes": "Left as partial, same reason as bdFileID. dwRecordEvent@0x141503F10 and dwRecordEventInternal@0x141504300 are the Replay counterparts of the game-test dwRecordEvent family that uses bdEventLogID; the Replay versions do not take this struct. Absence is likely but not proven."}
+],
+"renames": []}

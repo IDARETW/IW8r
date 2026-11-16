@@ -1,0 +1,45 @@
+{"agent": "A177", "structs": [
+  {"name": "DiskReadContext", "verdict": "resolved", "size": 56,
+   "size_evidence": "method 4 (array stride): DiskFS::StartRead@0x140f63110 scans the pool from this+79880 with `i += 56` (loop bound 256, Sys_Error 'DiskFS: Out of read contexts (%d)'); each entry is OVERLAPPED at +0 (32 bytes), callback at +32, callbackArg at +40, inUse byte at +48; the element is 56 bytes. Game-test 64 has an extra 8-byte m_lastStartReadTime at +32 that no Replay code touches.",
+   "members": [
+     [0, "m_overlapped", "OVERLAPPED", "DiskFS::StartRead@0x140f63110: `*(_QWORD *)i = 0`, `*(_QWORD *)(i+8) = 0`, `*(_QWORD *)(i+16) = fileOffset` (Offset/OffsetHigh), `*(_QWORD *)(i+24) = 0` (hEvent); lpOverlapped = i passed to ReadFileEx"],
+     [32, "m_callback", "void (__fastcall *)(__int64, __int64)", "DiskFS::StartRead@0x140f63110: `*(_QWORD *)(i+32) = completionCallback`; on ERROR_HANDLE_EOF (38) `completionCallback(callbackArg, 1)`"],
+     [40, "m_callbackContext", "void *", "DiskFS::StartRead@0x140f63110: `*(_QWORD *)(i+40) = callbackArg`, passed back as the callback's first argument"],
+     [48, "m_inUse", "bool", "DiskFS::StartRead@0x140f63110: free-slot scan `*(_BYTE *)(i+48) != 0`; set to 1 on acquire, cleared to 0 on the ReadFileEx error paths"]
+   ],
+   "changed_members": [
+     ["struct size", "64 -> 56", "DiskFS::StartRead@0x140f63110 pool stride `i += 56`"],
+     ["m_lastStartReadTime", "remove (game-test +32, 8 bytes)", "no Replay access; Replay +32 is the callback pointer (DiskFS::StartRead@0x140f63110)"],
+     ["m_callback / m_callbackContext / m_inUse", "offsets 40 / 48 / 56 -> 32 / 40 / 48", "DiskFS::StartRead@0x140f63110"]
+   ],
+   "unconfirmed": [],
+   "notes": "Two Replay pool owners are involved: the entries live in DiskFS (see DiskFS below). The packet's replay_functions entry DiskFile::StartRead@0x140f62d20 takes a DiskFile this, not a read context, so its +256..+296 accesses do not describe this struct; DiskFS::StartRead is the real user. Applying the 56-byte size requires the DiskFS pool (m_reads) to change to DiskReadContext[256] = 14336 bytes at DiskFS+79880."},
+
+  {"name": "DiskFS", "verdict": "resolved", "size": 94216,
+   "size_evidence": "tail closure (method 4 + 6): the last member m_reads is the DiskReadContext pool at Replay +79880 (DiskFS::StartRead@0x140f63110: `i = this + 79880`, stride 56, 256 entries) = 14336 bytes, so the end is 79880 + 14336 = 94216; DiskFS alignment is 8 (vtable at +0) and 94216 % 8 = 0. Global extent check (method 5): DB_DiskFSInitialize@0x140f633d0 returns the global s_dbDiskFSState@0x1441B6230; the next named global is at 0x1441CD248, a gap of 94232 bytes, so 94216 <= size <= 94232, consistent. The builder size 94216 agrees.",
+   "members": [
+     [0, "baseclass_0", null, "DiskFS_vftable is the vtable name at +0 (the base class DB_FileSysInterface's pointer). The stores are not seen in the decompiled methods (DB_DiskFSInitialize only returns the global), so the vtable itself is UNCONFIRMED; the 8-byte slot is real because DiskFS methods are reached through it"],
+     [8, "m_files", "DiskFile[256]", "DiskFS_OpenFileHandle@0x140f62c40: `v9 = diskFs + 8`, `v9 += 312`, 256 entries ('DiskFS: Out of file handles (%d)'), handle at +264, flags at +304, path copied to +0; DiskFS::Shutdown@0x140f62bc0: `v2 = a1 + 8`, `v2 += 312`, 256 iterations, `*(QWORD*)(v2+264) != -1` leak test. So m_files is 256 * 312 = 79872 bytes (game-test DiskFile is 288, so the game-test 73728 does not apply)"],
+     [79880, "m_reads", "DiskReadContext[256]", "DiskFS::StartRead@0x140f63110: pool base this+79880, stride 56, 256 entries, Sys_Error 'Out of read contexts (256)'; entry layout as DiskReadContext"]
+   ],
+   "changed_members": [
+     ["struct size", "90120 -> 94216", "tail closure at DiskFS::StartRead@0x140f63110 (pool end 79880 + 256*56)"],
+     ["m_files", "offset 8 size 73728 -> 79872, element DiskFile 288 -> 312", "DiskFS_OpenFileHandle@0x140f62c40 (stride 312), DiskFS::Shutdown@0x140f62bc0 (stride 312)"],
+     ["m_reads", "offset 73736 -> 79880, size 16384 -> 14336, element DiskReadContext 64 -> 56", "DiskFS::StartRead@0x140f63110"]
+   ],
+   "unconfirmed": ["baseclass_0 (vtable slot at +0): the DiskFS_vftable store was not decompiled"],
+   "notes": "DiskFile is 312 bytes in Replay, not the 288 game-test and the A115 range assume. Proven fields of one DiskFile entry: path char[256] at +0 (copied by DiskFS_OpenFileHandle), state int at +256 (set to 1 on open), handle HANDLE at +264 (ReadFileEx / SetFilePointerEx / Shutdown leak test), fileFlags DWORD at +304 (`& 8` = async, checked in DiskFS::StartRead and DiskFS_ReadBlocking). The IDA DiskFile layout (lastReadEndOffset +256, lastStartReadTime +264, handle +272) disagrees with all of this; flag it to the DiskFile owner (A115 range) with size 312. DiskFS::Seek@0x140f62f50, DiskFS::Exists, DiskFS_ReadBlocking@0x140f63020 and DiskFS_WaitForFile take diskFile/reservedCtx, not DiskFS fields past +8, so nothing in them reaches past 94216."},
+
+  {"name": "InviteJoinHSM_xb3", "verdict": "resolved", "size": 800,
+   "size_evidence": "method 2 (deleting destructor): InviteJoinHSM_xb3::scalar_deleting_dtor@0x141b30470 stores `InviteJoinHSM_xb3_vftable` at [rcx] (so it sits in xb3's own vtable), calls ~InviteJoinHSM_xb3@0x140f1bd30, then `mov edx, 320h` (800) and `bdMemory::deallocate_5` when deleteFlags bit 0 is set. Sized free of 800 = sizeof(InviteJoinHSM_xb3). The base's own deleting dtor InviteJoinHSM::scalar_deleting_dtor@0x140f1bd90 also frees 800 (`mov edx, 320h`) after storing InviteJoinHSM_vftable, so the base is 800 too and xb3 adds no own bytes.",
+   "members": [
+     [0, "baseclass_0", "InviteJoinHSM", "base class: InviteJoinHSM_ctor@0x140f1bc20 writes its fields up to +795 (qword at +788); InviteJoinHSM::scalar_deleting_dtor@0x140f1bd90 frees 800 bytes after storing InviteJoinHSM_vftable. The base's own members belong to the A100 range"]
+   ],
+   "changed_members": [
+     ["_pad320", "remove (744 bytes), size 1544 -> 800", "xb3 sized delete `mov edx, 320h` at 0x141b30493"],
+     ["m_bootInvitePendingInit (game-test +800, 1 byte)", "absent in Replay: sizeof(xb3) is 800, so no byte exists at +800", "InviteJoinHSM_xb3::scalar_deleting_dtor@0x141b30470 (size 800)"]
+   ],
+   "unconfirmed": [],
+   "notes": "xb3 has no own members in Replay; every xb3 method reads base offsets (+8, +192, +340, +348, +392, +656, +660, +784 per the packet). The IDA _pad320 is wrong. For the A100 owner: InviteJoinHSM is 800 bytes by the base's own deleting dtor, and the base ctor in Replay writes +656 as qword -1, +664 as dword -1, +668 byte, +669 word, +672 dword, +676 byte, +680 dword, +696 dword, +712 dword, +720 dword, +728..+752 qwords, +760 dword, +768/+776 qwords, +784 byte, +788 qword, so the first pass's '+656/+660 int pair' reading is not the whole story. The name 'InviteJoinHSM_xb3::~InviteJoinHSM_xb3' at 0x140f1bd30 is correctly named (it is the body called from the scalar dtor). No renames."}
+ ],
+ "renames": []}

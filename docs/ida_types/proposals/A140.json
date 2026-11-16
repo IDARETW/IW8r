@@ -1,0 +1,44 @@
+{"agent": "A140", "structs": [
+  {"name": "Online_Store", "verdict": "partial", "size": null,
+   "size_evidence": "Lower bound 193648: Online_Store_CopyConstructBody-style copy in Online_Store::Online_Store@0x14106AED0 reads the last member's 16 bytes at +193632 (`*(_OWORD *)(this + 193632) = *(_OWORD *)(source + 193632)`), and m_recommendationsBackoff (Online_Backoff, 32 bytes) starts at 193616. Upper bound 193656: the next named global Online_Store-adjacent `s_onlineReleaseGuardedPtrM` sits at s_instance (0x14451E000) + 0x2F478 = 193656 (xref from data at 0x14454D478). No Replay code gives the exact size (no sized allocation: s_instance is a static global; GetInstance returns &s_instance; ScalarDeletingDtor@0x14106A920 calls deallocate without a constant). Best estimate 193648 (the gap of 8 bytes to the next global is unexplained by any Replay access).",
+   "members": [
+    [0, "baseclass_0", "OnlineSystem", "ctor stores Online_Store_vftable at +0 (Online_Store::Online_Store@0x14106AED0); copy ctor copies 8, 16, 20, 21-37-53-61 from source"],
+    [64, "m_canGetStore", "bool", "copy ctor byte at +64 (Online_Store::Online_Store@0x14106AED0)"],
+    [68, "m_canGetStoreController", "int", "Online_Store::Init@0x14106A6B0: `*(_DWORD *)(this + 68) = -1`; copy ctor dword at +68"],
+    [72, "m_gettingStore", "bool", "copy ctor byte at +72 (Online_Store::Online_Store@0x14106AED0)"],
+    [73, "m_hasStore", "bool", "copy ctor byte at +73 (Online_Store::Online_Store@0x14106AED0)"],
+    [80, "m_getStoreResponse", "bdObjectStoreGetPublisherObjectsResponse[3]", "copy ctor loop `Online_Store_CopyConstructBody(v6 + v2, v2, 1); v2 += 8296`, 3 times from +80; Online_Store::Dtor@0x14106B500 loop `this + 3121*8` stride 8296 (element size 8296 = IDA type size)"],
+    [24968, "m_storeBuffers", "unsigned char[30][2048]", "copy ctor `memcpy_0(this + 24968, source + 24968, 0xF000)` (61440 = 30 * 2048); Dtor loop ends here"],
+    [86408, "m_responseObjects", "bdObjectStoreErrorWrappedObject[3][10]", "copy ctor loop `bdObjectStoreErrorWrappedObject_copyCtor(..., v7); v7 += 3528`, 30 entries from +86408 (30 * 3528 = 105840)"],
+    [192248, "m_responseCount", "int[3]", "copy ctor qword at +192248 and dword at +192256"],
+    [192260, "STORE_RESPONSE_BUFFER_OFFSET", "int", "copy ctor dword at +192260 (copied only; no other Replay access found)"],
+    [192264, "m_canGetRecommendations", "bool", "Init@0x14106A6B0 `*(_WORD *)(this + 192264) = 0` (with 192265); copy ctor byte"],
+    [192265, "m_gettingRecommendations", "bool", "Init writes 0 via the 16-bit store at 192264; copy ctor byte at +192265"],
+    [192266, "m_hasRecommendations", "bool", "Init `*(_BYTE *)(this + 192266) = 0`; copy ctor byte at +192266"],
+    [192268, "m_recommendationController", "int", "copy ctor dword at +192268 (Online_Store::Online_Store@0x14106AED0)"],
+    [192272, "m_fetchAttemptCount", "int", "Init `*(_DWORD *)(this + 192272) = 0`; copy ctor dword at +192272"],
+    [192276, "m_product_lifespans", "StoreProductLifespan[4][10]", "copy ctor loop (6 x 128 bytes + 2 x 16 bytes = 800 from +192276, ends 193076); StoreProductLifespan is 20 bytes, so 800 = 40 entries"],
+    [193076, "m_product_lifespan_counts", "unsigned int[4]", "copy ctor 16-byte move at +193076 (IDA's 32-byte builder size is wrong)"],
+    [193092, "m_recommendationStrings", "char[4][70]", "Init `memset_0(this + 193092, 0, 0x8C)`; copy ctor copies 280 bytes from +193092 (ends 193372); element size 70 not separately proven"],
+    [193372, "_pad2F35C", null, "4 bytes between m_recommendationStrings and the request; no copy or access"],
+    [193376, "m_recommendationsRequest", "bdCommsGetMessagesRequest", "copy ctor writes vtable at +193376 and vbase vtable at +193384; copy ctor covers 88 bytes to 193464 (bdCommsGetMessagesRequest is 88 bytes)"],
+    [193464, "m_recommendationsResponse", "bdCommsGetMessagesResponse", "copy ctor writes vtable at +193464, count at +193488, pointer at +193480; Dtor writes 0 at +193480/+193488; 48 bytes to 193512"],
+    [193512, "m_recommendationRequestTask", "TaskCreateRequest", "Replay TaskCreateRequest is 72 bytes, not 64: copy ctor fields at 193512 (int), 193516 (int), 193520 (ptr), 193528 (ptr), 193536 (ptr), 193544 (bdReference, refcount at +8), 193552 (second bdReference, refcount at +8, not in game-test), 193560 (ptr), 193568 (ptr), 193576 (bool), 193580 (dword); end 193584. Dtor@0x14106B500 calls OnlineTaskRequest_dtor(this + 193512)"],
+    [193584, "m_storeConfigBackoff", "Online_Backoff", "Online_Store::Init@0x14106A6B0: `Online_Backoff::Init(this + 193584, 1000, 10, ...)`; copy ctor 32 bytes at 193584 (IDA has 193576, which is 8 bytes early)"],
+    [193616, "m_recommendationsBackoff", "Online_Backoff", "copy ctor 32 bytes at 193616 (ends 193648); IDA has 193608"]
+   ],
+   "changed_members": [
+    ["m_storeConfigBackoff", "193576 -> 193584", "Online_Store::Init@0x14106A6B0 `this + 193584`; copy ctor 193584..193616"],
+    ["m_recommendationsBackoff", "193608 -> 193616", "copy ctor 193616..193648"],
+    ["m_recommendationRequestTask", "TaskCreateRequest 64 -> 72 bytes (child change, shared type)", "copy ctor 193512..193584; field offsets above"],
+    ["m_product_lifespan_counts", "IDA builder 32 bytes: no change, stays unsigned int[4] = 16 bytes", "copy ctor 16-byte move at 193076"]
+   ],
+   "unconfirmed": [
+    "size: 193648 (lower bound proven) or 193656 (upper bound from the next global); no Replay constant or allocation pins it",
+    "TaskCreateRequest +40 second bdReference (193552): refcount is incremented in the copy ctor (`_InterlockedExchangeAdd(v26 + 8, 1)`), its type and name are not known",
+    "m_recommendationStrings element size 70 (copy shows 280 bytes; 16-byte steps only seen in ctor)",
+    "STORE_RESPONSE_BUFFER_OFFSET: copied only, no other Replay reader found"
+   ],
+   "notes": "Layout matches game-test from 0 through 193076 and from 193376 with the copy constructor's exact offsets; the only Replay shift is +8 inside m_recommendationRequestTask (72 bytes), so m_storeConfigBackoff and m_recommendationsBackoff move from 193576/193608 to 193584/193616, and the end is 193648. Conflict for the child owner of bdCommsGetMessagesRequest (88 bytes): Online_Store::Dtor@0x14106B500 calls bdStructBufferSerializable dtor at this+193392 (request +16, IDA m_context) and bdReferencable dtor at this+193448 (request +72, IDA _pad48). IDA's request layout may be wrong there; not applied here. Online_Store::s_instance is a static global at 0x14451E000 (no allocation)."}
+ ],
+ "renames": []}

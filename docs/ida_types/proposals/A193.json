@@ -1,0 +1,55 @@
+{"agent": "A193", "structs": [
+  {"name": "bfx__Repulsor", "verdict": "resolved", "size": 184,
+   "size_evidence": "method 1 (allocation): bfx_Repulsor_Create@0x142031950 calls MemoryManager::Malloc(allocator, 184, ...) (and the allocator-vtable path with 184) and stores bfx::RepulsorImpl::vftable at +0; bfx::NavigatorImpl::EnableRepulsor@0x14202be60 also calls Malloc(..., 184, ...) right before bfx_RepulsorImpl_ctor@0x142031590, which stores the same vftable at +0. Max Replay access is dword +180 (end 184). Deleting dtor bfx::RepulsorImpl::scalar_deleting_dtor@0x142031860 frees `this` through MemoryManager::Free / allocator vtable with no size, so it adds no size proof.",
+   "members": [
+     [0, "__vftable", "void *", "bfx_Repulsor_Create@0x142031950, bfx_RepulsorImpl_ctor@0x142031590: store bfx::RepulsorImpl::vftable at +0; scalar_deleting_dtor@0x142031860 resets it"],
+     [16, "m_pSpace", "bfx__Space *", "bfx::Repulsor::SetPos@0x142032130 and SetVel@0x1420324a0: (*(this+16))+140 is the space matrix; scalar_deleting_dtor: GetNavigatorSpaceComponent(*(this+16)); Create stores the space pointer at +16"],
+     [24, "m_pNBody", "void *", "SetPos@0x142032130: bfx::NBody::MoveAABB(*(this+24), *(this+120), bounds); scalar_deleting_dtor: NBody::DestroyAABB(*(this+24), *(this+120))"],
+     [32, "m_pos", "bfx__Vec3", "SetPos@0x142032130 writes +32,+36,+40 (TransformPoint result); bfx_RepulsorImpl_MoveByDelta@0x142031fc0 adds delta to +32..+40; GetSolverPos@0x142031f60 fallback reads m_pos"],
+     [44, "m_vel", "bfx__Vec3", "bfx::Repulsor::SetVel@0x1420324a0 writes +44, +48, +52 from bfx_Matrix_TransformVector of the velocity"],
+     [80, "m_bulk", "float", "bfx::Repulsor::SetBulk@0x1420320a0 writes float +80; bfx::NavigatorImpl::EnableRepulsor@0x14202be60 stores navigator+208 at +80 after the ctor call"],
+     [84, "m_repulsorType", "int", "bfx::Repulsor::SetRepulsorType@0x142032430 writes +84 (clamped to 15); bfx_Replay_ReadRepulsorRecord@0x14202e920 reads record key 'type' into the value bfx_Repulsor_Create stores at +84"],
+     [88, "m_multiplier", "float", "bfx::Repulsor::SetMultiplier@0x142032100 writes float +88 (ctor@0x142031590 also writes 1.0 there)"],
+     [92, "m_filterMask", "unsigned int", "bfx::RepulsorImpl::GetNearbyRepulsors@0x142031e90 tests (other+96) & (this+92): this+92 is the query mask. CONFLICT: ctor@0x142031590 writes identityFlags at +92, bfx_Repulsor_Create writes repulsorType at +92"],
+     [96, "m_identityFlags", "unsigned int", "bfx::Repulsor::SetIdentityFlags@0x1420320d0 writes +96; GetNearbyRepulsors reads other+96. CONFLICT: ctor@0x142031590 and bfx_Repulsor_Create write repulsorType at +96"],
+     [104, "m_radius", "float", "SetPos@0x142032130 and MoveByDelta@0x142031fc0 read float +104 (bounds = pos +/- radius); ClampToRadius@0x142030640 receives the radius separately"],
+     [112, "m_handle", "void *", "scalar_deleting_dtor@0x142031860 calls the handle release on this+112; ctor and Create zero +112"],
+     [120, "m_pNBodyAABB", "void *", "SetPos and MoveByDelta pass *(this+120) to bfx::NBody::MoveAABB as the bounds node; scalar_deleting_dtor passes it to NBody::DestroyAABB; ctor and Create store bfx::NBody::CreateAABB's result here"],
+     [128, "m_userData", "void *", "bfx_RepulsorImpl_ctor@0x142031590 stores its userData argument at +128"],
+     [144, "m_pfnGetInitialConstraint", "void *", "bfx::RepulsorImpl::GetInitialConstraint@0x142031e70 calls *(this+144)(*(this+168), a2) when non-null"],
+     [152, "m_pfnMoveByDelta", "void *", "bfx_RepulsorImpl_MoveByDelta@0x142031fc0 calls *(this+152)(*(this+168), delta) when non-null, otherwise moves +32..+40 itself"],
+     [168, "m_callbackObject", "void *", "GetInitialConstraint@0x142031e70 and MoveByDelta@0x142031fc0 pass *(this+168) as the first argument of the callbacks at +144 and +152"],
+     [180, "m_repulsorId", "int", "SetBulk, SetPos, SetVel, SetIdentityFlags, SetRepulsorType, SetMultiplier all pass *(this+180) to bfx::LogRepulsorSet*; ctor and Create assign it from the global counter (*(v+48))++. IDA name m_state is wrong (rename)"]
+   ],
+   "changed_members": [
+     ["m_state", "rename to m_repulsorId", "SetBulk@0x1420320a0 and the other Set* functions pass *(this+180) to the log functions"],
+     ["m_repulsorType (84) and m_identityFlags (96)", "placement agrees with the setters; the ctor and Create writes at 84..96 disagree (see members 92 and 96)", "bfx_RepulsorImpl_ctor@0x142031590 and bfx_Repulsor_Create@0x142031950"]
+   ],
+   "unconfirmed": [
+     "+8 (8 bytes): zeroed by ctor and Create; base HandleTargetBase state (scalar_deleting_dtor calls HandleTargetBase::~HandleTargetBase on this)",
+     "+56 (vec3): ctor copies the extents vector here, Create copies the outVec here; no Replay reader found",
+     "+68 (vec3): ctor copies the offsets vector here, Create copies position here; no Replay reader found",
+     "+100 (float): ctor and Create write radius here as well as +104; no reader found",
+     "+136 (byte): zeroed by ctor and Create; no reader found",
+     "+160 (pointer): GetSolverPos@0x142031f60 reads m_solverData.m_pGetPosFunc and m_pObject (object at +168); the offset of m_pGetPosFunc is inferred to be +160 from the +168 object slot, not read directly",
+     "+176 (dword): zeroed by ctor and Create; no reader found"
+   ],
+   "notes": "Size 184 is proven by two allocation sites. Placement is proven by the Set* functions and the readers for +16..+44, +80..+88, +96, +104, +112, +120, +144..+168 and +180. The ctor and Create writes disagree with the setters on +92 and +96 (repulsorType vs identityFlags); Create also writes FLT_MAX at +80 after its default, and the record reader names its parameters inconsistently (key 'multiplier' feeds an int that Create stores as identityFlags). The coordinator should decide 92/96 from the record and log semantics. The object's vtable is bfx::RepulsorImpl, so the game-test name bfx::Repulsor maps to the RepulsorImpl object."},
+  {"name": "bfx__VolumePathSegment", "verdict": "resolved", "size": 40,
+   "size_evidence": "method 4 (array stride): bfx_VolumePathSegmentArray_ExpandCapacity@0x14201bdc0, _Reserve@0x14201bf50, _PushBack@0x14201c0c0 and _AppendRef@0x14201c180 all use 40 * n for the element buffer and copy elements with 40-byte steps; each element holds QWORD +0, QWORD +8, DWORD +16, QWORD +20, DWORD +28 and QWORD +32. Max access is +32 + 8 = 40, so the end matches.",
+   "members": [
+     [16, "m_field16", "int", "AppendRef@0x14201c180 and PushBack@0x14201c0c0 copy a 4-byte value at +16; no Replay reader found (name is only a placeholder)"],
+     [20, "m_endPos", "bfx__Vec3", "bfx::VolumePathSegment::GetEndPos@0x14201a490 returns this+20 (the address of a vec3); AppendRef and PushBack copy +20 (8 bytes) and +28 (4 bytes)"],
+     [32, "m_pVolumeRef", "void *", "bfx::VolumePathSegment::GetVolume@0x14201a580: v3 = *(this+32), then *v3 goes to bfx::Handle::Handle; AppendRef releases the HandleProxy at +32 (bits at proxy+8)"]
+   ],
+   "changed_members": [
+     ["m_field0 .. m_field2 (IDA +0, +4, +8)", "replace with an unnamed 16-byte block at +0 (two QWORDs copied by the array code) and the members above", "AppendRef@0x14201c180, PushBack@0x14201c0c0, Reserve@0x14201bf50: QWORD +0 and +8 copy"],
+     ["m_endPos", "type bfx__Vec3 at +20 (was null)", "GetEndPos@0x14201a490"]
+   ],
+   "unconfirmed": [
+     "+0 (16 bytes): copied as two QWORDs by the array code; no per-field reader found, so no member name",
+     "+16 int: name is a placeholder, no Replay reader"
+   ],
+   "notes": "The 12-byte IDA layout is too small, as the first pass said: the struct is a 40-byte array element (VolumePathSegmentArray stride 40). The first pass's +20 and +32 are confirmed, and m_pVolumeRef is a HandleProxy-style pointer (the proxy holds the target and a refcount in bits_8)."}
+ ],
+ "renames": []}

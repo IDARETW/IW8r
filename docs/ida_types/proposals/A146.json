@@ -1,0 +1,47 @@
+{"agent": "A146", "structs": [
+  {"name": "BG_SpawnGroup_Loot_Table", "verdict": "resolved", "size": 165352,
+   "size_evidence": "method 1 and method 3, two independent sites: ScriptableSv_SpawnLootInstances@0x14130D210 does s_scriptableSvLootCache = Mem_HunkUser_AllocInternal(s_scriptableSvWorkBuffer, 165352, 8) then memset_0(..., 0x285E8) (= 165352), passes it as outBuffer to BG_SpawnGroup_Loot_Spawn and stores the scriptableDefMap pointer at +51672; ScriptableCl_InitLootInstancesForClient@0x1412EA900 does the same with Mem_HunkUser_AllocInternal(s_scriptableClHunkUserTable[v4], 165352, 8) and memset_0(v7, 0, 0x285E8). Tail check: BG_SpawnGroup_Loot_ResolveBrAmmoItem@0x140D38CA0 stores ammoMaximums at this+4*n+165332 for n = 0..4, so the last member ends exactly at 165352.",
+   "members": [
+     [0, "table", "StringTable *", "BG_SpawnGroup_Loot_ParseTable@0x140D380B0: this->table = tableAsset (first statement)"],
+     [8, "itemTypes", "void *[50]", "ParseTable: this->itemTypes[v21]; FindOrAddTypeIndex@0x140D36950: this + 8*v6 + 8 = a2 (v6 < 0x32)"],
+     [408, "itemTypeIndexCache", "unsigned __int8", "ParseTable: this->itemTypeIndexCache = 0xFF; FindOrAddTypeIndex: this+408 = v6 when name is 'cache...'"],
+     [409, "itemTypeIndexKiosk", "unsigned __int8", "FindOrAddTypeIndex@0x140D36950: this+409 = v6 for 'kiosk...'"],
+     [410, "itemTypeIndexTablet", "unsigned __int8", "FindOrAddTypeIndex: this+410 = v6 for 'tablet...'"],
+     [411, "itemTypeIndexDropkit", "unsigned __int8", "FindOrAddTypeIndex: this+411 = v6 for 'dropkit' (I_strnicmp)"],
+     [412, "itemTypeIndexWeapon", "unsigned __int8", "FindOrAddTypeIndex: this+412 = v6 for 'weapon...'; no index byte at 413 (see changed_members)"],
+     [413, "itemTypesDisabled", "unsigned __int8[50]", "ParseTable: v38 = this + j, v38[413] read/set for j < itemTypeCount (disabled[j] = byte 413+j); also *(&this->itemTypeIndexAttraction + v21) = 1 for a matched type index v21; FindOrAddTypeIndex: this+413+count = 0 for a new type"],
+     [463, "itemTypeCount", "unsigned __int8", "ParseTable: this->itemTypeCount = 1 and loops to this->itemTypeCount; FindOrAddTypeIndex: v6 = this+463, cap 0x32; PickSingleItem@0x140D34240: *(a1+463) (A114)"],
+     [464, "itemDefs", "BG_SpawnGroup_Loot_ItemDef[200]", "ResolveBrAmmoItem: *(this + (v8<<8) + 464) compared with scriptableDef; ParseTable: &this->itemDefs[0].type at 484 with stride 256; itemDefs[k] stride 256 confirmed by (k<<8)+464 in ResolveBrAmmoItem and ScriptableCl_Init (v19 + (i<<8) + 464)"],
+     [51664, "itemDefCount", "unsigned __int8", "ParseTable: this->itemDefCount = 1; ResolveBrAmmoItem: *(this+51664) loop bound; Sv/Cl Spawn loops read *(v+51664)"],
+     [51672, "scriptableDefMap", "ntl::fixed_map<ScriptableDef const *,BG_SpawnGroup_Loot_ItemDef const *,200,ntl::less<...>> *", "ScriptableSv_SpawnLootInstances and ScriptableCl_InitLootInstancesForClient: pointer to a 9656-byte hunk object (200 nodes of 48 bytes at +0, red-black header at +9600..+9656) stored at +51672; both read it back as the tree root"],
+     [51680, "sets", "BG_SpawnGroup_Loot_Set[30]", "BG_SpawnGroup_Loot_PickSingleItem@0x140D34240: 3712*SetIndex + this + 51680 (A114); ParseTable: this->sets[3712*k + 3704] |= 4 (3704 = set flags); 30 by elimination up to setCount at 163040"],
+     [163040, "setCount", "unsigned __int8", "ParseTable: this->setCount = 1; Spawn: outBuffer->setCount loop bound; FindOrAddSet@0x140D36810 reads [rcx+27CE0h]"],
+     [163041, "setForZoneDefault", "unsigned __int8", "ParseTable: this->setForZoneDefault = 0 and test; PickSingleItem: *(a1+163041) (A114); ParseZoneToSetMapping@0x140D38AD0 writes [rsi+27CE1h]"],
+     [163042, "cacheSetForZoneDefault", "unsigned __int8", "ParseTable: this->cacheSetForZoneDefault = 0; ParseZoneToSetMapping writes [rsi+27CE2h]"],
+     [163043, "setForZone", "unsigned __int8[1000]", "ParseTable: memset(this->_pad27CE3, 0, 0x3E8) clears exactly 1000 bytes at 163043; ParseZoneToSetMapping: [rdi+rsi+27CE3h] per zone index; SpawnZone@0x140D36190: movzx [rbp+rdx+27CE3h]"],
+     [164043, "cacheSetForZone", "unsigned __int8[1000]", "ParseZoneToSetMapping@0x140D38AD0: byte store [rdi+rsi+280CBh] (= 164043 + zone index); length 1000 is the game-test value, NOT proven (see unconfirmed)"],
+     [165328, "cacheFixedForZone", "bool[4]", "ParseTable: mov byte ptr [this+285D0h], 0 (element 0 only); length 4 by elimination to ammoMaximums at 165332; the game-test bool[1000] cannot fit before the 165352 end"],
+     [165332, "ammoMaximums", "int[5]", "BG_SpawnGroup_Loot_ResolveBrAmmoItem@0x140D38CA0: *(this + 4*nameIndex + 165332) = value (nameIndex 0..4, called from ParseTable with 0..4); ends at 165352 = size"]
+   ],
+   "changed_members": [
+     ["itemTypeIndexAttraction", "remove (IDA byte at 413)", "Replay has five index bytes 408..412 only (FindOrAddTypeIndex); 413 is itemTypesDisabled[0]"],
+     ["itemTypesDisabled", "unsigned __int8[49] at 414 -> unsigned __int8[50] at 413", "ParseTable v38[413] with j < itemTypeCount; itemTypeCount is at 463, so 413..462 = 50 bytes"],
+     ["sets", "unsigned __int8[111360] -> BG_SpawnGroup_Loot_Set[30] (same size 111360)", "PickSingleItem and ParseTable both index it with stride 3712; retype is same-size (allowed by rule 2 when applied)"],
+     ["cacheFixedForZone", "bool[1000] at 165328 -> bool[4] at 165328", "only element 0 is accessed (ParseTable); the array would run past the 165352 end"],
+     ["_pad289B8", "remove (160 bytes at 166328)", "Replay ends at 165352, so the IDA tail is past the object"],
+     ["_pad27CE3", "unsigned __int8[2285] at 163043 -> setForZone[1000] at 163043 plus pad to 164043 and cacheSetForZone[1000] at 164043 plus pad to 165328", "memset of 1000 bytes at 163043 (setForZone) and byte stores at 164043 + zone index (cacheSetForZone)"],
+     ["_padC9D1", "7 bytes at 51665 remain pad", "no Replay access; 51664 is itemDefCount, 51672 is scriptableDefMap; the 7 bytes between them are never touched"],
+     ["ammoMaximums (new)", "add int[5] at 165332", "ResolveBrAmmoItem stores this+4*n+165332 for n 0..4"]
+   ],
+   "unconfirmed": [
+     "cacheSetForZone length 1000 (game-test). Replay proves the start (164043) and that the array ends at or before 165328 (cacheFixedForZone), so the length is at most 1285; 1000 is the game-test value",
+     "165043..165328 (285 bytes): no Replay access found in the BG_SpawnGroup functions or in ScriptableSv/ScriptableCl; left as pad. It may hold game-test cacheSets[100] / cacheSetCount / rarities[320], but no exact fit was found (285 is not a sum of game-test members)",
+     "rarities, cacheSets, cacheSetCount, weaponMapCopied (game-test tail) have no Replay access and no room between 165043 and 165352 for the full game-test sizes; absent at table level or moved elsewhere, not proven",
+     "cacheFixedForZone is bool[4] by elimination only; the only access is element 0 (store of false), so the element type is bool only if the store is a bool store (it is a byte store of 0)",
+     "setForZone name from game-test order; the 1000-byte clear proves the length, not the name"
+   ],
+   "notes": "Size 165352 (0x285E8) is proven by two allocation sites that also clear the whole object, and the last confirmed member (ammoMaximums at 165332) ends exactly there. IDA's 166488 is wrong (its tail cacheFixedForZone bool[1000] at 165328 and _pad289B8 extend past the allocation). Replay layout follows the game-test order only where Replay code confirms it: setForZone and cacheSetForZone are 1000-byte per-zone arrays, cacheFixedForZone and ammoMaximums follow. The ItemDef at 464 (stride 256) has maxStackSize at +252 by ResolveBrAmmoItem: *(this + (v8<<8) + 716) (outside my range, for the ItemDef owner). The scriptableDefMap hunk object of 9656 bytes is a separate fixed_map (not in my entry)."
+  }
+ ],
+ "renames": []
+}

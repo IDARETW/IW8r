@@ -1,0 +1,80 @@
+{"agent": "A166", "structs": [
+ {"name": "ClientPlayerWeaponInfo", "verdict": "partial", "size": null,
+  "size_evidence": "lower bound 54832 and upper bound 68480, not proven. Lower: header 240 bytes plus four 13648-byte blocks at +240, +13888, +27536, +41184; CG_CreateWeaponViewModelXAnimDefs@0x14172d2f0 clears each with memset_0(a4+X, 0, 0x3550) (0x3550 = 13648) and the three stride steps are exactly 13648. Upper: cg_t member playerWeaponInfo starts at cg_t+32112 (cg_t layout from the earlier pass, cachedState = v12->playerWeaponInfo in CG_Weapon_ChangeViewmodelDobj@0x14173b1d0), and CG_Suit_UpdateNightVisionTransition@0x141732ef0 reads localClient+100592 (NVG start time), so the region ends at or before cg_t+100592, which is 68480 bytes after +32112. Fifth block (animsTurret, +54832) has no Replay reader: searched CG_CreateWeaponViewModelXAnim, CG_CreateWeaponViewModelXAnimDefs, CG_Weapon_InitHandAnimTree, CG_Weapon_ResolveHandAnimState, CG_Weapon_AddViewmodelHeldModels, CG_Weapon_ResolveViewmodelHeldModel, CG_Weapon_UpdateActiveViewmodelHands, CG_Weapon_UpdateCachedViewmodelInfo, CG_Gesture_UpdateViewmodelStateAnim, CG_Weapon_AddViewmodelHand, CG_Turret_GetAnimsForEntityType (turret anims come from BG_Turret_GetAnimsForTurretWeap), CG_Turret_ApplyViewmodelFlags, CG_Weapon_ResolveNvgHalfAdsWeights for displacements 0D630h and 15420h: no match.",
+  "members": [
+   [0, "handModel", null, "CG_Weapon_ChangeViewmodelDobj@0x14173b1d0: *(_QWORD *)v12->playerWeaponInfo = v85 (pointer write); read as *(_BYTE **)v4->playerWeaponInfo in CG_UpdateViewWeaponAnim@0x141738b90"],
+   [8, "gogglesModel", null, "CG_Weapon_ChangeViewmodelDobj: *(_QWORD *)(playerWeaponInfo+8) passed to DObj_InitModelPartRecord; same offset as game-test gogglesModel"],
+   [16, "weapon", "Weapon", "CG_RegisterWeapon@0x141734a20: memcmp(cachedState+16, viewmodelWeapon, 0x3C) and copy 16+16+16+8+4 bytes into +16..+76; CG_UpdateViewWeaponAnim memcmp(&playerWeaponInfo[16], ViewmodelWeapon, 0x3C)"],
+   [136, "accessoryWeapon", "Weapon", "CG_UpdateViewWeaponAnim: memcmp(&Buf1_8, &v31->playerWeaponInfo[136], 0x3C) and copy of 16+16+16+8+4 bytes at +136/+152/+168/+184/+192"],
+   [196, "skydiveViewmodelState", "unsigned int", "CG_UpdateViewWeaponAnim: *(int*)[196] = CG_Skydive_GetPressType(...); CG_RegisterWeapon compares *(int*)(cachedState+196)"],
+   [201, "isAlternate", "bool", "CG_UpdateViewWeaponAnim: playerWeaponInfo[201] = v48 (dual-hand flag); CG_Weapon_ChangeViewmodelDobj reads v20 = playerWeaponInfo[201]"],
+   [203, "isWeaponDefault", "bool", "CG_UpdateViewWeaponAnim: CG_Weapon_TouchViewmodelModels(v1, v6, playerWeaponInfo[203], ...): same call shape as game-test CG_TouchViewModel(..., isWeaponDefault, ...) (read only)"],
+   [204, "gogglesAreHidden", "bool", "CG_Weapon_ChangeViewmodelDobj: playerWeaponInfo[204] = 0 after the helmet part init"],
+   [208, "meleeComboSeqIdx", "int", "CG_UpdateViewWeaponAnim: *(int*)[208] = predictedPlayerState.weapCommon[2552]; CG_RegisterWeapon compares *(int*)(cachedState+208)"],
+   [228, "isAccessoryHidden", "bool", "CG_UpdateViewWeaponAnim: *(WORD*)[228] = 257 on accessory change; playerWeaponInfo[228] = v34 (accessory hidden flag)"],
+   [229, "isAccessoryDefault", "bool", "CG_UpdateViewWeaponAnim: *(WORD*)[228] = 257 writes [229] = 1; playerWeaponInfo[229] = v33"],
+   [232, "carryObjectIndex", "unsigned int", "CG_UpdateViewWeaponAnim: *(int*)[232] = predictedPlayerState.carryState.carryObjectIndex (or 64 when no weapon); CG_RegisterWeapon compares *(int*)(cachedState+232)"],
+   [240, "animsTwoHanded", null, "CG_CreateWeaponViewModelXAnimDefs@0x14172d2f0: memset_0(a4+240, 0, 0x3550); tree passed to CG_CreateWeaponViewModelXAnim as a4+240 (normal anims). 13648-byte block, not 40456"],
+   [13888, "animsTwoHandedAltMode", null, "CG_CreateWeaponViewModelXAnimDefs: memset_0(a4+13888, 0, 0x3550); tree passed as a4+13888 for altAnimArray"],
+   [27536, "animsRightHanded", null, "CG_CreateWeaponViewModelXAnimDefs: memset_0(a4+27536, 0, 0x3550); v15 = a4+27536 for xAnimsRightHanded"],
+   [41184, "animsLeftHanded", null, "CG_CreateWeaponViewModelXAnimDefs: memset_0(a4+41184, 0, 0x3550); v16 = a4+41184 for xAnimsLeftHanded"]
+  ],
+  "changed_members": [
+   ["animsTwoHanded, animsTwoHandedAltMode, animsRightHanded, animsLeftHanded", "WeaponXAnim 40456 -> 13648-byte block at the same offsets 240, 13888, 27536, 41184", "CG_CreateWeaponViewModelXAnimDefs memset_0 size 0x3550 and the 13648 stride; WeaponXAnim type (40456) is the game-test layout and does not match Replay"],
+   ["animsTurret", "removed or left unproven at +54832 (13648 bytes); the 5th block has no Replay reader", "see size_evidence"]
+  ],
+  "unconfirmed": [
+   "animsTurret at +54832: no Replay reader found (see size_evidence); the game-test and IDA member exists but the Replay struct may end at 54832",
+   "turretWeapon (+76, Weapon 60): no Replay access found",
+   "hideReticle (+200), isWeaponHidden (+202): no Replay access found in the functions read",
+   "meleeStartTime (+212, int[2]), turretFireTime (+220), turretFireEnt (+224): no Replay access found (CG_Entity_PlayTurretAnims is not a Replay name)",
+   "pads +205..+207, +230..+231, +236..+239: unassigned"
+  ],
+  "notes": "Replay ClientPlayerWeaponInfo is the 68480-byte playerWeaponInfo region of cg_t (CG_RegisterWeapon and CG_CreateWeaponViewModelXAnimDefs both take cachedState = that region and memcmp it at +16). The 240-byte header is confirmed at the offsets above. The anim blocks are 13648 bytes each, not the game-test 40456, so the IDA WeaponXAnim type (202520 total) cannot be right for Replay; a resize proposal for the coordinator: total 68480 if the 5th block is confirmed, 54832 otherwise. Do not apply until the 5th block question is settled. Extra: the cg_t member playerWeaponInfo (unsigned char[68480]) could be retyped after that."
+ },
+ {"name": "ClConnection", "verdict": "resolved", "size": 322584,
+  "size_evidence": "method 1: ClConnectionMP_AllocateConnections@0x1415e0580 allocates Mem_HunkUser_AllocInternal(hunkUser, 322584 * connectionCount, 8); objects are base + 322584*i (v9 += 322584, object = v9 - 269700 with v9 starting at base + 269700). Method 3: AllocateConnections and ClConnectionMP_ctor@0x1415e0230 clear obj+16..obj+322568 (0x4EBF8 bytes) and then set the entries pointer at +322568 and its count at +322576, so the last member ends at 322580 and the stride is 322584. IDA 1057152 and game-test 16 are wrong for the connection object (game-test 16 is a base-class view with no Replay evidence for +8 or +12).",
+  "members": [
+   [0, "__vftable", "void *", "ClConnectionBase_Ctor@0x1415abfa0 writes ClConnectionBase_vftable; ClConnectionMP_ctor and AllocateConnections write ClConnectionMP_vftable at +0; CL_PacketEvents_Process@0x1415c5d10 calls vtable slot +32 (ConnectedPacketEvent) on the object"],
+   [16, "reliableCmdState", "ClConnectionData", "ClConnectionMP_PushReliableCommand@0x1415e0440: v4 = this + 16 typed struct ClConnectionData*; ClConnection::DumpReliableCommands@0x1415abff0 takes ClConnectionData*; ClConnectionMP_ctor clears from +16. Block size 132128 (IDA ClConnectionData)"],
+   [20, "messageAcknowledge", "int", "ClConnectionMP::ConnectedPacketEvent@0x1415e0740: *(this+5) = v18 & 0x3FFFFFFF (ClConnectionData+4)"],
+   [24, "reliableSequence", "int", "PushReliableCommand: reliableSequence = *(this+24); v4->reliableSequence = reliableSequence + 1 (ClConnectionData+8)"],
+   [28, "reliableSent", "int", "ConnectedPacketEvent: v20 = *(this+7) (ClConnectionData+12) indexes the int[128] at +132480"],
+   [32, "reliableAcknowledge", "int", "PushReliableCommand: v4->reliableAcknowledge (+16 of the struct); ConnectedPacketEvent: *(this+8) = reliableAcknowledge (ClConnectionData+16)"],
+   [36, "clientReliableCommands", "CircularEntryBuffer_128_131072_int_0", "PushReliableCommand and DumpReliableCommands: m_entries[128] at CEB+4 (8-byte entries: offset, size, flags at +6), m_buffer at CEB+1028, m_bufferNextIndex at CEB+132100 (= object +132136). ctor writes -1 at CEB+0 (object +36)"],
+   [132140, "reliableOverflow", "bool", "PushReliableCommand: *(this+132140) == 0 test and v4->reliableOverflow = true (ClConnectionData+132124)"],
+   [132144, "serverClientNum", "int", "CL_ParseMP_ParseGamestate@0x1415f0c90: v5[33036] = MSG_ReadLong (bounds-checked against maxClients, else reset to 0)"],
+   [132148, "lastPacketTime", "int", "ConnectedPacketEvent: *(this+33037) = cls.realtime; CL_MainMP_CheckTimeout@0x1415e58a0 reads conn+132148 as the last packet time"],
+   [132152, "netConnection", "NetConnection", "ConnectedPacketEvent: NetConnection::IsOpened(this+33038); ClConnectionMP_ResetConnection@0x1415e06c0 and FreeClientConnections@0x1415e0980: NetConnection::Close(obj+132152). IDA NetConnection is 32 bytes; the next confirmed member is +132188 (36 bytes): size of the child not proven, 4 bytes unassigned at +132184"],
+   [132188, "connectPacketCount", "int", "ParseGamestate: v5[33047] = 0; CL_MainMP_CheckTimeout reads conn+132188 vs cl_connectMaxAttempts; CL_GetClientState: outClientState->connectPacketCount = *(conn+132188)"],
+   [132192, "connectMessage", "char[1024]", "CL_GetClientState@0x1415f9d40: Core_strcopy(messageString, 1024, conn+132192)"],
+   [132448, "gamestateSyncValue", "int", "ParseGamestate: v5[33112] = MSG_ReadLong; passed to DynEntCL_IsImmediateDynEntityListSync and FS_Restart"],
+   [132456, "challengeId", "unsigned __int64", "ParseGamestate: sscanf(CL_GetConfigString(0x18), %llx) stored at *(QWORD*)(conn+132456)"],
+   [132464, "serverMessageSequence", "int", "ConnectedPacketEvent: *(this+33116) = Long (MSG_ReadLong), previous value restored on rejected packets"],
+   [132468, "serverMessageCount", "int", "ConnectedPacketEvent: *(this+33117) updated with the sequence check (v16 + 1 or 0)"],
+   [132472, "gamestateServerValue", "int", "ParseGamestate: v5[33118] = MSG_ReadLong"],
+   [132480, "reliableSentAck", "int[128]", "ConnectedPacketEvent: this[(reliableSent & 0x7F) + 33120] (dword index) = byte offset 132480 + 4*i; new descriptive name, meaning not yet confirmed"],
+   [269712, "netchan", null, "ConnectedPacketEvent: Netchan_TrackPacketRx(this + 67428) (dword index 67428 = byte 269712): inline channel object; type not checked"],
+   [322568, "entries", "void *", "AllocateConnections and ClConnectionMP_ctor store the entry array; ClConnectionMP_ResetConnection reads it"],
+   [322576, "entriesPerConnection", "int", "AllocateConnections and ClConnectionMP_ctor store the count; ResetConnection reads it"]
+  ],
+  "changed_members": [
+   ["size", "1057152 -> 322584", "method 1 and the stride (see size_evidence)"],
+   ["m_reliableFlag (36, bool)", "rename to clientReliableCommands (CEB), the byte at +36 is CEB+0 (ctor writes -1)", "ClConnectionMP_ctor@0x1415e0230 and PushReliableCommand (CEB+0 is not a flag)"],
+   ["m_reliableCommandCount (132136, int)", "rename to clientReliableCommands.m_bufferNextIndex (CEB+132100)", "PushReliableCommand: v4->clientReliableCommands.m_bufferNextIndex (+132136 object)"],
+   ["m_reliableCommandsHeader (128, char[64]) and m_reliableCommandsA (192, char[64])", "remove: these are CEB entries 11 to 18, not text buffers", "CEB layout from PushReliableCommand: entries at object +40, 8 bytes each"],
+   ["_pad100 (256, 131880) and _pad2042D (132141, 924947)", "replace with the ClConnectionData block (16..132144) and the int[128] at 132480; the remaining pad runs 132992..269712 and 269716..322568", "see members"],
+   ["m_commandBufferA (1057088), m_commandBufferB (1057120)", "remove: outside the 322584-byte object; no Replay access", "stride from AllocateConnections"],
+   ["m_reliableSequence (24), m_reliableAcknowledge (32), m_reliableOverflow (132140)", "names confirmed, offsets agree with ClConnectionData (16 + 8, 16 + 16, 16 + 132124)", "PushReliableCommand@0x1415e0440"]
+  ],
+  "unconfirmed": [
+   "game-test m_localClientNum (+8) and m_numPacketsReceived (+12): no Replay write or read; ConnectedPacketEvent passes 0 to CL_ParseMP_ParseServerMessage instead of a per-connection number",
+   "challenge (ClConnectionData+0, object +16): no access found in the functions read",
+   "region 132992..269700 and 269716..322568 (other than the entries pointer and count): no reader found in the 13 functions read; a sweep of the ClConnection::ms_connections users would be the next check",
+   "object +269700 (int): ClConnectionMP_ctor writes 0; no read found",
+   "NetConnection size (32 in IDA) not proven"
+  ],
+  "notes": "The connection object is the ClConnection object of this struct (ms_connections holds pointers to it, 322584 apart). The reliable state is an embedded ClConnectionData at +16: every Replay reader in PushReliableCommand, DumpReliableCommands and ConnectedPacketEvent agrees with IDA ClConnectionData offsets, so the existing IDA members at 24, 32, 132140 are right and the rest of the old layout (1057152 bytes, command buffers A/B) is wrong. Game-test ClConnection (16 bytes, vftable + localClientNum + numPacketsReceived) is a base-class view, not this object. Deleting-dtor lead: none, ClConnectionMP::scalar_deleting_dtor@0x1415e02d0 calls bdMemory::deallocate_5 with no size argument, and FreeClientConnections has none, so the size rests on the allocation stride. Verdict resolved refers to the size and the members read in the 13 functions read (listed in results); the broader sweep is noted under unconfirmed."}
+ ],
+ "renames": []
+}

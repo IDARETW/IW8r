@@ -1,0 +1,52 @@
+{"agent": "A174", "structs": [
+  {"name": "ConeTargetInfo", "verdict": "resolved", "size": 840,
+   "size_evidence": "method 2 (own vtable): ConeTargetInfo::scalar_deleting_dtor@0x140CEEE10 stores ConeTargetInfo_vftable at [rcx] (0x140CEEE20, the slot the ConeTargetInfo ctor@0x140CEED90 also writes) and calls bdMemory__deallocate_5 with mov edx, 348h (0x140CEEE28) = 840. Cross-checks: the derived class CG_FireShotConeTargetInfo (base at +0) frees 350h = 848 in CG_FireShotConeTargetInfo_scalar_deleting_dtor@0x1416C1EF0 (mov edx, 350h at 0x1416C1F13), and its ctor writes qword at this+840 (CG_FireShotConeTargetInfo_ctor@0x1416C1940: *(this+105)=0), so the 848-byte IDA size is the derived class, not the base.",
+   "members": [
+     [0, "__vftable", "void *", "ConeTargetInfo::ConeTargetInfo@0x140CEED90: *this = &ConeTargetInfo_vftable (CONFIRMED)"],
+     [8, "m_hitResults", "ConeTargetHitResults", "ConeTargetInfo::ConeTargetInfo@0x140CEED90: memset_0(this+8, 0, 0x33C) = 828 bytes = the whole member (CONFIRMED; ConeTargetHitResults is 828 bytes: hits[12] 816, hitCount 816, firstVisibleHitIndex 820, priority 824)"]
+   ],
+   "changed_members": [
+     ["m_extra", "remove from ConeTargetInfo (unsigned __int64 at 840): it is the derived CG_FireShotConeTargetInfo member at base+840, not a ConeTargetInfo member", "CG_FireShotConeTargetInfo_ctor@0x1416C1940 writes +840 (CONFIRMED); SimulateBulletFirePelletData_ctor@0x141755BE0 places the CG_FireShot object at +208 and writes +1048 = 208 + 840 (CONFIRMED); RankCandidateHits@0x1411CEB10 uses an 848 stride and copies the qword at +840 separately from the 840-byte base copy"],
+     ["size", "848 -> 840", "method 2 above"],
+     ["_pad344 (offset 836, 4 bytes)", "keep as the 4-byte pad [836, 840) after m_hitResults", "no Replay access found; the ctor memset ends at 836"]
+   ],
+   "unconfirmed": ["bytes 836..840: no Replay access in ConeTargetInfo::ConeTargetInfo, ConeTargetInfo_LessByScore, ConeTargetInfo_IsOrderedBefore, ConeTargetEvaluator_RankCandidateHits, ConeTargetInfo::scalar_deleting_dtor (game-test has no member here either)"],
+   "notes": "Replay reads the priority float at ConeTargetInfo+832 in ConeTargetInfo_LessByScore@0x140CEEDF0 = m_hitResults.priority (8 + 824), which matches. The IDA 848 comes from the derived class; the coordinator should check CG_FireShotConeTargetInfo (not in A174) is 848 with the 8-byte member at 840. The deleting_dtor_lead (840, validated) holds: the sized delete sits in this class's own vtable. No rename needed: ConeTargetInfo::scalar_deleting_dtor and CG_FireShotConeTargetInfo_scalar_deleting_dtor are correctly named for their vtables."},
+
+  {"name": "bitarray_224", "verdict": "resolved", "size": 20,
+   "size_evidence": "method 3 (whole-object write): Com_Teams_GetEnemyTeamFlags@0x140E642F0 writes outFlags as a qword at 0, a qword at 8 and a dword at 16 (= 20 bytes), copying the 20-byte mask from StaticMask160_Get_70000000@0x1410D5250 / StaticMask160_GetAllSet@0x1410D51D0 (OWORD + dword). Whole-object clears: memset(&teamFlags, 0, 20) in Sentient_Init@0x1411E5480 and Sentient_UpdateNavObstaclesForTeam@0x1411E5EE0. Readers stop at word 4: Path_NodePassesTeamRepulsorTest@0x1411CA690 reads *teamFlags (words 0-3) and teamFlags[1].m128i_i32[0] (word 4) only; Actor_BroadcastAgentEvent@0x1411B2EB0 loops 5 words (v8 < 5). No function read touches word 5 or 6.",
+   "members": [
+     [0, "array", "unsigned int[5]", "Nav_GetObstacleBlockageFlagsFromTeamFlags@0x140FFFE80 and Nav_TranslateTeamFlagsToRepulsorUsageFlags@0x1410040C0 read array[0] (CONFIRMED); Com_Teams_GetEnemyTeamFlags@0x140E642F0 clears and writes array[4] with &= ~0x10 and &= 0xFFFFFF9F (CONFIRMED, word 4 is the last word); Actor_BroadcastAgentEvent reads array[0..4] (CONFIRMED)"]
+   ],
+   "changed_members": [
+     ["array", "unsigned int[7] -> unsigned int[5] (count 7 -> 5, 28 -> 20 bytes)", "method 3 above; StaticMask160 is the 5-word mask all team sets are copied from"],
+     ["_pad1C", "remove (offset 28, 4 bytes): size 32 -> 20", "method 3 above"]
+   ],
+   "unconfirmed": ["the type name: Replay's team mask is 160 bits (StaticMask160, 5 words); no 224-bit object exists in Replay. Suggest the type be called bitarray_160 (not in renames: a type rename is the coordinator's call)"],
+   "notes": "Game-test bitarray<224> has 7 words; Replay's team-flag object is 5 words everywhere it is built or read (Sentient_Init and Sentient_UpdateNavObstaclesForTeam clear 20 bytes, Actor_BroadcastAgentEvent loops 5 words, Com_Teams writes 20 bytes). The struct is used by pointer and by value only as a 20-byte stack local, and bitarray_160 / bitarray_192 exist in the IDA local types only as unused names. Team index limit: Actor_EventListener_First/Next index array[eTeam >> 5], so eTeam must stay below 160 in Replay (consistent with StaticMask160)."},
+
+  {"name": "EdgeQueryCache", "verdict": "partial", "size": null,
+   "size_evidence": "lower bound 976: Mantle_FindMantleEdge@0x141105190 reads and writes the cache object up to +688 + 288 = 976 (mantleLadderQueryShape, Edge_EvaluateQueryCandidates(v18+688)). Upper bound not proven: the cache comes from the virtual getter (vtable slot +288) that PM_ContextMount_FindMountEdge_Initial@0x140CAE650 and Mantle_FindMantleEdge call with the client number. In game-test that getter returns &s_edgeQueryCache[entityIndex] (stride = sizeof(EdgeQueryCache) = 976), but the Replay getter was not found: no GetEdgeQueryCache name, no s_edgeQueryCache name, and a scan of 0x1401C0000..0x1401E0000 for 'imul ..., 3D0h' had no hit.",
+   "members": [
+     [0, "mantleEdgeHintNode", "unsigned int", "Mantle_FindMantleEdge@0x141105190: HIDWORD(v94[0]) = *(DWORD *)v18, first BG_EdgeTuple_CollectMantleCandidates hint (CONFIRMED)"],
+     [4, "mantleLadderHintNode", "unsigned int", "Mantle_FindMantleEdge@0x141105190: HIDWORD(v94[0]) = *(v18 + 4) and CollectMantleCandidates(..., (int *)(v18 + 4)) for the ladder pass (CONFIRMED)"],
+     [20, "mountHintNode", "unsigned int", "PM_ContextMount_FindMountEdge_Initial@0x140CAE650: HIDWORD(v41[0]) = *(v13 + 20) (CONFIRMED)"],
+     [24, "mountQueryDefinition", "EdgeFrustumQueryDefinition", "PM_ContextMount_FindMountEdge_Initial: qmemcpy(v13 + 24, candidateCount, 24); compares +24..+44 with 25/26/25/26/1 and v5 (CONFIRMED, 24 bytes)"],
+     [48, "mountQueryShape", "EdgeFrustumQueryShape", "PM_ContextMount_FindMountEdge_Initial: Edge_EvaluateQueryCandidates(v13 + 48, candidateCount) (CONFIRMED, 288 bytes)"],
+     [336, "mantleQueryDefinition", "EdgeFrustumQueryDefinition", "Mantle_FindMantleEdge: qmemcpy(v18 + 336, candidateCount, 24) and compares at +336..+356 (CONFIRMED)"],
+     [368, "mantleQueryShape", "EdgeFrustumQueryShape", "Mantle_FindMantleEdge: Edge_EvaluateQueryCandidates(v18 + 368, candidateCount); v18 + 368 is the sweep source (CONFIRMED)"],
+     [656, "mantleLadderQueryDefinition", "EdgeFrustumQueryDefinition", "Mantle_FindMantleEdge: compares v18+656 with 0.1 and v18+660..+676, qmemcpy(v18 + 656, v123, 24) (CONFIRMED)"],
+     [688, "mantleLadderQueryShape", "EdgeFrustumQueryShape", "Mantle_FindMantleEdge: Edge_EvaluateQueryCandidates(v18 + 688, v123) (CONFIRMED, last access ends at 976)"],
+     [8, "ladderHintNode", "unsigned int", "by elimination between mantleLadderHintNode (+4) and mountHintNode (+20), 12 bytes = three 4-byte nodes (unconfirmed, not read in the two functions read)"],
+     [12, "ladderHintNodeBroad", "unsigned int", "by elimination (unconfirmed)"],
+     [16, "ladderWidthHintNode", "unsigned int", "by elimination (unconfirmed)"]
+   ],
+   "changed_members": [
+     ["mountQueryShape / mantleQueryShape / mantleLadderQueryShape / mantleQueryDefinition / mantleLadderQueryDefinition", "keep the current IDA offsets (48, 336, 368, 656, 688); the builder layout (336/360, 368 -> 360 packing, 648, 672) is WRONG and must not be applied", "the four Replay offsets above, all matching IDA and game-test"],
+     ["_pad168 (offset 360, 8 bytes) and _pad2A8 (offset 680, 8 bytes)", "keep as pads", "no Replay access between the definitions (336..360, 656..680) and the shapes (368, 688)"]
+   ],
+   "unconfirmed": ["size: upper bound unknown (blocked by the GHandler / CgHandler GetEdgeQueryCache virtual, Replay name not found)", "ladderHintNode +8, ladderHintNodeBroad +12, ladderWidthHintNode +16: only by elimination"],
+   "notes": "Partial. The Replay access offsets all match the current IDA layout (not the builder layout). Finding for the owner, outside this entry: the per-call query state that Edge_InitQueryState and Edge_SetupQueryBounds fill is a 512-byte local (__m128[32]) in both callers (Mantle_FindMantleEdge frame local queryState at 1128, size 512, next local at 1640; PM_ContextMount_FindMountEdge_Initial queryState at 504, size 512, next local at 1016). It is not an EdgeQueryCache member. Its writes: +64..+112 zero, +112..+368 bounds copy, +400 zero, +416..+448 min/max, +448..+496 six function pointers, +496..+504 floats (= 1.0). Suggest a separate type of size 512 for the owner to check. A proposal to resize EdgeQueryCache to 976 should wait until the getter's stride is found."}
+ ],
+ "renames": []
+}

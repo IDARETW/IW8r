@@ -1,0 +1,52 @@
+{"agent": "A173", "structs": [
+  {"name": "BulletFireParams", "verdict": "partial", "size": null,
+   "size_evidence": "not proven. Lower bound 180: G_Weapon_BuildBulletFireParams@0x1411d4f20 writes raw byte [v8+179] (|= 1 and |= 2) and [v8+178] (isAltFire), so the object is at least 180 bytes. Upper bound 192 candidate: G_Weapon_FireBulletShot@0x1411d19e0 builds its object as the stack local rbp-0xD8..rbp-0x18 (shooter[8] = 128 bytes, then qwords v17..v24 zeroed in one block = 192 bytes); that block may hold more than this struct. IDA 184 (shooter 128 + v17 + v18..v23) sits inside the bounds but is not proven. Game-test 160 is refuted (accesses to +179).",
+   "members": [
+     [4, "ignoreHitEntityQueue", "int[16]", "BG_AddIgnoreEntToBP@0x14115a6c0: lea rax,[rbx+4]; cmp [rax],edi; mov [rbx+rax*4+4],edi (16-entry scan, raw)"],
+     [68, "ignoreHitEntCount", "int", "BG_AddIgnoreEntToBP: mov r8d,[rcx+44h]; inc dword ptr [rbx+44h]; BG_GetIgnoreHitEntityCount@0x141169170: mov eax,[rcx+44h], clamped to 16 (raw)"],
+     [104, "start", "vec3_t", "G_Weapon_TraceBulletSegment@0x1411d5390: movss xmm4,[rsi+68h] / [rsi+6Ch] / [rsi+70h]; lea r8,[rsi+68h] (p_start), raw"],
+     [116, "end", "vec3_t", "G_Weapon_TraceBulletSegment: movss [rsi+74h] / [rsi+78h] / [rsi+7Ch]; lea r9,[rsi+74h] (p_end), raw"],
+     [128, "dir", "vec3_t", "G_Weapon_ProcessBulletTraceHit@0x1411d1ae0: movss xmm0,[rdi+80h]; mulss xmm?,[rdi+84h]/[rdi+88h]; movss [rdi+80h],xmm5 / [rdi+84h] / [rdi+88h] (rdi = traceResult, raw)"],
+     [140, "travelDistance", "float", "G_Weapon_TraceBulletSegment: addss xmm0,[rsi+8Ch]; movss [rsi+8Ch],xmm0 (distance accumulate); G_Weapon_BuildBulletFireParams: mov [v8+140], a4 (float)"],
+     [153, "(flag byte inside ballisticsTickEndTime, see notes)", "unsigned char", "G_Weapon_ProcessBulletTraceHit: cmp byte ptr [rdi+99h],0 and mov byte ptr [rdi+99h],1 (raw +153 = BYTE1 of +152)"]
+   ],
+   "changed_members": [
+     ["damageMultiplier (+76)", "Replay reads +76 (movss xmm0,[rdi+4Ch]) and halves it on penetration; but G_Weapon_BuildBulletFireParams writes the damage float to +148 and never writes +76. Keep the game-test name, offset is raw-proven; semantics not proven", "G_Weapon_ProcessBulletTraceHit: movss [rdi+4Ch] (raw)"],
+     ["shotCount (+144, unsigned)", "Replay writes a float to +144 (WeaponDamageRangeScales) in BuildBulletFireParams: range scale, not a count. Proposed type: float, name UNCONFIRMED", "G_Weapon_BuildBulletFireParams: mov [v8+144], WeaponDamageRangeScales (raw)"],
+     ["ballisticsTickStartTime (+148, int)", "Replay writes v19*v16 (float damage scale) to +148. Proposed type float, name UNCONFIRMED (damage multiplier candidate)", "G_Weapon_BuildBulletFireParams: *(float*)(v8+148) = v19 * v16 (raw)"],
+     ["ballisticsTickEndTime (+152, int)", "Replay writes a float (v37: dvar value or 1.0) to +152; the byte at +153 is a per-hit flag (BYTE1). Proposed: float at +152 plus a byte flag at +153, name UNCONFIRMED", "G_Weapon_BuildBulletFireParams: *(int*)(v8+152) = v37 (raw); ProcessBulletTraceHit +153 flag (raw)"],
+     ["isBallistics (+156, bool)", "Replay writes a float (1.0 or charge multiplier, BG_WeaponCharge_GetParamFloat20) to +156. Proposed: float, name UNCONFIRMED (charge multiplier candidate)", "G_Weapon_BuildBulletFireParams: *(float*)(v8+156) = 1.0 or ParamFloat20 (raw)"],
+     ["tailData (+160, unsigned __int64[3])", "Replay uses +160..+179 as: +160 QWORD (0 or player-state pointer), +164 int (player-state values +4424/+4428), +168 int spreadIndex, +172 short entity number (*entity), +174 short target number (*targetEntity or 2046), +176 short 2047 (fixed), +178 byte isAltFire, +179 byte flag bits (|=1 CanFireTypeOneWithAttachments, |=2 BulletFireShot hook). Replace tailData with these named members (names UNCONFIRMED except as stated); a size change or member move is for the coordinator", "G_Weapon_BuildBulletFireParams raw writes (see notes)"]
+   ],
+   "unconfirmed": [
+     "weaponEntIndex (+0): decompile names it in G_Weapon_ProcessBulletTraceHit, but no raw access to +0 was seen in the read functions",
+     "shotCount, ballisticsTickStartTime, isBallistics, firstImpactOccurred, the +156..+159 bytes: names not proven, types changed above",
+     "size 184 vs 192 vs something in between: upper bound depends on whether the FireBulletShot block is one object"
+   ],
+   "notes": "The packet's replay_max_access_end 72 is outdated: BuildBulletFireParams writes to +179. Object origin: G_Weapon_FireBulletShot copies shotParams (128 bytes plus the qword at +128) into its local, zeroes the rest, and passes that local to BuildBulletFireParams (as fireParams) and then to G_Weapon_FireBulletTrace, which passes it to G_Weapon_TraceBulletSegment as trace. So the first bytes of the struct are a copy of the shot record; that is why the copy is 136 bytes. Verdict partial: the struct is real and Replay-used (queue, count, start/end/dir, travelDistance, +140..+179 writes), but the size is not proven."},
+
+  {"name": "BestHostData", "verdict": "partial", "size": null,
+   "size_evidence": "not proven. Parent: MigrateData at PartyData+8 (MigrateData base confirmed by raw party+16 indexBits, party+20 startTime, party+24 timeoutDuration, party+28 partyTime, party+32 lastBroadcastTime, party+36 expectedNewHost, party+40 migrateToRequestedHost in PartyMigrate_Frame@0x1411a4210 and PartyMigrate_NewHostDecided@0x1411a58d0). bestHost is at MigrateData+36 = party+44. Replay reads a timestamp at party+80 (bestHost+36) in PartyMigrate_Frame: a 44-byte BestHostData puts lastHeardFrom there, a 40-byte one (NomineeInfo 28 bytes) would put lastSentTo there. So the size is 40 or 44, decided by NomineeInfo's size (owned by A093; its hostScore at +24 is raw-proven, its size is not). Bounds: 40 <= size <= 44.",
+   "members": [
+     [4, "info", "NomineeInfo", "PartyMigrate_NewHostDecided@0x1411a58d0: reads party+48 (upload, '(Upload %i'), party+52 (NAT), party+56 (connectivity), party+60 (cpu), party+64 (RAM), party+68 (avgPing), party+72 (hostScore float) = NomineeInfo fields at +0..+24 with info base party+48 = bestHost+4 (raw)"],
+     [36, "lastHeardFrom", "int", "PartyMigrate_Frame@0x1411a4210: `v17 = *(party+80)` compared with Sys_Milliseconds, then `*(party+80) = now` (int timestamp at bestHost+36 when BestHostData is 44 bytes; see size note)"]
+   ],
+   "changed_members": [],
+   "unconfirmed": [
+     "nominee (+0, party+44): no raw access in the read functions",
+     "lastSentTo (+40, party+84): no raw access found",
+     "NomineeInfo size (32 vs 28) decides whether lastHeardFrom is at +36 or +32 and the total size 44 or 40"
+   ],
+   "notes": "Not absent: the migrate code uses bestHost's info block as the decided host's data. Partial until NomineeInfo's Replay size is settled (A093 owns it). BulletFireParams is not related. PartyMigrate_SelectBestHostCandidate, PartyMigrate_DetermineBestHost_FilterByPing and PartyMigrate_DetermineBestHost_LogResults use the PartyMember 488-byte stride and NomineeInfo at member+184 (migrateNomineeInfo), not BestHostData; they do not prove BestHostData's size. LogResults' best-host number is party+311052 (= partyId), not bestHost."},
+
+  {"name": "AnalyticsBuffer", "verdict": "partial", "size": null,
+   "size_evidence": "not proven. No Replay function uses an AnalyticsBuffer by name, type or stride. Replay does have analytics streamer dvars: online_analytics_streamer_upload_min_delay_ms (default 1000) and the upload failure count max (default 10), registered in Live_RegisterCommonDvars@0x141590eb0 into s_Live_commonDvar_14EE56198 and s_Live_commonDvar_14EE561A0. Those two globals have no reader in the database (only the write in Live_RegisterCommonDvars), so the upload function that would use them was not found. The builder 16808 is not supported; 16784 (IDA and game-test) is consistent with the member list but is unproven.",
+   "members": [],
+   "changed_members": [],
+   "unconfirmed": [
+     "m_data (+0), m_writeOffset (+8), m_flushState (+12), m_uploadFileWriteInfo (+16, 16760 bytes, pooledStorageWriteFileInfo, owned by A116), m_nextStreamUploadAttemptTime (+16776), m_uploadFailureCount (+16780): no Replay access found"
+   ],
+   "notes": "Not absent: the analytics streamer is in Replay (dvars, strings 'Will log spawn analytics data to blackbox', 'online_should_upload_analytics_streamer_log_file'), so the type probably exists. Next step for a later pass: find the code that reads the dvar globals through the registration's dvar pointer (not by xref to the global), or the analytics upload function by its string 'analytics_spawn_*_raw_data' / 'GScr_BBReportSpawn*' callers. Partial."}
+ ],
+ "renames": []
+}

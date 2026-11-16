@@ -1,0 +1,47 @@
+{"agent": "A151", "structs": [
+  {"name": "GVehicles", "verdict": "resolved", "size": 1059368,
+   "size_evidence": "method 1: G_MainMP_AllocateGameMemory@0x14121C630 calls Mem_HunkUser_AllocInternal(hunkUser, 1059368, 8) and stores the object in GVehicles::ms_gVehiclesSystem, then memset_0(obj+8, 0, 0x102A20) and GVehicles::PhysicsInit(obj); the SP allocator G_MainSP_AllocateGameMemory@0x14182B080 has `mov edx, 102A28h` (1059368) at 0x14182B3BF with the same tail stores (`mov [rdi+102A20h], r14d`, `mov [rdi+102218h], rax`). The end of the object is the float at 0x102A24, so size = 0x102A28 = 1059368.",
+   "members": [
+     [0, "baseclass_0", "BGVehicles", "G_MainMP_AllocateGameMemory@0x14121C630 stores the vtable at +0 of the new object; BGVehicles is 8 bytes in IDA and nothing in Replay touches it otherwise (unchanged)"],
+     [8, "m_vehiclePhysicsManager", "BgVehiclePhysicsManager", "GVehicles::PhysicsInit@0x140E9EC20: `add rcx, 8` then `call GPhysicsVehicleManager__Init` (manager = this+8); GVehicles::PhysicsOnWorldAction@0x140E9EF50 and PhysicsAfterWorldStep@0x140E9D460 loop over 128 elements from this+8 with stride 3312. Size is at most 1044480 (the next subobject is at 0xFF008); not proven exact"],
+     [1044488, "m_subsystemB", null, "G_MainMP_AllocateGameMemory: `BGVehicles_ctor(obj+1044488)` then vtable G_MainSubsystemBVftable_2464618 stored at obj+1044488; G_MainSP_AllocateGameMemory: `lea rcx, [rdi+0FF008h]` and the same vtable store. Room is 520 bytes (up to the suspend manager at 0xFF210). UNCONFIRMED: slot 2 is G_Vehicle_AddDirectionalImpactEvent, which suggests the event system, but the game-test event system is 528 bytes and does not fit in 520"],
+     [1045008, "m_suspendManager", "GVehicleSuspendManager", "G_MainMP_AllocateGameMemory: GVehicleSuspendManager_Init(obj+1045008) (0xFF210); G_MainSP_AllocateGameMemory: `lea rcx, [rdi+0FF210h]`. GVehicleSuspendManager_Init@0x140EA0410 writes 256 records of 32 bytes from +28, 2048 WORD index at +0x2000 and a count dword at +0x3000; SuspendVehicle@0x140EA07F0 uses `this+12288` as the next index. So size is 12292 to 12296 (next subobject at 0x102218), not 27652"],
+     [1057304, "m_vehicleCollisionSystem", "GVehicleCollisionSystem", "G_MainMP_AllocateGameMemory: `*(QWORD*)(obj+1057304) = G_MainSubsystemAVftable_2464608`; G_MainSP_AllocateGameMemory: `mov [rdi+102218h], rax`. Nothing else is written there, so 8 bytes (vtable only). Vtable slots G_Physics_ResolvePairEntityLink and G_Vehicle_ProcessContactPair suggest collision (UNCONFIRMED name)"],
+     [1057312, "m_scriptableDamageInfo", "VehicleScriptableDmg", "GVehicles::PhysicsAfterWorldStep@0x140E9D460: `lea rbx, [r14+102220h]` is the list base (8-byte entries, `p += 8` per entry, loop count from `mov eax, [r14+102A20h]`), and the count is reset by `mov [r14+102A20h], ebp`; SP allocator `mov [rdi+102A20h], r14d`. 256 entries x 8 + count 4 = 2052 bytes = VehicleScriptableDmg (m_scriptablesToDamage at +0, m_cursor at +2048)"],
+     [1059364, "m_lastPhysicsStepTime", "float", "GVehicles::PhysicsOnWorldAction@0x140E9EF50 end: `*(float*)(this+1059364) = deltaTime`; GVehicles::PhysicsInit@0x140E9EC20: `mov dword ptr [rbx+102A24h], 0`; GVehicles::PhysicsAfterWorldStep@0x140E9D460: `movss xmm1, [r14+102A24h]`"]
+   ],
+   "changed_members": [
+     ["m_vehicleEventSystem", "remove from 1056784 (game-test 528 bytes): no Replay placement; the only free room is 520 bytes at 0xFF008 (see unconfirmed)", "G_MainMP/SP_AllocateGameMemory tail stores"],
+     ["m_suspendManager", "moved 1057312 -> 1045008 (0xFF210); size 27652 -> 12292..12296; its member layout is not the game-test one (records of 32 bytes at +28, index at +0x2000, count at +0x3000)", "GVehicleSuspendManager_Init@0x140EA0410; GVehicleSuspendManager::Reset@0x140EA0580; GVehicleSuspendManager::SuspendVehicle@0x140EA07F0"],
+     ["m_vehicleCollisionSystem", "moved 1084968 -> 1057304 (0x102218); size 8 unchanged", "G_MainMP_AllocateGameMemory vtable store at obj+1057304"],
+     ["m_scriptableDamageInfo", "moved 1084976 -> 1057312 (0x102220); size 2052 unchanged; IDA pad before it now starts at 1044488", "GVehicles::PhysicsAfterWorldStep@0x140E9D460"],
+     ["m_lastPhysicsStepTime", "moved 1087028 -> 1059364 (0x102A24); float unchanged", "GVehicles::PhysicsOnWorldAction@0x140E9EF50"],
+     ["_padFF008 / _pad108E24", "replaced by the members above (the 12296 pad and the 4-byte pad are not Replay layout)", "allocators"]
+   ],
+   "unconfirmed": [
+     "m_subsystemB at 1044488: class and size unknown (8 to 520 bytes); name candidate GVehicleEventSystem is not consistent with the 520-byte room",
+     "m_vehicleCollisionSystem: 8-byte vtable-only object; class name from game-test only",
+     "m_suspendManager: 4 bytes of 12292..12296 are unknown (between the count at +0x3000 and the subobject at 0x102218)",
+     "BgVehiclePhysicsManager size: at most 1044480 (bounded by m_subsystemB), not checked here (belongs to the manager's own struct)",
+     "VehicleScriptableDmg count bound: the loop has no explicit cap in PhysicsAfterWorldStep; 256 entries is the only evidence (2048-byte room)",
+     "the GVehicles vtable at +0 (G_MainMP_LargeObjVftableAlt_2464900) has slots named G_Vehicle_* (not GVehicles methods); no GVehicles deleting destructor found in Replay"
+   ],
+   "notes": "Size proven by allocation (1059368). The A129 packet is wrong in two places: the raw offsets are 0xFF210 = 1045008 (not 1044496), 0x102218 = 1057304 (not 1058840), 0x102220 = 1057312 and 0x102A20 = 1059360 (the first pass said the list is at 1058848 and that the 1057312 accesses were IDA-typed; the disassembly `lea rbx, [r14+102220h]` shows they are raw). PhysicsInit's typed write `m_suspendManager.m_infos[22]...partName = 0` is really a dword write at raw 0x102A24 (the float). The name GVehicles::~GVehicles at 0x140E9EF30 is wrong (see renames). Replay has no deleting destructor for GVehicles; the size comes from the allocators."
+  },
+  {"name": "GVehiclesSP", "verdict": "resolved", "size": 1059368,
+   "size_evidence": "method 1: G_MainSP_AllocateGameMemory@0x14182B080 allocates the SP object with `mov edx, 102A28h` (1059368) at 0x14182B3BF, the inlined GVehicles::AllocateMemory<GVehiclesSP> (the game-test source gives the same template, which allocates sizeof(GVehiclesSP) and memsets from m_vehiclePhysicsManager; game-test GetMemorySize<GVehiclesSP> returns the same size as GVehicles, 1087032 there, so the SP class adds no bytes in game-test either).",
+   "members": [
+     [0, "baseclass_0", "GVehicles", "G_MainSP_AllocateGameMemory@0x14182B080 uses the GVehicles layout at offset 0 (manager at +8, suspend manager at 0xFF210, PhysicsInit with rdi = this at 0x14182B43D); the object is 1059368 bytes, so the derived class takes the base size"]
+   ],
+   "changed_members": [
+     ["baseclass_0 / _pad0", "IDA has one _pad0 of 1087032 bytes; should be GVehicles baseclass_0 (1059368). Changing it resizes the struct: coordinator action", "G_MainSP_AllocateGameMemory@0x14182B080"]
+   ],
+   "unconfirmed": [
+     "no SP-only member found: GVehiclesSP::FinishVehicleDamage@0x14185F150 only calls G_Vehicle_FinishDamage; GVehiclesSP::UpdateSpaceshipAnimscriptedMove@0x141860A00 touches only the Vehicle argument and entity; GVehiclesSP_SetDamageFinishedState@0x14185F1F0 writes the Vehicle argument at +1048, not this"
+   ],
+   "notes": "Derived class with no own member read in Replay; size follows the SP allocation. The single-base layout is the proposal."}
+ ],
+ "renames": [
+   ["0x140E9EF30", "GVehicles::~GVehicles", "GVehicles::PhysicsLoad", "not a destructor: its body is GVehicles_PhysicsLoadAllFromMemFile(this+8, ctx) plus BG_BSpline_Data_LoadFromMemFile(ctx); the game-test GVehicles::PhysicsLoad calls BgVehiclePhysicsManager::LoadAllFromSaveGame(&this->m_vehiclePhysicsManager, ...), the same manager at this+8. Replay has no GVehicles destructor at all"]
+ ]
+}

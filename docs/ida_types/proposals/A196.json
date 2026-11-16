@@ -1,0 +1,83 @@
+{"agent": "A196", "structs": [
+  {"name": "AIBlackboard", "verdict": "resolved", "size": 112,
+   "size_evidence": "method 3: AIScriptedInterface::InitBlackboard@0x140e73e50 does memset_0(v1, 0, 0x70) on v1 = *(this+16)+448 (the blackboard inside ai_scripted_t); the clear covers the whole blackboard and ends exactly at the last Replay member m_ReacquireStepTime (int at 108, end 112). Cross-check: s_aiBlackboardFieldTable@0x1423d9500 holds m_Ofs values 0..108 with the last int at 108 and no entry past 112. GT 120 and IDA 120 are not Replay.",
+   "members": [
+     [0, "m_MoveType", "scr_string_t", "AIScriptedInterface::InitBlackboard@0x140e73e50: Scr_SetString(v1, ...) on blackboard+0; field table ofs 0 type 5"],
+     [4, "m_DesiredStance", "unsigned int", "AI_BB_SetDesiredStance@0x140e65fc0: *(DWORD*)(blackboard+4) = stance (1 on error); InitBlackboard v1[1] = 1; table ofs 4 setter"],
+     [8, "m_CoverState", "scr_string_t", "InitBlackboard@0x140e73e50: Scr_SetString(v1+2) = +8; table ofs 8 type 5"],
+     [12, "m_CoverExposeType", "scr_string_t", "InitBlackboard@0x140e73e50: Scr_SetString(v1+3) = +12; table ofs 12 type 5"],
+     [16, "m_ShootParams", "AIBlackboard__ShootParams", "table ofs 16 type 7 getter AI_BB_GetShootParamsPos@0x140e662d0 / setter AI_BB_SetShootParamsPos@0x140e66280 (Pos vec3 at +16); ShootParams-internal offsets 28,32,36,38..44,46..49 match game-test member names and sizes; struct size 36 puts the next member at 52"],
+     [52, "m_WeaponRequest", "unsigned int", "AI_BB_SetWeaponRequest@0x140e66300: a1->m_WeaponRequest = i (0..14); InitBlackboard v1[13] = 14; table ofs 52 getter/setter"],
+     [56, "m_RunPassthroughType", "scr_string_t", "table ofs 56 type 5 (no accessor); name from game-test, UNCONFIRMED by Replay code"],
+     [60, "m_CrouchArrivalType", "scr_string_t", "table ofs 60 type 5, accessors AI_BB_GetString_AllowUndefined@0x140e65f70 / AI_BB_SetString_AllowUndefined@0x140e65ef0"],
+     [64, "m_pShuffleNode", "pathnode_t *", "table ofs 64 type 13 (pointer); name from game-test, UNCONFIRMED by Replay code"],
+     [72, "m_pDeployedLMGNode", "pathnode_t *", "table ofs 72 type 13 (pointer); name from game-test, UNCONFIRMED by Replay code"],
+     [80, "b80", "unsigned __int8", "table ofs 80 type 3 (one byte, no accessor); Replay has no 4-byte int here"],
+     [81, "b81", "unsigned __int8", "table ofs 81 type 3"],
+     [82, "b82", "unsigned __int8", "table ofs 82 type 3"],
+     [83, "b83", "unsigned __int8", "table ofs 83 type 3"],
+     [84, "m_bAnimscriptedActive", "bool", "table ofs 84 type 3; name by game-test order (84..92), UNCONFIRMED"],
+     [85, "m_bGrenadeAvoid", "bool", "table ofs 85 type 3; game-test order, UNCONFIRMED"],
+     [86, "m_bGrenadeReturnThrow", "bool", "table ofs 86 type 3; game-test order, UNCONFIRMED"],
+     [87, "m_bMeleeRequested", "bool", "table ofs 87 type 3; game-test order, UNCONFIRMED"],
+     [88, "m_bMeleeChargeRequested", "bool", "table ofs 88 type 3; game-test order, UNCONFIRMED"],
+     [89, "m_bReload", "bool", "table ofs 89 type 3; game-test order, UNCONFIRMED"],
+     [90, "m_bDroppedLMG", "bool", "table ofs 90 type 3; game-test order, UNCONFIRMED"],
+     [91, "m_bFire", "bool", "table ofs 91 type 3; game-test order, UNCONFIRMED"],
+     [92, "m_bBlindfire", "bool", "table ofs 92 type 3; game-test order, UNCONFIRMED"],
+     [93, "m_bStrafeFacingPosValid", "bool", "AI_BB_SetForceStrafeFacingPos@0x140e66080: *(BYTE*)(blackboard+93) = 1 or 0 after Scr_GetVector into +96; AI_BB_GetForceStrafeFacingPos@0x140e660d0 gates on +93 (IDA name m_bFirstShot is wrong)"],
+     [96, "m_forceStrafeFacingPos", "vec3_t", "AI_BB_SetForceStrafeFacingPos@0x140e66080: Scr_GetVector(..., blackboard+96); AI_BB_GetForceStrafeFacingPos@0x140e660d0 passes &a1->m_bArrivingToCoverExposed (= +96) to Scr_AddVector; table ofs 96 type 7 with the same accessors"],
+     [108, "m_ReacquireStepTime", "int", "table ofs 108 type 0 (no accessor); name from game-test, UNCONFIRMED by Replay code"]
+   ],
+   "changed_members": [
+     ["m_bFirstShot (IDA 93)", "rename to m_bStrafeFacingPosValid", "AI_BB_SetForceStrafeFacingPos@0x140e66080 writes +93; AI_BB_GetForceStrafeFacingPos@0x140e660d0 reads +93"],
+     ["m_ShouldInitiallyAttackFromExposedTime (IDA int 80)", "not an int in Replay: bytes 80..83 (table type 3)", "field table ofs 80..83 type 3, no 4-byte int"],
+     ["m_bShouldInitiallyAttackFromExposed .. m_bForceStrafe (IDA 94..99)", "absent in Replay: 94..95 are pad, 96.. is the vec3", "field table has no entries at 94..95 or 97..99; vec3 at 96 per AI_BB_*ForceStrafeFacingPos"],
+     ["m_bStrafeFacingPosValid (IDA 100)", "moves to 93", "AI_BB_SetForceStrafeFacingPos@0x140e66080"],
+     ["m_forceStrafeFacingPos (IDA 104)", "moves to 96 (type vec3_t unchanged)", "AI_BB_SetForceStrafeFacingPos@0x140e66080"],
+     ["m_ReacquireStepTime (IDA 116)", "moves to 108", "field table ofs 108 type 0"],
+     ["_pad65 (IDA 101..103)", "removed: no Replay member there; 94..95 stay pad", "field table"]
+   ],
+   "unconfirmed": [
+     "names of bytes 80..92 (game-test order only; the table name pointers are runtime placeholders, not strings)",
+     "m_RunPassthroughType, m_CrouchArrivalType, m_pShuffleNode, m_pDeployedLMGNode, m_ReacquireStepTime names (offsets proven, names from game-test)",
+     "94..95 left as pad (no Replay access)"
+   ],
+   "notes": "Size 120 -> 112 is a proposal (struct size change). The blackboard is an embedded member of ai_scripted_t at +448 (InitBlackboard, AI_BB_GetFieldValue@0x140e66500 uses AIScripted+448); that parent range is owned by A046/A047, which should place AIBlackboard blackboard at 448 inside the ai_scripted_t pad 368..600. AIBlackboard__ShootParams (36 bytes) is a separate struct, its members at 16+offset are consistent with the table, but it is not in this entry. The vec3 at 96 is 12 bytes, so 108..112 is the int, with no pad after it."},
+
+  {"name": "AINewAgentInterface", "verdict": "resolved", "size": 32,
+   "size_evidence": "method 6 (parent distance) plus method 9 (stack local): AIActorInterface_ctor path in AIAgentInterface_InitFromEntity@0x140e58010 stores AINewAgentInterface_vftable at this+32 (the embedded AIAgentBase / AIAgentInterface), stores 0 at this+56 (its m_pAI at +24) and this+1 pointer into this+64; so the embedded object spans [32,64) = 32 bytes. Stack objects in ClearBlackboard@0x140f80970, Ai_Asm_IsEntitySniper@0x140e5bf20 and BT_HasValidAgent@0x140e66f80 are AIAgentInterface locals (frame: v12 at rbp-38h, next local v13 at rbp-18h = 32 bytes), with the AINewAgentInterface vtable written in. AINewAgentInterface has no members of its own, so its size is the base's 32.",
+   "members": [
+     [0, "baseclass_0", "AIAgentInterface", "AINewAgentInterface has no own members; the base AIAgentInterface is the 32-byte object (vtable at +0 of the subobject, m_pAI at +24) built by AIAgentInterface::AIAgentInterface and overwritten with AINewAgentInterface_vftable"],
+     [24, "m_pAI", "ai_agent_t *", "AINewAgentInterface::SetAgent@0x140e59670: *(QWORD*)(this+24) = agent; then AIScriptedInterface::SetAI; DoMove@0x140e58490 and SetBodyAngles@0x140e59780 read this+24 as the agent (its first qword is the gentity pointer, ai_scripted_t-compatible); game-test name m_pAI"]
+   ],
+   "changed_members": [
+     ["agent (IDA 24)", "rename to m_pAI (game-test base name)", "SetAgent@0x140e59670"],
+     ["_pad0 (IDA 0..23)", "replaced by baseclass_0 AIAgentInterface (32 bytes)", "AIAgentInterface_InitFromEntity@0x140e58010"],
+     ["_pad20 (IDA 32..191) and body (IDA 192, char[8])", "removed: 32 is the end of the object; no Replay access to 32..191 or body", "AIAgentInterface local frame size 32; DoMove/SetAgent/SetBodyAngles touch only +24 of this"]
+   ],
+   "unconfirmed": [
+     "no Replay access at +192 (body); the struct instances are 32 bytes, so +192 is not part of this object"
+   ],
+   "notes": "Size 200 -> 32 is a proposal. The vtable AINewAgentInterface_vftable@0x1423d7b38 has about 100 xrefs; the Ai_Asm_*, BT_* and ASM_* functions that reference it all do the same thing: write it into a 32-byte AIAgentInterface local (or into the embedded AIAgentBase) and call through it, so no further size evidence is needed. The vtable itself is 0x638 bytes after AIAgentInterface_vftable@0x1423d7500 (199 slots)."},
+
+  {"name": "AITaskBucket_Lazy", "verdict": "resolved", "size": 72,
+   "size_evidence": "method 4 and method 5 (global extent): four AITaskBucket_Lazy-vtable objects in .data are 72 bytes apart: s_aiTaskBucket@0x1429e7770 (vtable AITaskBucket_Lazy_vftable@0x1423dbab8), s_aiTaskBucketSecond@0x1429e77b8 (same vtable), s_aiTaskBucketThird@0x1429e7800 (vtable +0x18 = AITaskBucket_Lazy_vftable_shouldUpdate@0x1423dbad0), s_aiTaskBucketFourth@0x1429e7848 (vtable +0x30 = AITaskBucket_Lazy_vftable_slotB@0x1423dbae8). Each object begins with its vtable; two distinct objects 72 apart bound the size at 72 and the array stride makes it 72. Replay code touches up to +68 (AITaskBucket_Lazy::ShouldUpdate@0x140e705c0 reads +64 int), so the lower bound is 68.",
+   "members": [
+     [0, "baseclass_0", "AITaskBucket", "AITaskBucket_Lazy adds no own members: AITaskBucket_Lazy::ShouldUpdate@0x140e705c0 reads only base fields (+24, +32 list head/tail; +56 TimeOfLastUpdate; +64 MinTimeBetweenUpdates); the 72-byte objects hold the base layout; the Lazy vtable at +0"]
+   ],
+   "changed_members": [
+     ["_pad0 (IDA 0..23)", "vtable and base; the first 8 bytes are the vtable (AITaskBucket_Lazy_vftable@0x1423dbab8)", "s_aiTaskBucket@0x1429e7770"],
+     ["m_field24 (IDA 24)", "AITaskBucket base: m_TaskList head (sentinel at +8, first node at +24)", "AITaskBucket::Write@0x140e703f0 (`v4 = *(a1+24)`), AITaskBucket_ReadState@0x140e704c0 (`*(taskBucket+24) = 0`), globals s_aiTaskBucketListAFirst@0x1429e7788"],
+     ["m_field32 (IDA 32)", "AITaskBucket base: m_TaskList tail (`*(taskBucket+32) = i`)", "AITaskBucket_ReadState@0x140e704c0; global s_aiTaskBucketListALast@0x1429e7790"],
+     ["m_field56 (IDA int 56)", "AITaskBucket base: m_TimeOfLastUpdate (int)", "AITaskBucket::Write@0x140e703f0 `v7 = *(a1+56)`; ShouldUpdate reads it; global g_AITaskBucket_Counter@0x1429e77a8"],
+     ["m_field64 (IDA int 64)", "AITaskBucket base: m_MinTimeBetweenUpdates (int)", "AITaskBucket::Write `*(a1+64)`; ShouldUpdate `*(this+64)`; global g_aiTaskBucketFrameDuration@0x1429e77b0"],
+     ["_pad28, _pad3C, _pad44 (IDA)", "base fields that Replay touches: fnTaskUpdate at +40 (s_aiTaskBucketCallback0@0x1429e7798), fnTaskGet at +48 (s_aiTaskBucketCallback1@0x1429e77a0, called in AITaskBucket_ReadState), MaxUpdatesPerFrame int at +60 (AITaskBucket::Write)", "AITaskBucket::Write@0x140e703f0; AITaskBucket_ReadState@0x140e704c0"]
+   ],
+   "unconfirmed": [
+     "the base AITaskBucket is 72 bytes in Replay (the same stride), not the game-test 80: the Name at +72 (game-test) does not exist inside the 72-byte object; base size is a proposal for the AITaskBucket owner",
+     "+68..+72 of the object: no Replay access"
+   ],
+   "notes": "Size 520 -> 72 is a proposal. The IDA layout with an unexplained 452-byte pad is wrong; the Lazy type is the base AITaskBucket with no own fields. The Replay member names inside the global block (ListASentinel, ListAFirst, ListALast, Callback0, Callback1, Counter, Initialized, FrameDuration) are a useful cross-check for the base struct. Replay AITaskBucket_Spread (derived) appends its own members after the base, not in this entry."}
+],
+"renames": []}

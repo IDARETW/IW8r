@@ -1,0 +1,32 @@
+{"agent": "A144", "structs": [
+  {"name": "OnlineChallengesManager", "verdict": "resolved", "size": 175736,
+   "size_evidence": "Replay layout ends at 175732 = 175720 + 12*N with N=1 (one local client: LocalClientGlobals cg_t *[1] per coordinator; CL_Mgr_GetControllerFromClient@0x140D66C50 scans exactly one 4-byte entry, verified: loop from s_commonAsmStaticSlotTable._pad44360[467224] to [467228]). The last member Online_Retry record 0 ends at 175732. The class has a vtable pointer at +0 (OnlineChallengesManager_vfunc..., base OnlineSystem), so its C++ size is a multiple of 8: 175736 is the smallest such value >= 175732, and the tail 175732..175736 is alignment padding. Bounds check: highest Replay access end 175729 <= 175736 <= 184112 (next named global s_onlineCommunityChallengesProgressionInstance at g_OnlineChallengesManagerInstance+184112).",
+   "members": [
+     [64, "m_aeFetchState", "unsigned __int8[1]", "Initialize@0x140F32FB0: WORD [this+64]=1 (state byte 64, byte 65=0); ControllerFrame@0x140F33150: cmp byte [rsi+rbx+40h],1 / ,4; OnSignedOut@0x140F332A0: byte [this+slot+64]=1; OnGetProgressionComplete@0x140F350D0: byte [m_aeFetchState+v2] = 3, 4, 1"],
+     [65, "m_aeFetchFlag_s1", "unsigned __int8", "UNCONFIRMED name. ControllerFrame@0x140F33150: byte [rsi+rbx+41h]=0 before FetchProgressionState; OnGetProgressionComplete: if byte [m_aeFetchState+v2+1]==0 then set 1 and fetch."],
+     [66, "m_aeFetchFlag_s2", "unsigned __int8", "UNCONFIRMED name. OnSignedOut@0x140F332A0: byte [this+slot+66]=0; OnGetProgressionComplete: byte [m_aeFetchState+v2+2]=1; Initialize/ResetState: byte [this+66]=0."],
+     [72, "m_progressionState", "bdGetAchievementStatesResponse (size 56272, count 1)", "OnGetProgressionComplete@0x140F350D0: object base = _pad48 + 56272*client (offset 72); CopyCtor on it; nextPageToken read at +55224. Block ends exactly at 56344 where m_nextGetStateTime starts."],
+     [56344, "m_nextGetStateTime", "int[1]", "OnSignedOut@0x140F332A0: DWORD [this+4*slot+56344]=0; Initialize@0x140F32FB0: DWORD [this+56344]=0; ControllerFrame@0x140F33150: cmp eax,[rbx+rsi*4+0DC18h] (0xDC18=56344); FenceDependenciesUpdated: progression[0]._padDBB9[7] = 56344. Bytes 56348..56352 have no Replay access (padding)."],
+     [56352, "m_xpCache", "ChallengeXPCache[64] (stride 968)", "ResetXPCache@0x140F3A2B0: imul rbx,rax,3C8h (968), loop i<0x40, bdUserAccountID::reset at element+8 (base 56352 by lea 0DC28h = 56360 = xuid); FlushXPCache@0x140F345C0: pad8C-164 is_premium (+0), pad8C-156 xuid (+8), pad8C-84 first_party_xuid (+80), pad8C-12 platform (+152). Array ends 56352+61952 = 118304 = m_xpCacheAmount."],
+     [118304, "m_xpCacheAmount", "int", "Initialize@0x140F32FB0: QWORD [this+118304]=0 (covers amount and flush); FlushXPCache loop bound v2->m_xpCacheAmount; FenceDependenciesUpdated sets it to 0"],
+     [118308, "m_xpCacheFlushTime", "int", "Initialize@0x140F32FB0: same QWORD store at 118304; Frame@0x140F33070 compares Sys_Milliseconds to a1->m_xpCacheFlushTime"],
+     [118312, "m_caches", "ChallengeEventCache[4] (stride 14352)", "Frame@0x140F33070: v12 = &m_caches[4] (cache 0 cacheFlushTime at +4), v12 += 14352 over 4 caches; array end 118312+57408 = 175720 = m_getStateRetry. Child stride 14352 is evidence for the child owner."],
+     [175720, "m_getStateRetry", "Online_Retry[1], stride 12", "ControllerFrame@0x140F33150: lea rax,[rsi+rsi*2]; mov [rbx+rax*4+2AE68h] (0x2AE68=175720) zeroes numRetries/nextRetry; retrying byte at +8 via [..+2AE70h] (175728); ShouldRetry at this+175720+12*slot. Only slot 0 occurs with one local client."]
+   ],
+   "changed_members": [
+     ["m_aeFetchState", "unsigned int[2] at 64 (8 bytes) -> unsigned __int8 at 64 with 65/66 companion flags; byte accesses are proven, not dword", "Initialize@0x140F32FB0 WORD store at +64; ControllerFrame cmp byte [rsi+rbx+40h],1"],
+     ["m_nextGetStateTime", "int[2] at 56344 -> int[1] at 56344 with 4 bytes padding to 56352 (N=1)", "Initialize/OnSignedOut/ControllerFrame accesses at slot 0 only"],
+     ["m_progressionState", "bdGetAchievementStatesResponse[2] at 88 (112544) -> [1] at 72 (56272); the struct must be re-packed after it", "OnGetProgressionComplete@0x140F350D0: _pad48+56272*client; block ends at 56344"],
+     ["m_xpCache", "unsigned __int8[5640] at 112664 -> ChallengeXPCache[64] (stride 968) at 56352", "ResetXPCache@0x140F3A2B0 imul 3C8h, 0x40 loop; FlushXPCache pad8C offsets"],
+     ["m_caches", "unsigned __int8[57408] at 118312 -> ChallengeEventCache[4] (stride 14352) at 118312", "Frame@0x140F33070: 4 caches, v12 += 14352, flush time at +4"],
+     ["m_getStateRetry", "Online_Retry[8] at 175720 (96 bytes) -> Online_Retry[1] at 175720 (12 bytes); total size 175736 with alignment padding", "ControllerFrame@0x140F33150 stride 12, base 0x2AE68 = 175720, one local client"]
+   ],
+   "unconfirmed": [
+     "m_aeFetchFlag_s1 (byte 65) and m_aeFetchFlag_s2 (byte 66): names UNCONFIRMED, though with one slot they no longer collide with another slot's state byte",
+     "Total size 175736 relies on C++ alignment of 8 for a polymorphic class (vtable at +0); the IDA type is pack(1) and sums to 175732 without the tail padding. The coordinator should decide whether the IDA struct gets a 4-byte tail pad to match",
+     "m_progressionState element count is 1 (the client index is 0 with one local client), derived from the single-entry client table"
+   ],
+   "notes": "Resolved at 175736. The Replay member map is fully placed for every accessed offset; IDA's current m_progressionState, m_xpCache, m_caches, and m_getStateRetry positions are wrong (see changed_members). The struct sum in pack(1) is 175732; the C++ size with the vtable is 175736. Global g_OnlineChallengesManagerInstance at 0x14411F850, typed OnlineChallengesManager; no embedding struct uses it by value."}
+  ],
+  "renames": []
+}

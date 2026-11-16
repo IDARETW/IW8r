@@ -1,0 +1,59 @@
+{"agent": "A202", "structs": [
+  {"name": "ParticleData", "verdict": "resolved", "size": 96,
+   "size_evidence": "method 6 (parent distance) / tail closure: ParticleEmitter::InitParticleData@0x141BAA850 walks states with stride 512 (`v9 += 512`, `v11 = v9 + this+344`) and places ParticleData at state+416 (`v13 = v11+416`, `ParticleState::Init(v11, ..., v11+416, ...)`), so the 512-byte state record ends 96 bytes after ParticleData starts. Lower bound 92: the last ParticleData access is the qword at +84 (`*(QWORD*)(v11+500)=0`). No state access at record +508..+511 in InitParticleData, ParticleState::UpdateInternal, ParticleEmitter::Update, ParticleEmitter::ParticleStateData::ProcessUpdateModules, ParticleState::Update_GeoTrails, ParticleState_SpawnRecordsAndUpdate, ParticleEmitter::EmitParticles, ParticleEmitter::ProcessInstancePool (displacement scans). The 4 tail bytes are the one assumption: if a later state member is found at +508 the size is 92.",
+   "members": [
+     [0, "m_pParticleData", "unsigned __int8 *", "InitParticleData@0x141BAA850: `*(QWORD*)(v11+416) = Particle_AllocateBlock(...)` (ParticleData+0); ParticleData::Init@0x141BC37E0: `*(QWORD*)this = Particle_AllocateBlock(...)`"],
+     [8, "m_particleCountRunning", "unsigned int", "InitParticleData@0x141BAA850: `*(QWORD*)(v11+424) = 0` (qword at +8)"],
+     [12, "m_particleCountDelayed", "unsigned int", "same qword store at ParticleData+8 zeroes bytes +12..+15; ParticleData::Init@0x141BC37E0: `*(QWORD*)(this+8) = 0`"],
+     [16, "m_particleCountMax", "unsigned int", "InitParticleData@0x141BAA850: `*(DWORD*)(v11+432) = capacity`; ParticleData::Init@0x141BC37E0: `*(DWORD*)(this+16) = elementType`. NAME CONFLICT: the two writers disagree on what +16 is; offset is certain, name left for coordinator"],
+     [20, "m_particleSize", "unsigned __int16", "InitParticleData@0x141BAA850: `*(WORD*)(v11+436) = ParticleData_ComputeStrideForMask(v14)`; ParticleData::Init: `*(WORD*)(this+20) = v6`"],
+     [22, "m_localClientNum", "unsigned __int8", "InitParticleData@0x141BAA850: `*(BYTE*)(v11+438) = 0`; ParticleData::Init: `*(BYTE*)(this+22) = 0`"],
+     [24, "m_particleDataOffsets", "__int16[28]", "ParticleData::BuildParticleOffsetTable@0x141BA23C0: `v1 = this+24`, 28 WORD stores (`*v1++ = result`), table ends at +80; ParticleData::DestroyParticleOffsetTable@0x141BA2550 writes -1 to +24..+72 (qwords) and 0 to +80, the same 56 bytes"],
+     [80, "m_dataFlags", "unsigned int", "BuildParticleOffsetTable@0x141BA23C0 reads `*(DWORD*)(this+80)` as the field mask (`HIDWORD(FieldDescriptor) & this+80`); InitParticleData: `*(DWORD*)(v11+496) = *(moduleDef+144)`; ParticleData::Init: `*(DWORD*)(this+80) = poolSize`"],
+     [84, "m_pad", "unsigned int[2]", "InitParticleData@0x141BAA850: `*(QWORD*)(v11+500) = 0`; ParticleData::Init: `*(QWORD*)(this+84) = 0`"]
+   ],
+   "changed_members": [
+     ["m_pEmitter (+24) and m_pEmitterPadding (+32)", "removed (16 bytes)", "BuildParticleOffsetTable writes the 56-byte table at this+24 (ends +80), so Replay has no pointer pair there; CONFIRMED by the table writer and DestroyParticleOffsetTable"],
+     ["m_particleDataOffsets", "+40 -> +24", "BuildParticleOffsetTable@0x141BA23C0 (`v1 = this+24`)"],
+     ["m_dataFlags", "+96 -> +80", "InitParticleData@0x141BAA850 (`v11+496` = ParticleData+80)"],
+     ["m_pad", "+100 -> +84", "InitParticleData@0x141BAA850 (`v11+500` = ParticleData+84)"],
+     ["size", "112 -> 96", "method 6 above (state stride 512, ParticleData at state+416); whole-struct rebuild, so a proposal: not applied"],
+     ["_pad6C (+108, 4 bytes)", "gone", "no Replay access past +91; replaced by a 4-byte tail pad at +92 (_pad5C) in the 96-byte layout"]
+   ],
+   "unconfirmed": [
+     "_pad17 (+23, 1 byte): no Replay access, stays pad",
+     "tail +92..+95 (4 bytes): no access; part of the size by tail closure only"
+   ],
+   "notes": "Replay ParticleData is 96 bytes: a 24-byte header (pointer, running/delayed/max counts, stride word, local client byte), the 56-byte offset table at +24, flags at +80 and an 8-byte pad at +84. The game-test pEmitter pair is not in Replay. Consistent with game-test minus 16. Proposal: rebuild as the 96-byte layout above; by-value parent ParticleState is not in IDA."
+  },
+  {"name": "SvGameModeAppSP", "verdict": "resolved", "size": 32,
+   "size_evidence": "method 2 (deleting destructor): SvGameModeAppSP::scalar_deleting_dtor@0x141B53F30 is slot 0 of SvGameModeAppSP_vftable (0x1425CC7B8 holds 0x141B53F30; xref data offset from .rdata). SvGameModeAppSP_ctor@0x141B53F00 stores that vftable at +0 (`lea rax, SvGameModeAppSP_vftable; mov [rbx], rax`). The dtor body is `SvGameModeApplication_dtor(); if (deleteFlags & 1) bdMemory::deallocate_5(this, 32)`: disassembly `mov edx, 20h` at 0x141B53F49 before `call bdMemory__deallocate_5`. Cross-check: base SvGameModeApplication is 24 bytes (ctor calls its ctor, ServerThreadLoop reads base +16/+20), own member at +24, 4 bytes tail = 32. Game-test sizeof 32 agrees. The 64-byte in-place slot qword_14E17FD10 in SV_GameMode_SelectActiveApplication@0x14132CB90 is an upper bound only.",
+   "members": [
+     [0, "baseclass_0", "SvGameModeApplication", "SvGameModeAppSP_ctor@0x141B53F00: `call SvGameModeApplication::SvGameModeApplication(this)` then vtable store at +0; SvGameModeAppSP::ResetServerTime@0x141B54090: `*(QWORD*)(this+8) = 0` (base m_svLevelTime / m_svResidualTime); SvGameModeAppSP::ServerThreadLoop@0x141B551F0 reads this+16 and this+20 (base m_frameDuration, m_restartServerThread)"],
+     [24, "m_svPartialTime", "int", "SvGameModeAppSP_ctor@0x141B53F00: `mov dword ptr [rbx+18h], 0`; SvGameModeAppSP::ResetServerTime@0x141B54090: `*(DWORD*)(this+24) = 0`"]
+   ],
+   "changed_members": [
+     ["baseclass_0", "unsigned __int8[24] -> SvGameModeApplication (same width 24, type-only change; set_struct_field_type is allowed once SvGameModeApplication stays 24 bytes)", "SvGameModeAppSP_ctor@0x141B53F00 calls SvGameModeApplication ctor on this"],
+     ["_pad1C", "172 bytes -> 4 bytes (+28, tail to 32)", "method 2: struct size 200 -> 32, a size change: proposal, not applied"]
+   ],
+   "unconfirmed": [
+     "_pad1C (+28, 4 bytes): no Replay access; the 4 bytes are the tail of the 32-byte deleting-dtor size"
+   ],
+   "notes": "The Replay name SvGameModeAppSP::scalar_deleting_dtor is correct: the function is the vtable slot 0 of SvGameModeAppSP_vftable, so no rename. Replay size 32 is now proven, so the game-test 32 is confirmed (IDA 200 was wrong). Only m_svPartialTime is an own member. Lead: the sized delete size 32 comes from this function, so the earlier deleting-dtor lead is valid."
+  },
+  {"name": "CgClientSideEffectsSystemMP", "verdict": "resolved", "size": 14520,
+   "size_evidence": "method 1 (allocation): CG_MainMP_AllocateClientMemory@0x14178FDF0 calls `Mem_HunkUser_AllocInternal(hunkUser, 14520 * clientCount, 8)` and `memset_0(v58, 0, 14520 * v7)`, then for each client: `*(QWORD*)obj = &CgClientSideEffectsSystemMP_vftable; CgClientSideEffectsSystem::ms_instance[i] = obj; CgClientSideEffectsSystem::AllocateMemory(obj, hunkUser); obj += 14520`. The object's own vtable is stored at +0 and the per-client stride is 14520, so the MP object is 14520 bytes. CgClientSideEffectsSystemMP::Start@0x14177C660 only calls LoadEffects(this) and StartEffects(this): no own fields.",
+   "members": [
+     [0, "baseclass_0", "CgClientSideEffectsSystem", "CG_MainMP_AllocateClientMemory@0x14178FDF0: MP vtable stored at +0 of the 14520-byte object; CgClientSideEffectsSystem::AllocateMemory@0x141683710 writes the base members: ActiveSet::Init(this+16), ActiveSet::Init(this+72), hunk pointers at +14472/+14480/+14488/+14496, qword at +14504, dword at +14512 (matches the IDA base layout 14520)"]
+   ],
+   "changed_members": [
+     ["baseclass_0", "unsigned __int8[80064] -> CgClientSideEffectsSystem (14520 bytes)", "allocation stride 14520 above; size 80064 -> 14520 is a size change: proposal, not applied"]
+   ],
+   "unconfirmed": [
+     "game-test base fields beyond +14520 (m_roots 65536 bytes at +0x38B4 in game-test, m_rootsParsed, m_rootLookAt) have no Replay access in AllocateMemory or Shutdown and the per-client stride is 14520, so they are not in the Replay object. Base agent should confirm the base layout; not decided here."
+   ],
+   "notes": "The MP type has no fields of its own in Replay: it is the base object with the MP vtable. The game-test 80064 is the flattened game-test base (which carried roots that Replay does not have). Note for the base-class owner: CgClientSideEffectsSystem's IDA layout (14520) matches the Replay evidence, and game-test's m_roots block should not be added there without Replay evidence. Decompile misnames the allocated type as GfxDynamicLightsetProbeData in CG_MainMP_AllocateClientMemory: a local-type artifact, not a function or global rename."
+  }
+ ],
+ "renames": []
+}

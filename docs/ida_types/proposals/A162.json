@@ -1,0 +1,37 @@
+{"agent": "A162", "structs": [
+  {"name": "GfxCmdBufInput", "verdict": "partial", "size": 7872,
+   "size_evidence": "method 3: R_CopySceneViewStateBlock@0x14198abf0 is memcpy(dest, src, 0x1EC0) = 7872 bytes; its only caller R_BuildSceneViewState@0x14197b31e passes dest = viewInfo+0xE90 (the input, GfxViewInfo.input, input base 0x0E90). Upper-side check: R_BuildSceneViewState reads clientIndex at viewInfo+0x2D54 = input+7876, so the 4-byte viewInfoIndex sits at input+7872 and the struct ends there. Size is proven; verdict is partial because the head members (consts / sceneConstants / codeImages) are not placed (see unconfirmed). Current IDA size 7952 is wrong: a PROPOSAL to shrink the struct by 80 (7952 -> 7872); the parent GfxViewInfo already has input size 7872.",
+   "members": [
+     [6760, "codePersistentImages", "GfxImage *[42]", "R_SetupSceneCmdBufInput@0x141979c00 writes input+6816 (GT codePersistentImages[7], cloudNoise, r_scene.cpp 9960+ block), +6888 ([16] heightfield image), +6896..+6920 ([17..20] sky illumination), +6944 and +6952 ([23] and [24] light grid volume atlas, r_scene.cpp:10028-10029), +6984..+7000 ([28..30] lightmap atlas), +7088 ([41] magma heightfield). Each Replay offset = 6760 + 8*GT index for all 10 slots, which fixes the base at 6760 (6944 - 23*8). 336 bytes, 6760..7096."],
+     [7096, "codeBuffers", "GfxWrappedBuffer *[52]", "R_LGV_SetCodeBuffers@0x140ef70a0 writes [rbx+1C90h], +1C98h, +1CA0h, +1CA8h, +1CB0h = input+7312..7344 (the three LGV atlas buffers are GT codeBuffers[29..31], r_lightgrid_volumes.cpp:5411-5415; the transform-params slot at 7312 is GT [27]). Base 7096 = 7328 - 29*8. R_SetupSceneCmdBufInput writes input+7096 (GT codeBuffers[0] = globalSceneConstantBuffer, rb_backend.cpp:7146). R_LGV_SetSceneInputPointers writes 7192..7280 (GT [12]..[23] pattern). 416 bytes, 7096..7512."],
+     [7512, "codePersistentBuffers", "GfxWrappedBuffer *[41]", "R_SetupSceneCmdBufInput writes input+7520, +7528, +7536 (persistent [1..3] under base 7512). Base follows from codeBuffers end (7096+416) and the same -72 shift that data and voxelTreeZoneIndex show. 328 bytes, 7512..7840."],
+     [7840, "codeRWBuffers", "GfxWrappedRWBuffer *[1]", "by elimination: the 20 bytes between codePersistentBuffers end (7840) and voxelTreeZoneIndex (7860, Replay-confirmed) hold codeRWBuffers (8) + resolution (8) + bitfield byte (1) + 3 pad bytes. No Replay access to 7840..7848 was found."],
+     [7848, "resolution", "GfxSceneResolutionState", "by elimination (same 20-byte range as above). The bitfield byte at 7856 comes after it, which is why resolution cannot sit after the bits."],
+     [7856, "bits_1EF0", "unsigned __int8 (bitfield byte)", "R_BuildSceneViewState@0x14197b331: `xor dl,[rdi+2D40h]; and dl,2; xor [rdi+2D40h],dl` = input+7856 bit 1, the balanceOpaqueLists bit by GT order (cmdBufWorker bit0, balanceOpaqueLists bit1, decalVolumes bit2). A second read-modify-write on the same byte (`xor cl,[rdi+2D40h]`) is in the same function. Keep as bitfields; the IDA name and offset change (7920 -> 7856)."],
+     [7860, "voxelTreeZoneIndex", "unsigned int", "R_SetupSceneCmdBufInput: `*(int *)&input[7860]` used as heightfields index (r_scene.cpp:9984 in GT); R_LGV_SetSceneInputPointers: `mov eax,[r8+1EB4h]` (r8 = input). R_BuildSceneViewState writes [rdi+2D44h] (= input+7860)."],
+     [7864, "data", "GfxBackEndData *", "R_LGV_SetCodeBuffers@0x140ef70a0: `mov rcx,[rbx+1EB8h]` passed to R_GetLightGridVolumesAtlas*Buffer (GfxBackEndData *); R_SetupSceneCmdBufInput: `input[7864]` is the data base for the lightmap/LGV/sky reads (`[rbx+2D48h]`, GfxViewInfo+0x2D48 = input+7864)."]
+   ],
+   "changed_members": [
+     ["consts", "unchanged or shifted in its head (unproven); base 0 assumed by IDA", "no Replay access found"],
+     ["sceneConstants", "IDA 2560 kept; Replay shows -16 by drawDistanceFlatteningPercent and -32 by clutterFirstInstanceIndex", "R_ST_ClutterSetSceneConstants@0x140ede400 writes input+6032 (GT drawDistanceFlatteningPercent, GT 3488) and input+6064 (GT clutterFirstInstanceIndex, GT 3536 = r_st_clutter.cpp:351)"],
+     ["codeImages", "IDA 6144 not confirmed; the 72 bytes sit in sceneConstants tail or codeImages", "see unconfirmed"],
+     ["codePersistentImages", "6832 -> 6760", "see above"],
+     ["codeBuffers", "7168 -> 7096", "R_LGV_SetCodeBuffers 5 writes; codeBuffers[0] at 7096"],
+     ["codePersistentBuffers", "7584 -> 7512", "7520/7528/7536"],
+     ["codeRWBuffers", "7912 -> 7840", "by elimination"],
+     ["resolution", "7922 -> 7848 (and moved before bits)", "by elimination"],
+     ["bits_1EF0", "7920 -> 7856", "R_BuildSceneViewState RMW on 2D40h"],
+     ["voxelTreeZoneIndex", "7932 -> 7860", "Replay reads 2D44h / input+7860"],
+     ["data", "7936 -> 7864", "Replay reads 2D48h / input+7864 (R_LGV_SetCodeBuffers 1EB8h)"]
+   ],
+   "unconfirmed": [
+     "consts (IDA 2560 bytes at 0): no Replay access found in these functions; a vec4 array of 16 bytes per entry, so it can only shrink by a multiple of 16",
+     "sceneConstants start and size: the -16 (before GT 3488) and -32 (GT 3488..3536) shifts are proven at the two points above; the remaining -40 between GT 3536 and codePersistentImages lies in the sceneConstants tail (GT 3540..3584) or codeImages; not located",
+     "codeImages start and count (IDA 86 entries from 6144): Replay accesses none directly in R_SetupSceneCmdBufInput; RB_RTT_UpdateInputCodeImages writes through a drawState pointer whose base offset from input is unknown, so it is not evidence",
+     "the bitfield byte has a second bit used (`xor cl,[2D40h]`) whose mask was not read; GT has cmdBufWorker bit0 and decalVolumes bit2 for the other two bits"
+   ],
+   "notes": "Replay layout (input-relative): consts ?, sceneConstants ?, codeImages ?, codePersistentImages 6760..7096, codeBuffers 7096..7512, codePersistentBuffers 7512..7840, codeRWBuffers 7840..7848, resolution 7848..7856, bits 7856, pad 3, voxelTreeZoneIndex 7860, data 7864..7872. Total 7872. Head (consts + sceneConstants + codeImages) is 6760 bytes in Replay (IDA 6832+ for the persistent start). Proof of 7872 and the 6760 base is solid; the head split is not. The IDA GfxViewInfo already has input at 3728 with size 7872 and viewInfoIndex at 11600, which matches. Game-test GfxCmdBufInput is 7952 with data at 7936, so the GT tail of 8 bytes after data does not exist in Replay."}
+ ],
+ "renames": [
+   ["0x14198abf0", "R_CopySceneViewStateBlock", "R_CopyCmdBufInput", "only caller R_BuildSceneViewState@0x14197b31e passes dest = viewInfo->input (GfxViewInfo+0xE90) and copies 0x1EC0 bytes = GfxCmdBufInput size; game-test R_SetupViewInfo calls R_CopyCmdBufInput(&viewInfo->input, &g_gfxCmdBufInput) (r_scene.cpp:11908)"]
+ ]}

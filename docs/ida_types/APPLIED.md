@@ -170,6 +170,23 @@ object). Conflicts left for later: `DWServicesAccess` list head, `Online_Friends
 right: `snd_rv_params` 80, `SndMusicAsset` 120, `SndMusicState` 336, `SndAssetBankEntry` 44,
 `ParticleModuleInitRunner` 112. Second retype pass: 28 more members (`DWWrappers` slots, `NetChannel[48]`, ...).
 
+### Second report pass (owner: "use haiku agents, and get the remaining 135 structs resolved"; renames allowed)
+
+67 read-only Haiku agents (A136-A202, `REPORT2_AGENT_PROCEDURE.md`, packets `out/ida_types/packets2`, roster
+`report2_agents.json`) gave every one of the 135 a verdict (resolved / absent / opaque / partial). New static
+evidence: deleting-destructor sized deletes (`scan_deleting_dtors.py`, checked against game-test and the class's own
+vtable), global extents, parent distance, derived-class start, tail closure, stack frames, and the single local
+client of the PC build (`LocalClientGlobals` cg_t *[1]; `CL_Mgr_GetControllerFromClient@0x140D66C50` scans a
+one-entry table), which collapses game-test's per-controller arrays to one element. Coordinator decisions in
+`proposals/COORD.json` (sizes from parent distance / strides / the 0x50 fence-object stride, `drop_size` for
+inferred sizes, `force_relayout` with reasons, `ignore_max_access` for misattributed accesses). Plans 8-10 applied
+(backup `local_types_20261116_before_report2.h`), 54 renames applied (`out/ida_types/scan/renames_final.json`,
+e.g. `CgSnapshotMP::scalar_deleting_dtor` -> `OnlineBattlepass::scalar_deleting_dtor`, the 22 PIP setters,
+`BgAntiLag` / `CgAntiLag` destructors, `NetThread::ProcessRequest` created), 17 struct comments for absent / opaque
+types. Wrong verdicts caught and reverted: `GfxCmdBuf` "absent" (it is held by `GfxDrawCallOutput`),
+`bitarray_224` 20 (back to 28: `ClientBits` reads +24; the 20-byte evidence was the 160-bit team mask), an unconfirmed
+footer anchor in `bot_data_t`. Final reserve pass A203-A209 (`report3_agents.json`) on the last clusters.
+
 Final state and the 135 structs still unproven: `ALL_STRUCTS.md`, `ALL_STRUCTS_REPORT.txt`. Open conflicts the
 agents found and nobody resolved yet: `bot_data_t` size (A101), `DWServicesAccess` list head (A124), `Online_Friends`
 favorites vs `FriendListGlobal` 28264 (A124), `GfxBackEndData` -448 (A123), `GfxCmdBufInput` -72 (A123),

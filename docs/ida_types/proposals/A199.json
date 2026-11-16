@@ -1,0 +1,102 @@
+{"agent": "A199", "structs": [
+  {"name": "CEntPlayerInfo", "verdict": "partial", "size": null,
+   "size_evidence": "no size method found. Replay max access end is 15 (IKHandBone[1] at +14). Bounds: lower 15 (Replay), upper 128 (the view sits in cpose_t's union at cpose+152, cpose is 280 in IDA, so the union cannot exceed 128; cpose size is A015's). Game-test size 16 is plausible but not proven by Replay. IDA size 104 has no Replay support.",
+   "view": "Replay reads this struct as the player view of cpose_t at cpose+152 (IDA cpose_t.actor offset) on the eType 1 / 0x11 path of CG_Pose_DoControllers@0x1416E2370. The same bytes are named CEntActorInfo there (A015 owns that).",
+   "members": [
+     [0, "control", "clientControllers_t *", "CG_Pose_DoControllers@0x1416E2370: `*(_QWORD *)&controller->actor.pitch != 0` gates the call. BG_Pose_ApplyControllerBits@0x140CDF0D0: `v3 = *(float **)pose`, then reads v3[12..] (control+48 onward). BG_Pose_DoDogControllers@0x140CDF030: `v3 = *poseCtx; v8 = *(float *)(v3 + 48) * 0.008726646f`. Offset 48 is clientControllers_t.tag_origin_angles, so the pointer is clientControllers_t *."],
+     [8, "tag", "unsigned __int8[4]", "BG_Pose_ApplyControllerBits@0x140CDF0D0: loop of 4 over `pose + 8` calls DObj_ApplyControllerBoneBit(dobj, bits, *v4, v5), v5 += 12 (clientControllers_t.angles[4])"],
+     [12, "animCtrl", "unsigned __int8", "CG_Pose_DoControllers@0x1416E2370: `LOBYTE(controller->actor.prevZ) == 2` picks BG_Pose_DoDogControllers, else BG_Pose_ApplyControllerBits. Byte +12 is the same byte as prevZ in CEntActorInfo."],
+     [13, "IKHandBone", "unsigned __int8[2]", "BG_Pose_ApplyControllerBits@0x140CDF0D0: `*(pose + 13) != 0xFE` and `*(pose + 14) != 0xFE` gate DObj_ApplyLocalTagMask / DObjCompleteHierarchyBits for hand IK (v3[18..23] = hand_ik_local_pos). Replaces the IDA _padD range at +13."]
+   ],
+   "changed_members": [
+     ["_padD (+13, 11 bytes)", "split: IKHandBone unsigned __int8[2] at +13 (proven above); the other 9 bytes stay pad", "BG_Pose_ApplyControllerBits@0x140CDF0D0"],
+     ["ptr24 (+24, void *)", "no Replay access on the player view; propose to remove or leave in pad (IDA guess)", "CG_Pose_DoControllers, BG_Pose_DoDogControllers, BG_Pose_ApplyControllerBits read nothing at +15 and above"],
+     ["controllerState (+96, void *)", "no Replay access; IDA guess, propose to remove", "as above"]
+   ],
+   "unconfirmed": [
+     "ptr24 (IDA +24): no Replay access in the player-view paths read",
+     "_pad20 (IDA +32, 64 bytes): no Replay access",
+     "controllerState (IDA +96): no Replay access",
+     "size 16 (game-test) vs 104 (IDA): not proven either way; Replay evidence stops at 15"
+   ],
+   "notes": "First-pass correction: the animCtrl citation (BG_AnimationState_DoControllers@0x1410E1710 `animState+12`) is wrong. Its caller passes the stack record filled by BG_AnimationState_InitBoneIndexCache@0x1410E20E0 (+0 treeHandle, +12 cacheMode), not a CEntPlayerInfo. The real animCtrl proof is the CG_Pose_DoControllers line above. BG_Pose_DoDogControllers's first parameter (poseCtx) is therefore a shared shape: qword at +0, byte at +12. Its prototype (`__int64 *`) does not say which struct it is; a prototype change is the coordinator's call. The union at cpose_t+152 (game-test +0xA0 union: actor/player/turret/vehicle/scriptMover/coverWall/fx) is not typed in IDA; cpose_t.actor is one member only. Propose to the cpose_t owner (A015) a union, not a change in this struct."},
+
+  {"name": "CEntTurretInfo", "verdict": "partial", "size": null,
+   "size_evidence": "no size method found. Replay proves the members up to +60 (visualPitchLimitBottom at +56, 4 bytes), lower bound 60. Upper bound 128 from the cpose_t union (cpose 280 minus union start 152; the vehicle view is 128 in game-test and is the largest union member). Game-test size 80 and IDA 80 are not proven. The first pass's note (not shaped like CEntTurretInfo) was wrong: the turret view is at centity+152.",
+   "view": "CG_Entity_TurretPreControllers@0x1416AA750 is called with the centity (a3) from CG_EntityMP_ProcessTurretEntity@0x1417851D0, so a3+152 is the turret view. CG_Entity_AdjustVehicleTurretAngles@0x1416A6440 receives the same centity as turretEntity: it reads turretEntity+64 (cpose.angles) and writes turretEntity+152 (vec3) and +176 (bool).",
+   "members": [
+     [0, "angles", "CEntTurretAngles", "CG_Entity_AdjustVehicleTurretAngles@0x1416A6440: `AxisToAngles(outAxis, turretEntity + 152)` writes 3 floats (pitch, yaw, barrelPitch). Union warning: CG_Entity_TurretPreControllers@0x1416AA750 stores `*(_QWORD *)(a3 + 152) = &viewangles` (a vec3_t * pointer) before the AdjustVehicle call, so +0 also holds a pointer on that path (game-test union {vec3_t *viewAngles; CEntTurretAngles angles; vec3_t onVehicleGunAngles})."],
+     [16, "barrelPitch", "float", "CG_Entity_TurretPreControllers@0x1416AA750: `*(float *)(a3 + 168) = ...` with the barrel pitch arithmetic"],
+     [20, "barrelRoll", "float", "CG_Entity_TurretPreControllers@0x1416AA750: `*(float *)(a3 + 172) = AngleNormalize360(...)` accumulating frametime * 0.36 * weapon-def value"],
+     [24, "useOnVehicleAngles", "bool", "CG_Entity_TurretPreControllers: `*(a3 + 176) = 0`; CG_Entity_AdjustVehicleTurretAngles: `*(turretEntity + 176) = 1`"],
+     [25, "playerUsing", "bool", "CG_Entity_TurretPreControllers: `*(a3 + 177) = v10` (v10 = view-locked by the player)"],
+     [26, "worldSpaceTransform", "bool", "CG_EntityMP_ProcessTurretEntity@0x1417851D0: `*(entity + 178) = 0` before CG_Entity_TurretPreControllers"],
+     [27, "remoteTurret", "bool", "CG_Entity_TurretPreControllers: `*(a3 + 179) = (flags & 0x80) != 0`"],
+     [28, "wasOverheat", "bool", "CG_Turret_PlayFireEffects@0x1414F0DC0: tests `*(turret + 180) == 0`, then `*(turret + 180) = (flags & 2) != 0`"],
+     [29, "tagIdx_aim", "unsigned __int8", "CG_Entity_TurretPreControllers: XModelGetBoneIndex result into a3 + 181 (255 = unset)"],
+     [30, "tagIdx_aim_animated", "unsigned __int8", "CG_Entity_TurretPreControllers: a3 + 182"],
+     [31, "tagIdx_aim_pivot", "unsigned __int8", "CG_Entity_TurretPreControllers: a3 + 183"],
+     [32, "tagIdx_flash", "unsigned __int8", "CG_Entity_TurretPreControllers: a3 + 184; CG_Turret_PlayFireEffects: `*(turret + 184)` passed as the bolted-effect bone"],
+     [33, "tagIdx_barrel", "unsigned __int8", "CG_Entity_TurretPreControllers: a3 + 185"],
+     [34, "barrelRollSndLastRotating", "bool", "CG_Turret_UpdateChargeState@0x1414F08B0: `*(turret + 186) == (flags & 1)` test, then `*(turret + 186) = flags & 1`"],
+     [35, "barrelRollSndIndex", "unsigned __int8", "CG_Turret_UpdateChargeState: `*(turret + 187) = (int)(slots * charge)`"],
+     [36, "barrelRollSndTime", "int", "CG_Turret_UpdateChargeState: `*(int *)(turret + 188) = client->time`"],
+     [44, "deployed", "bool", "CG_EntityMP_UpdateTurretPose@0x141786550: `if (!forceUpdate && *(entity + 196) == 0 || changed) { *(entity + 196) = 1; ...}`. The Replay use is an update flag; the name is the game-test name."],
+     [48, "deployedTime", "int", "CG_EntityMP_UpdateTurretPose: `*(int *)(entity + 200) = LocalClientGlobals[n]->time`"],
+     [52, "visualPitchLimitTop", "float", "CG_Entity_TurretPreControllers: `*(a3 + 204) = *(DWORD *)(weaponDef + 3136)` (DWORD copy of a float)"],
+     [56, "visualPitchLimitBottom", "float", "CG_Entity_TurretPreControllers: `*(a3 + 208) = *(DWORD *)(weaponDef + 3140)`"]
+   ],
+   "changed_members": [
+     ["angles (+0)", "union candidate with `vec3_t *viewAngles` (8 bytes) per the pointer store above; propose the union, do not edit", "CG_Entity_TurretPreControllers@0x1416AA750"]
+   ],
+   "unconfirmed": [
+     "barrelSoundPlaybackId (+40): no Replay access in the turret functions read",
+     "visualYawLimitLeft (+60), visualYawLimitRight (+64): no Replay access in the turret functions read (CG_Entity_TurretPreControllers stops at +56)",
+     "playerYawSpeedSmooth (+68), playerViewArms (+72): no Replay access in the turret functions read",
+     "_padC (+12, 4 bytes), _pad2D (+45, 3 bytes), _pad49 (+73, 7 bytes): stay pads",
+     "Not read for this pass: CG_Turret_UpdateCamoOverrides, CG_Turret_ApplyViewmodelFlags, CG_PlayersMP_UpdateTurretPositioning, CG_KillCam_UpdateTurretKillCam, CG_EntitySP_UpdateTurret. The unconfirmed offsets may be read there."
+   ],
+   "notes": "The IDA layout already agrees with every offset proven here (0, 16, 20, 24..36, 44, 48, 52, 56). No layout edit is proposed. Size stays open. CEntTurretInfo is a member of the cpose_t union at +152 (see the CEntPlayerInfo notes); the union itself is A015's to propose."},
+
+  {"name": "CEntVehicleInfo", "verdict": "partial", "size": null,
+   "size_evidence": "no size method found. Replay's last proven byte is spinWheelBones at +124 (CG_Vehicle_UpdateWheelPoses@0x1417045B0 writes `*(entity + 276)`), lower bound 125. Upper bound 128 from the cpose_t union (cpose 280 minus 152; vehicle is the largest union member in game-test at 128). IDA and game-test both say 128, not proven by Replay.",
+   "view": "The view is cpose_t+152 (centity+152), the vehicle member of the game-test +0xA0 union. Replay reads it as a union of per-vehicle-type layouts: a wheeled-car layout (+24 wheelFraction .. +124 spinWheelBones) and a helicopter layout (+42/43, +46..53 stick/pedal/lever bones, +104..117 rotor blade bones). A flat struct is wrong for helicopters; the car layout is what IDA's flat struct matches.",
+   "members": [
+     [0, "pitch", "__int16", "CG_Vehicle_UpdateSlotWheelState@0x141704B30: `*(WORD *)(entity + 152) = ...` from the first angle component (v58[0]). Replay writes the short at +152 = view+0."],
+     [2, "yaw", "__int16", "CG_Vehicle_UpdateSlotWheelState: `*(WORD *)(entity + 154)` from v58[1]"],
+     [4, "roll", "__int16", "CG_Vehicle_UpdateSlotWheelState: `*(WORD *)(entity + 156)` from v59 (v58[2])"],
+     [8, "steerYaw", "__int16", "CgVehicleSystem::UpdateBoneControllersInternal@0x1416FF680: `*(WORD *)(v6 + 160) = (int)...`, with a 0 / 182 write on one branch (v6 = centity)"],
+     [10, "steerYawAckermannRatio", "__int16", "UpdateBoneControllersInternal: `*(WORD *)(v6 + 162) = v37`"],
+     [12, "tag_handle", "unsigned __int8", "CG_Vehicle_UpdateSlotWheelState: `*(entity + 164)` tested against 255 and written -2 / -1 (XModelGetBoneIndex output)"],
+     [16, "suspRayDist", "float", "CG_Vehicle_UpdateSlotWheelState: `if (*(float *)(entity + 168) <= 0) return`. CG_Vehicle_UpdateWheelContacts@0x141705060: `v4 = *(float *)(contactOutput + 168)` as the suspension ray radius; UpdateBoneControllersInternal writes `*(float *)(v6 + 168) = v38`. Game-test name suspRayDist (IDA name `time`, see renames)."],
+     [20, "barrelRoll", "float", "UpdateBoneControllersInternal: `*(float *)(v6 + 172) = v27`"],
+     [24, "wheelFraction", "unsigned __int16[12]", "CG_Vehicle_UpdateWheelContacts: `*(WORD *)(contactOutput + 176 + 2*i)` written from the contact fraction (`*v58 * 0.000015259022`, 65535 scale)"],
+     [48, "wheelBoneIndex", "unsigned __int8[12]", "CG_Vehicle_UpdateWheelContacts, CgVehicleSystem_UpdateWheelsAndTreads@0x14170F940: `*(BYTE *)(entity + 200 + i)` tested against 0xFE / 255 and written -1 / -2"],
+     [60, "otherWheelBoneIndex", "unsigned __int8[4]", "CG_Vehicle_UpdateSlotWheelState: loop of 4 over `*(entity + 212 + i)` (v10 + v3 + 212) with XModelGetBoneIndex"],
+     [64, "wheelSurfaceType", "unsigned __int8", "CG_Vehicle_UpdateWheelContacts: `*(BYTE *)(contactOutput + 216) = (surface >> 19) & 0x3F`"],
+     [65, "wheelSteeringRatioMaxIndex", "unsigned __int8", "CG_Vehicle_UpdateWheelPoses@0x1417045B0: `*(BYTE *)(entity + 217) = 1 or 3`. Value range and write pattern match a max-index byte; game-test name."],
+     [66, "wheelSteeringRatioDecay", "unsigned __int16", "CG_Vehicle_UpdateWheelPoses: `*(WORD *)(entity + 218) = 0 or -9831`"],
+     [68, "wheelSpinAngle", "__int16[12]", "CG_Vehicle_UpdateWheelPoses: `*v34++ = result` for wheel count (entity+220 = view+68), value = AngleNormalize360 * 182.04445"],
+     [92, "treadAnimInfo", "VehicleTreadAnimInfo (8 bytes)", "CgVehicleSystem_UpdateWheelsAndTreads@0x14170F940: `*(QWORD *)(treadSample + 244) = *(QWORD *)(Client + 112)` (8-byte write at view+92)"],
+     [120, "boneUsage", "unsigned __int8", "UpdateBoneControllersInternal: `v61 = *(BYTE *)(v6 + 272)`, branch on 1"],
+     [121, "tag_body", "unsigned __int8", "UpdateBoneControllersInternal: `*(BYTE *)(v6 + 273) = XModel_FindCompositeBoneIndex...`"],
+     [122, "tag_turret", "unsigned __int8", "UpdateBoneControllersInternal: `v6 + 274` tested against 255 and the s_tagTurretStringId lookup, written -1"],
+     [123, "tag_barrel", "unsigned __int8", "UpdateBoneControllersInternal: `v6 + 275` tested against 255 and the s_tagBarrelStringId lookup, written -1"],
+     [124, "spinWheelBones", "unsigned __int8", "CG_Vehicle_UpdateWheelPoses: `*(BYTE *)(entity + 276) = *(BYTE *)(client + 712)`"],
+     [104, "rotorBladeBoneIndex", "unsigned __int8[14]", "UpdateBoneControllersInternal: `*(BYTE *)(v6 + 256..260)` = MainRotorBlade01..05 bone lookups (rotorBladeBoneIndex[0..4]); `v6 + 262 / 263` = TailRotorBlade01/02 (indices 6,7); `v6 + 265..269` = blur bones (indices 9..13). Index 5 (+109) and 8 (+112) not read."]
+   ],
+   "changed_members": [
+     ["time (+16, float)", "rename to suspRayDist: game-test lists suspRayDist at the same offset; Replay reads it as the suspension ray length in CG_Vehicle_UpdateWheelContacts", "CG_Vehicle_UpdateWheelContacts@0x141705060"],
+     ["flat struct (+24 .. +104)", "propose a union of the car layout (wheelFraction / wheelBoneIndex / wheelSteeringRatio* / wheelSpinAngle / treadAnimInfo) and the helicopter layout (rotor / tail / stick / pedal bones). Helicopter bones at +42/+43 and +46..+53 overlap wheelFraction and wheelBoneIndex. Union edit: proposal only.", "UpdateBoneControllersInternal@0x1416FF680 (v6+194/195, 198..205)"]
+   ],
+   "unconfirmed": [
+     "barrelPitch (+6, short): no Replay access found in the reads done (the writes at +152..+158 in UpdateBoneControllersInternal go to boneControllerState, not to this view)",
+     "tag_turretLeft / tag_turretRight (+24/+25) and terrainMode / gunTrackMode / advancedRotor / rotor angles (+24..+104): helicopter and terrain union members, not checked individually",
+     "steerYaw / Ackermann are CONFIRMED above; no further evidence needed",
+     "_padD (+13..+15), _pad64 (+100..+103), _pad76 (+118..+119), _pad7D (+125..+127): stay pads",
+     "tail rotor bones at +42/+43 and stick/pedal/lever bones at +46..+53: helicopter-only, union with wheel layout, see changed_members"
+   ],
+   "notes": "The IDA flat struct matches the wheeled-car path for +0..+68, +92 and +124, and matches UpdateBoneControllersInternal for +8, +10, +20, +120..+123 and the helicopter rotor indices at +104..+117 (partly). It cannot be right for both paths at once: +24..+52 and +104 mean different things per vehicle type. The size question needs a union decision by the owner. A015 owns cpose_t, which decides where this view sits and how big the union is."}
+ ],
+ "renames": []
+}

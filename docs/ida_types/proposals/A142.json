@@ -1,0 +1,13 @@
+{"agent": "A142", "structs": [
+  {"name": "CgVehicleSystemSP", "verdict": "resolved", "size": 1135880,
+   "size_evidence": "method 4 (array stride) + method 3 (whole-object clear) + method 2 (sized delete). CG_MainSP_AllocateClientMemory@0x1417CAA60: `Mem_HunkUser_AllocInternal(v6, 1135880 * v7, 8)`, `memset_0(v29, 0, 1135880 * v7)`, then loop `v32 = CgVehicleSystemSP_ctor(v29, v30++); v29 += 1135880;` (stride 1135880 per client). CG_ServerCmdSP_MapInit@0x1417D38E0: `mov r8d, 115508h` (1135880) -> memset_0 on the object -> CgVehicleSystemSP_ctor@0x1417D88A0. Deleting dtor CgVehicleSystemSP::scalar_deleting_dtor@0x1417D8960: `mov edx, 115508h` (1135880) before bdMemory::deallocate_5; the dtor is slot 63 of CgVehicleSystemSP_vftable_2527430 (0x142527628 -> 0x1417D8960); the vtable's slots 58-66 are CgVehicleSystemSP methods (IsEntityRecordActive, ReturnZeroStub, vfunc62_NoOp, SetFlagBit0, ReturnZeroFloatStub, ReturnTrueStub) plus SV_MainMP stubs, and slots 0-55 are base CgVehicleSystem / MP methods. The vtable runs 67 slots (0x142527430..0x142527640). Ctor's last store is that vtable at +0. Every SP write is below 1135880: vtable +0, +77324, BGVehicles_ctor at +1121808, memset +77328 len 0xFF000, +1135856, +1135872.",
+   "members": [[0, "baseclass_0", "CgVehicleSystem", "CgVehicleSystemSP_ctor@0x1417D88A0 calls base init on +0; CG_MainSP_AllocateClientMemory stride 1135880 = whole base size; CgVehicleSystem size 1135880 (wave 1)"]],
+   "changed_members": [
+     ["_pad0 / vehicleSlots_stateByte / _pad2", "remove: replace the whole 1152280-byte body with baseclass_0 CgVehicleSystem (1135880)", "CgVehicleSystemSP::Init@0x1417D8A10 writes only a1+12, a1+590, and a1[589+588k] (k 0..127, last a1[75265]); these are CgVehicleSystem members m_vehicleClients (+12, stride 588) and the byte at +577 of each VehicleClient. No SP access at +1 (+1 is inside base baseclass BGVehicles 0..8)."],
+     ["size", "1152280 -> 1135880", "CG_MainSP_AllocateClientMemory stride and memset, CG_ServerCmdSP_MapInit memset 115508h, dtor sized delete 115508h"]
+   ],
+   "unconfirmed": [],
+   "notes": "Game-test size 1152280 is wrong for this build: Replay uses 1135880 everywhere (alloc stride, memset, ctor, sized delete); the 16400 extra bytes have no Replay evidence. The SP class adds no own members in Replay, so the layout is the base only. Blocked from applying by rule: this is a size change and a baseclass addition, so the coordinator must apply it. Base CgVehicleSystem was not re-read beyond its get_struct_info (size 1135880, 12 members) and is owned by its wave-1 agent. Note: the first pass's vehicleSlots_stateByte at +1 is inside BGVehicles (base), not SP."}
+  ],
+  "renames": []
+}

@@ -1,0 +1,70 @@
+{"agent": "A176", "structs": [
+ {"name": "DBFileHandle", "verdict": "partial", "size": null,
+  "size_evidence": "NOT PROVEN. Replay touches bytes [0,4) and [8,16) of the handle (DB_File_OpenDBFile@0x140D8CA30 writes dword +0 and qword +8; DB_File_CloseDBFile@0x140D8C9B0 reads qword +8, dword +0). Lower bound 16. No Replay allocation or array stride of DBFileHandle itself was found. The handle is embedded at DBFile+64 (DB_CloseFastfileDBFiles@0x140F66670: DB_File_CloseDBFile((unsigned int *)(v1 + 64)); DB_ReadFastfileHeaderData@0x1411A7D30: DB_File_OpenDBFile(headerBuffer + 64, headerBuffer)). The IDA DBFile type (136 bytes, name[64] at 0, dbFileHandle[16] at 64, isSecured at 80) is consistent with 16 but its isSecured offset is not Replay-proven: no access to +50h in DB_AsyncIWFileLoad_ReadHeader, BatchRead, Shutdown, Update, DirtyDiscError, VerifyChunkHash, PumpDecodeQueue, WaitForAsyncCompletion or CopyChainState. Upper bound: none proven from Replay (72 is refuted only if isSecured is at +80). Best estimate 16 (game-test size 16 agrees).",
+  "members": [
+   [0, "fileID", "FileStreamFileID", "DB_File_OpenDBFile@0x140D8CA30: *(_DWORD *)dbFile = FileStream_OpenFile(...); DB_File_CloseDBFile@0x140D8C9B0: *dbFile = 0xFEFFFFFF and compare with -16777217 (CONFIRMED, dword at +0, 4 bytes)"],
+   [8, "dcacheFileID", "unsigned __int64", "DB_File_OpenDBFile@0x140D8CA30: *(QWORD *)(dbFile + 8) = DCache_GetFileIDByFilename(...); DB_File_CloseDBFile: if qword +8 != 0 it is set to 0 (CONFIRMED, qword at +8)"]
+  ],
+  "changed_members": [
+   ["_pad4", "stays a 4-byte pad (no Replay access)", "DB_File_OpenDBFile writes only dword +0 and qword +8"]
+  ],
+  "unconfirmed": [
+   "_pad10 (16..64, 48 bytes) and embeddedState (char[8] at 64): no Replay access; the 72 size has no Replay evidence",
+   "size 72 (IDA) vs 16 (game-test, DBFile dbFileHandle[16]): Replay gives only the lower bound 16"
+  ],
+  "notes": "Do not change the size to 16 or 72 until the DBFile isSecured offset (+80) is proven by a Replay access. The 464-byte element (DB_CloseFastfileDBFiles, DB_ReadFastfileHeaderData: element base headerBuffer+408+464*i, handle at element+64) is a different struct, not DBFileHandle. Note for the owner of the fastfile record: DB_ReadFastfileHeaderData (memset 0x540, count at +1336, elements at +408 with stride 464) and DB_CloseTemporaryFileHandles (a1+1480 count, a1+472+464*i handles) do not match IDA's DB_FFOpenData (1488 bytes, diff[2] at +456 with stride 512). Not applied."},
+ {"name": "DemonwareFence", "verdict": "partial", "size": null,
+  "size_evidence": "NOT PROVEN. Lower bound 80: DemonwareFence derives from FenceObject. Its vtable slots at 0x1423EC400 are DemonwareFence::UpdateIsPassingInternal, then FenceObject::UpdateDependencies (0x140F19C70) and FenceObject_GetFenceValue (0x140F19C50), the FenceObject virtuals. FenceObject is 80 bytes (IDA type, game-test). Evidence for 80 as the FenceObject size: the static fence globals in FenceObjects_Init@0x140F1A600 and their dynamic initializers (dynamic_initializer_for_qword_14B4ABA80, ..._14B4AC170, Online_StaticObj_Init@0x14033E2A0) are placed at exact 0x50 spacing (stru_14B4ABA80, ..ABAD0, ..ABB20, ..ABB70, ..ABBC0, ..ABC10, ..ABC60, ..ABCB0, ..ABD00, ..ABD50, ..ABDA0, ..ABDF0, ..ABE40, ..ABE90, ..ABEE0, ..ABF30, ..ABF80, ..ABFD0, ..AC020, ..AC070), and they write FenceObject fields up to +72. Upper bound: none proven for DemonwareFence itself. No Replay instance construction of DemonwareFence was found (no xref to its vtable at 0x1423EC400 from code), and no own member beyond +14 is used by Replay. The IDA 120 has no Replay evidence (its members at 64 and above are inside the FenceObject base).",
+  "members": [
+   [0, "baseclass_0", "FenceObject", "DemonwareFence derives from FenceObject: vtable 0x1423EC400 shares FenceObject::UpdateDependencies and FenceObject_GetFenceValue (CONFIRMED by the vtable slots; the base size 80 is the proposal, not proven for the derived class)"],
+   [8, "m_controllerIndex", "int", "DemonwareFence::UpdateIsPassingInternal@0x140F19B20: Live_IsDemonwareReady(*(unsigned int *)(a1 + 8)) (CONFIRMED read); FenceObject base field, same offset as game-test; static init writes -1 at +8 (dynamic_initializer_for_qword_14B4AC170)"],
+   [12, "m_dependenciesMet", "bool", "FenceObject::UpdateDependencies@0x140F19C70: *(_BYTE *)(this + 12) = result (CONFIRMED on the FenceObject base; inherited)"],
+   [13, "m_isPassing", "bool", "DemonwareFence::UpdateIsPassingInternal@0x140F19B20: *(_BYTE *)(a1 + 13) = result of Live_IsDemonwareReady(*(a1 + 8)) (CONFIRMED write)"],
+   [14, "m_failed", "bool", "DemonwareFence::UpdateIsPassingInternal@0x140F19B20: *(_BYTE *)(a1 + 14) = 1 when offline or Live_IsDemonwareFailed, else 0 (CONFIRMED write); FenceObject::UpdateDependencies also writes +14"],
+   [24, "m_fenceDependencies", "unsigned __int64", "FenceObject::UpdateDependencies@0x140F19C70: v3 = *(QWORD *)(this + 24) (CONFIRMED read, inherited)"],
+   [40, "m_callbacks", "void *[4]", "dynamic_initializer_for_qword_14B4AC170@0x14033E1D0: stru.m_callbacks[0..3] = nullptr (CONFIRMED writes at +40..+71, FenceObject layout)"]
+  ],
+  "changed_members": [
+   ["m_value", "rename to m_controllerIndex and retype unsigned int -> int (same width; Replay reads it as the controller index at +8, the static init writes -1)", "DemonwareFence::UpdateIsPassingInternal@0x140F19B20"],
+   ["m_flagA", "rename to m_isPassing (bool at +13; keep bool)", "DemonwareFence::UpdateIsPassingInternal@0x140F19B20"],
+   ["m_flagB", "rename to m_failed (bool at +14; keep bool)", "DemonwareFence::UpdateIsPassingInternal@0x140F19B20"],
+   ["m_sub64", "remove: unsigned __int64 at +64 is inside the FenceObject base (m_callbacks at 40..72); no Replay access to it as its own member", "FenceObject layout in IDA (80 bytes)"],
+   ["_pad0 (8) and the rest of the 120-byte layout", "replace by baseclass_0 FenceObject; the 120 size is not proven", "IDA layout"]
+  ],
+  "unconfirmed": [
+   "m_failureDrawTime (int at +72, FenceObject base): no Replay access found",
+   "m_errorCode (int at +16) and m_ignoreIfGuest (bool at +32): written by FenceObjects_Init / static init for the FenceObject family, not in DemonwareFence's own function; inherited, not checked for this class",
+   "size 80 vs 120: no Replay proof for either; 80 is the lower bound"
+  ],
+  "notes": "Rename proposals for members only (no function renames). The owner should see the FenceObject struct as the base, not the 120-byte DemonwareFence. Vtable 0x1423EC400 has no code xref; it is inferred from its slot contents, so the DemonwareFence construction site is not in Replay (possibly it is never constructed here). The static fence globals use a different vtable (0x1423EC3F8, stored by dynamic_initializer_for_qword_14B4AC170)."},
+ {"name": "DiskFile", "verdict": "resolved", "size": 312,
+  "size_evidence": "method 4 (array stride) + method 1 shape: DiskFS_OpenFileHandle@0x140F62C40 walks the open-file slots at diskFs+8 with `v9 += 312` for up to 256 slots (Sys_Error \"DiskFS: Out of file handles\" at 256); each slot is the DiskFile returned as the open file, and it is written at +256 (dword 1), +264 (qword handle, free sentinel -1 tested in the loop), +304 (dword flags), and Core_strcopy(v9, 256, path) fills the name. These are the same offsets DiskFile::DiskFile@0x140F633B0 (stores -1 at +264, 0 at +256, 0 at +304), DiskFile::StartRead, DiskFile_Wait, DiskFile_Close, DiskFile_GetFileSize and DiskFS_ReadBlocking use, so the slot element is DiskFile. Max Replay access end is 308 (dword flags at 304), stride 312. Game-test fields m_lastReadEndOffset (256, qword) and m_lastStartReadTime (264, qword) have no Replay evidence: Replay has a 4-byte state at 256 and the handle at 264. IDA's size 2400 is not supported.",
+  "members": [
+   [0, "m_filename", "char[256]", "DiskFS_OpenFileHandle@0x140F62C40: Core_strcopy((_BYTE *)v9, 256, path) (CONFIRMED, 256 bytes)"],
+   [256, "m_state", "int", "DiskFS_OpenFileHandle: *(_DWORD *)(v9 + 256) = 1; DiskFile::DiskFile: dword 0; DiskFile::StartRead@0x140F62D20: mov dword ptr [rbx+100h], 1 (and reads [rdx+100h] at entry); DiskFile_Wait@0x140F634B0: cmp dword ptr [rcx+100h], 2; DiskFile_Close@0x140F62F90: if == 2 call DiskFile_Wait, then dword 0 (CONFIRMED)"],
+   [264, "m_handle", "sysFileHandle_t", "DiskFS_OpenFileHandle: *(_QWORD *)(v9 + 264) = Sys_CreateFile(...); DiskFile::DiskFile: *(_QWORD *)(this + 264) = -1; DiskFile_Close: Sys_CloseFile(*(diskFile + 264)); DiskFile_GetFileSize: GetFileInformationByHandleEx(*(HANDLE *)(diskFile + 264)); DiskFS_ReadBlocking@0x140F63020: SetFilePointerEx and ReadFile on +264 (CONFIRMED; the handle is at 264, not game-test 272)"],
+   [272, "m_overlapped", "OVERLAPPED", "DiskFile::StartRead@0x140F62D20: lea rcx, [rbx+110h] and zeroes qwords +110h, +118h, dwords +120h/+124h, qword +128h (the 32-byte OVERLAPPED at +272); DiskFile_Wait@0x140F634B0: lea rdx, [rcx+110h] passed as lpOverlapped (CONFIRMED, 32 bytes, 272..304)"],
+   [288, "m_overlapped.Offset", "DWORD", "DiskFile::StartRead: mov [rbx+120h], edi (OVERLAPPED Offset, CONFIRMED); IDA m_ioField288 has this place"],
+   [292, "m_overlapped.OffsetHigh", "DWORD", "DiskFile::StartRead: mov [rbx+124h], eax (OVERLAPPED OffsetHigh, CONFIRMED); IDA m_ioField292"],
+   [296, "m_overlapped.hEvent", "HANDLE", "DiskFile::StartRead: qword +128h (OVERLAPPED hEvent, CONFIRMED); IDA m_ioField296 (__int64)"],
+   [304, "m_flags", "int", "DiskFile::DiskFile: dword 0 at +304 (CONFIRMED); DiskFS_ReadBlocking@0x140F63020: `(*(_DWORD *)(diskFile + 304) & 8)` = async flag (CONFIRMED); DiskFS::StartRead@0x140F63110 reads dword [rdx+130h] (same place)"]
+  ],
+  "changed_members": [
+   ["m_lastReadEndOffset", "game-test qword at +256 is not Replay: Replay has a dword state at +256 (4-byte width change, +4 pad after it)", "DiskFile_Close@0x140F62F90, DiskFile_Wait@0x140F634B0, DiskFS_OpenFileHandle"],
+   ["m_lastStartReadTime", "game-test qword at +264 is the handle in Replay; no Replay evidence for a separate start-time member", "DiskFile::StartRead, DiskFile_GetFileSize"],
+   ["m_handle", "moves from game-test +272 to Replay +264", "DiskFile::DiskFile, DiskFS_OpenFileHandle, DiskFile_Close"],
+   ["m_flags", "moves from game-test +280 to Replay +304", "DiskFile::DiskFile, DiskFile_Wait, DiskFS_ReadBlocking"],
+   ["m_ioField288 / m_ioField292 / m_ioField296", "are the OVERLAPPED Offset / OffsetHigh / hEvent at +288/+292/+296; replace by one OVERLAPPED member at +272", "DiskFile::StartRead, DiskFile_Wait"],
+   ["_pad11C (4 bytes at +284)", "Replay: +284 is inside OVERLAPPED (InternalHigh at +280..+288 region); the pad is replaced by the OVERLAPPED member", "DiskFile::StartRead"],
+   ["m_ioField... (+2048..+2368 slots), _pad130 (1744 bytes)", "remove: beyond the 312-byte DiskFile; no Replay evidence; part of the size change 2400 -> 312", "DiskFS_OpenFileHandle stride 312"]
+  ],
+  "unconfirmed": [
+   "_pad260 (4 bytes at +260): no Replay access",
+   "_pad308 (4 bytes at +308, to reach stride 312): no Replay access",
+   "m_filename width/contents beyond the strcopy: fine"
+  ],
+  "notes": "Size change 2400 -> 312 is a PROPOSAL for the coordinator (struct size change, member moves and width changes are not allowed to agents). Entries not applied. The slot array is in diskFs (DiskFS object) starting at +8, 256 slots; the owner of DiskFS should see the same 312 stride. Only the ctor, DiskFS_OpenFileHandle, DiskFile_Close, DiskFile::StartRead, DiskFile_Wait, DiskFile_GetFileSize, DiskFS_ReadBlocking and DiskFS::Seek were read; DiskFS::StartRead operates on a request struct too (its +30h/+28h/+20h offsets are not DiskFile) and was not used as DiskFile evidence."}
+],
+"renames": [
+ ["0x14033E2A0", "Online_StaticObj_Init", "dynamic_initializer_for_qword_14B4AC0D0", "the function only initializes stru_14B4AC0D0 (a static FenceObject global, same pattern as dynamic_initializer_for_qword_14B4AC170 and ..._14B4ABA80); the name does not match what it initializes"]
+]}

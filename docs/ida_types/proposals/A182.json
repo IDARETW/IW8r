@@ -1,0 +1,58 @@
+{"agent": "A182", "structs": [
+  {"name": "bdClansGroupMembershipProposal", "verdict": "resolved", "size": 1472,
+   "size_evidence": "method 2 (sized delete): bdClansGroupMembershipProposal::vector_deleting_dtor@0x140F48B40 passes edx = 5C0h (1472) to __global_delete (disasm 0x140F48B7D); the function is in this class's own vtable bdClansGroupMembershipProposal_vftable@0x1423F6D88 slot 4. Also method 4: bdClansGroupMembershipProposalArray_CopyElements@0x142108310 steps v6 += 1472 (1472 = 5C0h) and stores bdClansGroupMembershipProposal_vftable per element. Also method 3 corroboration: bdClansGroupMembershipProposal_CtorBody@0x142107C90 stores bdReferencable_vftable at +1456 and writes a dword at +1464, so the end 1468 aligned to 8 is 1472.",
+   "members": [
+     [0, "baseclass_0", "unsigned __int8[16]", "CtorBody@0x142107C90: vftable bdClansGroupMembershipProposal_vftable at +0, bdStructBufferSerializable_ctor(this,0), vbase table pointer at +8 (16 bytes, unchanged)"],
+     [16, "m_proposingUser", "bdStructUserDetails", "CtorBody@0x142107C90: bdUserDetailsExt_DefaultCtor(this+16); deserialize@0x142107D40: readObject(a2,1,a1+144) where 144 = 16 + 128 (the bdStructBufferSerializable base inside bdStructUserDetails at +128, so the user object starts at +16); getTargetUser@0x142107ED0 reads a1+16 as a user. Name question see unconfirmed."],
+     [176, "m_targetUser", "bdStructUserDetails", "CtorBody@0x142107C90: bdUserDetailsExt_DefaultCtor(this+176); deserialize readObject(a2,2,a1+304) where 304 = 176 + 128; getProposingUser@0x142107F40 reads this+176 as a user. Name question see unconfirmed."],
+     [336, "m_role", "unsigned __int16", "CtorBody: *(WORD*)(this+336) = 0; deserialize@0x142107D40: readUInt16(a2,3,a1+336); CopyElements@0x142108310 stores WORD at element+336"],
+     [344, "m_group", "bdClansGroupIdentifier", "CtorBody: bdClansGroupIdentifier ctor at this+344; getGroup@0x142107E30 reads 344..384 (m_kind at 360, m_id at 368, m_rootKind at 376, m_rootID at 384); deserialize readObject(a2,4,a1+344)"],
+     [408, "m_replacesGroupID", "unsigned __int64", "CtorBody: QWORD 0 at +408; deserialize readUInt64(a2,5,a1+408); CopyElements QWORD at element+408"],
+     [416, "m_attachmentSize", "unsigned int", "CtorBody: DWORD 0 at +416; deserialize readBlob(...,a1+416) length; CopyElements DWORD at element+416"],
+     [420, "m_attachment", "unsigned __int8[1024]", "deserialize: readBlob(a2,6,a1+420,1024,a1+416); CopyElements copies 1024 bytes from element+420"],
+     [1448, "m_updatedTimestamp", "unsigned __int64", "CtorBody: QWORD 0 at +1448; getUpdatedTimestamp@0x142107FD0: return *(QWORD*)(this+1448) (8 bytes); deserialize readUInt64(a2,7,a1+1448)"]
+   ],
+   "changed_members": [
+     ["m_proposingUser <-> m_targetUser", "PROPOSAL, UNCONFIRMED (names only; offsets 16 and 176 are confirmed)", "Replay getters name +16 as the target user (getTargetUser@0x142107ED0) and +176 as the proposing user (getProposingUser@0x142107F40); game-test source online/online_clans_manager.cpp 3968-3972 assigns the wire record's +16 to m_proposingUser and +176 to m_targetUser, and 1544-1553 uses getProposingUser as the inviter. The Replay getter names are the name-matching output, so no swap is proposed to be applied."]
+   ],
+   "unconfirmed": [
+     "bdClansGroupMembershipProposal base at +1456 (16 bytes: bdReferencable vftable at +1456, m_refCount dword at +1464 with game-test bdReferencable +8 agreeing): PROPOSAL, add as base class / retype _pad5B0 (CtorBody@0x142107C90). Not applied: a base class cannot be added by fill_pad.",
+     "Pads _pad152 (+338, 6 bytes) and _pad5A4 (+1444, 4 bytes): no Replay access and no game-test field between confirmed members, left as pads.",
+     "Scalar deleting destructor at 0x140F3F2A0 is NOT in this class's vtable (slots 0..4 are ReturnsFalse, deserialize, serializeWithLobbyService, deserializeWithLobbyService, vector_deleting_dtor). It frees 64 bytes (edx = 40h) and destroys a bdReferencable at +48 and a bdStructBufferSerializable at +16: a 64-byte other class, so it is not evidence for this struct's size (this is the 64 in the packet lead). Owner class not proven; not renamed."
+   ],
+   "notes": "Every game-test offset (16, 176, 336, 344, 408, 416, 420, 1448) is the Replay offset too. The A120 concern about deserialize writing at +144 and +304 is resolved: those are the bdStructBufferSerializable base (+128) inside each bdStructUserDetails at +16 and +176. Size 1472 is proven twice (sized delete in the own vtable, array stride) and the constructor's bdReferencable tail gives the same end."},
+
+  {"name": "bdStructOptionalObject_bdClansGroupMembershipProposal", "verdict": "resolved", "size": 1480,
+   "size_evidence": "method 3 / tail closure: the last game-test member m_value at +8 has Replay size 1472 (method 2/4 on bdClansGroupMembershipProposal above), so the end is 8 + 1472 = 1480. Corroborated by bdClansAddOrUpdateGroupMemberResponse_CtorBody@0x14210A2C0 which places the optional at +248 and the next (bdReferencable base) at +1728 = 248 + 1480.",
+   "members": [
+     [0, "m_hasValue", "bool", "optional flag: bdClansAddOrUpdateGroupMemberResponse::deserialize-as-optional@0x14210A040 writes *(_BYTE*)response = 0, then = 1 when the read succeeds; the clan ctor writes byte 0 at clan+248 (= optional+0)"],
+     [8, "m_value", "bdClansGroupMembershipProposal", "bdClansAddOrUpdateGroupMemberResponse_CtorBody@0x14210A2C0: bdClansGroupMembershipProposal_CtorBody(this+256, 1) (256 = 248 + 8); the optional deserializer @0x14210A040 writes the value fields at response+24, +184, +344..+392, +416..+1456 (= value +16, +176, +336, +344.., +408, +1448)"]
+   ],
+   "changed_members": [],
+   "unconfirmed": [
+     "_pad1 (+1..+8, 7 bytes): no Replay access and no game-test field, left as a pad."
+   ],
+   "notes": "Both members confirmed at their current IDA offsets and types; nothing to change except the owner-visible name of the deserializer function (see renames). The Replay function currently named bdClansAddOrUpdateGroupMemberResponse::deserialize at 0x14210A040 is this optional's deserializer, not the clan response's."},
+
+  {"name": "bdClansAddOrUpdateGroupMemberResponse", "verdict": "resolved", "size": 1744,
+   "size_evidence": "method 2 (sized delete): bdClansAddOrUpdateGroupMemberResponse::vector_deleting_dtor@0x14210A370 passes edx = 6D0h (1744) to __global_delete (disasm 0x14210A3FF); the function is slot 4 of this class's own vtable bdClansAddOrUpdateGroupMemberResponse_vftable@0x14269EFA0. Corroborated by method 3: bdClansAddOrUpdateGroupMemberResponse_CtorBody@0x14210A2C0 stores bdReferencable_vftable at +1728 and a dword at +1736, so the end 1740 aligned to 8 is 1744. Game-test 1744 agrees. Parent: OnlineClan m_addOrUpdateGroupMemberResponse at +1200 with the next member m_leaveClanResponse at +2944 (IDA layout) gives 1744 (not re-verified here).",
+   "members": [
+     [0, "baseclass_0", "unsigned __int8[16]", "CtorBody@0x14210A2C0: vftable bdClansAddOrUpdateGroupMemberResponse_vftable at +0, bdStructBufferSerializable_ctor, vbase pointer at +8 (16 bytes, unchanged)"],
+     [16, "m_user", "bdStructUserDetails", "CtorBody@0x14210A2C0: bdUserDetailsExt_DefaultCtor(this+16); deserialize (vtable slot 1, 0x14210A430): readObject(deserializer,1,this+144) where 144 = 16 + 128 (the user's bdStructBufferSerializable base)"],
+     [176, "m_group", "bdClansGroupIdentifier", "CtorBody@0x14210A2C0: bdClansGroupIdentifier::bdClansGroupIdentifier(this+176); deserialize 0x14210A430: readObject(deserializer,2,this+176)"],
+     [240, "m_role", "unsigned __int16", "getRole@0x14210A4C0: return *(unsigned __int16*)(this+240); CtorBody: WORD 0 at +240; deserialize 0x14210A430: readUInt16(deserializer,3,this+240)"],
+     [248, "m_proposal", "bdStructOptionalObject_bdClansGroupMembershipProposal", "CtorBody@0x14210A2C0: byte 0 at +248 and bdClansGroupMembershipProposal_CtorBody(this+256,1); deserialize 0x14210A430: readObject field 4 with response = this+248 (lea r8,[rdi+0F8h]) calls the optional deserializer 0x14210A040 (the function currently named bdClansAddOrUpdateGroupMemberResponse::deserialize)"]
+   ],
+   "changed_members": [],
+   "unconfirmed": [
+     "bdReferencable base at +1728 (16 bytes: vftable at +1728, m_refCount dword at +1736), _pad6C0 in IDA: PROPOSAL, add as base class (CtorBody@0x14210A2C0; vector dtor subtracts 1728 to reach the object). Not applied.",
+     "Pad _padF2 (+242, 6 bytes) and the 16 bytes at +1728: no Replay field access other than the base above; left as pads."
+   ],
+   "notes": "All four game-test members sit at the same offsets in Replay (16, 176, 240, 248). The clan response's real deserialize is the Replay function at 0x14210A430 (currently named DLog_Columns_IPEBDIPEBDIPEBDG_YA_NPEAUDLogContext_PEBDI1I1I1G_Z_2), which is vtable slot 1 of its vtable; the function named bdClansAddOrUpdateGroupMemberResponse::deserialize at 0x14210A040 is the optional's deserializer. Both names are swapped (see renames). Its vtable slot 0 is bdClansAddOrUpdateGroupMemberResponse_ReturnsFalse@0x14210A530."}
+ ],
+ "renames": [
+   ["0x14210A040", "bdClansAddOrUpdateGroupMemberResponse::deserialize", "bdStructOptionalObject_bdClansGroupMembershipProposal::deserialize", "writes the optional flag at response+0 and the proposal value from response+8; the only caller is 0x14210A430 (the clan response's deserialize, vtable slot 1 of bdClansAddOrUpdateGroupMemberResponse_vftable) with response = clan+248 and field 4; not in any vtable"],
+   ["0x14210A430", "DLog_Columns_IPEBDIPEBDIPEBDG_YA_NPEAUDLogContext_PEBDI1I1I1G_Z_2", "bdClansAddOrUpdateGroupMemberResponse::deserialize", "vtable slot 1 of bdClansAddOrUpdateGroupMemberResponse_vftable@0x14269EFA0 is this function; it reads field 1 at this+144 (user base), field 2 at +176, field 3 (role) at +240, field 4 (proposal) at +248"],
+   ["0x140F6C2E0", "bdClansGroupMembershipProposal_ctor_copy", "bdClansRemovedMembershipProposal_ctor_copy", "stores bdClansRemovedMembershipProposal_vftable (0x1423FFEE8) at dest+0 and copies that class's fields (dest+184, +200, +208, +216, +224, +248); it is not this struct's copy constructor"]
+ ]
+}

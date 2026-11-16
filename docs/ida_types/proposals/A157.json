@@ -1,0 +1,28 @@
+{"agent": "A157", "structs": [
+  {"name": "bot_info_t", "verdict": "partial", "size": null,
+   "size_evidence": "NOT PROVEN. Lower bound 28064: the highest Replay access inside botInfo is grenadeFlags dword at raw bot+28068 (ends raw 28072, botInfo-relative 28064). Upper bound 29264: A136 proves bot_data_t's botMatchData starts at raw bot+29272, and botInfo starts at raw +8, so botInfo ends at or before botInfo+29264. Best estimate 29264 = GT 29432 - 168, the same -168 shift that grenadeFlags shows, UNCONFIRMED. No Replay access was found between raw 28072 and 29272.",
+   "members": [
+     [8948, "scriptedGrenadeTarget", "vec3_t", "PlayerCmd_BotThrowScriptedGrenade@0x141365d10: Scr_GetVector -> `*(_QWORD *)(R+8956) = outVector` (R = bot_data base, raw 8956 = botInfo+8948); z written at raw 8964 from v17; Bot_ClearScriptedGrenade@0x14133b280 zeroes qword raw 8956. Shift GT 8988 -> 8948 = -40"],
+     [8964, "scriptedGrenadeTime", "int", "PlayerCmd_BotThrowScriptedGrenade@0x141365d10: `*(_DWORD *)(R+8972) = level_time` (raw 8972 = botInfo+8964). GT 9004 -> 8964 = -40"],
+     [8972, "scriptedGrenadeType", "bot_grenade_type_t", "PlayerCmd_BotThrowScriptedGrenade@0x141365d10: `*(_DWORD *)(R+8980) = 0`, then `= Bot_GetScriptedGrenadeType(...)` (raw 8980 = botInfo+8972); Bot_Weap_GrenadePick@0x141368ec0 reads raw 8980 (A126). GT 9012 -> 8972 = -40"],
+     [28060, "grenadeFlags", "int", "PlayerCmd_BotThrowScriptedGrenade@0x141365d10: `*(_DWORD *)(R+28068) = (*(R+28068) & 0xFFFFFFF9) | 2` and `|= 0x10`; Bot_ClearScriptedGrenade@0x14133b280: `&= 0xFFFFFFED` on raw 28068 (botInfo+28060). GT 28228 -> 28060 = -168"]
+   ],
+   "changed_members": [
+     ["scriptedGrenadeTarget", "GT 8988 -> Replay 8948 (-40), IDA 8988", "PlayerCmd_BotThrowScriptedGrenade@0x141365d10, Bot_ClearScriptedGrenade@0x14133b280"],
+     ["scriptedGrenadeTime", "GT 9004 -> Replay 8964 (-40)", "PlayerCmd_BotThrowScriptedGrenade@0x141365d10"],
+     ["scriptedGrenadeType", "GT 9012 -> Replay 8972 (-40); IDA type unsigned int, GT enum bot_grenade_type_t (same 4 bytes)", "PlayerCmd_BotThrowScriptedGrenade@0x141365d10, Bot_Weap_GrenadePick@0x141368ec0"],
+     ["grenadeFlags", "GT 28228 -> Replay 28060 (-168, total shift for the tail); IDA 28228", "PlayerCmd_BotThrowScriptedGrenade@0x141365d10, Bot_ClearScriptedGrenade@0x14133b280"],
+     ["scriptMoveSpeed .. scriptAttackButtonEndTime (GT 8948..8987, 10 members, 40 bytes)", "absent in Replay: the grenade block takes the raw bytes at botInfo 8948..8975 (IDA has them as scriptMoveSpeed, scriptMoveRemoteControl, scriptMoveStickSwap, the seven button end-times)", "PlayerCmd_BotThrowScriptedGrenade@0x141365d10: no scriptMove* access at raw 8948..8960"]
+   ],
+   "unconfirmed": [
+     "scriptedGrenadeStopTime at botInfo 8960 (raw 8968): only covered by the qword clear at raw 8964 in Bot_ClearScriptedGrenade; no separate read or write seen",
+     "scriptedGrenadeAlignedTime at botInfo 8968 (raw 8976): only covered by the qword clear at raw 8972; no separate access seen",
+     "botInfo size 29264: estimate from GT - 168 and A136's raw 29272 botMatchData start; not measured",
+     "Gap of -128 between botInfo 9012 (type, GT) and 28228 (grenadeFlags, GT) is NOT located; the 128 bytes that are missing lie somewhere in botInfo+9024..28220 and no Replay access was found for them in the functions read",
+     "Replay accesses in botInfo+9024..28060 (enemyTrack, inaccuracy, twitch, aaSharedGlob, botSentientInfo, scriptWeapon, ...): none read in this pass",
+     "Bot_PredictSeePointUsingNode [raw 0, 8], Bot_PredictSeeTacPoint [raw 8, 360], Bot_HasNavigator / Bot_PathClear [raw 0], Bot_ForceClaimNode [raw 8]: these touch raw 0..8 and 360, i.e. botInfo -8..+352. Raw 8 is bot[1] (a sentient pointer, Bot_ResetBotInfo `*(v10+8) = bot`), so the first bytes of botInfo are the sentient/ai_common header. Not this agent's range; left for the ai_common_t owner",
+     "All other IDA members (playerState 480 .. hasMantleHint 29424) have no Replay evidence in this pass; kept as is"
+   ],
+   "notes": "Base convention checked: Replay Bot_ functions take the bot_data_t base (Bot_ResetBotInfo@0x1413462e0: `memset(bot, 0, 0x7258)`, `*bot = entity`, `bot[2]` a 17408-byte block). So a raw offset R maps to botInfo offset R-8. A126's bot_info_t offsets (8956, 8964, 8972, 8980, 28068) were raw values written as botInfo offsets: the correct botInfo offsets are 8948, 8956, 8964, 8972, 28060. The tail shift is -168 (not -160 as A126 wrote), which matches A136's 'members after botInfo are exactly gt-168'. Size stays partial; the -128 in the middle is still open."}
+ ],
+ "renames": []}

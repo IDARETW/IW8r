@@ -1,0 +1,29 @@
+{"agent": "A188", "structs": [
+  {"name": "NetBacklog", "verdict": "resolved", "size": 16,
+   "size_evidence": "method 6 (parent distance) and method 5 (global): NetStatic::NetStatic@0x140342f70 at 0x140342fe2 calls NetBacklog::NetBacklog(&s_netBacklog) and at 0x140342fee passes lea rcx, s_netBacklog+16 (IDA: s_netBacklog._pad10) to NetGraveyard::NetGraveyard as a separate constructed object; no Replay access to NetBacklog lies past +16 (NetBacklog::NetBacklog@0x1410d6170 writes +0,+8; NetBacklog::Reset@0x1410d6490 writes +0,+8; NetBacklog_Add@0x1410d6280 lock xadd [rcx],edx at +0 and mov rcx,[rcx+8] at +8; NetBacklog_AcceptEndpoint@0x1410d6190 reads backlog+8; NetBacklog::Graveyard@0x1410d6350 reads a1->m_buffer; NET_ResetTelemetry@0x1412bde40 calls NetBacklog::Reset(&s_netBacklog) and NetGraveyard::Reset(s_netBacklog+16)). Lower bound 16 (m_buffer at +8 is 8 bytes), upper bound 16 (sibling NetGraveyard starts at +16). Game-test also says 16. Global s_netBacklog 0x14D4AF990 is typed 72 in IDA; the next named global netThread is at +216, which is the end of NetBacklog + NetGraveyard, not of NetBacklog alone.",
+   "members": [
+     [0, "m_index", "unsigned int", "NetBacklog::NetBacklog@0x1410d6170: a1->m_index = 0xFFFFFFFF; NetBacklog::Reset@0x1410d6490: a1->m_index = 0xFFFFFFFF; NetBacklog_Add@0x1410d6280 at 0x1410d629a: lock xadd [rcx], edx (atomic index counter masked 0x800000FF)"],
+     [8, "m_buffer", "NetEndpointBuffer *", "NetBacklog::Reset@0x1410d6490: a1->m_buffer = a2; NetBacklog_Add@0x1410d6280 at 0x1410d62b2: mov rcx, [rcx+8]; NetBacklog_AcceptEndpoint@0x1410d6190: *(backlog + 8); NetBacklog::Graveyard@0x1410d6350 at 0x1410d6365: mov rcx, [rcx+8]"]
+   ],
+   "changed_members": [
+     ["_pad4 (4 bytes), _pad10 (48 bytes), m_embeddedState (char[8] at +64)", "remove from NetBacklog: no Replay access inside NetBacklog at +4, +16..+63 or +64; +16 is NetGraveyard (separate object constructed by NetStatic)", "NetStatic::NetStatic@0x140342f70 at 0x140342fee"],
+     ["struct size 72 -> 16", "size proposal: changing a struct's total size is a coordinator edit; global s_netBacklog 0x14D4AF990 should then be a NetBacklog followed by NetGraveyard at +16", "NetStatic::NetStatic@0x140342f70"]
+   ],
+   "unconfirmed": [],
+   "notes": "Verdict resolved at 16 with size proof from the NetGraveyard sibling at +16 (parent distance) and the Replay member accesses. The game-test size of 16 agrees. No renames."},
+
+  {"name": "NetBuffer_32768_0", "verdict": "absent", "size": null,
+   "size_evidence": "absent in this build. (1) No allocation or size immediate for 34344 (0x8628), 34352 (0x8630), 34080 (0x8520) or 34604 (0x872C) in any mov/lea/add/sub/cmp/imul over the whole .text (0x140001000-0x142352470, scanned in four chunks, zero matches). (2) No Replay global typed NetBuffer_32768_0 (typed_globals empty). (3) No IDA struct holds it by value (embedded_in empty) and no Replay function is named NetBuffer_32768_0 or takes or returns it. (4) The loopback ring that game-test's NetBuffer<32768,0> would be is NetLoopback_InitRing@0x1412bd1c0 with ring size 32832: ring+0/+4/+8 counters, memset_0(ring+12, 0, 0x8000) (the 32768 data area), then ring+32780..ring+32831 control words, two events at ring+32824 (16-byte stride, NetStatic::NetStatic@0x140342f70 at 0x140343015 and 0x14034302e). NetLoopback_WriteRingBytes@0x1412bced0 wraps the data at 0x8000 (v6 & 0x7FFF), so the 32768 area is a raw byte ring with no 1288-byte packet slots or readable[256] table.",
+   "members": [],
+   "changed_members": [],
+   "unconfirmed": ["m_stream: no Replay access anywhere; NetLoopback uses the 32832-byte ring above instead of a NetBuffer object"],
+   "notes": "Absent. The IDA struct NetBuffer_32768_0 (34344 bytes, holding PacketStream_NetPacket_1288_32768_0 at +0) has no Replay counterpart. Coordinator: consider leaving the struct in place (no Replay user) rather than deleting it, unless the owner wants unused game-test types removed."},
+
+  {"name": "PacketStream_NetPacket_1288_32768_0", "verdict": "absent", "size": null,
+   "size_evidence": "absent in this build: same proofs as NetBuffer_32768_0 (no 34344/34352/34080/34604 immediate in .text, no global, no by-value parent, no function that takes it). The Replay functions near this name do not use a 34344-byte object: PacketStream::Create@0x141b60470 allocates from SD_VoiceAllocate@0x141b60310, sets *result = 2 and writes fields at qword indices 4..15 (+32..+127), bytes +5, +98, +128 and +1056..+1058, and dword index 203/205 (+812, +820): a sound voice, not a NetPacket stream. PacketStream::ReadableAt@0x1415e0110 reads this+34604 and has no callers, so it belongs to a larger class; it is not evidence for 34344. The unwind label $unwind$PacketStream_NetPacket_1288_32768_0__ReadableAt sits at 0x142900b54 in data, not in a function; the IDA disassembly there is unwind bytes, so no code is attached to the name.",
+   "members": [],
+   "changed_members": [],
+   "unconfirmed": ["m_writeOffset, m_readOffset, m_readable, m_buffer: no Replay access; the loopback has its own counters at ring+0, +4, +8 and a 32768-byte data area at ring+12 (NetLoopback_InitRing@0x1412bd1c0), with no readable[256] table"],
+   "notes": "Absent. The 1288-byte NetPacket stream with a readable[256] table is not in Replay. Loopback (NetLoopback_InitRing@0x1412bd1c0) uses a 32832-byte ring. Other PacketStream variants (1288_65536_0, 1288_262144_1) are outside this entry."}
+],
+"renames": []}

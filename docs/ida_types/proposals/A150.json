@@ -1,0 +1,36 @@
+{"agent": "A150", "structs": [
+  {"name": "DB_DecompressState",
+   "verdict": "partial",
+   "size": null,
+   "size_evidence": "Not proven. Lower bound 583976: the last Replay access is encryptInfo qword at +583968 (DB_Block_TryNewBlock@0x140D89B90: mov r8,[rbx+8E920h]), so the state covers at least 583976. Upper bound 584064: the DB_AuthLoadReader chunk flag at +584064 (0x8E980) is read in DB_AsyncIWFileLoad_PumpDecodeQueue@0x140D87E40, CopyChainState, HasPendingWork, ResetDecodeState and RegisterHashCallback, and the state is the first member of that reader. The 88 bytes between 583976 and 584064 have no Replay access in the DB_* family (0x140D86B70-0x140D8A100) or the loader (0x1411A7000-0x1411A8400).",
+   "members": [
+     [0, "currentUncompData", null, "base address of the state: DB_CmpLoad_DumpState@0x140D8A000 prints currentUncompData = cmpLoadState; DB_Block_CopyFromUncompBuffer@0x140D89710: memcpy(stream.next_out, &a1->currentUncompData[ptr], n). Size not proven, see changed_members"],
+     [65536, "pendingData", "char[75776]", "DB_Block_ReadData@0x140D89A50: lea rcx,[rsi+10000h] (pending = state+0x10000); cmp a3, 12800h (75776) at entry; DB_CmpLoad_DumpState prints pendingData = &currentUncompData[0x10000]; DB_Block_DecompressOodle@0x140D89940: lea of state+22800h (141312) = end of pending"],
+     [141312, "oodleScratch", "unsigned __int8[442552]", "DB_Block_DecompressOodle@0x140D89940: OodleLZ_Decompress(in, insize, out, outsize, ..., &a1->_pad20000[10240], 442552, 3); IDA _pad20000 base 131072 + 10240 = 141312; 141312 + 442552 = 583864"],
+     [583864, "uncompSizeLeft", "unsigned __int64", "DB_Block_TryNewBlock@0x140D89B90: cmp qword [rcx+8E8B8h],0; DB_CmpLoad_Decompress@0x140D89E10: sub qword [rbx+8E8B8h], rdi; DB_Block_CopyFromUncompBuffer: sub [rsi+8E8B8h], rbx"],
+     [583872, "currentUncompDataSize", "unsigned int", "DB_Block_TryNewBlock: mov [rbx+8E8C0h], eax (= header uncompressedSize); DB_CmpLoad_Decompress: mov eax,[rbx+8E8C0h]; DB_CmpLoad_DumpState prints it"],
+     [583876, "currentUncompDataPtr", "unsigned int", "DB_CmpLoad_Decompress: add [rbx+8E8C4h], esi; DB_Block_CopyFromUncompBuffer: add [rsi+8E8C4h], edi; DB_Block_TryNewBlock: mov [rbx+8E8C4h], 0"],
+     [583880, "pendingSize", "unsigned int", "DB_Block_ReadData@0x140D89A50: mov ecx,[rsi+8E8C8h] (fill count); mov [rsi+8E8C8h], eax; mov [rsi+8E8C8h], 0"],
+     [583884, "pendingPadding", "unsigned int", "DB_Block_TryNewBlock@0x140D89B90: mov [rbx+8E8CCh], edx where edx = (size&3) ? 4-(size&3) : 0 (padding added to the compressed size in the read)"],
+     [583888, "decompressionFunc", "fn *", "DB_Block_TryNewBlock: mov [rbx+8E8D0h], rax with rax = DB_Block_DecompressNone / DecompressLZ4 / DecompressOodle by the block type byte (Data[7] == 1, 2..3 LZ4 [4..5], Oodle [6..7]); DB_Block_DecompressData@0x140D89790 calls [rcx+8E8D0h]"],
+     [583896, "currentHeader", "XBlockCompressionBlockHeader", "DB_Block_TryNewBlock: mov [rbx+8E8D8h], rax (8 bytes of the header: compressedSize at +0, uncompressedSize at +4); mov [rbx+8E8E0h], eax (encryptionCTR); 12-byte header 583896..583908"],
+     [583900, "currentHeader.uncompressedSize", "unsigned int", "DB_Block_TryNewBlock: mov eax,[rbx+8E8DCh] stored to [rbx+8E8DCh]; read as v11 for DB_Block_DecompressData size"],
+     [583904, "currentHeader.encryptionCTR", "unsigned int", "DB_Block_TryNewBlock: DB_SetupCTRWithKey(cipherCtx, *(u32*)(s+583904), s[583968]+4, s[583968]+20) (decompile)"],
+     [583912, "stream", "DB_ReadStream", "DB_CmpLoad_Decompress@0x140D89E10: next_in [rbx+8E8E8h], avail_in +8E8F0, total_in +8E8F8, next_out +8E900, avail_out +8E908, total_out +8E910, compressor +8E918 (mov [rbx+8E918h], r8d); same offsets in DB_AsyncIWFileLoad_PumpDecodeQueue@0x140D87E40"],
+     [583968, "encryptInfo", "EncryptionInfo *", "DB_Block_TryNewBlock: mov r8,[rbx+8E920h]; DB_SetupCTRWithKey(..., v8+4, v8+20) via the decompile"]
+   ],
+   "changed_members": [
+     ["currentUncompData", "size 131072 -> 65536 (upper bound, inferred, not proven). Replay puts the pending buffer at offset 65536 inside the IDA array, so 131072 overlaps it", "DB_Block_ReadData/DumpState pending base 10000h; pending is filled while the current block is still in use only if currentUncompData is <= 65536 (design inference)"],
+     ["pendingData", "offset 524288 -> 65536; size 149504 -> 75776; the IDA member at 524288 is a naming artifact of the decompile's pendingData[59576] (that is uncompSizeLeft at 583864)", "DB_Block_ReadData: lea rcx,[rsi+10000h]; cmp a3,12800h; A113 said the same 303288 shift, now resolved"],
+     ["_pad20000", "IDA pad 131072..524288 (393216 bytes) is replaced by oodleScratch at 141312 (442552 bytes); the tail starts at 583864, not 524288", "DB_Block_DecompressOodle: &a1->_pad20000[10240], 442552"],
+     ["(tail)", "IDA layout has no members at 583864..583976; add the 10 Replay tail members listed above (game-test tail shifted by exactly +303288 for all of them: uncompSizeLeft 280576, currentUncompDataSize 280584, ..., encryptInfo 280680)", "gt_layout DB_DecompressState; scanned Replay displacements 8E8B8..8E920"]
+   ],
+   "unconfirmed": [
+     "currentUncompData size (only the upper bound 65536 is inferred from pending placement)",
+     "DecompressState total size: 583976 <= size <= 584064; no Replay access in 583976..584063; game-test has 16 bytes after encryptInfo, and the reader's inInflate byte (game-test) would sit at the state end, so the size may be 583992 by analogy but that is not proven",
+     "decompressionFunc signature: IDA/game-test say 5 args; Replay decompile shows only the state argument (the other arguments are passed through registers and not shown)",
+     "game-test pendingData length 149504 has no Replay counterpart: Replay pending is 75776 (a3 limit 12800h)"
+   ],
+   "notes": "Partial. The reader is the state: DB_AsyncIWFileLoad_Update@0x140D87470 takes v4 = *fileLoad (m_reader, offset 0 of DB_AsyncIWFileLoad) and passes it to PumpDecodeQueue and DB_CmpLoad_Decompress, so DB_DecompressState is at offset 0 of the reader. The reader size is 623488, proven (not 'at least'): DB_AsyncIWFileLoad_AcquireStreamerLoan@0x140D87250 has `mov edx, 98380h` (allocSize), `mov r8d, 80h` (alignment) and `mov [rbx], rax` (m_reader); DB_AsyncIWFileLoad::Shutdown@0x140D87760 frees m_reader with 623488. The reader's chunk (flag at 584064, 39416 bytes cleared by ResetDecodeState) follows the state. IDA's DB_AuthLoadReader is an opaque forward declaration (ordinal 4379); for the coordinator: it should be 623488 bytes with the state at 0 and a chunk at 584064 (not my range, proposal only). A113's front-unresolved point is now resolved: pending at 65536 and an Oodle scratch at 141312 with 442552 bytes. Do not apply the current IDA struct: it has the wrong front and no tail."}
+  ],
+ "renames": []}

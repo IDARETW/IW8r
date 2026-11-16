@@ -1,0 +1,13 @@
+{"agent": "A168", "structs": [
+  {"name": "GfxWorldTransientDrawCache", "verdict": "partial", "size": null,
+   "size_evidence": "not proven. No Replay size method applies: no allocation or clear with 0x39000 (233472) or 0x54000 (344064) as an immediate (scan_disasm over the whole image for 39000h/54000h found only unrelated hits); no Replay function named for R_GenerateWorldTransientCache or the FX mark cache; packet replay_max_access_end 0; typed_globals and embedded_in empty.",
+   "members": [],
+   "changed_members": [],
+   "unconfirmed": [
+     "drawVerts at +0, 196608 bytes (game-test GfxWorldDrawVerts[1536] at stride 128): no Replay access found",
+     "drawCells at +0x30000, GfxWorldDrawCells[1536] (game-test stride 24): no Replay access found",
+     "builder 344064 (first pass A123 stride 200): no Replay evidence, rejected"
+   ],
+   "notes": "Partial. Replay code that fills or reads this cache was not found. The game-test generator R_GenerateWorldTransientCache clears 0x39000 bytes (DebugWipe) and copies per zone into drawVerts[i] (32-byte moves, 4 per element = 128-byte stride) and drawCells at 196608 + 24*i; those are game-test facts, not Replay proof. Replay has one related fact: Mark_GfxWorldDraw (0x140d9d860, 578 bytes) walks 0x600 zone pointers at GfxWorldDraw+392, which supports 1536 zone slots on the world-draw side only. Lower bound 0 (no Replay access), upper bound not established. The cache is held by value in a parent that IDA does not type (frontEndData or the FX mark world cell cache); finding that parent would give the size as a member distance (method 6)."}
+],
+ "renames": []}

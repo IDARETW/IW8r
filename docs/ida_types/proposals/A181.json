@@ -1,0 +1,50 @@
+{"agent": "A181", "structs": [
+  {"name": "DWRichPresenceService", "verdict": "resolved", "size": 16,
+   "size_evidence": "method 6 (parent) + lower bound from the owner store: DWWrappers::init@0x140F6B880 places it by value at +456 (0x1C8, IDA member m_richPresence) and the next object at +472 (m_keyArchive) gets its owner store `*(_QWORD *)&a1->m_keyArchive.baseclass_0[8] = a1` at +480, so the object ends at or before +472. DWRichPresenceService::init@0x140F729A0 stores the owner at this+8 (`*(_QWORD *)(this + 8) = context`), so the object extends to at least +16. 16 = 472 - 456 and 16 >= 8 + 8, so the size is exactly 16. Replay size is 16, not 72.",
+   "members": [
+     [0, "_pad0", "unsigned __int8[8]", "no Replay access at +0 in init, setInfo@0x140F76E40, getInfo@0x140F700D0, unsubscribeToPlayers@0x140F77F40 or the friends/presence handler functions; left as the BaseDWWrapper head"],
+     [8, "m_owningWrapper", "DWWrappers *", "DWRichPresenceService::init@0x140F729A0: `*(_QWORD *)(this + 8) = context` (store); DWRichPresenceService::setInfo@0x140F76E40: `v6 = *(_QWORD *)(a1 + 8); DWWrappers::isReady(v6)`; getInfo@0x140F700D0, unsubscribeToPlayers@0x140F77F40, DWRichPresenceService_unsubscribeFromUsersPresence@0x140F779E0 all read this+8 first; game-test m_owningWrapper at +8"]
+   ],
+   "changed_members": [
+     ["m_service", "rename to m_owningWrapper, type void * -> DWWrappers *", "DWRichPresenceService::init@0x140F729A0 stores the DWWrappers context at +8"],
+     ["_pad10 (48 bytes) and m_embedded (char[8] at +64)", "remove: beyond the 16-byte size", "size 16 from DWWrappers slot ladder; DWWrappers m_richPresence is typed unsigned __int8[16] at +456, so the parent does not change"]
+   ],
+   "unconfirmed": [
+     "+0 (BaseDWWrapper head): no Replay store or load found; a vtable store was not seen in init"
+   ],
+   "notes": "The first pass's replay_max_access_end 24 comes from DWRichPresenceService::registerPushMessageHandler@0x140F76070 reading this+16. That function is not a RichPresence method (see renames): every RichPresence method reads the DWWrappers owner at +8, this one never does, and its callees are DWLogin / bdLoginResult / bdLobbyService. Ignore that access for the size. The coordinator should apply the rename first, then the 16-byte size. Replay code calls DWRichPresenceService members only through DWWrappers::m_richPresence (by value, +456).",
+   "renamed_functions_in_this_struct": ["DWRichPresenceService::registerPushMessageHandler@0x140F76070 is DWLobbyService's (see renames)"]},
+
+  {"name": "DWTags", "verdict": "resolved", "size": 16,
+   "size_evidence": "method 6 (parent) + lower bound: DWWrappers::init@0x140F6B880 calls `DWTags::init(a1->m_tags, a1)` with m_tags at +376 (0x178, IDA member m_tags, 16 bytes), then stores the next object's owner at `*(_QWORD *)&a1->m_voteRank.baseclass_0[8]` = +392+8, so the DWTags object ends at or before +392. DWTags::init@0x140F72A20 stores the owner at this+8 (`*(_QWORD *)(this + 8) = context`), so the object extends to at least +16. Size 16, not 72.",
+   "members": [
+     [0, "_pad0", "unsigned __int8[8]", "no Replay access at +0; DWTags::init@0x140F72A20 writes +8 only"],
+     [8, "m_owningWrapper", "DWWrappers *", "DWTags::init@0x140F72A20: `*(_QWORD *)(this + 8) = context` (store, the only Replay access to DWTags; game-test m_owningWrapper at +8)"]
+   ],
+   "changed_members": [
+     ["m_data", "rename to m_owningWrapper, type unsigned __int64 -> DWWrappers *", "DWTags::init@0x140F72A20"],
+     ["_pad10 (48 bytes) and m_tagStorage (+64)", "remove: beyond the 16-byte size", "DWWrappers m_tags is 16 bytes at +376; parent unchanged"]
+   ],
+   "unconfirmed": [
+     "game-test DWTags::searchByTags / setTagsForEntityID: no Replay function with those names found (idb_query on names); nothing else of DWTags is accessed"
+   ],
+   "notes": "Only one Replay function touches DWTags (init). The 16-byte slot at +376 is the same kind as the other DWWrappers slots (m_richPresence at +456 is also 16 bytes). The IDA layout has m_tags as unsigned __int8[16] inside DWWrappers, so the parent needs no change.",
+   "renamed_functions_in_this_struct": []},
+
+  {"name": "bdBoolResult", "verdict": "partial", "size": null,
+   "size_evidence": "upper bound 56 (method 6, parent MatchmakingData, rebuilt from Replay evidence): MatchmakingData::Reset@0x1410485C0 and OnlineMatchmakerOmniscient::TaskShutdownMatchmaking@0x14104B360 write `a1->m_timeOut` at MatchmakingData+64 (OnlineMatchmakerOmniscient +0x135F0), and the same +0x135F0 store is in ctor, Pump, Uninit, TaskStartMatchmaking. So m_outstandingResult at MatchmakingData+8 spans at most +8..+64 = 56 bytes. Lower bound: NOT proven. Size stays null (partial).",
+   "members": [],
+   "changed_members": [],
+   "unconfirmed": [
+     "m_result (bool at +32 in game-test; IDA +32 in the bdBoolResult struct, MatchmakingData +40 = OnlineMatchmakerOmniscient +0x135D8): no Replay access found. A scan of 0x14103F000-0x141050000 for displacements 0x135B8-0x135F7 finds only address-takes of the object and the m_timeOut store at 0x135F0; no byte at 0x135D8 is read or written",
+     "lower bound: the object's address is taken and handed on, never accessed by displacement: OnlineMatchmakerOmniscient::ctor (`lea rcx,[rbx+135B8h]`), RunCancelMatchmaking (`lea r9,[rbx+135B8h]`), RunShutdownMatchmaking@0x141048FC0 (`lea r9,[rbx+135B8h]`) pass it as the result pointer to DWAsyncMatchMaking::shutdownMatchMaking@0x140F77470, which hands it to bdAsyncMatchMaking::shutdownMatchMaking@0x1421364E0 as completionCallback (stored in taskParams v16). The writer that fills the bool is in the bd task framework and was not identified"
+   ],
+   "notes": "The type is used by Replay (not absent): the mangled symbol of DWAsyncMatchMaking::shutdownMatchMaking takes `bdBoolResult *`, and bdTaskResult / bdSerializable symbols exist. There is no Replay ctor for bdBoolResult. The builder size 72 and its prior-only layout (base 16 + base 16 + m_result at 48) are not supported by Replay: the Replay object is at MatchmakingData+8 and must end by +64. Game-test's m_result at +32 gives a 33-byte minimum if it is proven, but the bytes from +33 to +56 have no Replay proof either way. The tail-closure rule does not give a size: the game-test last member m_result (+32, 1 byte) closes at +33, aligned to 8 that is 40, but nothing proves the object has no Replay-used bytes at +33..+56, and game-test's size 56 is unexplained by its listed fields. The coordinator should leave the IDA layout (56) in place: it agrees with the parent bound; do not change the size or move m_result without the bd completion writer.",
+   "renamed_functions_in_this_struct": []}
+ ],
+ "renames": [
+   ["0x140F76000", "DWRichPresenceService_registerFriendsPushMessageHandler", "DWFriends::registerPushMessageHandler", "body reads this+8 (DWWrappers owner), DWWrappers::isReady, DWLobbyService::getFriends(owner+904) then bdCrossPlatformFriends::registerPushMessageHandler; game-test DWFriends::registerPushMessageHandler (dwserviceswrappers.cpp ~16367) has exactly that sequence over m_owningWrapper / m_lobbyService; only caller Online_Friends::Crossplay_OnSignedIn"],
+   ["0x140F76070", "DWRichPresenceService::registerPushMessageHandler", "DWLobbyService::registerPushMessageHandler", "not a RichPresence method: it never reads this+8 (every RichPresence method reads the owner there), it reads this+16 as a lobby/login pointer, and it calls only DWLogin::getResult, bdLoginResult::getLobbyService and bdLobbyService::registerPushMessageHandler; game-test DWLobbyService::registerPushMessageHandler (dwserviceswrappers.cpp ~16390) runs the same DWLogin::getResult / getLobbyService / bdLobbyService::registerPushMessageHandler chain; caller OnlineMatchmakerOmniscient::Pump@0x141046E7B passes DWServicesAccess::GetDWLobbyService. Caveat: Replay's login chain is one level different from game-test's (v4+16); the class is DWLobbyService on the caller and callee evidence"],
+   ["0x140F77CF0", "unregisterPushMessageHandler_DWRichPresenceService_QEAA_NPEAVbdCrossPlatformPresencePushMessageHandler_Z_2", "DWFriends::unregisterPushMessageHandler", "same sequence as game-test DWFriends::unregisterPushMessageHandler (dwserviceswrappers.cpp ~18562): owner+8, isReady, DWLobbyService::getFriends, bdCrossPlatformFriends::unregisterPushMessageHandler; caller Online_Friends::Crossplay_OnSignedOut"]
+ ]
+}

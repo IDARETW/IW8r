@@ -1,0 +1,35 @@
+{"agent": "A153", "structs": [
+  {"name": "DWServicesAccess", "verdict": "partial", "size": null,
+   "size_evidence": "NOT PROVEN. Replay lower bound 22584: DWLogin slot 0 spans 22488..22584 (GetLogin@0x140F6B4A0: lea rax,[rcx+57D8h] = 22488, rdx = idx*96 via lea/shl 5; A124's read at 22576 = login[0]+88, inside it). Candidate 23256 = 22488 + 8*96 (GT DWLogin[8]); the Replay offsets 1160, 5320, 22328, 22464, 22488 equal the GT member sizes chained from 1144, so the total is 23256 if no member follows login. Nothing in Replay bounds the end (no allocation, no global extent, OnlineMgr layout not rebuilt). The 163368 size is not supported: no Replay access reaches past 22584 except the login array.",
+   "members": [
+     [0, "m_wrappers[0] (DWWrappers slot, 1136 bytes)", null, "DWServicesAccess::GetAsyncMatchmaking@0x140F6B160: imul rdx, rax, 470h; lea rax,[rcx+10h] (slot+16); DWServicesAccess::GetDWLobbyService@0x140F6B310: slot+904; DWServicesAccess_GetControllerRecord@0x140F6B140: imul 470h, slot+408. Slot stride 1136 (proof of DWWrappers size per brief, DWServicesAccess_AddControllerSlot@0x140F6B840)"],
+     [1136, "m_wrappers.count", "__int64", "DWServicesAccess::getFirstAvailableIndex@0x140F6B7A0: end = this + 1136*(*(this+1136)); DWServicesAccess::GetConnectionID@0x140F6B220: bound check *(this+1136); DWServicesAccess_AddControllerSlot@0x140F6B840: ctor(this+1136*count) then ++*(this+1136); DWServicesAccess_InitControllerSlot@0x140F6BBE0: bound check *(servicesAccess+1136)"],
+     [1144, "m_platformInfo", "DWPlatformInfo", "by elimination between m_wrappers.count (1144) and m_gameMetrics (1160), 16 bytes; no Replay access found to this member"],
+     [1160, "m_gameMetrics", "DWGameMetrics", "DWServicesAccess::initSocketRouter@0x140F6BC90: DWGameMetrics::init(this+1160); DWServicesAccess_ReleaseControllerSlot@0x140F6BE00: servicesAccess[145] = +1160 vtable+8 call"],
+     [5320, "m_standaloneUmbrella", "DWStandaloneUmbrella", "DWServicesAccess::initSocketRouter@0x140F6BC90: DWStandaloneUmbrella::init(this+5320); DWServicesAccess_ReleaseControllerSlot: servicesAccess[665] = +5320"],
+     [22328, "m_dataChannelDispatch", "DWDataChannelDispatch", "DWServicesAccess::initSocketRouter@0x140F6BC90: DWDataChannelDispatch::init(this+22328); DWServicesAccess_ReleaseControllerSlot: servicesAccess[2791] = +22328"],
+     [22464, "m_dataChannelManagerStandard", "DWDataChannelManagerStandard", "DWServicesAccess::initSocketRouter@0x140F6BC90: DWDataChannelManagerStandard::init(this+22464); DWServicesAccess_ReleaseControllerSlot: servicesAccess[2808] = +22464"],
+     [22488, "m_login[0]", "DWLogin", "DWServicesAccess::GetLogin@0x140F6B4A0: this + 96*idx + 22488 (lea rax,[rcx+57D8h]; shl rdx,5 after lea rdx,[rax+rax*2]); DWServicesAccess::GetEnvironment@0x140F6B330: DWLogin::succeeded(this+96*v+22488); DWServicesAccess_InitControllerSlot@0x140F6BBE0: 96*v2+servicesAccess+22488"],
+     [22488, "m_login[8] (array, 96-byte stride)", "DWLogin[8]", "stride 96 proven by GetLogin and AuthServiceCleanup@0x140F6B080 (DWLogin::cleanup(96*idx+a1+22488)); count 8 is from game-test only, no Replay bound check on the login index (GetEnvironment loops until found, wraps at 256); UNCONFIRMED count"]
+   ],
+   "changed_members": [
+     ["m_wrappers", "ntl__fixed_vector_DWWrappers_8_0 141256 bytes (8 slots of 17656 + qword) -> one 1136-byte DWWrappers slot + qword count at +1136 (container of capacity 1, total 1144)", "DWServicesAccess_AddControllerSlot@0x140F6B840: loop for(i=0;i==0;++i) adds exactly one slot; count at +1136 read in getFirstAvailableIndex, GetConnectionID"],
+     ["m_platformInfo", "offset 141256 -> 1144", "members after the vector are placed by Replay offsets 1160/5320/22328/22464/22488"],
+     ["m_gameMetrics", "offset 141272 -> 1160", "DWServicesAccess::initSocketRouter@0x140F6BC90 this+1160"],
+     ["m_standaloneUmbrella", "offset 145432 -> 5320", "DWServicesAccess::initSocketRouter@0x140F6BC90 this+5320"],
+     ["m_dataChannelDispatch", "offset 162440 -> 22328", "DWServicesAccess::initSocketRouter@0x140F6BC90 this+22328"],
+     ["m_dataChannelManagerStandard", "offset 162576 -> 22464", "DWServicesAccess::initSocketRouter@0x140F6BC90 this+22464"],
+     ["m_login", "offset 162600 -> 22488 (stride 96 proven, length 8 unproven)", "DWServicesAccess::GetLogin@0x140F6B4A0 +22488"]
+   ],
+   "unconfirmed": [
+     "DWLogin[8] length: Replay proves stride 96 and the start 22488 only; no Replay bound on the login index",
+     "object end: nothing after m_login[8] is proven; 23256 is a candidate only",
+     "m_platformInfo (16 bytes at 1144): by elimination, no direct Replay access",
+     "whether the m_wrappers container capacity is 1 in Replay (inferred from count at +1136 and the loop in AddControllerSlot); the Replay type is not the GT ntl fixed_vector<DWWrappers,8,0>"
+   ],
+   "notes": "The 163368 IDA size and the GT 8-slot layout are not supported by Replay: every per-controller access is slot stride 1136 with the count at +1136, so there is one slot, and the shared members sit at Replay offsets chained from 1144. A124's conflict (read at 22576) is inside login[0] (22488..22584), so it does not contradict 23256. Open conflict for the coordinator: DWServicesAccess::GetInstance@0x140F6B490 returns stru_14C3851A0, the address Replay code passes as typed 'struct OnlineMgr *' in 31 places (CL_Mgr_ActivateClient etc.), and the IDA name g_onlineMgr sits 8 bytes earlier at 0x14C385198. Either DWServicesAccess is at OnlineMgr+0 in Replay (then the GT embed at OnlineMgr+1880 is wrong) or GetInstance is an accessor for another object. The OnlineMgr owner must decide; not settled here. Also the function DWServicesAccess_ctor at 0x140F6ACB0 is the constructor of the 1136-byte slot (DWWrappers), not of the whole object: it is only called from AddControllerSlot on slot addresses, and it writes the slot's lobby-service vtable at +904, the index -1 at +940 and the list head at +1120/+1128."}
+ ],
+ "renames": [
+   ["0x140F6ACB0", "DWServicesAccess_ctor", "DWWrappers::DWWrappers", "only xref is the call in DWServicesAccess_AddControllerSlot@0x140F6B85E on servicesAccess + 1136*count (1136-byte slot stride); it writes the slot's lobby-service vtable at +904 and index -1 at +940, which are DWWrappers fields (GetDWLobbyService +904, GetAsyncMatchmaking +16). The vftable at +0 keeps its DWServicesAccess_vftable name, which is misleading; UNCONFIRMED for the vftable name"]
+ ]
+}

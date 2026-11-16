@@ -1,0 +1,42 @@
+{"agent": "A154", "structs": [
+  {"name": "BgAntiLag", "verdict": "resolved", "size": 37848,
+   "size_evidence": "method 2: BgAntiLag_vt1423BD2D0_scalar_deleting_dtor_37848b @0x140C9E6C0 (slot 0 of BgAntiLag_vftable 0x1423BD2D0, xref 0x1423BD2D0 -> 0x140C9E6C0) stores BgAntiLag_vftable at [rcx] and does `mov edx, 93D8h` (37848) before `call bdMemory::deallocate_5` (0x140C9E6DD). Second line: the game-test size 46040 minus the 8192-byte m_refCountDebugStack is 37848; the highest Replay access is +37840 (4 bytes), so 37844..37848 is size-only tail.",
+   "members": [
+     [0, "__vftable", "void *", "BgAntiLag::BgAntiLag@0x140C9E690: `*(_QWORD *)this = &BgAntiLag_vftable`; deleting dtor 0x140C9E6C0 stores it again (IDA name m_vtable)"],
+     [8, "m_rewindScene", "BgAntiLagRewindScene *", "ConnectDataCommon@0x14100A4E0: `*(this + 8) = extraData`; RestoreAntiLagSceneInternal@0x140CA0C10: `*(this[1] + 106496)` (deref of the pointer at +8)"],
+     [16, "m_preArchiveData", "BgAntilagPreArchiveData[2048]", "StartSceneArchive@0x140CA0CF0: memset_0(this + 16, 0, 0x4000) (16384 bytes = 2048 x 8)"],
+     [16400, "m_currFrameEntityCount", "unsigned int", "StartSceneArchive: `*(this + 16400) = 0`"],
+     [16404, "m_preArchiveNonCriticalList", "unsigned int[2048]", "StartSceneArchive: loop of 2048 dword stores of 0 at this + 16404 (v14, step 4)"],
+     [24596, "m_currFrameNonCriticalEntCount", "unsigned int", "StartSceneArchive: `*(this + 24596) = 0`"],
+     [24600, "m_antiLagHistory", "BgAntiLagFrameHistory *[200]", "StartSceneArchive: `this[8*idx + 24600]` frame pointers; ConnectDataCommon stores frame pointers there; ClearEntitySlotInAllFrames@0x140CA0BD0 walks them up to +26200"],
+     [26200, "m_antiLagHistorySize", "unsigned int", "ConnectDataCommon@0x14100A4E0: `*(this + 26200) = clientCount`; ClearEntitySlotInAllFrames loop bound; FindBracketingFrames and CollectPhysicsWarpRecords read `[rcx+6658h]` with rcx = this"],
+     [26204, "m_nextAntiLagHistory", "unsigned int", "StartSceneArchive: read and write of this + 26204 (ring index); FindBracketingFrames `[rcx+665Ch]`"],
+     [26208, "m_sceneAntiLagRefCount", "int", "BgAntiLag_ReleaseSceneRefcount@0x140CA0CA0: `(*(_DWORD *)(s + 26208))--`; ConnectDataCommon zeroes 8 bytes at +26208. UNCONFIRMED NAME: BgAntiLag_AddPendingEntryPair@0x140C9EC20 treats +26208 as a count (see notes)"],
+     [26212, "m_sceneAntiLagContext", "unsigned int", "ReleaseSceneRefcount: QWORD store 0 at +26212 when the count reaches 1 (covers +26212..+26220). AddPendingEntryPair writes +26212 from edx. UNCONFIRMED NAME"],
+     [26216, "m_sceneAntiLagTime", "int", "ConnectDataCommon: `*(int *)(this + 26216) = 0`; AddPendingEntryPair writes +26216 from r8d; covered by the QWORD clear in ReleaseSceneRefcount. UNCONFIRMED NAME"],
+     [26224, "m_prevFrame", "BgAntiLagFrameHistory *", "StartSceneArchive: `*(this + 26224) = v8` (previous frame pointer); BgAntiLag::BgAntiLag: `*(_QWORD *)(this + 26224) = 0`"],
+     [26232, "m_lerpMoverCommands", "BgAntiLagLerpMoverCmd[100]", "BgAntiLag_TrimFrameHistory@0x140CA0B60: element i reads its DWORD at `116*i + this + 26288`, i.e. base 26232 with the field at +56 (game-test endTime offset); wrap at `>= 0x64` (100 elements); stride 116 gives 11600"],
+     [37832, "m_lerpMoverCommandBegin", "unsigned int", "BgAntiLag::BgAntiLag: `*(this + 37832) = 0`; TrimFrameHistory reads and writes `this + 37832`"],
+     [37836, "m_lerpMoverCommandCount", "unsigned int", "TrimFrameHistory: `*(this + 37836)` read and decremented per trimmed entry"],
+     [37840, "m_timeContext", "BgAntiLagTimeContext", "BgAntiLag::BgAntiLag: `*(DWORD *)(this + 37840) = -1` (4 bytes, game-test gameTime)"]
+   ],
+   "changed_members": [
+     ["m_vtable", "rename to __vftable (game-test spelling); same type and offset", "BgAntiLag::BgAntiLag@0x140C9E690"],
+     ["_pad93D4 (37844, 171756 bytes) and everything after it: m_arrayAt209600, _pad332C8, m_arrayAt209792, _pad33388, m_arrayAt302656, _pad49E48, m_arrayAt302720, _pad49E88",
+      "delete; the struct ends at 37848. Keep a 4-byte tail pad at 37844 (no Replay access; the size is set by the dtor)", "IDA size 302784 is wrong, see the size evidence and A113's note"],
+     ["m_antiLagHistory", "IDA void *[200] -> BgAntiLagFrameHistory *[200] (same size)", "StartSceneArchive, ConnectDataCommon"],
+     ["m_lerpMoverCommands", "element type stays BgAntiLagLerpMoverCmd (116 bytes); no change in IDA, listed for the record", "TrimFrameHistory"]
+   ],
+   "unconfirmed": [
+     "m_sceneAntiLagRefCount (26208), m_sceneAntiLagContext (26212), m_sceneAntiLagTime (26216): offsets and types are proven by Replay accesses, the names are not. AddPendingEntryPair@0x140C9EC20 uses the same three slots as a pending-pair counter and two entries (`pendingPairs[6552..6554]`, i.e. 26208/26212/26216), and its callers are CG_AntiLag_PhysicsWarpUpdate@0x1416730F0 (rcx = that object, the `this` of CgAntiLag) and GAntiLagMP_RewindPhysicsToTime@0x140E7F1D0. Whether those callers' objects are BgAntiLag at the same offsets, and which name is right, is not settled",
+     "The 4 bytes at +26220 (_pad666C in IDA, game-test m_refCountDebugStack starts there): no Replay access",
+     "The 4-byte tail at +37844..+37848: no Replay access; it is only the size"
+   ],
+   "notes": "Size 37848 is proven by method 2 with the vtable check done: the destructor at 0x140C9E6C0 is slot 0 of BgAntiLag_vftable (0x1423BD2D0), which BgAntiLag::BgAntiLag stores, and it frees 37848. The game-test m_refCountDebugStack (8192 bytes at GT 26220) is absent in Replay: m_prevFrame is at 26224 (GT 34416), the lerp array at 26232 (GT 34424), and every later member is exactly 8192 lower; no string 'Antilag stack depth' and no AddRefCountDebugItem / PrintRefCountAssertInfo function exists in Replay. IDA's layout is already right through +37840; only the size and the invented tail after +37844 are wrong. The three UNCONFIRMED names come from game-test and conflict with the AddPendingEntryPair callers; the coordinator should decide them. CgAntiLag_ctor@0x141673080 calls BgAntiLag::BgAntiLag on the same pointer (base at 0) and writes its own members from +144344, which agrees with a 37848-byte base but does not prove it."
+  }
+ ],
+ "renames": [
+  ["0x1416730C0", "BgAntiLag::scalar_deleting_dtor", "CgAntiLag::scalar_deleting_dtor", "slot 0 of CgAntiLag_vftable (0x14250A980 holds 0x1416730C0, data xref); CgAntiLag_ctor@0x141673080 installs CgAntiLag_vftable; the function frees 144376 (`mov edx, 233F8h`), so it is CgAntiLag's, not BgAntiLag's (BgAntiLag is 37848). It stores BgAntiLag_vftable at entry (inlined base destructor), which is why the old name looked right. Apply this rename first, to free the name"],
+  ["0x140C9E6C0", "BgAntiLag_vt1423BD2D0_scalar_deleting_dtor_37848b", "BgAntiLag::scalar_deleting_dtor", "slot 0 of BgAntiLag_vftable (0x1423BD2D0 holds 0x140C9E6C0, data xref) and it stores BgAntiLag_vftable; frees 37848 (`mov edx, 93D8h`). Apply after the 0x1416730C0 rename"]
+ ]
+}
