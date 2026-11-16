@@ -2,7 +2,7 @@
 
 IW8 Radiant (code name IW8r) is a Radiant-style map editor for Call of Duty: Modern Warfare (2019). Build your own
 multiplayer maps or open the game's stock maps, Warzone included, and change them. The editor previews maps with the
-game's lighting, builds them into the game's own zone files and starts them in the game.
+game's lighting, builds them into the game's own zone files and starts them in the game. **This project is pretty early in development, but further work is underway.**
 
 ![IW8 Radiant with a map open: the 3D camera, the top view and the entity inspector](docs/features/img/overview.png)
 
