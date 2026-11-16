@@ -9,8 +9,8 @@ says where it came from (project, commit) and what was left out.
 | Part | Folder | From | Licence |
 |---|---|---|---|
 | GSC compiler (`iw8r-gsc.exe`) | `src/tools/gsc` | [gsc-tool](https://github.com/xensik/gsc-tool) 1.6.2 by xensik: the IW8 compiler only | GPL-3 (`src/tools/gsc/LICENSE`) |
-| Zone writer and map converter (`iw8r-zt.exe`) | `src/tools/zonetool` | [x64-zt](https://github.com/Joelrau/x64-zt) by Joelrau and contributors, with the IW8 Radiant changes (IW8 and the IW3 map converter only) | GPL-3 (`src/tools/zonetool/LICENSE`) |
-| Replay zone reader (`iw8r-acts.exe`) | `src/tools/acts` | [atian-cod-tools (ACTS)](https://github.com/ate47/atian-cod-tools) by Antoine Willerval (ate47), with the IW8 Radiant changes (the MW2019 Replay reader only) | GPL-3 or MIT, used here under MIT (`src/tools/acts/LICENSE.md`, `licenses/mit.md`) |
+| Zone writer and map converter (`iw8r-zt.exe`) | `src/tools/zonetool` | [x64-zt](https://github.com/Joelrau/x64-zt) by Joelrau and contributors, with the IW8 Radiant changes from the [IDARETW/x64-zt](https://github.com/IDARETW/x64-zt/tree/iw8radiant/build-extraction) fork (IW8 and the IW3 map converter only) | GPL-3 (`src/tools/zonetool/LICENSE`) |
+| Replay zone reader (`iw8r-acts.exe`) | `src/tools/acts` | [atian-cod-tools (ACTS)](https://github.com/ate47/atian-cod-tools) by Antoine Willerval (ate47), with the IW8 Radiant changes from the [IDARETW/atian-cod-tools](https://github.com/IDARETW/atian-cod-tools/tree/codex/mw2019-complete) fork (the MW2019 Replay reader only) | GPL-3 or MIT, used here under MIT (`src/tools/acts/LICENSE.md`, `licenses/mit.md`) |
 
 ## Libraries
 
