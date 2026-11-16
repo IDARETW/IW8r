@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - Replay Log dock: tails the proxy / client logs in the Replay folder (read only)
+// IW8 Radiant (Qt shell) - Replay Log dock: tails the proxy / client logs in the Replay folder (read only)
 // so a mapper sees why a custom map was refused or failed to load (docs/research/19 §1).
 #pragma once
 

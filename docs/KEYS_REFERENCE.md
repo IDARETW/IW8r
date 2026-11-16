@@ -1,12 +1,10 @@
-# Editor keys reference
+# Entity keys reference
 
-These are the `iw8r_` keys, plus `soundalias` and `sound_loop`, that the editor's build understands.
-You set them in the Entity inspector like any other key, and they need no scripting.
-The descriptions are shortened from `data/iw8_entity_defs_overrides.json`, which is merged over the generated entity definitions and is the source for the key help.
+IW8 Radiant adds its own entity keys, all starting with `iw8r_`, that control how a map is built and how its objects
+behave in the game without any scripting. Set them in the Entity inspector like any other key; the inspector also
+shows help for each key, and Help > Entity Class Reference describes every entity class.
 
-For the editor's own key help, see Help > Entity Class Reference. For how each behaviour is used, see docs/USER_GUIDE.md.
-
-Values in quotes are one string. Times are in seconds and distances are in map units.
+Values in quotes are a single string. Times are in seconds and distances in map units.
 
 ## light and light_spot
 
@@ -14,7 +12,7 @@ A light with a `target` or a `fov` key is a spot. Both classes take the same key
 
 | Key | Value format | Example | What it does |
 |---|---|---|---|
-| `iw8r_ies` | path to an LM-63 `.ies` file, absolute or relative to the map folder | `lights/cone_profile.ies` | Sets the spot's light profile from an IES file. In game look not verified. |
+| `iw8r_ies` | path to an LM-63 `.ies` file, absolute or relative to the map folder | `lights/cone_profile.ies` | Sets the spot's light profile from an IES file. |
 | `iw8r_bulb_radius` | float, above 0 (default 1) | `2` | Bulb radius. Widens the light's volume. |
 | `iw8r_shadow_bias` | float (default 0.75) | `0.75` | Shadow map bias. |
 | `iw8r_falloff` | float, above 0 (default 0.2) | `0.2` | Distance falloff. |
@@ -23,7 +21,7 @@ A light with a `target` or a `fov` key is a spot. Both classes take the same key
 | `iw8r_intensity_units` | float, 0 or more (unset) | `4` | Intensity in light units. When set, the radius brightness calibration is skipped. When unset, it is calibrated from the radius. |
 | `iw8r_uv_intensity` | float (default 0) | `0.5` | UV vision intensity. |
 | `iw8r_ir_intensity` | float (default 0) | `0.5` | Thermal vision intensity. |
-| `iw8r_volumetric` | 0 or 1 (default 0) | `1` | 1 makes the lamp light the volumetric air: a glow around it and beams in fog. It shows only when the map has volumetric air (worldspawn `iw8r_haze`, or `volumetricAirDensity` in `iw8r_vision`). Not seen in game. |
+| `iw8r_volumetric` | 0 or 1 (default 0) | `1` | 1 makes the lamp light the volumetric air: a glow around it and beams in fog. It shows only when the map has volumetric air (worldspawn `iw8r_haze`, or `volumetricAirDensity` in `iw8r_vision`). |
 
 ## dynamic_prop
 
@@ -76,7 +74,7 @@ A point model that a script places. The model must be live, so it needs a `targe
 
 A brush trigger volume. The keys below make it a teleporter, jump pad, damage zone, vision volume or audio zone. Most of them need the trigger to have a `targetname`.
 
-The overrides file has no `trigger_hurt` or `trigger_radius` keys with `iw8r_` names. It has only `trigger_multiple`.
+These keys work on `trigger_multiple`.
 
 | Key | Value format | Example | What it does |
 |---|---|---|---|
@@ -84,12 +82,12 @@ The overrides file has no `trigger_hurt` or `trigger_radius` keys with `iw8r_` n
 | `iw8r_teleport` | targetname of a destination (`script_origin`) | `tp_exit_1` | A player who touches the trigger moves to the destination's origin and angles. The destination needs its own `targetname`. |
 | `iw8r_jump` | `<vx> <vy> <vz>`, launch velocity in units per second | `0 0 700` | A jump pad. A player who touches the trigger is launched. |
 | `iw8r_damage` | `<amount> [interval]` (interval default 1) | `10 1` | A damage zone. A player inside takes the amount of damage every interval. |
-| `iw8r_audio_zone` | lower-case zone name | `hall` | Inside this trigger's box, the zone's reverb (`iw8r_reverb`) applies. In game not verified. |
-| `iw8r_reverb` | `<room> [dry wet fade]` | `iw8_md_room` | The reverb room type. Use one of the 59 stock room types. The build writes the map sound table. In game not verified. |
+| `iw8r_audio_zone` | lower-case zone name | `hall` | Inside this trigger's box, the zone's reverb (`iw8r_reverb`) applies. |
+| `iw8r_reverb` | `<room> [dry wet fade]` | `iw8_md_room` | The reverb room type. Use one of the 59 stock room types. The build writes the map sound table. |
 | `iw8r_audio_priority` | float (default 30) | `50` | Priority where zones overlap. The higher number wins. The map-wide zone is 0. |
-| `iw8r_audio_interior` | 0 or 1 (default 0) | `1` | 1 uses the stock "interior" occlusion and filter presets. 0 uses the stock "default" presets. In game not verified. |
-| `iw8r_ambient` | name of one of the map's own sounds | `wind_bed` | A 2D loop that plays while a player is in the zone. Stock aliases are silent in the map bank, so use a looping sound emitter for those. In game not verified. |
-| `iw8r_ambient_oneshots` | `<min s> <max s> <sound>[:weight] ...` | `6 12 bird_call:3 dog_bark` | One of the listed sounds plays at random every min to max seconds while a player is in the zone. In game not verified. |
+| `iw8r_audio_interior` | 0 or 1 (default 0) | `1` | 1 uses the stock "interior" occlusion and filter presets. 0 uses the stock "default" presets. |
+| `iw8r_ambient` | name of one of the map's own sounds | `wind_bed` | A 2D loop that plays while a player is in the zone. Stock aliases are silent in the map bank, so use a looping sound emitter for those. |
+| `iw8r_ambient_oneshots` | `<min s> <max s> <sound>[:weight] ...` | `6 12 bird_call:3 dog_bark` | One of the listed sounds plays at random every min to max seconds while a player is in the zone. |
 
 ## worldspawn
 
@@ -97,35 +95,35 @@ The map's global settings. There is one worldspawn per map.
 
 | Key | Value format | Example | What it does |
 |---|---|---|---|
-| `iw8r_bake_lightmaps` | `1` to bake | `1` | Bakes a lightmap for the world when the map is built: the sky light and the bounce of the sun and lights, plus where the sun is blocked. The game still draws the sun and the lights live on top. Proven offline; not yet seen in game. |
+| `iw8r_bake_lightmaps` | `1` to bake | `1` | Bakes a lightmap for the world when the map is built: the sky light and the bounce of the sun and lights, plus where the sun is blocked. The game still draws the sun and the lights live on top. |
 | `iw8r_bake_sky` | `r g b intensity` | `0.55 0.65 0.8 0.35` | Sets the sky light used by the bake. The default is a pale blue at 0.35 of the sun (`suncolor`). |
 | `iw8r_lightmap_texel` | world units per texel (default 16) | `8` | Sets the lightmap's detail. Smaller is sharper and bigger. The build makes it coarser by itself if the atlas would pass 2048 x 2048. |
 | `iw8r_bake_rays` | sky rays per texel (default 32, at most 1024) | `64` | More rays make a smoother ambient but a slower bake. |
 | `iw8r_sun_shadow_range` | two cascade multipliers (default `3 2`), or `0` | `4 3` or `0` | Sets how far sun shadows reach. Sent to every player. Longer values push sun shadows further. `0` turns it off. |
-| `iw8r_reverb` | `<room> [dry wet fade]` | `iw8_ext_open_space_med_1` | The map's reverb everywhere outside audio zones. Uses one of the 59 stock room types. In game not verified. |
-| `iw8r_audio_interior` | 0 or 1 (default 0) | `1` | 1 uses the stock "interior" occlusion and filter presets. 0 uses the stock "default" presets. In game not verified. |
-| `iw8r_ambient` | name of one of the map's own sounds | `factory_hum` | An ambient bed: a 2D loop played while a player is in the zone. In game not verified. |
-| `iw8r_ambient_oneshots` | `<min s> <max s> <sound>[:weight] ...` | `6 12 bird_call:3 dog_bark` | Sounds that play at random every min to max seconds. In game not verified. |
+| `iw8r_reverb` | `<room> [dry wet fade]` | `iw8_ext_open_space_med_1` | The map's reverb everywhere outside audio zones. Uses one of the 59 stock room types. |
+| `iw8r_audio_interior` | 0 or 1 (default 0) | `1` | 1 uses the stock "interior" occlusion and filter presets. 0 uses the stock "default" presets. |
+| `iw8r_ambient` | name of one of the map's own sounds | `factory_hum` | An ambient bed: a 2D loop played while a player is in the zone. |
+| `iw8r_ambient_oneshots` | `<min s> <max s> <sound>[:weight] ...` | `6 12 bird_call:3 dog_bark` | Sounds that play at random every min to max seconds. |
 | `iw8r_script` | GSC file, relative to the map folder | `mp_mymap_logic.gsc` | The map's own script. It must define `user_main()`, which runs after the load script. Edited in the Script dock. |
-| `iw8r_mode_dvars` | `name=value; name=value` | `scr_br_teamsize=3; loot_table_name=mp/loot_item_defs_s3.csv` | Game mode settings the map's script sets at every start (Tools > Game Modes > Carry in this map). `loot_table_name` also picks the loot items a Warzone map carries. Not seen in game. |
-| `iw8r_mode_rules` | `health=<1..1000>; speed=<0.2..3>; weapon=<name>; ammo=infinite` | `health=50; weapon=iw8_pi_golf21_mp` | Rules applied to every player at each spawn by the map's script, which runs after the game type's start (research 91). Not seen in game. |
-| `iw8r_gametype_script` | GSC file beside the map; its file name is the game type name | `gametypes/teamkills.gsc` | A game type of the map's own (research 91 / 92). The build checks it and compiles it into the map zone; `map.json` lists the name. Not seen in game. |
+| `iw8r_mode_dvars` | `name=value; name=value` | `scr_br_teamsize=3; loot_table_name=mp/loot_item_defs_s3.csv` | Game mode settings the map's script sets at every start (Tools > Game Modes > Carry in this map). `loot_table_name` also picks the loot items a Warzone map carries. |
+| `iw8r_mode_rules` | `health=<1..1000>; speed=<0.2..3>; weapon=<name>; ammo=infinite` | `health=50; weapon=iw8_pi_golf21_mp` | Rules applied to every player at each spawn by the map's script, which runs after the game type's start. |
+| `iw8r_gametype_script` | GSC file beside the map; its file name is the game type name | `gametypes/teamkills.gsc` | A game type of the map's own. The build checks it and compiles it into the map zone; `map.json` lists the name. |
 | `iw8r_gametypes` | game type names, spaces between them | `war dm dom` | The game types `map.json` lists, instead of the detected ones. |
 | `iw8r_br` | words `nocircle`, `nogulag`, `skipdrop` | `nocircle nogulag skipdrop` | What a small map switches off in the Warzone (br) game type; also marks the map as a Warzone map. |
 | `iw8r_loot_zone` | lower-case name (default `map_quarry`) | `tutorial_scavenger` | The loot zone name of the map's loot points when no `iw8r_loot_zone` brush entity names one. The loot tables pick the loot by it. |
 | `iw8r_no_loot` | 0 or 1 | `1` | 1 writes an empty loot list (all loot of a stock Warzone map is removed on Rebuild Stock Zone). |
-| `iw8r_stock_retexture` | `from=to; from=to` (material names) | `tm2co/a=tm2co/b` | Stock maps: world material swaps on Rebuild Stock Zone; each new material is carried from its catalogue zone. Not seen in game. |
-| `iw8r_sky_from` | a stock map id | `mp_backlot2` | Stock maps: use that map's sky (File > Stock Map > Relight Stock Map Sky); Rebuild Stock Zone carries it in. Not seen in game. |
-| `iw8r_sun_color` | linear `r g b`, 0 to 16 | `1 0.55 0.35` | Stock maps: the sun's new colour (File > Stock Map > Relight Stock Map Sun); Rebuild Stock Zone writes it. Not seen in game. |
-| `iw8r_sun_intensity` | number 0 to 1000000 | `7.5` | Stock maps: the sun's new intensity (stock: mp_shipment 8.6, mp_br_tut 30.7). Not seen in game. |
-| `iw8r_sun_direction` | `pitch yaw` in degrees, as `sundirection`; pitch -90 to -1 (negative = above the horizon) | `-45 120` | Stock maps: the sun's new direction (File > Stock Map > Relight Stock Map Sun; stock mp_shipment `-20.261 -15.4`). Rebuild Stock Zone turns the sun light, the vision's sun fog and the worldspawn `sundirection`, and bakes the map's sun shadow again (ACTS exports the static models' geometry). The lightmaps and light grid keep the old sun's bounce light, the sky texture its old sun. A shadow too big for a wide map is cropped to the play space and a margin. Warzone maps (streamed sun shadow) are refused. Not seen in game. |
-| `iw8r_remove_world_sun` | `rebake` (default) or `keep` | `keep` | Stock maps with `iw8r_remove_world` boxes: `rebake` bakes the map's sun shadow again at the stock sun direction without the removed triangles on Rebuild Stock Zone (ACTS exports the static models' geometry; the converter's bake, larger than the stock one). `keep` leaves the stock sun shadow, so the removed geometry still casts its baked shadow. Not seen in game. |
-| `iw8r_collision` | `auto`, `one` (or `full`) or `tiles` | `tiles` | How the build keeps the map's collision: in one piece or as the game's streamed tiles (research 90). `auto`: tiles for a map wider than 20,000 units. |
-| `iw8r_sun_sprite` | `<size 1..64> [flare alpha 0..1] [blind darken 0..1] [glare lighten 0..1]` | `16 0.5` | Draws a sun disc in the sky in the sun direction. Adds a lens flare when the player looks at it, plus blind and glare strength. In game not verified. |
+| `iw8r_stock_retexture` | `from=to; from=to` (material names) | `tm2co/a=tm2co/b` | Stock maps: world material swaps on Rebuild Stock Zone; each new material is carried from its catalogue zone. |
+| `iw8r_sky_from` | a stock map id | `mp_backlot2` | Stock maps: use that map's sky (File > Stock Map > Relight Stock Map Sky); Rebuild Stock Zone carries it in. |
+| `iw8r_sun_color` | linear `r g b`, 0 to 16 | `1 0.55 0.35` | Stock maps: the sun's new colour (File > Stock Map > Relight Stock Map Sun); Rebuild Stock Zone writes it. |
+| `iw8r_sun_intensity` | number 0 to 1000000 | `7.5` | Stock maps: the sun's new intensity (stock: mp_shipment 8.6, mp_br_tut 30.7). |
+| `iw8r_sun_direction` | `pitch yaw` in degrees, as `sundirection`; pitch -90 to -1 (negative = above the horizon) | `-45 120` | Stock maps: the sun's new direction (File > Stock Map > Relight Stock Map Sun; stock mp_shipment `-20.261 -15.4`). Rebuild Stock Zone turns the sun light, the vision's sun fog and the worldspawn `sundirection`, and bakes the map's sun shadow again. The lightmaps and light grid keep the old sun's bounce light, the sky texture its old sun. A shadow too big for a wide map is cropped to the play space and a margin. Warzone maps (streamed sun shadow) are refused. |
+| `iw8r_remove_world_sun` | `rebake` (default) or `keep` | `keep` | Stock maps with `iw8r_remove_world` boxes: `rebake` bakes the map's sun shadow again at the stock sun direction without the removed triangles on Rebuild Stock Zone. `keep` leaves the stock sun shadow, so the removed geometry still casts its baked shadow. |
+| `iw8r_collision` | `auto`, `one` (or `full`) or `tiles` | `tiles` | How the build keeps the map's collision: in one piece or as the game's streamed tiles. `auto`: tiles for a map wider than 20,000 units. |
+| `iw8r_sun_sprite` | `<size 1..64> [flare alpha 0..1] [blind darken 0..1] [glare lighten 0..1]` | `16 0.5` | Draws a sun disc in the sky in the sun direction. Adds a lens flare when the player looks at it, plus blind and glare strength. |
 | `iw8r_airspace` | `<up> [out]` in units (default `131072 131072`), or `0` | `16384 8192` | How far the map's visibility cell and occlusion data reach above (first number) and around and below (second number) the map's geometry. Aircraft killstreaks and their cameras fly there; from a camera outside it the game draws no players or vehicles. `0` keeps the tight cell. |
-| `iw8r_haze` | `<preset> [amount]`; presets `desert`, `clear`, `overcast`, `dusk`, `fog`; amount 0.1 to 4 (default 1) | `desert 0.7` | The game's own fog, sky blend and volumetric air for a built map (Compile > Atmosphere). The amount scales how thick it is. `iw8r_fog` is left out of the map script when a haze is set; fields in `iw8r_vision` win over the preset. Seen in game 2026-11-14. |
-| `iw8r_sky_brightness` | float 0.1 to 16 (default 1) | `3` | Brightness of the built sky (Compile > Sun & Sky). 2 doubles it (its brightest parts go to white), 0.5 halves it. Seen in game 2026-11-14. |
-| `iw8r_mount_edges` | `1` (default), `brushes` or `0` | `brushes` | Mount edges: where a player can rest a weapon on cover (open outside wall corners at least 32 units tall and ledge tops at least 16 units long). `1`: on the map's visible solid brushes and on placed models' collision hulls; `brushes`: brushes only; `0`: none. Not seen in game. |
+| `iw8r_haze` | `<preset> [amount]`; presets `desert`, `clear`, `overcast`, `dusk`, `fog`; amount 0.1 to 4 (default 1) | `desert 0.7` | The game's own fog, sky blend and volumetric air for a built map (Compile > Atmosphere). The amount scales how thick it is. `iw8r_fog` is left out of the map script when a haze is set; fields in `iw8r_vision` win over the preset. |
+| `iw8r_sky_brightness` | float 0.1 to 16 (default 1) | `3` | Brightness of the built sky (Compile > Sun & Sky). 2 doubles it (its brightest parts go to white), 0.5 halves it. |
+| `iw8r_mount_edges` | `1` (default), `brushes` or `0` | `brushes` | Mount edges: where a player can rest a weapon on cover (open outside wall corners at least 32 units tall and ledge tops at least 16 units long). `1`: on the map's visible solid brushes and on placed models' collision hulls; `brushes`: brushes only; `0`: none. |
 
 ## fx_origin
 
@@ -139,7 +137,7 @@ A placed effect. The build writes it into the map script, and it plays the effec
 
 ## misc_prefab
 
-The overrides file has no `iw8r_` keys for `misc_prefab`. These two key forms are set on a prefab instance and come from the done row 8.8 in docs/ROADMAP.md.
+These keys are set on a prefab placement.
 
 | Key | Value format | Example | What it does |
 |---|---|---|---|
@@ -154,20 +152,18 @@ The overrides file has no `iw8r_` keys for `misc_prefab`. These two key forms ar
 |---|---|---|---|
 | `iw8r_loot_point` `loot_cluster` | `free`, `cache`, a cluster number, or empty (auto) | `cache` | A loot point. `cache` makes a supply box point. On a stock map, a number keeps the point in that cluster while it stays inside its box. |
 | `iw8r_loot_point` `loot_zone` | a zone number, or empty (auto) | `3` | The loot zone of a stock map's point (the first zone box that holds it when left empty). |
-| `iw8r_loot_cluster` (brush entity) | its brushes give the box | | A new loot cluster: the points inside it join it (stock maps and own maps). |
+| `iw8r_loot_cluster` (brush entity) | its brushes give the box | | A new loot cluster: the points inside it join it (stock maps and your own maps). |
 | `iw8r_loot_zone` (brush entity) `name` | lower-case zone name | `map_quarry` | A new named loot zone; use a name the loot tables know. |
 
 ## Stock world removal
 
-`iw8r_remove_world` is a brush entity for stock maps (docs/research/96_stock_world_removal.md). Give its brushes a tool
+`iw8r_remove_world` is a brush entity for stock maps. Give its brushes a tool
 texture. Each brush or patch is one box. File > Stock Map > Rebuild Stock Zone takes out the stock world geometry inside the boxes:
 every world triangle whose three vertices are all inside a box stops drawing, and the world collision triangles and
 brush hulls inside it go. A triangle that reaches outside the box stays, so make the box a little larger than the
 object, but keep the ground out of it. Props (static models) are not world geometry; hide them with Hide Stock Props
-In Selection. The entity never goes into the entity text. When a removed triangle was part of the map's occlusion
-(the precomputed Umbra data treats it as a wall), the rebuild replaces that data with the open, single-cell version that
-converted maps use, so nothing behind the removed object is hidden; the map then culls by view only (more draws per
-frame; research 96, Occlusion). Not seen in game.
+In Selection. The entity never goes into the entity text. If removed geometry was part of the map's
+occlusion data, the rebuild replaces that data so that nothing behind the removed object is hidden.
 
 | Class / key | Value format | Example | What it does |
 |---|---|---|---|
@@ -215,11 +211,4 @@ ignored. Tools > Sound Settings edits it.
 
 | Key | Value format | Example | What it does |
 |---|---|---|---|
-| `mask`, `mask2`, `mask3`, `mask4` | `<picture> [x\|y\|z] <sizeU> [<sizeV> [<scrollU> <scrollV> [<offsetU> <offsetV>]]]` | `clouds_soft 800 800 50 0` | On `iw8r_volume`: a picture that thins the box's fog (white keeps it, black removes it), projected through the box along the axis (default z) and repeated every size units; scroll is in units per second. Pictures: `<map folder>/volume_masks/<picture>.png` (or TGA, JPG, BMP), or the editor's `clouds_soft` and `clouds_hard`. Up to four multiply. Game Lighting shows it. Not seen in game. |
-
-## Counts
-
-- 65 key rows in the entity tables above (light and light_spot share one table of 10 keys), and 4 rows for the Warzone loot entities.
-- 47 distinct key names: 45 `iw8r_` keys, plus `soundalias` and `sound_loop` (the worldspawn keys of 2026-11-12 are in the overrides file too).
-- Key forms, not key names: `iw8r_mat:<material>` on models, and the 2 forms for `misc_prefab`.
-- 15 rows in the custom material table and 5 rows in the sound settings table.
+| `mask`, `mask2`, `mask3`, `mask4` | `<picture> [x\|y\|z] <sizeU> [<sizeV> [<scrollU> <scrollV> [<offsetU> <offsetV>]]]` | `clouds_soft 800 800 50 0` | On `iw8r_volume`: a picture that thins the box's fog (white keeps it, black removes it), projected through the box along the axis (default z) and repeated every size units; scroll is in units per second. Pictures: `<map folder>/volume_masks/<picture>.png` (or TGA, JPG, BMP), or the editor's `clouds_soft` and `clouds_hard`. Up to four multiply. Game Lighting shows it. |

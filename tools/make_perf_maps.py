@@ -34,7 +34,7 @@ MODELS = [
     ("opforce_juggernaut_prop_static", 0.02),
 ]
 SIZES = {2000: (200, 500), 10000: (300, 1500), 50000: (500, 3000)}  # brushes: (point entities, misc_models)
-USER_CACHE = os.path.join(os.environ.get("LOCALAPPDATA", ""), "IW8 Radiant Suite", "IW8 Radiant Suite")
+USER_CACHE = os.path.join(os.environ.get("LOCALAPPDATA", ""), "IW8 Radiant", "IW8 Radiant")
 
 
 def box(x0, y0, z0, x1, y1, z1, mat, top=None):

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - IW3-style brush contents and surface types (see iw8_contents.h).
+// IW8 Radiant - IW3-style brush contents and surface types (see iw8_contents.h).
 #include "iw8_contents.h"
 
 #include <cctype>

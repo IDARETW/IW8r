@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - map atmosphere (doc 31): exponential fog and film grade, stored as editor-owned worldspawn keys
+// IW8 Radiant - map atmosphere (doc 31): exponential fog and film grade, stored as editor-owned worldspawn keys
 // and written by the compiler as the extraction files x64-zt reads:
 //   iw8r_fog  "start halfway r g b"           -> extracted/maps/mp/<id>.gsc   main() { setExpFog(start, halfway, r, g, b); }
 //   iw8r_film "contrast brightness desaturation invert lr lg lb dr dg db"

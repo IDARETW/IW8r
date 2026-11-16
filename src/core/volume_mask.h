@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the masks of a volumetric box (research 127 part A): pictures that thin the box's fog, as the
+// IW8 Radiant - the masks of a volumetric box (research 127 part A): pictures that thin the box's fog, as the
 // drifting cloud layers of stock mp_village2 do.
 //
 // The game multiplies a box's density by the red channel of each mask picture, projected through the box along one of

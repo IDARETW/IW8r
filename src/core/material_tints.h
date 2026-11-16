@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - stock material colour tints (owner playtest 2026-11-11: traffic cones came out grey).
+// IW8 Radiant - stock material colour tints (owner playtest 2026-11-11: traffic cones came out grey).
 //
 // A stock material can tint its colour image: material constant 9 holds R, G, B bytes that multiply the colour, FF FF FF
 // being neutral (mo/me_traffic_cone_01_top: ED 37 0F, orange, over the grey image it shares with the cone's base, whose

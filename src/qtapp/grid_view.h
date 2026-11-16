@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - 2D orthographic grid view (XY / XZ / YZ) drawn with QPainter.
+// IW8 Radiant (Qt shell) - 2D orthographic grid view (XY / XZ / YZ) drawn with QPainter.
 // Radiant conventions: LMB drag on empty space creates a brush; LMB drag inside the selection moves it;
 // LMB drag outside a selected brush resizes the faces facing the drag; Shift+LMB selects; in clipper
 // mode (X) LMB places clip points (a third one tilts the plane); E mode drags edge midpoints of selected brushes;

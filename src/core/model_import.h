@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - custom model import (Wavefront OBJ) and export to the x64-zt extraction layout.
+// IW8 Radiant - custom model import (Wavefront OBJ) and export to the x64-zt extraction layout.
 // The file formats written here are the ones x64-zt's ReadSourceModel reads (see
 // docs/research/22_custom_models.md and docs/research/15_iw8_extraction_contract.md section 3.6).
 #pragma once

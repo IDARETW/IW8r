@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the in-game map debug overlay of the recompiled client (docs/research/78_map_debug_overlay.md).
+// IW8 Radiant - the in-game map debug overlay of the recompiled client (docs/research/78_map_debug_overlay.md).
 //
 // The client file DW_MapDebug.cpp adds the dvars iw8r_mapDebug (bit mask), iw8r_mapDebugDist, iw8r_mapDebugMax and
 // iw8r_mapDebugFilter, and the command iw8r_mapDebugDump, which writes the player's position and one line per server

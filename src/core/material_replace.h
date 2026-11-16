@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - batch material replace (roadmap 12.9): every brush face and patch that uses one
+// IW8 Radiant - batch material replace (roadmap 12.9): every brush face and patch that uses one
 // material gets another. Planning only: the map is not changed. The caller applies `edits` with
 // Document::editPrimitives (one undo step).
 #pragma once

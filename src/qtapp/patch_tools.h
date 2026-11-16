@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - patch (curve/mesh) tools and vertex editing on the current selection.
+// IW8 Radiant (Qt shell) - patch (curve/mesh) tools and vertex editing on the current selection.
 // Every operation is one undo step; it returns false (and changes nothing) when it does not apply.
 #pragma once
 

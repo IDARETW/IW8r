@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - first-run setup helpers (roadmap 9.1): find the Replay game folder and its exes, the Oodle DLL,
+// IW8 Radiant - first-run setup helpers (roadmap 9.1): find the Replay game folder and its exes, the Oodle DLL,
 // and classify a game exe (stock, recompiled with the RPLYCMP2 marker, not a PE file, missing).
 //
 // Pure file-system helpers, no Qt: the first-run wizard (src/qtapp/setup_wizard.*) calls them and tests drive them

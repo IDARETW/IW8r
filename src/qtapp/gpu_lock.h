@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the GPU lock (owner 2026-11-15: "make the rendering thread for the viewport").
+// IW8 Radiant - the GPU lock (owner 2026-11-15: "make the rendering thread for the viewport").
 //
 // Every camera view (the main one and the 3D preview windows) draws with the editor's one D3D11 immediate context,
 // from the GUI thread (preparing frames, uploads, captures) and from its render thread (drawing). A device context is

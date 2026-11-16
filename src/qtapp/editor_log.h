@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - process-wide log: status messages, compile output and Qt warnings in one ring buffer.
+// IW8 Radiant (Qt shell) - process-wide log: status messages, compile output and Qt warnings in one ring buffer.
 // Feeds the Console dock (log_panel.h) and the toast notifications (toast_host.h). Thread-safe: add() may be called
 // from any thread; listeners get `added` through queued connections, so a Qt warning raised inside a widget's paint
 // code never re-enters the UI.

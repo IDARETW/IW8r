@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - installing an edited stock map in the game, and taking it out again (roadmap 11.2,
+// IW8 Radiant - installing an edited stock map in the game, and taking it out again (roadmap 11.2,
 // docs/research/88_stock_map_editing.md, docs/research/116_stock_zone_install.md).
 //
 // The game's stock zones are signed, and the game reads a patch (<zone>.fp) of a signed zone only when the patch

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - stock scriptable definitions (roadmap 6.14, research 62 / 83 / 86).
+// IW8 Radiant - stock scriptable definitions (roadmap 6.14, research 62 / 83 / 86).
 //
 // A scriptable is a stock object with built-in behaviour (parts, states, events): hardpoint markers, flags, doors,
 // traffic cones, cars. A map places one as an instance record that names its definition; the definition itself lives in

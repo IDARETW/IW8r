@@ -1,4 +1,4 @@
-// iw8r - command line front end for the IW8 Radiant Suite core.
+// iw8r - command line front end for the IW8 Radiant core.
 //
 //   iw8r iw8-ents <ACTS map_ents asset.json> [--strings <script_strings.json>] [-o out.ents]
 //   iw8r info <map>
@@ -404,7 +404,7 @@ int cmdIw8Classes(int argc, char** argv) {
         for (const auto& s : d.spawns) ++spawnNames[s.name];
         std::printf("%-16s %5zu entities, %4zu spawns\n", map.c_str(), doc.map().entities.size(), d.spawns.size());
     }
-    std::string j = "{\n  \"build\": \"replay-1.20.4.7623265\",\n  \"generator\": \"iw8r iw8-classes (IW8 Radiant Suite core parser)\",\n  \"sources\": [";
+    std::string j = "{\n  \"build\": \"replay-1.20.4.7623265\",\n  \"generator\": \"iw8r iw8-classes (IW8 Radiant core parser)\",\n  \"sources\": [";
     for (size_t i = 0; i < sources.size(); ++i) j += (i ? ", " : "") + jsonStr(sources[i]);
     j += "],\n  \"classes\": {";
     bool firstC = true;

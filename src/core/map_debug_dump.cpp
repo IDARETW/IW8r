@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - editor side of the in-game map debug overlay (see map_debug_dump.h).
+// IW8 Radiant - editor side of the in-game map debug overlay (see map_debug_dump.h).
 #include "map_debug_dump.h"
 
 #include <cmath>

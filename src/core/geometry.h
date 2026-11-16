@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - basic geometry used by the editor core.
+// IW8 Radiant - basic geometry used by the editor core.
 // Coordinates follow Radiant/IW conventions: Z up, X east, Y north, units = inches.
 #pragma once
 

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - convex collision for custom models (convex_hull.h).
+// IW8 Radiant - convex collision for custom models (convex_hull.h).
 #include "convex_hull.h"
 
 #include <algorithm>

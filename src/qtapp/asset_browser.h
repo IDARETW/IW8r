@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - stock IW8 asset browser (materials, models, effects, images, sounds). Double-click or
+// IW8 Radiant (Qt shell) - stock IW8 asset browser (materials, models, effects, images, sounds). Double-click or
 // Enter applies / places the asset; right-click has Favourites, Tags, Copy Name (and Show Image in Folder for materials
 // with an exported colour image).
 // Names come from data/asset_catalog/iw8_{materials,models}.tsv (tools/build_asset_catalog.py, built from x64-zt

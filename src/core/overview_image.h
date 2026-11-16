@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - top-down overview image of a map (callout / minimap style) and PNG writing.
+// IW8 Radiant - top-down overview image of a map (callout / minimap style) and PNG writing.
 //
 // CPU only. The overview is an orthographic top-down raster of the drawn surfaces, unlike minimap.h it is not the
 // converter's compass frame: +X is to the right, +Y is up (row 0 = the largest Y), and the image covers the XY

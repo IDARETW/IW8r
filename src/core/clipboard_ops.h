@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - copy / paste of map items as text (roadmap 2.28): the system clipboard carries an iwmap 4 text, so
+// IW8 Radiant - copy / paste of map items as text (roadmap 2.28): the system clipboard carries an iwmap 4 text, so
 // items move between two open maps (two editor windows) or out to a text editor and back.
 //   Copy: a point entity, or a brush entity with every primitive selected, is copied whole (keys + primitives);
 //   selected primitives of worldspawn, and of brush entities only partly selected, go into the worldspawn block.

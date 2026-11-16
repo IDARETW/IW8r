@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - native IW8 map compiler front end.
+// IW8 Radiant - native IW8 map compiler front end.
 //
 // Turns an editor document (MapFile) into the x64-zt "extraction" folder that
 // zonetool::convert::iw3_iw8::convert_extraction consumes. The file layout, JSON keys and value

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - F5 "devmap": after a successful compile, put the owner in game on the map with no menu steps
+// IW8 Radiant - F5 "devmap": after a successful compile, put the owner in game on the map with no menu steps
 // (docs/research/65_devmap_one_key.md). Drives the pure plan in src/core/devmap_plan.* :
 //   game not running  -> deploy, make sure the local online-services host answers, start the exe (the local DW
 //                        client when Tool Paths "launch" is empty), select Multiplayer once the client has signed in,

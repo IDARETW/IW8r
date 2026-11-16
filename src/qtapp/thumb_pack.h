@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - full thumbnail packs (roadmap 4.13).
+// IW8 Radiant - full thumbnail packs (roadmap 4.13).
 //
 // `IW8Radiant.exe --thumb-pack materials|models [--limit N] [--batch N]` makes a thumbnail of every buildable stock
 // material (colour image) or model (rendered mesh) of the catalog, skipping what the availability audit marked

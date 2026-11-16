@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - asset usage (roadmap 12.9): which materials, models, prefabs, effects and sounds a map
+// IW8 Radiant - asset usage (roadmap 12.9): which materials, models, prefabs, effects and sounds a map
 // names, and which of the mapper's own asset files the map uses. Pure core code, no Qt.
 #pragma once
 

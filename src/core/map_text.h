@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - lossless reader/writer for Radiant "iwmap 4" .map source files.
+// IW8 Radiant - lossless reader/writer for Radiant "iwmap 4" .map source files.
 //
 // Design rule: every byte of the input is owned by exactly one piece of the model
 // (file header, entity prefix/open/close text, item lines, primitive lines, trailer).

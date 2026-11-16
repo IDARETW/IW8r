@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - which placed models collide, and with what shape, by the stock models' own collision
+// IW8 Radiant - which placed models collide, and with what shape, by the stock models' own collision
 // (docs/research/142_static_model_collision.md: verified in Replay 1.20 with the IDA database, ACTS exports and the
 // game's Havok type compendium, 2026-11-15).
 //

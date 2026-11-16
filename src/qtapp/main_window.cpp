@@ -1922,7 +1922,7 @@ void MainWindow::buildMenus() {
     });
     addCommand(file, "Open", "&Open...", QKeySequence("Ctrl+O"), [this] { openDialog(); });
     recentMenu_ = file->addMenu("Recent");
-    addCommand(file, "OpenStockZone", "Open IW8 Stock &Map (ACTS)...", QKeySequence("Ctrl+Shift+O"), [this] { openStockZoneDialog(); });
+    addCommand(file, "OpenStockZone", "Open IW8 Stock &Map...", QKeySequence("Ctrl+Shift+O"), [this] { openStockZoneDialog(); });
     // What works on an open stock map: relighting, its compiled data, rebuilding and installing its zone.
     QMenu* stockMenu = file->addMenu("Stoc&k Map");
     stockMenu->setObjectName("stockMapMenu");
@@ -5034,7 +5034,7 @@ void MainWindow::buildMenus() {
     }
     {
         tools->addSeparator();
-        QAction* web = addCommand(tools, "WebServer", "Web Server (use the suite from a browser)", QKeySequence(), [this] {
+        QAction* web = addCommand(tools, "WebServer", "Web Server (use the editor from a browser)", QKeySequence(), [this] {
             Settings::instance().setValue("web/enabled", !Settings::instance().value("web/enabled", false).toBool());
             QString msg;
             applyWebServerSettings(&msg);
@@ -5501,8 +5501,8 @@ void MainWindow::buildMenus() {
     addCommand(help, "FirstRunSetup", "First-Run Setup...", QKeySequence(), [this] { showFirstRunSetup(false); });
     QAction* about = help->addAction("About / Target Build");
     connect(about, &QAction::triggered, this, [this] {
-        QMessageBox::about(this, "IW8 Radiant Suite",
-                           QString("<b>IW8 Radiant Suite 0.1.0</b><br><br>"
+        QMessageBox::about(this, "IW8 Radiant",
+                           QString("<b>IW8 Radiant 0.1.0</b><br><br>"
                                    "Target build: Call of Duty: Modern Warfare (2019), Replay 1.20.4.7623265<br>"
                                    "game_dx12_ship_replay.exe MD5 1c238fe327f2ecc3b0db924c5b425439<br>"
                                    "IW8 key table: %1 canonical ids<br>Qt %2 &middot; Qt Advanced Docking System 4.4.1<br><br>"
@@ -5539,7 +5539,7 @@ void MainWindow::runNudge(int dh, int dv) {
 
 bool MainWindow::confirmDiscard() {
     if (!ctx_.doc.modified()) return true;
-    const auto r = QMessageBox::warning(this, "IW8 Radiant Suite", "Save changes to " + displayName_ + "?",
+    const auto r = QMessageBox::warning(this, "IW8 Radiant", "Save changes to " + displayName_ + "?",
                                         QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
     if (r == QMessageBox::Cancel) return false;
     if (r == QMessageBox::Save) return save();
@@ -8531,7 +8531,7 @@ void MainWindow::rebuildRecentMenu() {
 void MainWindow::updateTitle() {
     // A new map that was never saved says so (it has no file yet, even when nothing was edited).
     const bool neverSaved = ctx_.doc.path().empty() && displayName_ == "untitled.map";
-    setWindowTitle(QString("IW8 Radiant Suite - %1%2%3  [MW2019 Replay 1.20.4.7623265]%4")
+    setWindowTitle(QString("IW8 Radiant - %1%2%3  [MW2019 Replay 1.20.4.7623265]%4")
                        .arg(displayName_, neverSaved ? " (not saved yet)" : "", ctx_.doc.modified() ? " *" : "",
                             qEnvironmentVariableIsSet("IW8R_SAFE_MODE") ? "  (Safe Mode)" : ""));
 }
@@ -8556,7 +8556,7 @@ void MainWindow::updateStatus() {
 void MainWindow::closeEvent(QCloseEvent* e) {
     // A running build would be stopped with the window: ask first.
     if (compile_ && compile_->busy() &&
-        QMessageBox::question(this, "IW8 Radiant Suite", "A build is running. Stop it and close the editor?",
+        QMessageBox::question(this, "IW8 Radiant", "A build is running. Stop it and close the editor?",
                               QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) {
         e->ignore();
         return;

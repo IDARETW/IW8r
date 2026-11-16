@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - shared Radiant/Quake texture projection.
+// IW8 Radiant - shared Radiant/Quake texture projection.
 //
 // One implementation for the compiler (compile_iw8.cpp), the surface inspector and the editor tools.
 // The maths is the one compile_iw8.cpp used before this module existed; results are identical.

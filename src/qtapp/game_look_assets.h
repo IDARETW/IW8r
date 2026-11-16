@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - game data the viewport's Game Lighting reads from the owner's install (never shipped).
+// IW8 Radiant - game data the viewport's Game Lighting reads from the owner's install (never shipped).
 //
 // The stock world shader's environment BRDF table (`ggx_env_brdf_lut`, 64 x 64 BC5 in the always-loaded zone
 // code_post_gfx; research 95 "Shipped LUTs": a recomputed table does not match it) is exported once through ACTS and kept

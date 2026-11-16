@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - game-mode object templates (roadmap 6.2). See gamemode_templates.h and docs/research/32_gamemode_objects.md.
+// IW8 Radiant - game-mode object templates (roadmap 6.2). See gamemode_templates.h and docs/research/32_gamemode_objects.md.
 #include "gamemode_templates.h"
 
 #include "brush_ops.h"

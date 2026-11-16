@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - auto-caulk (roadmap 2.6): hidden brush faces get the caulk tool material.
+// IW8 Radiant - auto-caulk (roadmap 2.6): hidden brush faces get the caulk tool material.
 //
 // A face is hidden when its whole polygon lies inside a face of another solid brush on the same plane facing the
 // opposite way (the two brushes touch there), so no camera can ever see it. Tool faces stay as they are; occluders are

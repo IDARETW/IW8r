@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - traversals for bots (roadmap 6.23): a node_negotiation_begin whose target names a
+// IW8 Radiant - traversals for bots (roadmap 6.23): a node_negotiation_begin whose target names a
 // node_negotiation_end, with the animation (animscript) a bot plays to get from one to the other. The converter writes
 // them into the navigation mesh (x64-zt iw3_fastfile.cpp "authored traversals").
 //

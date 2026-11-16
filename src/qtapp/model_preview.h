@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - model preview image (roadmap 4.3): a three-quarter view of a model, flat shaded, depth sorted,
+// IW8 Radiant - model preview image (roadmap 4.3): a three-quarter view of a model, flat shaded, depth sorted,
 // drawn with QPainter (no GPU), for the Models browser.
 #pragma once
 

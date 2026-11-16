@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - lightmap baking for the editor's own maps (roadmap 5.11 / 5.21; docs/research/94 and 95).
+// IW8 Radiant - lightmap baking for the editor's own maps (roadmap 5.11 / 5.21; docs/research/94 and 95).
 //
 // The game lights a world texel from three planes (research 94): an irradiance colour C, an ambient fraction f and a
 // tangent-space direction D, as  (1 - f) C / max(D.z, .001) sat(N.D) + f C  (the stock world pixel shader, as the

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - File > Save Selection As Prefab (docs/PREFAB_BUNDLES.md): the dialog that names a new prefab
+// IW8 Radiant - File > Save Selection As Prefab (docs/PREFAB_BUNDLES.md): the dialog that names a new prefab
 // bundle and lists what will travel with it: the entities and brushes, the mapper's own material, model, sound and
 // effect files that are copied into the bundle, and the stock assets it only names. The main window does the saving.
 #pragma once

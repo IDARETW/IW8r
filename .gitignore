@@ -49,3 +49,18 @@ __pycache__/
 *.key
 .env
 data/menu_packs/
+
+# Internal working documents (kept on the maintainer's disk, not part of the published repository). The published
+# documents are README.md, THIRD_PARTY.md, docs/USER_GUIDE.md, docs/TUTORIAL.md, docs/KEYS_REFERENCE.md and the
+# screenshots in docs/features/img.
+/CHANGELOG.md
+/docs/*
+!/docs/USER_GUIDE.md
+!/docs/TUTORIAL.md
+!/docs/KEYS_REFERENCE.md
+!/docs/features/
+/docs/features/*
+!/docs/features/img/
+/tools/ida_types/
+# The in-game test checklist and the results the editor writes beside it.
+/docs/test_results.json

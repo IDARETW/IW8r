@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - UPnP IGD port mapping for the web server (roadmap 10.1, owner request 2026-11-10).
+// IW8 Radiant - UPnP IGD port mapping for the web server (roadmap 10.1, owner request 2026-11-10).
 //
 // Discovers the router with SSDP (M-SEARCH for WANIPConnection / WANPPPConnection on 239.255.255.250:1900), reads its
 // device description, then asks it over SOAP to forward an external TCP port to this machine (AddPortMapping, renewed

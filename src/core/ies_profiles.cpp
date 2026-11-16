@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - IES photometric profiles (roadmap 5.13). See ies_profiles.h.
+// IW8 Radiant - IES photometric profiles (roadmap 5.13). See ies_profiles.h.
 #include "ies_profiles.h"
 
 #include <algorithm>

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - custom material editor (roadmap 4.17): every field a custom material (doc 21,
+// IW8 Radiant (Qt shell) - custom material editor (roadmap 4.17): every field a custom material (doc 21,
 // *.iw8mat.json) builds with: colour, normal and specular (gloss in alpha) images, surface type, alpha test or blend,
 // two-sided, and the texture size in world units; a live preview on a lit sphere and a wall. Images outside the
 // library folder are copied next to the definition so the map stays portable.

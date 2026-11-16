@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - brush body flags (see brush_flags.h).
+// IW8 Radiant - brush body flags (see brush_flags.h).
 #include "brush_flags.h"
 
 #include <array>

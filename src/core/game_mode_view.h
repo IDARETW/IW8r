@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - which entities a game mode keeps (View > Game Mode).
+// IW8 Radiant - which entities a game mode keeps (View > Game Mode).
 //
 // The game deletes, when a match starts, every entity whose script_gameobjectname does not name one of the current
 // gametype's objects (research 40 section 3.1: scripts\mp\gameobjects::main(list); tokens split on spaces and compared

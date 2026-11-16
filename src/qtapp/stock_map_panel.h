@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - the side bar's Stock Map panel (owner 2026-11-15: "there should be a sidebar option
+// IW8 Radiant (Qt shell) - the side bar's Stock Map panel (owner 2026-11-15: "there should be a sidebar option
 // to edit the values and see them change live in the viewport"). Its side bar icon shows while a stock map is open
 // (File > Open IW8 Stock Map). Every control edits the document's stock map keys (worldspawn iw8r_sun_*, iw8r_sky_from,
 // iw8r_stock_retexture, iw8r_hide_smodels, the iw8r_remove_world entities), one undo step per finished change (a

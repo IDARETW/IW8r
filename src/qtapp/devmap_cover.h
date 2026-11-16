@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - F5 cold start: a card that sits exactly over the game window from the moment the editor starts
+// IW8 Radiant - F5 cold start: a card that sits exactly over the game window from the moment the editor starts
 // the game until the map begins to load, so the first thing seen of the game is the map loading screen (owner request
 // 2026-11-11; docs/research/77). The boot screens, the mode select, the Multiplayer menu and the lobby run behind it.
 //

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - procedural stair and simple building generators.
+// IW8 Radiant - procedural stair and simple building generators.
 // The output is pure geometry: axis-aligned boxes, each tagged with a material role. The editor turns every box
 // into a brush (see brush_ops.h makeBox); this module does not touch the document.
 #pragma once

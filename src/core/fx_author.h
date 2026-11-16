@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - authored effects (roadmap 8.2, research 67).
+// IW8 Radiant - authored effects (roadmap 8.2, research 67).
 //
 // The mapper's own particle effects: sprite emitters described in <map dir>/fx/<name>.iw8fx.json and built through the
 // x64-zt converter's IW3 effect route: the build writes extracted/fx/<name>.iw3.json (the IW3 FxEffectDef graph the

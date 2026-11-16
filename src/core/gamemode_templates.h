@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - game-mode object templates (roadmap 6.2): Domination flags, Hardpoint zones, Search & Destroy
+// IW8 Radiant - game-mode object templates (roadmap 6.2): Domination flags, Hardpoint zones, Search & Destroy
 // sites and bomb, Capture the Flag, and spawn sets. Each template is a list of entities with the classnames and keys
 // that the stock Replay 1.20 maps use (docs/research/32_gamemode_objects.md; the evidence and the UNKNOWN parts are there).
 //

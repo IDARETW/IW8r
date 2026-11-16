@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - direct live link (no proxy): reads and writes a running Replay 1.20 process from the editor.
+// IW8 Radiant - direct live link (no proxy): reads and writes a running Replay 1.20 process from the editor.
 //
 // Addresses are native Replay 1.20 RVAs (docs/research/05). Recompiled exes (game_dx12_ship_replay_dw.exe and
 // friends, identity "RPLYCMP2" at image offset 0x40) move code and data; their `.rplmap` section maps every native RVA

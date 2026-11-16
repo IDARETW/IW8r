@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Radiant layers: `"NAME" flags ...` declarations in the header and the optional
+// IW8 Radiant - Radiant layers: `"NAME" flags ...` declarations in the header and the optional
 // `layer "NAME"` first line inside a brush or patch block (docs/research/02_iwmap4_format.md §1).
 #pragma once
 

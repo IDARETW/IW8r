@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - the shared parts of the side bar panels (owner 2026-11-15: "each upper section sidebar
+// IW8 Radiant (Qt shell) - the shared parts of the side bar panels (owner 2026-11-15: "each upper section sidebar
 // menu needs their own individual revamp. they need to have more flush menus and actually useful UIs").
 //
 // Every panel is built the same way, flush to the panel's edges:

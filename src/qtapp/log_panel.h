@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - Console dock: the process-wide EditorLog (status, compile, Qt warnings) as a table with
+// IW8 Radiant (Qt shell) - Console dock: the process-wide EditorLog (status, compile, Qt warnings) as a table with
 // level and text filters, Clear, Copy all and auto-scroll.
 #pragma once
 

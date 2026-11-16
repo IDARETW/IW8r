@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - stock scripted object catalog (roadmap 6.13): which entity classnames and key/value pairs the
+// IW8 Radiant - stock scripted object catalog (roadmap 6.13): which entity classnames and key/value pairs the
 // stock IW8 MP maps use for script-driven objects, and which stock script handles them. Core only: no UI. The data
 // file is data/asset_catalog/iw8_scripted_objects.tsv, written by tools/build_scripted_objects.py. Research:
 // docs/research/53_stock_scripted_objects.md.

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the loot points of a Warzone map (roadmap 13.5, docs/research/87 section 2.4 and 89).
+// IW8 Radiant - the loot points of a Warzone map (roadmap 13.5, docs/research/87 section 2.4 and 89).
 //
 // A stock Warzone map keeps the places where loot can appear in MapEnts.spawnGroupLoot, not in the entity text:
 //   points    origin, angles, cluster (u16), zone (u16)

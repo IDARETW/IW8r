@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the viewport's game look (View > Game Lighting): the editor's own lightmap bake of the open map,
+// IW8 Radiant - the viewport's game look (View > Game Lighting): the editor's own lightmap bake of the open map,
 // shaded as the game's world shader shades a built map (docs/research/95, "Editor maps in game").
 //
 // The same baker and settings as the build (core lightmap_bake, worldspawn iw8r_bake_*), on the camera's own

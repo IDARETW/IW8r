@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - play preview mantling: ledge detection over the CollisionWorld, the Replay 1.20 mantle
+// IW8 Radiant - play preview mantling: ledge detection over the CollisionWorld, the Replay 1.20 mantle
 // curve (origin -> mid-rise -> ledge top, as a Bezier path) and its timing. Geometry follows the Replay walk
 // simulator (E:\mw124\mw120rproxy\iw8-zonetool\src\zonetool\sim\walk_mantle.cpp), with the editor's brush world
 // standing in for the engine's mantle edge list.

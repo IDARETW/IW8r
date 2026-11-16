@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - map regions and subset text (see region.h).
+// IW8 Radiant - map regions and subset text (see region.h).
 #include "region.h"
 
 #include <utility>

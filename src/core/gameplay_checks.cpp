@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - gameplay sanity checks (see gameplay_checks.h).
+// IW8 Radiant - gameplay sanity checks (see gameplay_checks.h).
 #include "gameplay_checks.h"
 
 #include <cmath>

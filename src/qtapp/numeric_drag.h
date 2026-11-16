@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - number fields change by dragging (owner 2026-11-15: "numeric values should be able to
+// IW8 Radiant (Qt shell) - number fields change by dragging (owner 2026-11-15: "numeric values should be able to
 // be dragged to change the value, with constant scrolling after a certain distance").
 //
 // Every QSpinBox / QDoubleSpinBox of the application (one event filter on the application, so dialogs and panels made

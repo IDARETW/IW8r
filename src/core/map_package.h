@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - map source package: collects a map with every file it depends on
+// IW8 Radiant - map source package: collects a map with every file it depends on
 // (prefabs, sidecars, caller-resolved extras) and stores them in one shareable .zip, and
 // extracts such a zip again. No Qt; std::filesystem and the map_text parser only.
 //

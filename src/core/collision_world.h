@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - editor-side collision world for the play preview: swept axis-aligned boxes against the
+// IW8 Radiant - editor-side collision world for the play preview: swept axis-aligned boxes against the
 // map's convex brushes and patch facets (the classic Quake/CoD box trace). It uses the same contents rules as
 // the IW8 build (iw8_contents.h): solid and player-clip brushes block the player, triggers / hints / weapon
 // clips / nonColliding brushes do not.

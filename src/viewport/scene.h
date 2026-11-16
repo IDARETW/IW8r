@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - render/pick cache built from the Document.
+// IW8 Radiant - render/pick cache built from the Document.
 #pragma once
 
 #include <array>

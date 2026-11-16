@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - unlit baseline check (roadmap 1.8): what a map without baked lightmaps gets from its sun and
+// IW8 Radiant - unlit baseline check (roadmap 1.8): what a map without baked lightmaps gets from its sun and
 // light entities, and the Check Map warnings for a map that will render dark. Evidence and the rule list are in
 // docs/research/55_unlit_baseline.md.
 #pragma once

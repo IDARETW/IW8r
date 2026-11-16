@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - convex brush operations (CSG-style edits on half-space brushes).
+// IW8 Radiant - convex brush operations (CSG-style edits on half-space brushes).
 //
 // A ConvexBrush is a list of half-space faces: dot(n, x) <= d with OUTWARD normals, each carrying the
 // Radiant face suffix (texture and lightmap parameters, verbatim, starting with whitespace). Faces that

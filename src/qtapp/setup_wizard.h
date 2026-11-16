@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - First-run setup (roadmap 9.1): Replay game folder and exe, ACTS, Oodle and x64-zt.
+// IW8 Radiant (Qt shell) - First-run setup (roadmap 9.1): Replay game folder and exe, ACTS, Oodle and x64-zt.
 // Help > First-Run Setup, and at startup when the Replay exe is missing. Detect fills the fields from
 // iw8r::candidateGameDirs / gameExesIn / oodleIn; Save writes the same Settings keys as Tools > Tool Paths.
 #pragma once

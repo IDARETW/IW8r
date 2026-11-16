@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - second batch of Radiant patch tools (see patch_ops2.h).
+// IW8 Radiant - second batch of Radiant patch tools (see patch_ops2.h).
 #include "patch_ops2.h"
 
 #include <algorithm>

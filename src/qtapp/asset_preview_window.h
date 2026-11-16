@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the asset preview window (owner request 2026-11-14: "a sophisticated navigable preview window
+// IW8 Radiant - the asset preview window (owner request 2026-11-14: "a sophisticated navigable preview window
 // with textures applied to the model"): a model or a prefab in a real, textured 3D view of its own.
 //
 // The window is a second CameraView with its own EditorContext, given the same material, image, model and prefab hooks

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the camera view's render thread (owner 2026-11-15: "make the rendering thread for the
+// IW8 Radiant - the camera view's render thread (owner 2026-11-15: "make the rendering thread for the
 // viewport ... so its never frozen, and other workloads on others").
 //
 // The GUI thread prepares each frame in CameraView::render(): the scene, the uploads, the camera geometry and the frame

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - GUI checks for prefab bundles (docs/PREFAB_BUNDLES.md): the Prefabs dock, placing
+// IW8 Radiant (Qt shell) - GUI checks for prefab bundles (docs/PREFAB_BUNDLES.md): the Prefabs dock, placing
 // and copying placements, the parameter fields in the Entity dock, Save Selection As Prefab, explode / edit / make
 // unique, the bundles' asset folders while editing, and the build. Called from the GUI test runner (qt_gui_test.cpp).
 #pragma once

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Radiant-style patch (curve/mesh) and brush-vertex editing operations.
+// IW8 Radiant - Radiant-style patch (curve/mesh) and brush-vertex editing operations.
 //
 // Grid convention (same as patch_tess.h): a PatchGrid is row-major, index = row * cols + col. In the .map text
 // each "( )" group is one row and each `v` inside it is one column, so the dimension line "W H A B" gives

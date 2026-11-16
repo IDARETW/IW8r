@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - shared Radiant/Quake texture projection (see tex_projection.h).
+// IW8 Radiant - shared Radiant/Quake texture projection (see tex_projection.h).
 #include "tex_projection.h"
 
 #include <algorithm>

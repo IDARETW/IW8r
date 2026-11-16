@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the mapper's own sounds (roadmap 6.22: custom sound import).
+// IW8 Radiant - the mapper's own sounds (roadmap 6.22: custom sound import).
 //
 // A WAV or MP3 in a sounds folder (<map dir>/sounds/<name>.wav|.mp3) becomes a sound alias named <name> in the map's
 // sound bank: the build copies the file to extracted/sound/iw8r/<name>.<ext> and writes the IW3 alias definition the

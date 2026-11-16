@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - the side bar's Stock Map panel (stock_map_panel.h).
+// IW8 Radiant (Qt shell) - the side bar's Stock Map panel (stock_map_panel.h).
 #include "stock_map_panel.h"
 
 #include <algorithm>

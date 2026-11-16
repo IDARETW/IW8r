@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - roads, paths and rivers along splines that conform to the terrain (roadmap 8.13).
+// IW8 Radiant - roads, paths and rivers along splines that conform to the terrain (roadmap 8.13).
 // See road_tools.h for the terrain layout and the meaning of each argument.
 #include "road_tools.h"
 

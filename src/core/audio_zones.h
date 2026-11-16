@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - audio zones and reverb (roadmap 6.22, research 63).
+// IW8 Radiant - audio zones and reverb (roadmap 6.22, research 63).
 //
 // The x64-zt converter builds a map sound bank from extracted/sound/soundtable.json (iw3_sound.cpp ReadSoundTable)
 // and client-side audio triggers from extracted/maps/clienttriggers.json (iw3_fastfile.cpp ReadClientTriggers). This

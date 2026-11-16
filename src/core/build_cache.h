@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - incremental build support (roadmap 7.10; design in docs/research/44_incremental_builds.md).
+// IW8 Radiant - incremental build support (roadmap 7.10; design in docs/research/44_incremental_builds.md).
 //
 // Three pieces:
 //   - writeIfChanged: an extraction file is rewritten only when its bytes differ, so unchanged files keep their

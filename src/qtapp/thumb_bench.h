@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - side bar thumbnail timings (owner 2026-11-15: "all thumbnails should be cached once so
+// IW8 Radiant (Qt shell) - side bar thumbnail timings (owner 2026-11-15: "all thumbnails should be cached once so
 // they dont need to load in the editor at runtime").
 //
 //   IW8R_FEATURE_SHOTS_ONLY=thumbs IW8Radiant.exe --feature-shots --out <dir>

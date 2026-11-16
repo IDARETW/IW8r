@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - decal tool (see decal_tools.h).
+// IW8 Radiant - decal tool (see decal_tools.h).
 #include "decal_tools.h"
 
 #include <algorithm>

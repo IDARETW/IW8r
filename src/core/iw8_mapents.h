@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - IW8 (MW2019 Replay 1.20.4.7623265) MapEnts access.
+// IW8 Radiant - IW8 (MW2019 Replay 1.20.4.7623265) MapEnts access.
 //
 // Reads the MapEnts asset ("map_ents", pool 29) of a stock Replay 1.20 zone from an ACTS
 // `mw19-asset-json-v1` dump (atian-cod-tools `fastfile -r mw19replay`). The entity string is

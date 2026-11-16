@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - prefab bundles (docs/PREFAB_BUNDLES.md, design: docs/research/83, Part B).
+// IW8 Radiant - prefab bundles (docs/PREFAB_BUNDLES.md, design: docs/research/83, Part B).
 //
 // A bundle is a folder named <name>.iw8prefab that holds everything one prefab needs:
 //   prefab.json   the manifest (this file reads, checks and writes it)

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the collision of the play preview as the built map has it (research 131 gap 9).
+// IW8 Radiant - the collision of the play preview as the built map has it (research 131 gap 9).
 //
 // CollisionWorld::build reads the map's own brushes only. The built map also collides with:
 //   - the contents of misc_prefab placements (the build flattens prefabs before it compiles: core prefab.h);

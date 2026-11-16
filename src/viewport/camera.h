@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - free-fly camera math shared by the editor shells.
+// IW8 Radiant - free-fly camera math shared by the editor shells.
 #pragma once
 
 #include "geometry.h"

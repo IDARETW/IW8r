@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - persistent preferences in IW8Radiant.ini beside the executable.
+// IW8 Radiant (Qt shell) - persistent preferences in IW8Radiant.ini beside the executable.
 #pragma once
 
 #include <QByteArray>

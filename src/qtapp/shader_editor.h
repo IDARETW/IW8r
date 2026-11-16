@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Tools > Shader Editor (plan M6, owner 2026-11-13: "edit stock shaders and make custom shaders
+// IW8 Radiant - Tools > Shader Editor (plan M6, owner 2026-11-13: "edit stock shaders and make custom shaders
 // for maps").
 //
 // Lists the map's shaders (<map folder>/shaders/*.iw8shader.hlsl, editable) and the editor's (data/shaders, read-only

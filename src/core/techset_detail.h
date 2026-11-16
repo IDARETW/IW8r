@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - technique set body (ACTS export) and plain-English notes from a technique set name.
+// IW8 Radiant - technique set body (ACTS export) and plain-English notes from a technique set name.
 // Research 69 documents the export. Fields kept here are the ones that were read from real stock sets:
 //   fields.name                       -> TechsetDetail::name
 //   fields.materialType.name          -> TechsetDetail::materialType

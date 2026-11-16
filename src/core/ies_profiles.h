@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - IES photometric profiles (roadmap 5.13): LM-63 text parsing, candela lookup and a polar
+// IW8 Radiant - IES photometric profiles (roadmap 5.13): LM-63 text parsing, candela lookup and a polar
 // preview curve. Core only: no UI, no compiler output. The compiler does not write IES profiles yet; see
 // docs/research/38_ies_profiles.md for the converter route that would carry one.
 #pragma once

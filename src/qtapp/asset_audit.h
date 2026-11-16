@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - stock asset availability audit (the "any listed asset builds" catalog).
+// IW8 Radiant - stock asset availability audit (the "any listed asset builds" catalog).
 //
 // `IW8Radiant.exe --asset-audit materials|models|effects|images --out <status.tsv> [--limit N] [--batch N]` resolves catalog
 // assets (effects and images, 4.12: one ACTS export per zone and batch, judged by the ACTS journal) with

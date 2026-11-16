@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - prefabs: misc_prefab references, instancing, explode and save-as-prefab.
+// IW8 Radiant - prefabs: misc_prefab references, instancing, explode and save-as-prefab.
 //
 // A misc_prefab point entity places the contents of another .map file ("model" "prefabs/<path>.map")
 // at "origin", rotated by "angles" (pitch yaw roll, degrees, Quake/CoD convention) and optionally

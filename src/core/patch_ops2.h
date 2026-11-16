@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - second batch of Radiant patch tools: caps, weld, redisperse, split, terrain and sculpting.
+// IW8 Radiant - second batch of Radiant patch tools: caps, weld, redisperse, split, terrain and sculpting.
 //
 // Everything here works on PatchGrid (see patch_ops.h for the grid convention and the .map text layout). Every
 // result is a plain grid, so it can be written with makePatchPrimitive and re-read with reparsePrimitive.

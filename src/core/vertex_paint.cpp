@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - per-vertex colour and alpha painting on patch control points. See vertex_paint.h.
+// IW8 Radiant - per-vertex colour and alpha painting on patch control points. See vertex_paint.h.
 #include "vertex_paint.h"
 #include "heightmap.h"
 #include "patch_ops.h"

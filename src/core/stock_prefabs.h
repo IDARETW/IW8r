@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - stock prefab harvester: a prefab library built from the static-model placements of the shipped
+// IW8 Radiant - stock prefab harvester: a prefab library built from the static-model placements of the shipped
 // IW8 maps (the world_cache exports read by stock_smodels.h). Only IW8 content is used.
 //
 //   Anchor   an instance whose model matches a category keyword (stockPrefabRules, the category table).

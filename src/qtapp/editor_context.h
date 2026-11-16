@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - state shared by all views and panels.
+// IW8 Radiant (Qt shell) - state shared by all views and panels.
 #pragma once
 
 #include <QObject>

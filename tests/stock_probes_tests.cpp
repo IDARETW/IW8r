@@ -587,7 +587,7 @@ fs::path repoPath(const std::string& rel) {
 
 fs::path worldCacheDir() {
     const char* local = std::getenv("LOCALAPPDATA");
-    return local ? fs::path(local) / "IW8 Radiant Suite" / "IW8 Radiant Suite" / "world_cache" : fs::path();
+    return local ? fs::path(local) / "IW8 Radiant" / "IW8 Radiant" / "world_cache" : fs::path();
 }
 
 }  // namespace

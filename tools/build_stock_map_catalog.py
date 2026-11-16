@@ -1,4 +1,4 @@
-"""Build the stock map catalog for the IW8 Radiant Suite (roadmap 11.1).
+"""Build the stock map catalog for the IW8 Radiant (roadmap 11.1).
 
 Scans the game install by file name only (os.walk + stat, no file is opened) for fastfiles (.ff) and
 streaming packs (.xpak). Related variants are grouped under one map id:

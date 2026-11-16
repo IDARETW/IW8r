@@ -1,4 +1,4 @@
-// Core tests for the IW8 Radiant Suite edit-save-reopen loop.
+// Core tests for the IW8 Radiant edit-save-reopen loop.
 //   iw8r_tests [--samples <dir>] [--tmp <dir>]
 // IW8 fixtures: --iw8-sample <iw8_sample_room.map> (default: <repo>/samples/iw8) and --iw8-ents <ACTS map_ents asset.json>
 // (default: the stock mp_hideout dump). --corpus <dir> is an optional Radiant text-grammar corpus (any folder of .map files).

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - terrain height-map import/export, erosion and slope-based blend weights.
+// IW8 Radiant - terrain height-map import/export, erosion and slope-based blend weights.
 //
 // A HeightMap is a plain float grid, w columns by h rows. Column 0 is the west edge (min X) and row 0 is the
 // NORTH edge, i.e. the maximum Y. So an image read top-left first lines up with the map seen from above.

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - technique set inspector (roadmap 12.1). Shows the material and technique set names,
+// IW8 Radiant (Qt shell) - technique set inspector (roadmap 12.1). Shows the material and technique set names,
 // plain-English lines from the name, and the technique set body when its ACTS JSON export is readable.
 #pragma once
 

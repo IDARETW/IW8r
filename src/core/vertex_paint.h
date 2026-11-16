@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - per-vertex colour and alpha painting on patch control points (roadmap 8.11, research 57).
+// IW8 Radiant - per-vertex colour and alpha painting on patch control points (roadmap 8.11, research 57).
 //
 // Representation (the one the map format has, no new field):
 //   The patch vertex line carries an optional colour block between the position and the texture pair:

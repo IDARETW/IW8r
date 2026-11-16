@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Direct3D 11 offscreen renderer for the 3D camera view.
+// IW8 Radiant - Direct3D 11 offscreen renderer for the 3D camera view.
 #pragma once
 
 #include <array>

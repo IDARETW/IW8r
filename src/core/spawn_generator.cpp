@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - generated starting spawns from a map's walkable geometry (see spawn_generator.h).
+// IW8 Radiant - generated starting spawns from a map's walkable geometry (see spawn_generator.h).
 #include "spawn_generator.h"
 
 #include <algorithm>

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - live link, phase A: the editor side of the Replay proxy control file (docs/research/25_live_link.md).
+// IW8 Radiant - live link, phase A: the editor side of the Replay proxy control file (docs/research/25_live_link.md).
 //
 // The proxy (mw120rproxy, inside Replay 1.20) polls <game>\.proxy\control.ini, section [request] with pid, id, action and
 // value, and answers in <game>\.proxy\control-result.json. There is no socket. This module writes requests, reads and

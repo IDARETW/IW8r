@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the game's look for the viewport (roadmap 5.11 / 5.21; docs/research/95).
+// IW8 Radiant - the game's look for the viewport (roadmap 5.11 / 5.21; docs/research/95).
 //
 // What an editor-built map looks like in game, as numbers the viewport can use:
 //   - the light units: the converter's world shader (research 95, "Editor maps in game") draws

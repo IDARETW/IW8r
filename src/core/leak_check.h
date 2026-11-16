@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - voxel flood-fill leak (sealing) check.
+// IW8 Radiant - voxel flood-fill leak (sealing) check.
 //
 // Sealing brushes: brushes of worldspawn and func_group entities whose contents collide (brushContents in
 // iw8_contents.h) and that are not `contents detail;`. Trigger, hint, skip, origin, portal, water and

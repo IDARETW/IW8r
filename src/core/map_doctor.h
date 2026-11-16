@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Map Doctor (roadmap 9.12): Check Map findings that have a mechanical fix, and the fixes.
+// IW8 Radiant - Map Doctor (roadmap 9.12): Check Map findings that have a mechanical fix, and the fixes.
 //
 // Fixable findings (each fix is safe to apply without the mapper's judgement):
 //   - SpawnAngles     spawn angles with pitch or roll: set to "0 <yaw> 0" (the game ignores pitch / roll and Check Map

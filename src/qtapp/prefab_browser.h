@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Prefabs dock (roadmap 4.4): the prefab bundles (docs/PREFAB_BUNDLES.md: folders named
+// IW8 Radiant - Prefabs dock (roadmap 4.4): the prefab bundles (docs/PREFAB_BUNDLES.md: folders named
 // <name>.iw8prefab, listed first with their title, description and tags) and every plain .map prefab under the open
 // map's `prefabs` folder and the prefab folders (Preferences), each with a picture. Double-click or Enter stamps one
 // (misc_prefab, one undo step) through the caller's insert function; a drag carries its path to the views. A line under

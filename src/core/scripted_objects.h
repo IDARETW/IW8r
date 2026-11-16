@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - scripted object presets (roadmap 6.5).
+// IW8 Radiant - scripted object presets (roadmap 6.5).
 //
 // Replay map objects that react in game come through the x64-zt compatibility layer that every map script now loads
 // (maps\mp\_load::main -> iw3compat_load_main):

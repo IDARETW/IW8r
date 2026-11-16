@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - brush body flags (`contents X;` directive lines, doc 02 §3).
+// IW8 Radiant - brush body flags (`contents X;` directive lines, doc 02 §3).
 //
 // Only the words iw8_contents.cpp recognises are modelled: detail, nonColliding and weaponClip. Other
 // `contents` words and every other line of the brush stay byte-identical when the flags change.

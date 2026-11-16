@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - lightmap fields of brush faces, patch control-point locks, and the Surface panel edit.
+// IW8 Radiant - lightmap fields of brush faces, patch control-point locks, and the Surface panel edit.
 //
 // Brush face suffix layout (docs/research/02_iwmap4_format.md, section 3, face token table), counted from the
 // first token after the third ')':

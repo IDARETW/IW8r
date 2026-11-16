@@ -1,5 +1,5 @@
 <#
-  IW8 Radiant Suite - local CI (roadmap 9.8): build everything, run the core tests, the offscreen GUI test and the
+  IW8 Radiant - local CI (roadmap 9.8): build everything, run the core tests, the offscreen GUI test and the
   D3D smoke test, and print one summary line per suite. Exit code 0 only when every suite passes.
   -Full also runs the GUI test with IW8R_FULL_COMPILE=1 (F7 + x64-zt + ACTS + scratch deploy, about a minute; needs
   the tool paths configured in the editor). Nothing is written to the game folder.

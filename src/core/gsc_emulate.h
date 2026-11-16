@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - map script emulation: the map's own GSC (worldspawn iw8r_script) run in the editor, so the
+// IW8 Radiant - map script emulation: the map's own GSC (worldspawn iw8r_script) run in the editor, so the
 // entities it moves move in the viewport as they do in game (owner 2026-11-15: the showcase's script_models "should be
 // made live thru game script emulation").
 //

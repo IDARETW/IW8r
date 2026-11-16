@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - custom surface shaders for a map's own materials (owner 2026-11-13: "make custom shaders for
+// IW8 Radiant - custom surface shaders for a map's own materials (owner 2026-11-13: "make custom shaders for
 // maps"; plan M6).
 //
 // A shader is a file `<name>.iw8shader.hlsl` beside the map's materials. It defines one function,

@@ -418,7 +418,7 @@ TEST(stock_clutter_ground_grid_and_map_scatter) {
 TEST(stock_clutter_real_speedball_has_none) {
     // Speedball's grass is placed static models: its gfx_map has clutterCollections null (research 100 section 1).
     const char* local = std::getenv("LOCALAPPDATA");
-    const fs::path dir = local ? fs::path(local) / "IW8 Radiant Suite" / "IW8 Radiant Suite" / "world_cache" / "mp_m_speedball" : fs::path();
+    const fs::path dir = local ? fs::path(local) / "IW8 Radiant" / "IW8 Radiant" / "world_cache" / "mp_m_speedball" : fs::path();
     std::error_code ec;
     if (!local || !fs::exists(dir, ec)) {
         test::skipf("  SKIP world_cache/mp_m_speedball not found\n");

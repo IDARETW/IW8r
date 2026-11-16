@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - what a stock IW8 (Replay 1.20) material's technique set and flags say about how it draws.
+// IW8 Radiant - what a stock IW8 (Replay 1.20) material's technique set and flags say about how it draws.
 // Research 66: a survey of 6,135 material bodies (techsets_mp_shipment + techsets_mp_aniyah_tac, ACTS) gives the name
 // grammar and the flags. The goal is full coverage of the stock sets now and a place to describe custom sets later.
 //

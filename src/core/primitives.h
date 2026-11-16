@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - blockout primitive generators (cone, sphere, stairs, arch, ramp).
+// IW8 Radiant - blockout primitive generators (cone, sphere, stairs, arch, ramp).
 //
 // Every generator fills the box `box` and returns convex brushes built from half-space faces (see
 // brush_ops.h). Each face carries the same Radiant face suffix `suffix` (a leading space is added when

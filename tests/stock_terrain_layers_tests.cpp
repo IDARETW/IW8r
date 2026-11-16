@@ -360,7 +360,7 @@ TEST(stock_terrain_layers_real_data) {
     if (json.empty() || images.empty()) {
         const char* local = std::getenv("LOCALAPPDATA");
         if (!local) return;
-        const fs::path z = fs::path(local) / "IW8 Radiant Suite" / "IW8 Radiant Suite" / "world_cache" / "mp_donetsk" / "terrain" /
+        const fs::path z = fs::path(local) / "IW8 Radiant" / "IW8 Radiant" / "world_cache" / "mp_donetsk" / "terrain" /
                            "mw19replay" / "mp_donetsk" / "assets";
         if (json.empty()) json = (z / "stterrain" / "mp_donetsk.0.asset.json").string();
         if (images.empty()) images = (z / "image").string();

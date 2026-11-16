@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - top-down overview image and PNG writer (overview_image.h).
+// IW8 Radiant - top-down overview image and PNG writer (overview_image.h).
 #include "overview_image.h"
 
 #include <algorithm>

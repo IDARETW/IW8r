@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - conversions between brushes and patches, and between patches and terrain.
+// IW8 Radiant - conversions between brushes and patches, and between patches and terrain.
 //
 // Brush faces become flat "mesh" patches. A mesh patch is triangulated straight from its control grid (no curve
 // smoothing), so the triangles lie exactly on the face. Texture coordinates are the brush face's own UVs

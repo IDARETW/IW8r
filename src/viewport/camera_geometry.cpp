@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the camera's geometry kept between frames (docs/research/85). See CameraGeometry in scene.h.
+// IW8 Radiant - the camera's geometry kept between frames (docs/research/85). See CameraGeometry in scene.h.
 //
 // The per-item code below makes exactly what buildCameraGeometry (scene.cpp) makes for one item; the GUI test
 // compares the two (CameraGeometry::flatten against buildCameraGeometry) in every camera mode.

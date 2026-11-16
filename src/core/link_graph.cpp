@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - link graph over target/targetname and script_linkto/script_linkname (see link_graph.h).
+// IW8 Radiant - link graph over target/targetname and script_linkto/script_linkname (see link_graph.h).
 #include "link_graph.h"
 
 #include "traversal.h"

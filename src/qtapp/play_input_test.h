@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - play preview input check through the camera view's real key path (research 140).
+// IW8 Radiant - play preview input check through the camera view's real key path (research 140).
 #pragma once
 
 #include <QString>

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - GUI thread stall watch (owner 2026-11-15: "the viewport rendering being on one thread so its
+// IW8 Radiant - GUI thread stall watch (owner 2026-11-15: "the viewport rendering being on one thread so its
 // never frozen, and other workloads on others").
 //
 // A heartbeat timer on the GUI thread and a watch thread: when the GUI thread has not come back to its event loop for

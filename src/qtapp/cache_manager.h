@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Tools > Cache Manager (roadmap 4.13): size of every cache under the app data folder, purge,
+// IW8 Radiant - Tools > Cache Manager (roadmap 4.13): size of every cache under the app data folder, purge,
 // a size cap for the caches that refetch on demand, and moving the caches to another drive.
 //
 // Caches whose index is loaded while the editor runs (material, model, world, thumbnails, image browser) are purged and

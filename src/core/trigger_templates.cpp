@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - trigger templates (roadmap 6.17, 6.20). See trigger_templates.h.
+// IW8 Radiant - trigger templates (roadmap 6.17, 6.20). See trigger_templates.h.
 #include "trigger_templates.h"
 
 #include <algorithm>

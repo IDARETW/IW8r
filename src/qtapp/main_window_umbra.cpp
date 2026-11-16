@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - View > Umbra Visibility (plan M2.2): what the stock map's occlusion tome lets the game draw from
+// IW8 Radiant - View > Umbra Visibility (plan M2.2): what the stock map's occlusion tome lets the game draw from
 // the camera. The tome (core umbra_tome, research 110) is cut out of the map's cached world export in a worker; a
 // view query (core umbra_view) follows the camera in a worker too, one at a time. "Cull by Tome" hands its result to
 // the renderer (surfaces and props the game would not draw from here are hidden); "Show Cells and Portals" draws the

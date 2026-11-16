@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - patch tessellation for the editor's 3D view and the compile pipeline.
+// IW8 Radiant - patch tessellation for the editor's 3D view and the compile pipeline.
 //
 // Control grid convention (matches the iwmap 4 reader): ctrl is row-major [rows][cols], index = row * cols + col.
 // In the .map text, each "( )" group is one control row and each `v` inside it is one column, so the dimension

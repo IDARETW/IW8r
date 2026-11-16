@@ -1,6 +1,6 @@
 # Third-party code
 
-IW8 Radiant Suite is released under the GNU General Public License v3 ([LICENSE](LICENSE)). It contains, and its
+IW8 Radiant is released under the GNU General Public License v3 ([LICENSE](LICENSE)). It contains, and its
 installer ships, the code below; each part keeps its own licence file in its folder, and the folder's `UPSTREAM.txt`
 says where it came from (project, commit) and what was left out.
 

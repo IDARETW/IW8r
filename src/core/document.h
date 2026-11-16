@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - editable document: map model + selection + grid + undo/redo.
+// IW8 Radiant - editable document: map model + selection + grid + undo/redo.
 //
 // Every mutation goes through a Transaction made of snapshot operations. Undo
 // restores the exact prior object (including its original text), so

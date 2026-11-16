@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - selection layout tools (roadmap 2.25): array and radial duplicate, mirror clone, align
+// IW8 Radiant - selection layout tools (roadmap 2.25): array and radial duplicate, mirror clone, align
 // and distribute.
 //
 // Every call is ONE undo step on the Document. Duplicates leave their copies selected (as Radiant Clone does);

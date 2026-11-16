@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - technique set export on demand (roadmap 12.1). A stock technique set is exported from
+// IW8 Radiant (Qt shell) - technique set export on demand (roadmap 12.1). A stock technique set is exported from
 // zone techsets_common_mp with ACTS and kept as <AppLocalData>/techset_cache/<safe name>.asset.json.
 #pragma once
 

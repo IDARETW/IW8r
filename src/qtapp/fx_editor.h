@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Tools > Effect Editor (roadmap 8.2): the map's own sprite effects (<map dir>/fx/<name>.iw8fx.json,
+// IW8 Radiant - Tools > Effect Editor (roadmap 8.2): the map's own sprite effects (<map dir>/fx/<name>.iw8fx.json,
 // core fx_author.h), element by element, with an animated side-view preview. The build turns each placed effect into a
 // Replay vfx through the converter's IW3 effect route (research 67).
 #pragma once

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - Links dock (roadmap 6.25): the map's target / targetname and script_linkto chains as
+// IW8 Radiant (Qt shell) - Links dock (roadmap 6.25): the map's target / targetname and script_linkto chains as
 // a node view (core link_graph + link_graph_layout). Boxes show classname and targetname, arrows point from the entity
 // holding the key to the one it names; checkLinks problems are drawn red. Click selects the entity (Ctrl adds), a click
 // on empty space clears the selection, double-click also centres the camera on it; wheel zooms, right or middle (or left

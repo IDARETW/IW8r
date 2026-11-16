@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - screenshots for the feature list (docs/features/FEATURES.md).
+// IW8 Radiant (Qt shell) - screenshots for the feature list (docs/features/FEATURES.md).
 //
 //   IW8Radiant.exe --feature-shots --out <dir>
 //

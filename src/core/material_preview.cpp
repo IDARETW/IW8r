@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - software preview of one custom material (see material_preview.h).
+// IW8 Radiant - software preview of one custom material (see material_preview.h).
 #include "material_preview.h"
 
 #include <algorithm>

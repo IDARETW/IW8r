@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - UI themes (roadmap 9.2): Dark (default), Light and Midnight (high contrast), with an editable
+// IW8 Radiant - UI themes (roadmap 9.2): Dark (default), Light and Midnight (high contrast), with an editable
 // accent colour. Stored in Settings ui/theme and ui/accent; View > Theme switches live.
 #pragma once
 

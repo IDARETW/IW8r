@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - command scripts (roadmap 9.10). See command_script.h for the grammar.
+// IW8 Radiant - command scripts (roadmap 9.10). See command_script.h for the grammar.
 #include "command_script.h"
 
 #include <cstdio>

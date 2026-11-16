@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the scripted objects of a map, working in the editor's play preview (research 131 gap 9).
+// IW8 Radiant - the scripted objects of a map, working in the editor's play preview (research 131 gap 9).
 //
 // The built map's script (core map_script) opens doors on Use, moves lifts, spins and bobs brush models, teleports and
 // launches players from triggers. The play preview runs the same behaviours, by the same keys and numbers, so walking

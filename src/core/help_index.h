@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - in-app help (roadmap 9.11): a searchable index over the Markdown guides, and the guided first-map
+// IW8 Radiant - in-app help (roadmap 9.11): a searchable index over the Markdown guides, and the guided first-map
 // checklist (each step ticks itself from the map's own state).
 #pragma once
 

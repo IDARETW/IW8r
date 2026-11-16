@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - main window: menus, rebindable commands, dock layout, file I/O.
+// IW8 Radiant (Qt shell) - main window: menus, rebindable commands, dock layout, file I/O.
 #pragma once
 #include "umbra_view.h"
 #include "command_script.h"

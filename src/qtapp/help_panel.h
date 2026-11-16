@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - in-app help (roadmap 9.11): Help > Search Help over the Markdown guides in docs/
+// IW8 Radiant (Qt shell) - in-app help (roadmap 9.11): Help > Search Help over the Markdown guides in docs/
 // (core help_index), and the First Map Guide dock: the tutorial's steps ticked from the open map, each with a button
 // that runs the editor command that helps.
 #pragma once

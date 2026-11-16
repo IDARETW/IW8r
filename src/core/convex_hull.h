@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - convex collision for custom models (roadmap 4.20).
+// IW8 Radiant - convex collision for custom models (roadmap 4.20).
 //
 // Pipeline: an imported model's triangles -> convex pieces (one hull per connected component, smallest
 // components merged into their nearest neighbour) -> plane sets (3D quickhull, nearly coplanar faces merged,

@@ -1,6 +1,6 @@
 # 10 IW8 entity-class inventory (replay-1.20.4.7623265)
 
-Stock map_ents inventory for the IW8 Radiant Suite, built from real 1.20 replay zone data. Machine-readable output: `E:\IW8-Radiant\data\iw8_entity_classes.json`. Raw dumps: `E:\IW8-Radiant\data\stock_dumps\<zone>`.
+Stock map_ents inventory for the IW8 Radiant, built from real 1.20 replay zone data. Machine-readable output: `E:\IW8-Radiant\data\iw8_entity_classes.json`. Raw dumps: `E:\IW8-Radiant\data\stock_dumps\<zone>`.
 
 ## Command used
 

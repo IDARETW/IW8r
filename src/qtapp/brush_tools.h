@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - brush tool operations on the current selection (one undo step each).
+// IW8 Radiant (Qt shell) - brush tool operations on the current selection (one undo step each).
 #pragma once
 
 #include <QStringList>

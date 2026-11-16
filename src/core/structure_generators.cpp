@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - procedural stair and simple building generators (see structure_generators.h).
+// IW8 Radiant - procedural stair and simple building generators (see structure_generators.h).
 #include "structure_generators.h"
 
 #include <algorithm>

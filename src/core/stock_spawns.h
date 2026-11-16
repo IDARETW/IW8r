@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - editing the compiled spawns of a stock map (roadmap 6.1, docs/research/26).
+// IW8 Radiant - editing the compiled spawns of a stock map (roadmap 6.1, docs/research/26).
 //
 // A stock MapEnts keeps its spawns in spawnList, not in the entity string. To edit them, the editor turns the spawn
 // records into ordinary point entities of the document (Map > Edit Compiled Spawns). On export the document is split

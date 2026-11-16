@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - generated map script (extracted/maps/mp/<id>.gsc, IW3 script that x64-zt translates and, with
+// IW8 Radiant - generated map script (extracted/maps/mp/<id>.gsc, IW3 script that x64-zt translates and, with
 // gsc-tool configured, compiles into the map zone).
 //
 // It holds the exponential fog call (atmosphere.h) and the effect placements (roadmap 6.6): every `fx_origin` entity

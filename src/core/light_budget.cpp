@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - light budget (roadmap 5.15). See light_budget.h.
+// IW8 Radiant - light budget (roadmap 5.15). See light_budget.h.
 #include "light_budget.h"
 
 #include <algorithm>

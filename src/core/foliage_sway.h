@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - foliage sway preview and the wind worldspawn key (roadmap 5.23, part of 5.12; research doc 56).
+// IW8 Radiant - foliage sway preview and the wind worldspawn key (roadmap 5.23, part of 5.12; research doc 56).
 //
 // PREVIEW ONLY. swayOffset is an editor-camera approximation: it shows how foliage would lean under a chosen wind. It is
 // not Replay's reactive-motion simulation (doc 56 section 3), and its amplitudes are editor choices, not measured values.

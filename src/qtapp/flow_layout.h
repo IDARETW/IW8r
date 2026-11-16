@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - a layout that places its widgets left to right and starts a new line when the next one does not
+// IW8 Radiant - a layout that places its widgets left to right and starts a new line when the next one does not
 // fit (the side section's panels are narrow: options wrap instead of widening the panel). Owner 2026-11-15: "sidebar
 // utilities' menus ... need way too much horizontal space".
 #pragma once

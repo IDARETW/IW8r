@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - brush `toolFlags X;` directive lines (doc 02, brush-level directives).
+// IW8 Radiant - brush `toolFlags X;` directive lines (doc 02, brush-level directives).
 //
 // Names are read and written as their text (case kept). Only the toolFlags lines change; every other
 // line of the brush, including `contents`, `layer` and unknown directives, keeps its bytes. The compiler

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the model a `scriptable` entity is drawn with in the camera (header only: core tests use it).
+// IW8 Radiant - the model a `scriptable` entity is drawn with in the camera (header only: core tests use it).
 //
 // A scriptable point entity names a stock definition (key "scriptable"). Without a model key of its own it is drawn
 // with the definition's first model (core ScriptableCatalog, field `model`), exactly as a misc_model with that model

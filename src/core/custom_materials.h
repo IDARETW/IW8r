@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - mapper-side custom material library.
+// IW8 Radiant - mapper-side custom material library.
 //
 // A material definition is a small JSON file <library>/<name>.iw8mat.json (name may contain '/'):
 //   {"name":"custom/brick_red", "color":"brick_red.png", "normal":"brick_red_n.png", "specular":"brick_s.png",

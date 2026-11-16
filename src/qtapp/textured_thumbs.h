@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - textured pictures of models and prefabs for the asset browsers (owner request 2026-11-14: the
+// IW8 Radiant - textured pictures of models and prefabs for the asset browsers (owner request 2026-11-14: the
 // Models and Prefabs tabs show textured thumbnails and a textured side preview, pre-generated and kept in a cache, not
 // the grey drawings they had).
 //

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - a triangle bounding volume hierarchy for ray queries (the lightmap baker, roadmap 5.11 / 5.21).
+// IW8 Radiant - a triangle bounding volume hierarchy for ray queries (the lightmap baker, roadmap 5.11 / 5.21).
 //
 // Built once from a triangle soup; closest-hit and any-hit (occlusion) queries are const and thread-safe. Nodes split
 // at the median of the longest centroid axis (good enough for the editor's maps: tens to hundreds of thousands of

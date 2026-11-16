@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - selection layout tools (roadmap 2.25). See layout_tools.h.
+// IW8 Radiant - selection layout tools (roadmap 2.25). See layout_tools.h.
 #include "layout_tools.h"
 
 #include <algorithm>

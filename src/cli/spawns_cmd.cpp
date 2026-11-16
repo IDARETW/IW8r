@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - `iw8r iw8d-spawns`: the compiled spawnList of an x64-zt map_ents dump (milestone 2.2).
+// IW8 Radiant - `iw8r iw8d-spawns`: the compiled spawnList of an x64-zt map_ents dump (milestone 2.2).
 //   iw8r iw8d-spawns <map_ents .iw8> [-o spawns.ents]                 dump the spawns as entity text (stdout without -o)
 //   iw8r iw8d-spawns <map_ents .iw8> --set <spawns.ents> -o <out .iw8> write the entity text back as the spawnList
 // Every spawn that the text does not change keeps its bytes in the container; see src/core/spawnlist.h.

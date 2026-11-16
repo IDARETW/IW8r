@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - persistent thumbnail store for the asset browsers.
+// IW8 Radiant - persistent thumbnail store for the asset browsers.
 //
 // One append-only pack file per browser kind (<AppLocalData>/thumbs/<kind>.pack): each record is the asset name, a
 // signature of the source it was made from (size + modification time of the cached DDS / GLB) and a small JPEG.

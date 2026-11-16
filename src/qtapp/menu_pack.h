@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - menu packs: the side panels' thumbnails and facts, made once and shipped with the
+// IW8 Radiant (Qt shell) - menu packs: the side panels' thumbnails and facts, made once and shipped with the
 // project (owner 2026-11-16: "build a one-time full metadata and thumbnails for everything we can in the menus,
 // compress it as best as we can while allowing for fast decompression to read data and have smooth, fast-loading
 // menus, and include it as part of the project").

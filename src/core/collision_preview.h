@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - build preview (3.10): the collision hulls of a compiled extraction
+// IW8 Radiant - build preview (3.10): the collision hulls of a compiled extraction
 // (`<id>.d3dbsp.replay-collision.json`, doc 15 section 2.3) as edge segments for an overlay, so the mapper sees exactly
 // what the build gives the player to collide with.
 #pragma once

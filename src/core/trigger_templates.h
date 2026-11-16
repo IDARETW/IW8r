@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - trigger templates (roadmap 6.17 full trigger set with volume, 6.20 callout zones).
+// IW8 Radiant - trigger templates (roadmap 6.17 full trigger set with volume, 6.20 callout zones).
 //
 // Trigger kinds are the stock classes the build accepts (compile_iw8.cpp acceptedPointClass, lines 487-509). Brush
 // triggers are one box brush with the "trigger" tool material (the compiler turns it into a trigger hull); the entity

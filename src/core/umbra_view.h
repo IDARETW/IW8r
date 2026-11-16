@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the Umbra visibility view (plan M2.2): what a stock map's occlusion tome lets the game draw from
+// IW8 Radiant - the Umbra visibility view (plan M2.2): what a stock map's occlusion tome lets the game draw from
 // a camera, as data the viewport can use. Built on core umbra_tome (research 110).
 //
 //   - umbraViewVisibility: one view query as bit sets by GfxWorld surface index (user ID class 0) and by static model

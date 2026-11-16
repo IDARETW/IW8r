@@ -1,6 +1,6 @@
 {
   "build": "replay-1.20.4.7623265",
-  "generator": "iw8r iw8-classes (IW8 Radiant Suite core parser)",
+  "generator": "iw8r iw8-classes (IW8 Radiant core parser)",
   "sources": ["mp_backlot2", "mp_shipment", "mp_hideout"],
   "classes": {
     "collmap_scriptable": {"count": 31, "maps": ["mp_backlot2", "mp_hideout", "mp_shipment"], "keys": {"classname": {"count": 31, "examples": ["collmap_scriptable"]}, "model": {"count": 31, "examples": ["*61", "*62", "*63"]}, "targetname": {"count": 31, "examples": ["veh8_civ_lnd_secho", "veh8_civ_lnd_secho_ai_obstacle", "veh8_civ_lnd_secho_static_dst"]}}},

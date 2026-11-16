@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - Layers dock: Radiant layers (header declarations + per-primitive
+// IW8 Radiant (Qt shell) - Layers dock: Radiant layers (header declarations + per-primitive
 // `layer "NAME"` lines), per-layer visibility, select contents, move the selection to a layer, new layer.
 #pragma once
 

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - spawn analysis: sight lines between spawns, spacing warnings and an XY clustering heat map.
+// IW8 Radiant - spawn analysis: sight lines between spawns, spacing warnings and an XY clustering heat map.
 //
 // Spawns are the mp_*spawn* entities (classnames in docs/research/10_iw8_entity_inventory.md) plus info_player_start.
 //   - mode: the text between "mp_" and "_spawn" (mp_tdm_spawn_axis_start -> "tdm"); "" for info_player_start.

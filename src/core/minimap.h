@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - top-down minimap render (the HUD compass image) and its DDS writer.
+// IW8 Radiant - top-down minimap render (the HUD compass image) and its DDS writer.
 //
 // The image is what x64-zt's converter reads as images/compass_map_<id>.dds (research: docs/research/27_minimap.md).
 // Frame: the game shows the picture with world +Y at the top and +X on the right. The converter takes a picture

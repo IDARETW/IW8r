@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the mount edges of a built map (research 125): where a player can rest a weapon on cover.
+// IW8 Radiant - the mount edges of a built map (research 125): where a player can rest a weapon on cover.
 //
 // The game finds a mount only through static edges of the map's edge list (bucket MOUNT); it has no trace fallback.
 // Stock maps mark two kinds of edge, and this finds the same two on the map's solid brushes:

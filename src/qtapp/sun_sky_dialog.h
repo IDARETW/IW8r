@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Sun & Sky dialog: worldspawn `sundirection` (pitch yaw roll, degrees; the compiler's sun light and
+// IW8 Radiant - Sun & Sky dialog: worldspawn `sundirection` (pitch yaw roll, degrees; the compiler's sun light and
 // the lit preview read it), `suncolor` (0..1 RGB) and `skyname` (a stock sky the compiler builds when its cubemap is
 // available, docs/research/33). One undo step.
 #pragma once

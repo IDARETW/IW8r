@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - toast notifications: small non-modal boxes in the bottom-right corner of the main window
+// IW8 Radiant (Qt shell) - toast notifications: small non-modal boxes in the bottom-right corner of the main window
 // for Warning / Error log entries and the compile result. Child widget of the window: it never takes focus or
 // activation and ignores the mouse. At most three are shown; each disappears after about four seconds.
 // View > Toast Notifications (ToggleToasts) turns them off; the choice is kept in Settings (view/toasts).

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - Find / Replace materials (Radiant "Find and Replace") and Check Map.
+// IW8 Radiant (Qt shell) - Find / Replace materials (Radiant "Find and Replace") and Check Map.
 #pragma once
 
 #include "map_doctor.h"

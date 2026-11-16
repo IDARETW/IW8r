@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - basic shape models (Primitives > Shape Models): cube, sphere, cylinder, cone, torus, capsule,
+// IW8 Radiant - basic shape models (Primitives > Shape Models): cube, sphere, cylinder, cone, torus, capsule,
 // plane, wedge, pyramid, written as custom OBJ models (models/<name>.obj beside the map: Y-up, map units) so they
 // build through the custom-model route like any other custom model (docs/research doc 21/27).
 //

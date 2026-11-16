@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - gameplay sanity checks on spawns and mode entities.
+// IW8 Radiant - gameplay sanity checks on spawns and mode entities.
 //
 // Rules (doc 15 §3.4 for the required classes):
 //   - spawn (info_player_start, or mp_*spawn*) whose player box (32 x 32 x 72, origin at the feet) overlaps a

@@ -1,6 +1,6 @@
 // A copy of the editor's src/core/dxbc_splice.h and .cpp: change both together.
 #pragma once
-// IW8 Radiant Suite - splicing a colour filter into a compiled pixel shader (plan M6: custom shaders on stock maps).
+// IW8 Radiant - splicing a colour filter into a compiled pixel shader (plan M6: custom shaders on stock maps).
 //
 // A stock map's surfaces are lit by the game's own pixel shaders, which exist only as compiled DXBC (SM 5.0). A map
 // shader's filter function (`float3 iw8rFilter(float3 colour)`, core custom_shader) is compiled on its own into a

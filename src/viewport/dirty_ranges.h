@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - small helpers of the camera's incremental geometry (docs/research/85). Header only, no D3D
+// IW8 Radiant - small helpers of the camera's incremental geometry (docs/research/85). Header only, no D3D
 // and no Qt, so the core test suite can include it.
 #pragma once
 

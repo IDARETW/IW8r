@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - a new game type script carried by a map (roadmap 13.6; docs/research/91 and 92).
+// IW8 Radiant - a new game type script carried by a map (roadmap 13.6; docs/research/91 and 92).
 //
 // Read from the game exe: a map zone cannot replace a stock game type script (the stock copy wins), but a game type
 // with a new name can be started and its script, scripts/mp/gametypes/<name>.gsc, is then loaded by name from any

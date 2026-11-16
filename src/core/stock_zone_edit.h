@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - edits of a stock map zone for the converter's editzone command (roadmap 11.2 / 11.4 / 11.5,
+// IW8 Radiant - edits of a stock map zone for the converter's editzone command (roadmap 11.2 / 11.4 / 11.5,
 // docs/research/88_stock_map_editing.md).
 //
 // The converter loads a stock zone, changes it in memory and writes it again:

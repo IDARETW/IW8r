@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - brush `toolFlags` lines (see tool_flags.h).
+// IW8 Radiant - brush `toolFlags` lines (see tool_flags.h).
 #include "tool_flags.h"
 
 #include <algorithm>

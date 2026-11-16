@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - GUI checks for the side bar rework (owner 2026-11-15): model tiles and their size
+// IW8 Radiant (Qt shell) - GUI checks for the side bar rework (owner 2026-11-15): model tiles and their size
 // control, the compact model preview, stored thumbnails decoded off the GUI thread, the Effects and Sounds previews,
 // the FLAC decoder, and the Tools panel.
 #pragma once

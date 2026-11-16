@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the lightmap bake settings of a map (worldspawn keys), read in one place.
+// IW8 Radiant - the lightmap bake settings of a map (worldspawn keys), read in one place.
 //
 // The build's bake (compile_iw8.cpp), the viewport's preview bake (View > Game Lighting) and the Compile panel's
 // Bake Settings dialog all use these, so the three cannot drift apart.

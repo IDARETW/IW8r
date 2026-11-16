@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Asset Usage dialog (roadmap 12.9): what the map uses (materials, models, prefabs, effects,
+// IW8 Radiant - Asset Usage dialog (roadmap 12.9): what the map uses (materials, models, prefabs, effects,
 // sounds) and which of the mapper's own asset files nothing uses. See src/core/asset_usage.h.
 #pragma once
 

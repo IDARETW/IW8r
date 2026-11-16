@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - game types of a map (see map_gametypes.h).
+// IW8 Radiant - game types of a map (see map_gametypes.h).
 #include "map_gametypes.h"
 
 #include "gametype_script.h"

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - brush to patch and patch to terrain conversions (see convert_ops.h).
+// IW8 Radiant - brush to patch and patch to terrain conversions (see convert_ops.h).
 #include "convert_ops.h"
 
 #include <algorithm>

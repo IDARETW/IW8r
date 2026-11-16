@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - Direct3D 11 3D camera view in a native child window.
+// IW8 Radiant (Qt shell) - Direct3D 11 3D camera view in a native child window.
 #pragma once
 
 #include <map>

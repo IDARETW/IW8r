@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - iw3xo-style generators: rope/wire patches, mesh painter scatter and drop to floor.
+// IW8 Radiant - iw3xo-style generators: rope/wire patches, mesh painter scatter and drop to floor.
 //
 // Angles follow the Radiant placement convention used by Placement::angles (degrees):
 //   x = pitch (rotation about Y), y = yaw (about Z), z = roll (about X).

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - command scripts (roadmap 9.10): a small line-based automation language over the Document,
+// IW8 Radiant - command scripts (roadmap 9.10): a small line-based automation language over the Document,
 // the same operations the web API and `iw8r edit` expose, plus a macro recorder the UI can feed.
 //
 // Grammar (one command per line; blank lines and `#` comments are skipped; `#` starts a comment only at the

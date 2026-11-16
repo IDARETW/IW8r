@@ -3,7 +3,7 @@
 
 Reads:
   data/iw8_entity_defs.json                       the editor's entity table (schema 1)
-  docs/research/10_iw8_entity_inventory.md        stock usage counts (Top 40 classes table)
+  data/iw8_entity_inventory.md                    stock usage counts (Top 40 classes table)
 Writes:
   docs/ENTITY_REFERENCE.md                        the reference (Markdown)
   data/generated/entity_reference.html            the same content for the editor's help viewer (QTextBrowser)
@@ -23,7 +23,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 DEFS_JSON = REPO / "data" / "iw8_entity_defs.json"
-INVENTORY_MD = REPO / "docs" / "research" / "10_iw8_entity_inventory.md"
+INVENTORY_MD = REPO / "data" / "iw8_entity_inventory.md"
 OUT_MD = REPO / "docs" / "ENTITY_REFERENCE.md"
 OUT_HTML = REPO / "data" / "generated" / "entity_reference.html"
 
@@ -219,8 +219,8 @@ def render_md(entries, categories, counts, kept_n, dropped_n, usage_n):
         "",
         "The same content is written to `data/generated/entity_reference.html` for the editor's help viewer.",
         "",
-        "Sources: `data/iw8_entity_defs.json` (classes and keys) and `docs/research/10_iw8_entity_inventory.md` "
-        "(stock usage counts).",
+        "Sources: `data/iw8_entity_defs.json` (classes and keys) and `data/iw8_entity_inventory.md` "
+        "(how often the stock maps use each class).",
         "",
         "## Summary",
         "",
@@ -354,6 +354,17 @@ def render_html(entries, categories, kept_n, dropped_n, usage_n):
     return "\n".join(out) + "\n"
 
 
+def drop_citations(text):
+    """The entity definitions cite internal design notes ("(contract 15 s3.4)", "(doc 31)", "(research 63)"); the
+    published reference leaves those citations out."""
+    cite = r"(?:contract \d+ s[\d.]+(?:, s[\d.]+)*|docs?/research/[\w./-]*|research \d+(?: / \d+)*|roadmap [\w.]+|doc \d+)"
+    text = re.sub(r"\s*\(" + cite + r"\)", "", text)  # a bracket that only cites
+    text = re.sub(r"[,;] " + cite + r"(?=[);])", "", text)  # a citation at the end of a longer bracket
+    text = re.sub(r"\(" + cite + r"; ", "(", text)  # a citation at the start of a longer bracket
+    text = re.sub(r" in " + cite, "", text)
+    return text
+
+
 def main():
     warnings = []
     classes = load_defs(warnings)
@@ -371,8 +382,8 @@ def main():
     dropped_n = len(entries) - kept_n
     usage_n = sum(1 for e in entries if e["seen"])
 
-    md_text = render_md(entries, categories, counts, kept_n, dropped_n, usage_n)
-    html_text = render_html(entries, categories, kept_n, dropped_n, usage_n)
+    md_text = drop_citations(render_md(entries, categories, counts, kept_n, dropped_n, usage_n))
+    html_text = drop_citations(render_html(entries, categories, kept_n, dropped_n, usage_n))
 
     OUT_MD.parent.mkdir(parents=True, exist_ok=True)
     OUT_HTML.parent.mkdir(parents=True, exist_ok=True)

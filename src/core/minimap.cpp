@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - top-down minimap render and DDS writer (see minimap.h and docs/research/27_minimap.md).
+// IW8 Radiant - top-down minimap render and DDS writer (see minimap.h and docs/research/27_minimap.md).
 #include "minimap.h"
 
 #include <algorithm>

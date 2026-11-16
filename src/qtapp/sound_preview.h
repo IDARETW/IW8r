@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - plays a stock sound alias in the Sounds panel (owner 2026-11-15: "audio ... should be
+// IW8 Radiant (Qt shell) - plays a stock sound alias in the Sounds panel (owner 2026-11-15: "audio ... should be
 // previewable in the side bar").
 //
 // How a Replay 1.20 alias reaches its samples (checked on the game's own files, 2026-11-15):

@@ -1,7 +1,7 @@
-; IW8 Radiant Suite - Inno Setup 6 installer script (roadmap 9.9).
-; Packages the folder built by tools\package_release.ps1 (out\package\IW8RadiantSuite).
+; IW8 Radiant - Inno Setup 6 installer script (roadmap 9.9).
+; Packages the folder built by tools\package_release.ps1 (out\package\IW8Radiant).
 ; Build with tools\build_installer.ps1, or directly:
-;   ISCC.exe /DSourceDir="E:\IW8-Radiant\out\package\IW8RadiantSuite" iw8radiant.iss
+;   ISCC.exe /DSourceDir="E:\IW8-Radiant\out\package\IW8Radiant" iw8radiant.iss
 ;
 ; Settings: the editor keeps IW8Radiant.ini beside IW8Radiant.exe (src\qtapp\settings.cpp), together with the
 ; optional web_tls\ certificate folder. Neither is part of the package and neither is listed in [Files], so Setup
@@ -9,7 +9,7 @@
 ; The uninstaller asks (default: No) whether to delete them as well.
 
 #ifndef SourceDir
-  #define SourceDir "..\..\out\package\IW8RadiantSuite"
+  #define SourceDir "..\..\out\package\IW8Radiant"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\..\out\installer"
@@ -17,7 +17,7 @@
 #ifndef MyAppVersion
   #define MyAppVersion "0.1.0"
 #endif
-#define MyAppName "IW8 Radiant Suite"
+#define MyAppName "IW8 Radiant"
 #define MyAppExe "IW8Radiant.exe"
 
 [Setup]
@@ -40,7 +40,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
-OutputBaseFilename=IW8RadiantSuite-Setup-{#MyAppVersion}
+OutputBaseFilename=IW8Radiant-Setup-{#MyAppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -58,7 +58,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
-; Everything out\package\IW8RadiantSuite holds. *.ini is excluded on purpose: a stray IW8Radiant.ini in the source
+; Everything out\package\IW8Radiant holds. *.ini is excluded on purpose: a stray IW8Radiant.ini in the source
 ; folder must never overwrite the mapper's settings.
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "*.ini"; Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -113,7 +113,7 @@ begin
     if not UninstallSilent then
       DeleteUserData := MsgBox('Also delete your settings and caches?' + #13#10 + #13#10 +
                                'Yes: deletes IW8Radiant.ini (tool paths, web server login), the web_tls folder beside the ' +
-                               'editor, and %LOCALAPPDATA%\IW8 Radiant Suite (caches, autosaves, crash reports). ' +
+                               'editor, and %LOCALAPPDATA%\IW8 Radiant (caches, autosaves, crash reports). ' +
                                'This cannot be undone.' + #13#10 + #13#10 +
                                'No: keeps them, so a reinstall picks up where you left off.',
                                mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
@@ -122,7 +122,7 @@ begin
   begin
     DeleteFile(ExpandConstant('{app}\IW8Radiant.ini'));
     DelTree(ExpandConstant('{app}\web_tls'), True, True, True);
-    DelTree(ExpandConstant('{localappdata}\IW8 Radiant Suite'), True, True, True);
+    DelTree(ExpandConstant('{localappdata}\IW8 Radiant'), True, True, True);
     RemoveDir(ExpandConstant('{app}'));
   end;
 end;

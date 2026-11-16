@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - native IW8 map compiler front end. Contract: docs/research/15_iw8_extraction_contract.md.
+// IW8 Radiant - native IW8 map compiler front end. Contract: docs/research/15_iw8_extraction_contract.md.
 #include "custom_shader.h"
 #include "ies_profiles.h"
 #include "compile_iw8.h"

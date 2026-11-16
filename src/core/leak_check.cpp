@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - voxel flood-fill leak check (see leak_check.h).
+// IW8 Radiant - voxel flood-fill leak check (see leak_check.h).
 #include "leak_check.h"
 
 #include <cmath>

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Qt 6 + Qt Advanced Docking System shell.
+// IW8 Radiant - Qt 6 + Qt Advanced Docking System shell.
 //   IW8Radiant.exe [file.map | file.ents | <ACTS map_ents>.asset.json] [--keys iw8_canonical_keys.tsv]
 //   IW8Radiant.exe --gui-test <iw8_sample_room.map> [--out <dir>]   scripted end-to-end UI test on Qt's offscreen
 //                                                                    platform; exit code 0 = pass
@@ -1227,6 +1227,20 @@ int runStockPropsTest(iw8r::qt::MainWindow& w, const QString& zoneArg, const QSt
 
 }  // namespace
 
+// The application names: settings, caches and logs live in AppLocalData/IW8 Radiant/IW8 Radiant. Until 2026-11-16 the
+// tool was named "IW8 Radiant Suite"; its folder is moved to the new place once, on the first start after the rename.
+static void setAppNames() {
+    QCoreApplication::setApplicationName("IW8 Radiant");
+    QCoreApplication::setOrganizationName("IW8 Radiant");
+    const QString now = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    QDir local(now);
+    if (!local.cdUp() || !local.cdUp()) return;
+    const QString old = local.filePath("IW8 Radiant Suite/IW8 Radiant Suite");
+    if (QFileInfo::exists(now) || !QFileInfo::exists(old)) return;
+    QDir().mkpath(QFileInfo(now).absolutePath());
+    if (QDir().rename(old, now)) local.rmdir("IW8 Radiant Suite");  // removed only when empty
+}
+
 int main(int argc, char** argv) {
     QString auditKind, webUser;
     QString thumbPackKind;
@@ -1314,16 +1328,14 @@ int main(int argc, char** argv) {
     if (!materialTest.isEmpty()) {
         // Headless: no window, no D3D device. Same app names as the editor so the cache sits in the same folder.
         QCoreApplication core(argc, argv);
-        QCoreApplication::setApplicationName("IW8 Radiant Suite");
-        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        setAppNames();
         if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/material-cache-test";
         return iw8r::qt::runMaterialCacheTest(materialTest.split(',', Qt::SkipEmptyParts), outDir);
     }
     if (!modelTest.isEmpty()) {
         // Headless like --material-cache-test: the model cache under the same AppLocalData folder as the editor.
         QCoreApplication core(argc, argv);
-        QCoreApplication::setApplicationName("IW8 Radiant Suite");
-        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        setAppNames();
         if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/model-cache-test";
         return iw8r::qt::runModelCacheTest(modelTest.split(',', Qt::SkipEmptyParts), outDir);
     }
@@ -1331,8 +1343,7 @@ int main(int argc, char** argv) {
         // --set-web-credentials <user>: the password is read from stdin (never from the command line) and stored as a
         // salted hash in the editor settings (web_server.h).
         QCoreApplication core(argc, argv);
-        QCoreApplication::setApplicationName("IW8 Radiant Suite");
-        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        setAppNames();
         QTextStream in(stdin);
         const QString pass = in.readLine();
         if (pass.size() < 8) {
@@ -1359,39 +1370,34 @@ int main(int argc, char** argv) {
     if (!thumbPackKind.isEmpty() && !texturedPack) {
         // 4.13: full thumbnail packs (thumb_pack.h).
         QGuiApplication gui(argc, argv);
-        QCoreApplication::setApplicationName("IW8 Radiant Suite");
-        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        setAppNames();
         return iw8r::qt::runThumbPack(thumbPackKind, auditLimit, auditBatch);
     }
     if (!auditKind.isEmpty()) {
         // Headless stock asset availability audit (asset_audit.h); --out is the status TSV.
         QCoreApplication core(argc, argv);
-        QCoreApplication::setApplicationName("IW8 Radiant Suite");
-        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        setAppNames();
         if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/iw8_" + auditKind + "_status.tsv";
         return iw8r::qt::runAssetAudit(auditKind, outDir, auditLimit, auditBatch, auditReverse);
     }
     if (!skyTest.isEmpty()) {
         // Headless: exports one stock sky into the material cache images/ folder (doc 33).
         QCoreApplication core(argc, argv);
-        QCoreApplication::setApplicationName("IW8 Radiant Suite");
-        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        setAppNames();
         if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/stock-sky-test";
         return iw8r::qt::runStockSkyTest(skyTest, outDir);
     }
     if (chainTest) {
         // Headless, no game needed: the model fetch chain against a cache that cannot deliver (model_cache.h).
         QCoreApplication core(argc, argv);
-        QCoreApplication::setApplicationName("IW8 Radiant Suite");
-        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        setAppNames();
         if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/model-chain-test";
         return iw8r::qt::runModelCacheChainTest(outDir);
     }
     if (!worldTest.isEmpty()) {
         // Headless like --model-cache-test: the world cache under the editor's AppLocalData folder.
         QCoreApplication core(argc, argv);
-        QCoreApplication::setApplicationName("IW8 Radiant Suite");
-        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        setAppNames();
         if (outDir.isEmpty()) outDir = QCoreApplication::applicationDirPath() + "/world-cache-test";
         return iw8r::qt::runWorldCacheTest(worldTest, outDir);
     }
@@ -1400,8 +1406,7 @@ int main(int argc, char** argv) {
         // takes the start request, and whether the local host answers the health probe. Starts nothing, writes only
         // the report (--out <file>, default f5-check.txt beside the exe).
         QCoreApplication core(argc, argv);
-        QCoreApplication::setApplicationName("IW8 Radiant Suite");
-        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        setAppNames();
         using iw8r::qt::DevmapRunner;
         const QString replay = iw8r::qt::Settings::instance().value("tools/replay", "E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe").toString();
         QString note;
@@ -1424,8 +1429,7 @@ int main(int argc, char** argv) {
     if (coverCheck) {
         // The F5 cover card on the real desktop (devmap_cover.h); --out is the report file.
         QApplication app(argc, argv);
-        QCoreApplication::setApplicationName("IW8 Radiant Suite");
-        QCoreApplication::setOrganizationName("IW8 Radiant Suite");
+        setAppNames();
         return iw8r::qt::DevmapCover::runRealCheck(outDir.isEmpty() ? QCoreApplication::applicationDirPath() + "/cover-check.txt" : outDir);
     }
     const bool bench = !benchMap.isEmpty();
@@ -1449,8 +1453,7 @@ int main(int argc, char** argv) {
 
     GuardedApplication app(argc, argv);
     iw8r::qt::EditorLog::installQtMessageHandler();  // Qt warnings also go to the Console dock
-    QApplication::setApplicationName("IW8 Radiant Suite");
-    QApplication::setOrganizationName("IW8 Radiant Suite");
+    setAppNames();
     // Crash reports (stack with file:line + minidump) under the app data folder; see crash_handler.h.
     // (The benchmark keeps its crash reports with its other output, not in the mapper's folder.)
     iw8r::qt::installCrashHandler(bench ? outDir + "/crashes" : QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/crashes");

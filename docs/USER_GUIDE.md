@@ -1,918 +1,318 @@
-# IW8 Radiant Suite: mapper's guide
+# IW8 Radiant User Guide
 
-A Radiant-style map editor for Call of Duty: Modern Warfare (2019), Replay 1.20.4.7623265. You edit `iwmap 4` `.map`
-files, preview them with textures, lighting and a walkable player, and build them into a Replay map package with
-x64-zt, then deploy it into the game.
+IW8 Radiant is a map editor for Call of Duty: Modern Warfare (2019), game build Replay 1.20.4.7623265. This guide
+describes the main workflows. Press **F1** in the editor for the complete list of keyboard shortcuts, and see the
+[entity keys reference](KEYS_REFERENCE.md) for the keys IW8 Radiant adds to entities.
 
-Press **F1** in the editor for the full, searchable list of keys. This guide covers the workflows.
-docs/KEYS_REFERENCE.md lists every `iw8r_` entity key with its value format and an example.
+## Contents
 
----
+1. [Getting started](#1-getting-started)
+2. [Navigating and selecting](#2-navigating-and-selecting)
+3. [Building geometry](#3-building-geometry)
+4. [Materials and textures](#4-materials-and-textures)
+5. [Models](#5-models)
+6. [Prefabs](#6-prefabs)
+7. [Entities and gameplay](#7-entities-and-gameplay)
+8. [Lighting and atmosphere](#8-lighting-and-atmosphere)
+9. [Effects and sound](#9-effects-and-sound)
+10. [Previewing your map](#10-previewing-your-map)
+11. [Building and playing](#11-building-and-playing)
+12. [Editing stock maps](#12-editing-stock-maps)
+13. [Warzone](#13-warzone)
+14. [Live Link](#14-live-link)
+15. [Using the editor from a browser](#15-using-the-editor-from-a-browser)
+16. [Troubleshooting](#16-troubleshooting)
 
-## 1. First start
+## 1. Getting started
 
-1. **Help > First-Run Setup** opens by itself when the Replay exe is not found. Press **Detect**. It finds the game
-   folder (`...\IW8\Builds\<build>`) and the exes in it, including renamed or recompiled ones such as
-   `game_dx12_ship_replay_local_dw.exe`, plus ACTS, Oodle and x64-zt (`zonetool.exe`).
-2. Choose the **Replay exe** the tools read (the stock `game_dx12_ship_replay.exe` is safest for ACTS) and the
-   **Launch exe** you play with. Save.
-3. The editor needs no proxy DLL. Custom maps are loaded by the recompiled Replay client
-   (`game_dx12_ship_replay_local_dw.exe` or `game_dx12_ship_replay_dw.exe`); the stock exe cannot load them.
-   Leave **Launch exe** empty and F5 picks the recompiled client in the game folder by itself.
+### First-run setup
 
-Tool paths can be changed later in **Tools > Tool Paths**. Everything the editor exports from the game (textures,
-models, sky, stock world geometry) is cached under `%LOCALAPPDATA%\IW8 Radiant Suite\IW8 Radiant Suite\`.
+The first time you start IW8 Radiant, **Help > First-Run Setup** opens. Press **Detect** to find the game folder, or
+browse to it yourself, then choose:
 
-## 2. The window
+- **Replay exe**: the game executable IW8 Radiant reads the game's data from. The stock
+  `game_dx12_ship_replay.exe` is recommended.
+- **Launch exe**: the game executable used to play your maps. Custom maps need a game client that can load them. If
+  you leave this empty, IW8 Radiant picks a suitable client in the game folder.
 
-- **Camera** (3D, D3D11) and **Grid** views (XY / XZ / YZ: Ctrl+Tab cycles). Docks can be dragged, tabbed and floated;
-  View > Reset Panel Layout restores them. Every dock can be shown or hidden from the **View** menu.
-- **Entity** inspector (keys with help text from the entity definitions; lights have a colour/radius/cone group),
-  **Surface** inspector (fit, natural, justify, shift/scale/rotate) and **Layers** stay on the right.
-- **Side bar** (the narrow strip of icons at the left edge). The first group, **Materials**, **Models**, **Prefabs**,
-  **Effects**, **Sounds**, **Images**, **IW8 Spawns** and **Undo History**, opens in the side section next to the
-  views: click an icon to open that panel, click it again to close it. One panel is open at a time, and the section
-  keeps the width you drag it to.
-- **Bottom area** under the camera: **Console** (every status line, compile line and warning, with filters),
-  **Compile**, **Replay Log**, **Build Budget**, **Script** and **Live Link** as tabs. Their icons are the second group
-  of the side bar: an icon brings its tab to the front, and the icon of the tab already in front folds the area away.
-  **Ctrl+J** (View > Bottom Panel) folds and unfolds it; it keeps the height you drag it to. Building (F7) brings
-  Compile to the front by itself. Warnings and errors also pop up as short notifications (View > Toggle Toasts).
+IW8 Radiant includes its own build tools, so the game folder is the only path you need to set. You can change the paths
+later in **Tools > Tool Paths**.
 
-Selecting: a click selects what is under the cursor. When several objects overlap there, **click the same spot again**
-to select the next one behind it (the status bar says "2 of 3 overlapping objects"); a click somewhere else starts
-over at the front. Shift+Alt+click always steps to the object behind the selected one, even after the mouse moved.
-**Ctrl+A** (Edit > Select All) and
-**I** (Invert Selection) take only what is visible: hidden, filtered, layer-hidden and out-of-region objects are left
-alone. The status bar shows how many objects are selected and the size of the selection. **Esc** during a gizmo drag
-puts the selection back where it was. **Alt+arrows** nudge the selection one grid step; holding the keys is one undo
-step, not one per repeat. The grid size and Snap To Grid are kept for the next session.
+### The main window
 
-Camera: hold right mouse to look, W A S D to fly, mouse wheel for speed. **View > Camera Mode** switches Textured, Flat,
-Wireframe, Fullbright and Normals. **Ctrl+L** turns on the lit preview (sun, light entities and sun shadows; the yellow
-arrow points at the sun). **Ctrl+Alt+L** (View > Game Lighting) shows the map as the built map looks in game. With
-**Bake lightmaps** on (Compile panel; worldspawn `iw8r_bake_lightmaps 1`) the editor bakes the world's lightmap in
-the background (again a moment after each edit; the status bar says when), as the build will, and shades with the
-game's own formula: the lightmap, the sun with its shadows, the light entities in the game's units, then the game's
-exposure and tone curve. With it off the build has no lightmap, and the view shows what the game then draws: the same
-soft sky light on every surface, without darker corners, plus the sun and the lights.
+- **Camera**: the 3D view.
+- **Grid**: the 2D views. **Ctrl+Tab** switches between top, front and side.
+- **Entity** inspector, **Surface** inspector and **Layers** on the right.
+- **Side bar** on the left: the asset browsers (Materials, Models, Prefabs, Effects, Sounds, Images, Spawns and Undo
+  History). Click an icon to open a panel and click it again to close it.
+- **Bottom panel**: the Console, Compile log, game log, Build Budget, Script editor and Live Link. **Ctrl+J** shows or
+  hides it.
+
+Panels can be dragged, docked and floated. **View > Reset Panel Layout** restores the default layout, and
+**View > Workspaces** saves layouts you use often.
+
+## 2. Navigating and selecting
+
+| Action | Input |
+|---|---|
+| Fly the camera | Hold the right mouse button and use W, A, S, D, Q and E |
+| Change the camera speed | Mouse wheel while flying |
+| Pan and zoom a 2D view | Right or middle mouse drag, mouse wheel |
+| Select in the camera or a 2D view | Left click; Shift+click to add or remove |
+| Select a face | Ctrl+Shift+click |
+| Move the selection | Drag inside the selection |
+| Frame the selection | End |
+| Clone, delete, deselect | Space, Backspace, Esc |
+| Grid size | `~` and 1 to 9, or `[` and `]` |
+| Nudge | Alt+arrow keys |
+| Hide and show | H, Shift+H |
+| Camera bookmarks | Ctrl+1 to 9 to go, Ctrl+Shift+1 to 9 to save |
+
+Hotkey presets for the stock CoD Radiant and iw3xo-radiant layouts are in **Edit > Hotkey Presets**. Individual keys
+can be changed in **Edit > Keyboard Shortcuts**.
 
 ## 3. Building geometry
 
-- **Brushes**: drag in a grid view to create a box with the current material (toolbar field). Drag inside a selection to move it,
-  drag outside it to resize the nearest faces. Clipper (toolbar) for 2- and 3-point clips (Enter / Shift+Enter keep one side, Ctrl+Enter
-  both), CSG Hollow, Subtract (Shift+U) and Merge. **E** in a grid view toggles edge drag; vertex mode for vertices.
-- **Primitives** menu: stairs, arch, cylinder, cone, sphere, ramp, and **Game Modes** (Domination flags, Hardpoint
-  zones, Search & Destroy sites, CTF flags, spawn sets; trigger sizes are placeholders to adjust).
-- **Patches**: Shift+P creates a patch; the Patch menu inserts/deletes rows and columns, caps, welds, inverts and
-  generates terrain (Create Terrain, Noise, Smooth). **Terrain Brush** (Patch menu) sculpts in the XY view: Raise
-  (Shift lowers), Smooth, Flatten, Noise; Radius Larger/Smaller. Patches are drawn from both sides. To turn that off,
-  set worldspawn `iw8r_patch_one_sided` to 1.
-- **Bevel and bridge** (Brush menu): Chamfer All Edges, Inset Selected Face (border and recess), and Bridge Two
-  Faces: select two brush faces (Ctrl+Shift+click in the camera) and a new brush spans them, with the first face's
-  material (a beam between two walls, a ramp between two ledges). One undo step each.
-- **Terrain blending**: Patch > Height Map > Blend By Slope writes the terrain's slope into its vertex alpha (flat up
-  to one angle, fully blended from another), so a layered material shows its second layer on the steep parts. Colours
-  you painted (Patch > Vertex Paint Mode) keep their red, green and blue.
-- **Brush flags**: Ctrl+M makes a brush detail (does not seal), Brush > Make Structural, Toggle Non-Colliding.
-- **Tool materials**: Brush > Tool Material applies caulk, nodraw, clip, player/weapon/AI-sight clip, **ladder**
-  (climbable), water (non-solid; Replay has no swim volumes), trigger, hint, skip or sky.
-- **Region** (View > Region): limit the views to the selection or the visible XY area. File > Save Selected / Save
-  Region write those parts to a new map.
-- **Layers** and find/replace materials (Ctrl+F) and select connected (Ctrl+E) work as in Radiant.
+### Brushes
 
-### Scripted objects
+- Drag in a 2D view to create a box brush with the current material.
+- Drag outside the selection to resize the nearest faces. Press **V** for vertex mode and **E** for edge mode.
+- The toolbar has the **Clipper**, **CSG Hollow** and **CSG Subtract**. The **Brush** menu has extrude, chamfer,
+  inset, bridge, arbitrary rotation and scale, mirror, array and radial duplicate, align and distribute.
+- **Brush > Auto Caulk** applies caulk to faces that touch other brushes.
+- **Ctrl+M** makes a brush detail, so it does not seal the map.
 
-- **Primitives > Scripted Objects > Make Ladder** (climbable brush with a ladder model): makes a thin climbable slab
-  through the rungs and a ladder model with no player collision (`iw8r_no_collision`, a live `script_model`). The
-  model is unscaled and set to the nearest stock height: 72, 144 or 160 units. Bullets still hit the model. Not seen in
-  game yet.
-- **Primitives > Scripted Objects > Make Glass Pane**: select the thin brush or brushes first. It turns them into a
-  `script_brushmodel` named `glass_N` with the built-in blended `iw8r_glass` material. Any custom material with
-  `"blend": true` also works. The build replaces it with Replay's breakable glass.
-- **Primitives > Scripted Objects > Make Scripted** makes a live object for the map script.
+### Tool materials
 
-### Prefabs
+**Brush > Tool Material** applies a tool material:
 
-A prefab is a saved group of objects that a map places as one object. There are two forms.
+| Material | Effect in the game |
+|---|---|
+| caulk, nodraw | Invisible, still solid |
+| clip | Blocks players and bullets |
+| player clip | Blocks players only |
+| weapon clip | Blocks bullets only |
+| ladder | Invisible and climbable |
+| water | Water volume |
+| hint, skip | Invisible and not solid |
+| sky | Draws the sky |
 
-- A **prefab bundle** is one folder named `<name>.iw8prefab`. It holds everything that belongs to the object: its
-  brushes and entities with all their keys (so behaviour such as a door, a jump pad, an effect or a sound travels with
-  it), your own materials, models, sounds and effects that it uses, an optional script, a title, a description and
-  search tags. Stock assets are only named, never copied. `docs/PREFAB_BUNDLES.md` describes the folder.
-- A **plain prefab** is the old form: one `.map` file with brushes and entities only. It still works as before.
+### Primitives and generators
 
-**Two bundles ship with the editor** (not seen in game yet):
+The **Primitives** menu creates stairs, arches, cylinders, cones, spheres, ramps and prisms. **Generate Stairs** and
+**Generate Building** fill the selected area with a staircase or a one- or two-storey building.
 
-- **Jump pad with effect and sound**: a manhole cover model, a trigger that throws the player upward, a pulse effect and
-  a hum. One parameter: the launch speed.
-- **Stock door, painted wood, single**: the wooden door of Talsik Backlot. It is built as
-  the game's real door, copied from the stock map (not seen in game yet). With Edit > Preferences > Real stock
-  scripted objects turned off it has the badge FALLBACK and is built from the stock door's own model and sounds plus
-  a script. The build log says which one was built.
+### Patches and terrain
 
-**The Prefabs dock** (View > Prefabs) lists the bundles first, then every plain prefab. Each has a picture: the
-bundle's own `thumb.png` when it has one, else a picture drawn from its contents (triggers and clips are drawn as dashed
-outlines). A bundle has a small BUNDLE tag. Hold the mouse over a bundle to read its description, tags and parameters.
-The filter box finds a bundle by its title, a tag, its category or its id. Badges on a picture:
-
-- **FALLBACK**: the build makes the bundle's second set of contents, because a feature the bundle needs is missing.
-- **LIMITED**: a needed build feature is missing and the bundle has no second set of contents.
-- **MISSING**: a stock asset the bundle names is not in the editor's catalogue.
-- **CANNOT PLACE**: the bundle cannot be read (the tooltip says why).
-
-**Place a prefab**: drag it from the dock into the Camera or a Grid view, or double-click it to place it on the surface
-at the middle of the Camera view. While you drag over the Camera, the prefab itself follows the cursor; leaving the view
-takes it away again. A placed prefab is one `misc_prefab` entity: one click selects it, the gizmo moves and turns it.
-Every placement of a bundle gets its own short id (key `iw8r_pid`, for example `p3`). The build uses it to keep the
-names inside two placements apart, so two doors never open each other. Clone, Copy and Paste, and the Arrange
-duplicates give each copy a new id. Do not edit the id by hand.
-
-In the Camera, the brushes of a placed prefab are drawn in flat colours and each model or other point entity inside it
-is drawn as a small box. The picture in the dock shows the real models.
-
-**Parameters**: select a placement of a bundle and open the Entity dock. Above the key list it shows the bundle's title
-and description, its badge with the reason, and one field per parameter with its range and default (the jump pad has
-"Launch speed"). A value you set is written as one key on this placement only, and Undo takes it back. The button
-**Default** removes the key again. The buttons **Edit Prefab**, **Open Bundle Folder**, **Explode** and **Make Unique**
-are there too. File > Prefabs > Prefab Parameters still lists every key of every entity inside any prefab.
-
-**Save Selection As Prefab** (File menu): select the brushes and entities, then fill in the title, description,
-category and tags. The id is made from the title; it names the folder. The dialog lists what will travel with the
-prefab: the brushes and entities, your own material, model, sound and effect files that are copied into the bundle,
-the stock assets it needs by name, the names that are kept apart per placement, and linked objects you did not select
-(tick one to add it). The bundle is written into the first prefab folder of Edit > Preferences, or into `prefabs`
-beside the map when no prefab folder is set. The selection is then replaced by one placement of the new prefab (untick
-the box to keep the loose objects). Saving again under the same id asks before it replaces the bundle; parameters,
-script and fallback settings written into `prefab.json` by hand are kept. A picture (`thumb.png`) is saved when every
-model in the prefab could be drawn; otherwise the dock draws the picture itself. Parameters, a script and fallback
-contents are written into the bundle folder by hand for now (`docs/PREFAB_BUNDLES.md`).
-
-**Other commands** (File and Edit menus):
-
-- **Explode Selected Prefab** replaces a placement by its loose contents. For a bundle the names get the placement id
-  in front (`p3_door`), as in the build, so the links keep working. A bundle's script does not run for loose objects.
-- **Enter Prefab** (Ctrl+Shift+E) opens the prefab's map to edit it; for a bundle that is its `prefab.map`.
-  **Leave Prefab** (Ctrl+Shift+Q) returns, and every placement shows the change.
-- **Open Bundle Folder of Selected Prefab** shows the folder in Explorer.
-- **Make Selected Prefab Unique** copies the prefab into `prefabs` beside the map under a new id and points this one
-  placement at the copy. The map must be saved first.
-- **Save Selection As Plain .map Prefab** writes the old single-file form. **Insert Prefab** places a `.map` file or a
-  bundle (pick the `prefab.json` in its folder).
-- **Sharing**: Export Prefab Bundle As Zip writes one bundle folder into a zip; Import Prefab Bundles From Zip puts the
-  bundles of a zip into your prefab folder (zips made by Windows or other tools work too). An import never replaces a
-  bundle you already have, and each bundle is checked before it lands.
-- **Convert Plain .map Prefab To Bundle** wraps an old single-file prefab into a bundle beside it, with your own
-  material and model files and the same origin, so existing placements line up.
-- **Placement hints**: a bundle whose `prefab.json` says `"placement": {"surface": "wall", "yaw_step": 90}` turns to
-  face out of the wall it is placed on (aim the camera at the wall and Insert Prefab). **Rotate Selected Prefab** turns
-  a placement by its bundle's yaw step (90 for a plain prefab).
-
-**Building**: the Compile panel passes the bundles' own material, model, sound and effect folders to the build. The
-log has one line per bundle, for example `prefab bundle 'jump_pad' (jump_pad.iw8prefab): 2 placement(s), main contents`,
-and a warning when fallback contents were built or a named stock asset is not in the catalogue. While you edit, the
-materials and models of every bundle the map places are available like your own.
-
-Section 12 has the playtest notes on prefab pictures and dragging.
+- **Shift+P** creates a patch. The **Patch** menu edits rows and columns, caps, welds, thickens and inverts patches.
+- **Patch > Create Terrain** creates a terrain mesh. The terrain brush raises, lowers, smooths and flattens it, and
+  **Patch > Height Map** imports or exports a height map and applies erosion.
+- **Patch > Road Through Selected Points** lays a road over the terrain.
+- **Patch > Vertex Paint Mode** paints colour and blend values on patches.
 
 ## 4. Materials and textures
 
-- **Stock materials**: type or browse any stock name (`tm2co/me_curb_stone_01`). The editor exports its images with
-  ACTS on first use, so a texture can take a few seconds to appear. Builds use the stock colour image
-  (**Compile > Stock textures** on the Compile panel). Cut-out materials (chainlink, foliage) are recognized and built
-  alpha-tested. A material whose image is not cached yet builds grey once; the next build has it.
-- **Custom textures**: File > Import Texture writes a `<map dir>\materials\*.iw8mat.json` definition (colour, normal,
-  specular, alpha test, surface type for footsteps).
-- **Surface type**: the surface type sets the footstep and bullet impact sounds. Stock materials use the type the game
-  gives them. Custom materials take their type from File > New / Edit Custom Material.
+### Stock materials
 
-### Materials on models
+Open the **Materials** panel to browse every stock material, or type a material name in the toolbar. Click a material
+to apply it to the selection, or drag it onto a surface in the camera. Right-click a material for **Material Info**
+and **Replace Everywhere With**.
 
-1. Open the **Materials** dock (View > Materials) and drag a material over a model in the Camera view.
-2. While you drag, the model under the cursor shows the material as a live preview. Move off it and the model goes
-   back to its own material. Drop the material to keep it (one undo step).
-3. The drop sets the key `iw8r_material` on the model. The build makes a copy of the model with that material on
-   every surface. This works for stock models and for your own models (shape models from Primitives, imported files).
-4. You can also select one or more models (and brushes) and click a material in the Materials dock: the material is
-   applied to everything selected, in one undo step.
+The first time a stock material is used, its images are read from the game, so it can take a few seconds to appear.
 
-### Editing materials
+### Custom textures and materials
 
-Use these commands to change a material, not only to place one. Every command works on the current material.
+- **File > Import Texture** creates a material from a PNG, TGA, JPG or BMP image.
+- **File > New Custom Material** opens the Material Editor, where you set the colour, normal and specular images,
+  the surface type, transparency, glow and tint. The preview updates as you work.
+- Custom materials are stored in the `materials` folder next to your map.
 
-- **File > New Custom Material** makes a new definition in the map's `materials` folder. **File > Edit Custom Material**
-  opens an existing one in the Material Editor. A definition sets the colour image, the normal and specular images, the
-  surface type (footstep and bullet sounds), cut-out (alpha test) and two-sided.
-- **Shader presets** in the Material Editor set a common look in one step: opaque, cut-out, blended, additive glow,
-  multiply, decal, unlit sign and emissive. Pick one, then adjust the controls below.
-- **Blend mode** (alpha, additive or multiply): alpha is for glass and see-through decals, additive adds light for glows
-  and light shafts, and multiply darkens for stains.
-- **Unlit** takes no light from the map. Use it for signs and screens.
-- **Emission** makes the surface glow by a factor from 0 to 64.
-- **Tint** multiplies the colour image, one value each for red, green and blue (0 to 4).
-- **Decal sort order** sets which decal layer draws on top of another. Higher draws on top.
-- **Depth offset** (0 to 2) pulls a decal off the surface under it.
+### Texture alignment
 
-Commands in the Tools menu:
-
-- **Tools > Make Editable Copy of the Current Material** copies a stock material's colour, normal and specular images
-  and a definition into the map's `materials` folder, with the tint applied to the copy. The copy opens in the Material
-  Editor so you can change its shader state.
-- **Tools > Adjust Image** changes a colour image: brightness, contrast, saturation, hue, gamma, tint, invert, channel
-  swap and resize. It can also make a normal map from a height image. A preview shows the result before you save a new
-  PNG.
-- **Tools > Techset Info** explains the current material's technique set (the shaders the game uses for it). The first
-  look exports the technique set once through ACTS and lists its techniques, shader names and arguments. The state
-  words are not decoded yet.
-- **Tools > Replace a Material in the Whole Map** gives every face and patch that uses one material the current
-  material. Model keys follow. It is one undo step.
-- **Tools > Asset Usage** lists what the map uses of each kind (materials, models, sounds, effects) with counts. It also
-  lists the map's own files that nothing uses.
+The **Surface** inspector fits, scales, shifts and rotates textures on the selected faces. **Brush > UV Editor**
+shows the faces of the selected brushes unfolded, for precise placement.
 
 ## 5. Models
 
-- Place a `script_model` or `misc_model` and set its `model` key (Models browser). Stock models are exported with ACTS
-  for the camera view and built into the map as textured copies (`iw8r_stock_*`).
-- **Custom models**: File > Import Model (OBJ) copies the model next to the map.
-- **Collision**: every placed model without a `targetname` gets an invisible solid box (players and bullets) fitted to
-  its size and angles. A `script_model` with a `targetname` is treated as scripted and gets none. Check them with
-  **View > Show Compiled Collision** after a compile (solid cyan, player clip orange, ladders green, the edges a
-  weapon can be mounted on yellow).
-- **Stock map references**: when you open a stock map, its props fill in over a few minutes. Each missing prop model is
-  fetched in batches and the props are drawn as they arrive. mp_backlot2 took about seven minutes on first open.
-- Models can move without scripting. See section 11.
+- Open the **Models** panel, then double-click a model or drag it into the camera to place it.
+- **File > Import Model** adds your own OBJ, glTF or GLB model, with levels of detail and a collision mesh.
+- Placed models are solid for players and bullets. Models used by scripts (with a `targetname`) are not.
+- Useful keys: `lod_scale` changes the level-of-detail distance, `no_shadow` stops shadow casting, and
+  `iw8r_material` replaces the model's material.
+- **Tools > Scatter Models** places many models at once, with rules for slope, spacing and rotation.
+- Right-click a model for **Model Info**: its size, materials, levels of detail and where it is used.
 
-### Replacing one material
+## 6. Prefabs
 
-- **Tools > Replace One Material of the Selected Model** sets the key `iw8r_mat:<material>` on the selected model. The
-  material after the colon is the slot to replace, and the value is the current material. Use it when a model has
-  several materials and only one should change. Model Info lists the slots, each with a Replace button. Slot keys win
-  over `iw8r_material` (section 4), which changes every slot.
-- The camera shows the change, and the build makes a copy of the stock model with that slot replaced. Not seen in game
-  yet.
+A prefab bundle is a folder that holds brushes, entities, an optional script and the prefab's own assets. A map
+places it as a single object.
 
-### Custom shaders (your map's own look)
+- Drag a prefab from the **Prefabs** panel into the camera, or double-click it.
+- Select a placed prefab to edit its parameters in the Entity inspector.
+- **Edit > Enter Prefab** (Ctrl+Shift+E) opens the prefab for editing. **Edit > Leave Prefab** (Ctrl+Shift+Q)
+  returns to the map, and every placement shows the change.
+- **File > Save Selection As Prefab** creates a new bundle from the selection.
+- **File > Export Prefab Bundle As Zip** and **Import Prefab Bundles From Zip** share prefabs.
 
-- **Tools > Shader Editor** lists your map's shaders (its `shaders` folder) and the editor's templates. **Stock
-  lighting** is the game's own lighting of a map's surfaces, as an editable shader. **Toon** is an anime cel look.
-- **New...** copies a template into your map under a new name. Edit it, then press **Check**: errors show with the
-  shader's own line numbers. **Save** shows the result at once in View > Game Lighting. **Use for This Map** makes
-  every surface of your map use it, including models, both in the viewport and in the built map. **No Map Shader**
-  goes back to the game's lighting.
-- One material can have its own shader instead: add `"shader": "<file>.iw8shader.hlsl"` to its definition.
-- A shader is one HLSL function, `float3 iw8rSurface(IW8RSurface s)`. It gets the surface colour, normal, view
-  direction, position, UV, the sun (direction, colour, shadow), the baked light and the gloss, and returns the lit
-  colour. It cannot read textures.
-- **Edge inputs.** `s.edgePixels` is the distance to the nearest edge of the brush face in screen pixels,
-  `s.edgeUnits` the same in units (up to 12), `s.edgeNormal` the normal of the face across that edge, and
-  `s.faceNormal` the surface's own normal without the normal map. With them a shader can draw lines of a constant
-  width on screen. Seams between flush brushes are not edges. Models have no edge data (`edgePixels` is 1e6).
-- **Screen inputs.** `s.pixel` is the pixel's place on screen, `s.viewDepth` its depth along the view, `s.eye` the
-  camera's position, and `iw8rSceneDepth(pixel)` gives the depth of what is drawn at any pixel (1e9 for the sky, 0
-  where there is none). With them a shader finds outlines and folds from the picture itself: the toon shader's lines
-  work this way, so they join without ends, and a wall standing in a floor gets its line. The game keeps this depth
-  as a 16-bit number; `iw8rSceneDepthStep` (1 / 1024) is how exact it is, and the viewport uses the same precision.
-- The whole toon look is in `toon.iw8shader.hlsl`: its constants at the top set the line width (`kLinePixels` near
-  the eye, `kLineMaxUnits` on the surface, so far lines are thinner), the inner lines' share (`kCrease`), how soft a
-  fold may be and still get a line (`kFoldLow`, `kFoldHigh`), the colour strength, the tones and the shade level.
-  Make a copy with New to change them for your map.
-- The example map Cinder Rail (Toon) uses it. Custom shaders are built and checked offline but not yet seen in game.
-- **Stock maps.** A stock map's surfaces keep the game's own lighting, so a shader changes them through a second
-  function: `float3 iw8rFilter(float3 colour)`, which gets the finished colour of a pixel and returns the new one.
-  Open the stock map, choose the shader in Tools > Shader Editor (Use for This Map), and the viewport shows the world
-  and props through it. File > Stock Map > Rebuild Stock Zone builds it into the map's lit shaders; File > Stock Map > Install Edited Stock
-  Map Into Game installs the changed zone as for any stock edit. The filter cannot use textures or the edge inputs,
-  and it does not reach characters, weapons or effects.
-- **Lines on a stock map.** A shader may add `float3 iw8rFilterScreen(float3 colour, float2 pixel, float viewDepth,
-  float pixelSize)`: the filter with the screen. It may call `iw8rSceneDepth`. The rebuild uses it in every stock
-  shader that can take it and `iw8rFilter` in the rest; the log says how many. The toon shader has it, so a stock map
-  gets the same ink lines. One cost: the rebuilt map's thermal sights look wrong (the lines use the slot of the
-  thermal mask).
-- **The weapon and hands (First-Person Look).** The weapon and hands a player holds do not belong to a map: their
-  shaders are in a zone every map loads. File > Stock Map > First-Person Look (weapon and hands) > Build From Shader builds that
-  zone with the open map's shader (or a shader file you pick): the filter and the ink lines go into the weapon and arm
-  materials only, and every name stays as it is. The Console shows how many; the result is checked with the game's
-  own loaders and is not installed. Install Into Game puts it in; Restore In Game takes it out. **While it is
-  installed, weapons and hands have the look on every map**, also the weapons other players carry and some character
-  arms, and thermal sights look wrong. Close the game before either step. Without a dialog:
-  `IW8Radiant.exe --viewmodel-look <shader file> --out <folder>` builds (report in `<folder>\viewmodel-look.txt`),
-  `--install-stock <folder>\out` installs, `--restore-stock global_stream_mp` restores.
+## 7. Entities and gameplay
 
-### What the game draws from here (Umbra visibility)
+### Entities
 
-- Every stock map carries occlusion data (an Umbra "tome") that tells the game what can be seen from where. **View >
-  Umbra Visibility > Cull by Tome** makes the editor draw a stock map the same way: surfaces (terrain included),
-  models, lamps, reflection probes and decal groups the game would leave out from the camera's spot are left out. Use it to see why something pops in or out in game, or what an
-  edit would expose.
-- **Show Cells and Portals** draws the camera's visibility cell (yellow), its portals (orange; doors that can close in
-  magenta) and the visible cells around it (blue).
-- The status bar shows the counts, for example "Umbra: 312 / 1,024 surfaces, 1,204 / 9,413 models, 11 / 22 lights,
-  17 / 18 probes, 4 / 6 decal groups". When the camera is inside a wall, nothing is culled and the status bar says
-  so. When it is outside the map's data, the status bar says what the game does there: it draws the whole map and no
-  players or vehicles.
-- Hidden things still cast their sun shadows, as in game. A lamp the game leaves out lights nothing; a pixel whose
-  probe is left out takes the next probe, or the map-wide one.
+Select an entity to edit its keys in the **Entity** inspector. Each key shows its description and expected value,
+and missing required keys can be added with one click. The **Links** panel shows `target` and `targetname`
+connections. **Help > Entity Class Reference** describes every entity class.
 
-## 6. Lighting and atmosphere
+### Spawns and game modes
 
-- **Lights**: `light` entities (omni and spot) become primary lights; `reflection_probe` entities become probes.
-  A spot with a cone of 150 degrees or more is built as an omni light. The build log notes it.
-- **Compile > Sun & Sky**: sun pitch/yaw/colour and a stock sky (`sky_mp_*`; exported and converted at build time).
-  **Sky brightness** makes the built sky brighter or darker (1 keeps its brightest clouds just below white; 2 or 3
-  is a bright day sky, with the brightest parts going to white).
-- **Haze (Compile > Atmosphere).** Pick a preset and an amount and the game itself fogs your map: fog by distance and
-  near the ground, with a glow toward the sun, blended into the low sky, plus volumetric air that the sun lights, so
-  light shafts show through gaps. Presets: Desert haze, Clear day, Overcast mist, Golden dusk, Dense fog. Amount 1
-  is the preset as designed, 0.5 half as thick, 2 twice. Every value behind a preset is a vision field you can
-  change in the Vision overrides line or Map > Vision Fields (`fog...`, `volumetric...`, `veilStrength`); your
-  values win. View > Game Lighting shows the result. The older exponential fog in the same dialog is baked into the
-  surfaces and never reaches the sky; a haze replaces it.
-- **Lamps in the haze**: give a `light` the key `iw8r_volumetric 1` and it glows in the volumetric air. Only flagged
-  lamps do, as in the stock maps.
-- **Volumetric boxes** (Primitives > Volumetric Box): fog inside a box, for a misty corner or a dusty room. `density`
-  is how thick (0.0002 light, 0.001 default, 0.005 thick), `falloff` the soft border in units, `height_half` the
-  height where it is half as thick (a ground mist). The sun, the sky light and flagged lamps light it. **Masks**
-  break it into drifting patches: `mask "clouds_soft 800 800 50 0"` lays a cloud picture over the box from above,
-  800 units per repeat, moving 50 units a second along x. Up to four (`mask2` .. `mask4`) multiply; two cloud layers
-  at different sizes and speeds look like rolling mist. Pictures: the editor's `clouds_soft` and `clouds_hard`, or
-  your own grey pictures in `<map folder>/volume_masks` (white keeps the fog, black clears it). Game Lighting shows
-  them moving.
-- **Baked lightmaps**: tick **Bake lightmaps** on the Compile panel and the build bakes the world's lightmap: the
-  light of the sky, the light bounced off surfaces, and where the sun reaches. The sun itself and the light entities
-  are not baked; the game draws them live on top. **Bake Settings...** beside it sets the sky's colour and strength
-  (0.35 is a clear day: the open sky gives about a third of the sun's light), the texel size (world units per
-  lightmap texel: smaller is sharper and slower) and the sky rays per texel (more is smoother and slower). View >
-  Game Lighting bakes its preview with the same values. Not seen in game.
-- **Compile > Time of Day**: a preset sets the sky. With **Compile > Aim the Sun When the Sky Changes** on, the sun is
-  also aimed at the sun painted in that sky, in the same undo step.
-- **Minimap**: drawn by the build from the map's brushes, with the map's north at the top, so the player arrow sits
-  where the player stands (until 2026-11-14 it was a quarter turn off on built maps: rebuild). Leave Map Info >
-  Compass rotation empty: it is a manual turn that replaces the automatic one, for maps that already set it.
-- **Compass**: the compass north is the top of the XY view (+Y). Builds write worldspawn `northyaw 90` unless the map
-  sets its own, so the game's north matches the editor's.
-- **Your own pictures on the HUD.** Compile > HUD Images Folder opens the folder `<map name>.hud` beside your map.
-  Put pictures in it (PNG with transparency works best). A file `flag.png` becomes `hud_flag`; draw it from the
-  map's script: `icon = newhudelem(); icon.x = 20; icon.y = 120; icon setshader("hud_flag", 64, 64);`. Use names the
-  game does not already have (a name such as `hud_icon_c4` is a stock icon). Up to 64 pictures; each is stored
-  square, up to 1024 pixels a side.
-- **Your own font on the HUD.** Put the font file (TTF or OTF) in the same `<map name>.hud` folder and list what to
-  write in a file `fonts.txt` there, one line each:
-  `label | title | MyFont.ttf | 64 | #ffcc00 | Welcome to Cinder Rail` makes one picture of that line of text, and
-  `glyphs | digits | MyFont.ttf | 48 | #ffffff | 0123456789:` makes one picture per character. The build draws them in
-  your font and colour, and the map script gets three functions: `iw8r_font_label("title", x, y, height)` shows a
-  label, `iw8r_font_text("digits", "12:30", x, y, height)` writes any text made of a set's characters (spaces
-  leave a gap) and returns its pieces, and `iw8r_font_clear(pieces)` removes them. Script dock > Insert Behaviour >
-  Countdown in the map's own font shows the use. Everything stays in your map's own files: the font itself is not
-  shipped, only the pictures drawn with it, so no other map and no menu changes. Up to 192 font pictures a map.
-  Not seen in game yet.
-- **A hint on a use trigger.** Select a `trigger_use` brush and add the key `hint` with the text the player should
-  see, for example `Press ^3[{+activate}]^7 to open the gate`. Nothing else is needed: the build carries the text and
-  the map shows it while a player stands in the trigger.
-- **Your own text in the game.** Compile > Map Text File opens `<map name>.str` beside your map. Each entry is two
-  lines: `REFERENCE HINT_GATE` and `LANG_ENGLISH "Press ^3[{+activate}]^7 to open"` (`\n` is a line break, `^1` to
-  `^7` are colours, `[{+activate}]` shows the key). In the map's script the entry is `&"MP_YOURMAP/HINT_GATE"`: your
-  map id in capitals, a slash, the reference, for example `trig sethintstring( &"MP_YOURMAP/HINT_GATE" );` or
-  `label settext( &"MP_YOURMAP/TITLE" );`. The build tells you if the script uses a name the file does not have.
-- **Painting a blend on a brush surface.** Select the faces (Ctrl+Shift+click) or whole brushes and run Brush >
-  Paint Mesh on Faces. It asks how far apart the paint points should be (32 units is a good start; smaller is finer)
-  and lays a mesh on each face with the same material and texture placement. The face under the mesh becomes caulk:
-  the brush still blocks the player, only the mesh is drawn. Vertex Paint Mode starts right after (colour, alpha,
-  radius, strength); click on the mesh to paint. Ctrl+Z takes the whole step back.
-- **Film grain.** On a stock map the picture has the game's fine grain, as strong as that map's vision sets it. View
-  > Game Lighting Options > Film Grain turns it off (for screenshots, or if it bothers you while editing).
-- **White balance.** Many stock maps set a white balance (Hideout and Verdansk a warm one); View > Game Lighting
-  shows it as the game does. View > Game Lighting Options > White Balance turns it off. For your own map, set it in
-  Compile > Vision Editor (or worldspawn `iw8r_vision`) with the fields `MNMNSSLLOR` (method: 4 is what the stock
-  maps use), `NLSRLSTPTN` (1 = daylight at a temperature), `TRQLLNNLS` (the temperature in kelvin: 5000 is neutral,
-  higher is warmer) and `OPSMSQNKQ` (green / magenta tint). Example: `MNMNSSLLOR=4;NLSRLSTPTN=1;TRQLLNNLS=5500`.
-  The viewport and the built map use the same values.
-- **Models.** A placed model is lit by the light at its place (the build's light grid: sky, sun bounce, how closed
-  in the spot is), with or without baked lightmaps. View > Game Lighting shows it per model.
-- **Sharper shadows where you want them.** Select faces or brushes and lower "Lightmap scale" in the Surface panel
-  (16384 is the default; 8192 gives twice the lightmap texels, 4096 four times, down to an eighth of the map's texel
-  size). Raise it on big plain faces to save lightmap space.
-- **What the bake bounces.** Light that hits a surface goes on in that surface's colour (the average colour of its
-  material), and the bounces after the first are estimated from how enclosed a place is: a room with one window is
-  lit softly all through, and a coloured wall tints what is near it.
-- **Occlusion bake** (Compile panel, off by default): the build cuts the map's free space into cells along its
-  opaque box brushes, and the game then skips what lies in cells the camera cannot see into. It helps maps with
-  rooms, corridors and closed streets; an open map gains little. Only brushes with opaque materials hide anything:
-  an axis-aligned box as it is, a slanted or many-sided brush by the largest box that fits inside it (so build thick
-  walls from boxes; a thin slanted wall hides nothing). A detail brush (Brush > Make Detail) never hides anything:
-  mark what should not count. It is checked offline only: if something is missing in the game with it on, turn it off
-  and build again.
-- **Compile > Atmosphere**: exponential fog (start, halfway distance, colour; previewed in the camera, View > Fog
-  Preview) and a film grade. Exposure is in **Map Info** on the Compile panel, with title, description, compass and
-  minimap settings.
-- **Compile > Vision Editor** lists all 218 vision fields of the game by name, with type and default. Filter by text or
-  group. The values you set are the `iw8r_vision` overrides of the map, or of the selected vision volume trigger. Fog,
-  film grade, exposure and the grading LUT keep their own dialogs. Only 87 fields have readable names; the rest are
-  listed by token. Not seen in game yet.
+- Place spawns from the **Spawns** panel, or use **Tools > Generate Spawns** to create a set over the walkable floors.
+- **Primitives > Game Modes** inserts the objects for Domination, Hardpoint, Search and Destroy and Capture the Flag.
+- After each build, IW8 Radiant lists the game modes your map supports:
 
-### Game Lighting on stock maps
-
-**View > Game Lighting** (Ctrl+Alt+L) on a stock map draws it the way the game does: the map's own lightmap and
-reflection probes, the sun with its shadows, each prop lit from the light the game baked for it, the map's own lamps
-with their shadows, ambient occlusion, screen-space reflections on wet and glossy surfaces, glowing lamps and screens,
-light through leaves and cloth, and the game's exposure and tone curve. Verdansk and Quarry stream their town in
-around the camera. The first time a map is opened this way the editor reads a few things from your install in the
-background (the status bar says what); later opens are quick.
-
-**View > Game Lighting Options** turns its parts on and off and remembers them: Ambient Occlusion, Screen-Space
-Reflections, Stock Map Lamps, Lamp Shadows and Prop Levels of Detail (far props use the game's simpler models, which is
-much faster on big maps). **Ambient Occlusion Strength** (1 is the game's), **Exposure Override** (a fixed EV instead of
-the map's auto exposure, for comparing screenshots), **Re-bake Lighting Now**, and **Debug View** (the AO buffer, the
-albedo, or where reflections are traced) are there too. **Sun Shadow Detail** sets the size of the sun's shadow maps: Low, Normal or High (High draws thin
-shadows such as cables sharply and uses 128 MB of video memory).
-
-**View > Game Lighting Options > Stock Map Detail** holds the parts of a stock map's look that were read from the game,
-all on by default and remembered: the game's ambient occlusion (off: a simpler one), props lit from the map's light grid,
-lightmapped props (rugs, blankets, the houses at the map's edge take the floor's baked light), prop self-visibility
-(dense grass and the inside of tyres and crates darker), prop detail layers (dirt, paint and wear on containers, cars,
-walls), clear coats (the faint sheen on corrugated siding and rubble), model displacement (the small relief of stone
-walls and dunes) and the thin-wall light push (thin walls and signs take the light of your side). Turn one off to see
-what it adds; the game itself always draws them.
-
-### Decals
-
-A decal is a picture projected onto the surfaces inside a box: a stain, a painted marking, a scorch mark.
-
-1. Place the point entity `iw8r_decal` where the picture should be.
-2. Set `angles` so that the entity's forward direction points into the surface. For a floor use `90 0 0`.
-3. Set `size` to the box: depth (along the projection), then width and height. The default is `8 64 64`.
-4. Set `material` to a material of your custom library (the alpha of its picture is the shape of the decal) or to
-   the name of a stock decal material.
-5. Optional keys: `opacity` (0 to 1), `feather` (soft fade at the front and back, 0 to 1), `draw_order` (-4 to 3,
-   higher on top), `uv_rotate`, `uv_scale`, `uv_shift`.
-
-The build log says how many decals were written. A material of your library is built a second time in the form
-decals need (the build names it `<material>_dcl`); you do not have to prepare anything. Decals need a converter
-with the decal producer (the one this project uses has it since 2026-11-11). Not seen in game.
-
-### Editing a stock map
-
-Every edit below shows in the viewport as you make it; File > Stock Map > Rebuild Stock Zone is only needed to put it in
-the game. The world edits (retexture, removed geometry, another map's sky, the sun) are applied to the viewport's copy
-of the stock world a moment after the change (on a big Warzone map the world is read again, a few seconds).
-
-1. File > Open IW8 Stock Map opens a stock map: its entities are the document, its world and props are shown as a
-   reference.
-2. File > Stock Map > Edit Compiled Spawns turns the spawn points into entities you can move, add and delete.
-3. Add things: a `script_model` with any stock model works even when the model belongs to another stock map. The
-   rebuild copies that model with its materials and textures from the map that has it, and the Console lists what
-   is copied.
-4. File > Stock Map > Rebuild Stock Zone writes the changed map in a few seconds and checks it with the game's own loaders
-   (ACTS). The Console shows the result and the folder. The game folder is only read.
-5. File > Stock Map > Install Edited Stock Map Into Game puts the edit into the game. After showing you the list, it moves the
-   stock zone files of the map (`<map>.ff`, `techsets_<map>.ff` and a stock patch `<map>.fp`) to the folder
-   `iw8r_stock` in the game folder and copies the edited zone files into the `zone` folder under the same names.
-   Close the game before installing. File > Stock Map > Restore Stock Map In Game deletes the edited files and moves the stock
-   files back; do not delete or rename the files in `iw8r_stock` yourself. The game cannot take a stock edit as a
-   small patch file: it reads a patch of its own zones only with its own signature (research 116). If no map was
-   rebuilt in this session, the install asks for a folder: choose the `out` folder of an earlier rebuild.
-
-6. To hide stock props: draw a brush around them, select it and use File > Stock Map > Hide Stock Props In Selection. The props
-   leave the view and the rebuilt map draws them at size zero; their collision is taken out too (on the small maps;
-   a Warzone map keeps prop collision in its collision tiles, which stay as they are). File > Stock Map > Show All Stock Props
-   brings them back. The helper brush is not built into the stock map (the Console says so); delete it when you
-   are done.
-
-7. Loot points (Warzone maps): File > Stock Map > Edit Loot Points turns the map's loot points into green `iw8r_loot_point`
-   entities (Quarry has 2,924, Verdansk 23,446). Move, delete or copy them; a new point needs only an origin. The
-   rebuild writes them back and the Console says how many. A point you move out of its area finds its new cluster and
-   zone by position; `loot_cluster` `cache` makes a supply box point. If you undo back to no loot point entity, the
-   map keeps its own loot; worldspawn `iw8r_no_loot` `1` is the way to remove all of it.
-   New loot areas: draw a brush (or several) where the area should be, make it an `iw8r_loot_cluster` (a group of
-   points) or an `iw8r_loot_zone` entity (an area the loot tables know by its `name`; reuse one of the map's own zone
-   names such as `map_quarry`). Loot points inside it then belong to it. The map's own areas win where they overlap.
-
-8. Vehicles, buy stations and other placed things of a Warzone map: vehicle spawns are ordinary entities
-   (`script_struct_mp_atv`, `_tacrover`, `_jeep`, `_cargotruck`, `_littlebird`; Quarry has 183). Copy one, move the
-   copy, or delete some; the rebuild writes them like any other entity.
-9. Big Warzone maps (Quarry, Verdansk) keep most of their world in streamed tiles: the reference first shows only
-   what the map zone holds. Fly to the area you work on and use File > Stock Map > Load Streamed World Around Camera: the tiles
-   near the camera are read (a few seconds each, kept for next time) and drawn.
-10. Buy stations: File > Stock Map > Edit Placed Objects turns the buy stations of the map into `scriptable` entities (Quarry and
-   Verdansk have 120 each). Move one, or copy one and move the copy for an extra station; the rebuild writes it and the
-   Console counts what was moved, added and removed. Delete a station's entity to remove it from the map. Other placed
-   objects (signs, fences, props with physics, doors) become entities too and can be moved; a door only a little (inside
-   the area of the stock doors near it; the rebuild says when a move goes too far).
-
-11. New brushes: draw brushes and patches as usual (in the worldspawn or grouped in func_groups). File > Stock Map > Rebuild
-    Stock Zone builds the visible ones as one model per group (with collision) and places it where you drew it; the
-    first part of the rebuild is a normal build of a small helper map, so it takes a minute or two. Brushes made only
-    of tool materials (caulk, clip, nodraw), such as the helper brush for hiding props, are not built. Not seen in
-    game.
-
-**Retexture a stock map**: set worldspawn `iw8r_stock_retexture` to `from=to` pairs (stock material names, `;` between
-pairs); the viewport swaps them at once (only the pairs the rebuild can carry), File > Stock Map > Rebuild Stock Zone swaps them on the world surfaces. Replace like with like (a terrain blend with a blend):
-the surfaces keep their vertex data. Material Info in the Materials browser shows a material's name.
-
-**Sky of a stock map**: File > Stock Map > Relight Stock Map Sky picks another stock map whose sky this map uses (worldspawn
-`iw8r_sky_from`); the viewport shows that sky at once (fetched once from the other map), File > Stock Map > Rebuild Stock Zone carries that sky in. The map's baked lighting stays as it was.
-
-**Sun of a stock map**: File > Stock Map > Relight Stock Map Sun picks a new colour and intensity for the stock sun (worldspawn
-`iw8r_sun_color`, linear, and `iw8r_sun_intensity`); View > Game Lighting shows the new sun at once, File > Stock Map > Rebuild Stock Zone writes them. The sun keeps its direction,
-because the stock map's baked sun shadows hold it. The rebuild report in the Console shows the old values.
-
-**Remove stock world geometry**: draw a brush around the walls or floor to take out and make it an `iw8r_remove_world`
-entity. The viewport leaves out every world triangle whose three corners are inside (and the decals on them) at once;
-File > Stock Map > Rebuild Stock Zone takes them out of the drawing and the collision. Keys: `render` `0` keeps the
-triangles (only the collision goes), `collision` `0` keeps the collision. Props are not world geometry: hide them with
-Hide Stock Props In Selection.
-
-### Stock scripted objects (scriptables)
-
-A scriptable is one of the game's own objects with built-in behaviour. Place the point entity `scriptable` and
-set its `scriptable` key to the name of the stock definition. Optional keys: `angles`, `targetname`, `target`,
-`script_noteworthy`, `script_linkname`, `script_linkto`.
-
-There are two kinds:
-
-- **Always loaded**: `hardpoint_chevron`, the marker of a Hardpoint zone, and `scriptable_auto_ascender`. They are
-  placed by name and always build.
-- **Warzone objects**: the buy station `br_plunder_box` (also `brloot_rock`, `brloot_ammo_762`, `brloot_ammo_919`,
-  `brloot_assassination_tablet`). They live in the game's Warzone file, which a custom map does not load, so the build
-  copies them into the map (Edit > Preferences > Real stock scripted objects, on by default). It accepts them only on
-  a map made for the Warzone game type (Tools > Game Modes).
-- **From a stock map**: doors, traffic cones, cars, tyres, radios, signs, fences and other world objects (502
-  definitions). Their
-  definitions live inside stock map files. The build copies the definition with its models, collision and
-  materials from the stock map into yours (it reads the game folder, a few seconds per stock map). The switch for
-  this is **Edit > Preferences > Real stock scripted objects**, on by default; with it off such an entity is left
-  out and the log says so.
-
-Nothing built this way has been seen in game yet. The built data is checked against the stock map's own (the
-definition read back from your map equals the stock one). If a map with such an object does not load, turn the
-switch off and build again: that gives the previous behaviour back.
-
-`data/asset_catalog/iw8_scriptables.tsv` lists all 837 stock definitions, where each lives and whether it can be
-built (column `verified`). Check Map lists every scriptable that would be left out, with the reason.
-
-### Effects
-
-Place an `fx_origin` entity and set `fx` to a stock Replay effect name (`vfx/...`), optional `angles`, and optional
-`delay` (seconds between plays; leave it out for one persistent effect, e.g. a looping fire). The build writes them
-into the map script, which x64-zt compiles when the **gsc_tool** tool path is set (Tools > Tool Paths). Effects
-load from Replay's always-loaded common zones, so an effect that lives only in another map's zone will not play.
-
-**View > Effect Preview in Camera** plays your `fx_origin` effects and a stock map's own placed effects in the
-textured views: each particle with its sprite image and atlas animation, its size and colour over its life, its
-spawn shape, spin, forces and gravity, turned by the `angles`. In Game Lighting smoke and dust are lit particle by
-particle: the stock map's light grid where each one is, and the sun unless the scene shades it. Fire, sparks and glows
-add their light. Sun flares appear on the screen at the sun (hidden while something stands in front of it), and heat
-haze moves what is behind it. Debris models and effects that spawn other effects are not shown. The first time an
-effect material is needed its images are fetched in the background.
-
-**Your own effects** are made in **Tools > Effect Editor**. Build the effect from elements: an image (or a soft
-default particle), blended or additive, looping or one-shot, size and colour from start to end, and so on. Save it
-with the map; the file goes in the map's `fx` folder. Then press **Place in Map**. It puts an `fx_origin` with that
-effect at the middle of the view. Compile to build it as a Replay effect. The build makes each element a burst. A
-looping effect is played again by the map script about once a second. The effect editor is not verified in game.
-
-**Sound and damage on an effect** are keys on the `fx_origin`:
-
-- `soundalias` plays a sound at the effect. It can be one of the map's own sounds or a stock alias. It loops unless
-  `sound_loop` is 0.
-- `iw8r_damage` makes the effect hurt: `<amount> [radius] [interval seconds]`. A player inside the radius (48 by
-  default) takes the damage every interval (1 second by default). No trigger is needed.
-
-### Sound settings
-
-Each of the map's own sounds can have its own settings. **Tools > Sound Settings** edits them. The settings live in a
-file next to the sound, with the same name and the extension `.iw8snd.json` (for example `fire_loop.iw8snd.json` beside
-`fire_loop.wav`). The build reads the file. Every field is optional:
-
-- `volume`: 0 to 1.
-- `dist_min` and `dist_max`: the distance range of the sound, in map units. `dist_max` cannot be below `dist_min`.
-- `loop`: `true` or `false`.
-- `two_d`: `true` makes it a 2D sound, with no position in the world.
-
-docs/KEYS_REFERENCE.md has the table for this file.
-
-## 7. Walking the map (play preview)
-
-Press **P** in the camera. Movement follows Replay 1.20's values: W A S D, **Space** jump (at a ledge: mantle; in the
-air: grab a high ledge; on a ladder: push off), **Shift** sprint, **C** crouch (while sprinting: slide), **Z** prone,
-**N** noclip, **F** use, **Esc** leaves. Ladders are climbed by walking into them; look down to climb down. Collision
-uses the same rules as the build (clips block, triggers and weapon clips do not), and you bump into prefabs and placed
-models as in game. The map's scripted objects work as the built map's script runs them: doors open with **F** (a hinged
-door swings away from you), lifts carry you, spinning and bobbing brush models move, teleporters and jump pads act.
-
-**Previewing a model or a prefab.** In the Models browser, the **Preview in 3D...** button under the picture (or the
-right-click menu), and in the Prefabs dock the right-click menu, open the asset preview window: the asset alone, with
-its textures, in a 3D view of its own. Left (or right) drag orbits, the middle button or Shift+drag pans, the wheel
-zooms, **F** frames it, **R** goes back. The side panel switches the view (Lit, Game Lighting, Textured, Wireframe,
-Normals), the floor, the collision hull the build gives the model, and its level of detail, and lists its size,
-triangles and materials (click one to see its colour image). The window stays open and shows the next asset you
-preview.
-
-**Textured pictures in the browsers.** The Models browser's thumbnails and its side picture, and the Prefabs dock's
-thumbnails, are pictures made by the same 3D view in its Textured mode (no lighting, no floor). Each picture is made once, in the
-background, and kept in `<AppLocalData>\thumbs\models.textured.pack` and `prefabs.textured.pack`; after that the
-browsers only read it. A prefab gets a new picture when its file changes. To make every picture ahead of time, run
-`IW8Radiant.exe --thumb-pack models` or `--thumb-pack prefabs` (`--limit N` for a part).
-
-## 8. Compile, deploy, play
-
-1. **F7** builds: extraction (the editor's compiler), x64-zt `buildextraction` (zones), ACTS validation. Shift+F7 runs
-   the extraction only. The Compile dock shows each step; warnings are listed, not fatal.
-2. **Ctrl+F7** builds and deploys into `mods\mw120r\maps\<id>` of the game folder. Deploying works while Replay is
-   running, except for the map that is currently loaded. The previous package is kept in `.proxy\backups`
-   (Compile > Undo Last Deploy).
-3. **F5** builds, deploys and puts you in the map (see "F5 from a closed game" below). You can also load the map by
-   hand in Replay, from a private match lobby you host.
-4. **Check Map** (Tools) lists problems before a build (missing spawns, entity keys, leaks: Tools > Leak Check draws
-   the leak path).
-
-### Game mode presets and Warzone
-
-Tools > Game Modes lists mode presets. A mode in this game is a game type script plus settings (dvars): Warzone Trios,
-Quads, Stimulus Solos and Blood Money are all the script `br` with different settings. A private match applies no
-playlist settings by itself, so a preset brings them:
-
-- **Use for F5**: F5 then starts that game type, and the editor sends the preset's settings before the match starts.
-- **Carry in this map**: the map itself sets them at every start (worldspawn keys `iw8r_mode_dvars` and `iw8r_br`).
-  Use this for a map that is meant for one mode.
-- **Save as my preset** keeps your own mode: change the id, title, game type and the `name=value` lines first.
-- **New game type script** makes a game type of your own: it writes `gametypes/<name>.gsc` beside the map (a team
-  game where kills score up to the score limit) and points worldspawn `iw8r_gametype_script` at it. Edit it, build,
-  and start a match with that game type (Use for F5 with the name as game type). Every build checks the script: the
-  name must be new (a map cannot replace a stock game type), it needs `main()`, and it may call only stock scripts the
-  game stores by number (`scripts\mp\globallogic`, `gameobjects`, `gamescore`, `spawnlogic`, `utility\game`, ...);
-  a call into `scripts\mp\gametypes\...` would end the match at load, so the build leaves such a script out and says
-  which line.
-- **Rules** change how the game type plays, for every player at each spawn: `health=50` (max health), `speed=1.2`
-  (move speed), `weapon=iw8_pi_golf21_mp` (only this weapon instead of the loadout), `ammo=infinite`. Separate them
-  with `;`. Rules work only when the map carries them (Carry in this map, worldspawn `iw8r_mode_rules`): the map's
-  own script applies them after the game type has started.
-
-For a small map of your own in the Warzone game type: pick "Warzone on a small map", press Carry in this map, then
-Insert Warzone start entities (eight start spawns and a prematch area at the 2D view centre; move the spawns onto the
-floor). The build then lists the map for `br`. Such a map has no circle, no gulag and no plane. For loot, place
-`iw8r_loot_point` entities where items should lie (`loot_cluster` `cache` for a supply box point); the build writes
-them into the map's loot table, in one loot zone named by worldspawn `iw8r_loot_zone` (default `map_quarry`: the loot
-tables choose the items by the zone name). For a buy station, place a `scriptable` entity with `scriptable` `br_plunder_box`.
-For vehicles, place `script_struct_mp_atv`, `_tacrover`, `_jeep`, `_cargotruck` or `_littlebird` entities (their keys
-are filled in); the build copies the stock vehicle and its model into your map. Not seen in game.
-
-### Big maps: collision in tiles
-
-A Warzone-size map keeps its collision the way the stock big maps do: cut into the game's grid of 32 x 32 tiles of
-8192 units. A client loads the tiles near the player; a host loads the combined package. The editor makes the tiles
-by itself from the same brushes and models.
-
-- Edit > Preferences > Build: collision. Automatic (the default) uses tiles for a map wider than 20000 units on X or
-  Y and one piece for anything smaller. You can also pick always one piece or always tiles.
-- A map can decide for itself: worldspawn key `iw8r_collision` with `auto`, `one` or `tiles`.
-- The build log says which layout was used. A tiled map's package has 1,024 more small files and one combined
-  package; they are copied with the map.
-- The private client currently loads only the combined package of a custom map; that is enough to play. Not seen in
-  game.
-
-### Game modes of your map
-
-The game offers a custom map in the modes that its `map.json` lists. The editor writes that list after every
-build. A mode is listed when the map has the spawns and objects for it:
-
-| Mode | The map needs |
+| Mode | Required |
 |---|---|
-| Team Deathmatch (`war`) | 2 `mp_tdm_spawn` and one start for each team |
-| Free-for-all (`dm`) | 2 `mp_dm_spawn` |
-| Domination (`dom`) | Domination spawns, both starts and the three flags |
-| Search and Destroy (`sd`) | attacker and defender spawns, two bomb sites, the bomb and its pickup trigger |
-| Capture the Flag (`ctf`) | CTF spawns, both starts, and flag, trigger and zone for both teams |
+| Team Deathmatch | Two team spawns and a start spawn for each team |
+| Free-for-all | Two free-for-all spawns |
+| Domination | Domination spawns, both start spawns and three flags |
+| Search and Destroy | Attacker and defender spawns, two bomb sites and the bomb |
+| Capture the Flag | Spawns, both start spawns, and a flag, trigger and zone for each team |
 
-Primitives > Game Modes inserts each of these sets. The build log shows the result in a line that starts with
-`game types:`. To list other modes yourself, open Map Info... in the Compile dock and fill in **Game modes**, for
-example `war conf`. The editor cannot check modes it does not know.
+### Behaviours without scripting
 
-This needs a game client that reads the list. A client without it offers Team Deathmatch only. Not seen in game yet.
+These keys add behaviour without writing a script:
 
-### F5 from a closed game
-
-Press F5 with Replay closed. The editor builds the map and deploys it. Then it does the rest by itself:
-
-1. It picks the game exe. Tools > Tool Paths "launch" is used when it is set. When it is empty, the editor looks in
-   the game folder and takes `game_dx12_ship_replay_local_dw.exe`, then another recompiled client, then the stock exe
-   (with a warning: the stock exe cannot load custom maps).
-2. For the local client it checks that the local online-services host answers at `http://127.0.0.1:8085/health`.
-   If not, it starts the host and waits up to 60 seconds for it.
-3. It starts the game, selects Multiplayer, hosts a private match, sets your map and Team Deathmatch, and starts
-   the match with no countdown.
-
-While this runs, a dark card with the map name covers the game window. It closes when the map loading screen
-begins, so the loading screen is the first thing you see of the game. The card never takes the keyboard or the
-mouse. Every step is listed in the Compile dock with the time since F5.
-
-Options: Edit > Preferences has the F5 rows (game mode, bots, cover card, host check, host command, client start).
-They are stored in `IW8Radiant.ini`, section `[devmap]`:
-
-| Key | Default | Meaning |
+| Key | Entity | Behaviour |
 |---|---|---|
-| `gametype` | `war` | The game mode F5 starts |
-| `cover` | `true` | Show the cover card |
-| `hostCheck` | `true` | Check the local host before the game starts |
-| `hostCommand` | the Host-Local-Server script with `-NoLaunch` | What starts the host. `-` means never start it |
-| `hostHealth` | `http://127.0.0.1:8085/health` | Where the host answers |
-| `startRequest` | `true` | Ask a client that supports it to start the map by itself |
-| `bots` | `0` | Bots for a client that supports the start request |
+| `iw8r_spin`, `iw8r_bob` | Model or brush model | Spins or bobs continuously |
+| `iw8r_teleport` | Trigger | Teleports players to a `script_origin` |
+| `iw8r_jump` | Trigger | Launches players, for example `0 0 700` |
+| `iw8r_damage` | Trigger | Damages players inside, for example `10 1` |
+| `iw8r_lift` | Brush model | Moves up, waits and returns |
+| `iw8r_door` | Brush model | Opens as a sliding or rotating door |
 
-This has not been seen in game yet.
+**Primitives > Scripted Objects** also creates hinged doors, breakable glass, ladders and destructible objects.
+**View > Behaviour Preview** shows moving objects in the editor.
 
-## 9. Live Link
+### Scripting
 
-The Live Link dock talks to a running game:
+**File > New Script** creates a script for your map. The **Script** panel provides syntax highlighting, completion and
+checking, and **Insert Behaviour** adds templates such as doors, lifts, teleporters and HUD messages. Errors in the
+build log open the script at the matching line.
 
-- **Game link** works with any exe in the game folder, including recompiled ones (it reads their address map):
-  **Read camera -> editor**, **Move player to editor camera**, **Follow game** (the editor camera copies your in-game
-  view live) and a console line for any command.
-- **Quick match...** starts a private match on the deployed map in a mode you pick, with bots. From a lobby you host
-  it starts at once with no countdown. From the Multiplayer menu it hosts a private match first and starts when the
-  lobby is up. **Load map in game** starts the deployed map from a lobby you host.
-- The sections for the old mw120r proxy (status, select the deployed map, `set` dvars) appear only when its DLL
-  (`XInput9_1_0.dll`) is in the game folder. Without it they are hidden and nothing is written for it.
+## 8. Lighting and atmosphere
 
-### Debug overlay in the game
+### Lights
 
-The Live Link dock has a **Debug overlay** row. It tells the game to draw what your map contains while you play it:
+Place `light`, `light_spot` or `light_omni` entities and set their colour, intensity, radius, cone and shadows in the
+Entity inspector. **Tools > IES Profile Browser** applies light profiles to spot lights.
 
-| Preset | What the game shows |
+### Sun, sky and atmosphere
+
+- **Compile > Sun & Sky** sets the sun direction, colour and the sky. The sun can be aimed at the sun in the sky
+  automatically.
+- **Compile > Time of Day** applies presets such as Clear Day, Dusk and Night.
+- **Compile > Atmosphere** sets fog and colour grading. **Compile > Vision Editor** gives access to every vision
+  setting.
+- **Compile > Sky From Panorama** creates a custom sky from a panoramic image.
+
+### Previewing light
+
+- **Ctrl+L** turns on the lit preview with the sun, lights and shadows.
+- **View > Game Lighting** (Ctrl+Alt+L) shades the view the way the game will, including baked lighting when
+  **Compile > Bake lightmaps** is enabled.
+- **Compile > Capture Reflection Probes** captures the reflections for `reflection_probe` volumes.
+
+## 9. Effects and sound
+
+- Drag an effect from the **Effects** panel into the camera to place an `fx_origin`. Set `delay` to repeat it, or
+  leave it empty for a continuous effect. **View > Effect Preview in Camera** plays effects in the editor.
+- **Tools > Effect Editor** creates your own particle effects.
+- Drag a sound from the **Sounds** panel to place a `sound_emitter`. Your own WAV and MP3 files in the `sounds`
+  folder next to the map become sounds of the map, and **Tools > Sound Settings** sets their volume and range.
+- Trigger brushes with `iw8r_audio_zone` change the reverb while players are inside.
+
+## 10. Previewing your map
+
+Press **P** in the camera to walk through the map:
+
+| Action | Key |
 |---|---|
-| Where am I | A panel with your position in map units (the same numbers as in the editor), the map, entity counts and the audio zone |
-| Entities and triggers | A label and an axis marker on each entity near you (class, name, model, distance) and a wire box on each trigger |
-| Entities and crosshair | The same, and what the crosshair is on: surface type, flags and the entity hit |
-| Everything | A box on every entity that has bounds, players and AI included |
+| Move | W, A, S, D |
+| Jump and mantle | Space |
+| Sprint | Shift |
+| Crouch, slide | C |
+| Prone | Z |
+| Use | F |
+| Noclip | N |
+| Leave | Esc |
 
-- The filter box limits the labels to entities whose class, name, target or model contains one of the words. A word
-  that starts with `-` hides matches. **Selected** filters to the entity selected in the editor.
-- **Compare with game** asks the game for its entity list and shows which named entities of your map are missing in
-  the running match, at another place, or there in a different number. Its window can move the editor camera to
-  where you stand in the game.
-- In the game console the same things are the dvars `iw8r_mapDebug` (a number: 1 labels, 2 trigger boxes, 4 panel,
-  8 crosshair, 16 all boxes, 32 players; add them up), `iw8r_mapDebugDist`, `iw8r_mapDebugMax`,
-  `iw8r_mapDebugFilter`, and the command `iw8r_mapDebugDump`.
+Collision follows the same rules as the game, and doors, lifts and other behaviours work as they will in the game.
 
-You must host the match, and the game client must be one built with the overlay. Not seen in game yet.
+## 11. Building and playing
 
-## 10. When something goes wrong
+| Command | Key | Result |
+|---|---|---|
+| Compile Map | F7 | Builds the map and checks every zone |
+| Compile and Deploy | Ctrl+F7 | Builds the map and installs it into the game's custom map folder |
+| Play | F5 | Builds, installs, starts the game and loads the map |
 
-- **Crash**: the editor writes a report (stack with file:line) and a dump to
-  `%LOCALAPPDATA%\IW8 Radiant Suite\IW8 Radiant Suite\crashes\`; the next start names it in the status bar. Send the
-  `.txt` with your report.
-- **Autosave**: unsaved changes are snapshotted every 5 minutes to
-  `%LOCALAPPDATA%\IW8 Radiant Suite\IW8 Radiant Suite\autosave\` (`<name>.autosave.map`); open the snapshot to recover.
-- **Compare with the last save**: **File > Compare With Last Saved Backup (.bak)** compares the open map with the
-  backup next to it, with no file dialog. Use it to see what changed since the last save.
-- **Script errors**: double-click a line in the Compile log or the Replay Log that names a `.gsc` line. The **Script**
-  dock (View > Script) opens on that line. Lines of the generated map script are mapped back to your own script. A
-  message that points into the generated part says so. Build checks name the line in your own file first.
-- **Grey textures or missing models in a build**: the export cache was still filling. Build again.
-- **Deploy refused**: the message names the file that is in use (usually the map Replay has loaded: load another map
-  first). An Explorer window open on the map folder no longer blocks a deploy.
-- **Logs**: View > Console in the editor; Compile > Show Replay Log for the game's own logs.
+- The **Compile** panel shows every step. Warnings do not stop the build.
+- **Tools > Check Map** lists problems before you build, and **Tools > Leak Check** shows where the map is open to
+  the void.
+- The **Build Budget** panel compares your map with the game's limits.
+- **Compile > Undo Last Deploy** restores the previously installed version of the map.
+- **Map Info** in the Compile panel sets the map's title, description, minimap and supported game modes.
+- **Compile > Set Loadscreen From Camera** uses the current view as the loading screen.
+- Large maps are built with the game's streamed collision layout automatically.
 
-## 11. Behaviours and triggers without scripting
+## 12. Editing stock maps
 
-You can make models move and make triggers act by setting keys in the Entity inspector. The build writes the map script
-for you. Each key is listed with its format and an example in docs/KEYS_REFERENCE.md.
+1. **File > Open IW8 Stock Map** opens a stock map. Its entities become editable, and its world and props are shown
+   as a reference.
+2. Edit entities and spawns (**File > Stock Map > Edit Compiled Spawns**), add models and brushes, or hide props
+   (**File > Stock Map > Hide Stock Props In Selection**).
+3. The **Stock Map** panel changes the sun, sky and textures; the view updates immediately.
+4. **File > Stock Map > Rebuild Stock Zone** writes the changed map in a few seconds.
+5. **File > Stock Map > Install Edited Stock Map Into Game** installs it. The original files are kept, and
+   **Restore Stock Map In Game** puts them back. Close the game before installing or restoring.
 
-- **Spin and bob** (`iw8r_spin`, `iw8r_bob`) on a `misc_model`, `script_model` or `script_brushmodel`. A `misc_model`
-  with one of them becomes a live model, and a missing `targetname` is filled in. Example: `iw8r_spin` = `4` turns
-  the model once every 4 seconds. `iw8r_bob` = `16 2` moves it up 16 units and back every 2 seconds.
-- **Lift and door** on a `script_brushmodel` that has a `targetname`. `iw8r_lift` = `128 2 2` moves it up 128 units
-  over 2 seconds, waits 2 seconds, and comes back down. For a door, `iw8r_door` = `rotate 90 1 3` (or `slide ...`)
-  opens it. The door needs a `trigger_use` or `trigger_multiple` with its own `targetname`, whose `target` is the door.
-  A moving brush model is drawn by a generated model that the build links to it, because the brush's own surfaces did
-  not show in game. Key `iw8r_brush_visual` = `0` on the brush model turns that off. Not seen in game yet.
-- **Teleport, jump and damage** on a `trigger_multiple` that has a `targetname`. `iw8r_teleport` takes the
-  `targetname` of a `script_origin` as its destination. `iw8r_jump` = `0 0 700` launches a player who touches it.
-  `iw8r_damage` = `10 1` hurts a player inside it every second. Hurt triggers and damage zones now deal their damage
-  through the game's radius damage call (changed after the second playtest). Not seen in game yet.
-- **Damage on an effect** is set on the `fx_origin` (section 6). It needs no trigger. Not seen in game yet.
+Always install edited stock maps with this command rather than copying files by hand.
 
-### View > Behaviour Preview
+## 13. Warzone
 
-Turn on **View > Behaviour Preview**. The camera then moves the models that the build moves in game: models with
-`iw8r_spin` or `iw8r_bob`, and brush models with `iw8r_lift`, `iw8r_bob`, `iw8r_door` or a yaw `iw8r_spin`. Doors open,
-hold and close in a loop. Your own map script is not previewed. Use the preview to check the motion before a build.
+- **Tools > Game Modes** lists game mode presets, including Warzone Trios, Quads, Stimulus Solos and Blood Money.
+  **Use for F5** starts that mode with F5, and **Carry in this map** stores the mode in the map.
+- On your own map, `iw8r_loot_point` entities mark where loot appears, a `scriptable` entity with `scriptable` set to
+  `br_plunder_box` adds a buy station, and vehicle spawn entities add vehicles.
+- On stock Warzone maps, **File > Stock Map > Edit Loot Points** and **Edit Placed Objects** make loot points and buy
+  stations editable; rebuild and install the map as described above.
 
-### Traversals for bots
+## 14. Live Link
 
-Bots find their way on the navigation mesh the build makes from the floors. For a drop, a climb, a gap or a ladder
-they need a traversal: Primitives > Traversal For Bots asks for the animation (one of the nine the stock maps use) and
-the facing, and places a `node_negotiation_begin` with its `node_negotiation_end` at the 2D view centre. Move the begin
-node to the edge where the bot starts and the end node to where it lands. Check Map warns about a begin without an
-end or without an animation.
+The **Live Link** panel connects to a running game:
 
-### Triggers for the map script
+- **Read camera** moves the editor camera to the player's view, and **Move player** moves the player to the editor
+  camera.
+- **Follow game** makes the editor camera follow the player.
+- A console line sends commands to the game.
+- Moved models, effects, sounds and sun changes are sent to the game without rebuilding.
+- **Quick match** starts a private match on your map with bots.
+- **Debug overlay** shows entity labels, trigger boxes and your position in the game.
 
-The map script tests players against the trigger volumes itself. A script gets a trigger with
-`iw8r_trigger("name")`. That call returns the object that the build notifies with `"trigger"` and the player's entity,
-so your script can wait for it:
+## 15. Using the editor from a browser
 
-```
-trig = iw8r_trigger("gate_trig");
-trig waittill("trigger", player);
-```
+**Tools > Web Server** lets you use IW8 Radiant from a web browser, including on a phone or tablet. The browser shows
+the editor's live camera view, the 2D views, the entity list and inspector, and the main dialogs, and it can build and
+play the map. The server is available only on your computer unless you enable network access in the web server
+settings, which requires a password.
 
-`iw8r_in_trigger(player, "name")` tells you whether a player is inside the named trigger. Write your own code in the
-**Script** dock (View > Script). The build appends it after the generated map script. Use `iw8r_trigger` instead of
-`getent` for triggers.
+## 16. Troubleshooting
 
-### Hinged doors
-
-Select the door brush and choose Primitives > Scripted Objects > Make Hinged Door. The door hangs on a hinge at one end of its longer side. In game, press Use near it: it swings away from you and stays open until someone uses it again. It needs no trigger. The key `iw8r_hinge` moves the hinge: `far` takes the other end, and `x y z` names the point. The key `iw8r_door` holds the swing: `hinge <angle> [time]` stays open, `rotate <angle> [time] [hold]` closes by itself, `slide <x> <y> <z> [time] [hold]` slides. View > Behaviour Preview shows the swing in the camera. Not seen in game yet.
-
-### Live material preview
-
-File > New Custom Material and File > Edit Custom Material show the material on a sphere, a plane or a cube. The picture follows every control as you change it: blend mode, unlit, emission, tint, two-sided and alpha test. Drag the picture to turn the object, move the sun with the sliders, or tick Spin. It uses the editor's own renderer, so it is close to the game but not identical: it has no shadows, no reflections, no fog and no colour grade.
-
-### Using the editor from a browser
-
-**Tools > Web Server** serves the editor to a browser on the same machine (`http://127.0.0.1:8780`; **Web Server
-Settings** has the port, a login for other machines and HTTPS). The page works on the same live map as the window:
-one undo history, and each side sees the other's edits at once.
-
-- **Menu bar.** The editor's own menus, with ticks and shortcuts. **Find a command** searches them all; Enter runs
-  the first match. A command that would open a dialog on the editor's screen is greyed, with that reason.
-  Sun & Sky, Atmosphere, Lightmap Bake Settings and Map Info (all in the web Compile menu) open as forms in the
-  page instead: change what you want, then OK or Apply. Only the changed fields are written, as one undo step.
-  Tools > Game Modes is a form too: pick a mode and whether to carry it in the map, use it for F5, or insert the
-  Warzone start entities. Tools > Check Map shows the findings and can apply the automatic fixes. Edit > Preferences
-  has the editing, build and F5 settings (asset folders and the F5 host command are set at the editor only). The
-  Atmosphere form also takes vision overrides (`name=value; name=x y z`), and Compile > Vision Editor (every
-  field) lists them all with their stock values. Edit > Surface edits the texture of the
-  selected brushes (size, offsets, rotation, lightmap scale, Fit / Natural / Justify); Apply keeps the form open and
-  shows the result. To work on one face, Ctrl + click it in the "Editor view (live)" first (Ctrl + Shift + click
-  adds another). Edit > Undo History lists the steps; choose one to go back or forward to it. View > Layers shows
-  and hides layers, selects a layer's brushes and moves the selection to a
-  layer. Compile > Compile Options and Build Budget has the map id, the build switches and the last build's figures
-  against their limits.
-- **View box.** Top, Front and Side are drawn in the browser (drag to pan or move the selection, wheel to zoom,
-  click to select). **3D** is a simple view drawn in the browser. **Editor view (live)** is the editor's own camera
-  picture, drawn by the editor for your browser: drag to look, W A S D and Q E to fly (Shift is faster), wheel to
-  move forward and back, right-drag to slide, click to select. Camera modes, Lit Preview and Game Lighting from the
-  View menu apply to it.
-- **Building.** **Draw brush**, then drag a rectangle in a Top, Front or Side view: a brush with the current
-  material, 64 units in the third direction. A selected brush has a handle on each side of its box: drag one to
-  resize. Clone, delete, copy, paste and rotate are in the page's Edit and Brush menus.
-- **Entities.** Type a class under the entity list and press Place: a point entity of that class, on the surface at
-  the centre of the live view or at the 2D view's centre. The Inspector shows what the class is, each key's help
-  (hover the key; required keys are marked), suggests the class's keys, and lists what Check Map says about it.
-- **Warzone maps.** While you fly in "Editor view (live)", the detailed world (streamed tiles, terrain layers) loads
-  around the browser's camera; a few seconds after you stop it goes back to the editor's own camera.
-- **Vertices and edges.** Tool in the toolbar: with Vertices or Edges, the selected brushes show a handle on every
-  corner or edge of a Top, Front or Side view. Drag a handle: every corner under it moves, so the faces stay flat. A
-  move the brush cannot take is refused with the reason in the status line. A selected patch shows its control
-  points with Vertices; locked points are left out.
-- **Panels.** Entities (with a filter), the Inspector (edit, add and remove keys), Assets (click a material to apply
-  it, a model, effect, sound or prefab to place it; prefabs land in front of the live view; the round "i" button
-  shows the info text of a material, model or effect) and the Log. In the live editor view an asset is placed on the surface
-  at the centre of the picture; in the drawn 2D views at the view's centre, at height 0.
-- Big maps load: models are sent as boxes for the drawn views, and after the first load only changes travel.
-
-## 12. Known limits
-
-Not verified in game for every feature (see docs/MILESTONES.md). Stock xmodels are rebuilt as copies, not referenced
-by name. Baked lightmaps (section 6) are built and checked offline but not yet seen in game.
-
-The owner's playtest of 2026-11-11 left these open. docs/ROADMAP.md (fix queue F.1 to F.18) has the details:
-
-- Hurt triggers and damage zones fired but did no damage in the second playtest. They now use the radius damage call.
-  Not seen in game yet.
-- A looping sound of the map's own, played from an effect, was not heard in game, though the ambient bed was. Unresolved.
-- Reverb is not confirmed in game.
-- Reflection probes made no visible change in game. The cause was found on 2026-11-14 (they were stored grey and
-  far too dark) and fixed; rebuild the map. Not seen in game yet.
-- Only Team Deathmatch can be picked in the game's lobby. Other modes say the map does not support them. Live Link >
-  Quick match starts other modes directly.
-- Bullet impacts look alike on every surface in game. The build tags each surface correctly; the cause is not known yet.
-- An edited stock map must be put into the game with File > Stock Map > Install Edited Stock Map Into Game (or
-  `IW8Radiant.exe --install-stock <folder>`), not copied by hand: a patch file (`.fp`) left beside the zone makes
-  the game drop the whole zone without a message (invisible map, blank minimap).
-- Weapon mounting (resting a weapon on cover): the build writes the mount edges the game needs since 2026-11-14
-  (research 125); rebuild the map. Proven offline, not seen in game yet. The edges are the open outside wall corners
-  (32 units and taller) and ledge tops (16 units and longer) of the map's visible solid brushes and of placed
-  models' collision hulls (a crate, a barrier; a round shape built from facets gives no corners); the build log
-  counts them and View > Show Compiled Collision draws them in yellow. Worldspawn `iw8r_mount_edges brushes` keeps
-  the brushes' edges only, `0` turns them off. A mounted player can change sides of cover up to 16 units thick.
-  Mantling works without them.
-- Killstreak visuals: a radar killstreak showed no pings in one playtest. Nothing in a map can switch them off
-  (research 122); the Personal Radar drone does not ping enemies with the Ghost perk and has no sweep line. Players
-  were invisible in the Chopper Gunner view and the radar aircraft was invisible; the cause was found and fixed on
-  2026-11-14 (rebuild the map; not seen in game yet).
-  Worldspawn `iw8r_airspace "<up> [out]"` sets how far the map's occlusion data reaches past its geometry (default
-  131072 units, as in stock maps).
-- Prefabs made of models showed as boxes, and dragging a prefab did not work. Both were changed after the second
-  playtest. Not seen in game yet.
-- A ladder's bottom was not climbable in game, and the hands sat a little off the ladder. The ladder was rebuilt after
-  the second playtest (section 3). Not seen in game yet.
-- Additive and multiply blending are not shown in the editor camera. The camera does show a custom material's tint.
-- A custom material's normal and specular images are drawn in View > Game Lighting as the build draws them: the
-  specular image's colour is how strongly the surface reflects, its alpha how tight the sun's highlight is. A bright
-  specular image also reflects the map's reflection probe everywhere (a grey one until you capture probes), so start
-  with a dark specular image (40 to 80 of 255) and raise it where the surface should shine.
-  Gloss scale is not done yet. Not seen in game yet.
-- Make Editable Copy, Adjust Image, Techset Info and Asset Usage are tested offline only. The Techset export has not
-  been run on a real cached material by a test.
+- **The editor crashed**: a crash report is saved in `%LOCALAPPDATA%\IW8 Radiant\IW8 Radiant\crashes`. Include it
+  when you report the problem.
+- **Lost work**: unsaved changes are saved every five minutes. Use **File > Autosave History / Recover**. Every save also keeps the previous version as a `.bak` file.
+- **A texture or model is missing from a build**: the editor was still reading it from the game. Build again.
+- **Deploy failed**: the game has the map loaded. Load another map in the game, then deploy again.
+- **Script errors**: double-click the error in the Compile log to open the script at that line.
+- **Settings problems**: hold Shift while starting the editor, or start it with `--safe-mode`, to use the default
+  settings. **Help > Reset All Settings** resets them permanently.
+- **Logs**: **View > Console** shows the editor's messages, and **Compile > Show Replay Log** shows the game's logs.

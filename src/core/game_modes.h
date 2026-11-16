@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - game mode presets (owner scope 2026-11-12: "warzone-specific editing and map/mode creation";
+// IW8 Radiant - game mode presets (owner scope 2026-11-12: "warzone-specific editing and map/mode creation";
 // docs/research/87_warzone_survey.md sections 4 to 6).
 //
 // In this game a mode variant is not a script: it is a game type script (war, dom, br ...) plus dvars. Trios, Quads,

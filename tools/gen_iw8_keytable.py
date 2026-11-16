@@ -1,4 +1,4 @@
-"""Generate the IW8 canonical key table (id<TAB>name) used by IW8 Radiant Suite.
+"""Generate the IW8 canonical key table (id<TAB>name) used by IW8 Radiant.
 
 IW8 runtime entity strings (MapEnts::entityString, Replay 1.20.4.7623265) spell keys as
 canonical script-string ids, e.g. `212 "worldspawn"`. The id -> name list is not shipped

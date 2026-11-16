@@ -231,7 +231,7 @@ TEST(convex_pieces_keep_a_door_frame_open) {
     // space is Y-up: map z is y). Its doorway at mid height is free, its jambs collide.
     const char* lad = std::getenv("LOCALAPPDATA");
     const std::string glb = std::string(lad ? lad : "") +
-                            "/IW8 Radiant Suite/IW8 Radiant Suite/model_cache/glb/tm_door_frame_wooden_panel_03_painted_mp.glb";
+                            "/IW8 Radiant/IW8 Radiant/model_cache/glb/tm_door_frame_wooden_panel_03_painted_mp.glb";
     ImportedModel frame;
     GlbReadOptions ro;
     ro.scale = 1.0 / 0.0254;  // as the model cache reads it: glTF metres to inches, Y-up

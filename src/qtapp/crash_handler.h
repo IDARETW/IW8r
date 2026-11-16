@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - crash handler (roadmap 9.5): an unhandled exception writes
+// IW8 Radiant - crash handler (roadmap 9.5): an unhandled exception writes
 // <dir>/crash-<yyyyMMdd-HHmmss>.txt (exception code, address, symbolized stack with file:line from the PDB) and a
 // minidump beside it, then lets Windows end the process. The editor shows the newest report on the next start.
 #pragma once

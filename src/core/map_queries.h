@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - map queries: Radiant's Select by material / class / key, material usage,
+// IW8 Radiant - map queries: Radiant's Select by material / class / key, material usage,
 // find & replace of materials and the "Check map" problem list.
 //
 // Matching rules: materials compare ASCII case-insensitively; classnames, keys and key values compare

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - spatial draw chunks for frustum culling (roadmap 3.20). Pure core code.
+// IW8 Radiant - spatial draw chunks for frustum culling (roadmap 3.20). Pure core code.
 //
 // A batch of triangles (one material) is reordered so that nearby triangles are contiguous (Morton order of the
 // triangle centroids on a 1024^3 grid over the batch bounds) and cut into chunks of at most `maxTriangles`, each with

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - GUI checks for the side bar's Stock Map panel (stock_map_panel.h): its icon shows
+// IW8 Radiant (Qt shell) - GUI checks for the side bar's Stock Map panel (stock_map_panel.h): its icon shows
 // only while a stock map is open, it fits the narrow side section, and every control edits the stock map keys with
 // one undo step per finished change (a slider drag is one step). Called from the GUI test runner (qt_gui_test.cpp)
 // after the loot checks, with mp_br_tut open, and from the feature shots (IW8R_FEATURE_SHOTS_ONLY=stock_panel).

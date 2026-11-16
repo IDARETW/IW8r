@@ -1,6 +1,6 @@
 <#
-  IW8 Radiant Suite - installer build (roadmap 9.9).
-  1. Runs tools\package_release.ps1 -NoZip (builds out\package\IW8RadiantSuite from bin\release).
+  IW8 Radiant - installer build (roadmap 9.9).
+  1. Runs tools\package_release.ps1 -NoZip (builds out\package\IW8Radiant from bin\release).
   2. Finds the Inno Setup 6 compiler (ISCC.exe) and compiles tools\installer\iw8radiant.iss into out\installer\.
   If ISCC.exe is not found, step 2 is skipped and the install instructions are printed (exit code 2).
   Usage: powershell -ExecutionPolicy Bypass -File tools\build_installer.ps1 [-Zip] [-Iscc <path to ISCC.exe>]
@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $pkgScript = Join-Path $root 'tools\package_release.ps1'
 $issFile = Join-Path $root 'tools\installer\iw8radiant.iss'
-$pkgDir = Join-Path $root 'out\package\IW8RadiantSuite'
+$pkgDir = Join-Path $root 'out\package\IW8Radiant'
 $outDir = Join-Path $root 'out\installer'
 
 # 1. Package the runtime folder.
@@ -52,7 +52,7 @@ Write-Host "compiling with $Iscc"
 & $Iscc "/DSourceDir=$pkgDir" "/O$outDir" $issFile
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed (exit $LASTEXITCODE)" }
 
-$setup = Get-ChildItem $outDir -Filter 'IW8RadiantSuite-Setup-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$setup = Get-ChildItem $outDir -Filter 'IW8Radiant-Setup-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($setup) {
     Write-Host ("installer: {0} ({1:N1} MB)" -f $setup.FullName, ($setup.Length / 1MB))
 }

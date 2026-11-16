@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - procedural scatter rules (roadmap 8.12): place misc_model props on floors and
+// IW8 Radiant - procedural scatter rules (roadmap 8.12): place misc_model props on floors and
 // walls by slope and material, with a density and a minimum spacing. Pure core: no UI.
 //
 // Pipeline: collectSurfaces() flattens the map's solid surfaces into triangles, scatter() samples points on

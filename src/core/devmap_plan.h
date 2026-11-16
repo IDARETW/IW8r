@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - one-key "devmap" for Replay 1.20 MP (docs/research/65_devmap_one_key.md).
+// IW8 Radiant - one-key "devmap" for Replay 1.20 MP (docs/research/65_devmap_one_key.md).
 //
 // Replay 1.20 is a ship build: in multiplayer it has no `map` / `devmap` console command (those are registered only
 // by ComGameModeAppSP::InitializeGameMode, the SP table at 0x145A05960; the MP server table at 0x1445C00D0 holds

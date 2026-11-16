@@ -59,7 +59,7 @@ TEST(stock_world_brushes_real_cache_region) {
     const char* local = std::getenv("LOCALAPPDATA");
     if (!local) return;
     namespace fs = std::filesystem;
-    const fs::path dir = fs::path(local) / "IW8 Radiant Suite" / "IW8 Radiant Suite" / "world_cache" / "mp_shipment";
+    const fs::path dir = fs::path(local) / "IW8 Radiant" / "IW8 Radiant" / "world_cache" / "mp_shipment";
     std::error_code ec;
     if (!fs::exists(dir, ec)) return;
     StockWorld w;

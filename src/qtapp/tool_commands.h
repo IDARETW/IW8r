@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - editor commands over the core generator modules: CSG merge, extrude,
+// IW8 Radiant (Qt shell) - editor commands over the core generator modules: CSG merge, extrude,
 // primitives, patch cap/weld/redisperse/split/terrain/noise/smooth, rope, model scatter, drop to floor.
 // Each is one undo step and returns false (changing nothing) when it does not apply.
 #pragma once

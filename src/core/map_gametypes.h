@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - which game types a map can be played in (roadmap F.11, 6.2, 6.18).
+// IW8 Radiant - which game types a map can be played in (roadmap F.11, 6.2, 6.18).
 //
 // The recompiled Replay client lists a custom map with Team Deathmatch only unless the package's map.json names more
 // ("gameTypes": "war dm dom"; client DW_MapAvailability.cpp, research 79). The editor writes that list: a game type is

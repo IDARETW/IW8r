@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - per-sound settings (roadmap 12.8). A sidecar file next to a custom sound, <stem>.iw8snd.json,
+// IW8 Radiant - per-sound settings (roadmap 12.8). A sidecar file next to a custom sound, <stem>.iw8snd.json,
 // overrides the build's defaults for that sound: volume, distances, looping and 2D. Every field is optional.
 //   sounds/fire_loop.wav  +  sounds/fire_loop.iw8snd.json  { "volume": 0.8, "dist_min": 120, "dist_max": 1500 }
 // Pure core code.

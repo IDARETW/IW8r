@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - further convex brush operations (roadmap 2.6, 2.8, 2.9) on top of brush_ops.h.
+// IW8 Radiant - further convex brush operations (roadmap 2.6, 2.8, 2.9) on top of brush_ops.h.
 //
 // Same model as brush_ops.h: a ConvexBrush is a list of outward half-space faces (dot(n, x) <= d) with
 // their Radiant face suffixes. Functions return nullopt instead of building an invalid brush.

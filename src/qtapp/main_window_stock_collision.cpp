@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - a stock map's props in the play preview, by the build's model collision rule (core
+// IW8 Radiant - a stock map's props in the play preview, by the build's model collision rule (core
 // model_physics.h): a prop without a stock physics asset (most bushes,
 // grass) is walked through, one with a physics asset blocks with that asset's convex pieces (read from the catalogue:
 // no model is loaded), and a prop whose physics shape is not read blocks with its render mesh's hull, made once per

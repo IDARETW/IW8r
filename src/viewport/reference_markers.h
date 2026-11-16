@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - which passes draw a piece of the stock reference (header only: core tests use it).
+// IW8 Radiant - which passes draw a piece of the stock reference (header only: core tests use it).
 //
 // Editor-only markers (the amber and red boxes of stock props whose model has not arrived or failed) never affect
 // game-like rendering: they are drawn on screen only, never in a probe or clean capture and never in the sun shadow

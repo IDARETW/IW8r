@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - Vision editor (roadmap 5.6): every Replay vision field with an optional override value.
+// IW8 Radiant (Qt shell) - Vision editor (roadmap 5.6): every Replay vision field with an optional override value.
 #pragma once
 
 #include <QString>

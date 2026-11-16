@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - bevel and inset operations on convex brushes (roadmap 2.23).
+// IW8 Radiant - bevel and inset operations on convex brushes (roadmap 2.23).
 //
 // Same model as brush_ops.h: a ConvexBrush is a list of outward half-space faces with their Radiant suffixes.
 // Functions return nullopt (or an empty list) instead of building an invalid brush.

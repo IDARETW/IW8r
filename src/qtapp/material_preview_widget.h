@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - live preview panel for the Material Editor (software render of a custom material).
+// IW8 Radiant - live preview panel for the Material Editor (software render of a custom material).
 #pragma once
 
 #include <QElapsedTimer>

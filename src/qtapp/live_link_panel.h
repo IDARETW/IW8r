@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - Live Link dock, phase A: status, select the deployed map, allowlisted console line and
+// IW8 Radiant (Qt shell) - Live Link dock, phase A: status, select the deployed map, allowlisted console line and
 // a camera readback, all over the proxy control file (docs/research/25_live_link.md). The protocol and every check live
 // in core/live_link; this widget only drives them. It never starts or stops Replay and never sends keys or clicks.
 #pragma once

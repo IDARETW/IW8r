@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - software preview of one custom material (Material Editor live preview).
+// IW8 Radiant - software preview of one custom material (Material Editor live preview).
 //
 // Renders a material on a sphere, plane or cube, lit with the same terms as the editor camera's texture shader
 // (viewport/render.cpp ps_tex): sRGB colour x tint, Lambert sun + ambient, a specular lobe whose reflectance comes from

@@ -504,7 +504,7 @@ TEST(model_physics_open_pieces_never_reach_the_world) {
     }
     // The real bracket (a machine fixture: the model cache's GLB), when it is there.
     const char* la = std::getenv("LOCALAPPDATA");
-    const fs::path glb = la ? fs::path(la) / "IW8 Radiant Suite" / "IW8 Radiant Suite" / "model_cache" / "glb" / "tm_decor_barbed_wire_bracket_01.glb"
+    const fs::path glb = la ? fs::path(la) / "IW8 Radiant" / "IW8 Radiant" / "model_cache" / "glb" / "tm_decor_barbed_wire_bracket_01.glb"
                             : fs::path();
     ImportedModel bracket;
     GlbReadOptions o;

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - incremental build support (see build_cache.h and docs/research/44_incremental_builds.md).
+// IW8 Radiant - incremental build support (see build_cache.h and docs/research/44_incremental_builds.md).
 #include "build_cache.h"
 #include <algorithm>
 

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the placed scripted objects of a stock map (roadmap 13.5, docs/research/89 section 6).
+// IW8 Radiant - the placed scripted objects of a stock map (roadmap 13.5, docs/research/89 section 6).
 //
 // A stock map keeps its scriptable instances (doors, signs, the Warzone buy stations) in MapEnts
 // scriptableMapEnts.mapInstances, not in the entity text. Most of them also have dynamic entities that hold a second

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - spline tools (roadmap 2.26): a centripetal Catmull-Rom path through control points, and
+// IW8 Radiant - spline tools (roadmap 2.26): a centripetal Catmull-Rom path through control points, and
 // walls, fence posts and pipes built along it as convex brushes.
 //
 // Coordinates follow the editor convention: Z up, units = inches. Every brush is a ConvexBrush (see brush_ops.h)

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - GUI checks for the sound settings, vision editor and technique set dialogs.
+// IW8 Radiant (Qt shell) - GUI checks for the sound settings, vision editor and technique set dialogs.
 #pragma once
 
 #include <functional>

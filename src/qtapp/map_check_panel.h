@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - the Map Check side bar panel (owner 2026-11-15: "we don't need a separate tools menu,
+// IW8 Radiant (Qt shell) - the Map Check side bar panel (owner 2026-11-15: "we don't need a separate tools menu,
 // what we need to do with that is implement any appropriate tools into already-existing menus or into new menus").
 //
 // The map's Check Map findings in the flush panel layout (panel_chrome.h): the header with the count, a re-check

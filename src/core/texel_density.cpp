@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - texel density of brush faces (see texel_density.h).
+// IW8 Radiant - texel density of brush faces (see texel_density.h).
 #include "texel_density.h"
 
 #include <algorithm>

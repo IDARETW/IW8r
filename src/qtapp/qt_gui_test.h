@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - scripted end-to-end GUI test (--gui-test).
+// IW8 Radiant (Qt shell) - scripted end-to-end GUI test (--gui-test).
 // Runs on Qt's offscreen platform: events go straight to the widgets, so no OS cursor, keyboard or
 // visible window is involved and a mapper can keep working in another instance.
 #pragma once

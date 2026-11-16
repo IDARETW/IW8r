@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - view frustum culling math (roadmap 3.20). Pure core code: no viewport, Qt or D3D headers.
+// IW8 Radiant - view frustum culling math (roadmap 3.20). Pure core code: no viewport, Qt or D3D headers.
 #pragma once
 
 #include <cstddef>

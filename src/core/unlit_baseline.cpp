@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - unlit baseline check (roadmap 1.8). See unlit_baseline.h and docs/research/55_unlit_baseline.md.
+// IW8 Radiant - unlit baseline check (roadmap 1.8). See unlit_baseline.h and docs/research/55_unlit_baseline.md.
 #include "unlit_baseline.h"
 
 #include <algorithm>

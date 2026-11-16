@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - Compile dock: map source -> IW8 extraction (native, in-process) ->
+// IW8 Radiant (Qt shell) - Compile dock: map source -> IW8 extraction (native, in-process) ->
 // Replay 1.20 zones (x64-zt buildextraction) -> ACTS validation. Runs asynchronously; the editor stays usable.
 #pragma once
 

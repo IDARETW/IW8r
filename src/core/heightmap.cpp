@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - terrain height-map import/export, erosion and slope-based blend weights (see heightmap.h).
+// IW8 Radiant - terrain height-map import/export, erosion and slope-based blend weights (see heightmap.h).
 #include "heightmap.h"
 
 #include <algorithm>

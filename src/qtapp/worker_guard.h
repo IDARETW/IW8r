@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - the body of a detached worker thread. An exception that leaves a std::thread ends the
+// IW8 Radiant (Qt shell) - the body of a detached worker thread. An exception that leaves a std::thread ends the
 // process (std::terminate -> abort): on Verdansk an allocation that failed in a terrain-layer or lightmap worker took
 // the editor down (2026-11-13). guardedWorker runs the body and logs such an exception instead.
 #pragma once

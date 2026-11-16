@@ -22,7 +22,7 @@ LIB = os.path.join(ROOT, 'data', 'prefabs', 'iw8r')
 
 def default_model_index():
     base = os.environ.get('LOCALAPPDATA', '')
-    return os.path.join(base, 'IW8 Radiant Suite', 'IW8 Radiant Suite', 'model_cache', 'index.json')
+    return os.path.join(base, 'IW8 Radiant', 'IW8 Radiant', 'model_cache', 'index.json')
 
 
 def parse_map(text):

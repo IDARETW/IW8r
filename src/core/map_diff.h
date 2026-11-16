@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - entity-level change report between two maps (roadmap 11.7 / 2.28), exportable as a JSON patch.
+// IW8 Radiant - entity-level change report between two maps (roadmap 11.7 / 2.28), exportable as a JSON patch.
 //
 // Entity identity. Entities of map A and map B are paired by the first rule that applies. Each pass only pairs
 // entities that are still unpaired, and passes run over the whole map before the next one starts:

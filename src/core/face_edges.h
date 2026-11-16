@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - face edges: a geometric input for custom surface shaders (core custom_shader, plan M6): how far a
+// IW8 Radiant - face edges: a geometric input for custom surface shaders (core custom_shader, plan M6): how far a
 // pixel is from the nearest edge of its brush face, and what lies across that edge. Nothing here decides a look: a
 // shader may draw outlines with it (data/shaders/toon.iw8shader.hlsl), wear, highlights, or ignore it. The data is
 // only made for maps whose shaders read the edge inputs (customShaderUsesEdges).

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the mapper's own decal volumes in the editor's 3D view (research 132 G6).
+// IW8 Radiant - the mapper's own decal volumes in the editor's 3D view (research 132 G6).
 //
 // An `iw8r_decal` point entity (origin; angles: the forward axis is the projection direction and points into the
 // surface; size "depth width height"; material; opacity; uv_rotate, uv_scale, uv_shift) is built as a world decal

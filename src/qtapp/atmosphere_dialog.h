@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Atmosphere dialog (doc 31): exponential fog and film grade, stored as worldspawn iw8r_fog /
+// IW8 Radiant - Atmosphere dialog (doc 31): exponential fog and film grade, stored as worldspawn iw8r_fog /
 // iw8r_film (see src/core/atmosphere.h) and written by the compiler as the setExpFog gsc and the r_film* vision file.
 #pragma once
 

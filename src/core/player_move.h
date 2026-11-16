@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - play preview player movement over a CollisionWorld, matched to the Replay 1.20 pmove. Every
+// IW8 Radiant - play preview player movement over a CollisionWorld, matched to the Replay 1.20 pmove. Every
 // constant and rule, the function of the game exe it was read from and whether it is verified there, is in
 // docs/research/140_movement_parity.md. Covered: PM_WalkMove / PM_AirMove wish speeds (PM_CmdScale with the stance,
 // sprint, tactical sprint, jog, back and strafe scales), PM_Friction (5.5 with a 100 control floor), PM_Accelerate

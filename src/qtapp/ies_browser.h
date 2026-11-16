@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - IES Profile Browser (roadmap 5.13): LM-63 files of a folder (data/ies by default) with a
+// IW8 Radiant (Qt shell) - IES Profile Browser (roadmap 5.13): LM-63 files of a folder (data/ies by default) with a
 // polar plot of the C0 plane (core ies_profiles) and the 128-texel strip Replay's spot light samples; "Use for Selected
 // Lights" writes iw8r_ies on the selected light / light_spot entities (one undo step). The two profiles Replay ships
 // (data/asset_catalog/iw8_ies_profiles.tsv) are listed for reference.

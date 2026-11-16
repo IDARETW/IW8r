@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - camera path (fly-through) keys, sampling, timing and JSON storage.
+// IW8 Radiant - camera path (fly-through) keys, sampling, timing and JSON storage.
 // Core only: no dependency on src/viewport. Callers map a CameraKey onto their own camera.
 #pragma once
 

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - spawn analysis (see spawn_analysis.h).
+// IW8 Radiant - spawn analysis (see spawn_analysis.h).
 #include "spawn_analysis.h"
 
 #include <algorithm>

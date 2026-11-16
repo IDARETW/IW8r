@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - procedural scatter rules (roadmap 8.12). See scatter_rules.h.
+// IW8 Radiant - procedural scatter rules (roadmap 8.12). See scatter_rules.h.
 #include "scatter_rules.h"
 
 #include <algorithm>

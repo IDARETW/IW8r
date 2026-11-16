@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - compiled shader cache (owner 2026-11-15: "the viewport rendering ... never frozen, and other
+// IW8 Radiant - compiled shader cache (owner 2026-11-15: "the viewport rendering ... never frozen, and other
 // workloads on others").
 //
 // The renderer's built-in shaders took about 10 s of D3DCompile on the GUI thread when the editor started, and again

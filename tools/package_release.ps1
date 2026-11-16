@@ -1,7 +1,7 @@
 <#
-  IW8 Radiant Suite - release package (roadmap 9.6).
+  IW8 Radiant - release package (roadmap 9.6).
   Copies the runtime files of bin\release (editor, CLI, Qt runtime, ADS) plus licences and docs into
-  out\package\IW8RadiantSuite, then zips it to out\package\IW8RadiantSuite-<date>.zip.
+  out\package\IW8Radiant, then zips it to out\package\IW8Radiant-<date>.zip.
   Left out: tests, PDBs, import libs, renamed running copies (*.running-*, *.prev-*), user layout/ini files, and any
   game data (no GPL or game assets are shipped).
   Usage: powershell -ExecutionPolicy Bypass -File tools\package_release.ps1 [-NoZip]
@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $bin = Join-Path $root 'bin\release'
 $outRoot = Join-Path $root 'out\package'
-$dest = Join-Path $outRoot 'IW8RadiantSuite'
+$dest = Join-Path $outRoot 'IW8Radiant'
 if (-not (Test-Path (Join-Path $bin 'IW8Radiant.exe'))) { throw "build first: $bin\IW8Radiant.exe not found" }
 if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
 New-Item -ItemType Directory -Force $dest | Out-Null
@@ -44,7 +44,7 @@ foreach ($f in 'iw8_entity_defs.json', 'iw8_entity_classes.json', 'hotkey_preset
 # (THIRD_PARTY.md), Qt (LGPLv3, dynamic linking) and the Qt Advanced Docking System (LGPLv2.1).
 $lic = Join-Path $dest 'licenses'
 New-Item -ItemType Directory -Force $lic | Out-Null
-Copy-Item (Join-Path $root 'LICENSE') (Join-Path $lic 'IW8RadiantSuite-GPL-3.txt')
+Copy-Item (Join-Path $root 'LICENSE') (Join-Path $lic 'IW8Radiant-GPL-3.txt')
 Copy-Item (Join-Path $root 'THIRD_PARTY.md') (Join-Path $lic 'THIRD_PARTY.md')
 Copy-Item (Join-Path $root 'third_party\qtads\LICENSE') (Join-Path $lic 'QtADS-LGPL-2.1.txt')
 $licenseFiles = [ordered]@{
@@ -67,7 +67,7 @@ $licenseFiles = [ordered]@{
 }
 foreach ($k in $licenseFiles.Keys) { Copy-Item (Join-Path $root $licenseFiles[$k]) (Join-Path $lic $k) }
 @"
-IW8 Radiant Suite: GNU General Public License v3 (IW8RadiantSuite-GPL-3.txt). Source: https://github.com/IDARETW/IW8r
+IW8 Radiant: GNU General Public License v3 (IW8Radiant-GPL-3.txt). Source: https://github.com/IDARETW/IW8r
 The tools beside the editor are built from that source: iw8r-gsc.exe (gsc-tool by xensik, GPL-3), iw8r-zt.exe (x64-zt,
 GPL-3) and iw8r-acts.exe (atian-cod-tools by Antoine Willerval, MIT); the libraries are listed in THIRD_PARTY.md.
 - Qt 6.8 (https://www.qt.io): LGPL v3, used as unmodified shared libraries (Qt6*.dll and the plugin folders).
@@ -88,9 +88,7 @@ foreach ($need in 'data\shaders\toon.iw8shader.hlsl', 'data\shaders\stock.iw8sha
 # Docs for the mapper.
 $docs = Join-Path $dest 'docs'
 New-Item -ItemType Directory -Force $docs | Out-Null
-foreach ($d in 'README.md', 'docs\USER_GUIDE.md', 'docs\TUTORIAL.md', 'docs\ROADMAP.md', 'docs\MILESTONES.md', 'docs\ENTITY_REFERENCE.md',
-           'docs\AGENT_MAP_GUIDE.md', 'docs\TEST_CHECKLIST.md', 'docs\FEATURE_MATRIX.md',
-           'docs\HANDOVER.md', 'docs\KEYS_REFERENCE.md', 'CHANGELOG.md') {
+foreach ($d in 'README.md', 'docs\USER_GUIDE.md', 'docs\TUTORIAL.md', 'docs\KEYS_REFERENCE.md') {
     $p = Join-Path $root $d
     if (Test-Path $p) { Copy-Item $p $docs }
 }
@@ -104,7 +102,7 @@ Copy-Item -Recurse (Join-Path $root 'samples\tutorial\prefabs') (Join-Path $tut 
 $size = (Get-ChildItem $dest -Recurse | Measure-Object Length -Sum).Sum
 Write-Host ("package folder: {0} ({1:N1} MB)" -f $dest, ($size / 1MB))
 if (-not $NoZip) {
-    $zip = Join-Path $outRoot ("IW8RadiantSuite-{0}.zip" -f (Get-Date -Format 'yyyyMMdd'))
+    $zip = Join-Path $outRoot ("IW8Radiant-{0}.zip" -f (Get-Date -Format 'yyyyMMdd'))
     if (Test-Path $zip) { Remove-Item -Force $zip }
     Compress-Archive -Path (Join-Path $dest '*') -DestinationPath $zip
     Write-Host ("zip: {0} ({1:N1} MB)" -f $zip, ((Get-Item $zip).Length / 1MB))

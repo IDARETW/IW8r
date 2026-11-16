@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - 2D node-view layout of the entity link graph (link_graph.h).
+// IW8 Radiant - 2D node-view layout of the entity link graph (link_graph.h).
 //
 // The editor panel draws entities as boxes and links as arrows. This module only computes positions.
 //

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - browser access (roadmap L10): a small HTTP/1.1 server inside the editor.
+// IW8 Radiant - browser access (roadmap L10): a small HTTP/1.1 server inside the editor.
 //
 // The browser client (data/web/index.html + app.js) drives the same live document as the desktop window, so both share
 // one undo history. Off by default (Tools > Web Server); it listens on 127.0.0.1 unless "web/lan" is set. Requests from

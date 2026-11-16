@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - iw3xo-style generators (see generators.h).
+// IW8 Radiant - iw3xo-style generators (see generators.h).
 #include "generators.h"
 
 #include <algorithm>

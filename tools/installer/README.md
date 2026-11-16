@@ -1,14 +1,14 @@
-# IW8 Radiant Suite installer
+# IW8 Radiant installer
 
 Windows installer for the editor package (roadmap 9.9). It is built from the package folder that
 `tools\package_release.ps1` produces, using Inno Setup 6.
 
 ## Install
 
-1. Run `IW8RadiantSuite-Setup-<version>.exe` from `out\installer\`.
+1. Run `IW8Radiant-Setup-<version>.exe` from `out\installer\`.
 2. Choose the install mode on the first page:
-   - **Just me** (default): installs to `%LOCALAPPDATA%\Programs\IW8 Radiant Suite`, no administrator rights needed.
-   - **All users**: installs to `C:\Program Files\IW8 Radiant Suite`. Setup warns about this, because the settings
+   - **Just me** (default): installs to `%LOCALAPPDATA%\Programs\IW8 Radiant`, no administrator rights needed.
+   - **All users**: installs to `C:\Program Files\IW8 Radiant`. Setup warns about this, because the settings
      file then sits in a folder the editor cannot write without administrator rights. Prefer "Just me".
 3. Optionally tick the desktop shortcut. The Start menu entry is always created.
 4. The editor needs the **Microsoft Visual C++ 2015-2022 x64 Redistributable**. Setup checks for it and shows a
@@ -38,13 +38,13 @@ program files, Start menu and desktop shortcuts. It then asks, with **No** as th
 
 - **No** (keep): `IW8Radiant.ini`, `web_tls\` and the cache folders stay. A reinstall picks up your settings and
   caches.
-- **Yes**: deletes `IW8Radiant.ini`, `web_tls\` and `%LOCALAPPDATA%\IW8 Radiant Suite` (see below). This cannot be undone.
+- **Yes**: deletes `IW8Radiant.ini`, `web_tls\` and `%LOCALAPPDATA%\IW8 Radiant` (see below). This cannot be undone.
 
 Silent uninstalls (`/SILENT`, `/VERYSILENT`) keep the settings and caches.
 
 ### Cache and data folders
 
-All under `%LOCALAPPDATA%\IW8 Radiant Suite\IW8 Radiant Suite\`:
+All under `%LOCALAPPDATA%\IW8 Radiant\IW8 Radiant\`:
 
 | Folder | Contents |
 |---|---|
@@ -76,8 +76,8 @@ from https://jrsoftware.org/isinfo.php. The build does not install Inno Setup.
 powershell -ExecutionPolicy Bypass -File tools\build_installer.ps1
 ```
 
-This runs `tools\package_release.ps1 -NoZip` to refresh `out\package\IW8RadiantSuite`, then compiles
-`tools\installer\iw8radiant.iss` with ISCC into `out\installer\IW8RadiantSuite-Setup-<version>.exe`.
+This runs `tools\package_release.ps1 -NoZip` to refresh `out\package\IW8Radiant`, then compiles
+`tools\installer\iw8radiant.iss` with ISCC into `out\installer\IW8Radiant-Setup-<version>.exe`.
 
 - `-Zip` also builds the zip (the package step without `-NoZip`).
 - `-Iscc "<path>\ISCC.exe"` uses an Inno Setup installed in another location.

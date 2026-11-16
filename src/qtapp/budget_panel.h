@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - Build Budget dock (roadmap 1.16): the last build's figures (core build_report) as bars
+// IW8 Radiant (Qt shell) - Build Budget dock (roadmap 1.16): the last build's figures (core build_report) as bars
 // against their limits: native limits x64-zt enforces and editor guidelines, green / amber / red. Read from
 // <build root>/last_build_report.json, refreshed after every build.
 #pragma once

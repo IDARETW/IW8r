@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - dockable panels: entity inspector, undo history, IW8 spawns, hotkeys.
+// IW8 Radiant (Qt shell) - dockable panels: entity inspector, undo history, IW8 spawns, hotkeys.
 #pragma once
 
 #include <array>

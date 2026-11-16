@@ -1,4 +1,4 @@
--- IW8 Radiant Suite build.
+-- IW8 Radiant build.
 -- Requires: Visual Studio 2022 Build Tools (C++ workload), xmake >= 2.8, Qt 6.8.3 msvc2022_64.
 --   xmake f -m release --qt=E:\Qt\6.8.3\msvc2022_64 -y
 --   xmake build -y iw8r_tests && xmake build -y iw8r && xmake build -y IW8Radiant

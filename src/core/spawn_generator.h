@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - generated starting spawns from a map's walkable geometry.
+// IW8 Radiant - generated starting spawns from a map's walkable geometry.
 //
 // A mapper (or a scripted agent) gets a reasonable spawn set in one step and then adjusts it. Floors come from the
 // player-blocking solids of the collision world; each grid column of `area` contributes every floor below the sky

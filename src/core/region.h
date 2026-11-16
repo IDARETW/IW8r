@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - map regions (Radiant Region: Set From Selection / Set From XY View / Off) and
+// IW8 Radiant - map regions (Radiant Region: Set From Selection / Set From XY View / Off) and
 // subset writing for File > Save Selected and File > Save Region.
 //
 // A region is an axis-aligned box. Primitives whose bounds do not overlap it, and point entities whose origin

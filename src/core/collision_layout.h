@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - how a built map lays out its collision (roadmap 14.1, docs/research/90_collision_tiles.md).
+// IW8 Radiant - how a built map lays out its collision (roadmap 14.1, docs/research/90_collision_tiles.md).
 //
 // A small map keeps all collision in its main zone ("one piece", what every core map does). A big map cuts it into
 // the game's fixed grid of 32 x 32 tiles of 8192 units around the origin: each tile is a small zone

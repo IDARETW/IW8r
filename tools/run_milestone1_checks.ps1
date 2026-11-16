@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Builds IW8 Radiant Suite and runs every milestone-1 check (edit -> save -> reopen).
+  Builds IW8 Radiant and runs every milestone-1 check (edit -> save -> reopen).
 
 .DESCRIPTION
   1. xmake release build of iw8r_tests, iw8r and IW8Radiant (Qt shell).

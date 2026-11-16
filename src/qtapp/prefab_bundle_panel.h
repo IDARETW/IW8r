@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - the prefab bundle part of the Entity dock (docs/PREFAB_BUNDLES.md). When the selected entity is
+// IW8 Radiant - the prefab bundle part of the Entity dock (docs/PREFAB_BUNDLES.md). When the selected entity is
 // a placement of a bundle, it shows the bundle's title and description, says when the bundle builds its fallback
 // contents and why, and gives one field per parameter of the manifest (label, default, range). A field writes the
 // placement's key with prefabParameterKey (one undo step). It hides itself for everything else.

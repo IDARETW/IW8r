@@ -14,7 +14,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-USER_CACHE = os.path.join(os.environ.get("LOCALAPPDATA", ""), "IW8 Radiant Suite", "IW8 Radiant Suite")
+USER_CACHE = os.path.join(os.environ.get("LOCALAPPDATA", ""), "IW8 Radiant", "IW8 Radiant")
 SCENES = {
     "sample_room": ("tests/data/iw8_sample_room.map", None),
     "fix1": ("out/perf/fix1/mp_iw8r_fix1.map", None),

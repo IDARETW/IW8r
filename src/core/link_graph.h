@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - link graph over entity target/targetname and script_linkto/script_linkname.
+// IW8 Radiant - link graph over entity target/targetname and script_linkto/script_linkname.
 //
 // Link keys (read through Entity::value, so canonical-id spellings resolve too):
 //   - target, target2 .. target8: the value is one targetname. Each entity whose targetname equals it is linked.

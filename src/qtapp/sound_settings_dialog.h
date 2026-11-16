@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - Sound Settings dialog (roadmap 12.8): edits the <stem>.iw8snd.json sidecar of a custom sound.
+// IW8 Radiant - Sound Settings dialog (roadmap 12.8): edits the <stem>.iw8snd.json sidecar of a custom sound.
 #pragma once
 
 #include <QString>

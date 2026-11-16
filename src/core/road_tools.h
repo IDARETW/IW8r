@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - roads, paths and rivers along splines that conform to the terrain (roadmap 8.13).
+// IW8 Radiant - roads, paths and rivers along splines that conform to the terrain (roadmap 8.13).
 //
 // Terrain: the editor has no "terrain" keyword in the text. Create Terrain writes a "mesh" patch made by
 // makeTerrainPatch (patch_ops2.h): a regular XY lattice with columns along +X, rows along +Y (row 0 = min Y),

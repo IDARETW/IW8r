@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - read and write the compiled spawnList of an x64-zt IW8D map_ents dump (Replay 1.20).
+// IW8 Radiant - read and write the compiled spawnList of an x64-zt IW8D map_ents dump (Replay 1.20).
 //
 // A stock MapEnts keeps its spawns out of the entity string: `spawnList` is a u16 count at MapEnts +0x128 and a
 // 40-byte record array (index, padding, name/target/noteworthy script strings, origin, angles). In the IW8D container

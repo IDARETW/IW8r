@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - batch key/value tools (roadmap 8.7): model replace and find/replace of any entity key.
+// IW8 Radiant - batch key/value tools (roadmap 8.7): model replace and find/replace of any entity key.
 #pragma once
 
 #include <set>

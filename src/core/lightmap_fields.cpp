@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - lightmap fields, patch control-point locks and the Surface panel lightmap edit (see lightmap_fields.h).
+// IW8 Radiant - lightmap fields, patch control-point locks and the Surface panel lightmap edit (see lightmap_fields.h).
 #include "lightmap_fields.h"
 #include <cmath>
 #include <algorithm>

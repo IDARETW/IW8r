@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - texel density of brush faces (texture and lightmap), for the texel-density view.
+// IW8 Radiant - texel density of brush faces (texture and lightmap), for the texel-density view.
 //
 // Pure core: no UI. The camera mode that draws these values is a separate change.
 //

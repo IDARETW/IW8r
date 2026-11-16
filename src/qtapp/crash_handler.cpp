@@ -61,7 +61,7 @@ LONG WINAPI onCrash(EXCEPTION_POINTERS* ep) {
     }
     // Unbuffered: a report that dies later (in the symbol lookup, on a damaged heap) keeps what was written.
     std::setvbuf(f, nullptr, _IONBF, 0);
-    std::fprintf(f, "IW8 Radiant Suite crash\nexception 0x%08lX at %p\n", ep->ExceptionRecord->ExceptionCode,
+    std::fprintf(f, "IW8 Radiant crash\nexception 0x%08lX at %p\n", ep->ExceptionRecord->ExceptionCode,
                  ep->ExceptionRecord->ExceptionAddress);
     if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && ep->ExceptionRecord->NumberParameters >= 2)
         std::fprintf(f, "access violation %s address 0x%llx\n", ep->ExceptionRecord->ExceptionInformation[0] ? "writing" : "reading",

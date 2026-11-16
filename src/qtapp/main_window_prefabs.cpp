@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - the main window's prefab commands: plain .map prefabs and prefab bundles
+// IW8 Radiant (Qt shell) - the main window's prefab commands: plain .map prefabs and prefab bundles
 // (docs/PREFAB_BUNDLES.md). Placing, the drag preview, placement ids on copies, the bundle panel of the Entity dock,
 // Save Selection As Prefab, explode / edit / make unique, and the asset folders the placed bundles bring.
 // These are MainWindow members kept in their own file (main_window.cpp is at the compiler's size limit).

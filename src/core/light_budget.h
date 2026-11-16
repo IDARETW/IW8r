@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - light budget (roadmap 5.15): which light entities the compiler turns into primary lights,
+// IW8 Radiant - light budget (roadmap 5.15): which light entities the compiler turns into primary lights,
 // how many of them reach each point of an area (heat map), and the Check Map warnings for the budget.
 #pragma once
 

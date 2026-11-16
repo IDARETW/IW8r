@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - stock scripted object catalog (roadmap 6.13). See scripted_objects.h.
+// IW8 Radiant - stock scripted object catalog (roadmap 6.13). See scripted_objects.h.
 #include "stock_scripted_catalog.h"
 
 #include <climits>

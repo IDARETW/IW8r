@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - pictures of the side bar's effect preview (VfxPreview), before and after its sprite
+// IW8 Radiant (Qt shell) - pictures of the side bar's effect preview (VfxPreview), before and after its sprite
 // look (owner 2026-11-15: "the preview should be square with the vfx fit in the middle centered", "a lot of vfx shows
 // as faint orbs").
 //

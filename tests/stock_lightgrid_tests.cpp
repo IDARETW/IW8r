@@ -528,7 +528,7 @@ TEST(stock_lgv_speedball_real) {
     std::vector<uint8_t> table(file.begin(), file.begin() + std::ptrdiff_t(n * 64));
 
     const char* local = std::getenv("LOCALAPPDATA");
-    const fs::path tz = local ? fs::path(local) / "IW8 Radiant Suite" / "IW8 Radiant Suite" / "world_cache" / "mp_m_speedball" /
+    const fs::path tz = local ? fs::path(local) / "IW8 Radiant" / "IW8 Radiant" / "world_cache" / "mp_m_speedball" /
                                     "assets" / "gfx_map_trzone" / "mp_m_speedball.0.asset.json"
                               : fs::path();
     std::string tzText;

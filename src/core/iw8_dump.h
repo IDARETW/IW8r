@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - x64-zt IW8 asset dump container ("IW8D", version 1), Replay 1.20.
+// IW8 Radiant - x64-zt IW8 asset dump container ("IW8D", version 1), Replay 1.20.
 //
 // x64-zt `-game iw8 dumpzone` writes one file per asset: u32 magic 'IW8D', u32 version 1, i32 asset type,
 // u32 record count, then records { u8 kind; data|string|asset|script_string: u64 value, u64 length, bytes;

@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - drivable stock vehicles on a map (roadmap 13.4, docs/research/89_warzone_work.md "Vehicles").
+// IW8 Radiant - drivable stock vehicles on a map (roadmap 13.4, docs/research/89_warzone_work.md "Vehicles").
 //
 // The stock Warzone maps place vehicles with structs in their entity text: script_struct_mp_atv, _tacrover, _jeep,
 // _cargotruck and _littlebird, each with `model`, `vehicletype` and targetname `<kind>_spawn`; the battle royale

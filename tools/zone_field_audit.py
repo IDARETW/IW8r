@@ -23,7 +23,7 @@ if '--stock' in args:
     stock_dir = os.path.abspath(args[args.index('--stock') + 1])
     del args[args.index('--stock'):args.index('--stock') + 2]
 built_path, kind = args[0], args[1]
-cache = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'IW8 Radiant Suite', 'IW8 Radiant Suite', 'world_cache')
+cache = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'IW8 Radiant', 'IW8 Radiant', 'world_cache')
 SKIP = ('address', 'type', 'extent_evidence', 'stride')
 
 

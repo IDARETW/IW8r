@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - light grid for builds (owner test 2026-11-10: the gun / viewmodel was black in custom maps because
+// IW8 Radiant - light grid for builds (owner test 2026-11-10: the gun / viewmodel was black in custom maps because
 // the editor wrote no light grid). docs/research/58_light_grid.md: the converter (x64-zt iw3_lightgrid.cpp) reads
 // extracted/maps/mp/<id>.d3dbsp.lightgrid.json plus four binary arrays and bakes Replay's grid from them. Viewmodels,
 // players, entities and static models sample it.

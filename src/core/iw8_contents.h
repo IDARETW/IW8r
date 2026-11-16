@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - IW3-style brush contents and surface types for the collision JSON.
+// IW8 Radiant - IW3-style brush contents and surface types for the collision JSON.
 //
 // The x64-zt converter reads IW3 source contents (`contents` per collision brush, `surfaceFlags` per collision
 // material) and maps them to Replay values. This module derives the same source values from the editor's

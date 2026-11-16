@@ -1,4 +1,4 @@
-// IW8 Radiant Suite (Qt shell) - GUI checks for the loot points of a Warzone stock map (roadmap 13.5, research 89):
+// IW8 Radiant (Qt shell) - GUI checks for the loot points of a Warzone stock map (roadmap 13.5, research 89):
 // the points of mp_br_tut become entities, are edited, and reach the edits file of the stock rebuild; the entity text
 // never holds them. Called from the GUI test runner (qt_gui_test.cpp). Skipped without the game's mp_br_tut zone.
 #pragma once

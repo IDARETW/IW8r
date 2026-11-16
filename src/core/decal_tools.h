@@ -1,4 +1,4 @@
-// IW8 Radiant Suite - decal tool (roadmap 8.10, phase A; research docs/research/46_decals_volumetrics_glass.md section 4.4).
+// IW8 Radiant - decal tool (roadmap 8.10, phase A; research docs/research/46_decals_volumetrics_glass.md section 4.4).
 //
 // A decal is a flat 2 x 2 "mesh" patch lying on a surface, offset a little along the surface normal, with an
 // alpha-tested custom material. It is built from today's converter with no fork change.
