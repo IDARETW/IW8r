@@ -681,7 +681,7 @@ reg("pillars_beams", "beam_wood_model_pair", "Two stock wood beams, side by side
 # and thin along x (model cache bounds below: x min, x max, half width, z min, z max): each is turned 90 degrees so the
 # rungs run along x, its back on the wall line (y = 0; the wall side is -y), the climbable brush over the rungs'
 # front (+y), as tall as the model (the steel ladder hangs from its top: raised to stand on the floor). The files in
-# data/prefabs/iw8r/ladders were rewritten this way by tools/patches/ladder_prefabs_fix.py (2026-11-15).
+# data/prefabs/iw8r/ladders were rewritten this way by a one-off script (2026-11-15).
 def _ladder(model, mx0, mx1, half, mz0, mz1):
     def build(p):
         depth, h = mx1 - mx0, round(mz1 - mz0)

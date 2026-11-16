@@ -1,4 +1,4 @@
 https://github.com/xensik/gsc-tool 1.6.2 6dc1aa3712b8b0bfda23afa304846383c18153d1 2026-10-22
 Only the IW8 compiler is kept (src/tools/gsc: utils, gsc common, lexer, parser, preprocessor, compiler,
 assembler, disassembler for compiled includes, engine/iw8*); the decompiler and printer are trimmed from
-the context by tools/patches/gsc_trim_context.py. The command line is ours: cli/iw8r_gsc.cpp.
+the context by tools/sync/gsc_trim_context.py. The command line is ours: cli/iw8r_gsc.cpp.

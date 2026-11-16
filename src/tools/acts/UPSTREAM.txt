@@ -3,4 +3,4 @@ Kept: the mw19replay fastfile handler and the mw19 Replay code (schema, bindings
 images, meshes, sounds and xpak), the fastfile option and handler types, the IW fastfile decompressor and the
 ACTS core pieces they call (logs, utils, hook, Oodle). Left out: every other game, tool, GSC, UI, PS4 and DLL
 part. iw8r/ holds our trimmed umbrella headers and the command line (iw8r-acts.exe). Licence: LICENSE.md
-(GPL-3 or MIT; used here under MIT). Copied by tools/patches/acts_sync_fork.py.
+(GPL-3 or MIT; used here under MIT). Copied by tools/sync/acts_sync_fork.py.

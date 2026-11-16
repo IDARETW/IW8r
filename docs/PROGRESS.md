@@ -18,8 +18,10 @@
   - zt build: xmake "smallest" adds /GL, so zt_flags uses /O1 with optimize "fork_size" (no flag); "fastest" = /O2.
   - Release files done: LICENSE (GPL-3, gsc-tool's text), THIRD_PARTY.md, README (clone --recursive, helper exes,
     key table from src/tools/gsc, run_all_tests), package_release.ps1 copies every licence into licenses/.
-  - Before making the repo public (owner): 10 tracked files hold C:\Users\<user> paths (tools/dw_candidate_*.py,
-    tools/patches/docs_round*.py, ...); no email or keys are tracked. The fork checkouts are no longer needed to build.
+  - Public initial commit (owner): user-folder paths replaced; the one-off patch scripts (tools/patches), the DW
+    client scripts (tools/dw_*.py) and the archived roadmap moved to E:\IW8-Radiant-local (outside the repository;
+    the old 299-commit history is in E:\IW8-Radiant-local\IW8r-history-2026-11-16.bundle). The tool sync scripts are
+    tools/sync. Earlier notes below name tools/patches scripts: they are in that local folder.
 - 2026-11-16 (owner: blank effect previews; "a one-time full metadata and thumbnails for everything we can in the
   menus ... include it as part of the project"; "compress previews too"; "stop relying on ACTs, gsc-tool, and the
   x64-zt fork"):

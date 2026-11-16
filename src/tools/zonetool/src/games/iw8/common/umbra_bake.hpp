@@ -1,7 +1,7 @@
-// Copied from IW8 Radiant (src/core/umbra_bake.h) by tools/patches/zt_umbra_bake.py: do not edit here.
+// A copy of the editor's src/core/umbra_bake.h: change both together.
 // An occlusion bake for a converted map: an Umbra tome with real cells and portals (plan 2.4, research 110 and 118).
 //
-// Header only and standard C++ only: the converter builds the same file (copied by tools/patches/zt_umbra_bake.py),
+// Header only and standard C++ only: the converter builds the same file (the editor's copy: src/core/umbra_bake.h),
 // because the tome's objects are the converter's final surfaces and placements.
 //
 // What it makes. One leaf tile (the layout of the converter's proven one-cell tome, with more cells):

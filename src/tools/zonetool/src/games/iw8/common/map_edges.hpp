@@ -1,8 +1,8 @@
-// Copied from IW8 Radiant (src/core/map_edges.h) by tools/patches/zt_map_edges.py: do not edit here.
+// A copy of the editor's src/core/map_edges.h: change both together.
 // The edge list of a built map (MapEdgeList): the static edges the game queries for weapon mounting, mantling and
 // ladders, with the octrees it walks to find them (research 125).
 //
-// Header only and standard C++ only: the converter builds the same file (copied by tools/patches/zt_map_edges.py),
+// Header only and standard C++ only: the converter builds the same file (the editor's copy: src/core/map_edges.h),
 // because it writes the asset.
 //
 // What the game reads (research 125 sections 2 to 4, 8 and 9, all checked against stock maps):

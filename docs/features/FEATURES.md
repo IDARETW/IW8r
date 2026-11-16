@@ -2,10 +2,13 @@
 
 IW8 Radiant Suite is a Radiant-style map editor for Call of Duty: Modern Warfare (2019), game build Replay 1.20.4.7623265.
 It edits `iwmap 4` `.map` files, previews them with textures, lights and a walkable player, and builds them into a
-Replay map package. The build uses x64-zt (zonetool) and ACTS (a game-data export tool). The package is then deployed
-into the game folder. Stock Replay maps can also be opened, changed and rebuilt.
+Replay map package. The build runs three tools that are built from this repository with the editor: the zone writer
+and map converter (`iw8r-zt.exe`, from x64-zt), the Replay zone reader (`iw8r-acts.exe`, from ACTS, which also reads
+every stock asset the editor shows) and the GSC compiler (`iw8r-gsc.exe`, from gsc-tool). Below, "x64-zt" and "ACTS"
+name those parts. The package is then deployed into the game folder. Stock Replay maps can also be opened, changed and
+rebuilt.
 
-Date: 2026-11-12 (pictures taken again and Game Lighting added on 2026-11-14)
+Date: 2026-11-12 (Game Lighting added on 2026-11-14; tools built in and pictures taken again on 2026-11-16)
 
 ![The editor with the dev showcase map mp_iw8r_show2: textured camera, top (XY) view, and the Entity inspector with the keys of the selected fan](img/overview.png)
 
@@ -754,7 +757,8 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 
 - tools\package_release.ps1 builds the release folder with the editor, the command-line tool, the Qt runtime, the licences and the sample map. It needs the Visual C++ redistributable. The later package is about 74 MB, or 26 MB zipped.
 - tools\build_installer.ps1 builds a per-user Setup program with Inno Setup. It adds Start menu and desktop shortcuts. Settings and caches are kept on upgrade and uninstall. A build was made on 2026-11-10 (13.4 MB). A test install on a clean machine is the owner's to do.
-- Licences: Qt (LGPL) and Qt-ADS (LGPL) are included. No GPL data is shipped.
+- Licences: the suite is GPL-3; the package's `licenses` folder holds it, THIRD_PARTY.md and the licence of every tool
+  and library (gsc-tool and x64-zt GPL-3, ACTS MIT, Qt and Qt-ADS LGPL, the libraries). No game files are shipped.
 
 ### Web access
 
@@ -789,8 +793,10 @@ The Live Link dock has a Debug overlay row. It tells the game to draw what the m
 
 ## 16. Help, settings and safety
 
-- Help > First-Run Setup opens by itself when the Replay executable is not found. It finds the game folder and the executables in it (including renamed or recompiled ones), ACTS, Oodle and x64-zt. The Replay executable's hash is computed, but the window does not check it against the stock hash yet.
-- Tools > Tool Paths sets the tool paths. These include gsc-tool, which compiles the map scripts.
+- Help > First-Run Setup opens by itself when the Replay executable is not found. It finds the game folder and the executables in it (including renamed or recompiled ones) and the game's Oodle DLL. The Replay reader and the zone writer come with the editor. The Replay executable's hash is computed, but the window does not check it against the stock hash yet.
+- Tools > Tool Paths sets the tool paths. Empty means the tools installed beside the editor (iw8r-acts, iw8r-zt, iw8r-gsc); only the game has to be set.
+
+![Tools > Tool Paths: found / not found beside each path](img/tool_paths.png)
 - Edit > Preferences holds the F5 options, the prefab folders, the Real stock scripted objects switch, camera speed and field of view.
 
 ![Edit > Preferences: camera speed and field of view, autosave, folders, the Real stock scripted objects switch and the F5 rows](img/preferences.png)

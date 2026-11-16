@@ -2,7 +2,7 @@
 -- (premake5.lua there): C++23, static CRT, warnings off here, /O1 except the IW8 game and the converter (/O2), no
 -- whole-program optimization, the converter's fixed image base. The project-wide /utf-8, /Zc:__cplusplus and
 -- NOMINMAX / WIN32_LEAN_AND_MEAN are not used for it: the fork's sources are read in the system code page and define
--- their own Windows macros. tools/patches/zt_sync_fork.py replaces everything here except this file.
+-- their own Windows macros. tools/sync/zt_sync_fork.py replaces everything here except this file.
 
 local zt = "$(projectdir)/src/tools/zonetool"
 local tp = "$(projectdir)/third_party"

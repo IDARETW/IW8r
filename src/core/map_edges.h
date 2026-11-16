@@ -1,7 +1,7 @@
 // The edge list of a built map (MapEdgeList): the static edges the game queries for weapon mounting, mantling and
 // ladders, with the octrees it walks to find them (research 125).
 //
-// Header only and standard C++ only: the converter builds the same file (copied by tools/patches/zt_map_edges.py),
+// Header only and standard C++ only: the converter builds the same file (src/tools/zonetool/src/games/iw8/common/map_edges.hpp: keep the two the same),
 // because it writes the asset.
 //
 // What the game reads (research 125 sections 2 to 4, 8 and 9, all checked against stock maps):

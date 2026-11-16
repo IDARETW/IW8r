@@ -9,6 +9,10 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
   the three tools built from `src/tools` and every library with its licence and source; the package's `licenses`
   folder carries all of them. The README builds from a clone (`git clone --recursive`, any Qt folder), names the
   helper exes, generates the key table from the repository's own gsc-tool copy and runs `tools/run_all_tests.ps1`.
+  The README now opens with a full illustrated features breakdown (sixteen areas, 60 pictures, each feature marked as
+  seen in game or checked offline); every feature picture was taken again from the current editor, the side bar
+  panels and the Stock Map panel in Game Lighting included. One-off patch scripts and the DW client scripts left the
+  repository (the tool sync scripts are `tools/sync`), and the history starts again at one initial commit.
 - **The Replay reader is part of the project: no outside tools are needed.** `iw8r-acts.exe` is built from
   `src/tools/acts` (the ACTS fork's Replay 1.20 reader, MIT; only the mw19replay handler and what it uses) and is the
   default Tool Paths `acts`, as `iw8r-zt.exe` and `iw8r-gsc.exe` are for the zone writer and the script compiler;

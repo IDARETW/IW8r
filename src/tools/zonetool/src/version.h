@@ -1,4 +1,4 @@
-// Version of the x64-zt fork this copy came from (written by tools/patches/zt_sync_fork.py).
+// Version of the x64-zt fork this copy came from (written by tools/sync/zt_sync_fork.py).
 
 #define GIT_DESCRIBE "latest-485-ge648a414"
 #define GIT_DIRTY 0

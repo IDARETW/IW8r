@@ -1,4 +1,4 @@
-// Copied from IW8 Radiant (src/core/dxbc_splice.h and .cpp) by tools/patches/zt_lit_filter.py: do not edit here.
+// A copy of the editor's src/core/dxbc_splice.h and .cpp: change both together.
 #pragma once
 // IW8 Radiant Suite - splicing a colour filter into a compiled pixel shader (plan M6: custom shaders on stock maps).
 //

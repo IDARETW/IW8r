@@ -2,7 +2,7 @@
 -- built as ACTS builds it (CMakeLists.txt there): C++20, /source-charset:windows-1252, /O2, no LTO. The project-wide
 -- /utf-8 and Windows macros are not used for it. The static CRT matches the zt_* libraries it shares (zlib, lz4, zstd,
 -- libtomcrypt, libtommath: decompression and hashes only, so their versions do not change what it writes).
--- tools/patches/acts_sync_fork.py replaces src/, include/ and config/ here; iw8r/ and this file are ours.
+-- tools/sync/acts_sync_fork.py replaces src/, include/ and config/ here; iw8r/ and this file are ours.
 
 local acts = "$(projectdir)/src/tools/acts"
 local tp = "$(projectdir)/third_party"

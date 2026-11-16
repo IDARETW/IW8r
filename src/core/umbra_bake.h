@@ -1,6 +1,6 @@
 // An occlusion bake for a converted map: an Umbra tome with real cells and portals (plan 2.4, research 110 and 118).
 //
-// Header only and standard C++ only: the converter builds the same file (copied by tools/patches/zt_umbra_bake.py),
+// Header only and standard C++ only: the converter builds the same file (src/tools/zonetool/src/games/iw8/common/umbra_bake.hpp: keep the two the same),
 // because the tome's objects are the converter's final surfaces and placements.
 //
 // What it makes. One leaf tile (the layout of the converter's proven one-cell tome, with more cells):

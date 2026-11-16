@@ -37,7 +37,7 @@ github"; "only integrate what's needed".
 - `src/tools/gsc/`: gsc-tool **1.6.2** (the version the editor's `gsc-tool.exe` is, and the one seen working in game;
   x64-zt's submodule is 1.4.10, which writes far-call script names without `.gsc`). Kept: utils, gsc common, lexer,
   parser, preprocessor, compiler, assembler, disassembler (compiled includes), engine `iw8*`. The decompiler and printer
-  are trimmed from the context (`tools/patches/gsc_trim_context.py`); `tools/patches/gsc_sync_upstream.py <checkout>`
+  are trimmed from the context (`tools/sync/gsc_trim_context.py`); `tools/sync/gsc_sync_upstream.py <checkout>`
   re-copies the same file set from a newer upstream.
 - `src/tools/gsc/api/iw8r_gsc.*`: `iw8r::gsc::compileIw8Script` (gsc-tool's compile_file and include reader).
   `src/tools/gsc/cli/iw8r_gsc.cpp`: `iw8r-gsc.exe`, gsc-tool's command line for IW8 PC.
@@ -50,7 +50,7 @@ github"; "only integrate what's needed".
 ## 2. x64-zt (the IW8 zone writer and the IW3 map converter) (done 2026-11-16)
 
 Done: `src/tools/zonetool` (fork e648a414, 385 files) and `third_party/{zstd,lz4,minizip,nlohmann_json,gsl,glaze,
-libtomcrypt,libtommath,directxtex}` copied by `tools/patches/zt_sync_fork.py`; built by `src/tools/zonetool/xmake.lua`
+libtomcrypt,libtommath,directxtex}` copied by `tools/sync/zt_sync_fork.py`; built by `src/tools/zonetool/xmake.lua`
 (the fork's settings: C++23, /MT, /O1 with /O2 for IW8 and the converter, no LTO, `/BASE:0x180000000 /DYNAMICBASE:NO`,
 without the project-wide /utf-8 and Windows macros) into `bin/<mode>/iw8r-zt.exe`, built with the editor and shipped.
 Parity with the fork's zonetool.exe, byte for byte on every file the converter writes:
@@ -82,7 +82,7 @@ libtomcrypt + libtommath, CascLib (core io; left out if only other games use it)
 Link options of the converter: `/BASE:0x180000000 /DYNAMICBASE:NO` (the Havok baker maps the Replay exe).
 
 Steps:
-1. Copy the needed folders into `src/tools/zonetool/` (`tools/patches/zt_sync_fork.py`, a file list like the gsc one);
+1. Copy the needed folders into `src/tools/zonetool/` (`tools/sync/zt_sync_fork.py`, a file list like the gsc one);
    `ZONETOOL_GAMES(x) x(iw3) x(iw8)`, `ZONETOOL_CONVERTERS(x) x(iw3, iw8)` as the generated header.
 2. xmake targets for the libraries, `zt_common`, `zt_core`, `zt_iw8`, `zt_convert_iw3_iw8` and `iw8r-zt.exe`
    (resources: the converter's `resources.rc`).
@@ -94,7 +94,7 @@ Steps:
 
 Done: `src/tools/acts` (fork 834568b9, 94 files, about 1 MB: the mw19replay handler, the mw19 Replay code, the
 fastfile option and handler types, the IW decompressor, the flexible header reader and the ACTS core pieces they
-include), copied by `tools/patches/acts_sync_fork.py` (with `acts_missing_headers.py` / `acts_add_files.py` to follow
+include), copied by `tools/sync/acts_sync_fork.py` (with `acts_missing_headers.py` / `acts_add_files.py` to follow
 the include closure). Ours in `src/tools/acts/iw8r/`: the trimmed umbrella header, the fastfile command
 (`fastfile_replay.cpp`, the fork's driver without CASC, linkers, asset pools, REPL, GSC, translations and game ids),
 `hashutils::Add` / `ExtractTmp` and the tool registration (`acts_support.cpp`), `main.cpp` (`--noUpdater`, `-l <level>`,
