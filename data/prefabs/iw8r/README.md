@@ -135,12 +135,12 @@ Conventions and caveats:
 
 ### ladders (6)
 
-- `ladders/ladder_steel_128.map`: Steel ladder, 128 high, climbable brush (size 24x31x328)
-- `ladders/ladder_wood_construction_128.map`: Construction wood ladder, 128 high (size 24x23x193)
-- `ladders/ladder_old_wood_72.map`: Old wood ladder, 72 high (size 24x23x76)
-- `ladders/ladder_old_wood_144.map`: Old wood ladder, 144 high (size 24x23x148)
-- `ladders/ladder_old_wood_160.map`: Old wood ladder, 160 high (size 24x23x160)
-- `ladders/ladder_radio_tower_128.map`: Radio tower ladder section, 128 high (size 24x25x128)
+- `ladders/ladder_steel_128.map`: Steel ladder, 200 high, climbable brush (size 32x12.2x200)
+- `ladders/ladder_wood_construction_128.map`: Construction wood ladder, 193 high (size 24x8x193)
+- `ladders/ladder_old_wood_72.map`: Old wood ladder, 76 high (size 24x10x76)
+- `ladders/ladder_old_wood_144.map`: Old wood ladder, 148 high (size 24x10x148)
+- `ladders/ladder_old_wood_160.map`: Old wood ladder, 160 high (size 24x10x160)
+- `ladders/ladder_radio_tower_128.map`: Radio tower ladder section, 128 high (size 26x11.9x128)
 
 ### roofs (6)
 

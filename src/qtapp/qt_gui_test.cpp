@@ -127,6 +127,7 @@
 #include "grid_view.h"
 #include "region.h"
 #include "main_window.h"
+#include "stock_zone_edit.h"
 #include <QStandardPaths>
 #include <QTextBrowser>
 #include <QClipboard>
@@ -6719,6 +6720,64 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
                 const iw8r::Ray up{iw8r::Vec3{wb.center().x, wb.center().y, wb.maxs.z + 100}, iw8r::Vec3{0, 0, 1}};
                 r.check(wb.valid() && !w.pickStockSurface(up), "a ray into the sky finds no stock surface");
                 cv->setStockPickOutline({});
+                // The map's own lights (owner 2026-11-15: "map lights not showing as lights with gizmos"): drawn as
+                // shapes, and a ray at one picks it.
+                for (int k = 0; k < 100 && !w.stockLightList_; ++k) QTest::qWait(100);
+                if (w.stockLightList_ && !w.stockLightList_->empty()) {
+                    cv->renderImage(320, 180, true, 0, 50);
+                    const auto& l = w.stockLightList_->front();
+                    const iw8r::Vec3 at{l.origin[0], l.origin[1], l.origin[2]};
+                    const auto lh = w.pickStockSurface(iw8r::Ray{at + iw8r::Vec3{0, 0, 15}, iw8r::Vec3{0, 0, -1}});
+                    r.check(cv->stockLightShapeSize() > 0 && lh && lh->light >= 0,
+                            QString("the stock map's %1 light(s) are drawn as light shapes (%2 line vertices) and a click on one picks it")
+                                .arg(w.stockLightList_->size())
+                                .arg(cv->stockLightShapeSize()));
+                } else {
+                    r.text += "  skip stock light shapes (the map's lights are not cached here)\n";
+                }
+                // Stock objects act like models (owner re-check 2026-11-15, RD6 / RD7): a prop is picked by its triangles;
+                // Delete hides it, a double-click makes it a model entity; Delete on a world surface adds a removal box.
+                {
+                    std::optional<iw8r::Ray> propRay;
+                    if (const auto placements = w.referencePropPlacements())
+                        for (size_t k = 0; k < placements->size() && k < 400 && !propRay; ++k) {
+                            const iw8r::Vec3 o = (*placements)[k].origin;
+                            const iw8r::Ray ry{o + iw8r::Vec3{0, 0, 40}, iw8r::Vec3{0, 0, -1}};
+                            if (const auto h = w.pickStockSurface(ry); h && h->prop >= 0) propRay = ry;
+                        }
+                    if (propRay) {
+                        const size_t posA = ctx.doc.undoPosition();
+                        const size_t hiddenBefore = iw8r::stockEditHiddenProps(ctx.doc.map()).size();
+                        r.check(w.showStockSurfaceAt(*propRay) && w.stockSel_ && w.stockSel_->prop >= 0 && cv->stockPickOutlineSize() >= 2,
+                                "a click on a stock prop picks it by its own triangles and outlines its edges");
+                        const bool deleted = w.deleteStockSelection();
+                        const size_t hiddenAfter = iw8r::stockEditHiddenProps(ctx.doc.map()).size();
+                        while (ctx.doc.undoPosition() > posA && ctx.doc.undo()) {}
+                        r.check(deleted && hiddenAfter == hiddenBefore + 1 && iw8r::stockEditHiddenProps(ctx.doc.map()).size() == hiddenBefore,
+                                "Delete hides the picked stock prop (one undo step brings it back)");
+                        const size_t entsBefore = ctx.doc.map().entities.size();
+                        const bool made = w.editStockPropAsModel(*propRay);
+                        bool modelSelected = false;
+                        for (const auto& sel : ctx.doc.selection())
+                            if (const auto* e = ctx.doc.findEntity(sel.entity)) modelSelected |= e->value("iw8r_stock_prop") != nullptr;
+                        const bool oneStep = ctx.doc.undoPosition() == posA + 1;
+                        while (ctx.doc.undoPosition() > posA && ctx.doc.undo()) {}
+                        r.check(made && modelSelected && oneStep && ctx.doc.map().entities.size() == entsBefore,
+                                "a double-click makes the stock prop a selected model entity (one undo step)");
+                        ctx.doc.deselectAll();
+                    } else {
+                        r.text += "  skip stock prop actions (no prop found under the test rays)\n";
+                    }
+                    if (const auto wh = w.pickStockSurface(down); wh && !wh->material.isEmpty()) {
+                        const size_t posB = ctx.doc.undoPosition();
+                        w.showStockSurfaceAt(down);
+                        const bool removed = w.deleteStockSelection();
+                        bool box = false;
+                        for (const auto& e : ctx.doc.map().entities) box |= e.classname() == "iw8r_remove_world";
+                        while (ctx.doc.undoPosition() > posB && ctx.doc.undo()) {}
+                        r.check(removed && box, "Delete on a picked stock surface adds a world removal box around it (undone)");
+                    }
+                }
             }
             {
                 // Next to one prop, with and without the instances: the props change the picture.

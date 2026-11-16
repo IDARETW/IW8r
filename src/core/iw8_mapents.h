@@ -34,6 +34,11 @@ struct Iw8PlacedEffect {
     int delayMs = 0;         // start delay; negative = repeat every |delay| ms (the createfx loop rule)
 };
 
+// A compiled submodel (MapEnts cmodels[N]; entities name it "*N"): its bounds relative to the entity's origin.
+struct Iw8SubModel {
+    Vec3 mid, half;
+};
+
 struct Iw8MapEntsDump {
     std::string assetName;     // maps/mp/<map>.d3dbsp
     std::string profile;       // must be "replay-1.20"
@@ -41,6 +46,7 @@ struct Iw8MapEntsDump {
     uint64_t numEntityChars = 0;
     std::vector<Iw8SpawnRecord> spawns;
     std::vector<Iw8PlacedEffect> effects;  // clientSideEffects.oneshotEffects, in record order
+    std::vector<Iw8SubModel> subModels;    // cmodels, by index (0 = the world)
     std::map<std::string, uint64_t> sections;  // section name -> record count, for reporting
 };
 

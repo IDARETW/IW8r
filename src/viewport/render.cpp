@@ -457,6 +457,10 @@ float2 gameEnvBrdf(float nv, float g) {
 Texture2D tex0 : register(t0);
 Texture2D nrm0 : register(t1);
 SamplerState samp0 : register(s0);
+// A cut-out's alpha for the cut-out test: scaled up with the mip level, so a thin frond's coverage holds at a distance
+// (the smaller mips average its alpha below the threshold: palm trees faded out; Golus, "Anti-aliased Alpha Test").
+// The shading pass, the depth pre-pass and the shadow pass use it alike.
+float cutAlpha(float a, float2 uv) { return a * (1.0 + max(0.0, tex0.CalculateLevelOfDetail(samp0, uv)) * 0.25); }
 struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4;
               float4 edge : TEXCOORD6; };
 struct PSIn { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 w : TEXCOORD1; float3 n : TEXCOORD2; float3 t : TEXCOORD3; float2 lm : TEXCOORD4;
@@ -792,8 +796,12 @@ float3 volumetricFog(float2 px, float3 c) {
     const float ph = min((1.0 - g * g) / (12.566371 * pow(max(1.0 + g * g - 2.0 * g * cth, 1e-4), 1.5)), 1.0);
     float T = 1.0;
     float3 S = 0;
+    // The sample depths are offset per pixel within their step (interleaved gradient noise): at the same 32 depths for
+    // every pixel a sharp shadow in the air (a skylight's panels on King) was stamped once per sample, as repeated
+    // copies of the panels along the shafts (owner 2026-11-15); offset, the copies become a fine grain.
+    const float jit = frac(52.9829189 * frac(dot(px, float2(0.06711056, 0.00583715))));
     [loop] for (int k = 0; k < 32; ++k) {
-        const float s = (k * 4 + 2) / 128.0;
+        const float s = (k * 4 + 4.0 * jit) / 128.0;
         const float d = 4.0 + dot(saturate((s - float4(0.0, 0.25, 0.5, 0.75)) * 4.0), float4(128, 384, 640, 1024));
         if (d > D) break;
         const float dz = (k < 8 ? 128.0 : k < 16 ? 384.0 : k < 24 ? 640.0 : 1024.0) / 32.0 * 4.0;
@@ -839,13 +847,13 @@ float4 ps_post(VFull i) : SV_TARGET {
     return float4(shown, 1.0);
 }
 void ps_shadow_clip(PSIn i) {
-    if (!rawSpecAlpha()) clip(tex0.Sample(samp0, i.uv).a - cutoutAt());
+    if (!rawSpecAlpha()) clip(cutAlpha(tex0.Sample(samp0, i.uv).a, i.uv) - cutoutAt());
 }
 // The depth pre-pass: the shading pass's own cut-out threshold and the coarse terrain cut, so the depths match.
 void ps_prepass(PSIn i) {
     if (tileFillHidden(i.col, i.w)) discard;
     if (batchFlags2.z < -0.5 && dot(i.n, i.n) > 1e-6 && dot(i.n, eyeStart.xyz - i.w) < 0.0) discard;  // G11, as ps_tex
-    if (!rawSpecAlpha()) clip(tex0.Sample(samp0, i.uv).a - cutoutAt());
+    if (!rawSpecAlpha()) clip(cutAlpha(tex0.Sample(samp0, i.uv).a, i.uv) - cutoutAt());
     if (gameTerrainCut.w > 0.5 && batchFlags2.z > 0.5 && i.col.a > 0.99 && i.col.a < 0.998 && distance(i.w.xy, gameTerrainCut.xy) < gameTerrainCut.z) discard;
 }
 // Stock local lights (research 106): Replay's packed records (96 bytes), the nearest 256 in view; per 32-pixel screen
@@ -1120,15 +1128,16 @@ float4 ps_tex(PSIn i) : SV_TARGET {
     // materials at .5 too: Game Lighting cuts every batch at 0.5, the other views at the editor's 0.3 (cutoutAt).
     if (batchFlags.y < 0.5 && !rawSpecAlpha()) {
         const float cutAt = cutoutAt();
+        const float ta = cutAlpha(t.a, uvS);
         if (batchFlags.y < -0.5) {
             // Placed props (blend mode -1): the cut-out edge is anti-aliased from the alpha's screen slope and blended,
             // depth still written. The game's TAA smooths its sub-pixel grass blades the same way; a hard cut leaves
             // speckled noise (Speedball grass: 2.7x the in-game pixel-to-pixel contrast).
-            const float cov = saturate((t.a - cutAt) / max(fwidth(t.a), 1e-4) + 0.5);
+            const float cov = saturate((ta - cutAt) / max(fwidth(ta), 1e-4) + 0.5);
             clip(cov - 1.0 / 255.0);
             outA = cov;
         } else {
-            clip(t.a - cutAt);
+            clip(ta - cutAt);
         }
     } else if (batchFlags.y > 0.5) {
         // Game Lighting: the build's coverage, alpha = texel.a (map_surface_realtime.hlsl 1770; a blended material
@@ -5885,7 +5894,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         if (s) f.g = &syncVertices(*s, s->v.data(), s->v.size(), sizeof(GpuVertex));
         return f;
     };
-    Flat fShadowOnly, fCasters, fFaceSel, fNoCast, fLines, fLinesMisc, fOverlay[4];
+    Flat fShadowOnly, fCasters, fFaceSel, fNoCast, fLines, fLinesMisc, fLinesExtra, fOverlay[4];
     {
         IW8R_PROF("d.sync");
         fShadowOnly = syncFlat(in.shadowOnly);
@@ -5895,6 +5904,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             fNoCast = syncFlat(in.noCast);
             fLines = syncFlat(in.lines);
             fLinesMisc = syncFlat(in.linesMisc);
+            fLinesExtra = syncFlat(in.linesExtra);
             for (int k = 0; k < 4; ++k) fOverlay[k] = syncFlat(in.overlay[k]);
         }
         drawList_.clear();
@@ -6563,7 +6573,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     if (litDecode_ > 1.5f) writeCbWith(viewProj, true, false);  // lines keep their plain colours
     ID3D11ShaderResourceView* noShadowSrv = nullptr;
     if (shadowOn) ctx_->PSSetShaderResources(2, 1, &noShadowSrv);
-    if (fLines.ready() || fLinesMisc.ready()) {
+    if (fLines.ready() || fLinesMisc.ready() || fLinesExtra.ready()) {
         IW8R_PROF("d.lines");
         // Antialiased lines cost about 6 ns each on the GPU: Verdansk's 1.2 million entity outline lines took 7 ms a
         // frame. Past half a million line vertices they are drawn plain.
@@ -6573,6 +6583,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
         drawFlat(fLines, true);
         drawFlat(fLinesMisc, true);
+        drawFlat(fLinesExtra, true);
     }
     if (fOverlay[0].ready() || fOverlay[1].ready() || fOverlay[2].ready() || fOverlay[3].ready()) {
         if (fog_[7] > 0) writeCbWith(viewProj, false, false);  // selection / gizmo lines stay unfogged

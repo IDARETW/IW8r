@@ -1409,12 +1409,11 @@ void AssetBrowser::setToolActions(const QList<QAction*>& actions) {
     delete toolRow_;
     toolRow_ = nullptr;
     if (actions.isEmpty()) return;
-    auto* b = new QToolButton(this);
+    // A push button with a menu: its arrow sits on the right, centred, like the combo boxes beside it (a tool button
+    // put a small arrow in its bottom-right corner; owner re-check 2026-11-15).
+    auto* b = new QPushButton("Tools", this);
     b->setObjectName("assetTools");
-    b->setText("Tools");
     b->setToolTip("Tools for this kind of asset (the same commands as in the Tools menu and the Tools panel)");
-    b->setPopupMode(QToolButton::InstantPopup);
-    b->setToolButtonStyle(Qt::ToolButtonTextOnly);
     auto* menu = new QMenu(b);
     for (QAction* a : actions)
         if (a) menu->addAction(a);

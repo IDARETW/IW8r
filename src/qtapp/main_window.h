@@ -44,6 +44,8 @@ class CDockAreaWidget;
 #include "stock_lightgrid.h"
 #include "stock_loot.h"
 #include "stock_placed.h"
+#include "iw8_mapents.h"
+#include "stock_lights.h"
 #include "stock_smodels.h"
 #include "stock_prop_fetch.h"
 #include "scene.h"  // app::ReferenceTexBatch (decal and terrain layer batches)
@@ -499,6 +501,9 @@ public:  // (also the GUI test)
         Vec3 at;
         double t = 0;
         int mesh = -1;                 // the world mesh (-1 for a prop)
+        int light = -1;                // a stock light (its place in stockLightList_), -1 otherwise
+        int prop = -1;                 // a stock prop (its place in refProps_), -1 otherwise
+        int tri = -1;                  // the world triangle hit (index of its first vertex in the mesh's idx)
         std::array<Vec3, 8> corners{};  // a prop's model box corners in world space (bit 0 x, 1 y, 2 z: max)
     };
     std::optional<StockSurfacePick> pickStockSurface(const Ray& ray) const;
@@ -1038,7 +1043,24 @@ private:
     bool stockSpawnsEditable_ = false;  // spawns were turned into document entities (Edit Compiled Spawns)
     StockLoot stockLoot_;               // the loot block of the opened stock map (empty: none)
     std::set<std::string> stockModelNames_;  // models the opened stock map's own entities name (never carried)
-    std::vector<StockPlacedObject> stockPlaced_;  // every scriptable instance of the opened stock map
+    std::vector<StockPlacedObject> stockPlaced_;
+    std::vector<Iw8SubModel> stockSubModels_;
+public:
+    // The opened stock map's spot and omni lights (ComWorld primary lights), for their shapes and picking.
+    std::shared_ptr<const std::vector<StockPrimaryLight>> stockLightList_;
+    // Their shapes in the camera (markers; radius and cone with View > Entity Display > Light Ranges).
+    void updateStockLightShapes();
+    // The stock object last clicked in the camera (nothing of the document under the cursor) and its bounds.
+    std::optional<StockSurfacePick> stockSel_;
+    AABB stockSelBounds_;
+    // Delete on it: a prop is hidden, a world surface gets a removal box around it. False when nothing is selected.
+    bool deleteStockSelection();
+    // A double-click on a stock prop: it becomes a model entity of the document (selected). False when no prop is there.
+    bool editStockPropAsModel(const Ray& ray);
+    // A stock prop's model for exact picking (read once, kept for the next clicks).
+    std::shared_ptr<const ImportedModel> stockPickModel(const std::string& name) const;
+    mutable std::map<std::string, std::shared_ptr<const ImportedModel>> stockPickModels_;
+private:  // the opened stock map's compiled submodels (script brush models' bounds)  // every scriptable instance of the opened stock map
     bool stockLootEditable_ = false;    // loot points were turned into document entities (Edit Loot Points)
     ID3D11Device* dev_;
     ID3D11DeviceContext* dc_;

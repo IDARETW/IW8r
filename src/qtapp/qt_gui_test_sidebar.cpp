@@ -364,7 +364,7 @@ void runSidebarChecks(std::function<void(const QString&)> section, std::function
             check(false, "the Tools panel has the Measure Tool");
         }
         for (AssetBrowser* b : {w.materialBrowser(), w.modelsBrowser(), w.effectsBrowser(), w.soundsBrowser()}) {
-            auto* tb = b ? b->findChild<QToolButton*>("assetTools") : nullptr;
+            auto* tb = b ? b->findChild<QPushButton*>("assetTools") : nullptr;
             check(tb && tb->menu() && !tb->menu()->actions().isEmpty(),
                   QString("an asset panel has a Tools button with its kind's commands (%1)").arg(tb && tb->menu() ? tb->menu()->actions().size() : 0));
         }

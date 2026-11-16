@@ -55,3 +55,29 @@ TEST(mapents_placed_effects) {
     for (const auto& e : real.effects) mist += e.effect.find("knee_high_mist") != std::string::npos;
     CHECK(mist > 0);
 }
+
+// The compiled submodels' bounds (cmodels[N]): a script_brushmodel "*N" is solid in game through them (owner re-check
+// 2026-11-15: the walk preview passed through bomb sites).
+TEST(mapents_submodel_bounds) {
+    const fs::path dir = fs::temp_directory_path() / "iw8r_mapents_cm";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    const fs::path file = dir / "mp_test.d3dbsp.0.asset.json";
+    {
+        std::ofstream f(file, std::ios::binary);
+        f << R"({"format":"mw19-asset-json","profile":"replay-1.20","pool":"map_ents","asset":{"fields":{
+"name":{"string":"maps/mp/mp_test.d3dbsp"},"entityString":{"bytes":"7b7d0a00"},"numEntityChars":4,"numSubModels":2,
+"cmodels":{"count":2,"values":[
+ {"bounds":{"midPoint":{"v":[15871.7,-1415.4,39347.5]},"halfSize":{"v":[20000,20000,40000]}},"radius":1},
+ {"bounds":{"midPoint":{"v":[0,0,1]},"halfSize":{"v":[27,22,28]}},"radius":44.7}]}}}})";
+    }
+    Iw8MapEntsDump dump;
+    std::string err;
+    CHECK(loadActsMapEnts(file.string(), "", dump, &err));
+    CHECK(dump.subModels.size() == 2);
+    if (dump.subModels.size() == 2) {
+        CHECK(dump.subModels[1].half.x == 27 && dump.subModels[1].half.y == 22 && dump.subModels[1].half.z == 28);
+        CHECK(dump.subModels[1].mid.z == 1);
+    }
+    fs::remove_all(dir, ec);
+}

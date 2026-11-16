@@ -88,12 +88,12 @@ pillars_beams/pillar_model_24_quad.map	pillars_beams	Four stock 24 x 24 pillars 
 pillars_beams/pillar_model_16_row.map	pillars_beams	Row of three stock 16 x 16 pillars at 96 spacing	208x16x128		tm/building_support_pillar_16x16_01
 pillars_beams/beam_wood_brush_256.map	pillars_beams	Wood beam 256 long on two posts	256x16x128	twc/wood_varnished_01	
 pillars_beams/beam_wood_model_pair.map	pillars_beams	Two stock wood beams, side by side on top	300x106x137		tm/building_support_wood_beam_03
-ladders/ladder_steel_128.map	ladders	Steel ladder, 128 high, climbable brush	24x31x328	ladder	tm/com_steel_ladder
-ladders/ladder_wood_construction_128.map	ladders	Construction wood ladder, 128 high	24x23x193	ladder	tm/construction_ladder_wood_01
-ladders/ladder_old_wood_72.map	ladders	Old wood ladder, 72 high	24x23x76	ladder	tm/ladder_old_wood_01_72
-ladders/ladder_old_wood_144.map	ladders	Old wood ladder, 144 high	24x23x148	ladder	tm/ladder_old_wood_01_144
-ladders/ladder_old_wood_160.map	ladders	Old wood ladder, 160 high	24x23x160	ladder	tm/ladder_old_wood_01_160
-ladders/ladder_radio_tower_128.map	ladders	Radio tower ladder section, 128 high	24x25x128	ladder	tm/ee_buildings_industrial_radiotower_ladder_128_02
+ladders/ladder_steel_128.map	ladders	Steel ladder, 200 high, climbable brush	32x12.2x200	ladder	tm/com_steel_ladder
+ladders/ladder_wood_construction_128.map	ladders	Construction wood ladder, 193 high	24x8x193	ladder	tm/construction_ladder_wood_01
+ladders/ladder_old_wood_72.map	ladders	Old wood ladder, 76 high	24x10x76	ladder	tm/ladder_old_wood_01_72
+ladders/ladder_old_wood_144.map	ladders	Old wood ladder, 148 high	24x10x148	ladder	tm/ladder_old_wood_01_144
+ladders/ladder_old_wood_160.map	ladders	Old wood ladder, 160 high	24x10x160	ladder	tm/ladder_old_wood_01_160
+ladders/ladder_radio_tower_128.map	ladders	Radio tower ladder section, 128 high	26x11.9x128	ladder	tm/ee_buildings_industrial_radiotower_ladder_128_02
 roofs/roof_flat_256_concrete_lip.map	roofs	Flat roof 256, with roof lips on the front and back edges	256x376x24	tmco/metal_bare_roof_01	tm/building_roof_lip_concrete_01_128
 roofs/roof_flat_512_metal.map	roofs	Flat metal roof 512 square, no lips	512x512x16	tmco/metal_bare_roof_01	
 roofs/roof_slant_256.map	roofs	Slanted metal roof, 256 square, rising 64 toward +y	256x256x64	tmco/metal_bare_roof_01	

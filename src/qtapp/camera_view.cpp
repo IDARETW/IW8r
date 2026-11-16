@@ -922,6 +922,12 @@ void CameraView::render() {
     gizmoLines_.scratch.clear();
     if (!cleanCapture_) addGizmoLines();
     if (!cleanCapture_) gizmoLines_.scratch.insert(gizmoLines_.scratch.end(), stockPickLines_.begin(), stockPickLines_.end());
+    if (stockLightDirty_) {  // a stock map's light shapes (MainWindow::updateStockLightShapes)
+        stockLightLines_.v.swap(stockLightPending_);
+        stockLightPending_.clear();
+        stockLightLines_.markAll();
+        stockLightDirty_ = false;
+    }
     if (gizmoLines_.scratch.size() != gizmoLines_.v.size() ||
         (!gizmoLines_.v.empty() && std::memcmp(gizmoLines_.scratch.data(), gizmoLines_.v.data(), gizmoLines_.v.size() * sizeof(app::GpuVertex)) != 0)) {
         gizmoLines_.v.swap(gizmoLines_.scratch);
@@ -972,6 +978,7 @@ void CameraView::render() {
         in.noCast = &geo_.noCast;
         in.lines = &geo_.lines;
         in.linesMisc = &geo_.linesMisc;
+        in.linesExtra = cleanCapture_ ? nullptr : &stockLightLines_;
         in.overlay[0] = &geo_.sunArrow;
         in.overlay[1] = &geo_.selLines;
         in.overlay[2] = &geo_.overlayMisc;
@@ -3475,6 +3482,21 @@ void CameraView::mouseReleaseEvent(QMouseEvent* e) {
         ctx_->doc.deselectAll();
     }
     ctx_->documentEdited();
+}
+
+void CameraView::mouseDoubleClickEvent(QMouseEvent* e) {
+    // A double-click on a stock map's prop (nothing of the document under the cursor) makes it a model of the document.
+    if (e->button() == Qt::LeftButton && !orbit_ && !ctx_->playing && stockSurfaceEditor_ && !(e->modifiers() & ~Qt::KeypadModifier)) {
+        const QPoint p = e->position().toPoint();
+        const double nx = 2.0 * p.x() / std::max(1, width()) - 1.0, ny = 1.0 - 2.0 * p.y() / std::max(1, height());
+        const Ray ray = app::cameraRay(ctx_->cam, nx, ny, double(std::max(1, width())) / std::max(1, height()));
+        ctx_->scene.sync(ctx_->doc);
+        if (ctx_->scene.pickAll(ray).empty() && stockSurfaceEditor_(ray)) {
+            setStockPickOutline({});
+            return;
+        }
+    }
+    QWidget::mouseDoubleClickEvent(e);
 }
 
 void CameraView::wheelEvent(QWheelEvent* e) {

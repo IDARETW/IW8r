@@ -41,6 +41,8 @@
 #include "stock_install.h"
 #include "stock_spawns.h"
 #include "stock_zone_edit.h"
+#include "brush_ops.h"
+#include "model_cache.h"
 #include "material_blend.h"
 #include "material_cache.h"
 #include "collision_world.h"
@@ -1044,7 +1046,34 @@ void MainWindow::applyStockSunPreview() {
 // ------------------------------------------------------------------ the stock world in the play preview
 
 size_t MainWindow::addStockWorldCollision(CollisionWorld& w) const {
-    if (!stockWorld_) return 0;
+    // The script brush models ("*N": doors, bomb sites, barriers): solid in game through their compiled submodel; a
+    // box of the submodel's bounds, turned by the entity's angles.
+    size_t added = 0;
+    for (const Entity& e : ctx_.doc.map().entities) {
+        if (e.classname() != "script_brushmodel") continue;
+        const std::string* model = e.value("model");
+        const auto o = e.origin();
+        if (!model || model->size() < 2 || (*model)[0] != '*' || !o) continue;
+        const int n = std::atoi(model->c_str() + 1);
+        if (n <= 0 || size_t(n) >= stockSubModels_.size()) continue;
+        const Iw8SubModel& sm = stockSubModels_[size_t(n)];
+        if (sm.half.x <= 0 || sm.half.y <= 0 || sm.half.z <= 0 || sm.half.x > 4096 || sm.half.y > 4096 || sm.half.z > 4096) continue;
+        Vec3 ang;
+        if (const std::string* a = e.value("angles")) std::sscanf(a->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z);
+        const auto ax = anglesToAxis(ang);
+        const Vec3 c = *o + ax[0] * sm.mid.x + ax[1] * sm.mid.y + ax[2] * sm.mid.z;
+        std::vector<Plane> planes;
+        const double h[3] = {sm.half.x, sm.half.y, sm.half.z};
+        for (int k = 0; k < 3; ++k)
+            for (const double s : {1.0, -1.0}) {
+                Plane p;
+                p.n = ax[size_t(k)] * s;
+                p.d = dot(p.n, c) + h[k];
+                planes.push_back(p);
+            }
+        if (w.addConvex(std::move(planes))) ++added;
+    }
+    if (!stockWorld_) return added;
     // Removal boxes that take the collision out (iw8r_remove_world, "collision" not 0).
     std::vector<WorldRemovalBox> boxes;
     for (const WorldRemovalBox& b : documentWorldRemovals(ctx_.doc.map()))
@@ -1053,7 +1082,6 @@ size_t MainWindow::addStockWorldCollision(CollisionWorld& w) const {
         return p.x >= b.mins.x - 1e-3 && p.y >= b.mins.y - 1e-3 && p.z >= b.mins.z - 1e-3 && p.x <= b.maxs.x + 1e-3 &&
                p.y <= b.maxs.y + 1e-3 && p.z <= b.maxs.z + 1e-3;
     };
-    size_t added = 0;
     for (const ImportedMesh& m : stockWorld_->meshes) {
         const QString mat = qs(m.material).remove(QChar(',')).trimmed().toLower();
         const QString leaf = mat.section('/', -1);
@@ -1081,6 +1109,63 @@ size_t MainWindow::addStockWorldCollision(CollisionWorld& w) const {
 }
 
 // ------------------------------------------------------------------ picking the stock map's own surfaces
+
+// A stock light's shape as line pairs: a marker (three axes), and with `ranges` its radius (omni: three circles) or its
+// cone (spot: the outer cone to the radius, its end circle and the aim line). Light shines along -dir (dir points back
+// toward the light, research 106 section 3.1).
+static void appendStockLightShape(std::vector<app::GpuVertex>& out, const StockPrimaryLight& l, uint32_t col, bool ranges) {
+    const Vec3 o{l.origin[0], l.origin[1], l.origin[2]};
+    const auto line = [&](const Vec3& a, const Vec3& b) {
+        out.push_back(app::GpuVertex{float(a.x), float(a.y), float(a.z), col});
+        out.push_back(app::GpuVertex{float(b.x), float(b.y), float(b.z), col});
+    };
+    const double m = 10.0;
+    line(o - Vec3{m, 0, 0}, o + Vec3{m, 0, 0}), line(o - Vec3{0, m, 0}, o + Vec3{0, m, 0}), line(o - Vec3{0, 0, m}, o + Vec3{0, 0, m});
+    if (!ranges || l.radius <= 0) return;
+    const double r = std::min<double>(l.radius, 16384.0);
+    const auto circle = [&](const Vec3& c, const Vec3& u, const Vec3& v, double rad, int seg) {
+        for (int i = 0; i < seg; ++i) {
+            const double a0 = 6.283185307 * i / seg, a1 = 6.283185307 * (i + 1) / seg;
+            line(c + u * (std::cos(a0) * rad) + v * (std::sin(a0) * rad), c + u * (std::cos(a1) * rad) + v * (std::sin(a1) * rad));
+        }
+    };
+    if (l.type == 3) {  // omni
+        circle(o, Vec3{1, 0, 0}, Vec3{0, 1, 0}, r, 48);
+        circle(o, Vec3{1, 0, 0}, Vec3{0, 0, 1}, r, 48);
+        circle(o, Vec3{0, 1, 0}, Vec3{0, 0, 1}, r, 48);
+        return;
+    }
+    Vec3 dir = Vec3{-l.dir[0], -l.dir[1], -l.dir[2]};
+    if (length(dir) < 1e-6) dir = Vec3{0, 0, -1};
+    dir = normalize(dir);
+    const Vec3 ref = std::fabs(dir.z) < 0.9 ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+    const Vec3 u = normalize(cross(dir, ref)), v = cross(dir, u);
+    const double c = std::clamp<double>(l.cosHalfFovOuter, 0.0, 0.9999);
+    const double half = std::acos(c);
+    const double len = r * std::cos(half), rad = r * std::sin(half);  // the cone's cap on the radius sphere
+    const Vec3 end = o + dir * len;
+    for (int i = 0; i < 8; ++i) {
+        const double a = 6.283185307 * i / 8;
+        line(o, end + u * (std::cos(a) * rad) + v * (std::sin(a) * rad));
+    }
+    circle(end, u, v, rad, 32);
+    line(o, o + dir * r);
+}
+
+void MainWindow::updateStockLightShapes() {
+    if (!camera_) return;
+    std::vector<app::GpuVertex> lines;
+    if (stockLightList_) {
+        const bool ranges = ctx_.scene.showLightRanges;
+        for (const StockPrimaryLight& l : *stockLightList_) {
+            // The light's colour, dimmed (the own map's unselected light ranges are dimmed too).
+            const double mx = std::max({double(l.color[0]), double(l.color[1]), double(l.color[2]), 1e-6});
+            const auto b = [&](float c) { return uint32_t(std::clamp(c / mx * 0.55 + 0.15, 0.0, 1.0) * 255.0 + 0.5); };
+            appendStockLightShape(lines, l, b(l.color[0]) | (b(l.color[1]) << 8) | (b(l.color[2]) << 16) | 0xFF000000u, ranges);
+        }
+    }
+    camera_->setStockLightShapes(std::move(lines));
+}
 
 std::optional<MainWindow::StockSurfacePick> MainWindow::pickStockSurface(const Ray& ray) const {
     std::optional<StockSurfacePick> best;
@@ -1130,15 +1215,40 @@ std::optional<MainWindow::StockSurfacePick> MainWindow::pickStockSurface(const R
                 if (removed) continue;
                 bestT = d;
                 best = StockSurfacePick{mat, QString(), 0, ray.origin + ray.dir * d, d, int(mi)};
+                best->tri = int(t);
             }
         }
     }
+    if (stockLightList_)
+        for (size_t li = 0; li < stockLightList_->size(); ++li) {
+            const StockPrimaryLight& l = (*stockLightList_)[li];
+            const Vec3 c{l.origin[0], l.origin[1], l.origin[2]};
+            const Vec3 oc = ray.origin - c;
+            const double bq = dot(oc, ray.dir), cq = dot(oc, oc) - 12.0 * 12.0, disc = bq * bq - cq;
+            if (disc < 0) continue;
+            const double t = -bq - std::sqrt(disc);
+            if (t > 0.01 && t < bestT) {
+                bestT = t;
+                best = StockSurfacePick{QString(), QString(), 0, ray.origin + ray.dir * t, t, -1};
+                best->light = int(li);
+            }
+        }
     if (refProps_ && !refPropBoxes_.empty()) {
         std::set<uint32_t> hidden;
         for (const Entity& ws : ctx_.doc.map().entities)
             if (const std::string* v = ws.isWorldspawn() ? ws.value("iw8r_hide_smodels") : nullptr)
                 for (const QString& tok : qs(*v).split(QRegularExpression("[\\s,]+"), Qt::SkipEmptyParts)) hidden.insert(tok.toUInt());
-        for (const StockModelInstance& in : *refProps_) {
+        // Candidates by their model box (in model space), nearest first; then the model's own triangles decide (a box
+        // only narrows the search: a big model's box encloses much that is not the model).
+        struct Cand {
+            double t;
+            size_t i;
+            Ray local;
+            double sc;
+        };
+        std::vector<Cand> cands;
+        for (size_t pi = 0; pi < refProps_->size(); ++pi) {
+            const StockModelInstance& in = (*refProps_)[pi];
             const auto it = refPropBoxes_.find(in.model);
             if (it == refPropBoxes_.end() || hidden.count(in.index)) continue;
             const double sc = in.scale > 1e-6 ? in.scale : 1.0;
@@ -1147,16 +1257,49 @@ std::optional<MainWindow::StockSurfacePick> MainWindow::pickStockSurface(const R
                             {dot(ray.dir, in.axis[0]), dot(ray.dir, in.axis[1]), dot(ray.dir, in.axis[2])}};
             const auto& b = it->second;
             AABB box;
-            box.mins = {b[0], b[1], b[2]};
-            box.maxs = {b[3], b[4], b[5]};
-            if (box.contains(local.origin)) continue;  // the camera inside a big model's box: what is beyond it
-            if (const auto tl = rayAABB(local, box); tl && *tl * sc < bestT) {
-                bestT = *tl * sc;
-                best = StockSurfacePick{QString(), qs(in.model), in.index, ray.origin + ray.dir * bestT, bestT};
-                for (int k = 0; k < 8; ++k) {
-                    const double x = (k & 1) ? b[3] : b[0], y = (k & 2) ? b[4] : b[1], z = (k & 4) ? b[5] : b[2];
-                    best->corners[size_t(k)] = in.origin + (in.axis[0] * x + in.axis[1] * y + in.axis[2] * z) * sc;
-                }
+            box.mins = {b[0] - 1, b[1] - 1, b[2] - 1};
+            box.maxs = {b[3] + 1, b[4] + 1, b[5] + 1};
+            if (const auto tl = rayAABB(local, box); tl && *tl * sc < bestT) cands.push_back({*tl * sc, pi, local, sc});
+        }
+        std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) { return a.t < b.t; });
+        size_t tested = 0;
+        for (const Cand& c : cands) {
+            if (c.t >= bestT || tested >= 64) break;
+            ++tested;
+            const StockModelInstance& in = (*refProps_)[c.i];
+            const auto model = stockPickModel(in.model);
+            double hitT = -1;
+            if (model) {
+                const auto zup = [](const Vec3& p) { return Vec3{p.x, -p.z, p.y}; };  // glTF Y-up -> Z-up (as the props' meshes)
+                for (const ImportedMesh& m : model->meshes)
+                    for (size_t t = 0; t + 2 < m.idx.size(); t += 3) {
+                        const uint32_t i0 = m.idx[t], i1 = m.idx[t + 1], i2 = m.idx[t + 2];
+                        if (i0 >= m.pos.size() || i1 >= m.pos.size() || i2 >= m.pos.size()) continue;
+                        const Vec3 a = zup(m.pos[i0]), e1 = zup(m.pos[i1]) - a, e2 = zup(m.pos[i2]) - a;
+                        const Vec3 pv = cross(c.local.dir, e2);
+                        const double det = dot(e1, pv);
+                        if (std::fabs(det) < 1e-12) continue;
+                        const double inv = 1.0 / det;
+                        const Vec3 tv = c.local.origin - a;
+                        const double u = dot(tv, pv) * inv;
+                        if (u < 0 || u > 1) continue;
+                        const Vec3 qv = cross(tv, e1);
+                        const double v = dot(c.local.dir, qv) * inv;
+                        if (v < 0 || u + v > 1) continue;
+                        const double d = dot(e2, qv) * inv;
+                        if (d > 0.01 && (hitT < 0 || d < hitT)) hitT = d;
+                    }
+            } else {
+                hitT = c.t / c.sc;  // the model is not readable: its box stands in
+            }
+            if (hitT < 0 || hitT * c.sc >= bestT) continue;
+            bestT = hitT * c.sc;
+            best = StockSurfacePick{QString(), qs(in.model), in.index, ray.origin + ray.dir * bestT, bestT};
+            best->prop = int(c.i);
+            const auto& b = refPropBoxes_.at(in.model);
+            for (int k = 0; k < 8; ++k) {
+                const double x = (k & 1) ? b[3] : b[0], y = (k & 2) ? b[4] : b[1], z = (k & 4) ? b[5] : b[2];
+                best->corners[size_t(k)] = in.origin + (in.axis[0] * x + in.axis[1] * y + in.axis[2] * z) * c.sc;
             }
         }
     }
@@ -1164,7 +1307,8 @@ std::optional<MainWindow::StockSurfacePick> MainWindow::pickStockSurface(const R
 }
 
 bool MainWindow::showStockSurfaceAt(const Ray& ray) {
-    if (!stockWorld_ && !refProps_) return false;
+    stockSel_.reset();
+    if (!stockWorld_ && !refProps_ && !stockLightList_) return false;
     const auto hit = pickStockSurface(ray);
     if (!hit) return false;
     // Its outline in the camera: the world surface's triangles around the click, or the prop's model box.
@@ -1174,38 +1318,233 @@ bool MainWindow::showStockSurfaceAt(const Ray& ray) {
         lines.push_back(app::GpuVertex{float(p.x), float(p.y), float(p.z), col});
         lines.push_back(app::GpuVertex{float(q.x), float(q.y), float(q.z), col});
     };
-    if (hit->mesh >= 0 && stockWorld_ && size_t(hit->mesh) < stockWorld_->meshes.size()) {
+    if (hit->light >= 0 && stockLightList_ && size_t(hit->light) < stockLightList_->size()) {
+        appendStockLightShape(lines, (*stockLightList_)[size_t(hit->light)], col, true);
+    } else if (hit->mesh >= 0 && hit->tri >= 0 && stockWorld_ && size_t(hit->mesh) < stockWorld_->meshes.size()) {
+        // The connected surface: triangles of the same mesh sharing an edge (by position) with one already in, facing
+        // within 35 degrees of the clicked one (a wall, a floor); outlined along its border.
         const ImportedMesh& m = stockWorld_->meshes[size_t(hit->mesh)];
-        const double r2 = 160.0 * 160.0;
-        for (size_t t = 0; t + 2 < m.idx.size() && lines.size() < 12000; t += 3) {
-            const uint32_t i0 = m.idx[t], i1 = m.idx[t + 1], i2 = m.idx[t + 2];
-            if (i0 >= m.pos.size() || i1 >= m.pos.size() || i2 >= m.pos.size()) continue;
-            const Vec3 &a = m.pos[i0], &b = m.pos[i1], &c = m.pos[i2];
-            const Vec3 mid = (a + b + c) * (1.0 / 3.0) - hit->at;
-            if (dot(mid, mid) > r2) continue;
-            line(a, b), line(b, c), line(c, a);
+        const size_t nt = m.idx.size() / 3;
+        const auto key = [&](uint32_t vi) {
+            const Vec3& p = m.pos[vi];
+            return std::array<long long, 3>{std::llround(p.x * 8), std::llround(p.y * 8), std::llround(p.z * 8)};
+        };
+        const auto triN = [&](size_t t) {
+            const Vec3 &a = m.pos[m.idx[t * 3]], &b = m.pos[m.idx[t * 3 + 1]], &c = m.pos[m.idx[t * 3 + 2]];
+            const Vec3 n = cross(b - a, c - a);
+            const double l = length(n);
+            return l > 1e-12 ? n * (1.0 / l) : Vec3{0, 0, 0};
+        };
+        bool ok = true;
+        for (size_t i = 0; i < m.idx.size() && ok; ++i) ok = m.idx[i] < m.pos.size();
+        std::map<std::pair<std::array<long long, 3>, std::array<long long, 3>>, std::vector<uint32_t>> edges;
+        const auto ekey = [&](uint32_t a, uint32_t b) {
+            auto ka = key(a), kb = key(b);
+            if (kb < ka) std::swap(ka, kb);
+            return std::make_pair(ka, kb);
+        };
+        if (ok && nt < 2000000)
+            for (size_t t = 0; t < nt; ++t)
+                for (int e = 0; e < 3; ++e) edges[ekey(m.idx[t * 3 + e], m.idx[t * 3 + (e + 1) % 3])].push_back(uint32_t(t));
+        const size_t t0 = size_t(hit->tri) / 3;
+        const Vec3 n0 = triN(t0);
+        std::vector<char> in(nt, 0);
+        std::vector<size_t> stack{t0}, picked;
+        in[t0] = 1;
+        while (!stack.empty() && picked.size() < 40000) {
+            const size_t t = stack.back();
+            stack.pop_back();
+            picked.push_back(t);
+            for (int e = 0; e < 3 && ok; ++e) {
+                const auto it = edges.find(ekey(m.idx[t * 3 + e], m.idx[t * 3 + (e + 1) % 3]));
+                if (it == edges.end()) continue;
+                for (const uint32_t o : it->second)
+                    if (!in[o] && dot(triN(o), n0) > 0.82) in[o] = 1, stack.push_back(o);
+            }
         }
-    } else if (hit->mesh < 0) {
+        AABB sb;
+        for (const size_t t : picked)
+            for (int e = 0; e < 3; ++e) {
+                const uint32_t a = m.idx[t * 3 + e], b = m.idx[t * 3 + (e + 1) % 3];
+                sb.add(m.pos[a]);
+                // A border edge: no other picked triangle shares it.
+                int shared = 0;
+                if (const auto it = edges.find(ekey(a, b)); it != edges.end())
+                    for (const uint32_t o : it->second) shared += in[o] ? 1 : 0;
+                if (shared <= 1 && lines.size() < 60000) line(m.pos[a], m.pos[b]);
+            }
+        stockSelBounds_ = sb;
+        stockSel_ = *hit;
+        if (!picked.empty()) stockSel_->tri = int(picked.size());  // (the count, for the status below)
+    } else if (hit->prop >= 0 && refProps_ && size_t(hit->prop) < refProps_->size()) {
+        // The model's own edges: the border and the creases (faces meeting at more than 40 degrees), in place.
+        const StockModelInstance& in = (*refProps_)[size_t(hit->prop)];
+        const double sc = in.scale > 1e-6 ? in.scale : 1.0;
+        const auto place = [&](const Vec3& p) {
+            const Vec3 z{p.x, -p.z, p.y};
+            return in.origin + (in.axis[0] * z.x + in.axis[1] * z.y + in.axis[2] * z.z) * sc;
+        };
+        AABB sb;
+        if (const auto model = stockPickModel(in.model)) {
+            for (const ImportedMesh& m : model->meshes) {
+                std::map<std::pair<std::array<long long, 3>, std::array<long long, 3>>, std::vector<Vec3>> edges;
+                const auto key = [&](const Vec3& p) {
+                    return std::array<long long, 3>{std::llround(p.x * 16), std::llround(p.y * 16), std::llround(p.z * 16)};
+                };
+                for (size_t t = 0; t + 2 < m.idx.size(); t += 3) {
+                    if (m.idx[t] >= m.pos.size() || m.idx[t + 1] >= m.pos.size() || m.idx[t + 2] >= m.pos.size()) continue;
+                    const Vec3 &a = m.pos[m.idx[t]], &b = m.pos[m.idx[t + 1]], &c = m.pos[m.idx[t + 2]];
+                    Vec3 n = cross(b - a, c - a);
+                    const double l = length(n);
+                    n = l > 1e-12 ? n * (1.0 / l) : Vec3{0, 0, 0};
+                    for (const auto& [p, q] : {std::make_pair(a, b), std::make_pair(b, c), std::make_pair(c, a)}) {
+                        auto kp = key(p), kq = key(q);
+                        if (kq < kp) std::swap(kp, kq);
+                        edges[{kp, kq}].push_back(n);
+                    }
+                }
+                for (const auto& [k, ns] : edges) {
+                    const bool border = ns.size() == 1, crease = ns.size() >= 2 && dot(ns[0], ns[1]) < 0.766;
+                    if (!border && !crease) continue;
+                    const Vec3 p{k.first[0] / 16.0, k.first[1] / 16.0, k.first[2] / 16.0}, q{k.second[0] / 16.0, k.second[1] / 16.0, k.second[2] / 16.0};
+                    if (lines.size() < 80000) line(place(p), place(q));
+                    sb.add(place(p)), sb.add(place(q));
+                }
+            }
+        }
+        if (lines.empty()) {
+            const auto& k = hit->corners;
+            for (int i = 0; i < 8; ++i)
+                for (int bit : {1, 2, 4})
+                    if (!(i & bit)) line(k[size_t(i)], k[size_t(i | bit)]);
+        }
+        if (!sb.valid())
+            for (const Vec3& c : hit->corners) sb.add(c);
+        stockSelBounds_ = sb;
+        stockSel_ = *hit;
+    } else if (hit->mesh < 0 && hit->light < 0) {
         const auto& k = hit->corners;
         for (int i = 0; i < 8; ++i)
             for (int bit : {1, 2, 4})
                 if (!(i & bit)) line(k[size_t(i)], k[size_t(i | bit)]);
     }
     camera_->setStockPickOutline(std::move(lines));
+    if (hit->light >= 0 && stockLightList_ && size_t(hit->light) < stockLightList_->size()) {
+        const StockPrimaryLight& l = (*stockLightList_)[size_t(hit->light)];
+        const double outer = 2.0 * std::acos(std::clamp<double>(l.cosHalfFovOuter, -1.0, 1.0)) * 57.29578;
+        ctx_.setStatus(QString("Stock light (%1): row %2 at %3 %4 %5, radius %6, intensity %7, colour %8 %9 %10%11%12. The map's own "
+                               "light (read-only here: its edits need the converter)")
+                           .arg(l.type == 2 ? "spot" : "omni")
+                           .arg(l.index)
+                           .arg(qRound(l.origin[0])).arg(qRound(l.origin[1])).arg(qRound(l.origin[2]))
+                           .arg(qRound(l.radius))
+                           .arg(l.intensity, 0, 'g', 4)
+                           .arg(l.color[0], 0, 'f', 2).arg(l.color[1], 0, 'f', 2).arg(l.color[2], 0, 'f', 2)
+                           .arg(l.type == 2 ? QString(", cone %1 degrees").arg(qRound(outer)) : QString())
+                           .arg(l.defName.empty() ? QString() : ", profile " + qs(l.defName)));
+        return true;
+    }
     if (!hit->material.isEmpty()) {
-        ctx_.setStatus(QString("Stock surface: %1 (the map's world, %2 units away). The Stock Map panel's Retexture takes it "
-                               "(or worldspawn iw8r_stock_retexture %1=<material>)")
+        ctx_.setStatus(QString("Stock surface: %1 (the map's world, %2 triangles connected, %3 units away). Delete removes it (a "
+                               "world removal box around it); the Stock Map panel's Retexture takes the material")
                            .arg(hit->material)
+                           .arg(stockSel_ ? stockSel_->tri : 0)
                            .arg(qRound(hit->t)));
         emit stockSurfacePicked(hit->material);
     } else {
-        ctx_.setStatus(QString("Stock prop: %1 (row %2, %3 units away). To hide it: a brush around its origin, then "
-                               "File > Stock Map > Hide Stock Props In Selection")
+        ctx_.setStatus(QString("Stock prop: %1 (row %2, %3 units away). Delete hides it; a double-click makes it a model you can move, "
+                               "turn and scale")
                            .arg(hit->model)
                            .arg(hit->propIndex)
                            .arg(qRound(hit->t)));
         emit stockPropPicked(hit->model, hit->propIndex);
     }
+    return true;
+}
+
+std::shared_ptr<const ImportedModel> MainWindow::stockPickModel(const std::string& name) const {
+    if (const auto it = stockPickModels_.find(name); it != stockPickModels_.end()) return it->second;
+    std::shared_ptr<const ImportedModel> m;
+    if (modelCacheStock_)
+        if (auto im = modelCacheStock_->loadModel(qs(name))) m = std::make_shared<const ImportedModel>(std::move(*im));
+    if (stockPickModels_.size() > 256) stockPickModels_.clear();
+    stockPickModels_[name] = m;
+    return m;
+}
+
+bool MainWindow::deleteStockSelection() {
+    if (!stockSel_) return false;
+    const StockSurfacePick sel = *stockSel_;
+    if (sel.light >= 0) {
+        ctx_.setStatus("A stock map's own light is read-only here (its edits need the converter)");
+        return true;
+    }
+    if (sel.prop >= 0 && refProps_ && size_t(sel.prop) < refProps_->size()) {
+        std::vector<uint32_t> hidden = stockEditHiddenProps(ctx_.doc.map());
+        const uint32_t row = (*refProps_)[size_t(sel.prop)].index;
+        if (std::find(hidden.begin(), hidden.end(), row) == hidden.end()) hidden.push_back(row);
+        std::sort(hidden.begin(), hidden.end());
+        std::string list;
+        for (const uint32_t i : hidden) list += (list.empty() ? "" : " ") + std::to_string(i);
+        for (const Entity& e : ctx_.doc.map().entities)
+            if (e.isWorldspawn()) {
+                ctx_.doc.setKeyValue(e.id, "iw8r_hide_smodels", list);
+                break;
+            }
+        stockSel_.reset();
+        if (camera_) camera_->setStockPickOutline({});
+        rebuildReferenceProps();
+        ctx_.documentEdited(QString("Stock prop %1 (row %2) hidden (Ctrl+Z brings it back; File > Stock Map > Rebuild Stock Zone leaves it out)")
+                                .arg(sel.model)
+                                .arg(row));
+        return true;
+    }
+    if (sel.mesh >= 0 && stockSelBounds_.valid()) {
+        AABB b = stockSelBounds_;
+        for (int a = 0; a < 3; ++a) {  // a flat surface still gives a box; a little past its faces
+            b.mins[a] -= 1.0, b.maxs[a] += 1.0;
+        }
+        const auto prim = makeBrushPrimitive(makeBox(b, " caulk 128 128 0 0 0 0"), ctx_.doc.eol());
+        if (!prim) return false;
+        ctx_.doc.addEntity({{"classname", kRemoveWorldClass}}, {*prim}, "Remove Stock Surface");
+        stockSel_.reset();
+        if (camera_) camera_->setStockPickOutline({});
+        ctx_.documentEdited(QString("Stock surface %1 removed: a world removal box %2 x %3 x %4 around it (Ctrl+Z brings it back; the "
+                                    "rebuild takes it out of the drawing and the collision)")
+                                .arg(sel.material)
+                                .arg(qRound(b.maxs.x - b.mins.x)).arg(qRound(b.maxs.y - b.mins.y)).arg(qRound(b.maxs.z - b.mins.z)));
+        return true;
+    }
+    return false;
+}
+
+bool MainWindow::editStockPropAsModel(const Ray& ray) {
+    const auto hit = pickStockSurface(ray);
+    if (!hit || hit->prop < 0 || !refProps_ || size_t(hit->prop) >= refProps_->size()) return false;
+    const StockModelInstance in = (*refProps_)[size_t(hit->prop)];
+    std::vector<uint32_t> hidden = stockEditHiddenProps(ctx_.doc.map());
+    if (std::find(hidden.begin(), hidden.end(), in.index) == hidden.end()) hidden.push_back(in.index);
+    std::sort(hidden.begin(), hidden.end());
+    std::string list;
+    for (const uint32_t i : hidden) list += (list.empty() ? "" : " ") + std::to_string(i);
+    auto keys = stockModelInstancesAsEntities(in);
+    keys.push_back({"iw8r_stock_prop", std::to_string(in.index)});
+    ctx_.doc.beginGroup("Edit Stock Prop As Model");
+    for (const Entity& e : ctx_.doc.map().entities)
+        if (e.isWorldspawn()) {
+            ctx_.doc.setKeyValue(e.id, "iw8r_hide_smodels", list);
+            break;
+        }
+    const Id id = ctx_.doc.addEntity(keys, {}, "Edit Stock Prop As Model");
+    ctx_.doc.endGroup();
+    ctx_.doc.deselectAll();
+    if (id != kNoId) ctx_.doc.select(SelRef{id, kNoId}, false);
+    stockSel_.reset();
+    rebuildReferenceProps();
+    ctx_.documentEdited(QString("Stock prop %1 (row %2) is now a model of the map: move, turn and scale it with the gizmo (Ctrl+Z puts the "
+                                "stock prop back). The rebuild hides the placement and adds the model")
+                            .arg(qs(in.model))
+                            .arg(in.index));
     return true;
 }
 

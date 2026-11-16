@@ -6,18 +6,18 @@ iwmap 4
 "classname" "worldspawn"
 // brush 0
 {
- ( 12 10 0 ) ( -12 10 0 ) ( -12 6 0 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
- ( -12 6 128 ) ( -12 10 128 ) ( 12 10 128 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
- ( -12 6 128 ) ( 12 6 128 ) ( 12 6 0 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
- ( 12 10 128 ) ( -12 10 128 ) ( -12 10 0 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
- ( 12 6 128 ) ( 12 10 128 ) ( 12 10 0 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
- ( -12 10 128 ) ( -12 6 128 ) ( -12 6 0 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 13 5.95 0 ) ( -13 5.95 0 ) ( -13 1.95 0 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -13 1.95 128 ) ( -13 5.95 128 ) ( 13 5.95 128 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -13 1.95 128 ) ( 13 1.95 128 ) ( 13 1.95 0 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 13 5.95 128 ) ( -13 5.95 128 ) ( -13 5.95 0 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( 13 1.95 128 ) ( 13 5.95 128 ) ( 13 5.95 0 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
+ ( -13 5.95 128 ) ( -13 1.95 128 ) ( -13 1.95 0 ) ladder 128 128 0 0 0 0 lightmap_gray 16384 16384 0 0 0 0
 }
 }
 // entity 1
 {
 "classname" "misc_model"
 "model" "tm/ee_buildings_industrial_radiotower_ladder_128_02"
-"origin" "0 -2 0"
-"angles" "0 0 0"
+"origin" "0 0.35 -0.5"
+"angles" "0 90 0"
 }

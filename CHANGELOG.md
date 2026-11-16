@@ -5,6 +5,26 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-15
 
+- **Stock map objects work like the map's own** (owner re-check, night):
+  - A click picks the stock prop under the cursor by its model's triangles (a model box only narrows the search) and
+    outlines its edges; a world surface selects the connected surface (a wall, a floor) and outlines its border.
+  - Delete hides a picked prop, or adds a world removal box around a picked surface (one undo step each): no brush
+    to draw first. A double-click makes a stock prop a model entity of the map (selected: the gizmo moves, turns
+    and scales it).
+  - The map's own lights are drawn as lights: a marker, the radius (omni) or the cone (spot), dimmed and
+    depth-tested, following View > Entity Display > Light Ranges; a click names one (type, radius, intensity,
+    colour, cone). Read-only: changing a stock light needs the converter.
+  - Script brush models (bomb sites, doors, barriers) are solid in the walk preview: a box of their compiled
+    submodel's bounds (MapEnts cmodels).
+- **Godrays without repeated copies**: the volumetric fog's 32 samples are offset per pixel within their step, so a
+  sharp shadow in the air (King's skylights) is no longer stamped once per sample along the shafts.
+- **Thin cut-outs hold at a distance**: an alpha-tested surface's alpha is raised with its mip level for the cut
+  (palm fronds faded out at a distance); the shading, depth pre-pass and shadow passes alike.
+- **Ladder prefabs**: the six stock ladder models were turned 90 degrees from their climbing brushes; rewritten from
+  the models' bounds (back on the wall line, brush over the rungs, as tall as the model; the steel ladder stands
+  on the floor). The showcase tower's ladder follows.
+- Side panel tab names are nearly full brightness when not selected; the asset panels' Tools button is a drop-down
+  like its neighbours.
 - **The map's own script runs in the editor** (View > Behaviour Preview, and in Play Preview on its own clock): a
   GSC interpreter for the subset maps use for moving things (`user_main`, threads, waits, notify / waittill / endon,
   loops, arrays, vectors, `getent` / `getentarray`, the rotate / move calls with the game's accel / decel curves,

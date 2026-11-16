@@ -159,6 +159,17 @@ bool loadActsMapEnts(const std::string& assetJson, const std::string& scriptStri
             }
         }
     }
+    // The submodels' bounds (cmodel_t.bounds: midPoint, halfSize), by index.
+    if (const json::Value* cm = fields->get("cmodels"))
+        if (const json::Value* values = cm->get("values"); values && values->type == json::Value::Type::Array)
+            for (const auto& r : values->arr) {
+                Iw8SubModel m;
+                if (const json::Value* b = r.get("bounds")) {
+                    vec3(b->get("midPoint"), m.mid);
+                    vec3(b->get("halfSize"), m.half);
+                }
+                out.subModels.push_back(m);
+            }
     auto count = [&](const char* section, const json::Value* v) {
         if (auto n = scalar(v))
             if (auto c = toIndex(*n, std::numeric_limits<uint64_t>::max())) out.sections[section] = *c;

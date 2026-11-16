@@ -717,8 +717,8 @@ v 470.4000000000001 -368 2 t 512 512 4 4
 {
 "classname" "misc_prefab"
 "model" "iw8r/ladders/ladder_old_wood_160.map"
-"origin" "15.600000000000023 640 0"
-"angles" "0 270 0"
+"origin" "20.6 640 0"
+"angles" "0 90 0"
 }
 // entity 55
 {

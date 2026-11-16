@@ -845,6 +845,13 @@ public:
 private:
     std::function<bool(const Ray&)> stockSurfacePicker_;
 public:
+    // A double-click on nothing of the document: a stock prop becomes a model entity (MainWindow::editStockPropAsModel).
+    void setStockSurfaceEditor(std::function<bool(const Ray&)> fn) { stockSurfaceEditor_ = std::move(fn); }
+protected:
+    void mouseDoubleClickEvent(QMouseEvent* e) override;
+private:
+    std::function<bool(const Ray&)> stockSurfaceEditor_;
+public:
     // The picked stock surface's outline (line pairs), drawn on top until the next click; empty = none.
     void setStockPickOutline(std::vector<app::GpuVertex> lines) {
         stockPickLines_ = std::move(lines);
@@ -853,6 +860,18 @@ public:
     size_t stockPickOutlineSize() const { return stockPickLines_.size(); }  // tests
 private:
     std::vector<app::GpuVertex> stockPickLines_;
+public:
+    // A stock map's light shapes (line pairs: markers, radii, spot cones), depth-tested; empty = none.
+    void setStockLightShapes(std::vector<app::GpuVertex> lines) {
+        stockLightPending_ = std::move(lines);
+        stockLightDirty_ = true;
+        update();
+    }
+    size_t stockLightShapeSize() const { return stockLightLines_.v.size(); }  // tests
+private:
+    std::vector<app::GpuVertex> stockLightPending_;
+    bool stockLightDirty_ = false;
+    app::GeoStream<app::GpuVertex> stockLightLines_;
     PlayerState player_;
     MoveParams params_;
     PlayControls playControls_;  // the game's client input: toggle stances, tap to slide, tactical sprint

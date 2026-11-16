@@ -275,6 +275,7 @@ struct FrameInput {
     // Depth-tested lines, then lines drawn on top (in this order).
     GeoStream<GpuVertex>* lines = nullptr;
     GeoStream<GpuVertex>* linesMisc = nullptr;
+    GeoStream<GpuVertex>* linesExtra = nullptr;  // the camera's own depth-tested lines (a stock map's light shapes)
     GeoStream<GpuVertex>* overlay[4] = {nullptr, nullptr, nullptr, nullptr};
     // Textured batches in creation order: the scene's, then the camera's own (sky box faces, effect particles).
     const std::vector<SceneBatch*>* batches = nullptr;

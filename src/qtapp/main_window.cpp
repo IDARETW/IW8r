@@ -1284,9 +1284,14 @@ void MainWindow::refreshDockTabStyle() {
     const auto mix = [&](double k) {
         return QColor::fromRgbF(text.redF() * k + bg.redF() * (1 - k), text.greenF() * k + bg.greenF() * (1 - k), text.blueF() * k + bg.blueF() * (1 - k));
     };
+    // Inactive tab names nearly as bright as the text (owner re-check 2026-11-15: at 72 % they were only readable once
+    // selected); the active one brighter still, toward white on a dark theme (toward black on a light one).
+    const QColor active = bg.lightness() < 128 ? QColor::fromRgbF(std::min(1.0, text.redF() * 0.5 + 0.5), std::min(1.0, text.greenF() * 0.5 + 0.5),
+                                                                  std::min(1.0, text.blueF() * 0.5 + 0.5))
+                                               : text.darker(140);
     dock_->setStyleSheet(dockBaseStyle_ + QString("\nads--CDockWidgetTab QLabel { color: %1; }\n"
                                                   "ads--CDockWidgetTab[activeTab=\"true\"] QLabel { color: %2; }\n")
-                                              .arg(mix(0.72).name(), text.name()));
+                                              .arg(mix(0.92).name(), active.name()));
 }
 
 void MainWindow::buildDocks() {
@@ -1300,6 +1305,7 @@ void MainWindow::buildDocks() {
     camera_ = new CameraView(&ctx_, dev_, dc_);
     // A stock map's world is walked on in the play preview (owner checklist 2026-11-15: it was noclip there).
     camera_->setStockSurfacePicker([this](const Ray& r) { return showStockSurfaceAt(r); });
+    camera_->setStockSurfaceEditor([this](const Ray& r) { return editStockPropAsModel(r); });
     camera_->setPlayWorldExtras([this](CollisionWorld& w) {
         QElapsedTimer t;
         t.start();
@@ -2241,8 +2247,11 @@ void MainWindow::buildMenus() {
         d[ctx_.axisV()] = -ctx_.doc.grid();
         ctx_.documentEdited(cloneSelection(d) ? "Cloned" : "Nothing selected");
     });
-    addCommand(edit, "DeleteSelection", "&Delete", QKeySequence(Qt::Key_Backspace),
-               [this] { ctx_.documentEdited(ctx_.doc.deleteSelection() ? "Deleted" : "Nothing selected"); });
+    addCommand(edit, "DeleteSelection", "&Delete", QKeySequence(Qt::Key_Backspace), [this] {
+        // Nothing of the document selected, a stock object clicked in the camera: it is hidden or removed.
+        if (ctx_.doc.selection().empty() && deleteStockSelection()) return;
+        ctx_.documentEdited(ctx_.doc.deleteSelection() ? "Deleted" : "Nothing selected");
+    });
     addCommand(edit, "UnSelectSelection", "D&eselect", QKeySequence(Qt::Key_Escape), [this] {
         // Inside a prefab with nothing selected, Esc leaves the prefab (Edit > Leave Prefab).
         if (ctx_.doc.selection().empty() && prefabDepth() > 0) {
@@ -2748,6 +2757,7 @@ void MainWindow::buildMenus() {
                 ctx_.scene.*flag = !(ctx_.scene.*flag);
                 Settings::instance().setValue(key, ctx_.scene.*flag);
                 if (QAction* act = action(id)) act->setChecked(ctx_.scene.*flag);
+                updateStockLightShapes();  // a stock map's own lights follow Light Ranges too
                 ctx_.cameraMoved();
                 if (camera_) camera_->update();
                 if (grid_) grid_->update();
@@ -5501,6 +5511,11 @@ void MainWindow::resetForNewDocument() {
     stockLootEditable_ = false;
     stockModelNames_.clear();
     stockPlaced_.clear();
+    stockSubModels_.clear();
+    stockLightList_.reset();
+    stockSel_.reset();
+    stockPickModels_.clear();
+    if (camera_) camera_->setStockLightShapes({});
     selectionSets_.clear();
     if (selectionSetsMenu_) selectionSetsMenu_->clear();
     if (camera_) camera_->setStockEffects({});
@@ -5525,6 +5540,7 @@ void MainWindow::loadDocument(const QString& path) {
         }
         resetForNewDocument();
         ctx_.scene.spawns = std::move(dump.spawns);
+        stockSubModels_ = std::move(dump.subModels);
         stockModelNames_ = entityModelNames(ctx_.doc.map());
         {
             // The map's own placed effects (research 132 G3): played by View > Effect Preview. Their definitions are
@@ -10122,6 +10138,7 @@ void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn)
         // The map's local lights (research 106): spots and omnis of the same ComWorld, their lightdefs and the IES strip
         // (both exported once by ACTS into <zone>/lights; "done" marks a run, whatever it found).
         auto localLights = std::make_shared<std::vector<StockGameLight>>();
+        auto lightList = std::make_shared<std::vector<StockPrimaryLight>>();  // the spots and omnis, for their shapes
         auto lightShadows = std::make_shared<std::vector<StockLightShadow>>();
         auto iesStrip = std::make_shared<std::vector<uint8_t>>();
         if (!json.isEmpty()) {
@@ -10158,6 +10175,7 @@ void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn)
                     const auto d = defs.find(l.defName);
                     StockGameLight g;
                     // Without the strip every light samples white: the profile offsets would read nothing there.
+                    if (l.type == 2 || l.type == 3) lightList->push_back(l);
                     if (packStockLight(l, d != defs.end() && !iesStrip->empty() ? &d->second : nullptr, g)) {
                         localLights->push_back(g);
                         lightShadows->push_back(stockLightShadowCamera(l, g));  // research 106 section 4
@@ -10183,9 +10201,11 @@ void MainWindow::loadStockSun(const QString& zone, const QString& skyMaterialIn)
             }
         }
         QMetaObject::invokeMethod(qApp, [self, zone, intensity, color, toward, visionText, skyIntensity, grade, localLights, iesStrip,
-                                         lightShadows] {
+                                         lightShadows, lightList] {
             if (!self || self->referenceZone_ != zone) return;
             self->camera_->setStockLocalLights(localLights, iesStrip, lightShadows);
+            self->stockLightList_ = lightList;
+            self->updateStockLightShapes();
             if (grade) self->camera_->setGameStockGrading(grade);
             if (!visionText.empty()) self->camera_->setGameStockVision(visionText);
             if (skyIntensity > 0) self->camera_->setGameStockSkyIntensity(skyIntensity);

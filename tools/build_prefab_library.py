@@ -677,22 +677,29 @@ reg("pillars_beams", "beam_wood_model_pair", "Two stock wood beams, side by side
     lambda p: (p.model(M["beam_wood"], (0, -48, WALL_H)), p.model(M["beam_wood"], (0, 48, WALL_H))))
 
 
-# ---- ladders (6): stock ladder model + climbable ladder brush
-def _ladder(model, h):
+# ---- ladders (6): stock ladder model + climbable ladder brush. The stock ladder models are wide along their own y
+# and thin along x (model cache bounds below: x min, x max, half width, z min, z max): each is turned 90 degrees so the
+# rungs run along x, its back on the wall line (y = 0; the wall side is -y), the climbable brush over the rungs'
+# front (+y), as tall as the model (the steel ladder hangs from its top: raised to stand on the floor). The files in
+# data/prefabs/iw8r/ladders were rewritten this way by tools/patches/ladder_prefabs_fix.py (2026-11-15).
+def _ladder(model, mx0, mx1, half, mz0, mz1):
     def build(p):
-        p.model(model, (0, 0, 0), 0, (48, 16, h))
-        p.ladder(0, 0, h)
+        depth, h = mx1 - mx0, round(mz1 - mz0)
+        p.ent("misc_model", (0, -mx0, -mz0), 90, [("model", model)])
+        p.pts += [(-half, 0, 0), (half, depth + 4, h)]
+        p.box((-half, depth, 0), (half, depth + 4, h), TOOL_LADDER)
     return build
 
 
-reg("ladders", "ladder_steel_128", "Steel ladder, 128 high, climbable brush")(_ladder(M["ladder_steel"], 128))
-reg("ladders", "ladder_wood_construction_128", "Construction wood ladder, 128 high")(
-    _ladder(M["ladder_wood_construction"], 128))
-reg("ladders", "ladder_old_wood_72", "Old wood ladder, 72 high")(_ladder(M["ladder_old_72"], 72))
-reg("ladders", "ladder_old_wood_144", "Old wood ladder, 144 high")(_ladder(M["ladder_old_144"], 144))
-reg("ladders", "ladder_old_wood_160", "Old wood ladder, 160 high")(_ladder(M["ladder_old_160"], 160))
+reg("ladders", "ladder_steel_128", "Steel ladder, 200 high, climbable brush")(
+    _ladder(M["ladder_steel"], 0.0, 8.2, 16, -200.0, 0.0))
+reg("ladders", "ladder_wood_construction_128", "Construction wood ladder, 193 high")(
+    _ladder(M["ladder_wood_construction"], -2.0, 2.0, 12, -0.3, 192.3))
+reg("ladders", "ladder_old_wood_72", "Old wood ladder, 76 high")(_ladder(M["ladder_old_72"], 0.3, 6.3, 12, 0.0, 76.3))
+reg("ladders", "ladder_old_wood_144", "Old wood ladder, 148 high")(_ladder(M["ladder_old_144"], 0.3, 6.3, 12, 0.0, 148.3))
+reg("ladders", "ladder_old_wood_160", "Old wood ladder, 160 high")(_ladder(M["ladder_old_160"], 0.2, 6.2, 12, 0.0, 160.3))
 reg("ladders", "ladder_radio_tower_128", "Radio tower ladder section, 128 high")(
-    _ladder(M["ladder_radio_tower"], 128))
+    _ladder(M["ladder_radio_tower"], -6.3, 1.6, 13, 0.5, 128.0))
 
 
 # ---- roofs (6)

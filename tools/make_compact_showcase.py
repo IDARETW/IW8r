@@ -180,9 +180,9 @@ def main():
     x, y = at(9, 5.2)
     world.append(box(x, y, 0, x + 96, y + 96, 160, WALL))           # tower
     # Its ladder on the -x face: the 160-unit wooden ladder prefab (model and climbing volume; the prefab's wall side
-    # is its +y, turned to face the tower).
-    entity([("classname", "misc_prefab"), ("model", "iw8r/ladders/ladder_old_wood_160.map"), ("origin", f"{x - 10} {y + 48} 0"),
-            ("angles", "0 270 0")])
+    # is its -y, turned 90 degrees to face the tower; the prefab is 10 deep, so its centre is 5 out from the face).
+    entity([("classname", "misc_prefab"), ("model", "iw8r/ladders/ladder_old_wood_160.map"), ("origin", f"{round(x - 5, 2):g} {y + 48} 0"),
+            ("angles", "0 90 0")])
     for i, h in enumerate([32, 56]):
         x, y = at(9, 6.6 + i)
         world.append(box(x, y, 0, x + 96, y + 96, h, FLOOR))         # mantle ledges
