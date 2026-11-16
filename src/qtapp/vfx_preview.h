@@ -16,11 +16,18 @@
 #include <QImage>
 #include <QWidget>
 
+#include <functional>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "vfx_sim.h"
 
 class QTimer;
+
+namespace iw8r {
+struct ImportedModel;
+}
 
 namespace iw8r::qt {
 
@@ -33,10 +40,22 @@ public:
     // Where the sprites' materials come from (one for the process; MainWindow sets it). Without it nothing is drawn
     // but the note that the materials are unknown.
     static void setMaterialCache(MaterialCache* cache);
+    // Child effects of runner particles and the models of model particles (MainWindow sets both: the effect exports,
+    // asked for from the parent's zone; the stock model cache). Null with *pending set while being exported.
+    using EffectSource = std::function<std::shared_ptr<const VfxSimDef>(const std::string& child, const std::string& parent, bool* pending)>;
+    using ModelSource = std::function<std::shared_ptr<const iw8r::ImportedModel>(const std::string& model, bool* pending)>;
+    static void setEffectSource(EffectSource fn);
+    static EffectSource effectSourceFn();  // the one set (tests put it back)
+    static void setModelSource(ModelSource fn);
     void setEffect(const VfxSimDef& def);  // restarts playback and refits the view
     void setTime(double t);                // stops playback at t seconds of the effect (tests)
     int particlesNow() const { return int(last_.size()); }
-    const VfxSimDef& effect() const { return def_; }
+    const VfxSimDef& effect() const { return root_; }  // as set (the children of its runners are drawn, not listed)
+    int childEffects() const { return int(nodes_.size()) - 1; }  // child effects the runners play (tests)
+    int modelsDrawn() const { return modelsDrawn_; }   // model particles drawn in the last frame
+    int lightsDrawn() const { return lightsDrawn_; }   // light glows drawn in the last frame
+    int decalsDrawn() const { return decalsDrawn_; }   // decals drawn in the last frame
+    bool exportsPending() const { return childrenPending_ || modelsPending_; }  // child effects or models being exported
     // Tests and the bench (vfx_preview_bench.h).
     QRect viewRect() const;                        // the square the effect is drawn in
     int texturedParticles() const { return textured_; }  // sprites drawn with their image in the last frame
@@ -78,8 +97,22 @@ private:
     void paintDiscs(QPainter& g);   // the look before (setDiscStyle)
     QString statusText() const;
     QString noteText() const;
+    // The particles at t: the effect's own, and for each runner particle its child effect's at the particle's age and
+    // place (emitter indices into def_, which lists the children's emitters after the effect's).
+    std::vector<VfxParticle> sampleAll(double t) const;
+    void buildTree();               // the runners' children into nodes_ and def_ (again when an export arrives)
 
-    VfxSimDef def_;
+    VfxSimDef root_;                // the effect as set
+    VfxSimDef def_;                 // its emitters, then the emitters of every child effect
+    struct Node {
+        std::shared_ptr<const VfxSimDef> def;
+        int offset = 0;             // its first emitter in def_
+        std::vector<int> child;     // per emitter: the node its runner plays (-1 none)
+    };
+    std::vector<Node> nodes_;
+    bool childrenPending_ = false, modelsPending_ = false;
+    QElapsedTimer poll_;            // pending children and models are looked for again every 700 ms
+    int modelsDrawn_ = 0, lightsDrawn_ = 0, decalsDrawn_ = 0;
     std::vector<VfxParticle> last_;
     QTimer* timer_ = nullptr;
     QElapsedTimer clock_;

@@ -48,3 +48,4 @@ __pycache__/
 *.pem
 *.key
 .env
+data/menu_packs/

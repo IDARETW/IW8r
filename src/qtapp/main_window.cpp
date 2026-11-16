@@ -1,4 +1,5 @@
 #include "numeric_drag.h"
+#include "menu_pack.h"
 #include "panel_chrome.h"
 #include "stock_terrain_layers.h"
 #include "stock_placed.h"
@@ -328,10 +329,48 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         toasts_->showToast(ok ? LogLevel::Info : LogLevel::Error, ok ? "Compile finished" : "Compile failed", "compile");
     });
     buildMenus();
+    // The one-time full menu cache: offered a moment after start-up until it has been built (menu_pack.h).
+    QTimer::singleShot(5000, this, [this] { maybeOfferMenuCache(); });
     // Textured camera: custom materials, then exported stock images, then the ACTS material cache (fetched on demand).
     customMaterials_ = std::make_unique<MaterialLibrary>();
     matCache_ = new MaterialCache([this](const QString& k) { return toolPath(k); }, this);
     VfxPreview::setMaterialCache(matCache_);  // the effect previews' sprites (side bar, Effect Info)
+    // The effect previews' child effects (runners) and models (owner 2026-11-16: "a lot of the vfx dont show anything").
+    VfxPreview::setEffectSource([this](const std::string& child, const std::string& parent, bool* pending) -> std::shared_ptr<const VfxSimDef> {
+        const QString name = QString::fromStdString(child);
+        if (const auto it = vfxPreviewDefs_.constFind(name); it != vfxPreviewDefs_.constEnd()) return *it;
+        if (const auto pack = MenuPack::shared("effects"); pack && pack->hasData(name) && findVfxExport(name).isEmpty()) {
+            auto def = std::make_shared<VfxSimDef>();
+            if (buildVfxSim(pack->data(name).toStdString(), *def)) {
+                vfxPreviewDefs_.insert(name, def);
+                return def;
+            }
+        }
+        if (const QString f = findVfxExport(name); !f.isEmpty()) {
+            std::string text;
+            auto def = std::make_shared<VfxSimDef>();
+            if (readFile(f.toStdString(), text) && buildVfxSim(text, *def)) {
+                vfxPreviewDefs_.insert(name, def);
+                return def;
+            }
+            return nullptr;
+        }
+        *pending = requestVfxExport(name, vfxZoneOf(QString::fromStdString(parent)));
+        return nullptr;
+    });
+    VfxPreview::setModelSource([this](const std::string& model, bool* pending) -> std::shared_ptr<const ImportedModel> {
+        if (!modelCacheStock_) return nullptr;
+        const QString n = QString::fromStdString(model);
+        const auto e = modelCacheStock_->lookup(n);
+        if (!e) {
+            modelCacheStock_->request({n});
+            *pending = true;
+            return nullptr;
+        }
+        if (e->failed) return nullptr;
+        auto m = modelCacheStock_->loadModel(n);
+        return m ? std::make_shared<const ImportedModel>(std::move(*m)) : nullptr;
+    });
     connect(matCache_, &MaterialCache::materialReady, this, [this](const QString&) {
         camera_->materialImagesChanged();
         if (assetPreview_) assetPreview_->materialsChanged();
@@ -1403,10 +1442,16 @@ void MainWindow::buildDocks() {
         auto previewed = std::make_shared<QString>();
         const auto showFx = [this, previewed](const QString& name) {
             *previewed = name;
-            const QString f = findVfxExport(name);
+            QString f = findVfxExport(name);
             std::string text;
             VfxSimDef def;
-            if (!f.isEmpty() && readFile(f.toStdString(), text) && buildVfxSim(text, def) && !def.emitters.empty()) {
+            // The shipped menu pack holds the definition of every effect it could export: the preview plays at once.
+            if (f.isEmpty())
+                if (const auto pack = MenuPack::shared("effects"); pack && pack->hasData(name)) {
+                    text = pack->data(name).toStdString();
+                    f = "pack";
+                }
+            if (!f.isEmpty() && (f == "pack" || readFile(f.toStdString(), text)) && buildVfxSim(text, def) && !def.emitters.empty()) {
                 // Its row says loop / one-shot length from now on (kept: the next session knows it too).
                 effects_->setRowFact(name, def.duration < 0 ? QString("loop") : QString("%1 s").arg(def.duration, 0, 'f', 1), true);
                 effects_->setEffectPreview(&def, QString("%1\n%2 emitter(s), %3 (click the preview to pause)")
@@ -5189,6 +5234,8 @@ void MainWindow::buildMenus() {
         }
     }
     addCommand(tools, "GameModes", "&Game Modes (Warzone and mode presets)...", QKeySequence(), [this] { showGameModes(); });
+    addCommand(tools, "BuildMenuCache", "Build Full Menu Cache (pictures, previews and facts of every asset)...", QKeySequence(),
+               [this] { startMenuCacheBuild(); });
     addCommand(tools, "CheckMap", "&Check Map...", QKeySequence(), [this] {
         auto* d = new CheckMapDialog(&ctx_, this);
         d->setAttribute(Qt::WA_DeleteOnClose);
@@ -7450,11 +7497,8 @@ QString MainWindow::findVfxExport(const QString& name) const {
     return found;
 }
 
-bool MainWindow::requestVfxExport(const QString& name) {
-    if (name.isEmpty() || vfxExporting_.contains(name) || vfxExportFailed_.contains(name)) return vfxExporting_.contains(name);
-    QString stem = name;
-    stem.replace('\\', '/');
-    // 8.9: the zone that holds it (the always-loaded MP zones the common effects catalogue lists).
+// 8.9: the zone that holds a common effect (the always-loaded MP zones the common effects catalogue lists).
+static const QHash<QString, QString>& commonVfxZones() {
     static const QHash<QString, QString> zones = [] {
         QHash<QString, QString> z;
         QDir d(QCoreApplication::applicationDirPath());
@@ -7466,7 +7510,25 @@ bool MainWindow::requestVfxExport(const QString& name) {
                 }
         return z;
     }();
-    const QString zone = zones.value(stem);
+    return zones;
+}
+
+QString MainWindow::vfxZoneOf(const QString& name) const {
+    QString stem = name;
+    stem.replace('\\', '/');
+    const QString z = commonVfxZones().value(stem);
+    return z.isEmpty() ? vfxChildZone_.value(stem) : z;
+}
+
+bool MainWindow::requestVfxExport(const QString& name, const QString& zoneHint) {
+    if (name.isEmpty() || vfxExporting_.contains(name) || vfxExportFailed_.contains(name)) return vfxExporting_.contains(name);
+    QString stem = name;
+    stem.replace('\\', '/');
+    QString zone = vfxZoneOf(stem);
+    if (zone.isEmpty() && !zoneHint.isEmpty()) {
+        zone = zoneHint;  // a child effect: the zone its parent came from holds it too
+        vfxChildZone_.insert(stem, zone);
+    }
     if (zone.isEmpty()) {
         vfxExportFailed_.insert(name);  // not in a zone the editor can export it from: asked once
         return false;
@@ -11058,6 +11120,13 @@ void MainWindow::showPreferences() {
 
 void MainWindow::previewModel(const QString& name) {
     previewedModel_ = name;
+    // The shipped menu pack's picture and facts, at once and without an export (owner 2026-11-16: "compress previews
+    // too"); the 3D button still exports the model.
+    if (const auto pack = MenuPack::shared("models"))
+        if (const QImage pv = pack->preview(name); !pv.isNull()) {
+            models_->setPreview(pv, name + "\n" + pack->facts(name));
+            return;
+        }
     if (!modelCacheStock_) return;
     const auto e = modelCacheStock_->lookup(name);
     if (!e) {
@@ -11128,8 +11197,83 @@ static QStringList ddsFacts(const std::string& b) {
     return out;
 }
 
+QStringList ddsFactsOf(const std::string& headerBytes) { return ddsFacts(headerBytes); }
+
+void MainWindow::maybeOfferMenuCache() {
+    // Not in automated runs (offscreen), not once built, not after "Don't ask again".
+    if (QGuiApplication::platformName() == "offscreen" || qEnvironmentVariable("IW8R_NO_MENU_PACKS") == "1" || MenuPack::complete() ||
+        menuCacheProc_ || Settings::instance().value("tips/menuCacheNever", false).toBool())
+        return;
+    auto* box = new QMessageBox(QMessageBox::Information, "Build the full menu cache?",
+                                "The side panels can show a picture, a preview and the facts of every material, model, image, "
+                                "effect, sound and prefab at once, without exporting anything while you work, and every effect "
+                                "preview can play straight away.\n\n"
+                                "Building that cache runs once, in the background, in a separate process (a few hours: it exports "
+                                "each asset with ACTS, keeps only small compressed packs and deletes the exports). You can keep "
+                                "working meanwhile; the panels use the cache as soon as it is done. Tools > Build Full Menu Cache "
+                                "runs it later.",
+                                QMessageBox::NoButton, this);
+    box->setObjectName("menuCacheTip");
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    QAbstractButton* build = box->addButton("Build now", QMessageBox::AcceptRole);
+    box->addButton("Later", QMessageBox::RejectRole);
+    QAbstractButton* never = box->addButton("Don't ask again", QMessageBox::DestructiveRole);
+    box->setModal(false);
+    connect(box, &QMessageBox::buttonClicked, this, [this, build, never](QAbstractButton* b) {
+        if (b == build) startMenuCacheBuild();
+        else if (b == never) Settings::instance().setValue("tips/menuCacheNever", true);
+    });
+    box->show();
+}
+
+void MainWindow::startMenuCacheBuild() {
+    if (menuCacheProc_) {
+        ctx_.setStatus("The menu cache is being built already (the Console shows its progress)");
+        return;
+    }
+    // The packs are closed while the builder replaces them; the panels fall back to the caches meanwhile.
+    MenuPack::suspend(true);
+    auto* p = new QProcess(this);
+    menuCacheProc_ = p;
+    p->setProgram(QCoreApplication::applicationFilePath());
+    p->setArguments({"--menu-pack", "all", "--fill"});
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert("QT_QPA_PLATFORM", "offscreen");  // no window
+    p->setProcessEnvironment(env);
+    p->setProcessChannelMode(QProcess::MergedChannels);
+    connect(p, &QProcess::readyRead, this, [this, p] {
+        while (p->canReadLine()) {
+            const QString line = QString::fromLocal8Bit(p->readLine()).trimmed();
+            if (line.isEmpty()) continue;
+            EditorLog::instance().add(LogLevel::Info, "menucache", line);
+            ctx_.setStatus("Menu cache: " + line);
+        }
+    });
+    connect(p, &QProcess::finished, this, [this, p](int code, QProcess::ExitStatus st) {
+        menuCacheProc_ = nullptr;
+        p->deleteLater();
+        MenuPack::suspend(false);
+        for (AssetBrowser* b : {materials_, models_, effects_, images_, sounds_})
+            if (b) b->reloadPack();
+        if (prefabs_) prefabs_->refresh();
+        const bool ok = st == QProcess::NormalExit && code == 0;
+        if (toasts_)
+            toasts_->showToast(ok ? LogLevel::Info : LogLevel::Warning,
+                               ok ? "The full menu cache is built: the panels use it now" : "The menu cache build stopped (Console: menucache)", "menucache");
+    });
+    p->start();
+    if (toasts_)
+        toasts_->showToast(LogLevel::Info, "Building the full menu cache in the background (a few hours; Console: menucache)", "menucache");
+}
+
 void MainWindow::previewImage(const QString& name) {
     previewedImage_ = name;
+    // The shipped menu pack first (owner 2026-11-16: "compress previews too"): no export, at once.
+    if (const auto pack = MenuPack::shared("images"))
+        if (const QImage pv = pack->preview(name); !pv.isNull()) {
+            images_->setPreview(pv, name + "\n" + pack->facts(name).replace(factSep(), "\n"));
+            return;
+        }
     const QString dds = imageCache_->cachedDds(name);
     if (dds.isEmpty()) {
         const QString err = imageCache_->lastError(name);

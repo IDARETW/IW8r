@@ -554,6 +554,35 @@ TEST(stock_lgv_average_is_the_mean_over_directions) {
 
 // Research 139 section 1: Shipment's sun flare (tests/data/vfx_sim/vfx_shipment_sunflare.12.asset.json, 6 flare
 // emitters) read into flare modules, and the screen layout of its pieces.
+TEST(vfx_runner_model_light_decal_elements) {
+    // Owner 2026-11-16: effects of runners, models, lights and decals previewed nothing; the simulation reads what they
+    // draw from (research 138 section 7).
+    const auto ref = [](const char* type, const char* name) {
+        return std::string(R"({"assetList":{"values":[{"value":{"asset_reference":true,"type":")") + type + R"(","name":")" + name + R"("}}]}})";
+    };
+    const std::string spawn = module("initSpawn", 0, "");
+    {
+        VfxSimDef def;
+        CHECK(buildVfxSim(moduleExport(0, 2, 0, 3, 0, spawn + "," + module("initRunner", 0, R"("m_linkedAssetList":)" + ref("ParticleSystemDef", "vfx/test/child_ch")), "", 9), def));
+        CHECK(def.emitters.size() == 1 && def.emitters[0].element == 9 && def.emitters[0].runners == std::vector<std::string>{"vfx/test/child_ch"});
+    }
+    {
+        VfxSimDef def;
+        CHECK(buildVfxSim(moduleExport(2, 0, 3, 2, 0, spawn + "," + module("initModel", 0, R"("m_linkedAssetList":)" + ref("XModel", "shell_casing_9mm")), "", 7), def));
+        CHECK(def.emitters.size() == 1 && def.emitters[0].models == std::vector<std::string>{"shell_casing_9mm"} && def.emitters[0].materials.empty());
+    }
+    {
+        VfxSimDef def;
+        CHECK(buildVfxSim(moduleExport(0, 4, 0, 1, 0, spawn + "," + module("initLightSpot", 0, R"("m_brightness":2.5)"), "", 6), def));
+        CHECK(def.emitters.size() == 1 && def.emitters[0].light.present && def.emitters[0].light.spot && std::fabs(def.emitters[0].light.brightness - 2.5) < 1e-9);
+    }
+    {
+        VfxSimDef def;
+        CHECK(buildVfxSim(moduleExport(2, 0, 1, 5, 0, spawn + "," + module("initDecal", 0, R"("m_linkedAssetList":)" + ref("Material", ",i/vfx_decal_scorch")), "", 2), def));
+        CHECK(def.emitters.size() == 1 && def.emitters[0].material == "i/vfx_decal_scorch");
+    }
+}
+
 TEST(vfx_flare_modules_and_screen_layout) {
     namespace fs = std::filesystem;
     std::string path = sampleExportPath();

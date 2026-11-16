@@ -18,6 +18,7 @@
 #include <unordered_map>
 
 #include "material_cache.h"
+#include "model_import.h"
 #include "vfx_textures.h"
 
 namespace iw8r::qt {
@@ -266,9 +267,167 @@ void drawQuads(const std::vector<Quad>& quads, int side, float* buf, const float
     for (auto& j : jobs) j.get();
 }
 
-bool drawnElement(const VfxEmitterSim& em) { return em.element == 0 || em.element == 8 || em.element == 10; }
+// Sprites: billboards, oriented sprites, tails and decals (a decal lies on the ground).
+bool drawnElement(const VfxEmitterSim& em) { return em.element == 0 || em.element == 8 || em.element == 10 || em.element == 2; }
+bool lightElement(const VfxEmitterSim& em) { return (em.element == 5 || em.element == 6) && em.light.present; }
+// Everything the preview shows: the sprites, models and light glows (runners show through their children).
+bool shownElement(const VfxEmitterSim& em) { return drawnElement(em) || em.element == 7 || lightElement(em); }
+
+VfxPreview::EffectSource& effectSource() {
+    static VfxPreview::EffectSource fn;
+    return fn;
+}
+VfxPreview::ModelSource& modelSource() {
+    static VfxPreview::ModelSource fn;
+    return fn;
+}
+
+// A model's triangles for the preview (Z up, at most about 1,500 of them) and its radius, read once per model.
+struct ModelTris {
+    std::vector<std::array<float, 9>> tris;
+    float radius = 4;
+};
+struct ModelSlot {
+    std::shared_ptr<const ModelTris> tris;
+    bool failed = false;
+};
+std::unordered_map<std::string, ModelSlot>& modelSlots() {
+    static std::unordered_map<std::string, ModelSlot> m;
+    return m;
+}
+// The model's triangles, or null (*pending while the cache exports it).
+std::shared_ptr<const ModelTris> modelTris(const std::string& name, bool* pending) {
+    ModelSlot& s = modelSlots()[name];
+    if (s.tris || s.failed) return s.tris;
+    if (!modelSource()) {
+        s.failed = true;
+        return nullptr;
+    }
+    bool wait = false;
+    const std::shared_ptr<const ImportedModel> m = modelSource()(name, &wait);
+    if (!m) {
+        if (wait) *pending = true;
+        else s.failed = true;
+        return nullptr;
+    }
+    auto out = std::make_shared<ModelTris>();
+    size_t total = 0;
+    for (const auto& part : m->meshes) total += part.idx.size() / 3;
+    const size_t step = std::max<size_t>(1, total / 1500);
+    size_t n = 0;
+    float r2 = 1;
+    for (const auto& part : m->meshes)
+        for (size_t i = 0; i + 2 < part.idx.size(); i += 3, ++n) {
+            if (n % step) continue;
+            std::array<float, 9> t{};
+            for (int v = 0; v < 3; ++v) {
+                const Vec3 p = part.pos[part.idx[i + size_t(v)]];
+                // glTF Y up -> Z up (as the prefab pictures turn them).
+                t[size_t(v) * 3 + 0] = float(p.x), t[size_t(v) * 3 + 1] = float(-p.z), t[size_t(v) * 3 + 2] = float(p.y);
+                r2 = std::max(r2, float(p.x * p.x + p.y * p.y + p.z * p.z));
+            }
+            out->tris.push_back(t);
+        }
+    out->radius = std::sqrt(r2);
+    s.tris = out;
+    return s.tris;
+}
+
+// The light glow: a white disc fading out (additive; the quad's colour tints it).
+const VfxSprite* glowSprite() {
+    static const std::shared_ptr<VfxSprite> sp = [] {
+        auto s = std::make_shared<VfxSprite>();
+        s->mat.lit = false;
+        s->mat.ready = true;
+        app::Rgba8Image im;
+        im.width = im.height = 64;
+        im.pixels.resize(64 * 64 * 4);
+        for (int y = 0; y < 64; ++y)
+            for (int x = 0; x < 64; ++x) {
+                const float dx = (x + 0.5f) / 32.0f - 1, dy = (y + 0.5f) / 32.0f - 1;
+                const float f = std::max(0.0f, 1.0f - std::sqrt(dx * dx + dy * dy));
+                const uint8_t v = uint8_t(std::clamp(f * f * 255.0f, 0.0f, 255.0f));
+                uint8_t* px = &im.pixels[(size_t(y) * 64 + size_t(x)) * 4];
+                px[0] = px[1] = px[2] = v;
+                px[3] = 255;
+            }
+        s->levels.push_back(std::move(im));
+        return s;
+    }();
+    return sp.get();
+}
 
 }  // namespace
+
+void VfxPreview::setEffectSource(EffectSource fn) { effectSource() = std::move(fn); }
+VfxPreview::EffectSource VfxPreview::effectSourceFn() { return effectSource(); }
+void VfxPreview::setModelSource(ModelSource fn) {
+    modelSource() = std::move(fn);
+    modelSlots().clear();
+}
+
+void VfxPreview::buildTree() {
+    // The effect, then breadth first the child effects its runners play (3 levels, 24 effects at most); each child's
+    // emitters are listed in def_ after the ones before it.
+    def_ = root_;
+    nodes_.clear();
+    childrenPending_ = false;
+    nodes_.push_back({std::make_shared<const VfxSimDef>(root_), 0, std::vector<int>(root_.emitters.size(), -1)});
+    std::vector<int> depth{0};
+    for (size_t n = 0; n < nodes_.size() && nodes_.size() < 24; ++n) {
+        if (depth[n] >= 3) continue;
+        const std::shared_ptr<const VfxSimDef> parent = nodes_[n].def;
+        for (size_t e = 0; e < parent->emitters.size() && nodes_.size() < 24; ++e) {
+            const VfxEmitterSim& em = parent->emitters[e];
+            if (em.element != 9 || em.runners.empty() || !effectSource()) continue;
+            bool pending = false;
+            const std::shared_ptr<const VfxSimDef> child = effectSource()(em.runners.front(), parent->name, &pending);
+            if (!child) {
+                childrenPending_ = childrenPending_ || pending;
+                continue;
+            }
+            nodes_[n].child[e] = int(nodes_.size());
+            nodes_.push_back({child, int(def_.emitters.size()), std::vector<int>(child->emitters.size(), -1)});
+            depth.push_back(depth[n] + 1);
+            def_.emitters.insert(def_.emitters.end(), child->emitters.begin(), child->emitters.end());
+        }
+    }
+    // A child plays while its runner particle lives (from the particle's age), so the effect's own run is the run.
+    poll_.restart();
+}
+
+std::vector<VfxParticle> VfxPreview::sampleAll(double t) const {
+    // Falling models (debris, shells, a dud) come to rest on the preview's ground instead of falling out of the view
+    // (the game's physics stops them on the world; the fit would otherwise follow them for seconds).
+    const auto rest = [this](std::vector<VfxParticle>& ps) {
+        for (VfxParticle& p : ps)
+            if (const VfxEmitterSim& em = def_.emitters[size_t(p.emitter)]; em.element == 7 && (em.gravityMax > 0 || em.gravity > 0) && p.pos[2] < 0)
+                p.pos[2] = 0;
+        return ps;
+    };
+    if (nodes_.size() <= 1) {
+        std::vector<VfxParticle> own = sampleVfx(def_, t);
+        return rest(own);
+    }
+    std::vector<VfxParticle> out;
+    const std::function<void(int, double, uint32_t, const double*, int)> walk = [&](int n, double tt, uint32_t seed, const double* at, int depth) {
+        const Node& node = nodes_[size_t(n)];
+        for (VfxParticle p : sampleVfx(*node.def, tt, seed)) {
+            if (out.size() >= 3 * kVfxMaxParticles) return;
+            for (int k = 0; k < 3; ++k) p.pos[k] += at[k];
+            const int c = p.emitter >= 0 && size_t(p.emitter) < node.child.size() ? node.child[size_t(p.emitter)] : -1;
+            if (c >= 0) {
+                if (depth < 3) walk(c, p.age, seed * 2654435761u + uint32_t(p.rnd * 1e6) + 1u, p.pos, depth + 1);
+                continue;
+            }
+            p.emitter += node.offset;
+            out.push_back(p);
+        }
+    };
+    const double origin[3] = {0, 0, 0};
+    walk(0, t, 1, origin, 0);
+    return rest(out);
+}
 
 void VfxPreview::setMaterialCache(MaterialCache* cache) { SpriteStore::get().setCache(cache); }
 
@@ -291,7 +450,17 @@ VfxPreview::VfxPreview(QWidget* parent) : QWidget(parent) {
     timer_ = new QTimer(this);
     timer_->setInterval(33);
     connect(timer_, &QTimer::timeout, this, [this] {
-        if (!playing_) return;
+        if ((childrenPending_ || modelsPending_) && poll_.elapsed() > 700) {
+            // An export finished meanwhile: the children are attached and the models read on the next frames.
+            if (childrenPending_) {
+                buildTree();
+                fit();
+            }
+            modelsPending_ = false;
+            poll_.restart();
+            dirty_ = true;
+        }
+        if (!playing_) return update();
         if (def_.duration >= 0) {
             t_ = std::fmod(offset_ + clock_.elapsed() / 1000.0, loopLength());
         } else {
@@ -299,7 +468,7 @@ VfxPreview::VfxPreview(QWidget* parent) : QWidget(parent) {
             t_ = offset_ + clock_.elapsed() / 1000.0;
             if (t_ > 3600) offset_ = warmTime(), clock_.restart(), t_ = offset_;
         }
-        last_ = sampleVfx(def_, t_);
+        last_ = sampleAll(t_);
         dirty_ = true;
         update();
     });
@@ -330,19 +499,21 @@ double VfxPreview::busiestTime() const {
     for (int k = 0; k <= 40; ++k) {
         const double t = def_.duration * k / 40.0;
         double n = 0;
-        for (const VfxParticle& p : sampleVfx(def_, t))
-            if (drawnElement(def_.emitters[size_t(p.emitter)])) n += std::clamp(double(p.rgba[3]), 0.0, 1.0) * std::max(0.5, p.size2[0] + p.size2[1]);
+        for (const VfxParticle& p : sampleAll(t))
+            if (const VfxEmitterSim& em = def_.emitters[size_t(p.emitter)]; em.element == 7 || lightElement(em)) n += 2;  // a model or a light counts whole
+            else if (shownElement(em)) n += std::clamp(double(p.rgba[3]), 0.0, 1.0) * std::max(0.5, p.size2[0] + p.size2[1]);
         if (n > most) most = n, best = t;
     }
     return best;
 }
 
 void VfxPreview::setEffect(const VfxSimDef& def) {
-    def_ = def;
+    root_ = def;
+    buildTree();
     playing_ = true;
     t_ = offset_ = warmTime();
     fit();
-    last_ = sampleVfx(def_, t_);
+    last_ = sampleAll(t_);
     clock_.restart();
     timer_->start();
     dirty_ = true;
@@ -352,7 +523,7 @@ void VfxPreview::setEffect(const VfxSimDef& def) {
 void VfxPreview::setTime(double t) {
     playing_ = false;
     t_ = t;
-    last_ = sampleVfx(def_, t_);
+    last_ = sampleAll(t_);
     dirty_ = true;
     update();
 }
@@ -421,10 +592,20 @@ void VfxPreview::fit() {
     std::vector<std::array<double, 5>> per(def_.emitters.size(), {1e30, -1e30, 1e30, -1e30, 0});
     const double t1 = loopLength();
     for (int k = 0; k <= 32; ++k)
-        for (const VfxParticle& p : sampleVfx(def_, t1 * k / 32.0)) {
+        for (const VfxParticle& p : sampleAll(t1 * k / 32.0)) {
             const VfxEmitterSim& em = def_.emitters[size_t(p.emitter)];
-            if (!drawnElement(em)) continue;
+            if (!shownElement(em)) continue;
             double r = 0.5 * std::max(p.size2[0], p.size2[1]);
+            if (em.element == 7) {
+                // A model: its own size (read when the cache has it), around where it starts: a shell or a piece of
+                // debris flies off fast, and following its whole flight left it a dot.
+                if (p.age > 0.3) continue;
+                bool wait = false;
+                const auto mt = em.models.empty() ? nullptr : modelTris(em.models[size_t(p.rnd * 1e6) % em.models.size()], &wait);
+                r = mt ? double(mt->radius) : 4.0;
+            } else if (lightElement(em)) {
+                r = std::min(r * 0.5, 48.0);  // a light's reach is not its glow: the fit keeps the effect large
+            }
             if (em.element == 10 && em.tailScaleWithVelocity) r = std::max(r, std::sqrt(dot3(p.vel, p.vel)) * 0.033 * 0.5);
             const double R = dot3(p.pos, right_), U = dot3(p.pos, up_);
             const double w = std::clamp(double(p.rgba[3]), 0.05, 1.0) * std::max(0.5, r);
@@ -463,7 +644,7 @@ void VfxPreview::fitDiscs() {
     double lo[2] = {1e30, 1e30}, hi[2] = {-1e30, -1e30};
     const double len = def_.duration >= 0 ? def_.duration + 0.5 : 4.0;
     for (int k = 1; k <= 8; ++k)
-        for (const VfxParticle& p : sampleVfx(def_, len * k / 9.0)) {
+        for (const VfxParticle& p : sampleAll(len * k / 9.0)) {
             const double r = p.size / 2;
             lo[0] = std::min(lo[0], p.pos[0] - r), hi[0] = std::max(hi[0], p.pos[0] + r);
             lo[1] = std::min(lo[1], p.pos[2] - r), hi[1] = std::max(hi[1], p.pos[2] + r);
@@ -531,7 +712,7 @@ void VfxPreview::render() {
         std::vector<std::string> names;
         for (const VfxEmitterSim& em : def_.emitters) {
             if (!drawnElement(em) && !(em.element == 3 && em.flare.present)) {
-                ++undrawn_;
+                if (!shownElement(em) && !(em.element == 9 && !em.runners.empty())) ++undrawn_;  // vector fields
                 continue;
             }
             for (const std::string& m : em.materials.empty() ? std::vector<std::string>{em.material} : em.materials)
@@ -563,10 +744,103 @@ void VfxPreview::render() {
     };
     std::vector<Quad> quads, dist, flares;
     const auto displayColour = [](float c) { return std::pow(std::max(c, 0.0f), 1.0f / 2.2f); };
+    modelsDrawn_ = lightsDrawn_ = decalsDrawn_ = 0;
+    {
+        // Models: their triangles, flat-shaded (light from the upper left of the view), far to near, under the sprites.
+        struct Tri {
+            float depth;
+            QPointF pts[3];
+            QColor colour;
+        };
+        std::vector<Tri> tris;
+        const double light[3] = {-right_[0] * 0.4 + up_[0] * 0.8 - fwd_[0] * 0.45, -right_[1] * 0.4 + up_[1] * 0.8 - fwd_[1] * 0.45,
+                                 -right_[2] * 0.4 + up_[2] * 0.8 - fwd_[2] * 0.45};
+        int instances = 0;
+        for (const VfxParticle& p : last_) {
+            const VfxEmitterSim& em = def_.emitters[size_t(p.emitter)];
+            if (em.element != 7 || em.models.empty() || instances >= 64) continue;
+            bool wait = false;
+            const auto mt = modelTris(em.models[size_t(p.rnd * 1e6) % em.models.size()], &wait);
+            modelsPending_ = modelsPending_ || wait;
+            if (!mt) continue;
+            ++instances;
+            // Turned about Z by the particle's angle and tumbled about X a little (debris and shells spin).
+            const double ca = std::cos(p.angle), sa = std::sin(p.angle), cb = std::cos(p.angle * 0.7), sb = std::sin(p.angle * 0.7);
+            const float alpha = std::clamp(p.rgba[3], 0.0f, 1.0f);
+            for (const auto& t : mt->tris) {
+                double w[3][3];
+                for (int v = 0; v < 3; ++v) {
+                    const double x = t[size_t(v) * 3], y = t[size_t(v) * 3 + 1], z = t[size_t(v) * 3 + 2];
+                    const double y1 = y * cb - z * sb, z1 = y * sb + z * cb;
+                    w[v][0] = x * ca - y1 * sa + p.pos[0], w[v][1] = x * sa + y1 * ca + p.pos[1], w[v][2] = z1 + p.pos[2];
+                }
+                const double e1[3] = {w[1][0] - w[0][0], w[1][1] - w[0][1], w[1][2] - w[0][2]};
+                const double e2[3] = {w[2][0] - w[0][0], w[2][1] - w[0][1], w[2][2] - w[0][2]};
+                double nrm[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
+                const double nl = std::sqrt(dot3(nrm, nrm));
+                if (nl < 1e-12) continue;
+                for (double& c : nrm) c /= nl;
+                if (dot3(nrm, fwd_) > 0) for (double& c : nrm) c = -c;  // the side facing the view
+                const double lit = 0.3 + 0.7 * std::max(0.0, dot3(nrm, light) / std::sqrt(dot3(light, light)));
+                Tri tr;
+                tr.depth = float((dot3(w[0], fwd_) + dot3(w[1], fwd_) + dot3(w[2], fwd_)) / 3);
+                for (int v = 0; v < 3; ++v) {
+                    float x, y;
+                    toScreen(w[v], x, y);
+                    tr.pts[v] = QPointF(s / 2.0 - cr_ * k + x, s / 2.0 + cu_ * k + y);
+                }
+                const int g = int(std::clamp(150.0 * lit, 0.0, 255.0));
+                tr.colour = QColor(g, int(g * 0.96), int(g * 0.9), int(255 * std::max(0.35f, alpha)));
+                tris.push_back(tr);
+            }
+        }
+        modelsDrawn_ = instances;
+        if (!tris.empty()) {
+            std::sort(tris.begin(), tris.end(), [](const Tri& a, const Tri& b) { return a.depth > b.depth; });
+            QImage layer(s, s, QImage::Format_RGB32);
+            for (int y = 0; y < s; ++y) {
+                auto* line = reinterpret_cast<QRgb*>(layer.scanLine(y));
+                const float* d = &buf_[size_t(y) * s * 3];
+                for (int x = 0; x < s; ++x, d += 3) line[x] = qRgb(int(sat(d[0]) * 255 + 0.5f), int(sat(d[1]) * 255 + 0.5f), int(sat(d[2]) * 255 + 0.5f));
+            }
+            QPainter g(&layer);
+            g.setRenderHint(QPainter::Antialiasing, true);
+            g.setPen(Qt::NoPen);
+            for (const Tri& tr : tris) {
+                g.setBrush(tr.colour);
+                g.drawPolygon(tr.pts, 3);
+            }
+            g.end();
+            for (int y = 0; y < s; ++y) {
+                const auto* line = reinterpret_cast<const QRgb*>(layer.constScanLine(y));
+                float* d = &buf_[size_t(y) * s * 3];
+                for (int x = 0; x < s; ++x, d += 3) d[0] = qRed(line[x]) / 255.0f, d[1] = qGreen(line[x]) / 255.0f, d[2] = qBlue(line[x]) / 255.0f;
+            }
+        }
+    }
     for (const VfxParticle& p : last_) {
         const VfxEmitterSim& em = def_.emitters[size_t(p.emitter)];
         const bool flare = em.element == 3 && em.flare.present;
-        if (!drawnElement(em) && !flare) continue;  // models, lights, runners, decals
+        if (lightElement(em)) {
+            // A light: a glow in its colour x brightness, added (about its size, which is the light's reach, kept small).
+            Quad q;
+            q.sprite = glowSprite();
+            q.kind = 1;
+            float px, py;
+            toScreen(p.pos, px, py);
+            q.cx = float(s / 2.0 - cr_ * k) + px, q.cy = float(s / 2.0 + cu_ * k) + py;
+            const float half = float(std::min(std::clamp(0.25 * std::max(p.size2[0], p.size2[1]), 6.0, 96.0), 0.3 * span_) * k);
+            q.a0x = half, q.a0y = 0, q.a1x = 0, q.a1y = -half;
+            const bool coloured = em.hasAttrColor || em.color.present;
+            for (int i = 0; i < 3; ++i) q.rgba[i] = displayColour((coloured ? p.rgba[i] : 1.0f) * float(std::min(4.0, em.light.brightness)) * 0.45f);
+            q.rgba[3] = std::max(0.3f, std::clamp(p.rgba[3], 0.0f, 1.0f));
+            q.level = 0;
+            q.depth = float(dot3(p.pos, fwd_));
+            quads.push_back(q);
+            ++lightsDrawn_;
+            continue;
+        }
+        if (!drawnElement(em) && !flare) continue;  // models (above), runners (their children), vector fields
         const auto& es = matSlots[size_t(p.emitter)];
         const SpriteStore::Slot* slot = es.empty() ? nullptr : es[std::min(es.size() - 1, size_t(std::max(0, p.material)))];
         if (!slot || slot->state != SpriteStore::Ready || !slot->sprite || slot->sprite->levels.empty()) continue;  // not read yet: nothing
@@ -598,7 +872,15 @@ void VfxPreview::render() {
         }
         const double w = std::max(0.25, p.size2[0] * 0.5), h = std::max(0.25, p.size2[1] * 0.5);
         double ax0[3], ax1[3];
-        if (em.element == 10) {
+        double at[3] = {p.pos[0], p.pos[1], p.pos[2]};
+        if (em.element == 2) {
+            // A decal: flat on the ground under the particle, turned by its angle.
+            const double ca = std::cos(p.angle), sa = std::sin(p.angle);
+            ax0[0] = ca * w, ax0[1] = sa * w, ax0[2] = 0;
+            ax1[0] = -sa * h, ax1[1] = ca * h, ax1[2] = 0;
+            at[2] = 0.05;
+            ++decalsDrawn_;
+        } else if (em.element == 10) {
             // A tail: long along the velocity seen from the view.
             const double fv = dot3(p.vel, fwd_);
             double dir[3] = {p.vel[0] - fwd_[0] * fv, p.vel[1] - fwd_[1] * fv, p.vel[2] - fwd_[2] * fv};
@@ -629,7 +911,7 @@ void VfxPreview::render() {
             for (int i = 0; i < 3; ++i) ax0[i] = (right_[i] * ca + up_[i] * sa) * w, ax1[i] = (up_[i] * ca - right_[i] * sa) * h;
         }
         float px, py;
-        toScreen(p.pos, px, py);
+        toScreen(at, px, py);
         q.cx = float(s / 2.0 - cr_ * k) + px, q.cy = float(s / 2.0 + cu_ * k) + py;
         toScreen(ax0, q.a0x, q.a0y);
         toScreen(ax1, q.a1x, q.a1y);
@@ -727,8 +1009,11 @@ QString VfxPreview::noteText() const {
     if (pending_ > 0) parts << QString("Loading %1 material image(s)...").arg(pending_);
     if (!missingNames_.isEmpty()) parts << "Not found: " + missingNames_.join(", ");
     if (parts.isEmpty()) parts << QString("%1 sprite(s) drawn with their images.").arg(textured_);
-    if (undrawn_ > 0)
-        parts << QString("%1 emitter(s) of models, child effects, decals or lights not shown.").arg(undrawn_);
+    if (childrenPending_) parts << "Exporting child effects...";
+    if (modelsPending_) parts << "Exporting models...";
+    if (modelsDrawn_ + lightsDrawn_ + decalsDrawn_ > 0)
+        parts << QString("%1 model(s), %2 light(s), %3 decal(s).").arg(modelsDrawn_).arg(lightsDrawn_).arg(decalsDrawn_);
+    if (undrawn_ > 0) parts << QString("%1 emitter(s) not drawn (vector fields).").arg(undrawn_);
     return parts.join(" ");
 }
 

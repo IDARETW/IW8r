@@ -6,6 +6,7 @@
 #include <QDrag>
 #include <QMimeData>
 #include "prefab_browser.h"
+#include "menu_pack.h"
 #include "panel_chrome.h"
 #include "settings.h"
 #include <QHash>
@@ -430,10 +431,25 @@ PrefabBrowser::PicturePeek g_picturePeek;
 void PrefabBrowser::setModelMesh(ModelMeshFn fn) { modelMeshFn() = std::move(fn); }
 bool PrefabBrowser::lastThumbnailIncomplete() { return g_thumbIncomplete; }
 void PrefabBrowser::setPictureSource(PictureFn fn) { g_pictureSource = std::move(fn); }
+namespace {
+// The shipped menu pack's key of a prefab file: its path under the bundled library (data/prefabs), "" outside it.
+QString packKey(const QString& mapFile) {
+    static const QString root = QDir(MenuPack::folder() + "/../prefabs").absolutePath();
+    const QString rel = QDir(root).relativeFilePath(mapFile);
+    return rel.startsWith("..") || QDir::isAbsolutePath(rel) ? QString() : rel;
+}
+}  // namespace
+
 void PrefabBrowser::setPicturePeek(PicturePeek fn) {
     // IW8R_THUMB_DECODER=0: the pictures load on the GUI thread as before (thumb_bench.h compares the two).
     if (qEnvironmentVariable("IW8R_THUMB_DECODER") == "0") return;
-    g_picturePeek = std::move(fn);
+    // The shipped menu pack first (owner 2026-11-16): the library's pictures without drawing or rendering them.
+    g_picturePeek = [fn = std::move(fn)](const QString& mapFile) -> QImage {
+        if (const auto pack = MenuPack::shared("prefabs"))
+            if (const QString key = packKey(mapFile); !key.isEmpty())
+                if (QImage img = pack->thumb(key); !img.isNull()) return img;
+        return fn ? fn(mapFile) : QImage();
+    };
 }
 
 void PrefabBrowser::refreshIncomplete() {
@@ -1071,6 +1087,8 @@ void PrefabBrowser::updateStrip() {
     if (it->data(kIsBundle).toBool()) facts << "bundle";
     else if (const QString label = it->data(Qt::UserRole + 2).toString(); label.contains(" / ")) facts << label.section(" / ", 0, 0);
     if (const QString badge = it->data(kBadge).toString(); !badge.isEmpty()) facts << badge.toLower() + ": " + it->data(kBadgeReason).toString();
+    if (const auto pack = MenuPack::shared("prefabs"))
+        if (const QString pf = pack->facts(packKey(fileAt(row))); !pf.isEmpty()) facts << pf;
     strip_->setTitle(it->text(), facts.join(factSep()));
     if (QPushButton* p = strip_->findChild<QPushButton*>("prefabPlace")) p->setEnabled(placeableAt(row));
     if (QPushButton* o = strip_->findChild<QPushButton*>("prefabOpen")) o->setEnabled(!previewFileAt(row).isEmpty());

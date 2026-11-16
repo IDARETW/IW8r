@@ -92,17 +92,18 @@ bool readVec(const Value* payload, const char* field, std::vector<double>& out) 
 }
 
 // Every Material reference below `node` (asset_reference, type "Material"), in order. A leading ',' is removed.
-void findMaterialRefs(const Value& node, int depth, std::vector<std::string>& out) {
+// Every asset reference of `assetType` under `node` (asset_reference true, type, name; a leading ',' dropped), once each.
+void findAssetRefs(const Value& node, int depth, const char* assetType, std::vector<std::string>& out) {
     if (depth > 64) return;
     if (node.type == Value::Type::Array) {
-        for (const auto& item : node.arr) findMaterialRefs(item, depth + 1, out);
+        for (const auto& item : node.arr) findAssetRefs(item, depth + 1, assetType, out);
         return;
     }
     if (node.type != Value::Type::Object) return;
     const Value* isRef = node.get("asset_reference");
     const Value* type = node.get("type");
     const Value* name = node.get("name");
-    if (isRef && isRef->type == Value::Type::Bool && isRef->b && type && type->string() && *type->string() == "Material" &&
+    if (isRef && isRef->type == Value::Type::Bool && isRef->b && type && type->string() && *type->string() == assetType &&
         name && name->string()) {
         const std::string& n = *name->string();
         const std::string m = !n.empty() && n[0] == ',' ? n.substr(1) : n;
@@ -111,9 +112,11 @@ void findMaterialRefs(const Value& node, int depth, std::vector<std::string>& ou
     }
     for (const auto& kv : node.obj) {
         if (kv.first == "$native") continue;
-        findMaterialRefs(kv.second, depth + 1, out);
+        findAssetRefs(kv.second, depth + 1, assetType, out);
     }
 }
+
+void findMaterialRefs(const Value& node, int depth, std::vector<std::string>& out) { findAssetRefs(node, depth, "Material", out); }
 
 // The module base's m_flags: value."" (most modules) or value."".."" (spawn shapes, whose base is the shape base).
 uint32_t moduleFlags(const Value* value) {
@@ -246,7 +249,18 @@ VfxEmitterSim readEmitter(const Value& em, size_t index) {
         }
     }
     if (const Value* m = mod("initMaterial")) findMaterialRefs(*m, 0, e.materials);
+    // A decal element names its materials in initDecal (research 138 section 7).
+    if (const Value* d = mod("initDecal"); d && e.materials.empty()) findMaterialRefs(*d, 0, e.materials);
     if (!e.materials.empty()) e.material = e.materials[0];
+    if (const Value* r = mod("initRunner")) findAssetRefs(*r, 0, "ParticleSystemDef", e.runners);
+    if (const Value* m = mod("initModel")) findAssetRefs(*m, 0, "XModel", e.models);
+    for (const char* lightModule : {"initLightOmni", "initLightSpot"})
+        if (const Value* l = mod(lightModule)) {
+            e.light.present = true;
+            e.light.spot = std::string(lightModule) == "initLightSpot";
+            e.light.brightness = std::max(0.0, numberOr(l->get("m_brightness"), 1.0));
+            break;
+        }
     if (const Value* r = mod("initRelativeVelocity")) e.relVelType = enumOr(r->get("m_velocityType"), 0);
     // Spawn shapes: the base (value."") holds the offset and the axis flags.
     const auto shapeBase = [&](const Value* s) {

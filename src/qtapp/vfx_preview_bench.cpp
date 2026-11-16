@@ -107,7 +107,7 @@ int runVfxPanelShots(MainWindow& w, const QString& outDir) {
             for (const auto& pv : shots)
                 if (!pv->discStyle()) {
                     pv->frame();  // looks the materials up
-                    if (pv->materialsPending() > 0) return false;
+                    if (pv->materialsPending() > 0 || pv->exportsPending()) return false;
                 }
             return true;
         }, 180000);
@@ -125,6 +125,9 @@ int runVfxPanelShots(MainWindow& w, const QString& outDir) {
                               .arg(out).arg(pv->width()).arg(pv->height()).arg(vr.width()).arg(vr.height()).arg(at, 0, 'f', 2)
                               .arg(pv->particlesNow()).arg(pv->texturedParticles()).arg(pv->lastRenderMs(), 0, 'f', 1)
                               .arg(pv->missingMaterials().isEmpty() ? QString("none") : pv->missingMaterials().join("; "));
+                report << QString("    child effects %1, models %2, lights %3, decals %4%5")
+                              .arg(pv->childEffects()).arg(pv->modelsDrawn()).arg(pv->lightsDrawn()).arg(pv->decalsDrawn())
+                              .arg(pv->exportsPending() ? ", exports STILL PENDING" : "");
                 if (vr.width() != vr.height()) ++failed;
                 if (pv->width() == 300)
                     for (const QString& l : pv->debugLines()) report << "    " + l;

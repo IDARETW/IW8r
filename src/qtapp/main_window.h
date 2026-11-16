@@ -52,9 +52,11 @@ class CDockAreaWidget;
 #include "collision_world.h"
 #include "model_physics.h"
 
+class QProcess;
 namespace iw8r {
 struct GameModePreset;
 struct StockProbeImageIndex;  // stock_probes.h
+struct VfxSimDef;             // vfx_sim.h (declared here, so `struct VfxSimDef` in the class is this one)
 }
 namespace iw8r::qt {
 class FxEditorDialog;
@@ -788,13 +790,18 @@ public:
 public:
     // Exports a stock effect with ACTS when the caches hold none (from the zone the common effects catalogue lists);
     // true while an export runs. vfxExportDone follows (Effect Info, the camera and the Effects panel refresh then).
-    bool requestVfxExport(const QString& name);
+    // zoneHint: the zone to export from when the catalogue does not list the effect (a child effect: its parent's).
+    bool requestVfxExport(const QString& name, const QString& zoneHint = QString());
+    QString vfxZoneOf(const QString& name) const;  // the catalogue's zone, or the zone a child effect was exported from
     void refreshDockTabStyle();  // the panels' tab labels readable in every theme
     QString dockBaseStyle_;
 signals:
     void vfxExportDone(const QString& name, bool ok);
 private:
     QSet<QString> vfxExportFailed_;  // not exportable or failed: not asked again this session
+    QProcess* menuCacheProc_ = nullptr;  // the menu cache build running
+    QHash<QString, QString> vfxChildZone_;  // child effects (not in the catalogue) -> the zone they were exported from
+    QHash<QString, std::shared_ptr<const VfxSimDef>> vfxPreviewDefs_;  // the effect previews' child effects, read once
 public:
     // The effect export files of the converter's stock cache [0] and of vfx_cache [1], by the file name's first part:
     // listed once by findVfxExport, again after forgetVfxFiles().
@@ -877,6 +884,13 @@ public:
     // --thumb-pack models|prefabs: every catalogued stock model (or every prefab of the search folders) gets its
     // textured picture in the pack ahead of time. Returns the process exit code.
     int runTexturedThumbPack(const QString& kind, int limit);
+    // --menu-pack: the side panels' shipped packs (menu_pack.h, main_window_menu_pack.cpp).
+    int runMenuPack(const QString& kinds, const QString& outDir, bool fill, int limit);
+    // The full menu cache (menu_pack.h): built in a separate process (`--menu-pack all --fill`, offscreen); the panels
+    // read the new packs when it ends. The start-up tip offers it until it has run once.
+    void startMenuCacheBuild();
+    void maybeOfferMenuCache();
+    bool menuCacheBuilding() const { return menuCacheProc_ != nullptr; }
     // --thumb-test: makes one picture (a model name or a prefab .map file) into <out>/thumb-test.png and prints what
     // the picture view held (bounds, camera, scene items, textures waiting).
     int runThumbTest(const QString& asset, const QString& outDir);

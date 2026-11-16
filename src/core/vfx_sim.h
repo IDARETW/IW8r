@@ -73,7 +73,15 @@ struct VfxEmitterSim {
     bool burst = false;          // emitter flags & 0x2 (research 138 section 8)
     int countMax = 0;            // particleCountMax: alive cap of a continuous emitter (0 = none)
     double fadeOutMaxDistance = 0;  // the emitter is not drawn beyond this distance (0 = no limit)
-    int element = 0;             // stateDefs[0].elementType: 0 billboard, 8 oriented sprite, 10 tail (others not drawn)
+    int element = 0;             // stateDefs[0].elementType: 0 billboard, 2 decal, 3 flare, 5 / 6 light, 7 model, 8 oriented
+                                 // sprite, 9 runner (child effect), 10 tail, 11 vector field (research 138 section 7)
+    std::vector<std::string> runners;  // initRunner: the child effects (ParticleSystemDef names) a runner particle plays
+    std::vector<std::string> models;   // initModel: the XModels a model particle shows (one picked per particle)
+    struct Light {
+        bool present = false;
+        bool spot = false;               // initLightSpot (else initLightOmni)
+        double brightness = 1;           // m_brightness
+    } light;
     double lifeMin = 1.0, lifeMax = 1.0;   // particle life range, seconds
     double startDelay = 0;       // seconds before the emitter starts
     double emitterLife = 0;      // seconds the emitter keeps spawning (0 = while the effect plays)

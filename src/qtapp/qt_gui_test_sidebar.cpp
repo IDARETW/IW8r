@@ -35,6 +35,7 @@
 #include "sound_preview.h"
 #include "thumb_store.h"
 #include "map_check_panel.h"
+#include "menu_pack.h"
 #include "panels.h"
 #include "prefab_browser.h"
 #include "vfx_preview.h"
@@ -272,6 +273,53 @@ void runSidebarChecks(std::function<void(const QString&)> section, std::function
         }
     }
 
+    section("side bar: menu packs");
+    {
+        // Owner 2026-11-16: thumbnails, previews and facts made once, compressed, shipped (menu_pack.h).
+        const auto picture = [](int w, int h, QColor c) {
+            QImage img(w, h, QImage::Format_RGB32);
+            img.fill(c);
+            for (int y = 0; y < h; ++y)
+                for (int x = 0; x < w; x += 7) img.setPixel(x, y, qRgb((x * 3) & 255, (y * 5) & 255, 90));
+            return img;
+        };
+        const QString path = QDir(outDir).filePath("test.iw8mp");
+        QFile::remove(path);
+        MenuPackWriter w("test", 80);
+        const QByteArray json = QByteArray("{\"name\":\"vfx/test\"}").repeated(40);
+        w.add("one", picture(64, 48, Qt::red), "loop", "3 emitters", picture(160, 120, Qt::red), json);
+        w.add("two", picture(64, 48, Qt::red), "", "the same picture as one");
+        w.add("three", picture(40, 64, Qt::blue), "1.5 s", "");
+        w.add("four", {}, "", "no picture");
+        MenuPackWriter::Stats st;
+        QString err;
+        const bool saved = w.save(path, &err, &st);
+        MenuPack pack(path);
+        const QImage one = pack.thumb("one"), three = pack.thumb("three"), pv = pack.preview("one");
+        check(saved && pack.valid() && pack.count() == 4 && pack.thumbCount() == 3 && st.uniqueThumbs == 3 /* two thumbs + one preview */ &&
+                  st.headers >= 1 && st.wholeJpegs == 0 && st.savedHeaderBytes > 500 && one.size() == QSize(64, 48) && three.size() == QSize(40, 64) &&
+                  pv.size() == QSize(160, 120) && pack.preview("two").isNull() && pack.thumb("four").isNull() && pack.pill("one") == "loop" &&
+                  pack.facts("two") == "the same picture as one" && pack.data("one") == json && pack.data("two").isEmpty() &&
+                  qRed(one.pixel(3, 3)) > 200 && qBlue(three.pixel(3, 3)) > 200 && st.dataBytes < json.size() / 4,
+              QString("a menu pack keeps thumbnails, previews, data and texts, one copy of identical pictures, without their JPEG headers "
+                      "(%1 entries, %2 pictures stored, %3 header(s), %4 header bytes saved, data %5 -> %6 bytes) %7")
+                  .arg(st.entries).arg(st.uniqueThumbs).arg(st.headers).arg(st.savedHeaderBytes).arg(json.size()).arg(st.dataBytes).arg(err));
+        // The shipped packs open, and their pictures read (when the build has them).
+        for (const char* kind : {"materials", "models", "images", "effects", "sounds", "prefabs"}) {
+            const auto shipped = MenuPack::shared(kind);
+            if (!shipped) continue;
+            QString first;
+            for (const QString& n : shipped->names())
+                if (shipped->hasThumb(n)) {
+                    first = n;
+                    break;
+                }
+            check(shipped->valid() && shipped->kind() == kind && (first.isEmpty() || !shipped->thumb(first).isNull()),
+                  QString("the shipped %1 pack reads (%2 entries, %3 pictures, %4 MB)").arg(kind).arg(shipped->count()).arg(shipped->thumbCount())
+                      .arg(shipped->fileBytes() / 1048576.0, 0, 'f', 1));
+        }
+    }
+
     section("side bar: stored thumbnails off the GUI thread");
     {
         // A pack with three pictures; the decoder brings them back fitted to the tile, and says which name it lacks.
@@ -389,6 +437,37 @@ void runSidebarChecks(std::function<void(const QString&)> section, std::function
                       .arg(pv->missingMaterials().isEmpty() ? QString("none") : pv->missingMaterials().join("; ")));
         }
         eb->grab().save(QDir(outDir).filePath("effects_panel_preview.png"));
+        {
+            // Owner 2026-11-16 ("a lot of the vfx dont show anything"): a runner plays its child effect where its
+            // particles are; models, lights and decals have their own looks (vfx_preview.cpp).
+            const auto exportOf = [](const char* name, int element, double rate, const std::string& extra) {
+                return std::string(R"({"format":"mw19-asset-json","root_type":"ParticleSystemDef","asset":{"fields":{"name":{"string":")") + name +
+                       R"("},"emitterDefs":{"values":[{"flags":0,"particleSpawnRate":{"min":)" + std::to_string(rate) + R"(,"max":)" + std::to_string(rate) +
+                       R"(},"particleLife":{"min":2,"max":2},"stateDefs":{"values":[{"elementType":{"value":)" + std::to_string(element) +
+                       R"(},"moduleGroupDefs":{"values":[{"moduleDefs":{"values":[)" + extra + R"(]}}]}}]}}]}}}})";
+            };
+            VfxSimDef parent, child;
+            const bool built =
+                buildVfxSim(exportOf("vfx/test/parent", 9, 3,
+                                     R"({"moduleData":{"active_member":"initRunner","value":{"":{"m_flags":0},"m_linkedAssetList":{"assetList":{"values":[{"value":{"asset_reference":true,"type":"ParticleSystemDef","name":"vfx/test/child"}}]}}}}})"),
+                            parent) &&
+                buildVfxSim(exportOf("vfx/test/child", 0, 20, ""), child);
+            const VfxPreview::EffectSource was = VfxPreview::effectSourceFn();
+            auto childDef = std::make_shared<const VfxSimDef>(child);
+            VfxPreview::setEffectSource([childDef](const std::string& name, const std::string&, bool*) -> std::shared_ptr<const VfxSimDef> {
+                return name == "vfx/test/child" ? childDef : nullptr;
+            });
+            VfxPreview pv;
+            pv.setAttribute(Qt::WA_DontShowOnScreen);
+            pv.resize(300, 400);
+            pv.show();
+            pv.setEffect(parent);
+            pv.setTime(1.5);
+            const int children = pv.childEffects(), particles = pv.particlesNow();
+            VfxPreview::setEffectSource(was);
+            check(built && children == 1 && particles > 10 && pv.effect().emitters.size() == 1,
+                  QString("a runner plays its child effect in the preview (%1 child effect(s), %2 particles at 1.5 s)").arg(children).arg(particles));
+        }
         eb->setFilter("");
     }
 
@@ -441,7 +520,7 @@ void runSidebarChecks(std::function<void(const QString&)> section, std::function
     {
         // Owner 2026-11-15: no separate Tools side panel (the Tools menu stays in the menu bar); each panel's dots menu
         // holds the tools that belong to it.
-        check(!w.findChild<QWidget*>("toolsPanel") && w.action("MeasureTool") && w.action("CheckMap"),
+        check(!w.findChild<QWidget*>("toolsPanel") && w.action("MeasureTool") && w.action("CheckMap") && w.action("BuildMenuCache"),
               "there is no Tools side panel, and the Tools menu still has its commands");
         for (AssetBrowser* b : {w.materialBrowser(), w.modelsBrowser(), w.effectsBrowser(), w.soundsBrowser(), w.imagesBrowser()}) {
             auto* tb = b ? b->findChild<QToolButton*>("assetTools") : nullptr;

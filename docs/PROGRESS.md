@@ -2,6 +2,19 @@
 
 ## Latest (2026-11-13)
 
+- 2026-11-16 (owner: blank effect previews; "a one-time full metadata and thumbnails for everything we can in the
+  menus ... include it as part of the project"; "compress previews too"; "stop relying on ACTs, gsc-tool, and the
+  x64-zt fork"):
+  - Effect preview: runners (child effects via VfxPreview::setEffectSource, exported from the parent's zone:
+    MainWindow::requestVfxExport(name, zoneHint) / vfxZoneOf), models (setModelSource, the stock model cache), lights
+    (glow), decals (flat). vfx_sim reads runners / models / light / initDecal materials.
+  - Menu packs: menu_pack.* (format, reader, writer), main_window_menu_pack.cpp (`--menu-pack all [--fill]`), in
+    <AppLocalData>/menu_packs (not in the repo: owner wants a start-up tip, MainWindow::maybeOfferMenuCache /
+    startMenuCacheBuild, Tools > Build Full Menu Cache). Panels read them first (AssetBrowser::pack(), previewImage /
+    previewModel, showFx and the effect source, PrefabBrowser peek). The packs gathered from today's caches are in the
+    owner's cache; the full build (effects and images exported, images in scratch batches) has not run yet.
+  - docs/PLAN_OWN_TOOLS.md: replacing ACTS (port its in-process Replay loader under MIT), gsc-tool and x64-zt (GPL:
+    rewrite from the formats unless the owner decides otherwise). Phase 1 not started.
 - 2026-11-15 night, side bar revamp (owner: "each upper section sidebar menu needs their own individual revamp ... more
   flush menus and actually useful UIs"; then "numeric values should be able to be dragged ... with constant scrolling
   after a certain distance" and "we don't need a separate tools menu ... implement any appropriate tools into

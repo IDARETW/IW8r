@@ -5,6 +5,7 @@
 //   IW8Radiant.exe --material-cache-test <material>[,<material>...] --out <dir>   headless stock texture cache run
 //                                                                    (writes <dir>/material-cache-test.txt)
 //   IW8Radiant.exe --thumb-pack materials|models [--limit N] [--batch N]   full browser thumbnail pack (thumb_pack.h)
+//   IW8Radiant.exe --menu-pack <kinds|all> [--fill] [--limit N] [--out dir]   the shipped menu packs (menu_pack.h)
 //   IW8Radiant.exe --model-cache-test <model>[,<model>...] --out <dir>   headless stock LOD0 model cache run
 //                                                                    (writes <dir>/model-cache-test.txt)
 //   IW8Radiant.exe --world-cache-test <zone> --out <dir>             headless stock world geometry (gfx_map + trzone)
@@ -1229,6 +1230,8 @@ int runStockPropsTest(iw8r::qt::MainWindow& w, const QString& zoneArg, const QSt
 int main(int argc, char** argv) {
     QString auditKind, webUser;
     QString thumbPackKind;
+    QString menuPackKinds;  // --menu-pack
+    bool menuPackFill = false;
     QString thumbTest;  // --thumb-test <model or prefab .map>: one textured picture (textured_thumbs.h), with diagnostics
     int auditLimit = 0, auditBatch = 100;
     bool auditReverse = false;
@@ -1269,6 +1272,8 @@ int main(int argc, char** argv) {
         else if (a == "--thumb-pack" && i + 1 < argc) thumbPackKind = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--thumb-test" && i + 1 < argc) thumbTest = QString::fromLocal8Bit(argv[++i]);
         else if (a == "--limit" && i + 1 < argc) auditLimit = std::atoi(argv[++i]);
+        else if (a == "--menu-pack" && i + 1 < argc) menuPackKinds = QString::fromLocal8Bit(argv[++i]), qputenv("IW8R_NO_MENU_PACKS", "1");
+        else if (a == "--fill") menuPackFill = true;
         else if (a == "--batch" && i + 1 < argc) auditBatch = std::atoi(argv[++i]);
         else if (a == "--reverse") auditReverse = true;
         else if (a == "--set-web-credentials" && i + 1 < argc) webUser = QString::fromLocal8Bit(argv[++i]);
@@ -1521,8 +1526,9 @@ int main(int argc, char** argv) {
     {
         iw8r::qt::MainWindow w(device, context);
         // The asset browsers read their catalogues on worker threads: automated runs start from full lists.
-        if (guiTest || smoke || texturedPack || !thumbTest.isEmpty()) w.waitForCatalogs();
+        if (guiTest || smoke || texturedPack || !thumbTest.isEmpty() || !menuPackKinds.isEmpty()) w.waitForCatalogs();
         if (texturedPack) return w.runTexturedThumbPack(thumbPackKind, auditLimit);  // the window is never shown
+        if (!menuPackKinds.isEmpty()) return w.runMenuPack(menuPackKinds, outDir, menuPackFill, auditLimit);
         if (!thumbTest.isEmpty()) return w.runThumbTest(thumbTest, outDir.isEmpty() ? QDir::tempPath() : outDir);
         if (smoke) {
             // Keep the smoke-test window off every monitor and never activate it.

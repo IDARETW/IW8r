@@ -3,6 +3,30 @@
 Newest first. "Not seen in game" means built and checked offline (converter read-back, the game's own loaders through
 ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md) lists the in-game checks.
 
+## 2026-11-16
+
+- **Effect previews show what they left out** (owner: "a lot of the vfx dont show anything in the preview"; 38 of the
+  159 exported effects drew nothing). Runners play their child effects where their particles are (the children are
+  exported from the parent's zone when needed; 3 levels deep), model particles draw their XModel (shells, debris,
+  duds; resting on the preview's ground), lights draw as glows in their colour and brightness, decals lie flat on the
+  ground. Checked: AC-130 flares (3 child effects, 78 sprites), the decoy muzzle (130 sprites), an AK-74 shell, the
+  AC-130 flare light; before, all blank.
+- **Menu packs** (owner: "a one-time full metadata and thumbnails for everything we can in the menus, compress it as
+  best as we can while allowing for fast decompression ... include it as part of the project"; "compress previews
+  too"; "don't add them straight to the source, have a user starting tip to run the full cache"):
+  `<AppLocalData>/menu_packs/<panel>.iw8mp`, one read-only file per side panel, built on the user's machine. A tip at
+  start-up (until it has run; "Don't ask again" stops it) and Tools > Build Full Menu Cache run
+  `IW8Radiant.exe --menu-pack all --fill` in a separate offscreen process (progress in the Console, source
+  "menucache"); the panels read the new packs when it ends. Exports it needs are temporary (images in batches of 300 in
+  a scratch folder: 50k images would be about 67 GB of DDS). Each
+  entry: a thumbnail, a larger preview, a data block (an effect's definition: its preview plays without an export)
+  and the row's pill and strip's facts. Pictures are JPEGs stored without their headers (one per pack, put back when
+  read: a third of a small picture), identical pictures once; texts and data zlib 9; the file is memory-mapped and read
+  by the panels' decoder threads. The panels read their pack before any cache or export (the packs gathered from the
+  caches today: about 80 MB for six panels).
+- **Plan: our own code instead of ACTS, gsc-tool and x64-zt** (owner): docs/PLAN_OWN_TOOLS.md (what each tool does for
+  the editor, how ACTS reads Replay zones, licences, phases).
+
 ## 2026-11-15
 
 - **Number fields change by dragging** (owner, night): press on any number field that is not being typed in and drag

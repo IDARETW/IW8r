@@ -55,6 +55,7 @@
 
 #include "brush_tools.h"
 #include "map_queries.h"
+#include "menu_pack.h"
 #include "panel_chrome.h"
 #include "vfx_preview.h"
 #include <QActionGroup>
@@ -959,12 +960,18 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
     } else {
         lay->addWidget(view_, 1);
     }
+    // The shipped menu pack of this panel: thumbnails, pills, facts and previews made once (menu_pack.h).
+    packKind_ = kind == Kind::Materials ? "materials" : kind == Kind::Models ? "models" : kind == Kind::Effects ? "effects"
+                : kind == Kind::Sounds ? "sounds" : "images";
+    if (const auto pk = pack()) packFacts_ = pk->facts();
     model_ = new QStandardItemModel(this);
     auto* filter = new NameFilter(this);
     proxy_ = filter;
     proxy_->setSourceModel(model_);
     proxy_->setFilterCaseSensitivity(Qt::CaseInsensitive);
     view_->setModel(proxy_);
+    if (const auto pk = pack())
+        for (auto [n, pill] : pk->pills().asKeyValueRange()) facts_.insert(n, pill);
     if (kind == Kind::Effects) {
         // What earlier previews found (loop / one-shot length), kept in the settings.
         const QVariantMap kept = Settings::instance().value(settingsKey("facts")).toMap();
@@ -1332,6 +1339,14 @@ QIcon AssetBrowser::placeholderIcon(const QString& name) const {
 QIcon AssetBrowser::thumbnail(const QString& name) {
     if (auto it = icons_.find(name); it != icons_.end()) return *it;
     QIcon icon;
+    if (const auto pk = pack(); pk && !imageFiles_.contains(name))
+        if (const QImage img = pk->thumb(name); !img.isNull()) {
+            // The shipped pack: no cache, no export.
+            icon = QIcon(QPixmap::fromImage(ThumbDecoder::fit(img, iconSide())));
+            realThumbs_.insert(name);
+            icons_.insert(name, icon);
+            return icon;
+        }
     const QString file = imageFiles_.value(name);
     if (file.isEmpty() && thumbSource_) {
         bool pending = false;
@@ -1470,9 +1485,12 @@ void AssetBrowser::setThumbnailPeek(ThumbPeek fn) {
     if (qEnvironmentVariable("IW8R_THUMB_DECODER") == "0") return;
     QPointer<AssetBrowser> self(this);
     decoder_ = std::make_unique<ThumbDecoder>(
-        [peek = std::move(fn)](const QString& key) -> QImage {
-            // "file:<path>": a row's own image file; else a stored picture by name. The decoder fits it to the tile.
+        [peek = std::move(fn), kind = packKind_](const QString& key) -> QImage {
+            // "file:<path>": a row's own image file; else the shipped pack's picture, then a stored one by name. The
+            // decoder fits it to the tile.
             if (key.startsWith("file:")) return decodeImageFile(key.mid(5), 256);
+            if (const auto pack = MenuPack::shared(kind))
+                if (QImage img = pack->thumb(key); !img.isNull()) return img;
             return peek ? peek(key) : QImage();
         },
         [self](std::vector<ThumbDecoder::Result> results) {
@@ -1987,6 +2005,18 @@ bool AssetBrowser::previewHasImage() const { return preview_ && !preview_->pixma
 
 void AssetBrowser::selectRow(int row) { view_->setCurrentIndex(proxy_->index(row, 0)); }
 
+std::shared_ptr<const MenuPack> AssetBrowser::pack() const { return MenuPack::shared(packKind_); }
+
+void AssetBrowser::reloadPack() {
+    const auto pk = pack();
+    packFacts_ = pk ? pk->facts() : QHash<QString, QString>();
+    if (pk)
+        for (auto [n, pill] : pk->pills().asKeyValueRange()) facts_.insert(n, pill);
+    forgetThumbnails();  // the pictures are read again (from the new pack first)
+    view_->viewport()->update();
+    updateStrip();
+}
+
 void AssetBrowser::updateStrip() {
     if (!strip_) return;
     const QModelIndex idx = view_->currentIndex();
@@ -2000,6 +2030,7 @@ void AssetBrowser::updateStrip() {
     if (kind_ == Kind::Effects) {
         if (!group.isEmpty()) facts << group;
         if (const QString f = facts_.value(name); !f.isEmpty()) facts << (f == "loop" ? QString("looping") : "one-shot " + f);
+        if (const QString pf = packFacts_.value(name); !pf.isEmpty()) facts << pf;
     } else if (kind_ == Kind::Sounds) {
         facts << (idx.data(Qt::UserRole + 2).toBool() ? "loop" : "one-shot");
         if (const QString f = facts_.value(name); !f.isEmpty()) facts += f.split(factSep(), Qt::SkipEmptyParts);
@@ -2008,6 +2039,7 @@ void AssetBrowser::updateStrip() {
         if (wave_ && playingName_ != name) static_cast<WaveView*>(wave_)->clear();  // the waveform is of what plays
     } else if (kind_ == Kind::Materials || kind_ == Kind::Models) {
         if (!group.isEmpty()) facts << group;
+        if (const QString pf = packFacts_.value(name); !pf.isEmpty() && kind_ == Kind::Materials) facts << pf;
         const int uses = usageCount(name);
         facts << (uses ? QString("used %1 time%2 in this map").arg(uses).arg(uses == 1 ? "" : "s") : QString("not used in this map"));
         if (kind_ == Kind::Materials && name.contains('/')) facts << "techset family " + name.section('/', 0, 0);
@@ -2016,7 +2048,9 @@ void AssetBrowser::updateStrip() {
         if (kind_ == Kind::Materials && preview_) {
             // A larger picture than the tile's: the colour image again at the strip's size, else the tile's picture.
             QPixmap pm;
-            if (const QString file = imageFiles_.value(name); !file.isEmpty())
+            if (const auto pk = pack())
+                if (const QImage pv = pk->preview(name); !pv.isNull()) pm = QPixmap::fromImage(pv.scaled(112, 112, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            if (const QString file = imageFiles_.value(name); pm.isNull() && !file.isEmpty())
                 if (const QImage img = decodeImageFile(file, 112); !img.isNull()) pm = QPixmap::fromImage(img);
             if (pm.isNull()) pm = idx.data(Qt::DecorationRole).value<QIcon>().pixmap(112, 112);
             preview_->setPixmap(pm);

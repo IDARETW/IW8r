@@ -177,6 +177,8 @@ signals:
 
 public:
     void reloadCatalog() { load(); }  // after an availability audit (4.12)
+    // The menu cache was (re)built: its pills, facts and pictures are read again.
+    void reloadPack();
     // The catalogue is read on a worker thread (seconds of files at start-up): true once the list holds the latest read.
     bool catalogLoaded() const { return loadedGen_ == loadGen_; }
 
@@ -232,6 +234,9 @@ private:
     QWidget* wave_ = nullptr;         // sounds: WaveView
     QString playingName_;             // sounds: the alias asked to play (its row shows Stop)
     bool shownOnce_ = false;
+    QString packKind_;                             // its menu pack (menu_pack.h): materials, models, ...
+    std::shared_ptr<const class MenuPack> pack() const;  // the pack now (null: not built, or being built)
+    QHash<QString, QString> packFacts_;            // its facts, for the details strip
     QLabel* info_;
     QListView* view_;
     QLabel* preview_ = nullptr;
