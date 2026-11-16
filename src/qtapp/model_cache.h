@@ -52,7 +52,7 @@ public:
         // The GLB's per-vertex self visibility (_SELFVIS, ACTS fork 3667413c; research 105 section 4): 1 present,
         // 0 checked and absent, -1 not known (cached before it was recorded: refreshGeometry fetches it again).
         int selfVis = -1;
-        // The GLB's lightmap coordinates (_LMAPUV, ACTS fork 834568b9) of a lightmapped model: 1 present, 0 checked and
+        // The GLB's lightmap coordinates (_LMAPUV, from the ACTS fork) of a lightmapped model: 1 present, 0 checked and
         // absent, -1 not known.
         int lmapUv = -1;
     };

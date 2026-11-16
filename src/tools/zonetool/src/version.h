@@ -1,8 +1,8 @@
 // Version of the x64-zt fork this copy came from (written by tools/sync/zt_sync_fork.py).
 
-#define GIT_DESCRIBE "latest-485-ge648a414"
+#define GIT_DESCRIBE "latest-485-g62f6a4a5"
 #define GIT_DIRTY 0
-#define GIT_HASH "e648a414dae1bd9c8c4d27b214fb250623c240ed"
+#define GIT_HASH "62f6a4a5a6a6f942176b015d60ee65f31b255466"
 #define GIT_TAG "latest"
 #define GIT_BRANCH "iw8radiant/build-extraction"
 

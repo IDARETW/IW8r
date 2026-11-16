@@ -1,4 +1,4 @@
-x64-zt fork (zonetool), branch iw8radiant/build-extraction, e648a414dae1bd9c8c4d27b214fb250623c240ed 2026-11-14 (latest-485-ge648a414); upstream https://github.com/Joelrau/x64-zt
+x64-zt fork https://github.com/IDARETW/x64-zt, branch iw8radiant/build-extraction, 62f6a4a5a6a6f942176b015d60ee65f31b255466 2026-11-14 (latest-485-g62f6a4a5); upstream https://github.com/Joelrau/x64-zt
 Kept: src/cli, src/common, src/core (minus io/casc_files.cpp: CASC storage is H2 only), src/games/iw8,
 src/games/iw3, src/convert/iw3_iw8. Left out: the other games and converters, the S2 zone signing key
 (cli/resources/s2_zone_key.der and its resource.rc line), shader-tool, CascLib, stb.
