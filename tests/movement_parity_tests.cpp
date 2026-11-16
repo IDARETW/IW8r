@@ -700,3 +700,43 @@ TEST(parity_ledge_walk_then_slide_on_a_steep_slope) {
     CHECK(std::fabs(zAt025 - z0) < 0.01);  // held by the ledge walk
     CHECK(s.origin.z < z0 - 5 && s.origin.x < 300 - 3);  // then slid down the slope
 }
+
+// A V pocket between two steep faces (Hideout's cinderblock pile #1). The ground prism rests on both faces (the capsule,
+// raised by the stick, touches neither), so each frame clips against the one face the ground trace reports; the
+// end-of-frame velocity check and PM_Friction's stop under 1 unit / s (both Replay) settle a player dropped at the
+// crease. Dropped off-centre, the game's rules as read leave a small 2-4 frame swing across the crease (research 140
+// section 8.7): it stays at the bottom, the ground state never flickers.
+TEST(parity_settles_in_a_steep_v_pocket) {
+    const MoveParams p;
+    for (const double deg : {60.0, 65.0, 70.0}) {
+        for (const double x0 : {0.0, 6.0}) {
+            const double a = deg * 3.14159265358979323846 / 180;
+            CollisionWorld w = mpWorld();
+            // Left face rises toward -x from the crease at x = 0 (z <= -x tan a), the right one toward +x.
+            CHECK(w.addConvex({{Vec3{std::sin(a), 0, std::cos(a)}, 0}, {Vec3{1, 0, 0}, 0}, {Vec3{-1, 0, 0}, 120},
+                               {Vec3{0, 0, -1}, 0}, {Vec3{0, 1, 0}, 300}, {Vec3{0, -1, 0}, 300}}));
+            CHECK(w.addConvex({{Vec3{-std::sin(a), 0, std::cos(a)}, 0}, {Vec3{-1, 0, 0}, 0}, {Vec3{1, 0, 0}, 120},
+                               {Vec3{0, 0, -1}, 0}, {Vec3{0, 1, 0}, 300}, {Vec3{0, -1, 0}, 300}}));
+            PlayerState s = placed(w, p, {x0, 0, 300});
+            double zMin = 1e9, zMax = -1e9, xMax = 0;
+            int flips = 0;
+            bool lastGround = s.onGround;
+            for (int i = 0; i < 60 * 4; ++i) {
+                playerMove(w, s, MoveInput{}, p);
+                if (i >= 120) {  // the last 2 s
+                    zMin = std::min(zMin, s.origin.z), zMax = std::max(zMax, s.origin.z);
+                    xMax = std::max(xMax, std::fabs(s.origin.x));
+                    if (s.onGround != lastGround) ++flips;
+                }
+                lastGround = s.onGround;
+            }
+            const double rest = 15 * std::tan(a) + p.groundSkin;  // the prism's corners on both faces
+            const bool ok = x0 == 0 ? zMax - zMin < 0.1 && std::fabs(zMax - rest) < 0.3 && flips == 0
+                                    : zMax - zMin < 1.5 && xMax < 1 && zMin > rest - 1 && flips == 0;
+            if (!ok || x0 != 0)
+                std::printf("  v pocket %.0f deg from x %.0f: z %.2f..%.2f (rest %.2f), |x| <= %.2f, %d ground flips\n", deg, x0,
+                            zMin, zMax, rest, xMax, flips);
+            CHECK(ok);
+        }
+    }
+}

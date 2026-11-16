@@ -41,7 +41,9 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
   capsule raised by its stick height (8 standing, 4 crouched, 0 prone), a flat 8-sided ground prism swept before the
   move and a ray after it, the 0.3 s ledge walk on a steep surface, the air slide along steep faces. Small bumps
   under 8 units never block; the editor-only steep-face rules are gone. Steps keep an 18-unit stand-in (the game's
-  rounded climb gives 17.3 to 23 by direction).
+  rounded climb gives 17.3 to 23 by direction). The slide is Replay's PM_SlideMove (8 planes, 4 bumps, crease
+  following, repeat-hit nudge, steep faces as walls against world up), with its end-of-frame velocity check and the
+  air stop under 1 unit/s: a player dropped into a steep V settles at the bottom.
 - **Stock physics shapes read exactly**: the catalogue tool reads the game's own Havok type table (types and member
   offsets by name), follows each shape's vertex pointer, decodes multi-body assets and compressed meshes (triangles,
   quads and convex pieces): 3,785 of 3,869 stock physics assets now read (3,494 before). Mesh physics collides as

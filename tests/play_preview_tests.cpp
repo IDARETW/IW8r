@@ -368,8 +368,12 @@ TEST(jump_has_minimum_interval_and_no_bunny_hop_gain) {
     }
     CHECK(std::fabs(apex1 - p.jumpHeight) < 2.0);
     // A press right after landing is ~0.6 s after the first jump start: allowed (past the 0.5 s debounce) and
-    // inside the 1 s window, so it is the second jump of the sequence: 0.75 x the height.
+    // inside the 1 s window, so it is the second jump of the sequence: 0.75 x the height. It is pressed one frame
+    // after the landing frame: the landing is found while the feet are still up to the fall's reach above the floor,
+    // the next frame's ground trace puts them down, and the end-of-frame velocity check (PM_Normal_UpdateCollide, research
+    // 140 section 8.7) would cut a jump started in that same frame short.
     CHECK(s.onGround);
+    playerMove(w, s, MoveInput{}, p);
     in.jump = true;
     double apex2 = 0;
     for (int i = 0; i < 120; ++i) {

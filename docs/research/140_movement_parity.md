@@ -329,8 +329,43 @@ feet climb 18 all around. No step in the air (type 1 has none; the ground trace'
 - The ladder top-out (`ladderCrestingModeDistance` 2, `ladderVaultOffset` 15) and the queries of the mantle probes (the
   29-unit chest probe) were not researched in this pass.
 - Hideout through the input-test hook: the cinderblock pile (#0), the broken wall cap and the soda can are steady; at
-  `debris_cinderblock_pile_a_01` #1 the player lands in a V pocket between steep block faces, is never grounded and
-  slides between them (z within about 2.5, airborne) by the rules above (the airborne snap onto any hit, the PM_AirMove
-  slide along the steep plane); the 7.1 editor rule stood him still there. Not compared with the game. Where the floor
-  facets of a stock map have a hole under the centre, the second pass's ray misses and the HUD shows the player in the
-  air between frames (the first pass keeps him walking).
+  `debris_cinderblock_pile_a_01` #1 (W held into the pile) the player is in a pocket between steep block faces, never
+  grounded, z within about 3 (32.0 .. 35.1) by the rules of 8.3 and 8.7; the 7.1 editor rule stood him still there.
+  Not compared with the game.
+- The soda-can walk on Hideout reads "air" at the end of every frame: under the walk line no floor facet lies below the
+  centre (a ray from 60 above to 200 below finds nothing, and a 1-unit-wide retry does not either), only the prism
+  catches the neighbouring facets. That is a hole in the extracted stock collision, not a seam; the game's second pass
+  is a ray (the game-test source: `useRayCast` -> `bounds_origin`), so no editor tolerance was kept.
+
+### 8.7 PM_SlideMove and the end of the frame (2026-11-16)
+
+- **PM_SlideMove** `0x14112F840`, read in full (and its readable twin in the game-test source): at most 8 planes,
+  4 bumps. The first planes are the ground plane (while the ground trace has one, walkable or not), the velocity's
+  direction, and a level ceiling `(0, 0, -1)` while the ledge walk supports the player (pmove + 740 bits 0x202, which
+  also clamp the vertical speed to <= 0 and skip the crease projection). A trace that stops at once on a level floor
+  with no ground plane takes the reversed level velocity as its plane. A plane hit again (dot > 0.999) is clipped and
+  nudged out by `normal x (1/60) / frametime`. A new plane: all planes are sorted by `dot(velocity, plane)`; the most
+  opposing one under 0.1 clips the velocity (and the gravity end velocity); each other one, in that order, that the
+  clipped velocity still runs into (< 0.1) clips it again, and if that sends it back into the first plane the velocity
+  follows the crease `cross(first, other)`; a third plane it then runs into stops it dead. The clips are
+  PM_ClipSlideVelocity `0x14111E9B0` (overclip 1.001 in, 0.999 out): on the ground (`k_PM_ClipSlideConst` 1, not on a
+  platform) a plane with normal z <= 0.7 against up (`k_PM_groundedMoveFlag` 1: the reference is pml + 104, the up
+  vector) is clipped as the level wall under it unless the velocity leaves that wall. The preview's `slideMove` now
+  does all of this (it had 6 planes, Quake 3 order, the ground normal as the wall reference and a bare `+ normal` nudge).
+- **End of frame** (PM_Normal_UpdateCollide `0x141123F30`, after PM_Weapon; game-test `PM_Normal_UpdateCollide`): with
+  `previous_origin` from the start of the frame (PM_InitPmoveState `0x141124690`, pml + 0x40), when
+  `|origin - previous_origin|^2 / dt^2 < 0.25 |velocity + impulseFieldVelocity|^2`, the velocity becomes
+  `(origin - previous_origin) / dt`, or 0 when that points against it. **PM_Friction** `0x141121160` (also first in
+  PM_AirMove) stops the whole velocity under 1 unit / s (level speed on the ground, full speed in the air). Both are in
+  the preview now.
+- **The V pocket.** In a V of two steep faces the raised capsule touches neither face, so the slide's multi-plane rule
+  never sees both: each frame clips against the one face the ground trace reports. A player dropped at the crease
+  settles (the end-of-frame check and the friction stop); dropped 6 off the crease, the rules leave a 2-4 frame swing
+  across it (z 25.87 .. 26.05 at 60 degrees, 31.31 .. 32.49 at 65, 41.06 .. 41.64 at 70, |x| < 0.5), never flickering
+  between ground and air (`parity_settles_in_a_steep_v_pocket`). Whether the game swings the same was not checked in
+  game; no rule that is not in the exe was added.
+- **A side effect of the end-of-frame check:** the landing is found while the feet are still up to the fall's reach
+  above the floor, the next frame's ground trace puts them down, and a jump started in that frame moves less than half
+  its velocity: the check cuts it short (to 0 when the drop is larger than the jump's first step). The code reads that
+  way in Replay and in the game-test source; not seen in game. `jump_has_minimum_interval_and_no_bunny_hop_gain` now
+  presses its second jump one frame after the landing frame.

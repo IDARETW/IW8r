@@ -1,0 +1,539 @@
+[
+ {
+  "id": "A136",
+  "structs": [
+   "bot_data_t",
+   "bot_match_data_t"
+  ],
+  "family": "bots"
+ },
+ {
+  "id": "A137",
+  "structs": [
+   "bdLobbyService"
+  ],
+  "family": "Demonware"
+ },
+ {
+  "id": "A138",
+  "structs": [
+   "ParticleManager"
+  ],
+  "family": "effects"
+ },
+ {
+  "id": "A139",
+  "structs": [
+   "GfxBackEndData"
+  ],
+  "family": "renderer"
+ },
+ {
+  "id": "A140",
+  "structs": [
+   "Online_Store"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A141",
+  "structs": [
+   "MatchMakerOmniLobbyData"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A142",
+  "structs": [
+   "CgVehicleSystemSP"
+  ],
+  "family": "client game"
+ },
+ {
+  "id": "A143",
+  "structs": [
+   "OnlineQuests"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A144",
+  "structs": [
+   "OnlineChallengesManager"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A145",
+  "structs": [
+   "ClActiveClientMP"
+  ],
+  "family": "client"
+ },
+ {
+  "id": "A146",
+  "structs": [
+   "BG_SpawnGroup_Loot_Table"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A147",
+  "structs": [
+   "Umbra__ImpShadowCuller"
+  ],
+  "family": "umbra"
+ },
+ {
+  "id": "A148",
+  "structs": [
+   "ShakeState",
+   "ShakeStateInternal"
+  ],
+  "family": "shake"
+ },
+ {
+  "id": "A149",
+  "structs": [
+   "OnlineChatManager"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A150",
+  "structs": [
+   "DB_DecompressState"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A151",
+  "structs": [
+   "GVehicles",
+   "GVehiclesSP"
+  ],
+  "family": "server game"
+ },
+ {
+  "id": "A152",
+  "structs": [
+   "refdef_t"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A153",
+  "structs": [
+   "DWServicesAccess"
+  ],
+  "family": "Demonware"
+ },
+ {
+  "id": "A154",
+  "structs": [
+   "BgAntiLag"
+  ],
+  "family": "bg"
+ },
+ {
+  "id": "A155",
+  "structs": [
+   "OnlineProgression"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A156",
+  "structs": [
+   "Online_Friends"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A157",
+  "structs": [
+   "bot_info_t"
+  ],
+  "family": "bots"
+ },
+ {
+  "id": "A158",
+  "structs": [
+   "CmdBufState"
+  ],
+  "family": "renderer"
+ },
+ {
+  "id": "A159",
+  "structs": [
+   "NetThread"
+  ],
+  "family": "net"
+ },
+ {
+  "id": "A160",
+  "structs": [
+   "Online_Commerce"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A161",
+  "structs": [
+   "BgStatic",
+   "BgPredictedEntitySystem"
+  ],
+  "family": "bg"
+ },
+ {
+  "id": "A162",
+  "structs": [
+   "GfxCmdBufInput"
+  ],
+  "family": "renderer"
+ },
+ {
+  "id": "A163",
+  "structs": [
+   "GfxCmdBufSourceState"
+  ],
+  "family": "renderer"
+ },
+ {
+  "id": "A164",
+  "structs": [
+   "OnlineMgr"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A165",
+  "structs": [
+   "OnlineUserLists",
+   "Online_BlockList"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A166",
+  "structs": [
+   "ClientPlayerWeaponInfo",
+   "ClConnection"
+  ],
+  "family": "client"
+ },
+ {
+  "id": "A167",
+  "structs": [
+   "PipDef"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A168",
+  "structs": [
+   "GfxWorldTransientDrawCache"
+  ],
+  "family": "renderer"
+ },
+ {
+  "id": "A169",
+  "structs": [
+   "LobbyData"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A170",
+  "structs": [
+   "PacketStream_NetPacket_1288_262144_1",
+   "NetBuffer_262144_1"
+  ],
+  "family": "net"
+ },
+ {
+  "id": "A171",
+  "structs": [
+   "dwMultiFileTask"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A172",
+  "structs": [
+   "ABFence",
+   "ASM_Context",
+   "pooledStorageWriteFileInfo"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A173",
+  "structs": [
+   "AnalyticsBuffer",
+   "BestHostData",
+   "BulletFireParams"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A174",
+  "structs": [
+   "ConeTargetInfo",
+   "bitarray_224",
+   "EdgeQueryCache"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A175",
+  "structs": [
+   "WeaponXAnim",
+   "ChallengeXPCache",
+   "CrosslaunchHSM"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A176",
+  "structs": [
+   "DBFileHandle",
+   "DemonwareFence",
+   "DiskFile"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A177",
+  "structs": [
+   "DiskReadContext",
+   "DiskFS",
+   "InviteJoinHSM_xb3"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A178",
+  "structs": [
+   "PMROctreeFactoryNode",
+   "PlayerStatsFence",
+   "StreamUpdateMultiView"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A179",
+  "structs": [
+   "UserSignedInToLiveFence",
+   "WeaponSFXPackageSounds",
+   "playlistInfo"
+  ],
+  "family": "misc"
+ },
+ {
+  "id": "A180",
+  "structs": [
+   "bdFileID",
+   "DWCounter",
+   "DWMatchMaking",
+   "bdEventLogID"
+  ],
+  "family": "Demonware"
+ },
+ {
+  "id": "A181",
+  "structs": [
+   "DWRichPresenceService",
+   "DWTags",
+   "bdBoolResult"
+  ],
+  "family": "Demonware"
+ },
+ {
+  "id": "A182",
+  "structs": [
+   "bdClansGroupMembershipProposal",
+   "bdStructOptionalObject_bdClansGroupMembershipProposal",
+   "bdClansAddOrUpdateGroupMemberResponse"
+  ],
+  "family": "Demonware"
+ },
+ {
+  "id": "A183",
+  "structs": [
+   "bdStructUserAccountID",
+   "bdStructOptionalObject_bdStructUserAccountID",
+   "bdObjectStoreGetPublisherObjectsResponse"
+  ],
+  "family": "Demonware"
+ },
+ {
+  "id": "A184",
+  "structs": [
+   "GfxComputeBufferState",
+   "ComputeContextData",
+   "ComputeData"
+  ],
+  "family": "renderer"
+ },
+ {
+  "id": "A185",
+  "structs": [
+   "GfxVertexBufferState",
+   "GfxCmdBuf",
+   "GfxAsync2DFrameData"
+  ],
+  "family": "renderer"
+ },
+ {
+  "id": "A186",
+  "structs": [
+   "GfxDrawCallOutput",
+   "GfxReflectionProbeRelightingBackEndData",
+   "GfxGlassVertex"
+  ],
+  "family": "renderer"
+ },
+ {
+  "id": "A187",
+  "structs": [
+   "GfxShaderTextureRWView",
+   "GfxSurfaceBounds"
+  ],
+  "family": "renderer"
+ },
+ {
+  "id": "A188",
+  "structs": [
+   "NetBacklog",
+   "PacketStream_NetPacket_1288_32768_0",
+   "NetBuffer_32768_0"
+  ],
+  "family": "net"
+ },
+ {
+  "id": "A189",
+  "structs": [
+   "PacketStream_NetPacket_1288_65536_0",
+   "NetBuffer_65536_0",
+   "NetRelay"
+  ],
+  "family": "net"
+ },
+ {
+  "id": "A190",
+  "structs": [
+   "NetInit",
+   "NetworkingFence"
+  ],
+  "family": "net"
+ },
+ {
+  "id": "A191",
+  "structs": [
+   "bfx__Task",
+   "bfx__ComponentManager",
+   "bfx__Link"
+  ],
+  "family": "bfx nav"
+ },
+ {
+  "id": "A192",
+  "structs": [
+   "bfx__LinkSegment",
+   "bfx__Navigator",
+   "bfx__ProbeResults"
+  ],
+  "family": "bfx nav"
+ },
+ {
+  "id": "A193",
+  "structs": [
+   "bfx__Repulsor",
+   "bfx__VolumePathSegment"
+  ],
+  "family": "bfx nav"
+ },
+ {
+  "id": "A194",
+  "structs": [
+   "HavokPhysicsShapeTagCodec",
+   "HavokPhysicsShapeViewer",
+   "hkInplaceArrayAligned16_hknpCollisionResult_10_hkContainerHeapAllocator"
+  ],
+  "family": "Havok"
+ },
+ {
+  "id": "A195",
+  "structs": [
+   "hkReflect__BoolValue",
+   "hknpEvent",
+   "hknpManifold"
+  ],
+  "family": "Havok"
+ },
+ {
+  "id": "A196",
+  "structs": [
+   "AIBlackboard",
+   "AINewAgentInterface",
+   "AITaskBucket_Lazy"
+  ],
+  "family": "bots"
+ },
+ {
+  "id": "A197",
+  "structs": [
+   "ID3D12Device",
+   "ID3D12Pageable",
+   "ID3D12PipelineState",
+   "ID3D12Resource"
+  ],
+  "family": "d3d12"
+ },
+ {
+  "id": "A198",
+  "structs": [
+   "OnlineBattlepass",
+   "OnlineMatchmakerTelemetry",
+   "Online_Dailylogin",
+   "Online_LootCrate"
+  ],
+  "family": "online"
+ },
+ {
+  "id": "A199",
+  "structs": [
+   "CEntPlayerInfo",
+   "CEntTurretInfo",
+   "CEntVehicleInfo"
+  ],
+  "family": "client ents"
+ },
+ {
+  "id": "A200",
+  "structs": [
+   "Umbra__Transformer",
+   "Umbra__Tome",
+   "Umbra__Visibility"
+  ],
+  "family": "umbra"
+ },
+ {
+  "id": "A201",
+  "structs": [
+   "GTargetAssist",
+   "GTurretMP"
+  ],
+  "family": "server game"
+ },
+ {
+  "id": "A202",
+  "structs": [
+   "ParticleData",
+   "SvGameModeAppSP",
+   "CgClientSideEffectsSystemMP"
+  ],
+  "family": "effects"
+ }
+]

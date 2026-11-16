@@ -112,25 +112,33 @@ void groundTrace(Ctx& c, bool settle, double dt) {
     s.onGround = walkable;
 }
 
-// Quake 3 PM_SlideMove: up to four bumps, clipping the velocity against every plane touched. On the ground a face
-// steeper than 0.7 against the ground plane is clipped as a wall standing on the ground (PM_ClipSlideVelocity
-// 0x14111E9B0: the face normal minus its ground component), so walking into a steep low face does not ride up it.
+// PM_SlideMove (0x14112F840): up to four bumps against at most 8 planes: the ground plane (walkable or not, while the
+// ground trace has one), the direction of the velocity, a level ceiling while the ledge walk supports the player, and
+// every plane hit. Each new hit sorts the planes by how much the velocity runs into them; the velocity is clipped
+// against the worst one, then against each other one it still runs into; when a second clip turns it back into the
+// first plane it follows the crease of the two (cross product), and stops dead if that runs into a third. A plane hit
+// again is clipped and nudged out by 1/60 s worth of its normal. The clips are PM_ClipSlideVelocity (0x14111E9B0):
+// on the ground a face steeper than 0.7 against up is clipped as the level wall under it, unless the velocity leaves
+// that wall (walking into a steep low face does not ride up it).
 bool slideMove(Ctx& c, double dt, bool gravity) {
-    Vec3 planes[6];
+    constexpr int kMaxPlanes = 8;
+    Vec3 planes[kMaxPlanes + 1];
     int numPlanes = 0;
     const bool grounded = c.s.onGround;
-    const Vec3 g = c.s.groundNormal;
-    const auto asWall = [&](const Vec3& n) {
-        if (!grounded) return n;
-        const double d = dot(g, n);
-        if (d > 0.7 || std::fabs(d + 1.0) < 0.001) return n;
-        const Vec3 w = n - g * d;
-        if (length(w) < 1e-9) return n;
-        const Vec3 wn = normalize(w);
-        return dot(wn, c.s.velocity) > 0 ? n : wn;
+    const auto clipSlide = [&](const Vec3& v, const Vec3& n) {
+        Vec3 use = n;
+        if (grounded && n.z <= 0.7 && std::fabs(n.z + 1.0) >= 0.001) {
+            const Vec3 w{n.x, n.y, 0};
+            if (length(w) > 1e-9) {
+                const Vec3 wn = normalize(w);
+                if (dot(wn, v) <= 0) use = wn;
+            }
+        }
+        return clipVelocity(v, use, kOverbounce);
     };
-    // The ground plane (walkable or not: PM_ResolveGroundedMovement passes it while the ground trace has one) is the
-    // first clip plane, and the gravity half-step slides along it.
+    // While the ledge walk holds the player (pmove + 740 bits 0x202) the slide does not go up.
+    const bool noUp = c.s.steepContact;
+    if (noUp) c.s.velocity.z = std::min(c.s.velocity.z, 0.0);
     Vec3 endVelocity = c.s.velocity;
     if (gravity) {
         endVelocity.z -= c.p.gravity * dt;
@@ -139,6 +147,7 @@ bool slideMove(Ctx& c, double dt, bool gravity) {
     }
     if (c.s.groundPlane) planes[numPlanes++] = c.s.groundNormal;
     if (length(c.s.velocity) > 1e-9) planes[numPlanes++] = normalize(c.s.velocity);
+    if (noUp) planes[numPlanes++] = Vec3{0, 0, -1};
     double timeLeft = dt;
     int bump = 0;
     for (; bump < 4; ++bump) {
@@ -148,47 +157,60 @@ bool slideMove(Ctx& c, double dt, bool gravity) {
             c.s.velocity.z = 0;
             return true;
         }
+        Vec3 hitN = tr.plane.n;
+        // Stuck at once against a level floor with no ground plane: a wall against the move.
+        if (tr.fraction < 1e-6 && !c.s.groundPlane && hitN.z > 0.999) {
+            const Vec3 h{c.s.velocity.x, c.s.velocity.y, 0};
+            if (dot(h, h) > 1e-6) hitN = normalize(h) * -1.0;
+        }
         if (tr.fraction > 0) c.s.origin = tr.end;
         if (tr.fraction == 1) break;
         timeLeft -= timeLeft * tr.fraction;
-        if (numPlanes >= 6) {
+        if (numPlanes >= kMaxPlanes) {
             c.s.velocity = Vec3{};
             return true;
         }
-        const Vec3 hitN = asWall(tr.plane.n);
-        // A plane hit twice: nudge the velocity out so the box does not stick.
         bool repeat = false;
         for (int i = 0; i < numPlanes; ++i)
-            if (dot(hitN, planes[i]) > 0.99) {
-                c.s.velocity = c.s.velocity + hitN;
+            if (dot(hitN, planes[i]) > 0.999) {
+                c.s.velocity = clipSlide(c.s.velocity, hitN) + hitN * (dt > 0 ? (1.0 / 60.0) / dt : 1.0);
                 repeat = true;
                 break;
             }
         if (repeat) continue;
         planes[numPlanes++] = hitN;
-        for (int i = 0; i < numPlanes; ++i) {
-            if (dot(c.s.velocity, planes[i]) >= 0.1) continue;
-            Vec3 clip = clipVelocity(c.s.velocity, planes[i], kOverbounce);
-            Vec3 endClip = clipVelocity(endVelocity, planes[i], kOverbounce);
-            for (int j = 0; j < numPlanes; ++j) {
-                if (j == i || dot(clip, planes[j]) >= 0.1) continue;
-                clip = clipVelocity(clip, planes[j], kOverbounce);
-                endClip = clipVelocity(endClip, planes[j], kOverbounce);
-                if (dot(clip, planes[i]) >= 0) continue;
-                // Two planes: slide along their crease.
-                const Vec3 dir = normalize(cross(planes[i], planes[j]));
+        int order[kMaxPlanes + 1];
+        double into[kMaxPlanes + 1];
+        for (int i = 0; i < numPlanes; ++i) {  // insertion sort by dot(velocity, plane), most opposing first
+            into[i] = dot(c.s.velocity, planes[i]);
+            int k = i;
+            for (; k > 0 && into[i] <= into[order[k - 1]]; --k) order[k] = order[k - 1];
+            order[k] = i;
+        }
+        if (into[order[0]] >= 0.1) continue;
+        const Vec3& p0 = planes[order[0]];
+        Vec3 clip = clipSlide(c.s.velocity, p0);
+        Vec3 endClip = clipSlide(endVelocity, p0);
+        for (int jj = 1; jj < numPlanes; ++jj) {
+            const Vec3& pj = planes[order[jj]];
+            if (dot(clip, pj) >= 0.1) continue;
+            clip = clipSlide(clip, pj);
+            endClip = clipSlide(endClip, pj);
+            if (dot(p0, clip) >= 0) continue;
+            // Two planes: slide along their crease.
+            const Vec3 dir = normalize(cross(p0, pj));
+            if (!noUp) {
                 clip = dir * dot(dir, c.s.velocity);
                 endClip = dir * dot(dir, endVelocity);
-                for (int k = 0; k < numPlanes; ++k) {
-                    if (k == i || k == j || dot(clip, planes[k]) >= 0.1) continue;
-                    c.s.velocity = Vec3{};  // three planes: stop dead
-                    return true;
-                }
             }
-            c.s.velocity = clip;
-            endVelocity = endClip;
-            break;
+            for (int kk = 1; kk < numPlanes; ++kk) {
+                if (kk == jj || dot(clip, planes[order[kk]]) >= 0.1) continue;
+                c.s.velocity = Vec3{};  // three planes: stop dead
+                return true;
+            }
         }
+        c.s.velocity = clip;
+        endVelocity = endClip;
     }
     if (gravity) c.s.velocity = endVelocity;
     return bump != 0;
@@ -250,11 +272,12 @@ void stepSlideMove(Ctx& c, double dt, bool gravity, bool allowStep) {
     c.s.velocity = slideV;
 }
 
-// PM_Friction (0x141121160): drop = friction * max(100, speed) * scale * dt, on the ground only.
+// PM_Friction (0x141121160): drop = friction * max(100, speed) * scale * dt, on the ground; under 1 unit / s (level
+// speed on the ground, full speed in the air) the whole velocity stops.
 void applyFriction(Ctx& c, double dt, double scale) {
     const double speed = std::hypot(c.s.velocity.x, c.s.velocity.y);
     if (speed < 1) {
-        c.s.velocity.x = c.s.velocity.y = 0;
+        c.s.velocity = Vec3{};
         return;
     }
     const double drop = std::max(speed, c.p.stopSpeed) * c.p.friction * scale * dt;
@@ -553,6 +576,7 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
         s.sprinting = s.tacticalSprinting = s.sliding = s.mantling = false;
         return;
     }
+    const Vec3 frameStart = s.origin;  // pml.previous_origin
     s.sinceJump += dt;
     s.steepTime = s.steepContact ? s.steepTime + dt : 0.0;  // the ledge walk support of the last step
     s.steepContact = false;
@@ -801,6 +825,8 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
             fs *= (1.0 - t) * p.slideOutFrictionStart + t;
         }
         applyFriction(c, dt, fs);
+    } else if (length(s.velocity) < 1) {
+        s.velocity = Vec3{};  // PM_Friction in the air: no drag, but under 1 unit / s the velocity stops
     }
     if (wishSpeed > 0) {
         double accel = s.onGround ? (s.prone ? p.proneAccelerate : s.crouched ? p.crouchAccelerate : p.accelerate)
@@ -825,6 +851,15 @@ void playerMove(const CollisionWorld& world, PlayerState& s, const MoveInput& in
     // on the ground) and the next frame's first pass puts the feet down.
     groundTrace(c, false, dt);
     if (s.onGround && s.velocity.z < 0) s.velocity.z = 0;
+    // PM_Normal_UpdateCollide (0x141123F30), after the move: a player who moved less than half of what the velocity
+    // says this frame (held by the ground trace in a pocket, stuck on something) takes the real movement as the
+    // velocity, or none when that went against it. A player wedged between two steep faces settles instead of sliding
+    // from one to the other.
+    {
+        const Vec3 moved = s.origin - frameStart;
+        if (dot(moved, moved) < 0.25 * dot(s.velocity, s.velocity) * dt * dt)
+            s.velocity = dot(moved, s.velocity) >= 0 ? moved * (1.0 / dt) : Vec3{};
+    }
 
     // Timers: landing friction counts down from 1000 ms; the jump state ends with it.
     if (s.landingMs > 0) {
