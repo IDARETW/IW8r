@@ -11,8 +11,12 @@
     ours and survives a sync), third_party libs, bin/<mode>/iw8r-zt.exe (dep of IW8Radiant), default zonetool path and
     script defaults. Parity tools: tools/zt_parity.py (buildextraction; use a SHORT scratch root like E:/zp, ACTS
     fails on long paths), tools/zt_editzone_parity.py. Results table in docs/PLAN_OWN_TOOLS.md section 2.
-  - Next: ACTS (mw19replay handler closure -> src/tools/acts, iw8r-acts.exe); then the setup wizard / Tool Paths
-    wording (x64-zt, ACTS rows), THIRD_PARTY.md, LICENSE, README.
+  - ACTS done: src/tools/acts (fork 834568b9 via tools/patches/acts_sync_fork.py; iw8r/ and xmake.lua there are
+    ours), bin/<mode>/iw8r-acts.exe, data/mw19/schema.json; defaults switched in main_window, the cache tests and 20
+    tools scripts (parity tools keep the fork as reference). tools/acts_parity.py is noise-aware (fork runs twice).
+    Setup wizard / Tool Paths: "Replay reader" / "Zone writer", saved empty when equal to the bundled default.
+  - zt build: xmake "smallest" adds /GL, so zt_flags uses /O1 with optimize "fork_size" (no flag); "fastest" = /O2.
+  - Next: LICENSE (GPL-3), THIRD_PARTY.md, README (building, what the user provides), package licence notes.
 - 2026-11-16 (owner: blank effect previews; "a one-time full metadata and thumbnails for everything we can in the
   menus ... include it as part of the project"; "compress previews too"; "stop relying on ACTs, gsc-tool, and the
   x64-zt fork"):

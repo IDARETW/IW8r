@@ -12,7 +12,7 @@ import collections, glob, json, os, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STUDY = os.path.join(ROOT, 'out', 'scriptable_study')
-ACTS = r'E:\mw124\atian-cod-tools\build\bin\Release\acts.exe'
+ACTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'release', 'iw8r-acts.exe')
 GAME = r'E:\IW8\Builds\1.20-replay'
 MAPS = ['mp_aniyah_tac', 'mp_backlot2', 'mp_bm_tut', 'mp_br_quarry', 'mp_br_tut', 'mp_donetsk', 'mp_emporium',
         'mp_frontend', 'mp_frontend1', 'mp_frontend3', 'mp_hideout', 'mp_m_fork', 'mp_m_king', 'mp_m_speed',

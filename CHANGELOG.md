@@ -5,6 +5,14 @@ ACTS, tests) but not yet played; [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md
 
 ## 2026-11-16
 
+- **The Replay reader is part of the project: no outside tools are needed.** `iw8r-acts.exe` is built from
+  `src/tools/acts` (the ACTS fork's Replay 1.20 reader, MIT; only the mw19replay handler and what it uses) and is the
+  default Tool Paths `acts`, as `iw8r-zt.exe` and `iw8r-gsc.exe` are for the zone writer and the script compiler;
+  all three are built with the editor and shipped in the package, and the Replay schema ships in `data/mw19`. The
+  editor, its headless tests and the tools scripts use them by default; the setup wizard names them as installed with
+  the editor and saves them empty (the default), so a moved install keeps working. Proven against the fork's acts.exe
+  on 18 export, test and serve cases (every stable output the same) and end to end: map builds, a stock zone edit, the
+  material and model caches. Details: [docs/PLAN_OWN_TOOLS.md](docs/PLAN_OWN_TOOLS.md).
 - **The zone writer and map converter are part of the project.** `iw8r-zt.exe` is built from `src/tools/zonetool`
   (the x64-zt fork with its 485 IW8 Radiant commits, GPL-3; only IW8, the IW3 map pipeline the editor's builds use, and
   their libraries in `third_party`) and is the default Tool Paths `zonetool`; the package ships it. Proven against the

@@ -10,7 +10,7 @@ import glob, json, os, shutil, subprocess, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXE = r'C:\zsw-iw8r\scriptables\build\bin\x64\Release\zonetool.exe'
 GAME = r'E:\IW8\Builds\1.20-replay'
-ACTS = r'E:\mw124\atian-cod-tools\build\bin\Release\acts.exe'
+ACTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'release', 'iw8r-acts.exe')
 NUL = chr(0)
 LF = chr(10)
 

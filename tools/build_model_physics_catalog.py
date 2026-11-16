@@ -29,7 +29,7 @@ import collections, glob, json, math, os, shutil, struct, subprocess, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STUDY = os.path.join(ROOT, 'out', 'model_physics_study')
 OUT = os.path.join(ROOT, 'data', 'asset_catalog', 'iw8_model_physics.tsv')
-ACTS = r'E:\mw124\atian-cod-tools\build\bin\Release\acts.exe'
+ACTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'release', 'iw8r-acts.exe')
 GAME = r'E:\IW8\Builds\1.20-replay'
 HAVOK_INCH = 32.0           # inches per Havok unit (x64-zt replay_havok.cpp divides by 32; the decoded shapes fit)
 COMPENDIUM_ID = '40354c32492e6bc1'  # TCRF of every stock physics asset: the compendium signature, little-endian

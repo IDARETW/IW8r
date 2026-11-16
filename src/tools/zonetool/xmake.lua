@@ -11,11 +11,14 @@ local function zt_flags(optimize)
     set_languages("c11", "cxxlatest")
     set_runtimes("MT")
     set_warnings("none")
-    set_optimize(optimize or "smallest")
+    -- The fork's optimize "Size" is /O1 alone; xmake's "smallest" would add /GL. "fastest" is /O2, the fork's "Speed".
+    local size = (optimize or "smallest") == "smallest"
+    if not size then set_optimize(optimize) end
     set_policy("build.optimization.lto", false)
     add_defines("_WINDOWS", "WIN32")
     if is_mode("release") then add_defines("NDEBUG") end
     add_cxflags("/bigobj", "/MP")
+    if size and is_mode("release") then add_cxflags("/O1") end
     on_load(function (target)
         local function strip(name, drop)
             local out = {}
@@ -24,6 +27,7 @@ local function zt_flags(optimize)
             end
             target:set(name, out)
         end
+        if size then target:set("optimize", "fork_size") end  -- no xmake flag: only the /O1 above
         strip("cxflags", {["/utf-8"] = true, ["/Zc:__cplusplus"] = true, ["/permissive-"] = true})
         strip("defines", {NOMINMAX = true, WIN32_LEAN_AND_MEAN = true, _CRT_SECURE_NO_WARNINGS = true})
     end)

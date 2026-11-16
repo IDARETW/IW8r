@@ -1669,7 +1669,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
         r.check(wiz.replayStatus().contains("recompiled"), QString("the Replay exe is reported recompiled (%1)").arg(wiz.replayStatus()));
         r.check(wiz.oodlePath().endsWith("/oo2core_7_win64.dll"), "Detect fills the Oodle DLL from the game folder");
         r.check(wiz.launchExe().isEmpty(), "the launch exe defaults to the Replay exe");
-        r.check(wiz.actsPath().isEmpty() && wiz.zonetoolPath().isEmpty(), "ACTS and x64-zt stay as they were (not on the fake folder)");
+        r.check(wiz.actsPath().isEmpty() && wiz.zonetoolPath().isEmpty(), "the Replay reader and zone writer stay as they were (not on the fake folder)");
     }
 
     r.section("help: keyboard shortcut sheet");

@@ -1,6 +1,7 @@
 #include "setup_wizard.h"
 
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFileDialog>
@@ -116,8 +117,8 @@ SetupWizard::SetupWizard(ToolPathFn current, std::vector<std::string> driveRoots
 
     acts_ = new QLineEdit(this);
     actsStatus_ = new QLabel(this);
-    connect(addRow("ACTS (acts.exe)", acts_, "Browse...", actsStatus_), &QPushButton::clicked, this, [this] {
-        browseFile(acts_, "ACTS (acts.exe)", "acts.exe (acts.exe);;Executables (*.exe);;All files (*)");
+    connect(addRow("Replay reader (iw8r-acts.exe)", acts_, "Browse...", actsStatus_), &QPushButton::clicked, this, [this] {
+        browseFile(acts_, "Replay reader (iw8r-acts.exe)", "Executables (*.exe);;All files (*)");
     });
 
     oodle_ = new QLineEdit(this);
@@ -128,8 +129,8 @@ SetupWizard::SetupWizard(ToolPathFn current, std::vector<std::string> driveRoots
 
     zonetool_ = new QLineEdit(this);
     zonetoolStatus_ = new QLabel(this);
-    connect(addRow("x64-zt (zonetool.exe)", zonetool_, "Browse...", zonetoolStatus_), &QPushButton::clicked, this, [this] {
-        browseFile(zonetool_, "x64-zt (zonetool.exe)", "zonetool.exe (zonetool.exe);;Executables (*.exe);;All files (*)");
+    connect(addRow("Zone writer (iw8r-zt.exe)", zonetool_, "Browse...", zonetoolStatus_), &QPushButton::clicked, this, [this] {
+        browseFile(zonetool_, "Zone writer (iw8r-zt.exe)", "Executables (*.exe);;All files (*)");
     });
 
     summary_ = new QLabel(this);
@@ -237,8 +238,10 @@ void SetupWizard::detect() {
             notes << QString("Oodle: %1").arg(QFileInfo(oodlePath()).fileName());
         }
     }
-    if (!isExistingFile(actsPath().toStdString())) notes << "ACTS (acts.exe) is not set or missing: Browse to it.";
-    if (!isExistingFile(zonetoolPath().toStdString())) notes << "x64-zt zonetool.exe is not set: Browse to it (optional for the map editor).";
+    if (!isExistingFile(actsPath().toStdString()))
+        notes << "The Replay reader (iw8r-acts.exe, installed with the editor) was not found: reinstall or Browse to it.";
+    if (!isExistingFile(zonetoolPath().toStdString()))
+        notes << "The zone writer (iw8r-zt.exe, installed with the editor) was not found: reinstall or Browse to it.";
     summary_->setText(notes.join("\n"));
     updateStatus();
 }
@@ -253,15 +256,20 @@ void SetupWizard::accept() {
     }
     if (!isExistingFile(actsPath().toStdString()) &&
         QMessageBox::question(this, "First-run setup",
-                              "ACTS (acts.exe) is not set or is missing: stock maps, stock assets and build validation will not work "
-                              "until it is (Tools > Tool Paths). Save anyway?") != QMessageBox::Yes)
+                              "The Replay reader (iw8r-acts.exe) was not found: stock maps, stock assets and build validation will "
+                              "not work until it is (Tools > Tool Paths). Save anyway?") != QMessageBox::Yes)
         return;
     // The same keys Tools > Tool Paths writes; toolPath() reads them back.
     Settings& s = Settings::instance();
-    s.setValue("tools/acts", actsPath());
+    // The tools that come with the editor are saved empty when they are its own copies (empty = the default).
+    const auto bundled = [](const QString& path, const char* exe) {
+        const QString own = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/" + exe);
+        return QDir::cleanPath(path).compare(own, Qt::CaseInsensitive) == 0 ? QString() : path;
+    };
+    s.setValue("tools/acts", bundled(actsPath(), "iw8r-acts.exe"));
     s.setValue("tools/replay", exe);
     s.setValue("tools/oodle", oodlePath());
-    s.setValue("tools/zonetool", zonetoolPath());
+    s.setValue("tools/zonetool", bundled(zonetoolPath(), "iw8r-zt.exe"));
     s.setValue("tools/launch", launchExe());
     QDialog::accept();
 }

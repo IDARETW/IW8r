@@ -939,7 +939,7 @@ int runSoundSelfTest(const QString& replayExe, const QString& referenceDir, cons
         SoundPreview sp([&](const QString& k) -> QString {
             if (k == "replay") return replayExe;
             if (k == "oodle") return base + "/oo2core_7_win64.dll";
-            if (k == "acts") return qEnvironmentVariable("IW8R_TOOL_ACTS", "E:/mw124/atian-cod-tools/build/bin/Release/acts.exe");
+            if (k == "acts") return qEnvironmentVariable("IW8R_TOOL_ACTS", QCoreApplication::applicationDirPath() + "/iw8r-acts.exe");
             return {};
         });
         sp.setMuted(true);

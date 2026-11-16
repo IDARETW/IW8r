@@ -1,0 +1,2 @@
+hash-library (https://create.stephan-brumme.com/hash-library/) from the ACTS fork's deps/hash-library at d389d18112bcf7e4786ec5e8723f3658a7f433d7;
+only SHA-256 (iw8r-acts: the flexible fastfile header check).

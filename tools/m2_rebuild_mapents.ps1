@@ -23,12 +23,13 @@ param(
     [string]$Work = '',
     [string]$Game = 'E:\IW8\Builds\1.20-replay',
     [string]$ZoneTool = '',  # empty: bin\release\iw8r-zt.exe (src/tools/zonetool)
-    [string]$Acts = 'E:\mw124\atian-cod-tools\build\bin\Release\acts.exe'
+    [string]$Acts = ''  # empty: bin\release\iw8r-acts.exe (src/tools/acts)
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $iw8r = Join-Path $root 'bin\release\iw8r.exe'
 if (-not $ZoneTool) { $ZoneTool = Join-Path $root 'bin\release\iw8r-zt.exe' }
+if (-not $Acts) { $Acts = Join-Path $root 'bin\release\iw8r-acts.exe' }
 if (-not $Work) { $Work = Join-Path $root "out\m2-$Zone-$(Get-Date -Format 'yyyyMMdd-HHmmss')" }
 New-Item -ItemType Directory -Force $Work | Out-Null
 $Work = (Resolve-Path $Work).Path  # absolute: the script changes into it

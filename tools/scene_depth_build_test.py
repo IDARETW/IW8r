@@ -23,7 +23,7 @@ import subprocess
 import sys
 import tempfile
 
-ACTS = r"E:/mw124/atian-cod-tools/build/bin/Release/acts.exe"
+ACTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'release', 'iw8r-acts.exe')
 REPLAY = r"E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe"
 OODLE = r"E:/IW8/Builds/1.20-replay/oo2core_7_win64.dll"
 

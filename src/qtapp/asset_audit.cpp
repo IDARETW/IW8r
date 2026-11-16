@@ -67,7 +67,7 @@ QStringList catalogNames(const QString& kind, QHash<QString, QStringList>* zoneO
 QString toolPath(const QString& key) {
     QSettings ini(QDir(QCoreApplication::applicationDirPath()).filePath("IW8Radiant.ini"), QSettings::IniFormat);
     static const QMap<QString, QString> defaults = {
-        {"acts", "E:/mw124/atian-cod-tools/build/bin/Release/acts.exe"},
+        {"acts", QCoreApplication::applicationDirPath() + "/iw8r-acts.exe"},  // src/tools/acts
         {"replay", "E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe"},
         {"oodle", "E:/IW8/Builds/1.20-replay/oo2core_7_win64.dll"},
     };

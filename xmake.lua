@@ -52,6 +52,8 @@ target("iw8r-gsc")
 
 -- iw8r-zt: the zone writer and IW3 map converter (the x64-zt fork, GPL-3), src/tools/zonetool/xmake.lua.
 includes("src/tools/zonetool")
+-- iw8r-acts: reads Replay zones with the game's loader (the ACTS fork, MIT), src/tools/acts/xmake.lua.
+includes("src/tools/acts")
 
 -- Command line tool used by mappers' scripts and by the milestone tests.
 target("iw8r")
@@ -100,7 +102,7 @@ target("IW8Radiant")
     add_frameworks("QtCore", "QtGui", "QtWidgets", "QtTest", "QtNetwork")
     -- iw8r-gsc is built with the editor: the build compiles map scripts with it (Tool Paths gsc_tool).
     add_deps("iw8r_core", "iw8r_viewport", "qtads")
-    add_deps("iw8r-gsc", "iw8r-zt", {inherit = false})  -- built first; nothing of theirs links into the editor
+    add_deps("iw8r-gsc", "iw8r-zt", "iw8r-acts", {inherit = false})  -- built first; nothing of theirs links into the editor
     add_files("src/qtapp/*.cpp")
     add_files("src/qtapp/*.h")
     on_load(function (target) target:set("qt.moc.flags", "-D_WIN32", "-DWIN32", "-D_WIN64", "-D_MSC_VER=1944") end)

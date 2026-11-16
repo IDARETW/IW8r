@@ -11,7 +11,7 @@ import csv, glob, json, os, shutil, subprocess, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NEW = r'C:\zsw-iw8r\scriptables\build\bin\x64\Release\zonetool.exe'
 GAME = r'E:\IW8\Builds\1.20-replay'
-ACTS = r'E:\mw124\atian-cod-tools\build\bin\Release\acts.exe'
+ACTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'release', 'iw8r-acts.exe')
 GSC = r'C:\Users\user\Downloads\iw8 level maker\gsc-tool.exe'
 
 

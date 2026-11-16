@@ -16,7 +16,7 @@ if (-not (Test-Path (Join-Path $bin 'IW8Radiant.exe'))) { throw "build first: $b
 if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
 New-Item -ItemType Directory -Force $dest | Out-Null
 
-$files = @('IW8Radiant.exe', 'iw8r.exe', 'iw8r-gsc.exe', 'iw8r-zt.exe', 'qtadvanceddocking.dll') +
+$files = @('IW8Radiant.exe', 'iw8r.exe', 'iw8r-gsc.exe', 'iw8r-zt.exe', 'iw8r-acts.exe', 'qtadvanceddocking.dll') +
          (Get-ChildItem $bin -Filter 'Qt6*.dll' | ForEach-Object Name)
 foreach ($f in $files) { Copy-Item (Join-Path $bin $f) $dest }
 # Qt plugin folders written by windeployqt.
@@ -31,7 +31,7 @@ foreach ($d in 'platforms', 'styles', 'imageformats', 'iconengines', 'generic', 
 # Editor data the editor finds beside itself: the browser client (Tools > Web Server), the stock asset catalogs and
 # availability lists, the canonical key table and the entity definitions.
 $dataDest = Join-Path $dest 'data'
-foreach ($d in 'web', 'asset_catalog', 'generated', 'prefabs', 'ies', 'stock_assets', 'fx', 'shaders', 'volume_masks') {
+foreach ($d in 'web', 'asset_catalog', 'generated', 'prefabs', 'ies', 'stock_assets', 'fx', 'shaders', 'volume_masks', 'mw19') {
     $src = Join-Path $root "data\$d"
     if (Test-Path $src) { Copy-Item -Recurse $src (Join-Path $dataDest $d) }
 }

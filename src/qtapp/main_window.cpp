@@ -22,6 +22,7 @@
 #include "material_clone.h"
 #include "uv_editor.h"
 #include <cstring>
+#include <QCoreApplication>
 #include <QSet>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -5713,7 +5714,7 @@ void MainWindow::openDialog() {
 QString MainWindow::toolPath(const QString& key) const {
     // Defaults are this workstation's locations (docs/research/04, 10); Tools > Tool Paths overrides them.
     static const QMap<QString, QString> defaults = {
-        {"acts", "E:/mw124/atian-cod-tools/build/bin/Release/acts.exe"},
+        {"acts", QCoreApplication::applicationDirPath() + "/iw8r-acts.exe"},  // src/tools/acts
         {"replay", "E:/IW8/Builds/1.20-replay/game_dx12_ship_replay.exe"},
         {"oodle", "E:/IW8/Builds/1.20-replay/oo2core_7_win64.dll"},
         // The project's own zone writer and map converter (src/tools/zonetool, the x64-zt fork), beside the editor.
@@ -5734,7 +5735,7 @@ void MainWindow::toolPathsDialog() {
     dlg.setWindowTitle("Tool Paths");
     auto* form = new QFormLayout(&dlg);
     QMap<QString, QLineEdit*> edits;
-    const QList<QPair<QString, QString>> rows = {{"acts", "ACTS (acts.exe)"}, {"replay", "Replay 1.20 game_dx12_ship_replay.exe"}, {"oodle", "Oodle (oo2core_7_win64.dll)"}, {"zonetool", "Zone writer (empty = iw8r-zt.exe beside the editor)"}, {"gsc_tool", "GSC compiler (compiles the map script; empty = iw8r-gsc.exe beside the editor)"}, {"x64zt_output", "x64-zt output folder (empty = app data)"},
+    const QList<QPair<QString, QString>> rows = {{"acts", "Replay reader (empty = iw8r-acts.exe beside the editor)"}, {"replay", "Replay 1.20 game_dx12_ship_replay.exe"}, {"oodle", "Oodle (oo2core_7_win64.dll)"}, {"zonetool", "Zone writer (empty = iw8r-zt.exe beside the editor)"}, {"gsc_tool", "GSC compiler (compiles the map script; empty = iw8r-gsc.exe beside the editor)"}, {"x64zt_output", "x64-zt output folder (empty = app data)"},
                                                  {"launch", "Game exe for Launch Replay (empty = the Replay exe)"}};
     for (const auto& [key, label] : rows) {
         auto* row = new QHBoxLayout();
@@ -5770,14 +5771,22 @@ void MainWindow::toolPathsDialog() {
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     if (dlg.exec() != QDialog::Accepted) return;
-    for (auto it = edits.begin(); it != edits.end(); ++it) Settings::instance().setValue("tools/" + it.key(), it.value()->text());
+    // A path equal to the default (the tools that come with the editor) is saved empty, so it follows the install.
+    for (auto it = edits.begin(); it != edits.end(); ++it) {
+        Settings::instance().setValue("tools/" + it.key(), QString());
+        const QString def = toolPath(it.key());
+        const QString text = it.value()->text().trimmed();
+        Settings::instance().setValue("tools/" + it.key(),
+                                      QDir::cleanPath(text).compare(QDir::cleanPath(def), Qt::CaseInsensitive) == 0 ? QString() : text);
+    }
 }
 
 void MainWindow::showFirstRunSetup(bool onlyIfReplayMissing) {
     if (onlyIfReplayMissing && QFileInfo::exists(toolPath("replay"))) {
         // The game is found; ACTS is the other tool most features need (stock maps, stock assets, validation).
         if (!QFileInfo::exists(toolPath("acts")))
-            ctx_.setStatus("ACTS (acts.exe) is not set: stock maps, stock assets and build validation need it (Tools > Tool Paths)");
+            ctx_.setStatus("The Replay reader (iw8r-acts.exe) was not found: stock maps, stock assets and build validation need it "
+                           "(Tools > Tool Paths)");
         return;
     }
     if (runFirstRunSetup(this, [this](const QString& k) { return toolPath(k); }))
