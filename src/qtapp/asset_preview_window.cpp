@@ -164,9 +164,13 @@ AssetPreviewWindow::AssetPreviewWindow(ID3D11Device* dev, ID3D11DeviceContext* d
     help->setStyleSheet("color: gray");
     side->addWidget(help);
     auto* sideWidget = new QWidget(this);
+    detailsPanel_ = sideWidget;
     sideWidget->setLayout(side);
     sideWidget->setFixedWidth(260);
-    auto* row = new QHBoxLayout(this);
+    auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(0, 0, 0, 0);
+    auto* row = new QHBoxLayout;
+    root->addLayout(row, 1);
     row->setContentsMargins(0, 0, 0, 0);
     row->addWidget(view_, 1);
     row->addWidget(sideWidget);
@@ -176,6 +180,37 @@ AssetPreviewWindow::AssetPreviewWindow(ID3D11Device* dev, ID3D11DeviceContext* d
 AssetPreviewWindow::~AssetPreviewWindow() = default;
 
 void AssetPreviewWindow::useGameLighting(){gameLightingPreview_=true;mode_->setCurrentIndex(1);applyMode(1);}
+
+void AssetPreviewWindow::setWorkspaceMode() {
+    if (compactMaterials_) return;
+    detailsPanel_->hide();
+    ctx_.scene.showEditorGuides = false;
+    setMinimumWidth(240);
+    auto* bar = new QHBoxLayout;
+    bar->setContentsMargins(0, 0, 0, 0);
+    auto* lighting = new QLabel("Game Lighting", this);
+    lighting->setStyleSheet("color: #8cc8ad;");
+    bar->addWidget(lighting);
+    bar->addStretch();
+    compactMaterials_ = new QComboBox(this);
+    compactMaterials_->setObjectName("techsetPreviewMaterials");
+    compactMaterials_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    compactMaterials_->setMinimumContentsLength(10);
+    compactMaterials_->addItem("All material slots", QString());
+    lod_->setParent(this);
+    lod_->show();
+    lod_->setMaximumWidth(135);
+    bar->addWidget(lod_);
+    auto* frame = new QPushButton("Frame", this);
+    frame->setToolTip("Frame the preview target (F)");
+    connect(frame, &QPushButton::clicked, this, &AssetPreviewWindow::frame);
+    bar->addWidget(frame);
+    connect(compactMaterials_, &QComboBox::currentIndexChanged, this, [this](int i) {
+        if (onMaterialSelected) onMaterialSelected(compactMaterials_->itemData(i).toString());
+    });
+    static_cast<QVBoxLayout*>(layout())->addLayout(bar);
+    static_cast<QVBoxLayout*>(layout())->addWidget(compactMaterials_);
+}
 
 void AssetPreviewWindow::refreshHooks(CameraView* camera,const app::SceneCache& scene) {
     if(camera)view_->copyHooksFrom(*camera);
@@ -361,6 +396,15 @@ void AssetPreviewWindow::rebuildDocument() {
     }
     materials_->clear();
     for (const std::string& m : materials) materials_->addItem(qs(m));
+    if (compactMaterials_) {
+        const auto previous = compactMaterials_->currentData().toString();
+        QSignalBlocker blocked(compactMaterials_);
+        compactMaterials_->clear();
+        compactMaterials_->addItem("All material slots", QString());
+        for (const auto& material : materials) compactMaterials_->addItem(qs(material), qs(material));
+        const int at = compactMaterials_->findData(previous);
+        compactMaterials_->setCurrentIndex(at >= 0 ? at : 0);
+    }
     view_->materialImagesChanged();
     ctx_.cameraMoved();
     updateInfo();

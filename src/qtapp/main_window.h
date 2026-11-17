@@ -913,6 +913,10 @@ private:
     class TechsetWorkspace* techsets_ = nullptr;
     class TechsetPanel* techsetPanel_ = nullptr;
     class TechsetWorkspace* makeTechsetWorkspace();
+    void openTechsetWorkspace();
+    void leaveTechsetWorkspace();
+    QByteArray techsetMapLayout_;
+    bool techsetLayoutChanging_ = false;
     ModelCache* modelCacheStock_ = nullptr;
     WorldCache* worldCache_ = nullptr;
     void clearUmbraView(const QString& text);

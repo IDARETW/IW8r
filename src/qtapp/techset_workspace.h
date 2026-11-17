@@ -16,12 +16,16 @@ class QLineEdit;
 class QTableWidget;
 class QUndoStack;
 class QCloseEvent;
+class QPushButton;
+class QKeyEvent;
 struct ID3D11Device;
 
 namespace iw8r::qt {
 class CameraView;
 class AssetPreviewWindow;
 class ShaderGraphWidget;
+class AssetBrowser;
+class TechsetModelSelector;
 class TechsetWorkspace : public QWidget {
     Q_OBJECT
   public:
@@ -29,6 +33,7 @@ class TechsetWorkspace : public QWidget {
         ID3D11Device *device = nullptr;
         QPointer<CameraView> mainView;
         std::function<AssetPreviewWindow *()> makePreview;
+        std::function<AssetBrowser *(QWidget *)> makeModelBrowser;
         std::function<void(AssetPreviewWindow *)> refreshPreview;
         std::function<bool(AssetPreviewWindow *, QString *)> previewSelection;
         std::function<QString()> mapFolder;
@@ -50,6 +55,8 @@ class TechsetWorkspace : public QWidget {
     bool previewSelection(QString *error = nullptr);
     void openImage(const QString &name);
     void compileNow();
+    void browseModels();
+    void refreshPreview();
     bool compiling() const;
     bool lastCompileSucceeded() const { return lastResult_.ok; }
     QString compileStatus() const;
@@ -62,8 +69,12 @@ class TechsetWorkspace : public QWidget {
     void clearOverrides();
     void shutdown();
     std::function<void()> onSaved;
-    std::function<void()> onExpand;
+    std::function<void()> onReturnToMap;
     std::function<void()> onOpen;
+
+  protected:
+    bool event(QEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
 
   private:
     void populate();
@@ -93,6 +104,10 @@ class TechsetWorkspace : public QWidget {
     app::ShaderCompileResult lastResult_;
     std::shared_ptr<app::PreviewGpuProgram> program_;
     QString lastDirectory_;
+    QPointer<TechsetModelSelector> modelSelector_;
+    QLabel *targetName_ = nullptr;
+    QPushButton *detachSource_ = nullptr;
+    std::string displayedStage_;
     AssetPreviewWindow *preview_ = nullptr;
     QComboBox *techniques_ = nullptr;
     QComboBox *stages_ = nullptr;

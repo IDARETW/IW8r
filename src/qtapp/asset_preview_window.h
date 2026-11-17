@@ -50,6 +50,7 @@ public:
     void showEffect(const QString& name);
     void showGeometry(std::shared_ptr<const ImportedModel> model);
     void useGameLighting();
+    void setWorkspaceMode();
     void refreshHooks(CameraView* camera,const app::SceneCache& scene);
     void refreshAssetData();
     std::function<void(const QString&)> onMaterialSelected;
@@ -84,6 +85,8 @@ private:
     EditorContext ctx_;
     CameraView* view_ = nullptr;
     Sources sources_;
+    QWidget* detailsPanel_ = nullptr;
+    QComboBox* compactMaterials_ = nullptr;
     QComboBox* mode_ = nullptr;
     QComboBox* lod_ = nullptr;
     QCheckBox* floor_ = nullptr;

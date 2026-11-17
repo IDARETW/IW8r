@@ -129,22 +129,31 @@ The first time a stock material is used, its images are read from the game, so i
 
 ### Live techsets and shader graphs
 
-The **Techsets** icon, immediately after Materials in the upper sidebar, opens the project techset list.
-Choose **Open shader workspace** to work in a dockable editor, or **Float / expand** for a larger workspace.
+The **Techsets** icon, immediately after Materials in the upper sidebar, opens a large workspace docked in the
+main window. **Back to map** restores the previous camera, grid and panel layout. The authoring and preview
+columns have a draggable divider, and its position is remembered. **Document** contains New, Open and Recover draft.
 You can also right-click materials, models, prefabs, effects and images and choose **Open in Techset Editor**.
 
 The preview uses **Game Lighting**. It supports a sphere, plane, cube, models and prefabs, and effect sprites.
-**Selection** copies selected map geometry (including patches, terrain and prefab contents), or a picked stock
-surface/model, into the dedicated preview without writing a temporary asset. Select a material slot to limit the preview. **Selected map targets + preview** temporarily applies the same
-revision to the current map selection; **Material everywhere + preview** applies it to every use of the named
-material. **Clear overrides** restores the original rendering. None of these assignments changes the map file.
+**Preview target > Selected map geometry** copies selected map geometry (including patches, terrain and prefab contents), or a picked stock
+surface/model, into the dedicated preview without writing a temporary asset. Select a material slot below the preview to limit it. **Apply in map: Selected targets** temporarily applies
+the same revision to the current map selection; **All uses of material** applies it to every use of the named
+material. **Clear** restores the original rendering. None of these assignments changes the map file.
+
+Use **Browse models** above the preview to open the model selector. Its search bar and category, kit, source,
+favourites, recent and in-map filters narrow a large thumbnail grid. Select a tile and choose **Use model**, or
+double-click it. Project OBJ/GLB/glTF models are included; choosing a preview never places it in the map. Cancel
+leaves the current target unchanged. The LOD and material-slot controls remain beside the live Game Lighting view.
+
+**Ctrl+S** saves the techset while this workspace has focus; **Ctrl+Enter** compiles it.
 
 - **HLSL:** edit `iw8rPreviewVertex(inout IW8RPreviewVertex v)` and
   `float4 iw8rPreviewPixel(IW8RPreviewSurface s)`. Vertex inputs use world coordinates. `s.litColor` is the
   renderer's Game Lighting result; the default pixel function preserves it. Ctrl+Space completes interface names.
 - **Nodes:** click an output dot and then an input dot to connect nodes. Tab opens the searchable node list;
   middle drag pans and the wheel zooms. Select nodes to copy, delete, undo, or extract a reusable subgraph.
-  Double-click a subgraph to edit it. The property editor edits the selected node's JSON values.
+  Double-click a subgraph to edit it. The inspector provides fields for common values; **Advanced properties**
+  exposes the complete JSON. **Frame graph** fits the nodes into the canvas.
 - **Material graphs:** the Surface output supplies colour, normal, coverage, cutoff, roughness, metallic and
   emission. Its material inputs run before Game Lighting; its Unlit property bypasses lighting for that output.
   Vertex graphs produce displacement. **Preview node** inspects an intermediate result; **Final output** restores

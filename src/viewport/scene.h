@@ -151,6 +151,7 @@ public:
     // A stock map reference is shown (set by the camera): its lit preview is the game's lighting, as the editor's own
     // light bake has nothing to light there (owner report 2026-11-12: Lit Preview alone was blown out on Speedball).
     bool gameLookAuto = false;
+    bool showEditorGuides = true;  // sun guide is useful in maps, not in an asset preview
     bool gameLookActive() const { return gameLook || (gameLookAuto && litPreview); }
     std::shared_ptr<const GameLightmap> gameLightmap;
     // Game Lighting on an own map: the light of every placed model (by its entity), as the 56 samples the build's

@@ -4,6 +4,10 @@
 #include "shader_graph_widget.h"
 #include "asset_preview_window.h"
 #include "camera_view.h"
+#include "asset_browser.h"
+#include "techset_model_selector.h"
+#include <QListView>
+#include <QPushButton>
 #include <QAction>
 #include <QComboBox>
 #include <QDir>
@@ -41,7 +45,60 @@ void runTechsetChecks(std::function<void(const QString &)> section, std::functio
     if (editor->onOpen)
         editor->onOpen();
     QTest::qWait(30);
+    check(editor->window() == &w, "Techset workspace stays docked in the main window");
+    check(editor->width() > w.width() * 0.8 && editor->height() > w.height() * 0.65,
+          "Techset workspace occupies the large main content area");
+    check(editor->width() <= w.width(), "workspace controls fit inside the main window");
+    const auto previousSize = w.size();
+    w.resize(960, 540);
+    QTest::qWait(30);
+    auto *materialSlots = editor->findChild<QComboBox *>("techsetPreviewMaterials");
+    auto *scope = editor->findChild<QComboBox *>("techsetPreviewScope");
+    const auto bounds = [editor](QWidget *widget) {
+        return QRect(widget->mapTo(editor, QPoint()), widget->size());
+    };
+    check(materialSlots && scope && editor->rect().contains(bounds(materialSlots)) &&
+              bounds(materialSlots).bottom() < bounds(scope).top(),
+          "preview material controls remain above map controls at 960 by 540");
+    w.resize(previousSize);
+    QTest::qWait(30);
+    editor->previewWindow()->view()->renderImage(320, 240, false, 0, 100);
+    check(editor->previewWindow()->view()->texturedTriangles() > 0,
+          "first opening uses initialized texture callbacks before any compile");
     const auto original = w.context().doc.text();
+    editor->browseModels();
+    auto *selector = editor->findChild<TechsetModelSelector *>("techsetModelSelector");
+    check(selector && selector->isVisible(), "Browse models opens the model selector");
+    if (selector) {
+        auto *browser = selector->findChild<AssetBrowser *>("techsetModelBrowser");
+        QElapsedTimer loading;
+        loading.start();
+        while (browser && !browser->catalogLoaded() && loading.elapsed() < 15000)
+            QTest::qWait(20);
+        check(browser && browser->catalogLoaded() && browser->assetCount() > 0,
+              "model selector uses the real model catalog");
+        if (browser) {
+            const int all = browser->visibleCount();
+            browser->setFilter("barrel");
+            QTest::qWait(150);
+            check(browser->visibleCount() > 0 && browser->visibleCount() < all,
+                  "model selector search narrows results");
+            auto *list = browser->findChild<QListView *>("techsetModelList");
+            check(list && list->height() > selector->height() * 0.55,
+                  "model preview grid takes most of the selector height");
+            check(browser->findChild<QComboBox *>("assetKit") && browser->iconSide() >= 128,
+                  "model selector provides kit filters and large thumbnails");
+            browser->selectRow(0);
+            const auto chosen = browser->selectedName();
+            selector->grab().save(QDir(out).filePath("techset-model-selector.png"));
+            if (auto *use = selector->findChild<QPushButton *>("techsetUseModel"))
+                use->click();
+            check(!chosen.isEmpty() && editor->previewWindow()->assetName() == chosen,
+                  "Use model changes the shader preview target");
+            check(w.context().doc.text() == original, "choosing a preview model does not place it in the map");
+        }
+        selector->reject();
+    }
     const auto wait = [&] {
         QElapsedTimer timer;
         timer.start();
@@ -168,6 +225,10 @@ void runTechsetChecks(std::function<void(const QString &)> section, std::functio
           "clear restores both views");
     check(w.context().doc.text() == original, "preview editing leaves the map byte-identical");
     check(editor->saveFile(file, &error), "save test document before shutdown: " + error);
+    editor->grab().save(QDir(out).filePath("techset-workspace.png"));
+    if (editor->onReturnToMap)
+        editor->onReturnToMap();
+    check(!editor->isVisible(), "Back to map restores the prior dock layout");
     if (dock && !savedLayout.isEmpty())
         dock->restoreState(savedLayout);
 }

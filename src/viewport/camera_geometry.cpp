@@ -490,6 +490,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                            (uint64_t(bool(scene.blendFor)) << 17) | (uint64_t(bool(scene.foliageFor)) << 18) | (uint64_t(bool(scene.drawClassFor)) << 19) |
                            (uint64_t(bool(scene.textureSizeFor)) << 20) | (uint64_t(bool(scene.specFor)) << 21));
     key = mixBits(key, scene.previewIdentity);
+    key = mixBits(key, scene.showEditorGuides);
     key = mixBits(key, scene.modelLightsRev);
     key = mixBits(key, scene.selectionTint);
     key = mixDouble(key, scene.selectionTintAmount);
@@ -961,7 +962,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
     {
         IW8R_PROF("g.misc");
         d.mSun.clear(), d.mFace.clear(), d.mOverlay.clear(), d.mLines.clear();
-        if (scene.litPreview && bounds_.valid()) {
+        if (scene.showEditorGuides && scene.litPreview && bounds_.valid()) {
             // Sun direction (Sun & Sky): a yellow arrow from the middle of the map toward the sun.
             const Vec3 c = bounds_.center();
             const double len = std::max(128.0, length(bounds_.maxs - bounds_.mins) * 0.4);
@@ -1093,7 +1094,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
         d.mLines.push_back(gv({0, 64, 0}, 0xff30ff30u));
         d.mLines.push_back(gv({0, 0, 0}, 0xffff3030u));
         d.mLines.push_back(gv({0, 0, 64}, 0xffff3030u));
-        if (scene.captureMode) d.mLines.clear(), d.mOverlay.clear(), d.mSun.clear();
+        if (scene.captureMode || !scene.showEditorGuides) d.mLines.clear(), d.mOverlay.clear(), d.mSun.clear();
         const auto put = [&](GeoStream<GpuVertex>& s, std::vector<GpuVertex>& v) {
             if (s.v.size() == v.size() && sameBytes(s.v.data(), v.data(), v.size())) return false;
             s.v.swap(v);

@@ -1131,6 +1131,16 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     // without a parent, so they could never be shown. Bump kDockLayoutVersion whenever a dock is added.
     const QByteArray state = Settings::instance().value("window/docks").toByteArray();
     if (!state.isEmpty() && !dock_->restoreState(state, kDockLayoutVersion)) ctx_.setStatus("Dock layout reset (new panels)");
+    if (auto* workspace = dock_->findDockWidget("Techset Workspace")) {
+        const bool reopen = !workspace->isClosed();
+        techsetLayoutChanging_ = true;
+        workspace->toggleView(false);
+        if (auto* camera = dock_->findDockWidget("Camera"); camera && camera->dockAreaWidget())
+            dock_->addDockWidgetTabToArea(workspace, camera->dockAreaWidget());
+        workspace->toggleView(false);
+        techsetLayoutChanging_ = false;
+        if (reopen) QTimer::singleShot(0, this, [this] { openTechsetWorkspace(); });
+    }
     // ADS un-parents the widgets of non-current tabs by design; only a dock with no area at all is lost.
     for (ads::CDockWidget* d : dock_->dockWidgetsMap())
         if (!d->dockAreaWidget() && !d->isClosed()) {
@@ -1198,7 +1208,8 @@ void MainWindow::syncSideActions() {
     // A side section icon is checked while its panel is open; a bottom area icon while its tab is the one on top.
     for (const auto& [panel, action] : sideActions_) {
         const QSignalBlocker block(action);
-        if (isBottomPanel(panel))
+        if (panel->objectName() == "Techsets") action->setChecked(!techsetMapLayout_.isEmpty());
+        else if (isBottomPanel(panel))
             action->setChecked(!panel->isClosed() && panel->dockAreaWidget() && panel->dockAreaWidget()->currentDockWidget() == panel);
         else
             action->setChecked(!panel->isClosed());
@@ -1206,6 +1217,11 @@ void MainWindow::syncSideActions() {
 }
 
 void MainWindow::toggleSidePanel(ads::CDockWidget* d) {
+    if (d->objectName() == "Techsets") {
+        if (techsetMapLayout_.isEmpty()) openTechsetWorkspace(); else leaveTechsetWorkspace();
+        return;
+    }
+    if (!techsetMapLayout_.isEmpty()) leaveTechsetWorkspace();
     if (isBottomPanel(d)) {
         // The icon of the tab on top folds the bottom area away; any other unfolds it at that tab.
         const bool onTop = !d->isClosed() && d->dockAreaWidget() && d->dockAreaWidget()->currentDockWidget() == d;
@@ -1293,7 +1309,40 @@ void MainWindow::applyWorkspace(const QString& n) {
     ctx_.setStatus("Workspace " + n);
 }
 
+void MainWindow::openTechsetWorkspace() {
+    auto* workspace = dock_->findDockWidget("Techset Workspace");
+    auto* camera = dock_->findDockWidget("Camera");
+    if (!workspace || !camera || techsetLayoutChanging_) return;
+    techsets_->refreshPreview();
+    if (!techsetMapLayout_.isEmpty()) { workspace->setAsCurrentTab(); return; }
+    techsetLayoutChanging_ = true;
+    workspace->toggleView(false);
+    if (camera->dockAreaWidget()) dock_->addDockWidgetTabToArea(workspace, camera->dockAreaWidget());
+    workspace->toggleView(false);
+    techsetMapLayout_ = dock_->saveState(kDockLayoutVersion);
+    for (auto* d : dock_->dockWidgetsMap()) if (d != workspace) d->toggleView(false);
+    workspace->toggleView(true);
+    workspace->setAsCurrentTab();
+    techsetLayoutChanging_ = false;
+    syncSideActions();
+}
+
+void MainWindow::leaveTechsetWorkspace() {
+    if (techsetLayoutChanging_) return;
+    techsetLayoutChanging_ = true;
+    if (techsets_) techsets_->clearOverrides();
+    if (!techsetMapLayout_.isEmpty()) {
+        const auto saved = techsetMapLayout_;
+        techsetMapLayout_.clear();
+        dock_->restoreState(saved, kDockLayoutVersion);
+    }
+    if (auto* workspace = dock_->findDockWidget("Techset Workspace")) workspace->toggleView(false);
+    techsetLayoutChanging_ = false;
+    syncSideActions();
+}
+
 void MainWindow::showDock(const QString& name) {
+    if (name == "Techsets" || name == "Techset Workspace") { openTechsetWorkspace(); return; }
     if (ads::CDockWidget* d = dock_->findDockWidget(name); d && isBottomPanel(d) && d->dockAreaWidget() == bottomArea_) {
         setBottomArea(true, d);  // the whole bottom area, this tab in front
         return;
@@ -1562,7 +1611,7 @@ void MainWindow::buildDocks() {
     auto makeDock = [this](const QString& title, QWidget* w, bool closable) {
         auto* d = new ads::CDockWidget(dock_, title);
         d->setObjectName(title);
-        d->setWidget(w);
+        d->setWidget(w, title == "Techset Workspace" ? ads::CDockWidget::ForceNoScrollArea : ads::CDockWidget::AutoScrollArea);
         d->setFeature(ads::CDockWidget::DockWidgetClosable, closable);
         return d;
     };
@@ -1593,14 +1642,13 @@ void MainWindow::buildDocks() {
     auto* techsetWorkspaceDock = makeDock("Techset Workspace", techsets_, true);
     dock_->addDockWidgetTabToArea(techsetWorkspaceDock, camArea);
     techsetWorkspaceDock->toggleView(false);
+    techsetWorkspaceDock->setFeature(ads::CDockWidget::DockWidgetFloatable, false);
+    techsetWorkspaceDock->setFeature(ads::CDockWidget::DockWidgetMovable, false);
     connect(techsetWorkspaceDock, &ads::CDockWidget::viewToggled, techsets_, [this](bool open) {
-        if (!open) techsets_->clearOverrides();
+        if (!open && !techsetLayoutChanging_ && !dock_->isRestoringState()) leaveTechsetWorkspace();
     });
-    techsets_->onOpen = [techsetWorkspaceDock] { techsetWorkspaceDock->toggleView(true); techsetWorkspaceDock->raise(); };
-    techsets_->onExpand = [techsetWorkspaceDock] {
-        techsetWorkspaceDock->toggleView(true); techsetWorkspaceDock->setFloating();
-        if (auto* w = techsetWorkspaceDock->window()) { w->resize(1500, 900); w->showMaximized(); }
-    };
+    techsets_->onOpen = [this] { openTechsetWorkspace(); };
+    techsets_->onReturnToMap = [this] { leaveTechsetWorkspace(); };
     techsetPanel_ = new TechsetPanel(techsets_, [this] {
         return ctx_.doc.path().empty() ? QString() : QFileInfo(qs(ctx_.doc.path())).absolutePath();
     });
@@ -8599,7 +8647,7 @@ void MainWindow::closeEvent(QCloseEvent* e) {
     }
     discardConfirmed_ = false;
     Settings::instance().setValue("window/geometry", saveGeometry());
-    Settings::instance().setValue("window/docks", dock_->saveState(kDockLayoutVersion));
+    Settings::instance().setValue("window/docks", techsetMapLayout_.isEmpty() ? dock_->saveState(kDockLayoutVersion) : techsetMapLayout_);
     if (bottomArea_ && bottomArea_->isVisible() && bottomArea_->height() >= 100)
         Settings::instance().setValue("ui/bottomPanelHeight", bottomArea_->height());
     Settings::instance().setValue("camera/speed", ctx_.cam.speed);

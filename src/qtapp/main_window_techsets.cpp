@@ -10,10 +10,30 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QTimer>
+#include <QDirIterator>
+#include "model_preview.h"
 
 namespace iw8r::qt {
 TechsetWorkspace *MainWindow::makeTechsetWorkspace() {
     TechsetWorkspace::Hooks hooks;
+    hooks.makeModelBrowser = [this](QWidget *parent) {
+        QStringList projectModels;
+        for (const auto &root : lookupModelRoots()) {
+            QDirIterator files(root, {"*.obj", "*.glb", "*.gltf"}, QDir::Files, QDirIterator::Subdirectories);
+            while (files.hasNext())
+                projectModels << QFileInfo(files.next()).completeBaseName();
+        }
+        projectModels.removeDuplicates();
+        return models_->createModelPicker(parent, projectModels, [this](const QString &name, bool *pending) {
+            *pending = false;
+            Entity e;
+            EntityItem model;
+            model.v = makeKeyValue("model", name.toStdString(), "\n");
+            e.items.push_back(std::move(model));
+            const auto mesh = ctx_.scene.modelSource ? ctx_.scene.modelSource(e) : nullptr;
+            return mesh ? renderModelPreview(*mesh, 192) : QImage();
+        });
+    };
     hooks.device = dev_;
     hooks.mainView = camera_;
     hooks.makePreview = [this] { return makeAssetPreviewWindow(); };

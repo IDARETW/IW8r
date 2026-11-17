@@ -158,6 +158,9 @@ public:
     QString previewCaption() const;
     bool previewHasImage() const;
     void selectRow(int row);  // also used by the GUI test
+    // Independent picker with the same catalog/cache providers; choosing never places an asset in the map.
+    AssetBrowser* createModelPicker(QWidget* parent, const QStringList& projectModels = {}, ThumbSource projectThumbnails = {});
+    QString selectedName() const;
 
 signals:
     void materialChosen(const QString& name);
@@ -250,6 +253,8 @@ private:
     QHash<QString, QString> imageFiles_;  // material -> decoded-able colour image (absolute path)
     QHash<QString, QIcon> icons_;
     ThumbSource thumbSource_;
+    ThumbPeek thumbPeek_;
+    bool pickerMode_ = false;
     QSet<QString> pendingThumbs_;
     QSet<QString> realThumbs_;
     QTimer* thumbs_ = nullptr;  // the slow pass (thumbnail source), after scrolling settles

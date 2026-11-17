@@ -1,5 +1,13 @@
 #include "shader_graph_widget.h"
 #include <QApplication>
+#include <QFormLayout>
+#include <QDoubleSpinBox>
+#include <QCheckBox>
+#include <QTimer>
+#include <QToolBar>
+#include <QGroupBox>
+#include <QScrollArea>
+#include <QComboBox>
 #include <QClipboard>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -192,11 +200,12 @@ ShaderGraphWidget::ShaderGraphWidget(QWidget *parent) : QWidget(parent) {
     setObjectName("techsetGraph");
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
-    auto *bar = new QHBoxLayout;
+    auto *bar = new QToolBar(this);
+    bar->setMovable(false);
+    bar->setToolButtonStyle(Qt::ToolButtonTextOnly);
     const auto button = [&](const QString &text, auto action) {
-        auto *b = new QPushButton(text, this);
-        bar->addWidget(b);
-        connect(b, &QPushButton::clicked, this, action);
+        auto *b = bar->addAction(text);
+        connect(b, &QAction::triggered, this, action);
     };
     button("Add node...", [this] { chooseNode(); });
     button("Undo", [this] { undo(); });
@@ -210,8 +219,8 @@ ShaderGraphWidget::ShaderGraphWidget(QWidget *parent) : QWidget(parent) {
         if (onPreview)
             onPreview({});
     });
-    bar->addStretch();
-    root->addLayout(bar);
+    button("Frame graph", [this] { frameGraph(); });
+    root->addWidget(bar);
     auto *split = new QSplitter(this);
     scene_ = new QGraphicsScene(this);
     auto *view = new GraphView(scene_, split);
@@ -225,12 +234,29 @@ ShaderGraphWidget::ShaderGraphWidget(QWidget *parent) : QWidget(parent) {
     view->remove = [this] { deleteSelected(); };
     auto *properties = new QWidget(split);
     auto *form = new QVBoxLayout(properties);
-    form->addWidget(new QLabel("Node properties (JSON)", properties));
+    properties->setMaximumWidth(330);
+    propertyTitle_ = new QLabel("Select a node", properties);
+    propertyTitle_->setStyleSheet("font-weight: 600; padding: 6px 0;");
+    form->addWidget(propertyTitle_);
+    auto *fields = new QWidget(properties);
+    propertyForm_ = new QFormLayout(fields);
+    propertyForm_->setContentsMargins(0, 0, 0, 0);
+    propertyForm_->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    form->addWidget(fields);
+    auto *advancedToggle = new QCheckBox("Advanced properties", properties);
+    form->addWidget(advancedToggle);
+    auto *advanced = new QWidget(properties);
+    auto *advancedLayout = new QVBoxLayout(advanced);
+    advancedLayout->setContentsMargins(0, 0, 0, 0);
+    advanced->hide();
+    connect(advancedToggle, &QCheckBox::toggled, advanced, &QWidget::setVisible);
     properties_ = new QPlainTextEdit(properties);
     properties_->setObjectName("techsetNodeProperties");
-    form->addWidget(properties_);
+    advancedLayout->addWidget(properties_);
     auto *apply = new QPushButton("Apply properties", properties);
-    form->addWidget(apply);
+    advancedLayout->addWidget(apply);
+    form->addWidget(advanced);
+    form->addStretch();
     connect(apply, &QPushButton::clicked, this, [this] {
         try {
             const auto j = TechsetJson::parse(properties_->toPlainText().toStdString());
@@ -249,6 +275,7 @@ ShaderGraphWidget::ShaderGraphWidget(QWidget *parent) : QWidget(parent) {
     split->addWidget(properties);
     split->setStretchFactor(0, 4);
     split->setStretchFactor(1, 1);
+    split->setSizes({820, 250});
     root->addWidget(split, 1);
     auto *help = new QLabel("Click an output dot, then an input dot to connect. Middle drag pans; wheel zooms. "
                             "Double-click a node to edit it.",
@@ -277,6 +304,7 @@ void ShaderGraphWidget::setGraph(const ShaderGraph &graph, ShaderStage stage) {
     selected_.clear();
     pendingOutput_.clear();
     rebuild();
+    QTimer::singleShot(0, this, [this] { frameGraph(); });
 }
 ShaderGraphWidget::~ShaderGraphWidget() {
     rebuilding_ = true;
@@ -373,6 +401,21 @@ void ShaderGraphWidget::rebuild() {
     rebuilding_ = false;
     selectionChanged();
 }
+void ShaderGraphWidget::showEvent(QShowEvent *event) {
+    QWidget::showEvent(event);
+    QTimer::singleShot(0, this, [this] { frameGraph(); });
+}
+void ShaderGraphWidget::frameGraph() {
+    if (!isVisible())
+        return;
+    const auto bounds = scene_->itemsBoundingRect().adjusted(-60, -60, 60, 60);
+    if (bounds.isEmpty())
+        return;
+    view_->fitInView(bounds, Qt::KeepAspectRatio);
+    if (view_->transform().m11() > 1.0)
+        view_->resetTransform();
+    view_->centerOn(bounds.center());
+}
 void ShaderGraphWidget::chooseNode() {
     QDialog dialog(this);
     dialog.setWindowTitle("Add shader node");
@@ -439,21 +482,92 @@ void ShaderGraphWidget::connectPorts(const std::string &from, const std::string 
     graph_.links.push_back({from, "out", to, input});
     commit(before, "Connect nodes");
 }
+void ShaderGraphWidget::propertyChanged(const std::string &node, const std::string &key, TechsetJson value) {
+    QTimer::singleShot(0, this, [this, node, key, value = std::move(value)] {
+        const auto before = graph_;
+        for (auto &n : graph_.nodes)
+            if (n.id == node)
+                n.properties[key] = value;
+        commit(before, "Change node property");
+    });
+}
 void ShaderGraphWidget::selectionChanged() {
     if (rebuilding_)
         return;
+    selected_.clear();
     for (auto *item : scene_->selectedItems())
         if (auto *n = dynamic_cast<NodeItem *>(item)) {
             selected_ = n->node.id;
             break;
         }
+    while (propertyForm_->rowCount())
+        propertyForm_->removeRow(0);
+    propertyTitle_->setText("Select a node");
+    properties_->clear();
     for (const auto &n : graph_.nodes)
         if (n.id == selected_) {
+            propertyTitle_->setText(qs(n.label.empty() ? n.kind : n.label));
             properties_->setPlainText(qs(n.properties.dump(2)));
+            auto values = n.properties;
+            if (n.kind == "surface" && !values.contains("unlit"))
+                values["unlit"] = false;
+            for (auto it = values.begin(); it != values.end(); ++it) {
+                const auto key = it.key(), node = n.id;
+                const auto value = it.value();
+                if (value.is_boolean()) {
+                    auto *field = new QCheckBox(this);
+                    field->setChecked(value.get<bool>());
+                    connect(field, &QCheckBox::toggled, this,
+                            [this, node, key](bool v) { propertyChanged(node, key, v); });
+                    propertyForm_->addRow(qs(key), field);
+                } else if (value.is_number()) {
+                    auto *field = new QDoubleSpinBox(this);
+                    field->setRange(-1e9, 1e9);
+                    field->setDecimals(5);
+                    field->setValue(value.get<double>());
+                    connect(field, &QDoubleSpinBox::editingFinished, this,
+                            [this, field, node, key] { propertyChanged(node, key, field->value()); });
+                    propertyForm_->addRow(qs(key), field);
+                } else if (value.is_string()) {
+                    if (key == "type") {
+                        auto *field = new QComboBox(this);
+                        field->addItems({"float", "float2", "float3", "float4", "bool"});
+                        field->setCurrentText(qs(value.get<std::string>()));
+                        connect(field, &QComboBox::currentTextChanged, this,
+                                [this, node, key](const QString &v) { propertyChanged(node, key, v.toStdString()); });
+                        propertyForm_->addRow(qs(key), field);
+                    } else {
+                        auto *field = new QLineEdit(qs(value.get<std::string>()), this);
+                        connect(field, &QLineEdit::editingFinished, this,
+                                [this, field, node, key] { propertyChanged(node, key, field->text().toStdString()); });
+                        propertyForm_->addRow(qs(key), field);
+                    }
+                } else if (value.is_array() && value.size() <= 4 &&
+                           std::all_of(value.begin(), value.end(), [](const auto &v) { return v.is_number(); })) {
+                    auto *vector = new QWidget(this);
+                    auto *row = new QHBoxLayout(vector);
+                    row->setContentsMargins(0, 0, 0, 0);
+                    row->setSpacing(3);
+                    for (size_t i = 0; i < value.size(); ++i) {
+                        auto *field = new QDoubleSpinBox(vector);
+                        field->setRange(-1e6, 1e6);
+                        field->setDecimals(3);
+                        field->setValue(value[i].get<double>());
+                        field->setButtonSymbols(QAbstractSpinBox::NoButtons);
+                        row->addWidget(field);
+                        connect(field, &QDoubleSpinBox::editingFinished, this, [this, field, node, key, value, i] {
+                            auto v = value;
+                            v[i] = field->value();
+                            propertyChanged(node, key, std::move(v));
+                        });
+                    }
+                    propertyForm_->addRow(qs(key), vector);
+                }
+            }
             return;
         }
-    properties_->clear();
 }
+
 void ShaderGraphWidget::editNode(const std::string &key) {
     auto it = std::find_if(graph_.nodes.begin(), graph_.nodes.end(), [&](const auto &n) { return n.id == key; });
     if (it == graph_.nodes.end())

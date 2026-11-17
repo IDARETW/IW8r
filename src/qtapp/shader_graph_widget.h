@@ -9,6 +9,8 @@ class QGraphicsScene;
 class QGraphicsView;
 class QUndoStack;
 class QPlainTextEdit;
+class QFormLayout;
+class QLabel;
 
 namespace iw8r::qt {
 class ShaderGraphWidget : public QWidget {
@@ -27,11 +29,15 @@ class ShaderGraphWidget : public QWidget {
     void undo();
     void redo();
 
+  protected:
+    void showEvent(QShowEvent *event) override;
+
   private:
     void rebuild();
     void commit(const ShaderGraph &before, const QString &label);
     void restore(const ShaderGraph &graph);
     void chooseNode();
+    void frameGraph();
     void editNode(const std::string &id);
     void deleteSelected();
     void copy();
@@ -44,6 +50,9 @@ class ShaderGraphWidget : public QWidget {
     QGraphicsView *view_ = nullptr;
     QUndoStack *undo_ = nullptr;
     QPlainTextEdit *properties_ = nullptr;
+    QFormLayout *propertyForm_ = nullptr;
+    QLabel *propertyTitle_ = nullptr;
+    void propertyChanged(const std::string &node, const std::string &key, TechsetJson value);
     std::string selected_, pendingOutput_;
     bool rebuilding_ = false;
     std::set<std::string> errors_;

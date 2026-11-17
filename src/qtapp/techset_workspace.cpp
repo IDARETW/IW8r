@@ -1,5 +1,9 @@
 #include "techset_workspace.h"
 #include "shader_graph_widget.h"
+#include "techset_model_selector.h"
+#include "asset_browser.h"
+#include <QMenu>
+#include <QFrame>
 #include "asset_preview_window.h"
 #include "camera_view.h"
 #include "preview_gpu.h"
@@ -205,20 +209,38 @@ struct TechsetWorkspace::Work {
 };
 TechsetWorkspace::TechsetWorkspace(Hooks hooks, QWidget *parent) : QWidget(parent), hooks_(std::move(hooks)) {
     setObjectName("techsetWorkspace");
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet("QWidget#techsetWorkspace { background-color: palette(base); }");
     auto *root = new QVBoxLayout(this);
-    root->setContentsMargins(6, 6, 6, 6);
-    auto *top = new QHBoxLayout;
-    name_ = new QLineEdit(this);
-    name_->setPlaceholderText("Techset name");
-    top->addWidget(name_, 1);
+    root->setContentsMargins(10, 8, 10, 8);
+    root->setSpacing(8);
     const auto button = [&](QHBoxLayout *row, const QString &text, auto fn) {
         auto *b = new QPushButton(text, this);
+        b->setMinimumHeight(30);
         row->addWidget(b);
         connect(b, &QPushButton::clicked, this, fn);
         return b;
     };
-    button(top, "New", [this] { newDocument(); });
-    button(top, "Open...", [this] {
+    auto *top = new QHBoxLayout;
+    button(top, "Back to map", [this] {
+        if (onReturnToMap)
+            onReturnToMap();
+    })->setObjectName("techsetBackToMap");
+    auto *title = new QLabel("TECHSETS", this);
+    title->setStyleSheet("font-weight: 600; letter-spacing: 1px; padding: 0 10px;");
+    top->addWidget(title);
+    name_ = new QLineEdit(this);
+    name_->setPlaceholderText("Techset name");
+    name_->setMaximumWidth(360);
+    name_->setMinimumHeight(30);
+    top->addWidget(name_, 1);
+    auto *file = new QToolButton(this);
+    file->setText("Document");
+    file->setMinimumHeight(30);
+    file->setPopupMode(QToolButton::InstantPopup);
+    auto *files = new QMenu(file);
+    files->addAction("New techset", this, [this] { newDocument(); });
+    files->addAction("Open techset…", this, [this] {
         const auto f = QFileDialog::getOpenFileName(this, "Open techset", lastDirectory_,
                                                     "Techsets (*.iw8techset.json *.asset.json)");
         if (!f.isEmpty()) {
@@ -227,19 +249,34 @@ TechsetWorkspace::TechsetWorkspace(Hooks hooks, QWidget *parent) : QWidget(paren
                 QMessageBox::warning(this, "Techset", e);
         }
     });
+    files->addSeparator();
+    files->addAction("Recover draft", this, [this] { restoreRecovery(); });
+    file->setMenu(files);
+    top->addWidget(file);
     button(top, "Save", [this] { save(); });
-    button(top, "Float / expand", [this] {
-        if (onExpand)
-            onExpand();
-    });
+    top->addStretch(1);
+    automatic_ = new QCheckBox("Auto compile", this);
+    automatic_->setChecked(true);
+    top->addWidget(automatic_);
+    auto *compile = button(top, "Compile", [this] { compileNow(); });
+    compile->setObjectName("techsetCompile");
+    compile->setStyleSheet("QPushButton { background: #326eaa; color: white; border: 1px solid #4384c4; padding: 5px "
+                           "18px; border-radius: 4px; } QPushButton:hover { background: #3d80bf; }");
     root->addLayout(top);
     auto *select = new QHBoxLayout;
+    select->addWidget(new QLabel("Technique", this));
     techniques_ = new QComboBox(this);
     techniques_->setObjectName("techsetTechnique");
+    techniques_->setMinimumWidth(140);
+    techniques_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     select->addWidget(techniques_, 1);
-    button(select, "Add technique", [this] { addTechnique(); });
-    button(select, "Duplicate", [this] { addTechnique(true); });
-    button(select, "Remove", [this] {
+    auto *techniqueMenu = new QToolButton(this);
+    techniqueMenu->setText("Manage");
+    techniqueMenu->setPopupMode(QToolButton::InstantPopup);
+    auto *manage = new QMenu(techniqueMenu);
+    manage->addAction("Add technique…", this, [this] { addTechnique(); });
+    manage->addAction("Duplicate technique…", this, [this] { addTechnique(true); });
+    manage->addAction("Remove technique", this, [this] {
         const int i = techniques_->currentIndex();
         if (i < 0)
             return;
@@ -248,16 +285,25 @@ TechsetWorkspace::TechsetWorkspace(Hooks hooks, QWidget *parent) : QWidget(paren
         populate();
         changed();
     });
+    techniqueMenu->setMenu(manage);
+    select->addWidget(techniqueMenu);
+    select->addSpacing(14);
+    select->addWidget(new QLabel("Stage", this));
     stages_ = new QComboBox(this);
     stages_->setObjectName("techsetStage");
     stages_->addItems({"Vertex", "Pixel", "Hull (inspect)", "Domain (inspect)"});
     stages_->setCurrentIndex(1);
     select->addWidget(stages_);
+    select->addWidget(new QLabel("Source", this));
     mode_ = new QComboBox(this);
     mode_->addItems({"HLSL", "Graph", "Imported bytecode"});
     mode_->setObjectName("techsetMode");
     select->addWidget(mode_);
-    button(select, "Replace stage", [this] {
+    auto *stageMenu = new QToolButton(this);
+    stageMenu->setText("Stage actions");
+    stageMenu->setPopupMode(QToolButton::InstantPopup);
+    auto *actions = new QMenu(stageMenu);
+    actions->addAction("Replace with editable template", this, [this] {
         auto *t = technique();
         if (!t)
             return;
@@ -276,8 +322,12 @@ TechsetWorkspace::TechsetWorkspace(Hooks hooks, QWidget *parent) : QWidget(paren
         loadStage();
         changed();
     });
+    stageMenu->setMenu(actions);
+    select->addWidget(stageMenu);
     root->addLayout(select);
-    auto *splitter = new QSplitter(this);
+    auto *splitter = new QSplitter(Qt::Horizontal, this);
+    splitter->setObjectName("techsetContentSplitter");
+    splitter->setChildrenCollapsible(false);
     tabs_ = new QTabWidget(splitter);
     graph_ = new ShaderGraphWidget(tabs_);
     tabs_->addTab(graph_, "Nodes");
@@ -287,7 +337,8 @@ TechsetWorkspace::TechsetWorkspace(Hooks hooks, QWidget *parent) : QWidget(paren
     code_ = new CodeEdit(codePage);
     code_->setObjectName("techsetHlsl");
     codeLayout->addWidget(code_);
-    auto *detach = new QPushButton("Copy generated source into HLSL mode", codePage);
+    auto *detach = new QPushButton("Edit a copy of generated HLSL", codePage);
+    detachSource_ = detach;
     codeLayout->addWidget(detach);
     connect(detach, &QPushButton::clicked, this, [this] {
         auto *s = stage();
@@ -330,64 +381,86 @@ TechsetWorkspace::TechsetWorkspace(Hooks hooks, QWidget *parent) : QWidget(paren
     reflection_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     diagLayout->addWidget(reflection_);
     tabs_->addTab(diagPage, "Diagnostics");
-    preview_ = hooks_.makePreview ? hooks_.makePreview() : nullptr;
-    if (preview_) {
-        preview_->setParent(splitter);
-        preview_->setWindowFlags(Qt::Widget);
-        splitter->addWidget(preview_);
-        preview_->useGameLighting();
-        preview_->show();
-    }
-    splitter->insertWidget(0, tabs_);
-    splitter->setStretchFactor(0, 3);
-    splitter->setStretchFactor(1, 2);
-    root->addWidget(splitter, 1);
+    auto *previewPane = new QWidget(splitter);
+    previewPane->setObjectName("techsetPreviewPane");
+    auto *previewLayout = new QVBoxLayout(previewPane);
+    previewLayout->setContentsMargins(0, 0, 0, 0);
+    previewLayout->setSpacing(6);
     auto *previewBar = new QHBoxLayout;
-    button(previewBar, "Selection", [this] {
+    auto *target = new QToolButton(this);
+    target->setText("Preview target");
+    target->setPopupMode(QToolButton::InstantPopup);
+    auto *targets = new QMenu(target);
+    for (int i = 0; i < 3; ++i)
+        targets->addAction(QStringList{"Sphere", "Plane", "Cube"}[i], this, [this, i] {
+            if (preview_)
+                preview_->showShape(i);
+            targetName_->setText(QStringList{"Sphere", "Plane", "Cube"}[i]);
+            applyPreview();
+        });
+    targets->addSeparator();
+    targets->addAction("Selected map geometry", this, [this] {
         QString error;
         if (!previewSelection(&error))
             status_->setText(error);
     });
-    auto *shape = new QComboBox(this);
-    shape->addItems({"Sphere", "Plane", "Cube"});
-    previewBar->addWidget(shape);
-    connect(shape, &QComboBox::currentIndexChanged, this, [this](int i) {
-        if (preview_)
-            preview_->showShape(i);
-        applyPreview();
+    targets->addAction("Prefab…", this, [this] {
+        const auto path = QFileDialog::getOpenFileName(this, "Preview prefab", {}, "Prefabs (*.map)");
+        if (!path.isEmpty())
+            previewAsset(path, true);
     });
-    button(previewBar, "Model...", [this] {
-        bool ok = false;
-        auto n = QInputDialog::getText(this, "Preview model", "Stock or custom model name", QLineEdit::Normal, {}, &ok);
-        if (ok && !n.isEmpty())
-            previewAsset(n, false);
-    });
-    button(previewBar, "Prefab...", [this] {
-        auto n = QFileDialog::getOpenFileName(this, "Preview prefab", {}, "Prefabs (*.map)");
-        if (!n.isEmpty())
-            previewAsset(n, true);
-    });
+    target->setMenu(targets);
+    previewBar->addWidget(target);
+    previewBar->addStretch();
+    auto *browse = button(previewBar, "Browse models…", [this] { browseModels(); });
+    browse->setObjectName("techsetBrowseModels");
+    previewLayout->addLayout(previewBar);
+    targetName_ = new QLabel("Sphere", previewPane);
+    targetName_->setObjectName("techsetPreviewTarget");
+    targetName_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    targetName_->setStyleSheet("font-weight: 600; padding: 4px 8px;");
+    previewLayout->addWidget(targetName_);
+    preview_ = hooks_.makePreview ? hooks_.makePreview() : nullptr;
+    if (preview_) {
+        preview_->setParent(previewPane);
+        preview_->setWindowFlags(Qt::Widget);
+        preview_->setWorkspaceMode();
+        previewLayout->addWidget(preview_, 1);
+        preview_->useGameLighting();
+        preview_->show();
+    }
     material_ = new QLineEdit(this);
-    material_->setPlaceholderText("Material slot (empty = all slots of target)");
     material_->setObjectName("techsetMaterialSlot");
-    previewBar->addWidget(material_, 1);
+    material_->hide(); // the preview's material dropdown owns selection; retained for bindings/tests
+    auto *scopeRow = new QHBoxLayout;
+    scopeRow->addWidget(new QLabel("Apply in map", this));
     scope_ = new QComboBox(this);
     scope_->setObjectName("techsetPreviewScope");
-    scope_->addItems({"Asset preview only", "Selected map targets + preview", "Material everywhere + preview"});
+    scope_->addItems({"Preview only", "Selected targets", "All uses of material"});
     scope_->setCurrentIndex(1);
-    previewBar->addWidget(scope_);
-    button(previewBar, "Apply to current selection", [this] { applyPreview(); });
-    button(previewBar, "Clear overrides", [this] { clearOverrides(); });
-    root->addLayout(previewBar);
+    scopeRow->addWidget(scope_, 1);
+    button(scopeRow, "Apply", [this] { applyPreview(); });
+    button(scopeRow, "Clear", [this] { clearOverrides(); });
+    previewLayout->addLayout(scopeRow);
+    splitter->insertWidget(0, tabs_);
+    splitter->addWidget(previewPane);
+    splitter->setStretchFactor(0, 3);
+    splitter->setStretchFactor(1, 2);
+    splitter->setSizes({900, 600});
+    const auto savedSplit = Settings::instance().value("techsets/contentSplit").toByteArray();
+    if (!savedSplit.isEmpty())
+        splitter->restoreState(savedSplit);
+    connect(splitter, &QSplitter::splitterMoved, this,
+            [splitter] { Settings::instance().setValue("techsets/contentSplit", splitter->saveState()); });
+    root->addWidget(splitter, 1);
     auto *bottom = new QHBoxLayout;
-    automatic_ = new QCheckBox("Auto compile", this);
-    automatic_->setChecked(true);
-    bottom->addWidget(automatic_);
-    button(bottom, "Compile", [this] { compileNow(); });
-    status_ = new QLabel("Ready", this);
+    status_ = new QLabel("Ready to compile", this);
     status_->setObjectName("techsetCompileStatus");
+    status_->setMinimumHeight(24);
+    status_->setMinimumWidth(0);
+    status_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     bottom->addWidget(status_, 1);
-    button(bottom, "Recover draft", [this] { restoreRecovery(); });
+    button(bottom, "Diagnostics", [this] { tabs_->setCurrentIndex(3); });
     root->addLayout(bottom);
     debounce_.setSingleShot(true);
     debounce_.setInterval(350);
@@ -446,6 +519,10 @@ TechsetWorkspace::TechsetWorkspace(Hooks hooks, QWidget *parent) : QWidget(paren
             }
         }
     });
+    connect(tabs_, &QTabWidget::currentChanged, this, [this](int i) {
+        if (!loading_ && i == 0 && mode_->isEnabled() && mode_->currentIndex() == 0)
+            mode_->setCurrentIndex(1);
+    });
     graph_->onChanged = [this](const ShaderGraph &g) {
         if (loading_)
             return;
@@ -495,13 +572,42 @@ TechsetWorkspace::TechsetWorkspace(Hooks hooks, QWidget *parent) : QWidget(paren
         }
     });
     if (preview_) {
-        preview_->onMaterialSelected = [this](const QString &m) { material_->setText(m); };
+        preview_->onMaterialSelected = [this](const QString &m) {
+            material_->setText(m);
+            applyPreview();
+        };
         preview_->showShape(0);
     }
     document_ = newTechsetDocument();
     populate();
 }
 TechsetWorkspace::~TechsetWorkspace() { shutdown(); }
+bool TechsetWorkspace::event(QEvent *event) {
+    if (event->type() == QEvent::ShortcutOverride) {
+        const auto *key = static_cast<QKeyEvent *>(event);
+        if (key->modifiers().testFlag(Qt::ControlModifier) &&
+            (key->key() == Qt::Key_S || key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter)) {
+            event->accept();
+            return true;
+        }
+    }
+    return QWidget::event(event);
+}
+void TechsetWorkspace::keyPressEvent(QKeyEvent *event) {
+    if (event->modifiers().testFlag(Qt::ControlModifier)) {
+        if (event->key() == Qt::Key_S) {
+            save();
+            event->accept();
+            return;
+        }
+        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+            compileNow();
+            event->accept();
+            return;
+        }
+    }
+    QWidget::keyPressEvent(event);
+}
 void TechsetWorkspace::shutdown() {
     if (closing_)
         return;
@@ -578,6 +684,12 @@ void TechsetWorkspace::loadStage() {
     } else {
         graph_->setEnabled(false);
         code_->setReadOnly(true);
+    }
+    detachSource_->setVisible(s && s->mode == "graph");
+    const auto displayed = t && s ? t->id + std::string(shaderStageName(s->stage)) + s->mode : std::string();
+    if (displayed != displayedStage_) {
+        displayedStage_ = displayed;
+        tabs_->setCurrentIndex(s && s->mode == "graph" ? 0 : s && s->mode == "imported" ? 3 : 1);
     }
     if (t && !t->previewLimitation().empty())
         status_->setText(qs(t->previewLimitation()));
@@ -938,7 +1050,25 @@ void TechsetWorkspace::clearOverrides() {
         hooks_.mainView->setPreviewProgram({}, {});
     program_.reset();
 }
+void TechsetWorkspace::refreshPreview() {
+    if (preview_ && hooks_.refreshPreview)
+        hooks_.refreshPreview(preview_);
+}
+void TechsetWorkspace::browseModels() {
+    if (!modelSelector_ && hooks_.makeModelBrowser) {
+        modelSelector_ = new TechsetModelSelector(hooks_.makeModelBrowser(this), this);
+        connect(modelSelector_, &TechsetModelSelector::modelSelected, this,
+                [this](const QString &name) { previewAsset(name, false); });
+    }
+    if (modelSelector_) {
+        modelSelector_->open();
+        modelSelector_->raise();
+    }
+}
 void TechsetWorkspace::previewAsset(const QString &name, bool prefab) {
+    refreshPreview();
+    targetName_->setText(name);
+    targetName_->setToolTip(name);
     if (preview_) {
         if (prefab) {
             QString e;
@@ -952,6 +1082,9 @@ void TechsetWorkspace::previewAsset(const QString &name, bool prefab) {
         onOpen();
 }
 void TechsetWorkspace::previewEffect(const QString &name) {
+    refreshPreview();
+    targetName_->setText(name);
+    targetName_->setToolTip(name);
     if (preview_) {
         preview_->showEffect(name);
         applyPreview();
@@ -962,6 +1095,7 @@ void TechsetWorkspace::previewEffect(const QString &name) {
 bool TechsetWorkspace::previewSelection(QString *error) {
     if (!preview_ || !hooks_.previewSelection || !hooks_.previewSelection(preview_, error))
         return false;
+    targetName_->setText("Selected map geometry");
     applyPreview();
     if (onOpen)
         onOpen();
