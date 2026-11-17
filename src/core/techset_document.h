@@ -12,8 +12,8 @@ namespace iw8r {
 
 using TechsetJson = nlohmann::ordered_json;
 enum class ShaderStage { Vertex, Pixel, Hull, Domain };
-const char* shaderStageName(ShaderStage stage);
-bool parseShaderStage(const std::string& name, ShaderStage& stage);
+const char *shaderStageName(ShaderStage stage);
+bool parseShaderStage(const std::string &name, ShaderStage &stage);
 
 struct ResourceBinding {
     std::string name, kind = "texture2d", path;
@@ -63,8 +63,8 @@ struct TechniqueDefinition {
     TechsetJson layout = TechsetJson::object();
     std::vector<ShaderStageDocument> stages;
     TechsetJson extra = TechsetJson::object();
-    ShaderStageDocument* findStage(ShaderStage stage);
-    const ShaderStageDocument* findStage(ShaderStage stage) const;
+    ShaderStageDocument *findStage(ShaderStage stage);
+    const ShaderStageDocument *findStage(ShaderStage stage) const;
     std::string previewLimitation() const;
 };
 struct TechsetDocument {
@@ -78,14 +78,14 @@ struct TechsetDocument {
     TechsetJson extra = TechsetJson::object();
 };
 
-bool readTechsetDocument(const std::string& text, TechsetDocument& out, std::string& error);
-bool writeTechsetDocument(const TechsetDocument& document, std::string& text, std::string& error);
-bool importTechsetDocument(const std::string& text, TechsetDocument& out, std::string& error);
-bool validateTechsetDocument(const TechsetDocument& document, std::string& error);
-void rebuildTechsetMask(TechsetDocument& document);
+bool readTechsetDocument(const std::string &text, TechsetDocument &out, std::string &error);
+bool writeTechsetDocument(const TechsetDocument &document, std::string &text, std::string &error);
+bool importTechsetDocument(const std::string &text, TechsetDocument &out, std::string &error);
+bool validateTechsetDocument(const TechsetDocument &document, std::string &error);
+void rebuildTechsetMask(TechsetDocument &document);
 TechsetDocument newTechsetDocument();
 std::string defaultPreviewSource(ShaderStage stage);
-TechsetJson shaderGraphJson(const ShaderGraph& graph);
-bool readShaderGraph(const TechsetJson& json, ShaderGraph& graph, std::string& error);
+TechsetJson shaderGraphJson(const ShaderGraph &graph);
+bool readShaderGraph(const TechsetJson &json, ShaderGraph &graph, std::string &error);
 
 } // namespace iw8r

@@ -13,6 +13,8 @@
 #include "reference_markers.h"
 #include "stock_lights.h"
 
+#include "preview_shader.h"
+
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct ID3D11DeviceContext1;
@@ -37,6 +39,8 @@ struct StockProbeSet;  // stock_probes.h
 }
 
 namespace iw8r::app {
+class PreviewGpuProgram;
+class PreviewGpuScope;
 
 // Section timers for the viewport benchmark (off unless Prof::on is set; a scope costs two clock reads when on).
 // Usage: IW8R_PROF("name"); at the top of a scope. dump() lists the total and the count per section, and resets.
@@ -85,6 +89,8 @@ struct ParticleVertex {
 // One sprite image's particles, already sorted far to near. lit: the colour image's alpha blends and the scene's light
 // scales it; else the emissive image adds (unlit effect sets: output alpha 0, research 138 section 6).
 struct ParticleBatch {
+    uint64_t previewObject = 0;
+    std::string previewMaterial;
     int texture = -1;
     bool lit = true;
     float emissive[3] = {1, 1, 1};  // an unlit material's emissive scale (constant 36) in Game Lighting
@@ -185,6 +191,7 @@ struct LgvAtlasUpload {
 };
 
 struct InstancedTexMesh {
+    std::vector<uint32_t> previewIds; // stable stock placement identity, independent of Umbra collections
     // Shared with the caller (a stock prop's converted mesh, kept between rebuilds): no copy per rebuild.
     std::shared_ptr<const PropMeshData> mesh;
     std::vector<float> rows;  // 12 floats per instance
@@ -250,6 +257,7 @@ struct GeoStream : GeoStreamBase {
 
 // One textured batch (a texture, normal map, blend mode and sway flag), as TexturedBatch plus its change state.
 struct SceneBatch : GeoStream<GpuTexVertex> {
+    uint64_t previewObject = 0, previewPrimitive = 0;
     int key = 0;
     int texture = -1, normalTexture = -1, emissiveTexture = -1, specTexture = -1;
     int shader = -1;  // SceneRenderer::createCustomShader id of the material's custom shader (Game Lighting), -1 none
@@ -311,6 +319,10 @@ public:
     // the Game Lighting colour. Returns its id (>= 0) or -1 with *err (the compiler's message).
     int createCustomShader(const std::string& source, std::string* err);
     static const char* texShaderSource();  // the base the custom shaders are made from
+    static std::string particlePreviewSource();
+    void setPreviewProgram(std::shared_ptr<PreviewGpuProgram> program, PreviewOverrideSet targets);
+    void setPreviewMaterialNames(const std::vector<std::string>& world, const std::vector<std::string>& models);
+    uint64_t previewRevision() const;
     // Compiles a textured pixel shader source (ps_tex, ps_5_0) without creating it: false with the compiler's errors.
     static bool compileCheck(const std::string& source, std::string* err);
     // Compiles a pixel shader (ps_5_0) to its bytecode: false with the compiler's errors.
@@ -716,7 +728,7 @@ public:
     // The AO strength (research 107 section 4.3: the vision's r_ssaoStrength, 1 on MP maps): ao = lerp(1, ao, s).
     void setGameAoStrength(float s) { gameAoStrength_ = s; }
     // Seconds on the game's clock for animated materials (research 133 section 1: UV animation by constant 63).
-    void setGameTime(double seconds) { gameTime_ = seconds; }
+    void setGameTime(double seconds);
     // The map's bloom veil and vignette (research 109) in Game Lighting.
     void setPostFxEnabled(bool on) { postFxEnabled_ = on; }
     void setFilmGrainEnabled(bool on) { filmGrainEnabled_ = on; }
@@ -891,6 +903,7 @@ private:
         std::vector<float> rows;
         std::vector<float> light;  // InstancedTexMesh::light (12 per instance)
         std::vector<uint32_t> ids; // InstancedTexMesh::ids in GPU order (empty: none)
+        std::vector<uint32_t> previewIds, visiblePreviewIds;
         float centre[3] = {0, 0, 0}, radius = 0;
         float lodOut = 0;  // InstancedTexMesh::lodOut
         std::vector<float> cullScale;  // InstancedTexMesh::cullScale in GPU order (empty: 1 for all)
@@ -1138,6 +1151,23 @@ private:
     int gameDebugView_ = 0;
     float gameAoStrength_ = 1.0f;
     double gameTime_ = 0.0;
+    std::shared_ptr<PreviewGpuProgram> previewProgram_;
+    PreviewOverrideSet previewOverrides_;
+    std::vector<std::string> previewWorldMaterials_, previewModelMaterials_;
+    struct PreviewSurfaceRun { unsigned first=0,count=0;uint32_t tag=0; };
+    std::vector<std::vector<PreviewSurfaceRun>> previewWorldRuns_;
+    PreviewTarget previewDrawTarget_;
+    bool previewDrawValid_ = false;
+    const std::vector<uint32_t>* previewInstances_ = nullptr;
+    struct PreviewTargetGuard {
+        SceneRenderer& renderer;
+        PreviewTarget previous;
+        bool valid;
+        const std::vector<uint32_t>* previousInstances;
+        PreviewTargetGuard(SceneRenderer& renderer, PreviewTarget target, const std::vector<uint32_t>* instances=nullptr);
+        ~PreviewTargetGuard();
+    };
+    std::unique_ptr<PreviewGpuScope> bindPreviewDraw();
     size_t stockLightsDrawn_ = 0;
     // Local light shadow maps: kLightSlots slices of kLightSlotSize^2 depth (t24), one light each; their matrices and
     // lookup constants (t23). A slot is drawn once (static casters), again when the casters change.

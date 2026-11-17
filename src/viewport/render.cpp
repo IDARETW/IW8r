@@ -1,4 +1,5 @@
 #include "render.h"
+#include "preview_gpu.h"
 #include "smodel_lod.h"
 #include "stock_probes.h"
 #include "shader_cache.h"
@@ -2314,6 +2315,52 @@ int SceneRenderer::createCustomShader(const std::string& source, std::string* er
 
 const char* SceneRenderer::texShaderSource() { return kTexShader; }
 
+std::string SceneRenderer::particlePreviewSource() {
+    return std::string(kParticleShader) + R"(
+float iw8rPreviewSceneDepth(float2 pixel) { return pDepth.Load(int3(int2(pixel),0)); }
+PI vs_preview_particle(VI i) {
+    IW8RPreviewVertex v; v.position=i.pos; v.normal=float3(0,0,1); v.tangent=float3(1,0,0); v.uv=i.uv; v.color=i.col;
+    iw8rPreviewVertex(v); i.pos=v.position; i.uv=v.uv; i.col=v.color;
+    return vs_part(i);
+}
+float4 ps_preview_particle(PI i) : SV_TARGET {
+    IW8RPreviewSurface s=(IW8RPreviewSurface)0;
+    float4 texel=pTex.Sample(pSamp,i.uv); s.albedo=linOf(texel.rgb)*i.col.rgb; s.alpha=texel.a*i.col.a;
+    s.position=i.world; s.uv=i.uv; s.color=i.col; s.pixel=i.pos.xy; s.normal=normalize(cross(ddy(i.world),ddx(i.world)));
+    s.tangent=normalize(ddx(i.world)); s.view=s.normal; s.sunDir=float3(0,0,1); s.sunColor=pSun.rgb;
+    s.ambient=i.light; s.sunShadow=sunVisible(i.world); s.viewDepth=i.pos.w;
+    s.litColor=ps_part(i).rgb;
+#ifdef IW8R_PREVIEW_MATERIAL
+    iw8rPreviewMaterial(s);s.litColor=s.albedo*i.light;
+#endif
+    return iw8rPreviewPixel(s);
+}
+)";
+}
+
+void SceneRenderer::setPreviewProgram(std::shared_ptr<PreviewGpuProgram> program, PreviewOverrideSet targets) {
+    previewProgram_ = std::move(program); previewOverrides_ = std::move(targets);
+    // Preview deformation changes shadow casters even when source geometry did not move.
+    shadowCasterVersion_ = ~uint64_t(0);
+}
+void SceneRenderer::setPreviewMaterialNames(const std::vector<std::string>& world,const std::vector<std::string>& models) {
+    previewWorldMaterials_=world; previewModelMaterials_=models;
+}
+uint64_t SceneRenderer::previewRevision() const {return previewProgram_?previewProgram_->revision():0;}
+void SceneRenderer::setGameTime(double seconds) {
+    if(previewProgram_&&previewProgram_->deformsVertices()&&seconds!=gameTime_)shadowDirty_=nearDirty_=true;
+    gameTime_=seconds;
+}
+SceneRenderer::PreviewTargetGuard::PreviewTargetGuard(SceneRenderer& r,PreviewTarget target,const std::vector<uint32_t>* instances)
+    :renderer(r),previous(r.previewDrawTarget_),valid(r.previewDrawValid_),previousInstances(r.previewInstances_) {r.previewDrawTarget_=std::move(target);r.previewDrawValid_=true;r.previewInstances_=instances;}
+SceneRenderer::PreviewTargetGuard::~PreviewTargetGuard() {renderer.previewDrawTarget_=std::move(previous);renderer.previewDrawValid_=valid;renderer.previewInstances_=previousInstances;}
+std::unique_ptr<PreviewGpuScope> SceneRenderer::bindPreviewDraw() {
+    if(!previewDrawValid_||!previewProgram_||!previewOverrides_.matches(previewDrawTarget_)) return {};
+    uint32_t surfaceTag=0;
+    if(!previewOverrides_.all&&!previewOverrides_.materialWide)for(const auto& t:previewOverrides_.targets)if(t.family==PreviewFamily::StockWorld&&(!t.material.size()||t.material==previewDrawTarget_.material))surfaceTag=t.surfaceTag;
+    return previewProgram_->bind(ctx_,previewDrawTarget_.family,inShadowPass_||(texPsOverride_ && texPsOverride_==psPrepass_),float(gameTime_),w_,h_,surfaceTag);
+}
+
 bool SceneRenderer::compileProgram(const std::string& source, const char* entry, std::vector<uint8_t>& program, std::string* err) {
     program.clear();
     ID3DBlob* blob = nullptr;
@@ -2859,7 +2906,9 @@ void SceneRenderer::drawParticles(const float viewProj[16]) {
         if (n && !b.distortion && !b.screen && tex >= 0 && size_t(tex) < textures_.size()) {
             writePartCb(b);
             ctx_->PSSetShaderResources(0, 1, &textures_[size_t(tex)]);
-            ctx_->Draw(n, first);
+            PreviewTargetGuard target(*this, {PreviewFamily::Particle, b.previewObject, 0, b.previewMaterial});
+                    auto preview = bindPreviewDraw();
+                    ctx_->Draw(n, first);
             stats_.drawCalls++;
         }
         first += n;
@@ -2895,6 +2944,8 @@ void SceneRenderer::drawParticles(const float viewProj[16]) {
                 if (n && b.distortion && tex >= 0 && size_t(tex) < textures_.size()) {
                     writePartCb(b);
                     ctx_->PSSetShaderResources(0, 1, &textures_[size_t(tex)]);
+                    PreviewTargetGuard target(*this, {PreviewFamily::Particle, b.previewObject, 0, b.previewMaterial});
+                    auto preview = bindPreviewDraw();
                     ctx_->Draw(n, first);
                     stats_.drawCalls++;
                     distQuads_ += n / 6;
@@ -2925,7 +2976,9 @@ void SceneRenderer::drawParticles(const float viewProj[16]) {
                 ctx_->PSSetShaderResources(0, 1, &textures_[size_t(tex)]);
                 ID3D11ShaderResourceView* mk = b.screenMask && b.mask >= 0 && size_t(b.mask) < textures_.size() ? textures_[size_t(b.mask)] : nullptr;
                 ctx_->PSSetShaderResources(4, 1, &mk);
-                ctx_->Draw(n, first);
+                PreviewTargetGuard target(*this, {PreviewFamily::Particle, b.previewObject, 0, b.previewMaterial});
+                    auto preview = bindPreviewDraw();
+                    ctx_->Draw(n, first);
                 stats_.drawCalls++;
                 flareQuads_ += n / 6;
             }
@@ -4555,6 +4608,7 @@ bool SceneRenderer::setReferenceTextured(const std::vector<std::vector<GpuTexVer
     }
     safeRelease(vbRefTex_);
     refTexFirst_.clear(), refTexCount_.clear(), refTexIds_.clear(), refTexChunks_.clear();
+    previewWorldRuns_.clear();
     refChunkTotal_ = refCulledLast_ = 0;
     size_t total = 0;
     for (const auto& b : batches) total += b.size();
@@ -4577,6 +4631,13 @@ bool SceneRenderer::setReferenceTextured(const std::vector<std::vector<GpuTexVer
         for (size_t i = order.size() * 3; i < b.size(); ++i) all.push_back(b[i]);  // a stray partial triangle (none expected)
         refChunkTotal_ += chunks.size();
         refTexChunks_.push_back(std::move(chunks));
+        std::vector<PreviewSurfaceRun> runs;
+        for(unsigned at=refTexFirst_.back();at+2<all.size();at+=3){
+            const uint32_t tag=(all[at].edge>>24)==0?(all[at].edge&0x00ffffffu):0;
+            if(!runs.empty()&&runs.back().tag==tag)runs.back().count+=3;
+            else runs.push_back({at,3,tag});
+        }
+        previewWorldRuns_.push_back(std::move(runs));
     }
     refTexIds_.assign(batches.size(), -1);
     D3D11_BUFFER_DESC bd{};
@@ -4586,6 +4647,7 @@ bool SceneRenderer::setReferenceTextured(const std::vector<std::vector<GpuTexVer
     D3D11_SUBRESOURCE_DATA init{all.data(), 0, 0};
     if (FAILED(dev_->CreateBuffer(&bd, &init, &vbRefTex_))) {
         refTexFirst_.clear(), refTexCount_.clear(), refTexIds_.clear(), refTexChunks_.clear();
+    previewWorldRuns_.clear();
         return false;
     }
     if (whiteTex_ < 0) {
@@ -4711,6 +4773,7 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
     const iw8r::Frustum fr = iw8r::frustumFromViewProj(viewProj);
     instCulledLast_ = 0;
     std::vector<float> keep, keepBig;
+    std::vector<uint32_t> previewKeep, previewBig;
     static const float bigPx = std::getenv("IW8R_PREPASS_PX") ? std::max(0.0f, float(std::atof(std::getenv("IW8R_PREPASS_PX")))) : 24.0f;
     // A placement whose bounding sphere is under kPx pixels in radius is left out (the one cut that is not a LOD swap:
     // kept small so that only what is a dot or less goes; it was 4 px of a fixed 0.0015 rad "pixel", which dropped
@@ -4759,6 +4822,7 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
     const auto upload = [&](GpuTexInstanced& g) {
         g.big = unsigned(keepBig.size() / 24);
         g.visible = unsigned((keepBig.size() + keep.size()) / 24);
+        g.visiblePreviewIds=previewBig;g.visiblePreviewIds.insert(g.visiblePreviewIds.end(),previewKeep.begin(),previewKeep.end());
         if (g.visible) {
             D3D11_MAPPED_SUBRESOURCE ms;
             if (SUCCEEDED(ctx_->Map(g.visInst, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms))) {
@@ -4866,11 +4930,13 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             if (!g.visInst) continue;
             keep.clear();
             keepBig.clear();
+            previewKeep.clear(); previewBig.clear();
             for (size_t i = 0; i < n; ++i) {
                 const PlaceEval& e = ev[i];
                 if (e.out || e.level != g.lodNear) continue;
                 const float* r = &g.rows[i * 12];
                 std::vector<float>& to = e.dist <= e.rad || e.rad >= e.dist * pixelAngle * bigPx ? keepBig : keep;
+                (&to==&keepBig?previewBig:previewKeep).push_back(i<g.previewIds.size()?g.previewIds[i]:uint32_t(i));
                 to.insert(to.end(), r, r + 12);
                 to.insert(to.end(), &g.light[i * 12], &g.light[i * 12] + 12);
             }
@@ -4892,6 +4958,7 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
         if (!g.vb || !g.inst || !g.visInst || g.rows.empty()) continue;
         keep.clear();
         keepBig.clear();
+            previewKeep.clear(); previewBig.clear();
         const size_t n = g.rows.size() / 12;
         // The whole model's size decides the pixel cut (its box: every material part's together), so that the parts of
         // one model go together instead of the small ones (labels, screws) first.
@@ -4939,7 +5006,8 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                 continue;
             }
             std::vector<float>& to = dist <= rad || rad >= dist * pixelAngle * bigPx ? keepBig : keep;
-            to.insert(to.end(), r, r + 12);
+            (&to==&keepBig?previewBig:previewKeep).push_back(i<g.previewIds.size()?g.previewIds[i]:uint32_t(i));
+                to.insert(to.end(), r, r + 12);
             to.insert(to.end(), &g.light[i * 12], &g.light[i * 12] + 12);
         }
         upload(g);
@@ -5106,6 +5174,7 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
                     g.ids.resize(count);
                     for (size_t i = 0; i < count; ++i) g.ids[i] = m.ids[g.order[i]];
                 }
+                if(m.previewIds.size()==count){g.previewIds.resize(count);for(size_t i=0;i<count;++i)g.previewIds[i]=m.previewIds[g.order[i]];}
                 if (m.cullScale.size() == count &&
                     std::any_of(m.cullScale.begin(), m.cullScale.end(), [](float v) { return v != 1.0f; })) {
                     g.cullScale.resize(count);
@@ -5295,7 +5364,9 @@ void SceneRenderer::drawReferenceTexInstances() {
                 ctx_->PSSetShaderResources(12, 1, &textures_[size_t(rv)]);
                 ID3D11ShaderResourceView* mk = L.mask >= 0 && size_t(L.mask) < textures_.size() ? textures_[size_t(L.mask)] : nullptr;
                 ctx_->PSSetShaderResources(36, 1, &mk);
-                drawInstIdx(g.vertices, lCulled ? g.visible : g.instances);
+                const size_t meshIndex=size_t(&g-refTexInst_.data());
+            PreviewTargetGuard layerTarget(*this,{PreviewFamily::StockModel,0,0,meshIndex<previewModelMaterials_.size()?previewModelMaterials_[meshIndex]:std::string()},lCulled?&g.visiblePreviewIds:&g.previewIds);
+            drawInstIdx(g.vertices, lCulled ? g.visible : g.instances);
             }
         }
         if (!layerStateSet) return;
@@ -5317,6 +5388,8 @@ void SceneRenderer::drawReferenceTexInstances() {
     if (decalPass == 1 && (stockDetailOff_ & 2u) == 0u) drawPropLayers();
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
+        const size_t previewMesh = size_t(&g - refTexInst_.data());
+        PreviewTargetGuard previewTarget(*this, {PreviewFamily::StockModel, 0, 0, previewMesh < previewModelMaterials_.size() ? previewModelMaterials_[previewMesh] : std::string()}, &g.previewIds);
         const int passOf = g.translucent && g.decal == 0 ? 2 : g.decal > 0 ? 1 : 0;
         if (passOf != decalPass || g.drawClass != 0) continue;
         if (decalPass >= 1 && texPsOverride_) continue;
@@ -5391,6 +5464,7 @@ void SceneRenderer::drawReferenceTexInstances() {
         ID3D11Buffer* bufs[2] = {g.vb, culled ? g.visInst : g.inst};  // the pre-pass: the visible buffer's large prefix
         ctx_->IASetVertexBuffers(0, 2, bufs, strides, offsets);
         ctx_->IASetIndexBuffer(g.ib, DXGI_FORMAT(g.ibFormat), 0);
+        PreviewTargetGuard compactedTarget(*this, previewDrawTarget_, culled ? &g.visiblePreviewIds : &g.previewIds);
         drawInstIdx(g.vertices, prepassBig ? g.big : culled ? g.visible : g.instances);
     }
     }  // decalPass
@@ -5472,6 +5546,8 @@ void SceneRenderer::drawReferenceTexInstancesShadow(const iw8r::Frustum* view) {
     const UINT strides[2] = {UINT(sizeof(PropVertex)), UINT(24 * sizeof(float))}, offsets[2] = {0, 0};
     for (const auto& g : refTexInst_) {
         if (!g.vb || !g.inst) continue;
+        const size_t previewMesh = size_t(&g - refTexInst_.data());
+        PreviewTargetGuard previewTarget(*this, {PreviewFamily::StockModel, 0, 0, previewMesh < previewModelMaterials_.size() ? previewModelMaterials_[previewMesh] : std::string()}, &g.previewIds);
         if (g.decal > 0 || g.drawClass == 2 || g.noCast) continue;  // decals and no-cast materials cast no shadow
         if (g.lodGroup >= 0 && g.lodNear > 0) continue;  // the sun shadow of a LOD group: its LOD0
         if (psShadowClip_) {
@@ -5571,33 +5647,60 @@ bool SceneRenderer::setReference(const std::vector<GpuVertex>& input) {
 }
 
 void SceneRenderer::drawN(unsigned count, unsigned first, bool lines) {
-    ctx_->Draw(count, first);
-    if (inShadowPass_) {
-        ++stats_.shadowDrawCalls;
-        return;
+    const auto draw=[&](unsigned n,unsigned at,bool apply){
+        auto preview=apply?bindPreviewDraw():std::unique_ptr<PreviewGpuScope>();
+        ctx_->Draw(n,at);
+        if(inShadowPass_)++stats_.shadowDrawCalls;
+        else{++stats_.drawCalls;if(lines)stats_.lines+=n/2;else stats_.triangles+=n/3;}
+    };
+    uint32_t tag=0;
+    if(!lines&&previewDrawValid_&&previewProgram_&&previewDrawTarget_.family==PreviewFamily::StockWorld&&
+       !previewOverrides_.all&&!previewOverrides_.materialWide&&previewOverrides_.matches(previewDrawTarget_))
+        for(const auto& t:previewOverrides_.targets)if(t.family==PreviewFamily::StockWorld&&(!t.material.size()||t.material==previewDrawTarget_.material))tag=t.surfaceTag;
+    const auto batch=previewDrawTarget_.primitive?size_t(previewDrawTarget_.primitive-1):SIZE_MAX;
+    if(tag&&batch<previewWorldRuns_.size()){
+        const auto& runs=previewWorldRuns_[batch];unsigned cursor=first;const unsigned end=first+count;
+        auto it=std::lower_bound(runs.begin(),runs.end(),first,[](const PreviewSurfaceRun& r,unsigned at){return r.first+r.count<=at;});
+        for(;it!=runs.end()&&it->first<end;++it){
+            const unsigned from=std::max(first,it->first),to=std::min(end,it->first+it->count);
+            if(cursor<from)draw(from-cursor,cursor,false);
+            if(to>from)draw(to-from,from,it->tag==tag);cursor=to;
+        }
+        if(cursor<end)draw(end-cursor,cursor,false);return;
     }
-    ++stats_.drawCalls;
-    if (lines) stats_.lines += count / 2;
-    else stats_.triangles += count / 3;
+    draw(count,first,!lines);
 }
 
 void SceneRenderer::drawIdx(unsigned count, unsigned first) {
+    auto preview = bindPreviewDraw();
     ctx_->DrawIndexed(count, first, 0);
     ++stats_.drawCalls;
     stats_.triangles += count / 3;
 }
 
 void SceneRenderer::drawInstIdx(unsigned indices, unsigned instances, unsigned firstInstance) {
-    ctx_->DrawIndexedInstanced(indices, instances, 0, 0, firstInstance);
-    if (inShadowPass_) {
-        ++stats_.shadowDrawCalls;
-        return;
+    const auto draw = [&](unsigned count,unsigned first,bool overrideOn) {
+        auto preview=overrideOn?bindPreviewDraw():std::unique_ptr<PreviewGpuScope>();
+        ctx_->DrawIndexedInstanced(indices,count,0,0,first);
+        if(inShadowPass_)++stats_.shadowDrawCalls;else{++stats_.drawCalls;stats_.triangles+=size_t(indices/3)*count;}
+    };
+    const bool selective=previewProgram_&&previewDrawValid_&&previewInstances_&&!previewOverrides_.all&&!previewOverrides_.materialWide&&
+        std::any_of(previewOverrides_.targets.begin(),previewOverrides_.targets.end(),[](const PreviewTarget& t){return t.family==PreviewFamily::StockModel&&t.instance>=0;});
+    if(!selective){draw(instances,firstInstance,true);return;}
+    const auto saved=previewDrawTarget_.instance;
+    unsigned at=0;
+    while(at<instances){
+        const auto identity=[&](unsigned i){return firstInstance+i<previewInstances_->size()?int64_t((*previewInstances_)[firstInstance+i]):-1;};
+        previewDrawTarget_.instance=identity(at);const bool enabled=previewOverrides_.matches(previewDrawTarget_);
+        unsigned count=1;
+        if(!enabled)while(at+count<instances){previewDrawTarget_.instance=identity(at+count);if(previewOverrides_.matches(previewDrawTarget_))break;++count;}
+        previewDrawTarget_.instance=identity(at);draw(count,firstInstance+at,enabled);at+=count;
     }
-    ++stats_.drawCalls;
-    stats_.triangles += size_t(indices / 3) * instances;
+    previewDrawTarget_.instance=saved;
 }
 
 void SceneRenderer::drawInst(unsigned vertices, unsigned instances, unsigned firstVertex, unsigned firstInstance) {
+    auto preview = bindPreviewDraw();
     ctx_->DrawInstanced(vertices, instances, firstVertex, firstInstance);
     if (inShadowPass_) {
         ++stats_.shadowDrawCalls;
@@ -5977,6 +6080,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             bool lastRaw = false;
             for (const BatchDraw& d : drawList_) {
                 const SceneBatch& b = *d.b;
+            PreviewTargetGuard previewTarget(*this, {PreviewFamily::Geometry, b.previewObject, b.previewPrimitive, b.material});
                 if (b.blend != 0 || b.v.front().rgba >> 24 < 0x80) continue;
                 if (psShadowClip_ && b.texture >= 0 && size_t(b.texture) < textures_.size())
                     ctx_->PSSetShaderResources(0, 1, &textures_[size_t(b.texture)]);
@@ -6010,6 +6114,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ctx_->IASetVertexBuffers(0, 1, &vbRefTex_, &tstride, &offset);
             ID3D11Buffer* shVb = vbRefTex_;
             for (size_t k = 0; k < refTexIds_.size(); ++k) {
+                PreviewTargetGuard previewTarget(*this, {PreviewFamily::StockWorld, 0, uint64_t(k + 1), k < previewWorldMaterials_.size() ? previewWorldMaterials_[k] : std::string()});
                 if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].drawClass == 2 || refLayers_[k].noCast)) continue;
                 const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
                 if (id < 0 || size_t(id) >= textures_.size()) continue;
@@ -6130,6 +6235,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         }
         for (const BatchDraw& d : drawList_) {
             const SceneBatch& b = *d.b;
+            PreviewTargetGuard previewTarget(*this, {PreviewFamily::Geometry, b.previewObject, b.previewPrimitive, b.material});
             StreamGpu& g = *d.g;
             if (b.blend || b.texture < 0 || size_t(b.texture) >= textures_.size()) continue;
             if (cbBatch_) {  // the same vertex inputs as the shading pass (sway), so the depths match exactly
@@ -6157,6 +6263,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             const bool preCb = uploadLayerParams();
             ID3D11Buffer* preVb = vbRefTex_;
             for (size_t k = 0; k < refTexIds_.size(); ++k) {
+                PreviewTargetGuard previewTarget(*this, {PreviewFamily::StockWorld, 0, uint64_t(k + 1), k < previewWorldMaterials_.size() ? previewWorldMaterials_[k] : std::string()});
                 if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].drawClass != 0)) continue;  // layers, decals: later
                 const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
                 if (id < 0 || size_t(id) >= textures_.size()) continue;
@@ -6266,6 +6373,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         for (size_t oi = from; oi < to; ++oi) {
             const uint32_t k = drawOrder_[oi];
             const SceneBatch& b = *drawList_[k].b;
+            PreviewTargetGuard previewTarget(*this, {PreviewFamily::Geometry, b.previewObject, b.previewPrimitive, b.material});
             StreamGpu& g = *drawList_[k].g;
             if (b.texture < 0 || size_t(b.texture) >= textures_.size()) continue;
             const bool chunked = refCulling_ && g.chunked && !g.chunks.empty();
@@ -6358,6 +6466,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         constexpr size_t kBasePerCb = 256;
         ID3D11Buffer* baseVb = vbRefTex_;
         for (size_t k = 0; k < refTexIds_.size(); ++k) {
+                PreviewTargetGuard previewTarget(*this, {PreviewFamily::StockWorld, 0, uint64_t(k + 1), k < previewWorldMaterials_.size() ? previewWorldMaterials_[k] : std::string()});
             if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].drawClass != 0)) continue;  // layers, decals: below
             const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
             if (id < 0 || size_t(id) >= textures_.size()) continue;
@@ -6433,6 +6542,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             layerPassBatches_ = passOrder.size();
             for (size_t pi = 0; pi < passOrder.size(); ++pi) {
                 const size_t k = passOrder[pi];
+                PreviewTargetGuard previewTarget(*this,{PreviewFamily::StockWorld,0,uint64_t(k+1),k<previewWorldMaterials_.size()?previewWorldMaterials_[k]:std::string()});
                 if (pi == firstDecal && rsDecal_) ctx_->RSSetState(rsDecal_);
                 {
                     ID3D11Buffer* want = refVbFor(k);

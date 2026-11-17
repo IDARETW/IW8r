@@ -1,6 +1,7 @@
 #include "material_tints.h"
 #include "worker_guard.h"
 #include "camera_view.h"
+#include "preview_gpu.h"
 #include "play_world.h"
 #include "prefab_browser.h"
 #include "bake_options.h"
@@ -2011,6 +2012,12 @@ bool CameraView::colourImageKeptCompressed(const std::string& material) const {
 }
 
 int CameraView::textureFor(const std::string& material) {
+    if (material == "iw8r/techset_preview") {
+        const auto it = texIds_.find(material); if (it != texIds_.end()) return it->second;
+        const uint8_t white[4] = {255,255,255,255};
+        return texIds_[material] = renderer_->createTexture(white,1,1);
+    }
+
     if (material.empty() || isIw8ToolMaterial(material)) return -1;  // tool faces keep their flat colour
     if (auto it = texIds_.find(material); it != texIds_.end()) return it->second;
     const std::optional<QString> path = imageLookup_ ? imageLookup_(material) : std::nullopt;
@@ -2408,6 +2415,7 @@ void CameraView::appendEffectParticles() {
     struct Placed {
         Vec3 origin, angles;
         const std::string* fx;
+        uint64_t object = 0;
         double repeat = 0;  // an fx_origin's delay key (seconds between starts, as the build's script repeats it); 0 = none
     };
     // The mapper's fx_origin entities, then the stock map's own placed effects.
@@ -2420,11 +2428,13 @@ void CameraView::appendEffectParticles() {
         if (const std::string* a = e.value("angles")) std::sscanf(a->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z);
         double repeat = 0;
         if (const std::string* d = e.value("delay")) repeat = std::max(0.0, std::atof(d->c_str()));
-        if (fx && o) placed.push_back({*o, ang, fx, repeat});
+        if (fx && o) placed.push_back({*o, ang, fx, e.id, repeat});
     }
-    for (const StockEffect& s : stockEffects_) placed.push_back({s.origin, s.angles, &s.name, 0.0});
+    for (const StockEffect& s : stockEffects_) placed.push_back({s.origin, s.angles, &s.name, 0, 0.0});
     const Vec3 eye = ctx_->cam.pos;
     struct Quad {
+        uint64_t object = 0;
+        std::string material;
         float depth;
         int texture;
         bool lit;
@@ -2522,7 +2532,7 @@ void CameraView::appendEffectParticles() {
                     area[0] = float(std::max(px / aspect, std::min(dx, 0.25))), area[1] = float(std::max(px, std::min(dx * aspect, 0.25)));
                     area[2] = 1;
                 }
-                Quad qd;
+                Quad qd; qd.object = pl.object; qd.material = matName;
                 qd.depth = -1e30f;  // over everything: last in the far-to-near order
                 qd.texture = ftex;
                 qd.lit = false, qd.distortion = false, qd.screen = true;
@@ -2631,7 +2641,7 @@ void CameraView::appendEffectParticles() {
             float v0 = float(row) / float(rows), v1 = float(row + 1) / float(rows);
             if (p.flipU) std::swap(u0, u1);
             if (p.flipV) std::swap(v0, v1);
-            Quad qd;
+            Quad qd; qd.object = pl.object; qd.material = matName;
             qd.depth = float(dot(c - eye, fwd));
             qd.texture = tex;
             qd.lit = lit && !distortion;
@@ -2677,9 +2687,10 @@ void CameraView::appendEffectParticles() {
     std::stable_sort(quads.begin(), quads.end(), [](const Quad& x, const Quad& y) { return x.depth > y.depth; });
     std::vector<app::ParticleBatch> batches;
     for (const Quad& q : quads) {
-        if (batches.empty() || batches.back().texture != q.texture || batches.back().lit != q.lit || batches.back().distortion != q.distortion ||
+        if (batches.empty() || batches.back().previewObject != q.object || batches.back().previewMaterial != q.material || batches.back().texture != q.texture || batches.back().lit != q.lit || batches.back().distortion != q.distortion ||
             batches.back().screen != q.screen || batches.back().screenMask != q.screenMask || batches.back().mask != q.mask) {
             batches.emplace_back();
+            batches.back().previewObject = q.object; batches.back().previewMaterial = q.material;
             batches.back().texture = q.texture, batches.back().lit = q.lit, batches.back().distortion = q.distortion;
             batches.back().screen = q.screen;
             batches.back().screenMask = q.screenMask, batches.back().mask = q.mask;
@@ -2748,6 +2759,42 @@ void CameraView::updateReflectionProbe() {
         renderer_->setReflectionProbe(reinterpret_cast<const uint8_t*>(bytes.data()), side);
     else
         renderer_->setReflectionProbe(nullptr, 0);
+}
+
+void CameraView::setPreviewProgram(std::shared_ptr<app::PreviewGpuProgram> program, app::PreviewOverrideSet targets) {
+    std::lock_guard lock(gpuMutex());
+    if(ctx_) {
+        if(program&&!livePreview_){previewPreviousGameLook_=ctx_->scene.gameLook;previewPreviousTextured_=ctx_->texturedView;}
+        if(program){ctx_->scene.gameLook=true;ctx_->texturedView=true;}
+        else if(livePreview_){ctx_->scene.gameLook=previewPreviousGameLook_;ctx_->texturedView=previewPreviousTextured_;}
+    }
+    livePreview_ = std::move(program);
+    renderer_->setPreviewProgram(livePreview_, std::move(targets));
+    renderer_->setPreviewMaterialNames(refTexMaterials_, texInstMaterials_);
+    if (ctx_) { ctx_->scene.previewIdentity = bool(livePreview_); ctx_->scene.invalidate(); }
+    if (!livePreviewTimer_) {
+        livePreviewTimer_ = new QTimer(this);
+        livePreviewTimer_->setInterval(33);
+        connect(livePreviewTimer_, &QTimer::timeout, this, [this] {
+            renderer_->setPreviewMaterialNames(refTexMaterials_, texInstMaterials_);
+            update();
+        });
+    }
+    if (livePreview_) livePreviewTimer_->start(); else livePreviewTimer_->stop();
+    update();
+}
+void CameraView::updatePreviewParameters(const std::vector<ShaderParameter>& parameters) {
+    std::lock_guard lock(gpuMutex());
+    if (livePreview_) livePreview_->parameters(parameters);
+    update();
+}
+app::PreviewOverrideSet CameraView::selectedPreviewTargets(const std::string& material) const {
+    app::PreviewOverrideSet targets; targets.enabled = true; targets.material = material;
+    if (ctx_) for (const auto& r : ctx_->doc.selection()) {
+        targets.targets.push_back({app::PreviewFamily::Geometry, r.entity, r.item, material});
+        targets.targets.push_back({app::PreviewFamily::Particle, r.entity, 0, material});
+    }
+    return targets;
 }
 
 int CameraView::customShaderFor(const std::string& material) {
@@ -3155,6 +3202,7 @@ void CameraView::copyHooksFrom(const CameraView& o) {
     specLookup_ = o.specLookup_;
     stateLookup_ = o.stateLookup_;
     effectSource_ = o.effectSource_;
+    particleMaterial_ = o.particleMaterial_;
     toolPathFn_ = o.toolPathFn_;
     customTint_ = o.customTint_;
     imageLookup_ = o.imageLookup_;

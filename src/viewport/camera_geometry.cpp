@@ -15,6 +15,8 @@
 #include <cstring>
 #include <memory>
 #include <set>
+#include <tuple>
+#include <map>
 #include <unordered_map>
 
 #include "brush_ops.h"
@@ -68,6 +70,7 @@ struct ItemOut {
     std::vector<GpuVertex> f[kFlatStreams];
     std::vector<GpuVertex> sel;  // outlines of a selected item (on top)
     struct Tex {
+        uint64_t object = 0, primitive = 0;
         int key = 0, tex = -1, nrm = -1, blend = 0;
         bool sway = false;
         const std::string* material = nullptr;
@@ -85,11 +88,12 @@ struct ItemOut {
         for (size_t k = 0; k < texUsed; ++k) tex[k].v.clear();
         texUsed = 0;
     }
-    Tex& texFor(int key, int texId, int nrm, int blend, bool sway, const std::string& material) {
+    Tex& texFor(int key, int texId, int nrm, int blend, bool sway, const std::string& material, uint64_t object = 0, uint64_t primitive = 0) {
         for (size_t k = texUsed; k-- > 0;)
             if (tex[k].key == key) return tex[k];
         if (tex.size() <= texUsed) tex.emplace_back();
         Tex& t = tex[texUsed++];
+        t.object = object; t.primitive = primitive;
         t.key = key, t.tex = texId, t.nrm = nrm, t.blend = blend, t.sway = sway, t.material = &material;
         return t;
     }
@@ -146,6 +150,8 @@ struct CameraGeometry::Impl {
     std::vector<TexSlice> texSlices, newTex;
     std::vector<SelEntry> selEntries, newSel;
     std::unordered_map<int, std::unique_ptr<SceneBatch>> byKey;
+    std::map<std::tuple<int, uint64_t, uint64_t, std::string>, int> previewKeys;
+    int nextPreviewKey = -1;
     std::unordered_map<std::string, MatInfo> mats;
     std::unordered_map<const PrimGeom*, uint32_t> where;
     std::vector<Plan> plan;
@@ -196,6 +202,7 @@ SceneBatch* CameraGeometry::Impl::batchFor(const ItemOut::Tex& t, bool& created)
     if (it != byKey.end()) return it->second.get();
     auto b = std::make_unique<SceneBatch>();
     b->key = t.key;
+    b->previewObject = t.object; b->previewPrimitive = t.primitive;
     b->texture = t.tex;
     b->normalTexture = t.nrm;
     b->blend = t.blend;
@@ -356,8 +363,14 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
                 if (!mi->hasSway) mi->sway = sc.foliageFor(m), mi->hasSway = true;
                 sway = mi->sway;
             }
-            const int batchKey = ((texId * 65536 + (nrmId + 1)) * 3 + blendMode) * 2 + (sway ? 1 : 0);
-            auto& dst = out.texFor(batchKey, texId, nrmId, blendMode, sway, m).v;
+            int batchKey = ((texId * 65536 + (nrmId + 1)) * 3 + blendMode) * 2 + (sway ? 1 : 0);
+            if (sc.previewIdentity) {
+                auto [it, inserted] = previewKeys.try_emplace(std::make_tuple(batchKey, g->ref.entity, g->ref.item, m), nextPreviewKey);
+                if (inserted) --nextPreviewKey;
+                batchKey = it->second;
+            }
+            auto& dst = out.texFor(batchKey, texId, nrmId, blendMode, sway, m,
+                                  sc.previewIdentity ? g->ref.entity : 0, sc.previewIdentity ? g->ref.item : 0).v;
             const auto& uv = g->polyUV[i];
             // Tangent: the world direction of increasing u, from the first triangle's positions and texture coords.
             Vec3 tan;
@@ -476,6 +489,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                            (uint64_t(textureFor != nullptr) << 14) | (uint64_t(bool(scene.normalFor)) << 15) | (uint64_t(bool(scene.emissiveFor)) << 16) |
                            (uint64_t(bool(scene.blendFor)) << 17) | (uint64_t(bool(scene.foliageFor)) << 18) | (uint64_t(bool(scene.drawClassFor)) << 19) |
                            (uint64_t(bool(scene.textureSizeFor)) << 20) | (uint64_t(bool(scene.specFor)) << 21));
+    key = mixBits(key, scene.previewIdentity);
     key = mixBits(key, scene.modelLightsRev);
     key = mixBits(key, scene.selectionTint);
     key = mixDouble(key, scene.selectionTintAmount);
@@ -870,6 +884,7 @@ bool CameraGeometry::update(const SceneCache& scene, const Document& doc, bool s
                         nb = std::make_unique<SceneBatch>();
                     }
                     nb->key = t.key;
+                    nb->previewObject = t.object; nb->previewPrimitive = t.primitive;
                     nb->texture = t.tex;
                     nb->normalTexture = t.nrm;
                     nb->blend = t.blend;

@@ -187,6 +187,8 @@ public:
     std::function<int(const std::string& material)> specFor;
     // The material's custom surface shader (SceneRenderer::createCustomShader id) or -1 (core custom_shader).
     std::function<int(const std::string& material)> shaderFor;
+    // While live overrides exist, batching retains object/primitive/material identity.
+    bool previewIdentity = false;
     // A custom shader in use reads the edge inputs: brush faces get their edge meshes (PrimGeom::polyEdges). Call
     // invalidate() after changing it. faceEdgesWanted (the shell: does a shader in use read the edge inputs?) sets it
     // at every full sync.

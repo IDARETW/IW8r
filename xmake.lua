@@ -76,6 +76,11 @@ target("iw8r_viewport")
     add_includedirs("src/viewport", {public = true})
     add_syslinks("d3d11", "dxgi", "d3dcompiler", {public = true})
 
+target("iw8r_techset_gpu_tests")
+    set_kind("binary")
+    add_deps("iw8r_viewport")
+    add_files("tests/techset_gpu/*.cpp")
+
 -- Qt Advanced Docking System 4.4.1 (LGPL-2.1), built as a DLL from third_party/qtads so the editor
 -- links it dynamically (same LGPL posture as Qt itself).
 target("qtads")
