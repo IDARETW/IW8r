@@ -30,6 +30,7 @@ class TechsetWorkspace : public QWidget {
         QPointer<CameraView> mainView;
         std::function<AssetPreviewWindow *()> makePreview;
         std::function<void(AssetPreviewWindow *)> refreshPreview;
+        std::function<bool(AssetPreviewWindow *, QString *)> previewSelection;
         std::function<QString()> mapFolder;
         std::function<app::PreviewOverrideSet(const std::string &)> selectedTargets;
         std::function<void(const QString &, QObject *, std::function<void(const QString &, const QString &)>)>
@@ -46,6 +47,7 @@ class TechsetWorkspace : public QWidget {
     void openMaterial(const QString &name);
     void previewAsset(const QString &name, bool prefab);
     void previewEffect(const QString &name);
+    bool previewSelection(QString *error = nullptr);
     void openImage(const QString &name);
     void compileNow();
     bool compiling() const;

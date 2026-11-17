@@ -343,6 +343,11 @@ TechsetWorkspace::TechsetWorkspace(Hooks hooks, QWidget *parent) : QWidget(paren
     splitter->setStretchFactor(1, 2);
     root->addWidget(splitter, 1);
     auto *previewBar = new QHBoxLayout;
+    button(previewBar, "Selection", [this] {
+        QString error;
+        if (!previewSelection(&error))
+            status_->setText(error);
+    });
     auto *shape = new QComboBox(this);
     shape->addItems({"Sphere", "Plane", "Cube"});
     previewBar->addWidget(shape);
@@ -953,6 +958,14 @@ void TechsetWorkspace::previewEffect(const QString &name) {
     }
     if (onOpen)
         onOpen();
+}
+bool TechsetWorkspace::previewSelection(QString *error) {
+    if (!preview_ || !hooks_.previewSelection || !hooks_.previewSelection(preview_, error))
+        return false;
+    applyPreview();
+    if (onOpen)
+        onOpen();
+    return true;
 }
 void TechsetWorkspace::openMaterial(const QString &name) {
     material_->setText(name);

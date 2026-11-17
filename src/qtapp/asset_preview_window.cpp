@@ -272,6 +272,19 @@ void AssetPreviewWindow::showEffect(const QString& name) {
 
 AABB AssetPreviewWindow::assetBounds() const { return assetBox_; }
 
+void AssetPreviewWindow::showGeometry(std::shared_ptr<const ImportedModel> model) {
+    previewModel_ = std::move(model);
+    prefab_ = false;
+    name_ = "iw8r_preview_selection";
+    setWindowTitle("Asset Preview - selection");
+    { QSignalBlocker blocked(floor_); floor_->setChecked(false); }
+    { QSignalBlocker blocked(lod_); lod_->clear(); lod_->addItem("Selected geometry"); lod_->setEnabled(false); }
+    hull_->setChecked(false);
+    rebuildDocument();
+    useGameLighting();
+    frame();
+}
+
 void AssetPreviewWindow::rebuildDocument() {
     std::string text;
     std::set<std::string> materials;

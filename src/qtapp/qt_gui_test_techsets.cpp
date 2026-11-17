@@ -110,6 +110,28 @@ void runTechsetChecks(std::function<void(const QString &)> section, std::functio
     check(greenPixels > 1000 && green != red, QString("latest revision is visibly green (%1 pixels)").arg(greenPixels));
     check(w.cameraView()->previewRevision() == preview->view()->previewRevision(),
           "both views publish the same compatible revision");
+    const auto selectedBefore = w.context().doc.selection();
+    w.context().scene.sync(w.context().doc);
+    for (const auto *item : w.context().scene.items())
+        if (!item->volume && !item->polys.empty() && item->kind == app::PrimGeom::Brush) {
+            w.context().doc.select(item->ref, false);
+            break;
+        }
+    check(editor->previewSelection(&error), "selected map geometry opens directly in the dedicated preview: " + error);
+    const auto selectionImage = preview->view()->renderImage(320, 240, false, 0, 100);
+    selectionImage.save(QDir(out).filePath("techset-selection.png"));
+    size_t selectionGreen = 0;
+    for (int y = 0; y < selectionImage.height(); ++y)
+        for (int x = 0; x < selectionImage.width(); ++x) {
+            const auto c = selectionImage.pixelColor(x, y);
+            if (c.green() > c.red() + 30 && c.green() > c.blue() + 30)
+                ++selectionGreen;
+        }
+    check(selectionGreen > 20, "compiled shader visibly changes selected geometry in the dedicated preview");
+    w.context().doc.deselectAll();
+    for (const auto &item : selectedBefore)
+        w.context().doc.select(item, true);
+    preview->showShape(0);
     const auto file = QDir(out).filePath("gui-preview.iw8techset.json");
     check(editor->saveFile(file, &error), "atomic document save: " + error);
     QFile saved(file);

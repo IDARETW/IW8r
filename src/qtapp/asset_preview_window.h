@@ -48,6 +48,7 @@ public:
     void showModel(const QString& name);
     void showShape(int shape); // 0 sphere, 1 plane, 2 cube; generated in memory
     void showEffect(const QString& name);
+    void showGeometry(std::shared_ptr<const ImportedModel> model);
     void useGameLighting();
     void refreshHooks(CameraView* camera,const app::SceneCache& scene);
     void refreshAssetData();

@@ -134,7 +134,8 @@ Choose **Open shader workspace** to work in a dockable editor, or **Float / expa
 You can also right-click materials, models, prefabs, effects and images and choose **Open in Techset Editor**.
 
 The preview uses **Game Lighting**. It supports a sphere, plane, cube, models and prefabs, and effect sprites.
-Select a material slot to limit the preview. **Selected map targets + preview** temporarily applies the same
+**Selection** copies selected map geometry (including patches, terrain and prefab contents), or a picked stock
+surface/model, into the dedicated preview without writing a temporary asset. Select a material slot to limit the preview. **Selected map targets + preview** temporarily applies the same
 revision to the current map selection; **Material everywhere + preview** applies it to every use of the named
 material. **Clear overrides** restores the original rendering. None of these assignments changes the map file.
 
