@@ -1004,6 +1004,8 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
             if (kind_ != Kind::Images)
                 menu.addAction(kind_ == Kind::Materials ? "Apply to Selection" : "Place", this, [choose, idx] { choose(idx); });
             if (kind_ == Kind::Models) menu.addAction("Preview in 3D...", this, [this, name] { emit previewRequested(name); });
+            if (kind_ == Kind::Materials || kind_ == Kind::Models || kind_ == Kind::Effects || kind_ == Kind::Images)
+                menu.addAction("Open in Techset Editor...", this, [this, name] { emit techsetRequested(name); });
             if (kind_ == Kind::Sounds)
                 menu.addAction(playingName_ == name && soundPlay_ && soundPlay_->property("playing").toBool() ? "Stop" : "Play", this,
                                [this, idx] { playRow(idx); });
@@ -1377,6 +1379,10 @@ QIcon AssetBrowser::thumbnail(const QString& name) {
 }
 
 void AssetBrowser::refreshThumbnails() {
+    // Availability can change while the thumbnail is already cached. Keep the status independent of image loading.
+    const auto [first, last] = visibleRange();
+    for (int row = first; row <= last; ++row)
+        if (auto* item = model_->itemFromIndex(proxy_->mapToSource(proxy_->index(row, 0)))) markStatus(item);
     // A cache answered: the rows waiting for it are asked again (the slow pass), and rows the packs had nothing for may
     // have a stored picture now (the decoder).
     for (const QString& n : pendingThumbs_) icons_.remove(n);
@@ -1619,12 +1625,28 @@ void AssetBrowser::setRowIcon(QStandardItem* item, const QString& name, const QI
 }
 
 void AssetBrowser::markStatus(QStandardItem* item) {
-    if (!statusSource_ || unavailable_.contains(item->text())) return;
-    const QString why = statusSource_(item->text());
+    if (!item) return;
+    const QString why = statusSource_ ? statusSource_(item->text()) : QString();
+    const QString marker = "\nNOT AVAILABLE in a build: ";
+    if (unavailable_.contains(item->text())) {
+        const int at = item->toolTip().lastIndexOf(marker);
+        if (at >= 0) item->setToolTip(item->toolTip().left(at));
+        if (why.isEmpty()) {
+            unavailable_.remove(item->text());
+            item->setData(QVariant(), Qt::ForegroundRole);
+            return;
+        }
+    }
     if (why.isEmpty()) return;
     unavailable_.insert(item->text());
     item->setForeground(QColor(130, 130, 130));
-    item->setToolTip(item->toolTip() + "\nNOT AVAILABLE in a build: " + why.left(300));
+    item->setToolTip(item->toolTip() + marker + why.left(300));
+}
+
+void AssetBrowser::setStatusSource(StatusSource fn) {
+    statusSource_ = std::move(fn);
+    for (auto* item : items_) markStatus(item);
+    refreshThumbnails();
 }
 
 void AssetBrowser::evictIcons(int keepFrom, int keepTo) {

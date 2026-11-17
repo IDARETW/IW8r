@@ -349,6 +349,7 @@ PrefabBrowser::PrefabBrowser(RootsFn roots, InsertFn insert, QWidget* parent)
         });
         const QString file = previewFileAt(row);
         QAction* pv = menu.addAction("Preview in 3D...", this, [this, file] { emit previewRequested(file); });
+        menu.addAction("Open in Techset Editor...", this, [this, file] { emit techsetRequested(file); });
         pv->setEnabled(!file.isEmpty());
         menu.addSeparator();
         const QString name = titleAt(row);

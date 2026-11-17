@@ -196,7 +196,7 @@ QString modelInfoHtml(const ModelInfoInput& in) {
     return h;
 }
 
-void showAssetInfo(QWidget* parent, const QString& objectName, const QString& title, const QString& html) {
+void showAssetInfo(QWidget* parent, const QString& objectName, const QString& title, const QString& html, std::function<void()> editTechset) {
     QDialog* dlg = parent ? parent->findChild<QDialog*>(objectName) : nullptr;
     QTextBrowser* text = dlg ? dlg->findChild<QTextBrowser*>() : nullptr;
     if (!dlg || !text) {
@@ -212,6 +212,16 @@ void showAssetInfo(QWidget* parent, const QString& objectName, const QString& ti
         QObject::connect(copy, &QPushButton::clicked, dlg, [text] { QGuiApplication::clipboard()->setText(text->toPlainText()); });
         QObject::connect(box, &QDialogButtonBox::rejected, dlg, &QDialog::close);
         lay->addWidget(box);
+    }
+    auto* edit = dlg->findChild<QPushButton*>("assetInfoTechset");
+    if (editTechset && !edit) {
+        edit = dlg->findChild<QDialogButtonBox*>()->addButton("Open in Techset Editor", QDialogButtonBox::ActionRole);
+        edit->setObjectName("assetInfoTechset");
+    }
+    if (edit) {
+        QObject::disconnect(edit, nullptr, dlg, nullptr);
+        edit->setVisible(bool(editTechset));
+        if (editTechset) QObject::connect(edit, &QPushButton::clicked, dlg, std::move(editTechset));
     }
     dlg->setWindowTitle(title);
     text->setHtml(html);

@@ -7,6 +7,7 @@
 #include "bake_options.h"
 #include "dxbc_splice.h"
 #include "shader_editor.h"
+#include "qt_gui_test_techsets.h"
 #include "qt_gui_test_assets_b.h"
 #include "qt_gui_test_assets_a.h"
 #include "material_cache.h"
@@ -208,6 +209,12 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
     r.check(QTest::qWaitForWindowActive(&w, 3000), "main window active (offscreen platform)");
     r.check(ctx.gridAxis == 0, "grid view is XY top");
     // IW8R_GUI_ONLY=sidebar: only the side bar checks (qt_gui_test_sidebar.cpp).
+    if (qEnvironmentVariable("IW8R_GUI_ONLY") == "techsets") {
+        iw8r::qt::runTechsetChecks([&r](const QString& name) { r.section(name); }, [&r](bool ok, const QString& message) { r.check(ok, message); }, w, outDir);
+        r.text += QString("\n%1 checks, %2 failures (IW8R_GUI_ONLY=techsets)\n").arg(r.checks).arg(r.failures);
+        r.flush();
+        return r.failures ? 1 : 0;
+    }
     if (qEnvironmentVariable("IW8R_GUI_ONLY") == "sidebar") {
         w.waitForCatalogs();
         iw8r::qt::runSidebarChecks([&r](const QString& sname) { r.section(sname); }, [&r](bool ok, const QString& m) { r.check(ok, m); }, w, outDir);
@@ -4921,7 +4928,8 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             r.check(w.findChild<QMenu*>("hotkeyPresetsMenu") && !w.findChild<QMenu*>("hotkeyPresetsMenu")->actions().isEmpty(),
                     "Edit > Hotkey Presets lists the presets");
             const QString fx = w.showEffectInfo("vfx/core/mp/core/vfx_hp_chev_grey");
-            r.check(fx.contains("Emitters") || fx.contains("No export"), "Effect Info shows the effect's export (or says it has none yet)");
+            r.check(fx.contains("Emitters") || fx.contains("No export") || fx.contains("Exporting this effect with ACTS now"),
+                    "Effect Info shows the export, its pending export, or an unavailable explanation");
             {
                 // Model detail (3.18): LODs with the camera's LOD, bones and tags from an xmodel export.
                 iw8r::XModelInfo xm;
@@ -5515,6 +5523,7 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
     }
 
     r.section("shader editor");
+    iw8r::qt::runTechsetChecks([&r](const QString& name) { r.section(name); }, [&r](bool ok, const QString& message) { r.check(ok, message); }, w, outDir);
     {
         // The editor's templates compile into the viewport's Game Lighting shader; a broken one reports its own line.
         QDir d(QCoreApplication::applicationDirPath());

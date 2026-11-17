@@ -43,6 +43,7 @@ struct ActsRequest {
     QString types;          // -a, e.g. "material", "image", "xmodel", "xmodelsurfs", "gfx_map,gfx_map_trzone"
     QStringList names;      // -n; empty exports every asset of the types
     QString outDir;         // -o
+    bool scriptStrings = false;  // map_ents needs resolved spawn, effect and loot-zone names
     bool geometry = false;  // --geometry (GLB sidecars of xmodelsurfs)
     bool xpaks = true;      // one-shot runs only: pass the populated zone XPaks (a server always has them)
 };

@@ -93,6 +93,7 @@ public:
     ScriptPanel* scriptPanel() const { return scriptPanel_; }
     OutlinerPanel* outliner() const { return outliner_; }
     CameraView* cameraView() const { return camera_; }
+    class TechsetWorkspace* techsetWorkspace() const { return techsets_; }
     GridView* gridView() const { return grid_; }
     EntityInspector* inspector() const { return inspector_; }
     AssetBrowser* materialBrowser() const { return materials_; }
@@ -909,6 +910,9 @@ public:
     void previewModel(const QString& name);  // Models browser preview (also used by the GUI test)
 private:
     MaterialCache* matCache_ = nullptr;
+    class TechsetWorkspace* techsets_ = nullptr;
+    class TechsetPanel* techsetPanel_ = nullptr;
+    class TechsetWorkspace* makeTechsetWorkspace();
     ModelCache* modelCacheStock_ = nullptr;
     WorldCache* worldCache_ = nullptr;
     void clearUmbraView(const QString& text);

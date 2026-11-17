@@ -46,6 +46,13 @@ public:
 
     // Shows a model (a stock or custom model name).
     void showModel(const QString& name);
+    void showShape(int shape); // 0 sphere, 1 plane, 2 cube; generated in memory
+    void showEffect(const QString& name);
+    void useGameLighting();
+    void refreshHooks(CameraView* camera,const app::SceneCache& scene);
+    void refreshAssetData();
+    std::function<void(const QString&)> onMaterialSelected;
+    std::function<void(const QString&)> onEditTechset;
     // Shows a prefab: a .map file, drawn as it is placed (brushes, patches, models, prefabs inside it).
     bool showPrefab(const QString& path, QString* err = nullptr);
     // Frames the asset: the camera looks at it from its three-quarter view at a distance where it fills the view.
@@ -86,6 +93,9 @@ private:
     QString name_;
     bool prefab_ = false;
     std::string prefabText_, prefabPath_;
+    std::shared_ptr<const ImportedModel> previewModel_;
+    bool gameLightingPreview_ = false;
+    std::function<std::shared_ptr<const ImportedModel>(const Entity&)> modelFallback_;
     AABB assetBox_;  // the asset without the floor
     double frameScale_ = 1.05;  // frame(): the distance as a share of the one that fits the bounding sphere
 };

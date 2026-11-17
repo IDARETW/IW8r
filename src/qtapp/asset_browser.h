@@ -151,7 +151,7 @@ public:
     // Availability of a row's asset: "" = available or not known yet, else why it cannot be built (the caches tried and
     // failed). Unavailable visible rows are greyed with the reason in their tooltip.
     using StatusSource = std::function<QString(const QString& name)>;
-    void setStatusSource(StatusSource fn) { statusSource_ = std::move(fn); refreshThumbnails(); }
+    void setStatusSource(StatusSource fn);
     StatusSource statusSource() const { return statusSource_; }  // tests
     int unavailableMarked() const { return int(unavailable_.size()); }  // tests
     int hiddenMissing() const { return hiddenMissing_; }                 // tests
@@ -162,6 +162,7 @@ public:
 signals:
     void materialChosen(const QString& name);
     void infoRequested(const QString& name);  // context menu > Info (Material Info / Model Info)
+    void techsetRequested(const QString& name);
     void replaceRequested(const QString& name);  // context menu > Replace Everywhere With... (the main window asks for the new name)
     void modelChosen(const QString& name);
     void effectChosen(const QString& name);  // Effects browser: place an fx_origin with this stock vfx
