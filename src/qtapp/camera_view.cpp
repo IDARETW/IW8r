@@ -2020,10 +2020,13 @@ int CameraView::textureFor(const std::string& material) {
 
     if (material.empty() || isIw8ToolMaterial(material)) return -1;  // tool faces keep their flat colour
     if (auto it = texIds_.find(material); it != texIds_.end()) return it->second;
-    const std::optional<QString> path = imageLookup_ ? imageLookup_(material) : std::nullopt;
+    std::optional<QString> path = imageLookup_ ? imageLookup_(material) : std::nullopt;
     if (!path) {
         if (imageRequest_ && requested_.insert(material).second) imageRequest_(material);
-        return -1;  // not cached in texIds_: asked again after materialImagesChanged()
+        // A known-unavailable asset can answer synchronously. Its signal invalidates geometry while it is
+        // being built; consume that answer now instead of retaining a flat batch until the next edit.
+        path = imageLookup_ ? imageLookup_(material) : std::nullopt;
+        if (!path) return -1;  // an asynchronous answer calls materialImagesChanged()
     }
     if (path->isEmpty()) {
         // Known missing: the Radiant missing-material checker.
@@ -2776,6 +2779,7 @@ void CameraView::setPreviewProgram(std::shared_ptr<app::PreviewGpuProgram> progr
         livePreviewTimer_ = new QTimer(this);
         livePreviewTimer_->setInterval(33);
         connect(livePreviewTimer_, &QTimer::timeout, this, [this] {
+            std::lock_guard lock(gpuMutex());
             renderer_->setPreviewMaterialNames(refTexMaterials_, texInstMaterials_);
             update();
         });
@@ -2960,7 +2964,16 @@ QString CameraView::geometrySelfCheck() {
     const auto same = [](const std::vector<app::GpuVertex>& a, const std::vector<app::GpuVertex>& b) {
         return a.size() == b.size() && (a.empty() || std::memcmp(a.data(), b.data(), a.size() * sizeof(app::GpuVertex)) == 0);
     };
-    if (!same(t1, t2)) return QString("flat triangles differ (%1 / %2 vertices)").arg(t1.size()).arg(t2.size());
+    if (!same(t1, t2)) {
+        QString details;
+        for (const auto* g : ctx_->scene.items())
+            if (ctx_->doc.isSelected(g->ref) && !g->polyMaterial.empty()) {
+                const auto& m = g->polyMaterial.front();
+                details += QString("; selected material %1, texture %2").arg(QString::fromStdString(m)).arg(textureFor(m));
+            }
+        return QString("flat triangles differ (%1 / %2 vertices, textured batches %3 / %4, waiting %5)%6")
+            .arg(t1.size()).arg(t2.size()).arg(x1.size()).arg(x2.size()).arg(texturesWaiting()).arg(details);
+    }
     if (!same(l1, l2)) return QString("lines differ (%1 / %2 vertices)").arg(l1.size()).arg(l2.size());
     if (!same(o1, o2)) return QString("on-top lines differ (%1 / %2 vertices)").arg(o1.size()).arg(o2.size());
     if (shadowOnly != ctx_->scene.shadowOnlyVertices || casters != ctx_->scene.shadowCasterVertices)

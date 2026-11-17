@@ -64,8 +64,6 @@ std::string inputField(const std::string &k, ShaderStage stage) {
         return "s.view";
     if (k == "albedo")
         return "s.albedo";
-    if (k == "game_lighting")
-        return "s.litColor";
     if (k == "alpha")
         return "s.alpha";
     if (k == "sun_direction")
@@ -439,8 +437,7 @@ const std::vector<ShaderNodeSpec> &shaderNodeLibrary() {
                 : std::string(k) == "color" ? "float4"
                 : std::string(k) == "time"  ? "float"
                                             : "float3");
-        for (auto k :
-             {"view", "albedo", "game_lighting", "alpha", "sun_direction", "sun_color", "ambient", "screen_uv"})
+        for (auto k : {"view", "albedo", "alpha", "sun_direction", "sun_color", "ambient", "screen_uv"})
             add(k, k, "Surface inputs", {},
                 std::string(k) == "alpha"       ? "float"
                 : std::string(k) == "screen_uv" ? "float2"
@@ -514,12 +511,39 @@ ShaderGraph newShaderGraph(ShaderStage stage) {
     g.nodes.push_back(out);
     return g;
 }
-ShaderGraphResult compileShaderGraph(const ShaderGraph &graph, ShaderStage stage,
+ShaderGraphResult compileShaderGraph(const ShaderGraph &sourceGraph, ShaderStage stage,
                                      const std::vector<ShaderParameter> &parameters,
                                      const std::vector<ResourceBinding> &resources, const std::string &previewNode) {
     Generator g{stage, parameters, resources};
-    g.definitions = &graph.subgraphs;
     try {
+        // Resolve nested definitions lexically, then compile one deterministic definition table.
+        // A subgraph edited in its own canvas may contain another reusable subgraph with the same local name.
+        ShaderGraph graph;
+        std::map<std::string, ShaderGraph> definitions;
+        std::function<ShaderGraph(const ShaderGraph &, std::map<std::string, std::string>, const std::string &,
+                                  unsigned)>
+            flatten;
+        flatten = [&](const ShaderGraph &input, std::map<std::string, std::string> names, const std::string &prefix,
+                      unsigned depth) {
+            if (depth > 32)
+                throw std::runtime_error("subgraph nesting exceeds 32 levels");
+            for (const auto &[name, sub] : input.subgraphs)
+                names[name] = prefix + std::to_string(name.size()) + ":" + name;
+            ShaderGraph output = input;
+            output.subgraphs.clear();
+            for (auto &node : output.nodes)
+                if (node.kind == "subgraph") {
+                    const auto name = node.properties.value("name", "");
+                    if (names.count(name))
+                        node.properties["name"] = names.at(name);
+                }
+            for (const auto &[name, sub] : input.subgraphs)
+                definitions.emplace(names.at(name), flatten(sub, names, names.at(name) + "::", depth + 1));
+            return output;
+        };
+        graph = flatten(sourceGraph, {}, "", 0);
+        graph.subgraphs = std::move(definitions);
+        g.definitions = &graph.subgraphs;
         if (stage != ShaderStage::Pixel && stage != ShaderStage::Vertex)
             throw std::runtime_error("only vertex/pixel graphs can be previewed");
         auto s = g.scope(graph);

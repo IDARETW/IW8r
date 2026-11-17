@@ -806,6 +806,7 @@ public:
 private:
     FrameStats stats_;
     bool inShadowPass_ = false;
+    bool inDepthPrepass_ = false;
     void drawN(unsigned count, unsigned first, bool lines = false);
     void drawIdx(unsigned count, unsigned first);
     // The GPU side of a kept stream: its vertex buffer and, for big textured batches, the spatial chunks (an index

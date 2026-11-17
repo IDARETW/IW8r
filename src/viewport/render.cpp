@@ -2358,7 +2358,7 @@ std::unique_ptr<PreviewGpuScope> SceneRenderer::bindPreviewDraw() {
     if(!previewDrawValid_||!previewProgram_||!previewOverrides_.matches(previewDrawTarget_)) return {};
     uint32_t surfaceTag=0;
     if(!previewOverrides_.all&&!previewOverrides_.materialWide)for(const auto& t:previewOverrides_.targets)if(t.family==PreviewFamily::StockWorld&&(!t.material.size()||t.material==previewDrawTarget_.material))surfaceTag=t.surfaceTag;
-    return previewProgram_->bind(ctx_,previewDrawTarget_.family,inShadowPass_||(texPsOverride_ && texPsOverride_==psPrepass_),float(gameTime_),w_,h_,surfaceTag);
+    return previewProgram_->bind(ctx_,previewDrawTarget_.family,inShadowPass_ || inDepthPrepass_,float(gameTime_),w_,h_,surfaceTag);
 }
 
 bool SceneRenderer::compileProgram(const std::string& source, const char* entry, std::vector<uint8_t>& program, std::string* err) {
@@ -5892,6 +5892,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     streamsSeen_ = 0;
     stats_ = {};
     inShadowPass_ = false;
+    inDepthPrepass_ = false;
     const float* viewProj = in.viewProj;
     // Game Lighting draws the lit scene into the HDR target (IW8R_NO_HDR: straight into the frame, as before).
     static const bool noHdr = std::getenv("IW8R_NO_HDR") != nullptr;
@@ -6216,6 +6217,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
     const bool aoWanted = game_.on && aoOn_ && !noAo && depthSrv_ && aoRtv_[1] && psPrepass_ && createAoResources();
     const bool prepass = (usePrepass || aoWanted) && game_.on && psPrepass_ && blendNoColor_ && vsTex_ && layoutTex_ && sampler_;
     if (prepass) {
+        inDepthPrepass_ = true;
         IW8R_PROF("d.prepass");
         writeGameCb();  // the cut-out threshold and the terrain cut (b4)
         ctx_->OMSetBlendState(blendNoColor_, bf, 0xffffffff);
@@ -6287,6 +6289,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         }
         ID3D11ShaderResourceView* noTex[1] = {nullptr};
         ctx_->PSSetShaderResources(0, 1, noTex);
+        inDepthPrepass_ = false;
         if (aoWanted) {
             drawAo(viewProj);
             ctx_->RSSetViewports(1, &vp);

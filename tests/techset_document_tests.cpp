@@ -167,3 +167,24 @@ TEST(shader_graph_node_library_coverage) {
         CHECK(r.ok);
     }
 }
+
+TEST(shader_graph_nested_definitions_are_lexical) {
+    auto graph = newShaderGraph(ShaderStage::Pixel);
+    graph.nodes.push_back({"call", "subgraph", "", 0, 0, {{"name", "outer"}}});
+    graph.links = {{"call", "out", "output_1", "color"}};
+    auto &outer = graph.subgraphs["outer"];
+    outer.nodes = {{"nested", "subgraph", "", 0, 0, {{"name", "value"}}}, {"result", "output"}};
+    outer.links = {{"nested", "out", "result", "value"}};
+    auto &local = outer.subgraphs["value"];
+    local.nodes = {{"constant", "constant", "", 0, 0, {{"value", 0.75}}}, {"result", "output"}};
+    local.links = {{"constant", "out", "result", "value"}};
+    graph.subgraphs["value"] = local;
+    graph.subgraphs["value"].nodes[0].properties["value"] = 0.25;
+    const auto code = compileShaderGraph(graph, ShaderStage::Pixel, {}, {});
+    CHECK(code.ok);
+    CHECK(code.source.find("0.75") != std::string::npos);
+    CHECK(code.source == compileShaderGraph(graph, ShaderStage::Pixel, {}, {}).source);
+    local.nodes[0].kind = "subgraph";
+    local.nodes[0].properties = {{"name", "outer"}};
+    CHECK(!compileShaderGraph(graph, ShaderStage::Pixel, {}, {}).ok);
+}

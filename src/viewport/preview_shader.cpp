@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <list>
@@ -134,8 +135,9 @@ void diagnostics(const std::string &text, ShaderCompileResult &out, bool failed)
         out.diagnostics.push_back(std::move(d));
     }
 }
+using BindingMap = std::map<std::string, ShaderReflection>;
 bool compile(const std::string &source, const std::string &adapter, const char *entry, const char *target,
-             const std::set<std::string> &allowed, ShaderCompileResult &out) {
+             const BindingMap &allowed, ShaderCompileResult &out) {
     const std::string key = source + '\n' + adapter + '\n' + entry + '\n' + target;
     auto &c = cache();
     {
@@ -180,11 +182,78 @@ bool compile(const std::string &source, const std::string &adapter, const char *
     stage.target = target;
     stage.bindings = reflection(blob.Get());
     for (const auto &b : stage.bindings)
-        if (!allowed.count(b.name)) {
-            out.diagnostics.push_back({"Undeclared preview resource '" + b.name +
-                                       "'. Add textures/parameters through the document bindings."});
+        if (!allowed.count(b.name) || allowed.at(b.name).kind != b.kind || allowed.at(b.name).slot != b.slot ||
+            allowed.at(b.name).count != b.count) {
+            out.diagnostics.push_back(
+                {"Undeclared preview resource '" + b.name +
+                 "' or incompatible register. Add textures/parameters through the document bindings."});
             return false;
         }
+    ComPtr<ID3D11ShaderReflection> reflected;
+    if (FAILED(D3DReflect(blob->GetBufferPointer(), blob->GetBufferSize(), __uuidof(ID3D11ShaderReflection),
+                          reinterpret_cast<void **>(reflected.GetAddressOf())))) {
+        out.diagnostics.push_back({"Cannot reflect the compiled " + adapter + " interface."});
+        return false;
+    }
+    D3D11_SHADER_DESC desc{};
+    reflected->GetDesc(&desc);
+    const bool vertexStage = target[0] == 'v';
+    if (D3D11_SHVER_GET_TYPE(desc.Version) != (vertexStage ? D3D11_SHVER_VERTEX_SHADER : D3D11_SHVER_PIXEL_SHADER)) {
+        out.diagnostics.push_back({"Compiled shader stage does not match the preview adapter."});
+        return false;
+    }
+    // The adapter owns the stage boundary. Author functions cannot change its input layout or outputs.
+    std::set<std::pair<std::string, unsigned>> inputs;
+    if (vertexStage) {
+        inputs = {{"POSITION", 0}, {"COLOR", 0}, {"TEXCOORD", 0}};
+        if (adapter == "particle") {
+            inputs.insert({"TEXCOORD", 1});
+            inputs.insert({"TEXCOORD", 2});
+        } else {
+            inputs.insert({"NORMAL", 0});
+            if (adapter == "instanced") {
+                inputs.insert({"COLOR", 1});
+                inputs.insert({"SELFVIS", 0});
+                inputs.insert({"LMAPUV", 0});
+                inputs.insert({"UVTWO", 0});
+                for (unsigned i = 0; i < 6; ++i)
+                    inputs.insert({"INSTROW", i});
+            } else {
+                inputs.insert({"TANGENT", 0});
+                inputs.insert({"TEXCOORD", 4});
+                inputs.insert({"TEXCOORD", 6});
+            }
+        }
+    } else {
+        inputs = {{"SV_POSITION", 0}, {"COLOR", 0}};
+        for (unsigned i = 0; i < 10; ++i)
+            inputs.insert({"TEXCOORD", i});
+    }
+    for (unsigned i = 0; i < desc.InputParameters; ++i) {
+        D3D11_SIGNATURE_PARAMETER_DESC p{};
+        reflected->GetInputParameterDesc(i, &p);
+        std::string name = p.SemanticName;
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return char(std::toupper(c)); });
+        if (!inputs.count({name, p.SemanticIndex}) || p.ComponentType != D3D_REGISTER_COMPONENT_FLOAT32) {
+            out.diagnostics.push_back({"Unsupported " + adapter + " input " + name + std::to_string(p.SemanticIndex)});
+            return false;
+        }
+    }
+    bool position = false;
+    for (unsigned i = 0; i < desc.OutputParameters; ++i) {
+        D3D11_SIGNATURE_PARAMETER_DESC p{};
+        reflected->GetOutputParameterDesc(i, &p);
+        position |= p.SystemValueType == D3D_NAME_POSITION && p.Mask == 15;
+        if (!vertexStage && (adapter == "depth" || p.SystemValueType != D3D_NAME_TARGET || p.SemanticIndex != 0 ||
+                             p.ComponentType != D3D_REGISTER_COMPONENT_FLOAT32 || p.Mask != 15)) {
+            out.diagnostics.push_back({"The preview adapter requires a float4 target 0 output (no output for depth)."});
+            return false;
+        }
+    }
+    if (vertexStage && !position) {
+        out.diagnostics.push_back({"The preview vertex adapter requires float4 SV_Position."});
+        return false;
+    }
     const auto *p = static_cast<const uint8_t *>(blob->GetBufferPointer());
     stage.bytecode.assign(p, p + blob->GetBufferSize());
     {
@@ -204,12 +273,16 @@ bool compile(const std::string &source, const std::string &adapter, const char *
     out.stages.push_back(std::move(stage));
     return true;
 }
-std::set<std::string> allowedResources(const std::string &source) {
-    std::set<std::string> names;
+BindingMap allowedResources(const std::string &source) {
+    BindingMap names;
     const std::regex r(
-        R"(\b(?:cbuffer|Texture\w*(?:<[^>]+>)?|Buffer<[^>]+>|StructuredBuffer<[^>]+>|SamplerState|SamplerComparisonState)\s+(\w+)\s*:\s*register)");
+        R"(\b(cbuffer|Texture\w*(?:<[^>]+>)?|Buffer<[^>]+>|StructuredBuffer<[^>]+>|SamplerState|SamplerComparisonState)\s+(\w+)\s*:\s*register\(\s*([bts])(\d+)\s*\))");
     for (std::sregex_iterator i(source.begin(), source.end(), r), end; i != end; ++i)
-        names.insert((*i)[1]);
+        names[(*i)[2]] = {(*i)[2],
+                          (*i)[3] == "b"   ? "cbuffer"
+                          : (*i)[3] == "s" ? "sampler"
+                                           : "resource",
+                          unsigned(std::stoul((*i)[4])), 1};
     return names;
 }
 const char *vertexApply = R"(
@@ -242,6 +315,7 @@ float4 iw8rPreviewFinished(PSIn i,float4 colour) {
     return iw8rPreviewPixel(s);
 }
 void ps_preview_depth(PSIn i) {
+    ps_prepass(i); // Preserve the host cutout, hidden terrain and one-sided coverage.
     IW8RPreviewSurface s=iw8rMakeSurface(i);
 #ifdef IW8R_PREVIEW_MATERIAL
     iw8rPreviewMaterial(s);

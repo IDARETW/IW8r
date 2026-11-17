@@ -95,6 +95,50 @@ inline void runPreviewRenderCases(ID3D11Device *device, ID3D11DeviceContext *con
     renderer.setPreviewProgram({}, {});
     image = draw();
     check(reds(image, false) < 10 && reds(image, true) < 10, "clearing restores original geometry shaders");
+    // Parameter-only updates and complete GPU replacement must not retain a chain of old programs.
+    auto parameterRequest = req;
+    parameterRequest.document.parameters = {{"Tint", 0, {1, 0, 0, 1}}};
+    parameterRequest.document.techniques[0].findStage(ShaderStage::Pixel)->source =
+        "float4 iw8rPreviewPixel(IW8RPreviewSurface s){return iw8rParameters[0];}";
+    auto parameterResult = compilePreviewShaders(parameterRequest, SceneRenderer::texShaderSource(),
+                                                 SceneRenderer::particlePreviewSource());
+    auto parameterProgram = std::make_shared<PreviewGpuProgram>();
+    check(parameterResult.ok &&
+              parameterProgram->create(device, parameterResult, parameterRequest.document, req.techniqueId, "", error),
+          "parameter program installs");
+    const auto compileCount = previewShaderCacheStats().compiled;
+    renderer.setPreviewProgram(parameterProgram, selected);
+    const auto parameterRed = draw();
+    parameterProgram->parameters({{"Tint", 0, {0, 1, 0, 1}}});
+    const auto parameterGreen = draw();
+    check(parameterGreen != parameterRed && reds(parameterGreen, false) < 10 &&
+              previewShaderCacheStats().compiled == compileCount,
+          "parameter update visibly changes the frame without compilation");
+    // A transparent authored pixel must leave both colour and the AO depth prepass empty.
+    parameterProgram->parameters({{"Tint", 0, {1, 0, 0, 0}}});
+    auto transparentRequest = parameterRequest;
+    transparentRequest.document.techniques[0].findStage(ShaderStage::Pixel)->source =
+        "float4 iw8rPreviewPixel(IW8RPreviewSurface s){clip(iw8rParameters[0].a-0.5);return iw8rParameters[0];}";
+    auto transparentCode = compilePreviewShaders(transparentRequest, SceneRenderer::texShaderSource(),
+                                                 SceneRenderer::particlePreviewSource());
+    auto transparent = std::make_shared<PreviewGpuProgram>();
+    check(transparentCode.ok &&
+              transparent->create(device, transparentCode, transparentRequest.document, req.techniqueId, "", error),
+          "coverage program installs");
+    transparent->parameters({{"Tint", 0, {1, 0, 0, 0}}});
+    renderer.setPreviewProgram(transparent, selected);
+    check(reds(draw(), false) == 0 && reds(draw(), true) == 0, "authored cutout removes colour and depth coverage");
+    for (unsigned revision = 0; revision < 12; ++revision) {
+        auto replacement = std::make_shared<PreviewGpuProgram>();
+        check(replacement->create(device, parameterResult, parameterRequest.document, req.techniqueId, "", error),
+              "replacement GPU program creates");
+        renderer.setPreviewProgram(replacement, selected);
+        std::weak_ptr<PreviewGpuProgram> retired = replacement;
+        replacement.reset();
+        renderer.setPreviewProgram(program, selected);
+        check(retired.expired(), "superseded GPU program retires after view releases it");
+    }
+    renderer.setPreviewProgram({}, {});
     batches.clear();
     input.batches = nullptr;
     auto world = triangle(-0.45f, referenceSurfaceTag(11));
