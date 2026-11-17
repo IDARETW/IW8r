@@ -24,6 +24,7 @@ target("iw8r_core")
     set_kind("static")
     add_files("src/core/*.cpp")
     add_includedirs("src/core", {public = true})
+    add_includedirs("third_party/nlohmann_json/single_include", {public = true})
     -- stb_image (third_party/stb, public domain / MIT): included only by src/core/stb_image_impl.cpp.
     add_includedirs("third_party/stb")
 
