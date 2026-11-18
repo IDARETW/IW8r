@@ -395,6 +395,16 @@ TEST(compile_iw8_tool_faces_and_trigger_brushes) {
     CHECK(!isIw8ToolMaterial("tm2co/me_curb_stone_01"));
     CHECK(isIw8ToolMaterial("ladder") && isIw8ToolMaterial("textures/ladder"));
     CHECK(!isIw8ToolMaterial("tmo/metal_ladder_01") && !isIw8ToolMaterial("water"));
+    // Stock names: the tool word must be the surface's own name (or start it); stock surfaces that merely contain one
+    // are real surfaces. Own names without a family prefix keep the substring rule.
+    CHECK(isIw8ToolMaterial("tm2o/nodraw") && isIw8ToolMaterial("tmo/NoDraw") && isIw8ToolMaterial("wc/clip_metal"));
+    CHECK(!isIw8ToolMaterial("tmo/fence_modular_metal_01_skyblue") && !isIw8ToolMaterial("m2o/equipment_skyhook"));
+    CHECK(!isIw8ToolMaterial("mo/un_office_paper_stack_01_clipboard") && !isIw8ToolMaterial("tmco/plastic_caulkspot"));
+    CHECK(!isIw8ToolMaterial("tmo/electronics_fire_alarm_trigger_01"));
+    CHECK(isIw8ToolMaterial("clip_player") && isIw8ToolMaterial("my_nodraw_brush"));
+    // Model surfaces the game never draws (Shipment's small dumpsters: a nodraw surface drawn white in the editor).
+    CHECK(isStockModelToolSurface("tm2o/nodraw") && isStockModelToolSurface("mo/nodraw"));
+    CHECK(!isStockModelToolSurface("nodraw") && !isStockModelToolSurface("tm2o/uk_dumpster_small_green_01"));
 }
 
 // A map with only tool faces has nothing to render and fails. Bad ids and non-extraction folders are refused.

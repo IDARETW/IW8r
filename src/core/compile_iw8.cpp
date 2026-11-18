@@ -46,6 +46,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
@@ -1178,12 +1179,24 @@ bool isValidIw8MapId(const std::string& id) {
 bool isIw8ToolMaterial(const std::string& material) {
     static const char* const kTool[] = {"caulk", "clip", "nodraw", "trigger", "hint", "skip", "portal", "origin", "sky"};
     const std::string m = lower(material);
-    for (const char* t : kTool)
-        if (m.find(t) != std::string::npos) return true;
+    const size_t slash = m.find_last_of('/');
+    const std::string base = slash == std::string::npos ? m : m.substr(slash + 1);
+    for (const char* t : kTool) {
+        if (slash == std::string::npos) {
+            if (m.find(t) != std::string::npos) return true;
+        } else if (base.rfind(t, 0) == 0 && (base.size() == std::strlen(t) || base[std::strlen(t)] == '_')) {
+            // A stock name: its own name is the tool word, or starts with it ("wc/clip_metal"); a word inside a
+            // surface's name ("..._skyblue", "..._clipboard") is not a tool material.
+            return true;
+        }
+    }
     // The ladder tool texture is a climbable volume, never drawn (stock maps put it on an invisible brush); matched
     // exactly so stock surfaces such as "metal_ladder_01" still draw.
-    const size_t slash = m.find_last_of('/');
-    return (slash == std::string::npos ? m : m.substr(slash + 1)) == "ladder";
+    return base == "ladder";
+}
+
+bool isStockModelToolSurface(const std::string& material) {
+    return material.find('/') != std::string::npos && isIw8ToolMaterial(material);
 }
 
 bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, const CompileOptions& opt, CompileReport& rep,
