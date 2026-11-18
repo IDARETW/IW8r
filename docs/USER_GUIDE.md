@@ -213,6 +213,10 @@ Entity inspector. **Tools > IES Profile Browser** applies light profiles to spot
 - **Compile > Atmosphere** sets fog and colour grading. **Compile > Vision Editor** gives access to every vision
   setting.
 - **Compile > Sky From Panorama** creates a custom sky from a panoramic image.
+- The haze also covers the lower part of the sky. Two vision settings set how far up it reaches, as angles from
+  straight up: `fogSkyMinAngle`, above which the sky is clear, and `fogSkyMaxAngle`, below which only the haze shows.
+  The haze presets use values such as 30 and 82. When less than a fifth of the sky shows through 30 degrees above the
+  horizon, the build and **Tools > Check Map** warn that the sky will look like the haze colour in the game.
 
 ### Previewing light
 
@@ -313,6 +317,8 @@ settings, which requires a password.
 - **A texture or model is missing from a build**: the editor was still reading it from the game. Build again.
 - **Deploy failed**: the game has the map loaded. Load another map in the game, then deploy again.
 - **Script errors**: double-click the error in the Compile log to open the script at that line.
+- **The sky is grey in the game**: the haze covers the sky. Raise `fogSkyMinAngle` and `fogSkyMaxAngle` in
+  **Compile > Vision Editor**, or remove them to use the haze preset's values. **View > Game Lighting** shows the result.
 - **Settings problems**: hold Shift while starting the editor, or start it with `--safe-mode`, to use the default
   settings. **Help > Reset All Settings** resets them permanently.
 - **Logs**: **View > Console** shows the editor's messages, and **Compile > Show Replay Log** shows the game's logs.

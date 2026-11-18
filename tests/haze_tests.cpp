@@ -70,6 +70,29 @@ TEST(haze_key_and_presets) {
     CHECK(!a.haze && warn.find("iw8r_haze") != std::string::npos && warn.find("desert") != std::string::npos);
 }
 
+TEST(haze_sky_visibility) {
+    // The game's sky band (research 111 section 8): clear above fogSkyMinAngle (zenith degrees), fully fogged below
+    // fogSkyMaxAngle. mp_rust's band (40.96 .. 78.4) keeps the sky clear from about 40 degrees up and hazes the horizon.
+    const std::string rust = "fogAtmosphericScattering=1; fogStartDist=512; fogHalfPlaneDistance=4000; fogMaxDistance=2000000; "
+                             "fogSkyDistance=1440572; fogInscatteringEv=21; fogSkyMinAngle=40.96; fogSkyMaxAngle=78.4; "
+                             "fogHeightFogHalfPlaneDistance=170; fogHeightFogAdditionalFog=0.032";
+    const double r30 = gameFogSkyVisibility(rust, 30, 64), r60 = gameFogSkyVisibility(rust, 60, 64), r5 = gameFogSkyVisibility(rust, 5, 64);
+    CHECK(r60 > 0.99 && r30 > 0.8 && r5 < 0.05);
+    // Cinder Rail before 2026-11-17: the band -1 .. 27 under the dusk haze leaves 6 % of the sky 30 degrees up (grey in game).
+    const Vec3 sun{0.5, 0.5, 0.7071};
+    const std::string dusk = hazeVisionText(Haze{"dusk", 1.15}, 0.8, sun, 0);
+    const std::string grey = mergeVisionText(dusk, "fogStartDist=1050; fogHalfPlaneDistance=3000; fogInscatteringEv=14.15; "
+                                                   "fogSkyMinAngle=-1; fogSkyMaxAngle=27; fogHeightFogAdditionalFog=0.038");
+    CHECK(gameFogSkyVisibility(grey, 30, 64) < 0.1 && gameFogSkyVisibility(grey, 60, 64) < 0.7);
+    // The dusk preset's own band (30 .. 82) leaves the sky clear from 60 degrees up.
+    CHECK(gameFogSkyVisibility(dusk, 60, 64) > 0.99 && gameFogSkyVisibility(dusk, 30, 64) > 0.6);
+    // The build's and Check Map's warning: given for the grey sky, not for the preset's band.
+    CHECK(skyHazeWarning(grey, 0).find("hides most of the sky") != std::string::npos && skyHazeWarning(grey, 0).find("fogSkyMaxAngle") != std::string::npos);
+    CHECK(skyHazeWarning(dusk, 0).empty() && skyHazeWarning(rust, 0).empty() && skyHazeWarning("", 0).empty());
+    // No fog named: the sky is clear.
+    CHECK(gameFogSkyVisibility("", 10, 64) == 1.0 && gameFogSkyVisibility("tonemapExposure=2", 10, 64) == 1.0);
+}
+
 TEST(haze_vision_text) {
     const Vec3 sun{0.5, 0.5, 0.7071};
     const std::string t = hazeVisionText(Haze{"desert", 1.0}, 11.7, sun, 64);
