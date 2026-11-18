@@ -58,6 +58,10 @@ public:
     // A map material's custom surface shader (core custom_shader), or null: compiled into the Game Lighting viewport.
     void setCustomShaderLookup(std::function<std::shared_ptr<const CustomShader>(const std::string&)> fn) { shaderLookup_ = std::move(fn); }
     int customShaderFor(const std::string& material);
+    void setPreviewProgram(std::shared_ptr<app::PreviewGpuProgram> program, app::PreviewOverrideSet targets);
+    void updatePreviewParameters(const std::vector<ShaderParameter>& parameters);
+    app::PreviewOverrideSet selectedPreviewTargets(const std::string& material = {}) const;
+    uint64_t previewRevision() const { return renderer_->previewRevision(); }
     // The last compile error of a custom shader ("" = none), for the status bar and the Check Map report.
     const std::string& customShaderError() const { return customShaderError_; }
     CameraView(EditorContext* ctx, ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* parent = nullptr);
@@ -1001,6 +1005,9 @@ private:
     std::function<std::shared_ptr<const CustomShader>(const std::string&)> shaderLookup_;
     std::map<std::string, int> customShaderIds_;  // path + code -> createCustomShader id (-1: failed to compile)
     std::string customShaderError_;
+    std::shared_ptr<app::PreviewGpuProgram> livePreview_;
+    QTimer* livePreviewTimer_ = nullptr;
+    bool previewPreviousGameLook_ = false, previewPreviousTextured_ = true;
     GameFogRefdef stockFogRefdef_{};  // the game's fog from the same vision (core game_fog, research 111)
     GamePostFx stockPostFx_;  // the stock map's veil and vignette (research 109)
     // An own map's haze (worldspawn iw8r_haze under iw8r_vision, research 126), read the way a stock vision is.

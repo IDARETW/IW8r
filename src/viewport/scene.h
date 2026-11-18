@@ -151,6 +151,7 @@ public:
     // A stock map reference is shown (set by the camera): its lit preview is the game's lighting, as the editor's own
     // light bake has nothing to light there (owner report 2026-11-12: Lit Preview alone was blown out on Speedball).
     bool gameLookAuto = false;
+    bool showEditorGuides = true;  // sun guide is useful in maps, not in an asset preview
     bool gameLookActive() const { return gameLook || (gameLookAuto && litPreview); }
     std::shared_ptr<const GameLightmap> gameLightmap;
     // Game Lighting on an own map: the light of every placed model (by its entity), as the 56 samples the build's
@@ -187,6 +188,8 @@ public:
     std::function<int(const std::string& material)> specFor;
     // The material's custom surface shader (SceneRenderer::createCustomShader id) or -1 (core custom_shader).
     std::function<int(const std::string& material)> shaderFor;
+    // While live overrides exist, batching retains object/primitive/material identity.
+    bool previewIdentity = false;
     // A custom shader in use reads the edge inputs: brush faces get their edge meshes (PrimGeom::polyEdges). Call
     // invalidate() after changing it. faceEdgesWanted (the shell: does a shader in use read the edge inputs?) sets it
     // at every full sync.

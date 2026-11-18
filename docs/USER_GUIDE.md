@@ -127,6 +127,63 @@ The first time a stock material is used, its images are read from the game, so i
   the surface type, transparency, glow and tint. The preview updates as you work.
 - Custom materials are stored in the `materials` folder next to your map.
 
+### Live techsets and shader graphs
+
+The **Techsets** icon, immediately after Materials in the upper sidebar, opens a large workspace docked in the
+main window. **Back to map** restores the previous camera, grid and panel layout. The authoring and preview
+columns have a draggable divider, and its position is remembered. **Document** contains New, Open and Recover draft.
+You can also right-click materials, models, prefabs, effects and images and choose **Open in Techset Editor**.
+
+The preview uses **Game Lighting**. It supports a sphere, plane, cube, models and prefabs, and effect sprites.
+**Preview target > Selected map geometry** copies selected map geometry (including patches, terrain and prefab contents), or a picked stock
+surface/model, into the dedicated preview without writing a temporary asset. Select a material slot below the preview to limit it. **Apply in map: Selected targets** temporarily applies
+the same revision to the current map selection; **All uses of material** applies it to every use of the named
+material. **Clear** restores the original rendering. None of these assignments changes the map file.
+
+Use **Browse models** above the preview to open the model selector. Its search bar and category, kit, source,
+favourites, recent and in-map filters narrow a large thumbnail grid. Select a tile and choose **Use model**, or
+double-click it. Project OBJ/GLB/glTF models are included; choosing a preview never places it in the map. Cancel
+leaves the current target unchanged. The LOD and material-slot controls remain beside the live Game Lighting view.
+
+**Ctrl+S** saves the techset while this workspace has focus; **Ctrl+Enter** compiles it.
+
+- **HLSL:** edit `iw8rPreviewVertex(inout IW8RPreviewVertex v)` and
+  `float4 iw8rPreviewPixel(IW8RPreviewSurface s)`. Vertex inputs use world coordinates. `s.litColor` is the
+  renderer's Game Lighting result; the default pixel function preserves it. Ctrl+Space completes interface names.
+- **Nodes:** click an output dot and then an input dot to connect nodes. Tab opens the searchable node list;
+  middle drag pans and the wheel zooms. Select nodes to copy, delete, undo, or extract a reusable subgraph.
+  Double-click a subgraph to edit it. The inspector provides fields for common values; **Advanced properties**
+  exposes the complete JSON. **Frame graph** fits the nodes into the canvas.
+- **Material graphs:** the Surface output supplies colour, normal, coverage, cutoff, roughness, metallic and
+  emission. Its material inputs run before Game Lighting; its Unlit property bypasses lighting for that output.
+  Vertex graphs produce displacement. **Preview node** inspects an intermediate result; **Final output** restores
+  the complete graph. Generated HLSL is read-only until copied explicitly into HLSL mode.
+- **Technique:** add or duplicate supported slots, inspect the complete imported layout, and edit `previewState`
+  for blend, culling, depth testing/writing, depth comparison, wireframe and depth bias. Native fields remain in
+  the document even when the D3D11 preview cannot implement their game-specific behavior.
+- **Resources / parameters:** declare named float4 parameters in slots 0–63 and texture/sampler bindings in slots
+  0–7. The HLSL names are `iw8rParameters[slot]`, `iw8rTexture<slot>` and `iw8rSampler<slot>`. Parameter-table edits
+  update the preview without recompiling. Textures support linear/point filtering, wrap/clamp/mirror addressing,
+  and sRGB decoding. Cube inputs use a horizontal or vertical six-face strip in +X, -X, +Y, -Y, +Z, -Z order.
+
+Auto Compile waits 350 ms after an edit and compiles on a background worker. **Diagnostics** lists errors and
+warnings; activating an error navigates to its source line or graph node. A failed or superseded compile keeps
+the last successful preview. Time nodes animate without recompilation.
+
+Save editor authoring data as `.iw8techset.json`, normally under `techsets` beside the map. Standalone files are
+also supported. Documents contain source, graphs, parameters and exact imported integers, including 64-bit flags
+and hashes. **Recover draft** restores the latest unsaved recovery document from the application's data folder.
+Texture paths can be relative to the document or absolute.
+
+Stock imports search the owning zone and shared dependencies. Where the original HLSL is unavailable, the editor
+shows the original stage reference and available bytecode disassembly. **Replace stage** creates an editable
+preview template. Importing bytecode does not automatically execute it with guessed game bindings.
+
+Live execution supports vertex and pixel stages and ordinary colour, depth and shadow adapters. Hull/domain,
+tessellation, VRS, velocity and other unsupported variants are preserved and identified as unavailable for live
+preview. This workspace is editor-only: it does not export new techsets into game zones or modify a running game.
+The older map shader editor keeps its existing build behavior.
+
 ### Texture alignment
 
 The **Surface** inspector fits, scales, shifts and rotates textures on the selected faces. **Brush > UV Editor**

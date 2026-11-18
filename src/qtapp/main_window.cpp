@@ -84,6 +84,7 @@
 #include "asset_info.h"
 #include "compile_iw8.h"
 #include "main_window.h"
+#include "techset_workspace.h"
 
 #include <QDate>
 #include <QComboBox>
@@ -1130,6 +1131,16 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     // without a parent, so they could never be shown. Bump kDockLayoutVersion whenever a dock is added.
     const QByteArray state = Settings::instance().value("window/docks").toByteArray();
     if (!state.isEmpty() && !dock_->restoreState(state, kDockLayoutVersion)) ctx_.setStatus("Dock layout reset (new panels)");
+    if (auto* workspace = dock_->findDockWidget("Techset Workspace")) {
+        const bool reopen = !workspace->isClosed();
+        techsetLayoutChanging_ = true;
+        workspace->toggleView(false);
+        if (auto* camera = dock_->findDockWidget("Camera"); camera && camera->dockAreaWidget())
+            dock_->addDockWidgetTabToArea(workspace, camera->dockAreaWidget());
+        workspace->toggleView(false);
+        techsetLayoutChanging_ = false;
+        if (reopen) QTimer::singleShot(0, this, [this] { openTechsetWorkspace(); });
+    }
     // ADS un-parents the widgets of non-current tabs by design; only a dock with no area at all is lost.
     for (ads::CDockWidget* d : dock_->dockWidgetsMap())
         if (!d->dockAreaWidget() && !d->isClosed()) {
@@ -1197,7 +1208,8 @@ void MainWindow::syncSideActions() {
     // A side section icon is checked while its panel is open; a bottom area icon while its tab is the one on top.
     for (const auto& [panel, action] : sideActions_) {
         const QSignalBlocker block(action);
-        if (isBottomPanel(panel))
+        if (panel->objectName() == "Techsets") action->setChecked(!techsetMapLayout_.isEmpty());
+        else if (isBottomPanel(panel))
             action->setChecked(!panel->isClosed() && panel->dockAreaWidget() && panel->dockAreaWidget()->currentDockWidget() == panel);
         else
             action->setChecked(!panel->isClosed());
@@ -1205,6 +1217,11 @@ void MainWindow::syncSideActions() {
 }
 
 void MainWindow::toggleSidePanel(ads::CDockWidget* d) {
+    if (d->objectName() == "Techsets") {
+        if (techsetMapLayout_.isEmpty()) openTechsetWorkspace(); else leaveTechsetWorkspace();
+        return;
+    }
+    if (!techsetMapLayout_.isEmpty()) leaveTechsetWorkspace();
     if (isBottomPanel(d)) {
         // The icon of the tab on top folds the bottom area away; any other unfolds it at that tab.
         const bool onTop = !d->isClosed() && d->dockAreaWidget() && d->dockAreaWidget()->currentDockWidget() == d;
@@ -1292,7 +1309,40 @@ void MainWindow::applyWorkspace(const QString& n) {
     ctx_.setStatus("Workspace " + n);
 }
 
+void MainWindow::openTechsetWorkspace() {
+    auto* workspace = dock_->findDockWidget("Techset Workspace");
+    auto* camera = dock_->findDockWidget("Camera");
+    if (!workspace || !camera || techsetLayoutChanging_) return;
+    techsets_->refreshPreview();
+    if (!techsetMapLayout_.isEmpty()) { workspace->setAsCurrentTab(); return; }
+    techsetLayoutChanging_ = true;
+    workspace->toggleView(false);
+    if (camera->dockAreaWidget()) dock_->addDockWidgetTabToArea(workspace, camera->dockAreaWidget());
+    workspace->toggleView(false);
+    techsetMapLayout_ = dock_->saveState(kDockLayoutVersion);
+    for (auto* d : dock_->dockWidgetsMap()) if (d != workspace) d->toggleView(false);
+    workspace->toggleView(true);
+    workspace->setAsCurrentTab();
+    techsetLayoutChanging_ = false;
+    syncSideActions();
+}
+
+void MainWindow::leaveTechsetWorkspace() {
+    if (techsetLayoutChanging_) return;
+    techsetLayoutChanging_ = true;
+    if (techsets_) techsets_->clearOverrides();
+    if (!techsetMapLayout_.isEmpty()) {
+        const auto saved = techsetMapLayout_;
+        techsetMapLayout_.clear();
+        dock_->restoreState(saved, kDockLayoutVersion);
+    }
+    if (auto* workspace = dock_->findDockWidget("Techset Workspace")) workspace->toggleView(false);
+    techsetLayoutChanging_ = false;
+    syncSideActions();
+}
+
 void MainWindow::showDock(const QString& name) {
+    if (name == "Techsets" || name == "Techset Workspace") { openTechsetWorkspace(); return; }
     if (ads::CDockWidget* d = dock_->findDockWidget(name); d && isBottomPanel(d) && d->dockAreaWidget() == bottomArea_) {
         setBottomArea(true, d);  // the whole bottom area, this tab in front
         return;
@@ -1304,7 +1354,7 @@ void MainWindow::showDock(const QString& name) {
     }
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() { if (techsets_) techsets_->shutdown(); }
 
 // ------------------------------------------------------------------ layout
 
@@ -1561,7 +1611,7 @@ void MainWindow::buildDocks() {
     auto makeDock = [this](const QString& title, QWidget* w, bool closable) {
         auto* d = new ads::CDockWidget(dock_, title);
         d->setObjectName(title);
-        d->setWidget(w);
+        d->setWidget(w, title == "Techset Workspace" ? ads::CDockWidget::ForceNoScrollArea : ads::CDockWidget::AutoScrollArea);
         d->setFeature(ads::CDockWidget::DockWidgetClosable, closable);
         return d;
     };
@@ -1588,6 +1638,22 @@ void MainWindow::buildDocks() {
     // The panels of the side bar, placed in its order at the end (sidePanelOrder).
     std::vector<ads::CDockWidget*> sidePanels{histDock, spawnDock};
     sidePanels.push_back(makeDock("Materials", materials_, true));
+    techsets_ = makeTechsetWorkspace();
+    auto* techsetWorkspaceDock = makeDock("Techset Workspace", techsets_, true);
+    dock_->addDockWidgetTabToArea(techsetWorkspaceDock, camArea);
+    techsetWorkspaceDock->toggleView(false);
+    techsetWorkspaceDock->setFeature(ads::CDockWidget::DockWidgetFloatable, false);
+    techsetWorkspaceDock->setFeature(ads::CDockWidget::DockWidgetMovable, false);
+    connect(techsetWorkspaceDock, &ads::CDockWidget::viewToggled, techsets_, [this](bool open) {
+        if (!open && !techsetLayoutChanging_ && !dock_->isRestoringState()) leaveTechsetWorkspace();
+    });
+    techsets_->onOpen = [this] { openTechsetWorkspace(); };
+    techsets_->onReturnToMap = [this] { leaveTechsetWorkspace(); };
+    techsetPanel_ = new TechsetPanel(techsets_, [this] {
+        return ctx_.doc.path().empty() ? QString() : QFileInfo(qs(ctx_.doc.path())).absolutePath();
+    });
+    sidePanels.push_back(makeDock("Techsets", techsetPanel_, true));
+
     sidePanels.push_back(makeDock("Models", models_, true));
     sidePanels.push_back(makeDock("Effects", effects_, true));
     sidePanels.push_back(makeDock("Images", images_, true));
@@ -1662,6 +1728,7 @@ void MainWindow::buildDocks() {
                 return pack->get(mapFile, ThumbStore::signatureOf(mapFile));
             });
         sidePanels.push_back(makeDock("Prefabs", prefabs_, true));
+        connect(prefabs_, &PrefabBrowser::techsetRequested, techsets_, [this](const QString& path) { techsets_->previewAsset(path, true); });
     }
     compile_ = new CompilePanel(&ctx_, [this](const QString& k) { return toolPath(k); });
     compileDock_ = makeDock("Compile", compile_, true);
@@ -1778,7 +1845,7 @@ void MainWindow::buildDocks() {
     {
         // The side bar, in working order: assets, the map, building, script and game.
         static const std::pair<const char*, char16_t> order[] = {
-            {"Materials", 0xE790}, {"Models", 0xF158}, {"Prefabs", 0xE74C}, {"Effects", 0xE945}, {"Sounds", 0xE767},
+            {"Materials", 0xE790}, {"Techsets", 0xE943}, {"Models", 0xF158}, {"Prefabs", 0xE74C}, {"Effects", 0xE945}, {"Sounds", 0xE767},
             {"Images", 0xEB9F}, {"IW8 Spawns", 0xE707}, {"Stock Map", 0xE909}, {"Map Check", 0xE73E}, {"Undo History", 0xE81C}, {"Compile", 0xE90F}, {"Build Budget", 0xE9D2},
             {"Console", 0xE756}, {"Replay Log", 0xE9F9}, {"Script", 0xE943}, {"Live Link", 0xE71B}};
         // Docked beside the camera, not sliding over it: the camera is a native D3D window that an overlay ends up behind.
@@ -5565,6 +5632,7 @@ void MainWindow::openPath(const QString& path) {
 }
 
 void MainWindow::resetForNewDocument() {
+    if (techsets_) techsets_->clearOverrides(); // object IDs belong to the document being closed
     // What belongs to the document that was open: the scene caches, the stock map's state, selection sets (their ids
     // are the old document's) and the stock effects the camera plays.
     ctx_.scene.clear();
@@ -6315,7 +6383,8 @@ QString MainWindow::showMaterialInfo(const QString& name, bool show) {
     }
     in.buildsNormal = Settings::instance().value("compile/stockNormalMaps", true).toBool();
     const QString html = materialInfoHtml(in);
-    if (show) showAssetInfo(this, "materialInfoDialog", "Material Info: " + name, html);
+    if (show) showAssetInfo(this, "materialInfoDialog", "Material Info: " + name, html,
+                            [this, name] { if (techsets_) techsets_->openMaterial(name); });
     return html;
 }
 
@@ -8269,6 +8338,7 @@ QString MainWindow::exportStockMapEnts(const QString& zone, const QString& cache
         ActsRequest req;
         req.zone = name;
         req.types = "map_ents";
+        req.scriptStrings = true;
         req.outDir = cache;
         QObject owner;  // this request alone: a cancel drops it without touching the other exports
         bool done = false;
@@ -8318,6 +8388,11 @@ QString MainWindow::exportStockMapEnts(const QString& zone, const QString& cache
         if (err) *err = "ACTS did not produce map_ents for " + name + " (exit " + QString::number(exitCode) + ").\n\n" + log.right(1500);
         return {};
     }
+    const int assetsAt = json.lastIndexOf("/assets/");
+    if (assetsAt < 0 || !QFileInfo::exists(json.left(assetsAt) + "/script_strings.json")) {
+        if (err) *err = "ACTS did not produce the script-string table required by this map. Update the Replay reader.";
+        return {};
+    }
     QFile::remove(marker);
     return json;
 }
@@ -8339,6 +8414,10 @@ bool MainWindow::openStockZone(const QString& zone, QString* err) {
     // An export that was cancelled or failed left its marker: what is in the folder may be half written.
     if (QFileInfo::exists(cache + "/export.incomplete")) QDir(cache + "/mw19replay").removeRecursively();
     QString json = QFileInfo::exists(cache + "/export.incomplete") ? QString() : findMapEntsJson(cache);
+    if (!json.isEmpty()) {
+        const int assetsAt = json.lastIndexOf("/assets/");
+        if (assetsAt < 0 || !QFileInfo::exists(json.left(assetsAt) + "/script_strings.json")) json.clear();
+    }
     if (json.isEmpty()) json = exportStockMapEnts(zone, cache, err);
     if (json.isEmpty()) return false;
     loadDocument(json);
@@ -8554,6 +8633,7 @@ void MainWindow::updateStatus() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* e) {
+    if (techsets_ && !techsets_->canClose()) { e->ignore(); return; }
     // A running build would be stopped with the window: ask first.
     if (compile_ && compile_->busy() &&
         QMessageBox::question(this, "IW8 Radiant", "A build is running. Stop it and close the editor?",
@@ -8567,7 +8647,7 @@ void MainWindow::closeEvent(QCloseEvent* e) {
     }
     discardConfirmed_ = false;
     Settings::instance().setValue("window/geometry", saveGeometry());
-    Settings::instance().setValue("window/docks", dock_->saveState(kDockLayoutVersion));
+    Settings::instance().setValue("window/docks", techsetMapLayout_.isEmpty() ? dock_->saveState(kDockLayoutVersion) : techsetMapLayout_);
     if (bottomArea_ && bottomArea_->isVisible() && bottomArea_->height() >= 100)
         Settings::instance().setValue("ui/bottomPanelHeight", bottomArea_->height());
     Settings::instance().setValue("camera/speed", ctx_.cam.speed);
@@ -9147,6 +9227,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
             auto& ld = texInstanced[size_t(ti)].light;
             ld.insert(ld.end(), lit, lit + 12);
             texInstanced[size_t(ti)].ids.push_back((in.index & 0x80000000u) ? 0xFFFFFFFFu : in.collection);
+            texInstanced[size_t(ti)].previewIds.push_back(in.index);
             // The map's scripted objects (index bit 31) are not static models: never left out by distance here.
             texInstanced[size_t(ti)].cullScale.push_back((in.index & 0x80000000u) ? 0.0f : in.lodCullScale);
             lightKeys[size_t(ti)].push_back(key);
@@ -11375,6 +11456,7 @@ AssetPreviewWindow* MainWindow::makeAssetPreviewWindow() {
             if (modelCacheStock_)
                 if (auto ent = modelCacheStock_->lookup(qs(m)); ent && !ent->failed && !ent->glbPath.isEmpty())
                     if (auto loaded = modelCacheStock_->loadModel(qs(m))) return scaled(std::move(*loaded));
+            if(modelCacheStock_)modelCacheStock_->request({qs(m)});
             return nullptr;
         };
         src.lodCount = [this](const std::string& m) -> int {
@@ -11394,7 +11476,9 @@ AssetPreviewWindow* MainWindow::makeAssetPreviewWindow() {
             }
             return QImage(file);
         };
-        return new AssetPreviewWindow(dev_, dc_, camera_, ctx_.scene, std::move(src), this);
+        auto* preview = new AssetPreviewWindow(dev_, dc_, camera_, ctx_.scene, std::move(src), this);
+        preview->onEditTechset = [this](const QString& material) { if (techsets_) techsets_->openMaterial(material); };
+        return preview;
     }
 }
 

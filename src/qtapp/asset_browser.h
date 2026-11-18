@@ -151,17 +151,21 @@ public:
     // Availability of a row's asset: "" = available or not known yet, else why it cannot be built (the caches tried and
     // failed). Unavailable visible rows are greyed with the reason in their tooltip.
     using StatusSource = std::function<QString(const QString& name)>;
-    void setStatusSource(StatusSource fn) { statusSource_ = std::move(fn); refreshThumbnails(); }
+    void setStatusSource(StatusSource fn);
     StatusSource statusSource() const { return statusSource_; }  // tests
     int unavailableMarked() const { return int(unavailable_.size()); }  // tests
     int hiddenMissing() const { return hiddenMissing_; }                 // tests
     QString previewCaption() const;
     bool previewHasImage() const;
     void selectRow(int row);  // also used by the GUI test
+    // Independent picker with the same catalog/cache providers; choosing never places an asset in the map.
+    AssetBrowser* createModelPicker(QWidget* parent, const QStringList& projectModels = {}, ThumbSource projectThumbnails = {});
+    QString selectedName() const;
 
 signals:
     void materialChosen(const QString& name);
     void infoRequested(const QString& name);  // context menu > Info (Material Info / Model Info)
+    void techsetRequested(const QString& name);
     void replaceRequested(const QString& name);  // context menu > Replace Everywhere With... (the main window asks for the new name)
     void modelChosen(const QString& name);
     void effectChosen(const QString& name);  // Effects browser: place an fx_origin with this stock vfx
@@ -249,6 +253,8 @@ private:
     QHash<QString, QString> imageFiles_;  // material -> decoded-able colour image (absolute path)
     QHash<QString, QIcon> icons_;
     ThumbSource thumbSource_;
+    ThumbPeek thumbPeek_;
+    bool pickerMode_ = false;
     QSet<QString> pendingThumbs_;
     QSet<QString> realThumbs_;
     QTimer* thumbs_ = nullptr;  // the slow pass (thumbnail source), after scrolling settles

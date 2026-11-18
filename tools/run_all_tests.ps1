@@ -38,13 +38,28 @@ $okCore = $okCore -and ($LASTEXITCODE -eq 0)  # xmake builds one target per call
 $okEditor = $LASTEXITCODE -eq 0
 Add-Result 'build' ($okCore -and $okEditor) ("core={0} editor={1}" -f $okCore, $okEditor)
 
-$core = & (Join-Path $bin 'iw8r_tests.exe') 2>&1
+New-Item -ItemType Directory -Force (Join-Path $root 'out\ci') | Out-Null
+$core = & (Join-Path $bin 'iw8r_tests.exe') --tmp (Join-Path $root 'out\ci\core-tmp') 2>&1
+$coreExit = $LASTEXITCODE
+$core | Set-Content -Path (Join-Path $root 'out\ci\core.log')
 $line = ($core | Select-String -Pattern 'checks,' | Select-Object -Last 1).Line
-Add-Result 'core' ($LASTEXITCODE -eq 0 -and $line -match ' 0 failures') $line
+Add-Result 'core' ($coreExit -eq 0 -and $line -match ' 0 failures') $line
+
+& xmake build -y iw8r_techset_gpu_tests 2>&1 | Out-Null
+$okShaderBuild = $LASTEXITCODE -eq 0
+if ($okShaderBuild) {
+    $shader = & (Join-Path $bin 'iw8r_techset_gpu_tests.exe') 2>&1
+    $shaderExit = $LASTEXITCODE
+    $shader | Set-Content -Path (Join-Path $root 'out\ci\techset-gpu.log')
+    $shaderLine = ($shader | Select-String -Pattern 'checks,.*failures' | Select-Object -Last 1).Line
+    Add-Result 'techset-gpu' ($shaderExit -eq 0 -and $shaderLine -match ' 0 failures') $shaderLine
+} else {
+    Add-Result 'techset-gpu' $false 'shader test build failed'
+}
 
 function Run-Gui($name, $outDir) {
     New-Item -ItemType Directory -Force $outDir | Out-Null
-    $p = Start-Process -FilePath (Join-Path $bin 'IW8Radiant.exe') -ArgumentList @('--gui-test', 'tests\data\iw8_sample_room.map', '--out', $outDir) -Wait -PassThru -NoNewWindow
+    $p = Start-Process -FilePath (Join-Path $bin 'IW8Radiant.exe') -ArgumentList @('--gui-test', 'tests\data\iw8_sample_room.map', '--out', $outDir) -Wait -PassThru -WindowStyle Hidden
     $rep = Join-Path $outDir 'gui-test-report.txt'
     $last = if (Test-Path $rep) { (Get-Content $rep | Select-Object -Last 1) } else { 'no report' }
     Add-Result $name ($p.ExitCode -eq 0) $last
@@ -58,7 +73,7 @@ if ($Full) {
 
 $smokeDir = Join-Path $root 'out\ci\smoke'
 New-Item -ItemType Directory -Force $smokeDir | Out-Null
-$p = Start-Process -FilePath (Join-Path $bin 'IW8Radiant.exe') -ArgumentList @('--smoke-test', 'tests\data\iw8_sample_room.map', '--out', $smokeDir) -Wait -PassThru -NoNewWindow
+$p = Start-Process -FilePath (Join-Path $bin 'IW8Radiant.exe') -ArgumentList @('--smoke-test', 'tests\data\iw8_sample_room.map', '--out', $smokeDir) -Wait -PassThru -WindowStyle Hidden
 $s = Join-Path $smokeDir 'smoke-test.txt'
 Add-Result 'smoke' ($p.ExitCode -eq 0) $(if (Test-Path $s) { (Get-Content $s -First 1) } else { 'no report' })
 

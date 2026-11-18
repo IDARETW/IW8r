@@ -4,6 +4,7 @@
 #include <QString>
 #include <QStringList>
 #include <optional>
+#include <functional>
 
 #include "material_cache.h"
 #include "model_cache.h"
@@ -40,6 +41,7 @@ struct ModelInfoInput {
 QString modelInfoHtml(const ModelInfoInput& in);
 
 // A non-modal window with the HTML and Copy / Close buttons; objectName `objectName` (one per kind, reused).
-void showAssetInfo(QWidget* parent, const QString& objectName, const QString& title, const QString& html);
+void showAssetInfo(QWidget* parent, const QString& objectName, const QString& title, const QString& html,
+                   std::function<void()> editTechset = {});
 
 }  // namespace iw8r::qt
