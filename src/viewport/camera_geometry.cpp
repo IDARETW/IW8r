@@ -260,7 +260,7 @@ void CameraGeometry::Impl::genItem(const PrimGeom* g, bool sel, ItemOut& out) {
             }
         }
         if (sc.skyActive && texturesOn && hasMat && !sel) {
-            if (!mi->hasSky) mi->sky = g->polyMaterial[i].find("sky") != std::string::npos, mi->hasSky = true;
+            if (!mi->hasSky) mi->sky = isIw8SkyMaterial(g->polyMaterial[i]), mi->hasSky = true;
             if (mi->sky) continue;  // the sky box shows through, as in game
         }
         const bool markerPoly = g->markerPoly(i);  // a prefab's inner entity box: editor only

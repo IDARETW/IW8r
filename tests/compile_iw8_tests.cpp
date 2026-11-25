@@ -405,6 +405,17 @@ TEST(compile_iw8_tool_faces_and_trigger_brushes) {
     // Model surfaces the game never draws (Shipment's small dumpsters: a nodraw surface drawn white in the editor).
     CHECK(isStockModelToolSurface("tm2o/nodraw") && isStockModelToolSurface("mo/nodraw"));
     CHECK(!isStockModelToolSurface("nodraw") && !isStockModelToolSurface("tm2o/uk_dumpster_small_green_01"));
+    // The sky: the sky box material and own sky names, not surfaces whose name contains the letters (Shipment's
+    // skyline, sky-blue fences, skylights): those are drawn, lit and stop light.
+    CHECK(isIw8SkyMaterial("tw/sky_mp_shipment") && isIw8SkyMaterial("sky") && isIw8SkyMaterial("my_sky_day") && isIw8SkyMaterial("TW/SKY_MP_RUST"));
+    CHECK(!isIw8SkyMaterial("tw/periph_skyline_01") && !isIw8SkyMaterial("tmo/fence_modular_metal_01_skyblue"));
+    CHECK(!isIw8SkyMaterial("tmco/lm_skylight_store_large") && !isIw8SkyMaterial("m2o/equipment_skyhook"));
+    CHECK(isIw8ToolWordMaterial("tw/caulk_shadow", "caulk") && !isIw8ToolWordMaterial("tmco/plastic_caulkspot", "caulk"));
+    CHECK(isIw8ToolWordMaterial("trigger", "trigger") && !isIw8ToolWordMaterial("tmo/electronics_fire_alarm_trigger_01", "trigger"));
+    // Family prefixes without the game's variant marks (spline models "~", "#", name-only references ",").
+    CHECK(stockFamilyOf("~tm2co/me_fence_railing_wood_01") == "tm2co" && stockFamilyOf("#tmo/foliage_grass_reeds_01") == "tmo");
+    CHECK(stockFamilyOf(",mo/veh8_civ_lnd_palfa") == "mo" && stockFamilyOf("tw/grass_lawn_cut_01") == "tw" && stockFamilyOf("~tmco") == "tmco");
+    CHECK(stockFamilyOf("plain") == "plain" && stockFamilyOf("").empty());
 }
 
 // A map with only tool faces has nothing to render and fails. Bad ids and non-extraction folders are refused.

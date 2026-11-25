@@ -1,4 +1,5 @@
 #include "material_cache.h"
+#include "compile_iw8.h"
 
 #include <future>
 #include <chrono>
@@ -308,10 +309,17 @@ std::map<QString, MaterialCache::Entry> MaterialCache::readIndex(const QString& 
             const StockTechsetTraits tr = parseStockTechsetName(e.techset.toStdString());
             if (tr.valid && tr.layers >= 2 && (tr.family.rfind("m", 0) == 0 || tr.family.rfind("tm", 0) == 0)) continue;
         }
+        // Resolved while a family with a variant mark ("~tm2o": spline models, ",mo", "#tmo") was not read as a model
+        // family: its extra layers were dropped. Those resolve again once.
+        if (!e.failed && o.value("modelLayers").toInt() < 2 && e.layerCount < 2 && !e.techset.isEmpty() &&
+            (e.techset[0] == '~' || e.techset[0] == ',' || e.techset[0] == '#')) {
+            const StockTechsetTraits tr = parseStockTechsetName(e.techset.toStdString());
+            if (tr.valid && tr.layers >= 2 && (tr.family.rfind("m", 0) == 0 || tr.family.rfind("tm", 0) == 0)) continue;
+        }
         // Resolved before the wave constants 79-82 were kept (research 133 section 6): the vertex-colour model families
         // (tmco, tm2co, mco, ...: the vertex alpha is the wave weight) resolve again once.
         if (!e.failed && o.value("constRules").toInt() < 4) {
-            const QString prefix = e.material.section('/', 0, 0), leaf = e.material.section('/', 1).toLower();
+            const QString prefix = QString::fromStdString(stockFamilyOf(e.material.toStdString())), leaf = e.material.section('/', 1).toLower();
             static const QStringList kWaveWords = {"flag", "tarp", "foliage", "canopy", "curtain", "fabric", "cloth", "grass", "vine", "leaves", "tree"};
             bool waveName = false;
             for (const QString& w : kWaveWords) waveName = waveName || leaf.contains(w);

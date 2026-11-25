@@ -214,5 +214,14 @@ bool isIw8ToolMaterial(const std::string& material);
 // A stock model surface the game never draws: a tool material with a family prefix ("tm2o/nodraw" on Shipment's small
 // dumpsters, "tmo/nodraw", "mo/nodraw"). The editor leaves these surfaces out of the stock props.
 bool isStockModelToolSurface(const std::string& material);
+// The rule above for one tool word ("sky", "caulk", "trigger", ...): an own name without a family prefix matches when it
+// contains the word; a stock name ("<family>/<name>") only when its own name is the word or starts with it and "_".
+// "tw/sky_mp_rust" is sky; "tw/periph_skyline_01", "tmo/fence_modular_metal_01_skyblue" and "m2o/equipment_skyhook"
+// are surfaces.
+bool isIw8ToolWordMaterial(const std::string& material, const char* word);
+inline bool isIw8SkyMaterial(const std::string& material) { return isIw8ToolWordMaterial(material, "sky"); }
+// A stock family prefix without the variant marks the game puts in front of it: "~tm2o" (spline-deformed models),
+// "#tmo" and ",mo" are the families tm2o, tmo and mo. Takes a material or technique set name, or a bare prefix.
+std::string stockFamilyOf(const std::string& name);
 
 }  // namespace iw8r

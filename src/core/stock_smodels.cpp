@@ -398,11 +398,16 @@ std::vector<std::pair<std::string, std::string>> stockModelInstancesAsEntities(c
     const double scale = std::isfinite(inst.scale) && inst.scale > 0 ? inst.scale : 1.0;
     const std::string origin = fmt6(inst.origin.x) + " " + fmt6(inst.origin.y) + " " + fmt6(inst.origin.z);
     const std::string angles = fmt6(ang.x) + " " + fmt6(ang.y) + " " + fmt6(ang.z);
-    return {{"classname", "misc_model"},
-            {"model", inst.model},
-            {"origin", origin},
-            {"angles", angles},
-            {"modelscale", fmt6(scale)}};
+    std::vector<std::pair<std::string, std::string>> keys{{"classname", "misc_model"},
+                                                          {"model", inst.model},
+                                                          {"origin", origin},
+                                                          {"angles", angles},
+                                                          {"modelscale", fmt6(scale)}};
+    // The placement's LOD distance scale (the game keeps Shipment's far containers to 4 x their last LOD distance):
+    // without it the rebuilt placement is cut at the model's own distance.
+    if (std::isfinite(inst.lodCullScale) && inst.lodCullScale > 0 && std::fabs(inst.lodCullScale - 1.0f) > 1e-3f)
+        keys.push_back({"lod_scale", fmt6(inst.lodCullScale)});
+    return keys;
 }
 
 Vec3 axisToAngles(const std::array<Vec3, 3>& axis) {

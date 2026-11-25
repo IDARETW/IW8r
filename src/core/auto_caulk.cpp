@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <cmath>
 #include <vector>
 
@@ -18,10 +19,18 @@ std::string lastPart(const std::string& m) {
     return slash == std::string::npos ? s : s.substr(slash + 1);
 }
 
+// The name is the tool word or starts with it and a separator or digit ("clip_player", "water2"): stock surfaces such
+// as "watertank_ladder_cover_01" are not tool materials.
+bool startsWithWord(const std::string& s, const char* word) {
+    const size_t n = std::strlen(word);
+    if (s.rfind(word, 0) != 0) return false;
+    return s.size() == n || s[n] == '_' || std::isdigit(static_cast<unsigned char>(s[n]));
+}
+
 bool isToolMaterial(const std::string& m) {
     const std::string s = lastPart(m);
     for (const char* t : {"caulk", "nodraw", "clip", "trigger", "hint", "skip", "water", "sky", "ladder", "portal", "origin"})
-        if (s.rfind(t, 0) == 0) return true;
+        if (startsWithWord(s, t)) return true;
     return false;
 }
 
@@ -31,7 +40,7 @@ bool occludes(const Primitive& p) {
     for (const auto& f : p.faces) {
         const std::string s = lastPart(f.material());
         for (const char* t : {"trigger", "clip", "hint", "skip", "water", "sky", "portal", "origin"})
-            if (s.rfind(t, 0) == 0) return false;
+            if (startsWithWord(s, t)) return false;
     }
     for (const auto& line : p.lines)
         if (line.text.find("nonColliding") != std::string::npos) return false;

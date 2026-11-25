@@ -69,6 +69,16 @@ TEST(stock_decal_techset_names) {
     CHECK(t.valid && t.uvAnim);
     t = parseStockTechsetName("twc/lit_3_lit_rpl_ta1_801010_1002000000010012_0_1_1_0_0_193810015b_0_0_3_0_0");
     CHECK(t.valid && t.uvAnim && t.ssr);
+    // The family without the game's variant mark: a spline model's "~tm2o" set and a ",mo" set keep their layers.
+    t = parseStockTechsetName("~tm2o/lit_3_lit_rpl_ta1_804800_1002000000000010_0_2_1_0_0_13810015b_0_0_1_0_0_0_0_3818015f_0_1_2_0_0");
+    CHECK(t.valid && t.family == "tm2o" && t.layers == 2);
+    t = parseStockTechsetName(",mo/lit_3_lit_rpl_ta1_800800_1002000000000010_0_3_1_0_0_13810015b_0_0_1_0_0");
+    CHECK(t.valid && t.family == "mo" && t.layers == 3);
+    // Reactive motion (hexB bit 0x40): the reactive grass set against the plain one.
+    t = parseStockTechsetName("tmco/lit_3_lit_alt_ta1_848810_1012000201000051_0_1_1_0_0_138f0035b_0_0_1_0_0");
+    CHECK(t.valid && t.reactiveMotion && t.transmission);
+    t = parseStockTechsetName("tmco/lit_3_lit_alt_ta1_848810_1012000201000011_0_1_1_0_0_138f0035b_0_0_1_0_0");
+    CHECK(t.valid && !t.reactiveMotion);
     t = parseStockTechsetName("twc/lit_3_lit_bad_tca_812002_100a000000000010_0_1_1_0_0_13810015b_0_0_3_0_0");
     CHECK(t.valid && t.wrapDiffuse && !t.ssr);
     t = parseStockTechsetName("tw/lit_3_lit_bad_ta1_815002_1002000000000012_0_1_1_0_0_113810015b_0_0_1_0_0");

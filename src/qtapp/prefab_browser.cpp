@@ -46,6 +46,7 @@
 #include "compile_iw8.h"
 #include "map_text.h"
 #include "prefab_bundle.h"
+#include "prefab.h"
 
 namespace iw8r::qt {
 
@@ -538,10 +539,10 @@ QImage PrefabBrowser::thumbnail(const QString& mapFile, int size, const QStringL
                         if (const std::string* a = e.value("angles")) std::sscanf(a->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z);
                         double sc = 1;
                         if (const std::string* ms = e.value("modelscale")) sc = std::max(0.001, std::atof(ms->c_str()));
-                        const double yaw = ang.y * 3.14159265358979 / 180.0, c = std::cos(yaw), sn = std::sin(yaw);
+                        const Mat3 rot = anglesToMatrix(ang);  // pitch, yaw and roll, as the scene and the build place it
                         const auto place = [&](const Vec3& p) {
                             const Vec3 z{p.x, -p.z, p.y};  // glTF Y-up -> Z-up
-                            return *o + Vec3{(z.x * c - z.y * sn) * sc, (z.x * sn + z.y * c) * sc, z.z * sc};
+                            return *o + (rot * z) * sc;
                         };
                         size_t total = 0;
                         for (const auto& part : mesh->meshes) total += part.idx.size() / 3;
@@ -568,12 +569,12 @@ QImage PrefabBrowser::thumbnail(const QString& mapFile, int size, const QStringL
                     if (const std::string* a = e.value("angles")) std::sscanf(a->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z);
                     double sc = 1;
                     if (const std::string* ms = e.value("modelscale")) sc = std::max(0.001, std::atof(ms->c_str()));
-                    const double yaw = ang.y * 3.14159265358979 / 180.0, c = std::cos(yaw), sn = std::sin(yaw);
+                    const Mat3 rot = anglesToMatrix(ang);
                     std::array<Vec3, 8> corners;
                     const double xs[4] = {b[0], b[3], b[3], b[0]}, ys[4] = {b[1], b[1], b[4], b[4]};
                     for (int k = 0; k < 8; ++k) {
                         const int q = k % 4;
-                        corners[size_t(k)] = *o + Vec3{(xs[q] * c - ys[q] * sn) * sc, (xs[q] * sn + ys[q] * c) * sc, (k < 4 ? b[2] : b[5]) * sc};
+                        corners[size_t(k)] = *o + (rot * Vec3{xs[q], ys[q], k < 4 ? b[2] : b[5]}) * sc;
                     }
                     addBox(corners);
                     continue;

@@ -538,6 +538,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
                 for (const QString& t : e->textures)
                     if (t.startsWith("95=")) f.dispImage = t.mid(3).toStdString(), f.disp = {(*c)[0], (*c)[1]};
         f.unlit = parseTechset(e->techset.section('/', -1).toStdString()).family == TechsetFamily::UnlitEffect;
+        f.vertexColourData = traits.reactiveMotion;
         // Blended model materials past the decal sort keys (glass 25, 30): see-through (research 132 G1).
         f.translucent = !e->techset.startsWith("tw") && (ts.contains("_bad_") || ts.contains("_bar_")) && f.propDecalSortKey == 0;
         return f;
@@ -6380,6 +6381,8 @@ QString MainWindow::showMaterialInfo(const QString& name, bool show) {
     if (!in.toolMaterial && in.customSource.isEmpty()) {
         in.entry = matCache_->lookup(name);
         if (!in.entry) matCache_->request({name});
+        if (in.entry && !in.entry->failed)
+            if (const int st = iw3SurfaceTypeForStockSurfaceFlags(in.entry->surfaceFlags); st > 0) in.surfaceType = iw3SurfaceTypeName(st);
     }
     in.buildsNormal = Settings::instance().value("compile/stockNormalMaps", true).toBool();
     const QString html = materialInfoHtml(in);
@@ -8855,7 +8858,7 @@ MainWindow::RefPropPrepared MainWindow::buildRefPropMesh(const RefPropJob& job) 
             pm->vertices.resize(nv);
             // A VERTCOL material (the `c` in the prefix: tmco, tm2co, tmlc, mco, m2co) multiplies its
             // albedo by the vertex colour (research 133 section 4).
-            const std::string prefix = ms.material.substr(0, ms.material.find('/'));
+            const std::string prefix = stockFamilyOf(ms.material);  // "~tmco" (a spline model's) is tmco
             const bool vertCol = ms.color.size() == nv && prefix.find('c') != std::string::npos &&
                                  (prefix.rfind("m", 0) == 0 || prefix.rfind("tm", 0) == 0);
             // The self visibility of a surface flagged for it (0x40; research 105 section 4).
@@ -9234,7 +9237,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
             texInstanced[size_t(ti)].ids.push_back((in.index & 0x80000000u) ? 0xFFFFFFFFu : in.collection);
             texInstanced[size_t(ti)].previewIds.push_back(in.index);
             // The map's scripted objects (index bit 31) are not static models: never left out by distance here.
-            texInstanced[size_t(ti)].cullScale.push_back((in.index & 0x80000000u) ? 0.0f : in.lodCullScale);
+            texInstanced[size_t(ti)].cullScale.push_back((in.index != 0xFFFFFFFFu && (in.index & 0x80000000u)) ? 0.0f : in.lodCullScale);
             lightKeys[size_t(ti)].push_back(key);
             key.first = false;
         }
@@ -9536,7 +9539,7 @@ std::shared_ptr<StockDecalData> appendStockDecalVolumes(const StockWorld& world,
         std::string lm = world.meshes[m].material;
         for (char& c : lm) c = char(std::tolower(static_cast<unsigned char>(c)));
         const std::string leaf = lm.substr(lm.rfind('/') == std::string::npos ? 0 : lm.rfind('/') + 1);
-        if (leaf == "sky" || leaf.rfind("sky_", 0) == 0 || lm.find("caulk") != std::string::npos) keep[m] = false;
+        if (leaf == "sky" || leaf.rfind("sky_", 0) == 0 || isIw8ToolWordMaterial(lm, "caulk")) keep[m] = false;  // not "plastic_caulkspot"
     }
     StockDecalReceivers receivers;
     receivers.addWorld(world, keep);
@@ -9583,8 +9586,14 @@ bool stockDecalBatch(const StockDecalData& d, const StockDecalBatch& b, int orde
 // Decal volumes on the stock props (stencils on crates, paint on containers; research 99: static models receive
 // them): the converted prop meshes placed in world space, projected once the props are built.
 void MainWindow::projectPropDecals() {
-    if (!stockDecals_ || !refProps_ || referenceZone_.isEmpty() || propDecalsZone_ == referenceZone_ || refPropBuilt_.empty()) return;
-    propDecalsZone_ = referenceZone_;
+    if (!stockDecals_ || !refProps_ || referenceZone_.isEmpty() || refPropBuilt_.empty()) return;
+    // Props the map hides (iw8r_hide_smodels: removed or turned into models) receive nothing; a change of that list
+    // projects again.
+    const std::vector<uint32_t> hiddenProps = stockEditHiddenProps(ctx_.doc.map());
+    QString decalsKey = referenceZone_ + "|";
+    for (const uint32_t h : hiddenProps) decalsKey += QString::number(h) + " ";
+    if (propDecalsZone_ == decalsKey) return;
+    propDecalsZone_ = decalsKey;
     const StockDecalData& d = *stockDecals_;
     // Only the volumes that found no world surface (stencils on crates, paint on barriers: research 99 found every
     // empty Speedball volume beside a prop): ground decals (sand, dirt) on every prop inside their box cost Hideout
@@ -9619,6 +9628,7 @@ void MainWindow::projectPropDecals() {
     std::vector<ImportedMesh> meshes;  // world space; must outlive the receivers
     std::vector<const AABB*> nearBoxes;
     for (const StockModelInstance& in : *refProps_) {
+        if (std::binary_search(hiddenProps.begin(), hiddenProps.end(), in.index)) continue;
         const auto it = refPropBuilt_.find(in.model);
         if (it == refPropBuilt_.end() || !it->second) continue;
         const auto place = [&](const app::PropVertex& v) {

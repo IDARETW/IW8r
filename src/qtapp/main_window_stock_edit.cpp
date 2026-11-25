@@ -1086,12 +1086,17 @@ size_t MainWindow::addStockWorldCollision(CollisionWorld& w) const {
         const QString mat = qs(m.material).remove(QChar(',')).trimmed().toLower();
         const QString leaf = mat.section('/', -1);
         // Not walked on or against in game: the sky, decals, foliage and grass cards, translucent surfaces.
-        if (leaf.startsWith("sky_") || mat.contains("decal") || mat.contains("foliage") || mat.contains("grass") || mat.contains("leaves") ||
-            mat.contains("ivy") || mat.contains("vine"))
-            continue;
-        if (const auto e = matCache_->lookup(qs(m.material).remove(QChar(',')).trimmed()); e && !e->failed &&
-            materialBlendFromTechset(e->techset.toStdString()) == MaterialBlend::Blend)
-            continue;
+        if (leaf.startsWith("sky_") || mat.contains("decal")) continue;
+        const bool plantWord = mat.contains("foliage") || mat.contains("grass") || mat.contains("leaves") || mat.contains("ivy") || mat.contains("vine");
+        if (const auto e = matCache_->lookup(qs(m.material).remove(QChar(',')).trimmed()); e && !e->failed) {
+            // The material is known: blended surfaces and cut-out plant cards are not solid; opaque ground named after
+            // grass or leaves ("tw/grass_lawn_cut_01" on Shipment) is.
+            const MaterialBlend blend = materialBlendFromTechset(e->techset.toStdString());
+            if (blend == MaterialBlend::Blend || blend == MaterialBlend::Additive) continue;
+            if (plantWord && blend == MaterialBlend::AlphaTest) continue;
+        } else if (mat.contains("foliage") || mat.contains("ivy") || mat.contains("vine")) {
+            continue;  // not read yet: plant cards by name; grass and leaf ground stays solid
+        }
         for (size_t t = 0; t + 2 < m.idx.size(); t += 3) {
             const uint32_t i0 = m.idx[t], i1 = m.idx[t + 1], i2 = m.idx[t + 2];
             if (i0 >= m.pos.size() || i1 >= m.pos.size() || i2 >= m.pos.size()) continue;

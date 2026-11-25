@@ -1,4 +1,5 @@
 #include "collision_world.h"
+#include "compile_iw8.h"
 
 #include <algorithm>
 #include <cmath>
@@ -209,7 +210,7 @@ void CollisionWorld::addBrushesOf(const Entity& e, int patchSubdiv) {
                 const std::string text = p->text();
                 if (text.find("nonColliding") != std::string::npos) continue;
                 const std::string mat = lowerStr(p->patchMaterial);
-                if (mat.find("trigger") != std::string::npos || mat.find("hint") != std::string::npos) continue;
+                if (isIw8ToolWordMaterial(mat, "trigger") || isIw8ToolWordMaterial(mat, "hint")) continue;
                 // Each tessellated triangle becomes a thin convex facet (front, back and three edge planes).
                 const PatchMesh mesh = tessellatePrimitive(*p, patchSubdiv);
                 for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {

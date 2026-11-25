@@ -1760,7 +1760,7 @@ void buildCameraGeometryImpl(const SceneCache& scene, const Document& doc, bool 
         }
         for (size_t i = 0; i < g->polys.size(); ++i) {
             if (scene.skyActive && texturesOn && i < g->polyMaterial.size() &&
-                g->polyMaterial[i].find("sky") != std::string::npos && !doc.isSelected(g->ref))
+                isIw8SkyMaterial(g->polyMaterial[i]) && !doc.isSelected(g->ref))
                 continue;  // the sky box shows through, as in game
             const bool markerPoly = g->markerPoly(i);  // a prefab's inner entity box: editor only
             if (markerPoly && scene.captureMode) continue;

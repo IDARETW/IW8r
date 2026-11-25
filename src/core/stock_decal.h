@@ -72,6 +72,11 @@ struct StockTechsetTraits {
     bool displacement = false;   // hexB last digit 8: displacement (tessellation techniques + displaced VS)
     bool wrapDiffuse = false;    // hexB & 0x0008000000000000: one extra psData row, RGB wrap (stockWrapDiffuse)
     bool transmission = false;   // hexB bit 0 (last digit odd): texture slot 68 x constant 18 lets light through (research 107)
+    // hexB bit 0x40: reactive motion (plants that bend around the player; every "..._reactive" material and no other, on
+    // 7,281 lit sets of Hideout, Rust, Speedball and Shipment). The vertex colour of its models holds the motion's data
+    // (red 1, green 0, blue a per-vertex value), not a colour: the game does not tint the albedo with it (Speedball's
+    // arena grass is green in game; multiplied it drew crimson).
+    bool reactiveMotion = false;
     bool uvAnim = false;         // hexC & 0x800000000: the technique binds constant 63, UV animation (research 133 section 1)
     int layers = 0;              // the first layer-count token
 };

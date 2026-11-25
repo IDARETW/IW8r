@@ -366,8 +366,17 @@ public:
     void setReferenceInstDisp(size_t mesh, int texture, float scale, float bias) {
         if (mesh >= refTexInst_.size()) return;
         auto& g = refTexInst_[mesh];
-        g.disp[0] = 1.0f, g.disp[1] = scale, g.disp[2] = bias, g.disp[3] = 0.0f;
+        g.disp[0] = 1.0f, g.disp[1] = scale, g.disp[2] = bias;
         g.dispTex = texture;
+        instParamsDirty_ = true;
+    }
+    // A prop mesh whose vertex colour holds motion data (reactive-motion foliage), not a colour: the vertex shader
+    // passes white (record row 30 .w).
+    void setReferenceInstVertexColourData(size_t mesh, bool data) {
+        if (mesh >= refTexInst_.size()) return;
+        const float v = data ? 1.0f : 0.0f;
+        if (refTexInst_[mesh].disp[3] == v) return;
+        refTexInst_[mesh].disp[3] = v;
         instParamsDirty_ = true;
     }
     // A prop mesh's extra layers (model-layered materials, research 132 G9), drawn over it after the props.
