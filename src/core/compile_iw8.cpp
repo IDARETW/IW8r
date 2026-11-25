@@ -1176,23 +1176,40 @@ bool isValidIw8MapId(const std::string& id) {
     return true;
 }
 
+namespace {
+// `m` lower case; `base` its part after the last '/' (all of it without one).
+bool toolWordMatch(const std::string& m, bool stockName, const std::string& base, const char* word) {
+    if (!stockName) return m.find(word) != std::string::npos;
+    // A stock name: its own name is the tool word, or starts with it ("wc/clip_metal"); a word inside a surface's
+    // name ("..._skyblue", "..._clipboard") is not a tool material.
+    const size_t n = std::strlen(word);
+    return base.rfind(word, 0) == 0 && (base.size() == n || base[n] == '_');
+}
+}  // namespace
+
+bool isIw8ToolWordMaterial(const std::string& material, const char* word) {
+    const std::string m = lower(material);
+    const size_t slash = m.find_last_of('/');
+    return toolWordMatch(m, slash != std::string::npos, slash == std::string::npos ? m : m.substr(slash + 1), word);
+}
+
 bool isIw8ToolMaterial(const std::string& material) {
     static const char* const kTool[] = {"caulk", "clip", "nodraw", "trigger", "hint", "skip", "portal", "origin", "sky"};
     const std::string m = lower(material);
     const size_t slash = m.find_last_of('/');
     const std::string base = slash == std::string::npos ? m : m.substr(slash + 1);
-    for (const char* t : kTool) {
-        if (slash == std::string::npos) {
-            if (m.find(t) != std::string::npos) return true;
-        } else if (base.rfind(t, 0) == 0 && (base.size() == std::strlen(t) || base[std::strlen(t)] == '_')) {
-            // A stock name: its own name is the tool word, or starts with it ("wc/clip_metal"); a word inside a
-            // surface's name ("..._skyblue", "..._clipboard") is not a tool material.
-            return true;
-        }
-    }
+    for (const char* t : kTool)
+        if (toolWordMatch(m, slash != std::string::npos, base, t)) return true;
     // The ladder tool texture is a climbable volume, never drawn (stock maps put it on an invisible brush); matched
     // exactly so stock surfaces such as "metal_ladder_01" still draw.
     return base == "ladder";
+}
+
+std::string stockFamilyOf(const std::string& name) {
+    size_t a = 0;
+    while (a < name.size() && (name[a] == '~' || name[a] == '#' || name[a] == ',')) ++a;
+    const size_t slash = name.find('/', a);
+    return name.substr(a, slash == std::string::npos ? std::string::npos : slash - a);
 }
 
 bool isStockModelToolSurface(const std::string& material) {
@@ -2898,8 +2915,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         size_t scaledTriangles = 0;  // triangles of faces with a lightmap scale of their own
         for (const RenderSurface& s : surfaces) {
             BakeSurface b;
-            const std::string m = lower(s.editorMaterial);
-            b.lit = m.find("sky") == std::string::npos;
+            b.lit = !isIw8SkyMaterial(s.editorMaterial);  // not "..._skyblue" or "periph_skyline" surfaces
             b.albedo = bounceOf(s.editorMaterial);
             b.triDensity = s.triDensity;
             for (const float d : s.triDensity) scaledTriangles += std::fabs(d - 1.0f) > 1e-6f;
@@ -4298,7 +4314,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         {
             std::vector<RayBvh::Triangle> tris;
             for (const RenderSurface& s : surfaces) {
-                if (lower(s.editorMaterial).find("sky") != std::string::npos) continue;
+                if (isIw8SkyMaterial(s.editorMaterial)) continue;
                 // id: 0 = the bake's grey, else 1 + the entry of the surface's own bounce colour.
                 uint32_t id = 0;
                 if (const Vec3 a = bounceOf(s.editorMaterial); a.x >= 0) {

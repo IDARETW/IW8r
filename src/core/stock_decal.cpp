@@ -70,7 +70,9 @@ StockTechsetTraits parseStockTechsetName(const std::string& name) {
     StockTechsetTraits t;
     const size_t slash = name.find('/');
     if (slash == std::string::npos) return t;
-    t.family = name.substr(0, slash);
+    size_t mark = 0;  // "~tm2o", "#tmo", ",mo": the families tm2o, tmo, mo
+    while (mark < slash && (name[mark] == '~' || name[mark] == '#' || name[mark] == ',')) ++mark;
+    t.family = name.substr(mark, slash - mark);
     const std::vector<std::string> tok = split(name.substr(slash + 1), '_');
     // lit 3 lit <blend> <x> <hexA> <hexB> 0 <n> <n> ...
     if (tok.size() < 10 || tok[0] != "lit" || tok[2] != "lit") return t;
@@ -83,6 +85,7 @@ StockTechsetTraits parseStockTechsetName(const std::string& name) {
     t.displacement = (b & 0xF) == 8;
     t.wrapDiffuse = (b & 0x0008000000000000ull) != 0;
     t.transmission = (b & 0x1) != 0;
+    t.reactiveMotion = (b & 0x40) != 0;
     t.layers = std::atoi(tok[8].c_str());
     uint64_t c = 0;
     t.uvAnim = tok.size() > 12 && parseHex64(tok[12], c) && (c & 0x800000000ull) != 0;

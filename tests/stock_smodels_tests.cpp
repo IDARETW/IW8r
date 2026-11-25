@@ -202,6 +202,11 @@ TEST(stock_smodels_synthetic_export) {
     const auto ang2 = parseTriple(entityValue(e2, "angles"));
     CHECK(std::fabs(ang2[0]) < 1e-2 && std::fabs(ang2[1]) < 1e-2 && std::fabs(ang2[2] - 30) < 1e-2);
     CHECK(std::fabs(std::stod(entityValue(e2, "modelscale")) - 1.0) < 1e-6);
+    // The LOD distance scale goes with the entity when it is not 1 (the build reads lod_scale).
+    CHECK(entityValue(e2, "lod_scale").empty());
+    StockModelInstance far = v[2];
+    far.lodCullScale = 4.0f;
+    CHECK(std::fabs(std::stod(entityValue(stockModelInstancesAsEntities(far), "lod_scale")) - 4.0) < 1e-6);
 
     // The gfx_map file itself is accepted as the path too.
     std::vector<StockModelInstance> viaFile;

@@ -119,6 +119,11 @@ TEST(foliage_sway_material_heuristic) {
     // Custom material with no techset resolved yet: name decides.
     CHECK(isFoliageMaterial("my_bush_leaf", ""));
     CHECK(!isFoliageMaterial("brick_wall", ""));
+    // Whole words only: "street" is not a tree, "planters" and "powerplant" are not plants, "flowershop" is a shop.
+    CHECK(!isFoliageMaterial("tmco/ee_sign_street_01", "") && !isFoliageMaterial("tmco/light_street_traffic_light_01", ""));
+    CHECK(!isFoliageMaterial("mo/decor_cafe_planters", "") && !isFoliageMaterial("tm2o/ee_window_concrete_powerplant_01", ""));
+    CHECK(!isFoliageMaterial("tmo/mtl_prisoner_flowershop_shelves", ""));
+    CHECK(isFoliageMaterial("tmco/foliage_trees_pine_02", "") && isFoliageMaterial("my_bushes", "") && isFoliageMaterial("plant01_leaves", ""));
     // A reactive-motion set name counts whatever the material is called.
     CHECK(isFoliageMaterial("anything", "tmo/lit_3_lit_reactivemotion_alt_ta1_1"));
 }

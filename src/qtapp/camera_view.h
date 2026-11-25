@@ -199,6 +199,7 @@ public:
         std::array<float, 4> emissiveScale{0, 0, 0, 0}, transTint{0, 0, 0, 0}, wrap{0, 0, 0, 0};
         // Research 132 G2: an `unlit_` technique set (TechsetFamily::UnlitEffect): drawn with its colour as is.
         bool unlit = false;
+        bool vertexColourData = false;  // reactive motion: the model's vertex colour is motion data, not a colour
         // Research 132 G1: a blended model material that is no decal (glass and other see-through surfaces).
         bool translucent = false;
         // Research 133 section 1: constant 63, UV animation (u / s, v / s, radians / s about the texture centre).

@@ -22,9 +22,21 @@ std::string lower(const std::string& s) {
     return out;
 }
 
+// A needle matches a whole word of the name (split at '/', '_' and digits), also in its plural: "foliage_tree_oak_01"
+// and "bushes" match; "sign_street_01", "cafe_planters" and "powerplant" do not.
 bool hasAny(const std::string& hay, std::initializer_list<const char*> needles) {
-    for (const char* n : needles) {
-        if (hay.find(n) != std::string::npos) return true;
+    size_t a = 0;
+    while (a < hay.size()) {
+        size_t b = a;
+        while (b < hay.size() && std::isalpha(static_cast<unsigned char>(hay[b]))) ++b;
+        if (b > a) {
+            const std::string word = hay.substr(a, b - a);
+            for (const char* n : needles) {
+                const std::string s = n;
+                if (word == s || word == s + "s" || word == s + "es") return true;
+            }
+        }
+        a = b + 1;
     }
     return false;
 }

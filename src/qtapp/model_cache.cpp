@@ -1,4 +1,5 @@
 #include "model_cache.h"
+#include "compile_iw8.h"
 
 #include <future>
 #include <chrono>
@@ -249,7 +250,7 @@ int glbLmapUv(const QString& path) { return glbHas(path, "_LMAPUV"); }
 // A lightmapped static model (research 105 section 3.1): one of its surfaces has a tml / tmlc material.
 bool lightmappedModel(const QStringList& materials) {
     for (const QString& m : materials)
-        if (m.section('/', 0, 0).startsWith("tml")) return true;
+        if (QString::fromStdString(stockFamilyOf(m.toStdString())).startsWith("tml")) return true;
     return false;
 }
 }  // namespace

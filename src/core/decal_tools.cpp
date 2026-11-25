@@ -1,5 +1,6 @@
 // IW8 Radiant - decal tool (see decal_tools.h).
 #include "decal_tools.h"
+#include "compile_iw8.h"
 
 #include <algorithm>
 #include <array>
@@ -61,10 +62,8 @@ std::string trimWs(const std::string& s) {
 
 // Tool textures that are not drawn or not visible surfaces: a decal on them would never show.
 bool toolMaterial(const std::string& material) {
-    const std::string m = lower(material);
-    for (const char* word : {"nodraw", "caulk", "clip", "hint", "skip", "sky", "trigger", "water"})
-        if (m.find(word) != std::string::npos) return true;
-    return false;
+    // Stock surfaces that only contain a tool word ("tm2o/building_water_tank_01", "..._clipboard") take decals.
+    return isIw8ToolMaterial(material) || isIw8ToolWordMaterial(material, "water");
 }
 
 // Sutherland-Hodgman: keeps the part of the convex `subject` inside the convex CCW `clip` (uv space).

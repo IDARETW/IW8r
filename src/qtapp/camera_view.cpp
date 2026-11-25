@@ -1682,6 +1682,8 @@ bool CameraView::applyMaterialExtras(const std::string& m, size_t index, bool pr
         renderer_->setReferenceInstWave(index, f->wave.data());
         uvAnimSeen_ = true;  // the view keeps redrawing while it moves
     }
+    // Reactive-motion foliage: its vertex colour is motion data, drawn untinted.
+    if (f && propMesh) renderer_->setReferenceInstVertexColourData(index, f->vertexColourData);
     // Static-model displacement (research 133 section 3): the height image and constant 45, moved along the normal in
     // the props' vertex shader.
     static const bool noDisp = std::getenv("IW8R_NO_SMODEL_DISP") != nullptr;  // A/B: undisplaced, as before

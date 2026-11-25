@@ -499,7 +499,7 @@ PSIn vs_tex(VSIn i) {
 // A prop mesh's flag / foliage waves (research 133 section 6): constants 79-82 at rows 8..11 of its per-mesh record
 // (the same range as cbuffer Layer, bound to b8 for the vertex shader; unbound = zero = no waves).
 cbuffer PropWave : register(b8) { float4 pwRows[8]; float4 wave79; float4 wave80; float4 wave81; float4 wave82; float4 pwRows12[18];
-                                   float4 dispC; };  // row 30: static-model displacement (on, scale, bias, 0)
+                                   float4 dispC; };  // row 30: static-model displacement (on, scale, bias), .w: vertex colour is data
 Texture2D<float4> dispTex : register(t43);  // its height image (slot 95, research 133 section 3)
 // The stock props' light grid atlas (research 105 section 1.4; SceneRenderer::setStockLgvAtlas): texture 0 the DC
 // (R11G11B10F), texture 1 six tiles of normalised SH bytes (2 x 3), five float4 per box (rows, uvScale, uvBias).
@@ -574,7 +574,10 @@ PSIn vs_tex_inst(VSInInst i) {
     PSIn o; o.pos = mul(float4(w, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = w; o.n = dot(nw, nw) > 1e-12 ? normalize(nw) : float3(0, 0, 0); o.t = float3(0, 0, 0); o.lm = float2(-1, -1); o.edge = float3(1, 0, 0);
     // The vertex colour of a VERTCOL model, stored sRGB: linear as the game's static-model VS (research 133 section 4).
     // w: 1 + the vertex alpha (a prop; the model layers' weight in the vertex-colour families, research 136).
-    o.vc = float4(i.vcol.rgb <= 0.04045 ? i.vcol.rgb / 12.92 : pow((i.vcol.rgb + 0.055) / 1.055, 2.4), 1.0 + i.vcol.a);
+    // Reactive-motion foliage (dispC.w): green and blue hold motion data; the game's vertex shader passes red alone as
+    // a grey factor, as stored (research 100 section 3.3).
+    const float3 vlin = i.vcol.rgb <= 0.04045 ? i.vcol.rgb / 12.92 : pow((i.vcol.rgb + 0.055) / 1.055, 2.4);
+    o.vc = float4(dispC.w > 0.5 ? i.vcol.rrr : vlin, 1.0 + i.vcol.a);
     o.uv1 = i.uv1;
     // Self visibility (research 105 section 4): turned by the placement like the normal, its length kept.
     o.sv = float4(0, 0, 0, -1);
@@ -5287,7 +5290,10 @@ void SceneRenderer::drawReferenceTexInstances() {
     const bool propNormals = !texPsOverride_ && flatNrmTex_ >= 0 && size_t(flatNrmTex_) < textures_.size();
     constexpr size_t kInstPerCb = 128;  // uploadInstParams: 512-byte records
     // The props' constants: on the shading pass and the depth pre-pass (raw-alpha meshes are not cut out).
-    const bool instCb = (propNormals || (texPsOverride_ && texPsOverride_ == psPrepass_)) && uploadInstParams();
+    bool vertexData = false;  // a reactive-motion mesh: its record is needed in every view
+    for (const auto& g : refTexInst_) vertexData = vertexData || g.disp[3] > 0.5f;
+    const bool instPs = propNormals || (texPsOverride_ && texPsOverride_ == psPrepass_);
+    const bool instCb = (instPs || vertexData) && uploadInstParams();
     if (cbBatch_) {
         const float flags[8] = {propNormals ? 1.0f : 0.0f, soft ? -1.0f : 0.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f,
                                 stockLmSrv_[0] && game_.skyIsStock ? 1.0f : 0.0f};
@@ -5393,6 +5399,12 @@ void SceneRenderer::drawReferenceTexInstances() {
         const int passOf = g.translucent && g.decal == 0 ? 2 : g.decal > 0 ? 1 : 0;
         if (passOf != decalPass || g.drawClass != 0) continue;
         if (decalPass >= 1 && texPsOverride_) continue;
+        // Cut-out props (foliage cards, grates) stay out of the depth pre-pass: laid down there at the hard threshold
+        // they lost the soft edges the shading pass gives them, and trees and grass came out darker and harder than in
+        // game (the owner's Speedball shot, 2026-11-25: tree foliage -0.45 stops with them in the pre-pass, +0.21
+        // without; the frame's quartiles and median within 0.2 stops without). The screen AO then reads what lies
+        // behind the leaves; its part in their look measured 0.06 stops.
+        if (texPsOverride_ && texPsOverride_ == psPrepass_ && !textureRawAlpha(g.texture)) continue;
         if (decalPass == 2 && !glassStateSet) {
             glassStateSet = true;
             if (!decalStateSet) {
@@ -5417,6 +5429,14 @@ void SceneRenderer::drawReferenceTexInstances() {
             ctx_->OMGetDepthStencilState(&savedDs, &savedRef);
             ctx_->RSSetState(rsDecal_);
             ctx_->OMSetDepthStencilState(dsTest_, 0);
+            if (blend_) {
+                const float bf[4] = {0, 0, 0, 0};
+                ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
+            }
+            if (cbBatch_) {  // y = 1: blended by the decal's opacity (the props' own flag cuts at one half)
+                const float flags[8] = {propNormals ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};
+                writeBatchCb(flags);
+            }
         }
         const int id = g.texture >= 0 ? g.texture : whiteTex_;
         if (id < 0 || size_t(id) >= textures_.size()) continue;
@@ -5455,7 +5475,9 @@ void SceneRenderer::drawReferenceTexInstances() {
             const size_t mi = size_t(&g - refTexInst_.data());
             if (cbInstAll_[mi / kInstPerCb]) {
                 const UINT first = UINT((mi % kInstPerCb) * 32), num = 32;
-                ctx1_->PSSetConstantBuffers1(7, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);
+                // The pixel side (layers, material constants) only where the view shades with it; the plain views
+                // take the vertex side alone (waves, displacement, the vertex-colour flag).
+                if (instPs) ctx1_->PSSetConstantBuffers1(7, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);
                 ctx1_->VSSetConstantBuffers1(8, 1, &cbInstAll_[mi / kInstPerCb], &first, &num);  // PropWave
                 ID3D11ShaderResourceView* dsp = g.disp[0] > 0.5f && g.dispTex >= 0 && size_t(g.dispTex) < textures_.size() ? textures_[size_t(g.dispTex)] : nullptr;
                 ctx_->VSSetShaderResources(43, 1, &dsp);  // the static-model displacement's height image

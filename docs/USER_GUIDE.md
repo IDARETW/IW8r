@@ -333,6 +333,8 @@ Collision follows the same rules as the game, and doors, lifts and other behavio
    (**File > Stock Map > Hide Stock Props In Selection**).
 3. The **Stock Map** panel changes the sun, sky and textures; the view updates immediately.
 4. **File > Stock Map > Rebuild Stock Zone** writes the changed map in a few seconds.
+   A stock prop turned into a model (**Edit Stock Prop As Model**) keeps its place, size and the distance up to which
+   the game draws it.
 5. **File > Stock Map > Install Edited Stock Map Into Game** installs it. The original files are kept, and
    **Restore Stock Map In Game** puts them back. Close the game before installing or restoring.
 

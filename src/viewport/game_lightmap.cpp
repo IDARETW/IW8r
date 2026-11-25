@@ -18,11 +18,7 @@ uint64_t mixKey(uint64_t h, int64_t v) {
     return h * 0x100000001b3ull;
 }
 
-bool isSkyMaterial(const std::string& m) {
-    std::string l = m;
-    std::transform(l.begin(), l.end(), l.begin(), [](unsigned char c) { return char(std::tolower(c)); });
-    return l.find("sky") != std::string::npos;
-}
+bool isSkyMaterial(const std::string& m) { return isIw8SkyMaterial(m); }  // not "..._skyblue" / "skyline" surfaces
 
 }  // namespace
 
