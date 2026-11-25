@@ -1,4 +1,5 @@
 #include "game_look.h"
+#include "game_fog.h"
 
 #include <algorithm>
 #include <cmath>
@@ -405,6 +406,33 @@ std::string hazeVisionFromOverrides(const std::string& overridesText) {
             if (name == dev || name == token) out += std::string(token) + " \"" + value + "\"\n";
     }
     return out;
+}
+
+double gameFogSkyVisibility(const std::string& overridesText, double elevationDeg, double eyeZ) {
+    const std::string vision = hazeVisionFromOverrides(overridesText);
+    if (vision.empty()) return 1.0;
+    const GameFogVision v = gameFogVisionFromText(vision);
+    const GameFogConstants k = gameFogConstants(gameFogRefdef(v), float(eyeZ));
+    const double e = elevationDeg * 3.14159265358979323846 / 180.0;
+    const float dir[3] = {float(std::cos(e)), 0.0f, float(std::sin(e))};
+    const GameFogSample s = gameFogEvaluate(k, nullptr, dir, 0.0f, true);
+    const double t = (s.transmittance[0] + s.transmittance[1] + s.transmittance[2]) / 3.0;
+    return std::clamp(t, 0.0, 1.0);
+}
+
+std::string skyHazeWarning(const std::string& overridesText, double groundZ) {
+    // The game fogs the sky in a band of zenith angles (fogSkyMinAngle .. fogSkyMaxAngle, research 111 section 8):
+    // below the band the sky shows only the haze colour. A band that reaches high up the sky turns the whole sky into
+    // flat haze in game (Cinder Rail, 2026-11-17: -1 .. 27 gave a grey sky).
+    const double eyeZ = groundZ + 64.0;
+    const double sky30 = gameFogSkyVisibility(overridesText, 30.0, eyeZ);
+    if (sky30 >= 0.2) return {};
+    const double sky60 = gameFogSkyVisibility(overridesText, 60.0, eyeZ);
+    const auto pct = [](double v) { return std::to_string(int(std::lround(v * 100))); };
+    return "the haze hides most of the sky: " + pct(sky30) + " % of the sky shows 30 degrees above the horizon and " +
+           pct(sky60) + " % at 60 degrees, so in game the sky looks like the haze colour; raise fogSkyMinAngle and "
+           "fogSkyMaxAngle (zenith degrees: clear above the first, only haze below the second; the haze presets use about "
+           "30 and 82) in iw8r_vision, or remove them to use the haze preset's";
 }
 
 GamePostFx gamePostFxFromVision(const std::string& text) {

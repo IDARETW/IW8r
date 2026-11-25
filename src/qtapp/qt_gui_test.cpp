@@ -5650,6 +5650,24 @@ int runQtGuiTest(MainWindow& w, const QString& samplePath, const QString& outDir
             }
         }
         {
+            // A haze whose sky band covers most of the sky turns the sky grey in game (Cinder Rail, 2026-11-17): Check Map
+            // warns, and the haze preset's own band does not.
+            const iw8r::Entity* ws = ctx.doc.worldspawn();
+            if (ws) {
+                const iw8r::Id wsId = ws->id;
+                const size_t p4 = ctx.doc.undoPosition();
+                ctx.doc.setKeyValue(wsId, "iw8r_haze", "dusk 1.15");
+                CheckMapDialog clear(&ctx);
+                const bool presetQuiet = clear.itemTexts().filter("Sky (warning)").isEmpty();
+                ctx.doc.setKeyValue(wsId, "iw8r_vision", "fogSkyMinAngle=-1; fogSkyMaxAngle=27; fogHalfPlaneDistance=3000");
+                CheckMapDialog grey(&ctx);
+                const QString s = grey.itemTexts().filter("Sky (warning)").join(" | ");
+                r.check(presetQuiet && s.contains("hides most of the sky"), "Check Map warns when the haze hides the sky: " + s.left(160));
+                while (ctx.doc.undoPosition() > p4) ctx.doc.undo();
+                ctx.documentEdited("undo haze");
+            }
+        }
+        {
             // 8.11: vertex paint changes the sample patch's control colours in one undo step and tints it in the camera.
             const std::string before = ctx.doc.text();
             const size_t p3 = ctx.doc.undoPosition();

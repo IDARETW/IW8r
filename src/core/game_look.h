@@ -132,6 +132,15 @@ GamePostFx gamePostFxFromVision(const std::string& visionText);
 // "name=value; ..." (worldspawn iw8r_vision, with the iw8r_haze preset under it: core atmosphere), names or tokens;
 // fields of other groups are left out. "" when it names none.
 std::string hazeVisionFromOverrides(const std::string& overridesText);
+// How much of the sky the map's fog lets through `elevationDeg` above the horizon: 0 (the sky shows only the haze
+// colour) to 1 (clear), for an eye at eyeZ. `overridesText` as for hazeVisionFromOverrides (iw8r_haze merged under
+// iw8r_vision). Uses the game's sky band (fogSkyMinAngle / fogSkyMaxAngle in zenith degrees: clear above the first,
+// fully fogged below the second; research 111 section 8) and the sky's fog path; the volumetric air is left out.
+// 1 when the text names no fog.
+double gameFogSkyVisibility(const std::string& overridesText, double elevationDeg, double eyeZ);
+// The warning the build and Check Map give when the haze hides most of the sky (less than a fifth of it shows 30
+// degrees above the horizon, for an eye 64 units above groundZ); "" when enough of the sky shows.
+std::string skyHazeWarning(const std::string& overridesText, double groundZ);
 // The vignette's constants (cb7[214..216], research 109 section 4.1) for a view whose half-FOV tangents are tanX, tanY:
 // out[0..3] = (scaleX, scaleY, intensity, 0), out[4..7] = (offsetX, offsetY, boxX, boxY),
 // out[8..11] = (1 / falloff, -falloffStart / falloff, 0, 0). All zero when the intensity is 0.

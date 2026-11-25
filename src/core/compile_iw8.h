@@ -207,7 +207,12 @@ bool compileIw8Extraction(const MapFile& map, const std::string& outDir, const C
 // Map id rule: "mp_" followed by 1..12 characters of [a-z0-9_] (total length <= 15).
 bool isValidIw8MapId(const std::string& id);
 // Tool materials (task rule): case-insensitive names containing caulk, clip, nodraw, trigger, hint,
-// skip, portal, origin or sky. Such faces are not rendered.
+// skip, portal, origin or sky. Such faces are not rendered. A stock name with a family prefix ("tm2o/nodraw") is a tool
+// material only when its own name is one of those words or starts with one and "_" ("wc/clip_metal"): stock surfaces
+// such as "tmo/fence_modular_metal_01_skyblue" or "mo/un_office_paper_stack_01_clipboard" are real surfaces.
 bool isIw8ToolMaterial(const std::string& material);
+// A stock model surface the game never draws: a tool material with a family prefix ("tm2o/nodraw" on Shipment's small
+// dumpsters, "tmo/nodraw", "mo/nodraw"). The editor leaves these surfaces out of the stock props.
+bool isStockModelToolSurface(const std::string& material);
 
 }  // namespace iw8r

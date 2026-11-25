@@ -26,6 +26,7 @@
 #include "smodel_flags.h"
 #include "sun_flare.h"
 #include "atmosphere.h"
+#include "game_look.h"
 #include "map_script.h"
 #include "iw8_contents.h"
 #include "sky_sun.h"
@@ -45,6 +46,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
@@ -1177,12 +1179,24 @@ bool isValidIw8MapId(const std::string& id) {
 bool isIw8ToolMaterial(const std::string& material) {
     static const char* const kTool[] = {"caulk", "clip", "nodraw", "trigger", "hint", "skip", "portal", "origin", "sky"};
     const std::string m = lower(material);
-    for (const char* t : kTool)
-        if (m.find(t) != std::string::npos) return true;
+    const size_t slash = m.find_last_of('/');
+    const std::string base = slash == std::string::npos ? m : m.substr(slash + 1);
+    for (const char* t : kTool) {
+        if (slash == std::string::npos) {
+            if (m.find(t) != std::string::npos) return true;
+        } else if (base.rfind(t, 0) == 0 && (base.size() == std::strlen(t) || base[std::strlen(t)] == '_')) {
+            // A stock name: its own name is the tool word, or starts with it ("wc/clip_metal"); a word inside a
+            // surface's name ("..._skyblue", "..._clipboard") is not a tool material.
+            return true;
+        }
+    }
     // The ladder tool texture is a climbable volume, never drawn (stock maps put it on an invisible brush); matched
     // exactly so stock surfaces such as "metal_ladder_01" still draw.
-    const size_t slash = m.find_last_of('/');
-    return (slash == std::string::npos ? m : m.substr(slash + 1)) == "ladder";
+    return base == "ladder";
+}
+
+bool isStockModelToolSurface(const std::string& material) {
+    return material.find('/') != std::string::npos && isIw8ToolMaterial(material);
 }
 
 bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, const CompileOptions& opt, CompileReport& rep,
@@ -3637,6 +3651,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         // (the lowest geometry without spawns). The game then fogs every opaque pixel, so iw8r_fog (baked into the
         // surface shader) is left out.
         std::string hazeVision;
+        double hazeGroundZ = 0;
         if (atmo.haze) {
             std::vector<double> heights;
             for (const Entity* pe : points)
@@ -3648,7 +3663,8 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                 groundZ = heights[heights.size() / 2];
             }
             const double sunLuma = 0.2126 * sunColor[0] + 0.7152 * sunColor[1] + 0.0722 * sunColor[2];
-            hazeVision = hazeVisionText(*atmo.haze, sunLuma, sunDir, std::round(groundZ));
+            hazeGroundZ = std::round(groundZ);
+            hazeVision = hazeVisionText(*atmo.haze, sunLuma, sunDir, hazeGroundZ);
             warn.push_back("haze '" + formatHaze(*atmo.haze) + "': the game's own fog, sky blend and volumetric air (ground layers at height " +
                            formatNumber(std::round(groundZ)) + "; any field can be changed in iw8r_vision; research 126; not seen in game)");
             if (atmo.fog) {
@@ -4216,6 +4232,7 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         if (const std::string gsc = mapScriptGsc(atmo.fog, fx, sounds, extras); !gsc.empty()) customFiles.push_back({mapDir / (id + ".gsc"), gsc});
         const std::string* userVision = worldspawn->value(kVisionKey);
         if (const std::string visionText = mergeVisionText(hazeVision, userVision ? *userVision : std::string()); !visionText.empty()) {
+            if (const std::string w = skyHazeWarning(visionText, hazeGroundZ); !w.empty()) warn.push_back(w);  // a grey sky in game
             std::string verr;
             const std::string json = visionOverridesJson(visionText, &verr);
             if (json.empty())

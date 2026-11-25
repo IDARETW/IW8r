@@ -8818,6 +8818,9 @@ MainWindow::RefPropPrepared MainWindow::buildRefPropMesh(const RefPropJob& job) 
         std::vector<app::GpuVertex>& plain = plainOut ? *plainOut : ignored;
         const auto zup = [](const Vec3& p) { return Vec3{p.x, -p.z, p.y}; };  // glTF Y-up -> Z-up
         for (const auto& ms : src.meshes) {
+            // A surface the game never draws ("tm2o/nodraw" on Shipment's small dumpsters): drawn as a flat tool colour
+            // it showed as white patches fighting with the body.
+            if (isStockModelToolSurface(ms.material)) continue;
             const bool textured = !ms.material.empty() && ms.uv.size() == ms.pos.size();
             if (!textured) {
                 for (size_t i = 0; i + 2 < ms.idx.size(); i += 3) {
@@ -9156,6 +9159,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                 for (size_t k = 0; k < built->tex.size(); ++k) {
                     const auto& [ownMaterial, tris] = built->tex[k];
                     const std::string material = skinned(ownMaterial, built->texSurf, k);
+                    if (isStockModelToolSurface(material)) continue;  // a skin that hides the surface
                     app::InstancedTexMesh tm;
                     tm.mesh = tris;
                     tm.lodOut = float(built->lodOut);
@@ -9171,6 +9175,7 @@ void MainWindow::rebuildReferencePropsUnguarded() {
                     for (size_t k = 0; k < lod.tex.size(); ++k) {
                         const auto& [ownMaterial, tris] = lod.tex[k];
                         const std::string material = skinned(ownMaterial, lod.texSurf, k);
+                        if (isStockModelToolSurface(material)) continue;
                         app::InstancedTexMesh tm;
                         tm.mesh = tris;
                         tm.lodOut = float(built->lodOut);

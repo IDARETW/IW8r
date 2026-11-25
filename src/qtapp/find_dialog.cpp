@@ -1,4 +1,6 @@
 #include "find_dialog.h"
+#include <algorithm>
+#include <cmath>
 #include <map>
 #include <QFile>
 
@@ -26,6 +28,8 @@
 
 #include "entity_defs.h"
 #include "gameplay_checks.h"
+#include "atmosphere.h"
+#include "game_look.h"
 #include "map_gametypes.h"
 #include "leak_check.h"
 #include "map_queries.h"
@@ -474,6 +478,28 @@ QStringList checkMapLines(EditorContext* ctx_, std::vector<DoctorFix>& fixes_, Q
         for (const std::string& w : killstreakNotes(m)) {
             out << ("Killstreaks (note): " + qs(w));
             ++extra;
+        }
+        for (const auto& e : m.entities) {
+            if (!e.isWorldspawn()) continue;
+            // The build's sky check (core skyHazeWarning): the haze under iw8r_vision, its ground at the spawns' median
+            // height, as the build places it.
+            std::vector<double> heights;
+            for (const auto& s : m.entities)
+                if (s.classname().find("spawn") != std::string::npos)
+                    if (auto o = s.origin()) heights.push_back(o->z);
+            double groundZ = 0;
+            if (!heights.empty()) {
+                std::nth_element(heights.begin(), heights.begin() + long(heights.size() / 2), heights.end());
+                groundZ = std::round(heights[heights.size() / 2]);
+            }
+            const Atmosphere atmo = readAtmosphere(e);
+            const std::string haze = atmo.haze ? hazeVisionText(*atmo.haze, 1.0, Vec3{0, 0, 1}, groundZ) : std::string();
+            const std::string* vision = e.value(kVisionKey);
+            if (const std::string w = skyHazeWarning(mergeVisionText(haze, vision ? *vision : std::string()), groundZ); !w.empty()) {
+                out << ("Sky (warning): " + qs(w));
+                ++extra;
+            }
+            break;
         }
         for (const std::string& w : checkCallouts(m)) {
             out << ("Callouts (warning): " + qs(w));
