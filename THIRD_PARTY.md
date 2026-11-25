@@ -20,7 +20,7 @@ says where it came from (project, commit) and what was left out.
 | [minizip](https://github.com/madler/zlib/tree/master/contrib/minizip) (Gilles Vollant, Mathias Svensson) | `third_party/minizip` | iw8r-zt | zlib-style (in the headers), Info-ZIP for `crypt.h` |
 | [Zstandard](https://github.com/facebook/zstd) (Meta Platforms) | `third_party/zstd` | iw8r-zt, iw8r-acts | BSD-3-Clause (dual with GPL-2) |
 | [LZ4](https://github.com/lz4/lz4) (Yann Collet) | `third_party/lz4` | iw8r-zt, iw8r-acts | BSD-2-Clause |
-| [JSON for Modern C++](https://github.com/nlohmann/json) (Niels Lohmann) | `third_party/nlohmann_json` | iw8r-zt, iw8r-acts | MIT |
+| [JSON for Modern C++](https://github.com/nlohmann/json) (Niels Lohmann) | `third_party/nlohmann_json` | iw8r-zt, iw8r-acts, editor (technique set documents) | MIT |
 | [GSL](https://github.com/microsoft/GSL) (Microsoft) | `third_party/gsl` | iw8r-zt | MIT |
 | [Glaze](https://github.com/stephenberry/glaze) (Stephen Berry) | `third_party/glaze` | iw8r-zt | MIT |
 | [LibTomCrypt](https://github.com/libtom/libtomcrypt), [LibTomMath](https://github.com/libtom/libtommath) | `third_party/libtomcrypt`, `third_party/libtommath` | iw8r-zt, iw8r-acts | The LibTom licence (public domain) |
