@@ -11,6 +11,7 @@
 #include <QListWidget>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
@@ -81,15 +82,16 @@ AssetPreviewWindow::AssetPreviewWindow(ID3D11Device* dev, ID3D11DeviceContext* d
     ctx_.scene.prefabSource = sceneHooks.prefabSource;
     ctx_.scene.scriptableModelFor = sceneHooks.scriptableModelFor;
     ctx_.scene.modelScale = sceneHooks.modelScale;
-    const auto mainModels = sceneHooks.modelSource;
-    ctx_.scene.modelSource = [this, mainModels](const Entity& e) -> std::shared_ptr<const ImportedModel> {
+    modelFallback_ = sceneHooks.modelSource;
+    ctx_.scene.modelSource = [this](const Entity& e) -> std::shared_ptr<const ImportedModel> {
         const std::string* m = e.value("model");
         if (!m || m->empty()) return nullptr;
+        if (previewModel_ && qs(*m) == name_) return previewModel_;
         const int lod = lod_ ? std::max(0, lod_->currentIndex()) : 0;
         if (!prefab_ && sources_.model && qs(*m) == name_) {
             if (auto im = sources_.model(*m, lod)) return im;
         }
-        return mainModels ? mainModels(e) : nullptr;
+        return modelFallback_ ? modelFallback_(e) : nullptr;
     };
     ctx_.texturedView = true;
     ctx_.showSpawns = false;
@@ -132,6 +134,7 @@ AssetPreviewWindow::AssetPreviewWindow(ID3D11Device* dev, ID3D11DeviceContext* d
     swatch_->setAlignment(Qt::AlignCenter);
     swatch_->setStyleSheet("background: #202226; border: 1px solid #3a3d44; color: gray");
     connect(materials_, &QListWidget::currentTextChanged, this, [this](const QString& m) {
+        if (onMaterialSelected) onMaterialSelected(m);
         const QImage img = sources_.materialImage && !m.isEmpty() ? sources_.materialImage(m.toStdString()) : QImage();
         if (img.isNull()) swatch_->setText("no image (yet)");
         else swatch_->setPixmap(QPixmap::fromImage(img.scaled(158, 158, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
@@ -150,15 +153,24 @@ AssetPreviewWindow::AssetPreviewWindow(ID3D11Device* dev, ID3D11DeviceContext* d
     side->addWidget(info_);
     side->addWidget(new QLabel("Materials", this));
     side->addWidget(materials_, 1);
+    auto* techsetButton = new QPushButton("Open in Techset Editor", this);
+    side->addWidget(techsetButton);
+    connect(techsetButton, &QPushButton::clicked, this, [this] {
+        if (onEditTechset && materials_->currentItem()) onEditTechset(materials_->currentItem()->text());
+    });
     side->addWidget(swatch_, 0, Qt::AlignHCenter);
     auto* help = new QLabel("Left drag: orbit · Middle or Shift+drag: pan · Wheel: zoom · F: frame · R: reset", this);
     help->setWordWrap(true);
     help->setStyleSheet("color: gray");
     side->addWidget(help);
     auto* sideWidget = new QWidget(this);
+    detailsPanel_ = sideWidget;
     sideWidget->setLayout(side);
     sideWidget->setFixedWidth(260);
-    auto* row = new QHBoxLayout(this);
+    auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(0, 0, 0, 0);
+    auto* row = new QHBoxLayout;
+    root->addLayout(row, 1);
     row->setContentsMargins(0, 0, 0, 0);
     row->addWidget(view_, 1);
     row->addWidget(sideWidget);
@@ -167,7 +179,52 @@ AssetPreviewWindow::AssetPreviewWindow(ID3D11Device* dev, ID3D11DeviceContext* d
 
 AssetPreviewWindow::~AssetPreviewWindow() = default;
 
+void AssetPreviewWindow::useGameLighting(){gameLightingPreview_=true;mode_->setCurrentIndex(1);applyMode(1);}
+
+void AssetPreviewWindow::setWorkspaceMode() {
+    if (compactMaterials_) return;
+    detailsPanel_->hide();
+    ctx_.scene.showEditorGuides = false;
+    setMinimumWidth(240);
+    auto* bar = new QHBoxLayout;
+    bar->setContentsMargins(0, 0, 0, 0);
+    auto* lighting = new QLabel("Game Lighting", this);
+    lighting->setStyleSheet("color: #8cc8ad;");
+    bar->addWidget(lighting);
+    bar->addStretch();
+    compactMaterials_ = new QComboBox(this);
+    compactMaterials_->setObjectName("techsetPreviewMaterials");
+    compactMaterials_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    compactMaterials_->setMinimumContentsLength(10);
+    compactMaterials_->addItem("All material slots", QString());
+    lod_->setParent(this);
+    lod_->show();
+    lod_->setMaximumWidth(135);
+    bar->addWidget(lod_);
+    auto* frame = new QPushButton("Frame", this);
+    frame->setToolTip("Frame the preview target (F)");
+    connect(frame, &QPushButton::clicked, this, &AssetPreviewWindow::frame);
+    bar->addWidget(frame);
+    connect(compactMaterials_, &QComboBox::currentIndexChanged, this, [this](int i) {
+        if (onMaterialSelected) onMaterialSelected(compactMaterials_->itemData(i).toString());
+    });
+    static_cast<QVBoxLayout*>(layout())->addLayout(bar);
+    static_cast<QVBoxLayout*>(layout())->addWidget(compactMaterials_);
+}
+
+void AssetPreviewWindow::refreshHooks(CameraView* camera,const app::SceneCache& scene) {
+    if(camera)view_->copyHooksFrom(*camera);
+    ctx_.scene.tagsFor=scene.tagsFor;ctx_.scene.foliageFor=scene.foliageFor;
+    ctx_.scene.drawClassFor=scene.drawClassFor;ctx_.scene.blendFor=scene.blendFor;ctx_.scene.opaqueFor=scene.opaqueFor;
+    ctx_.scene.prefabSource=scene.prefabSource;ctx_.scene.scriptableModelFor=scene.scriptableModelFor;
+    ctx_.scene.modelScale=scene.modelScale;modelFallback_=scene.modelSource;
+    ctx_.scene.invalidate();view_->materialImagesChanged();
+}
+void AssetPreviewWindow::refreshAssetData(){const bool needsFrame=!assetBox_.valid();rebuildDocument();if(needsFrame)frame();}
+
 void AssetPreviewWindow::showModel(const QString& name) {
+    previewModel_.reset();
+    if(gameLightingPreview_)mode_->setCurrentIndex(1);
     prefab_ = false;
     name_ = name;
     setWindowTitle("Asset Preview - " + name);
@@ -183,6 +240,8 @@ void AssetPreviewWindow::showModel(const QString& name) {
 }
 
 bool AssetPreviewWindow::showPrefab(const QString& path, QString* err) {
+    previewModel_.reset();
+    if(gameLightingPreview_)mode_->setCurrentIndex(1);
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) {
         if (err) *err = "cannot read " + path;
@@ -208,7 +267,58 @@ bool AssetPreviewWindow::showPrefab(const QString& path, QString* err) {
     return true;
 }
 
+void AssetPreviewWindow::showShape(int shape) {
+    auto model = std::make_shared<ImportedModel>();
+    ImportedMesh mesh; mesh.material = "iw8r/techset_preview";
+    const double radius = 64.0 / std::max(ctx_.scene.modelScale, 1e-6);
+    const auto vertex = [&](Vec3 p, Vec3 n, double u, double v) {
+        mesh.pos.push_back(p * radius); mesh.normal.push_back(n); mesh.uv.push_back({u,v});
+    };
+    if (shape == 0) {
+        constexpr int rows=24, cols=48;
+        for(int y=0;y<=rows;++y) for(int x=0;x<=cols;++x) {
+            const double u=double(x)/cols,v=double(y)/rows,phi=u*6.28318530718,theta=v*3.14159265359;
+            Vec3 n{std::sin(theta)*std::cos(phi),std::cos(theta),std::sin(theta)*std::sin(phi)}; vertex(n,n,u,1-v);
+        }
+        for(int y=0;y<rows;++y) for(int x=0;x<cols;++x) {
+            const uint32_t a=uint32_t(y*(cols+1)+x),b=a+cols+1;
+            mesh.idx.insert(mesh.idx.end(),{a,b,a+1,a+1,b,b+1});
+        }
+    } else {
+        const Vec3 normals[6]={{0,0,1},{0,0,-1},{1,0,0},{-1,0,0},{0,1,0},{0,-1,0}};
+        for(int face=0;face<(shape==1?1:6);++face) {
+            const Vec3 n=normals[face],u=std::abs(n.y)<0.9?normalize(cross(Vec3{0,1,0},n)):Vec3{1,0,0},v=cross(n,u);
+            const auto first=uint32_t(mesh.pos.size());const Vec3 center=shape==1?Vec3{}:n;
+            vertex(center-u-v,n,0,0);vertex(center+u-v,n,1,0);vertex(center+u+v,n,1,1);vertex(center-u+v,n,0,1);
+            mesh.idx.insert(mesh.idx.end(),{first,first+1,first+2,first,first+2,first+3});
+        }
+    }
+    for(const auto& p:mesh.pos) model->bounds.add(p);
+    model->meshes.push_back(std::move(mesh));previewModel_=model;prefab_=false;name_="iw8r_preview_shape";
+    {QSignalBlocker b(floor_);floor_->setChecked(false);}
+    {QSignalBlocker b(lod_);lod_->clear();lod_->addItem("Preview shape");lod_->setEnabled(false);}
+    hull_->setChecked(false);rebuildDocument();mode_->setCurrentIndex(1);frame();
+}
+void AssetPreviewWindow::showEffect(const QString& name) {
+    previewModel_.reset();prefab_=true;name_=name;prefabPath_.clear();
+    prefabText_="iwmap 4\n{\n\"classname\" \"worldspawn\"\n}\n{\n\"classname\" \"fx_origin\"\n\"fx\" \""+name.toStdString()+"\"\n\"origin\" \"0 0 0\"\n}\n";
+    rebuildDocument();assetBox_=AABB{};assetBox_.add(Vec3{-64,-64,-64});assetBox_.add(Vec3{64,64,128});mode_->setCurrentIndex(1);frame();
+}
+
 AABB AssetPreviewWindow::assetBounds() const { return assetBox_; }
+
+void AssetPreviewWindow::showGeometry(std::shared_ptr<const ImportedModel> model) {
+    previewModel_ = std::move(model);
+    prefab_ = false;
+    name_ = "iw8r_preview_selection";
+    setWindowTitle("Asset Preview - selection");
+    { QSignalBlocker blocked(floor_); floor_->setChecked(false); }
+    { QSignalBlocker blocked(lod_); lod_->clear(); lod_->addItem("Selected geometry"); lod_->setEnabled(false); }
+    hull_->setChecked(false);
+    rebuildDocument();
+    useGameLighting();
+    frame();
+}
 
 void AssetPreviewWindow::rebuildDocument() {
     std::string text;
@@ -237,7 +347,7 @@ void AssetPreviewWindow::rebuildDocument() {
     } else {
         const std::string model = name_.toStdString();
         const int lod = std::max(0, lod_->currentIndex());
-        std::shared_ptr<const ImportedModel> m = sources_.model ? sources_.model(model, lod) : nullptr;
+        std::shared_ptr<const ImportedModel> m = previewModel_ ? previewModel_ : sources_.model ? sources_.model(model, lod) : nullptr;
         const double scale = ctx_.scene.modelScale > 0 ? ctx_.scene.modelScale : 1.0;
         if (m) assetBox_ = mapBounds(*m, scale);  // the framing (the model alone, without the floor)
         text = "iwmap 4\n{\n\"classname\" \"worldspawn\"\n";
@@ -286,6 +396,15 @@ void AssetPreviewWindow::rebuildDocument() {
     }
     materials_->clear();
     for (const std::string& m : materials) materials_->addItem(qs(m));
+    if (compactMaterials_) {
+        const auto previous = compactMaterials_->currentData().toString();
+        QSignalBlocker blocked(compactMaterials_);
+        compactMaterials_->clear();
+        compactMaterials_->addItem("All material slots", QString());
+        for (const auto& material : materials) compactMaterials_->addItem(qs(material), qs(material));
+        const int at = compactMaterials_->findData(previous);
+        compactMaterials_->setCurrentIndex(at >= 0 ? at : 0);
+    }
     view_->materialImagesChanged();
     ctx_.cameraMoved();
     updateInfo();

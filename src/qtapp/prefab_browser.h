@@ -113,6 +113,7 @@ public:
     void selectRow(int row);
 
 signals:
+    void techsetRequested(const QString& path);
     void previewRequested(const QString& mapFile);  // context menu > Preview in 3D
     void openRequested(const QString& mapFile);     // the strip's Open: the prefab's map opened to edit it
 

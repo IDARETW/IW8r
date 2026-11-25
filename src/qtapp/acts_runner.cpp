@@ -310,6 +310,7 @@ void ActsRunner::send(Worker* w, Job job) {
     if (!job.request.types.isEmpty()) o.insert("types", job.request.types);
     if (!job.request.names.isEmpty()) o.insert("names", QJsonArray::fromStringList(job.request.names));
     if (job.request.geometry) o.insert("geometry", true);
+    if (job.request.scriptStrings) o.insert("script_strings", true);
     w->busy = true;
     w->log.clear();
     w->timer.restart();

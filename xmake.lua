@@ -24,6 +24,7 @@ target("iw8r_core")
     set_kind("static")
     add_files("src/core/*.cpp")
     add_includedirs("src/core", {public = true})
+    add_includedirs("third_party/nlohmann_json/single_include", {public = true})
     -- stb_image (third_party/stb, public domain / MIT): included only by src/core/stb_image_impl.cpp.
     add_includedirs("third_party/stb")
 
@@ -74,6 +75,11 @@ target("iw8r_viewport")
     add_files("src/viewport/*.cpp")
     add_includedirs("src/viewport", {public = true})
     add_syslinks("d3d11", "dxgi", "d3dcompiler", {public = true})
+
+target("iw8r_techset_gpu_tests")
+    set_kind("binary")
+    add_deps("iw8r_viewport")
+    add_files("tests/techset_gpu/*.cpp")
 
 -- Qt Advanced Docking System 4.4.1 (LGPL-2.1), built as a DLL from third_party/qtads so the editor
 -- links it dynamically (same LGPL posture as Qt itself).

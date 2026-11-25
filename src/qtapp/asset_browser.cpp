@@ -553,6 +553,7 @@ public:
     bool useKit = false;
     QString group;           // the chip ("" = all)
     QString folder;          // effects: names under this folder ("" = all)
+    int modelSource = 0; // 0 all, 1 stock, 2 project
     bool loopsOnly = false;  // sounds: the Loops chip
     void refresh() { invalidateFilter(); }
 
@@ -563,6 +564,9 @@ protected:
         if (useList && !list.count(name)) return false;
         if (useKit && !kit.count(name)) return false;
         const QModelIndex src = sourceModel()->index(row, 0, parent);
+        const bool project = src.data(Qt::UserRole + 1).toBool();
+        if (modelSource == 1 && project) return false;
+        if (modelSource == 2 && !project) return false;
         if (!group.isEmpty() && src.data(kGroupRole).toString() != group) return false;
         if (!folder.isEmpty() && !name.startsWith(folder + "/")) return false;
         if (loopsOnly && !src.data(Qt::UserRole + 2).toBool()) return false;
@@ -1002,14 +1006,16 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
             const QString name = idx.data(Qt::DisplayRole).toString();
             QMenu menu(this);
             if (kind_ != Kind::Images)
-                menu.addAction(kind_ == Kind::Materials ? "Apply to Selection" : "Place", this, [choose, idx] { choose(idx); });
-            if (kind_ == Kind::Models) menu.addAction("Preview in 3D...", this, [this, name] { emit previewRequested(name); });
+                menu.addAction(pickerMode_ ? "Use model" : kind_ == Kind::Materials ? "Apply to Selection" : "Place", this, [choose, idx] { choose(idx); });
+            if (kind_ == Kind::Models && !pickerMode_) menu.addAction("Preview in 3D...", this, [this, name] { emit previewRequested(name); });
+            if (!pickerMode_ && (kind_ == Kind::Materials || kind_ == Kind::Models || kind_ == Kind::Effects || kind_ == Kind::Images))
+                menu.addAction("Open in Techset Editor...", this, [this, name] { emit techsetRequested(name); });
             if (kind_ == Kind::Sounds)
                 menu.addAction(playingName_ == name && soundPlay_ && soundPlay_->property("playing").toBool() ? "Stop" : "Play", this,
                                [this, idx] { playRow(idx); });
             if (kind_ == Kind::Effects && folders_)
                 menu.addAction("Show Its Folder", this, [this, name] { setFolder(name.section('/', 0, -2)); });
-            if (kind_ == Kind::Materials || kind_ == Kind::Models || kind_ == Kind::Effects)
+            if (!pickerMode_ && (kind_ == Kind::Materials || kind_ == Kind::Models || kind_ == Kind::Effects))
                 menu.addAction(kind_ == Kind::Materials ? "Material Info..." : kind_ == Kind::Models ? "Model Info..." : "Effect Info...", this,
                                [this, name] { emit infoRequested(name); });
             const bool fav = isFavourite(name);
@@ -1024,7 +1030,7 @@ AssetBrowser::AssetBrowser(EditorContext* ctx, Kind kind, QWidget* parent) : QWi
                 const int uses = usageCount(name);
                 QAction* u = menu.addAction(QString("Used %1 time(s) in this map").arg(uses));
                 u->setEnabled(false);
-                if (uses > 0 && (kind_ == Kind::Materials || kind_ == Kind::Models))
+                if (!pickerMode_ && uses > 0 && (kind_ == Kind::Materials || kind_ == Kind::Models))
                     menu.addAction("Replace Everywhere With...", this, [this, name] { emit replaceRequested(name); });
             }
             menu.addAction("Copy Name", this, [name] { QGuiApplication::clipboard()->setText(name); });
@@ -1329,6 +1335,25 @@ void AssetBrowser::setCustomMaterials(const QList<QPair<QString, QString>>& mate
 }
 
 QIcon AssetBrowser::placeholderIcon(const QString& name) const {
+    if (pickerMode_) {
+        QPixmap image(iconSide(), iconSide());
+        image.fill(QColor("#252a31"));
+        QPainter painter(&image);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(QPen(QColor("#647383"), 2));
+        const double c = iconSide() / 2.0, y = c - 10, r = 18;
+        QPolygonF top{QPointF(c, y-r), QPointF(c+r,y-r/2), QPointF(c,y), QPointF(c-r,y-r/2)};
+        painter.drawPolygon(top);
+        painter.drawLine(QPointF(c-r,y-r/2),QPointF(c-r,y+r/2));
+        painter.drawLine(QPointF(c+r,y-r/2),QPointF(c+r,y+r/2));
+        painter.drawLine(QPointF(c,y),QPointF(c,y+r));
+        painter.drawLine(QPointF(c-r,y+r/2),QPointF(c,y+r));
+        painter.drawLine(QPointF(c+r,y+r/2),QPointF(c,y+r));
+        painter.setPen(QColor("#9ca8b5"));
+        painter.drawText(QRect(4,int(y+r+14),iconSide()-8,32),Qt::AlignHCenter,
+                        statusSource_ && !statusSource_(name).isEmpty() ? "Unavailable" : "Loading preview");
+        return QIcon(image);
+    }
     // The material's hashed viewport colour, so the swatch matches the 3D view.
     const uint32_t c = app::colorForName(name.toStdString());
     QPixmap px(iconSide(), iconSide());
@@ -1377,6 +1402,10 @@ QIcon AssetBrowser::thumbnail(const QString& name) {
 }
 
 void AssetBrowser::refreshThumbnails() {
+    // Availability can change while the thumbnail is already cached. Keep the status independent of image loading.
+    const auto [first, last] = visibleRange();
+    for (int row = first; row <= last; ++row)
+        if (auto* item = model_->itemFromIndex(proxy_->mapToSource(proxy_->index(row, 0)))) markStatus(item);
     // A cache answered: the rows waiting for it are asked again (the slow pass), and rows the packs had nothing for may
     // have a stored picture now (the decoder).
     for (const QString& n : pendingThumbs_) icons_.remove(n);
@@ -1481,6 +1510,7 @@ void AssetBrowser::setTileSize(TileSize t) {
 }
 
 void AssetBrowser::setThumbnailPeek(ThumbPeek fn) {
+    thumbPeek_ = fn;
     // IW8R_THUMB_DECODER=0: every picture loads on the GUI thread as before (thumb_bench.h compares the two).
     if (qEnvironmentVariable("IW8R_THUMB_DECODER") == "0") return;
     QPointer<AssetBrowser> self(this);
@@ -1619,12 +1649,28 @@ void AssetBrowser::setRowIcon(QStandardItem* item, const QString& name, const QI
 }
 
 void AssetBrowser::markStatus(QStandardItem* item) {
-    if (!statusSource_ || unavailable_.contains(item->text())) return;
-    const QString why = statusSource_(item->text());
+    if (!item) return;
+    const QString why = statusSource_ ? statusSource_(item->text()) : QString();
+    const QString marker = "\nNOT AVAILABLE in a build: ";
+    if (unavailable_.contains(item->text())) {
+        const int at = item->toolTip().lastIndexOf(marker);
+        if (at >= 0) item->setToolTip(item->toolTip().left(at));
+        if (why.isEmpty()) {
+            unavailable_.remove(item->text());
+            item->setData(QVariant(), Qt::ForegroundRole);
+            return;
+        }
+    }
     if (why.isEmpty()) return;
     unavailable_.insert(item->text());
     item->setForeground(QColor(130, 130, 130));
-    item->setToolTip(item->toolTip() + "\nNOT AVAILABLE in a build: " + why.left(300));
+    item->setToolTip(item->toolTip() + marker + why.left(300));
+}
+
+void AssetBrowser::setStatusSource(StatusSource fn) {
+    statusSource_ = std::move(fn);
+    for (auto* item : items_) markStatus(item);
+    refreshThumbnails();
 }
 
 void AssetBrowser::evictIcons(int keepFrom, int keepTo) {
@@ -1939,7 +1985,7 @@ void AssetBrowser::setPreview(const QImage& image, const QString& caption) {
     preview_->setPixmap(pm);
     // Models: shown while a model is selected. A preview arriving later (its picture or export finished) for a model
     // that is no longer selected updates the box but does not bring it back.
-    if (previewBox_) previewBox_->setVisible(view_->currentIndex().isValid());
+    if (previewBox_) previewBox_->setVisible(!pickerMode_ && view_->currentIndex().isValid());
     if (kind_ == Kind::Images || kind_ == Kind::Models) {
         // The name (the first line) is elided in the middle to the column width; the full caption is the tooltip. The
         // text itself stays whole, so previewCaption() still returns it.
@@ -2019,6 +2065,7 @@ void AssetBrowser::reloadPack() {
 
 void AssetBrowser::updateStrip() {
     if (!strip_) return;
+    if (pickerMode_) { strip_->hide(); return; }
     const QModelIndex idx = view_->currentIndex();
     if (!idx.isValid()) {
         strip_->setVisible(false);
@@ -2175,5 +2222,50 @@ QString AssetBrowser::countText() const { return header_ ? header_->count() : QS
 QString AssetBrowser::stripTitle() const { return strip_ ? strip_->titleText() : QString(); }
 QString AssetBrowser::stripFacts() const { return strip_ ? strip_->factsText() : QString(); }
 bool AssetBrowser::stripShown() const { return strip_ && strip_->isVisible(); }
+
+QString AssetBrowser::selectedName() const {
+    return view_->currentIndex().data(Qt::DisplayRole).toString();
+}
+
+AssetBrowser* AssetBrowser::createModelPicker(QWidget* parent, const QStringList& projectModels, ThumbSource projectThumbnails) {
+    auto* picker = new AssetBrowser(ctx_, Kind::Models, parent);
+    picker->pickerMode_ = true;
+    picker->setObjectName("techsetModelBrowser");
+    picker->view_->setObjectName("techsetModelList");
+    picker->view_->setDragEnabled(false);
+    const QSet<QString> project(projectModels.begin(), projectModels.end());
+    picker->setThumbnailSource([stock = thumbSource_, project, projectThumbnails](const QString& name, bool* pending) {
+        if (project.contains(name) && projectThumbnails) return projectThumbnails(name, pending);
+        return stock ? stock(name, pending) : QImage();
+    });
+    QList<QPair<QString, QString>> ownModels;
+    for (const auto& name : projectModels) ownModels.push_back({name, {}});
+    picker->setCustomMaterials(ownModels);
+    auto* source = new QComboBox(picker);
+    source->setObjectName("modelSourceFilter");
+    source->addItems({"All sources", "Stock models", "Project models"});
+    picker->chips_->addWidget(source);
+    connect(source, &QComboBox::currentIndexChanged, picker, [picker](int i) {
+        auto* filter = static_cast<NameFilter*>(picker->proxy_);
+        filter->modelSource = i; filter->refresh(); picker->updateInfo();
+    });
+    picker->setThumbnailPeek(thumbPeek_);
+    picker->setStatusSource([project, status = statusSource_](const QString& name) {
+        return project.contains(name) || !status ? QString() : status(name);
+    });
+    picker->tileSize_ = TileSize::Large;
+    { QSignalBlocker block(picker->tileSizeBox_); picker->tileSizeBox_->setCurrentIndex(int(TileSize::Large)); }
+    picker->applyTileSize();
+    picker->previewBox_->hide();
+    picker->search_->setMinimumHeight(32);
+    picker->search_->setFocus(Qt::OtherFocusReason);
+    auto* refresh = new QTimer(picker);
+    refresh->setInterval(500);
+    connect(refresh, &QTimer::timeout, picker, [picker] {
+        if (picker->isVisible()) picker->refreshThumbnails();
+    });
+    refresh->start();
+    return picker;
+}
 
 }  // namespace iw8r::qt
