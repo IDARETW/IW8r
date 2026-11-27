@@ -23,10 +23,13 @@ struct CustomMaterial {
     std::string colorImage;           // absolute path of the colour image (required)
     std::string normalImage;          // absolute path, empty when none
     std::string specImage;            // absolute path, empty when none (RGB reflectance, alpha gloss)
+    std::string detailImage;          // absolute path of optional detail normal/albedo map
+    std::string maskImage;            // absolute path of optional mask map (unlitMask / scroll mask)
     int surfaceType = 0;              // IW3 surface type 1..28 (iw8_contents.h), 0 for default
     bool alphaTest = false;           // colour alpha is a cut-out mask
     bool twoSided = false;            // no back-face culling
     bool blend = false;               // alpha-blended (decals, glass): the colour alpha is coverage (techset tag _b0)
+    bool water = false;               // animated water surface (dual-scroll ripples + reflective shading)
     double width = 128, height = 128; // default texture size in world units for the editor
     std::string defFile;              // absolute path of the definition file
     std::string buildName;            // material name written into the build ("" = name); stock textures use iw8r_stock/...
@@ -38,13 +41,23 @@ struct CustomMaterial {
     int blendMode = 0;
     bool unlit = false;
     double emission = 0;
+    double replayEmission[3] = {0, 0, 0};  // HDR lit emissive colour (emits converter "replayEmission")
     double tint[3] = {1, 1, 1};
+    double detailScale[2] = {1, 1};        // detailMap UV tiling (converter "detailScale")
+    double uvAnim[3] = {0, 0, 0};          // UV scroll/anim parms [uSpeed, vSpeed, rotOrScale] (converter "uvAnimParms")
+    double maskUvAnim[3] = {0, 0, 0};      // mask UV scroll/anim parms (converter "maskUvAnimParms")
+    double transmission[3] = {0, 0, 0};    // subsurface transmission RGB (converter "transmission")
     int sortKey = 0;
     int polygonOffset = 0;
     // "shader": a custom surface shader file (core custom_shader, *.iw8shader.hlsl, relative to the definition):
     // the Game Lighting viewport and the build light the material with it. Null = the game's own lighting.
     std::shared_ptr<const CustomShader> shader;
     bool hasTint() const { return tint[0] != 1 || tint[1] != 1 || tint[2] != 1; }
+    bool hasDetailScale() const { return detailScale[0] != 1 || detailScale[1] != 1; }
+    bool hasUvAnim() const { return uvAnim[0] != 0 || uvAnim[1] != 0 || uvAnim[2] != 0; }
+    bool hasMaskUvAnim() const { return maskUvAnim[0] != 0 || maskUvAnim[1] != 0 || maskUvAnim[2] != 0; }
+    bool hasTransmission() const { return transmission[0] != 0 || transmission[1] != 0 || transmission[2] != 0; }
+    bool hasReplayEmission() const { return replayEmission[0] > 0 || replayEmission[1] > 0 || replayEmission[2] > 0; }
 };
 
 class MaterialLibrary {

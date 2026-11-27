@@ -982,7 +982,10 @@ const RoleTemplate &TemplateFor(const Role role)
 {
     static const RoleTemplate explosion{0x92808, 38, "standard_concave", 0.0f, 1.0f, 200, 600, 600, 60, 1.0f};
     static const RoleTemplate fireBurst{0x92400, 37, "standard_concave", 1.0f, 1.0f, 50, 300, 300, 30, 0.35f};
-    static const RoleTemplate loopEmitter{0x2A003, 75, "default", 1.0f, 1.0f, 0, 0, 0, 0, 0.18f};
+    // Bit 19 (0x80000) is checked by SNDL_AddBank (0x1413920F0) to register the alias in
+    // s_sndPrecachedAliasTable, which G_CStringMP_SoundAliasIndex / playloopsound queries.
+    // Without bit 19, custom 3D looping script emitters resolve to index 0 and stay silent.
+    static const RoleTemplate loopEmitter{0xAA003, 75, "default", 1.0f, 1.0f, 0, 0, 0, 0, 0.18f};
     static const RoleTemplate breakable{0x92400, 36, "default", 1.0f, 1.0f, 0, 0, 0, 0, 0.45f};
     switch (role)
     {
@@ -1390,6 +1393,7 @@ struct LoadedTable
     iw8::sound::SoundTable table;
     iw8::sound::TableArray sendEffects;
     std::set<std::string> aliases; // zone ambient streams and ambient elements
+    bool allowStockAliases = false;
 };
 
 std::optional<LoadedTable> ReadSoundTable(const std::filesystem::path &exportRoot, const std::string &map)
@@ -1404,6 +1408,7 @@ std::optional<LoadedTable> ReadSoundTable(const std::filesystem::path &exportRoo
         zt::warn("iw3 sound: %s is not valid JSON; the map has no sound zones", path.string().c_str());
         return std::nullopt;
     }
+    const bool allowStockAliases = json.value("allow_stock_aliases", false);
     // The source map's own zone is the map's default zone (stock mp_shipment.all
     // holds zone "mp_shipment", id = the table id): it takes the converted name.
     const std::string source = Lower(json.value("map", std::string{}));
@@ -1547,6 +1552,7 @@ std::optional<LoadedTable> ReadSoundTable(const std::filesystem::path &exportRoo
              result.table.arrays[iw8::sound::TABLE_FILTER].count(),
              result.table.arrays[iw8::sound::TABLE_MIX].count(),
              result.table.arrays[iw8::sound::TABLE_OCCLUSION].count(), result.sendEffects.count());
+    result.allowStockAliases = allowStockAliases;
     return result;
 }
 // sound/curves.json (IW7 exporter): the IW7 curves the aliases name, by kind
@@ -1759,7 +1765,8 @@ std::optional<ConvertedSounds> Convert(const std::filesystem::path &exportRoot,
         const auto *aliases = definition(name);
         if (!aliases)
         {
-            zt::warn("iw3 sound: alias %s has no IW3 definition; left silent", name.c_str());
+            if (!(table && table->allowStockAliases && table->aliases.contains(name)))
+                zt::warn("iw3 sound: alias %s has no IW3 definition; left silent", name.c_str());
             continue;
         }
         order.push_back(name);
@@ -1852,11 +1859,11 @@ std::optional<ConvertedSounds> Convert(const std::filesystem::path &exportRoot,
     if (table)
     {
         // A zone bed without audio is cleared (stock zones without a bed hold a null
-        // ambientStream) so no zone asks for a missing alias.
+        // ambientStream) unless the sound table explicitly references stock aliases.
         auto &zones = table->table.arrays[iw8::sound::TABLE_ZONE];
         for (size_t i = 0; i < zones.count(); ++i)
             if (auto &alias = zones.strings[i * zones.stringOffsets.size()];
-                !alias.empty() && !converted.contains(Lower(alias)))
+                !alias.empty() && !converted.contains(Lower(alias)) && !table->allowStockAliases)
             {
                 zt::warn("iw3 sound: zone %s ambient stream %s has no audio; the zone plays no bed",
                          zones.strings[i * zones.stringOffsets.size() + 1].c_str(), alias.c_str());

@@ -354,7 +354,7 @@ namespace {
 constexpr uint32_t kSabMagic = 0x23585532;  // '2UX#'
 
 template <class T>
-T le(const char* p) {
+T le(const void* p) {
     T v;
     std::memcpy(&v, p, sizeof(T));
     return v;
@@ -434,11 +434,16 @@ bool readSabSound(const QString& file, const SabEntry& e, PcmSound& out, QString
 // ---------------------------------------------------------------------------------------------------------------
 // SoundPreview
 
+struct AliasVariant {
+    uint32_t key = 0;
+    float probability = 1.0f;
+};
+
 struct SoundPreview::Zone {
     QString name;
     bool ready = false, failed = false;
     QString error;
-    QHash<QString, QVector<uint32_t>> aliases;  // alias -> asset keys of its variants
+    QHash<QString, QVector<AliasVariant>> aliases;  // alias -> asset keys & probabilities of its variants
     struct Bank {
         QString file;
         std::vector<SabEntry> entries;
@@ -449,13 +454,21 @@ struct SoundPreview::Zone {
 
 namespace {
 
-// Alias -> keys from ACTS's structured soundbank JSON (117 MB for common_mp): a scan for the three fields in order
-// (each variant's own aliasName comes before its assetFileName and assetId) instead of a JSON tree of the whole file.
-QHash<QString, QVector<uint32_t>> scanAliasJson(const QByteArray& json) {
-    QHash<QString, QVector<uint32_t>> out;
+// Alias -> variants (assetId + probability) from ACTS's structured soundbank JSON (117 MB for common_mp): a single
+// streaming scan for the four fields instead of building a DOM tree of the whole file.
+QHash<QString, QVector<AliasVariant>> scanAliasJson(const QByteArray& json) {
+    QHash<QString, QVector<AliasVariant>> out;
     const std::string_view j(json.constData(), size_t(json.size()));
     QString alias;
     bool hasFile = false;
+    uint32_t pendingKey = 0;
+    float prob = 1.0f;
+    const auto flush = [&] {
+        if (!alias.isEmpty() && hasFile && pendingKey) out[alias].push_back({pendingKey, prob});
+        hasFile = false;
+        pendingKey = 0;
+        prob = 1.0f;
+    };
     const auto stringAfter = [&](size_t at) -> std::pair<std::string_view, size_t> {
         // {"address":...,"type":...,"string":"VALUE"} or null
         const size_t brace = j.find_first_of("{n", at);
@@ -466,29 +479,110 @@ QHash<QString, QVector<uint32_t>> scanAliasJson(const QByteArray& json) {
         if (e == std::string_view::npos) return {{}, at};
         return {j.substr(b, e - b), e};
     };
-    size_t at = 0;
-    for (;;) {
-        at = j.find("\"a", at);
-        if (at == std::string_view::npos) break;
+    size_t nextA = j.find("\"a", 0);
+    size_t nextP = j.find("\"probability\":", 0);
+    while (nextA != std::string_view::npos || nextP != std::string_view::npos) {
+        if (nextP < nextA) {
+            const size_t at = nextP;
+            char* endPtr = nullptr;
+            const double v = std::strtod(j.data() + at + 14, &endPtr);
+            if (endPtr && endPtr > j.data() + at + 14 && std::isfinite(v) && v >= 0.0) prob = float(v);
+            nextP = j.find("\"probability\":", at + 14);
+            continue;
+        }
+        const size_t at = nextA;
         if (j.compare(at, 12, "\"aliasName\":") == 0) {
+            flush();
             const auto [v, end] = stringAfter(at + 12);
             alias = QString::fromUtf8(v.data(), qsizetype(v.size()));
-            hasFile = false;
-            at = end;
+            nextA = j.find("\"a", end);
         } else if (j.compare(at, 16, "\"assetFileName\":") == 0) {
             const auto [v, end] = stringAfter(at + 16);
             hasFile = !v.empty();
-            at = end;
+            nextA = j.find("\"a", end);
         } else if (j.compare(at, 10, "\"assetId\":") == 0) {
-            const uint64_t key = std::strtoull(j.data() + at + 10, nullptr, 10);
-            if (!alias.isEmpty() && hasFile && key) out[alias].push_back(uint32_t(key));
-            hasFile = false;
-            at += 10;
+            pendingKey = uint32_t(std::strtoull(j.data() + at + 10, nullptr, 10));
+            nextA = j.find("\"a", at + 10);
         } else {
-            at += 2;
+            nextA = j.find("\"a", at + 2);
         }
     }
+    flush();
     return out;
+}
+
+// Reads a RIFF WAVE file (PCM 8/16/24/32-bit or IEEE float 32-bit) into 16-bit interleaved PcmSound.
+bool readWavFile(const QString& file, PcmSound& out, QString* err) {
+    QFile f(file);
+    if (!f.open(QIODevice::ReadOnly)) {
+        if (err) *err = "cannot open " + file;
+        return false;
+    }
+    const QByteArray bytes = f.readAll();
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(bytes.constData());
+    const size_t n = size_t(bytes.size());
+    if (n < 44 || std::memcmp(p, "RIFF", 4) != 0 || std::memcmp(p + 8, "WAVE", 4) != 0) {
+        if (err) *err = "not a RIFF WAVE file";
+        return false;
+    }
+    uint16_t audioFormat = 0, channels = 0, bits = 0;
+    uint32_t sampleRate = 0;
+    const uint8_t* dataPtr = nullptr;
+    size_t dataBytes = 0;
+    for (size_t off = 12; off + 8 <= n;) {
+        const uint32_t sz = le<uint32_t>(p + off + 4);
+        const size_t body = off + 8;
+        if (body > n) break;
+        const size_t avail = std::min<size_t>(sz, n - body);
+        if (std::memcmp(p + off, "fmt ", 4) == 0 && avail >= 16) {
+            audioFormat = le<uint16_t>(p + body);
+            channels = le<uint16_t>(p + body + 2);
+            sampleRate = le<uint32_t>(p + body + 4);
+            bits = le<uint16_t>(p + body + 14);
+        } else if (std::memcmp(p + off, "data", 4) == 0) {
+            dataPtr = p + body;
+            dataBytes = avail;
+        }
+        off = body + size_t(sz) + (sz & 1u);
+    }
+    if (!dataPtr || dataBytes == 0 || channels == 0 || sampleRate == 0) {
+        if (err) *err = "incomplete WAVE header";
+        return false;
+    }
+    out = {};
+    out.rate = int(sampleRate);
+    out.channels = int(channels);
+    if (audioFormat == 1 && bits == 8) {
+        out.samples.resize(dataBytes);
+        for (size_t i = 0; i < dataBytes; ++i) out.samples[i] = int16_t((int(dataPtr[i]) - 128) << 8);
+    } else if (audioFormat == 1 && bits == 16) {
+        const size_t cnt = dataBytes / 2;
+        out.samples.resize(cnt);
+        for (size_t i = 0; i < cnt; ++i) out.samples[i] = int16_t(le<uint16_t>(dataPtr + i * 2));
+    } else if (audioFormat == 1 && bits == 24) {
+        const size_t cnt = dataBytes / 3;
+        out.samples.resize(cnt);
+        for (size_t i = 0; i < cnt; ++i) {
+            int32_t v = int32_t(dataPtr[i * 3]) | (int32_t(dataPtr[i * 3 + 1]) << 8) | (int32_t(int8_t(dataPtr[i * 3 + 2])) << 16);
+            out.samples[i] = int16_t(v >> 8);
+        }
+    } else if (audioFormat == 1 && bits == 32) {
+        const size_t cnt = dataBytes / 4;
+        out.samples.resize(cnt);
+        for (size_t i = 0; i < cnt; ++i) out.samples[i] = int16_t(int32_t(le<uint32_t>(dataPtr + i * 4)) >> 16);
+    } else if (audioFormat == 3 && bits == 32) {
+        const size_t cnt = dataBytes / 4;
+        out.samples.resize(cnt);
+        for (size_t i = 0; i < cnt; ++i) {
+            float fv = 0.0f;
+            std::memcpy(&fv, dataPtr + i * 4, 4);
+            out.samples[i] = int16_t(std::clamp(int(std::lround(fv * 32767.0f)), -32768, 32767));
+        }
+    } else {
+        if (err) *err = QString("unsupported WAVE format %1 (%2-bit)").arg(audioFormat).arg(bits);
+        return false;
+    }
+    return !out.samples.empty();
 }
 
 // The loaded bank inside a decompressed zone dump: the largest valid SAB v10 header in it, written to `outFile`.
@@ -546,6 +640,12 @@ SoundPreview::SoundPreview(ToolPath toolPath, QObject* parent) : QObject(parent)
     endTimer_ = new QTimer(this);
     endTimer_->setSingleShot(true);
     connect(endTimer_, &QTimer::timeout, this, [this] {
+#ifdef _WIN32
+        if (mciPlaying_) {
+            mciSendStringW(L"close iw8r_mp3", nullptr, 0, nullptr);
+            mciPlaying_ = false;
+        }
+#endif
         playing_ = false;
         setStatus(status_.startsWith("Playing") ? "Played " + status_.mid(8) : status_);
     });
@@ -554,12 +654,138 @@ SoundPreview::SoundPreview(ToolPath toolPath, QObject* parent) : QObject(parent)
 SoundPreview::~SoundPreview() {
 #ifdef _WIN32
     if (playing_) PlaySoundW(nullptr, nullptr, 0);
+    if (mciPlaying_) mciSendStringW(L"close iw8r_mp3", nullptr, 0, nullptr);
 #endif
     if (proc_) {
         proc_->disconnect(this);
         proc_->kill();
         proc_->waitForFinished(3000);
     }
+}
+
+void SoundPreview::setExtraZones(const QStringList& zones) {
+    extraZones_.clear();
+    for (const QString& z : zones) {
+        const QString t = z.trimmed();
+        if (!t.isEmpty() && !extraZones_.contains(t)) extraZones_ << t;
+    }
+}
+
+QStringList SoundPreview::candidateZones() const {
+    QStringList list;
+    for (const QString& z : extraZones_)
+        if (!z.isEmpty() && !list.contains(z)) list << z;
+    for (const char* def : {"common_mp", "common_base_mp", "code_post_gfx"}) {
+        const QString s = QString::fromLatin1(def);
+        if (!list.contains(s)) list << s;
+    }
+    return list;
+}
+
+bool SoundPreview::zoneHasAliasHit(const Zone& z, const QString& alias) const {
+    const QVector<AliasVariant> vars = z.aliases.value(alias);
+    for (const AliasVariant& v : vars)
+        for (const Zone::Bank& b : z.banks)
+            if (b.byKey.contains(v.key)) return true;
+    return false;
+}
+
+QString SoundPreview::findCustomSoundFile(const QString& alias) const {
+    if (alias.isEmpty() || !customSoundRoots_) return {};
+    const QString norm = QString(alias).replace('\\', '/').trimmed();
+    if (norm.isEmpty() || norm.contains("..")) return {};
+    const QStringList roots = customSoundRoots_();
+    const QStringList exts = {".wav", ".flac", ".mp3"};
+    const QString lowNorm = norm.toLower();
+    for (const QString& root : roots) {
+        if (root.isEmpty() || !QFileInfo(root).isDir()) continue;
+        const QDir d(root);
+        // Exact match if the alias already includes a supported extension.
+        for (const QString& ext : exts)
+            if (lowNorm.endsWith(ext) && QFileInfo(d.filePath(norm)).isFile()) return d.filePath(norm);
+        // Direct <root>/<alias>.<ext> match.
+        for (const QString& ext : exts) {
+            const QString cand = d.filePath(norm + ext);
+            if (QFileInfo(cand).isFile()) return cand;
+        }
+        // Case-insensitive scan under <root> matching relative stem or basename.
+        for (QDirIterator it(root, {"*.wav", "*.flac", "*.mp3"}, QDir::Files, QDirIterator::Subdirectories); it.hasNext();) {
+            const QString full = it.next();
+            const QString rel = d.relativeFilePath(full).replace('\\', '/').toLower();
+            const QFileInfo fi(full);
+            const QString relNoExt = rel.left(rel.size() - (fi.suffix().isEmpty() ? 0 : fi.suffix().size() + 1));
+            if (rel == lowNorm || relNoExt == lowNorm || fi.completeBaseName().toLower() == lowNorm) return full;
+        }
+    }
+    return {};
+}
+
+bool SoundPreview::playCustomFile(const QString& alias, const QString& path) {
+    const QString ext = QFileInfo(path).suffix().toLower();
+    if (ext == "mp3") {
+#ifdef _WIN32
+        if (muted_) {
+            playing_ = true;
+            setStatus("Playing " + alias + " (custom mp3)");
+            return true;
+        }
+        mciSendStringW(L"close iw8r_mp3", nullptr, 0, nullptr);
+        QString native = QDir::toNativeSeparators(path);
+        const std::wstring openCmd = L"open \"" + native.toStdWString() + L"\" type mpegvideo alias iw8r_mp3";
+        if (mciSendStringW(openCmd.c_str(), nullptr, 0, nullptr) != 0) {
+            setStatus(alias + ": could not open custom MP3");
+            return true;
+        }
+        wchar_t lenBuf[64] = {};
+        double sec = 0.0;
+        if (mciSendStringW(L"status iw8r_mp3 length", lenBuf, 64, nullptr) == 0) {
+            const qint64 ms = QString::fromWCharArray(lenBuf).trimmed().toLongLong();
+            if (ms > 0) sec = double(ms) / 1000.0;
+        }
+        if (mciSendStringW(L"play iw8r_mp3", nullptr, 0, nullptr) != 0) {
+            mciSendStringW(L"close iw8r_mp3", nullptr, 0, nullptr);
+            setStatus(alias + ": could not play custom MP3");
+            return true;
+        }
+        mciPlaying_ = true;
+        playing_ = true;
+        emit waveReady(QVector<float>(480, 0.35f), sec, false);
+        if (sec > 0.0) endTimer_->start(int(std::min<double>(sec * 1000.0 + 250.0, 600000.0)));
+        setStatus(QString("Playing %1 (custom mp3%2)").arg(alias, sec > 0.0 ? QString(", %1 s").arg(sec, 0, 'f', 1) : QString()));
+        return true;
+#else
+        setStatus(alias + ": MP3 preview is only supported on Windows");
+        return true;
+#endif
+    }
+    if (ext != "wav" && ext != "flac") return false;
+    setStatus("Decoding " + alias + " (custom " + ext + ")...");
+    const int gen = ++decodeGen_;
+    QPointer<SoundPreview> self(this);
+    std::thread(guardedWorker(__FILE__, __LINE__, [self, gen, alias, path, ext] {
+        PcmSound pcm;
+        QString err;
+        bool ok = false;
+        if (ext == "wav") {
+            ok = readWavFile(path, pcm, &err);
+        } else {
+            QFile f(path);
+            if (!f.open(QIODevice::ReadOnly)) err = "cannot open " + path;
+            else {
+                const QByteArray bytes = f.readAll();
+                ok = decodeFlacFrames(reinterpret_cast<const uint8_t*>(bytes.constData()), size_t(bytes.size()), pcm, &err);
+            }
+        }
+        const QString what = QString("%1 (custom %2, %3 s)")
+                                 .arg(alias, ext)
+                                 .arg(pcm.rate ? double(pcm.frames()) / pcm.rate : 0.0, 0, 'f', pcm.rate && pcm.frames() < pcm.rate ? 2 : 1);
+        QMetaObject::invokeMethod(qApp, [self, gen, ok, pcm = std::move(pcm), err, what]() mutable {
+            if (!self || gen != self->decodeGen_) return;
+            if (!ok) return self->setStatus(what + ": " + err);
+            self->startPlayback(std::move(pcm), what, false);
+        }, Qt::QueuedConnection);
+    })).detach();
+    return true;
 }
 
 QString SoundPreview::cacheDir() const {
@@ -583,61 +809,157 @@ SoundPreview::Zone* SoundPreview::zone(const QString& name) {
 void SoundPreview::stop() {
 #ifdef _WIN32
     PlaySoundW(nullptr, nullptr, 0);
+    if (mciPlaying_) {
+        mciSendStringW(L"close iw8r_mp3", nullptr, 0, nullptr);
+        mciPlaying_ = false;
+    }
 #endif
     ++decodeGen_;
     endTimer_->stop();
     const bool was = playing_;
     playing_ = false;
     wantAlias_.clear();
+    wantZones_.clear();
     if (was) setStatus("Stopped");
+}
+
+void SoundPreview::advancePlayQueue() {
+    if (wantAlias_.isEmpty()) return;
+    while (!wantZones_.isEmpty()) {
+        const QString zn = wantZones_.front();
+        Zone* z = zone(zn);
+        if (z->failed) {
+            wantZones_.pop_front();
+            continue;
+        }
+        wantZone_ = zn;
+        if (z->ready) {
+            if (zoneHasAliasHit(*z, wantAlias_)) {
+                wantZones_.clear();
+                playResolved(wantAlias_);
+                return;
+            }
+            wantZones_.pop_front();
+            continue;
+        }
+        if (indexing_) return setStatus("Reading the sound banks of " + zn + "...");
+        if (!preparing_) {
+            const QString dir = cacheDir();
+            if (QFileInfo::exists(dir + "/" + zn + ".aliases.tsv") && QFileInfo::exists(dir + "/" + zn + ".all.sabl"))
+                loadPrepared(zn, false);
+            else
+                prepare(*z);
+        }
+        return;
+    }
+    setStatus(wantAlias_ + ": no sound data in searched sound zones");
 }
 
 void SoundPreview::play(const QString& alias, const QString& zoneName) {
     stop();
+    if (zoneName.isEmpty()) {
+        const QString custom = findCustomSoundFile(alias);
+        if (!custom.isEmpty() && playCustomFile(alias, custom)) return;
+    }
     wantAlias_ = alias;
-    wantZone_ = zoneName;
-    Zone* z = zone(zoneName);
-    if (z->failed) return setStatus("No sound preview for " + zoneName + ": " + z->error);
-    if (!z->ready) {
-        if (indexing_) return setStatus("Reading the sound banks of " + zoneName + "...");  // it plays once read
-        if (!preparing_) prepare(*z);
+    const QStringList search = zoneName.isEmpty() ? candidateZones() : QStringList{zoneName};
+    // First check any already-loaded zone so playback starts immediately without touching unprepared zones.
+    for (const QString& zn : search) {
+        if (const auto it = zones_.constFind(zn); it != zones_.constEnd() && it.value()->ready && zoneHasAliasHit(*it.value(), alias)) {
+            wantZone_ = zn;
+            playResolved(alias);
+            return;
+        }
+    }
+    // Single explicit zone that already failed or is ready without the alias: report immediately.
+    if (!zoneName.isEmpty()) {
+        Zone* z = zone(zoneName);
+        if (z->failed) return setStatus("No sound preview for " + zoneName + ": " + z->error);
+        if (z->ready) {
+            wantZone_ = zoneName;
+            return playResolved(alias);
+        }
+        wantZones_ = {zoneName};
+        advancePlayQueue();
         return;
     }
-    playResolved(alias);
+    // Multi-zone search: queue unloaded zones that have a cache or a fastfile on disk.
+    const QString dir = cacheDir();
+    const QString replay = toolPath_("replay");
+    const QString zoneDir = replay.isEmpty() ? QString() : QFileInfo(replay).absolutePath() + "/zone";
+    wantZones_.clear();
+    for (const QString& zn : search) {
+        Zone* z = zone(zn);
+        if (z->ready || z->failed) continue;
+        const bool cached = QFileInfo::exists(dir + "/" + zn + ".aliases.tsv") && QFileInfo::exists(dir + "/" + zn + ".all.sabl");
+        const bool hasFf = !zoneDir.isEmpty() && QFileInfo::exists(zoneDir + "/" + zn + ".ff");
+        if (cached || hasFf) wantZones_ << zn;
+    }
+    if (wantZones_.isEmpty()) return setStatus(alias + ": no sound data (not in loaded sound zones)");
+    advancePlayQueue();
+}
+
+void SoundPreview::advanceIndexQueue() {
+    if (preparing_ || indexing_) return;
+    const QString dir = cacheDir();
+    while (!indexQueue_.isEmpty()) {
+        const QString zn = indexQueue_.takeFirst();
+        Zone* z = zone(zn);
+        if (z->ready) {
+            emit indexReady(zn);
+            continue;
+        }
+        if (z->failed) continue;
+        if (!QFileInfo::exists(dir + "/" + zn + ".aliases.tsv") || !QFileInfo::exists(dir + "/" + zn + ".all.sabl")) continue;
+        loadPrepared(zn, true);
+        return;
+    }
 }
 
 void SoundPreview::loadIndex(const QString& zoneName) {
-    Zone* z = zone(zoneName);
-    if (z->ready) {
-        emit indexReady(zoneName);
-        return;
+    const QStringList list = zoneName.isEmpty() ? candidateZones() : QStringList{zoneName};
+    for (const QString& zn : list) {
+        Zone* z = zone(zn);
+        if (z->ready) {
+            emit indexReady(zn);
+            continue;
+        }
+        if (!z->failed && !indexQueue_.contains(zn)) indexQueue_ << zn;
     }
-    if (z->failed || preparing_ || indexing_) return;
-    const QString dir = cacheDir();
-    if (!QFileInfo::exists(dir + "/" + zoneName + ".aliases.tsv") || !QFileInfo::exists(dir + "/" + zoneName + ".all.sabl")) return;
-    loadPrepared(zoneName, true);
+    advanceIndexQueue();
 }
 
 QHash<QString, SoundPreview::AliasFacts> SoundPreview::aliasFacts(const QString& zoneName) const {
     QHash<QString, AliasFacts> out;
-    const auto it = zones_.constFind(zoneName);
-    if (it == zones_.constEnd() || !it.value()->ready) return out;
-    const Zone& z = *it.value();
-    for (auto a = z.aliases.constBegin(); a != z.aliases.constEnd(); ++a) {
-        AliasFacts f;
-        for (const uint32_t k : a.value())
-            for (const Zone::Bank& bank : z.banks)
-                if (const auto e = bank.byKey.constFind(k); e != bank.byKey.constEnd()) {
-                    const SabEntry& s = bank.entries[size_t(*e)];
-                    const double sec = s.rate ? double(s.frames) / s.rate : 0.0;
-                    f.shortest = f.variants ? std::min(f.shortest, sec) : sec;
-                    f.longest = std::max(f.longest, sec);
-                    f.loop |= s.looping != 0;
-                    ++f.variants;
-                    break;
-                }
-        if (f.variants) out.insert(a.key(), f);
+    const auto collect = [&](const Zone& z) {
+        for (auto a = z.aliases.constBegin(); a != z.aliases.constEnd(); ++a) {
+            if (out.contains(a.key())) continue;
+            AliasFacts f;
+            for (const AliasVariant& v : a.value())
+                for (const Zone::Bank& bank : z.banks)
+                    if (const auto e = bank.byKey.constFind(v.key); e != bank.byKey.constEnd()) {
+                        const SabEntry& s = bank.entries[size_t(*e)];
+                        const double sec = s.rate ? double(s.frames) / s.rate : 0.0;
+                        f.shortest = f.variants ? std::min(f.shortest, sec) : sec;
+                        f.longest = std::max(f.longest, sec);
+                        f.loop |= s.looping != 0;
+                        ++f.variants;
+                        break;
+                    }
+            if (f.variants) out.insert(a.key(), f);
+        }
+    };
+    if (!zoneName.isEmpty()) {
+        const auto it = zones_.constFind(zoneName);
+        if (it != zones_.constEnd() && it.value()->ready) collect(*it.value());
+        return out;
     }
+    for (const QString& zn : candidateZones()) {
+        const auto it = zones_.constFind(zn);
+        if (it != zones_.constEnd() && it.value()->ready) collect(*it.value());
+    }
+    for (auto it = zones_.constBegin(); it != zones_.constEnd(); ++it)
+        if (it.value()->ready) collect(*it.value());
     return out;
 }
 
@@ -657,9 +979,15 @@ void SoundPreview::loadPrepared(const QString& zoneName, bool quiet) {
             while (!in.atEnd()) {
                 const QStringList c = in.readLine().split('\t');
                 if (c.size() < 2) continue;
-                QVector<uint32_t> keys;
-                for (const QString& k : c[1].split(',', Qt::SkipEmptyParts)) keys << uint32_t(k.toULongLong(nullptr, 16));
-                z->aliases.insert(c[0], keys);
+                QVector<AliasVariant> vars;
+                for (const QString& tok : c[1].split(',', Qt::SkipEmptyParts)) {
+                    const qsizetype colon = tok.indexOf(':');
+                    const QString keyPart = colon >= 0 ? tok.left(colon) : tok;
+                    bool okP = false;
+                    const float p = colon >= 0 ? tok.mid(colon + 1).toFloat(&okP) : 1.0f;
+                    vars << AliasVariant{uint32_t(keyPart.toULongLong(nullptr, 16)), okP && std::isfinite(p) && p >= 0.0f ? p : 1.0f};
+                }
+                z->aliases.insert(c[0], vars);
             }
         }
         for (const QString& b : {zoneDir + "/patch_" + zoneName + ".sabs", zoneDir + "/" + zoneName + ".sabs", loaded}) {
@@ -674,11 +1002,16 @@ void SoundPreview::loadPrepared(const QString& zoneName, bool quiet) {
             if (!self) return;
             if (quiet) self->indexing_ = false;
             if (z->aliases.isEmpty() || z->banks.empty()) {
-                if (quiet) return;  // a Play prepares the zone again, with its messages
+                if (quiet) {
+                    self->advanceIndexQueue();
+                    return;  // a Play prepares the zone again, with its messages
+                }
                 self->preparing_ = false;
                 Zone* zz = self->zone(z->name);
                 zz->failed = true;
                 zz->error = "the alias index or the sound banks could not be read";
+                self->wantZones_.removeAll(z->name);
+                if (!self->wantZones_.isEmpty()) return self->advancePlayQueue();
                 return self->setStatus("No sound preview for " + z->name + ": " + zz->error);
             }
             z->ready = true;
@@ -686,7 +1019,17 @@ void SoundPreview::loadPrepared(const QString& zoneName, bool quiet) {
             self->preparing_ = false;
             if (!quiet) self->setStatus(QString("Sound previews ready: %1 aliases in %2 bank(s)").arg(z->aliases.size()).arg(z->banks.size()));
             emit self->indexReady(z->name);
-            if (!self->wantAlias_.isEmpty() && self->wantZone_ == z->name) self->playResolved(self->wantAlias_);
+            if (!self->wantAlias_.isEmpty() && self->wantZone_ == z->name) {
+                if (self->zoneHasAliasHit(*z, self->wantAlias_)) {
+                    self->wantZones_.clear();
+                    self->playResolved(self->wantAlias_);
+                } else {
+                    self->wantZones_.removeAll(z->name);
+                    if (!self->wantZones_.isEmpty()) self->advancePlayQueue();
+                    else self->playResolved(self->wantAlias_);
+                }
+            }
+            if (quiet) self->advanceIndexQueue();
         }, Qt::QueuedConnection);
     })).detach();
 }
@@ -740,6 +1083,8 @@ void SoundPreview::prepare(Zone& z) {
         Zone* zz = self->zone(zoneName);
         zz->failed = true;
         zz->error = why;
+        self->wantZones_.removeAll(zoneName);
+        if (!self->wantZones_.isEmpty()) return self->advancePlayQueue();
         self->setStatus("No sound preview for " + zoneName + ": " + why);
     };
     // The last step, on a worker thread: the alias index and the banks' indexes read into memory (loadPrepared).
@@ -755,7 +1100,8 @@ void SoundPreview::prepare(Zone& z) {
         QDir(tmp).removeRecursively();
         self->runActs({"-d", "--noAssetDump", "-o", tmp, ff}, tmp, false, [self, tmp, loaded, zoneName, load, fail](bool, const QString& log) {
             if (!self) return;
-            const QString dump = findFile(tmp, zoneName + ".ff.dec");
+            QString dump = findFile(tmp, zoneName + ".fp.patched.dec");
+            if (dump.isEmpty()) dump = findFile(tmp, zoneName + ".ff.dec");
             if (dump.isEmpty()) {
                 QDir(tmp).removeRecursively();
                 return fail("ACTS wrote no zone dump (" + log.right(200).simplified() + ")");
@@ -781,7 +1127,7 @@ void SoundPreview::prepare(Zone& z) {
             return fail("ACTS wrote no soundbank export (" + log.right(200).simplified() + ")");
         }
         std::thread(guardedWorker(__FILE__, __LINE__, [self, json, tmp, aliasFile, bankStep, fail] {
-            QHash<QString, QVector<uint32_t>> aliases;
+            QHash<QString, QVector<AliasVariant>> aliases;
             if (QFile f(json); f.open(QIODevice::ReadOnly)) aliases = scanAliasJson(f.readAll());
             bool ok = !aliases.isEmpty();
             if (ok) {
@@ -793,7 +1139,10 @@ void SoundPreview::prepare(Zone& z) {
                     names.sort();
                     for (const QString& n : names) {
                         QStringList keys;
-                        for (const uint32_t k : aliases.value(n)) keys << QString::number(k, 16);
+                        for (const AliasVariant& v : aliases.value(n)) {
+                            const QString hex = QString::number(v.key, 16);
+                            keys << (std::fabs(v.probability - 1.0f) < 1e-4f ? hex : hex + ":" + QString::number(v.probability, 'g', 6));
+                        }
                         out << n << '\t' << keys.join(',') << '\n';
                     }
                     out.flush();
@@ -812,22 +1161,40 @@ void SoundPreview::playResolved(const QString& alias) {
     const auto it = zones_.find(wantZone_);
     if (it == zones_.end() || !it.value()->ready) return;
     const std::shared_ptr<Zone> z = it.value();
-    const QVector<uint32_t> keys = z->aliases.value(alias);
-    if (keys.isEmpty()) return setStatus(alias + ": no sound data (the alias names no sound file, or it is not in " + z->name + ")");
-    // The variants that have samples; one picked at random, as the game does.
+    const QVector<AliasVariant> vars = z->aliases.value(alias);
+    if (vars.isEmpty()) return setStatus(alias + ": no sound data (the alias names no sound file, or it is not in " + z->name + ")");
+    // The variants that have samples; selected weighted by SndAlias.probability (falling back to uniform if total <= 0).
     struct Hit {
         int bank;
         SabEntry e;
+        float weight;
     };
     std::vector<Hit> hits;
-    for (const uint32_t k : keys)
+    double totalWeight = 0.0;
+    for (const AliasVariant& v : vars)
         for (int b = 0; b < int(z->banks.size()); ++b)
-            if (const auto e = z->banks[size_t(b)].byKey.constFind(k); e != z->banks[size_t(b)].byKey.constEnd()) {
-                hits.push_back({b, z->banks[size_t(b)].entries[size_t(*e)]});
+            if (const auto e = z->banks[size_t(b)].byKey.constFind(v.key); e != z->banks[size_t(b)].byKey.constEnd()) {
+                const float w = std::isfinite(v.probability) && v.probability > 0.0f ? v.probability : 0.0f;
+                hits.push_back({b, z->banks[size_t(b)].entries[size_t(*e)], w});
+                totalWeight += w;
                 break;
             }
     if (hits.empty()) return setStatus(alias + ": its sound is not in the " + z->name + " banks");
-    const int pick = int(QRandomGenerator::global()->bounded(int(hits.size())));
+    int pick = 0;
+    if (totalWeight > 0.0) {
+        const double target = QRandomGenerator::global()->generateDouble() * totalWeight;
+        double acc = 0.0;
+        pick = int(hits.size()) - 1;
+        for (size_t i = 0; i < hits.size(); ++i) {
+            acc += hits[i].weight;
+            if (acc >= target) {
+                pick = int(i);
+                break;
+            }
+        }
+    } else {
+        pick = int(QRandomGenerator::global()->bounded(int(hits.size())));
+    }
     const Hit h = hits[size_t(pick)];
     const QString file = z->banks[size_t(h.bank)].file;
     const QString what = QString("%1%2, %3 s%4")

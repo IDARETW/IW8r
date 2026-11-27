@@ -26,6 +26,8 @@ struct OwnDecalPiece {
 struct OwnDecal {
     std::string material;
     double opacity = 1;
+    double feather = 0;
+    int drawOrder = 0;
     std::vector<OwnDecalPiece> pieces;
 };
 
@@ -36,13 +38,16 @@ struct OwnDecalBox {
     Vec3 halfSize;             // along axis[0], axis[1], axis[2]
     std::string material;
     double opacity = 1;
+    double feather = 0;
+    int drawOrder = 0;
     std::array<double, 4> uvMatrix{1, 0, 0, 1};
     std::array<double, 2> uvOffset{0, 0};
 };
 bool ownDecalBox(const Entity& e, OwnDecalBox& out);
 
-// Projects every `iw8r_decal` of the map onto its drawn brush faces (worldspawn, func_group, script_brushmodel; tool
-// faces receive none). One OwnDecal per entity, in entity order; entityIds receives each one's entity id.
+// Projects every `iw8r_decal` of the map onto its drawn brush faces and Bezier patches (worldspawn, func_group,
+// script_brushmodel; tool faces receive none). Returned sorted by draw_order ascending (entity order on ties);
+// entityIds receives each one's entity id in the same order.
 std::vector<OwnDecal> projectOwnDecals(const MapFile& map, std::vector<Id>* entityIds = nullptr, double lift = 0.1);
 
 }  // namespace iw8r

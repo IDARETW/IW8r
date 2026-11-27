@@ -2233,9 +2233,8 @@ namespace zonetool::iw8
 		ScriptableEventBaseDef* base;
 		const char* tagName;
 		scr_string_t scrTagName;
-		bool hide;
-		bool allowMissingTag;
 		bool hideShowChildren;
+		bool allowMissingTag;
 	};
 
 	struct ScriptableEventDisablePhysicsSubShapeDef
@@ -5750,12 +5749,12 @@ namespace zonetool::iw8
 		std::uint32_t loopCount;
 		SndMusicAsset* loops;
 		std::int32_t order;
-		std::int32_t interruptPriority;
-		std::int32_t persistPriority;
-		bool isRandom;
+		std::uint8_t _pad144;
 		bool isSequential;
 		bool skipPreviousExit;
 		bool wallClockSync;
+		std::uint32_t refCount;
+		std::uint8_t status[4];
 	};
 
 	struct SndMusicSet
@@ -15555,9 +15554,17 @@ namespace zonetool::iw8
 		ANIMSTATE_EXECUTION_VICTIM = 6,
 	};
 
+	struct PlayerAnimsetState_BakedAliasesPerConditionType;
+
 	struct AIAnimsetState
 	{
-		std::uint8_t pad_0[1];
+		std::uint32_t flags;
+		std::int32_t numConditionTypes;
+		PlayerAnimsetState_BakedAliasesPerConditionType* aliasesPerConditionType;
+		scr_string_t str0;
+		scr_string_t str1;
+		scr_string_t str2;
+		scr_string_t str3;
 	};
 
 	struct Replay_PlayerConditionMask
@@ -16427,8 +16434,10 @@ namespace zonetool::iw8
 		std::uint32_t albedoMapScaleBias[3];
 		std::uint32_t normalMapScaleBias[3];
 		vec4_t uvScaleOffset[3];
-		vec4_t uvRotate[3];
+		std::uint8_t _pad70[32];
 		std::uint8_t blendMapChannels;
+		FxCombinedDef vehVfxTailLight;
+		FxCombinedDef vehVfxDoorSmoke;
 	};
 
 	struct XHash_anonymous_tag_unnamed_type_hash
@@ -17625,9 +17634,8 @@ namespace zonetool::iw8
 	static_assert(offsetof(ScriptableEventHideShowBoneDef, base) == 0x0);
 	static_assert(offsetof(ScriptableEventHideShowBoneDef, tagName) == 0x8);
 	static_assert(offsetof(ScriptableEventHideShowBoneDef, scrTagName) == 0x10);
-	static_assert(offsetof(ScriptableEventHideShowBoneDef, hide) == 0x14);
+	static_assert(offsetof(ScriptableEventHideShowBoneDef, hideShowChildren) == 0x14);
 	static_assert(offsetof(ScriptableEventHideShowBoneDef, allowMissingTag) == 0x15);
-	static_assert(offsetof(ScriptableEventHideShowBoneDef, hideShowChildren) == 0x16);
 	static_assert(sizeof(ScriptableEventDisablePhysicsSubShapeDef) == 32);
 	static_assert(offsetof(ScriptableEventDisablePhysicsSubShapeDef, base) == 0x0);
 	static_assert(offsetof(ScriptableEventDisablePhysicsSubShapeDef, mutableShapeName) == 0x8);
@@ -19287,12 +19295,11 @@ namespace zonetool::iw8
 	static_assert(offsetof(SndMusicState, loopCount) == 0x134);
 	static_assert(offsetof(SndMusicState, loops) == 0x138);
 	static_assert(offsetof(SndMusicState, order) == 0x140);
-	static_assert(offsetof(SndMusicState, interruptPriority) == 0x144);
-	static_assert(offsetof(SndMusicState, persistPriority) == 0x148);
-	static_assert(offsetof(SndMusicState, isRandom) == 0x14C);
-	static_assert(offsetof(SndMusicState, isSequential) == 0x14D);
-	static_assert(offsetof(SndMusicState, skipPreviousExit) == 0x14E);
-	static_assert(offsetof(SndMusicState, wallClockSync) == 0x14F);
+	static_assert(offsetof(SndMusicState, isSequential) == 0x145);
+	static_assert(offsetof(SndMusicState, skipPreviousExit) == 0x146);
+	static_assert(offsetof(SndMusicState, wallClockSync) == 0x147);
+	static_assert(offsetof(SndMusicState, refCount) == 0x148);
+	static_assert(offsetof(SndMusicState, status) == 0x14C);
 	static_assert(sizeof(SndMusicSet) == 80);
 	static_assert(offsetof(SndMusicSet, name) == 0x0);
 	static_assert(offsetof(SndMusicSet, id) == 0x40);
@@ -25797,7 +25804,14 @@ namespace zonetool::iw8
 	static_assert(offsetof(AnimsetStateEntryMap, aliasIndex) == 0x0);
 	static_assert(offsetof(AnimsetStateEntryMap, aliasAnimEntryIndex) == 0x2);
 	static_assert(sizeof(AnimsetStateType) == 1);
-	static_assert(sizeof(AIAnimsetState) == 1);
+	static_assert(sizeof(AIAnimsetState) == 32);
+	static_assert(offsetof(AIAnimsetState, flags) == 0x0);
+	static_assert(offsetof(AIAnimsetState, numConditionTypes) == 0x4);
+	static_assert(offsetof(AIAnimsetState, aliasesPerConditionType) == 0x8);
+	static_assert(offsetof(AIAnimsetState, str0) == 0x10);
+	static_assert(offsetof(AIAnimsetState, str1) == 0x14);
+	static_assert(offsetof(AIAnimsetState, str2) == 0x18);
+	static_assert(offsetof(AIAnimsetState, str3) == 0x1C);
 	static_assert(sizeof(Replay_PlayerConditionMask) == 48);
 	static_assert(offsetof(Replay_PlayerConditionMask, invalidMask) == 0x0);
 	static_assert(offsetof(Replay_PlayerConditionMask, usesNotetrackEvents) == 0x1);
@@ -26493,8 +26507,9 @@ namespace zonetool::iw8
 	static_assert(offsetof(Camo, albedoMapScaleBias) == 0x28);
 	static_assert(offsetof(Camo, normalMapScaleBias) == 0x34);
 	static_assert(offsetof(Camo, uvScaleOffset) == 0x40);
-	static_assert(offsetof(Camo, uvRotate) == 0x70);
-	static_assert(offsetof(Camo, blendMapChannels) == 0xA0);
+	static_assert(offsetof(Camo, blendMapChannels) == 0x90);
+	static_assert(offsetof(Camo, vehVfxTailLight) == 0x98);
+	static_assert(offsetof(Camo, vehVfxDoorSmoke) == 0xA0);
 	static_assert(sizeof(XHash_anonymous_tag_unnamed_type_hash) == 8);
 	static_assert(sizeof(t_43D9C7B60A0B7756E2EA1DFF5986F885) == 8);
 	static_assert(sizeof(XHash) == 16);

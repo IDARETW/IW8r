@@ -64,7 +64,9 @@ std::vector<std::string> expectedClasses(const std::string& id) {
     if (id == "ctf_flags")
         return {"trigger_radius", "script_model", "trigger_radius", "trigger_radius", "script_model", "trigger_radius"};
     if (id == "spawns_tdm") return {"mp_tdm_spawn", "mp_tdm_spawn", "mp_tdm_spawn_allies_start", "mp_tdm_spawn_axis_start"};
+    if (id == "spawns_dm") return {"mp_dm_spawn", "mp_dm_spawn", "mp_dm_spawn", "mp_dm_spawn"};
     if (id == "spawns_dom") return {"mp_dom_spawn", "mp_dom_spawn", "mp_dom_spawn_allies_start", "mp_dom_spawn_axis_start"};
+    if (id == "spawns_koth") return {"mp_koth_spawn", "mp_koth_spawn", "mp_koth_spawn_allies_start", "mp_koth_spawn_axis_start"};
     if (id == "spawns_ctf") return {"mp_ctf_spawn", "mp_ctf_spawn", "mp_ctf_spawn_allies_start", "mp_ctf_spawn_axis_start"};
     if (id == "spawns_sd") return {"mp_sd_spawn_attacker", "mp_sd_spawn_defender"};
     return {};
@@ -74,7 +76,7 @@ std::vector<std::string> expectedClasses(const std::string& id) {
 
 TEST(gamemode_template_table) {
     const auto& all = gameModeTemplates();
-    CHECK(all.size() == 9);
+    CHECK(all.size() == 11);
     std::set<std::string> ids;
     for (const auto& t : all) {
         CHECK(!t.id.empty() && !t.name.empty() && !t.description.empty());

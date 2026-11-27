@@ -18,13 +18,32 @@ bool isValidCustomSoundName(const std::string& name);
 // The file for <name> in the roots (<root>/<name>.wav, then .mp3, case-insensitive extension), or "".
 std::string findCustomSound(const std::vector<std::string>& roots, const std::string& name);
 
+struct CustomSoundVariant {
+    std::string fileName;    // e.g. fire_loop.wav (stored under sound/iw8r/)
+    double volumeMin = 1.0, volumeMax = 1.0;  // 0..1
+    double pitchMin = 1.0, pitchMax = 1.0;    // 0.25..4.0
+    double probability = 1.0;
+    double lfePercentage = 0.0;
+    double centerPercentage = 0.0;
+    int startDelayMs = 0;
+    std::string secondary;   // optional secondary alias played alongside this variant
+};
+
 struct CustomSoundAlias {
     std::string name;
-    std::string fileName;    // e.g. fire_loop.wav (stored under sound/iw8r/)
+    std::string fileName;    // primary file (used when variants is empty)
     bool looping = false;
     bool ambient2d = false;  // IW3 channel "ambient" (2D bed) instead of "auto" (3D, positioned)
-    double volume = 1;       // 0..1
+    unsigned channel = 0;    // 0 = auto from ambient2d (24 or 1); otherwise IW3 channel index (0..32)
+    double volume = 1;       // 0..1 (sets volumeMin/volumeMax when variants is empty)
+    double volumeMin = -1, volumeMax = -1;  // >= 0 overrides volume
+    double pitchMin = 1.0, pitchMax = 1.0;
     double distMin = 120, distMax = 1000;
+    double lfePercentage = 0.0;
+    double centerPercentage = 0.0;
+    int startDelayMs = 0;
+    std::string secondary;
+    std::vector<CustomSoundVariant> variants;  // optional multi-variant pool
 };
 
 // The gain the converter multiplies a converted alias by (x64-zt iw3_sound.cpp RoleFor / TemplateFor): every looping

@@ -53,12 +53,22 @@ struct LightGridInput {
 // y, then x; the 8 interior texels left out), normalised (iw3_lightgrid.cpp LightGridProjection).
 const std::array<Vec3, 56>& lightGridSampleDirections();
 
+struct LightGridLocalLight {
+    Vec3 origin;
+    Vec3 color;   // RGB * intensity (linear scale)
+    double radius = 400.0;
+    bool spot = false;
+    Vec3 dir{0, 0, -1};  // emission direction (unit)
+    double cosOuter = 0.0;
+    double cosInner = 0.5;
+};
+
 // The light of one point as those 56 samples (ROADMAP 5.20), in the grid's 8-bit units (255 = lit by 1.0): the sky
-// where a ray escapes upward, and one bounce of the sun and the sky off what a ray hits, in that surface's colour
-// (`albedos`[triangle id - 1] for ids above 0, else 45 % grey). `sky` is the sky's colour times its strength. The
-// build calls it per palette cell; the viewport per placed model.
+// where a ray escapes upward, one bounce of the sun and the sky off what a ray hits, plus direct & bounced
+// contribution from local map lights (so indoor rooms lit by lamps illuminate viewmodels and props).
 void lightGridSamplesAt(const class RayBvh& bvh, const std::vector<Vec3>& albedos, const Vec3& sunToward, const Vec3& sunColour, const Vec3& sky,
-                        double reach, const Vec3& point, std::array<std::array<float, 3>, 56>& out);
+                        double reach, const Vec3& point, std::array<std::array<float, 3>, 56>& out,
+                        const std::vector<LightGridLocalLight>* localLights = nullptr);
 
 // The light a surface with normal `n` takes from a point's 56 samples, as the build's world shader reads a placed
 // model's light (the converter's InstanceAmbient: the samples as the shell of a 4 x 4 x 4 volume of bytes, read

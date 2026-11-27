@@ -1386,6 +1386,7 @@ iw8::MapSun loadLighting(const Args &args, const std::string &dumpDirectory,
                         light.bulbLength[component] = length->at(component).get<float>();
                 light.isVolumetric = source.value("volumetric", light.isVolumetric);
                 light.needsDynamicShadows = source.value("needs_dynamic_shadows", light.needsDynamicShadows);
+                light.shadowNearPlaneBias = source.value("shadow_near_plane_bias", light.shadowNearPlaneBias);
                 light.shadowSoftness = source.value("shadow_softness", light.shadowSoftness);
                 light.shadowBias = source.value("shadow_bias", light.shadowBias);
                 light.shadowArea = source.value("shadow_area", light.shadowArea);

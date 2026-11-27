@@ -109,15 +109,20 @@ bool parseAuthoredFx(const std::string& text, AuthoredFx& out, std::string* err)
         if (const json::Value* v = ev.get("additive"); v && v->type == json::Value::Type::Bool) e.additive = v->b;
         if (const json::Value* v = ev.get("looping"); v && v->type == json::Value::Type::Bool) e.looping = v->b;
         double interval = e.intervalMs, count = e.count, life = e.lifeMs, lifeVar = e.lifeVarMs;
+        double aRows = e.atlasRows, aCols = e.atlasCols, aFps = e.atlasFps;
         if (!readNum(ev.get("interval_ms"), interval, 1, 600000) || !readNum(ev.get("count"), count, 1, 1000) ||
             !readNum(ev.get("life_ms"), life, 1, 600000) || !readNum(ev.get("life_var_ms"), lifeVar, 0, 600000) ||
             !readNum(ev.get("radius"), e.radius, 0, 100000) || !readNum(ev.get("gravity"), e.gravity, -100, 100) ||
             !readNum(ev.get("size_start"), e.sizeStart, 0, 100000) || !readNum(ev.get("size_end"), e.sizeEnd, 0, 100000) ||
-            !readNum(ev.get("spin"), e.spin, -1000, 1000) || !readArr(ev.get("velocity_min"), e.velocityMin, -100000, 100000) ||
+            !readNum(ev.get("spin"), e.spin, -1000, 1000) ||
+            !readNum(ev.get("atlas_rows"), aRows, 1, 16) || !readNum(ev.get("atlas_cols"), aCols, 1, 16) ||
+            !readNum(ev.get("atlas_fps"), aFps, 0, 240) ||
+            !readArr(ev.get("velocity_min"), e.velocityMin, -100000, 100000) ||
             !readArr(ev.get("velocity_max"), e.velocityMax, -100000, 100000) ||
             !readArr(ev.get("color_start"), e.colorStart, 0, 1) || !readArr(ev.get("color_end"), e.colorEnd, 0, 1))
             return fail("element '" + e.name + "': a value is missing its type or out of range");
         e.intervalMs = int(interval), e.count = int(count), e.lifeMs = int(life), e.lifeVarMs = int(lifeVar);
+        e.atlasRows = int(aRows), e.atlasCols = int(aCols), e.atlasFps = int(aFps);
         if (const json::Value* ks = ev.get("keys")) {
             // [[t, size, r, g, b, a], ...]
             if (ks->type != json::Value::Type::Array || ks->arr.size() == 1 || ks->arr.size() > 16)
@@ -150,6 +155,8 @@ std::string authoredFxJson(const AuthoredFx& fx) {
           << ", \"gravity\": " << num(e.gravity) << ",\n     \"size_start\": " << num(e.sizeStart) << ", \"size_end\": "
           << num(e.sizeEnd) << ", \"color_start\": " << arr(e.colorStart.data(), 4) << ", \"color_end\": "
           << arr(e.colorEnd.data(), 4) << ", \"spin\": " << num(e.spin);
+        if (e.atlasRows > 1 || e.atlasCols > 1 || e.atlasFps > 0)
+            o << ", \"atlas_rows\": " << e.atlasRows << ", \"atlas_cols\": " << e.atlasCols << ", \"atlas_fps\": " << e.atlasFps;
         if (!e.keys.empty()) {
             o << ",\n     \"keys\": [";
             for (size_t k = 0; k < e.keys.size(); ++k) {
@@ -175,9 +182,12 @@ std::string authoredFxImageName(const AuthoredFx& fx, size_t element) { return a
 
 std::string authoredFxMaterialJson(const AuthoredFx& fx, size_t element) {
     const bool add = element < fx.elements.size() && fx.elements[element].additive;
+    const int rows = element < fx.elements.size() ? std::clamp(fx.elements[element].atlasRows, 1, 16) : 1;
+    const int cols = element < fx.elements.size() ? std::clamp(fx.elements[element].atlasCols, 1, 16) : 1;
     return "{\"_game\":\"iw3\",\"_type\":\"material\",\"_version\":1,\"techniqueSet\":" +
            quote(add ? "effect_zfeather_add" : "effect_zfeather") +
-           ",\"textureAtlas\":{\"rows\":1,\"columns\":1},\"stateFlags\":16,\"cameraRegion\":\"emissive\"" +
+           ",\"textureAtlas\":{\"rows\":" + std::to_string(rows) + ",\"columns\":" + std::to_string(cols) +
+           "},\"stateFlags\":16,\"cameraRegion\":\"emissive\"" +
            // One colour state: alpha blended (srcalpha / invsrcalpha, alpha test gt0) or additive scaled by alpha
            // (srcalpha / one), depth tested, no depth write (ReadFxMaterial's pinned mappings).
            ",\"stateBits\":[{\"colorWriteRgb\":true,\"colorWriteAlpha\":false,\"depthTest\":\"less_equal\",\"depthWrite\":false,"
@@ -274,9 +284,18 @@ std::string authoredFxIw3Json(const AuthoredFx& fx) {
                    ",\"rotation_total\":" + num(total) + ",\"scale\":" + num(model ? sz : 0.0) + ",\"size\":[" +
                    num(model ? 0.0 : sz) + "," + num(model ? 0.0 : sz) + "]},\"amplitude\":{\"color\":" + col + ",\"rotation_delta\":0,\"rotation_total\":0,\"scale\":0,\"size\":[0,0]}}";
         }
+        const int aRows = std::clamp(e.atlasRows, 1, 16);
+        const int aCols = std::clamp(e.atlasCols, 1, 16);
+        const int entryCount = aRows * aCols;
+        auto ceilLog2 = [](int v) { int b = 0; while ((1 << b) < v) ++b; return b; };
+        const int rowBits = entryCount > 1 ? ceilLog2(aRows) : 0;
+        const int colBits = entryCount > 1 ? ceilLog2(aCols) : 0;
+        const int atlasBehavior = entryCount > 1 ? (e.atlasFps > 0 ? 4 : 2) : 0;  // 2 = play over life, 4 = fixed fps
         elems += std::string(k ? "," : "") + "{\"angular_velocity\":[" + kRange0 + "," + kRange0 + "," + kRange0 +
-                 "],\"atlas\":{\"behavior\":0,\"col_index_bits\":0,\"entry_count\":0,\"fps\":0,\"index\":0,\"loop_count\":0,"
-                 "\"row_index_bits\":0},\"collision_maxs\":[1,1,1],\"collision_mins\":[-1,-1,-1],\"effect_emitted\":null,"
+                 "],\"atlas\":{\"behavior\":" + std::to_string(atlasBehavior) + ",\"col_index_bits\":" + std::to_string(colBits) +
+                 ",\"entry_count\":" + std::to_string(entryCount > 1 ? entryCount : 0) +
+                 ",\"fps\":" + std::to_string(entryCount > 1 ? e.atlasFps : 0) +
+                 ",\"index\":0,\"loop_count\":0,\"row_index_bits\":" + std::to_string(rowBits) + "},\"collision_maxs\":[1,1,1],\"collision_mins\":[-1,-1,-1],\"effect_emitted\":null,"
                  "\"effect_on_death\":null,\"effect_on_impact\":null,\"elem_type\":" + std::string(light ? "6" : model ? "5" : "0") +
                  ",\"elem_type_name\":" + quote(light ? "omni_light" : model ? "model" : "sprite_billboard") + ","
                  "\"emit_dist\":" + kRange0 + ",\"emit_dist_variance\":" + kRange0 + ",\"fade_in_range\":" + kRange0 +

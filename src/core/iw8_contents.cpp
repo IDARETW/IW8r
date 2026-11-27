@@ -53,22 +53,30 @@ struct ToolRule {
 };
 
 // Order does not matter (exact match on the last path component).
+// All bits verified directly in Replay 1.20 PhysicsScript_CreateContents (0x1410A5850).
 const ToolRule kToolRules[] = {
-    {"clip", kIw3ContentsSolid, true, false, "solid clip (solid bit 0x1)"},
-    {"clip_player", kIw3ContentsPlayerClip, true, false, "player clip 0x10000 (x64-zt:6944)"},
-    {"clip_weapon", kIw3ContentsItemClip, true, false,
-     "item clip 0x400 (x64-zt:6940-6942); weapon clip bit assumed to be the same, UNVERIFIED"},
-    {"clip_nosight", kIw3ContentsAiNoSight, true, false,
-     "AI no-sight 0x1000 (x64-zt:6941); the 0x40 shoot-through bit is masked off (x64-zt:6935-6937)"},
-    {"clip_missile", 0, false, false, "missile clip bit not in the sources, UNKNOWN; written as no collision"},
+    {"clip", kIw3ContentsSolid, true, false, "solid clip (physicscontents_solid 0x1)"},
+    {"clip_player", kIw3ContentsPlayerClip, true, false, "player clip (physicscontents_playerclip 0x10000)"},
+    {"clip_weapon", kIw3ContentsClipShot, true, false, "weapon/bullet clip (physicscontents_clipshot 0x2000)"},
+    {"clip_item", kIw3ContentsItemClip, true, false, "item clip (physicscontents_itemclip 0x400)"},
+    {"clip_nosight", kIw3ContentsAiNoSight, true, false, "AI no-sight (physicscontents_ainosight 0x1000)"},
+    {"clip_playernosight", kIw3ContentsPlayerNoSight, true, false, "player no-sight (physicscontents_playernosight 0x8000)"},
+    {"clip_missile", kIw3ContentsMissileClip, true, false, "missile clip (physicscontents_missileclip 0x80)"},
+    {"clip_vehicle", kIw3ContentsVehicleClip, true, false, "vehicle clip (physicscontents_vehicleclip 0x200)"},
+    {"clip_ai", kIw3ContentsAiClip, true, false, "AI clip (physicscontents_aiclip 0x20000)"},
+    {"clip_explosion", kIw3ContentsExplosionClip, true, false, "explosion clip (physicscontents_explosionclip 0x100000)"},
+    {"clip_sound", kIw3ContentsSoundClip, true, false, "sound clip (physicscontents_soundclip 0x200000)"},
+    {"clip_use", kIw3ContentsUseClip, true, false, "use clip (physicscontents_useclip 0x20000000)"},
+    {"clip_mantle", kIw3ContentsMantle, true, false, "mantle clip (physicscontents_mantle 0x1000000)"},
+    {"clip_nav", 0, false, false, "navigation blocker: no physics collision, emits NavMeshData obstacleBounds"},
+    {"nav_blocker", 0, false, false, "navigation blocker: no physics collision, emits NavMeshData obstacleBounds"},
     {"ladder", kIw3ContentsSolid, true, false, "solid; climbable faces come from ladder_planes (doc 15 §2.3)"},
-    {"water", 0x20, true, true, "water volume: contents 0x20 (IW3 CONTENTS_WATER; Replay physicscontents_water candidate, research 62), "
-              "not solid, drawn; swimming UNVERIFIED in game"},
+    {"water", kIw3ContentsWater, true, true, "water volume (physicscontents_water 0x20), drawn with water shading"},
     {"nodraw", kIw3ContentsSolid, true, false, "solid, not drawn"},
     {"caulk", kIw3ContentsSolid, true, false, "solid, not drawn"},
     {"trigger", kIw3TriggerContents, false, false, "trigger: no world collision; trigger hull contents"},
     {"sky", kIw3ContentsSolid, true, false,
-     "sky: solid collision, not drawn; the 0x800 sky bit is dropped by ConvertContents (x64-zt:7097)"},
+     "sky: solid collision, not drawn; the 0x800 sky bit is dropped by ConvertContents"},
     {"portal", 0, false, false, "portal: no collision, not drawn"},
     {"hint", 0, false, false, "hint: no collision, not drawn"},
     {"skip", 0, false, false, "skip: no collision, not drawn"},
@@ -169,6 +177,7 @@ BrushContents brushContents(const Primitive& brush) {
         allBits |= r->contents;
         if (key == "ladder") out.ladder = true;
         if (key == "water") out.water = true;
+        if (key == "clip_nav" || key == "nav_blocker") out.navBlocker = true;
         if (r->collides) {
             collideBits |= r->contents;
             anyCollide = true;
@@ -198,10 +207,72 @@ BrushContents brushContents(const Primitive& brush) {
             out.collides = false;
             out.contents = 0;
             notes.push_back("contents nonColliding: no world collision");
-        } else if (word == "weaponclip") {
+        } else if (word == "weaponclip" || word == "clipshot") {
+            out.contents |= kIw3ContentsClipShot;
+            out.collides = true;
+            notes.push_back("contents weaponClip: physicscontents_clipshot 0x2000");
+        } else if (word == "missileclip") {
+            out.contents |= kIw3ContentsMissileClip;
+            out.collides = true;
+            notes.push_back("contents missileClip: physicscontents_missileclip 0x80");
+        } else if (word == "vehicleclip") {
+            out.contents |= kIw3ContentsVehicleClip;
+            out.collides = true;
+            notes.push_back("contents vehicleClip: physicscontents_vehicleclip 0x200");
+        } else if (word == "itemclip") {
             out.contents |= kIw3ContentsItemClip;
             out.collides = true;
-            notes.push_back("contents weaponClip: item clip 0x400 (weapon bit UNVERIFIED)");
+            notes.push_back("contents itemClip: physicscontents_itemclip 0x400");
+        } else if (word == "playerclip") {
+            out.contents |= kIw3ContentsPlayerClip;
+            out.collides = true;
+            notes.push_back("contents playerClip: physicscontents_playerclip 0x10000");
+        } else if (word == "aiclip") {
+            out.contents |= kIw3ContentsAiClip;
+            out.collides = true;
+            notes.push_back("contents aiClip: physicscontents_aiclip 0x20000");
+        } else if (word == "ainosight") {
+            out.contents |= kIw3ContentsAiNoSight;
+            out.collides = true;
+            notes.push_back("contents aiNoSight: physicscontents_ainosight 0x1000");
+        } else if (word == "playernosight") {
+            out.contents |= kIw3ContentsPlayerNoSight;
+            out.collides = true;
+            notes.push_back("contents playerNoSight: physicscontents_playernosight 0x8000");
+        } else if (word == "explosionclip") {
+            out.contents |= kIw3ContentsExplosionClip;
+            out.collides = true;
+            notes.push_back("contents explosionClip: physicscontents_explosionclip 0x100000");
+        } else if (word == "soundclip") {
+            out.contents |= kIw3ContentsSoundClip;
+            out.collides = true;
+            notes.push_back("contents soundClip: physicscontents_soundclip 0x200000");
+        } else if (word == "soundreflect") {
+            out.contents |= kIw3ContentsSoundReflect;
+            out.collides = true;
+            notes.push_back("contents soundReflect: physicscontents_soundreflect 0x4000000");
+        } else if (word == "mantle") {
+            out.contents |= kIw3ContentsMantle;
+            out.collides = true;
+            notes.push_back("contents mantle: physicscontents_mantle 0x1000000");
+        } else if (word == "useclip") {
+            out.contents |= kIw3ContentsUseClip;
+            out.collides = true;
+            notes.push_back("contents useClip: physicscontents_useclip 0x20000000");
+        } else if (word == "water") {
+            out.contents = (out.contents & ~kIw3ContentsSolid) | kIw3ContentsWater;
+            out.collides = true;
+            out.water = true;
+            notes.push_back("contents water: physicscontents_water 0x20");
+        } else if (word == "foliage") {
+            out.contents = (out.contents & ~kIw3ContentsSolid) | kIw3ContentsFoliage;
+            out.collides = true;
+            notes.push_back("contents foliage: physicscontents_foliage 0x2");
+        } else if (word == "navblocker" || word == "clip_nav") {
+            out.navBlocker = true;
+            out.collides = false;
+            out.contents = 0;
+            notes.push_back("contents navBlocker: navigation obstacle volume");
         } else {
             notes.push_back("contents " + word + ": unknown directive, ignored");
         }

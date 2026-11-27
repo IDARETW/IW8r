@@ -282,9 +282,10 @@ struct RenderSurface {
 
 struct CollisionBrush {
     std::vector<Plane> planes;  // dot(n, x) <= d, n outward (doc 15 §2.3)
+    std::vector<int> planeIw3SurfaceTypes;  // per-plane IW3 1-based surface type (0 = default/tool)
     AABB bounds;
     uint32_t contents = 1;      // IW3-style source contents; the converter maps them (iw3_fastfile.cpp ConvertContents)
-    int surfaceType = 0;        // Replay surface type for footsteps/impacts (brush "surface_type", iw3_fastfile.cpp:7194-7197)
+    int surfaceType = 0;        // Replay surface type fallback for footsteps/impacts
     bool ladder = false;        // write ladder_planes: the converter keeps the widest vertical faces (iw3_fastfile.cpp:7250-7284)
     bool mountSource = false;   // a solid brush of the map itself: its open corners and ledge tops become mount edges
     bool modelHull = false;     // a convex piece of a placed model's collision hull (mount edges with the model rule)
@@ -320,6 +321,13 @@ struct Gather {
     bool patchBackFaces = true;
     std::vector<Chunk> chunks;
     std::vector<CollisionBrush> brushes;
+    // Patch/terrain collision triangle mesh emitted into replay-collision.json (Havok compressed mesh).
+    std::vector<Vec3> patchColVerts;
+    std::vector<std::array<uint32_t, 3>> patchColTris;
+    std::vector<uint32_t> patchColContents;
+    std::vector<int> patchColSurfaces;  // Replay surface type per collision triangle
+    // Navigation blocker AABBs from clip_nav / nav_blocker brushes.
+    std::vector<AABB> navBlockers;
     std::set<std::string> editorMats;
     size_t skyFaces = 0;
     AABB bounds;
@@ -346,6 +354,13 @@ void gatherBrush(const Primitive& p, size_t entity, size_t group, Gather& g, boo
     // Collision (doc 15 §2.3): contents from the face materials and the `contents` line (iw8_contents.h):
     // solid, player clip, item clip, AI no-sight; triggers, hints, skips and nonColliding brushes have none.
     const BrushContents bc = brushContents(p);
+    if (bc.navBlocker) {
+        const AABB nb = brushBounds(cb);
+        if (nb.valid()) {
+            g.bounds.add(nb);
+            g.navBlockers.push_back(nb);
+        }
+    }
     if (bc.collides || forceCollision) {
         CollisionBrush cbr;
         cbr.contents = bc.collides ? bc.contents : 1u;
@@ -362,8 +377,13 @@ void gatherBrush(const Primitive& p, size_t entity, size_t group, Gather& g, boo
             const auto best = std::max_element(uses.begin(), uses.end(), [](const auto& a, const auto& b) { return a.second < b.second; });
             if (best != uses.end()) cbr.surfaceType = replaySurfaceTypeForIw3(surfaceTypeOf(best->first, g.library));
         }
-        for (size_t i = 0; i < cb.size() && i < wins.size(); ++i)
-            if (!wins[i].empty()) cbr.planes.push_back(cb[i].plane);
+        for (size_t i = 0; i < cb.size() && i < wins.size(); ++i) {
+            if (wins[i].empty()) continue;
+            cbr.planes.push_back(cb[i].plane);
+            const std::string fmat = firstToken(cb[i].suffix);
+            const int iw3Type = (!fmat.empty() && !isIw8ToolMaterial(fmat)) ? surfaceTypeOf(fmat, g.library) : 0;
+            cbr.planeIw3SurfaceTypes.push_back(iw3Type);
+        }
         cbr.bounds = brushBounds(cb);
         g.bounds.add(cbr.bounds);
         g.brushes.push_back(std::move(cbr));
@@ -473,6 +493,22 @@ void gatherPatch(const Primitive& p, size_t entity, size_t group, Gather& g) {
     }
     g.editorMats.insert(mat);
 
+    // Emit patch/terrain collision triangles into the world Havok compressed mesh (unless patch is non-colliding
+    // or belongs to a non-world brush model).
+    bool patchNonColliding = false;
+    for (const TextLine& l : p.lines) {
+        std::string lt = l.text;
+        for (char& ch : lt) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (lt.find("noncolliding") != std::string::npos) { patchNonColliding = true; break; }
+    }
+    const bool emitPatchCollision = !patchNonColliding;
+    const uint32_t colBase = static_cast<uint32_t>(g.patchColVerts.size());
+    const int patchReplaySurf = replaySurfaceTypeForIw3(surfaceTypeOf(mat, g.library));
+    if (emitPatchCollision) {
+        g.patchColVerts.reserve(g.patchColVerts.size() + m.points.size());
+        for (const Vec3& pt : m.points) g.patchColVerts.push_back(pt);
+    }
+
     // One projection axis per patch, from its averaged vertex normal; uv comes from position.
     Vec3 avg;
     for (const Vec3& nn : m.normals) avg += nn;
@@ -487,6 +523,12 @@ void gatherPatch(const Primitive& p, size_t entity, size_t group, Gather& g) {
         if (length(gn) < 1e-12) continue;  // zero-area triangle
         const Vec3 navg = m.normals[ia] + m.normals[ib] + m.normals[ic];
         if (dot(gn, navg) < 0) std::swap(ib, ic);  // winding agrees with the vertex normals
+        if (emitPatchCollision) {
+            // iw3_fastfile.cpp swaps indices[1]/[2] (IW3 CW -> Havok CCW), so emit CW here so Havok receives CCW.
+            g.patchColTris.push_back({colBase + ia, colBase + ic, colBase + ib});
+            g.patchColContents.push_back(kIw3ContentsSolid);
+            g.patchColSurfaces.push_back(patchReplaySurf);
+        }
         Chunk c;
         c.entity = entity;
         c.group = group;
@@ -736,7 +778,7 @@ bool isLightClass(const std::string& lcls) { return lcls == "light" || lcls == "
 //   Finite / Positive / NonNegative: one number, checked for finite, > 0 or >= 0.
 //   Pair: two numbers, "near far", written as a JSON array.
 //   Switch: 0, 1, true or false. 1 sets can_use_shadow_map (spot lights only; see localPrimaryLights).
-enum class LightKind { Finite, Positive, NonNegative, Pair, Switch , Flag};
+enum class LightKind { Finite, Positive, NonNegative, Pair, Vec3Val, UpVec3, Switch, Flag };
 struct LightKey {
     const char* key;    // Radiant key
     const char* field;  // ComPrimaryLight JSON field (convert.cpp reads each one by this name)
@@ -745,7 +787,14 @@ struct LightKey {
 };
 constexpr LightKey kLightKeys[] = {
     {"iw8r_bulb_radius", "bulb_radius", LightKind::Positive, "must be a number above 0"},
+    {"iw8r_bulb_length", "bulb_length", LightKind::Vec3Val, "must be three numbers: x y z"},
+    {"bulb_length", "bulb_length", LightKind::Vec3Val, "must be three numbers: x y z"},
     {"iw8r_shadow_bias", "shadow_bias", LightKind::Finite, "must be a number"},
+    {"iw8r_shadow_softness", "shadow_softness", LightKind::Positive, "must be a number above 0"},
+    {"iw8r_shadow_area", "shadow_area", LightKind::NonNegative, "must be a number of 0 or more"},
+    {"iw8r_shadow_near_bias", "shadow_near_plane_bias", LightKind::Finite, "must be a number"},
+    {"iw8r_dynamic_shadows", "needs_dynamic_shadows", LightKind::Flag, "must be 0, 1, true or false"},
+    {"iw8r_up", "up", LightKind::UpVec3, "must be three numbers: x y z"},
     {"iw8r_falloff", "distance_falloff", LightKind::Positive, "must be a number above 0"},
     {"iw8r_fade", "fade_offset", LightKind::Pair, "must be two numbers: near far"},
     {"iw8r_shadows", "can_use_shadow_map", LightKind::Switch, "must be 0, 1, true or false"},
@@ -943,6 +992,12 @@ std::vector<std::string> localPrimaryLights(const MapFile& map, const std::vecto
                 double a = 0, b = 0;
                 if (tok.size() == 2 && parseNumber(tok[0], a) && parseNumber(tok[1], b))
                     json = "[" + num(a) + "," + num(b) + "]";
+            } else if (lk.kind == LightKind::Vec3Val || lk.kind == LightKind::UpVec3) {
+                double v[3] = {0, 0, 0};
+                if (parseVec3Text(*s, v)) {
+                    json = "[" + num(v[0]) + "," + num(v[1]) + "," + num(v[2]) + "]";
+                    if (lk.kind == LightKind::UpVec3) extra += ",\"authored_up\":true";
+                }
             } else {
                 double v = 0;
                 // num() writes |v| < 1e-9 as 0, so a "positive" value must stay at or above 1e-9 to remain positive.
@@ -1129,12 +1184,24 @@ std::string customMaterialJson(const CustomMaterial& cm, const std::string& outN
         }
     }
     if (cm.sortKey > 0) json += ",\"sortKey\":" + std::to_string(cm.sortKey);
-    if (cm.hasTint() || cm.emission > 1) {
+    if (cm.hasReplayEmission())
+        json += ",\"replayEmission\":[" + num(cm.replayEmission[0]) + "," + num(cm.replayEmission[1]) + "," + num(cm.replayEmission[2]) + "]";
+    if (cm.unlit && !cm.maskImage.empty()) json += ",\"unlitMask\":true";
+    if (cm.hasTint() || cm.emission > 1 || cm.hasDetailScale() || cm.hasUvAnim() || cm.hasMaskUvAnim() || cm.hasTransmission()) {
         std::string c;
+        const auto addConst = [&](const std::string& item) { c += std::string(c.empty() ? "" : ",") + item; };
         if (cm.hasTint())
-            c += "{\"name\":\"colorTint\",\"literal\":[" + num(cm.tint[0]) + "," + num(cm.tint[1]) + "," + num(cm.tint[2]) + ",1]}";
+            addConst("{\"name\":\"colorTint\",\"literal\":[" + num(cm.tint[0]) + "," + num(cm.tint[1]) + "," + num(cm.tint[2]) + ",1]}");
         if (cm.emission > 1)
-            c += std::string(c.empty() ? "" : ",") + "{\"name\":\"emissionScale\",\"literal\":[" + num(cm.emission) + ",0,0,0]}";
+            addConst("{\"name\":\"emissionScale\",\"literal\":[" + num(cm.emission) + ",0,0,0]}");
+        if (cm.hasDetailScale())
+            addConst("{\"name\":\"detailScale\",\"literal\":[" + num(cm.detailScale[0]) + "," + num(cm.detailScale[1]) + ",0,0]}");
+        if (cm.hasUvAnim())
+            addConst("{\"name\":\"uvAnimParms\",\"literal\":[" + num(cm.uvAnim[0]) + "," + num(cm.uvAnim[1]) + "," + num(cm.uvAnim[2]) + ",0]}");
+        if (cm.hasMaskUvAnim())
+            addConst("{\"name\":\"maskUvAnimParms\",\"literal\":[" + num(cm.maskUvAnim[0]) + "," + num(cm.maskUvAnim[1]) + "," + num(cm.maskUvAnim[2]) + ",0]}");
+        if (cm.hasTransmission())
+            addConst("{\"name\":\"transmission\",\"literal\":[" + num(cm.transmission[0]) + "," + num(cm.transmission[1]) + "," + num(cm.transmission[2]) + ",0]}");
         json += ",\"constants\":[" + c + "]";
     }
     json += ",\"textures\":[{\"name\":\"colorMap\",\"semantic\":\"colorMap\",\"image\":" + quote(stem + "_c") + "}";
@@ -1142,6 +1209,10 @@ std::string customMaterialJson(const CustomMaterial& cm, const std::string& outN
         json += ",{\"name\":\"normalMap\",\"semantic\":\"normalMap\",\"image\":" + quote(stem + "_n") + "}";
     if (!cm.specImage.empty())
         json += ",{\"name\":\"specularMap\",\"semantic\":\"specularMap\",\"image\":" + quote(stem + "_s") + "}";
+    if (!cm.detailImage.empty())
+        json += ",{\"name\":\"detailMap\",\"semantic\":\"detailMap\",\"image\":" + quote(stem + "_d") + "}";
+    if (!cm.maskImage.empty())
+        json += ",{\"name\":\"maskMap\",\"semantic\":\"maskMap\",\"image\":" + quote(stem + "_m") + "}";
     return json + "]}";
 }
 
@@ -3441,17 +3512,49 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         collisionTiles = choice.tiles;
         for (const std::string& n : choice.notes) warn.push_back(n);
     }
+    // Build IW3 collision material table (1..28 surface types) so mixed-material brushes get per-face
+    // footsteps, bullet impacts, and Havok PM_* physics materials via iw3_fastfile.cpp face splitting.
+    std::string colMaterials = "[{\"surfaceFlags\":0}";
+    for (int t = 1; t <= 28; ++t)
+        colMaterials += ",{\"surfaceFlags\":" + std::to_string(iw3SurfaceFlagsForType(t)) + "}";
+    colMaterials += "]";
+
     std::string col = "{\"schema\":1,\"name\":" + quote(mapName) + ",\"submodel_count\":" + std::to_string(brushModels.size() + 1) +
+                      ",\"materials\":" + colMaterials +
                       ",\"submodels\":[" + submodels + "],\"leaf_brush_nodes\":[" + leaves + "],\"brushes\":[";
     for (size_t bi = 0; bi < g.brushes.size(); ++bi) {
         const CollisionBrush& b = g.brushes[bi];
         if (bi) col += ",";
+        int axialMat[2][3] = {{0, 0, 0}, {0, 0, 0}};
+        for (size_t pi = 0; pi < b.planes.size(); ++pi) {
+            const Vec3& n = b.planes[pi].n;
+            const int matIdx = (pi < b.planeIw3SurfaceTypes.size() && b.planeIw3SurfaceTypes[pi] >= 1 && b.planeIw3SurfaceTypes[pi] <= 28)
+                                   ? b.planeIw3SurfaceTypes[pi]
+                                   : 0;
+            if (n.x < -0.9999) axialMat[0][0] = matIdx;
+            else if (n.x >  0.9999) axialMat[1][0] = matIdx;
+            else if (n.y < -0.9999) axialMat[0][1] = matIdx;
+            else if (n.y >  0.9999) axialMat[1][1] = matIdx;
+            else if (n.z < -0.9999) axialMat[0][2] = matIdx;
+            else if (n.z >  0.9999) axialMat[1][2] = matIdx;
+        }
         col += "{\"contents\":" + std::to_string(b.contents) + (b.surfaceType > 0 ? ",\"surface_type\":" + std::to_string(b.surfaceType) : std::string()) +
-               ",\"mins\":" + vec3(b.bounds.mins) + ",\"maxs\":" + vec3(b.bounds.maxs) + ",\"planes\":[";
+               ",\"mins\":" + vec3(b.bounds.mins) + ",\"maxs\":" + vec3(b.bounds.maxs) +
+               ",\"axial_materials\":[[" + std::to_string(axialMat[0][0]) + "," + std::to_string(axialMat[0][1]) + "," + std::to_string(axialMat[0][2]) +
+               "],[" + std::to_string(axialMat[1][0]) + "," + std::to_string(axialMat[1][1]) + "," + std::to_string(axialMat[1][2]) + "]]" +
+               ",\"planes\":[";
         for (size_t pi = 0; pi < b.planes.size(); ++pi) {
             const Plane& pl = b.planes[pi];
             if (pi) col += ",";
             col += "[" + num(pl.n.x) + "," + num(pl.n.y) + "," + num(pl.n.z) + "," + num(pl.d) + "]";
+        }
+        col += "],\"side_materials\":[";
+        for (size_t pi = 0; pi < b.planes.size(); ++pi) {
+            const int matIdx = (pi < b.planeIw3SurfaceTypes.size() && b.planeIw3SurfaceTypes[pi] >= 1 && b.planeIw3SurfaceTypes[pi] <= 28)
+                                   ? b.planeIw3SurfaceTypes[pi]
+                                   : 0;
+            if (pi) col += ",";
+            col += std::to_string(matIdx);
         }
         col += "]";
         if (b.ladder) {
@@ -3466,8 +3569,27 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         }
         col += "}";
     }
+    // Patch/terrain collision triangle mesh (Havok compressed mesh with per-triangle contents & Replay surface type).
+    std::string colVerts, colTris, colTriContents, colTriSurfaces;
+    for (size_t vi = 0; vi < g.patchColVerts.size(); ++vi)
+        colVerts += (vi ? "," : "") + vec3(g.patchColVerts[vi]);
+    for (size_t ti = 0; ti < g.patchColTris.size(); ++ti) {
+        const auto& tr = g.patchColTris[ti];
+        colTris += (ti ? "," : "") + std::string("[") + std::to_string(tr[0]) + "," + std::to_string(tr[1]) + "," + std::to_string(tr[2]) + "]";
+        colTriContents += (ti ? "," : "") + std::to_string(g.patchColContents[ti]);
+        colTriSurfaces += (ti ? "," : "") + std::string("[") + std::to_string(g.patchColSurfaces[ti]) + ",0]";
+    }
+    std::string navBlockersJson;
+    for (size_t ni = 0; ni < g.navBlockers.size(); ++ni) {
+        const AABB& nb = g.navBlockers[ni];
+        navBlockersJson += (ni ? "," : "") + std::string("[") + num(nb.mins.x) + "," + num(nb.mins.y) + "," + num(nb.mins.z) + "," +
+                           num(nb.maxs.x) + "," + num(nb.maxs.y) + "," + num(nb.maxs.z) + "]";
+    }
     // triangle_contents is read with at() (iw3_fastfile.cpp:11516) and its schema tag checked at :7351 (doc 17 §4).
-    col += "],\"vertices\":[],\"triangles\":[],\"triangle_contents\":[],\"triangle_contents_schema\":\"material-partitions-v1\"" +
+    col += "],\"vertices\":[" + colVerts + "],\"triangles\":[" + colTris + "],\"triangle_contents\":[" + colTriContents +
+           "],\"triangle_contents_schema\":\"material-partitions-v1\"" +
+           (g.patchColTris.empty() ? std::string() : ",\"triangle_surfaces\":[" + colTriSurfaces + "]") +
+           (navBlockersJson.empty() ? std::string() : ",\"nav_blockers\":[" + navBlockersJson + "]") +
            mountEdgesKey + ",\"dynamic_model_count\":" + std::to_string(dynModelCount) + ",\"dynamic_brush_count\":0,\"dynamic_models\":[" +
            dynModelsJson + "],\"dynamic_brushes\":[]" +
            (scriptableCount ? ",\"scriptable_instances\":[" + scriptablesJson + "]" : std::string()) +
@@ -3511,7 +3633,9 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
         };
         const ImageJob jobs[] = {{&cm->colorImage, "_c", false, cm->alphaTest || cm->blend},
                                  {&cm->normalImage, "_n", true, false},
-                                 {&cm->specImage, "_s", false, true}};
+                                 {&cm->specImage, "_s", false, true},
+                                 {&cm->detailImage, "_d", false, false},
+                                 {&cm->maskImage, "_m", false, true}};
         for (const ImageJob& job : jobs) {
             if (job.source->empty()) continue;
             std::vector<uint8_t> dds;
@@ -4099,8 +4223,8 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                 if (const std::string* v = e.value("iw8r_lift"); v && !v->empty()) {
                     MapScriptExtras::Lift l;
                     const int n = std::sscanf(v->c_str(), "%lf %lf %lf", &l.dz, &l.moveTime, &l.waitTime);
-                    if (cls != "script_brushmodel" && cls != "script_model")
-                        warn.push_back(e.classname() + ": iw8r_lift only works on a script_brushmodel; skipped");
+                    if (cls != "script_brushmodel" && cls != "script_model" && cls != "misc_model")
+                        warn.push_back(e.classname() + ": iw8r_lift only works on a script_brushmodel, misc_model or script_model; skipped");
                     else if (cls == "script_brushmodel" && e.value("iw8r_spin"))
                         warn.push_back("script_brushmodel" + (tn ? " '" + *tn + "'" : std::string()) +
                                        ": iw8r_lift and iw8r_spin together are not built (the spin links the brush model to its "
@@ -4133,14 +4257,23 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                         sp.targetname = *tn;
                         sp.seconds = std::fabs(sp.seconds);
                         // Research 131 G1: a brush model has no origin of its own (it is the map origin), so it turns about
-                        // a pivot at the centre of its brushes. The viewport's Behaviour Preview uses the same centre.
-                        if (cls == "script_brushmodel")
-                            if (const auto c = brushModelCentre(e)) {
+                        // a pivot (explicit iw8r_pivot / iw8r_hinge if set, else the centre of its brushes).
+                        if (cls == "script_brushmodel") {
+                            double pv[3] = {0, 0, 0};
+                            const std::string* pkey = e.value("iw8r_pivot");
+                            if (!pkey || pkey->empty()) pkey = e.value("iw8r_hinge");
+                            if (pkey && parseVec3Text(*pkey, pv)) {
+                                sp.pivot = true;
+                                sp.centre[0] = pv[0];
+                                sp.centre[1] = pv[1];
+                                sp.centre[2] = pv[2];
+                            } else if (const auto c = brushModelCentre(e)) {
                                 sp.pivot = true;
                                 sp.centre[0] = c->x;
                                 sp.centre[1] = c->y;
                                 sp.centre[2] = c->z;
                             }
+                        }
                         sharedName("iw8r_spin", *tn, sp.pivot ? "they turn together about the centre of the first one" : "one spin script turns them all");
                         extras.spinners.push_back(sp);
                     }
@@ -4287,16 +4420,18 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
             const CollisionWorld::Trace t = cw.traceRay(p + sunDir * 2.0, p + sunDir * reach);
             return !t.startSolid && t.fraction >= 1.0;
         };
-        // Floors per column: repeated downward traces through the collision (top to bottom, at most 4 levels).
+        // Floors per column: repeated downward traces through the collision (top to bottom, up to 32 levels).
         const double topZ = bounds.maxs.z + 8, bottomZ = bounds.mins.z - 8;
         lg.floorsAt = [&cw, topZ, bottomZ](double x, double y) {
             std::vector<double> floors;
             double z = topZ;
-            for (int level = 0; level < 4 && z > bottomZ; ++level) {
+            int solidSteps = 0;
+            for (int level = 0; level < 32 && z > bottomZ; ++level) {
                 const CollisionWorld::Trace t = cw.traceRay(Vec3{x, y, z}, Vec3{x, y, bottomZ});
                 if (t.startSolid) {
                     z -= 16;  // inside a brush: step down out of it
                     --level;
+                    if (++solidSteps > 512) break;
                     continue;
                 }
                 if (t.fraction >= 1.0) break;
@@ -4333,11 +4468,62 @@ bool compileIw8ExtractionFlat(const MapFile& map, const std::string& outDir, con
                 double v[4] = {0, 0, 0, 0};
                 if (std::sscanf(sk->c_str(), "%lf %lf %lf %lf", &v[0], &v[1], &v[2], &v[3]) == 4) gridSky = Vec3{v[0], v[1], v[2]}, gridSkyI = v[3];
             }
+        // Collect map local lights so indoor lamp-lit rooms illuminate the light grid (viewmodels & props).
+        std::vector<LightGridLocalLight> gridLocalLights;
+        {
+            std::map<std::string, Vec3> lgTargets;
+            for (const Entity& e : map.entities) {
+                const std::string* tn = e.value("targetname");
+                const auto o = e.origin();
+                if (tn && o && !tn->empty()) lgTargets.emplace(*tn, *o);
+            }
+            for (const Entity& ent : map.entities) {
+                const Entity* pe = &ent;
+                const std::string lcls = lower(pe->classname());
+                if (!isLightClass(lcls)) continue;
+                LightGridLocalLight ll;
+                ll.origin = pe->origin().value_or(Vec3{});
+                double c[3] = {1, 1, 1};
+                const std::string* cs = pe->value("_color");
+                if (!cs) cs = pe->value("color");
+                if (cs && parseVec3Text(*cs, c)) {
+                    if (std::max({c[0], c[1], c[2]}) > 1.0) for (double& v : c) v /= 255.0;
+                    for (double& v : c) v = std::max(0.0, v);
+                }
+                double inten = 1.0;
+                if (const std::string* is = pe->value("intensity")) { double v = 0; if (parseNumber(*is, v) && v >= 0) inten = v; }
+                ll.color = Vec3{c[0] * inten, c[1] * inten, c[2] * inten};
+                if (const std::string* rs = pe->value("radius")) { double v = 0; if (parseNumber(*rs, v) && v > 0) ll.radius = v; }
+                std::optional<Vec3> aim;
+                if (const std::string* tk = pe->value("target"); tk && !tk->empty())
+                    if (const auto it = lgTargets.find(*tk); it != lgTargets.end()) aim = it->second - ll.origin;
+                const bool hasFov = pe->value("fov_outer") || pe->value("fov_inner");
+                ll.spot = lcls == "light_spot" || (lcls == "light" && (aim || hasFov));
+                if (ll.spot) {
+                    if (aim && length(*aim) > 1e-6) {
+                        ll.dir = normalize(*aim);
+                    } else {
+                        double a[3] = {0, 0, 0};
+                        if (const std::string* as = pe->value("angles")) parseVec3Text(*as, a);
+                        const double p = a[0] * kPi / 180.0, y = a[1] * kPi / 180.0;
+                        ll.dir = {std::cos(p) * std::cos(y), std::cos(p) * std::sin(y), -std::sin(p)};
+                    }
+                    double fo = kDefaultFovOuter, fi = kDefaultFovInner;
+                    if (const std::string* s = pe->value("fov_outer")) { double v = 0; if (parseNumber(*s, v) && v > 0) fo = v; }
+                    if (const std::string* s = pe->value("fov_inner")) { double v = 0; if (parseNumber(*s, v) && v >= 0) fi = v; }
+                    fo = std::clamp(fo, 1.0, 170.0);
+                    if (fi >= fo) fi = fo * 0.5;
+                    ll.cosOuter = std::cos(fo * 0.5 * kPi / 180.0);
+                    ll.cosInner = std::cos(fi * 0.5 * kPi / 180.0);
+                }
+                gridLocalLights.push_back(ll);
+            }
+        }
         const bool flatGrid = worldspawn && worldspawn->value("iw8r_flat_light_grid") && *worldspawn->value("iw8r_flat_light_grid") == "1";
         if (!gridBvh.empty() && !flatGrid) {
             const Vec3 sunC{sunColor[0], sunColor[1], sunColor[2]};
-            lg.samplesAt = [&gridBvh, &gridAlbedo, sunDir, sunC, gridSky, gridSkyI, reach](const Vec3& p, std::array<std::array<float, 3>, 56>& out) {
-                lightGridSamplesAt(gridBvh, gridAlbedo, sunDir, sunC, gridSky * gridSkyI, reach, p, out);
+            lg.samplesAt = [&gridBvh, &gridAlbedo, &gridLocalLights, sunDir, sunC, gridSky, gridSkyI, reach](const Vec3& p, std::array<std::array<float, 3>, 56>& out) {
+                lightGridSamplesAt(gridBvh, gridAlbedo, sunDir, sunC, gridSky * gridSkyI, reach, p, out, &gridLocalLights);
             };
         }
         LightGridFiles grid;

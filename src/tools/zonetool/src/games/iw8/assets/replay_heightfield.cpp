@@ -36,13 +36,13 @@ constexpr uint32_t kFormatL8 = 3;
 constexpr unsigned kOutdoorSize = 16;
 constexpr uint8_t kOutdoorValue = 125;
 
-// Texel density: about 8 units, as a power-of-two square between 256 and 2048
+// Texel density: about 8 units, as a power-of-two square between 256 and 4096
 // (stock mp_hideout: 4096 texels over ~90k units).
 unsigned Resolution(const replaybounds::Bounds &bounds)
 {
     const double extent = 2.0 * std::max(bounds.halfSize[0], bounds.halfSize[1]);
     unsigned size = 256;
-    while (size < 2048 && size * 8.0 < extent)
+    while (size < 4096 && size * 8.0 < extent)
         size *= 2;
     return size;
 }
@@ -194,14 +194,39 @@ Data Build(const std::vector<float> &triangles, const replaybounds::Bounds &boun
     data.outdoorLookup = m;
     data.outdoorLookup[5] = float(1 / sizeY);
     data.outdoorLookup[13] = float(-minY / sizeY);
+    // Rasterize "$outdoor" roof/sky-visibility height from the same top-down solid geometry.
+    // outdoorLookup uses unflipped V = (y - minY) / sizeY, which is the vertical mirror of heightmap's row order.
+    const unsigned outN = data.outdoorSize = std::min(n, 512u);
+    const unsigned ratio = std::max(1u, n / outN);
+    data.outdoorPixels.assign(size_t(outN) * outN, 0);
+    for (unsigned oy = 0; oy < outN; ++oy)
+    {
+        for (unsigned ox = 0; ox < outN; ++ox)
+        {
+            uint8_t maxH = 0;
+            for (unsigned dy = 0; dy < ratio; ++dy)
+            {
+                const unsigned sy = n - 1 - (oy * ratio + dy);
+                for (unsigned dx = 0; dx < ratio; ++dx)
+                {
+                    const unsigned sx = ox * ratio + dx;
+                    maxH = std::max(maxH, data.pixels[size_t(sy) * n + sx]);
+                }
+            }
+            data.outdoorPixels[size_t(oy) * outN + ox] = maxH;
+        }
+    }
     return data;
 }
 
 void Register(ZoneWriter &writer, const Data &data)
 {
     RegisterImage(writer, kHeightmapName, kFormatR8, 8, data.size, data.pixels);
-    RegisterImage(writer, kOutdoorName, kFormatL8, 0, kOutdoorSize,
-                  std::vector<uint8_t>(kOutdoorSize * kOutdoorSize, kOutdoorValue));
+    if (data.outdoorSize > 0 && data.outdoorPixels.size() == size_t(data.outdoorSize) * data.outdoorSize)
+        RegisterImage(writer, kOutdoorName, kFormatL8, 0, data.outdoorSize, data.outdoorPixels);
+    else
+        RegisterImage(writer, kOutdoorName, kFormatL8, 0, kOutdoorSize,
+                      std::vector<uint8_t>(kOutdoorSize * kOutdoorSize, kOutdoorValue));
 }
 
 void Stamp(std::vector<uint8_t> &world, const Data &data, const ZoneWriter &writer)

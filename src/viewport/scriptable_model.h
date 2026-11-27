@@ -13,12 +13,19 @@
 
 namespace iw8r::app {
 
+// The definition name of a `scriptable` entity: accepts both "scriptable" and "definition" keys (compile_iw8.cpp:2403).
+inline const std::string* scriptableDefinitionKey(const Entity& e) {
+    if (const std::string* def = e.value("scriptable"); def && !def->empty()) return def;
+    if (const std::string* def = e.value("definition"); def && !def->empty()) return def;
+    return nullptr;
+}
+
 // The model name to draw `e` with, or "" (not a scriptable, it has a model key, or the definition has no model).
 // modelOf: definition name -> its first model ("" when unknown).
 inline std::string scriptableModelName(const Entity& e, const std::function<std::string(const std::string&)>& modelOf) {
     if (!modelOf || e.classname() != "scriptable") return {};
     if (const std::string* m = e.value("model"); m && !m->empty()) return {};
-    const std::string* def = e.value("scriptable");
+    const std::string* def = scriptableDefinitionKey(e);
     if (!def || def->empty()) return {};
     return modelOf(*def);
 }

@@ -478,13 +478,22 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         if (!e || e->failed) return std::nullopt;
         CameraView::StockMaterialFacts f;
         // Decals: the blended world techsets (`_bad_` blend token; research 98), sortKey 10-17 on Speedball.
+        // World `_bar_` glass (sortKey 25/30) and additive world surfaces go to the translucent/additive pass instead.
         const QString ts = e->techset.section('/', -1);
-        if ((ts.contains("_bad_") || (e->sortKey >= 10 && e->sortKey <= 17 && (ts.startsWith("lit") || e->techset.startsWith("tw")))) &&
-            (e->techset.startsWith("tw/") || e->techset.startsWith("twc/") || e->techset.startsWith("tw4/") || e->techset.startsWith("twc4/")))
+        const bool isWorldTs = e->techset.startsWith("tw/") || e->techset.startsWith("twc/") ||
+                               e->techset.startsWith("tw4/") || e->techset.startsWith("twc4/");
+        const TechsetInfo tsInfo = parseTechset(ts.toStdString());
+        f.sortKey = e->sortKey;
+        f.additive = tsInfo.blend == MaterialBlend::Additive ||
+                     (tsInfo.family == TechsetFamily::UnlitEffect && ts.contains("_bad_") && !ts.contains("_ta0_"));
+        if (isWorldTs && !f.additive && !ts.contains("_bar_") &&
+            ((ts.contains("_bad_") && (e->sortKey <= 17 || e->sortKey <= 0)) ||
+             (e->sortKey >= 10 && e->sortKey <= 17 && (ts.startsWith("lit") || e->techset.startsWith("tw")))))
             f.decalSortKey = std::max(1, e->sortKey);
         // Model decals (research 98's blend token on model techsets; sort keys 10-17 seen): grenade box stencils, frame
         // decals, reveal layers. Glass and other blended surfaces sort later (25, 30) and are not decals.
-        if (ts.contains("_bad_") && e->sortKey > 0 && e->sortKey <= 17 && !e->techset.startsWith("tw")) f.propDecalSortKey = e->sortKey;
+        if (ts.contains("_bad_") && !f.additive && e->sortKey > 0 && e->sortKey <= 17 && !e->techset.startsWith("tw"))
+            f.propDecalSortKey = e->sortKey;
         f.noCastShadow = e->surfaceFlags > 0 && (uint64_t(e->surfaceFlags) & kIw8SurfNoCastShadow) != 0;
         f.ssr = parseStockTechsetName(e->techset.toStdString()).ssr;
         f.tint = e->tint;
@@ -537,10 +546,23 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
             if (const auto* c = cst(45); c && ((*c)[0] != 0.0f || (*c)[1] != 0.0f))
                 for (const QString& t : e->textures)
                     if (t.startsWith("95=")) f.dispImage = t.mid(3).toStdString(), f.disp = {(*c)[0], (*c)[1]};
-        f.unlit = parseTechset(e->techset.section('/', -1).toStdString()).family == TechsetFamily::UnlitEffect;
+        f.unlit = tsInfo.family == TechsetFamily::UnlitEffect;
         f.vertexColourData = traits.reactiveMotion;
-        // Blended model materials past the decal sort keys (glass 25, 30): see-through (research 132 G1).
-        f.translucent = !e->techset.startsWith("tw") && (ts.contains("_bad_") || ts.contains("_bar_")) && f.propDecalSortKey == 0;
+        // Blended model materials past the decal sort keys (glass 25, 30), stock world `_bar_` glass (sortKey 25/30),
+        // world non-decal `_bad_` (sortKey > 17), and additive surfaces: routed to the translucent/additive pass.
+        const bool worldTranslucent = isWorldTs && (ts.contains("_bar_") || (ts.contains("_bad_") && e->sortKey > 17) || f.additive);
+        const bool propTranslucent = !e->techset.startsWith("tw") && (((ts.contains("_bad_") || ts.contains("_bar_")) && f.propDecalSortKey == 0) || f.additive);
+        f.translucent = worldTranslucent || propTranslucent;
+        // Keep alpha-tested foliage/fences, decals, glass, water, and explicitly double-sided materials unculled.
+        const QString mLow = qs(m).toLower();
+        f.twoSided = traits.blendToken == "alt" || traits.transmission || traits.reactiveMotion ||
+                     f.translucent || f.additive || f.decalSortKey > 0 || f.propDecalSortKey > 0 ||
+                     f.dualNormal[0] != 0.0f ||
+                     mLow.contains("_2s") || mLow.contains("twosided") || mLow.contains("2sided") ||
+                     mLow.contains("foliage") || mLow.contains("leaf") || mLow.contains("leaves") ||
+                     mLow.contains("fence") || mLow.contains("chainlink") || mLow.contains("grate") ||
+                     mLow.contains("cloth") || mLow.contains("flag") || mLow.contains("tarp") ||
+                     mLow.contains("curtain") || mLow.contains("wire") || mLow.contains("net");
         return f;
     });
     camera_->setMaterialLayers([this](const std::string& m) -> std::optional<StockLayeredMaterial> {
@@ -684,7 +706,16 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
     // the converter's world shader reads it (map_surface_realtime.hlsl; research 132 G4, G11, G12).
     camera_->setMaterialState([this](const std::string& m) -> std::optional<CameraView::MaterialState> {
         const CustomMaterial* cm = customMaterials_ ? customMaterials_->find(m) : nullptr;
-        if (!cm) return std::nullopt;
+        if (!cm) {
+            if (qs(m).compare("iw8r_glass", Qt::CaseInsensitive) == 0) {
+                CameraView::MaterialState s;
+                s.glass = true;
+                s.sortKey = 25;
+                s.cullBack = false;
+                return s;
+            }
+            return std::nullopt;
+        }
         CameraView::MaterialState s;
         const bool add = cm->blendMode == 1, mul = cm->blendMode == 2;
         s.unlit = cm->unlit || add || mul;  // additive and multiply layers draw their colour as is (MSR 1378, 1627)
@@ -695,6 +726,7 @@ MainWindow::MainWindow(ID3D11Device* dev, ID3D11DeviceContext* dc, QWidget* pare
         s.glass = cm->blend && !add && !mul && built.contains("glass", Qt::CaseInsensitive);
         s.sortKey = cm->sortKey > 0 ? cm->sortKey : 4;
         s.cullBack = !cm->twoSided;
+        s.polygonOffset = std::clamp(cm->polygonOffset, 0, 2);
         return s;
     });
     camera_->setMaterialNormals([this](const std::string& m) -> QString {
@@ -1522,9 +1554,19 @@ void MainWindow::buildDocks() {
             if (ok) showFx(name);
             else effects_->setEffectPreview(nullptr, name + "\nThe ACTS export failed");
         });
-        // Sounds: the alias decoded from the game's sound banks and played (sound_preview.h).
-        auto* sp = new SoundPreview([this](const QString& k) { return toolPath(k); }, this);
+        // Sounds: the alias decoded from the game's sound banks (or custom map sounds/) and played (sound_preview.h).
+        auto* sp = soundPreview_ = new SoundPreview([this](const QString& k) { return toolPath(k); }, this);
         sp->setObjectName("soundPreview");
+        sp->setCustomSoundRoots([this] {
+            QStringList roots;
+            if (!ctx_.doc.path().empty()) {
+                const QString d = QFileInfo(qs(ctx_.doc.path())).absolutePath() + "/sounds";
+                if (QFileInfo(d).isDir()) roots << d;
+            }
+            const QString appSounds = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) + "/custom_assets/sounds";
+            if (QFileInfo(appSounds).isDir() && !roots.contains(appSounds)) roots << appSounds;
+            return roots;
+        });
         connect(sounds_, &AssetBrowser::soundPlayRequested, sp, [sp](const QString& alias) { sp->play(alias); });
         connect(sounds_, &AssetBrowser::soundStopRequested, sp, &SoundPreview::stop);
         connect(sp, &SoundPreview::statusChanged, sounds_, [this, sp](const QString& text, bool playing) {
@@ -1535,10 +1577,10 @@ void MainWindow::buildDocks() {
         // Every alias's length and variants on its row, once the zone's index is in memory: read from the cache when
         // the panel is first shown (a zone never prepared gets them after its first Play prepares it).
         connect(sounds_, &AssetBrowser::firstShown, sp, [sp] { sp->loadIndex(); });
-        connect(sp, &SoundPreview::indexReady, sounds_, [this, sp](const QString& zone) {
+        connect(sp, &SoundPreview::indexReady, sounds_, [this, sp](const QString&) {
             const auto secs = [](double s) { return QString::number(s, 'f', s < 10 ? 1 : 0); };
             QHash<QString, QString> facts;
-            const QHash<QString, SoundPreview::AliasFacts> all = sp->aliasFacts(zone);
+            const QHash<QString, SoundPreview::AliasFacts> all = sp->aliasFacts();
             for (auto it = all.begin(); it != all.end(); ++it) {
                 const SoundPreview::AliasFacts& f = it.value();
                 QStringList parts;
@@ -2914,18 +2956,21 @@ void MainWindow::buildMenus() {
         entDisplay->addSeparator();
         ctx_.scene.showLightRanges = s.value("view/lightRanges", true).toBool();
         ctx_.scene.showSoundRanges = s.value("view/soundRanges", false).toBool();
+        ctx_.scene.showExploderPieces = s.value("view/exploderPieces", false).toBool();
         const struct {
             const char* id;
             const char* text;
             bool app::SceneCache::*flag;
             const char* key;
         } ranges[] = {{"ShowLightRanges", "Light Ranges (radius and spot cone)", &app::SceneCache::showLightRanges, "view/lightRanges"},
-                      {"ShowSoundRanges", "Sound Ranges (audible distance)", &app::SceneCache::showSoundRanges, "view/soundRanges"}};
+                      {"ShowSoundRanges", "Sound Ranges (audible distance)", &app::SceneCache::showSoundRanges, "view/soundRanges"},
+                      {"ShowExploderPieces", "Exploder Destroyed Pieces", &app::SceneCache::showExploderPieces, "view/exploderPieces"}};
         for (const auto& m : ranges) {
             QAction* a = addCommand(entDisplay, m.id, m.text, QKeySequence(), [this, flag = m.flag, key = QString(m.key), id = QString(m.id)] {
                 ctx_.scene.*flag = !(ctx_.scene.*flag);
                 Settings::instance().setValue(key, ctx_.scene.*flag);
                 if (QAction* act = action(id)) act->setChecked(ctx_.scene.*flag);
+                ctx_.scene.invalidate();
                 updateStockLightShapes();  // a stock map's own lights follow Light Ranges too
                 ctx_.cameraMoved();
                 if (camera_) camera_->update();
@@ -8425,6 +8470,7 @@ bool MainWindow::openStockZone(const QString& zone, QString* err) {
     if (json.isEmpty()) return false;
     loadDocument(json);
     stockZone_ = name;
+    if (soundPreview_) soundPreview_->setExtraZones(name.isEmpty() ? QStringList{} : QStringList{name});
     stockSpawnsEditable_ = false;
     // The map's own world and props come with it (research 84: opening a stock map loaded the entities only, so the
     // scene looked empty; the world was drawn only after View > Stock Map Reference). Setting
@@ -10648,6 +10694,12 @@ void MainWindow::loadStockReference(const QString& zone) {
     }
     if (zone != referenceZone_) stockSunBaseKnown_ = false, stockRefBatches_.reset();
     referenceZone_ = zone;
+    if (soundPreview_) {
+        QStringList extra;
+        if (!zone.isEmpty()) extra << zone;
+        if (!stockZone_.isEmpty() && !extra.contains(stockZone_)) extra << stockZone_;
+        soundPreview_->setExtraZones(extra);
+    }
     // Props the model catalogue does not list are looked for in the map's own zone.
     if (modelCacheStock_) modelCacheStock_->setFallbackZones({zone});
     // Another map (or the same one asked for again): the fetch chain and its clock start over.

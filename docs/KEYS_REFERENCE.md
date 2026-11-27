@@ -14,7 +14,13 @@ A light with a `target` or a `fov` key is a spot. Both classes take the same key
 |---|---|---|---|
 | `iw8r_ies` | path to an LM-63 `.ies` file, absolute or relative to the map folder | `lights/cone_profile.ies` | Sets the spot's light profile from an IES file. |
 | `iw8r_bulb_radius` | float, above 0 (default 1) | `2` | Bulb radius. Widens the light's volume. |
+| `iw8r_bulb_length` | `x y z` | `24 0 0` | Tube/linear light bulb axis half-vector in world units. |
 | `iw8r_shadow_bias` | float (default 0.75) | `0.75` | Shadow map bias. |
+| `iw8r_shadow_near_bias` | float (default 0) | `6` | Shadow near-plane bias (`shadowNearPlaneBias`). |
+| `iw8r_shadow_softness` | float (default 0) | `0.75` | Shadow penumbra softness. |
+| `iw8r_shadow_area` | float (default 0) | `0.003` | Shadow area parameter (`shadowArea`). |
+| `iw8r_dynamic_shadows` | 0 or 1 (default 0) | `1` | Enables dynamic shadow casting (`needsDynamicShadows`). |
+| `iw8r_up` | `x y z` | `0 1 0` | Explicit local light up axis for oriented IES/area spots. |
 | `iw8r_falloff` | float, above 0 (default 0.2) | `0.2` | Distance falloff. |
 | `iw8r_fade` | `near far` (default 0 0) | `0 400` | Fade range for the light. |
 | `iw8r_shadows` | 0 or 1 (default 0) | `1` | 1 gives the light a shadow map. Spot lights only; an omni ignores it. |
@@ -50,7 +56,8 @@ A brush model that scripts use. It is referenced as `*N`.
 | Key | Value format | Example | What it does |
 |---|---|---|---|
 | `iw8r_door` | `rotate <yaw> [time] [hold]` or `slide <x> <y> <z> [time] [hold]` | `rotate 90 1 3` or `slide 0 0 96 1.5 3` | A door. It needs a `targetname`, and a `trigger_use` or `trigger_multiple` with its own `targetname` whose `target` is this door. A player opens it, and it closes after the hold time. |
-| `iw8r_hinge` | `far` or `x y z` | `far` or `128 64 0` | Where a hinged door (`iw8r_door rotate`) turns. Without it the hinge is the end of the door's longer side with the lower coordinate. `far` takes the other end; `x y z` names the hinge point itself. |
+| `iw8r_hinge` | `far` or `x y z` | `far` or `128 64 0` | Where a hinged door (`iw8r_door rotate`) or spinning brush model (`iw8r_spin`) turns. Without it, a door hinges on the lower end of its longer side and a spinner turns around its brush centre. |
+| `iw8r_pivot` | `x y z` | `128 64 0` | Explicit rotation pivot point for `iw8r_spin` on a `script_brushmodel` (takes precedence over `iw8r_hinge` and brush centre). |
 | `iw8r_lift` | `<dz> [time] [wait]` | `128 2 2` | A lift. It needs a `targetname`. It moves up `dz` units over `time` seconds, waits, moves back down, and repeats. |
 | `iw8r_spin` | `<seconds per turn> [yaw\|pitch\|roll]` | `4` or `2 roll` | Turns the brush model one full circle every given number of seconds. |
 | `iw8r_bob` | `<height> [seconds]` (seconds default 2) | `16 2` | Moves the brush model up by the height and back down, once every given number of seconds. |
@@ -82,12 +89,19 @@ These keys work on `trigger_multiple`.
 | `iw8r_teleport` | targetname of a destination (`script_origin`) | `tp_exit_1` | A player who touches the trigger moves to the destination's origin and angles. The destination needs its own `targetname`. |
 | `iw8r_jump` | `<vx> <vy> <vz>`, launch velocity in units per second | `0 0 700` | A jump pad. A player who touches the trigger is launched. |
 | `iw8r_damage` | `<amount> [interval]` (interval default 1) | `10 1` | A damage zone. A player inside takes the amount of damage every interval. |
-| `iw8r_audio_zone` | lower-case zone name | `hall` | Inside this trigger's box, the zone's reverb (`iw8r_reverb`) applies. |
+| `iw8r_audio_zone` | lower-case zone name | `hall` | Inside this trigger's convex volume (axial or slanted), the zone's reverb (`iw8r_reverb`) and ambient audio apply. |
 | `iw8r_reverb` | `<room> [dry wet fade]` | `iw8_md_room` | The reverb room type. Use one of the 59 stock room types. The build writes the map sound table. |
 | `iw8r_audio_priority` | float (default 30) | `50` | Priority where zones overlap. The higher number wins. The map-wide zone is 0. |
-| `iw8r_audio_interior` | 0 or 1 (default 0) | `1` | 1 uses the stock "interior" occlusion and filter presets. 0 uses the stock "default" presets. |
-| `iw8r_ambient` | name of one of the map's own sounds | `wind_bed` | A 2D loop that plays while a player is in the zone. Stock aliases are silent in the map bank, so use a looping sound emitter for those. |
-| `iw8r_ambient_oneshots` | `<min s> <max s> <sound>[:weight] ...` | `6 12 bird_call:3 dog_bark` | One of the listed sounds plays at random every min to max seconds while a player is in the zone. |
+| `iw8r_audio_interior` | 0 or 1 (default 0) | `1` | 1 uses the stock "interior" occlusion and filter presets and sets `exterior = 0`. 0 uses the stock "default" presets (`exterior = 1`). |
+| `iw8r_ambient` | map sound or stock alias | `wind_bed` | A 2D loop that plays while a player is in the zone. Supports both custom map sounds and stock aliases. |
+| `iw8r_ambient_oneshots` | `<min s> <max s> <sound>[:weight] ...` | `6 12 bird_call:3 dog_bark` | One of the listed sounds (custom or stock) plays at random every min to max seconds while a player is in the zone. |
+
+## script_origin (audio helpers)
+
+| Key | Value format | Example | What it does |
+|---|---|---|---|
+| `iw8r_audio_blend` | `<zoneA> <zoneB>` | `mp_mymap hall` | Places a reverb/ambient blend transition node between two audio zones at this `script_origin`. |
+| `iw8r_audio_pa_speaker` | speaker name | `pa_lobby` | Registers a `MapEnts` audio PA speaker at this `script_origin`. |
 
 ## worldspawn
 
@@ -182,6 +196,14 @@ Only `color` is required. Image names are relative to the definition file.
 | `color` | image file (PNG, TGA, JPG, BMP or uncompressed DDS) | `brick_red.png` | Colour image. Required. |
 | `normal` | image file | `brick_red_n.png` | Normal map. |
 | `specular` | image file | `brick_s.png` | Reflectance (RGB). Its alpha is the gloss. |
+| `detail` | image file | `brick_detail_n.png` | Detail normal map blended over the base normal map. |
+| `mask` | image file | `brick_mask.png` | Mask image for detail/opacity blending. |
+| `detailScale` | `[u, v]` | `[4, 4]` | UV tiling scale for the detail map. |
+| `uvAnim` | `[scrollU, scrollV]` | `[0.06, 0.03]` | Continuous UV scroll velocity (used by animated surfaces such as water). |
+| `maskUvAnim` | `[scrollU, scrollV]` | `[0.02, -0.01]` | Continuous UV scroll velocity for the mask texture. |
+| `transmission` | `[r, g, b]` | `[0.4, 0.6, 0.2]` | Back-lit transmission colour for foliage, cloth, and thin surfaces. |
+| `emissiveColor` | `[r, g, b]` | `[1.0, 0.7, 0.3]` | Emissive RGB multiplier (`replayEmission`). |
+| `water` | `true` or `false` | `true` | Marks the material as a water surface with reflective translucent water shading. |
 | `surface` | surface type name (from the game's surface list) | `brick` | Sets the footstep and bullet sounds. An unknown name is an error. |
 | `alphaTest` | `true` or `false` | `true` | The colour alpha is a cut-out mask (fences, foliage). |
 | `blend` | `true` or `false` | `true` | The colour alpha is coverage (decals, glass). Same as `"blendMode": "alpha"`. |
@@ -206,6 +228,21 @@ ignored. Tools > Sound Settings edits it.
 | `dist_max` | number, 0 or more, not below `dist_min` | `1500` | End of the sound's distance range, in map units. |
 | `loop` | `true` or `false` | `true` | Loops the sound. |
 | `two_d` | `true` or `false` | `true` | Plays the sound as 2D (no position in the world). |
+| `channel` | channel name | `sfx` | Sound channel / bus name. |
+| `variants` | array of variant objects | `[{"file":"step_01.wav","vol_min":0.8,"vol_max":1.0,"pitch_min":0.9,"pitch_max":1.1,"probability":0.6,"lfe_percentage":0.2,"center_percentage":0.1,"start_delay":15,"secondary":"step_sub"}]` | Multi-variant weighted sound pool: each entry selects a file with its own volume/pitch random range, probability weight, LFE/center send, start delay (ms), and optional secondary alias. |
+
+## iw8r_decal
+
+A projected decal volume. Projects onto brushes and Bezier patches.
+
+| Key | Value format | Example | What it does |
+|---|---|---|---|
+| `iw8r_size` | `width height depth` | `64 64 32` | Projection box size in map units. |
+| `material` | material name | `decal_grime` | Material projected onto underlying geometry. |
+| `opacity` | float, 0 to 1 (default 1) | `0.65` | Decal opacity multiplier. |
+| `feather` | float, 0 to 1 (default 0) | `0.25` | Edge/depth fade feathering factor. |
+| `draw_order` | integer (default 0) | `2` | Layering order when decals overlap (higher draws on top). |
+| `fade_distance` | float (default 0) | `1024` | Distance fade start in map units. |
 
 ## iw8r_volume (masks)
 

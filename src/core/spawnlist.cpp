@@ -77,6 +77,58 @@ bool findBlock(const Iw8Dump& d, uint32_t n, size_t& first) {
     return false;
 }
 
+// Walks the MapEnts IW8D record stream up to MapEnts::spawnList.spawns (asset_streams.cpp stream_mapents).
+// When spawnsCount == 0, stream_spawnpointrecordlist emits a single Null (or 0-byte Data) record at that slot.
+bool findEmptySpawnSlot(const Iw8Dump& d, size_t& slot) {
+    const auto& recs = d.records;
+    const std::string& hdr = recs[0].bytes;
+    const uint32_t triggerCount = load<uint32_t>(hdr, 0x18);
+    const uint32_t clientTriggerCount = load<uint32_t>(hdr, 0x68);
+    size_t i = 1;
+    auto take = [&](size_t count) -> bool {
+        if (i + count > recs.size()) return false;
+        i += count;
+        return true;
+    };
+    auto isPresent = [&](size_t at) -> bool {
+        return recs[at].kind == Iw8DumpRecord::Data || recs[at].kind == Iw8DumpRecord::Runtime;
+    };
+    // 1. name, 2. entityString
+    if (!take(2)) return false;
+    // 3. stream_maptriggers: models (+ triggerCount physicsAsset refs if present), hulls, slabs, windings, windingPoints
+    if (i >= recs.size()) return false;
+    const bool hasTrigModels = isPresent(i);
+    if (!take(1)) return false;
+    if (hasTrigModels && triggerCount != 0 && !take(triggerCount)) return false;
+    if (!take(4)) return false;
+    // 4. stream_clienttriggers: ClientMapTriggers (3), triggerString (1), 9 per-trigger inline arrays
+    if (!take(3 + 1 + 9)) return false;
+    //    detailSoundBank (+ clientTriggerCount transient bank refs if present)
+    if (i >= recs.size()) return false;
+    const bool hasDetailBanks = isPresent(i);
+    if (!take(1)) return false;
+    if (hasDetailBanks && clientTriggerCount != 0 && !take(clientTriggerCount)) return false;
+    //    audioRvbPanInfo, parent
+    if (!take(2)) return false;
+    //    linkTo (+ clientTriggerCount ClientEntityLinkToDef* records if present)
+    if (i >= recs.size()) return false;
+    const bool hasLinkTo = isPresent(i);
+    if (!take(1)) return false;
+    if (hasLinkTo && clientTriggerCount != 0 && !take(clientTriggerCount)) return false;
+    //    spatialTree (+ tree & alwaysList if present)
+    if (i >= recs.size()) return false;
+    const bool hasSpatial = isPresent(i);
+    if (!take(1)) return false;
+    if (hasSpatial && !take(2)) return false;
+    // 5. stream_clienttriggerblend: blendNodes
+    if (!take(1)) return false;
+    // 6. stream_spawnpointrecordlist: spawns pointer record (Null or 0-byte Data)
+    if (i >= recs.size()) return false;
+    if (recs[i].kind != Iw8DumpRecord::Null && !(recs[i].kind == Iw8DumpRecord::Data && recs[i].bytes.empty())) return false;
+    slot = i;
+    return true;
+}
+
 bool sameFields(const SpawnRecord& a, const SpawnRecord& b) {
     return a.classname == b.classname && a.target == b.target && a.script_noteworthy == b.script_noteworthy &&
            a.origin == b.origin && a.angles == b.angles && a.padding == b.padding;
@@ -134,52 +186,63 @@ bool writeSpawnList(Iw8Dump& d, const std::vector<SpawnRecord>& spawns, std::str
         if (!finiteVec(s.origin) || !finiteVec(s.angles)) return fail("spawn " + std::to_string(i) + " has a non-finite vector");
     }
     if (n == 0 && m == 0) return true;
-    if (n == 0) return fail("the dump's spawnList is empty, so there is no record block to insert spawns into");
 
     std::vector<SpawnRecord> old;
-    if (!readSpawnList(d, old, err)) return false;
-    size_t first = 0;
-    if (!findBlock(d, n, first)) return fail("spawnList block not found (count " + std::to_string(n) + ")");
-    const size_t oldEnd = first + 1 + 3 * size_t(n);  // first record after the block
+    size_t first = 0, oldEnd = 0;
+    if (n == 0) {
+        if (!findEmptySpawnSlot(d, first))
+            return fail("the dump's spawnList is empty and its record slot could not be located");
+        oldEnd = first + 1;
+    } else {
+        if (!readSpawnList(d, old, err)) return false;
+        if (!findBlock(d, n, first)) return fail("spawnList block not found (count " + std::to_string(n) + ")");
+        oldEnd = first + 1 + 3 * size_t(n);  // first record after the block
+    }
 
     // Offsets only point backwards, and nothing points into the spawn array itself.
     for (const auto& r : d.records)
         if (r.kind == Iw8DumpRecord::Offset && r.value >= first && r.value < oldEnd)
             return fail("an offset record points into the spawnList block");
 
-    // The new block: one data record, then three script records per spawn.
-    std::string data(kSpawnSize * m, '\0');
+    // The new block: one Null record when m == 0, else one data record + three script records per spawn.
     std::vector<Iw8DumpRecord> block;
-    block.reserve(1 + 3 * m);
-    block.emplace_back();
-    block.back().kind = Iw8DumpRecord::Data;
-    for (size_t i = 0; i < m; ++i) {
-        const SpawnRecord& s = spawns[i];
-        const size_t at = kSpawnSize * i;
-        const bool untouched = i < n && old[i].index == i && sameFields(s, old[i]);
-        if (untouched) {
-            std::memcpy(&data[at], d.records[first].bytes.data() + at, kSpawnSize);
-            for (size_t k = 0; k < 3; ++k) block.push_back(d.records[first + 1 + 3 * i + k]);
-            continue;
+    if (m == 0) {
+        Iw8DumpRecord nullRec;
+        nullRec.kind = Iw8DumpRecord::Null;
+        block.push_back(std::move(nullRec));
+    } else {
+        std::string data(kSpawnSize * m, '\0');
+        block.reserve(1 + 3 * m);
+        block.emplace_back();
+        block.back().kind = Iw8DumpRecord::Data;
+        for (size_t i = 0; i < m; ++i) {
+            const SpawnRecord& s = spawns[i];
+            const size_t at = kSpawnSize * i;
+            const bool untouched = i < n && old[i].index == i && sameFields(s, old[i]);
+            if (untouched) {
+                std::memcpy(&data[at], d.records[first].bytes.data() + at, kSpawnSize);
+                for (size_t k = 0; k < 3; ++k) block.push_back(d.records[first + 1 + 3 * i + k]);
+                continue;
+            }
+            store<uint16_t>(data, at, uint16_t(i));
+            store<uint16_t>(data, at + kPaddingOffset, s.padding);
+            store<uint32_t>(data, at + kNameOffset, 0);  // script ids are zero in the dump; the text is in the script records
+            store<uint32_t>(data, at + kTargetOffset, 0);
+            store<uint32_t>(data, at + kNoteworthyOffset, 0);
+            storeVec(data, at + kOriginOffset, s.origin);
+            storeVec(data, at + kAnglesOffset, s.angles);
+            for (const std::string* t : {&s.classname, &s.target, &s.script_noteworthy}) {
+                Iw8DumpRecord r;
+                r.kind = Iw8DumpRecord::ScriptString;
+                r.bytes = *t;
+                block.push_back(std::move(r));
+            }
         }
-        store<uint16_t>(data, at, uint16_t(i));
-        store<uint16_t>(data, at + kPaddingOffset, s.padding);
-        store<uint32_t>(data, at + kNameOffset, 0);  // script ids are zero in the dump; the text is in the script records
-        store<uint32_t>(data, at + kTargetOffset, 0);
-        store<uint32_t>(data, at + kNoteworthyOffset, 0);
-        storeVec(data, at + kOriginOffset, s.origin);
-        storeVec(data, at + kAnglesOffset, s.angles);
-        for (const std::string* t : {&s.classname, &s.target, &s.script_noteworthy}) {
-            Iw8DumpRecord r;
-            r.kind = Iw8DumpRecord::ScriptString;
-            r.bytes = *t;
-            block.push_back(std::move(r));
-        }
+        block[0].bytes = std::move(data);
     }
-    block[0].bytes = std::move(data);
 
     // Assemble the new record list. Offsets behind the block move by the change in block size.
-    const long long shift = (long long)(1 + 3 * m) - (long long)(1 + 3 * size_t(n));
+    const long long shift = (long long)block.size() - (long long)(oldEnd - first);
     std::vector<Iw8DumpRecord> recs;
     recs.reserve(size_t((long long)d.records.size() + shift));
     for (size_t k = 0; k < first; ++k) recs.push_back(d.records[k]);

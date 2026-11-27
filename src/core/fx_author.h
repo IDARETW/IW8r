@@ -43,6 +43,9 @@ struct AuthoredFxElement {
     std::array<double, 4> colorStart{1, 1, 1, 1};  // RGBA 0..1
     std::array<double, 4> colorEnd{1, 1, 1, 0};
     double spin = 0;            // radians per second
+    int atlasRows = 1;          // animated sprite-sheet rows (1..16)
+    int atlasCols = 1;          // animated sprite-sheet columns (1..16)
+    int atlasFps = 0;           // playback fps (0 = play full sheet once over particle life)
     // Multi-key curve (2 to 16 keys). Empty: the two keys sizeStart / colorStart at 0 and sizeEnd / colorEnd at 1.
     std::vector<AuthoredFxKey> keys;
 };

@@ -39,8 +39,8 @@ TEST(gametypes_detection) {
     // Nothing but the world: no game type is complete, the map is still listed with war.
     MapFile empty = parse(kWorld);
     auto checks = gameTypeChecks(empty);
-    CHECK(checks.size() == 6 && checks[0].gametype == "war" && checks[1].gametype == "dm" && checks[4].gametype == "ctf" &&
-          checks[5].gametype == "br" && !checks[5].supported);
+    CHECK(checks.size() == 7 && checks[0].gametype == "war" && checks[1].gametype == "dm" && checks[4].gametype == "ctf" &&
+          checks[5].gametype == "br" && !checks[5].supported && checks[6].gametype == "koth" && !checks[6].supported);
     CHECK(!find(checks, "war").supported && find(checks, "war").missing.size() == 3);
     MapGameTypes g = mapGameTypes(empty);
     CHECK(g.list == "war" && !g.fromKey && !g.notes.empty() && g.notes[0].find("no game type is complete") != std::string::npos);

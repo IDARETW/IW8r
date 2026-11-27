@@ -39,11 +39,13 @@ public:
         bool visible = true;  // false: hidden (or deleted) by the map script
     };
     struct Event {
-        enum Kind { Teleport, Launch, DoorUsed } kind = Teleport;
-        Vec3 position;       // Teleport: the new feet position
+        enum Kind { Teleport, Launch, DoorUsed, Damage, VisionChanged, TriggerDamaged } kind = Teleport;
+        Vec3 position;       // Teleport: the new feet position; TriggerDamaged: hit position
         double yaw = 0;      // Teleport: the new view yaw (degrees)
         Vec3 velocity;       // Launch
-        std::string name;    // the trigger's or the door's targetname
+        std::string name;    // the trigger's, door's or effect's targetname
+        double damage = 0;   // Damage: damage dealt this tick
+        std::string vision;  // VisionChanged: active iw8r_vision overrides ("" = map base vision)
     };
 
     // Reads the map's behaviours. Their brush entities are taken out of `world` (it is rebuilt from the map without
@@ -54,18 +56,25 @@ public:
     // without the brush entities moves() names, then attach the movers to it.
     std::vector<Id> read(const MapFile& map, const std::string& mapPath = {});
     void attach(const MapFile& map, CollisionWorld& world);
-    // Whether an entity's brushes move (a script_brushmodel whose targetname is a door's or a mover's; by name, so it
-    // also answers for a copy of the map such as a flattened one).
+    // Whether an entity moves (a script_brushmodel or moving misc_model/script_model driven by keys or the map script).
     bool moves(const Entity& e) const;
 
     // Advances `dt` seconds. `feet` and the box mins / maxs (relative to the feet) are the player; `use` is true on the
     // frame the Use key goes down. Movers in `world` get their new poses.
     std::vector<Event> tick(double dt, const Vec3& feet, const Vec3& mins, const Vec3& maxs, bool use, CollisionWorld& world);
 
+    // Fires any trigger_damage volume intersected by the ray/segment `start` -> `end` (or at point `start` when equal).
+    // Drives doors, teleporters and jump pads wired to that trigger_damage and emits TriggerDamaged events.
+    std::vector<Event> hitDamageTrigger(const Vec3& start, const Vec3& end, const Vec3& playerFeet = {});
+
     const std::vector<Pose>& poses() const { return poses_; }
     double time() const { return time_; }
     size_t doorCount() const { return doors_.size(); }
     size_t moverCount() const { return movers_.size(); }
+    size_t damageZoneCount() const { return damageZones_.size(); }
+    size_t visionVolumeCount() const { return visionVolumes_.size(); }
+    size_t damageTriggerCount() const { return damageTriggers_.size(); }
+    const std::string& activeVision() const { return activeVision_; }
     // The map's own script (empty when the map has none, or read() had no path).
     const GscEmulation& script() const { return script_; }
     size_t scriptMoverCount() const { return scriptMovers_.size(); }
@@ -80,15 +89,17 @@ private:
     struct Volume {
         std::vector<std::vector<Plane>> brushes;  // inside: every plane of one brush, dot(n, x) <= d
         AABB bounds;
-        double radius = 0, height = 0;            // trigger_radius: a cylinder at `centre`
+        double radius = 0, height = 0;            // trigger_radius / fx_origin: a cylinder at `centre`
         Vec3 centre;
         bool touches(const AABB& player) const;
+        bool hitRay(const Vec3& start, const Vec3& end, Vec3* hitPoint = nullptr) const;
     };
     struct Door {
         Id entity = kNoId;
         int group = -1;
         std::string name;
-        bool hinged = false, toggle = false, slide = false;
+        std::string triggerName;
+        bool hinged = false, toggle = false, slide = false, shotTrigger = false;
         double yaw = 90, moveTime = 0.6, holdTime = 3;
         Vec3 offset, hinge, normal{0, 1, 0};
         double swing = 1;
@@ -109,15 +120,39 @@ private:
         Volume volume;
         std::string name;
         bool teleport = false;
+        bool shotOnly = false;
         Vec3 destination, velocity;
         double yaw = 0;
         bool inside = false;  // fires once per entry
     };
+    struct DamageZone {
+        Volume volume;
+        std::string name;
+        double amount = 0;
+        double interval = 1.0;
+        double nextTime = -1e9;
+    };
+    struct VisionVolume {
+        Volume volume;
+        std::string name;
+        std::string vision;
+    };
+    struct DamageTrigger {
+        Volume volume;
+        std::string name;
+        std::string target;
+        std::string exploder;
+    };
     std::vector<Door> doors_;
     std::vector<Mover> movers_;
     std::vector<Trigger> triggers_;
+    std::vector<DamageZone> damageZones_;
+    std::vector<VisionVolume> visionVolumes_;
+    std::vector<DamageTrigger> damageTriggers_;
+    std::string activeVision_;
     std::vector<Pose> poses_;
     std::vector<std::string> moverNames_;
+    std::vector<Id> moverIds_;
     double time_ = 0;
     GscEmulation script_;
     struct ScriptMover {

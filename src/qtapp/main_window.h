@@ -1059,6 +1059,7 @@ private:
     std::vector<PrefabParent> prefabStack_;
     friend class StockMapPanel;  // reads the stock sun / world / props as loaded, shows sun edits at once
     class StockMapPanel* stockMapPanel_ = nullptr;
+    class SoundPreview* soundPreview_ = nullptr;
     QString stockZone_;            // zone name of an opened stock map ("" otherwise)
     QString lastStockRebuild_;     // work folder of the last stock rebuild that passed its check ("" = none)
     QString lastStockRebuildZone_;

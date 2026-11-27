@@ -871,6 +871,64 @@
           "examples": [
             "1"
           ]
+        },
+        "iw8r_bulb_length": {
+          "type": "float",
+          "default": "0",
+          "description": "Tube or capsule bulb length in map units (0 or more). Written as bulb_length; stretches the light along its up axis.",
+          "required": false,
+          "examples": [
+            "32",
+            "64"
+          ]
+        },
+        "iw8r_dynamic_shadows": {
+          "type": "bool",
+          "default": "0",
+          "description": "1 enables dynamic shadow casting (moving entities and players cast shadows from this light). Written as dynamic_shadows.",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "iw8r_shadow_softness": {
+          "type": "float",
+          "default": "",
+          "description": "Shadow softness / penumbra filter scale (0 or more). Written as shadow_softness.",
+          "required": false,
+          "examples": [
+            "1",
+            "2"
+          ]
+        },
+        "iw8r_shadow_area": {
+          "type": "float",
+          "default": "",
+          "description": "Area-light shadow radius in map units for soft shadow penumbra (0 or more). Written as shadow_area.",
+          "required": false,
+          "examples": [
+            "4",
+            "8"
+          ]
+        },
+        "iw8r_shadow_near_bias": {
+          "type": "float",
+          "default": "",
+          "description": "Near-plane shadow bias for spot shadow maps. Written as shadow_near_bias.",
+          "required": false,
+          "examples": [
+            "0.5"
+          ]
+        },
+        "iw8r_up": {
+          "type": "vec3",
+          "default": "",
+          "description": "Explicit up vector x y z for the light (used with bulb_length or IES roll orientation). Written as up.",
+          "required": false,
+          "examples": [
+            "0 0 1",
+            "1 0 0"
+          ]
         }
       }
     },
@@ -1023,6 +1081,64 @@
           "examples": [
             "1"
           ]
+        },
+        "iw8r_bulb_length": {
+          "type": "float",
+          "default": "0",
+          "description": "Tube or capsule bulb length in map units (0 or more). Written as bulb_length; stretches the light along its up axis.",
+          "required": false,
+          "examples": [
+            "32",
+            "64"
+          ]
+        },
+        "iw8r_dynamic_shadows": {
+          "type": "bool",
+          "default": "0",
+          "description": "1 enables dynamic shadow casting (moving entities and players cast shadows from this light). Written as dynamic_shadows.",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "iw8r_shadow_softness": {
+          "type": "float",
+          "default": "",
+          "description": "Shadow softness / penumbra filter scale (0 or more). Written as shadow_softness.",
+          "required": false,
+          "examples": [
+            "1",
+            "2"
+          ]
+        },
+        "iw8r_shadow_area": {
+          "type": "float",
+          "default": "",
+          "description": "Area-light shadow radius in map units for soft shadow penumbra (0 or more). Written as shadow_area.",
+          "required": false,
+          "examples": [
+            "4",
+            "8"
+          ]
+        },
+        "iw8r_shadow_near_bias": {
+          "type": "float",
+          "default": "",
+          "description": "Near-plane shadow bias for spot shadow maps. Written as shadow_near_bias.",
+          "required": false,
+          "examples": [
+            "0.5"
+          ]
+        },
+        "iw8r_up": {
+          "type": "vec3",
+          "default": "",
+          "description": "Explicit up vector x y z for the light (used with bulb_length or IES roll orientation). Written as up.",
+          "required": false,
+          "examples": [
+            "0 0 1",
+            "1 0 0"
+          ]
         }
       }
     },
@@ -1152,6 +1268,16 @@
           "examples": [
             "1",
             "0"
+          ]
+        },
+        "iw8r_lift": {
+          "type": "string",
+          "default": "",
+          "description": "Lift without scripting: \"<dz> [time] [wait]\". Moves up dz units over time seconds, waits, moves back down and repeats. A misc_model with this key is built as a live script_model; a missing targetname is filled in.",
+          "required": false,
+          "examples": [
+            "128 2 2",
+            "256 3 1"
           ]
         }
       }
@@ -3500,6 +3626,15 @@
             "far",
             "128 64 0"
           ]
+        },
+        "iw8r_umbra_gate": {
+          "type": "bool",
+          "default": "0",
+          "description": "1 marks this brush model (e.g. a door) as a dynamic Umbra occlusion gate that opens or closes visibility through its portal when it moves.",
+          "required": false,
+          "examples": [
+            "1"
+          ]
         }
       }
     },
@@ -3724,6 +3859,16 @@
             "1",
             "0"
           ]
+        },
+        "iw8r_lift": {
+          "type": "string",
+          "default": "",
+          "description": "Lift without scripting: \"<dz> [time] [wait]\". Moves up dz units over time seconds, waits, moves back down and repeats. A misc_model with this key is built as a live script_model; a missing targetname is filled in.",
+          "required": false,
+          "examples": [
+            "128 2 2",
+            "256 3 1"
+          ]
         }
       }
     },
@@ -3863,6 +4008,33 @@
             "minimap_corner",
             "airstrikeheight",
             "heli_leave"
+          ]
+        },
+        "iw8r_audio_blend": {
+          "type": "string",
+          "default": "",
+          "description": "Audio zone blend transition: \"<zoneA> <zoneB>\" naming two audio zones (from iw8r_audio_zone or the map id). Written into clienttriggers.json blend_nodes.",
+          "required": false,
+          "examples": [
+            "hall tunnel_east"
+          ]
+        },
+        "iw8r_audio_blend_span": {
+          "type": "vec3",
+          "default": "",
+          "description": "Optional transition span \"dx dy dz\" for iw8r_audio_blend (pointA = origin - span/2, pointB = origin + span/2).",
+          "required": false,
+          "examples": [
+            "64 0 0"
+          ]
+        },
+        "iw8r_audio_pa_speaker": {
+          "type": "string",
+          "default": "",
+          "description": "Audio PA speaker name placed at this entity origin. Written into clienttriggers.json pa_speakers.",
+          "required": false,
+          "examples": [
+            "pa_courtyard_01"
           ]
         }
       }
@@ -5078,6 +5250,33 @@
           "description": "Stock sound alias, from the Sounds browser.",
           "required": false,
           "examples": []
+        },
+        "iw8r_audio_blend": {
+          "type": "string",
+          "default": "",
+          "description": "Audio zone blend transition: \"<zoneA> <zoneB>\" naming two audio zones (from iw8r_audio_zone or the map id). Written into clienttriggers.json blend_nodes.",
+          "required": false,
+          "examples": [
+            "hall tunnel_east"
+          ]
+        },
+        "iw8r_audio_blend_span": {
+          "type": "vec3",
+          "default": "",
+          "description": "Optional transition span \"dx dy dz\" for iw8r_audio_blend (pointA = origin - span/2, pointB = origin + span/2).",
+          "required": false,
+          "examples": [
+            "64 0 0"
+          ]
+        },
+        "iw8r_audio_pa_speaker": {
+          "type": "string",
+          "default": "",
+          "description": "Audio PA speaker name placed at this entity origin. Written into clienttriggers.json pa_speakers.",
+          "required": false,
+          "examples": [
+            "pa_courtyard_01"
+          ]
         }
       }
     },
@@ -5139,6 +5338,44 @@
           "description": "Name that other entities use to find this one (gsc ammorestock.gsc:8).",
           "required": false,
           "examples": []
+        },
+        "iw8r_vision": {
+          "type": "string",
+          "default": "",
+          "description": "Vision / fog inside this volume: \"name=value; ...\" Replay vision fields (as worldspawn iw8r_vision). Needs a targetname. A player inside sees it; leaving restores the map's vision. Research 63.",
+          "required": false,
+          "examples": [
+            "tonemapExposure=2.5"
+          ]
+        },
+        "iw8r_teleport": {
+          "type": "string",
+          "default": "",
+          "description": "Teleporter: the targetname of the destination (a script_origin). Needs its own targetname; a player touching the trigger moves to the destination's origin and angles.",
+          "required": false,
+          "examples": [
+            "tp_exit_1"
+          ]
+        },
+        "iw8r_jump": {
+          "type": "string",
+          "default": "",
+          "description": "Jump pad: \"<vx> <vy> <vz>\" launch velocity (units per second). Needs a targetname; a player touching the trigger is launched.",
+          "required": false,
+          "examples": [
+            "0 0 700",
+            "400 0 500"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "Damage zone: \"<amount> [interval]\". Needs a targetname; a player inside takes amount damage every interval seconds (default 1).",
+          "required": false,
+          "examples": [
+            "10 1",
+            "200"
+          ]
         }
       }
     },
@@ -5199,6 +5436,61 @@
           "examples": [
             "triggermodeldummydefault"
           ]
+        },
+        "iw8r_vision": {
+          "type": "string",
+          "default": "",
+          "description": "Vision / fog inside this volume: \"name=value; ...\" Replay vision fields (as worldspawn iw8r_vision). Needs a targetname. A player inside sees it; leaving restores the map's vision. Research 63.",
+          "required": false,
+          "examples": [
+            "tonemapExposure=2.5"
+          ]
+        },
+        "iw8r_teleport": {
+          "type": "string",
+          "default": "",
+          "description": "Teleporter: the targetname of the destination (a script_origin). Needs its own targetname; a player touching the trigger moves to the destination's origin and angles.",
+          "required": false,
+          "examples": [
+            "tp_exit_1"
+          ]
+        },
+        "iw8r_jump": {
+          "type": "string",
+          "default": "",
+          "description": "Jump pad: \"<vx> <vy> <vz>\" launch velocity (units per second). Needs a targetname; a player touching the trigger is launched.",
+          "required": false,
+          "examples": [
+            "0 0 700",
+            "400 0 500"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "Damage zone: \"<amount> [interval]\". Needs a targetname; a player inside takes amount damage every interval seconds (default 1).",
+          "required": false,
+          "examples": [
+            "10 1",
+            "200"
+          ]
+        },
+        "spawnflags": {
+          "type": "int",
+          "default": "0",
+          "description": "Bit flags. Bit 16 (spawnflags 16): slow damage tick (1 second interval instead of 0.05 s per frame).",
+          "required": false,
+          "examples": [
+            "0",
+            "16"
+          ]
+        },
+        "targetname": {
+          "type": "targetname",
+          "default": "",
+          "description": "Name that other entities or scripts use to find this trigger.",
+          "required": false,
+          "examples": []
         }
       }
     },
@@ -5414,6 +5706,24 @@
           "required": false,
           "examples": [
             "6 12 bird_call:3 dog_bark"
+          ]
+        },
+        "iw8r_audio_blend": {
+          "type": "string",
+          "default": "",
+          "description": "Audio zone blend transition: \"<zoneA> <zoneB>\" naming two audio zones (from iw8r_audio_zone or the map id). Written into clienttriggers.json blend_nodes.",
+          "required": false,
+          "examples": [
+            "hall tunnel_east"
+          ]
+        },
+        "iw8r_audio_blend_span": {
+          "type": "vec3",
+          "default": "",
+          "description": "Optional transition span \"dx dy dz\" for iw8r_audio_blend (pointA = origin - span/2, pointB = origin + span/2).",
+          "required": false,
+          "examples": [
+            "64 0 0"
           ]
         }
       }
@@ -6642,6 +6952,44 @@
             "ctf_zone_axis",
             "grind_location"
           ]
+        },
+        "iw8r_vision": {
+          "type": "string",
+          "default": "",
+          "description": "Vision / fog inside this volume: \"name=value; ...\" Replay vision fields (as worldspawn iw8r_vision). Needs a targetname. A player inside sees it; leaving restores the map's vision. Research 63.",
+          "required": false,
+          "examples": [
+            "tonemapExposure=2.5"
+          ]
+        },
+        "iw8r_teleport": {
+          "type": "string",
+          "default": "",
+          "description": "Teleporter: the targetname of the destination (a script_origin). Needs its own targetname; a player touching the trigger moves to the destination's origin and angles.",
+          "required": false,
+          "examples": [
+            "tp_exit_1"
+          ]
+        },
+        "iw8r_jump": {
+          "type": "string",
+          "default": "",
+          "description": "Jump pad: \"<vx> <vy> <vz>\" launch velocity (units per second). Needs a targetname; a player touching the trigger is launched.",
+          "required": false,
+          "examples": [
+            "0 0 700",
+            "400 0 500"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "Damage zone: \"<amount> [interval]\". Needs a targetname; a player inside takes amount damage every interval seconds (default 1).",
+          "required": false,
+          "examples": [
+            "10 1",
+            "200"
+          ]
         }
       }
     },
@@ -6718,6 +7066,44 @@
           "required": false,
           "examples": [
             "cyber_emp_pickup_trig"
+          ]
+        },
+        "iw8r_vision": {
+          "type": "string",
+          "default": "",
+          "description": "Vision / fog inside this volume: \"name=value; ...\" Replay vision fields (as worldspawn iw8r_vision). Needs a targetname. A player inside sees it; leaving restores the map's vision. Research 63.",
+          "required": false,
+          "examples": [
+            "tonemapExposure=2.5"
+          ]
+        },
+        "iw8r_teleport": {
+          "type": "string",
+          "default": "",
+          "description": "Teleporter: the targetname of the destination (a script_origin). Needs its own targetname; a player touching the trigger moves to the destination's origin and angles.",
+          "required": false,
+          "examples": [
+            "tp_exit_1"
+          ]
+        },
+        "iw8r_jump": {
+          "type": "string",
+          "default": "",
+          "description": "Jump pad: \"<vx> <vy> <vz>\" launch velocity (units per second). Needs a targetname; a player touching the trigger is launched.",
+          "required": false,
+          "examples": [
+            "0 0 700",
+            "400 0 500"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "Damage zone: \"<amount> [interval]\". Needs a targetname; a player inside takes amount damage every interval seconds (default 1).",
+          "required": false,
+          "examples": [
+            "10 1",
+            "200"
           ]
         }
       }
@@ -6830,6 +7216,44 @@
             "bombtrigger",
             "bombzone",
             "pf1195_auto2"
+          ]
+        },
+        "iw8r_vision": {
+          "type": "string",
+          "default": "",
+          "description": "Vision / fog inside this volume: \"name=value; ...\" Replay vision fields (as worldspawn iw8r_vision). Needs a targetname. A player inside sees it; leaving restores the map's vision. Research 63.",
+          "required": false,
+          "examples": [
+            "tonemapExposure=2.5"
+          ]
+        },
+        "iw8r_teleport": {
+          "type": "string",
+          "default": "",
+          "description": "Teleporter: the targetname of the destination (a script_origin). Needs its own targetname; a player touching the trigger moves to the destination's origin and angles.",
+          "required": false,
+          "examples": [
+            "tp_exit_1"
+          ]
+        },
+        "iw8r_jump": {
+          "type": "string",
+          "default": "",
+          "description": "Jump pad: \"<vx> <vy> <vz>\" launch velocity (units per second). Needs a targetname; a player touching the trigger is launched.",
+          "required": false,
+          "examples": [
+            "0 0 700",
+            "400 0 500"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "Damage zone: \"<amount> [interval]\". Needs a targetname; a player inside takes amount damage every interval seconds (default 1).",
+          "required": false,
+          "examples": [
+            "10 1",
+            "200"
           ]
         }
       }

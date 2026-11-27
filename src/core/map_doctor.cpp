@@ -3,10 +3,12 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <set>
 
 #include "collision_world.h"
+#include "prefab.h"
 
 namespace iw8r {
 
@@ -50,22 +52,60 @@ std::optional<Vec3> floorBelow(const CollisionWorld& w, const Vec3& from, double
 
 std::vector<DoctorFix> diagnoseMap(const MapFile& map) {
     std::vector<DoctorFix> out;
-    std::set<std::string> targetnames;
+    // Flatten placed prefabs so prefab geometry (brushes and patches) and targetnames/linknames are visible.
+    bool anyPrefab = false;
     for (const Entity& e : map.entities)
+        if (e.classname() == "misc_prefab") {
+            anyPrefab = true;
+            break;
+        }
+    MapFile flat;
+    const MapFile* geomMap = &map;
+    if (anyPrefab) {
+        std::error_code ec;
+        std::vector<std::string> roots;
+        if (const auto cwd = std::filesystem::current_path(ec); !ec && !cwd.empty()) roots.push_back(cwd.string());
+        if (flattenPrefabs(map, "", roots, flat, nullptr, nullptr)) geomMap = &flat;
+    }
+
+    std::set<std::string> targetnames, linknames;
+    for (const Entity& e : geomMap->entities) {
         if (const std::string* t = e.value("targetname"); t && !t->empty()) targetnames.insert(*t);
+        if (const std::string* l = e.value("script_linkname"); l && !l->empty()) linknames.insert(*l);
+    }
     CollisionWorld world;
     bool worldBuilt = false;
     for (size_t i = 0; i < map.entities.size(); ++i) {
         const Entity& e = map.entities[i];
         const std::string cls = e.classname();
-        // Dangling targets.
+        // Dangling targets (target, target2..8, iw8r_teleport, script_linkto -> script_linkname).
         for (const auto& it : e.items)
             if (const KeyValueLine* kv = it.kv()) {
                 const std::string k = kv->name();
-                const bool targetKey = k == "target" || (k.size() == 7 && k.rfind("target", 0) == 0 && k[6] >= '2' && k[6] <= '8');
-                if (targetKey && !kv->value.empty() && !targetnames.count(kv->value))
+                const bool targetKey = k == "target" || (k.size() == 7 && k.rfind("target", 0) == 0 && k[6] >= '2' && k[6] <= '8') ||
+                                       k == "iw8r_teleport";
+                if (targetKey && !kv->value.empty() && !targetnames.count(kv->value)) {
                     out.push_back({DoctorFixKind::DanglingTarget, e.id, kNoId, k, "",
                                    where(i, cls) + ": remove " + k + " \"" + kv->value + "\" (no entity has that targetname)"});
+                } else if (k == "script_linkto" && !kv->value.empty()) {
+                    const std::vector<std::string> toks = splitTokens(kv->value);
+                    std::string kept;
+                    bool anyMissing = false;
+                    for (const std::string& tok : toks) {
+                        if (linknames.count(tok))
+                            kept += (kept.empty() ? "" : " ") + tok;
+                        else
+                            anyMissing = true;
+                    }
+                    if (anyMissing) {
+                        out.push_back({DoctorFixKind::DanglingTarget, e.id, kNoId, k, kept,
+                                       kept.empty()
+                                           ? where(i, cls) + ": remove script_linkto \"" + kv->value +
+                                                 "\" (no entity has that script_linkname)"
+                                           : where(i, cls) + ": trim script_linkto \"" + kv->value + "\" -> \"" + kept +
+                                                 "\" (missing script_linkname)"});
+                    }
+                }
             }
         // Broken primitives.
         size_t k = 0;
@@ -89,9 +129,9 @@ std::vector<DoctorFix> diagnoseMap(const MapFile& map) {
                 out.push_back({DoctorFixKind::SpawnAngles, e.id, kNoId, "angles", "0 " + formatNumber(y) + " 0",
                                where(i, cls) + ": angles \"" + *a + "\" -> \"0 " + formatNumber(y) + " 0\""});
         }
-        // Floor: inside a solid, or nothing to stand on within 128 units.
+        // Floor: inside a solid (brush, patch, or prefab), or nothing to stand on within 128 units.
         if (!worldBuilt) {
-            world.build(map);
+            world.build(*geomMap);
             worldBuilt = true;
         }
         // Clearance half a unit up: a box resting exactly on a floor counts as touching, not inside.
@@ -123,7 +163,7 @@ size_t applyDoctorFixes(Document& doc, const std::vector<DoctorFix>& fixes, cons
         if (!doc.findEntity(f.entity)) continue;
         switch (f.kind) {
             case DoctorFixKind::DanglingTarget:
-                n += doc.removeKey(f.entity, f.key) ? 1 : 0;
+                n += (f.value.empty() ? doc.removeKey(f.entity, f.key) : doc.setKeyValue(f.entity, f.key, f.value)) ? 1 : 0;
                 break;
             case DoctorFixKind::SpawnAngles:
             case DoctorFixKind::SpawnFloor:

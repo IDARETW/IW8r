@@ -161,8 +161,21 @@ std::vector<GameModeTemplate> buildTemplates() {
     };
     spawnSet("spawns_tdm", "Spawn Set: TDM", "mp_tdm_spawn x2 plus one allies and one axis start.", "mp_tdm_spawn",
              "mp_tdm_spawn_allies_start", "mp_tdm_spawn_axis_start", true);
+    {
+        GameModeTemplate t;
+        t.id = "spawns_dm";
+        t.name = "Spawn Set: Free-for-All (DM)";
+        t.description = "Four mp_dm_spawn points for Free-for-All.";
+        t.entities.push_back(point("mp_dm_spawn", {-256, 0, 0}, {{"angles", "0 0 0"}, {"footprint_mask_group", "default"}}));
+        t.entities.push_back(point("mp_dm_spawn", {256, 0, 0}, {{"angles", "0 180 0"}, {"footprint_mask_group", "default"}}));
+        t.entities.push_back(point("mp_dm_spawn", {0, -256, 0}, {{"angles", "0 90 0"}, {"footprint_mask_group", "default"}}));
+        t.entities.push_back(point("mp_dm_spawn", {0, 256, 0}, {{"angles", "0 270 0"}, {"footprint_mask_group", "default"}}));
+        out.push_back(t);
+    }
     spawnSet("spawns_dom", "Spawn Set: Domination", "mp_dom_spawn x2 plus one allies and one axis start.", "mp_dom_spawn",
              "mp_dom_spawn_allies_start", "mp_dom_spawn_axis_start", true);
+    spawnSet("spawns_koth", "Spawn Set: Hardpoint", "mp_koth_spawn x2 plus one allies and one axis start.", "mp_koth_spawn",
+             "mp_koth_spawn_allies_start", "mp_koth_spawn_axis_start", true);
     spawnSet("spawns_ctf", "Spawn Set: CTF", "mp_ctf_spawn x2 plus one allies and one axis start.", "mp_ctf_spawn",
              "mp_ctf_spawn_allies_start", "mp_ctf_spawn_axis_start", true);
     spawnSet("spawns_sd", "Spawn Set: Search & Destroy", "One attacker and one defender spawn.", "",

@@ -150,6 +150,64 @@
           "examples": [
             "1"
           ]
+        },
+        "iw8r_bulb_length": {
+          "type": "float",
+          "default": "0",
+          "description": "Tube or capsule bulb length in map units (0 or more). Written as bulb_length; stretches the light along its up axis.",
+          "required": false,
+          "examples": [
+            "32",
+            "64"
+          ]
+        },
+        "iw8r_dynamic_shadows": {
+          "type": "bool",
+          "default": "0",
+          "description": "1 enables dynamic shadow casting (moving entities and players cast shadows from this light). Written as dynamic_shadows.",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "iw8r_shadow_softness": {
+          "type": "float",
+          "default": "",
+          "description": "Shadow softness / penumbra filter scale (0 or more). Written as shadow_softness.",
+          "required": false,
+          "examples": [
+            "1",
+            "2"
+          ]
+        },
+        "iw8r_shadow_area": {
+          "type": "float",
+          "default": "",
+          "description": "Area-light shadow radius in map units for soft shadow penumbra (0 or more). Written as shadow_area.",
+          "required": false,
+          "examples": [
+            "4",
+            "8"
+          ]
+        },
+        "iw8r_shadow_near_bias": {
+          "type": "float",
+          "default": "",
+          "description": "Near-plane shadow bias for spot shadow maps. Written as shadow_near_bias.",
+          "required": false,
+          "examples": [
+            "0.5"
+          ]
+        },
+        "iw8r_up": {
+          "type": "vec3",
+          "default": "",
+          "description": "Explicit up vector x y z for the light (used with bulb_length or IES roll orientation). Written as up.",
+          "required": false,
+          "examples": [
+            "0 0 1",
+            "1 0 0"
+          ]
         }
       }
     },
@@ -301,6 +359,64 @@
           "required": false,
           "examples": [
             "1"
+          ]
+        },
+        "iw8r_bulb_length": {
+          "type": "float",
+          "default": "0",
+          "description": "Tube or capsule bulb length in map units (0 or more). Written as bulb_length; stretches the light along its up axis.",
+          "required": false,
+          "examples": [
+            "32",
+            "64"
+          ]
+        },
+        "iw8r_dynamic_shadows": {
+          "type": "bool",
+          "default": "0",
+          "description": "1 enables dynamic shadow casting (moving entities and players cast shadows from this light). Written as dynamic_shadows.",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "iw8r_shadow_softness": {
+          "type": "float",
+          "default": "",
+          "description": "Shadow softness / penumbra filter scale (0 or more). Written as shadow_softness.",
+          "required": false,
+          "examples": [
+            "1",
+            "2"
+          ]
+        },
+        "iw8r_shadow_area": {
+          "type": "float",
+          "default": "",
+          "description": "Area-light shadow radius in map units for soft shadow penumbra (0 or more). Written as shadow_area.",
+          "required": false,
+          "examples": [
+            "4",
+            "8"
+          ]
+        },
+        "iw8r_shadow_near_bias": {
+          "type": "float",
+          "default": "",
+          "description": "Near-plane shadow bias for spot shadow maps. Written as shadow_near_bias.",
+          "required": false,
+          "examples": [
+            "0.5"
+          ]
+        },
+        "iw8r_up": {
+          "type": "vec3",
+          "default": "",
+          "description": "Explicit up vector x y z for the light (used with bulb_length or IES roll orientation). Written as up.",
+          "required": false,
+          "examples": [
+            "0 0 1",
+            "1 0 0"
           ]
         }
       }
@@ -636,6 +752,16 @@
             "1",
             "0"
           ]
+        },
+        "iw8r_lift": {
+          "type": "string",
+          "default": "",
+          "description": "Lift without scripting: \"<dz> [time] [wait]\". Moves up dz units over time seconds, waits, moves back down and repeats. A misc_model with this key is built as a live script_model; a missing targetname is filled in.",
+          "required": false,
+          "examples": [
+            "128 2 2",
+            "256 3 1"
+          ]
         }
       }
     },
@@ -797,6 +923,15 @@
           "examples": [
             "far",
             "128 64 0"
+          ]
+        },
+        "iw8r_umbra_gate": {
+          "type": "bool",
+          "default": "0",
+          "description": "1 marks this brush model (e.g. a door) as a dynamic Umbra occlusion gate that opens or closes visibility through its portal when it moves.",
+          "required": false,
+          "examples": [
+            "1"
           ]
         }
       }
@@ -1022,6 +1157,16 @@
             "1",
             "0"
           ]
+        },
+        "iw8r_lift": {
+          "type": "string",
+          "default": "",
+          "description": "Lift without scripting: \"<dz> [time] [wait]\". Moves up dz units over time seconds, waits, moves back down and repeats. A misc_model with this key is built as a live script_model; a missing targetname is filled in.",
+          "required": false,
+          "examples": [
+            "128 2 2",
+            "256 3 1"
+          ]
         }
       }
     },
@@ -1237,6 +1382,24 @@
           "required": false,
           "examples": [
             "6 12 bird_call:3 dog_bark"
+          ]
+        },
+        "iw8r_audio_blend": {
+          "type": "string",
+          "default": "",
+          "description": "Audio zone blend transition: \"<zoneA> <zoneB>\" naming two audio zones (from iw8r_audio_zone or the map id). Written into clienttriggers.json blend_nodes.",
+          "required": false,
+          "examples": [
+            "hall tunnel_east"
+          ]
+        },
+        "iw8r_audio_blend_span": {
+          "type": "vec3",
+          "default": "",
+          "description": "Optional transition span \"dx dy dz\" for iw8r_audio_blend (pointA = origin - span/2, pointB = origin + span/2).",
+          "required": false,
+          "examples": [
+            "64 0 0"
           ]
         }
       }
@@ -2673,6 +2836,896 @@
           "required": false,
           "examples": [
             "0"
+          ]
+        }
+      }
+    },
+    "trigger_damage": {
+      "description": "Brush trigger with damage. The converter drops it without script_exploder (contract 15 s3.3).",
+      "kind": "brush",
+      "color": [
+        0.9,
+        0.3,
+        0.3
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "dmg": {
+          "type": "int",
+          "default": "",
+          "description": "Damage applied to what is inside the trigger (inferred from stock values).",
+          "required": false,
+          "examples": []
+        },
+        "footprint_mask_group": {
+          "type": "string",
+          "default": "default",
+          "description": "Footprint mask group name (inferred from stock values; stock value 'default').",
+          "required": false,
+          "examples": []
+        },
+        "model": {
+          "type": "model",
+          "default": "",
+          "description": "xmodel name for point models; '*N' selects brush model N and is written by the compiler (inferred from stock values).",
+          "required": false,
+          "examples": []
+        },
+        "physasset": {
+          "type": "string",
+          "default": "",
+          "description": "Physics asset name (inferred from stock values).",
+          "required": false,
+          "examples": []
+        },
+        "script_exploder": {
+          "type": "string",
+          "default": "",
+          "description": "Exploder id, stored as exploderindex (gsc gametypes/btm.gsc:1830-1832).",
+          "required": true,
+          "examples": []
+        },
+        "target": {
+          "type": "targetname",
+          "default": "",
+          "description": "targetname of the entity or struct this one points to (gsc ammorestock.gsc:12).",
+          "required": false,
+          "examples": []
+        },
+        "targetname": {
+          "type": "targetname",
+          "default": "",
+          "description": "Name that other entities use to find this one (gsc ammorestock.gsc:8).",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_vision": {
+          "type": "string",
+          "default": "",
+          "description": "Vision / fog inside this volume: \"name=value; ...\" Replay vision fields (as worldspawn iw8r_vision). Needs a targetname. A player inside sees it; leaving restores the map's vision. Research 63.",
+          "required": false,
+          "examples": [
+            "tonemapExposure=2.5"
+          ]
+        },
+        "iw8r_teleport": {
+          "type": "string",
+          "default": "",
+          "description": "Teleporter: the targetname of the destination (a script_origin). Needs its own targetname; a player touching the trigger moves to the destination's origin and angles.",
+          "required": false,
+          "examples": [
+            "tp_exit_1"
+          ]
+        },
+        "iw8r_jump": {
+          "type": "string",
+          "default": "",
+          "description": "Jump pad: \"<vx> <vy> <vz>\" launch velocity (units per second). Needs a targetname; a player touching the trigger is launched.",
+          "required": false,
+          "examples": [
+            "0 0 700",
+            "400 0 500"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "Damage zone: \"<amount> [interval]\". Needs a targetname; a player inside takes amount damage every interval seconds (default 1).",
+          "required": false,
+          "examples": [
+            "10 1",
+            "200"
+          ]
+        }
+      }
+    },
+    "trigger_hurt": {
+      "description": "Brush trigger that damages what is inside it (inferred from stock values).",
+      "kind": "brush",
+      "color": [
+        0.9,
+        0.3,
+        0.3
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "dmg": {
+          "type": "int",
+          "default": "",
+          "description": "Damage applied to what is inside the trigger (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "10000"
+          ]
+        },
+        "footprint_mask_group": {
+          "type": "string",
+          "default": "default",
+          "description": "Footprint mask group name (inferred from stock values; stock value 'default').",
+          "required": false,
+          "examples": [
+            "default"
+          ]
+        },
+        "model": {
+          "type": "model",
+          "default": "",
+          "description": "xmodel name for point models; '*N' selects brush model N and is written by the compiler (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "?2",
+            "?15"
+          ]
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "0 0 -512",
+            "-142 2949 -516",
+            "-142 2949 -1028"
+          ]
+        },
+        "physasset": {
+          "type": "string",
+          "default": "",
+          "description": "Physics asset name (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "triggermodeldummydefault"
+          ]
+        },
+        "iw8r_vision": {
+          "type": "string",
+          "default": "",
+          "description": "Vision / fog inside this volume: \"name=value; ...\" Replay vision fields (as worldspawn iw8r_vision). Needs a targetname. A player inside sees it; leaving restores the map's vision. Research 63.",
+          "required": false,
+          "examples": [
+            "tonemapExposure=2.5"
+          ]
+        },
+        "iw8r_teleport": {
+          "type": "string",
+          "default": "",
+          "description": "Teleporter: the targetname of the destination (a script_origin). Needs its own targetname; a player touching the trigger moves to the destination's origin and angles.",
+          "required": false,
+          "examples": [
+            "tp_exit_1"
+          ]
+        },
+        "iw8r_jump": {
+          "type": "string",
+          "default": "",
+          "description": "Jump pad: \"<vx> <vy> <vz>\" launch velocity (units per second). Needs a targetname; a player touching the trigger is launched.",
+          "required": false,
+          "examples": [
+            "0 0 700",
+            "400 0 500"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "Damage zone: \"<amount> [interval]\". Needs a targetname; a player inside takes amount damage every interval seconds (default 1).",
+          "required": false,
+          "examples": [
+            "10 1",
+            "200"
+          ]
+        },
+        "spawnflags": {
+          "type": "int",
+          "default": "0",
+          "description": "Bit flags. Bit 16 (spawnflags 16): slow damage tick (1 second interval instead of 0.05 s per frame).",
+          "required": false,
+          "examples": [
+            "0",
+            "16"
+          ]
+        },
+        "targetname": {
+          "type": "targetname",
+          "default": "",
+          "description": "Name that other entities or scripts use to find this trigger.",
+          "required": false,
+          "examples": []
+        }
+      }
+    },
+    "trigger_radius": {
+      "description": "Radius trigger point. Spawned in script with radius and height (gsc gametypes/ball.gsc:163).",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          -8
+        ],
+        [
+          8,
+          8,
+          8
+        ]
+      ],
+      "color": [
+        1.0,
+        0.5,
+        0.2
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "angles": {
+          "type": "angles",
+          "default": "0 0 0",
+          "description": "Pitch yaw roll in degrees. Stock values use the middle (yaw) slot (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "0 90 0",
+            "0 180 0",
+            "0 255 0"
+          ]
+        },
+        "footprint_mask_group": {
+          "type": "string",
+          "default": "default",
+          "description": "Footprint mask group name (inferred from stock values; stock value 'default').",
+          "required": false,
+          "examples": [
+            "default"
+          ]
+        },
+        "height": {
+          "type": "float",
+          "default": "",
+          "description": "Height in map units. gsc gametypes/ball.gsc:163 passes it as the height argument of spawn('trigger_radius').",
+          "required": false,
+          "examples": [
+            "128"
+          ]
+        },
+        "nophysics": {
+          "type": "bool",
+          "default": "",
+          "description": "Disables physics on the entity (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "true"
+          ]
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units (inferred from stock values).",
+          "required": true,
+          "examples": [
+            "368 1528 43",
+            "1369 80 55",
+            "-373 -722.5 59"
+          ]
+        },
+        "radius": {
+          "type": "float",
+          "default": "",
+          "description": "Radius in map units. gsc gametypes/ball.gsc:163 passes it to spawn('trigger_radius'); inferred for other classes.",
+          "required": true,
+          "examples": [
+            "64",
+            "100",
+            "120"
+          ]
+        },
+        "script_gameobjectname": {
+          "type": "string",
+          "default": "",
+          "description": "Gameobject or objective id read by gsc gameobjects.gsc:17. Values such as bombzone and sd are inferred from stock values.",
+          "required": false,
+          "examples": [
+            "ctf",
+            "grind",
+            "dom onslaught"
+          ]
+        },
+        "script_label": {
+          "type": "string",
+          "default": "",
+          "description": "Label for a gameobject trigger (gsc gameobjects.gsc:4432-4435; gametypes/arena.gsc:2165-2177 compares '1', '2', '3').",
+          "required": false,
+          "examples": [
+            "a",
+            "b",
+            "_a"
+          ]
+        },
+        "target": {
+          "type": "targetname",
+          "default": "",
+          "description": "targetname of the entity or struct this one points to (gsc ammorestock.gsc:12).",
+          "required": false,
+          "examples": [
+            "ctf_flag_axis",
+            "ctf_flag_allies"
+          ]
+        },
+        "targetname": {
+          "type": "targetname",
+          "default": "",
+          "description": "Name that other entities use to find this one (gsc ammorestock.gsc:8).",
+          "required": false,
+          "examples": [
+            "ctf_trig_axis",
+            "ctf_zone_axis",
+            "grind_location"
+          ]
+        },
+        "iw8r_vision": {
+          "type": "string",
+          "default": "",
+          "description": "Vision / fog inside this volume: \"name=value; ...\" Replay vision fields (as worldspawn iw8r_vision). Needs a targetname. A player inside sees it; leaving restores the map's vision. Research 63.",
+          "required": false,
+          "examples": [
+            "tonemapExposure=2.5"
+          ]
+        },
+        "iw8r_teleport": {
+          "type": "string",
+          "default": "",
+          "description": "Teleporter: the targetname of the destination (a script_origin). Needs its own targetname; a player touching the trigger moves to the destination's origin and angles.",
+          "required": false,
+          "examples": [
+            "tp_exit_1"
+          ]
+        },
+        "iw8r_jump": {
+          "type": "string",
+          "default": "",
+          "description": "Jump pad: \"<vx> <vy> <vz>\" launch velocity (units per second). Needs a targetname; a player touching the trigger is launched.",
+          "required": false,
+          "examples": [
+            "0 0 700",
+            "400 0 500"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "Damage zone: \"<amount> [interval]\". Needs a targetname; a player inside takes amount damage every interval seconds (default 1).",
+          "required": false,
+          "examples": [
+            "10 1",
+            "200"
+          ]
+        }
+      }
+    },
+    "trigger_use": {
+      "description": "Brush trigger for player use (inferred from stock values).",
+      "kind": "brush",
+      "color": [
+        0.9,
+        0.3,
+        0.3
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "footprint_mask_group": {
+          "type": "string",
+          "default": "default",
+          "description": "Footprint mask group name (inferred from stock values; stock value 'default').",
+          "required": false,
+          "examples": [
+            "default"
+          ]
+        },
+        "hint": {
+          "type": "string",
+          "default": "",
+          "description": "Use triggers: the text shown to a player who stands in the trigger, for example Press ^3[{+activate}]^7 to open. The build makes it a localized string of the map and the map script shows it (IW8 Radiant; not seen in game).",
+          "required": false,
+          "examples": []
+        },
+        "model": {
+          "type": "model",
+          "default": "",
+          "description": "xmodel name for point models; '*N' selects brush model N and is written by the compiler (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "?38",
+            "?41",
+            "?42"
+          ]
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "-864 -144 110",
+            "960 -24 62",
+            "224 8 64"
+          ]
+        },
+        "physasset": {
+          "type": "string",
+          "default": "",
+          "description": "Physics asset name (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "TriggerModelStaticDummyDefault"
+          ]
+        },
+        "script_gameobjectname": {
+          "type": "string",
+          "default": "",
+          "description": "Gameobject or objective id read by gsc gameobjects.gsc:17. Values such as bombzone and sd are inferred from stock values.",
+          "required": false,
+          "examples": [
+            "cyber"
+          ]
+        },
+        "targetname": {
+          "type": "targetname",
+          "default": "",
+          "description": "Name that other entities use to find this one (gsc ammorestock.gsc:8).",
+          "required": false,
+          "examples": [
+            "cyber_emp_pickup_trig"
+          ]
+        },
+        "iw8r_vision": {
+          "type": "string",
+          "default": "",
+          "description": "Vision / fog inside this volume: \"name=value; ...\" Replay vision fields (as worldspawn iw8r_vision). Needs a targetname. A player inside sees it; leaving restores the map's vision. Research 63.",
+          "required": false,
+          "examples": [
+            "tonemapExposure=2.5"
+          ]
+        },
+        "iw8r_teleport": {
+          "type": "string",
+          "default": "",
+          "description": "Teleporter: the targetname of the destination (a script_origin). Needs its own targetname; a player touching the trigger moves to the destination's origin and angles.",
+          "required": false,
+          "examples": [
+            "tp_exit_1"
+          ]
+        },
+        "iw8r_jump": {
+          "type": "string",
+          "default": "",
+          "description": "Jump pad: \"<vx> <vy> <vz>\" launch velocity (units per second). Needs a targetname; a player touching the trigger is launched.",
+          "required": false,
+          "examples": [
+            "0 0 700",
+            "400 0 500"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "Damage zone: \"<amount> [interval]\". Needs a targetname; a player inside takes amount damage every interval seconds (default 1).",
+          "required": false,
+          "examples": [
+            "10 1",
+            "200"
+          ]
+        }
+      }
+    },
+    "trigger_use_touch": {
+      "description": "Brush trigger for use on touch. Its classname is removed by gsc gametypes/arm.gsc:312.",
+      "kind": "brush",
+      "color": [
+        0.9,
+        0.3,
+        0.3
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "footprint_mask_group": {
+          "type": "string",
+          "default": "default",
+          "description": "Footprint mask group name (inferred from stock values; stock value 'default').",
+          "required": false,
+          "examples": [
+            "default"
+          ]
+        },
+        "hint": {
+          "type": "string",
+          "default": "",
+          "description": "Use triggers: the text shown to a player who stands in the trigger, for example Press ^3[{+activate}]^7 to open. The build makes it a localized string of the map and the map script shows it (IW8 Radiant; not seen in game).",
+          "required": false,
+          "examples": []
+        },
+        "model": {
+          "type": "model",
+          "default": "",
+          "description": "xmodel name for point models; '*N' selects brush model N and is written by the compiler (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "?28",
+            "?29",
+            "?31"
+          ]
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "-3792 4784 2208",
+            "-8576 9408 24",
+            "-1144 -152 114"
+          ]
+        },
+        "physasset": {
+          "type": "string",
+          "default": "",
+          "description": "Physics asset name (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "TriggerModelStaticDummyDefault"
+          ]
+        },
+        "script_bombmode_original": {
+          "type": "bool",
+          "default": "",
+          "description": "Bomb-mode flag kept by the IW3 converter (contract 15 s3.2); meaning inferred.",
+          "required": false,
+          "examples": [
+            "1"
+          ]
+        },
+        "script_gameobjectname": {
+          "type": "string",
+          "default": "",
+          "description": "Gameobject or objective id read by gsc gameobjects.gsc:17. Values such as bombzone and sd are inferred from stock values.",
+          "required": false,
+          "examples": [
+            "bombzone",
+            "cyber",
+            "dd_bombzone"
+          ]
+        },
+        "script_label": {
+          "type": "string",
+          "default": "",
+          "description": "Label for a gameobject trigger (gsc gameobjects.gsc:4432-4435; gametypes/arena.gsc:2165-2177 compares '1', '2', '3').",
+          "required": false,
+          "examples": [
+            "_a",
+            "_b",
+            "_c"
+          ]
+        },
+        "target": {
+          "type": "targetname",
+          "default": "",
+          "description": "targetname of the entity or struct this one points to (gsc ammorestock.gsc:12).",
+          "required": false,
+          "examples": [
+            "pf1195_auto1",
+            "pf1197_auto1",
+            "pf1198_auto1"
+          ]
+        },
+        "targetname": {
+          "type": "targetname",
+          "default": "",
+          "description": "Name that other entities use to find this one (gsc ammorestock.gsc:8).",
+          "required": false,
+          "examples": [
+            "bombtrigger",
+            "bombzone",
+            "pf1195_auto2"
+          ]
+        },
+        "iw8r_vision": {
+          "type": "string",
+          "default": "",
+          "description": "Vision / fog inside this volume: \"name=value; ...\" Replay vision fields (as worldspawn iw8r_vision). Needs a targetname. A player inside sees it; leaving restores the map's vision. Research 63.",
+          "required": false,
+          "examples": [
+            "tonemapExposure=2.5"
+          ]
+        },
+        "iw8r_teleport": {
+          "type": "string",
+          "default": "",
+          "description": "Teleporter: the targetname of the destination (a script_origin). Needs its own targetname; a player touching the trigger moves to the destination's origin and angles.",
+          "required": false,
+          "examples": [
+            "tp_exit_1"
+          ]
+        },
+        "iw8r_jump": {
+          "type": "string",
+          "default": "",
+          "description": "Jump pad: \"<vx> <vy> <vz>\" launch velocity (units per second). Needs a targetname; a player touching the trigger is launched.",
+          "required": false,
+          "examples": [
+            "0 0 700",
+            "400 0 500"
+          ]
+        },
+        "iw8r_damage": {
+          "type": "string",
+          "default": "",
+          "description": "Damage zone: \"<amount> [interval]\". Needs a targetname; a player inside takes amount damage every interval seconds (default 1).",
+          "required": false,
+          "examples": [
+            "10 1",
+            "200"
+          ]
+        }
+      }
+    },
+    "script_origin": {
+      "description": "Point used by scripts for positions and effects (inferred from stock values). Spawned in script at gsc gametypes/cyber.gsc:598.",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          -8
+        ],
+        [
+          8,
+          8,
+          8
+        ]
+      ],
+      "color": [
+        0.2,
+        0.9,
+        0.9
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "_color": {
+          "type": "vec3",
+          "default": "",
+          "description": "Editor draw colour r g b, 0 to 1 (inferred from stock values).",
+          "required": false,
+          "examples": [
+            ".5 1 1",
+            "0 1 .5",
+            "0.501961 0 1"
+          ]
+        },
+        "angles": {
+          "type": "angles",
+          "default": "0 0 0",
+          "description": "Pitch yaw roll in degrees. Stock values use the middle (yaw) slot (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "0 155 0",
+            "0 50 0",
+            "0 95 0"
+          ]
+        },
+        "footprint_mask_group": {
+          "type": "string",
+          "default": "default",
+          "description": "Footprint mask group name (inferred from stock values; stock value 'default').",
+          "required": false,
+          "examples": [
+            "default"
+          ]
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units (inferred from stock values).",
+          "required": true,
+          "examples": [
+            "3072 -3840 64",
+            "-2560 3584 64",
+            "0 0 2560"
+          ]
+        },
+        "radius": {
+          "type": "float",
+          "default": "",
+          "description": "Radius in map units. gsc gametypes/ball.gsc:163 passes it to spawn('trigger_radius'); inferred for other classes.",
+          "required": false,
+          "examples": [
+            "200",
+            "500",
+            "256"
+          ]
+        },
+        "script_accel": {
+          "type": "float",
+          "default": "",
+          "description": "Acceleration value kept by the IW3 converter (contract 15 s3.2); meaning inferred.",
+          "required": false,
+          "examples": [
+            "20",
+            "15",
+            "30"
+          ]
+        },
+        "script_airspeed": {
+          "type": "float",
+          "default": "",
+          "description": "Air speed value kept by the IW3 converter (contract 15 s3.2); meaning inferred.",
+          "required": false,
+          "examples": [
+            "30",
+            "40",
+            "60"
+          ]
+        },
+        "script_delay": {
+          "type": "float",
+          "default": "",
+          "description": "Delay value (inferred from stock values; no use found in the decompiled 1.20.4 scripts).",
+          "required": false,
+          "examples": [
+            "2",
+            "3"
+          ]
+        },
+        "script_targetoffset_z": {
+          "type": "float",
+          "default": "",
+          "description": "Vertical target offset (inferred from stock values).",
+          "required": false,
+          "examples": [
+            "55"
+          ]
+        },
+        "target": {
+          "type": "targetname",
+          "default": "",
+          "description": "targetname of the entity or struct this one points to (gsc ammorestock.gsc:12).",
+          "required": false,
+          "examples": [
+            "auto601",
+            "auto598",
+            "auto600"
+          ]
+        },
+        "targetname": {
+          "type": "targetname",
+          "default": "",
+          "description": "Name that other entities use to find this one (gsc ammorestock.gsc:8).",
+          "required": false,
+          "examples": [
+            "minimap_corner",
+            "airstrikeheight",
+            "heli_leave"
+          ]
+        },
+        "iw8r_audio_blend": {
+          "type": "string",
+          "default": "",
+          "description": "Audio zone blend transition: \"<zoneA> <zoneB>\" naming two audio zones (from iw8r_audio_zone or the map id). Written into clienttriggers.json blend_nodes.",
+          "required": false,
+          "examples": [
+            "hall tunnel_east"
+          ]
+        },
+        "iw8r_audio_blend_span": {
+          "type": "vec3",
+          "default": "",
+          "description": "Optional transition span \"dx dy dz\" for iw8r_audio_blend (pointA = origin - span/2, pointB = origin + span/2).",
+          "required": false,
+          "examples": [
+            "64 0 0"
+          ]
+        },
+        "iw8r_audio_pa_speaker": {
+          "type": "string",
+          "default": "",
+          "description": "Audio PA speaker name placed at this entity origin. Written into clienttriggers.json pa_speakers.",
+          "required": false,
+          "examples": [
+            "pa_courtyard_01"
+          ]
+        }
+      }
+    },
+    "sound_emitter": {
+      "description": "Stock sound placement: the map script plays the 'soundalias' as a loop or a repeating one-shot ('delay').",
+      "kind": "point",
+      "size": [
+        [
+          -8,
+          -8,
+          -8
+        ],
+        [
+          8,
+          8,
+          8
+        ]
+      ],
+      "color": [
+        0.2,
+        0.9,
+        0.9
+      ],
+      "buildAccepted": true,
+      "keys": {
+        "delay": {
+          "type": "float",
+          "default": "",
+          "description": "Seconds between repeats; empty plays once (effects) or loops (sounds with loop 1).",
+          "required": false,
+          "examples": []
+        },
+        "loop": {
+          "type": "bool",
+          "default": "0",
+          "description": "1 = a looping sound on a script_origin; 0 = a one-shot repeated every delay seconds.",
+          "required": false,
+          "examples": []
+        },
+        "origin": {
+          "type": "vec3",
+          "default": "0 0 0",
+          "description": "Position x y z in map units (inferred from stock values).",
+          "required": false,
+          "examples": []
+        },
+        "soundalias": {
+          "type": "string",
+          "default": "",
+          "description": "Stock sound alias, from the Sounds browser.",
+          "required": false,
+          "examples": []
+        },
+        "iw8r_audio_blend": {
+          "type": "string",
+          "default": "",
+          "description": "Audio zone blend transition: \"<zoneA> <zoneB>\" naming two audio zones (from iw8r_audio_zone or the map id). Written into clienttriggers.json blend_nodes.",
+          "required": false,
+          "examples": [
+            "hall tunnel_east"
+          ]
+        },
+        "iw8r_audio_blend_span": {
+          "type": "vec3",
+          "default": "",
+          "description": "Optional transition span \"dx dy dz\" for iw8r_audio_blend (pointA = origin - span/2, pointB = origin + span/2).",
+          "required": false,
+          "examples": [
+            "64 0 0"
+          ]
+        },
+        "iw8r_audio_pa_speaker": {
+          "type": "string",
+          "default": "",
+          "description": "Audio PA speaker name placed at this entity origin. Written into clienttriggers.json pa_speakers.",
+          "required": false,
+          "examples": [
+            "pa_courtyard_01"
           ]
         }
       }

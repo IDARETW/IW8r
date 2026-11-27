@@ -200,8 +200,12 @@ public:
         // Research 132 G2: an `unlit_` technique set (TechsetFamily::UnlitEffect): drawn with its colour as is.
         bool unlit = false;
         bool vertexColourData = false;  // reactive motion: the model's vertex colour is motion data, not a colour
-        // Research 132 G1: a blended model material that is no decal (glass and other see-through surfaces).
+        // Research 132 G1: a blended model or world material that is no decal (glass and other see-through surfaces).
         bool translucent = false;
+        // Additive stock material (unlit_6_effect, _bad_tca, or MaterialBlend::Additive): drawn with additive blend.
+        bool additive = false;
+        int sortKey = 0;       // stock material sortKey (e.g. 25/30 for glass)
+        bool twoSided = false; // true when back faces must remain visible (foliage, decals, glass, alpha-test, etc.)
         // Research 133 section 1: constant 63, UV animation (u / s, v / s, radians / s about the texture centre).
         std::array<float, 4> uvAnim{0, 0, 0, 0};
         // The water's dual scrolling normal (research 133 section 5.3): constants 110 and 111 (weight, UV scale, scroll
@@ -811,7 +815,16 @@ private:
     app::CameraGeometry geo_;                           // the scene's geometry, kept between frames
     app::GeoStream<app::GpuVertex> gizmoLines_;         // the gizmo, on top of everything
     std::vector<std::unique_ptr<app::SceneBatch>> skyBatches_;  // the six sky box faces
-    app::SceneBatch fxBatch_;                           // effect particles of this frame
+    app::SceneBatch fxBatch_;                           // effect model triangles of this frame
+    struct CachedFxOrigin {
+        Vec3 origin, angles;
+        std::string fx;
+        uint64_t object = 0;
+        double repeat = 0;
+    };
+    std::vector<CachedFxOrigin> cachedFxOrigins_;
+    uint64_t fxOriginsKey_ = ~0ull;
+    int fxGlowTex_ = -1;
     std::vector<app::SceneBatch*> extraBatches_;
     app::CameraGeometry::TextureFn texFn_;
     bool refDirty_ = false;

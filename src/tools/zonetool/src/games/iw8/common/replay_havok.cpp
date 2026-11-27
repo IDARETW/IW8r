@@ -32,35 +32,89 @@
 
 
 // The physicsmaterial.hkx material of a collision shape, by its Replay surface type (the same number the tag's user
-// data carries at bit 19). Every solid used to be PM_Concrete, and every bullet impact then looked like a concrete
-// impact whatever the surface (IW8 Radiant owner test, 2026-11-11). Name CRCs are CRC-32 of the material name, the
-// ones the clutter bodies already use (iw3_fastfile.cpp ReadClutterBody). Types without a material of their own keep
-// PM_Concrete.
+// data carries at bit 19). All CRCs are verified directly from Replay 1.20 code_post_gfx physicsmaterial.hkx
+// (CRC-32 of the PM_* material name).
 inline std::uint32_t SurfacePhysicsMaterialCrc(const std::uint32_t surfaceType)
 {
     switch (surfaceType)
     {
     case 1:  // bark
-    case 22: // wood
+    case 22: // wood_solid
+    case 52: // wood_floor
         return 0x0AD71E4Eu; // PM_Wood
     case 2: // brick
         return 0xD8B39111u; // PM_Brick
-    case 3:  // carpet
-    case 4:  // cloth
-    case 35: // cushion
+    case 3:  // carpet_solid
+    case 32: // carpet_wood
+    case 33: // carpet_metal
+        return 0x04E51705u; // PM_Carpet
+    case 4: // cloth
         return 0xCD123193u; // PM_Cloth
-    case 13: // metal
+    case 5:  // concrete_dry
+    case 34: // concrete_wet
+    case 62: // cinderblock
+        return 0x1AB7BC33u; // PM_Concrete
+    case 6:  // dirt
+    case 15: // mud
+    case 49: // mud_riverbed
+        return 0xAE2DE6F5u; // PM_Dirt
+    case 7: // flesh
+        return 0x4724ADF2u; // PM_Flesh
+    case 8:  // foliage_dry
+    case 37: // foliage_wet
+        return 0x63A1FDADu; // PM_Foliage
+    case 9:  // glass_pane
+    case 38: // glass_broken
+    case 39: // glass_solid
+    case 40: // glass_vehicle
+        return 0xF728E572u; // PM_Glass
+    case 10: // grass_short
+    case 41: // grass_tall
+        return 0x47EEC5DEu; // PM_Grass
+    case 11: // gravel
+    case 18: // rock
+        return 0x0103BCE1u; // PM_Rock
+    case 12: // ice_solid
+    case 42: // ice_thin
+        return 0x820231A4u; // PM_Ice
+    case 13: // metal_thick
+    case 29: // riotshield
+    case 46: // metal_tank
+    case 47: // body_armor
         return 0xCBF7A6C4u; // PM_Metal_Solid
-    case 28: // painted metal
+    case 14: // metal_grate
+    case 28: // metal_car
+    case 43: // metal_thin
+    case 44: // metal_helicopter
         return 0xE8F3FA9Au; // PM_Metal_Sheet
     case 16: // paper
         return 0xA1F93A3Bu; // PM_Paper
+    case 17: // plaster
+    case 48: // drywall
+        return 0x8D07D363u; // PM_Plaster
+    case 19: // sand
+        return 0x96309552u; // PM_Sand
+    case 20: // snow
+    case 30: // slush
+        return 0x00C9A2F0u; // PM_Snow
+    case 21: // water
+    case 50: // water_knee
+    case 51: // water_waist
+        return 0xA09DB91Bu; // PM_PhysicsVolume
+    case 23: // asphalt_dry
+    case 31: // asphalt_wet
+        return 0x46FAE51Cu; // PM_Asphalt
     case 24: // ceramic
+    case 45: // tile
         return 0xF49C81BFu; // PM_Ceramic
     case 25: // plastic
         return 0x4B02BC9Du; // PM_Plastic
     case 26: // rubber
         return 0xFFD772CDu; // PM_Rubber
+    case 27: // fruit
+        return 0x4FE888BAu; // PM_Fruit
+    case 35: // cushion
+        return 0x98C096F9u; // PM_Cushion
     default:
         return 0x1AB7BC33u; // PM_Concrete
     }

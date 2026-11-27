@@ -222,6 +222,7 @@ bool compile(const std::string &source, const std::string &adapter, const char *
                 inputs.insert({"TANGENT", 0});
                 inputs.insert({"TEXCOORD", 4});
                 inputs.insert({"TEXCOORD", 6});
+                inputs.insert({"COLOR", 1});
             }
         }
     } else {
@@ -382,8 +383,12 @@ ShaderCompileResult compilePreviewShaders(const ShaderCompileRequest &req, const
                  std::string(surfaceAdapter) + "float4 ps_preview(PSIn i) : SV_TARGET {") ||
         !replace(geometry, "float3 indirect = gameSky.rgb",
                  materialInput + "\n        float3 indirect = gameSky.rgb") ||
-        !replace(geometry, "c = gameFog[0].w > 0.5 ? gameFogApply(c, i.w, false) : applyFog(c, i.w);",
-                 finish + "\n        c = gameFog[0].w > 0.5 ? gameFogApply(c, i.w, false) : applyFog(c, i.w);") ||
+        !replace(geometry,
+                 "c = batchFlags.y > 1.5 ? (fogAny(c, i.w) - fogAny(float3(0, 0, 0), i.w))\n"
+                 "                               : (gameFog[0].w > 0.5 ? gameFogApply(c, i.w, false) : applyFog(c, i.w));",
+                 finish +
+                     "\n        c = batchFlags.y > 1.5 ? (fogAny(c, i.w) - fogAny(float3(0, 0, 0), i.w))\n"
+                     "                               : (gameFog[0].w > 0.5 ? gameFogApply(c, i.w, false) : applyFog(c, i.w));") ||
         !replace(geometry, "const float gp = 1.0 - sqrt(1.0 - glossM);",
                  "#ifdef IW8R_PREVIEW_MATERIAL\n            "
                  "glossM=1-saturate(previewSurface.roughness);f0=lerp(0.04.xxx,albedo,saturate(previewSurface.metallic)"

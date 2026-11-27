@@ -861,6 +861,10 @@ void appendTexturedFace(const PrimGeom& g, size_t i, const Vec3& n, const Vec3& 
             GpuTexVertex v{float(w[k].x), float(w[k].y), float(w[k].z), uv[k][0], uv[k][1], colour};
             v.nx = float(n.x), v.ny = float(n.y), v.nz = float(n.z);
             v.tx = float(tan.x), v.ty = float(tan.y), v.tz = float(tan.z);
+            if (i < g.polyCornerAlpha.size() && k < 3) {
+                const uint32_t a = g.polyCornerAlpha[i][k];
+                v.vcol = a | (a << 8) | (a << 16) | (a << 24);
+            }
             if (gameLm) {
                 float luv[2];
                 if (gameLm->uvFor(w[k], n, centre, luv)) v.lu = luv[0], v.lv = luv[1];
@@ -1015,15 +1019,26 @@ void SceneCache::sync(const Document& doc) {
     };
     connections_.clear();
     helperLines_.clear();
-    std::unordered_map<std::string, Vec3> named;  // targetname -> centre
-    std::unordered_map<std::string, Id> namedId;  // targetname -> entity
+    std::unordered_map<std::string, Vec3> named;      // targetname -> centre
+    std::unordered_map<std::string, Id> namedId;      // targetname -> entity
+    std::unordered_map<std::string, Vec3> linkNamed;  // script_linkname -> centre
+    std::unordered_map<std::string, Id> linkNamedId;  // script_linkname -> entity
     std::vector<std::pair<Vec3, std::string>> targets;
-    struct PendingTeleport {
+    struct PendingLink {
         Vec3 from;
         std::string dest;
         Id owner;
     };
-    std::vector<PendingTeleport> teleports;
+    std::vector<PendingLink> teleports, visuals, linkTos;
+    auto pushTokens = [](std::vector<PendingLink>& dst, const Vec3& from, const std::string& value, Id owner) {
+        size_t p = 0;
+        while (p < value.size()) {
+            while (p < value.size() && std::isspace(static_cast<unsigned char>(value[p]))) ++p;
+            const size_t start = p;
+            while (p < value.size() && !std::isspace(static_cast<unsigned char>(value[p]))) ++p;
+            if (p > start) dst.push_back({from, value.substr(start, p - start), owner});
+        }
+    };
     // A door's trigger as the build finds it (compile_iw8.cpp, the door loop): the targetname of the last trigger_*
     // whose target is the door's name and that has a targetname key. None (or an empty name): the build gives the door
     // its own use area.
@@ -1154,6 +1169,7 @@ void SceneCache::sync(const Document& doc) {
             if (prefabSource && cls == "misc_prefab" && (inst = prefabInstance(e))) prefab = prefabSource(e);
             // A scriptable without a model key draws its definition's model, as a misc_model with that key would.
             std::optional<Entity> asModel;
+            const std::string* scriptableDef = cls == "scriptable" ? scriptableDefinitionKey(e) : nullptr;
             if (!prefab && cls == "scriptable" && scriptableModelFor)
                 if (const std::string m = scriptableModelName(e, scriptableModelFor); !m.empty()) asModel = withModelKey(e, m);
             const Entity& me = asModel ? *asModel : e;
@@ -1162,7 +1178,12 @@ void SceneCache::sync(const Document& doc) {
             const bool hiddenPiece = !showExploderPieces && isExploderPiece(e, cls);
             std::shared_ptr<const ImportedModel> model;
             if (!prefab && !hiddenPiece && modelSource && (isModelClass(cls) || asModel || vehicle)) model = modelSource(me);
+            const bool scriptableDropped =
+                cls == "scriptable" && (!scriptableDef || (scriptableStatusFor && scriptableStatusFor(*scriptableDef) != 0));
+            const bool scriptableMissingModel = cls == "scriptable" && !scriptableDropped && !model && !prefab;
             std::string label = prefab ? "misc_prefab:" + inst->model : model ? "model:" + model->name : cls;
+            if (scriptableDropped) label += "@drop";
+            else if (scriptableMissingModel) label += "@nomodel";
             const auto ownDecal = cls == "iw8r_decal" ? ownDecals_.find(e.id) : ownDecals_.end();
             if (ownDecal != ownDecals_.end()) label += "@decal" + std::to_string(ownDecalPrint_);
             if (livePose) {
@@ -1190,20 +1211,47 @@ void SceneCache::sync(const Document& doc) {
                                                     : model ? buildModelGeom(me, *model, modelScale)
                                                             : buildPointEntity(e)).first->second;
                 if (vehicle) pg->collides = false;  // a struct: the Warzone scripts spawn the vehicle, the build places no solid
+                if (scriptableDropped) {
+                    pg->color = packRGBA(0.95, 0.20, 0.15);
+                    if (model && !pg->polys.empty()) pg->polyTint.assign(pg->polys.size(), packRGBA(0.95, 0.30, 0.25));
+                } else if (scriptableMissingModel) {
+                    pg->color = packRGBA(0.95, 0.72, 0.15);
+                }
                 if (ownDecal != ownDecals_.end()) {
-                    // The decal as the game projects it: textured pieces on the brushes inside its box (with its marker).
+                    // The decal as the game projects it: textured pieces on the brushes/patches inside its box (with its marker).
                     pg->faceNormals.resize(pg->polys.size());
                     pg->polyMaterial.resize(pg->polys.size());
                     pg->polyUV.resize(pg->polys.size());
+                    pg->polyCornerAlpha.resize(pg->polys.size(), {255, 255, 255});
                     for (const OwnDecalPiece& piece : ownDecal->second.pieces) {
                         pg->polys.push_back({piece.pos[0], piece.pos[1], piece.pos[2]});
                         pg->faceNormals.push_back(piece.normal);
                         pg->polyMaterial.push_back(ownDecal->second.material);
                         pg->polyUV.push_back({piece.uv[0], piece.uv[1], piece.uv[2]});
+                        const auto aByte = [](float f) { return uint8_t(std::clamp(int(std::lround(f * 255.0f)), 0, 255)); };
+                        pg->polyCornerAlpha.push_back({aByte(piece.fade[0]), aByte(piece.fade[1]), aByte(piece.fade[2])});
                     }
-                    pg->label = label;
                 }
+                pg->label = label;
                 pg->stamp = ++stampCounter_;
+            }
+            if ((scriptableDropped || scriptableMissingModel) && pg->bounds.valid()) {
+                // Visual warning badge on scriptables that compile_iw8.cpp would drop (red X) or lack a model (amber diamond).
+                const uint32_t badgeCol = scriptableDropped ? packRGBA(1.0, 0.22, 0.16) : packRGBA(1.0, 0.78, 0.18);
+                const Vec3 c = pg->bounds.center();
+                const Vec3 half = (pg->bounds.maxs - pg->bounds.mins) * 0.5;
+                const double r = std::max({half.x, half.y, half.z, 10.0}) + 4.0;
+                const double zTop = pg->bounds.maxs.z + 4.0;
+                if (scriptableDropped) {
+                    addSeg({c.x - r, c.y - r, zTop}, {c.x + r, c.y + r, zTop}, badgeCol, e.id, kNoId, true);
+                    addSeg({c.x - r, c.y + r, zTop}, {c.x + r, c.y - r, zTop}, badgeCol, e.id, kNoId, true);
+                    addSeg({c.x, c.y, pg->bounds.maxs.z}, {c.x, c.y, zTop + r * 0.75}, badgeCol, e.id, kNoId, true);
+                } else {
+                    addSeg({c.x - r, c.y, zTop}, {c.x, c.y + r, zTop}, badgeCol, e.id, kNoId, true);
+                    addSeg({c.x, c.y + r, zTop}, {c.x + r, c.y, zTop}, badgeCol, e.id, kNoId, true);
+                    addSeg({c.x + r, c.y, zTop}, {c.x, c.y - r, zTop}, badgeCol, e.id, kNoId, true);
+                    addSeg({c.x, c.y - r, zTop}, {c.x - r, c.y, zTop}, badgeCol, e.id, kNoId, true);
+                }
             }
             pg->seen = visit_;
             entBounds.add(pg->bounds);
@@ -1214,14 +1262,32 @@ void SceneCache::sync(const Document& doc) {
                 named[*tn] = entBounds.center();
                 namedId[*tn] = e.id;
             }
+            if (const std::string* ln = e.value("script_linkname"); ln && !ln->empty()) {
+                linkNamed[*ln] = entBounds.center();
+                linkNamedId[*ln] = e.id;
+            }
             if (const std::string* t = e.value("target")) targets.push_back({entBounds.center(), *t});
+            if (const std::string* lt = e.value("script_linkto"); lt && !lt->empty()) pushTokens(linkTos, entBounds.center(), *lt, e.id);
+            if (const std::string* vis = e.value("iw8r_visual"); vis && !vis->empty()) pushTokens(visuals, entBounds.center(), *vis, e.id);
             addHelpers(e, lowerOf(cls), entBounds);
         }
     }
     for (const auto& [from, name] : targets)
         if (auto it = named.find(name); it != named.end()) connections_.push_back({from, it->second});
+    // script_linkto -> script_linkname connections (both overview connections and bright cyan helper lines on selection).
+    for (const PendingLink& lk : linkTos)
+        if (auto it = linkNamed.find(lk.dest); it != linkNamed.end()) {
+            connections_.push_back({lk.from, it->second});
+            helperLines_.push_back({lk.from, it->second, packRGBA(0.20, 0.85, 1.0), lk.owner, linkNamedId[lk.dest], false});
+        }
+    // iw8r_visual -> targetname connections (both overview connections and green-cyan helper lines on selection).
+    for (const PendingLink& vis : visuals)
+        if (auto it = named.find(vis.dest); it != named.end()) {
+            connections_.push_back({vis.from, it->second});
+            helperLines_.push_back({vis.from, it->second, packRGBA(0.30, 0.95, 0.65), vis.owner, namedId[vis.dest], false});
+        }
     // A teleporter's line to its destination (the entity with that targetname, as the generated thread's getent).
-    for (const PendingTeleport& tp : teleports)
+    for (const PendingLink& tp : teleports)
         if (auto it = named.find(tp.dest); it != named.end())
             helperLines_.push_back({tp.from, it->second, packRGBA(0.75, 0.4, 1.0), tp.owner, namedId[tp.dest], false});
     if (faceEdgesWanted) faceEdges = faceEdgesWanted();
@@ -1262,6 +1328,25 @@ void SceneCache::sync(const Document& doc) {
         bool spot = cls == "light_spot" || e.value("fov_outer");
         if (const std::string* v = e.value("iw8r_bulb_radius")) L.bulbRadius = std::max(0.0, std::atof(v->c_str()));
         if (const std::string* v = e.value("iw8r_falloff")) L.falloff = std::max(0.0, std::atof(v->c_str()));
+        const std::string* blv = e.value("iw8r_bulb_length");
+        if (!blv || blv->empty()) blv = e.value("bulb_length");
+        if (blv && !blv->empty()) {
+            Vec3 bl;
+            double single = 0;
+            if (parse3(blv, bl)) L.bulbLength = bl;
+            else if (std::sscanf(blv->c_str(), "%lf", &single) == 1 && std::isfinite(single) && single > 0) L.bulbLength = Vec3{single, 0, 0};
+        }
+        if (const std::string* sbv = e.value("iw8r_shadow_bias"); sbv && !sbv->empty()) {
+            char* end = nullptr;
+            const double sb = std::strtod(sbv->c_str(), &end);
+            if (end != sbv->c_str() && std::isfinite(sb)) L.shadowBias = sb, L.hasShadowBias = true;
+        }
+        if (const std::string* fv = e.value("iw8r_fade"); fv && !fv->empty()) {
+            double fn = 0, ff = 0;
+            if (std::sscanf(fv->c_str(), "%lf %lf", &fn, &ff) == 2 && std::isfinite(fn + ff))
+                L.fadeOffset[0] = fn, L.fadeOffset[1] = ff, L.hasFadeOffset = true;
+        }
+        if (const std::string* ies = e.value("iw8r_ies"); ies && !ies->empty()) L.iesFile = *ies;
         const bool shadowKey = [&] {
             const std::string* v = e.value("iw8r_shadows");
             return v && (*v == "1" || *v == "true");
@@ -2215,6 +2300,8 @@ size_t buildReferenceTexBatches(const StockWorld& world, std::vector<ReferenceTe
                     const double w0 = twc4 ? double(col & 0xFF) / 255.0 : twc ? double(col >> 24) / 255.0 : 1.0;
                     const Vec3 t0 = tan0 * (1.0 + w0);  // length 1 + weight, as the layers
                     v.tx = float(t0.x), v.ty = float(t0.y), v.tz = float(t0.z);
+                    // Single-layer twc/ surfaces carry sRGB vertex colour in RGB (twc4/ bytes are layer blend weights).
+                    if (twc && !layered && vcol) v.vcol = col;
                 }
                 if (lmuv && (*lmuv)[k][0] >= 0) {
                     const int li = lmidx ? (*lmidx)[k] : 0;
