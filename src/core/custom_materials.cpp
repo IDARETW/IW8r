@@ -240,18 +240,23 @@ bool parseDefinition(const fs::path& file, const fs::path& root, CustomMaterial&
     if (!image("color", true, m.colorImage)) return false;
     if (!image("normal", false, m.normalImage)) return false;
     if (!image("specular", false, m.specImage)) return false;
+    if (!image("detail", false, m.detailImage)) return false;
+    if (!image("mask", false, m.maskImage)) return false;
 
     if (const json::Value* v = doc->get("surface")) {
         if (!v->string()) return fail("'surface' must be a string");
         if (!surfaceTypeFromName(*v->string(), m.surfaceType))
             return fail("unknown surface type '" + *v->string() + "' (see iw8_contents.h, e.g. brick, concrete, wood)");
     }
-    for (const char* key : {"alphaTest", "twoSided", "blend"}) {
+    for (const char* key : {"alphaTest", "twoSided", "blend", "water"}) {
         const json::Value* v = doc->get(key);
         if (!v) continue;
         if (v->type != json::Value::Type::Bool) return fail(std::string("'") + key + "' must be true or false");
         const std::string k = key;
-        (k == "alphaTest" ? m.alphaTest : k == "twoSided" ? m.twoSided : m.blend) = v->b;
+        if (k == "alphaTest") m.alphaTest = v->b;
+        else if (k == "twoSided") m.twoSided = v->b;
+        else if (k == "blend") m.blend = v->b;
+        else if (k == "water") m.water = v->b;
     }
     if (const json::Value* v = doc->get("blendMode")) {
         if (!v->string()) return fail("'blendMode' must be \"alpha\", \"add\" or \"multiply\"");
@@ -294,6 +299,31 @@ bool parseDefinition(const fs::path& file, const fs::path& root, CustomMaterial&
         if (!v->number() || *v->number() < 0 || *v->number() > 2) return fail("'polygonOffset' must be 0, 1 or 2");
         m.polygonOffset = int(*v->number());
     }
+    if (const json::Value* v = doc->get("detailScale")) {
+        const auto a = v->at(0), b2 = v->at(1);
+        if (v->type != json::Value::Type::Array || v->arr.size() != 2 || !a || !b2 || !a->number() || !b2->number() ||
+            *a->number() == 0 || *b2->number() == 0 || std::fabs(*a->number()) > 4096 || std::fabs(*b2->number()) > 4096)
+            return fail("'detailScale' must be [uScale, vScale] non-zero within 4096");
+        m.detailScale[0] = *a->number();
+        m.detailScale[1] = *b2->number();
+    }
+    const auto readVec3Range = [&](const char* key, double dst[3], double lo, double hi) -> bool {
+        const json::Value* v = doc->get(key);
+        if (!v) return true;
+        if (v->type != json::Value::Type::Array || (v->arr.size() != 2 && v->arr.size() != 3))
+            return fail(std::string("'") + key + "' must be an array of 2 or 3 numbers");
+        for (size_t i = 0; i < v->arr.size(); ++i) {
+            const auto c = v->at(i);
+            if (!c || !c->number() || *c->number() < lo || *c->number() > hi)
+                return fail(std::string("'") + key + "' values out of range");
+            dst[i] = *c->number();
+        }
+        return true;
+    };
+    if (!readVec3Range("uvAnim", m.uvAnim, -1024, 1024)) return false;
+    if (!readVec3Range("maskUvAnim", m.maskUvAnim, -1024, 1024)) return false;
+    if (!readVec3Range("transmission", m.transmission, 0, 4)) return false;
+    if (!readVec3Range("emissiveColor", m.replayEmission, 0, 65504)) return false;
     if (const json::Value* v = doc->get("scale")) {
         const auto a = v->at(0), b2 = v->at(1);
         if (v->type != json::Value::Type::Array || v->arr.size() != 2 || !a || !b2 || !a->number() || !b2->number())

@@ -29,13 +29,15 @@ const std::string* nonEmpty(const Entity& e, const char* key) {
 
 bool playModelCollides(const Entity& e, const MapFile& map) {
     const std::string cls = lowered(e.classname());
+    if (cls != "misc_model" && cls != "script_model") return false;
+    if (const std::string* nc = e.value("iw8r_no_collision"); nc && *nc == "1") return false;
+    if (nonEmpty(e, "iw8r_spin") || nonEmpty(e, "iw8r_bob") || nonEmpty(e, "iw8r_lift") || nonEmpty(e, "iw8r_anim") ||
+        nonEmpty(e, "iw8r_door"))
+        return false;
     if (cls == "misc_model") return true;
-    if (cls != "script_model") return false;
     if (e.value("script_gameobjectname") || e.value("script_exploder")) return false;
     const std::string* tn = nonEmpty(e, "targetname");
-    if (const std::string* nc = e.value("iw8r_no_collision"); nc && *nc == "1") return false;
     if (!tn) return true;
-    if (e.value("iw8r_spin") || e.value("iw8r_bob") || e.value("iw8r_lift") || e.value("iw8r_anim")) return false;
     if (*tn == "exploder" || *tn == "oldschool_pickup" || *tn == "destructible" || *tn == "destructable" || *tn == "interactive_tv")
         return false;
     for (const Entity& other : map.entities)
@@ -68,6 +70,7 @@ void buildPlayWorld(const MapFile& map, const PlayWorldOptions& opt, CollisionWo
     std::map<const ModelPhysicsShape*, std::vector<std::vector<Plane>>> physicsPlanes;  // Z-up model space
     for (const Entity& e : use->entities) {
         if (!playModelCollides(e, *use)) continue;
+        if (opt.skip && opt.skip(e)) continue;
         const std::string* mv = nonEmpty(e, "model");
         if (!mv || (*mv)[0] == '*' || !opt.modelOf) continue;
         const std::shared_ptr<const ImportedModel> m = opt.modelOf(e);

@@ -15,8 +15,23 @@ namespace {
 std::string lastPart(const std::string& m) {
     std::string s;
     for (char c : m) s += char(std::tolower(static_cast<unsigned char>(c)));
-    const size_t slash = s.find_last_of('/');
+    const size_t slash = s.find_last_of("/\\");
     return slash == std::string::npos ? s : s.substr(slash + 1);
+}
+
+std::vector<std::string> nameTokens(const std::string& s) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (char c : s) {
+        if (std::isalnum(static_cast<unsigned char>(c))) {
+            cur.push_back(c);
+        } else if (!cur.empty()) {
+            out.push_back(cur);
+            cur.clear();
+        }
+    }
+    if (!cur.empty()) out.push_back(cur);
+    return out;
 }
 
 // The name is the tool word or starts with it and a separator or digit ("clip_player", "water2"): stock surfaces such
@@ -29,21 +44,40 @@ bool startsWithWord(const std::string& s, const char* word) {
 
 bool isToolMaterial(const std::string& m) {
     const std::string s = lastPart(m);
-    for (const char* t : {"caulk", "nodraw", "clip", "trigger", "hint", "skip", "water", "sky", "ladder", "portal", "origin"})
+    if (s.rfind("clip", 0) == 0) return true;
+    for (const char* t : {"caulk", "nodraw", "clip", "trigger", "hint", "skip", "water", "sky", "ladder", "portal", "origin", "nav_blocker"})
         if (startsWithWord(s, t)) return true;
+    return false;
+}
+
+bool isNonOccludingMaterial(const std::string& m) {
+    const std::string s = lastPart(m);
+    if (s.rfind("clip", 0) == 0) return true;
+    if (s.find("glass") != std::string::npos) return true;
+    for (const char* t : {"trigger", "clip", "hint", "skip", "water", "sky", "portal", "origin", "nav_blocker"})
+        if (startsWithWord(s, t)) return true;
+    for (const std::string& tok : nameTokens(s)) {
+        for (const char* w : {"glass", "transparent", "translucent", "alpha", "alphatest", "blend", "blended", "decal",
+                              "water", "trigger", "portal", "hint", "skip", "origin", "clip", "playerclip",
+                              "weaponclip", "clipshot", "missileclip", "vehicleclip", "aiclip", "navblocker"}) {
+            if (tok == w) return true;
+        }
+    }
     return false;
 }
 
 // A brush that hides what it touches: some face is a regular material or caulk/nodraw, and none is see-through.
 bool occludes(const Primitive& p) {
     if (p.kind != PrimKind::Brush || p.faces.empty()) return false;
-    for (const auto& f : p.faces) {
-        const std::string s = lastPart(f.material());
-        for (const char* t : {"trigger", "clip", "hint", "skip", "water", "sky", "portal", "origin"})
-            if (startsWithWord(s, t)) return false;
+    for (const auto& f : p.faces)
+        if (isNonOccludingMaterial(f.material())) return false;
+    for (const auto& line : p.lines) {
+        std::string low = line.text;
+        for (char& c : low) c = char(std::tolower(static_cast<unsigned char>(c)));
+        if (low.find("noncolliding") != std::string::npos) return false;
+        if (low.find("contents water") != std::string::npos) return false;
+        if (low.find("contents foliage") != std::string::npos) return false;
     }
-    for (const auto& line : p.lines)
-        if (line.text.find("nonColliding") != std::string::npos) return false;
     return true;
 }
 
@@ -102,7 +136,8 @@ size_t autoCaulk(Document& doc, bool selectionOnly, const std::string& caulkMate
         size_t here = 0;
         for (size_t fi = 0; fi < b.faces.size(); ++fi) {
             const Face& f = b.faces[fi];
-            if (f.w.size() < 3 || isToolMaterial(b.prim->faces[fi].material())) continue;
+            if (f.w.size() < 3 || isToolMaterial(b.prim->faces[fi].material()) || isNonOccludingMaterial(b.prim->faces[fi].material()))
+                continue;
             bool hidden = false;
             for (size_t oi = 0; oi < brushes.size() && !hidden; ++oi) {
                 const BrushInfo& o = brushes[oi];

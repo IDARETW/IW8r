@@ -883,20 +883,44 @@ bool CompilePanel::runExtraction() {
             if (!userLib.find("water")) {
                 const QString dir = buildRoot() + "/builtin_materials";
                 QDir().mkpath(dir);
-                const QString png = dir + "/iw8r_builtin_water_c.png";
-                if (!QFileInfo(png).isFile()) {
-                    QImage img(128, 128, QImage::Format_RGBA8888);
+                const QString pngC = dir + "/iw8r_builtin_water_c.png";
+                const QString pngN = dir + "/iw8r_builtin_water_n.png";
+                const QString pngS = dir + "/iw8r_builtin_water_s.png";
+                if (!QFileInfo(pngC).isFile() || !QFileInfo(pngN).isFile() || !QFileInfo(pngS).isFile()) {
+                    QImage imgC(128, 128, QImage::Format_RGBA8888);
+                    QImage imgN(128, 128, QImage::Format_RGBA8888);
+                    QImage imgS(128, 128, QImage::Format_RGBA8888);
+                    constexpr double kTwoPi = 6.28318530717958647692;
+                    auto hAt = [&](int x, int y) {
+                        const double u = double(x & 127) / 128.0 * kTwoPi;
+                        const double v = double(y & 127) / 128.0 * kTwoPi;
+                        return 0.40 * std::sin(2.0 * u + v) + 0.30 * std::cos(u - 3.0 * v) +
+                               0.20 * std::sin(4.0 * u + 3.0 * v) + 0.10 * std::cos(5.0 * u - 2.0 * v);
+                    };
                     for (int y = 0; y < 128; ++y)
                         for (int x = 0; x < 128; ++x) {
-                            const double r = 0.5 + 0.25 * std::sin(x * 0.19635) * std::cos(y * 0.0981748) +
-                                             0.25 * std::sin((x + y) * 0.0490874);  // tiles every 128 texels
-                            img.setPixel(x, y, qRgba(int(28 + 30 * r), int(78 + 45 * r), int(110 + 50 * r), 255));
+                            const double r = 0.5 + 0.5 * hAt(x, y);
+                            imgC.setPixel(x, y, qRgba(int(18 + 26 * r), int(64 + 38 * r), int(92 + 44 * r), 188));
+                            const double dx = (hAt(x + 1, y) - hAt(x - 1, y)) * 0.45;
+                            const double dy = (hAt(x, y + 1) - hAt(x, y - 1)) * 0.45;
+                            const double inv = 1.0 / std::sqrt(dx * dx + dy * dy + 1.0);
+                            const int nx = std::clamp(int(std::lround((-dx * inv * 0.5 + 0.5) * 255.0)), 0, 255);
+                            const int ny = std::clamp(int(std::lround((-dy * inv * 0.5 + 0.5) * 255.0)), 0, 255);
+                            const int nz = std::clamp(int(std::lround((inv * 0.5 + 0.5) * 255.0)), 0, 255);
+                            imgN.setPixel(x, y, qRgba(nx, ny, nz, 255));
+                            // Smooth reflective dielectric specular (F0 ~ 0.02 -> ~40 sRGB) with high gloss (alpha 235).
+                            imgS.setPixel(x, y, qRgba(45, 48, 52, 235));
                         }
-                    img.save(png);
+                    imgC.save(pngC);
+                    imgN.save(pngN);
+                    imgS.save(pngS);
                 }
                 QFile def(dir + "/water.iw8mat.json");
                 if (def.open(QIODevice::WriteOnly | QIODevice::Truncate))
-                    def.write("{\n \"name\": \"water\",\n \"color\": \"iw8r_builtin_water_c.png\",\n \"surface\": \"water\"\n}\n");
+                    def.write("{\n \"name\": \"water\",\n \"color\": \"iw8r_builtin_water_c.png\",\n"
+                              " \"normal\": \"iw8r_builtin_water_n.png\",\n \"specular\": \"iw8r_builtin_water_s.png\",\n"
+                              " \"surface\": \"water\",\n \"blend\": true,\n \"twoSided\": true,\n \"water\": true,\n"
+                              " \"uvAnim\": [0.06, 0.04, 0]\n}\n");
                 def.close();
                 roots.push_back(dir.toStdString());
             }

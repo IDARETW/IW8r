@@ -463,7 +463,7 @@ SamplerState samp0 : register(s0);
 // The shading pass, the depth pre-pass and the shadow pass use it alike.
 float cutAlpha(float a, float2 uv) { return a * (1.0 + max(0.0, tex0.CalculateLevelOfDetail(samp0, uv)) * 0.25); }
 struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 n : NORMAL; float3 t : TANGENT; float2 lm : TEXCOORD4;
-              float4 edge : TEXCOORD6; };
+              float4 edge : TEXCOORD6; float4 vcol : COLOR1; };
 struct PSIn { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; float3 w : TEXCOORD1; float3 n : TEXCOORD2; float3 t : TEXCOORD3; float2 lm : TEXCOORD4;
                float3 lgvBack : TEXCOORD5; float3 edge : TEXCOORD6; float4 vc : TEXCOORD7;  // vc: a prop's vertex colour (linear; research 133); w = 1 on props
                float4 sv : TEXCOORD8;  // a stock prop's self visibility (world bent normal x amount, cone; w < 0: none)
@@ -481,7 +481,8 @@ PSIn vs_tex(VSIn i) {
     }
     o.pos = mul(float4(p, 1.0), viewProj); o.uv = i.uv; o.col = i.col; o.w = p; o.n = i.n; o.t = i.t; o.lm = i.lm;
     o.lgvBack = float3(0, 0, 0);
-    o.vc = float4(1, 1, 1, 0);
+    // Stock single-layer world vertex colour (twc/, sRGB -> linear); own decals pass linear fade in vcol.r (w stays 0 for world/own).
+    o.vc = batchFlags2.z > 0.5 ? float4(pow(max(i.vcol.rgb, 0.0), 2.2), 0.0) : float4(i.vcol.rgb, 0.0);
     o.uv1 = float2(0, 0);
     o.sv = float4(0, 0, 0, -1);
     o.edge = i.edge.xyz;
@@ -1123,7 +1124,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             b *= ch == 0 ? mk.r : (ch == 1 ? mk.g : mk.b);
         }
         layerB = b;
-        t.rgb *= pow(max(layerTint.rgb, 0.0), 1.0 / 2.2);  // the tint is linear; t is still sRGB here
+        if (layerP.w < 2.5) t.rgb *= pow(max(layerTint.rgb, 0.0), 1.0 / 2.2);  // the tint is linear; t is still sRGB here
     }
     // Blend 0: alpha-tested foliage and grates. Blended materials keep their coverage; without a mask (alpha 1) a
     // blended surface (glass, a decal sheet) shows at 60 percent so what is behind it stays visible.
@@ -1148,16 +1149,28 @@ float4 ps_tex(PSIn i) : SV_TARGET {
         // with alpha 1 is opaque there). The other views keep a mask-less blended surface at 60 percent.
         outA = game0.x > 0.5 ? t.a : (t.a > 0.99 ? 0.6 : t.a);
     }
+    // Own decal volumes carry per-vertex opacity * angle/edge/depth fade in i.vc.r (default 1.0 for everything else).
+    if (batchFlags2.z <= 0.5 && i.vc.r < 0.999) outA *= i.vc.r;
     if (layerB >= 0.0) outA = layerB;
+    // Colour mode 2/3 cavity-only layer (layerP.w = 4): multiply by lerp(1, cavity, layerB).
+    if (layerP.x > 0.5 && layerP.w > 3.5) {
+        if (layerB < 1.0 / 255.0) discard;
+        const float cav = batchFlags.x > 0.5 ? nrm0.Sample(samp0, uvS).b : 1.0;
+        const float3 cMul = lerp(float3(1, 1, 1), cav.xxx, layerB);
+        return float4(game0.x > 0.5 && gameAo.w > 0.5 ? cMul : pow(cMul, 1.0 / 2.2), 1.0);
+    }
+    // Colour mode 2/3 normal/gloss-only layer (layerP.w = 3): skip empty pixels early.
+    const bool nrmGlossOnly = layerP.x > 0.5 && layerP.w > 2.5 && layerP.w < 3.5;
+    if (nrmGlossOnly && layerB < 1.0 / 255.0) discard;
     // Colour mode multiply (layerP.w = 1; puddles, edge wear): below x lerp(1, layer, b), drawn with a multiplying blend
     // over the shaded result (in display space: the factor's 1/2.2 power, as the post chain is close to a gamma there).
-    if (layerP.x > 0.5 && layerP.w > 1.5) {
+    if (layerP.x > 0.5 && layerP.w > 1.5 && layerP.w < 2.5) {
         // An overlay layer (research 136 section 1.3): soft light, t = 0.5 + b (s - 0.5) with s the tinted colour in sRGB;
         // the albedo below is taken as 0.5, which makes the factor f = 2t + a (1 - 2t) = 1 + b (s - 0.5).
         const float3 f = 1.0 + layerB * (saturate(t.rgb) - 0.5);
         return float4(game0.x > 0.5 && gameAo.w > 0.5 ? f : pow(max(f, 0.0), 1.0 / 2.2), 1.0);
     }
-    if (layerP.x > 0.5 && layerP.w > 0.5) {
+    if (layerP.x > 0.5 && layerP.w > 0.5 && layerP.w < 1.5) {
         const float3 mulLin = lerp(float3(1, 1, 1), srgbToLinear3(t.rgb), layerB);
         return float4(game0.x > 0.5 && gameAo.w > 0.5 ? mulLin : pow(mulLin, 1.0 / 2.2), 1.0);  // HDR: a linear multiply
     }
@@ -1222,6 +1235,9 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             if (baseMat) {
                 nmGloss = nm.r, nmCavity = nm.b;
                 nm.ga = (nm.ga - 0.5) * layerUvO.x + 0.5;
+            } else if (nrmGlossOnly) {
+                nmGloss = nm.r, nmCavity = nm.b;
+                nm.ga = (nm.ga - 0.5) * layerTint.x + 0.5;
             }
             float2 sd = nm.ga * 2.0 - 1.0;
             float2 oct = float2(sd.x + sd.y, sd.x - sd.y) * 0.5;
@@ -1386,6 +1402,8 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 }
                 if (nmGloss >= 0.0) glossM = saturate(nmGloss * layerTint.z + layerTint.w);
                 if (dualGloss >= 0.0) glossM = dualGloss;
+            } else if (nrmGlossOnly && nmGloss >= 0.0) {
+                glossM = saturate(nmGloss * layerTint.y + layerTint.z);
             }
             const float gp = 1.0 - sqrt(1.0 - glossM);
             float a2 = 2.0 / (2.0 + exp2(20.0 * gp));
@@ -1470,7 +1488,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             }
             if (gameSkyScale.z > 0.5 && gameSkyScale.z < 1.5) return ssrMat ? float4(ssrDbg, ssrWDbg, ssrADbg, 1.0) : float4(0, 0, 0, 1);
             if (ssrTest) return float4(ssrTestColor, 1.0);
-            c = diffAlbedo * indirect * kd * (1.0 - fmax) * aoMB + Fenv * S;
+            c = nrmGlossOnly ? (Fenv * S) : (diffAlbedo * indirect * kd * (1.0 - fmax) * aoMB + Fenv * S);
             // A prop's clear coat (research 137 section 1.2): a second environment lobe over the finished ambient part,
             // c x (1 - b Ec)^2 + b Ec x its reflection; the sun and lamps below ignore it.
             if (i.vc.w > 0.5 && coatL[0].x > 0.5 && layerP.x < 0.5 && (stockDetailOff() & 4u) == 0u) {
@@ -1545,7 +1563,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
                 float2 abl = gameEnvBrdf(saturate(nl), gp);
                 float3 fl = f0 * abl.x + abl.y;
                 c += gameSunCol.rgb * visibility * saturate(nl) *
-                     ((matW.w > 0.5 ? 0.0 : diffAlbedo * (1.0 - max(fl.r, max(fl.g, fl.b)))) + F * Dg * Vg * 1.0390625 * (baseMat ? nmCavity : 1.0));
+                     ((matW.w > 0.5 || nrmGlossOnly ? 0.0 : diffAlbedo * (1.0 - max(fl.r, max(fl.g, fl.b)))) + F * Dg * Vg * 1.0390625 * (baseMat || nrmGlossOnly ? nmCavity : 1.0));
             }
             // Transmission (research 107 section 1): grass, foliage, tarps, cloth, flags. The baked light seen from the
             // back side, and the sun through the blade as a GGX lobe of the surface's own roughness.
@@ -1604,7 +1622,7 @@ float4 ps_tex(PSIn i) : SV_TARGET {
 #else
             float3 light = indirect * aoOwn + visibility * saturate(dot(N, gameSun.xyz)) * gameSunCol.rgb;
             c = albedo * light;
-            if (batchFlags2.w > 0.5) {
+            if (batchFlags2.w > 0.5 && batchMat.w < 0.5) {
                 // A material with a specular map, as the build's world shader draws it (the converter's
                 // SourceSunSpecular, map_surface_realtime.hlsl): specular map x lerp(.8, 4, (1 - |N.V|)^2.5) x
                 // (probe + .625 x lobe x sun^(1/2.2) x shadow), added in gamma space. The lobe is exp((R.L - .99925) x
@@ -1668,7 +1686,33 @@ float4 ps_tex(PSIn i) : SV_TARGET {
             c += albedo * irr + fres * dist2 * 0.25 * irr;
         }
         if (batchFlags2.x > 0.5) c += srgbToLinear3(emi0.Sample(samp0, i.uv).rgb);
-        c = gameFog[0].w > 0.5 ? gameFogApply(c, i.w, false) : applyFog(c, i.w);
+        // Own blended glass (batchMat.w > 0.5, map_surface_realtime.hlsl:1785-1806 & 1913-1914):
+        // premultiplied colour * alpha plus unscaled Fresnel environment reflection (probe cube, stock probe, or sky gradient).
+        float3 glassRefl = 0;
+        if (!stockRef && batchMat.w > 0.5) {
+            const float3 Vg = normalize(eyeStart.xyz - i.w);
+            const float3 Rg = reflect(-Vg, N);
+            const float fres = pow(saturate(1.0 - abs(dot(Vg, N))), 2.5);
+            const float4 gsp = batchFlags2.w > 0.5 ? spec0.Sample(samp0, uvS) : float4(0.35, 0.35, 0.35, 0.85);
+            const float3 gStrength = gsp.rgb * lerp(0.8, 4.0, fres);
+            if (batchFlags2.y > 0.5) {
+                const float3 gProbe = probeCube.SampleLevel(samp0, Rg, clamp(6.0 - 8.0 * gsp.a, 0.0, 6.0)).rgb;
+                glassRefl = pow(max(gStrength * gProbe, 0.0), 2.2);
+            } else if (probeCount.x > 0.5) {
+                const float3 gProbe = stockProbeLight(i.w, Rg, gsp.a) * max(dot(gameSky.rgb, float3(0.2126, 0.7152, 0.0722)), 0.25);
+                glassRefl = pow(max(gStrength, 0.0), 2.2) * max(gProbe, 0.0);
+            } else {
+                const float3 gSky = lerp(float3(0.22, 0.24, 0.28), float3(0.55, 0.65, 0.78), saturate(Rg.z * 0.5 + 0.5));
+                glassRefl = pow(max(gStrength * gSky, 0.0), 2.2);
+            }
+        }
+        if (nrmGlossOnly) {
+            c = (fogAny(c, i.w) - fogAny(float3(0, 0, 0), i.w)) * outA;
+            if (gameAo.w < 0.5) c = gamePost(c);
+            return float4(c, 1.0);
+        }
+        c = batchFlags.y > 1.5 ? (fogAny(c, i.w) - fogAny(float3(0, 0, 0), i.w))
+                               : (gameFog[0].w > 0.5 ? gameFogApply(c, i.w, false) : applyFog(c, i.w));
 #ifdef IW8R_FILTER
         {
             // A map shader's filter (core custom_shader): on the lit, fogged colour with the exposure applied, as the
@@ -1684,11 +1728,32 @@ float4 ps_tex(PSIn i) : SV_TARGET {
 #endif
         }
 #endif
+        if (!stockRef && batchMat.w > 0.5) {
+            const float3 rFog = fogAny(glassRefl, i.w) - fogAny(float3(0, 0, 0), i.w);
+            if (gameAo.w > 0.5) return float4(c * outA + rFog, outA);
+            return float4(gamePost(c) * outA + gamePost(rFog), outA);
+        }
         if (gameAo.w < 0.5) c = gamePost(c);  // HDR frames: the post pass applies it (drawPost)
         if (batchFlags.y > 1.5) return float4(c * outA, 1.0);
         return float4(c, outA);
     }
     if (i.col.a < 0.5) return float4(applyGrade(t.rgb * i.col.rgb), 1.0);  // sky box: never fogged, graded
+    if (nrmGlossOnly) {
+        float3 Ns0 = dot(i.n, i.n) > 0.5 ? normalize(i.n) : normalize(cross(ddx(i.w), ddy(i.w)));
+        float gl = 0.3;
+        if (batchFlags.x > 0.5 && dot(i.n, i.n) > 0.5) {
+            float4 nm = nrm0.Sample(samp0, uvS);
+            gl = saturate(nm.r * layerTint.y + layerTint.z);
+            float2 sd = ((nm.ga - 0.5) * layerTint.x + 0.5) * 2.0 - 1.0;
+            float2 oct = float2(sd.x + sd.y, sd.x - sd.y) * 0.5;
+            float2 sl = oct / max(0.02, 1.0 - abs(oct.x) - abs(oct.y));
+            float3 T = normalize(i.t - Ns0 * dot(i.t, Ns0)), B = cross(Ns0, T);
+            Ns0 = normalize(T * sl.x + B * sl.y + Ns0);
+        }
+        const float3 L0 = normalize(float3(0.35, 0.55, 0.75)), V0 = normalize(eyeStart.xyz - i.w);
+        const float sp = pow(saturate(dot(Ns0, normalize(L0 + V0))), 8.0 + 120.0 * gl) * 0.25 * gl * outA;
+        return float4(sp.xxx, 1.0);
+    }
     float3 c = t.rgb * litDecode(i.col.rgb, i.col.a, i.w);
     float3 Ns = dot(i.n, i.n) > 0.5 ? normalize(i.n) : normalize(cross(ddx(i.w), ddy(i.w)));
     float glossS = 0.0;
@@ -2241,6 +2306,9 @@ SceneRenderer::~SceneRenderer() {
     safeRelease(ps_);
     safeRelease(layout_);
     safeRelease(rsTris_);
+    safeRelease(rsTrisCull_);
+    safeRelease(rsPolyOffset_[0]);
+    safeRelease(rsPolyOffset_[1]);
     safeRelease(rsLines_);
     safeRelease(rsLinesFast_);
     safeRelease(dsWrite_);
@@ -2595,8 +2663,9 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
                 {"TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
                 {"TEXCOORD", 4, DXGI_FORMAT_R32G32_FLOAT, 0, 48, D3D11_INPUT_PER_VERTEX_DATA, 0},
                 {"TEXCOORD", 6, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 56, D3D11_INPUT_PER_VERTEX_DATA, 0},
+                {"COLOR", 1, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 60, D3D11_INPUT_PER_VERTEX_DATA, 0},
             };
-            dev_->CreateInputLayout(til, 7, tvs->GetBufferPointer(), tvs->GetBufferSize(), &layoutTex_);
+            dev_->CreateInputLayout(til, UINT(std::size(til)), tvs->GetBufferPointer(), tvs->GetBufferSize(), &layoutTex_);
             ID3DBlob* tivs = nullptr;
             if (compileTex("vs_tex_inst", "vs_5_0", tivs)) {
                 dev_->CreateVertexShader(tivs->GetBufferPointer(), tivs->GetBufferSize(), nullptr, &vsTexInst_);
@@ -2691,6 +2760,20 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
     rd.DepthBias = 40;
     rd.SlopeScaledDepthBias = 1.5f;
     dev_->CreateRasterizerState(&rd, &rsTris_);
+    // Stock one-sided back-face culling: StockWorld and PropMeshData are CCW from outside, which projects CCW in D3D11
+    // screen space under camera.cpp's viewProjection (FrontCounterClockwise = TRUE keeps outward-facing triangles).
+    rd.CullMode = D3D11_CULL_BACK;
+    rd.FrontCounterClockwise = TRUE;
+    dev_->CreateRasterizerState(&rd, &rsTrisCull_);
+    // CustomMaterial::polygonOffset 1..2: pulls coplanar custom decals toward the camera to prevent z-fighting.
+    rd.CullMode = D3D11_CULL_NONE;
+    rd.FrontCounterClockwise = FALSE;
+    rd.DepthBias = -16;
+    rd.SlopeScaledDepthBias = -1.0f;
+    dev_->CreateRasterizerState(&rd, &rsPolyOffset_[0]);
+    rd.DepthBias = -48;
+    rd.SlopeScaledDepthBias = -2.0f;
+    dev_->CreateRasterizerState(&rd, &rsPolyOffset_[1]);
     rd.DepthBias = 0;
     rd.SlopeScaledDepthBias = 0;
     rd.AntialiasedLineEnable = TRUE;
@@ -2728,6 +2811,15 @@ bool SceneRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, std::strin
     bd.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
     bd.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
     dev_->CreateBlendState(&bd, &blendAdd_);
+    {
+        D3D11_BLEND_DESC pb = bd;  // premultiplied alpha (ONE, INV_SRC_ALPHA): own blended glass + particles
+        pb.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+        pb.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+        pb.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+        pb.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+        pb.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_MAX;
+        dev_->CreateBlendState(&pb, &blendPremul_);
+    }
     {
         D3D11_BLEND_DESC mb = bd;  // dst x src colour (stock multiply layers), alpha kept
         mb.RenderTarget[0].SrcBlend = D3D11_BLEND_ZERO;
@@ -4389,7 +4481,8 @@ bool SceneRenderer::uploadLayerParams() {
                 maskExtraTerms(&all[j * 64 + 16]);
                 std::memcpy(&all[j * 64 + 48], refLayers_[k].dual, sizeof(refLayers_[0].dual));  // rows 12-13
                 // A base batch drawing a raw-alpha texture: opaque, its alpha the specular code.
-                if (refLayers_[k].layer == 0 && !refLayers_[k].decal && k < refTexIds_.size() && textureRawAlpha(refTexIds_[k]))
+                if (refLayers_[k].layer == 0 && !refLayers_[k].decal && !refLayers_[k].translucent && !refLayers_[k].additive &&
+                    k < refTexIds_.size() && textureRawAlpha(refTexIds_[k]))
                     all[j * 64 + 1] = 2.0f;
             }
             if (cbLayerAll_[c]) ctx_->UpdateSubresource(cbLayerAll_[c], 0, nullptr, all.data(), 0, 0);
@@ -4934,15 +5027,33 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             keep.clear();
             keepBig.clear();
             previewKeep.clear(); previewBig.clear();
-            for (size_t i = 0; i < n; ++i) {
-                const PlaceEval& e = ev[i];
-                if (e.out || e.level != g.lodNear) continue;
-                const float* r = &g.rows[i * 12];
-                std::vector<float>& to = e.dist <= e.rad || e.rad >= e.dist * pixelAngle * bigPx ? keepBig : keep;
-                (&to==&keepBig?previewBig:previewKeep).push_back(i<g.previewIds.size()?g.previewIds[i]:uint32_t(i));
-                to.insert(to.end(), r, r + 12);
-                to.insert(to.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+            double distSum = 0.0;
+            size_t distCount = 0;
+            if (g.translucent && !g.additive) {
+                std::vector<std::pair<float, size_t>> order;
+                for (size_t i = 0; i < n; ++i)
+                    if (!ev[i].out && ev[i].level == g.lodNear) order.push_back({ev[i].dist, i});
+                std::stable_sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+                for (const auto& [d, i] : order) {
+                    const float* r = &g.rows[i * 12];
+                    previewKeep.push_back(i < g.previewIds.size() ? g.previewIds[i] : uint32_t(i));
+                    keep.insert(keep.end(), r, r + 12);
+                    keep.insert(keep.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+                    distSum += d, ++distCount;
+                }
+            } else {
+                for (size_t i = 0; i < n; ++i) {
+                    const PlaceEval& e = ev[i];
+                    if (e.out || e.level != g.lodNear) continue;
+                    const float* r = &g.rows[i * 12];
+                    std::vector<float>& to = e.dist <= e.rad || e.rad >= e.dist * pixelAngle * bigPx ? keepBig : keep;
+                    (&to==&keepBig?previewBig:previewKeep).push_back(i<g.previewIds.size()?g.previewIds[i]:uint32_t(i));
+                    to.insert(to.end(), r, r + 12);
+                    to.insert(to.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+                    distSum += e.dist, ++distCount;
+                }
             }
+            g.visMeanDist = distCount ? float(distSum / double(distCount)) : 0.0f;
             upload(g);
         }
         const size_t gi = size_t(&grp - texLodGroups_.data());
@@ -4972,6 +5083,9 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
             prev = &popPrevMesh_[mi];
             if (prev->size() != n) prev->assign(n, 0);
         }
+        double distSum = 0.0;
+        size_t distCount = 0;
+        std::vector<std::pair<float, size_t>> transOrder;
         for (size_t i = 0; i < n; ++i) {
             const float* r = &g.rows[i * 12];
             const float c[3] = {r[0] * g.centre[0] + r[1] * g.centre[1] + r[2] * g.centre[2] + r[3],
@@ -5008,11 +5122,26 @@ void SceneRenderer::cullTexInstances(const float viewProj[16], const float eye[3
                 ++instCulledLast_;
                 continue;
             }
-            std::vector<float>& to = dist <= rad || rad >= dist * pixelAngle * bigPx ? keepBig : keep;
-            (&to==&keepBig?previewBig:previewKeep).push_back(i<g.previewIds.size()?g.previewIds[i]:uint32_t(i));
+            distSum += dist, ++distCount;
+            if (g.translucent && !g.additive) {
+                transOrder.push_back({dist, i});
+            } else {
+                std::vector<float>& to = dist <= rad || rad >= dist * pixelAngle * bigPx ? keepBig : keep;
+                (&to==&keepBig?previewBig:previewKeep).push_back(i<g.previewIds.size()?g.previewIds[i]:uint32_t(i));
                 to.insert(to.end(), r, r + 12);
-            to.insert(to.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+                to.insert(to.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+            }
         }
+        if (!transOrder.empty()) {
+            std::stable_sort(transOrder.begin(), transOrder.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+            for (const auto& [d, i] : transOrder) {
+                const float* r = &g.rows[i * 12];
+                previewKeep.push_back(i < g.previewIds.size() ? g.previewIds[i] : uint32_t(i));
+                keep.insert(keep.end(), r, r + 12);
+                keep.insert(keep.end(), &g.light[i * 12], &g.light[i * 12] + 12);
+            }
+        }
+        g.visMeanDist = distCount ? float(distSum / double(distCount)) : 0.0f;
         upload(g);
     }
     if (popLog) std::fclose(popLog);
@@ -5188,6 +5317,10 @@ bool SceneRenderer::setReferenceTexInstances(const std::vector<InstancedTexMesh>
                 for (size_t i = 0; i < count; ++i) {
                     const size_t s = g.order[i];
                     std::memcpy(&g.rows[i * 12], &m.rows[s * 12], 12 * sizeof(float));
+                    const float* r = &g.rows[i * 12];
+                    const float det = r[0] * (r[5] * r[10] - r[6] * r[9]) - r[1] * (r[4] * r[10] - r[6] * r[8]) +
+                                      r[2] * (r[4] * r[9] - r[5] * r[8]);
+                    if (det < 0.0f) g.hasMirrored = true;
                     if (haveLight) std::memcpy(&g.light[i * 12], &m.light[s * 12], 12 * sizeof(float));
                     else g.light[i * 12] = -1.0f;  // none
                 }
@@ -5390,14 +5523,45 @@ void SceneRenderer::drawReferenceTexInstances() {
             writeBatchCb(flags);
         }
     };
+    std::vector<size_t> passOrder;
+    passOrder.reserve(refTexInst_.size());
+    ID3D11RasterizerState* boundPropRs = rsTris_;
     for (int decalPass = 0; decalPass < 3; ++decalPass) {
+    if (decalPass == 1 && boundPropRs != rsTris_) ctx_->RSSetState(rsTris_), boundPropRs = rsTris_;
     if (decalPass == 1 && (stockDetailOff_ & 2u) == 0u) drawPropLayers();
-    for (const auto& g : refTexInst_) {
-        if (!g.vb || !g.inst) continue;
-        const size_t previewMesh = size_t(&g - refTexInst_.data());
+    passOrder.clear();
+    for (size_t mi = 0; mi < refTexInst_.size(); ++mi) {
+        const auto& g = refTexInst_[mi];
+        if (!g.vb || !g.inst || g.drawClass != 0) continue;
+        const int passOf = (g.translucent || g.additive) && g.decal == 0 ? 2 : g.decal > 0 ? 1 : 0;
+        if (passOf != decalPass) continue;
+        passOrder.push_back(mi);
+    }
+    if (decalPass == 2 && passOrder.size() > 1) {
+        // Depth-sort translucent prop batches far-to-near relative to the camera.
+        const auto meshDist = [&](size_t mi) -> float {
+            const auto& g = refTexInst_[mi];
+            if (instCull_ && g.visInst && g.visible <= g.instances) return g.visMeanDist;
+            const size_t n = g.rows.size() / 12;
+            if (n == 0) return 0.0f;
+            double sum = 0.0;
+            for (size_t i = 0; i < n; ++i) {
+                const float* r = &g.rows[i * 12];
+                const float cx = r[0] * g.centre[0] + r[1] * g.centre[1] + r[2] * g.centre[2] + r[3] - fog_[0];
+                const float cy = r[4] * g.centre[0] + r[5] * g.centre[1] + r[6] * g.centre[2] + r[7] - fog_[1];
+                const float cz = r[8] * g.centre[0] + r[9] * g.centre[1] + r[10] * g.centre[2] + r[11] - fog_[2];
+                sum += std::sqrt(double(cx) * cx + double(cy) * cy + double(cz) * cz);
+            }
+            return float(sum / double(n));
+        };
+        std::vector<float> dists(refTexInst_.size(), 0.0f);
+        for (size_t mi : passOrder) dists[mi] = meshDist(mi);
+        std::stable_sort(passOrder.begin(), passOrder.end(), [&](size_t a, size_t b) { return dists[a] > dists[b]; });
+    }
+    int lastGlassAdditive = -1;
+    for (size_t previewMesh : passOrder) {
+        const auto& g = refTexInst_[previewMesh];
         PreviewTargetGuard previewTarget(*this, {PreviewFamily::StockModel, 0, 0, previewMesh < previewModelMaterials_.size() ? previewModelMaterials_[previewMesh] : std::string()}, &g.previewIds);
-        const int passOf = g.translucent && g.decal == 0 ? 2 : g.decal > 0 ? 1 : 0;
-        if (passOf != decalPass || g.drawClass != 0) continue;
         if (decalPass >= 1 && texPsOverride_) continue;
         // Cut-out props (foliage cards, grates) stay out of the depth pre-pass: laid down there at the hard threshold
         // they lost the soft edges the shading pass gives them, and trees and grass came out darker and harder than in
@@ -5405,22 +5569,33 @@ void SceneRenderer::drawReferenceTexInstances() {
         // without; the frame's quartiles and median within 0.2 stops without). The screen AO then reads what lies
         // behind the leaves; its part in their look measured 0.06 stops.
         if (texPsOverride_ && texPsOverride_ == psPrepass_ && !textureRawAlpha(g.texture)) continue;
-        if (decalPass == 2 && !glassStateSet) {
-            glassStateSet = true;
-            if (!decalStateSet) {
-                decalStateSet = true;
-                ctx_->RSGetState(&savedRs);
-                ctx_->OMGetDepthStencilState(&savedDs, &savedRef);
+        if (decalPass == 0 && game_.on && rsTrisCull_) {
+            ID3D11RasterizerState* wantRs = g.cullBack && !g.hasMirrored ? rsTrisCull_ : rsTris_;
+            if (wantRs != boundPropRs) ctx_->RSSetState(wantRs), boundPropRs = wantRs;
+        }
+        if (decalPass == 2) {
+            if (!glassStateSet) {
+                glassStateSet = true;
+                if (!decalStateSet) {
+                    decalStateSet = true;
+                    ctx_->RSGetState(&savedRs);
+                    ctx_->OMGetDepthStencilState(&savedDs, &savedRef);
+                }
+                if (savedRs) ctx_->RSSetState(savedRs);
+                ctx_->OMSetDepthStencilState(dsTest_, 0);
             }
-            if (savedRs) ctx_->RSSetState(savedRs);
-            ctx_->OMSetDepthStencilState(dsTest_, 0);
-            if (blend_) {
+            const int wantAdd = g.additive ? 1 : 0;
+            if (wantAdd != lastGlassAdditive) {
+                lastGlassAdditive = wantAdd;
                 const float bf[4] = {0, 0, 0, 0};
-                ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
-            }
-            if (cbBatch_) {
-                const float flags[8] = {propNormals ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};  // y = 1: blended
-                writeBatchCb(flags);
+                ID3D11BlendState* bs = g.additive && blendAdd_ ? blendAdd_ : blend_;
+                if (bs) ctx_->OMSetBlendState(bs, bf, 0xffffffff);
+                if (cbBatch_) {
+                    // Allow lightmaps on translucent props when they carry valid lightmap UVs (vs_tex_inst sets lm >= 0 only then).
+                    const float flags[8] = {propNormals ? 1.0f : 0.0f, g.additive ? 2.0f : 1.0f, 0, 0, 0, 0,
+                                            game_.skyIsStock ? 1.0f : 0.0f, stockLmSrv_[0] && game_.skyIsStock ? 1.0f : 0.0f};
+                    writeBatchCb(flags);
+                }
             }
         }
         if (decalPass == 1 && !decalStateSet && rsDecal_) {
@@ -5434,7 +5609,8 @@ void SceneRenderer::drawReferenceTexInstances() {
                 ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
             }
             if (cbBatch_) {  // y = 1: blended by the decal's opacity (the props' own flag cuts at one half)
-                const float flags[8] = {propNormals ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f, 0};
+                const float flags[8] = {propNormals ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, game_.skyIsStock ? 1.0f : 0.0f,
+                                        stockLmSrv_[0] && game_.skyIsStock ? 1.0f : 0.0f};
                 writeBatchCb(flags);
             }
         }
@@ -5495,6 +5671,8 @@ void SceneRenderer::drawReferenceTexInstances() {
         ctx_->OMSetDepthStencilState(savedDs, savedRef);
         if (savedRs) savedRs->Release();
         if (savedDs) savedDs->Release();
+    } else if (boundPropRs != rsTris_) {
+        ctx_->RSSetState(rsTris_);
     }
     if (instCb && cbLayer_) ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);  // the plain (zero) layer buffer
     if (instCb) {
@@ -5544,7 +5722,8 @@ bool SceneRenderer::uploadInstParams() {
                 std::memcpy(&all[j * 128 + 104], gi.coat, sizeof(gi.coat));  // rows 26-29 (research 137)
                 std::memcpy(&all[j * 128 + 120], gi.disp, sizeof(gi.disp));  // row 30 (static-model displacement, VS)
                 maskExtraTerms(&all[j * 128 + 16]);
-                if (textureRawAlpha(gi.texture)) all[j * 128 + 1] = 2.0f;  // opaque: alpha is the specular code
+                if (!gi.translucent && !gi.additive && gi.decal == 0 && textureRawAlpha(gi.texture))
+                    all[j * 128 + 1] = 2.0f;  // opaque: alpha is the specular code
             }
             if (cbInstAll_[c]) ctx_->UpdateSubresource(cbInstAll_[c], 0, nullptr, all.data(), 0, 0);
         }
@@ -6138,7 +6317,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ID3D11Buffer* shVb = vbRefTex_;
             for (size_t k = 0; k < refTexIds_.size(); ++k) {
                 PreviewTargetGuard previewTarget(*this, {PreviewFamily::StockWorld, 0, uint64_t(k + 1), k < previewWorldMaterials_.size() ? previewWorldMaterials_[k] : std::string()});
-                if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].drawClass == 2 || refLayers_[k].noCast)) continue;
+                if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].translucent || refLayers_[k].additive || refLayers_[k].drawClass == 2 || refLayers_[k].noCast)) continue;
                 const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
                 if (id < 0 || size_t(id) >= textures_.size()) continue;
                 if (cull && refExtraOutside(k, sf)) continue;
@@ -6286,12 +6465,17 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ctx_->IASetVertexBuffers(0, 1, &vbRefTex_, &tstride, &offset);
             const bool preCb = uploadLayerParams();
             ID3D11Buffer* preVb = vbRefTex_;
+            ID3D11RasterizerState* preRs = rsTris_;
             for (size_t k = 0; k < refTexIds_.size(); ++k) {
                 PreviewTargetGuard previewTarget(*this, {PreviewFamily::StockWorld, 0, uint64_t(k + 1), k < previewWorldMaterials_.size() ? previewWorldMaterials_[k] : std::string()});
-                if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].drawClass != 0)) continue;  // layers, decals: later
+                if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].translucent || refLayers_[k].additive || refLayers_[k].drawClass != 0)) continue;  // layers, decals, glass: later
                 const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
                 if (id < 0 || size_t(id) >= textures_.size()) continue;
                 if (refExtraOutside(k, frustum)) continue;
+                if (rsTrisCull_) {
+                    ID3D11RasterizerState* wantRs = k < refLayers_.size() && refLayers_[k].cullBack ? rsTrisCull_ : rsTris_;
+                    if (wantRs != preRs) ctx_->RSSetState(wantRs), preRs = wantRs;
+                }
                 if (ID3D11Buffer* v = refVbFor(k); v != preVb) ctx_->IASetVertexBuffers(0, 1, &v, &tstride, &offset), preVb = v;
                 ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]);
                 if (preCb && cbLayerAll_[k / 256]) {
@@ -6303,6 +6487,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 else
                     drawN(refTexCount_[k], refTexFirst_[k]);
             }
+            if (preRs != rsTris_) ctx_->RSSetState(rsTris_);
         }
         if (refVisible_ && !refTexInst_.empty()) {
             texPsOverride_ = psPrepass_;
@@ -6395,6 +6580,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             ctx_->PSSetConstantBuffers(2, 1, &cbLights_);
         }
         ID3D11PixelShader* boundTexPs = psTex_;
+        ID3D11RasterizerState* boundSceneRs = rsTris_;
         for (size_t oi = from; oi < to; ++oi) {
             const uint32_t k = drawOrder_[oi];
             const SceneBatch& b = *drawList_[k].b;
@@ -6403,11 +6589,21 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             if (b.texture < 0 || size_t(b.texture) >= textures_.size()) continue;
             const bool chunked = refCulling_ && g.chunked && !g.chunks.empty();
             ++stats_.batches;
+            // CustomMaterial::polygonOffset 1..2: apply depth-biased rasterizer state so coplanar custom decals don't z-fight.
+            const TextureMaterial* tmAny = textureMaterial(b.texture);
+            {
+                const int po = tmAny ? std::clamp(tmAny->polygonOffset, 0, 2) : 0;
+                ID3D11RasterizerState* wantRs = po > 0 && rsPolyOffset_[po - 1] ? rsPolyOffset_[po - 1] : rsTris_;
+                if (wantRs != boundSceneRs) ctx_->RSSetState(wantRs), boundSceneRs = wantRs;
+            }
             // Game Lighting: the own material's shader state (unlit, glow, multiply, glass; TextureMaterial).
-            const TextureMaterial* tm = game_.on ? textureMaterial(b.texture) : nullptr;
+            const TextureMaterial* tm = game_.on ? tmAny : nullptr;
             if (b.blend) {
                 ctx_->OMSetDepthStencilState(dsTest_, 0);
-                ID3D11BlendState* bs = tm && tm->multiply && blendMul_ ? blendMul_ : b.blend == 2 && blendAdd_ ? blendAdd_ : blend_;
+                ID3D11BlendState* bs = tm && tm->multiply && blendMul_ ? blendMul_
+                                     : b.blend == 2 && blendAdd_ ? blendAdd_
+                                     : tm && tm->glass && b.blend == 1 && blendPremul_ ? blendPremul_
+                                     : blend_;
                 ctx_->OMSetBlendState(bs, bf, 0xffffffff);
             }
             ctx_->PSSetShaderResources(0, 1, &textures_[size_t(b.texture)]);
@@ -6442,6 +6638,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                 drawN(UINT(b.v.size()), 0);
             }
         }
+        if (boundSceneRs != rsTris_) ctx_->RSSetState(rsTris_);
         if (boundTexPs != psTex_) ctx_->PSSetShader(psTex_, nullptr, 0);
         ctx_->OMSetDepthStencilState(dsWrite_, 0);
         ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
@@ -6490,12 +6687,17 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         const bool baseCb = uploadLayerParams();
         constexpr size_t kBasePerCb = 256;
         ID3D11Buffer* baseVb = vbRefTex_;
+        ID3D11RasterizerState* baseRs = rsTris_;
         for (size_t k = 0; k < refTexIds_.size(); ++k) {
                 PreviewTargetGuard previewTarget(*this, {PreviewFamily::StockWorld, 0, uint64_t(k + 1), k < previewWorldMaterials_.size() ? previewWorldMaterials_[k] : std::string()});
-            if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].drawClass != 0)) continue;  // layers, decals: below
+            if (k < refLayers_.size() && (refLayers_[k].layer > 0 || refLayers_[k].decal || refLayers_[k].translucent || refLayers_[k].additive || refLayers_[k].drawClass != 0)) continue;  // layers, decals, glass: below
             const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
             if (id < 0 || size_t(id) >= textures_.size()) continue;
             if (refExtraOutside(k, frustum)) continue;  // a streamed world tile's batch out of view
+            if (game_.on && rsTrisCull_) {
+                ID3D11RasterizerState* wantRs = k < refLayers_.size() && refLayers_[k].cullBack ? rsTrisCull_ : rsTris_;
+                if (wantRs != baseRs) ctx_->RSSetState(wantRs), baseRs = wantRs;
+            }
             if (ID3D11Buffer* v = refVbFor(k); v != baseVb) ctx_->IASetVertexBuffers(0, 1, &v, &tstride, &offset), baseVb = v;
             const auto bind = [&] {
                 // Batches that share a texture (the plain one while images load) do not bind it again.
@@ -6525,6 +6727,7 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
             bind();
             drawN(refTexCount_[k], refTexFirst_[k]);
         }
+        if (baseRs != rsTris_) ctx_->RSSetState(rsTris_);
         if (baseVb != vbRefTex_) ctx_->IASetVertexBuffers(0, 1, &vbRefTex_, &tstride, &offset);
         if (baseCb && cbLayer_) ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);  // the plain (zero) layer buffer
         // The layers of layered stock materials (terrain): over their base, in layer order, blended by the layer's
@@ -6603,9 +6806,11 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                     }
                 }
                 const bool volume = L.params[0] > 1.5f;  // decal volumes carry their box UV in the tangent: no normal map
-                if (cbBatch_ && int(volume) != lastFlags) {
-                    lastFlags = int(volume);
-                    const float flags[8] = {refNormals && !volume ? 1.0f : 0.0f, 1.0f, 0, 0, 0, 0, 1.0f, stockLmSrv_[0] ? 1.0f : 0.0f};
+                const int flagKey = int(volume) | (L.additive ? 2 : 0);
+                if (cbBatch_ && flagKey != lastFlags) {
+                    lastFlags = flagKey;
+                    const float flags[8] = {refNormals && !volume ? 1.0f : 0.0f, L.additive ? 2.0f : 1.0f, 0, 0, 0, 0, 1.0f,
+                                            stockLmSrv_[0] ? 1.0f : 0.0f};
                     writeBatchCb(flags);
                 }
                 const int rv = L.reveal >= 0 && size_t(L.reveal) < textures_.size() ? L.reveal : whiteFullTex_;
@@ -6620,7 +6825,10 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
                     // The terrain patch's base layer stands in for the cut-away coarse terrain: it writes depth.
                     ID3D11DepthStencilState* wantDs = L.params[14] > 0.5f ? dsWrite_ : dsTest_;
                     if (wantDs != lastDs) ctx_->OMSetDepthStencilState(wantDs, 0), lastDs = wantDs;
-                    ID3D11BlendState* want = L.params[3] > 0.5f && blendMul_ ? blendMul_ : blend_;
+                    ID3D11BlendState* want =
+                        (L.additive || (L.params[3] > 2.5f && L.params[3] < 3.5f)) && blendAdd_ ? blendAdd_
+                        : (L.params[3] > 0.5f && (L.params[3] < 2.5f || L.params[3] > 3.5f)) && blendMul_ ? blendMul_
+                        : blend_;
                     if (want != lastBlend) {
                         const float bfz[4] = {0, 0, 0, 0};
                         ctx_->OMSetBlendState(want, bfz, 0xffffffff);
@@ -6680,6 +6888,95 @@ void SceneRenderer::drawFrame(const FrameInput& in) {
         ctx_->OMSetDepthStencilState(texOpaqueDs, 0);
         ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         drawReferenceTexInstances();
+    }
+    // Stock world translucent / glass (`_bar_`, sortKey 25/30) and additive (`unlit_6_effect`, `_bad_tca`) batches:
+    // drawn after opaque world and props, without writing depth, in sortKey order.
+    if (vbRefTex_ && refVisible_ && vsTex_ && psTex_ && layoutTex_) {
+        std::vector<size_t> worldTrans;
+        for (size_t k = 0; k < refTexIds_.size() && k < refLayers_.size(); ++k) {
+            const RefLayer& L = refLayers_[k];
+            if (L.layer == 0 && !L.decal && (L.translucent || L.additive) && L.drawClass == 0) worldTrans.push_back(k);
+        }
+        if (!worldTrans.empty()) {
+            std::stable_sort(worldTrans.begin(), worldTrans.end(), [&](size_t a, size_t b) {
+                return refLayers_[a].sortKey < refLayers_[b].sortKey;
+            });
+            ctx_->IASetInputLayout(layoutTex_);
+            ctx_->VSSetShader(vsTex_, nullptr, 0);
+            ctx_->PSSetShader(refPs, nullptr, 0);
+            ctx_->PSSetSamplers(0, 1, &sampler_);
+            ctx_->RSSetState(rsTris_);
+            ctx_->OMSetDepthStencilState(dsTest_, 0);
+            ctx_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            writeGameCb();
+            {
+                ID3D11ShaderResourceView* sl[3] = {stockLmSrv_[0], stockLmSrv_[1], stockLmSrv_[2]};
+                ctx_->PSSetShaderResources(6, 3, sl);
+            }
+            const bool refNormals = flatNrmTex_ >= 0 && size_t(flatNrmTex_) < textures_.size();
+            const bool baseCb = uploadLayerParams();
+            constexpr size_t kBasePerCb = 256;
+            ID3D11Buffer* curVb = nullptr;
+            ID3D11ShaderResourceView *curCol = nullptr, *curNrm = nullptr;
+            int lastAdd = -1;
+            for (size_t k : worldTrans) {
+                PreviewTargetGuard previewTarget(*this, {PreviewFamily::StockWorld, 0, uint64_t(k + 1),
+                                                         k < previewWorldMaterials_.size() ? previewWorldMaterials_[k] : std::string()});
+                const int id = refTexIds_[k] >= 0 ? refTexIds_[k] : whiteTex_;
+                if (id < 0 || size_t(id) >= textures_.size()) continue;
+                if (refExtraOutside(k, frustum)) continue;
+                const RefLayer& L = refLayers_[k];
+                const int isAdd = L.additive ? 1 : 0;
+                if (isAdd != lastAdd) {
+                    lastAdd = isAdd;
+                    ID3D11BlendState* bs = L.additive && blendAdd_ ? blendAdd_ : blend_;
+                    if (bs) ctx_->OMSetBlendState(bs, bf, 0xffffffff);
+                    if (cbBatch_) {
+                        const float flags[8] = {refNormals ? 1.0f : 0.0f, L.additive ? 2.0f : 1.0f, 0, 0, 0, 0, 1.0f,
+                                                stockLmSrv_[0] ? 1.0f : 0.0f};
+                        writeBatchCb(flags);
+                        ctx_->PSSetConstantBuffers(1, 1, &cbBatch_);
+                        ctx_->VSSetConstantBuffers(1, 1, &cbBatch_);
+                    }
+                }
+                if (ID3D11Buffer* v = refVbFor(k); v != curVb) ctx_->IASetVertexBuffers(0, 1, &v, &tstride, &offset), curVb = v;
+                const auto bind = [&] {
+                    if (curCol != textures_[size_t(id)]) ctx_->PSSetShaderResources(0, 1, &textures_[size_t(id)]), curCol = textures_[size_t(id)];
+                    if (refNormals) {
+                        const int n = k < refNrmIds_.size() && refNrmIds_[k] >= 0 && size_t(refNrmIds_[k]) < textures_.size()
+                                          ? refNrmIds_[k]
+                                          : flatNrmTex_;
+                        if (curNrm != textures_[size_t(n)]) ctx_->PSSetShaderResources(1, 1, &textures_[size_t(n)]), curNrm = textures_[size_t(n)];
+                    }
+                    ID3D11ShaderResourceView* e = L.emissive >= 0 && size_t(L.emissive) < textures_.size() ? textures_[size_t(L.emissive)] : nullptr;
+                    ID3D11ShaderResourceView* t = L.transmission >= 0 && size_t(L.transmission) < textures_.size() ? textures_[size_t(L.transmission)] : nullptr;
+                    ctx_->PSSetShaderResources(3, 1, &e);
+                    ctx_->PSSetShaderResources(19, 1, &t);
+                    if (baseCb && cbLayerAll_[k / kBasePerCb]) {
+                        const UINT first = UINT((k % kBasePerCb) * 16), num = 16;
+                        ctx1_->PSSetConstantBuffers1(7, 1, &cbLayerAll_[k / kBasePerCb], &first, &num);
+                    }
+                };
+                if (refCulling_ && k < refTexChunks_.size() && !refTexChunks_[k].empty()) {
+                    bool any = false;
+                    refCulledLast_ += forVisibleRuns(frustum, refTexChunks_[k], [&](uint32_t first, uint32_t n) {
+                        if (!any) bind(), any = true;
+                        drawN(n * 3, refTexFirst_[k] + first * 3);
+                    });
+                } else {
+                    bind();
+                    drawN(refTexCount_[k], refTexFirst_[k]);
+                }
+            }
+            if (baseCb && cbLayer_) ctx_->PSSetConstantBuffers(7, 1, &cbLayer_);
+            ctx_->OMSetBlendState(blend_, bf, 0xffffffff);
+            ctx_->OMSetDepthStencilState(texOpaqueDs, 0);
+            ID3D11ShaderResourceView* noSrv[2] = {nullptr, nullptr};
+            ctx_->PSSetShaderResources(0, 2, noSrv);
+            ctx_->IASetInputLayout(layout_);
+            ctx_->VSSetShader(vs_, nullptr, 0);
+            ctx_->PSSetShader(ps_, nullptr, 0);
+        }
     }
     if (deferSceneBlended) drawSceneTex(firstBlendedScene, drawOrder_.size());  // the map's blended batches, last
     if (!particles_.empty() && !in.clean) drawParticles(viewProj);                // the effect preview (research 138)

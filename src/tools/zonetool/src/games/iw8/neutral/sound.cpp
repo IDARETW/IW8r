@@ -1485,9 +1485,9 @@ namespace zonetool::iw8::neutral
 			data.exit = read_sound_music_asset(native.exit);
 			data.loops = plain::read_array(native.loops, native.loopCount, "SndMusicState.loops", [&](const auto& item) { return read_sound_music_asset(item); });
 			data.order = native.order;
-			data.interrupt_priority = native.interruptPriority;
-			data.persist_priority = native.persistPriority;
-			data.is_random = native.isRandom;
+			data.interrupt_priority = 0;
+			data.persist_priority = 0;
+			data.is_random = false;
 			data.is_sequential = native.isSequential;
 			data.skip_previous_exit = native.skipPreviousExit;
 			data.wall_clock_sync = native.wallClockSync;
@@ -1502,9 +1502,6 @@ namespace zonetool::iw8::neutral
 			write_sound_music_asset(native.exit, data.exit, resolve, memory);
 			native.loops = plain::write_array<SndMusicAsset>(data.loops, memory, [&](auto& out, const auto& in) { write_sound_music_asset(out, in, resolve, memory); });
 			native.order = data.order;
-			native.interruptPriority = data.interrupt_priority;
-			native.persistPriority = data.persist_priority;
-			native.isRandom = data.is_random;
 			native.isSequential = data.is_sequential;
 			native.skipPreviousExit = data.skip_previous_exit;
 			native.wallClockSync = data.wall_clock_sync;

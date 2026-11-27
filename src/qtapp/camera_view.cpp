@@ -8,6 +8,7 @@
 #include <atomic>
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QFileInfo>
 #include <QDir>
 #include <QDateTime>
@@ -18,6 +19,7 @@
 #include "sky_image.h"
 #include "stock_smodels.h"
 #include "sky_sun.h"
+#include "ies_profiles.h"
 #include "prefab.h"
 #include "scriptable_catalog.h"
 #include "asset_browser.h"
@@ -93,6 +95,15 @@ CameraView::CameraView(EditorContext* ctx, ID3D11Device* dev, ID3D11DeviceContex
         ctx_->scene.scriptableModelFor = [](const std::string& definition) -> std::string {
             const ScriptableDefinition* d = ScriptableCatalog::shared(QCoreApplication::applicationDirPath().toStdString()).find(definition);
             return d ? d->model : std::string();
+        };
+    // Visually flag scriptables that compile_iw8 would drop (unknown, unverified, or neither always-loaded, BR, nor carryable).
+    if (!ctx_->scene.scriptableStatusFor)
+        ctx_->scene.scriptableStatusFor = [](const std::string& definition) -> int {
+            const ScriptableCatalog& cat = ScriptableCatalog::shared(QCoreApplication::applicationDirPath().toStdString());
+            if (cat.size() == 0) return 0;
+            const ScriptableDefinition* d = cat.find(definition);
+            if (!d || !d->verified || (!d->alwaysLoaded && !d->brZone() && d->carryZone().empty())) return 1;
+            return 0;
         };
     connect(ctx_, &EditorContext::documentChanged, this, &CameraView::requestRender);
     connect(ctx_, &EditorContext::cameraChanged, this, &CameraView::requestRender);
@@ -419,7 +430,11 @@ void CameraView::render() {
                     if (nid >= 0) renderer_->setReferenceNormal(k, nid);
                     if (ctx_ && ctx_->scene.drawClassFor) renderer_->setReferenceDrawClass(k, ctx_->scene.drawClassFor(refTexMaterials_[k]));
                     if (factsLookup_)
-                        if (const auto f = factsLookup_(refTexMaterials_[k])) renderer_->setReferenceNoCast(k, f->noCastShadow);
+                        if (const auto f = factsLookup_(refTexMaterials_[k])) {
+                            renderer_->setReferenceNoCast(k, f->noCastShadow || f->translucent || f->additive);
+                            renderer_->setReferenceTranslucent(k, f->translucent, f->additive, f->sortKey);
+                            renderer_->setReferenceCullBack(k, !f->twoSided);
+                        }
                     setBaseMaterialConstants(k);
                     if (!applyMaterialExtras(refTexMaterials_[k], k, false)) {
                         pending = true;
@@ -458,9 +473,13 @@ void CameraView::render() {
                     if (nid >= 0) renderer_->setReferenceInstNormal(k, nid);
                     if (const auto p = materialConstantsFor(texInstMaterials_[k])) renderer_->setReferenceInstParams(k, p->data());
                     if (factsLookup_)
-                        if (const auto f = factsLookup_(texInstMaterials_[k]))
-                            renderer_->setReferenceInstDecal(k, f->propDecalSortKey), renderer_->setReferenceInstNoCast(k, f->noCastShadow || f->translucent),
-                                renderer_->setReferenceInstTranslucent(k, f->translucent);
+                        if (const auto f = factsLookup_(texInstMaterials_[k])) {
+                            renderer_->setReferenceInstDecal(k, f->propDecalSortKey);
+                            renderer_->setReferenceInstNoCast(k, f->noCastShadow || f->translucent || f->additive);
+                            renderer_->setReferenceInstTranslucent(k, f->translucent || f->additive);
+                            renderer_->setReferenceInstAdditive(k, f->additive);
+                            renderer_->setReferenceInstCullBack(k, !f->twoSided);
+                        }
                     if (ctx_ && ctx_->scene.drawClassFor) renderer_->setReferenceInstDrawClass(k, ctx_->scene.drawClassFor(texInstMaterials_[k]));
                     if (!applyMaterialExtras(texInstMaterials_[k], k, true)) {
                         pending = true;
@@ -671,7 +690,8 @@ void CameraView::render() {
     mix(ctx_->scene.tomeLinesVersion * 7 + 5);
     mix(ctx_->scene.gameOutlines ? 11 : 13);
     mix(ctx_->normalMaps ? 7 : 3);
-    mix((ctx_->scene.showLightRanges ? 17u : 19u) + (ctx_->scene.showSoundRanges ? 100u : 200u));  // entity range shapes
+    mix((ctx_->scene.showLightRanges ? 17u : 19u) + (ctx_->scene.showSoundRanges ? 100u : 200u) +
+        (ctx_->scene.showExploderPieces ? 1000u : 2000u));  // entity range and exploder shapes
     {
         IW8R_PROF("r.lights_wind");
         // Light entities per pixel on textured surfaces while the lit preview is on (3.14).
@@ -690,42 +710,121 @@ void CameraView::render() {
         // An own map in Game Lighting: its lamps through the game's light path (research 132 G8), as built.
         {
             const bool ownGame = game && !gameStockLook() && ctx_->texturedView;
+            const auto fadeOf = [&](const app::SceneCache::PreviewLight& L) -> double {
+                if (!L.hasFadeOffset) return 1.0;
+                const double nearD = std::min(L.fadeOffset[0], L.fadeOffset[1]);
+                const double farD = std::max(L.fadeOffset[0], L.fadeOffset[1]);
+                if (farD <= 0.0) return 1.0;
+                const double d = length(L.pos - ctx_->cam.pos);
+                if (d <= nearD) return 1.0;
+                if (d >= farD) return 0.0;
+                return std::clamp((farD - d) / std::max(1e-6, farD - nearD), 0.0, 1.0);
+            };
             uint64_t key = 0;
             if (ownGame) {
                 key = 1469598103934665603ull;
                 const auto h = [&](double v) { key = (key ^ std::hash<double>{}(v)) * 1099511628211ull; };
+                const auto hs = [&](const std::string& s) { key = (key ^ std::hash<std::string>{}(s)) * 1099511628211ull; };
+                hs(ctx_->doc.path());
                 for (const auto& L : ctx_->scene.lights) {
                     for (double v : {L.pos.x, L.pos.y, L.pos.z, L.color.x, L.color.y, L.color.z, L.dir.x, L.dir.y, L.dir.z, L.radius, L.cosOuter,
-                                     L.cosInner, L.bulbRadius, L.falloff})
+                                     L.cosInner, L.bulbRadius, L.bulbLength.x, L.bulbLength.y, L.bulbLength.z, L.falloff, L.shadowBias})
                         h(v);
                     h(L.shadows ? 1.0 : 0.0);
+                    h(L.volumetric ? 1.0 : 0.0);
+                    h(L.hasShadowBias ? 1.0 : 0.0);
+                    h(L.hasFadeOffset ? std::round(fadeOf(L) * 64.0) : -1.0);
+                    hs(L.iesFile);
                 }
             }
             if (key != ownLampsKey_) {
                 ownLampsKey_ = key;
                 std::vector<StockGameLight> lamps;
                 std::vector<StockLightShadow> shadows;
-                if (ownGame)
+                std::vector<uint8_t> iesStrip{255};  // texel 0 = white fallback
+                if (ownGame) {
+                    // Load any referenced IES profiles once and pack them into a combined R8 strip (256 texels each:
+                    // 0..127 front hemisphere from iesReplayTexels, 128..255 back hemisphere so omnis stay accurate).
+                    const QString mapDir = ctx_->doc.path().empty() ? QString() : QFileInfo(QString::fromStdString(ctx_->doc.path())).absolutePath();
+                    std::unordered_map<std::string, int> iesFirst;
+                    const auto loadIesSlot = [&](const std::string& rel) -> int {
+                        if (rel.empty()) return -1;
+                        if (const auto it = iesFirst.find(rel); it != iesFirst.end()) return it->second;
+                        QString path = QString::fromStdString(rel);
+                        if (!QFileInfo(path).isAbsolute() && !mapDir.isEmpty()) {
+                            const QString cand = QDir(mapDir).filePath(path);
+                            if (QFileInfo::exists(cand)) path = cand;
+                        }
+                        QFile f(path);
+                        IesProfile prof;
+                        if (!f.open(QIODevice::ReadOnly) || !parseIesFile(f.readAll().toStdString(), prof, nullptr)) {
+                            iesFirst.emplace(rel, -1);
+                            return -1;
+                        }
+                        const std::vector<int> front = iesReplayTexels(prof);
+                        if (front.size() != 128) {
+                            iesFirst.emplace(rel, -1);
+                            return -1;
+                        }
+                        const int base = int(iesStrip.size());
+                        iesStrip.reserve(iesStrip.size() + 256);
+                        for (int v : front) iesStrip.push_back(uint8_t(std::clamp(v, 0, 255)));
+                        // Normalise back hemisphere to the same front-hemisphere peak used by iesReplayTexels.
+                        double peak = 0.0;
+                        for (int j = 0; j < 128; ++j) {
+                            const double s = std::sqrt(std::min(1.0, 2.0 * j / 255.0));
+                            const double deg = std::asin(s) * (180.0 / 3.14159265358979323846);
+                            peak = std::max(peak, iesIntensity(prof, deg, 0.0));
+                        }
+                        for (int j = 128; j < 256; ++j) {
+                            const double s = std::sqrt(std::min(1.0, 2.0 * (255 - j) / 255.0));
+                            const double deg = 180.0 - std::asin(s) * (180.0 / 3.14159265358979323846);
+                            const double val = peak > 1e-12 ? iesIntensity(prof, deg, 0.0) / peak : 0.0;
+                            iesStrip.push_back(uint8_t(std::clamp(int(std::lround(val * 255.0)), 0, 255)));
+                        }
+                        iesFirst.emplace(rel, base);
+                        return base;
+                    };
+                    std::vector<int> lightIesBase(ctx_->scene.lights.size(), -1);
+                    for (size_t k = 0; k < ctx_->scene.lights.size() && k < 254; ++k)
+                        if (!ctx_->scene.lights[k].iesFile.empty()) lightIesBase[k] = loadIesSlot(ctx_->scene.lights[k].iesFile);
+                    const float invW = 1.0f / float(iesStrip.size());
                     for (size_t k = 0; k < ctx_->scene.lights.size() && lamps.size() < 254; ++k) {
                         const auto& L = ctx_->scene.lights[k];
+                        const double fade = fadeOf(L);
+                        if (fade <= 0.0) continue;
                         const app::SceneRenderer::PixelLight p = pixelLightOf(L, true);  // the calibrated colour
                         StockPrimaryLight sp;
                         sp.index = int(k) + 2;
                         sp.type = L.cosOuter > -1.5 ? 2 : 3;
-                        sp.intensity = 1.0f;
+                        sp.intensity = float(fade);
                         for (int c = 0; c < 3; ++c) sp.color[c] = p.color[c];
                         const Vec3 back = sp.type == 2 ? Vec3{-L.dir.x, -L.dir.y, -L.dir.z} : Vec3{0, 0, 1};  // toward the lamp
                         sp.dir[0] = float(back.x), sp.dir[1] = float(back.y), sp.dir[2] = float(back.z);
                         sp.origin[0] = float(L.pos.x), sp.origin[1] = float(L.pos.y), sp.origin[2] = float(L.pos.z);
                         sp.radius = float(L.radius);
                         sp.bulbRadius = float(L.bulbRadius);
+                        sp.bulbLength[0] = float(L.bulbLength.x);
+                        sp.bulbLength[1] = float(L.bulbLength.y);
+                        sp.bulbLength[2] = float(L.bulbLength.z);
                         sp.cosHalfFovOuter = sp.type == 2 ? float(L.cosOuter) : 0.0f;
                         sp.cosHalfFovInner = sp.type == 2 ? float(L.cosInner) : 0.0f;
                         sp.distanceFalloff = L.falloff > 0 ? float(L.falloff) : 1.0f;
                         sp.canUseShadowMap = L.shadows;
                         sp.isVolumetric = L.volumetric;
+                        if (L.hasShadowBias) sp.shadowBias = float(L.shadowBias);
+                        StockLightDef def;
+                        const StockLightDef* defPtr = nullptr;
+                        if (lightIesBase[k] >= 0) {
+                            def.name = L.iesFile;
+                            def.iesProfile = L.iesFile;
+                            def.firstPixel = lightIesBase[k];
+                            def.coordOffset = (float(lightIesBase[k]) + 0.5f) * invW;
+                            def.coordScale = 255.0f * invW;
+                            defPtr = &def;
+                        }
                         StockGameLight g;
-                        if (!packStockLight(sp, nullptr, g)) continue;
+                        if (!packStockLight(sp, defPtr, g)) continue;
                         lamps.push_back(g);
                         StockLightShadow sh;
                         if (L.shadows) sh = stockLightShadowCamera(sp, g);
@@ -733,8 +832,12 @@ void CameraView::render() {
                         sh.cast = L.shadows;
                         shadows.push_back(sh);
                     }
+                }
                 // (A stock map hands its own lamps over separately: they are never cleared from here.)
-                if (ownGame || (ownLampsOn_ && !gameStockLook())) renderer_->setStockLocalLights(std::move(lamps), std::move(shadows));
+                if (ownGame || (ownLampsOn_ && !gameStockLook())) {
+                    renderer_->setStockLocalLights(std::move(lamps), std::move(shadows));
+                    renderer_->setIesStrip(iesStrip.size() > 1 ? int(iesStrip.size()) : 0, iesStrip.size() > 1 ? iesStrip.data() : nullptr);
+                }
                 ownLampsOn_ = ownGame;
             }
         }
@@ -912,11 +1015,13 @@ void CameraView::render() {
     extraBatches_.clear();
     if (ctx_->scene.skyActive)
         for (auto& sb : skyBatches_) extraBatches_.push_back(sb.get());
-    // 8.1: effect particles, re-made every frame (their own batch, after the kept geometry).
+    // 8.1: effect particles, re-made every frame (sprites via setParticles, model elements via fxBatch_).
     if (ctx_->effectPreview && ctx_->texturedView && effectSource_ && !cleanCapture_) {
-        appendEffectParticles();  // their own pass (SceneRenderer::setParticles)
+        appendEffectParticles();
+        if (!fxBatch_.v.empty()) extraBatches_.push_back(&fxBatch_);
     } else {
         fxParticles_ = 0;
+        fxBatch_.v.clear();
         renderer_->setParticles({});
     }
     // The gizmo is a small stream of its own, sent again only when it changed.
@@ -1446,20 +1551,61 @@ void CameraView::addGizmoLines() {
 // The play preview's collision as the built map has it (core play_world): the map's brushes, the contents of its
 // prefabs and its placed models' hulls.
 void CameraView::buildPlayWorld() {
+    // Flatten misc_prefab instances first so doors, lifts, spinners, bobbers, teleporters, and jump pads inside
+    // prefabs run in Play mode just like top-level entities. Restore the original document Entity::id for matched
+    // top-level entities so ctx_->scene.playPoses still moves the rendered document brushes.
+    std::vector<std::string> prefabRoots;
+    for (const QString& r : PrefabBrowser::searchRoots()) prefabRoots.push_back(r.toStdString());
+    MapFile flat;
+    bool useFlat = false;
+    bool hasPrefab = false;
+    for (const Entity& e : ctx_->doc.map().entities)
+        if (e.classname() == "misc_prefab") {
+            hasPrefab = true;
+            break;
+        }
+    if (hasPrefab) {
+        std::vector<std::string> warn;
+        if (flattenPrefabs(ctx_->doc.map(), ctx_->doc.path(), prefabRoots, flat, &warn)) {
+            constexpr Id kPrefabIdBase = 0x40000000ull;
+            for (Entity& fe : flat.entities) fe.id += kPrefabIdBase;
+            size_t fi = 0;
+            for (const Entity& de : ctx_->doc.map().entities) {
+                if (de.classname() == "misc_prefab") continue;
+                const std::string cls = de.classname();
+                const std::string* tn = de.value("targetname");
+                const auto o = de.origin();
+                for (size_t j = fi; j < flat.entities.size(); ++j) {
+                    if (flat.entities[j].classname() != cls) continue;
+                    const std::string* ftn = flat.entities[j].value("targetname");
+                    if ((tn == nullptr) != (ftn == nullptr) || (tn && *tn != *ftn)) continue;
+                    if (o) {
+                        const auto fo = flat.entities[j].origin();
+                        if (!fo || length(*fo - *o) > 1e-2) continue;
+                    }
+                    flat.entities[j].id = de.id;
+                    fi = j + 1;
+                    break;
+                }
+            }
+            useFlat = true;
+        }
+    }
+    const MapFile& playMap = useFlat ? flat : ctx_->doc.map();
     // The movers first: their brushes are left out of the static world and added back as moving groups. (The map's path
     // finds its own script, which runs on the same clock.)
-    playBehaviours_.read(ctx_->doc.map(), ctx_->doc.path());
+    playBehaviours_.read(playMap, ctx_->doc.path());
     iw8r::PlayWorldOptions o;
     o.skip = [this](const Entity& e) { return playBehaviours_.moves(e); };
     o.mapPath = ctx_->doc.path();
-    for (const QString& r : PrefabBrowser::searchRoots()) o.prefabRoots.push_back(r.toStdString());
+    if (!useFlat) o.prefabRoots = std::move(prefabRoots);
     o.modelOf = ctx_->scene.modelSource;
     o.modelScale = ctx_->scene.modelScale;
     iw8r::PlayWorldStats st;
-    iw8r::buildPlayWorld(ctx_->doc.map(), o, world_, &st);
+    iw8r::buildPlayWorld(playMap, o, world_, &st);
     if (playWorldExtras_) playWorldExtras_(world_);  // a stock map's world (MainWindow)
     playWorldModels_ = st.models;
-    playBehaviours_.attach(ctx_->doc.map(), world_);
+    playBehaviours_.attach(playMap, world_);
 }
 
 void CameraView::startPlay() {
@@ -1801,9 +1947,35 @@ bool CameraView::resolveReferenceLayer(size_t k) {
     }
     StockLayerConstants lc;
     if (c->layers > L && size_t(L) < c->layer.size()) lc = c->layer[size_t(L)];
-    // Colour modes 2 and 3 leave the colour below (their normal / gloss blend only): not drawn. Multiply (1) is.
-    if (lc.colorMode >= 2) return true;
     const std::string ck = base + '\x01' + std::to_string(L), rk = base + '\x02' + std::to_string(L);
+    // Colour modes 2 and 3 leave the albedo below unchanged and blend normal/gloss (mode 3.0) or cavity (mode 4.0)
+    // using the layer's normal/gloss map and reveal texture.
+    if (lc.colorMode >= 2) {
+        const bool blendNormalGloss = (lc.flags & (kStockLayerBlendNormal | kStockLayerBlendGloss)) != 0;
+        const bool blendCavity = (lc.flags & kStockLayerBlendCavity) != 0;
+        if (!blendNormalGloss && !blendCavity) return true;
+        const int rid = textureFor(rk);
+        if (!texIds_.count(rk)) return false;
+        const int nid = normalFor(ck);
+        if (!nrmIds_.count(ck)) return false;
+        if (nid < 0) return true;
+        if (whiteTex_ < 0) {
+            const uint8_t px[4] = {255, 255, 255, 255};
+            whiteTex_ = renderer_->createTexture(px, 1, 1);
+        }
+        renderer_->setReferenceNormal(k, nid);
+        renderer_->setReferenceTexture(k, whiteTex_);
+        const float mode = blendNormalGloss ? 3.0f : 4.0f;
+        const float p[16] = {1.0f, float(lc.flags), lc.sharpness, mode, lc.normalStrength, lc.glossScale, lc.glossBias, float(lc.normalMode),
+                             lc.uvCos, lc.uvSin, lc.uvScale[0], lc.uvScale[1], lc.uvOffset[0], lc.uvOffset[1], 0.0f, 0.0f};
+        if (factsLookup_)
+            if (const auto f = factsLookup_(base); f && f->decalSortKey > 0) {
+                renderer_->setReferenceDecal(k, f->decalSortKey, rid == checkerTex_ ? -1 : rid, p);
+                return true;
+            }
+        renderer_->setReferenceLayer(k, rid == checkerTex_ ? -1 : rid, p);
+        return true;
+    }
     const int cid = textureFor(ck), rid = textureFor(rk);
     if (!texIds_.count(ck) || !texIds_.count(rk)) return false;
     if (cid < 0 || cid == checkerTex_) return true;  // no colour image: left out rather than drawn as the checker
@@ -2423,19 +2595,60 @@ void CameraView::appendEffectParticles() {
         uint64_t object = 0;
         double repeat = 0;  // an fx_origin's delay key (seconds between starts, as the build's script repeats it); 0 = none
     };
-    // The mapper's fx_origin entities, then the stock map's own placed effects.
-    std::vector<Placed> placed;
-    for (const Entity& e : ctx_->doc.map().entities) {
-        if (e.classname() != "fx_origin") continue;
-        const std::string* fx = e.value("fx");
-        const auto o = e.origin();
-        Vec3 ang{0, 0, 0};
-        if (const std::string* a = e.value("angles")) std::sscanf(a->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z);
-        double repeat = 0;
-        if (const std::string* d = e.value("delay")) repeat = std::max(0.0, std::atof(d->c_str()));
-        if (fx && o) placed.push_back({*o, ang, fx, e.id, repeat});
+    // The mapper's fx_origin entities (including those inside misc_prefab instances, cached per document revision),
+    // then the stock map's own placed effects.
+    const uint64_t fxKey = ctx_->doc.revision() * 1099511628211ull ^ (ctx_->scene.generation() + 1ull);
+    if (fxKey != fxOriginsKey_) {
+        fxOriginsKey_ = fxKey;
+        cachedFxOrigins_.clear();
+        const auto addFxEnt = [&](const std::string& cls, const std::string* fx, const std::optional<Vec3>& o,
+                                  const std::string* angStr, const std::string* delayStr, uint64_t objId) {
+            if (cls != "fx_origin" || !fx || fx->empty() || !o) return;
+            Vec3 ang{0, 0, 0};
+            if (angStr) std::sscanf(angStr->c_str(), "%lf %lf %lf", &ang.x, &ang.y, &ang.z);
+            double repeat = 0;
+            if (delayStr) repeat = std::max(0.0, std::atof(delayStr->c_str()));
+            cachedFxOrigins_.push_back({*o, ang, *fx, objId, repeat});
+        };
+        std::function<void(const MapFile&, int, uint64_t)> collectFx = [&](const MapFile& map, int depth, uint64_t rootObj) {
+            if (depth > 8) return;
+            for (const Entity& e : map.entities) {
+                const std::string cls = e.classname();
+                const uint64_t objId = rootObj ? rootObj : e.id;
+                if (cls == "fx_origin") {
+                    addFxEnt(cls, e.value("fx"), e.origin(), e.value("angles"), e.value("delay"), objId);
+                } else if (cls == "misc_prefab" && ctx_->scene.prefabSource && depth < 8) {
+                    const auto inst = prefabInstance(e);
+                    if (!inst) continue;
+                    const auto pf = ctx_->scene.prefabSource(e);
+                    if (!pf) continue;
+                    const PrefabContents pc = instantiatePrefab(*pf, *inst, "\n");
+                    MapFile sub;
+                    for (const auto& [kvs, prims] : pc.entities) {
+                        Entity se;
+                        for (const auto& [k, v] : kvs) {
+                            KeyValueLine kv;
+                            kv.key = k;
+                            kv.value = v;
+                            EntityItem it;
+                            it.v = std::move(kv);
+                            se.items.push_back(std::move(it));
+                        }
+                        sub.entities.push_back(std::move(se));
+                    }
+                    collectFx(sub, depth + 1, objId);
+                }
+            }
+        };
+        collectFx(ctx_->doc.map(), 0, 0);
     }
+    std::vector<Placed> placed;
+    placed.reserve(cachedFxOrigins_.size() + stockEffects_.size());
+    for (const CachedFxOrigin& cf : cachedFxOrigins_) placed.push_back({cf.origin, cf.angles, &cf.fx, cf.object, cf.repeat});
     for (const StockEffect& s : stockEffects_) placed.push_back({s.origin, s.angles, &s.name, 0, 0.0});
+    fxBatch_.v.clear();
+    fxBatch_.texture = whiteTex_;
+    fxBatch_.blend = 0;
     const Vec3 eye = ctx_->cam.pos;
     struct Quad {
         uint64_t object = 0;
@@ -2465,6 +2678,21 @@ void CameraView::appendEffectParticles() {
         if (!d.imageOk || d.image.width <= 0 || d.image.height <= 0) return texIds_[key] = -1;
         return texIds_[key] = renderer_->createTexture(d.image.pixels.data(), d.image.width, d.image.height);
     };
+    const auto ensureGlowTex = [&]() -> int {
+        if (fxGlowTex_ >= 0) return fxGlowTex_;
+        constexpr int kSide = 64;
+        std::vector<uint8_t> px(size_t(kSide) * kSide * 4);
+        for (int y = 0; y < kSide; ++y)
+            for (int x = 0; x < kSide; ++x) {
+                const float dx = (x + 0.5f) / (kSide * 0.5f) - 1.0f, dy = (y + 0.5f) / (kSide * 0.5f) - 1.0f;
+                const float f = std::max(0.0f, 1.0f - std::sqrt(dx * dx + dy * dy));
+                const uint8_t v = uint8_t(std::clamp(f * f * 255.0f, 0.0f, 255.0f));
+                uint8_t* p = &px[(size_t(y) * kSide + size_t(x)) * 4];
+                p[0] = p[1] = p[2] = v;
+                p[3] = v;
+            }
+        return fxGlowTex_ = renderer_->createTexture(px.data(), kSide, kSide);
+    };
     // The colour an unlit set adds: the particle colour x the emissive graph's RGB x intensity (its pixel shaders read a
     // packed emissive colour and only the alpha of the particle colour, research 139 section 5; INFERRED that the
     // packed colour is the two together, so a fire's orange colour graph stays with its white emissive graph).
@@ -2479,6 +2707,284 @@ void CameraView::appendEffectParticles() {
         }
         return &(particleMats_[name] = pm);
     };
+    int runnerEffects = 0;
+    std::function<void(const Placed&, const VfxSimDef&, double, uint32_t, const Vec3&, const VfxAxes&, double, int)> emitEffect =
+        [&](const Placed& pl, const VfxSimDef& def, double at, uint32_t fxSeed, const Vec3& origin, const VfxAxes& ax, double dist, int depth) {
+            int modelInstances = 0;
+            for (const VfxParticle& p : sampleVfx(def, at, fxSeed, &ax)) {
+                const VfxEmitterSim& em = def.emitters[size_t(p.emitter)];
+                if (em.fadeOutMaxDistance > 0 && dist > em.fadeOutMaxDistance) continue;
+                // Runner element (9): recursively sample spawned child effects (up to depth 3, capped at 24 child runs).
+                if (em.element == 9) {
+                    if (depth < 3 && !em.runners.empty() && runnerEffects < 24 && fxParticles_ < 20000) {
+                        const std::string& childName = em.runners[size_t(p.rnd * 1e6) % em.runners.size()];
+                        if (const auto childDef = effectSource_(childName); childDef && !childDef->emitters.empty()) {
+                            ++runnerEffects;
+                            const Vec3 childOrigin = origin + Vec3{p.pos[0], p.pos[1], p.pos[2]};
+                            const uint32_t childSeed = fxSeed * 2654435761u + uint32_t(p.rnd * 1e6) + 1u;
+                            emitEffect(pl, *childDef, p.age, childSeed, childOrigin, ax, length(childOrigin - eye), depth + 1);
+                        }
+                    }
+                    continue;
+                }
+                // Light elements (5, 6): additive soft radial glow sprite (following vfx_preview.cpp).
+                if ((em.element == 5 || em.element == 6) && em.light.present) {
+                    const int gtex = ensureGlowTex();
+                    if (gtex < 0) continue;
+                    const Vec3 c = origin + Vec3{p.pos[0], p.pos[1], p.pos[2]};
+                    const double half = std::clamp(0.25 * std::max(p.size2[0], p.size2[1]), 6.0, 96.0);
+                    const Vec3 ax0 = right * half, ax1 = up * half;
+                    const bool coloured = em.hasAttrColor || em.color.present;
+                    const float gain = float(std::min(4.0, em.light.brightness)) * 0.45f;
+                    const float cr = (coloured ? p.rgba[0] : 1.0f) * gain;
+                    const float cg = (coloured ? p.rgba[1] : 1.0f) * gain;
+                    const float cb = (coloured ? p.rgba[2] : 1.0f) * gain;
+                    const float ca = std::max(0.3f, std::clamp(p.rgba[3], 0.0f, 1.0f));
+                    Quad qd;
+                    qd.object = pl.object;
+                    qd.depth = float(dot(c - eye, fwd));
+                    qd.texture = gtex;
+                    qd.lit = false, qd.distortion = false, qd.screen = false;
+                    qd.emissive[0] = qd.emissive[1] = qd.emissive[2] = 1.0f;
+                    qd.distScale[0] = qd.distScale[1] = 0.0f;
+                    const auto lc = [&](double sx, double sy, float u, float v) {
+                        const Vec3 q = c + ax0 * sx + ax1 * sy;
+                        return app::ParticleVertex{float(q.x), float(q.y), float(q.z), u, v, cr, cg, cb, ca};
+                    };
+                    const app::ParticleVertex a = lc(-1, -1, 0, 1), b = lc(1, -1, 1, 1), cc = lc(1, 1, 1, 0), d = lc(-1, 1, 0, 0);
+                    qd.v[0] = a, qd.v[1] = b, qd.v[2] = cc, qd.v[3] = a, qd.v[4] = cc, qd.v[5] = d;
+                    quads.push_back(qd);
+                    if (++fxParticles_ >= 20000) break;
+                    continue;
+                }
+                // Model element (7): emit spinning mesh triangles into fxBatch_ (capped at 64 instances/effect).
+                if (em.element == 7) {
+                    if (!em.models.empty() && ctx_->scene.modelSource && modelInstances < 64 && fxBatch_.v.size() < 90000) {
+                        const std::string& modelName = em.models[size_t(p.rnd * 1e6) % em.models.size()];
+                        Entity me;
+                        KeyValueLine kv;
+                        kv.key = "model";
+                        kv.value = modelName;
+                        EntityItem item;
+                        item.v = std::move(kv);
+                        me.items.push_back(std::move(item));
+                        const auto mdl = ctx_->scene.modelSource(me);
+                        if (mdl && !mdl->meshes.empty()) {
+                            ++modelInstances;
+                            size_t total = 0;
+                            for (const auto& part : mdl->meshes) total += part.idx.size() / 3;
+                            const size_t step = std::max<size_t>(1, total / 1500);
+                            const Vec3 c = origin + Vec3{p.pos[0], p.pos[1], p.pos[2]};
+                            const double ca = std::cos(p.angle), sa = std::sin(p.angle);
+                            const double cb = std::cos(p.angle * 0.7), sb = std::sin(p.angle * 0.7);
+                            const bool coloured = em.hasAttrColor || em.color.present;
+                            const uint32_t r = uint32_t(std::clamp(int(std::lround((coloured ? p.rgba[0] : 0.72f) * 255.0f)), 0, 255));
+                            const uint32_t g = uint32_t(std::clamp(int(std::lround((coloured ? p.rgba[1] : 0.70f) * 255.0f)), 0, 255));
+                            const uint32_t b = uint32_t(std::clamp(int(std::lround((coloured ? p.rgba[2] : 0.66f) * 255.0f)), 0, 255));
+                            const uint32_t col = r | (g << 8) | (b << 16) | (255u << 24);
+                            size_t triIdx = 0;
+                            for (const auto& part : mdl->meshes) {
+                                for (size_t i = 0; i + 2 < part.idx.size(); i += 3, ++triIdx) {
+                                    if (triIdx % step) continue;
+                                    Vec3 w[3];
+                                    for (int v = 0; v < 3; ++v) {
+                                        const Vec3 mp = part.pos[part.idx[i + size_t(v)]];
+                                        const double mx = mp.x, my = -mp.z, mz = mp.y;  // glTF Y-up -> Z-up
+                                        const double y1 = my * cb - mz * sb, z1 = my * sb + mz * cb;
+                                        w[v] = Vec3{mx * ca - y1 * sa + c.x, mx * sa + y1 * ca + c.y, z1 + c.z};
+                                    }
+                                    const Vec3 nrm = normalize(cross(w[1] - w[0], w[2] - w[0]));
+                                    for (int v = 0; v < 3; ++v) {
+                                        app::GpuTexVertex gv{};
+                                        gv.x = float(w[v].x), gv.y = float(w[v].y), gv.z = float(w[v].z);
+                                        gv.u = 0.5f, gv.v = 0.5f;
+                                        gv.rgba = col;
+                                        gv.nx = float(nrm.x), gv.ny = float(nrm.y), gv.nz = float(nrm.z);
+                                        fxBatch_.v.push_back(gv);
+                                    }
+                                }
+                            }
+                            if (++fxParticles_ >= 20000) break;
+                        }
+                    }
+                    continue;
+                }
+                const bool flare = em.element == 3 && em.flare.present;
+                if (em.element != 0 && em.element != 2 && em.element != 8 && em.element != 10 && !flare) continue;
+                const std::string& matName = size_t(p.material) < em.materials.size() ? em.materials[size_t(p.material)] : em.material;
+                const ParticleMaterial* pm = materialOf(matName);
+                if (pm && pm->skip) continue;
+                // A material the cache is still resolving: nothing yet (it used to be a plain square in the meantime).
+                // IW8R_PLAIN_PARTICLE_QUADS: the plain quads of before (a sprite or flare without its image), for A/B.
+                static const bool plainQuads = qEnvironmentVariableIsSet("IW8R_PLAIN_PARTICLE_QUADS");
+                if (!pm && !matName.empty() && particleMaterial_ && !plainQuads) continue;
+                if (flare) {
+                    const bool sunFlare = pl.fx->find("sunflare") != std::string::npos || pl.fx->find("sun_flare") != std::string::npos;
+                    if (sunFlare && p.emitter == 0 && !sunFlaresDrawn.insert(*pl.fx).second) break;
+                    const Vec3 sunDir = gameLookOn() ? gameSunToward() : ctx_->scene.sunToward;
+                    const Vec3 src = sunFlare ? eye + sunDir * 1.0e6 : origin + Vec3{p.pos[0], p.pos[1], p.pos[2]};
+                    double clip[4];
+                    toClip(src, clip);
+                    if (clip[3] <= 1e-6) continue;
+                    const double ndc[2] = {clip[0] / clip[3], clip[1] / clip[3]};
+                    if (std::fabs(ndc[0]) > 1.0 || std::fabs(ndc[1]) > 1.0) continue;
+                    const VfxFlareSprite fs = vfxFlareSprite(em, p.size2, ndc, aspect, length(src - eye));
+                    int ftex = pm ? particleTexture(matName, *pm) : -1;
+                    if (ftex < 0 && plainQuads) ftex = whiteTex_;
+                    if (ftex < 0) continue;
+                    float area[3] = {0, 0, 0};
+                    static const bool noOcclusion = qEnvironmentVariableIsSet("IW8R_NO_FLARE_OCCLUSION");
+                    if (em.occlusion.present && !noOcclusion) {
+                        const double half = 0.5 * em.occlusion.scale * std::max(em.occlusion.worldSize[0], em.occlusion.worldSize[1]);
+                        double c2[4];
+                        toClip(src + right * half, c2);
+                        const double dx = c2[3] > 1e-6 ? std::fabs(c2[0] / c2[3] - ndc[0]) : 0.0;
+                        const double px = 2.0 / std::max(1, height());
+                        area[0] = float(std::max(px / aspect, std::min(dx, 0.25))), area[1] = float(std::max(px, std::min(dx * aspect, 0.25)));
+                        area[2] = 1;
+                    }
+                    Quad qd; qd.object = pl.object; qd.material = matName;
+                    qd.depth = -1e30f;
+                    qd.texture = ftex;
+                    qd.lit = false, qd.distortion = false, qd.screen = true;
+                    for (int k = 0; k < 3; ++k) qd.emissive[k] = pm ? pm->emissive[k] : 1.0f;
+                    qd.distScale[0] = qd.distScale[1] = 0;
+                    static const bool oldFlares = qEnvironmentVariableIsSet("IW8R_OLD_FLARES");
+                    qd.screenMask = pm && pm->screenMask && !oldFlares;
+                    qd.mask = qd.screenMask ? maskTexture(pm->maskFile) : -1;
+                    const double angle = qd.screenMask ? 0.0 : fs.angle;
+                    const double ca = std::cos(angle), sa = std::sin(angle);
+                    double occ[4];
+                    const double srcDist = length(src - eye);
+                    toClip(eye + (src - eye) * (std::min(srcDist, 50000.0) / std::max(srcDist, 1e-6)), occ);
+                    const float srcAux[3] = {float(ndc[0]), float(ndc[1]), float(occ[3] > 1e-6 ? occ[2] / occ[3] : 1.0)};
+                    const auto fc = [&](double sx, double sy, float u, float v) {
+                        const double hx = fs.half[0] * aspect * sx, hy = fs.half[1] * sy;
+                        app::ParticleVertex pv{float(fs.centre[0] + (hx * ca - hy * sa) / aspect), float(fs.centre[1] + hx * sa + hy * ca), 0.0f,
+                                               u, v, addColour(p, !oldFlares, 0), addColour(p, !oldFlares, 1), addColour(p, !oldFlares, 2),
+                                               oldFlares ? 1.0f : p.rgba[3]};
+                        std::copy(srcAux, srcAux + 3, pv.aux0), std::copy(area, area + 3, pv.aux1);
+                        return pv;
+                    };
+                    const app::ParticleVertex a = fc(-1, -1, 0, 1), b = fc(1, -1, 1, 1), cc = fc(1, 1, 1, 0), d = fc(-1, 1, 0, 0);
+                    qd.v[0] = a, qd.v[1] = b, qd.v[2] = cc, qd.v[3] = a, qd.v[4] = cc, qd.v[5] = d;
+                    quads.push_back(qd);
+                    ++fxFlares_;
+                    if (++fxParticles_ >= 20000) break;
+                    continue;
+                }
+                const bool distortion = pm && pm->distortion;
+                int tex = pm ? particleTexture(matName, *pm) : -1;
+                if (distortion && tex < 0) continue;
+                if (tex == -2 && !plainQuads) continue;
+                const bool lit = pm ? pm->lit : true;
+                int cols = pm ? std::max(1, pm->cols) : 1, rows = pm ? std::max(1, pm->rows) : 1;
+                if (tex < 0 && plainQuads) tex = whiteTex_, cols = rows = 1;
+                if (tex < 0) {
+                    const std::string softKey = "\x0Asoft";
+                    if (const auto it = texIds_.find(softKey); it != texIds_.end()) {
+                        tex = it->second;
+                    } else {
+                        constexpr int kSide = 64;
+                        std::vector<uint8_t> px(size_t(kSide) * kSide * 4);
+                        for (int y = 0; y < kSide; ++y)
+                            for (int x = 0; x < kSide; ++x) {
+                                const double u = (x + 0.5) / kSide - 0.5, v = (y + 0.5) / kSide - 0.5;
+                                const double s = std::clamp(1.0 - 2.0 * std::sqrt(u * u + v * v), 0.0, 1.0);
+                                const uint8_t a = uint8_t(std::lround(255.0 * s * s));
+                                uint8_t* ptr = &px[(size_t(y) * kSide + size_t(x)) * 4];
+                                ptr[0] = ptr[1] = ptr[2] = a, ptr[3] = a;
+                            }
+                        tex = texIds_[softKey] = renderer_->createTexture(px.data(), kSide, kSide);
+                    }
+                    cols = rows = 1;
+                    if (tex < 0) continue;
+                }
+                Vec3 c = origin + Vec3{p.pos[0], p.pos[1], p.pos[2]};
+                const double w = std::max(0.25, p.size2[0] * 0.5), h = std::max(0.25, p.size2[1] * 0.5);
+                Vec3 ax0, ax1;
+                if (em.element == 2) {
+                    // Decal element: laid flat in the effect's XY plane, rotated by p.angle, slightly lifted along Z.
+                    const Vec3 ex{ax.x[0], ax.x[1], ax.x[2]}, ey{ax.y[0], ax.y[1], ax.y[2]}, ez{ax.z[0], ax.z[1], ax.z[2]};
+                    const double ca = std::cos(p.angle), sa = std::sin(p.angle);
+                    ax0 = (ex * ca + ey * sa) * w, ax1 = (ey * ca - ex * sa) * h;
+                    c = c + ez * 0.5;
+                } else if (em.element == 10) {
+                    const Vec3 vel{p.vel[0], p.vel[1], p.vel[2]};
+                    const double speed = length(vel);
+                    Vec3 dir = speed > 1e-6 ? vel - fwd * dot(vel, fwd) : up;
+                    dir = length(dir) > 1e-6 ? normalize(dir) : up;
+                    const Vec3 side = normalize(cross(dir, fwd));
+                    const double len = std::max(h, em.tailScaleWithVelocity ? speed * 0.033 * 0.5 : h);
+                    ax0 = side * w, ax1 = dir * len;
+                } else if (em.element == 8) {
+                    const double* q = em.orientQuat;
+                    const auto rot = [&](const double v[3], double o[3]) {
+                        const double qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+                        const double tx = 2 * (qy * v[2] - qz * v[1]), ty = 2 * (qz * v[0] - qx * v[2]), tz = 2 * (qx * v[1] - qy * v[0]);
+                        o[0] = v[0] + qw * tx + (qy * tz - qz * ty), o[1] = v[1] + qw * ty + (qz * tx - qx * tz), o[2] = v[2] + qw * tz + (qx * ty - qy * tx);
+                    };
+                    const double ly[3] = {0, 1, 0}, lz[3] = {0, 0, 1};
+                    double ry[3], rz[3];
+                    rot(ly, ry), rot(lz, rz);
+                    const auto world = [&](const double l[3]) {
+                        return Vec3{ax.x[0] * l[0] + ax.y[0] * l[1] + ax.z[0] * l[2], ax.x[1] * l[0] + ax.y[1] * l[1] + ax.z[1] * l[2],
+                                    ax.x[2] * l[0] + ax.y[2] * l[1] + ax.z[2] * l[2]};
+                    };
+                    const double ca = std::cos(p.angle), sa = std::sin(p.angle);
+                    const Vec3 a0 = world(ry), a1 = world(rz);
+                    ax0 = (a0 * ca + a1 * sa) * w, ax1 = (a1 * ca - a0 * sa) * h;
+                } else {
+                    const double ca = std::cos(p.angle), sa = std::sin(p.angle);
+                    ax0 = (right * ca + up * sa) * w, ax1 = (up * ca - right * sa) * h;
+                }
+                const int frames = cols * rows;
+                const int f = vfxAtlasFrame(em, p, frames);
+                const int col = f % cols, row = f / cols;
+                float u0 = float(col) / float(cols), u1 = float(col + 1) / float(cols);
+                float v0 = float(row) / float(rows), v1 = float(row + 1) / float(rows);
+                if (p.flipU) std::swap(u0, u1);
+                if (p.flipV) std::swap(v0, v1);
+                Quad qd; qd.object = pl.object; qd.material = matName;
+                qd.depth = float(dot(c - eye, fwd));
+                qd.texture = tex;
+                qd.lit = lit && !distortion;
+                qd.distortion = distortion;
+                qd.screen = false;
+                for (int k = 0; k < 3; ++k) qd.emissive[k] = pm ? pm->emissive[k] : 1.0f;
+                qd.distScale[0] = distortion ? pm->distScale[0] : 0.0f, qd.distScale[1] = distortion ? pm->distScale[1] : 0.0f;
+                float aux0[3] = {float(c.x), float(c.y), float(c.z)}, aux1[3] = {-1, -1, -1};
+                if (distortion) {
+                    const Vec3 T = length(ax0) > 1e-9 ? normalize(ax0) : right, B = length(ax1) > 1e-9 ? normalize(ax1) : up;
+                    aux0[0] = float(T.x), aux0[1] = float(T.y), aux0[2] = float(T.z);
+                    aux1[0] = float(B.x), aux1[1] = float(B.y), aux1[2] = float(B.z);
+                    ++fxDistortion_;
+                    fxDistAlphaMax_ = std::max(fxDistAlphaMax_, double(p.rgba[3]));
+                    fxDistAlphaSum_ += p.rgba[3];
+                } else if (qd.lit && grid) {
+                    const double at3[3] = {c.x, c.y, c.z};
+                    StockLgvSh sh;
+                    if (sampleStockGpuGrid(*grid, at3, sh)) {
+                        double rgb[3];
+                        stockLgvAverage(sh, rgb);
+                        for (int k = 0; k < 3; ++k) aux1[k] = float(rgb[k] * gridScale);
+                        ++fxGridLit_;
+                    }
+                }
+                const auto corner = [&](double sx, double sy, float u, float v) {
+                    const Vec3 q = c + ax0 * sx + ax1 * sy;
+                    const bool unlit = !qd.lit && !distortion;
+                    app::ParticleVertex pv{float(q.x), float(q.y), float(q.z), u, v, addColour(p, unlit, 0), addColour(p, unlit, 1), addColour(p, unlit, 2),
+                                           p.rgba[3]};
+                    std::copy(aux0, aux0 + 3, pv.aux0), std::copy(aux1, aux1 + 3, pv.aux1);
+                    return pv;
+                };
+                const app::ParticleVertex a = corner(-1, -1, u0, v1), b = corner(1, -1, u1, v1), cc = corner(1, 1, u1, v0), d = corner(-1, 1, u0, v0);
+                qd.v[0] = a, qd.v[1] = b, qd.v[2] = cc, qd.v[3] = a, qd.v[4] = cc, qd.v[5] = d;
+                quads.push_back(qd);
+                if (++fxParticles_ >= 20000) break;
+            }
+        };
     for (const auto& pl : placed) {
         ++seed;
         // Far effects are left out (the game culls them by distance too); the 20,000 particle budget goes to near ones.
@@ -2486,207 +2992,16 @@ void CameraView::appendEffectParticles() {
         if (dist > 12000) continue;
         const auto def = effectSource_(*pl.fx);
         if (!def || def->emitters.empty()) continue;
-        // A one-shot effect plays again every `delay` seconds (the fx_origin's key, as the built map's script repeats it),
-        // else after its run plus 1.5 s, so that a short burst keeps showing; a looping effect runs on without a restart
-        // (it used to start over every 60 s, every particle vanishing at once).
         const double oneShot = def->duration >= 0 ? std::max(def->duration, 0.05) : -1.0;
         const double period = oneShot > 0 ? (pl.repeat > 0 ? std::max(pl.repeat, oneShot + 0.1) : oneShot + 1.5) : 0.0;
         const double at = period > 0 ? std::fmod(t, period) : t;
         const VfxAxes ax = vfxAxesFromAngles(pl.angles.x, pl.angles.y, pl.angles.z);
-        for (const VfxParticle& p : sampleVfx(*def, at, seed, &ax)) {
-            const VfxEmitterSim& em = def->emitters[size_t(p.emitter)];
-            if (em.fadeOutMaxDistance > 0 && dist > em.fadeOutMaxDistance) continue;
-            const bool flare = em.element == 3 && em.flare.present;
-            if (em.element != 0 && em.element != 8 && em.element != 10 && !flare) continue;  // models, lights, runners, decals
-            const std::string& matName = size_t(p.material) < em.materials.size() ? em.materials[size_t(p.material)] : em.material;
-            const ParticleMaterial* pm = materialOf(matName);
-            if (pm && pm->skip) continue;
-            // A material the cache is still resolving: nothing yet (it used to be a plain square in the meantime).
-            // IW8R_PLAIN_PARTICLE_QUADS: the plain quads of before (a sprite or flare without its image), for A/B.
-            static const bool plainQuads = qEnvironmentVariableIsSet("IW8R_PLAIN_PARTICLE_QUADS");
-            if (!pm && !matName.empty() && particleMaterial_ && !plainQuads) continue;
-            if (flare) {
-                // A flare piece (research 139 section 1.3): its source on screen, the piece along the line from there
-                // through the centre, sized in screen heights. Behind the camera or off the screen: not drawn.
-                // A sun flare's source is the sun (research 139 section 1.2, INFERRED: Shipment places its sun flare near
-                // the ground with angles 0 0 0): far along the sun's direction from the eye. One placement per sun flare
-                // effect draws (each would put its pieces on the same spot). Other flares start at their effect.
-                const bool sunFlare = pl.fx->find("sunflare") != std::string::npos || pl.fx->find("sun_flare") != std::string::npos;
-                if (sunFlare && p.emitter == 0 && !sunFlaresDrawn.insert(*pl.fx).second) break;
-                const Vec3 sunDir = gameLookOn() ? gameSunToward() : ctx_->scene.sunToward;
-                const Vec3 src = sunFlare ? eye + sunDir * 1.0e6 : pl.origin + Vec3{p.pos[0], p.pos[1], p.pos[2]};
-                double clip[4];
-                toClip(src, clip);
-                if (clip[3] <= 1e-6) continue;
-                const double ndc[2] = {clip[0] / clip[3], clip[1] / clip[3]};
-                if (std::fabs(ndc[0]) > 1.0 || std::fabs(ndc[1]) > 1.0) continue;
-                const VfxFlareSprite fs = vfxFlareSprite(em, p.size2, ndc, aspect, length(src - eye));
-                // Without its image (still read, or none) a flare piece draws nothing: a white screen square before.
-                int ftex = pm ? particleTexture(matName, *pm) : -1;
-                if (ftex < 0 && plainQuads) ftex = whiteTex_;
-                if (ftex < 0) continue;
-                // The occlusion test's area: the query's world size x scale, as seen at the source (at least a pixel).
-                float area[3] = {0, 0, 0};
-                static const bool noOcclusion = qEnvironmentVariableIsSet("IW8R_NO_FLARE_OCCLUSION");  // A/B: always seen
-                if (em.occlusion.present && !noOcclusion) {
-                    const double half = 0.5 * em.occlusion.scale * std::max(em.occlusion.worldSize[0], em.occlusion.worldSize[1]);
-                    double c2[4];
-                    toClip(src + right * half, c2);
-                    const double dx = c2[3] > 1e-6 ? std::fabs(c2[0] / c2[3] - ndc[0]) : 0.0;
-                    const double px = 2.0 / std::max(1, height());
-                    area[0] = float(std::max(px / aspect, std::min(dx, 0.25))), area[1] = float(std::max(px, std::min(dx * aspect, 0.25)));
-                    area[2] = 1;
-                }
-                Quad qd; qd.object = pl.object; qd.material = matName;
-                qd.depth = -1e30f;  // over everything: last in the far-to-near order
-                qd.texture = ftex;
-                qd.lit = false, qd.distortion = false, qd.screen = true;
-                for (int k = 0; k < 3; ++k) qd.emissive[k] = pm ? pm->emissive[k] : 1.0f;
-                qd.distScale[0] = qd.distScale[1] = 0;
-                // A dirty lens piece (research 139 section 5): its image is lens grime fixed to the screen, seen through
-                // the round slot 145 mask. Drawn without the mask it was a square of grime (the owner's "square-like"
-                // glare), and it turned with the source's angle about the centre (m_angularRotCount), so the square
-                // spun as a lamp passed the middle of the view.
-                // IW8R_OLD_FLARES: the pieces as drawn before (no mask, turned, the particle colour, alpha 1), for A/B.
-                static const bool oldFlares = qEnvironmentVariableIsSet("IW8R_OLD_FLARES");
-                qd.screenMask = pm && pm->screenMask && !oldFlares;
-                qd.mask = qd.screenMask ? maskTexture(pm->maskFile) : -1;
-                const double angle = qd.screenMask ? 0.0 : fs.angle;  // a round mask: its turn would show nothing but the grime's
-                const double ca = std::cos(angle), sa = std::sin(angle);
-                // The occlusion test's depth: the source's, but no farther than just in front of the sky box (drawn 60,000
-                // units out, it writes depth): a sun at infinity is hidden by the world, not by the sky.
-                double occ[4];
-                const double srcDist = length(src - eye);
-                toClip(eye + (src - eye) * (std::min(srcDist, 50000.0) / std::max(srcDist, 1e-6)), occ);
-                const float srcAux[3] = {float(ndc[0]), float(ndc[1]), float(occ[3] > 1e-6 ? occ[2] / occ[3] : 1.0)};
-                const auto fc = [&](double sx, double sy, float u, float v) {
-                    // Rotated in screen-height units, then back to NDC x.
-                    const double hx = fs.half[0] * aspect * sx, hy = fs.half[1] * sy;
-                    app::ParticleVertex pv{float(fs.centre[0] + (hx * ca - hy * sa) / aspect), float(fs.centre[1] + hx * sa + hy * ca), 0.0f,
-                                           u, v, addColour(p, !oldFlares, 0), addColour(p, !oldFlares, 1), addColour(p, !oldFlares, 2),
-                                           oldFlares ? 1.0f : p.rgba[3]};
-                    std::copy(srcAux, srcAux + 3, pv.aux0), std::copy(area, area + 3, pv.aux1);
-                    return pv;
-                };
-                const app::ParticleVertex a = fc(-1, -1, 0, 1), b = fc(1, -1, 1, 1), cc = fc(1, 1, 1, 0), d = fc(-1, 1, 0, 0);
-                qd.v[0] = a, qd.v[1] = b, qd.v[2] = cc, qd.v[3] = a, qd.v[4] = cc, qd.v[5] = d;
-                quads.push_back(qd);
-                ++fxFlares_;
-                if (++fxParticles_ >= 20000) break;
-                continue;
-            }
-            const bool distortion = pm && pm->distortion;
-            int tex = pm ? particleTexture(matName, *pm) : -1;
-            if (distortion && tex < 0) continue;  // its image is still loading: nothing to move the scene by yet
-            if (tex == -2 && !plainQuads) continue;  // its image is still being read: nothing yet (a plain square before)
-            const bool lit = pm ? pm->lit : true;
-            int cols = pm ? std::max(1, pm->cols) : 1, rows = pm ? std::max(1, pm->rows) : 1;
-            if (tex < 0 && plainQuads) tex = whiteTex_, cols = rows = 1;
-            if (tex < 0) {
-                // No image at all (the material failed or has none): a soft round sprite of the particle's colour.
-                const std::string softKey = "\x0Asoft";
-                if (const auto it = texIds_.find(softKey); it != texIds_.end()) {
-                    tex = it->second;
-                } else {
-                    constexpr int kSide = 64;
-                    std::vector<uint8_t> px(size_t(kSide) * kSide * 4);
-                    for (int y = 0; y < kSide; ++y)
-                        for (int x = 0; x < kSide; ++x) {
-                            const double u = (x + 0.5) / kSide - 0.5, v = (y + 0.5) / kSide - 0.5;
-                            const double s = std::clamp(1.0 - 2.0 * std::sqrt(u * u + v * v), 0.0, 1.0);
-                            const uint8_t a = uint8_t(std::lround(255.0 * s * s));
-                            uint8_t* p = &px[(size_t(y) * kSide + size_t(x)) * 4];
-                            p[0] = p[1] = p[2] = a, p[3] = a;
-                        }
-                    tex = texIds_[softKey] = renderer_->createTexture(px.data(), kSide, kSide);
-                }
-                cols = rows = 1;
-                if (tex < 0) continue;
-            }
-            const Vec3 c = pl.origin + Vec3{p.pos[0], p.pos[1], p.pos[2]};
-            const double w = std::max(0.25, p.size2[0] * 0.5), h = std::max(0.25, p.size2[1] * 0.5);
-            Vec3 ax0, ax1;  // half extents
-            if (em.element == 10) {
-                // A tail: long along the velocity seen from the camera, behind the particle.
-                const Vec3 vel{p.vel[0], p.vel[1], p.vel[2]};
-                const double speed = length(vel);
-                Vec3 dir = speed > 1e-6 ? vel - fwd * dot(vel, fwd) : up;
-                dir = length(dir) > 1e-6 ? normalize(dir) : up;
-                const Vec3 side = normalize(cross(dir, fwd));
-                const double len = std::max(h, em.tailScaleWithVelocity ? speed * 0.033 * 0.5 : h);
-                ax0 = side * w, ax1 = dir * len;
-            } else if (em.element == 8) {
-                // An oriented sprite: the quaternion's y and z axes in the effect's frame (INFERRED facing).
-                const double* q = em.orientQuat;
-                const auto rot = [&](const double v[3], double o[3]) {
-                    const double qx = q[0], qy = q[1], qz = q[2], qw = q[3];
-                    const double tx = 2 * (qy * v[2] - qz * v[1]), ty = 2 * (qz * v[0] - qx * v[2]), tz = 2 * (qx * v[1] - qy * v[0]);
-                    o[0] = v[0] + qw * tx + (qy * tz - qz * ty), o[1] = v[1] + qw * ty + (qz * tx - qx * tz), o[2] = v[2] + qw * tz + (qx * ty - qy * tx);
-                };
-                const double ly[3] = {0, 1, 0}, lz[3] = {0, 0, 1};
-                double ry[3], rz[3];
-                rot(ly, ry), rot(lz, rz);
-                const auto world = [&](const double l[3]) {
-                    return Vec3{ax.x[0] * l[0] + ax.y[0] * l[1] + ax.z[0] * l[2], ax.x[1] * l[0] + ax.y[1] * l[1] + ax.z[1] * l[2],
-                                ax.x[2] * l[0] + ax.y[2] * l[1] + ax.z[2] * l[2]};
-                };
-                const double ca = std::cos(p.angle), sa = std::sin(p.angle);
-                const Vec3 a0 = world(ry), a1 = world(rz);
-                ax0 = (a0 * ca + a1 * sa) * w, ax1 = (a1 * ca - a0 * sa) * h;
-            } else {
-                // A billboard, turned by the particle's angle.
-                const double ca = std::cos(p.angle), sa = std::sin(p.angle);
-                ax0 = (right * ca + up * sa) * w, ax1 = (up * ca - right * sa) * h;
-            }
-            // The atlas cell, mirrored as the particle says.
-            const int frames = cols * rows;
-            const int f = vfxAtlasFrame(em, p, frames);
-            const int col = f % cols, row = f / cols;
-            float u0 = float(col) / float(cols), u1 = float(col + 1) / float(cols);
-            float v0 = float(row) / float(rows), v1 = float(row + 1) / float(rows);
-            if (p.flipU) std::swap(u0, u1);
-            if (p.flipV) std::swap(v0, v1);
-            Quad qd; qd.object = pl.object; qd.material = matName;
-            qd.depth = float(dot(c - eye, fwd));
-            qd.texture = tex;
-            qd.lit = lit && !distortion;
-            qd.distortion = distortion;
-            qd.screen = false;
-            for (int k = 0; k < 3; ++k) qd.emissive[k] = pm ? pm->emissive[k] : 1.0f;
-            qd.distScale[0] = distortion ? pm->distScale[0] : 0.0f, qd.distScale[1] = distortion ? pm->distScale[1] : 0.0f;
-            // aux0 / aux1: the centre and the grid's light of a sprite, the tangent frame of a distortion quad.
-            float aux0[3] = {float(c.x), float(c.y), float(c.z)}, aux1[3] = {-1, -1, -1};
-            if (distortion) {
-                const Vec3 T = length(ax0) > 1e-9 ? normalize(ax0) : right, B = length(ax1) > 1e-9 ? normalize(ax1) : up;
-                aux0[0] = float(T.x), aux0[1] = float(T.y), aux0[2] = float(T.z);
-                aux1[0] = float(B.x), aux1[1] = float(B.y), aux1[2] = float(B.z);
-                ++fxDistortion_;
-                fxDistAlphaMax_ = std::max(fxDistAlphaMax_, double(p.rgba[3]));
-                fxDistAlphaSum_ += p.rgba[3];
-            } else if (qd.lit && grid) {
-                const double at[3] = {c.x, c.y, c.z};
-                StockLgvSh sh;
-                if (sampleStockGpuGrid(*grid, at, sh)) {
-                    double rgb[3];
-                    stockLgvAverage(sh, rgb);
-                    for (int k = 0; k < 3; ++k) aux1[k] = float(rgb[k] * gridScale);
-                    ++fxGridLit_;
-                }
-            }
-            const auto corner = [&](double sx, double sy, float u, float v) {
-                const Vec3 q = c + ax0 * sx + ax1 * sy;
-                const bool unlit = !qd.lit && !distortion;
-                app::ParticleVertex pv{float(q.x), float(q.y), float(q.z), u, v, addColour(p, unlit, 0), addColour(p, unlit, 1), addColour(p, unlit, 2),
-                                       p.rgba[3]};
-                std::copy(aux0, aux0 + 3, pv.aux0), std::copy(aux1, aux1 + 3, pv.aux1);
-                return pv;
-            };
-            const app::ParticleVertex a = corner(-1, -1, u0, v1), b = corner(1, -1, u1, v1), cc = corner(1, 1, u1, v0), d = corner(-1, 1, u0, v0);
-            qd.v[0] = a, qd.v[1] = b, qd.v[2] = cc, qd.v[3] = a, qd.v[4] = cc, qd.v[5] = d;
-            quads.push_back(qd);
-            if (++fxParticles_ >= 20000) break;
-        }
+        emitEffect(pl, *def, at, seed, pl.origin, ax, dist, 0);
         if (fxParticles_ >= 20000) break;
+    }
+    if (!fxBatch_.v.empty()) {
+        fxBatch_.markAll();
+        fxBatch_.structural = fxBatch_.moved = true;
     }
     // Far to near, then runs of one sprite and kind become one batch (the premultiplied blend keeps the order right).
     std::stable_sort(quads.begin(), quads.end(), [](const Quad& x, const Quad& y) { return x.depth > y.depth; });

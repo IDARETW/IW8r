@@ -7,13 +7,43 @@ namespace iw8r {
 
 namespace {
 
-// Names the generated map script defines itself (map_script.cpp).
+// Names the generated map script defines itself (map_script.cpp, hot_channels.cpp, hud_fonts.cpp).
 const std::set<std::string>& reservedNames() {
-    static const std::set<std::string> names = {"main", "iw8r_place_fx", "iw8r_place_sounds", "iw8r_make_solid", "iw8r_hot_update",
-                                                "iw8r_hot_channels", "iw8r_hot_fx", "iw8r_hot_fx_get", "iw8r_hot_snd", "iw8r_hot_sun",
-                                                "iw8r_sun_shadow_range", "iw8r_anim_0", "iw8r_anim_1", "iw8r_anim_2",
-                                                "iw8r_vision_volumes", "iw8r_door_0", "iw8r_door_1"};
+    static const std::set<std::string> names = {
+        "main",
+        "iw8r_place_fx", "iw8r_spawn_fx", "iw8r_repeat_fx",
+        "iw8r_place_sounds", "iw8r_loop_sound", "iw8r_repeat_sound",
+        "iw8r_make_solid",
+        "iw8r_hot_update", "iw8r_hot_channels", "iw8r_hot_fx", "iw8r_hot_fx_get", "iw8r_hot_snd", "iw8r_hot_sun",
+        "iw8r_sun_shadow_range",
+        "iw8r_vision_volumes", "iw8r_vision_inside",
+        "iw8r_trigger_setup", "iw8r_trigger_add", "iw8r_trigger_shot", "iw8r_trigger_shot_wait",
+        "iw8r_trigger_box", "iw8r_trigger_plane", "iw8r_trigger", "iw8r_in_trigger",
+        "iw8r_trigger_holds", "iw8r_trigger_poll", "iw8r_hint_show",
+        "iw8r_link_visual", "iw8r_spin_pivot", "iw8r_spin_model", "iw8r_bob_model", "iw8r_nearest",
+        "iw8r_mode_rules", "iw8r_mode_rules_player", "iw8r_mode_ammo",
+        "iw8r_prefab_inst", "iw8r_pname",
+        "iw8r_font_init", "iw8r_font_text", "iw8r_font_clear", "iw8r_font_label",
+        "iw8r_anim_0", "iw8r_anim_1", "iw8r_anim_2",
+        "iw8r_door_0", "iw8r_door_1",
+        "iw8r_teleport_0", "iw8r_jump_0", "iw8r_damage_0", "iw8r_lift_0",
+    };
     return names;
+}
+
+bool isReservedName(const std::string& name) {
+    if (reservedNames().count(name)) return true;
+    if (name.rfind("iw8rp_", 0) == 0) return true;
+    for (const char* prefix : {"iw8r_anim_", "iw8r_door_", "iw8r_teleport_", "iw8r_jump_", "iw8r_damage_", "iw8r_lift_"}) {
+        const std::string p(prefix);
+        if (name.size() > p.size() && name.compare(0, p.size(), p) == 0) {
+            bool allDigits = true;
+            for (size_t i = p.size(); i < name.size(); ++i)
+                allDigits = allDigits && std::isdigit(static_cast<unsigned char>(name[i]));
+            if (allDigits) return true;
+        }
+    }
+    return false;
 }
 
 bool identStart(char c) { return std::isalpha(static_cast<unsigned char>(c)) || c == '_'; }
@@ -146,7 +176,7 @@ std::vector<ScriptIssue> checkUserScript(const std::string& text) {
     std::set<std::string> seen;
     for (const std::string& n : scriptFunctionNames(text)) {
         if (n == "user_main") hasMain = true;
-        if (reservedNames().count(n))
+        if (isReservedName(n))
             issues.push_back({0, true, n + "() is defined by the generated map script; rename yours"});
         if (!seen.insert(n).second) issues.push_back({0, true, n + "() is defined twice"});
     }
@@ -196,22 +226,25 @@ const std::vector<ScriptSnippet>& scriptSnippets() {
          "    }\n"
          "}\n"},
         {"rotating_door", "Rotating door (swings on a trigger)",
-         "// Rotating door: `doorName` turns by `yaw` degrees when `triggerName` is touched, then turns back.\n"
-         "// Give the script_brushmodel an origin brush at the hinge. In user_main():\n"
-         "//     level thread iw8r_swing_door(\"gate1\", \"gate1_trigger\", 90, 1, 3);\n"
-         "iw8r_swing_door(doorName, triggerName, yaw, moveTime, holdTime)\n"
+         "// Rotating door: `doorName` swings by `yaw` degrees around a pivot script_origin at `hingePos` when\n"
+         "// `triggerName` is touched, then turns back (IW8 drops origin brushes; for a no-script door, set\n"
+         "// iw8r_door and iw8r_hinge on the script_brushmodel). In user_main():\n"
+         "//     level thread iw8r_swing_door(\"gate1\", \"gate1_trigger\", (128, 64, 0), 90, 1, 3);\n"
+         "iw8r_swing_door(doorName, triggerName, hingePos, yaw, moveTime, holdTime)\n"
          "{\n"
          "    level endon(\"game_ended\");\n"
          "    door = getent(doorName, \"targetname\");\n"
-         "    trig = getent(triggerName, \"targetname\");\n"
+         "    trig = iw8r_trigger(triggerName);\n"
          "    if (!isdefined(door) || !isdefined(trig))\n"
          "        return;\n"
+         "    pivot = spawn(\"script_origin\", hingePos);\n"
+         "    door linkto(pivot);\n"
          "    for (;;)\n"
          "    {\n"
          "        trig waittill(\"trigger\");\n"
-         "        door rotateyaw(yaw, moveTime);\n"
+         "        pivot rotateyaw(yaw, moveTime);\n"
          "        wait moveTime + holdTime;\n"
-         "        door rotateyaw(0 - yaw, moveTime);\n"
+         "        pivot rotateyaw(0 - yaw, moveTime);\n"
          "        wait moveTime + 0.1;\n"
          "    }\n"
          "}\n"},

@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <std_include.hpp>
+#include "../iw8_map_structs.h"
 #include "../iw8_structs.h"
 #include "../zone/iw8_zone.h"
 #include "../zone/maps_write.h"
@@ -270,12 +271,43 @@ void emitGlassMapBody(ZoneWriter &zw, const char *assetName, const replayrender:
     // Replay Load_GlassWorld DF31E0 calls AllocLoad_G_GlassData DFC9E0
     // (alignment 7), then Load_G_GlassData DFD220 (40 bytes). G_InitGlass
     // 1213500 always dereferences this object even with no breakable pieces.
+    // Build optional G_GlassName groups for named glass panes (G_InitGlass 0x141213500).
+    struct GlassNameGroup
+    {
+        std::string name;
+        std::vector<uint16_t> pieces;
+    };
+    std::vector<GlassNameGroup> nameGroups;
+    for (uint32_t piece = 0; piece < pieceCount && piece <= 0xFFFFu; ++piece)
+    {
+        const std::string &paneName = mesh.glassPanes[piece].name;
+        if (paneName.empty())
+            continue;
+        auto it = std::find_if(nameGroups.begin(), nameGroups.end(),
+                               [&](const GlassNameGroup &g) { return g.name == paneName; });
+        if (it == nameGroups.end())
+        {
+            nameGroups.push_back({paneName, {static_cast<uint16_t>(piece)}});
+        }
+        else
+        {
+            it->pieces.push_back(static_cast<uint16_t>(piece));
+        }
+    }
+
     zw.align(7);
     uint8_t glassData[40]{};
     if (pieceCount)
     {
         stamp64(glassData, 0x00, PTR_FOLLOWS);
         stamp32(glassData, 0x08, pieceCount);
+        stamp16(glassData, 0x0C, mesh.glassDamageToWeaken ? mesh.glassDamageToWeaken : uint16_t{25});
+        stamp16(glassData, 0x0E, mesh.glassDamageToDestroy ? mesh.glassDamageToDestroy : uint16_t{50});
+        if (!nameGroups.empty())
+        {
+            stamp32(glassData, 0x10, static_cast<uint32_t>(nameGroups.size()));
+            stamp64(glassData, 0x18, PTR_FOLLOWS);
+        }
         stamp64(glassData, 0x20, PTR_FOLLOWS);
     }
     zw.write(glassData, sizeof(glassData));
@@ -284,6 +316,31 @@ void emitGlassMapBody(ZoneWriter &zw, const char *assetName, const replayrender:
         zw.align(3);
         std::vector<uint8_t> pieces(size_t(pieceCount) * 12);
         zw.write(pieces.data(), pieces.size());
+
+        if (!nameGroups.empty())
+        {
+            // Load_G_GlassName array: each G_GlassName is 24 bytes:
+            //   +0x00 char* nameStr, +0x08 scr_string_t name, +0x0C u16 pieceCount, +0x10 u16* pieceIndices
+            zw.align(7);
+            for (const auto &g : nameGroups)
+            {
+                uint8_t rec[24]{};
+                stamp64(rec, 0x00, PTR_FOLLOWS);
+                stamp16(rec, 0x0C, static_cast<uint16_t>(g.pieces.size()));
+                if (!g.pieces.empty())
+                    stamp64(rec, 0x10, PTR_FOLLOWS);
+                zw.write(rec, sizeof(rec));
+            }
+            for (const auto &g : nameGroups)
+            {
+                zw.writeStr(g.name.c_str());
+                if (!g.pieces.empty())
+                {
+                    zw.align(1);
+                    zw.write(g.pieces.data(), g.pieces.size() * sizeof(uint16_t));
+                }
+            }
+        }
 
         zw.align(7);
         uint8_t tree[24]{};
@@ -350,6 +407,7 @@ void emitGfxMapBody(ZoneWriter &zw, const char *assetName, const std::string &me
     stamp64(gw.data(), kGW_name, PTR_FOLLOWS);
     stamp64(gw.data(), kGW_baseName, PTR_FOLLOWS);
     stamp32(gw.data(), kGW_bspVersion, 243);
+    stamp32(gw.data(), iw8::maps::GFXWORLD_RETAIL_CHECKSUM_OFFSET, iw8::maps::mapChecksumForAsset(assetName));
     stamp32(gw.data(), 0x14, sunPrimaryLightIndex); // lastSunPrimaryLightIndex
     stamp32(gw.data(), 0x18, primaryLightCount);
     // The mutable and scriptable ranges follow the static lights; stock Replay worlds use these end indices even when

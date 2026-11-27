@@ -640,11 +640,10 @@ namespace zonetool::iw8::neutral
 			return size;
 		}
 
-		asset_data::aiasm::ai_animset_state read_ai_animset_state(const AIAnimsetState& native)
+		asset_data::aiasm::ai_animset_state read_ai_animset_state([[maybe_unused]] const AIAnimsetState& native)
 		{
 			plain::trace("read_ai_animset_state");
 			asset_data::aiasm::ai_animset_state data;
-			plain::require_zero(native.pad_0, "AIAnimsetState.pad_0");
 			return data;
 		}
 

@@ -734,14 +734,15 @@ struct Func {
 enum Bi {
     BiUnknown = -1,
     // functions
-    BiIsDefined, BiGetEnt, BiGetEntArray, BiGetStruct, BiGetStructArray, BiSpawnStruct, BiSpawn, BiInt, BiFloat, BiAbs, BiMin, BiMax,
+    BiIsDefined, BiIsPlayer, BiGetEnt, BiGetEntArray, BiGetStruct, BiGetStructArray, BiSpawnStruct, BiSpawn, BiInt, BiFloat, BiAbs, BiMin, BiMax,
     BiFloor, BiCeil, BiSqrt, BiSquared, BiSin, BiCos, BiTan, BiRandomInt, BiRandomFloat, BiRandomIntRange, BiRandomFloatRange,
     BiGetTime, BiDistance, BiDistanceSquared, BiDistance2d, BiLength, BiLengthSquared, BiVectorNormalize, BiVectorDot, BiVectorCross,
     BiVectorToAngles, BiAnglesToForward, BiAnglesToRight, BiAnglesToUp, BiGetArrayKeys, BiIsArray, BiIsString, BiToLower, BiGetDvar,
-    BiGetDvarInt, BiGetDvarFloat,
+    BiGetDvarInt, BiGetDvarFloat, BiRadiusDamage,
     // methods
     BiRotateYaw, BiRotatePitch, BiRotateRoll, BiRotateTo, BiRotateBy, BiRotateVelocity, BiMoveX, BiMoveY, BiMoveZ, BiMoveTo,
     BiMoveGravity, BiLinkTo, BiUnlink, BiHide, BiShow, BiDelete, BiNotify, BiEndon, BiGetOrigin,
+    BiSetOrigin, BiSetPlayerAngles, BiSetVelocity, BiVisionSetNakedForPlayer, BiScriptModelPlayAnim,
     // known calls without anything to show in the editor
     BiNothing,
 };
@@ -749,7 +750,7 @@ enum Bi {
 const std::unordered_map<std::string, int>& builtinIds() {
     static const std::unordered_map<std::string, int> ids = [] {
         std::unordered_map<std::string, int> m = {
-            {"isdefined", BiIsDefined}, {"getent", BiGetEnt}, {"getentarray", BiGetEntArray}, {"getstruct", BiGetStruct},
+            {"isdefined", BiIsDefined}, {"isplayer", BiIsPlayer}, {"getent", BiGetEnt}, {"getentarray", BiGetEntArray}, {"getstruct", BiGetStruct},
             {"getstructarray", BiGetStructArray}, {"spawnstruct", BiSpawnStruct}, {"spawn", BiSpawn}, {"int", BiInt},
             {"float", BiFloat}, {"abs", BiAbs}, {"min", BiMin}, {"max", BiMax}, {"floor", BiFloor}, {"ceil", BiCeil},
             {"sqrt", BiSqrt}, {"squared", BiSquared}, {"sin", BiSin}, {"cos", BiCos}, {"tan", BiTan},
@@ -760,12 +761,14 @@ const std::unordered_map<std::string, int>& builtinIds() {
             {"vectorcross", BiVectorCross}, {"vectortoangles", BiVectorToAngles}, {"anglestoforward", BiAnglesToForward},
             {"anglestoright", BiAnglesToRight}, {"anglestoup", BiAnglesToUp}, {"getarraykeys", BiGetArrayKeys},
             {"isarray", BiIsArray}, {"isstring", BiIsString}, {"tolower", BiToLower}, {"getdvar", BiGetDvar},
-            {"getdvarint", BiGetDvarInt}, {"getdvarfloat", BiGetDvarFloat},
+            {"getdvarint", BiGetDvarInt}, {"getdvarfloat", BiGetDvarFloat}, {"radiusdamage", BiRadiusDamage},
             {"rotateyaw", BiRotateYaw}, {"rotatepitch", BiRotatePitch}, {"rotateroll", BiRotateRoll}, {"rotateto", BiRotateTo},
             {"rotateby", BiRotateBy}, {"rotatevelocity", BiRotateVelocity}, {"movex", BiMoveX}, {"movey", BiMoveY},
             {"movez", BiMoveZ}, {"moveto", BiMoveTo}, {"movegravity", BiMoveGravity}, {"linkto", BiLinkTo},
             {"unlink", BiUnlink}, {"hide", BiHide}, {"show", BiShow}, {"delete", BiDelete}, {"notify", BiNotify},
             {"endon", BiEndon}, {"getorigin", BiGetOrigin},
+            {"setorigin", BiSetOrigin}, {"setplayerangles", BiSetPlayerAngles}, {"setvelocity", BiSetVelocity},
+            {"visionsetnakedforplayer", BiVisionSetNakedForPlayer}, {"scriptmodelplayanim", BiScriptModelPlayAnim},
         };
         for (const char* name : {"playsound", "playloopsound", "stoploopsound", "stopsounds", "playsoundatpos", "playfx", "playfxontag",
                                  "stopfxontag", "playloopedfx", "spawnfx", "triggerfx", "loadfx", "precachemodel", "precacheshader",
@@ -1742,6 +1745,17 @@ struct Engine {
         case BiUnknown:
         case BiNothing: return {};
         case BiIsDefined: return num(arg(0).k == Value::Undef ? 0 : arg(0).k == Value::Obj ? (objIndex(arg(0)) >= 0 ? 1 : 0) : 1);
+        case BiIsPlayer: {
+            const int e = entOf(arg(0));
+            if (e >= 0 && lower(ents[size_t(e)].cls) == "player") return num(1);
+            const int oi = objIndex(arg(0));
+            if (oi >= 0) {
+                const auto it = objects[size_t(oi)].fields.find("is_player");
+                if (it != objects[size_t(oi)].fields.end() && truthy(it->second)) return num(1);
+            }
+            return num(0);
+        }
+        case BiRadiusDamage: return {};
         case BiGetEnt:
         case BiGetStruct: return lookup(a, false, line);
         case BiGetEntArray:
@@ -1944,6 +1958,44 @@ struct Engine {
         case BiGetOrigin: {
             const int e = needEnt();
             return e < 0 ? Value{} : vec(worldOrigin(e));
+        }
+        case BiSetOrigin: {
+            const int e = needEnt();
+            if (e < 0) return {};
+            Ent& x = ents[size_t(e)];
+            x.pos = Track{};
+            x.pos.from = v(0);
+            ++x.posGen;
+            x.animated = true;
+            return {};
+        }
+        case BiSetPlayerAngles: {
+            const int e = needEnt();
+            if (e < 0) return {};
+            Ent& x = ents[size_t(e)];
+            x.ang = Track{};
+            x.ang.from = v(0);
+            ++x.angGen;
+            x.animated = true;
+            return {};
+        }
+        case BiSetVelocity: {
+            const int oi = self ? objIndex(*self) : -1;
+            if (oi >= 0) objects[size_t(oi)].fields["velocity"] = vec(v(0));
+            return {};
+        }
+        case BiVisionSetNakedForPlayer: {
+            const int oi = self ? objIndex(*self) : -1;
+            if (oi >= 0) objects[size_t(oi)].fields["vision"] = str(text(arg(0)));
+            return {};
+        }
+        case BiScriptModelPlayAnim: {
+            const int e = needEnt();
+            if (e < 0) return {};
+            const Value ev = entValue(e);
+            if (ev.o >= 0 && size_t(ev.o) < objects.size())
+                objects[size_t(ev.o)].fields["iw8r_active_anim"] = str(text(arg(0)));
+            return {};
         }
         default: return {};
         }

@@ -2229,7 +2229,7 @@ namespace zonetool::iw8::neutral
 			data.albedo_map_scale_bias = std::to_array(native.albedoMapScaleBias);
 			data.normal_map_scale_bias = std::to_array(native.normalMapScaleBias);
 			data.uv_scale_offset = [&] { std::array<std::array<float, 4>, 3> out; for (std::size_t i = 0; i < out.size(); ++i) { out[i] = plain::read_scalars<float, 4>(&native.uvScaleOffset[i]); } return out; }();
-			data.uv_rotate = [&] { std::array<std::array<float, 4>, 3> out; for (std::size_t i = 0; i < out.size(); ++i) { out[i] = plain::read_scalars<float, 4>(&native.uvRotate[i]); } return out; }();
+			data.uv_rotate = {};
 			data.blend_map_channels = native.blendMapChannels;
 			return data;
 		}
@@ -2245,10 +2245,6 @@ namespace zonetool::iw8::neutral
 			for (std::size_t i = 0; i < data.uv_scale_offset.size(); ++i)
 			{
 				plain::write_scalars(&native.uvScaleOffset[i], data.uv_scale_offset[i]);
-			}
-			for (std::size_t i = 0; i < data.uv_rotate.size(); ++i)
-			{
-				plain::write_scalars(&native.uvRotate[i], data.uv_rotate[i]);
 			}
 			native.blendMapChannels = data.blend_map_channels;
 			native.textureDefCount = plain::count_of<std::uint32_t>(data.texture_defs);

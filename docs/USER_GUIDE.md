@@ -79,8 +79,9 @@ can be changed in **Edit > Keyboard Shortcuts**.
 - Drag outside the selection to resize the nearest faces. Press **V** for vertex mode and **E** for edge mode.
 - The toolbar has the **Clipper**, **CSG Hollow** and **CSG Subtract**. The **Brush** menu has extrude, chamfer,
   inset, bridge, arbitrary rotation and scale, mirror, array and radial duplicate, align and distribute.
-- **Brush > Auto Caulk** applies caulk to faces that touch other brushes.
+- **Brush > Auto Caulk** applies caulk to solid faces hidden behind other solid brushes (glass and translucent faces are preserved and do not occlude adjacent surfaces).
 - **Ctrl+M** makes a brush detail, so it does not seal the map.
+- Solid brushes preserve per-face materials and Replay 1.20 physics materials in compiled collision.
 
 ### Tool materials
 
@@ -90,10 +91,15 @@ can be changed in **Edit > Keyboard Shortcuts**.
 |---|---|
 | caulk, nodraw | Invisible, still solid |
 | clip | Blocks players and bullets |
-| player clip | Blocks players only |
-| weapon clip | Blocks bullets only |
+| clip_player / player clip | Blocks players only |
+| clip_weapon / weapon clip | Blocks bullets/shots only |
+| clip_missile | Blocks missiles and projectiles |
+| clip_vehicle | Blocks vehicles |
+| clip_ai | Blocks AI |
+| clip_nav / nav_blocker | Blocks AI navigation mesh generation |
+| clip_mantle, clip_use, clip_playernosight, clip_item, clip_explosion, clip_sound | Specialized IW8 physics content clip filters |
 | ladder | Invisible and climbable |
-| water | Water volume |
+| water | Translucent animated reflective water volume |
 | hint, skip | Invisible and not solid |
 | sky | Draws the sky |
 
@@ -104,7 +110,7 @@ The **Primitives** menu creates stairs, arches, cylinders, cones, spheres, ramps
 
 ### Patches and terrain
 
-- **Shift+P** creates a patch. The **Patch** menu edits rows and columns, caps, welds, thickens and inverts patches.
+- **Shift+P** creates a patch. The **Patch** menu edits rows and columns, caps, welds, thickens and inverts patches. Bezier patches and terrain compile into map collision meshes with surface types.
 - **Patch > Create Terrain** creates a terrain mesh. The terrain brush raises, lowers, smooths and flattens it, and
   **Patch > Height Map** imports or exports a height map and applies erosion.
 - **Patch > Road Through Selected Points** lays a road over the terrain.
@@ -123,8 +129,7 @@ The first time a stock material is used, its images are read from the game, so i
 ### Custom textures and materials
 
 - **File > Import Texture** creates a material from a PNG, TGA, JPG or BMP image.
-- **File > New Custom Material** opens the Material Editor, where you set the colour, normal and specular images,
-  the surface type, transparency, glow and tint. The preview updates as you work.
+- **File > New Custom Material** opens the Material Editor, where you set the colour, normal, specular, detail and mask images, UV scrolling (`uvAnim`, `maskUvAnim`), transmission, emissive colour, water shading, surface type, transparency, glow and tint. The preview updates as you work.
 - Custom materials are stored in the `materials` folder next to your map.
 
 ### Live techsets and shader graphs
@@ -205,7 +210,7 @@ A prefab bundle is a folder that holds brushes, entities, an optional script and
 places it as a single object.
 
 - Drag a prefab from the **Prefabs** panel into the camera, or double-click it.
-- Select a placed prefab to edit its parameters in the Entity inspector.
+- Select a placed prefab to edit its parameters in the Entity inspector. Rotating or scaling a prefab placement automatically transforms internal `iw8r_hinge`, `iw8r_door` slide vectors, `iw8r_jump` launch vectors, `iw8r_lift`/`iw8r_bob` offsets, `trigger_radius` dimensions, and `fx_origin` damage radii.
 - **Edit > Enter Prefab** (Ctrl+Shift+E) opens the prefab for editing. **Edit > Leave Prefab** (Ctrl+Shift+Q)
   returns to the map, and every placement shows the change.
 - **File > Save Selection As Prefab** creates a new bundle from the selection.
@@ -230,6 +235,7 @@ connections. **Help > Entity Class Reference** describes every entity class.
 | Team Deathmatch | Two team spawns and a start spawn for each team |
 | Free-for-all | Two free-for-all spawns |
 | Domination | Domination spawns, both start spawns and three flags |
+| Hardpoint (`koth`) | Hardpoint spawns and Hardpoint zone triggers |
 | Search and Destroy | Attacker and defender spawns, two bomb sites and the bomb |
 | Capture the Flag | Spawns, both start spawns, and a flag, trigger and zone for each team |
 
@@ -259,8 +265,7 @@ build log open the script at the matching line.
 
 ### Lights
 
-Place `light`, `light_spot` or `light_omni` entities and set their colour, intensity, radius, cone and shadows in the
-Entity inspector. **Tools > IES Profile Browser** applies light profiles to spot lights.
+Place `light`, `light_spot` or `light_omni` entities and set their colour, intensity, radius, bulb length (`iw8r_bulb_length`), cone, dynamic shadows and shadow tuning (`iw8r_dynamic_shadows`, `iw8r_shadow_softness`, `iw8r_shadow_area`, `iw8r_shadow_near_bias`, `iw8r_up`) in the Entity inspector. **Tools > IES Profile Browser** applies light profiles to spot lights. Local map lights also contribute to light-grid baking for indoor props and viewmodels.
 
 ### Sun, sky and atmosphere
 
@@ -285,11 +290,11 @@ Entity inspector. **Tools > IES Profile Browser** applies light profiles to spot
 ## 9. Effects and sound
 
 - Drag an effect from the **Effects** panel into the camera to place an `fx_origin`. Set `delay` to repeat it, or
-  leave it empty for a continuous effect. **View > Effect Preview in Camera** plays effects in the editor.
-- **Tools > Effect Editor** creates your own particle effects.
+  leave it empty for a continuous effect. **View > Effect Preview in Camera** plays effects in the editor (including inside prefabs and in Play mode).
+- **Tools > Effect Editor** creates your own particle effects, including sprite-sheet atlas animation (`atlasRows`, `atlasCols`, `atlasFps`).
 - Drag a sound from the **Sounds** panel to place a `sound_emitter`. Your own WAV and MP3 files in the `sounds`
-  folder next to the map become sounds of the map, and **Tools > Sound Settings** sets their volume and range.
-- Trigger brushes with `iw8r_audio_zone` change the reverb while players are inside.
+  folder next to the map become sounds of the map, and **Tools > Sound Settings** sets their volume, range, and multi-variant sound pools.
+- Trigger brushes with `iw8r_audio_zone` (including non-axial convex shapes) change the reverb, ambient bed, and oneshots (using either custom sounds or stock aliases) while players are inside. `script_origin` entities with `iw8r_audio_blend` or `iw8r_audio_pa_speaker` define zone blend nodes and PA speakers. Sound Preview auditions overlapping zones and custom sounds live.
 
 ## 10. Previewing your map
 

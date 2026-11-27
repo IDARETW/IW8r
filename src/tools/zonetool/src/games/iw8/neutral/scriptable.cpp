@@ -1072,7 +1072,7 @@ namespace zonetool::iw8::neutral
 			data.base = plain::read_single(native.base, [&](const auto& item) { return read_scriptable_event_base_def(item); });
 			data.tag_name = plain::read_string(native.tagName);
 			data.scr_tag_name = plain::read_script_string(native.scrTagName);
-			data.hide = native.hide;
+			data.hide = false;
 			data.allow_missing_tag = native.allowMissingTag;
 			data.hide_show_children = native.hideShowChildren;
 			return data;
@@ -1083,7 +1083,6 @@ namespace zonetool::iw8::neutral
 			native.base = plain::write_single<ScriptableEventBaseDef>(data.base, memory, [&](auto& out, const auto& in) { write_scriptable_event_base_def(out, in, resolve, memory); });
 			native.tagName = plain::write_string(memory, data.tag_name);
 			native.scrTagName = static_cast<scr_string_t>(plain::write_script_string(data.scr_tag_name));
-			native.hide = data.hide;
 			native.allowMissingTag = data.allow_missing_tag;
 			native.hideShowChildren = data.hide_show_children;
 		}

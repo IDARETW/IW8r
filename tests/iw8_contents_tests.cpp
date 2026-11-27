@@ -52,11 +52,15 @@ TEST(iw8_contents_tool_materials) {
     const Case cases[] = {
         {"clip", 0x1, true, false},
         {"clip_player", 0x10000, true, false},
-        {"clip_weapon", 0x400, true, false},
+        {"clip_weapon", 0x2000, true, false},
+        {"clip_item", 0x400, true, false},
         {"clip_nosight", 0x1000, true, false},
-        {"clip_missile", 0x0, false, false},
+        {"clip_missile", 0x80, true, false},
+        {"clip_vehicle", 0x200, true, false},
+        {"clip_ai", 0x20000, true, false},
+        {"clip_nav", 0x0, false, false},
         {"ladder", 0x1, true, false},
-        {"water", 0x20, true, true},  // water bit, not solid (research 62)
+        {"water", 0x20, true, true},  // physicscontents_water 0x20
         {"nodraw", 0x1, true, false},
         {"caulk", 0x1, true, false},
         {"trigger", kIw3TriggerContents, false, false},
@@ -73,6 +77,7 @@ TEST(iw8_contents_tool_materials) {
         CHECK(bc.rendered == c.rendered);
         CHECK(!bc.reason.empty());
     }
+    CHECK(brushContents(brushOf(brushText(kBox, "clip_nav"))).navBlocker);
 }
 
 // Match is on the last path component, case-insensitively, and whole names only.
@@ -108,7 +113,15 @@ TEST(iw8_contents_other_directives) {
 
     const BrushContents wc = brushContents(brushOf(brushText(kBox, "tm2co/me_plaster", "contents weaponClip;")));
     CHECK(wc.collides);
-    CHECK(wc.contents == (0x1 | 0x400));
+    CHECK(wc.contents == (0x1 | 0x2000));
+
+    const BrushContents mc = brushContents(brushOf(brushText(kBox, "tm2co/me_plaster", "contents missileClip;")));
+    CHECK(mc.collides);
+    CHECK(mc.contents == (0x1 | 0x80));
+
+    const BrushContents nb = brushContents(brushOf(brushText(kBox, "tm2co/me_plaster", "contents navBlocker;")));
+    CHECK(!nb.collides);
+    CHECK(nb.navBlocker);
 
     const BrushContents unknown = brushContents(brushOf(brushText(kBox, "tm2co/me_plaster", "contents zzz;")));
     CHECK(unknown.collides);

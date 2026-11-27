@@ -151,6 +151,37 @@ void putU32(std::vector<uint8_t>& bytes, size_t offset, uint32_t value) {
     for (size_t i = 0; i < 4; ++i) bytes[offset + i] = static_cast<uint8_t>(value >> (8 * i));
 }
 
+bool hasManualCompassRotation(const MapFile& map) {
+    for (const Entity& e : map.entities) {
+        if (!e.isWorldspawn()) continue;
+        if (const std::string* v = e.value("iw8r_compass_rotation"); v && !v->empty()) {
+            char* end = nullptr;
+            const long r = std::strtol(v->c_str(), &end, 10);
+            while (end && (*end == ' ' || *end == '\t')) ++end;
+            if (end != v->c_str() && end && *end == 0 && (r == 0 || r == 90 || r == 180 || r == 270)) return true;
+        }
+        break;
+    }
+    return false;
+}
+
+// Projects a world XY point into the minimap image rotated so `yawDeg` (world CCW degrees from +X) points up (-row).
+void minimapPixelYaw(const AABB& rect, int size, double yawDeg, double x, double y, double& column, double& row) {
+    constexpr double kPi = 3.14159265358979323846;
+    const double rad = yawDeg * (kPi / 180.0);
+    const double c = std::cos(rad), s = std::sin(rad);
+    const double cx = (rect.mins.x + rect.maxs.x) * 0.5;
+    const double cy = (rect.mins.y + rect.maxs.y) * 0.5;
+    const double span = rect.maxs.x - rect.mins.x;
+    const double scale = span > 0 ? size / span : 0.0;
+    const double dx = x - cx, dy = y - cy;
+    // North = (cos(yaw), sin(yaw)) points up (-row); East = (sin(yaw), -cos(yaw)) points right (+column).
+    const double east = dx * s - dy * c;
+    const double north = dx * c + dy * s;
+    column = size * 0.5 + east * scale;
+    row = size * 0.5 - north * scale;
+}
+
 }  // namespace
 
 int minimapNorthQuarter(double yaw, bool* exact) {
@@ -175,24 +206,16 @@ double mapNorthYaw(const MapFile& map) {
 }
 
 int minimapQuarterForBuild(const MapFile& map, std::string* warning) {
-    for (const Entity& e : map.entities) {
-        if (!e.isWorldspawn()) continue;
-        if (const std::string* v = e.value("iw8r_compass_rotation"); v && !v->empty()) {
-            char* end = nullptr;
-            const long r = std::strtol(v->c_str(), &end, 10);
-            while (end && (*end == ' ' || *end == '\t')) ++end;
-            if (end != v->c_str() && end && *end == 0 && (r == 0 || r == 90 || r == 180 || r == 270)) return 0;
-        }
-        break;
-    }
+    if (hasManualCompassRotation(map)) return 0;
     bool exact = true;
     const double yaw = mapNorthYaw(map);
     const int quarter = minimapNorthQuarter(yaw, &exact);
     if (exact) return quarter;
     if (warning) {
         char buf[200];
-        std::snprintf(buf, sizeof buf, "northyaw %.6g is not a quarter turn: the minimap is drawn with +Y up, and the compass's north will not "
-                                       "point along it (use 0, 90, 180 or 270)", yaw);
+        std::snprintf(buf, sizeof buf,
+                      "northyaw %.6g is not a quarter turn: the minimap is drawn rotated to northyaw %.6g (the converter leaves it unrotated)",
+                      yaw, yaw);
         *warning = buf;
     }
     return 1;
@@ -215,13 +238,44 @@ MinimapImage renderMinimap(const MapFile& map, int size, int northQuarter) {
     img.width = img.height = normalizeSize(size);
     img.rgba.assign(size_t(img.width) * size_t(img.height) * 4, 0);
 
+    bool customYaw = false;
+    double yawDeg = 90.0;
+    if (!hasManualCompassRotation(map)) {
+        bool exact = true;
+        const double y = mapNorthYaw(map);
+        minimapNorthQuarter(y, &exact);
+        if (!exact) {
+            customYaw = true;
+            yawDeg = y;
+        }
+    }
+
     const std::vector<Tri> tris = drawnTriangles(map);
     const std::optional<AABB> corners = cornerRegion(map);
     AABB rect;
-    if (corners)
+    if (corners) {
         rect = squareAbout(*corners);
-    else if (!tris.empty())
+    } else if (!tris.empty()) {
         rect = squareAbout(geometryBox(tris));
+        if (customYaw) {
+            // Fit the rotated geometry so non-quarter turns do not clip corners.
+            constexpr double kPi = 3.14159265358979323846;
+            const double rad = yawDeg * (kPi / 180.0);
+            const double c = std::cos(rad), s = std::sin(rad);
+            const Vec3 ctr = rect.center();
+            double half = 0.0;
+            for (const Tri& t : tris)
+                for (const Vec3* v : {&t.a, &t.b, &t.c}) {
+                    const double dx = v->x - ctr.x, dy = v->y - ctr.y;
+                    half = std::max(half, std::fabs(dx * s - dy * c));
+                    half = std::max(half, std::fabs(dx * c + dy * s));
+                }
+            if (half > 0.0) {
+                rect.mins = {ctr.x - half, ctr.y - half, rect.mins.z};
+                rect.maxs = {ctr.x + half, ctr.y + half, rect.maxs.z};
+            }
+        }
+    }
     if (tris.empty()) {
         img.worldRect = rect;
         return img;
@@ -242,10 +296,13 @@ MinimapImage renderMinimap(const MapFile& map, int size, int northQuarter) {
     if (!(span > 0.0)) return img;
     const int n = img.width;
 
-    // North up (minimap.h): quarter 0 gives column = (maxY - y) * scale, row = (maxX - x) * scale.
+    // North up (minimap.h): exact quarter turns use minimapPixel; arbitrary northyaw rotates continuously.
     const auto toPixel = [&](const Vec3& p) {
         double column = 0, row = 0;
-        minimapPixel(rect, n, img.northQuarter, p.x, p.y, column, row);
+        if (customYaw)
+            minimapPixelYaw(rect, n, yawDeg, p.x, p.y, column, row);
+        else
+            minimapPixel(rect, n, img.northQuarter, p.x, p.y, column, row);
         return Vec3{column, row, p.z};
     };
 

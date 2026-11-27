@@ -42,24 +42,53 @@ struct ReverbRoom {
 const std::vector<ReverbRoom>& reverbRooms();
 const ReverbRoom* findReverbRoom(const std::string& roomType);
 
+struct AudioTriggerSlab {
+    Vec3 dir;
+    double midPoint = 0;
+    double halfSize = 0;
+};
+
+struct AudioTriggerHull {
+    AABB bounds;
+    std::vector<AudioTriggerSlab> slabs;  // non-axial bounding planes (empty for axis-aligned boxes)
+};
+
 struct AudioZone {
     std::string name;       // zone name (lower case)
     std::string roomType;   // empty: no reverb
     double dry = 1, wet = 0.5, fade = 0.66;
 
     AABB bounds;            // trigger box (the map zone: the whole map)
+    std::vector<AudioTriggerHull> hulls;  // convex trigger hulls (supports non-axial & multi-brush zones)
     double priority = 30;
-    std::string ambient;    // ambientStream: a custom sound name, "" for none
+    std::string ambient;    // ambientStream: custom sound or stock sound alias, "" for none
     double oneShotMin = 6, oneShotMax = 12;                  // seconds between ambient one-shots
-    std::vector<std::pair<std::string, double>> oneShots;    // (custom sound, weight)
+    std::vector<std::pair<std::string, double>> oneShots;    // (sound alias, weight)
     bool interior = false;  // the "interior" occlusion / filter presets
+};
+
+struct AudioBlendNode {
+    Vec3 pointA;
+    Vec3 pointB;
+    int triggerA = 0;
+    int triggerB = 0;
+};
+
+struct AudioPASpeaker {
+    Vec3 origin;
+    std::string name;
 };
 
 struct AudioSetup {
     std::string mapId;
     AudioZone mapZone;              // name = mapId, priority 0
     std::vector<AudioZone> zones;   // from iw8r_audio_zone triggers
-    bool any() const { return !mapZone.roomType.empty() || !mapZone.ambient.empty() || !mapZone.oneShots.empty() || !zones.empty(); }
+    std::vector<AudioBlendNode> blendNodes;
+    std::vector<AudioPASpeaker> paSpeakers;
+    bool any() const {
+        return !mapZone.roomType.empty() || !mapZone.ambient.empty() || !mapZone.oneShots.empty() ||
+               !zones.empty() || !blendNodes.empty() || !paSpeakers.empty();
+    }
 };
 
 // Reads the keys above. worldBounds is the map's extent (the map zone's trigger). Problems (unknown room type, a zone

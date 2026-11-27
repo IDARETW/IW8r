@@ -226,7 +226,8 @@ bool buildLightGrid(const LightGridInput& in, LightGridFiles& out, std::string* 
 }
 
 void lightGridSamplesAt(const RayBvh& bvh, const std::vector<Vec3>& albedos, const Vec3& sunToward, const Vec3& sunColour, const Vec3& sky,
-                        double reach, const Vec3& p, std::array<std::array<float, 3>, 56>& out) {
+                        double reach, const Vec3& p, std::array<std::array<float, 3>, 56>& out,
+                        const std::vector<LightGridLocalLight>* localLights) {
     constexpr double kPi = 3.14159265358979323846;
     static const std::vector<Vec3> rays = [] {  // 96 directions spread evenly over the sphere
         std::vector<Vec3> r;
@@ -237,6 +238,33 @@ void lightGridSamplesAt(const RayBvh& bvh, const std::vector<Vec3>& albedos, con
         }
         return r;
     }();
+    const auto evalLocalAt = [&](const Vec3& pos, const Vec3& n) -> Vec3 {
+        Vec3 sum{0, 0, 0};
+        if (!localLights || localLights->empty()) return sum;
+        for (const LightGridLocalLight& l : *localLights) {
+            const Vec3 toL = l.origin - pos;
+            const double dist = length(toL);
+            if (dist < 1e-3 || dist >= l.radius) continue;
+            const Vec3 ldir = toL * (1.0 / dist);
+            const double ndl = dot(n, ldir);
+            if (ndl <= 0.0) continue;
+            double cone = 1.0;
+            if (l.spot) {
+                const double ca = dot(-ldir, l.dir);
+                if (ca <= l.cosOuter) continue;
+                const double span = std::max(1e-4, l.cosInner - l.cosOuter);
+                cone = std::clamp((ca - l.cosOuter) / span, 0.0, 1.0);
+                cone = cone * cone * (3.0 - 2.0 * cone);
+            }
+            if (bvh.occluded(pos, ldir, 0.5, std::max(0.5, dist - 1.0))) continue;
+            const double f = 1.0 - dist / l.radius;
+            const double atten = f * f * cone * ndl;
+            sum.x += l.color.x * atten;
+            sum.y += l.color.y * atten;
+            sum.z += l.color.z * atten;
+        }
+        return sum;
+    };
     const auto& sdirs = lightGridSampleDirections();
     double acc[56][3] = {};
     const double w = 4.0 * kPi / double(rays.size());
@@ -255,7 +283,7 @@ void lightGridSamplesAt(const RayBvh& bvh, const std::vector<Vec3>& albedos, con
             const Vec3 hp = p + d * h.t + n * 0.5;
             const double ns = dot(n, sunToward);
             const double eSun = ns > 0 && !bvh.occluded(hp, sunToward, 0.1, reach) ? ns : 0.0;
-            const Vec3 e = sunColour * eSun + sky * (0.25 * (1.0 + n.z));  // about half its sky seen
+            const Vec3 e = sunColour * eSun + sky * (0.25 * (1.0 + n.z)) + evalLocalAt(hp, n);
             const Vec3 rho = t.id > 0 && t.id <= albedos.size() ? albedos[t.id - 1] : Vec3{0.45, 0.45, 0.45};
             rad = Vec3{e.x * rho.x, e.y * rho.y, e.z * rho.z} * (1.0 / kPi);
         }
@@ -263,6 +291,33 @@ void lightGridSamplesAt(const RayBvh& bvh, const std::vector<Vec3>& albedos, con
             const double c = dot(sdirs[size_t(s)], d);
             if (c <= 0) continue;
             acc[s][0] += rad.x * c * w, acc[s][1] += rad.y * c * w, acc[s][2] += rad.z * c * w;
+        }
+    }
+    // Direct local-light illumination on the grid point itself (indoor rooms lit by lamps).
+    if (localLights && !localLights->empty()) {
+        for (const LightGridLocalLight& l : *localLights) {
+            const Vec3 toL = l.origin - p;
+            const double dist = length(toL);
+            if (dist < 1e-3 || dist >= l.radius) continue;
+            const Vec3 ldir = toL * (1.0 / dist);
+            double cone = 1.0;
+            if (l.spot) {
+                const double ca = dot(-ldir, l.dir);
+                if (ca <= l.cosOuter) continue;
+                const double span = std::max(1e-4, l.cosInner - l.cosOuter);
+                cone = std::clamp((ca - l.cosOuter) / span, 0.0, 1.0);
+                cone = cone * cone * (3.0 - 2.0 * cone);
+            }
+            if (bvh.occluded(p, ldir, 0.5, std::max(0.5, dist - 1.0))) continue;
+            const double f = 1.0 - dist / l.radius;
+            const double atten = f * f * cone;
+            for (int s = 0; s < 56; ++s) {
+                const double c = dot(sdirs[size_t(s)], ldir);
+                if (c <= 0.0) continue;
+                acc[s][0] += l.color.x * atten * c;
+                acc[s][1] += l.color.y * atten * c;
+                acc[s][2] += l.color.z * atten * c;
+            }
         }
     }
     for (int s = 0; s < 56; ++s)

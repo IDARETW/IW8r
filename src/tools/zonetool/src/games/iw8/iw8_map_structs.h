@@ -246,22 +246,28 @@ struct MapEnts
     void *clientEntAnchors;             // 0x1F0 PTR[0x1EC]
     uint8_t scriptableMapEnts[216];     // 0x1F8 (inline; own PTR/CNT)
     uint8_t spawnGroupLoot[48];         // 0x2D0
-    uint8_t clientSideEffects[152];     // 0x300 (inline; PTR/CNT)
-    uint8_t createFxAssetData[16];      // 0x398
-    uint32_t exploderNameTotal;         // 0x3A8 CNT
-    uint32_t _pad3AC;
-    void *exploderNames;           // 0x3B0 PTR[0x3A8]
-    uint8_t serverSideEffects[16]; // 0x3B8 (inline; PTR/CNT)
-    uint32_t createFxEffectTotal;  // 0x3C8
-    uint32_t numMayhemScenes;      // 0x3CC CNT
-    void *mayhemScenes;            // 0x3D0 PTR[0x3CC]
-    uint8_t spawners[16];          // 0x3D8 SpawnerList {count, PTR}
-    uint32_t audioPASpeakerCount;  // 0x3E8 CNT
+    uint8_t clientSideEffects[0x78];    // 0x300 ClientSideEffects (120 B in Replay 1.20)
+    uint8_t createFxAssetData[0x10];    // 0x378 CreateFxAssetData
+    uint32_t exploderNameTotal;         // 0x388 CNT
+    uint32_t _pad38C;
+    void *exploderNames;                // 0x390 PTR[0x388] (scr_string_t*)
+    uint8_t serverSideEffects[0x10];    // 0x398 ServerSideEffects
+    uint32_t createFxEffectTotal;       // 0x3A8
+    uint32_t numMayhemScenes;           // 0x3AC CNT
+    void *mayhemScenes;                 // 0x3B0 PTR[0x3AC] (MayhemInstance*)
+    uint8_t spawners[0x10];             // 0x3B8 SpawnerList {count, PTR}
+    uint32_t audioPASpeakerCount;       // 0x3C8 CNT
+    uint32_t _pad3CC;
+    void *audioPASpeakers;              // 0x3D0 PTR[0x3C8] (AudioPASpeaker*)
+    uint32_t numAudioPropNodes;         // 0x3D8 CNT
+    uint32_t _pad3DC;
+    void *audioPropNodes;               // 0x3E0 PTR[0x3D8] (AudioPropagationNode*)
+    uint32_t numAudioPropEdges;         // 0x3E8 CNT
     uint32_t _pad3EC;
-    void *audioPASpeakers;      // 0x3F0 PTR[0x3E8]
-    uint32_t numAudioPropNodes; // 0x3F8 CNT
+    void *audioPropEdges;               // 0x3F0 PTR[0x3E8] (AudioPropagationEdge*)
+    uint32_t numCollmaps;               // 0x3F8 CNT
     uint32_t _pad3FC;
-    void *audioPropNodes; // 0x400 PTR[0x3F8]
+    void *collmapLookups;               // 0x400 PTR[0x3F8] (CollMapLookupEntry*)
 };
 static_assert(offsetof(MapEnts, entityString) == 0x08, "MapEnts.entityString");
 static_assert(offsetof(MapEnts, numEntityChars) == 0x10, "MapEnts.numEntityChars");
@@ -270,7 +276,14 @@ static_assert(offsetof(MapEnts, clientTrigger) == 0x68, "MapEnts.clientTrigger")
 static_assert(offsetof(MapEnts, spawnList) == 0x128, "MapEnts.spawnList");
 static_assert(offsetof(MapEnts, numSubModels) == 0x158, "MapEnts.numSubModels");
 static_assert(offsetof(MapEnts, cmodels) == 0x160, "MapEnts.cmodels");
-static_assert(offsetof(MapEnts, audioPropNodes) == 0x400, "MapEnts.audioPropNodes");
+static_assert(offsetof(MapEnts, clientSideEffects) == 0x300, "MapEnts.clientSideEffects");
+static_assert(offsetof(MapEnts, createFxAssetData) == 0x378, "MapEnts.createFxAssetData");
+static_assert(offsetof(MapEnts, exploderNames) == 0x390, "MapEnts.exploderNames");
+static_assert(offsetof(MapEnts, audioPASpeakerCount) == 0x3C8, "MapEnts.audioPASpeakerCount");
+static_assert(offsetof(MapEnts, audioPASpeakers) == 0x3D0, "MapEnts.audioPASpeakers");
+static_assert(offsetof(MapEnts, audioPropNodes) == 0x3E0, "MapEnts.audioPropNodes");
+static_assert(offsetof(MapEnts, audioPropEdges) == 0x3F0, "MapEnts.audioPropEdges");
+static_assert(offsetof(MapEnts, collmapLookups) == 0x400, "MapEnts.collmapLookups");
 static_assert(sizeof(MapEnts) == 0x408, "MapEnts == Replay 1.20 loader size");
 
 // ===========================================================================================
@@ -336,19 +349,109 @@ struct GfxCell
 static_assert(sizeof(GfxCell) == 0x28, "GfxCell");
 
 struct GfxWorld
-{                                  // 0x4590
-    const char *name;              // 0x00 PTR
-    const char *baseName;          // 0x08 PTR
-    int32_t bspVersion;            // 0x10 (=243 in real instances)
-    uint8_t _lightSortBlock[0x64]; // 0x14..0x77 light counts + sortKey* (scalar, no walk)
-    Bounds bounds;                 // 0x78 (24)
-    GfxWorldDpvsPlanes dpvsPlanes; // 0x90 (0x28) — cells/nodes here
-    void *cells;                   // 0xB8 PTR[dpvsPlanes.cellCount]
-    void *cellTransientInfos;      // 0xC0 PTR[cellCount]
-    uint8_t surfaces[0x88];        // 0xC8 GfxWorldSurfaces (surfaceCount = first u32)
-    uint8_t smodels[0x4F8];        // 0x150 GfxWorldStaticModels
-    uint8_t draw[0x3248];          // 0x648 GfxWorldDraw (ends 0x3890)
-    uint8_t _replayTail[0x4590 - 0x3890]; // 0x3890..0x4590; checksum is inside @0x3E60.
+{                                                    // 0x4590 (Replay 1.20 verified)
+    const char *name;                                // 0x0000 PTR
+    const char *baseName;                            // 0x0008 PTR
+    uint32_t bspVersion;                             // 0x0010 (=243 in real instances)
+    uint32_t lastSunPrimaryLightIndex;               // 0x0014
+    uint32_t primaryLightCount;                      // 0x0018
+    uint32_t firstMutablePrimaryLight;               // 0x001C
+    uint32_t mutablePrimaryLightCount;               // 0x0020
+    uint32_t firstStaticScriptablesPrimaryLight;     // 0x0024
+    uint32_t staticScriptablesPrimaryLightCount;     // 0x0028
+    uint32_t firstStaticScriptablePrimaryLight;      // 0x002C
+    uint32_t staticScriptablePrimaryLightCount;      // 0x0030
+    uint32_t firstMovingScriptablePrimaryLight;      // 0x0034
+    uint32_t movingScriptablePrimaryLightCount;      // 0x0038
+    uint32_t sortKeyLitDecal;                        // 0x003C
+    uint32_t sortKeyEffectDecal;                     // 0x0040
+    uint32_t sortKeyTopDecal;                        // 0x0044
+    uint32_t sortKeyEffectAuto;                      // 0x0048
+    uint32_t sortKeyDistortion;                      // 0x004C
+    uint32_t sortKeyEffectDistortion;                // 0x0050
+    uint32_t sortKey2D;                              // 0x0054
+    uint32_t sortKeyOpaqueBegin;                     // 0x0058
+    uint32_t sortKeyOpaqueEnd;                       // 0x005C
+    uint32_t sortKeyDecalBegin;                      // 0x0060
+    uint32_t sortKeyDecalEnd;                        // 0x0064
+    uint32_t sortKeyTransBegin;                      // 0x0068
+    uint32_t sortKeyTransEnd;                        // 0x006C
+    uint32_t sortKeyEmissiveBegin;                   // 0x0070
+    uint32_t sortKeyEmissiveEnd;                     // 0x0074
+    Bounds bounds;                                   // 0x0078 (0x18)
+    GfxWorldDpvsPlanes dpvsPlanes;                   // 0x0090 (0x28) — cells/nodes here
+    void *cells;                                     // 0x00B8 PTR[dpvsPlanes.cellCount]
+    void *cellTransientInfos;                        // 0x00C0 PTR[cellCount]
+    uint8_t surfaces[0x88];                          // 0x00C8 GfxWorldSurfaces
+    uint8_t smodels[0x4F8];                          // 0x0150 GfxWorldStaticModels
+    uint8_t draw[0x3248];                            // 0x0648 GfxWorldDraw (ends 0x3890)
+    uint8_t dynamicLightset[0x3A0];                  // 0x3890 GfxDynamicLightset
+    uint8_t mayhemSelfVis[0x70];                     // 0x3C30 GfxMayhemSelfVis
+    uint8_t frustumLights[0xC0];                     // 0x3CA0 GfxFrustumLights
+    void *lightViewFrustums;                         // 0x3D60 GfxLightViewFrustum*
+    void *primaryLights;                             // 0x3D68 GfxLight*
+    int32_t voxelTreeCount;                          // 0x3D70
+    uint32_t _pad3D74;
+    void *voxelTree;                                 // 0x3D78 GfxVoxelTree*
+    int32_t heightfieldCount;                        // 0x3D80
+    uint32_t _pad3D84;
+    void *heightfields;                              // 0x3D88 GfxHeightfield*
+    uint8_t precomputedSkyIllumination[0x60];        // 0x3D90 GfxPrecomputedSkyIllumination
+    int32_t modelCount;                              // 0x3DF0
+    uint32_t _pad3DF4;
+    void *models;                                    // 0x3DF8 GfxBrushModel*
+    uint32_t lmapLookupCount;                        // 0x3E00
+    uint32_t _pad3E04;
+    void *lmapLookup;                                // 0x3E08 GfxModelLightmapInst*
+    uint32_t gfxMapEntLookupCount;                   // 0x3E10
+    uint32_t _pad3E14;
+    void *gfxMapEntLookup;                           // 0x3E18 GfxMapEntLookup*
+    uint32_t checksum;                               // 0x3E20 (verified R_LoadWorld 0x1418D8FB0)
+    uint32_t _pad3E24;
+    uint8_t sun[0x70];                               // 0x3E28 sunflare_t (verified Load_GfxWorld +15912)
+    float outdoorLookupMatrix[16];                   // 0x3E98 tmat44_t
+    void *outdoorImage;                              // 0x3ED8 GfxImage*
+    void *dustMaterial;                              // 0x3EE0 Material*
+    float materialLod0SizeThreshold;                 // 0x3EE8
+    uint32_t _pad3EEC;
+    void *cellCasterBits;                            // 0x3EF0 uint32_t*
+    void *cellHasSunLitSurfsBits;                    // 0x3EF8 uint32_t*
+    void *sceneDynModel;                             // 0x3F00 GfxSceneDynModel*
+    void *sceneDynBrush;                             // 0x3F08 GfxSceneDynBrush*
+    uint32_t primaryLightMotionDetectBitsEntries;    // 0x3F10
+    uint32_t _pad3F14;
+    void *primaryLightMotionDetectBits;              // 0x3F18 uint32_t*
+    uint32_t entityMotionBitsEntries;                // 0x3F20
+    uint32_t _pad3F24;
+    void *entityMotionBits;                          // 0x3F28 uint32_t*
+    uint32_t staticSpotOmniPrimaryLightCountAligned; // 0x3F30
+    uint32_t shadowBitsArrayPitch;                   // 0x3F34
+    uint32_t numPrimaryLightEntityShadowVisEntries;  // 0x3F38
+    uint32_t _pad3F3C;
+    void *primaryLightEntityShadowVis;               // 0x3F40 uint32_t*
+    uint32_t dynEntMotionBitsEntries[2];             // 0x3F48
+    void *dynEntMotionBits[2];                       // 0x3F50 uint32_t*[2]
+    uint32_t numPrimaryLightDynEntShadowVisEntries[2]; // 0x3F60
+    void *primaryLightDynEntShadowVis[2];            // 0x3F68 uint32_t*[2]
+    void *shadowGeomOptimized;                       // 0x3F78 GfxShadowGeometry*
+    uint8_t lightAABB[0x18];                         // 0x3F80 GfxLightAABB
+    uint8_t dpvs[0x278];                             // 0x3F98 GfxWorldDpvsStatic
+    uint8_t dpvsDyn[0x230];                          // 0x4210 GfxWorldDpvsDynamic
+    uint32_t numUmbraGates;                          // 0x4440
+    uint32_t _pad4444;
+    void *umbraGates;                                // 0x4448 UmbraGate*
+    uint32_t umbraTomeSize;                          // 0x4450
+    uint32_t _pad4454;
+    void *umbraTomeData;                             // 0x4458 uint8_t*
+    void *umbraTome;                                 // 0x4460 char*
+    uint32_t mdaoVolumeCount;                        // 0x4468
+    uint32_t _pad446C;
+    void *mdaoVolumes;                               // 0x4470 MdaoVolume*
+    uint8_t enableMdao;                              // 0x4478 bool
+    uint8_t _pad4479[7];
+    uint8_t streamTree[0x60];                        // 0x4480 StreamTree
+    uint8_t materialStreamTreeGrid[0x58];            // 0x44E0 StreamTreeGrid
+    uint8_t xmodelStreamTreeGrid[0x58];              // 0x4538 StreamTreeGrid
 };
 static_assert(offsetof(GfxWorld, baseName) == 0x08, "GfxWorld.baseName");
 static_assert(offsetof(GfxWorld, bspVersion) == 0x10, "GfxWorld.bspVersion");
@@ -357,12 +460,30 @@ static_assert(offsetof(GfxWorld, cells) == 0xB8, "GfxWorld.cells");
 static_assert(offsetof(GfxWorld, surfaces) == 0xC8, "GfxWorld.surfaces");
 static_assert(offsetof(GfxWorld, smodels) == 0x150, "GfxWorld.smodels");
 static_assert(offsetof(GfxWorld, draw) == 0x648, "GfxWorld.draw");
+static_assert(offsetof(GfxWorld, dynamicLightset) == 0x3890, "GfxWorld.dynamicLightset");
+static_assert(offsetof(GfxWorld, heightfields) == 0x3D88, "GfxWorld.heightfields");
+static_assert(offsetof(GfxWorld, checksum) == 0x3E20, "GfxWorld.checksum");
+static_assert(offsetof(GfxWorld, sun) == 0x3E28, "GfxWorld.sun");
+static_assert(offsetof(GfxWorld, outdoorLookupMatrix) == 0x3E98, "GfxWorld.outdoorLookupMatrix");
+static_assert(offsetof(GfxWorld, outdoorImage) == 0x3ED8, "GfxWorld.outdoorImage");
+static_assert(offsetof(GfxWorld, dpvs) == 0x3F98, "GfxWorld.dpvs");
+static_assert(offsetof(GfxWorld, umbraGates) == 0x4448, "GfxWorld.umbraGates");
+static_assert(offsetof(GfxWorld, mdaoVolumes) == 0x4470, "GfxWorld.mdaoVolumes");
+static_assert(offsetof(GfxWorld, streamTree) == 0x4480, "GfxWorld.streamTree");
 static_assert(sizeof(GfxWorld) == 0x4590, "GfxWorld == Replay 1.20 loader body");
 
-// Retail checksum offset (NOT a struct member here because the tail is opaque-padded):
-//   GFXWORLD_RETAIL_CHECKSUM_OFFSET = 0x3E60  (proven: gfx[0x3E60] == col_map[0xF0], 3 real
-//   samples)
-static constexpr size_t GFXWORLD_RETAIL_CHECKSUM_OFFSET = 0x3E60;
+// Replay 1.20 checksum offset (verified in R_LoadWorld 0x1418D8FB0 and Load_GfxWorld 0x140D92E80).
+static constexpr size_t GFXWORLD_RETAIL_CHECKSUM_OFFSET = offsetof(GfxWorld, checksum);
+
+// Deterministic non-zero checksum shared by clipMap_t.checksum (+0xF0) and GfxWorld.checksum (+0x3E20).
+inline uint32_t mapChecksumForAsset(const char *assetName)
+{
+    uint32_t h = 2166136261u;
+    if (assetName)
+        for (const unsigned char *p = reinterpret_cast<const unsigned char *>(assetName); *p; ++p)
+            h = (h ^ *p) * 16777619u;
+    return h ? h : 1u;
+}
 
 #pragma pack(pop)
 

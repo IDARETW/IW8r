@@ -436,12 +436,28 @@ inline Result bake(const Input& in) {
     const uint32_t objBounds = allocate16(t, size_t(objectCount) * 24);
     const uint32_t objDistances = allocate16(t, size_t(objectCount) * 32);
     for (uint32_t o = 0; o < objectCount; ++o) {
-        std::memcpy(t.data() + objBounds + size_t(o) * 24, in.scene.mn, 12);
-        std::memcpy(t.data() + objBounds + size_t(o) * 24 + 12, in.scene.mx, 12);
+        // Use each object's real world-space bounds (padded by 1 unit and clamped to scene bounds)
+        // so Umbra performs genuine frustum and portal occlusion culling instead of keeping every object
+        // inflated to the full map extent.
+        float bmn[3], bmx[3];
+        const Box &ob = in.objects[o].box;
+        const bool validBox = ob.mn[0] <= ob.mx[0] && ob.mn[1] <= ob.mx[1] && ob.mn[2] <= ob.mx[2];
+        for (int k = 0; k < 3; ++k) {
+            if (validBox) {
+                bmn[k] = std::max(in.scene.mn[k], ob.mn[k] - 1.0f);
+                bmx[k] = std::min(in.scene.mx[k], ob.mx[k] + 1.0f);
+                if (bmn[k] > bmx[k]) { bmn[k] = in.scene.mn[k]; bmx[k] = in.scene.mx[k]; }
+            } else {
+                bmn[k] = in.scene.mn[k];
+                bmx[k] = in.scene.mx[k];
+            }
+        }
+        std::memcpy(t.data() + objBounds + size_t(o) * 24, bmn, 12);
+        std::memcpy(t.data() + objBounds + size_t(o) * 24 + 12, bmx, 12);
         const size_t d = objDistances + size_t(o) * 32;
-        std::memcpy(t.data() + d, in.scene.mn, 12);
+        std::memcpy(t.data() + d, bmn, 12);
         put(t, d + 12, 0.0f);
-        std::memcpy(t.data() + d + 16, in.scene.mx, 12);
+        std::memcpy(t.data() + d + 16, bmx, 12);
         put(t, d + 28, std::numeric_limits<float>::infinity());
     }
     put(t, 0x44, objBounds);

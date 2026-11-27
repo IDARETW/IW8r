@@ -127,7 +127,7 @@ TEST(brush_flags_weapon_clip_contents_bit) {
     if (!wc) return;
     CHECK(readBrushFlags(*wc).weaponClip);
     CHECK(countLines(*wc, " contents weaponClip;") == 1);
-    CHECK((brushContents(*wc).contents & kIw3ContentsItemClip) != 0);
+    CHECK((brushContents(*wc).contents & kIw3ContentsClipShot) != 0);
     CHECK(brushContents(*wc).collides);
 }
 

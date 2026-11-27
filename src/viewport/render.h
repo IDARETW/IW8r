@@ -119,6 +119,9 @@ struct GpuTexVertex {
     float lu = -1, lv = -1;
     // Edge data of a brush face for custom surface shaders (core face_edges packEdge); 0xFFFFFFFF = none.
     uint32_t edge = 0xFFFFFFFFu;
+    // Extra per-vertex colour (COLOR1): stock single-layer world vertex colour (twc/, sRGB bytes), or own decal
+    // per-vertex opacity*fade (linear alpha in R). Default white (no modulation).
+    uint32_t vcol = 0xFFFFFFFFu;
 };
 
 // A stock reference vertex's GpuTexVertex::edge: the triangle's GfxWorld surface index + 1 in the low 24 bits (0: of no
@@ -510,6 +513,7 @@ public:
         bool glass = false;     // a blended glass material: premultiplied, the probe reflection added unscaled
         int sortKey = 4;        // blended batches draw in sort key order, then far to near (the converter's default 4)
         bool cullBack = false;  // one-sided (not twoSided): back faces are hidden in Game Lighting (ps_tex, batchFlags2.z = -1)
+        int polygonOffset = 0;  // 0..2: depth bias pulling coplanar custom decals toward the camera
     };
     void setTextureMaterial(int texture, const TextureMaterial& m) {
         if (texture < 0) return;
@@ -565,9 +569,30 @@ public:
     void setReferenceInstDecal(size_t mesh, int sortKey) {
         if (mesh < refTexInst_.size()) refTexInst_[mesh].decal = sortKey;
     }
-    // A see-through prop mesh (glass): drawn after the others, blended by its alpha, without writing depth.
+    // A see-through prop mesh (glass) or additive effect prop mesh: drawn after the others, without writing depth.
     void setReferenceInstTranslucent(size_t mesh, bool on) {
-        if (mesh < refTexInst_.size()) refTexInst_[mesh].translucent = on;
+        if (mesh < refTexInst_.size() && refTexInst_[mesh].translucent != on)
+            refTexInst_[mesh].translucent = on, instParamsDirty_ = true;
+    }
+    void setReferenceInstAdditive(size_t mesh, bool on) {
+        if (mesh < refTexInst_.size() && refTexInst_[mesh].additive != on)
+            refTexInst_[mesh].additive = on, instParamsDirty_ = true;
+    }
+    void setReferenceInstCullBack(size_t mesh, bool on) {
+        if (mesh < refTexInst_.size()) refTexInst_[mesh].cullBack = on;
+    }
+    // A stock world translucent / glass (`_bar_`, sortKey 25/30) or additive (`unlit_6_effect`, `_bad_tca`) batch:
+    // skipped from the opaque base pass and depth pre-pass, drawn blended/additive without depth write.
+    void setReferenceTranslucent(size_t batch, bool translucent, bool additive = false, int sortKey = 0) {
+        if (batch >= refLayers_.size()) return;
+        RefLayer& L = refLayers_[batch];
+        if (L.translucent != translucent || L.additive != additive) shadowDirty_ = nearDirty_ = true, layerParamsDirty_ = true;
+        L.translucent = translucent;
+        L.additive = additive;
+        if (sortKey > 0) L.sortKey = sortKey;
+    }
+    void setReferenceCullBack(size_t batch, bool on) {
+        if (batch < refLayers_.size()) refLayers_[batch].cullBack = on;
     }
     // A stock material's draw class (materialDrawFor: 0 drawn, 1 shadow only, 2 never) for a reference batch / prop mesh.
     void setReferenceDrawClass(size_t batch, int cls) {
@@ -923,6 +948,10 @@ private:
         int normal = -1;            // setReferenceInstNormal
         int decal = 0;              // setReferenceInstDecal: the material's decal sort key (0 = not a decal)
         bool translucent = false;   // setReferenceInstTranslucent
+        bool additive = false;      // setReferenceInstAdditive: additive blend (blendAdd_, batchFlags.y = 2)
+        bool cullBack = false;      // setReferenceInstCullBack: one-sided stock prop surface
+        bool hasMirrored = false;   // any placement has negative scale determinant (keep CULL_NONE so it never turns inside-out)
+        float visMeanDist = 0.0f;   // mean distance of visible placements from eye (far-to-near sort for translucent props)
         int drawClass = 0;          // setReferenceInstDrawClass: 1 shadow only, 2 never drawn
         bool noCast = false;        // setReferenceInstNoCast: drawn, casting no shadow (tree canopy leaf cards)
         float params[16] = {};      // setReferenceInstParams
@@ -1028,6 +1057,9 @@ private:
         int layer = 0;  // 0 = a base batch
         bool ready = false;
         bool decal = false;  // a decal material's batch (research 98): drawn after every opaque batch and layer
+        bool translucent = false;  // stock world glass / blended surface (sortKey 25/30, _bar_): drawn blended after opaque
+        bool additive = false;     // stock world additive surface (unlit_6_effect / _bad_tca): blendAdd_, batchFlags.y = 2
+        bool cullBack = false;     // one-sided stock world surface (back-face culled in Game Lighting)
         int tomeCollection = -1;  // a decal volume batch's collection (setReferenceDecalCollection), -1 none
         // Research 66 (materialDrawFor): 1 = shadow only (tw/shadowcaster: its "Shadow" image showed on mp_rust's
         // walls and floors), 2 = never drawn.
@@ -1238,6 +1270,8 @@ private:
     ID3D11PixelShader* ps_ = nullptr;
     ID3D11InputLayout* layout_ = nullptr;
     ID3D11RasterizerState* rsTris_ = nullptr;
+    ID3D11RasterizerState* rsTrisCull_ = nullptr;    // one-sided back-face culling (CCW front, matching camera.cpp)
+    ID3D11RasterizerState* rsPolyOffset_[2] = {nullptr, nullptr};  // CustomMaterial::polygonOffset 1..2 depth bias
     ID3D11RasterizerState* rsLines_ = nullptr;
     ID3D11RasterizerState* rsLinesFast_ = nullptr;  // the same without line antialiasing (very many lines)
     ID3D11DepthStencilState* dsWrite_ = nullptr;

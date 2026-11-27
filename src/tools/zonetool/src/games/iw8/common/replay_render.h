@@ -208,6 +208,7 @@ struct NativeLightmap
 };
 struct GlassPane
 {
+    std::string name; // optional G_GlassName targetname for script getGlass()
     std::string material;
     std::string materialShattered;
     std::array<float, 3> origin{};
@@ -302,6 +303,8 @@ struct Mesh : Material
     Image reflectionProbeArrayImage;
     std::vector<NativeLightmap> nativeLightmaps;
     std::vector<GlassPane> glassPanes;
+    uint16_t glassDamageToWeaken = 25;
+    uint16_t glassDamageToDestroy = 50;
     std::vector<Volumetric> volumetrics;
     std::vector<DecalVolume> decalVolumes;
     // The Materials of the decal volumes: an asset material with a decal volume definition, or a stock one.

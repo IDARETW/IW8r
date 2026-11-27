@@ -759,7 +759,7 @@ inline void emitMapEdgeListBody(ZoneBuffer &zb, const std::vector<havok::LadderF
         stampf(body, 0x08 + axis * 4, list.mins[axis]);
         stampf(body, 0x14 + axis * 4, list.maxs[axis]);
     }
-    stamp32(body, 0x24, list.queryTypes);
+    stamp32(body, 0x24, 0u); // dynamicQueryTypes = 0 when numDynamicEdges == 0
     stamp32(body, 0x28, list.queryTypes);
     stamp32(body, 0x30, static_cast<uint32_t>(edges.size()));
     body[0x34] = 1;
@@ -1380,7 +1380,7 @@ inline void buildMapZone(ZoneBuffer &zb, const char *assetName, const std::strin
     stampf(cm, kCM_bpMax + 8, 100000.f);
     stamp32(cm, kCM_havokSize, 0);
     stamp64(cm, kCM_havokData, PTR_NULL); // no collision data
-    stamp32(cm, kCM_checksum, 0);
+    stamp32(cm, kCM_checksum, iw8::maps::mapChecksumForAsset(assetName));
 
     zb.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
     zb.align(
@@ -1802,7 +1802,7 @@ inline void registerMapWorldAssets(ZoneWriter &writer, const MapWorldStrings &st
                    stamp64(cm, kCM_havokData, collision.world.empty() ? PTR_NULL : PTR_FOLLOWS);
                    stamp32(cm, kCM_glassInitCount, glassInitCount);
                    stamp32(cm, kCM_glassPieceLimit, glassPieceLimit);
-                   stamp32(cm, kCM_checksum, 0);
+                   stamp32(cm, kCM_checksum, iw8::maps::mapChecksumForAsset(assetName.c_str()));
 
                    zb.pushStream(XFILE_BLOCK_TEMP_PRELOAD);
                    zb.align(7);

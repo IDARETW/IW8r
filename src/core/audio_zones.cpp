@@ -165,17 +165,22 @@ const ReverbRoom* findReverbRoom(const std::string& roomType) {
 }
 
 AudioSetup readAudioSetup(const MapFile& map, const std::string& mapId, const AABB& worldBounds, std::vector<std::string>* warn,
-                          const std::function<bool(const std::string&)>& isCustomSound) {
+                          const std::function<bool(const std::string&)>& /*isCustomSound*/) {
+    const auto validAlias = [](const std::string& n) {
+        if (n.empty() || n.size() > 64) return false;
+        for (char c : n)
+            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) return false;
+        return true;
+    };
     const auto ambientOf = [&](const std::string& value, AudioZone& z, const std::string& where) {
         const std::string name = lowerCopy(value);
         if (name.empty()) return;
-        if (isCustomSound && isCustomSound(name)) {
+        if (validAlias(name)) {
             z.ambient = name;
             return;
         }
         if (warn)
-            warn->push_back(where + ": iw8r_ambient '" + name + "' is not one of the map's own sounds (sounds folder); a stock alias "
-                            "would be silent in the map bank, so it is not built (a looping sound_emitter plays stock ambience)");
+            warn->push_back(where + ": iw8r_ambient '" + name + "' is not a valid sound alias name; skipped");
     };
     const auto oneShotsOf = [&](const std::string& value, AudioZone& z, const std::string& where) {
         std::istringstream in(value);
@@ -190,10 +195,10 @@ AudioSetup readAudioSetup(const MapFile& map, const std::string& mapId, const AA
             const size_t colon = tok.find(':');
             const std::string name = lowerCopy(tok.substr(0, colon));
             const double weight = colon == std::string::npos ? 1.0 : std::max(0.0, std::atof(tok.c_str() + colon + 1));
-            if (isCustomSound && isCustomSound(name))
+            if (validAlias(name))
                 z.oneShots.push_back({name, weight});
             else if (warn)
-                warn->push_back(where + ": ambient one-shot '" + name + "' is not one of the map's own sounds; left out");
+                warn->push_back(where + ": ambient one-shot '" + name + "' is not a valid sound alias name; left out");
         }
     };
     AudioSetup s;
@@ -209,6 +214,13 @@ AudioSetup readAudioSetup(const MapFile& map, const std::string& mapId, const AA
             if (const std::string* v = e.value("iw8r_ambient")) ambientOf(*v, s.mapZone, "worldspawn");
             if (const std::string* v = e.value("iw8r_ambient_oneshots")) oneShotsOf(*v, s.mapZone, "worldspawn");
             continue;
+        }
+        if (const std::string* pa = e.value("iw8r_audio_pa_speaker"); pa && !pa->empty()) {
+            if (const std::string* orig = e.value("origin")) {
+                std::istringstream in(*orig);
+                Vec3 pt;
+                if (in >> pt.x >> pt.y >> pt.z) s.paSpeakers.push_back({pt, *pa});
+            }
         }
         const std::string* zn = e.value("iw8r_audio_zone");
         if (!zn || zn->empty()) continue;
@@ -227,8 +239,42 @@ AudioSetup readAudioSetup(const MapFile& map, const std::string& mapId, const AA
             if (warn) warn->push_back(where + ": the zone name is used twice (or is the map's name); skipped");
             continue;
         }
-        for (const auto& it : e.items)
-            if (const Primitive* p = it.prim(); p && p->kind == PrimKind::Brush) z.bounds.add(brushBounds(brushFromPrimitive(*p)));
+        for (const auto& it : e.items) {
+            const Primitive* p = it.prim();
+            if (!p || p->kind != PrimKind::Brush) continue;
+            const ConvexBrush cb = brushFromPrimitive(*p);
+            const AABB b = brushBounds(cb);
+            if (!b.valid()) continue;
+            z.bounds.add(b);
+            AudioTriggerHull hull;
+            hull.bounds = b;
+            const std::vector<Winding> wins = brushWindings(cb);
+            std::vector<Vec3> verts;
+            for (const Winding& w : wins)
+                for (const Vec3& v : w) verts.push_back(v);
+            if (!verts.empty()) {
+                for (size_t fi = 0; fi < cb.size() && fi < wins.size(); ++fi) {
+                    if (wins[fi].empty()) continue;
+                    const Vec3 n = normalize(cb[fi].plane.n);
+                    // Skip axis-aligned planes (already represented by the hull AABB).
+                    if (std::fabs(n.x) > 0.9999 || std::fabs(n.y) > 0.9999 || std::fabs(n.z) > 0.9999) continue;
+                    double lo = 1e30, hi = -1e30;
+                    for (const Vec3& v : verts) {
+                        const double proj = dot(n, v);
+                        lo = std::min(lo, proj);
+                        hi = std::max(hi, proj);
+                    }
+                    const double mid = 0.5 * (lo + hi);
+                    const double half = 0.5 * (hi - lo);
+                    // Deduplicate opposite normals.
+                    bool dup = false;
+                    for (const AudioTriggerSlab& ex : hull.slabs)
+                        if (std::fabs(dot(ex.dir, n)) > 0.9995) { dup = true; break; }
+                    if (!dup && half > 1e-3) hull.slabs.push_back({n, mid, half});
+                }
+            }
+            z.hulls.push_back(std::move(hull));
+        }
         if (!z.bounds.valid()) {
             if (warn) warn->push_back(where + ": the trigger has no brush; skipped");
             continue;
@@ -239,6 +285,50 @@ AudioSetup readAudioSetup(const MapFile& map, const std::string& mapId, const AA
         if (const std::string* v = e.value("iw8r_audio_priority")) z.priority = std::clamp(std::atof(v->c_str()), 1.0, 1000.0);
         if (const std::string* v = e.value("iw8r_audio_interior")) z.interior = std::atoi(v->c_str()) != 0;
         s.zones.push_back(z);
+    }
+
+    // Map zone names to their trigger index (0 = mapZone when worldBounds is valid).
+    std::vector<const AudioZone*> allZones;
+    if (s.mapZone.bounds.valid()) allZones.push_back(&s.mapZone);
+    for (const AudioZone& z : s.zones) allZones.push_back(&z);
+    const auto triggerIdxOf = [&](const std::string& zname) -> int {
+        const std::string want = lowerCopy(zname);
+        for (size_t i = 0; i < allZones.size(); ++i)
+            if (allZones[i]->name == want) return int(i);
+        return -1;
+    };
+
+    // Explicit blend transition entities: `iw8r_audio_blend "<zoneA> <zoneB>"` (optional `iw8r_audio_blend_span "dx dy dz"`).
+    for (const Entity& e : map.entities) {
+        const std::string* bl = e.value("iw8r_audio_blend");
+        if (!bl || bl->empty()) continue;
+        std::istringstream in(*bl);
+        std::string za, zb;
+        if (!(in >> za >> zb)) continue;
+        const int idxA = triggerIdxOf(za), idxB = triggerIdxOf(zb);
+        if (idxA < 0 || idxB < 0 || idxA == idxB) {
+            if (warn) warn->push_back(e.classname() + ": iw8r_audio_blend '" + *bl + "' names an unknown audio zone; skipped");
+            continue;
+        }
+        Vec3 ptA = allZones[size_t(idxA)]->bounds.center();
+        Vec3 ptB = allZones[size_t(idxB)]->bounds.center();
+        if (const std::string* orig = e.value("origin")) {
+            std::istringstream oin(*orig);
+            Vec3 c;
+            if (oin >> c.x >> c.y >> c.z) {
+                Vec3 span{64, 0, 0};
+                if (const std::string* sp = e.value("iw8r_audio_blend_span")) {
+                    std::istringstream sin(*sp);
+                    sin >> span.x >> span.y >> span.z;
+                } else {
+                    const Vec3 d = allZones[size_t(idxB)]->bounds.center() - allZones[size_t(idxA)]->bounds.center();
+                    if (length(d) > 1e-3) span = normalize(d) * 64.0;
+                }
+                ptA = c - span * 0.5;
+                ptB = c + span * 0.5;
+            }
+        }
+        s.blendNodes.push_back({ptA, ptB, idxA, idxB});
     }
     return s;
 }
@@ -328,15 +418,15 @@ std::string soundTableJson(const AudioSetup& s) {
                  std::to_string((z.interior ? rInterior : rDefault).filStart) + ",\"numFilter\":" +
                  std::to_string((z.interior ? rInterior : rDefault).filNum) + ",\"startMixIndex\":-1,\"numMix\":0,\"startAdsrZoneIndex\":-1,\"numAdsrZone\":0,"
                  "\"startNPCAdsrZoneIndex\":-1,\"numNPCAdsrZone\":0,\"startFullOccIndex\":-1,\"numDisableFullOcc\":0,"
-                 "\"startPlayerBreathStateIndex\":-1,\"numPlayerBreathStates\":0,\"exterior\":0}";
+                 "\"startPlayerBreathStateIndex\":-1,\"numPlayerBreathStates\":0,\"exterior\":" + std::string(z.interior ? "0" : "1") + "}";
     }
-    return "{\"map\":" + quote(s.mapId) + ",\"send_effects\":[],\"reverbs\":[" + reverbs + "],\"occlusion_filters\":[" + occ +
+    return "{\"map\":" + quote(s.mapId) + ",\"allow_stock_aliases\":true,\"send_effects\":[],\"reverbs\":[" + reverbs + "],\"occlusion_filters\":[" + occ +
            "],\"filters\":[" + fil + "],\"zones\":[" + zones + "],\"ambient_defs\":[" + defs + "],\"ambient_events\":[" + events + "],\"ambient_elements\":[" + elements + "]}";
 }
 
 std::string clientTriggersJson(const AudioSetup& s) {
-    // Stock audio triggers (mp_shipment): type 2, the box centred on the origin (hull midPoint 0, no slabs), script
-    // delay 0.25, priority 0 for the map-wide zone and 30 to 50 for rooms.
+    // Stock audio triggers (mp_shipment): type 2, hulls centred on trigger origin (with slabs for non-axial brushes),
+    // script delay 0.25, priority 0 for the map-wide zone and 30 to 50 for rooms.
     std::vector<const AudioZone*> all;
     if (s.mapZone.bounds.valid()) all.push_back(&s.mapZone);
     for (const AudioZone& z : s.zones) all.push_back(&z);
@@ -344,13 +434,43 @@ std::string clientTriggersJson(const AudioSetup& s) {
     for (size_t i = 0; i < all.size(); ++i) {
         const AudioZone& z = *all[i];
         const Vec3 c = z.bounds.center();
-        const Vec3 h = (z.bounds.maxs - z.bounds.mins) * 0.5;
+        std::string hullsJson;
+        if (z.hulls.empty()) {
+            const Vec3 h = (z.bounds.maxs - z.bounds.mins) * 0.5;
+            hullsJson = "{\"midPoint\":[0,0,0],\"halfSize\":" + vec(h) + ",\"slabs\":[]}";
+        } else {
+            for (size_t hi = 0; hi < z.hulls.size(); ++hi) {
+                const AudioTriggerHull& hull = z.hulls[hi];
+                const Vec3 hc = hull.bounds.center() - c;
+                const Vec3 hh = (hull.bounds.maxs - hull.bounds.mins) * 0.5;
+                std::string slabsJson;
+                for (size_t si = 0; si < hull.slabs.size(); ++si) {
+                    const AudioTriggerSlab& sl = hull.slabs[si];
+                    const double localMid = sl.midPoint - dot(sl.dir, c);
+                    slabsJson += std::string(si ? "," : "") + "{\"dir\":" + vec(sl.dir) +
+                                 ",\"midPoint\":" + num(localMid) + ",\"halfSize\":" + num(sl.halfSize) + "}";
+                }
+                hullsJson += std::string(hi ? "," : "") + "{\"midPoint\":" + vec(hc) + ",\"halfSize\":" + vec(hh) +
+                             ",\"slabs\":[" + slabsJson + "]}";
+            }
+        }
         triggers += std::string(i ? "," : "") + "{\"type\":2,\"origin\":" + vec(c) + ",\"scriptDelay\":0.25,\"priority\":" +
                     num(z.priority) + ",\"audio\":" + quote(z.name) +
-                    ",\"npc\":\"\",\"blend\":-1,\"audioState\":-1,\"hulls\":[{\"midPoint\":[0,0,0],\"halfSize\":" + vec(h) +
-                    ",\"slabs\":[]}]}";
+                    ",\"npc\":\"\",\"blend\":-1,\"audioState\":-1,\"hulls\":[" + hullsJson + "]}";
     }
-    return "{\"map\":" + quote(s.mapId) + ",\"triggers\":[" + triggers + "],\"blend_nodes\":[],\"pa_speakers\":[]}";
+    std::string blendsJson;
+    for (size_t i = 0; i < s.blendNodes.size(); ++i) {
+        const AudioBlendNode& b = s.blendNodes[i];
+        blendsJson += std::string(i ? "," : "") + "{\"pointA\":" + vec(b.pointA) + ",\"pointB\":" + vec(b.pointB) +
+                      ",\"triggerA\":" + std::to_string(b.triggerA) + ",\"triggerB\":" + std::to_string(b.triggerB) + "}";
+    }
+    std::string paJson;
+    for (size_t i = 0; i < s.paSpeakers.size(); ++i) {
+        const AudioPASpeaker& pa = s.paSpeakers[i];
+        paJson += std::string(i ? "," : "") + "{\"origin\":" + vec(pa.origin) + ",\"name\":" + quote(pa.name) + "}";
+    }
+    return "{\"map\":" + quote(s.mapId) + ",\"triggers\":[" + triggers + "],\"blend_nodes\":[" + blendsJson +
+           "],\"pa_speakers\":[" + paJson + "]}";
 }
 
 }  // namespace iw8r

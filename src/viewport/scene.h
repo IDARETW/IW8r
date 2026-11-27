@@ -69,6 +69,8 @@ struct PrimGeom {
     std::vector<float> polyLmDensity;
     // Painted patch vertex colours (8.11): one ABGR tint per poly (the mean of its corners), empty when unpainted.
     std::vector<uint32_t> polyTint;
+    // Per-corner opacity/fade (0..255) for projected own decals (iw8r_decal: opacity * angle/edge/depth fade).
+    std::vector<std::array<uint8_t, 3>> polyCornerAlpha;
     // A prefab with models inside (2026-11-12): polys [0, meshFrom) are brush and patch faces, [meshFrom, markerFrom)
     // model triangles (drawn like `mesh`: no outlines unless selected or in wireframe), [markerFrom, end) boxes of
     // inner point entities and of models not loaded yet (editor markers: no sun shadow, left out of captures).
@@ -136,9 +138,15 @@ public:
         double radius = 400, cosOuter = -2, cosInner = -2;
         bool volumetric = false;  // iw8r_volumetric: the lamp lights the volumetric air
         // The build's light keys (compile_iw8.cpp kLightKeys; research 132 G8): bulb radius (0 = the game's 1), distance
-        // falloff (0 = 1), a shadow map (spots only).
+        // falloff (0 = 1), a shadow map (spots only), tube bulb length, shadow bias, distance fade, and IES profile.
         double bulbRadius = 0, falloff = 0;
         bool shadows = false;
+        Vec3 bulbLength{0, 0, 0};
+        double shadowBias = 0;
+        bool hasShadowBias = false;
+        double fadeOffset[2] = {0, 0};
+        bool hasFadeOffset = false;
+        std::string iesFile;
     };
     bool litPreview = false;
     bool litShadows = true;
@@ -252,6 +260,8 @@ public:
     // The first model of a stock scriptable definition ("" = unknown or none): a `scriptable` entity without a model
     // key is drawn with it, as a misc_model with that model key would be (scriptable_model.h). Null = boxes.
     std::function<std::string(const std::string& definition)> scriptableModelFor;
+    // Compile status of a scriptable definition for viewport badging: 0 = buildable, 1 = dropped by compile_iw8.cpp.
+    std::function<int(const std::string& definition)> scriptableStatusFor;
     // View > Behaviour Preview: seconds since it was switched on (-1 = off). Models with iw8r_spin / iw8r_bob /
     // iw8r_lift and script_brushmodels with those keys or iw8r_door are drawn where the map script would have them at
     // that time (owner request 2026-11-11). Call invalidate() each tick.

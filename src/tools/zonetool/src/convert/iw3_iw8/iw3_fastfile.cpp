@@ -7116,21 +7116,18 @@ void CollectLeafBrushes(const Json &nodes, const std::size_t index,
 
 std::uint32_t ConvertContents(const std::uint32_t source)
 {
-    // 0x2 is foliage in both games (Replay physicscontents_foliage). No player,
-    // bullet, melee or physics-body mask includes it; like IW3 it drives the
-    // foliage movement and bullet sounds (cg_foliagesnd_alias / EV_FOLIAGE_SOUND,
-    // cg_foliagebulletsnd_alias) and AI sight (ai_foliageSeeThroughDist).
-    constexpr std::uint32_t replayContents = 0x33683u;
+    // Replay 1.20 contents bits (PhysicsScript_CreateContents 0x1410A5850):
+    // solid 0x1, foliage 0x2, water 0x20, missileclip 0x80, vehicleclip 0x200,
+    // itemclip 0x400, ainosight 0x1000, clipshot 0x2000, playernosight 0x8000,
+    // playerclip 0x10000, aiclip 0x20000, explosionclip 0x100000, soundclip 0x200000,
+    // mantle 0x1000000, soundreflect 0x4000000, useclip 0x20000000.
+    constexpr std::uint32_t replayContents = 0x2533B6A3u;
     std::uint32_t result = source & replayContents;
     // IW3 glass brushes participate in native solid traces. 0x40 is IW3's
     // "can shoot through" clip flag (clip_nosight in window frames); treating
     // it as solid stopped bullets before they reached native glass.
     if (source & 0x10u)
         result |= 1u;
-    // IW8 Radiant water volumes: IW3 CONTENTS_WATER 0x20 is kept (Replay names physicscontents_water; the bit is
-    // in kReplayContents) so the volume is water, not a wall.
-    if (source & 0x20u)
-        result |= 0x20u;
     // Non-solid IW3 player clips (clip_nosight stair ramps and window clips
     // carry AI-no-sight 0x1000 and item-clip 0x400) must use the shipped
     // player-clip contents (0x30200 / 0x30000 / 0x10000); with the IW3 extras
@@ -7254,8 +7251,10 @@ std::optional<std::vector<CollisionHull>> SplitSlantedBrushFaces(
         });
         if (!planarArea)
             continue;
+        // Duplicate planes (e.g. an explicit axial face plane matching the appended AABB plane)
+        // keep the first plane's material instead of aborting the split.
         if (std::ranges::find(faces, face) != faces.end())
-            return std::nullopt;
+            continue;
         faces.push_back(face);
         for (const std::size_t index : face)
             ++faceIncidence[index];
@@ -13326,6 +13325,26 @@ PreparedMap PrepareFastfile(const ImportOptions &options)
             if (hull.model == 0 && hull.points.size() >= 4)
                 if (const auto flags = navigationFlags(hull.contents))
                     navigation.hulls.push_back({hull.points, flags});
+        // Explicit navigation blocker volumes (clip_nav / nav_blocker brushes): block bot movement
+        // in the navmesh without adding player/bullet physics collision.
+        if (const auto blockers = collision.find("nav_blockers");
+            blockers != collision.end() && blockers->is_array())
+        {
+            for (const auto &box : *blockers)
+            {
+                if (!box.is_array() || box.size() != 6)
+                    continue;
+                const float x0 = box[0].get<float>(), y0 = box[1].get<float>(), z0 = box[2].get<float>();
+                const float x1 = box[3].get<float>(), y1 = box[4].get<float>(), z1 = box[5].get<float>();
+                if (!(x0 < x1 && y0 < y1 && z0 < z1))
+                    continue;
+                std::vector<iw8::navigation::Vec3> pts = {
+                    {x0, y0, z0}, {x1, y0, z0}, {x0, y1, z0}, {x1, y1, z0},
+                    {x0, y0, z1}, {x1, y0, z1}, {x0, y1, z1}, {x1, y1, z1},
+                };
+                navigation.hulls.push_back({std::move(pts), iw8::navigation::kBlocksMovement});
+            }
+        }
         // Millions of triangles: room for all of them is made once.
         {
             std::size_t room = 0;

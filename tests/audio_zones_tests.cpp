@@ -56,13 +56,14 @@ TEST(audio_zones_read_and_write) {
     CHECK(hall.name == "hall" && hall.roomType == "iw8_lg_room" && hall.dry == 0.9 && hall.wet == 0.6 && hall.fade == 1.5 &&
           hall.priority == 50);
     CHECK(hall.bounds.valid() && hall.bounds.mins.x == 0 && hall.bounds.maxs.x == 256 && hall.bounds.maxs.z == 64);
-    bool noBrush = false, notTrigger = false, ambient = false;
+    bool noBrush = false, notTrigger = false;
     for (const auto& w : warn) {
-        ambient |= w.find("is not one of the map's own sounds") != std::string::npos;
         noBrush |= w.find("no brush") != std::string::npos;
         notTrigger |= w.find("only works on a trigger") != std::string::npos;
     }
-    CHECK(noBrush && notTrigger && ambient);
+    CHECK(noBrush && notTrigger);
+    // Stock ambient aliases are now accepted directly (resolved via Replay loaded banks).
+    CHECK(s.mapZone.ambient == "amb_test_loop");
     std::vector<std::string> w2;
     AudioSetup bad = readAudioSetup(*parseMap("iwmap 4\n{\n\"classname\" \"worldspawn\"\n\"iw8r_reverb\" \"nope\"\n}\n", next).map, "mp_t",
                                     world, &w2);
@@ -79,9 +80,11 @@ TEST(audio_zones_read_and_write) {
     CHECK(zones && zones->arr.size() == 2 && reverbs && reverbs->arr.size() == 2);
     const json::Value& z0 = zones->arr[0];
     CHECK(z0.get("zoneName")->str == "mp_test" && (unsigned long long)inum(z0.get("id")) == soundHashName("mp_test") &&
-          inum(z0.get("stateId")) == 0 && inum(z0.get("reverbIndex")) == 0 && z0.get("ambientStream")->str.empty());
+          inum(z0.get("stateId")) == 0 && inum(z0.get("reverbIndex")) == 0 && z0.get("ambientStream")->str == "amb_test_loop" &&
+          inum(z0.get("exterior")) == 1);
     const json::Value& z1 = zones->arr[1];
-    CHECK(inum(z1.get("reverbIndex")) == 1 && (unsigned long long)inum(reverbs->arr[1].get("id")) == soundHashName("hall_reverb"));
+    CHECK(inum(z1.get("reverbIndex")) == 1 && (unsigned long long)inum(reverbs->arr[1].get("id")) == soundHashName("hall_reverb") &&
+          inum(z1.get("exterior")) == 0);
     CHECK((unsigned long long)inum(reverbs->arr[1].get("roomTypeId")) == soundHashName("iw8_lg_room"));
     for (const json::Value& z : zones->arr)
         for (const char* k : {"numMix", "numDisableFullOcc", "numPlayerBreathStates"}) CHECK(inum(z.get(k)) == 0);
@@ -125,8 +128,9 @@ TEST(audio_zones_ambient_oneshots) {
     world.add(Vec3{100, 100, 100});
     std::vector<std::string> warn;
     const AudioSetup s = readAudioSetup(*pr.map, "mp_t", world, &warn, [](const std::string& n) { return n.rfind("bird_", 0) == 0; });
-    CHECK(s.any() && s.mapZone.oneShots.size() == 2 && s.mapZone.oneShotMin == 4 && s.mapZone.oneShotMax == 9);
-    CHECK(warn.size() == 1 && warn[0].find("elm_distant_metal") != std::string::npos);
+    // Both custom sounds and valid stock aliases (elm_distant_metal) are accepted.
+    CHECK(s.any() && s.mapZone.oneShots.size() == 3 && s.mapZone.oneShotMin == 4 && s.mapZone.oneShotMax == 9);
+    CHECK(warn.empty());
     std::string err;
     const auto t = json::parse(soundTableJson(s), &err);
     CHECK(t.has_value());
@@ -134,13 +138,14 @@ TEST(audio_zones_ambient_oneshots) {
     const json::Value* defs = t->get("ambient_defs");
     const json::Value* events = t->get("ambient_events");
     const json::Value* elements = t->get("ambient_elements");
-    CHECK(defs && defs->arr.size() == 1 && events && events->arr.size() == 2 && elements && elements->arr.size() == 2);
-    if (!defs || defs->arr.size() != 1 || !events || events->arr.size() != 2) return;
+    CHECK(defs && defs->arr.size() == 1 && events && events->arr.size() == 3 && elements && elements->arr.size() == 3);
+    if (!defs || defs->arr.size() != 1 || !events || events->arr.size() != 3) return;
     CHECK(defs->arr[0].get("name")->str == "mp_t_elements" && (unsigned long long)inum(defs->arr[0].get("id")) == soundHashName("mp_t_elements"));
-    CHECK(*defs->arr[0].get("timeMin")->number() == 4 && *defs->arr[0].get("timeMax")->number() == 9 && inum(defs->arr[0].get("numEvents")) == 2);
+    CHECK(*defs->arr[0].get("timeMin")->number() == 4 && *defs->arr[0].get("timeMax")->number() == 9 && inum(defs->arr[0].get("numEvents")) == 3);
     CHECK((unsigned long long)inum(events->arr[0].get("id")) == soundHashName("mp_t_elementsbird_a") &&
-          std::fabs(*events->arr[0].get("weight")->number() - 0.75) < 1e-9);
+          std::fabs(*events->arr[0].get("weight")->number() - 0.6) < 1e-9);
     CHECK((unsigned long long)inum(elements->arr[1].get("id")) == soundHashName("bird_b") && elements->arr[1].get("aliasName")->str == "bird_b");
+    CHECK((unsigned long long)inum(elements->arr[2].get("id")) == soundHashName("elm_distant_metal") && elements->arr[2].get("aliasName")->str == "elm_distant_metal");
     const json::Value& z0 = t->get("zones")->arr[0];
     CHECK(inum(z0.get("ambientDefIndex")) == 0 && z0.get("ambientName")->str == "mp_t_elements");
     // Stock values check the id scheme: def "exterior_elements" of mp_shipment.all is 1385228915, its event for

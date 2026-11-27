@@ -15,6 +15,7 @@ struct Census {
     std::map<std::string, int> targetnames;  // targetname -> count
     std::set<std::string> domLabels;         // script_label of flag_primary triggers
     int bombzoneTriggers = 0;                // trigger_use_touch named bombzone
+    int hardpointZoneTriggers = 0;           // trigger_multiple named hardpoint_zone
 };
 
 Census census(const MapFile& map) {
@@ -28,6 +29,7 @@ Census census(const MapFile& map) {
         if (*tn == "flag_primary")
             if (const std::string* label = e.value("script_label")) c.domLabels.insert(*label);
         if (*tn == "bombzone" && cls == "trigger_use_touch") ++c.bombzoneTriggers;
+        if (*tn == "hardpoint_zone" && cls == "trigger_multiple") ++c.hardpointZoneTriggers;
     }
     return c;
 }
@@ -100,6 +102,14 @@ std::vector<GameTypeCheck> gameTypeChecks(const MapFile& map) {
         GameTypeCheck& g = add("br", "Warzone (battle royale)");
         needClass(g, c, "mp_dm_spawn_start", 1);
         needName(g, c, "br_prematch_insertion_point");
+    }
+    {
+        GameTypeCheck& g = add("koth", "Hardpoint");
+        needClass(g, c, "mp_koth_spawn", 2);
+        needClass(g, c, "mp_koth_spawn_allies_start", 1);
+        needClass(g, c, "mp_koth_spawn_axis_start", 1);
+        need(g, c.hardpointZoneTriggers >= 1,
+             "at least 1 Hardpoint zone trigger (trigger_multiple, targetname hardpoint_zone)");
     }
     for (GameTypeCheck& g : out) g.supported = g.missing.empty();
     return out;
@@ -190,6 +200,7 @@ MapGameTypes mapGameTypes(const MapFile& map) {
     } else {
         r.notes.push_back("game types detected: " + r.list);
     }
+    const bool hasBrKey = world && world->value("iw8r_br") && !world->value("iw8r_br")->empty();
     for (const GameTypeCheck& g : checks) {
         // Only game types the mapper has started on are worth a line (some of their entities exist).
         if (g.supported || g.gametype == "war") continue;
@@ -198,7 +209,9 @@ MapGameTypes mapGameTypes(const MapFile& map) {
         else if (g.gametype == "dom") total = 6;
         else if (g.gametype == "sd") total = 5;
         else if (g.gametype == "ctf") total = 9;
-        if (g.missing.size() < total)
+        else if (g.gametype == "br") total = 2;
+        else if (g.gametype == "koth") total = 4;
+        if (g.missing.size() < total || (g.gametype == "br" && hasBrKey))
             r.notes.push_back(g.gametype + " (" + g.title + ") is not offered; the map lacks: " + g.missing.front() +
                               (g.missing.size() > 1 ? " and " + std::to_string(g.missing.size() - 1) + " more" : ""));
     }

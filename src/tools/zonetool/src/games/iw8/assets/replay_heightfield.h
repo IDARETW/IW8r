@@ -24,6 +24,8 @@ struct Data
     std::array<float, 16> outdoorLookup{};
     unsigned size = 0;
     std::vector<uint8_t> pixels;
+    unsigned outdoorSize = 0;
+    std::vector<uint8_t> outdoorPixels;
 };
 
 constexpr const char *kHeightmapName = "*heightmap0";

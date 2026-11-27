@@ -128,6 +128,25 @@ Vec3 matrixToAngles(const Mat3& M) {
 
 bool isZeroVec(const Vec3& a) { return a.x == 0 && a.y == 0 && a.z == 0; }
 
+std::string lowerStr(std::string s) {
+    for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+Vec3 cleanZero(const Vec3& v) {
+    auto f = [](double x) { return std::fabs(x) < 1e-12 ? 0.0 : x + 0.0; };
+    return {f(v.x), f(v.y), f(v.z)};
+}
+
+std::string joinTokens(const std::vector<std::string>& tk) {
+    std::string out;
+    for (size_t i = 0; i < tk.size(); ++i) {
+        if (i) out += ' ';
+        out += tk[i];
+    }
+    return out;
+}
+
 // Placement of one instance: point -> offset + R * (scale * point).
 struct Placement {
     double scale = 1;
@@ -135,7 +154,8 @@ struct Placement {
     Vec3 offset;
     Vec3 angles;  // instance pitch yaw roll, for the brush_ops rotations
 
-    Vec3 point(const Vec3& p) const { return offset + rot * (p * scale); }
+    Vec3 point(const Vec3& p) const { return cleanZero(offset + rot * (p * scale)); }
+    Vec3 vec(const Vec3& v) const { return cleanZero(rot * (v * scale)); }
 };
 
 Placement placementOf(const PrefabInstance& inst) {
@@ -201,12 +221,13 @@ Primitive transformPrimitive(const Primitive& p, const Placement& pl, const std:
     return p;
 }
 
-// Key/value list of a prefab entity with origin and angles transformed.
+// Key/value list of a prefab entity with origin, angles and spatial behaviour keys transformed.
 std::vector<std::pair<std::string, std::string>> transformKeys(const Entity& e, const PrefabInstance& inst,
                                                                const Placement& pl, bool hasPrims) {
     std::vector<std::pair<std::string, std::string>> kvs;
     bool haveOrigin = false, haveAngles = false;
     const Mat3 instRot = anglesToMatrix(inst.angles);
+    const std::string cls = lowerStr(e.classname());
     for (const auto& it : e.items) {
         const KeyValueLine* kv = it.kv();
         if (!kv) continue;
@@ -218,6 +239,55 @@ std::vector<std::pair<std::string, std::string>> transformKeys(const Entity& e, 
         } else if (name == "angles") {
             haveAngles = true;
             if (auto a = parseVec3(value)) value = vecText(matrixToAngles(instRot * anglesToMatrix(*a)));
+        } else if (name == "iw8r_hinge") {
+            if (auto p = parseVec3(value)) value = vecText(pl.point(*p));
+        } else if (name == "iw8r_door") {
+            auto tk = splitTokens(value);
+            if (tk.size() >= 4 && lowerStr(tk[0]) == "slide") {
+                Vec3 d;
+                if (parseDouble(tk[1], d.x) && parseDouble(tk[2], d.y) && parseDouble(tk[3], d.z)) {
+                    const Vec3 nd = pl.vec(d);
+                    tk[1] = formatNumber(nd.x);
+                    tk[2] = formatNumber(nd.y);
+                    tk[3] = formatNumber(nd.z);
+                    value = joinTokens(tk);
+                }
+            }
+        } else if (name == "iw8r_jump") {
+            auto tk = splitTokens(value);
+            if (tk.size() >= 3) {
+                Vec3 v;
+                if (parseDouble(tk[0], v.x) && parseDouble(tk[1], v.y) && parseDouble(tk[2], v.z)) {
+                    const Vec3 nv = pl.vec(v);
+                    tk[0] = formatNumber(nv.x);
+                    tk[1] = formatNumber(nv.y);
+                    tk[2] = formatNumber(nv.z);
+                    value = joinTokens(tk);
+                }
+            }
+        } else if (cls == "trigger_radius" && (name == "radius" || name == "height") && pl.scale != 1.0) {
+            auto tk = splitTokens(value);
+            double d = 0;
+            if (!tk.empty() && parseDouble(tk[0], d)) {
+                tk[0] = formatNumber(d * pl.scale);
+                value = joinTokens(tk);
+            }
+        } else if (cls == "fx_origin" && name == "iw8r_damage" && pl.scale != 1.0) {
+            // fx_origin iw8r_damage "<amount> [radius] [interval seconds]"
+            auto tk = splitTokens(value);
+            double r = 0;
+            if (tk.size() >= 2 && parseDouble(tk[1], r)) {
+                tk[1] = formatNumber(r * pl.scale);
+                value = joinTokens(tk);
+            }
+        } else if ((name == "iw8r_lift" || name == "iw8r_bob") && pl.scale != 1.0) {
+            // iw8r_lift "<dz> [time] [wait]", iw8r_bob "<height> [seconds]"
+            auto tk = splitTokens(value);
+            double d = 0;
+            if (!tk.empty() && parseDouble(tk[0], d)) {
+                tk[0] = formatNumber(d * pl.scale);
+                value = joinTokens(tk);
+            }
         }
         kvs.push_back({name, value});
     }

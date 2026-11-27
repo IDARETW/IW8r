@@ -14,26 +14,41 @@
 
 namespace iw8r {
 
-// IW3 source contents bits used by this module (x64-zt:6927-6945 ConvertContents and its comments).
-constexpr uint32_t kIw3ContentsSolid = 0x1;        // solid; ConvertContents sets it for 0x10 glass too
-constexpr uint32_t kIw3ContentsFoliage = 0x2;      // foliage (x64-zt:6929-6932)
-constexpr uint32_t kIw3ContentsGlass = 0x10;       // IW3 glass, becomes solid (x64-zt:6935-6939)
-constexpr uint32_t kIw3ContentsShootThrough = 0x40; // "can shoot through" clip, dropped by the mask (x64-zt:6935-6937)
-constexpr uint32_t kIw3ContentsItemClip = 0x400;   // item clip (x64-zt:6940-6942)
-constexpr uint32_t kIw3ContentsSky = 0x800;        // sky, dropped by the remapping (x64-zt:7097)
-constexpr uint32_t kIw3ContentsAiNoSight = 0x1000; // AI no-sight (x64-zt:6941)
-constexpr uint32_t kIw3ContentsPlayerClip = 0x10000;  // player clip (x64-zt:6944-6945)
-constexpr uint32_t kIw3ConvertMask = 0x33683;      // Replay bits kept by ConvertContents (x64-zt:6933)
+// Replay 1.20 / IW3 contents bits (verified directly in game_dx12_ship_replay.exe PhysicsScript_CreateContents 0x1410A5850).
+constexpr uint32_t kIw3ContentsSolid = 0x1u;              // physicscontents_solid
+constexpr uint32_t kIw3ContentsFoliage = 0x2u;            // physicscontents_foliage
+constexpr uint32_t kIw3ContentsVehicleTrigger = 0x8u;     // physicscontents_vehicletrigger
+constexpr uint32_t kIw3ContentsGlass = 0x10u;             // physicscontents_glass (also sets solid on IW3 glass)
+constexpr uint32_t kIw3ContentsWater = 0x20u;             // physicscontents_water
+constexpr uint32_t kIw3ContentsShootThrough = 0x40u;      // physicscontents_ainoshoot / IW3 shoot-through
+constexpr uint32_t kIw3ContentsMissileClip = 0x80u;       // physicscontents_missileclip
+constexpr uint32_t kIw3ContentsItem = 0x100u;             // physicscontents_item
+constexpr uint32_t kIw3ContentsVehicleClip = 0x200u;      // physicscontents_vehicleclip
+constexpr uint32_t kIw3ContentsItemClip = 0x400u;         // physicscontents_itemclip
+constexpr uint32_t kIw3ContentsSky = 0x800u;              // physicscontents_sky (dropped by IW3 remapping)
+constexpr uint32_t kIw3ContentsAiNoSight = 0x1000u;       // physicscontents_ainosight
+constexpr uint32_t kIw3ContentsClipShot = 0x2000u;        // physicscontents_clipshot (weapon/bullet clip)
+constexpr uint32_t kIw3ContentsActor = 0x4000u;           // physicscontents_actor
+constexpr uint32_t kIw3ContentsPlayerNoSight = 0x8000u;   // physicscontents_playernosight
+constexpr uint32_t kIw3ContentsPlayerClip = 0x10000u;     // physicscontents_playerclip
+constexpr uint32_t kIw3ContentsAiClip = 0x20000u;         // physicscontents_aiclip
+constexpr uint32_t kIw3ContentsExplosionClip = 0x100000u; // physicscontents_explosionclip
+constexpr uint32_t kIw3ContentsSoundClip = 0x200000u;     // physicscontents_soundclip
+constexpr uint32_t kIw3ContentsMantle = 0x1000000u;       // physicscontents_mantle
+constexpr uint32_t kIw3ContentsSoundReflect = 0x4000000u; // physicscontents_soundreflect
+constexpr uint32_t kIw3ContentsUseClip = 0x20000000u;     // physicscontents_useclip
+constexpr uint32_t kIw3ConvertMask = 0x2533B6A3u;         // Replay 1.20 bits kept by ConvertContents
 // Trigger hull contents (compile_iw8.cpp kTriggerContents; x64-zt AddBrushlessTriggerBoxes comment).
 constexpr uint32_t kIw3TriggerContents = 0x8000001u;
 
 // Source contents of one brush as the collision JSON wants them.
 struct BrushContents {
     uint32_t contents = 1;   // IW3-style bits written to the collision brush "contents"
-    bool collides = true;    // false: no world collision (trigger, hint, skip, origin, portal, water, nonColliding)
+    bool collides = true;    // false: no world collision (trigger, hint, skip, origin, portal, navBlocker, nonColliding)
     bool rendered = true;    // false: tool surface, not drawn (clip, nodraw, caulk, sky, trigger, ...)
     bool ladder = false;     // a face uses the ladder tool material: climbable (compiler writes ladder_planes)
-    bool water = false;      // a face uses the water tool material: swimmable volume (no collision)
+    bool water = false;      // a face uses the water tool material: water volume (physicscontents_water 0x20)
+    bool navBlocker = false; // a face uses clip_nav / nav_blocker or `contents navBlocker;`: emits NavMeshData obstacleBounds
     std::string reason;      // human readable derivation, one clause per face class or directive
 };
 

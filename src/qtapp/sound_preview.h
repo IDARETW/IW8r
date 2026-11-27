@@ -64,27 +64,33 @@ public:
     SoundPreview(ToolPath toolPath, QObject* parent = nullptr);
     ~SoundPreview() override;
 
-    // Plays the alias (a random variant, as the game picks one); prepares the zone's banks first when needed.
-    void play(const QString& alias, const QString& zone = "common_mp");
+    // Plays the alias (weighted by SndAlias.probability, or a custom sound file from sounds/); searches custom sounds
+    // and candidate stock zones when `zone` is empty, preparing banks on first use as needed.
+    void play(const QString& alias, const QString& zone = QString());
     void stop();
     bool playing() const { return playing_; }
     bool preparing() const { return preparing_; }
     QString cacheDir() const;
     QString lastStatus() const { return status_; }
+    // Additional stock zones to search ahead of the defaults (e.g. the opened map's own zone).
+    void setExtraZones(const QStringList& zones);
+    // Folders searched for custom map sound files (<alias>.wav / .flac / .mp3).
+    void setCustomSoundRoots(std::function<QStringList()> rootsFn) { customSoundRoots_ = std::move(rootsFn); }
     // The last sound decoded (tests): rate, channels and frames, 0 before any.
     const PcmSound& lastSound() const { return last_; }
     // Tests: decode only, nothing is played.
     void setMuted(bool m) { muted_ = m; }
-    // The index of a zone prepared before (its alias table and banks in the cache), read without ACTS on a worker
-    // thread; indexReady when it is in memory. Nothing for a zone never prepared (its first Play prepares it).
-    void loadIndex(const QString& zone = "common_mp");
-    // Every alias of a read zone: how many variants have samples, the shortest and longest, whether one loops.
+    // The index of a zone prepared before (or all prepared candidate zones when `zone` is empty), read without ACTS
+    // on a worker thread; indexReady when in memory. Nothing for a zone never prepared (its first Play prepares it).
+    void loadIndex(const QString& zone = QString());
+    // Every alias of a read zone (or merged across all read zones when `zone` is empty): how many variants have
+    // samples, the shortest and longest, whether one loops.
     struct AliasFacts {
         int variants = 0;
         double shortest = 0, longest = 0;
         bool loop = false;
     };
-    QHash<QString, AliasFacts> aliasFacts(const QString& zone = "common_mp") const;
+    QHash<QString, AliasFacts> aliasFacts(const QString& zone = QString()) const;
 
 signals:
     void statusChanged(const QString& text, bool playing);
@@ -95,6 +101,12 @@ signals:
 private:
     struct Zone;
     Zone* zone(const QString& name);
+    QStringList candidateZones() const;
+    bool zoneHasAliasHit(const Zone& z, const QString& alias) const;
+    QString findCustomSoundFile(const QString& alias) const;
+    bool playCustomFile(const QString& alias, const QString& path);
+    void advancePlayQueue();
+    void advanceIndexQueue();
     void prepare(Zone& z);
     void runActs(const QStringList& args, const QString& outDir, bool structured, std::function<void(bool ok, const QString& log)> done);
     void playResolved(const QString& alias);
@@ -103,11 +115,14 @@ private:
     void startPlayback(PcmSound pcm, const QString& what, bool loop);
 
     ToolPath toolPath_;
+    std::function<QStringList()> customSoundRoots_;
+    QStringList extraZones_;
     QHash<QString, std::shared_ptr<Zone>> zones_;
     QString wantAlias_, wantZone_;
+    QStringList wantZones_, indexQueue_;
     QByteArray wav_;  // what the sound API plays from (kept until stopped)
     PcmSound last_;
-    bool playing_ = false, preparing_ = false, muted_ = false, indexing_ = false;
+    bool playing_ = false, preparing_ = false, muted_ = false, indexing_ = false, mciPlaying_ = false;
     QString status_;
     QTimer* endTimer_ = nullptr;
     QProcess* proc_ = nullptr;

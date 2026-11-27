@@ -48,16 +48,48 @@ double converterRoleGain(const std::string& aliasName, bool looping) {
 
 std::string customSoundAliasJson(const CustomSoundAlias& a) {
     // IW3 alias flags: bit 0 looping, bits 8-13 the entity channel in channels.def order (1 auto, 24 ambient).
-    const unsigned channel = a.ambient2d ? 24u : 1u;
+    const unsigned channel = a.channel ? std::min(a.channel, 32u) : (a.ambient2d ? 24u : 1u);
     const unsigned flags = (a.looping ? 1u : 0u) | (channel << 8);
-    // The converter clamps volume x role gain to 0..1, so the role gain is divided out here.
-    const double vol = std::clamp(a.volume, 0.0, 1.0) / converterRoleGain(a.name, a.looping);
+    const double gain = converterRoleGain(a.name, a.looping);
     const double dmin = std::max(0.0, a.distMin), dmax = std::max(dmin + 1, a.distMax);
-    return "{\"name\":\"" + a.name + "\",\"aliases\":[{\"file\":{\"name\":\"" + a.fileName +
-           "\",\"directory\":\"iw8r\"},\"volume\":{\"min\":" + num(vol) + ",\"max\":" + num(vol) +
-           "},\"pitch\":{\"min\":1,\"max\":1},\"distance\":{\"min\":" + num(dmin) + ",\"max\":" + num(dmax) +
-           "},\"probability\":1,\"lfe_percentage\":0,\"start_delay\":0,\"flags\":" + std::to_string(flags) +
-           ",\"center_percentage\":0}]}";
+
+    std::vector<CustomSoundVariant> list = a.variants;
+    if (list.empty()) {
+        CustomSoundVariant v;
+        v.fileName = a.fileName;
+        v.volumeMin = a.volumeMin >= 0.0 ? a.volumeMin : a.volume;
+        v.volumeMax = a.volumeMax >= 0.0 ? a.volumeMax : a.volume;
+        v.pitchMin = a.pitchMin;
+        v.pitchMax = a.pitchMax;
+        v.lfePercentage = a.lfePercentage;
+        v.centerPercentage = a.centerPercentage;
+        v.startDelayMs = a.startDelayMs;
+        v.secondary = a.secondary;
+        list.push_back(std::move(v));
+    }
+
+    std::string out = "{\"name\":\"" + a.name + "\",\"aliases\":[";
+    for (size_t i = 0; i < list.size(); ++i) {
+        const CustomSoundVariant& v = list[i];
+        const double vmin = std::clamp(std::min(v.volumeMin, v.volumeMax), 0.0, 1.0) / gain;
+        const double vmax = std::clamp(std::max(v.volumeMin, v.volumeMax), 0.0, 1.0) / gain;
+        const double pmin = std::clamp(std::min(v.pitchMin, v.pitchMax), 0.1, 4.0);
+        const double pmax = std::clamp(std::max(v.pitchMin, v.pitchMax), 0.1, 4.0);
+        const double prob = std::max(0.0, v.probability);
+        const double lfe = std::clamp(v.lfePercentage, 0.0, 1.0);
+        const double ctr = std::clamp(v.centerPercentage, 0.0, 1.0);
+        const int delay = std::max(0, v.startDelayMs);
+        if (i) out += ",";
+        out += "{\"file\":{\"name\":\"" + v.fileName + "\",\"directory\":\"iw8r\"},\"volume\":{\"min\":" + num(vmin) +
+               ",\"max\":" + num(vmax) + "},\"pitch\":{\"min\":" + num(pmin) + ",\"max\":" + num(pmax) +
+               "},\"distance\":{\"min\":" + num(dmin) + ",\"max\":" + num(dmax) + "},\"probability\":" + num(prob) +
+               ",\"lfe_percentage\":" + num(lfe) + ",\"start_delay\":" + std::to_string(delay) +
+               ",\"flags\":" + std::to_string(flags) + ",\"center_percentage\":" + num(ctr);
+        if (!v.secondary.empty()) out += ",\"secondary\":\"" + v.secondary + "\"";
+        out += "}";
+    }
+    out += "]}";
+    return out;
 }
 
 }  // namespace iw8r
